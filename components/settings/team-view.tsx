@@ -17,10 +17,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  changeMemberRole,
   inviteTeamMember,
   removeTeamMember,
   revokeInvite,
 } from "@/lib/actions/team";
+import { ASSIGNABLE_ROLES, isAdminRole, ROLE_LABELS } from "@/lib/auth/roles";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
@@ -72,6 +74,8 @@ export function TeamView({
 }) {
   const router = useRouter();
   const isOwner = currentUserRole === "owner";
+  // Owner y Admin gestionan el equipo; remover miembros queda solo en Owner.
+  const canManageTeam = isAdminRole(currentUserRole);
 
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
@@ -88,6 +92,10 @@ export function TeamView({
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{ userId: string; name: string } | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+
+  // Cambio de rol
+  const [changingRoleFor, setChangingRoleFor] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -122,6 +130,25 @@ export function TeamView({
     }
 
     setRemovingId(null);
+  }
+
+  async function handleRoleChange(userId: string, newRole: string) {
+    setChangingRoleFor(userId);
+    setRoleError(null);
+
+    const previous = members;
+    setMembers((prev) =>
+      prev.map((m) => (m.userId === userId ? { ...m, role: newRole } : m))
+    );
+
+    const result = await changeMemberRole(workspaceId, userId, newRole);
+
+    if (result.error) {
+      setMembers(previous);
+      setRoleError(result.error);
+    }
+
+    setChangingRoleFor(null);
   }
 
   async function handleRevoke(inviteId: string) {
@@ -195,15 +222,42 @@ export function TeamView({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0 ml-4">
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize",
-                        roleStyles[member.role] ?? roleStyles.member
-                      )}
-                    >
-                      {roleIcons[member.role] ?? roleIcons.member}
-                      {member.role}
-                    </span>
+                    {canManageTeam &&
+                    member.role !== "owner" &&
+                    member.userId !== currentUserId ? (
+                      <label className="flex items-center gap-1">
+                        <span className="sr-only">
+                          Rol de {member.name}
+                        </span>
+                        <select
+                          value={member.role}
+                          onChange={(e) =>
+                            handleRoleChange(member.userId, e.target.value)
+                          }
+                          disabled={changingRoleFor === member.userId}
+                          className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] capitalize disabled:opacity-50"
+                        >
+                          {ASSIGNABLE_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
+                        {changingRoleFor === member.userId && (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                        )}
+                      </label>
+                    ) : (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium capitalize",
+                          roleStyles[member.role] ?? roleStyles.member
+                        )}
+                      >
+                        {roleIcons[member.role] ?? roleIcons.member}
+                        {member.role}
+                      </span>
+                    )}
 
                     <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                       Joined{" "}
@@ -234,10 +288,19 @@ export function TeamView({
                 </div>
               ))}
             </div>
+
+            {roleError && (
+              <p
+                role="alert"
+                className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                {roleError}
+              </p>
+            )}
           </section>
 
-          {/* Invite section (owners only) */}
-          {isOwner && (
+          {/* Invitaciones: Owner y Admin */}
+          {canManageTeam && (
             <>
               <hr className="border-border" />
 
@@ -358,7 +421,7 @@ export function TeamView({
                           </div>
                         </div>
 
-                        {isOwner && (
+                        {canManageTeam && (
                           <button
                             onClick={() => setConfirmRevoke(invite.id)}
                             disabled={revokingId === invite.id}

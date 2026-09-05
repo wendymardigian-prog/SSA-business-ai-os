@@ -1,9 +1,10 @@
-import { getWorkspace } from "@/lib/workspace";
+import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { TeamView } from "@/components/settings/team-view";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export default async function TeamPage() {
-  const { workspace, user, role, supabase } = await getWorkspace();
+  // Gestionar el equipo es de Owner/Admin.
+  const { workspace, user, role, supabase } = await requireWorkspaceAdmin();
 
   // Fetch workspace members with user details
   // We need service client to read auth.users for email/name

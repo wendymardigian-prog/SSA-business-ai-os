@@ -1,8 +1,9 @@
-import { getWorkspace } from "@/lib/workspace";
+import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { ChannelsView } from "./channels-view";
 
 export default async function ChannelsPage() {
-  const { workspace, supabase } = await getWorkspace();
+  // Conectar y desconectar canales es de Owner/Admin.
+  const { workspace, supabase } = await requireWorkspaceAdmin();
 
   const { data: channels } = await supabase
     .from("channels")

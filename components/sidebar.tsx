@@ -21,6 +21,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { isAdminRole } from "@/lib/auth/roles";
 import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
@@ -38,26 +39,33 @@ function subscribeToThemeClass(callback: () => void) {
   return () => observer.disconnect();
 }
 
+// adminOnly: la pantalla ademas esta protegida por requireWorkspaceAdmin y por
+// RLS. Ocultarla del menu es para no ofrecerle a un Member un link que rebota.
 const navigation = [
-  { name: "Flows", href: "/dashboard/flows", icon: GitBranch },
-  { name: "Inbox", href: "/dashboard/inbox", icon: MessageSquare },
-  { name: "Contacts", href: "/dashboard/contacts", icon: Users },
-  { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio },
-  { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { name: "Growth", href: "/dashboard/growth", icon: Sprout },
-  { name: "Channels", href: "/dashboard/channels", icon: Plug },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings },
+  { name: "Flows", href: "/dashboard/flows", icon: GitBranch, adminOnly: false },
+  { name: "Inbox", href: "/dashboard/inbox", icon: MessageSquare, adminOnly: false },
+  { name: "Contacts", href: "/dashboard/contacts", icon: Users, adminOnly: false },
+  { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio, adminOnly: false },
+  { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered, adminOnly: false },
+  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, adminOnly: false },
+  { name: "Growth", href: "/dashboard/growth", icon: Sprout, adminOnly: false },
+  { name: "Channels", href: "/dashboard/channels", icon: Plug, adminOnly: true },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings, adminOnly: true },
 ];
 
 export function Sidebar({
   workspace,
+  role,
   workspaces,
 }: {
   workspace: Workspace;
   user: { id: string; email?: string };
+  role: string;
   workspaces: WorkspaceItem[];
 }) {
+  const navItems = navigation.filter(
+    (item) => !item.adminOnly || isAdminRole(role)
+  );
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -86,7 +94,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {navigation.map((item) => {
+        {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
           return (
             <Link

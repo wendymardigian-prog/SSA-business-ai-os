@@ -2,6 +2,7 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
+import { ASSIGNABLE_ROLES, isAdminRole, type WorkspaceRole } from "@/lib/auth/roles";
 
 export async function inviteTeamMember(
   workspaceId: string,
@@ -14,7 +15,7 @@ export async function inviteTeamMember(
     return { error: "Workspace mismatch" };
   }
 
-  // Validate caller is owner
+  // Validate caller is owner or admin
   const { data: membership } = await supabase
     .from("workspace_members")
     .select("role")
@@ -22,8 +23,8 @@ export async function inviteTeamMember(
     .eq("user_id", user.id)
     .single();
 
-  if (membership?.role !== "owner") {
-    return { error: "Only workspace owners can invite members" };
+  if (!isAdminRole(membership?.role)) {
+    return { error: "Solo Owner y Admin pueden invitar miembros" };
   }
 
   const trimmedEmail = email.trim().toLowerCase();
@@ -31,9 +32,8 @@ export async function inviteTeamMember(
     return { error: "A valid email address is required" };
   }
 
-  const validRoles = ["member", "admin"];
-  if (!validRoles.includes(role)) {
-    return { error: "Invalid role. Must be member or admin." };
+  if (!ASSIGNABLE_ROLES.includes(role as WorkspaceRole)) {
+    return { error: "Rol invalido. Tiene que ser member o admin." };
   }
 
   // Check if this email is already a member
@@ -206,7 +206,7 @@ export async function revokeInvite(inviteId: string) {
     return { error: "Invite not found" };
   }
 
-  // Validate caller is owner
+  // Validate caller is owner or admin
   const { data: membership } = await supabase
     .from("workspace_members")
     .select("role")
@@ -214,8 +214,8 @@ export async function revokeInvite(inviteId: string) {
     .eq("user_id", user.id)
     .single();
 
-  if (membership?.role !== "owner") {
-    return { error: "Only workspace owners can revoke invites" };
+  if (!isAdminRole(membership?.role)) {
+    return { error: "Solo Owner y Admin pueden revocar invitaciones" };
   }
 
   const { error: deleteError } = await supabase
@@ -228,4 +228,80 @@ export async function revokeInvite(inviteId: string) {
   }
 
   return { ok: true };
+}
+
+/**
+ * Cambia el rol de un miembro entre admin y member.
+ *
+ * Reglas (las mismas que aplica la RLS de la migracion 00018, repetidas aca
+ * para poder devolver un mensaje claro en vez de un error de base):
+ * - Solo Owner o Admin pueden cambiar roles.
+ * - A owner no se llega por esta via: se es owner por crear el workspace.
+ * - Un Admin no puede tocar la fila de un Owner (si no, se auto-promoveria
+ *   degradando al owner primero).
+ * - Nadie cambia su propio rol.
+ */
+export async function changeMemberRole(
+  workspaceId: string,
+  userId: string,
+  newRole: string
+) {
+  const { workspace, user, supabase } = await getWorkspace();
+
+  if (workspace.id !== workspaceId) {
+    return { error: "Workspace mismatch" };
+  }
+
+  if (!ASSIGNABLE_ROLES.includes(newRole as WorkspaceRole)) {
+    return { error: "Rol invalido. Tiene que ser member o admin." };
+  }
+
+  if (userId === user.id) {
+    return { error: "No podes cambiar tu propio rol" };
+  }
+
+  const { data: membership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!isAdminRole(membership?.role)) {
+    return { error: "Solo Owner y Admin pueden cambiar roles" };
+  }
+
+  // El rol del target lo leemos con el service client: la policy de SELECT de
+  // workspace_members solo devuelve la fila propia.
+  const serviceClient = await createServiceClient();
+  const { data: target } = await serviceClient
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .single();
+
+  if (!target) {
+    return { error: "Ese miembro no pertenece al workspace" };
+  }
+
+  if (target.role === "owner") {
+    return { error: "No se puede cambiar el rol del Owner del workspace" };
+  }
+
+  if (target.role === newRole) {
+    return { ok: true, role: newRole };
+  }
+
+  const { error: updateError } = await supabase
+    .from("workspace_members")
+    .update({ role: newRole })
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId);
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  return { ok: true, role: newRole };
 }

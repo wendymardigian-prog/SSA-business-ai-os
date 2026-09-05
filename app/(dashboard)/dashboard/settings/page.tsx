@@ -1,8 +1,9 @@
-import { getWorkspace } from "@/lib/workspace";
+import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
-  const { workspace } = await getWorkspace();
+  // La configuracion del workspace (API keys, keywords) es de Owner/Admin.
+  const { workspace } = await requireWorkspaceAdmin();
 
   return (
     <SettingsView

@@ -6,7 +6,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { workspace, user, supabase } = await getWorkspace();
+  const { workspace, user, role, supabase } = await getWorkspace();
 
   const { data: memberships } = await supabase
     .from("workspace_members")
@@ -22,7 +22,12 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen">
-      <Sidebar workspace={workspace} user={user} workspaces={workspaces} />
+      <Sidebar
+        workspace={workspace}
+        user={user}
+        role={role}
+        workspaces={workspaces}
+      />
       <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
     </div>
   );
