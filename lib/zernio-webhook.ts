@@ -1,10 +1,14 @@
 /**
  * Zernio webhook auto-registration.
  *
- * Zernflow must register its own `/api/webhooks/late` endpoint in Zernio so that
- * inbound events (DMs, comments) are delivered to the Inbox. Zernio exposes a
- * single webhook per profile/API key, so this is idempotent and operates at the
- * workspace level (the secret lives on `workspaces.webhook_secret`).
+ * El sistema registra en Zernio la URL a la que quiere recibir los eventos
+ * (DMs, comentarios). Zernio expone un solo webhook por perfil/API key, asi que
+ * esto es idempotente y trabaja a nivel workspace (el secreto vive en
+ * `workspaces.webhook_secret`).
+ *
+ * Que URL se registra lo decide quien llama (lib/webhook-url.ts). Hoy es la
+ * Edge Function de Supabase, porque la app corre en local y no es alcanzable
+ * desde internet.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -18,8 +22,16 @@ export const WEBHOOK_NAME = "Zernflow";
 export type WebhookEvent = "message.received" | "comment.received";
 
 export interface EnsureWebhookOptions {
-  /** Public base URL of this Zernflow deployment (e.g. NEXT_PUBLIC_APP_URL). */
-  appUrl: string;
+  /**
+   * URL publica a la que Zernio tiene que entregar los eventos.
+   *
+   * Antes se armaba como `${NEXT_PUBLIC_APP_URL}/api/webhooks/late`, pero
+   * mientras la app corre en local esa URL no es alcanzable desde internet.
+   * Ahora la decide quien llama (ver lib/webhook-url.ts), que es lo que permite
+   * apuntar a la Edge Function hoy y volver a la API route cuando la app tenga
+   * dominio propio.
+   */
+  url: string;
   /** Workspace-level HMAC secret used to verify webhook signatures. */
   secret: string;
   /** Events to subscribe to (at least one). */
@@ -39,11 +51,11 @@ interface ZernioWebhook {
   events?: string[];
 }
 
-function webhookUrl(appUrl: string): string {
-  // trim() guards against whitespace smuggled in via the env var — a trailing
-  // newline in NEXT_PUBLIC_APP_URL once registered a webhook with a "\n" in
-  // the URL, silently failing every delivery (#10).
-  return `${appUrl.trim().replace(/\/$/, "")}/api/webhooks/late`;
+function webhookUrl(url: string): string {
+  // trim() protege contra espacios colados desde una variable de entorno: un
+  // salto de linea al final registro una vez un webhook con "\n" en la URL y
+  // todas las entregas fallaban en silencio (#10).
+  return url.trim().replace(/\/$/, "");
 }
 
 /** Normalizes a URL to origin+pathname, dropping query string and trailing slash. */
@@ -78,7 +90,7 @@ export async function ensureWebhookRegistered(
   zernio: Zernio,
   opts: EnsureWebhookOptions,
 ): Promise<EnsureWebhookResult> {
-  const url = webhookUrl(opts.appUrl);
+  const url = webhookUrl(opts.url);
 
   const res = await zernio.webhooks.getWebhookSettings();
   const webhooks = (res?.data?.webhooks ?? []) as ZernioWebhook[];

@@ -60,7 +60,7 @@ function fakeZernio(existing: Array<Record<string, unknown>>) {
 }
 
 const opts = {
-  appUrl: "https://app.zernflow.test",
+  url: "https://app.zernflow.test/api/webhooks/late",
   secret: "s3cr3t",
   events: ["message.received", "comment.received"] as const,
 };
@@ -148,12 +148,12 @@ describe("ensureWebhookRegistered", () => {
     expect(z.update).toHaveBeenCalledTimes(1);
   });
 
-  it("strips whitespace from appUrl (newline in env var corrupted the registered URL, #10)", async () => {
+  it("strips whitespace from the url (newline in env var corrupted the registered URL, #10)", async () => {
     const z = fakeZernio([]);
     await ensureWebhookRegistered(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       z.client as any,
-      { ...opts, appUrl: "https://app.zernflow.test\n", events: [...opts.events] },
+      { ...opts, url: "https://app.zernflow.test/api/webhooks/late\n", events: [...opts.events] },
     );
 
     expect(z.create).toHaveBeenCalledWith({
@@ -166,14 +166,14 @@ describe("ensureWebhookRegistered", () => {
     });
   });
 
-  it("matches an existing webhook by name even if url has a trailing slash in appUrl", async () => {
+  it("matches an existing webhook by name even if the url has a trailing slash", async () => {
     const z = fakeZernio([
       { _id: "wh1", name: WEBHOOK_NAME, url: EXPECTED_URL, secret: "s3cr3t", events: ["message.received", "comment.received"] },
     ]);
     const res = await ensureWebhookRegistered(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       z.client as any,
-      { ...opts, appUrl: "https://app.zernflow.test/", events: [...opts.events] },
+      { ...opts, url: "https://app.zernflow.test/api/webhooks/late/", events: [...opts.events] },
     );
 
     expect(res.action).toBe("unchanged");

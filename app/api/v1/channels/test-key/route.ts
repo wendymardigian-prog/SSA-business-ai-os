@@ -7,6 +7,7 @@ import {
 } from "@/lib/zernio-webhook";
 import { backfillInboxConversations } from "@/lib/inbox-sync";
 import { isSupportedPlatform } from "@/lib/platforms";
+import { channelWebhookUrl } from "@/lib/webhook-url";
 
 /**
  * POST /api/v1/channels/test-key
@@ -60,10 +61,9 @@ export async function POST(request: NextRequest) {
     // block saving the key or syncing channels.
     try {
       const secret = await getOrCreateWorkspaceWebhookSecret(supabase, workspaceId);
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       const zernio = createZernioClient(apiKey.trim());
       await ensureWebhookRegistered(zernio, {
-        appUrl,
+        url: channelWebhookUrl("zernio"),
         secret,
         events: ["message.received", "comment.received"],
       });
