@@ -51,11 +51,14 @@ export async function POST() {
     const res = await zernio.accounts.listAccounts();
     const lateAccounts = res.data?.accounts ?? [];
 
-    // Get existing channels for this workspace
+    // Solo los canales de Zernio: este sync sale de la lista de cuentas de
+    // Zernio, asi que un canal de WhatsApp (Evolution) no aparece ahi y el
+    // barrido de abajo lo desactivaria.
     const { data: existingChannels } = await supabase
       .from("channels")
       .select("*")
-      .eq("workspace_id", workspace.id);
+      .eq("workspace_id", workspace.id)
+      .eq("provider", "zernio");
 
     const existingByZernioId = new Map(
       (existingChannels ?? []).map((c) => [c.late_account_id, c])
@@ -102,6 +105,7 @@ export async function POST() {
         const { error: insertErr } = await supabase.from("channels").insert({
           workspace_id: workspace.id,
           platform: account.platform,
+          provider: "zernio",
           late_account_id: account._id,
           username: account.username || null,
           display_name: account.displayName || account.username || null,
@@ -153,6 +157,7 @@ export async function POST() {
         .from("channels")
         .select("id, late_account_id, platform")
         .eq("workspace_id", workspace.id)
+        .eq("provider", "zernio")
         .eq("is_active", true);
 
       const { imported } = await backfillInboxConversations({
@@ -166,7 +171,8 @@ export async function POST() {
       console.error("[channels/sync] inbox backfill failed:", err);
     }
 
-    // Return updated channel list
+    // La lista que vuelve a la UI si lleva todos los canales, no solo los de
+    // Zernio: la pantalla los muestra juntos.
     const { data: channels } = await supabase
       .from("channels")
       .select("*")

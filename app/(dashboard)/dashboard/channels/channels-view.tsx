@@ -11,10 +11,13 @@ import {
   RefreshCw,
   Loader2,
   Trash2,
+  QrCode,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { WhatsAppConnectModal } from "@/components/channels/whatsapp-connect-modal";
 import { PlatformIcon } from "@/components/platform-icon";
 import type { Database } from "@/lib/types/database";
 import {
@@ -66,6 +69,8 @@ export function ChannelsView({
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [whatsappChannel, setWhatsappChannel] = useState<Channel | null>(null);
+  const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   // Close picker on outside click
@@ -107,6 +112,44 @@ export function ChannelsView({
       setConnecting(null);
       setShowPlatformPicker(false);
     }
+  }
+
+  /**
+   * WhatsApp no pasa por Zernio sino por Evolution API, asi que tiene su
+   * propio flujo: se prepara la instancia en el servidor y despues se vincula
+   * escaneando el QR. Es idempotente, asi que este mismo boton sirve para
+   * conectar por primera vez y para reconectar despues de una caida.
+   */
+  async function handleConnectWhatsapp() {
+    setConnectingWhatsapp(true);
+    setShowPlatformPicker(false);
+    try {
+      const res = await fetch("/api/v1/channels/whatsapp", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setSyncMessage(data.error || "No pude preparar WhatsApp");
+        setTimeout(() => setSyncMessage(null), 8000);
+        return;
+      }
+
+      const channel: Channel = data.channel;
+      setChannels((prev) => {
+        const rest = prev.filter((c) => c.id !== channel.id);
+        return [channel, ...rest];
+      });
+      setWhatsappChannel(channel);
+    } catch {
+      setSyncMessage("No pude contactar al servidor");
+      setTimeout(() => setSyncMessage(null), 4000);
+    } finally {
+      setConnectingWhatsapp(false);
+    }
+  }
+
+  function handleWhatsappConnected(channel: Channel) {
+    setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
+    setWhatsappChannel(channel);
   }
 
   async function handleSync() {
@@ -243,16 +286,23 @@ export function ChannelsView({
                   {PLATFORMS.map((p) => (
                     <button
                       key={p}
-                      onClick={() => handleConnect(p)}
-                      disabled={connecting === p}
+                      onClick={() =>
+                        p === "whatsapp" ? handleConnectWhatsapp() : handleConnect(p)
+                      }
+                      disabled={connecting === p || (p === "whatsapp" && connectingWhatsapp)}
                       className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
                     >
-                      {connecting === p ? (
+                      {connecting === p || (p === "whatsapp" && connectingWhatsapp) ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <PlatformIcon platform={p} className="h-4 w-4" size={16} />
                       )}
                       {PLATFORM_LABELS[p]}
+                      {p === "whatsapp" && (
+                        <span className="ml-auto text-[10px] text-muted-foreground">
+                          por QR
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -375,6 +425,56 @@ export function ChannelsView({
                     </div>
                   </div>
 
+                  {/* WhatsApp por Evolution reporta su estado real en vivo:
+                      esta conectado o no, mas alla de que el canal este activo. */}
+                  {channel.provider === "evolution" && (
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            channel.connection_status === "connected"
+                              ? "bg-green-100 text-green-700"
+                              : channel.connection_status === "connecting"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-red-100 text-red-700"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              channel.connection_status === "connected"
+                                ? "bg-green-500"
+                                : channel.connection_status === "connecting"
+                                  ? "bg-amber-500"
+                                  : "bg-red-500"
+                            )}
+                          />
+                          {channel.connection_status === "connected"
+                            ? "Conectado"
+                            : channel.connection_status === "connecting"
+                              ? "Conectando"
+                              : "Desconectado"}
+                        </span>
+                        <button
+                          onClick={() => setWhatsappChannel(channel)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-muted"
+                        >
+                          <QrCode className="h-3 w-3" />
+                          {channel.connection_status === "connected"
+                            ? "Ver QR"
+                            : "Reconectar"}
+                        </button>
+                      </div>
+                      {channel.connection_status !== "connected" && channel.last_error && (
+                        <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                          <span>{channel.last_error}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="mt-4 flex items-center gap-2">
                     <span
                       className={cn(
@@ -404,6 +504,7 @@ export function ChannelsView({
                   </div>
 
                   {(() => {
+                    if (channel.provider === "evolution") return null;
                     const dm = getDmLink(channel.platform as Platform, channel.username);
                     if (!dm.url) return null;
                     return (
@@ -446,6 +547,14 @@ export function ChannelsView({
           </div>
         )}
       </div>
+
+      {whatsappChannel && (
+        <WhatsAppConnectModal
+          channel={whatsappChannel}
+          onConnected={handleWhatsappConnected}
+          onClose={() => setWhatsappChannel(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={!!channelToDelete}

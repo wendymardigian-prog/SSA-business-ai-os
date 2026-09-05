@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
+import {
+  deleteInstance,
+  getEvolutionConfig,
+  logoutInstance,
+} from "@/lib/evolution-client";
 
 async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
   const {
@@ -22,9 +27,15 @@ async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) 
 /**
  * DELETE /api/v1/channels/[channelId]
  *
- * Permanently deletes a channel: disconnects the account on Zernio first
- * (otherwise /api/v1/channels/sync would re-create it from listAccounts),
- * then deletes the local row (cascades conversations, contact links, etc.).
+ * Borra el canal para siempre. Antes lo desconecta en el proveedor que
+ * corresponda, si no el siguiente sync lo volveria a crear:
+ * - Zernio: deleteAccount.
+ * - Evolution: cierra la sesion de WhatsApp y borra la instancia. deleteInstance
+ *   se niega a tocar instancias sin nuestro prefijo, porque ese Evolution puede
+ *   estar compartido con otro sistema.
+ *
+ * Despues borra la fila local, que arrastra conversaciones y vinculos de
+ * contacto en cascada.
  */
 export async function DELETE(
   _request: NextRequest,
@@ -38,7 +49,7 @@ export async function DELETE(
 
   const { data: channel } = await supabase
     .from("channels")
-    .select("id, late_account_id")
+    .select("id, late_account_id, provider, evolution_instance")
     .eq("id", channelId)
     .eq("workspace_id", workspace.id)
     .single();
@@ -46,7 +57,25 @@ export async function DELETE(
   if (!channel)
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
 
-  if (workspace.late_api_key_encrypted) {
+  if (channel.provider === "evolution") {
+    const config = getEvolutionConfig();
+    if (config && channel.evolution_instance) {
+      try {
+        await logoutInstance(config, channel.evolution_instance);
+        await deleteInstance(config, channel.evolution_instance);
+      } catch (error) {
+        console.error("Failed to remove Evolution instance:", error);
+        return NextResponse.json(
+          {
+            error: `No pude desconectar WhatsApp en Evolution: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+          { status: 502 }
+        );
+      }
+    }
+  } else if (workspace.late_api_key_encrypted) {
     const zernio = createZernioClient(workspace.late_api_key_encrypted);
     try {
       const res = await zernio.accounts.deleteAccount({

@@ -75,7 +75,8 @@ export async function POST(request: NextRequest) {
     const { data: existingChannels } = await supabase
       .from("channels")
       .select("*")
-      .eq("workspace_id", workspaceId);
+      .eq("workspace_id", workspaceId)
+      .eq("provider", "zernio");
 
     const existingByLateId = new Map(
       (existingChannels ?? []).map((c) => [c.late_account_id, c])
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       const { error: insertErr } = await supabase.from("channels").insert({
         workspace_id: workspaceId,
         platform: account.platform,
+        provider: "zernio",
         late_account_id: account._id,
         username: account.username || null,
         display_name: account.displayName || account.username || null,
@@ -107,6 +109,7 @@ export async function POST(request: NextRequest) {
         .from("channels")
         .select("id, late_account_id, platform")
         .eq("workspace_id", workspaceId)
+        .eq("provider", "zernio")
         .eq("is_active", true);
 
       await backfillInboxConversations({
