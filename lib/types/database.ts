@@ -14,6 +14,14 @@ export type FlowStatus = "draft" | "published" | "archived";
 export type ConversationStatus = "open" | "closed" | "snoozed";
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "pending" | "sent" | "delivered" | "failed";
+/** De donde sale la conexion del canal (migracion 00019). */
+export type ChannelProvider = "zernio" | "evolution";
+export type ChannelConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "connecting"
+  | "error"
+  | "unknown";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -73,9 +81,12 @@ export interface Database {
           name: string;
           slug: string;
           late_api_key_encrypted: string | null;
+          webhook_secret: string | null;
           ai_api_key: string | null;
           ai_provider: string;
           global_keywords: Json | null;
+          lead_scope_enabled: boolean;
+          unassigned_leads_visible_to_members: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -84,9 +95,12 @@ export interface Database {
           name: string;
           slug: string;
           late_api_key_encrypted?: string | null;
+          webhook_secret?: string | null;
           ai_api_key?: string | null;
           ai_provider?: string;
           global_keywords?: Json | null;
+          lead_scope_enabled?: boolean;
+          unassigned_leads_visible_to_members?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -95,9 +109,12 @@ export interface Database {
           name?: string;
           slug?: string;
           late_api_key_encrypted?: string | null;
+          webhook_secret?: string | null;
           ai_api_key?: string | null;
           ai_provider?: string;
           global_keywords?: Json | null;
+          lead_scope_enabled?: boolean;
+          unassigned_leads_visible_to_members?: boolean;
           updated_at?: string;
         };
         Relationships: [];
@@ -142,6 +159,12 @@ export interface Database {
           is_active: boolean;
           last_comment_cursor: string | null;
           comment_rules: Json | null;
+          provider: ChannelProvider;
+          evolution_instance: string | null;
+          connection_status: ChannelConnectionStatus;
+          last_connected_at: string | null;
+          last_error: string | null;
+          disconnected_notified_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -158,6 +181,12 @@ export interface Database {
           is_active?: boolean;
           last_comment_cursor?: string | null;
           comment_rules?: Json | null;
+          provider?: ChannelProvider;
+          evolution_instance?: string | null;
+          connection_status?: ChannelConnectionStatus;
+          last_connected_at?: string | null;
+          last_error?: string | null;
+          disconnected_notified_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -172,6 +201,12 @@ export interface Database {
           is_active?: boolean;
           last_comment_cursor?: string | null;
           comment_rules?: Json | null;
+          provider?: ChannelProvider;
+          evolution_instance?: string | null;
+          connection_status?: ChannelConnectionStatus;
+          last_connected_at?: string | null;
+          last_error?: string | null;
+          disconnected_notified_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
