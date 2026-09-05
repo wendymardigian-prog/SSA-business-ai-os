@@ -1,6 +1,7 @@
 -- =============================================
 -- ZERNFLOW - COMBINED MIGRATIONS
 -- Generated from supabase/migrations/*.sql, in order.
+-- DO NOT EDIT BY HAND: run `node scripts/build-all-migrations.mjs`
 -- Paste this entire file into Supabase SQL Editor
 -- https://supabase.com/dashboard/project/_/sql/new
 -- =============================================
@@ -8,14 +9,11 @@
 -- ============================================================
 -- MIGRATION 1: INITIAL SCHEMA
 -- ============================================================
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
-
 -- ============================================================
 -- WORKSPACES
 -- ============================================================
 create table workspaces (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique,
   late_api_key_encrypted text,
@@ -38,7 +36,7 @@ create index idx_workspace_members_user on workspace_members(user_id);
 -- CHANNELS
 -- ============================================================
 create table channels (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   platform text not null check (platform in ('facebook', 'instagram', 'twitter', 'telegram', 'bluesky', 'reddit')),
   late_account_id text not null,
@@ -59,7 +57,7 @@ create index idx_channels_workspace on channels(workspace_id);
 -- CONTACTS (CRM)
 -- ============================================================
 create table contacts (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   display_name text,
   email text,
@@ -75,7 +73,7 @@ create index idx_contacts_workspace on contacts(workspace_id);
 create index idx_contacts_last_interaction on contacts(workspace_id, last_interaction_at desc);
 
 create table contact_channels (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   contact_id uuid not null references contacts(id) on delete cascade,
   channel_id uuid not null references channels(id) on delete cascade,
   platform_sender_id text not null,
@@ -87,7 +85,7 @@ create table contact_channels (
 create index idx_contact_channels_contact on contact_channels(contact_id);
 
 create table tags (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   name text not null,
   color text default '#6366f1',
@@ -103,7 +101,7 @@ create table contact_tags (
 );
 
 create table custom_field_definitions (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   name text not null,
   slug text not null,
@@ -124,7 +122,7 @@ create table contact_custom_fields (
 -- FLOWS
 -- ============================================================
 create table flows (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   name text not null,
   description text,
@@ -142,7 +140,7 @@ create index idx_flows_workspace on flows(workspace_id);
 create index idx_flows_status on flows(workspace_id, status);
 
 create table triggers (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   flow_id uuid not null references flows(id) on delete cascade,
   channel_id uuid references channels(id) on delete set null,
   type text not null check (type in ('keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword')),
@@ -156,7 +154,7 @@ create index idx_triggers_channel_type on triggers(channel_id, type, is_active);
 create index idx_triggers_flow on triggers(flow_id);
 
 create table flow_sessions (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   contact_id uuid not null references contacts(id) on delete cascade,
   flow_id uuid not null references flows(id) on delete cascade,
   channel_id uuid not null references channels(id) on delete cascade,
@@ -177,7 +175,7 @@ create index idx_flow_sessions_contact_active on flow_sessions(contact_id, chann
 -- CONVERSATIONS & MESSAGES
 -- ============================================================
 create table conversations (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   channel_id uuid not null references channels(id) on delete cascade,
   contact_id uuid not null references contacts(id) on delete cascade,
@@ -198,7 +196,7 @@ create index idx_conversations_workspace on conversations(workspace_id, last_mes
 create index idx_conversations_status on conversations(workspace_id, status);
 
 create table messages (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references conversations(id) on delete cascade,
   direction text not null check (direction in ('inbound', 'outbound')),
   text text,
@@ -220,7 +218,7 @@ create index idx_messages_conversation on messages(conversation_id, created_at);
 -- BROADCASTS
 -- ============================================================
 create table broadcasts (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   name text not null,
   status text not null default 'draft' check (status in ('draft', 'scheduled', 'sending', 'completed', 'cancelled')),
@@ -238,7 +236,7 @@ create table broadcasts (
 create index idx_broadcasts_workspace on broadcasts(workspace_id);
 
 create table broadcast_recipients (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   broadcast_id uuid not null references broadcasts(id) on delete cascade,
   contact_id uuid not null references contacts(id) on delete cascade,
   channel_id uuid not null references channels(id) on delete cascade,
@@ -253,7 +251,7 @@ create index idx_broadcast_recipients_broadcast on broadcast_recipients(broadcas
 -- JOBS & ANALYTICS
 -- ============================================================
 create table scheduled_jobs (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   type text not null,
   payload jsonb not null default '{}'::jsonb,
   run_at timestamptz not null,
@@ -266,7 +264,7 @@ create table scheduled_jobs (
 create index idx_scheduled_jobs_pending on scheduled_jobs(run_at) where status = 'pending';
 
 create table analytics_events (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
   flow_id uuid references flows(id) on delete set null,
   contact_id uuid references contacts(id) on delete set null,
@@ -927,7 +925,7 @@ CREATE POLICY "Authenticated users can update jobs" ON scheduled_jobs
 -- ============================================================
 -- Flow version history: stores a snapshot of nodes/edges on each publish
 create table flow_versions (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   flow_id uuid not null references flows(id) on delete cascade,
   version integer not null,
   nodes jsonb not null,
@@ -1032,4 +1030,3 @@ ALTER TABLE channels DROP CONSTRAINT IF EXISTS channels_platform_check;
 
 ALTER TABLE channels ADD CONSTRAINT channels_platform_check
   CHECK (platform IN ('facebook', 'instagram', 'twitter', 'telegram', 'bluesky', 'reddit', 'whatsapp'));
-
