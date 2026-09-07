@@ -14,10 +14,8 @@ import {
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
-  PROVIDERS,
   providersByType,
   validateApiKey,
   validateConfig,
@@ -629,9 +627,8 @@ export function IntegrationsView({
             </div>
           </section>
 
-          <p className={cn("text-xs text-muted-foreground")}>
-            {PROVIDERS.length} integraciones disponibles. En Etapa 2 se suman YouTube,
-            LinkedIn y TikTok para publicacion de contenido.
+          <p className="text-xs text-muted-foreground">
+            En Etapa 2 se suman YouTube, LinkedIn y TikTok para publicacion de contenido.
           </p>
         </div>
       </div>
