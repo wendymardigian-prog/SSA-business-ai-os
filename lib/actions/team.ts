@@ -2,7 +2,19 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
-import { ASSIGNABLE_ROLES, isAdminRole, type WorkspaceRole } from "@/lib/auth/roles";
+import { ASSIGNABLE_ROLES, isAdminRole, ROLE_LABELS, type WorkspaceRole } from "@/lib/auth/roles";
+import { sendTransactionalEmail } from "@/lib/email/send";
+import { teamInviteEmail } from "@/lib/email/templates";
+import { inviteUrl } from "@/lib/app-url";
+
+/**
+ * Como termino el email de la invitacion.
+ * - "sent": salio por Resend.
+ * - "not_configured": Resend no esta conectado. La invitacion igual existe:
+ *   la UI muestra el link para pasarlo a mano. Es el estado normal hoy.
+ * - "failed": Resend esta conectado pero rechazo el envio.
+ */
+export type InviteEmailStatus = "sent" | "not_configured" | "failed";
 
 export async function inviteTeamMember(
   workspaceId: string,
@@ -74,7 +86,33 @@ export async function inviteTeamMember(
     return { error: insertError.message };
   }
 
-  return { ok: true, invite };
+  // El email es best-effort: la invitacion ya existe y el link sirve igual.
+  // Si Resend no esta conectado, la UI muestra el link para pasarlo a mano.
+  const url = inviteUrl(invite.id);
+  const content = teamInviteEmail({
+    workspaceName: workspace.name,
+    inviteUrl: url,
+    roleLabel: ROLE_LABELS[role as WorkspaceRole] ?? role,
+  });
+
+  const sent = await sendTransactionalEmail({
+    workspaceId,
+    to: trimmedEmail,
+    subject: content.subject,
+    html: content.html,
+    kind: "team_invite",
+    relatedEntityType: "workspace_invite",
+    relatedEntityId: invite.id,
+    createdBy: user.id,
+  });
+
+  const emailStatus: InviteEmailStatus = sent.ok
+    ? "sent"
+    : sent.reason === "not_configured"
+      ? "not_configured"
+      : "failed";
+
+  return { ok: true, invite, inviteUrl: url, emailStatus, emailError: sent.ok ? null : sent.error };
 }
 
 export async function removeTeamMember(

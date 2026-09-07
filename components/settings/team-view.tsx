@@ -14,6 +14,8 @@ import {
   Plus,
   Loader2,
   ArrowLeft,
+  Copy,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -85,7 +87,13 @@ export function TeamView({
   const [inviteRole, setInviteRole] = useState("member");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState(false);
+  // Resultado del ultimo invite: el link siempre, y como termino el email.
+  const [lastInvite, setLastInvite] = useState<{
+    url: string;
+    emailStatus: "sent" | "not_configured" | "failed";
+    email: string;
+  } | null>(null);
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Remove member
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -103,7 +111,8 @@ export function TeamView({
 
     setInviting(true);
     setInviteError(null);
-    setInviteSuccess(false);
+    setLastInvite(null);
+    setCopiedInvite(false);
 
     const result = await inviteTeamMember(workspaceId, inviteEmail, inviteRole);
 
@@ -111,13 +120,29 @@ export function TeamView({
       setInviteError(result.error);
     } else if (result.invite) {
       setInvites((prev) => [result.invite as PendingInvite, ...prev]);
+      // El link se muestra siempre, mande o no el email: es lo que garantiza
+      // que la invitacion llegue aunque Resend no este conectado.
+      setLastInvite({
+        url: result.inviteUrl ?? "",
+        emailStatus: result.emailStatus ?? "not_configured",
+        email: inviteEmail.trim().toLowerCase(),
+      });
       setInviteEmail("");
       setInviteRole("member");
-      setInviteSuccess(true);
-      setTimeout(() => setInviteSuccess(false), 3000);
     }
 
     setInviting(false);
+  }
+
+  async function copyInviteLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedInvite(true);
+      setTimeout(() => setCopiedInvite(false), 2000);
+    } catch {
+      // Sin permiso de portapapeles el link igual esta visible para copiarlo a mano.
+      setCopiedInvite(false);
+    }
   }
 
   async function handleRemove(userId: string) {
@@ -350,10 +375,48 @@ export function TeamView({
                 {inviteError && (
                   <p className="mt-2 text-xs text-destructive">{inviteError}</p>
                 )}
-                {inviteSuccess && (
-                  <p className="mt-2 text-xs text-green-600">
-                    Invite sent successfully!
-                  </p>
+
+                {lastInvite && (
+                  <div className="mt-4 rounded-lg border border-border bg-muted/40 p-4">
+                    <p className="text-xs font-medium">
+                      {lastInvite.emailStatus === "sent"
+                        ? `Invitacion enviada por email a ${lastInvite.email}.`
+                        : lastInvite.emailStatus === "not_configured"
+                          ? "El email todavia no esta conectado: pasale vos este link."
+                          : "No se pudo mandar el email. Pasale vos este link."}
+                    </p>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="flex-1 truncate rounded-md border border-border bg-background px-2 py-1.5 text-xs">
+                        {lastInvite.url}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => copyInviteLink(lastInvite.url)}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      >
+                        {copiedInvite ? (
+                          <Check className="h-3.5 w-3.5 text-green-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                        {copiedInvite ? "Copiado" : "Copiar link"}
+                      </button>
+                    </div>
+
+                    {lastInvite.emailStatus !== "sent" && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Para que las invitaciones salgan solas,{" "}
+                        <Link
+                          href="/dashboard/settings/integrations"
+                          className="text-primary underline underline-offset-2 hover:opacity-80"
+                        >
+                          conecta el email en Integraciones
+                        </Link>
+                        .
+                      </p>
+                    )}
+                  </div>
                 )}
               </section>
             </>

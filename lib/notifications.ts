@@ -1,13 +1,19 @@
 /**
  * Avisos a los administradores del workspace.
  *
- * En el Bloque 1 el aviso queda registrado en la base y visible en la app (la
- * pantalla de canales muestra el estado y el motivo en rojo). El envio por
- * email entra en el Bloque 2, cuando se conecte Resend: ese es el unico cambio
- * que hay que hacer aca, porque quienes avisan ya llaman a esta funcion.
+ * El aviso siempre queda registrado en la base y visible en la app (la
+ * pantalla de canales muestra el estado y el motivo en rojo). Ademas se manda
+ * por email a los Owner/Admin si hay Resend conectado; si no lo hay, el aviso
+ * en pantalla sigue siendo el canal.
+ *
+ * Nada de esto lanza: un aviso que falla nunca puede tumbar la operacion que
+ * lo genero (recibir un mensaje, detectar una desconexion).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendTransactionalEmail } from "@/lib/email/send";
+import { channelAlertEmail } from "@/lib/email/templates";
+import { appUrl } from "@/lib/app-url";
 
 export type NotificationKind =
   | "channel_disconnected"
@@ -50,11 +56,33 @@ export async function notifyWorkspaceAdmins({
     console.error("[aviso] no pude registrar el aviso:", error.message);
   }
 
-  // BLOQUE 2: con Resend configurado, buscar los owner/admin del workspace y
-  // mandarles este mismo title/body por email.
+  // Email a los admins. Best-effort en dos sentidos: si Resend no esta
+  // conectado no pasa nada (el aviso ya quedo en pantalla), y si algo falla se
+  // loguea sin cortar.
+  try {
+    const emails = await workspaceAdminEmails(supabase, workspaceId);
+    if (emails.length === 0) return;
+
+    const content = channelAlertEmail({ title, body, appUrl: appUrl() });
+
+    for (const email of emails) {
+      await sendTransactionalEmail({
+        workspaceId,
+        to: email,
+        subject: content.subject,
+        html: content.html,
+        kind: kind,
+      });
+    }
+  } catch (err) {
+    console.error(
+      "[aviso] no pude mandar el aviso por email:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 
-/** Los emails de los Owner y Admin del workspace. Lo va a usar el Bloque 2. */
+/** Los emails de los Owner y Admin del workspace. */
 export async function workspaceAdminEmails(
   supabase: SupabaseClient,
   workspaceId: string,
