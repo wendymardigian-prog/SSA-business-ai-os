@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
+import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
   deleteInstance,
   getEvolutionConfig,
@@ -57,6 +58,11 @@ export async function DELETE(
   if (!channel)
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
 
+  // Los canales de Zernio se desconectan tambien del lado de Zernio; para eso
+  // hace falta la key. Si no hay, se borra igual localmente.
+  const zernioApiKey =
+    channel.provider === "evolution" ? null : await getZernioApiKey(workspace.id);
+
   if (channel.provider === "evolution") {
     const config = getEvolutionConfig();
     if (config && channel.evolution_instance) {
@@ -75,8 +81,8 @@ export async function DELETE(
         );
       }
     }
-  } else if (workspace.late_api_key_encrypted) {
-    const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  } else if (zernioApiKey) {
+    const zernio = createZernioClient(zernioApiKey);
     try {
       const res = await zernio.accounts.deleteAccount({
         path: { accountId: channel.late_account_id },

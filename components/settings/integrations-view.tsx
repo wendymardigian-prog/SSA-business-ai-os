@@ -357,11 +357,170 @@ function IntegrationCard({
   );
 }
 
+
+/**
+ * Card de Instagram (Zernio). No usa el catalogo generico porque su conexion
+ * no es solo guardar una key: el servidor valida contra la API de Zernio,
+ * registra el webhook y sincroniza los canales en la misma llamada.
+ */
+function ZernioCard({
+  hasKey,
+  keyInVault,
+}: {
+  hasKey: boolean;
+  keyInVault: boolean;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [connected, setConnected] = useState(hasKey);
+
+  async function handleConnect() {
+    const key = apiKey.trim();
+    if (!key || connecting) return;
+
+    setConnecting(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch("/api/v1/channels/test-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: key }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setError(data.error || `No se pudo conectar (${res.status})`);
+        return;
+      }
+
+      const count = (data.accounts ?? []).length;
+      setApiKey("");
+      setShowKey(false);
+      setConnected(true);
+      setResult(
+        count === 1 ? "1 cuenta encontrada y sincronizada" : `${count} cuentas encontradas y sincronizadas`,
+      );
+    } catch {
+      setError("No pude contactar al servidor");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Instagram (Zernio)</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            DMs, comentarios y respuestas a stories de Instagram.
+          </p>
+        </div>
+        {connected ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
+            <Check className="h-3 w-3" />
+            Conectado
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            No conectado
+          </span>
+        )}
+      </div>
+
+      {connected && !keyInVault && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          La key de Zernio esta guardada de antes, sin encriptar. Volve a pegarla aca
+          para que quede guardada de forma segura.
+        </p>
+      )}
+
+      <div className="mt-4">
+        <label htmlFor="zernio-key" className="text-xs font-medium text-muted-foreground">
+          API key de Zernio
+        </label>
+        {connected && !apiKey && (
+          <p className="mt-1 font-mono text-sm text-muted-foreground">••••••••••••••••</p>
+        )}
+        <div className="relative mt-1.5">
+          <input
+            id="zernio-key"
+            type={showKey ? "text" : "password"}
+            value={apiKey}
+            autoComplete="off"
+            onChange={(e) => {
+              setApiKey(e.target.value);
+              setError(null);
+              setResult(null);
+            }}
+            placeholder={
+              connected ? "Pega una key nueva para reemplazar la actual" : "Pega tu API key de Zernio"
+            }
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 pr-10 font-mono text-sm placeholder:font-sans placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="button"
+            aria-label={showKey ? "Ocultar la key" : "Mostrar la key"}
+            onClick={() => setShowKey((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Al conectar se validan tus cuentas, se registra el webhook y se sincronizan los
+          canales.{" "}
+          <a
+            href="https://zernio.com/dashboard/settings/api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            De donde la saco
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </p>
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-4 text-xs text-red-600">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          onClick={handleConnect}
+          disabled={!apiKey.trim() || connecting}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {connecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+          {connecting ? "Conectando..." : connected ? "Reemplazar key" : "Conectar"}
+        </button>
+
+        {result && (
+          <span className="flex items-center gap-1 text-xs text-green-600">
+            <Check className="h-3.5 w-3.5" />
+            {result}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function IntegrationsView({
   integrations: initial,
+  zernio,
   channels,
 }: {
   integrations: IntegrationState[];
+  zernio: { hasKey: boolean; keyInVault: boolean };
   channels: ChannelSummary[];
 }) {
   const [integrations, setIntegrations] = useState(initial);
@@ -402,6 +561,10 @@ export function IntegrationsView({
               <Plug className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">Canales de mensajeria</h2>
             </div>
+            <div className="mt-4">
+              <ZernioCard hasKey={zernio.hasKey} keyInVault={zernio.keyInVault} />
+            </div>
+
             <Link
               href="/dashboard/channels"
               className="mt-4 flex items-center justify-between rounded-xl border border-border bg-card p-5 hover:bg-muted/50"
@@ -414,7 +577,7 @@ export function IntegrationsView({
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {connectedChannels.length === 0
-                    ? "Instagram y WhatsApp se conectan desde la pantalla de canales."
+                    ? "WhatsApp se vincula con QR desde la pantalla de canales."
                     : connectedChannels.map((c) => c.label).join(", ")}
                 </p>
               </div>

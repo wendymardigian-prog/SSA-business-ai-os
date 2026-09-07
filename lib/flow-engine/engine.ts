@@ -20,6 +20,7 @@ import type {
 import { executeAiResponse } from "./nodes/ai-response";
 import { adaptMessage } from "./platform-adapter";
 import { createZernioClient } from "@/lib/zernio-client";
+import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
@@ -436,16 +437,10 @@ async function executeSendMessage(
   data: SendMessageNodeData,
   context: FlowExecutionContext
 ) {
-  // Get workspace for API key
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("late_api_key_encrypted")
-    .eq("id", context.workspaceId)
-    .single();
+  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
+  if (!apiKey) return;
 
-  if (!workspace?.late_api_key_encrypted) return;
-
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const zernio = createZernioClient(apiKey);
 
   // Resolve late_account_id from channel if not in context
   let lateAccountId = context.lateAccountId;
@@ -865,15 +860,10 @@ async function executeCommentReply(
   data: CommentReplyNodeData,
   context: FlowExecutionContext
 ) {
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("late_api_key_encrypted")
-    .eq("id", context.workspaceId)
-    .single();
+  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
+  if (!apiKey) return;
 
-  if (!workspace?.late_api_key_encrypted) return;
-
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const zernio = createZernioClient(apiKey);
 
   // Resolve late_account_id
   let lateAccountId = context.lateAccountId;
@@ -918,15 +908,10 @@ async function executePrivateReply(
   data: PrivateReplyNodeData,
   context: FlowExecutionContext
 ) {
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("late_api_key_encrypted")
-    .eq("id", context.workspaceId)
-    .single();
+  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
+  if (!apiKey) return;
 
-  if (!workspace?.late_api_key_encrypted) return;
-
-  const zernio = createZernioClient(workspace.late_api_key_encrypted);
+  const zernio = createZernioClient(apiKey);
 
   // Resolve late_account_id
   let lateAccountId = context.lateAccountId;

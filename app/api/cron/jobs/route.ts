@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
 import type { Json } from "@/lib/types/database";
 
@@ -548,16 +549,11 @@ async function processJob(
       const broadcast = recipient.broadcasts as { workspace_id: string } | null;
       if (!broadcast) return;
 
-      const { data: workspace } = await supabase
-        .from("workspaces")
-        .select("late_api_key_encrypted")
-        .eq("id", broadcast.workspace_id)
-        .single();
-
-      if (!workspace?.late_api_key_encrypted) return;
+      const apiKey = await getZernioApiKey(broadcast.workspace_id, { supabase });
+      if (!apiKey) return;
 
       const { createZernioClient } = await import("@/lib/zernio-client");
-      const zernio = createZernioClient(workspace.late_api_key_encrypted);
+      const zernio = createZernioClient(apiKey);
 
       const channel = recipient.channels as { late_account_id: string } | null;
       if (!channel) return;

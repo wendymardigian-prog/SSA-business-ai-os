@@ -1,6 +1,6 @@
 import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { IntegrationsView } from "@/components/settings/integrations-view";
-import { listSecretNames } from "@/lib/vault";
+import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { PROVIDERS } from "@/lib/integrations/providers";
 
 /**
@@ -31,6 +31,13 @@ export default async function IntegrationsPage() {
 
   const storedSecrets = new Set(secretNames);
 
+  // Zernio tiene su propio flujo (valida contra la API, registra el webhook y
+  // sincroniza canales), asi que no entra en el catalogo generico. Se cuenta
+  // como configurada tambien si la key sigue en el campo viejo del workspace,
+  // que es de donde la lee el fallback de getZernioApiKey.
+  const zernioHasKey =
+    storedSecrets.has(SECRET_NAMES.zernioApiKey) || Boolean(workspace.late_api_key_encrypted);
+
   const integrations = PROVIDERS.map((provider) => {
     const row = (configs ?? []).find(
       (c) => c.type === provider.type && c.provider === provider.id,
@@ -49,6 +56,10 @@ export default async function IntegrationsPage() {
   return (
     <IntegrationsView
       integrations={integrations}
+      zernio={{
+        hasKey: zernioHasKey,
+        keyInVault: storedSecrets.has(SECRET_NAMES.zernioApiKey),
+      }}
       channels={(channels ?? []).map((c) => ({
         id: c.id,
         platform: c.platform,

@@ -9,14 +9,9 @@ import {
   Plus,
   X,
   Check,
-  Eye,
-  EyeOff,
   Plug,
-  Loader2,
-  ExternalLink,
   Users,
   ChevronRight,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -24,15 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 interface WorkspaceSettings {
   id: string;
   name: string;
-  hasApiKey: boolean;
-  hasAiKey: boolean;
   globalKeywords: string[];
-}
-
-interface TestResult {
-  success: boolean;
-  accountCount?: number;
-  error?: string;
 }
 
 export function SettingsView({
@@ -41,17 +28,11 @@ export function SettingsView({
   workspace: WorkspaceSettings;
 }) {
   const [name, setName] = useState(workspace.name);
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [aiKey, setAiKey] = useState("");
-  const [showAiKey, setShowAiKey] = useState(false);
   const [keywords, setKeywords] = useState<string[]>(workspace.globalKeywords);
   const [newKeyword, setNewKeyword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   function addKeyword() {
     const trimmed = newKeyword.trim().toLowerCase();
@@ -68,48 +49,6 @@ export function SettingsView({
     setKeywords((prev) => prev.filter((k) => k !== kw));
   }
 
-  async function handleTestConnection() {
-    const keyToTest = apiKey.trim();
-    if (!keyToTest) return;
-
-    setTesting(true);
-    setTestResult(null);
-
-    try {
-      const res = await fetch("/api/v1/channels/test-key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: keyToTest, workspaceId: workspace.id }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setTestResult({
-          success: false,
-          error: data.error || `Connection failed (${res.status})`,
-        });
-        return;
-      }
-
-      const accounts = data.accounts || [];
-      setTestResult({
-        success: true,
-        accountCount: accounts.length,
-      });
-
-      // Key was saved and channels synced server-side
-      setApiKey("");
-    } catch {
-      setTestResult({
-        success: false,
-        error: "Could not reach the Zernio API. Please check your network connection.",
-      });
-    } finally {
-      setTesting(false);
-    }
-  }
-
   async function handleSave() {
     if (saving) return;
     setSaving(true);
@@ -124,14 +63,6 @@ export function SettingsView({
         global_keywords: keywords,
       };
 
-      // Only update keys if user entered new ones
-      if (apiKey.trim()) {
-        update.late_api_key_encrypted = apiKey.trim();
-      }
-      if (aiKey.trim()) {
-        update.ai_api_key = aiKey.trim();
-      }
-
       const { error: updateError } = await supabase
         .from("workspaces")
         .update(update)
@@ -145,9 +76,6 @@ export function SettingsView({
       }
 
       setSaved(true);
-      setApiKey("");
-      setAiKey("");
-      setTestResult(null);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       console.error("Failed to save settings:", err);
@@ -191,161 +119,32 @@ export function SettingsView({
 
           <hr className="border-border" />
 
-          {/* Zernio API Key */}
+          {/* Las API keys se configuran en Integraciones: van a Vault, no a
+              columnas en texto plano. */}
           <section>
             <div className="flex items-center gap-2">
               <Key className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Zernio API Key</h2>
+              <h2 className="text-sm font-semibold">API keys</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Your Zernio API key is used to connect with social media platforms.
-              {workspace.hasApiKey && " A key is currently configured."}
+              Instagram, email y proveedores de IA se conectan desde Integraciones. Las
+              keys se guardan encriptadas.
             </p>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              You can get your API key from your{" "}
-              <a
-                href="https://zernio.com/dashboard/settings/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 text-primary underline underline-offset-2 hover:opacity-80"
-              >
-                Zernio dashboard
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              . Sign up at{" "}
-              <a
-                href="https://zernio.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2 hover:opacity-80"
-              >
-                zernio.com
-              </a>{" "}
-              if you don&apos;t have an account yet.
-            </p>
-
-            <div className="mt-4 relative">
-              <input
-                type={showApiKey ? "text" : "password"}
-                value={apiKey}
-                onChange={(e) => {
-                  setApiKey(e.target.value);
-                  // Clear test result when key changes
-                  if (testResult) setTestResult(null);
-                }}
-                placeholder={
-                  workspace.hasApiKey
-                    ? "Enter a new key to replace the current one"
-                    : "Enter your Zernio API key"
-                }
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm font-mono placeholder:text-muted-foreground placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showApiKey ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-
-            {/* Test Connection button */}
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                onClick={handleTestConnection}
-                disabled={!apiKey.trim() || testing}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {testing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Plug className="h-3.5 w-3.5" />
-                )}
-                {testing ? "Testing..." : "Test Connection"}
-              </button>
-
-              {testResult && testResult.success && (
-                <span className="flex items-center gap-1 text-xs text-green-600">
-                  <Check className="h-3.5 w-3.5" />
-                  Connected ({testResult.accountCount}{" "}
-                  {testResult.accountCount === 1 ? "account" : "accounts"}{" "}
-                  found)
-                </span>
-              )}
-
-              {testResult && !testResult.success && (
-                <span className="text-xs text-red-600">
-                  {testResult.error}
-                </span>
-              )}
-            </div>
-
-            {workspace.hasApiKey && !testResult && (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-green-600">
-                <Check className="h-3 w-3" />
-                API key configured
-              </p>
-            )}
-          </section>
-
-          <hr className="border-border" />
-
-          {/* AI Gateway API Key */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">AI Gateway</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Required for the AI Response flow node. Uses{" "}
-              <a
-                href="https://vercel.com/ai-gateway"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 text-primary underline underline-offset-2 hover:opacity-80"
-              >
-                Vercel AI Gateway
-                <ExternalLink className="h-3 w-3" />
-              </a>{" "}
-              to access OpenAI, Anthropic, and Google models with a single key.
-              {workspace.hasAiKey && " A key is currently configured."}
-            </p>
-
-            <div className="mt-4 relative">
-              <input
-                type={showAiKey ? "text" : "password"}
-                value={aiKey}
-                onChange={(e) => setAiKey(e.target.value)}
-                placeholder={
-                  workspace.hasAiKey
-                    ? "Enter a new key to replace the current one"
-                    : "Enter your AI Gateway API key"
-                }
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 pr-10 text-sm font-mono placeholder:text-muted-foreground placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAiKey(!showAiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showAiKey ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-
-            {workspace.hasAiKey && (
-              <p className="mt-1.5 flex items-center gap-1 text-xs text-green-600">
-                <Check className="h-3 w-3" />
-                AI Gateway key configured
-              </p>
-            )}
+            <Link
+              href="/dashboard/settings/integrations"
+              className="mt-4 flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/50"
+            >
+              <div className="flex items-center gap-3">
+                <Plug className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Integraciones</p>
+                  <p className="text-xs text-muted-foreground">
+                    Instagram (Zernio), Resend, OpenAI, Anthropic y Google
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
           </section>
 
           <hr className="border-border" />
