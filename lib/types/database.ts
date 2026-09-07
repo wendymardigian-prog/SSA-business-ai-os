@@ -22,6 +22,10 @@ export type ChannelConnectionStatus =
   | "connecting"
   | "error"
   | "unknown";
+/** Clase de integracion en integration_configs (migracion 00020). */
+export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+/** Como termino un envio de email (migracion 00021). */
+export type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -1104,6 +1108,104 @@ export interface Database {
             columns: ["channel_id"];
             isOneToOne: false;
             referencedRelation: "channels";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      integration_configs: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          type: IntegrationType;
+          provider: string;
+          display_name: string | null;
+          vault_secret_name: string | null;
+          oauth_data: Json | null;
+          config: Json;
+          is_active: boolean;
+          connected_at: string | null;
+          last_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          type: IntegrationType;
+          provider: string;
+          display_name?: string | null;
+          vault_secret_name?: string | null;
+          oauth_data?: Json | null;
+          config?: Json;
+          is_active?: boolean;
+          connected_at?: string | null;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          display_name?: string | null;
+          vault_secret_name?: string | null;
+          oauth_data?: Json | null;
+          config?: Json;
+          is_active?: boolean;
+          connected_at?: string | null;
+          last_error?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "integration_configs_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      email_log: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          to_email: string;
+          subject: string;
+          kind: string;
+          status: EmailLogStatus;
+          provider_message_id: string | null;
+          attempts: number;
+          last_error: string | null;
+          related_entity_type: string | null;
+          related_entity_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          to_email: string;
+          subject: string;
+          kind: string;
+          status: EmailLogStatus;
+          provider_message_id?: string | null;
+          attempts?: number;
+          last_error?: string | null;
+          related_entity_type?: string | null;
+          related_entity_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          status?: EmailLogStatus;
+          provider_message_id?: string | null;
+          attempts?: number;
+          last_error?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_log_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
             referencedColumns: ["id"];
           },
         ];
