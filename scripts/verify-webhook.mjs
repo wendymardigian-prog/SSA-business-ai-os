@@ -36,13 +36,15 @@ const TOKEN = env.EVOLUTION_WEBHOOK_TOKEN;
 const svc = createClient(SUPA, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 const targetArg = process.argv.find((a) => a.startsWith("--target="))?.slice("--target=".length);
-const APP =
-  (targetArg === "prod"
+const APP = (
+  targetArg === "prod"
     ? env.NEXT_PUBLIC_APP_URL
     : targetArg && targetArg !== "local"
       ? targetArg
       : "http://localhost:3000"
-  ).replace(/\/$/, "");
+)?.replace(/\/$/, "");
+
+const esLocal = (url) => /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(url ?? "");
 
 if (!TOKEN) {
   console.error("Falta EVOLUTION_WEBHOOK_TOKEN en .env");
@@ -52,9 +54,24 @@ if (!APP) {
   console.error("No se pudo resolver la URL de la app (revisa NEXT_PUBLIC_APP_URL)");
   process.exit(1);
 }
-console.log(`Receptor bajo prueba: ${APP}\n`);
+
+// --target=prod sale del .env local, donde NEXT_PUBLIC_APP_URL suele ser
+// localhost. Sin este corte, "verificar produccion" prueba tu maquina y da todo
+// verde: es exactamente la clase de error silencioso que este script existe
+// para atrapar.
+if (targetArg === "prod" && esLocal(APP)) {
+  console.error(
+    `--target=prod resolvio "${APP}", que es local.\n` +
+    "Tu .env apunta a localhost. Pasa la URL publica a mano:\n" +
+    "  node scripts/verify-webhook.mjs --target=https://tu-app.up.railway.app"
+  );
+  process.exit(1);
+}
+
+console.log(`Receptor bajo prueba: ${APP}${esLocal(APP) ? "  (local)" : "  (remoto)"}\n`);
 
 let failures = 0;
+let omitidos = 0;
 const ok = (m) => console.log("  ok  ", m);
 const fail = (m, extra) => { console.error("  FALLA", m, extra ? `\n        ${extra}` : ""); failures++; };
 const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
@@ -96,8 +113,38 @@ async function waitFor(read, isReady, { timeoutMs = 15000, everyMs = 300 } = {})
   }
 }
 
+/**
+ * Un entorno sin EVOLUTION_WEBHOOK_TOKEN no puede recibir WhatsApp, y eso no es
+ * una falla del receptor: es que el canal no esta configurado ahi. Se detecta
+ * una vez y las comprobaciones de WhatsApp se omiten con un aviso, en vez de
+ * ensuciar el resultado con rojos que no dicen nada.
+ */
+async function whatsappConfigurado() {
+  const r = await post("/api/webhooks/evolution", "{}", { "x-webhook-token": TOKEN });
+  return !(r.status === 500 && /no configurado/i.test(r.body?.error ?? ""));
+}
+
 const stamp = Date.now();
 const cleanup = { workspaces: [], events: [] };
+
+const CON_WHATSAPP = await whatsappConfigurado();
+if (!CON_WHATSAPP) {
+  console.log(
+    "AVISO: este entorno no tiene EVOLUTION_WEBHOOK_TOKEN, asi que no puede recibir\n" +
+    "       WhatsApp. Se omiten esas comprobaciones y se corren solo las de Instagram.\n"
+  );
+}
+
+/** Corre un bloque solo si el canal de WhatsApp esta configurado en este entorno. */
+const siWhatsApp = async (titulo, fn) => {
+  if (!CON_WHATSAPP) {
+    console.log(`\n— ${titulo} —\n  omitido  WhatsApp no esta configurado en este entorno`);
+    omitidos++;
+    return;
+  }
+  console.log(`\n— ${titulo} —`);
+  await fn();
+};
 
 try {
   const SECRET = "secreto-de-prueba-para-hmac";
@@ -187,8 +234,7 @@ try {
     return data;
   };
 
-  console.log("\n— WhatsApp: mensaje entrante —");
-  {
+  await siWhatsApp("WhatsApp: mensaje entrante", async () => {
     const r = await evo(evoMessage());
     check(r.status === 200 && r.body?.ok, "el webhook acepta el mensaje", JSON.stringify(r.body));
 
@@ -206,10 +252,9 @@ try {
     check(msgs?.length === 1, `se guardo 1 mensaje (dio ${msgs?.length})`);
     check(msgs?.[0]?.direction === "inbound" && msgs?.[0]?.text === "hola, quiero info",
       "guardado como entrante y con el texto correcto");
-  }
+  });
 
-  console.log("\n— WhatsApp: el mismo mensaje otra vez (Evolution reintenta) —");
-  {
+  await siWhatsApp("WhatsApp: el mismo mensaje otra vez (Evolution reintenta)", async () => {
     const r = await evo(evoMessage());
     check(r.body?.skipped === "evento repetido", "lo ignora por idempotencia", JSON.stringify(r.body));
     await nadaQueEsperar();
@@ -217,10 +262,9 @@ try {
     const { data: msgs } = await svc.from("messages").select("id").eq("conversation_id", conv.id);
     check(msgs?.length === 1, "no se duplico el mensaje");
     check(conv.unread_count === 1, "ni se volvio a sumar el no leido");
-  }
+  });
 
-  console.log("\n— WhatsApp: el lead pide que no le escriban mas (F18) —");
-  {
+  await siWhatsApp("WhatsApp: el lead pide que no le escriban mas (F18)", async () => {
     const r = await evo(evoMessage({
       key: { remoteJid: "5491199887766@s.whatsapp.net", fromMe: false, id: `OPTOUT-${stamp}` },
       pushName: "Lead que se va",
@@ -246,10 +290,9 @@ try {
     const msgs = await mensajesDe(conv.id, "text", 1);
     check(msgs?.length === 1,
       "y el mensaje igual queda en el hilo: es la prueba de por que quedo marcado");
-  }
+  });
 
-  console.log("\n— WhatsApp: 'trabaja' no dispara la marca —");
-  {
+  await siWhatsApp("WhatsApp: 'trabaja' no dispara la marca", async () => {
     const r = await evo(evoMessage({
       key: { remoteJid: "5491155443322@s.whatsapp.net", fromMe: false, id: `NOOPT-${stamp}` },
       pushName: "Lead interesado",
@@ -263,10 +306,9 @@ try {
       .select("do_not_contact").eq("id", link.contact_id).single();
     check(c.do_not_contact === false,
       "el lead NO queda marcado: 'baja' adentro de 'trabaja' no es un opt-out");
-  }
+  });
 
-  console.log("\n— WhatsApp: mensaje de grupo —");
-  {
+  await siWhatsApp("WhatsApp: mensaje de grupo", async () => {
     const r = await evo(evoMessage({
       key: { remoteJid: "120363001122334455@g.us", fromMe: false, id: `GRP-${stamp}` },
     }));
@@ -278,10 +320,9 @@ try {
     check(!data?.some((c) => c.platform_sender_id.includes("g.us")),
       "no se creo un contacto para el grupo",
       data?.map((c) => c.platform_sender_id).join(", "));
-  }
+  });
 
-  console.log("\n— WhatsApp: respuesta mandada desde el celular —");
-  {
+  await siWhatsApp("WhatsApp: respuesta mandada desde el celular", async () => {
     const r = await evo(evoMessage({
       key: { remoteJid: "5491122334455@s.whatsapp.net", fromMe: true, id: `OUT-${stamp}` },
       message: { conversation: "ya te paso info" },
@@ -292,10 +333,9 @@ try {
     check(msgs?.length === 2, `el hilo tiene los dos mensajes (dio ${msgs?.length})`);
     check(msgs?.[1]?.direction === "outbound", "el que salio del celular queda como saliente");
     check(conv.unread_count === 1, "y no suma no leidos");
-  }
+  });
 
-  console.log("\n— WhatsApp: estado de la conexion —");
-  {
+  await siWhatsApp("WhatsApp: estado de la conexion", async () => {
     await evo({ event: "connection.update", instance: INSTANCE, data: { state: "open" } });
     let { data: ch } = await svc.from("channels")
       .select("connection_status, last_connected_at, last_error").eq("id", waChannel.id).single();
@@ -308,14 +348,13 @@ try {
     check(ch.connection_status === "disconnected", "state=close lo marca desconectado");
     check(/escanear el QR/.test(ch.last_error ?? ""),
       "y con un motivo entendible cuando cerraron sesion desde el telefono", ch.last_error);
-  }
+  });
 
-  console.log("\n— WhatsApp: instancia de otro sistema en el mismo Evolution —");
-  {
+  await siWhatsApp("WhatsApp: instancia de otro sistema en el mismo Evolution", async () => {
     const r = await evo({ event: "messages.upsert", instance: "crm-de-otro-producto", data: {} });
     check(r.status === 200 && r.body?.skipped === "instancia desconocida",
       "se ignora sin tocar nada", JSON.stringify(r.body));
-  }
+  });
 
   console.log("\n— Instagram: DM entrante firmado —");
   {
@@ -410,8 +449,7 @@ try {
     check(log?.author_username === "curioso", "con el autor");
   }
 
-  console.log("\n— WhatsApp: token del webhook —");
-  {
+  await siWhatsApp("WhatsApp: token del webhook", async () => {
     // Esta URL es publica: el token es lo unico que separa un evento real de
     // cualquiera que la descubra.
     const raw = JSON.stringify(evoMessage({
@@ -429,7 +467,7 @@ try {
     await nadaQueEsperar();
     check(!(await contactoAusente(waChannel.id, "+5491100000000")),
       "y no se escribio nada en la base");
-  }
+  });
 
   console.log("\n— Zernio sin secreto configurado —");
   {
@@ -523,5 +561,6 @@ try {
   await svc.from("webhook_events").delete().like("event_id", `%${stamp}%`);
 }
 
-console.log(failures ? `\n${failures} FALLAS` : "\nTodo verde");
+const resumen = omitidos ? ` (${omitidos} bloques de WhatsApp omitidos)` : "";
+console.log(failures ? `\n${failures} FALLAS${resumen}` : `\nTodo verde${resumen}`);
 process.exitCode = failures ? 1 : 0;
