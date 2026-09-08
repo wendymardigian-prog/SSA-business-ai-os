@@ -24,6 +24,8 @@ export type ChannelConnectionStatus =
   | "unknown";
 /** Clase de integracion en integration_configs (migracion 00020). */
 export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+/** Temperatura del lead (migracion 00022). */
+export type LeadTemperature = "cold" | "warm" | "hot";
 /** Como termino un envio de email (migracion 00021). */
 export type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
 export type BroadcastStatus =
@@ -233,6 +235,27 @@ export interface Database {
           is_subscribed: boolean;
           last_interaction_at: string | null;
           metadata: Json | null;
+          // Datos de CRM (migracion 00022)
+          phone: string | null;
+          secondary_email: string | null;
+          country: string | null;
+          instagram_username: string | null;
+          tiktok_username: string | null;
+          youtube_channel_id: string | null;
+          linkedin_profile_url: string | null;
+          whatsapp_phone: string | null;
+          twitter_username: string | null;
+          facebook_id: string | null;
+          setter_id: string | null;
+          vendedor_id: string | null;
+          next_followup_date: string | null;
+          do_not_contact: boolean;
+          do_not_contact_reason: string | null;
+          do_not_contact_at: string | null;
+          ai_conversation_summary: string | null;
+          lead_temperature: LeadTemperature | null;
+          attribution: Json;
+          deleted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -245,6 +268,26 @@ export interface Database {
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
           metadata?: Json | null;
+          phone?: string | null;
+          secondary_email?: string | null;
+          country?: string | null;
+          instagram_username?: string | null;
+          tiktok_username?: string | null;
+          youtube_channel_id?: string | null;
+          linkedin_profile_url?: string | null;
+          whatsapp_phone?: string | null;
+          twitter_username?: string | null;
+          facebook_id?: string | null;
+          setter_id?: string | null;
+          vendedor_id?: string | null;
+          next_followup_date?: string | null;
+          do_not_contact?: boolean;
+          do_not_contact_reason?: string | null;
+          do_not_contact_at?: string | null;
+          ai_conversation_summary?: string | null;
+          lead_temperature?: LeadTemperature | null;
+          attribution?: Json;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -255,6 +298,26 @@ export interface Database {
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
           metadata?: Json | null;
+          phone?: string | null;
+          secondary_email?: string | null;
+          country?: string | null;
+          instagram_username?: string | null;
+          tiktok_username?: string | null;
+          youtube_channel_id?: string | null;
+          linkedin_profile_url?: string | null;
+          whatsapp_phone?: string | null;
+          twitter_username?: string | null;
+          facebook_id?: string | null;
+          setter_id?: string | null;
+          vendedor_id?: string | null;
+          next_followup_date?: string | null;
+          do_not_contact?: boolean;
+          do_not_contact_reason?: string | null;
+          do_not_contact_at?: string | null;
+          ai_conversation_summary?: string | null;
+          lead_temperature?: LeadTemperature | null;
+          attribution?: Json;
+          deleted_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
