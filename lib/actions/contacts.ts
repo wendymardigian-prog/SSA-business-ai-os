@@ -27,6 +27,9 @@ import type { Json } from "@/lib/types/database";
  */
 
 const LIST_PATH = "/dashboard/contacts";
+
+/** Tope de las notas del contacto. Es texto libre, pero no un documento. */
+const MAX_NOTES = 10000;
 const contactPath = (id: string) => `/dashboard/contacts/${id}`;
 
 export type ContactActionResult =
@@ -341,6 +344,71 @@ export async function setContactTags(
   return { ok: true, contactId };
 }
 
+/**
+ * Notas del contacto (F3).
+ *
+ * Un solo campo de texto, no una tabla de notas. Lo que se pierde respecto del
+ * modelo anterior —autor y fecha por nota— queda en el audit log, que registra
+ * quien cambio el texto y de que a que.
+ *
+ * Se manda el texto que se tenia cargado al abrir: si otra persona lo cambio
+ * mientras tanto, se rechaza en vez de pisarlo. Es un campo compartido y el
+ * pisado silencioso es la forma mas facil de perder lo que alguien escribio.
+ */
+export async function updateContactNotes(
+  contactId: string,
+  notes: string,
+  previous: string | null,
+): Promise<ContactActionResult> {
+  const { workspace, supabase, user } = await getWorkspace();
+
+  const text = notes.trim();
+  if (text.length > MAX_NOTES) {
+    return { ok: false, error: `Las notas son muy largas (maximo ${MAX_NOTES} caracteres)` };
+  }
+
+  // La consulta pasa por la RLS: si el scope de leads no deja ver ese lead, no
+  // vuelve nada y no se escribe.
+  const { data: actual } = await supabase
+    .from("contacts")
+    .select("id, notes")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!actual) return { ok: false, error: "No encontre ese contacto" };
+
+  const enBase = (actual.notes ?? "").trim();
+  if (enBase !== (previous ?? "").trim()) {
+    return {
+      ok: false,
+      error: "Alguien mas cambio las notas mientras las editabas. Recargá la ficha para ver lo que quedó.",
+    };
+  }
+
+  if (enBase === text) return { ok: true, contactId };
+
+  const { error } = await supabase
+    .from("contacts")
+    .update({ notes: text || null })
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id);
+
+  if (error) {
+    console.error("[contacts] no pude guardar las notas:", error.message);
+    return { ok: false, error: `No pude guardar las notas: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
+    action: "update", changes: { notes: { old: enBase || null, new: text || null } },
+    performedBy: user.id,
+  });
+
+  revalidateContact(contactId);
+  return { ok: true, contactId };
+}
+
 export async function setContactCustomField(
   contactId: string,
   fieldId: string,
@@ -463,7 +531,17 @@ export async function linkContacts(
   // contact_channels es unique por (channel_id, platform_sender_id), y los
   // sender id son distintos justamente porque son dos contactos: no colisiona.
   await supabase.from("contact_channels").update({ contact_id: mainId }).eq("contact_id", duplicateId);
-  await supabase.from("contact_notes").update({ contact_id: mainId }).eq("contact_id", duplicateId);
+  // Las notas de los dos se juntan. Es el unico campo del merge donde "lo que
+  // ya estaba gana" seria una perdida: son dos textos que escribieron personas
+  // distintas sobre el mismo lead, y quedarse con uno tira el otro.
+  const notasUnidas = [main.notes, duplicate.notes]
+    .map((n) => (n ?? "").trim())
+    .filter(Boolean)
+    .join("\n\n---\n\n");
+
+  if (notasUnidas && notasUnidas !== (main.notes ?? "").trim()) {
+    await supabase.from("contacts").update({ notes: notasUnidas }).eq("id", mainId);
+  }
 
   // contact_tags tiene PK (contact_id, tag_id): los tags repetidos chocarian,
   // asi que se mueven solo los que el principal no tiene.

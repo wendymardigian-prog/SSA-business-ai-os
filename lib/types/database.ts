@@ -289,6 +289,8 @@ export interface Database {
           ai_conversation_summary: string | null;
           lead_temperature: LeadTemperature | null;
           attribution: Json;
+          /** Notas internas del contacto, en un solo texto (migracion 00033). */
+          notes: string | null;
           /**
            * La calcula la base (migracion 00032): true cuando no hay con que
            * reconocer a la persona. Solo lectura — PostgREST rechaza escribir
@@ -327,6 +329,7 @@ export interface Database {
           ai_conversation_summary?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
+          notes?: string | null;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -357,6 +360,7 @@ export interface Database {
           ai_conversation_summary?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
+          notes?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
         };

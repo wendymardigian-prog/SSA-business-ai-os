@@ -19,7 +19,7 @@ import {
 } from "@/components/contacts/ui";
 import { ContactEditor } from "@/components/contacts/contact-editor";
 import { AssignmentFields } from "@/components/contacts/assignment-fields";
-import { NotesSection, type NoteItem } from "@/components/contacts/notes-section";
+import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor } from "@/components/contacts/tags-editor";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
@@ -50,7 +50,7 @@ export default async function ContactDetailPage({
   const { workspace, supabase, user, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
-  const [contactRes, channelsRes, conversationsRes, fieldDefsRes, fieldValuesRes, tagsRes, notesRes, auditRes] =
+  const [contactRes, channelsRes, conversationsRes, fieldDefsRes, fieldValuesRes, tagsRes, auditRes] =
     await Promise.all([
       supabase
         .from("contacts")
@@ -77,12 +77,6 @@ export default async function ContactDetailPage({
       supabase.from("contact_custom_fields").select("field_id, value").eq("contact_id", contactId),
       supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
       supabase
-        .from("contact_notes")
-        .select("id, content, created_at, updated_at, created_by")
-        .eq("contact_id", contactId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false }),
-      supabase
         .from("audit_log")
         .select("id, action, changes, metadata, performed_at, performed_by")
         .eq("workspace_id", workspace.id)
@@ -104,15 +98,6 @@ export default async function ContactDetailPage({
   const valuesByField = new Map(
     (fieldValuesRes.data ?? []).map((v) => [v.field_id, v.value]),
   );
-
-  const notes: NoteItem[] = (notesRes.data ?? []).map((n) => ({
-    id: n.id,
-    content: n.content,
-    createdAt: n.created_at,
-    updatedAt: n.updated_at,
-    authorId: n.created_by,
-    authorLabel: (n.created_by && labels.get(n.created_by)) || "Alguien del equipo",
-  }));
 
   const history: HistoryEntry[] = (auditRes.data ?? []).map((a) => ({
     id: a.id,
@@ -270,12 +255,7 @@ export default async function ContactDetailPage({
               )}
             </Section>
 
-            <NotesSection
-              contactId={contact.id}
-              notes={notes}
-              currentUserId={user.id}
-              isAdmin={isAdmin}
-            />
+            <NotesSection contactId={contact.id} notes={contact.notes} />
 
             <AttributionSection attribution={readAttribution(contact.attribution)} />
 
