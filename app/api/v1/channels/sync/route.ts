@@ -138,19 +138,25 @@ export async function POST() {
       }
     }
 
-    // Re-register the webhook so inbound events reach the Inbox. Both the
-    // Channels "Sync" button and the OAuth callback land here, and until now
-    // registration only happened in the Settings test-key flow (#12).
-    // Best-effort: a failure must not block the channel sync.
+    // Registrar (o corregir) el webhook en Zernio, que es lo que hace que los
+    // DMs entren a la bandeja. No bloquea el sync si falla, pero el resultado
+    // vuelve en la respuesta: el webhook estuvo apuntando a localhost durante
+    // semanas porque este error se escribia en la consola del servidor y nada
+    // se lo decia a quien tocaba el boton.
+    let webhook: { url?: string; action?: string; error?: string };
     try {
       const secret = await getOrCreateWorkspaceWebhookSecret(supabase, workspace.id);
-      await ensureWebhookRegistered(zernio, {
-        url: channelWebhookUrl("zernio"),
+      const url = channelWebhookUrl("zernio");
+      const { action } = await ensureWebhookRegistered(zernio, {
+        url,
         secret,
         events: ["message.received", "comment.received"],
       });
+      webhook = { url, action };
     } catch (err) {
-      console.error("[channels/sync] webhook auto-registration failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[channels/sync] webhook auto-registration failed:", message);
+      webhook = { error: message };
     }
 
     // Backfill conversations that predate webhook registration (best-effort).
@@ -184,6 +190,7 @@ export async function POST() {
 
     return NextResponse.json({
       channels: channels ?? [],
+      webhook,
       synced: {
         created,
         updated,

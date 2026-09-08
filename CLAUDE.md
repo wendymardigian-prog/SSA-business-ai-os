@@ -60,7 +60,7 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 - Auth: Supabase Auth (email/password) + SSR
 - Frontend: Next.js 16 (App Router) + React 19 + TypeScript 5
 - Estilos: Tailwind CSS v4
-- Hosting: Railway (app Next.js + Evolution API como servicio separado en red privada interna)
+- Hosting: Railway. La app Next.js y Evolution API estan en proyectos separados, asi que se comunican por el dominio publico de Evolution (la red privada de Railway es por proyecto)
 - Canal Instagram: Zernio (Late API) — DMs, comentarios, story replies. Usa la 1ª de 2 cuentas free
 - Canal WhatsApp: Evolution API (Baileys, por QR) self-hosted en Railway
 - Email saliente: Resend (transaccional en Fase 1: invitaciones, notificaciones)
@@ -146,8 +146,12 @@ Cada fase define sus migraciones en su documento de requerimientos. Seguir esa n
 - .env nunca se commitea. Solo .env.example con placeholders.
 
 ## Webhooks entrantes
-- Zernio: validar firma HMAC antes de procesar. Evolution API (red interna): no requiere HMAC.
-- Ack inmediato (responder 200 antes de procesar). Procesamiento async. Idempotencia con `webhook_events`.
+- Un solo receptor por canal, y los dos viven en la app (`app/api/webhooks/`), nunca en una Edge Function: el motor de flows, las secuencias y el agente de IA corren en Node y desde Deno no se pueden llamar.
+  - `app/api/webhooks/late` -> Zernio (Instagram): valida firma HMAC. Sin secreto configurado, rechaza.
+  - `app/api/webhooks/evolution` -> Evolution API (WhatsApp): valida el header `x-webhook-token` en tiempo constante. La URL es publica, asi que el token no es opcional.
+- Lo que hacen los dos igual despues de entender el payload vive en `lib/inbound.ts`. Lo que tiene que valer para todos los canales vive en la base: `find_or_link_contact` (dedup) y `apply_opt_out_check` (no contactar).
+- Ack inmediato (responder 200 antes de procesar, con `after()`). Procesamiento async. Idempotencia con `webhook_events`.
+- La URL que se registra en cada proveedor la arma `lib/webhook-url.ts` desde `NEXT_PUBLIC_APP_URL`, y se niega a registrar una direccion local: un webhook apuntando a localhost no falla, simplemente no entra nada.
 
 ## Checklist de seguridad (verificar en cada bloque)
 - [ ] RLS habilitado en todas las tablas nuevas

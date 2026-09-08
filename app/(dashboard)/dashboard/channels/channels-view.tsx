@@ -63,6 +63,7 @@ export function ChannelsView({
   const [channels, setChannels] = useState(initialChannels);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -177,7 +178,21 @@ export function ChannelsView({
       } = data.synced;
       const nothingChanged =
         created === 0 && updated === 0 && deactivated === 0 && conversationsImported === 0;
-      if (failed.length > 0) {
+
+      // Si el webhook no se pudo registrar, no entra ni un mensaje: eso gana
+      // sobre cualquier otro resultado del sync.
+      const webhook = data.webhook as
+        | { url?: string; action?: string; error?: string }
+        | undefined;
+      if (webhook?.error) {
+        setWebhookError(webhook.error);
+      } else {
+        setWebhookError(null);
+      }
+
+      if (webhook?.error) {
+        setSyncMessage(null);
+      } else if (failed.length > 0) {
         setSyncMessage(`Could not save some channels: ${failed.join("; ")}`);
       } else if (nothingChanged && syncedChannels.length === 0 && skipped.length > 0) {
         setSyncMessage(
@@ -314,6 +329,20 @@ export function ChannelsView({
 
       {/* Channel cards */}
       <div className="flex-1 overflow-auto p-8">
+        {webhookError && (
+          <div
+            role="alert"
+            className="mb-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">
+                No se pudo registrar el webhook: no van a entrar mensajes nuevos
+              </p>
+              <p className="mt-1 text-xs">{webhookError}</p>
+            </div>
+          </div>
+        )}
         {channels.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Plug className="h-10 w-10 text-muted-foreground/40" />
