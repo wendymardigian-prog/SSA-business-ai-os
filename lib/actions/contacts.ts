@@ -30,6 +30,9 @@ const LIST_PATH = "/dashboard/contacts";
 
 /** Tope de las notas del contacto. Es texto libre, pero no un documento. */
 const MAX_NOTES = 10000;
+
+/** Tope del nombre de un tag: es una etiqueta, no una frase. */
+const MAX_TAG_NAME = 40;
 const contactPath = (id: string) => `/dashboard/contacts/${id}`;
 
 export type ContactActionResult =
@@ -275,6 +278,104 @@ export async function restoreContact(contactId: string): Promise<ContactActionRe
 // ------------------------------------------------------------------
 // Tags y custom fields
 // ------------------------------------------------------------------
+
+/**
+ * Crea un tag y se lo asigna al contacto, en un paso (F5).
+ *
+ * Antes solo se podian asignar tags que ya existieran, y los tags solo nacian
+ * desde la importacion de CSV o cuando corria un nodo de un flow. O sea que
+ * para etiquetar un lead con algo nuevo habia que importar un CSV.
+ *
+ * Lo puede hacer cualquiera que pueda editar el contacto, no solo Owner/Admin.
+ * Es lo mismo que ya pasa con la importacion de CSV, que crea tags y la puede
+ * correr un Member; pedir permiso de admin aca y no alla seria incoherente.
+ *
+ * El nombre se compara sin distinguir mayusculas, igual que lo hace el
+ * importador: sin eso, "VIP" desde la ficha y "vip" desde un CSV serian dos
+ * tags que el importador trata como uno solo.
+ */
+export async function createAndAssignTag(
+  contactId: string,
+  rawName: string,
+): Promise<ContactActionResult> {
+  const { workspace, supabase, user } = await getWorkspace();
+
+  const name = rawName.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, error: "El tag necesita un nombre" };
+  if (name.length > MAX_TAG_NAME) {
+    return { ok: false, error: `El nombre es muy largo (maximo ${MAX_TAG_NAME} caracteres)` };
+  }
+
+  // La consulta pasa por la RLS: si el scope de leads no deja ver ese lead, no
+  // vuelve nada y no se crea ningun tag.
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!contact) return { ok: false, error: "No encontre ese contacto" };
+
+  const { data: existing } = await supabase
+    .from("tags")
+    .select("id, name")
+    .eq("workspace_id", workspace.id)
+    .ilike("name", name)
+    .limit(1)
+    .maybeSingle();
+
+  let tagId = existing?.id;
+
+  if (!tagId) {
+    const { data: created, error } = await supabase
+      .from("tags")
+      .insert({ workspace_id: workspace.id, name })
+      .select("id")
+      .single();
+
+    if (error || !created) {
+      // 23505: alguien lo creo entre la consulta y el insert. No es un error
+      // para quien esta etiquetando: el tag existe, que era el objetivo.
+      if (error?.code === "23505") {
+        const { data: ganador } = await supabase
+          .from("tags")
+          .select("id")
+          .eq("workspace_id", workspace.id)
+          .ilike("name", name)
+          .limit(1)
+          .maybeSingle();
+        tagId = ganador?.id;
+      }
+
+      if (!tagId) {
+        console.error("[contacts] no pude crear el tag:", error?.message);
+        return { ok: false, error: `No pude crear el tag: ${error?.message ?? "error desconocido"}` };
+      }
+    } else {
+      tagId = created.id;
+    }
+  }
+
+  const { error: linkError } = await supabase
+    .from("contact_tags")
+    .upsert({ contact_id: contactId, tag_id: tagId }, { onConflict: "contact_id,tag_id", ignoreDuplicates: true });
+
+  if (linkError) {
+    console.error("[contacts] no pude asignar el tag:", linkError.message);
+    return { ok: false, error: `El tag se creo pero no pude asignarlo: ${linkError.message}` };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
+    action: "update",
+    metadata: { tag: name, created: !existing },
+    performedBy: user.id,
+  });
+
+  revalidateContact(contactId);
+  return { ok: true, contactId };
+}
 
 export async function setContactTags(
   contactId: string,
