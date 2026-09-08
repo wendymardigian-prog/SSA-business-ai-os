@@ -1,13 +1,30 @@
+/**
+ * Receptor de los webhooks de Zernio (Instagram: DMs, story replies y comentarios).
+ *
+ * Es el unico receptor del sistema junto con /api/webhooks/evolution. Vive en la
+ * app y no en una Edge Function porque el motor de flows, las secuencias y (en
+ * Fase 3) el agente de IA corren en Node: desde Deno no se pueden llamar.
+ *
+ * Los mensajes de Instagram NO se guardan en la tabla local: Zernio es la fuente
+ * de verdad y la app le pide el hilo por API (ver app/api/v1/messages). Lo que se
+ * guarda aca es el contacto y la conversacion, que es lo que hace aparecer el
+ * chat en la bandeja.
+ */
+
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { executeFlow } from "@/lib/flow-engine/engine";
-import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
 import { messagePreview } from "@/lib/message-preview";
+import {
+  applyOptOut,
+  claimWebhookEvent,
+  runInboundAutomation,
+  upsertConversation,
+} from "@/lib/inbound";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -89,27 +106,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Claim an event id for processing. Returns false when another delivery of the
- * same event already claimed it (Zernio retries with the same id), so retries
- * and redeliveries never re-run a flow. Events without an id are processed
- * unconditionally rather than dropped.
- */
-async function claimWebhookEvent(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  eventId: string | null | undefined
-): Promise<boolean> {
-  if (!eventId) return true;
-  const { error } = await supabase
-    .from("webhook_events")
-    .insert({ event_id: eventId });
-  if (!error) return true;
-  if (error.code === "23505") return false;
-  // Table missing / transient DB error: fail open so deliveries keep working.
-  console.error("webhook_events claim failed:", error);
-  return true;
-}
-
 async function handleWebhook(request: NextRequest) {
   const body = await request.text();
   const signature = request.headers.get("x-late-signature");
@@ -173,10 +169,17 @@ async function handleWebhook(request: NextRequest) {
     }
   }
 
-  // Verify HMAC-SHA256 signature against the workspace-level secret
-  // (falls back to the legacy per-channel secret during transition).
+  // Firma HMAC-SHA256 contra el secreto del workspace (con fallback al viejo
+  // secreto por canal). Sin secreto no se puede verificar nada, y esta URL es
+  // publica: se rechaza en vez de aceptar a ciegas.
   const secret = await resolveWebhookSecret(supabase, channel);
-  if (secret && !verifyWebhookSignature(secret, body, signature)) {
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, body, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -184,9 +187,9 @@ async function handleWebhook(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, reason: "duplicate_event" });
   }
 
-  // Ack immediately and process after the response: Zernio aborts deliveries
-  // at 5s and retries, so contact upserts + flow execution (Zernio sends, AI
-  // nodes) must never run before the 200 goes out.
+  // Se responde 200 y se procesa despues: Zernio corta la entrega a los 5s y
+  // reintenta, asi que resolver el contacto y correr el flow (que manda mensajes
+  // y puede llamar a un modelo de IA) nunca puede pasar antes de contestar.
   after(async () => {
     try {
       await processMessageEvent(supabase, payload, channel);
@@ -231,66 +234,42 @@ async function processMessageEvent(
 
   const preview = messagePreview(msg.text);
 
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .upsert(
-      {
-        workspace_id: channel.workspace_id,
-        channel_id: channel.id,
-        contact_id: contactId,
-        platform: channel.platform,
-        late_conversation_id: conv.id,
-        status: "open",
-        last_message_at: new Date().toISOString(),
-        last_message_preview: preview,
-        unread_count: 1,
-      },
-      { onConflict: "channel_id,contact_id" }
-    )
-    .select("id, is_automation_paused")
-    .single();
+  const conversation = await upsertConversation({
+    supabase,
+    channel,
+    contactId,
+    externalConversationId: conv.id,
+    preview,
+    at: new Date().toISOString(),
+    incrementUnread: true,
+  });
 
-  if (!conversation) {
-    console.error("Failed to upsert conversation for webhook message");
-    return;
-  }
-
-  if (contact.existed) {
-    await supabase
-      .rpc("increment_unread", {
-        conv_id: conversation.id,
-        preview,
-      })
-      .then(() => {});
-  }
+  if (!conversation) return;
 
   // Messages are stored by Zernio (source of truth) — no local insert needed.
 
   // ── Marca "no contactar" (F18) ───────────────────────────────────────────
-  // La decision vive en apply_opt_out_check (migracion 00027), la misma que
-  // llama la Edge Function: el receptor esta duplicado en dos runtimes y la
-  // regla no puede depender de por que canal escribio el lead.
-  //
-  // Va ANTES del motor de flows a proposito: si el lead acaba de pedir que
-  // dejen de escribirle, no se le dispara una automatizacion que le conteste.
+  // Va ANTES de las automatizaciones a proposito: si el lead acaba de pedir que
+  // dejen de escribirle, no se le dispara un flow que le conteste.
 
-  const optOut = await supabase.rpc("apply_opt_out_check", {
-    p_contact_id: contactId,
-    p_conversation_id: conversation.id,
-    p_text: msg.text ?? null,
+  const optOut = await applyOptOut({
+    supabase,
+    contactId,
+    conversationId: conversation.id,
+    text: msg.text ?? null,
   });
+  if (optOut.matched) return;
 
-  if (optOut.error) {
-    console.error("[webhook] no pude evaluar el opt-out:", optOut.error.message);
-  } else if (optOut.data?.matched) {
-    console.log(`[webhook] contacto marcado como no contactar por "${optOut.data.phrase}"`);
-    return;
-  }
+  // ── Automatizaciones ──────────────────────────────────────────────────────
 
-  // ── Flow engine ───────────────────────────────────────────────────────────
-
-  if (!conversation.is_automation_paused) {
-    const incomingMessage = {
+  await runInboundAutomation({
+    supabase,
+    channel,
+    contactId,
+    conversationId: conversation.id,
+    isAutomationPaused: conversation.isAutomationPaused,
+    isFirstMessage: !contact.existed,
+    incomingMessage: {
       text: msg.text || undefined,
       postbackPayload: metadata?.postbackPayload || undefined,
       quickReplyPayload: metadata?.quickReplyPayload || undefined,
@@ -300,42 +279,10 @@ async function processMessageEvent(
         name: msg.sender.name,
         username: msg.sender.username || undefined,
       },
-    };
-
-    const handled = await handleGlobalKeywords(
-      supabase,
-      channel.workspace_id,
-      contactId,
-      msg.text || undefined
-    );
-
-    if (!handled) {
-      const trigger = await matchTrigger(supabase, {
-        channelId: channel.id,
-        workspaceId: channel.workspace_id,
-        conversationId: conversation.id,
-        message: incomingMessage,
-        isFirstMessage: !contact.existed,
-      });
-      if (trigger) {
-        try {
-          await executeFlow(supabase, {
-            triggerId: trigger.id,
-            flowId: trigger.flow_id,
-            channelId: channel.id,
-            contactId,
-            conversationId: conversation.id,
-            workspaceId: channel.workspace_id,
-            incomingMessage,
-            lateConversationId: conv.id,
-            lateAccountId: account.id,
-          });
-        } catch (err) {
-          console.error("Flow execution error:", err);
-        }
-      }
-    }
-  }
+    },
+    lateConversationId: conv.id,
+    lateAccountId: account.id,
+  });
 }
 
 // ── Comment webhook ─────────────────────────────────────────────────────────
@@ -369,7 +316,13 @@ async function handleCommentWebhook(
   }
 
   const secret = await resolveWebhookSecret(supabase, channel);
-  if (secret && !verifyWebhookSignature(secret, rawBody, signature)) {
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -401,53 +354,4 @@ async function handleCommentWebhook(
   });
 
   return NextResponse.json({ ok: true, queued: true });
-}
-
-// ── Global keywords ─────────────────────────────────────────────────────────
-
-async function handleGlobalKeywords(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  workspaceId: string,
-  contactId: string,
-  text: string | undefined
-): Promise<boolean> {
-  if (!text) return false;
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("global_keywords")
-    .eq("id", workspaceId)
-    .single();
-
-  if (!workspace?.global_keywords) return false;
-
-  const keywords = workspace.global_keywords as Array<{
-    keyword: string;
-    action?: string;
-    flowId?: string;
-  }>;
-
-  const normalizedText = text.toLowerCase().trim();
-
-  for (const kw of keywords) {
-    if (normalizedText === kw.keyword.toLowerCase()) {
-      if (kw.action === "unsubscribe") {
-        await supabase
-          .from("contacts")
-          .update({ is_subscribed: false })
-          .eq("id", contactId);
-        return true;
-      }
-      if (kw.action === "subscribe") {
-        await supabase
-          .from("contacts")
-          .update({ is_subscribed: true })
-          .eq("id", contactId);
-        return true;
-      }
-      return false;
-    }
-  }
-
-  return false;
 }
