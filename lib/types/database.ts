@@ -24,6 +24,25 @@ export type ChannelConnectionStatus =
   | "unknown";
 /** Clase de integracion en integration_configs (migracion 00020). */
 export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+/** Entidades que registra el audit log (migracion 00023). */
+export type AuditEntityType =
+  | "contact"
+  | "contact_note"
+  | "conversation"
+  | "channel"
+  | "workspace"
+  | "workspace_member"
+  | "csv_import";
+/** Acciones que registra el audit log (migracion 00023). */
+export type AuditAction =
+  | "create"
+  | "update"
+  | "delete"
+  | "restore"
+  | "assign"
+  | "link"
+  | "import"
+  | "do_not_contact";
 /** Temperatura del lead (migracion 00022). */
 export type LeadTemperature = "cold" | "warm" | "hot";
 /** Como termino un envio de email (migracion 00021). */
@@ -702,6 +721,7 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           is_automation_paused: boolean;
+          deleted_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -718,6 +738,7 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -729,6 +750,7 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
+          deleted_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -1266,6 +1288,124 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "email_log_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      contact_notes: {
+        Row: {
+          id: string;
+          contact_id: string;
+          workspace_id: string;
+          content: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          contact_id: string;
+          workspace_id: string;
+          content: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          content?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contact_notes_contact_id_fkey";
+            columns: ["contact_id"];
+            isOneToOne: false;
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "contact_notes_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      audit_log: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          entity_type: AuditEntityType;
+          entity_id: string;
+          action: AuditAction;
+          changes: Json | null;
+          metadata: Json | null;
+          performed_by: string | null;
+          performed_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          entity_type: AuditEntityType;
+          entity_id: string;
+          action: AuditAction;
+          changes?: Json | null;
+          metadata?: Json | null;
+          performed_by?: string | null;
+          performed_at?: string;
+        };
+        // Inmutable: no hay UPDATE ni DELETE en la RLS.
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      response_templates: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          content: string;
+          shortcut: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          content: string;
+          shortcut?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          content?: string;
+          shortcut?: string | null;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "response_templates_workspace_id_fkey";
             columns: ["workspace_id"];
             isOneToOne: false;
             referencedRelation: "workspaces";
