@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { resolveDateRange, todayInputValue, APP_TIMEZONE } from "./dates";
+import {
+  resolveDateRange,
+  todayInputValue,
+  dateInputToIso,
+  isoToDateInput,
+  formatDateOnly,
+  APP_TIMEZONE,
+} from "./dates";
 
 /**
  * Argentina es UTC-3 todo el ano, asi que la medianoche local de un dia D es
@@ -102,5 +109,40 @@ describe("zona horaria", () => {
     // En Tokio (UTC+9) ya es el 8.
     const { from } = resolveDateRange("hoy", undefined, undefined, ahora, "Asia/Tokyo");
     expect(from).toBe("2026-09-07T15:00:00.000Z");
+  });
+});
+
+describe("fechas sueltas (el proximo seguimiento)", () => {
+  it("una fecha elegida se lee como la misma fecha, no como el dia anterior", () => {
+    // El bug que esto evita: "2026-03-15" como medianoche UTC se muestra como
+    // el 14 en Argentina.
+    const iso = dateInputToIso("2026-03-15")!;
+    expect(isoToDateInput(iso)).toBe("2026-03-15");
+    expect(formatDateOnly(iso)).toBe("15/03/2026");
+  });
+
+  it("sobrevive a leer la fecha desde otra zona de America", () => {
+    // El anclaje al mediodia da 11 horas de margen para cada lado. Cubre a
+    // cualquiera que abra la app desde America, que es de donde se trabaja.
+    const iso = dateInputToIso("2026-03-15")!;
+    expect(isoToDateInput(iso, "America/Mexico_City")).toBe("2026-03-15");
+    expect(isoToDateInput(iso, "America/Sao_Paulo")).toBe("2026-03-15");
+    expect(isoToDateInput(iso, "Europe/Madrid")).toBe("2026-03-15");
+  });
+
+  it("se ancla al mediodia, no a la medianoche", () => {
+    expect(dateInputToIso("2026-03-15")).toBe("2026-03-15T15:00:00.000Z");
+  });
+
+  it("rechaza lo que no es una fecha", () => {
+    expect(dateInputToIso("manana")).toBeNull();
+    expect(dateInputToIso("2026-02-31")).toBeNull();
+    expect(dateInputToIso("")).toBeNull();
+  });
+
+  it("un valor vacio o invalido no rompe el render", () => {
+    expect(isoToDateInput(null)).toBe("");
+    expect(isoToDateInput("no es una fecha")).toBe("");
+    expect(formatDateOnly(null)).toBe("");
   });
 });

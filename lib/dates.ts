@@ -185,3 +185,45 @@ export function todayInputValue(now: Date = new Date(), timeZone: string = APP_T
   const { year, month, day } = civilDate(now, timeZone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
+
+/**
+ * Una fecha suelta (la que devuelve un <input type="date">) al instante que se
+ * guarda en la base.
+ *
+ * Se ancla al mediodia de la zona y no a la medianoche. El motivo es concreto:
+ * next_followup_date es timestamptz, y "2026-03-15" interpretado como
+ * medianoche UTC se muestra como el 14 en Argentina. Con el mediodia, la fecha
+ * se lee igual desde cualquier zona que este a menos de 11 horas de la del
+ * negocio, que cubre America entera y Europa.
+ */
+export function dateInputToIso(value: string, timeZone: string = APP_TIMEZONE): string | null {
+  if (!DATE_ONLY.test(value)) return null;
+  const parts = parseDateOnly(value);
+  if (!parts) return null;
+
+  return zonedWallClockToUtc(parts.year, parts.month, parts.day, 12, 0, 0, 0, timeZone).toISOString();
+}
+
+/** El instante guardado de vuelta al valor de un <input type="date">. */
+export function isoToDateInput(iso: string | null | undefined, timeZone: string = APP_TIMEZONE): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const { year, month, day } = civilDate(date, timeZone);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Una fecha para mostrar, sin hora: la hora de un seguimiento no significa nada. */
+export function formatDateOnly(iso: string | null | undefined, timeZone: string = APP_TIMEZONE): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}

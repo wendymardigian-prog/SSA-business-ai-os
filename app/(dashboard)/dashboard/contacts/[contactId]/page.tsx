@@ -20,6 +20,7 @@ import {
 import { ContactEditor } from "@/components/contacts/contact-editor";
 import { AssignmentFields } from "@/components/contacts/assignment-fields";
 import { NotesSection } from "@/components/contacts/notes-section";
+import { FollowupField } from "@/components/contacts/followup-field";
 import { TagsEditor } from "@/components/contacts/tags-editor";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
@@ -276,17 +277,10 @@ export default async function ContactDetailPage({
             </Section>
 
             <Section title="Seguimiento">
-              <div className="rounded-lg border border-border p-3 text-sm">
-                <p className="flex items-center gap-2 text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  Próximo seguimiento
-                </p>
-                <p className="mt-1 font-medium">
-                  {contact.next_followup_date
-                    ? formatDateTime(contact.next_followup_date)
-                    : "Sin fecha"}
-                </p>
-              </div>
+              <FollowupField
+                contactId={contact.id}
+                value={contact.next_followup_date}
+              />
             </Section>
 
             <Section title="Tags">
