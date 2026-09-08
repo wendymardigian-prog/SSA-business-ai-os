@@ -369,6 +369,8 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          /** Se reasigna al unir un contacto duplicado con el principal. */
+          contact_id?: string;
           platform_username?: string | null;
         };
         Relationships: [
@@ -429,6 +431,7 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          /** Se reasigna al unir un contacto duplicado con el principal. */
           contact_id?: string;
           tag_id?: string;
         };
@@ -745,6 +748,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          /** Se reasigna al unir un contacto duplicado con el principal. */
+          contact_id?: string;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;
@@ -1319,6 +1324,8 @@ export interface Database {
           deleted_at?: string | null;
         };
         Update: {
+          /** Se reasigna al unir un contacto duplicado con el principal. */
+          contact_id?: string;
           content?: string;
           updated_at?: string;
           deleted_at?: string | null;
