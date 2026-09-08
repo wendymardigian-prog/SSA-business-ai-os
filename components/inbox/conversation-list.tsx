@@ -1,15 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, MessageSquare, Ban } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { MessageSquare, Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
-import type { Database, Platform, ConversationStatus } from "@/lib/types/database";
+import { InboxFiltersBar } from "@/components/inbox/inbox-filters";
+import {
+  matchesInboxRow,
+  needsServerToFilter,
+  countActiveFilters,
+  type InboxFilters,
+} from "@/lib/inbox/filters";
+import type { DateRange } from "@/lib/dates";
+import type { Database } from "@/lib/types/database";
+import type { ConversationRow } from "@/lib/inbox/types";
 
-type Conversation = Database["public"]["Tables"]["conversations"]["Row"] & {
-  contacts: Database["public"]["Tables"]["contacts"]["Row"] | null;
-};
+type Conversation = ConversationRow;
+
+/** Cuanto se espera antes de volver a preguntarle al servidor (ver abajo). */
+const REFRESH_DEBOUNCE_MS = 800;
 
 function formatTime(dateStr: string | null): string {
   if (!dateStr) return "";
@@ -21,11 +32,11 @@ function formatTime(dateStr: string | null): string {
   if (diffDays === 0) {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
-  if (diffDays === 1) return "Yesterday";
+  if (diffDays === 1) return "Ayer";
   if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: "short" });
+    return date.toLocaleDateString("es-AR", { weekday: "short" });
   }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return date.toLocaleDateString("es-AR", { month: "short", day: "numeric" });
 }
 
 export function ConversationList({
@@ -33,15 +44,32 @@ export function ConversationList({
   workspaceId,
   selectedId,
   onSelect,
+  filters,
+  dateRange,
+  tags,
+  platforms,
+  members,
+  total,
+  page,
+  pageSize,
+  onPageChange,
 }: {
   conversations: Conversation[];
   workspaceId: string;
   selectedId: string | null;
   onSelect: (conversation: Conversation) => void;
+  filters: InboxFilters;
+  dateRange: DateRange;
+  tags: { id: string; name: string; color: string | null }[];
+  platforms: { value: string; label: string }[];
+  members: { userId: string; label: string }[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
 }) {
+  const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ConversationStatus | "all">("open");
   // Relative timestamps depend on the client's clock/locale, which differ from the
   // server's during SSR and trigger a hydration mismatch (React #418, which crashes
   // the inbox in production). Defer time rendering until after mount so the server
@@ -53,9 +81,33 @@ export function ConversationList({
     setConversations(initialConversations);
   }, [initialConversations]);
 
-  // Subscribe to conversation updates via Realtime
+  /**
+   * Realtime, ahora que los filtros y la paginacion los resuelve el servidor.
+   *
+   * Antes esto agregaba cualquier conversacion nueva del workspace al principio
+   * de la lista sin mirar el filtro, y nunca sacaba una que dejara de
+   * cumplirlo. Con filtros de verdad eso se vuelve visible enseguida.
+   *
+   * La regla ahora es: si el cambio es sobre una fila que ya esta en pantalla y
+   * sigue entrando en lo que se esta mirando, se actualiza en el acto (es lo
+   * que hace que un mensaje nuevo mueva la conversacion arriba al instante).
+   * Cualquier otra cosa — una fila que entra, una que sale, o filtros que
+   * dependen de datos que la fila no trae — se le vuelve a preguntar al
+   * servidor, que es el unico que sabe la respuesta con la paginacion puesta.
+   *
+   * El refresh va con un respiro de por medio: una rafaga de mensajes dispara
+   * un evento por cada uno y no hace falta rehacer la consulta cinco veces.
+   */
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const supabase = createClient();
+    const serverOnly = needsServerToFilter(filters);
+
+    const scheduleRefresh = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE_MS);
+    };
 
     const channel = supabase
       .channel("conversations-updates")
@@ -67,101 +119,94 @@ export function ConversationList({
           table: "conversations",
           filter: `workspace_id=eq.${workspaceId}`,
         },
-        async (payload) => {
-          if (payload.eventType === "UPDATE") {
-            const updated = payload.new as Database["public"]["Tables"]["conversations"]["Row"];
-            setConversations((prev) =>
-              prev
-                .map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
-                .sort((a, b) => {
-                  const aTime = a.last_message_at ?? a.created_at;
-                  const bTime = b.last_message_at ?? b.created_at;
-                  return new Date(bTime).getTime() - new Date(aTime).getTime();
-                })
-            );
-          } else if (payload.eventType === "INSERT") {
-            const inserted = payload.new as Database["public"]["Tables"]["conversations"]["Row"];
-            // Fetch full conversation with contact
-            const { data } = await supabase
-              .from("conversations")
-              .select("*, contacts(*)")
-              .eq("id", inserted.id)
-              .single();
-            if (data) {
-              setConversations((prev) => [data as Conversation, ...prev]);
-            }
+        (payload) => {
+          if (payload.eventType !== "UPDATE") {
+            scheduleRefresh();
+            return;
           }
-        }
+
+          const updated = payload.new as Database["public"]["Tables"]["conversations"]["Row"];
+
+          setConversations((prev) => {
+            const current = prev.find((c) => c.id === updated.id);
+            if (!current) {
+              // No estaba en pantalla: puede que ahora corresponda mostrarla.
+              scheduleRefresh();
+              return prev;
+            }
+
+            const merged = { ...current, ...updated };
+
+            if (serverOnly || !matchesInboxRow(merged, filters, dateRange)) {
+              scheduleRefresh();
+              return prev;
+            }
+
+            return prev
+              .map((c) => (c.id === updated.id ? merged : c))
+              .sort((a, b) => {
+                const aTime = a.last_message_at ?? a.created_at;
+                const bTime = b.last_message_at ?? b.created_at;
+                return new Date(bTime).getTime() - new Date(aTime).getTime();
+              });
+          });
+        },
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
       supabase.removeChannel(channel);
     };
-  }, [workspaceId]);
+  }, [workspaceId, filters, dateRange, router]);
 
-  const filtered = conversations.filter((c) => {
-    if (statusFilter !== "all" && c.status !== statusFilter) return false;
-    if (search) {
-      const name = c.contacts?.display_name?.toLowerCase() ?? "";
-      const preview = c.last_message_preview?.toLowerCase() ?? "";
-      const q = search.toLowerCase();
-      if (!name.includes(q) && !preview.includes(q)) return false;
-    }
-    return true;
-  });
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilters = countActiveFilters(filters) > 0;
 
   return (
     <div className="flex h-full flex-col border-r border-border bg-background">
       {/* Header */}
       <div className="flex h-14 items-center justify-between border-b border-border px-4">
-        <h2 className="text-sm font-semibold">Inbox</h2>
+        <h2 className="text-sm font-semibold">Bandeja</h2>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} conversation{filtered.length !== 1 ? "s" : ""}
+          {total === 1 ? "1 conversación" : `${total} conversaciones`}
         </span>
       </div>
 
-      {/* Search */}
-      <div className="p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-      </div>
-
-      {/* Status filter */}
-      <div className="flex gap-1 px-3 pb-2">
-        {(["all", "open", "closed", "snoozed"] as const).map((status) => (
-          <button
-            key={status}
-            onClick={() => setStatusFilter(status)}
-            className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors",
-              statusFilter === status
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {status}
-          </button>
-        ))}
-      </div>
+      <InboxFiltersBar
+        filters={filters}
+        tags={tags}
+        platforms={platforms}
+        members={members}
+      />
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
+        {conversations.length === 0 ? (
+          /* Dos vacios distintos: "todavia no pasó nada" y "tu filtro no
+             encontró nada" piden cosas opuestas de quien mira la pantalla. */
+          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
             <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
-            <p className="mt-2 text-sm text-muted-foreground">No conversations found</p>
+            {hasFilters ? (
+              <>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Ninguna conversación coincide con los filtros
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/70">
+                  Probá quitando alguno para ver más.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-muted-foreground">Todavía no hay conversaciones</p>
+                <p className="mt-1 text-xs text-muted-foreground/70">
+                  Cuando alguien escriba por un canal conectado, va a aparecer acá.
+                </p>
+              </>
+            )}
           </div>
         ) : (
-          filtered.map((conversation) => (
+          conversations.map((conversation) => (
             <button
               key={conversation.id}
               onClick={() => onSelect(conversation)}
@@ -230,6 +275,53 @@ export function ConversationList({
           ))
         )}
       </div>
+
+      {lastPage > 1 && (
+        <div className="flex items-center justify-between border-t border-border px-4 py-2">
+          <span className="text-xs text-muted-foreground">
+            Página {page} de {lastPage}
+          </span>
+          <div className="flex gap-1">
+            <PageButton
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+              label="Anterior"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </PageButton>
+            <PageButton
+              disabled={page >= lastPage}
+              onClick={() => onPageChange(page + 1)}
+              label="Siguiente"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </PageButton>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function PageButton({
+  disabled,
+  onClick,
+  label,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      {children}
+    </button>
   );
 }

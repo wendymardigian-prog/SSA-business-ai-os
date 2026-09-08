@@ -11,11 +11,10 @@ import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
+import type { ConversationRow } from "@/lib/inbox/types";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
-type Conversation = Database["public"]["Tables"]["conversations"]["Row"] & {
-  contacts: Database["public"]["Tables"]["contacts"]["Row"] | null;
-};
+type Conversation = ConversationRow;
 
 function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -94,9 +93,9 @@ function MessageBubble({ message }: { message: Message }) {
           {!isInbound && message.status !== "sent" && (
             <span className="capitalize">
               {message.status === "delivered"
-                ? "Delivered"
+                ? "Entregado"
                 : message.status === "failed"
-                ? "Failed"
+                ? "Falló"
                 : ""}
             </span>
           )}
@@ -154,7 +153,7 @@ export function MessageThread({
       if (error) throw error;
       router.refresh();
     } catch {
-      alert(`Failed to update conversation status`);
+      alert("No pude cambiar el estado de la conversación. Probá de nuevo.");
     } finally {
       setStatusUpdating(null);
     }
@@ -315,10 +314,10 @@ export function MessageThread({
       <div className="flex h-full flex-col items-center justify-center bg-background text-center">
         <MessageSquare className="h-12 w-12 text-muted-foreground/30" />
         <h3 className="mt-4 text-sm font-medium text-muted-foreground">
-          Select a conversation
+          Elegí una conversación
         </h3>
         <p className="mt-1 text-xs text-muted-foreground/70">
-          Choose a conversation from the list to view messages
+          Abrí una de la lista para ver el hilo de mensajes
         </p>
       </div>
     );
@@ -381,7 +380,7 @@ export function MessageThread({
           </span>
           {conversation.is_automation_paused && (
             <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
-              Bot paused
+              Bot pausado
             </span>
           )}
           <div className="flex items-center gap-1">
@@ -389,8 +388,8 @@ export function MessageThread({
               <button
                 onClick={() => updateConversationStatus("closed")}
                 disabled={!!statusUpdating}
-                title="Close conversation"
-                aria-label="Close conversation"
+                title="Cerrar conversación"
+                aria-label="Cerrar conversación"
                 className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
               >
                 {statusUpdating === "closed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
@@ -400,8 +399,8 @@ export function MessageThread({
               <button
                 onClick={() => updateConversationStatus("snoozed")}
                 disabled={!!statusUpdating}
-                title="Snooze conversation"
-                aria-label="Snooze conversation"
+                title="Posponer conversación"
+                aria-label="Posponer conversación"
                 className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
               >
                 {statusUpdating === "snoozed" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
@@ -411,8 +410,8 @@ export function MessageThread({
               <button
                 onClick={() => updateConversationStatus("open")}
                 disabled={!!statusUpdating}
-                title="Reopen conversation"
-                aria-label="Reopen conversation"
+                title="Reabrir conversación"
+                aria-label="Reabrir conversación"
                 className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
               >
                 {statusUpdating === "open" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}

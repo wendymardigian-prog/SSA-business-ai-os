@@ -32,7 +32,7 @@ interface ContactDetails {
 }
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "Never";
+  if (!dateStr) return "Nunca";
   return new Date(dateStr).toLocaleDateString([], {
     month: "short",
     day: "numeric",
@@ -53,13 +53,26 @@ export function ContactPanel({
 }) {
   const [loadedDetails, setDetails] = useState<ContactDetails | null>(null);
   const [loading, setLoading] = useState(false);
+  // Cargar y no encontrar no son lo mismo que fallar. Sin esto, un error de
+  // red o una sesion que todavia no termino de levantar se le mostraban a la
+  // persona como "este contacto no existe", que es mentira y ademas asusta.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!contactId) return;
 
     async function loadContact() {
       setLoading(true);
+      setFailed(false);
       const supabase = createClient();
+
+      // Esperar a que la sesion termine de levantarse desde las cookies. Sin
+      // esto, abrir la bandeja con ?c= en la URL monta el panel en el primer
+      // render, las consultas salen como anonimo, la RLS las corta y el panel
+      // dice que el contacto no existe. Al entrar haciendo clic no se notaba,
+      // porque para entonces la sesion ya estaba.
+      await supabase.auth.getSession();
 
       const [contactRes, tagsRes, fieldsRes, channelsRes] = await Promise.all([
         supabase.from("contacts").select("*").eq("id", contactId!).single(),
@@ -76,6 +89,12 @@ export function ContactPanel({
           .select("platform_username, channels(platform)")
           .eq("contact_id", contactId!),
       ]);
+
+      if (contactRes.error && !contactRes.data) {
+        console.error("[inbox] no pude cargar el contacto:", contactRes.error.message);
+        setFailed(true);
+        setDetails(null);
+      }
 
       if (contactRes.data) {
         const tags = (tagsRes.data ?? [])
@@ -106,7 +125,7 @@ export function ContactPanel({
     }
 
     loadContact();
-  }, [contactId, workspaceId]);
+  }, [contactId, workspaceId, attempt]);
 
   if (!contactId) return null;
 
@@ -117,7 +136,7 @@ export function ContactPanel({
     <div className="flex h-full w-80 flex-col border-l border-border bg-background">
       {/* Header */}
       <div className="flex h-14 items-center justify-between border-b border-border px-4">
-        <h3 className="text-sm font-semibold">Contact Info</h3>
+        <h3 className="text-sm font-semibold">Datos del contacto</h3>
         <button
           onClick={onClose}
           className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -161,7 +180,7 @@ export function ContactPanel({
                   : "bg-muted text-muted-foreground"
               )}
             >
-              {details.contact.is_subscribed ? "Subscribed" : "Unsubscribed"}
+              {details.contact.is_subscribed ? "Suscripto" : "Dado de baja"}
             </span>
           </div>
 
@@ -258,7 +277,7 @@ export function ContactPanel({
                   ))}
                 </div>
               ) : (
-                <p className="mt-1 text-xs text-muted-foreground">No tags</p>
+                <p className="mt-1 text-xs text-muted-foreground">Sin tags</p>
               )}
             </div>
 
@@ -283,9 +302,19 @@ export function ContactPanel({
             )}
           </div>
         </div>
+      ) : failed ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+          <p className="text-sm text-muted-foreground">No pude cargar los datos del contacto.</p>
+          <button
+            onClick={() => setAttempt((n) => n + 1)}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-accent"
+          >
+            Reintentar
+          </button>
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          Contact not found
+          No encontré ese contacto
         </div>
       )}
     </div>
