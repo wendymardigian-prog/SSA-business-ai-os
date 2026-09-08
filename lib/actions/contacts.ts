@@ -6,6 +6,7 @@ import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
 import { mergeAttribution, parseTrackingParams } from "@/lib/contacts/attribution";
+import { findDuplicateContact } from "@/lib/contacts/dedup";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -66,32 +67,21 @@ export async function createContact(
     return { ok: false, error: "Poné al menos un nombre, un email o un telefono" };
   }
 
-  // Deduplicacion por dato fuerte, igual que find_or_link_contact.
-  const identifiers = [patch.phone, patch.whatsapp_phone].filter(Boolean) as string[];
-  const emails = [patch.email, patch.secondary_email].filter(Boolean) as string[];
+  // Deduplicacion por dato fuerte, la misma que usa la importacion de CSV.
+  const existing = await findDuplicateContact({
+    supabase,
+    workspaceId: workspace.id,
+    phones: [patch.phone, patch.whatsapp_phone],
+    emails: [patch.email, patch.secondary_email],
+  });
 
-  if (identifiers.length > 0 || emails.length > 0) {
-    const filters: string[] = [];
-    for (const phone of identifiers) filters.push(`phone.eq.${phone}`, `whatsapp_phone.eq.${phone}`);
-    for (const email of emails) filters.push(`email.eq.${email}`, `secondary_email.eq.${email}`);
-
-    const { data: existing } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("workspace_id", workspace.id)
-      .is("deleted_at", null)
-      .or(filters.join(","))
-      .limit(1)
-      .maybeSingle();
-
-    if (existing) {
-      return {
-        ok: false,
-        error: "Ya existe un contacto con ese telefono o email. Te llevo a su ficha.",
-        contactId: existing.id,
-        duplicate: true,
-      };
-    }
+  if (existing) {
+    return {
+      ok: false,
+      error: "Ya existe un contacto con ese telefono o email. Te llevo a su ficha.",
+      contactId: existing.id as string,
+      duplicate: true,
+    };
   }
 
   const attribution = mergeAttribution({}, parseTrackingParams(input));
