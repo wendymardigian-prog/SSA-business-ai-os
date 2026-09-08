@@ -12,6 +12,7 @@
 
 import type { SupabaseClient } from "../_shared/db.ts";
 import {
+  checkOptOut,
   claimEvent,
   insertMessage,
   messagePreview,
@@ -245,6 +246,19 @@ async function handleMessage(
     attachments: text ? null : (data?.message ?? null),
     createdAt: at,
   });
+
+  // Va despues de guardar: si el lead pide que no le escriban mas, ese mensaje
+  // tiene que quedar en el hilo igual, que es la prueba de por que quedo
+  // marcado. Y solo sobre lo que manda el lead: si la frase la escribimos
+  // nosotros ("si queres te doy de baja"), no es un opt-out.
+  if (!fromMe) {
+    await checkOptOut({
+      supabase,
+      contactId: contact.contactId,
+      conversationId: conversation.id,
+      text,
+    });
+  }
 
   return json({ ok: true, conversationId: conversation.id });
 }

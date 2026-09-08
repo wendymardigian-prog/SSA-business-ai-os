@@ -266,6 +266,27 @@ async function processMessageEvent(
 
   // Messages are stored by Zernio (source of truth) — no local insert needed.
 
+  // ── Marca "no contactar" (F18) ───────────────────────────────────────────
+  // La decision vive en apply_opt_out_check (migracion 00027), la misma que
+  // llama la Edge Function: el receptor esta duplicado en dos runtimes y la
+  // regla no puede depender de por que canal escribio el lead.
+  //
+  // Va ANTES del motor de flows a proposito: si el lead acaba de pedir que
+  // dejen de escribirle, no se le dispara una automatizacion que le conteste.
+
+  const optOut = await supabase.rpc("apply_opt_out_check", {
+    p_contact_id: contactId,
+    p_conversation_id: conversation.id,
+    p_text: msg.text ?? null,
+  });
+
+  if (optOut.error) {
+    console.error("[webhook] no pude evaluar el opt-out:", optOut.error.message);
+  } else if (optOut.data?.matched) {
+    console.log(`[webhook] contacto marcado como no contactar por "${optOut.data.phrase}"`);
+    return;
+  }
+
   // ── Flow engine ───────────────────────────────────────────────────────────
 
   if (!conversation.is_automation_paused) {

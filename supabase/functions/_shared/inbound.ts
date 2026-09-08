@@ -105,6 +105,50 @@ export async function upsertContact({
   return { contactId: data.contact_id as string, existed: Boolean(data.existed) };
 }
 
+/**
+ * Marca el contacto como "no contactar" si el mensaje trae una frase de opt-out
+ * del workspace (F18).
+ *
+ * Toda la decision vive en apply_opt_out_check (migracion 00027) por los
+ * mismos motivos que find_or_link_contact: es la unica forma de compartir la
+ * logica entre esta Edge Function (Deno) y la app (Node), y marcar el
+ * contacto, pausarle las secuencias y auditar tienen que pasar juntos.
+ *
+ * Nunca hace fallar el guardado del mensaje. Si el opt-out no se pudo evaluar,
+ * el mensaje igual tiene que entrar a la bandeja: que una persona lo lea es
+ * mejor que perderlo.
+ */
+export async function checkOptOut({
+  supabase,
+  contactId,
+  conversationId = null,
+  text,
+}: {
+  supabase: SupabaseClient;
+  contactId: string;
+  conversationId?: string | null;
+  text: string | null;
+}): Promise<{ matched: boolean; phrase: string | null }> {
+  if (!text) return { matched: false, phrase: null };
+
+  const { data, error } = await supabase.rpc("apply_opt_out_check", {
+    p_contact_id: contactId,
+    p_conversation_id: conversationId,
+    p_text: text,
+  });
+
+  if (error) {
+    console.error("[inbound] no pude evaluar el opt-out:", error.message);
+    return { matched: false, phrase: null };
+  }
+
+  if (data?.matched) {
+    console.log(`[inbound] contacto marcado como no contactar por "${data.phrase}"`);
+  }
+
+  return { matched: Boolean(data?.matched), phrase: (data?.phrase as string) ?? null };
+}
+
 export interface UpsertConversationInput {
   supabase: SupabaseClient;
   channel: ChannelRow;

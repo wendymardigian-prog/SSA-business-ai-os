@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "../_shared/db.ts";
 import {
+  checkOptOut,
   claimEvent,
   messagePreview,
   upsertContact,
@@ -158,6 +159,15 @@ async function handleMessage(
     incrementUnread: true,
   });
   if (!conversation) return json({ error: "no pude crear la conversacion" }, 500);
+
+  // Los mensajes salientes ya se descartaron arriba, asi que todo lo que llega
+  // hasta aca lo escribio el lead.
+  await checkOptOut({
+    supabase,
+    contactId: contact.contactId,
+    conversationId: conversation.id,
+    text: msg.text ?? null,
+  });
 
   return json({ ok: true, conversationId: conversation.id });
 }

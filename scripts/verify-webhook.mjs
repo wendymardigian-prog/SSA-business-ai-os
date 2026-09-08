@@ -92,6 +92,18 @@ try {
     },
   });
 
+  /**
+   * La conversacion del lead principal de WhatsApp. Antes alcanzaba con filtrar
+   * por canal, pero los casos de opt-out sumaron dos contactos mas al mismo
+   * canal y un .single() por canal ya no encuentra una sola fila.
+   */
+  const convDelLead = async (channelId, senderId, columns) => {
+    const link = await contactoDe(channelId, senderId);
+    const { data } = await svc.from("conversations").select(columns)
+      .eq("channel_id", channelId).eq("contact_id", link.contact_id).maybeSingle();
+    return data;
+  };
+
   const contactoDe = async (channelId, senderId) => {
     const { data } = await svc.from("contact_channels")
       .select("contact_id, platform_username, contacts(display_name)")
@@ -108,9 +120,8 @@ try {
     check(!!link, "se creo el contacto con el telefono normalizado como +digitos");
     check(link?.contacts?.display_name === "Juan Lead", "y con el nombre que manda WhatsApp");
 
-    const { data: conv } = await svc.from("conversations")
-      .select("id, unread_count, last_message_preview, platform")
-      .eq("channel_id", waChannel.id).maybeSingle();
+    const conv = await convDelLead(waChannel.id, "+5491122334455",
+      "id, unread_count, last_message_preview, platform");
     check(!!conv, "se creo la conversacion");
     check(conv?.unread_count === 1, `queda 1 mensaje sin leer (dio ${conv?.unread_count})`);
     check(conv?.last_message_preview === "hola, quiero info", "el preview es el texto del mensaje");
@@ -126,11 +137,49 @@ try {
   {
     const r = await evo(evoMessage());
     check(r.body?.skipped === "evento repetido", "lo ignora por idempotencia", JSON.stringify(r.body));
-    const { data: conv } = await svc.from("conversations").select("id, unread_count")
-      .eq("channel_id", waChannel.id).single();
+    const conv = await convDelLead(waChannel.id, "+5491122334455", "id, unread_count");
     const { data: msgs } = await svc.from("messages").select("id").eq("conversation_id", conv.id);
     check(msgs?.length === 1, "no se duplico el mensaje");
     check(conv.unread_count === 1, "ni se volvio a sumar el no leido");
+  }
+
+  console.log("\n— WhatsApp: el lead pide que no le escriban mas (F18) —");
+  {
+    const r = await evo(evoMessage({
+      key: { remoteJid: "5491199887766@s.whatsapp.net", fromMe: false, id: `OPTOUT-${stamp}` },
+      pushName: "Lead que se va",
+      message: { conversation: "gracias pero no me escribas mas por favor" },
+    }));
+    check(r.status === 200, "el mensaje se acepta igual", JSON.stringify(r.body));
+
+    const link = await contactoDe(waChannel.id, "+5491199887766");
+    const { data: c } = await svc.from("contacts")
+      .select("do_not_contact, do_not_contact_reason").eq("id", link.contact_id).single();
+    check(c.do_not_contact === true, "el contacto queda marcado como no contactar");
+    check(c.do_not_contact_reason === "auto: no me escribas mas",
+      "con la frase que lo disparo", c.do_not_contact_reason);
+
+    const { data: conv } = await svc.from("conversations")
+      .select("id").eq("channel_id", waChannel.id).eq("contact_id", link.contact_id).single();
+    const { data: msgs } = await svc.from("messages").select("text").eq("conversation_id", conv.id);
+    check(msgs?.length === 1,
+      "y el mensaje igual queda en el hilo: es la prueba de por que quedo marcado");
+  }
+
+  console.log("\n— WhatsApp: 'trabaja' no dispara la marca —");
+  {
+    const r = await evo(evoMessage({
+      key: { remoteJid: "5491155443322@s.whatsapp.net", fromMe: false, id: `NOOPT-${stamp}` },
+      pushName: "Lead interesado",
+      message: { conversation: "hola! mi hermana trabaja con ustedes, me pasan precios?" },
+    }));
+    check(r.status === 200, "se acepta", JSON.stringify(r.body));
+
+    const link = await contactoDe(waChannel.id, "+5491155443322");
+    const { data: c } = await svc.from("contacts")
+      .select("do_not_contact").eq("id", link.contact_id).single();
+    check(c.do_not_contact === false,
+      "el lead NO queda marcado: 'baja' adentro de 'trabaja' no es un opt-out");
   }
 
   console.log("\n— WhatsApp: mensaje de grupo —");
@@ -140,9 +189,11 @@ try {
     }));
     check(r.body?.skipped === "sin telefono utilizable",
       "un grupo se ignora: no hay un lead con telefono detras", JSON.stringify(r.body));
-    const { data } = await svc.from("contact_channels").select("id")
+    const { data } = await svc.from("contact_channels").select("platform_sender_id")
       .eq("channel_id", waChannel.id);
-    check(data?.length === 1, "no se creo un contacto para el grupo");
+    check(!data?.some((c) => c.platform_sender_id.includes("g.us")),
+      "no se creo un contacto para el grupo",
+      data?.map((c) => c.platform_sender_id).join(", "));
   }
 
   console.log("\n— WhatsApp: respuesta mandada desde el celular —");
@@ -152,8 +203,7 @@ try {
       message: { conversation: "ya te paso info" },
     }));
     check(r.status === 200, "se acepta", JSON.stringify(r.body));
-    const { data: conv } = await svc.from("conversations").select("id, unread_count")
-      .eq("channel_id", waChannel.id).single();
+    const conv = await convDelLead(waChannel.id, "+5491122334455", "id, unread_count");
     const { data: msgs } = await svc.from("messages").select("direction, text")
       .eq("conversation_id", conv.id).order("created_at");
     check(msgs?.length === 2, `el hilo tiene los dos mensajes (dio ${msgs?.length})`);

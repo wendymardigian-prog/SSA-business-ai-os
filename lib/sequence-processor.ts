@@ -23,11 +23,35 @@ export async function processSequenceSteps() {
     return { processed: 0, failed: 0 };
   }
 
+  // Quienes pidieron no ser contactados (F18). El opt-out ya pausa las
+  // inscripciones al llegar el mensaje, pero entre ese momento y este puede
+  // haber una inscripcion ya reclamada por esta misma tanda, o una marcada a
+  // mano desde la ficha. Es una sola consulta para las 50, no una por
+  // enrollment.
+  const contactIds = [...new Set(enrollments.map((e) => e.contact_id))];
+  const { data: contacts } = await supabase
+    .from("contacts")
+    .select("id, do_not_contact, deleted_at")
+    .in("id", contactIds);
+
+  const doNotContact = new Set(
+    (contacts ?? []).filter((c) => c.do_not_contact || c.deleted_at).map((c) => c.id),
+  );
+
   let processed = 0;
   let failed = 0;
+  let paused = 0;
 
   for (const enrollment of enrollments) {
     try {
+      if (doNotContact.has(enrollment.contact_id)) {
+        await supabase
+          .from("sequence_enrollments")
+          .update({ status: "paused" })
+          .eq("id", enrollment.id);
+        paused++;
+        continue;
+      }
       await processEnrollment(supabase, enrollment);
       processed++;
     } catch (err) {
@@ -39,7 +63,7 @@ export async function processSequenceSteps() {
     }
   }
 
-  return { processed, failed, total: enrollments.length };
+  return { processed, failed, paused, total: enrollments.length };
 }
 
 async function processEnrollment(

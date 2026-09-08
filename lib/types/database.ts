@@ -90,7 +90,15 @@ export type NodeType =
   | "enrollSequence";
 
 export type SequenceStatus = "draft" | "active" | "paused";
-export type SequenceEnrollmentStatus = "active" | "completed" | "cancelled";
+/**
+ * Estado de una inscripcion a una secuencia.
+ *
+ * "paused" lo suma el Bloque 4 (F18): la inscripcion queda frenada porque el
+ * contacto pidio no ser contactado. No se reanuda sola, ni siquiera cuando un
+ * Owner o Admin le saca la marca — volver a inscribirlo es una decision
+ * explicita de una persona.
+ */
+export type SequenceEnrollmentStatus = "active" | "paused" | "completed" | "cancelled";
 
 export interface SequenceStep {
   type: "message" | "delay";
@@ -113,6 +121,8 @@ export interface Database {
           ai_api_key: string | null;
           ai_provider: string;
           global_keywords: Json | null;
+          /** Frases que marcan "no contactar" al recibir un mensaje (migracion 00027). */
+          opt_out_phrases: string[];
           lead_scope_enabled: boolean;
           unassigned_leads_visible_to_members: boolean;
           created_at: string;
@@ -127,6 +137,7 @@ export interface Database {
           ai_api_key?: string | null;
           ai_provider?: string;
           global_keywords?: Json | null;
+          opt_out_phrases?: string[];
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           created_at?: string;
@@ -141,6 +152,7 @@ export interface Database {
           ai_api_key?: string | null;
           ai_provider?: string;
           global_keywords?: Json | null;
+          opt_out_phrases?: string[];
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           updated_at?: string;
@@ -1447,6 +1459,31 @@ export interface Database {
           linked_by: ContactLinkReason | null;
           suggested_contact_id: string | null;
         };
+      };
+      /**
+       * Marca de "no contactar" automatica (migracion 00027). Solo service_role:
+       * la llaman los dos receptores de webhooks. Idempotente.
+       */
+      apply_opt_out_check: {
+        Args: {
+          p_contact_id: string;
+          p_conversation_id?: string | null;
+          p_text?: string | null;
+        };
+        Returns: {
+          matched: boolean;
+          phrase?: string | null;
+          already: boolean;
+          sequences_paused: number;
+        };
+      };
+      /** true si el mensaje contiene la frase como palabras completas (migracion 00027). */
+      text_matches_phrase: {
+        Args: {
+          p_text: string | null;
+          p_phrase: string | null;
+        };
+        Returns: boolean;
       };
       /** Purga de los borrados logicos (migracion 00025). Solo service_role. */
       purge_soft_deleted: {
