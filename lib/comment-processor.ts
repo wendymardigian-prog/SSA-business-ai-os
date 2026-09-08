@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import { createZernioClient } from "@/lib/zernio-client";
+import { upsertContactForSender } from "@/lib/inbox-sync";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
@@ -123,50 +124,23 @@ export async function processComment({
     const senderName =
       comment.author.name || comment.author.username || "Unknown commenter";
 
-    let contactId: string;
-    const { data: existingContactChannel } = await supabase
-      .from("contact_channels")
-      .select("contact_id")
-      .eq("channel_id", channel.id)
-      .eq("platform_sender_id", senderId)
-      .maybeSingle();
+    // Misma resolucion de contacto que el webhook de mensajes: un lead que
+    // comenta y despues manda un DM tiene que ser un solo contacto.
+    const contact = await upsertContactForSender({
+      supabase,
+      channel,
+      senderId,
+      senderName,
+      senderPicture: null,
+      senderUsername: comment.author.username || null,
+      interactionAt: new Date().toISOString(),
+    });
 
-    if (existingContactChannel) {
-      contactId = existingContactChannel.contact_id;
-      await supabase
-        .from("contacts")
-        .update({ last_interaction_at: new Date().toISOString() })
-        .eq("id", contactId);
-    } else {
-      const { data: newContact } = await supabase
-        .from("contacts")
-        .insert({
-          workspace_id: channel.workspace_id,
-          display_name: senderName,
-          last_interaction_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-
-      if (!newContact) {
-        return { matched: true, triggerId: matchedTrigger.id, error: "Failed to create contact" };
-      }
-
-      contactId = newContact.id;
-
-      await supabase.from("contact_channels").insert({
-        contact_id: contactId,
-        channel_id: channel.id,
-        platform_sender_id: senderId,
-        platform_username: comment.author.username || null,
-      });
-
-      await supabase.from("analytics_events").insert({
-        workspace_id: channel.workspace_id,
-        contact_id: contactId,
-        event_type: "contact_created",
-      });
+    if (!contact) {
+      return { matched: true, triggerId: matchedTrigger.id, error: "Failed to create contact" };
     }
+
+    const contactId = contact.contactId;
 
     let replySent = false;
     if (config.replyText) {

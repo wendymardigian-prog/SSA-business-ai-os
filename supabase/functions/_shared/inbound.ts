@@ -57,14 +57,22 @@ export interface UpsertContactInput {
   senderName: string;
   senderUsername?: string | null;
   senderPicture?: string | null;
+  /** Telefono del lead cuando el canal lo trae (WhatsApp). Clave de deduplicacion cross-canal. */
+  senderPhone?: string | null;
+  /** Email del lead cuando el canal lo trae. */
+  senderEmail?: string | null;
   interactionAt: string;
 }
 
 /**
- * Encuentra o crea el contacto detras de un remitente, reusando el mapeo de
- * contact_channels. Misma semantica que upsertContactForSender en
- * lib/inbox-sync.ts, para que un contacto creado por el webhook y uno creado
- * por el backfill de la app sean el mismo.
+ * Encuentra o crea el contacto detras de un remitente.
+ *
+ * Toda la decision vive en la funcion find_or_link_contact de la base
+ * (migracion 00025): ademas del mapeo conocido en contact_channels, busca al
+ * mismo lead por telefono, por email y por username de la misma plataforma,
+ * y lo vincula en vez de duplicarlo. Esta de ese lado por dos motivos: es la
+ * unica forma de compartir la logica entre esta Edge Function (Deno) y la app
+ * (Node), y resuelve la carrera de dos canales escribiendo a la vez.
  */
 export async function upsertContact({
   supabase,
@@ -73,53 +81,28 @@ export async function upsertContact({
   senderName,
   senderUsername = null,
   senderPicture = null,
+  senderPhone = null,
+  senderEmail = null,
   interactionAt,
 }: UpsertContactInput): Promise<{ contactId: string; existed: boolean } | null> {
-  const { data: link } = await supabase
-    .from("contact_channels")
-    .select("contact_id")
-    .eq("channel_id", channel.id)
-    .eq("platform_sender_id", senderId)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("find_or_link_contact", {
+    p_channel_id: channel.id,
+    p_sender_id: senderId,
+    p_display_name: senderName,
+    p_username: senderUsername,
+    p_avatar_url: senderPicture,
+    p_phone: senderPhone,
+    p_email: senderEmail,
+    p_interaction_at: interactionAt,
+    p_stamp_existing: true,
+  });
 
-  if (link) {
-    await supabase
-      .from("contacts")
-      .update({ last_interaction_at: interactionAt })
-      .eq("id", link.contact_id);
-    return { contactId: link.contact_id, existed: true };
-  }
-
-  const { data: contact, error } = await supabase
-    .from("contacts")
-    .insert({
-      workspace_id: channel.workspace_id,
-      display_name: senderName,
-      avatar_url: senderPicture,
-      last_interaction_at: interactionAt,
-    })
-    .select("id")
-    .single();
-
-  if (error || !contact) {
-    console.error("[inbound] no pude crear el contacto:", error?.message);
+  if (error || !data?.contact_id) {
+    console.error("[inbound] no pude resolver el contacto:", error?.message);
     return null;
   }
 
-  await supabase.from("contact_channels").insert({
-    contact_id: contact.id,
-    channel_id: channel.id,
-    platform_sender_id: senderId,
-    platform_username: senderUsername,
-  });
-
-  await supabase.from("analytics_events").insert({
-    workspace_id: channel.workspace_id,
-    contact_id: contact.id,
-    event_type: "contact_created",
-  });
-
-  return { contactId: contact.id, existed: false };
+  return { contactId: data.contact_id as string, existed: Boolean(data.existed) };
 }
 
 export interface UpsertConversationInput {

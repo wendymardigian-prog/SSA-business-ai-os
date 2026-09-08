@@ -11,8 +11,14 @@ interface CapturedRow {
 
 /**
  * Fake Supabase client covering the query shapes used by the backfill:
- * conversations select (known late_conversation_ids), contact_channels lookup,
- * contact insert/update, and the conversations upsert.
+ * conversations select (known late_conversation_ids), the find_or_link_contact
+ * RPC that resolves the contact, the post-import contact stamp, and the
+ * conversations upsert.
+ *
+ * The contact lookup moved into Postgres (migration 00025), so the fake
+ * emulates the RPC's contract rather than the individual table reads: a sender
+ * listed in `contactChannelBySender` comes back as `existed: true` with that
+ * contact id; anyone else gets a freshly minted one.
  */
 function makeFakeSupabase(seed: {
   existingConversationIds?: string[];
@@ -26,7 +32,25 @@ function makeFakeSupabase(seed: {
   const updates: CapturedRow[] = [];
   let contactSeq = 0;
 
+  const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+
   const client = {
+    rpc(fn: string, args: Record<string, unknown>) {
+      rpcCalls.push({ fn, args });
+      if (fn !== "find_or_link_contact") {
+        return Promise.resolve({ data: null, error: null });
+      }
+      const known = seed.contactChannelBySender?.[args.p_sender_id as string];
+      return Promise.resolve({
+        data: {
+          contact_id: known ?? `contact-${++contactSeq}`,
+          existed: Boolean(known),
+          linked_by: known ? "channel" : null,
+          suggested_contact_id: null,
+        },
+        error: null,
+      });
+    },
     from(table: string) {
       const filters: Record<string, unknown> = {};
       const builder = {
@@ -100,7 +124,7 @@ function makeFakeSupabase(seed: {
     },
   };
 
-  return { client: client as unknown as SupabaseClient, inserts, upserts, updates };
+  return { client: client as unknown as SupabaseClient, inserts, upserts, updates, rpcCalls };
 }
 
 interface FakePage {
@@ -154,23 +178,20 @@ describe("backfillInboxConversations", () => {
       query: { accountId: "acc-1", limit: 50, sortOrder: "desc", cursor: undefined },
     });
 
-    const contactInserts = fake.inserts.filter((i) => i.table === "contacts");
-    expect(contactInserts).toHaveLength(2);
-    expect(contactInserts[0].row).toMatchObject({
-      workspace_id: "ws-1",
-      display_name: "Sender c1",
-      last_interaction_at: "2026-07-01T10:00:00.000Z",
+    // El alta del contacto, su contact_channels y el analytics_event los hace
+    // find_or_link_contact adentro de la base; desde aca se verifica que se la
+    // llame una vez por conversacion y con los datos del remitente.
+    expect(fake.rpcCalls).toHaveLength(2);
+    expect(fake.rpcCalls[0].fn).toBe("find_or_link_contact");
+    expect(fake.rpcCalls[0].args).toMatchObject({
+      p_channel_id: "ch-1",
+      p_sender_id: "sender-c1",
+      p_display_name: "Sender c1",
+      p_interaction_at: "2026-07-01T10:00:00.000Z",
+      // El backfill no sella last_interaction_at de un contacto que ya existia:
+      // lo hace despues, solo si la conversacion se importo de verdad.
+      p_stamp_existing: false,
     });
-
-    const channelInserts = fake.inserts.filter((i) => i.table === "contact_channels");
-    expect(channelInserts[0].row).toMatchObject({
-      channel_id: "ch-1",
-      platform_sender_id: "sender-c1",
-    });
-
-    const analyticsInserts = fake.inserts.filter((i) => i.table === "analytics_events");
-    expect(analyticsInserts).toHaveLength(2);
-    expect(analyticsInserts[0].row).toMatchObject({ event_type: "contact_created" });
 
     expect(fake.upserts).toHaveLength(2);
     expect(fake.upserts[0]).toMatchObject({
@@ -235,7 +256,7 @@ describe("backfillInboxConversations", () => {
     expect(res.imported).toBe(1);
     expect(fake.upserts).toHaveLength(1);
     expect(fake.upserts[0].row).toMatchObject({ late_conversation_id: "c1" });
-    expect(fake.inserts.filter((i) => i.table === "contacts")).toHaveLength(1);
+    expect(fake.rpcCalls).toHaveLength(1);
   });
 
   it("skips a webhook-owned row without counting it or bumping the contact's last_interaction_at", async () => {
@@ -291,8 +312,7 @@ describe("backfillInboxConversations", () => {
     });
 
     expect(res.imported).toBe(1);
-    expect(fake.inserts.filter((i) => i.table === "contacts")).toHaveLength(0);
-    expect(fake.inserts.filter((i) => i.table === "analytics_events")).toHaveLength(0);
+    expect(fake.rpcCalls[0].args).toMatchObject({ p_sender_id: "sender-c1" });
     expect(fake.updates.filter((u) => u.table === "contacts")).toHaveLength(1);
     expect(fake.updates[0].row).toMatchObject({
       last_interaction_at: "2026-07-01T10:00:00.000Z",

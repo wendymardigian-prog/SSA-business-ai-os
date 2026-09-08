@@ -34,13 +34,18 @@ interface ZernioInboxConversation {
 }
 
 /**
- * Finds or creates the contact behind a platform sender: reuses the mapping in
- * `contact_channels` (channel_id, platform_sender_id); otherwise inserts the
- * contact, its channel mapping, and a `contact_created` analytics event.
- * Returns null when the contact insert fails; `existed` tells whether the
- * sender was already known on this channel.
- * With `stampExisting: false` an existing contact's last_interaction_at is
- * left untouched; the caller stamps it once the interaction is confirmed.
+ * Encuentra o crea el contacto detras de un remitente.
+ *
+ * La decision vive en la funcion find_or_link_contact de la base (migracion
+ * 00025), que ademas del mapeo conocido en `contact_channels` busca al mismo
+ * lead por telefono, email o username de la misma plataforma y lo vincula en
+ * vez de duplicarlo. Es la misma funcion que llama la Edge Function del
+ * webhook, asi que un contacto creado por el webhook y uno creado por el
+ * backfill son siempre el mismo.
+ *
+ * Devuelve null si no se pudo resolver; `existed` dice si el remitente ya era
+ * conocido. Con `stampExisting: false` no se toca `last_interaction_at` de un
+ * contacto existente: el llamador lo sella cuando confirma la interaccion.
  */
 export async function upsertContactForSender({
   supabase,
@@ -49,6 +54,8 @@ export async function upsertContactForSender({
   senderName,
   senderPicture,
   senderUsername,
+  senderPhone,
+  senderEmail,
   interactionAt,
   stampExisting = true,
 }: {
@@ -58,53 +65,29 @@ export async function upsertContactForSender({
   senderName: string;
   senderPicture: string | null;
   senderUsername?: string | null;
+  senderPhone?: string | null;
+  senderEmail?: string | null;
   interactionAt: string;
   stampExisting?: boolean;
 }): Promise<{ contactId: string; existed: boolean } | null> {
-  const { data: existingContactChannel } = await supabase
-    .from("contact_channels")
-    .select("contact_id")
-    .eq("channel_id", channel.id)
-    .eq("platform_sender_id", senderId)
-    .single();
+  const { data, error } = await supabase.rpc("find_or_link_contact", {
+    p_channel_id: channel.id,
+    p_sender_id: senderId,
+    p_display_name: senderName,
+    p_username: senderUsername ?? null,
+    p_avatar_url: senderPicture,
+    p_phone: senderPhone ?? null,
+    p_email: senderEmail ?? null,
+    p_interaction_at: interactionAt,
+    p_stamp_existing: stampExisting,
+  });
 
-  if (existingContactChannel) {
-    if (stampExisting) {
-      await supabase
-        .from("contacts")
-        .update({ last_interaction_at: interactionAt })
-        .eq("id", existingContactChannel.contact_id);
-    }
-    return { contactId: existingContactChannel.contact_id, existed: true };
+  if (error || !data?.contact_id) {
+    console.error("[inbox-sync] no pude resolver el contacto:", error?.message);
+    return null;
   }
 
-  const { data: newContact } = await supabase
-    .from("contacts")
-    .insert({
-      workspace_id: channel.workspace_id,
-      display_name: senderName,
-      avatar_url: senderPicture,
-      last_interaction_at: interactionAt,
-    })
-    .select("id")
-    .single();
-
-  if (!newContact) return null;
-
-  await supabase.from("contact_channels").insert({
-    contact_id: newContact.id,
-    channel_id: channel.id,
-    platform_sender_id: senderId,
-    platform_username: senderUsername ?? null,
-  });
-
-  await supabase.from("analytics_events").insert({
-    workspace_id: channel.workspace_id,
-    contact_id: newContact.id,
-    event_type: "contact_created",
-  });
-
-  return { contactId: newContact.id, existed: false };
+  return { contactId: data.contact_id, existed: Boolean(data.existed) };
 }
 
 /**

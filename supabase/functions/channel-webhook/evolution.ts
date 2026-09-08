@@ -216,6 +216,9 @@ async function handleMessage(
     // fromMe: el nombre que trae es el nuestro, no el del lead.
     senderName: (!fromMe && data?.pushName) || phone,
     senderUsername: phone,
+    // El telefono es la clave fuerte de deduplicacion: si este lead ya escribio
+    // por otro canal y alguien le cargo el numero, se vincula al mismo contacto.
+    senderPhone: phone,
     interactionAt: at,
   });
   if (!contact) return json({ error: "no pude crear el contacto" }, 500);

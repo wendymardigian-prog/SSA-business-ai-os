@@ -24,6 +24,8 @@ export type ChannelConnectionStatus =
   | "unknown";
 /** Clase de integracion en integration_configs (migracion 00020). */
 export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+/** Por que se vinculo un remitente a un contacto ya existente (migracion 00025). */
+export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */
 export type AuditEntityType =
   | "contact"
@@ -1418,6 +1420,39 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Deduplicacion cross-canal (migracion 00025). Unica fuente de verdad. */
+      find_or_link_contact: {
+        Args: {
+          p_channel_id: string;
+          p_sender_id: string;
+          p_display_name?: string | null;
+          p_username?: string | null;
+          p_avatar_url?: string | null;
+          p_phone?: string | null;
+          p_email?: string | null;
+          p_interaction_at?: string;
+          p_stamp_existing?: boolean;
+        };
+        Returns: {
+          contact_id: string | null;
+          existed: boolean;
+          linked_by: ContactLinkReason | null;
+          suggested_contact_id: string | null;
+        };
+      };
+      /** Purga de los borrados logicos (migracion 00025). Solo service_role. */
+      purge_soft_deleted: {
+        Args: {
+          p_retention_days?: number;
+        };
+        Returns: {
+          cutoff: string;
+          contacts: number;
+          conversations: number;
+          contact_notes: number;
+          response_templates: number;
+        };
+      };
       increment_unread: {
         Args: {
           conv_id: string;
