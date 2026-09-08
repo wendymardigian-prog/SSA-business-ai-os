@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { TemplatePicker } from "@/components/inbox/template-picker";
+import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search";
+import { interpolateTemplate } from "@/lib/templates/interpolate";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import type { Database, ConversationStatus } from "@/lib/types/database";
@@ -116,15 +119,24 @@ function MessageBubble({ message }: { message: Message }) {
 export function MessageThread({
   conversation,
   messages: initialMessages,
+  templates = [],
+  workspaceName = "",
 }: {
   conversation: Conversation | null;
   messages: Message[];
+  /** Respuestas rapidas del workspace, para el selector "/" (F17). */
+  templates?: SearchableTemplate[];
+  workspaceName?: string;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
+  // El selector se cierra con Escape aunque el texto siga arrancando con "/",
+  // porque hay quien de verdad quiere escribir una barra.
+  const [pickerDismissed, setPickerDismissed] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -145,6 +157,26 @@ export function MessageThread({
       setStatusUpdating(null);
     }
   }, [conversation, statusUpdating, router]);
+
+  // El selector se abre cuando el texto arranca con "/", que es exactamente lo
+  // que queda al escribir la barra en un campo vacio. Pegar una URL no lo
+  // abre: "https://..." no empieza con barra.
+  const pickerOpen = !pickerDismissed && templates.length > 0 && input.startsWith("/");
+  const templateMatches = pickerOpen ? filterTemplates(templates, input.slice(1)) : [];
+
+  function insertTemplate(template: SearchableTemplate) {
+    setInput(
+      interpolateTemplate(template.content, {
+        contact: conversation?.contacts ?? null,
+        workspace: { name: workspaceName },
+      }),
+    );
+    setPickerDismissed(true);
+    textareaRef.current?.focus();
+    // El textarea creció de una linea a varias: hay que remedirlo despues de
+    // que React pinte el valor nuevo.
+    requestAnimationFrame(autoResize);
+  }
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -386,21 +418,59 @@ export function MessageThread({
       {/* Composer */}
       <div className="border-t border-border p-4">
         <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <div className="flex-1">
+          <div className="relative flex-1">
+            {pickerOpen && (
+              <TemplatePicker
+                matches={templateMatches}
+                activeIndex={activeTemplate}
+                onPick={insertTemplate}
+                onHover={setActiveTemplate}
+              />
+            )}
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => {
-                setInput(e.target.value);
+                const value = e.target.value;
+                setInput(value);
+                // Volver a escribir una barra desde cero reabre el selector que
+                // se habia cerrado con Escape.
+                if (!value.startsWith("/")) setPickerDismissed(false);
+                setActiveTemplate(0);
                 autoResize();
               }}
               onKeyDown={(e) => {
+                // Con el selector abierto, las flechas y el Enter son suyos:
+                // si no, Enter manda "/pre" como mensaje al lead.
+                if (pickerOpen) {
+                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    if (templateMatches.length === 0) return;
+                    const step = e.key === "ArrowDown" ? 1 : -1;
+                    setActiveTemplate(
+                      (prev) =>
+                        (prev + step + templateMatches.length) % templateMatches.length,
+                    );
+                    return;
+                  }
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    const chosen = templateMatches[activeTemplate];
+                    if (chosen) insertTemplate(chosen);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setPickerDismissed(true);
+                    return;
+                  }
+                }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }
               }}
-              placeholder="Type a message..."
+              placeholder="Escribí un mensaje, o / para una respuesta rápida"
               rows={1}
               className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               style={{ maxHeight: 150 }}

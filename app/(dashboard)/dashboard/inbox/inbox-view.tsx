@@ -9,6 +9,7 @@ import { ContactPanel } from "@/components/inbox/contact-panel";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
+import type { SearchableTemplate } from "@/lib/templates/search";
 
 type Conversation = Database["public"]["Tables"]["conversations"]["Row"] & {
   contacts: Database["public"]["Tables"]["contacts"]["Row"] | null;
@@ -18,9 +19,14 @@ type Message = Database["public"]["Tables"]["messages"]["Row"];
 export function InboxView({
   conversations,
   workspaceId,
+  templates,
+  workspaceName,
 }: {
   conversations: Conversation[];
   workspaceId: string;
+  /** Respuestas rapidas del workspace, para el selector "/" del composer (F17). */
+  templates: SearchableTemplate[];
+  workspaceName: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Conversation | null>(null);
@@ -153,6 +159,8 @@ export function InboxView({
             <MessageThread
               conversation={selected}
               messages={messages}
+              templates={templates}
+              workspaceName={workspaceName}
             />
           )}
         </div>
