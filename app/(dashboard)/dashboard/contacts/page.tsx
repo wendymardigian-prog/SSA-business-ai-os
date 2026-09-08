@@ -4,6 +4,7 @@ import { ContactsView, type ContactRow } from "./contacts-view";
 import type { LeadTemperature } from "@/lib/types/database";
 import { isSupportedPlatform, platformLabel } from "@/lib/platforms";
 import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
+import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params";
 
 /**
  * Lista de contactos.
@@ -24,16 +25,6 @@ import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
 
 const PAGE_SIZE = 25;
 
-/** Caracteres que rompen la sintaxis del filtro `or` de PostgREST. */
-function sanitizeSearch(raw: string): string {
-  return raw.replace(/[,()*%\\]/g, " ").trim().slice(0, 100);
-}
-
-function firstParam(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) return value[0] ?? "";
-  return value ?? "";
-}
-
 export default async function ContactsPage({
   searchParams,
 }: {
@@ -48,13 +39,10 @@ export default async function ContactsPage({
   const vendedorId = firstParam(params.vendedor);
   // Los dos vienen de la URL, asi que se validan contra su lista antes de
   // llegar a la consulta: un valor inventado se ignora en vez de romper.
-  const tempParam = firstParam(params.temp);
-  const temperature = (LEAD_TEMPERATURES as string[]).includes(tempParam)
-    ? (tempParam as LeadTemperature)
-    : "";
+  const temperature = pickEnum<LeadTemperature>(params.temp, LEAD_TEMPERATURES);
   const platformParam = firstParam(params.canal);
   const platform = isSupportedPlatform(platformParam) ? platformParam : "";
-  const page = Math.max(1, Number.parseInt(firstParam(params.page) || "1", 10) || 1);
+  const page = pickPage(params.page);
 
   // Los embeds con alias permiten filtrar por tag o por canal sin perder la
   // lista completa de tags de cada contacto: `tag_match` e `channel_match` son
