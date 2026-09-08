@@ -12,9 +12,7 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
 jwt_expiry = 3600
 
-# Receptor publico de webhooks de canales (Evolution API y Zernio).
-# verify_jwt = false porque quien llama es un proveedor externo, no un usuario
-# logueado. La autenticacion la hace la funcion: token compartido para Evolution
-# y firma HMAC para Zernio.
-[functions.channel-webhook]
-verify_jwt = false
+# Este proyecto no usa Edge Functions. Los webhooks entrantes los recibe la app
+# (app/api/webhooks/), que es donde corre el motor de flows: desde Deno no se
+# puede llamar. Hubo una Edge Function `channel-webhook` haciendo de receptor
+# publico mientras la app corria en local; se retiro al publicarla en Railway.

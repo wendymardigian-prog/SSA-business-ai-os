@@ -46,9 +46,9 @@ interface ZernioInboxConversation {
  * La decision vive en la funcion find_or_link_contact de la base (migracion
  * 00025), que ademas del mapeo conocido en `contact_channels` busca al mismo
  * lead por telefono, email o username de la misma plataforma y lo vincula en
- * vez de duplicarlo. Es la misma funcion que llama la Edge Function del
- * webhook, asi que un contacto creado por el webhook y uno creado por el
- * backfill son siempre el mismo.
+ * vez de duplicarlo. Es la misma funcion que llaman los receptores de webhooks,
+ * asi que un contacto creado por el webhook y uno creado por el backfill son
+ * siempre el mismo.
  *
  * Devuelve null si no se pudo resolver; `existed` dice si el remitente ya era
  * conocido. Con `stampExisting: false` no se toca `last_interaction_at` de un

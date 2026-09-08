@@ -148,10 +148,11 @@ zernflow/
 │   ├── (dashboard)/        # Flows, inbox, contacts, sequences, settings
 │   ├── invite/             # Team invite acceptance page
 │   └── api/
-│       ├── webhooks/late/   # Webhook receiver
-│       ├── cron/jobs/       # Job scheduler
-│       ├── cron/sequences/  # Sequence step processor
-│       └── v1/              # CRUD API routes
+│       ├── webhooks/late/      # Webhook receiver — Zernio / Instagram (HMAC)
+│       ├── webhooks/evolution/ # Webhook receiver — Evolution / WhatsApp (token)
+│       ├── cron/jobs/          # Job scheduler
+│       ├── cron/sequences/     # Sequence step processor
+│       └── v1/                 # CRUD API routes
 ├── components/
 │   ├── flow-builder/        # Canvas, nodes, panels
 │   ├── inbox/               # Conversation list, thread, contact panel

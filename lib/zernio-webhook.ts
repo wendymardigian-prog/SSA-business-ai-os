@@ -6,9 +6,9 @@
  * esto es idempotente y trabaja a nivel workspace (el secreto vive en
  * `workspaces.webhook_secret`).
  *
- * Que URL se registra lo decide quien llama (lib/webhook-url.ts). Hoy es la
- * Edge Function de Supabase, porque la app corre en local y no es alcanzable
- * desde internet.
+ * Que URL se registra lo decide quien llama (lib/webhook-url.ts): el receptor
+ * de la app, `${NEXT_PUBLIC_APP_URL}/api/webhooks/late`. Es el unico receptor
+ * del sistema, porque el motor de flows corre ahi.
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -25,11 +25,9 @@ export interface EnsureWebhookOptions {
   /**
    * URL publica a la que Zernio tiene que entregar los eventos.
    *
-   * Antes se armaba como `${NEXT_PUBLIC_APP_URL}/api/webhooks/late`, pero
-   * mientras la app corre en local esa URL no es alcanzable desde internet.
-   * Ahora la decide quien llama (ver lib/webhook-url.ts), que es lo que permite
-   * apuntar a la Edge Function hoy y volver a la API route cuando la app tenga
-   * dominio propio.
+   * La arma lib/webhook-url.ts desde NEXT_PUBLIC_APP_URL, que se niega a
+   * registrar una direccion local: un webhook apuntando a localhost no falla,
+   * simplemente no entra nada.
    */
   url: string;
   /** Workspace-level HMAC secret used to verify webhook signatures. */
