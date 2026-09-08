@@ -45,6 +45,8 @@ interface Filters {
   vendedorId: string;
   temperature: string;
   platform: string;
+  /** "" oculta los anonimos, "1" los suma, "solo" muestra unicamente esos. */
+  anon: string;
 }
 
 export function ContactsView({
@@ -56,6 +58,7 @@ export function ContactsView({
   platforms,
   members,
   filters,
+  anonymousCount,
 }: {
   contacts: ContactRow[];
   total: number;
@@ -65,6 +68,8 @@ export function ContactsView({
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
   filters: Filters;
+  /** Cuantos contactos hay sin datos, esten o no en la lista. */
+  anonymousCount: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -100,6 +105,14 @@ export function ContactsView({
             <p className="mt-1 text-sm text-muted-foreground">
               {total} {total === 1 ? "contacto" : "contactos"}
               {activeCount > 0 && " con los filtros aplicados"}
+              {/* Que la lista pase de 171 a 72 sin decir por que parece que se
+                  perdieron contactos. */}
+              {!filters.anon && anonymousCount > 0 && (
+                <span className="text-muted-foreground/70">
+                  {" · "}
+                  {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -173,6 +186,25 @@ export function ContactsView({
               onChange={(v) => setParam("canal", v)}
               options={platforms}
             />
+          )}
+
+          {/* Los contactos sin datos se ocultan por defecto, asi que este
+              selector no arranca vacio como los otros: su opcion neutra ya es
+              una decision. */}
+          {anonymousCount > 0 && (
+            <select
+              value={filters.anon}
+              onChange={(e) => setParam("anon", e.target.value)}
+              aria-label="Contactos sin datos"
+              className={cn(
+                "rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring",
+                filters.anon ? "border-primary" : "border-input",
+              )}
+            >
+              <option value="">Sin datos: ocultos</option>
+              <option value="1">Sin datos: incluidos</option>
+              <option value="solo">Sin datos: solo esos</option>
+            </select>
           )}
 
           {activeCount > 0 && (

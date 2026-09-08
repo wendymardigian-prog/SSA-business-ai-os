@@ -25,6 +25,9 @@ import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params
 
 const PAGE_SIZE = 25;
 
+/** "" oculta los anonimos (default), "1" los suma, "solo" muestra solo esos. */
+const ANON_FILTER_VALUES = ["", "1", "solo"] as const;
+
 export default async function ContactsPage({
   searchParams,
 }: {
@@ -42,6 +45,10 @@ export default async function ContactsPage({
   const temperature = pickEnum<LeadTemperature>(params.temp, LEAD_TEMPERATURES);
   const platformParam = firstParam(params.canal);
   const platform = isSupportedPlatform(platformParam) ? platformParam : "";
+  // Los contactos sin datos (los "Instagram User") se ocultan por defecto: son
+  // mas de la mitad de la tabla y no se puede trabajar con ellos hasta que la
+  // persona responda. "1" los muestra, "solo" deja unicamente esos.
+  const anon = pickEnum(params.anon, ANON_FILTER_VALUES);
   const page = pickPage(params.page);
 
   // Los embeds con alias permiten filtrar por tag o por canal sin perder la
@@ -79,10 +86,21 @@ export default async function ContactsPage({
   if (setterId) query = query.eq("setter_id", setterId);
   if (vendedorId) query = query.eq("vendedor_id", vendedorId);
   if (temperature) query = query.eq("lead_temperature", temperature);
+  if (anon === "solo") query = query.eq("is_anonymous", true);
+  else if (anon !== "1") query = query.eq("is_anonymous", false);
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [contactsRes, tagsRes, channelsRes, members] = await Promise.all([
+  // Cuantos quedaron afuera por ser anonimos. Sin este numero, la lista pasa de
+  // 171 a 72 sin explicacion y parece que se perdieron contactos.
+  const anonymousQuery = supabase
+    .from("contacts")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .eq("is_anonymous", true);
+
+  const [contactsRes, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
     query
       .order("last_interaction_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -94,6 +112,7 @@ export default async function ContactsPage({
       .eq("workspace_id", workspace.id)
       .eq("is_active", true),
     getWorkspaceMembers(workspace.id),
+    anonymousQuery,
   ]);
 
   if (contactsRes.error) {
@@ -134,7 +153,8 @@ export default async function ContactsPage({
       tags={tagsRes.data ?? []}
       platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
-      filters={{ search, tagId, setterId, vendedorId, temperature, platform }}
+      filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon }}
+      anonymousCount={anonymousRes.count ?? 0}
     />
   );
 }

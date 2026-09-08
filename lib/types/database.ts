@@ -289,6 +289,12 @@ export interface Database {
           ai_conversation_summary: string | null;
           lead_temperature: LeadTemperature | null;
           attribution: Json;
+          /**
+           * La calcula la base (migracion 00032): true cuando no hay con que
+           * reconocer a la persona. Solo lectura — PostgREST rechaza escribir
+           * en una columna generada, por eso no esta en Insert ni en Update.
+           */
+          is_anonymous: boolean;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
