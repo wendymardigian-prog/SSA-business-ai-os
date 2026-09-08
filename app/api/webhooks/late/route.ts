@@ -126,7 +126,7 @@ async function handleWebhook(request: NextRequest) {
 
   // Everything else besides message.received is acknowledged and ignored
   if (parsed.event !== "message.received") {
-    return NextResponse.json({ ok: true, skipped: true });
+    return NextResponse.json({ ok: true, skipped: parsed.event ?? "sin evento" });
   }
 
   const payload = parsed as WebhookPayload;
@@ -135,7 +135,7 @@ async function handleWebhook(request: NextRequest) {
 
   // Ignore outbound messages (sent by the bot itself) to prevent loops
   if (msg.direction === "outbound") {
-    return NextResponse.json({ ok: true, skipped: true });
+    return NextResponse.json({ ok: true, skipped: "mensaje saliente" });
   }
 
   const supabase = await createServiceClient();
@@ -165,7 +165,7 @@ async function handleWebhook(request: NextRequest) {
       .maybeSingle();
 
     if (senderChannel) {
-      return NextResponse.json({ ok: true, skipped: true, reason: "sender_is_own_account" });
+      return NextResponse.json({ ok: true, skipped: "el remitente es una cuenta propia" });
     }
   }
 
@@ -184,7 +184,7 @@ async function handleWebhook(request: NextRequest) {
   }
 
   if (!(await claimWebhookEvent(supabase, eventId))) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "duplicate_event" });
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
   }
 
   // Se responde 200 y se procesa despues: Zernio corta la entrega a los 5s y
@@ -312,7 +312,7 @@ async function handleCommentWebhook(
     payload.comment.author?.username &&
     payload.comment.author.username === channel.username
   ) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "own_comment" });
+    return NextResponse.json({ ok: true, skipped: "comentario propio" });
   }
 
   const secret = await resolveWebhookSecret(supabase, channel);
@@ -327,7 +327,7 @@ async function handleCommentWebhook(
   }
 
   if (!(await claimWebhookEvent(supabase, eventId))) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "duplicate_event" });
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
   }
 
   // Ack before processing (same 5s delivery budget as messages); processComment
