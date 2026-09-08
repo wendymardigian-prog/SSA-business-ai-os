@@ -17,6 +17,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { runCleanup } from "./test-cleanup.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -31,16 +32,11 @@ const ok = (m) => console.log("  ok  ", m);
 const fail = (m, extra) => { console.error("  FALLA", m, extra ? `\n        ${extra}` : ""); failures++; };
 const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
 
-const created = { users: [], workspaces: [] };
-
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}@example.test`;
   const password = randomUUID();
   const { data, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
   if (error) throw new Error(`no pude crear usuario ${tag}: ${error.message}`);
-  created.users.push(data.user.id);
-  const { data: own } = await svc.from("workspace_members").select("workspace_id").eq("user_id", data.user.id);
-  for (const m of own ?? []) created.workspaces.push(m.workspace_id);
   const client = createClient(URL, ANON, { auth: { persistSession: false } });
   const { error: e } = await client.auth.signInWithPassword({ email, password });
   if (e) throw new Error(`no pude loguear ${tag}: ${e.message}`);
@@ -51,7 +47,6 @@ const setFlags = (wsId, flags) => svc.from("workspaces").update(flags).eq("id", 
 try {
   const { data: ws } = await svc.from("workspaces")
     .insert({ name: "zz-test-roles", slug: `zz-test-roles-${Date.now()}` }).select("id").single();
-  created.workspaces.push(ws.id);
 
   const admin = await makeUser("admin");
   const member = await makeUser("member");
@@ -281,9 +276,7 @@ try {
   fail(`error inesperado: ${err.message}`);
 } finally {
   console.log("\n— Limpieza —");
-  for (const id of created.users) await svc.auth.admin.deleteUser(id);
-  for (const id of [...new Set(created.workspaces)]) await svc.from("workspaces").delete().eq("id", id);
-  console.log(`  ${created.users.length} usuarios y ${new Set(created.workspaces).size} workspaces de prueba borrados`);
+  if (!(await runCleanup(svc))) failures++;
 }
 console.log(failures ? `\n${failures} FALLAS` : "\nTodo verde");
 process.exitCode = failures ? 1 : 0;

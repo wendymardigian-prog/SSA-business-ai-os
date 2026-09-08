@@ -14,6 +14,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { runCleanup } from "./test-cleanup.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -30,7 +31,6 @@ const fail = (m, extra) => { console.error("  FALLA", m, extra ? `\n        ${ex
 const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
 
 const stamp = Date.now();
-let ws = null;
 
 /** Llama a la funcion tal como la llaman el webhook y el backfill. */
 async function resolve(channelId, args) {
@@ -46,7 +46,7 @@ async function resolve(channelId, args) {
 try {
   const { data: workspace } = await svc.from("workspaces")
     .insert({ name: "zz-test-crm", slug: `zz-test-crm-${stamp}` }).select("id").single();
-  ws = workspace.id;
+  const ws = workspace.id;
 
   const mkChannel = async (platform, suffix) => {
     const { data } = await svc.from("channels").insert({
@@ -187,8 +187,7 @@ try {
   fail(`error inesperado: ${err.message}`);
 } finally {
   console.log("\n— Limpieza —");
-  if (ws) await svc.from("workspaces").delete().eq("id", ws);
-  console.log("  workspace de prueba borrado");
+  if (!(await runCleanup(svc))) failures++;
 }
 
 console.log(failures ? `\n${failures} FALLAS` : "\nTodo verde");
