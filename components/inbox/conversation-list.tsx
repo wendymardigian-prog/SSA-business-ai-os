@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, MessageSquare } from "lucide-react";
+import { Search, MessageSquare, Ban } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -194,9 +194,19 @@ export function ConversationList({
 
               {/* Content */}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <p className="truncate text-sm font-medium">
-                    {conversation.contacts?.display_name ?? "Unknown"}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                    <span className="truncate">
+                      {conversation.contacts?.display_name ?? "Sin nombre"}
+                    </span>
+                    {/* F18: el aviso tiene que estar donde se elige a quien
+                        contestarle, no solo adentro de la ficha. */}
+                    {conversation.contacts?.do_not_contact && (
+                      <Ban
+                        className="h-3.5 w-3.5 flex-shrink-0 text-red-600 dark:text-red-400"
+                        aria-label="No contactar"
+                      />
+                    )}
                   </p>
                   <span
                     suppressHydrationWarning
@@ -207,7 +217,7 @@ export function ConversationList({
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {conversation.last_message_preview ?? "No messages yet"}
+                    {conversation.last_message_preview ?? "Sin mensajes todavía"}
                   </p>
                   {conversation.unread_count > 0 && (
                     <span className="ml-2 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">

@@ -9,6 +9,7 @@ import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search
 import { interpolateTemplate } from "@/lib/templates/interpolate";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -137,6 +138,7 @@ export function MessageThread({
   // porque hay quien de verdad quiere escribir una barra.
   const [pickerDismissed, setPickerDismissed] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState(0);
+  const [confirmingDoNotContact, setConfirmingDoNotContact] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -234,7 +236,23 @@ export function MessageThread({
     };
   }, [conversation?.id]);
 
-  async function handleSend() {
+  /**
+   * Enviar a un contacto marcado como "no contactar" (F18): se pide confirmar
+   * ANTES de mandar nada. No se bloquea — a veces hay que cerrar la
+   * conversacion, o el operador sabe algo que el sistema no — pero tampoco
+   * pasa de largo. El servidor devuelve 409 si no viene confirmado, asi que
+   * este dialogo es la comodidad, no la barrera.
+   */
+  function handleSendClick() {
+    if (!input.trim() || !conversation || sending) return;
+    if (conversation.contacts?.do_not_contact) {
+      setConfirmingDoNotContact(true);
+      return;
+    }
+    handleSend();
+  }
+
+  async function handleSend(confirmedDoNotContact = false) {
     if (!input.trim() || !conversation || sending) return;
 
     const text = input.trim();
@@ -265,7 +283,7 @@ export function MessageThread({
       const res = await fetch("/api/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: conversation.id, text }),
+        body: JSON.stringify({ conversationId: conversation.id, text, confirmedDoNotContact }),
       });
 
       if (!res.ok) {
@@ -333,8 +351,18 @@ export function MessageThread({
           </div>
           <div>
             <p className="text-sm font-medium">
-              {conversation.contacts?.display_name ?? "Unknown"}
+              {conversation.contacts?.display_name ?? "Sin nombre"}
             </p>
+            {/* F18: quien esta por escribir tiene que verlo antes de escribir,
+                no despues de apretar enviar. */}
+            {conversation.contacts?.do_not_contact && (
+              <p
+                className="mt-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400"
+                title={conversation.contacts.do_not_contact_reason ?? undefined}
+              >
+                No contactar
+              </p>
+            )}
           </div>
         </div>
 
@@ -467,7 +495,7 @@ export function MessageThread({
                 }
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSend();
+                  handleSendClick();
                 }
               }}
               placeholder="Escribí un mensaje, o / para una respuesta rápida"
@@ -477,9 +505,9 @@ export function MessageThread({
             />
           </div>
           <button
-            onClick={handleSend}
+            onClick={handleSendClick}
             disabled={!input.trim() || sending}
-            aria-label="Send message"
+            aria-label="Enviar mensaje"
             className={cn(
               "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
               input.trim() && !sending
@@ -491,6 +519,24 @@ export function MessageThread({
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDoNotContact}
+        title="Este contacto pidió no ser contactado"
+        message={
+          conversation.contacts?.do_not_contact_reason
+            ? `Motivo registrado: ${conversation.contacts.do_not_contact_reason}. ¿Mandás el mensaje igual?`
+            : "¿Mandás el mensaje igual?"
+        }
+        confirmLabel="Enviar igual"
+        cancelLabel="No enviar"
+        destructive
+        onConfirm={() => {
+          setConfirmingDoNotContact(false);
+          handleSend(true);
+        }}
+        onCancel={() => setConfirmingDoNotContact(false)}
+      />
     </div>
   );
 }

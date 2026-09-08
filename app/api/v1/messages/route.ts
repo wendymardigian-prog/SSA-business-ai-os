@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { conversationId, text } = body;
+  const { conversationId, text, confirmedDoNotContact } = body;
 
   if (!conversationId || !text) {
     return NextResponse.json(
@@ -143,12 +143,32 @@ export async function POST(request: NextRequest) {
   // Get conversation with channel info
   const { data: conversation } = await supabase
     .from("conversations")
-    .select("*, channels(*)")
+    .select("*, channels(*), contacts(do_not_contact, do_not_contact_reason)")
     .eq("id", conversationId)
     .single();
 
   if (!conversation) {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  }
+
+  // F18: a un contacto marcado se le puede escribir igual (a veces hay que
+  // cerrar la conversacion, o el operador sabe algo que el sistema no), pero
+  // no por accidente. El chequeo esta aca y no solo en la UI porque la
+  // advertencia tiene que valer para cualquiera que use la API.
+  const contact = conversation.contacts as {
+    do_not_contact: boolean;
+    do_not_contact_reason: string | null;
+  } | null;
+
+  if (contact?.do_not_contact && confirmedDoNotContact !== true) {
+    return NextResponse.json(
+      {
+        error: "Este contacto está marcado como \"no contactar\".",
+        requiresConfirmation: true,
+        reason: contact.do_not_contact_reason,
+      },
+      { status: 409 }
+    );
   }
 
   const outChannel = conversation.channels as {

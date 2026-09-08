@@ -17,11 +17,13 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
+import { OptOutSettings } from "@/components/settings/opt-out-settings";
 
 interface WorkspaceSettings {
   id: string;
   name: string;
   globalKeywords: string[];
+  optOutPhrases: string[];
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
 }
@@ -239,6 +241,13 @@ export function SettingsView({
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
           </section>
+
+          <hr className="border-border" />
+
+          {/* Frases de "no contactar" (F18). Se guardan aparte del resto: son
+              las unicas que cambian como reacciona el sistema a un mensaje
+              entrante, y por eso llevan su propio registro en el audit log. */}
+          <OptOutSettings phrases={workspace.optOutPhrases} />
 
           <hr className="border-border" />
 

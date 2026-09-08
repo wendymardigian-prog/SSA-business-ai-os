@@ -12,6 +12,7 @@ export default async function SettingsPage() {
         id: workspace.id,
         name: workspace.name,
         globalKeywords: (workspace.global_keywords as string[]) ?? [],
+        optOutPhrases: workspace.opt_out_phrases ?? [],
         leadScopeEnabled: Boolean(workspace.lead_scope_enabled),
         unassignedVisibleToMembers: Boolean(
           workspace.unassigned_leads_visible_to_members,
