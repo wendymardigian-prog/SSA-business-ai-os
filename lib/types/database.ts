@@ -1395,6 +1395,51 @@ export interface Database {
           },
         ];
       };
+      csv_imports: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          file_name: string;
+          total_rows: number;
+          imported: number;
+          updated: number;
+          errors: number;
+          error_details: Json;
+          imported_by: string | null;
+          created_at: string;
+          finished_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          file_name: string;
+          total_rows?: number;
+          imported?: number;
+          updated?: number;
+          errors?: number;
+          error_details?: Json;
+          imported_by?: string | null;
+          created_at?: string;
+          finished_at?: string | null;
+        };
+        Update: {
+          total_rows?: number;
+          imported?: number;
+          updated?: number;
+          errors?: number;
+          error_details?: Json;
+          finished_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "csv_imports_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       response_templates: {
         Row: {
           id: string;

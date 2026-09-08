@@ -119,7 +119,11 @@ export function mapRow(values: string[], mapping: ColumnMapping[], index: number
     // fallar igual venga de un formulario o de una planilla.
     const result = validateContactField(target, raw);
     if (!result.ok) {
-      return { ok: false, line, error: `${FIELD_LABEL.get(target) ?? target}: ${result.error}` };
+      // validateContactField ya nombra el campo en su mensaje cuando hace
+      // falta; anteponerlo de nuevo daba "Email: Email: ... no es valido".
+      const label = FIELD_LABEL.get(target) ?? target;
+      const error = result.error.startsWith(label) ? result.error : `${label}: ${result.error}`;
+      return { ok: false, line, error };
     }
     patch[target] = result.value;
   }

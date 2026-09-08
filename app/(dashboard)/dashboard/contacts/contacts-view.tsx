@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Search, Users, X, Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -102,13 +102,22 @@ export function ContactsView({
               {activeCount > 0 && " con los filtros aplicados"}
             </p>
           </div>
-          <button
-            onClick={() => setCreating(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo contacto
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/contacts/import"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+            >
+              <Upload className="h-4 w-4" />
+              Importar CSV
+            </Link>
+            <button
+              onClick={() => setCreating(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" />
+              Nuevo contacto
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
