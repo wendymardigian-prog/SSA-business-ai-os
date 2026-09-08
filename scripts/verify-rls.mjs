@@ -114,6 +114,78 @@ try {
   { const r = await seesContact(member); check(r.seen, "el Member ve el contacto donde esta asignado", r.error); }
   { const r = await seesConv(member); check(r.seen, "y ve su conversacion", r.error); }
 
+  // Bloque 4 (migracion 00028): ver la conversacion y ver al lead pasaron a ser
+  // lo mismo. Lo primero que hay que fijar es que la unificacion no ESCONDA
+  // nada: quien es el agente asignado tiene que seguir viendo su conversacion
+  // aunque no figure como setter ni como vendedor del contacto.
+  console.log("\n— El agente asignado ve su conversacion aunque no sea setter ni vendedor —");
+  {
+    await svc.from("contacts")
+      .update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
+    await svc.from("conversations").update({ assigned_to: member.id }).eq("id", conv.id);
+
+    for (const visibles of [false, true]) {
+      await setFlags(ws.id, { unassigned_leads_visible_to_members: visibles });
+      const etiqueta = visibles ? "con los sin asignar visibles" : "con los sin asignar ocultos";
+
+      const c = await seesConv(member);
+      check(c.seen, `${etiqueta}, el agente asignado ve su conversacion`, c.error);
+      const l = await seesContact(member);
+      check(l.seen, `${etiqueta}, y ve al contacto detras de esa conversacion`, l.error);
+    }
+    await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
+  }
+
+  // El caso que motivo la 00028: antes, esta segunda conversacion se veia sin
+  // que se viera el contacto, y en la bandeja aparecia sin nombre.
+  console.log("\n— Dos conversaciones del mismo lead, una asignada a otro —");
+  {
+    await svc.from("contacts")
+      .update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
+    await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
+
+    const { data: ch2 } = await svc.from("channels").insert({
+      workspace_id: ws.id, platform: "whatsapp", late_account_id: `zz-test-wa-${Date.now()}`,
+      display_name: "zz test wa", is_active: true,
+    }).select("id").single();
+    const { data: conv2 } = await svc.from("conversations").insert({
+      workspace_id: ws.id, channel_id: ch2.id, contact_id: contact.id, platform: "whatsapp",
+    }).select("id").single();
+
+    const veConv2 = async () => {
+      const r = await member.client.from("conversations").select("id").eq("id", conv2.id);
+      return { seen: (r.data ?? []).length > 0, error: r.error?.message };
+    };
+
+    await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
+    check(!(await veConv2()).seen,
+      "el Member no ve la conversacion sin asignar de un lead que no puede ver");
+    check(!(await seesContact(member)).seen, "ni al contacto, que es lo coherente");
+
+    // Y al reves: si el lead pasa a ser suyo, ve las dos conversaciones,
+    // incluida la que tiene otro agente. Ese es el cambio de la 00028.
+    await svc.from("contacts").update({ vendedor_id: member.id }).eq("id", contact.id);
+    { const r = await veConv2();
+      check(r.seen, "como vendedor del lead, ve su conversacion sin asignar", r.error); }
+    { const r = await seesConv(member);
+      check(r.seen, "y tambien la que tiene otro agente asignado", r.error); }
+
+    await svc.from("conversations").delete().eq("id", conv2.id);
+    await svc.from("channels").delete().eq("id", ch2.id);
+    await svc.from("contacts").update({ vendedor_id: null }).eq("id", contact.id);
+    await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
+  }
+
+  console.log("\n— Sin ninguna relacion con el lead no se ve nada —");
+  {
+    await svc.from("contacts")
+      .update({ setter_id: admin.id, vendedor_id: admin.id }).eq("id", contact.id);
+    await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
+    check(!(await seesConv(member)).seen, "el Member no ve la conversacion de un lead ajeno");
+    check(!(await seesContact(member)).seen, "ni al lead");
+    { const r = await seesConv(admin); check(r.seen, "el Admin sigue viendo todo", r.error); }
+  }
+
   console.log("\n— Scope PRENDIDO, lead asignado a otro —");
   await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
   check(!(await seesContact(member)).seen, "el Member NO ve el lead de otro");
