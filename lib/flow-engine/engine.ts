@@ -736,6 +736,7 @@ async function executeSetField(
     .select("id")
     .eq("workspace_id", context.workspaceId)
     .eq("slug", data.fieldSlug)
+    .is("deleted_at", null)
     .single();
 
   if (!fieldDef) return;

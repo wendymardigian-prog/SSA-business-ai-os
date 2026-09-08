@@ -470,6 +470,7 @@ export function SegmentBuilder({
           .from("custom_field_definitions")
           .select("*")
           .eq("workspace_id", workspaceId)
+          .is("deleted_at", null)
           .order("name"),
       ]);
       setTags(tagsRes.data ?? []);

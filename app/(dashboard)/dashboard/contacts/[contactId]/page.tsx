@@ -74,6 +74,9 @@ export default async function ContactDetailPage({
         .from("custom_field_definitions")
         .select("id, name, type")
         .eq("workspace_id", workspace.id)
+        // Un campo eliminado deja de pedirse en la ficha, pero su valor sigue
+        // guardado por si la eliminacion fue un error.
+        .is("deleted_at", null)
         .order("name"),
       supabase.from("contact_custom_fields").select("field_id, value").eq("contact_id", contactId),
       supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
@@ -300,6 +303,7 @@ export default async function ContactDetailPage({
                   type: f.type,
                   value: valuesByField.get(f.id) ?? "",
                 }))}
+                canManage={isAdmin}
               />
             </Section>
 

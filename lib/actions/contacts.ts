@@ -522,6 +522,7 @@ export async function setContactCustomField(
     .select("id, name")
     .eq("id", fieldId)
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (!field) return { ok: false, error: "Ese campo personalizado no existe en este workspace" };

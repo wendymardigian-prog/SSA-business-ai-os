@@ -46,6 +46,8 @@ export type AuditAction =
   | "link"
   | "import"
   | "do_not_contact";
+/** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
+export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
 export type LeadTemperature = "cold" | "warm" | "hot";
 /** Como termino un envio de email (migracion 00021). */
@@ -481,21 +483,24 @@ export interface Database {
           workspace_id: string;
           name: string;
           slug: string;
-          type: string;
+          type: CustomFieldType;
           created_at: string;
+          deleted_at: string | null;
         };
         Insert: {
           id?: string;
           workspace_id: string;
           name: string;
           slug: string;
-          type: string;
+          type: CustomFieldType;
           created_at?: string;
         };
         Update: {
+          // El slug no esta: se genera al crear y no cambia al renombrar,
+          // porque los flows buscan los campos por slug.
           name?: string;
-          slug?: string;
-          type?: string;
+          type?: CustomFieldType;
+          deleted_at?: string | null;
         };
         Relationships: [
           {

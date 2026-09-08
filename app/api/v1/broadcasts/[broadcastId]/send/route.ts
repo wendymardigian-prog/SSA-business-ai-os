@@ -356,7 +356,8 @@ async function evaluateRule(
         .select("id")
         .eq("workspace_id", workspaceId)
         .eq("slug", slug)
-        .single();
+        .is("deleted_at", null)
+        .maybeSingle();
 
       if (!fieldDef) return new Set();
 

@@ -13,6 +13,7 @@ import {
   Users,
   ChevronRight,
   MessageSquareQuote,
+  ListPlus,
 } from "lucide-react";
 import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
@@ -226,6 +227,27 @@ export function SettingsView({
             >
               <Users className="h-4 w-4" />
               Manage Team
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          </section>
+
+          <hr className="border-border" />
+
+          {/* Campos personalizados (F6) */}
+          <section>
+            <div className="flex items-center gap-2">
+              <ListPlus className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Campos personalizados</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Datos propios de tu negocio que se completan en cada contacto.
+            </p>
+            <Link
+              href="/dashboard/settings/custom-fields"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <ListPlus className="h-4 w-4" />
+              Gestionar campos
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
           </section>

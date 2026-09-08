@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { setContactCustomField } from "@/lib/actions/contacts";
@@ -24,9 +25,12 @@ export interface CustomFieldItem {
 export function CustomFieldsEditor({
   contactId,
   fields,
+  canManage = false,
 }: {
   contactId: string;
   fields: CustomFieldItem[];
+  /** Owner/Admin ven el atajo para definir campos cuando no hay ninguno. */
+  canManage?: boolean;
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>(
@@ -37,9 +41,18 @@ export function CustomFieldsEditor({
   const [pending, start] = useTransition();
 
   if (fields.length === 0) {
+    // Antes esto era un callejon sin salida: decia que no habia campos y no
+    // ofrecia ninguna forma de crear uno.
     return (
       <EmptyHint>
-        No hay campos personalizados definidos en este workspace.
+        No hay campos personalizados definidos.{" "}
+        {canManage ? (
+          <Link href="/dashboard/settings/custom-fields" className="underline hover:no-underline">
+            Definí el primero
+          </Link>
+        ) : (
+          "Un Owner o Admin los define desde Configuración."
+        )}
       </EmptyHint>
     );
   }
