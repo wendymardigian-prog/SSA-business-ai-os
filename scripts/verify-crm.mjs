@@ -164,10 +164,6 @@ try {
     const { data: nota } = await svc.from("contact_notes").insert({
       contact_id: viejo.id, workspace_id: ws, content: "nota que se va con el contacto",
     }).select("id").single();
-    const { data: vivo } = await svc.from("contacts").insert({
-      workspace_id: ws, display_name: "Recien borrado", deleted_at: new Date().toISOString(),
-    }).select("id").single();
-
     const { data: res, error } = await svc.rpc("purge_soft_deleted", { p_retention_days: 0 });
     check(!error, "la purga corre", error?.message);
     check((res?.contacts ?? 0) >= 1, `borro contactos (${res?.contacts})`);
@@ -177,7 +173,13 @@ try {
     { const { data } = await svc.from("contact_notes").select("id").eq("id", nota.id);
       check((data ?? []).length === 0, "y su nota se fue por cascade"); }
 
-    // Con retencion de 30 dias, lo borrado hoy tiene que sobrevivir.
+    // El recien borrado se crea DESPUES de la purga con retencion 0: si se
+    // creara antes, esa misma corrida se lo llevaria y el chequeo de la
+    // retencion no probaria nada.
+    const { data: vivo } = await svc.from("contacts").insert({
+      workspace_id: ws, display_name: "Recien borrado", deleted_at: new Date().toISOString(),
+    }).select("id").single();
+
     await svc.rpc("purge_soft_deleted", { p_retention_days: 30 });
     { const { data } = await svc.from("contacts").select("id").eq("id", vivo.id);
       check((data ?? []).length === 1, "lo borrado hoy sobrevive a la retencion de 30 dias"); } }

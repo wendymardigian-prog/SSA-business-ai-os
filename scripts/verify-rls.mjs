@@ -85,7 +85,16 @@ try {
     workspace_id: ws.id, email: "x@example.test", role: "owner", invited_by: admin.id })).error,
     "no se puede invitar a alguien como owner");
 
-  console.log("\n— Scope de leads APAGADO (default: nada cambia) —");
+  console.log("\n— El scope viene prendido de fabrica —");
+  { const { data } = await svc.from("workspaces")
+      .select("lead_scope_enabled, unassigned_leads_visible_to_members").eq("id", ws.id).single();
+    check(data.lead_scope_enabled === true,
+      "un workspace nuevo arranca con el scope de leads prendido");
+    check(data.unassigned_leads_visible_to_members === false,
+      "y con los leads sin asignar solo para Owner/Admin"); }
+
+  console.log("\n— Scope APAGADO a mano: vuelve a verse todo —");
+  await setFlags(ws.id, { lead_scope_enabled: false });
   for (const [who, c] of [["Admin", admin], ["Member", member]]) {
     const r = await seesContact(c);
     check(r.seen, `el ${who} ve el contacto`, r.error);
