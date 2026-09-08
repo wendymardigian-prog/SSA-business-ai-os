@@ -9,8 +9,7 @@
  * Complementa a los tests de vitest: eso prueba logica de la app, esto prueba
  * las policies de la base, que es donde vive la restriccion de verdad.
  *
- * Volver a correrlo despues de cada migracion que toque policies. En el Bloque 3,
- * cuando can_see_contact sume setter_id y vendedor_id, sumar los casos aca.
+ * Volver a correrlo despues de cada migracion que toque policies.
  *
  *   node scripts/verify-rls.mjs
  */
@@ -114,6 +113,98 @@ try {
   console.log("\n— Scope PRENDIDO, lead asignado a otro —");
   await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
   check(!(await seesContact(member)).seen, "el Member NO ve el lead de otro");
+
+  // Bloque 3: setter_id y vendedor_id son la otra mitad del scope. Con la
+  // conversacion asignada al Admin, lo unico que puede devolverle el lead al
+  // Member es figurar como setter o como vendedor.
+  console.log("\n— Scope PRENDIDO, el Member es setter —");
+  await svc.from("contacts").update({ setter_id: member.id }).eq("id", contact.id);
+  { const r = await seesContact(member); check(r.seen, "el Member ve el lead donde es setter", r.error); }
+  { const r = await seesConv(member);
+    check(r.seen, "y ve su conversacion aunque el agente asignado sea otro", r.error); }
+
+  console.log("\n— Scope PRENDIDO, el Member es vendedor —");
+  await svc.from("contacts").update({ setter_id: null, vendedor_id: member.id }).eq("id", contact.id);
+  { const r = await seesContact(member); check(r.seen, "el Member ve el lead donde es vendedor", r.error); }
+  { const r = await seesConv(member); check(r.seen, "y ve su conversacion", r.error); }
+
+  console.log("\n— Scope PRENDIDO, setter y vendedor de otro —");
+  await svc.from("contacts").update({ setter_id: admin.id, vendedor_id: admin.id }).eq("id", contact.id);
+  check(!(await seesContact(member)).seen, "el Member NO ve el lead con setter y vendedor de otro");
+  check(!(await seesConv(member)).seen, "ni su conversacion");
+
+  // Un lead con setter o vendedor NO es un lead "sin asignar", aunque ninguna
+  // conversacion tenga agente: si no, prender el flag de los sin asignar
+  // abriria leads que ya tienen dueño.
+  console.log("\n— Un lead con setter no cuenta como sin asignar —");
+  await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
+  await svc.from("conversations").update({ assigned_to: null }).eq("id", conv.id);
+  check(!(await seesContact(member)).seen,
+    "con los sin asignar visibles, el Member sigue sin ver un lead que tiene setter");
+  await setFlags(ws.id, { unassigned_leads_visible_to_members: false });
+
+  console.log("\n— Escritura: el scope tambien corta el UPDATE —");
+  await member.client.from("contacts").update({ display_name: "editado por quien no debe" })
+    .eq("id", contact.id);
+  { const { data } = await svc.from("contacts").select("display_name").eq("id", contact.id).single();
+    check(data.display_name === "Lead de prueba",
+      "el Member no puede editar un lead que no le corresponde"); }
+
+  console.log("\n— Notas del contacto —");
+  await svc.from("contacts").update({ setter_id: member.id, vendedor_id: null }).eq("id", contact.id);
+  { const { data: nota, error } = await member.client.from("contact_notes").insert({
+      contact_id: contact.id, workspace_id: ws.id, content: "nota del member", created_by: member.id,
+    }).select("id").single();
+    check(!error && !!nota, "el Member puede anotar en su lead", error?.message);
+
+    const { data: ajena } = await svc.from("contact_notes").insert({
+      contact_id: contact.id, workspace_id: ws.id, content: "nota del admin", created_by: admin.id,
+    }).select("id").single();
+
+    await member.client.from("contact_notes").update({ content: "pisada" }).eq("id", ajena.id);
+    { const { data } = await svc.from("contact_notes").select("content").eq("id", ajena.id).single();
+      check(data.content === "nota del admin", "un Member no puede editar la nota de otro"); }
+
+    { const { error: e } = await admin.client.from("contact_notes")
+        .update({ content: "corregida por admin" }).eq("id", nota.id);
+      const { data } = await svc.from("contact_notes").select("content").eq("id", nota.id).single();
+      check(data.content === "corregida por admin", "un Admin si puede editar la nota de otro", e?.message); }
+
+    await svc.from("contact_notes").update({ deleted_at: new Date().toISOString() }).eq("id", nota.id);
+    { const { data } = await member.client.from("contact_notes").select("id").eq("id", nota.id);
+      check((data ?? []).length === 0, "una nota borrada no aparece"); }
+
+    // Con el lead fuera del scope, sus notas tampoco se ven: la policy consulta
+    // contacts, asi que hereda el scope sola.
+    await svc.from("contacts").update({ setter_id: admin.id }).eq("id", contact.id);
+    { const { data } = await member.client.from("contact_notes").select("id").eq("contact_id", contact.id);
+      check((data ?? []).length === 0, "las notas de un lead ajeno tampoco se ven"); }
+    await svc.from("contacts").update({ setter_id: member.id }).eq("id", contact.id); }
+
+  console.log("\n— Audit log por rol —");
+  { await svc.from("audit_log").insert([
+      { workspace_id: ws.id, entity_type: "contact", entity_id: contact.id, action: "update", performed_by: member.id },
+      { workspace_id: ws.id, entity_type: "contact", entity_id: contact.id, action: "update", performed_by: admin.id },
+    ]);
+    const { data: verMember } = await member.client.from("audit_log").select("performed_by").eq("workspace_id", ws.id);
+    check((verMember ?? []).every((r) => r.performed_by === member.id),
+      "un Member solo ve sus propias acciones en el audit log");
+    const { data: verAdmin } = await admin.client.from("audit_log").select("id").eq("workspace_id", ws.id);
+    check((verAdmin ?? []).length >= 2, "un Admin ve las acciones de todos");
+    const { error: e } = await member.client.from("audit_log").insert({
+      workspace_id: ws.id, entity_type: "contact", entity_id: contact.id, action: "delete", performed_by: admin.id });
+    check(!!e, "nadie puede escribir una entrada de audit log a nombre de otro"); }
+
+  console.log("\n— Borrado logico —");
+  { await svc.from("contacts").update({ deleted_at: new Date().toISOString() }).eq("id", contact.id);
+    check(!(await seesContact(admin)).seen, "un contacto borrado no lo ve ni el Admin");
+    await svc.from("conversations").update({ deleted_at: new Date().toISOString() }).eq("id", conv.id);
+    check(!(await seesConv(admin)).seen, "una conversacion borrada tampoco");
+    await svc.from("contacts").update({ deleted_at: null }).eq("id", contact.id);
+    await svc.from("conversations").update({ deleted_at: null }).eq("id", conv.id);
+    { const r = await seesContact(admin); check(r.seen, "y al restaurarlo vuelve a aparecer", r.error); } }
+
+  await svc.from("contacts").update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
   await setFlags(ws.id, { lead_scope_enabled: false });
 
   console.log("\n— Configuracion fuera del alcance del Member —");

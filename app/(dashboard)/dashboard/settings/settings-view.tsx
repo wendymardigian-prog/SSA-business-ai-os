@@ -15,11 +15,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 
 interface WorkspaceSettings {
   id: string;
   name: string;
   globalKeywords: string[];
+  leadScopeEnabled: boolean;
+  unassignedVisibleToMembers: boolean;
 }
 
 export function SettingsView({
@@ -116,6 +119,13 @@ export function SettingsView({
               />
             </div>
           </section>
+
+          <hr className="border-border" />
+
+          <LeadScopeSettings
+            leadScopeEnabled={workspace.leadScopeEnabled}
+            unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
+          />
 
           <hr className="border-border" />
 

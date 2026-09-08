@@ -1,7 +1,10 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminContext } from "@/lib/auth/guards";
+import { logAudit } from "@/lib/audit";
 import { WORKSPACE_COOKIE } from "@/lib/workspace";
 
 export async function switchWorkspace(workspaceId: string) {
@@ -78,4 +81,57 @@ export async function createWorkspace(name: string) {
   });
 
   return { ok: true, workspaceId: workspace.id };
+}
+
+/**
+ * Prende y apaga el scope de leads (F3 / seccion 3 del requerimiento).
+ *
+ * Con el scope prendido, un Member solo ve los contactos y las conversaciones
+ * donde es setter, vendedor o agente asignado. Lo aplica la RLS
+ * (can_see_contact, migracion 00024), no la UI: apagarlo desde aca cambia lo
+ * que devuelve la base, no lo que dibuja la pantalla.
+ *
+ * Es de Owner/Admin. La policy workspaces_update ya lo exige — sin eso un
+ * Member podria apagarse el scope a si mismo y ver todo.
+ */
+export async function updateLeadScope(settings: {
+  leadScopeEnabled?: boolean;
+  unassignedVisibleToMembers?: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar el scope de leads" };
+
+  const { workspace, supabase, user } = ctx;
+
+  const patch: Record<string, boolean> = {};
+  if (settings.leadScopeEnabled !== undefined) {
+    patch.lead_scope_enabled = settings.leadScopeEnabled;
+  }
+  if (settings.unassignedVisibleToMembers !== undefined) {
+    patch.unassigned_leads_visible_to_members = settings.unassignedVisibleToMembers;
+  }
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { error } = await supabase.from("workspaces").update(patch).eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar el scope de leads:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: Object.fromEntries(
+      Object.entries(patch).map(([key, value]) => [key, { old: !value, new: value }]),
+    ),
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/contacts");
+  return { ok: true };
 }
