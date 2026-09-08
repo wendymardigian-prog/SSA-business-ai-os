@@ -1,313 +1,463 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  Search,
-  Users,
-  Mail,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Filter,
-  ChevronDown,
-} from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Search, Users, X, Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import {
-  SegmentBuilder,
-  createEmptyFilter,
-  type SegmentFilter,
-} from "@/components/segment-builder";
-import type { Database } from "@/lib/types/database";
+  DoNotContactBadge,
+  TagChip,
+  TemperatureBadge,
+  formatRelative,
+  ActionError,
+} from "@/components/contacts/ui";
+import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
+import { createContact } from "@/lib/actions/contacts";
+import type { LeadTemperature } from "@/lib/types/database";
 
-type Tag = Database["public"]["Tables"]["tags"]["Row"];
-type ContactWithTags = Database["public"]["Tables"]["contacts"]["Row"] & {
-  contact_tags: {
-    tag_id: string;
-    tags: Tag | null;
-  }[];
-};
+/**
+ * Lista de contactos.
+ *
+ * Los filtros no filtran nada en el cliente: escriben la URL y el Server
+ * Component vuelve a consultar. Asi la paginacion es real y una vista filtrada
+ * se puede compartir por link.
+ */
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "Never";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+export interface ContactRow {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  phone: string | null;
+  lastInteractionAt: string | null;
+  temperature: LeadTemperature | null;
+  doNotContact: boolean;
+  setterId: string | null;
+  vendedorId: string | null;
+  tags: { id: string; name: string; color: string | null }[];
+}
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+interface Filters {
+  search: string;
+  tagId: string;
+  setterId: string;
+  vendedorId: string;
+  temperature: string;
+  platform: string;
 }
 
 export function ContactsView({
   contacts,
+  total,
+  page,
+  pageSize,
   tags,
-  workspaceId,
+  platforms,
+  members,
+  filters,
 }: {
-  contacts: ContactWithTags[];
-  tags: Tag[];
-  workspaceId: string;
+  contacts: ContactRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  tags: { id: string; name: string; color: string | null }[];
+  platforms: { value: string; label: string }[];
+  members: { userId: string; label: string }[];
+  filters: Filters;
 }) {
-  const [search, setSearch] = useState("");
-  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
-  const [showSegmentBuilder, setShowSegmentBuilder] = useState(false);
-  const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>(
-    createEmptyFilter()
-  );
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [pending, start] = useTransition();
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+  const [creating, setCreating] = useState(false);
 
-  const filtered = contacts.filter((contact) => {
-    // Search filter
-    if (search) {
-      const q = search.toLowerCase();
-      const name = contact.display_name?.toLowerCase() ?? "";
-      const email = contact.email?.toLowerCase() ?? "";
-      if (!name.includes(q) && !email.includes(q)) return false;
-    }
-    // Tag filter
-    if (selectedTagId) {
-      const hasTag = contact.contact_tags.some(
-        (ct) => ct.tag_id === selectedTagId
-      );
-      if (!hasTag) return false;
-    }
-    return true;
-  });
+  const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
+  const activeCount = Object.entries(filters).filter(([, v]) => v).length;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+
+  /** Escribe un parametro en la URL. Cualquier cambio de filtro vuelve a la pagina 1. */
+  function setParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value) next.set(key, value);
+    else next.delete(key);
+    if (key !== "page") next.delete("page");
+    start(() => router.replace(`${pathname}?${next.toString()}`));
+  }
+
+  function clearAll() {
+    setSearchDraft("");
+    start(() => router.replace(pathname));
+  }
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Contacts</h1>
+            <h1 className="text-2xl font-bold">Contactos</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {contacts.length} contact{contacts.length !== 1 ? "s" : ""} in your workspace
+              {total} {total === 1 ? "contacto" : "contactos"}
+              {activeCount > 0 && " con los filtros aplicados"}
             </p>
           </div>
-        </div>
-
-        {/* Search and filters */}
-        <div className="mt-4 flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by name or email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
           <button
-            onClick={() => setShowSegmentBuilder(!showSegmentBuilder)}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-              showSegmentBuilder
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
-            )}
+            onClick={() => setCreating(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
-            <Filter className="h-4 w-4" />
-            Segment
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 transition-transform",
-                showSegmentBuilder && "rotate-180"
-              )}
-            />
+            <Plus className="h-4 w-4" />
+            Nuevo contacto
           </button>
         </div>
 
-        {/* Segment builder */}
-        {showSegmentBuilder && (
-          <div className="mt-4">
-            <SegmentBuilder
-              value={segmentFilter}
-              onChange={setSegmentFilter}
-              workspaceId={workspaceId}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setParam("q", searchDraft);
+            }}
+            className="relative min-w-[240px] flex-1 sm:max-w-sm"
+          >
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              placeholder="Nombre, email, teléfono o usuario…"
+              aria-label="Buscar contactos"
+              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
-          </div>
-        )}
+          </form>
 
-        {/* Tag pills */}
-        {tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <FilterSelect
+            label="Tag"
+            value={filters.tagId}
+            onChange={(v) => setParam("tag", v)}
+            options={tags.map((t) => ({ value: t.id, label: t.name }))}
+          />
+          <FilterSelect
+            label="Setter"
+            value={filters.setterId}
+            onChange={(v) => setParam("setter", v)}
+            options={members.map((m) => ({ value: m.userId, label: m.label }))}
+          />
+          <FilterSelect
+            label="Vendedor"
+            value={filters.vendedorId}
+            onChange={(v) => setParam("vendedor", v)}
+            options={members.map((m) => ({ value: m.userId, label: m.label }))}
+          />
+          <FilterSelect
+            label="Temperatura"
+            value={filters.temperature}
+            onChange={(v) => setParam("temp", v)}
+            options={LEAD_TEMPERATURES.map((t) => ({
+              value: t,
+              label: LEAD_TEMPERATURE_LABELS[t],
+            }))}
+          />
+          {platforms.length > 0 && (
+            <FilterSelect
+              label="Canal"
+              value={filters.platform}
+              onChange={(v) => setParam("canal", v)}
+              options={platforms}
+            />
+          )}
+
+          {activeCount > 0 && (
             <button
-              onClick={() => setSelectedTagId(null)}
-              className={cn(
-                "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                selectedTagId === null
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
-              )}
+              onClick={clearAll}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              All
+              <X className="h-3.5 w-3.5" />
+              Limpiar {activeCount} {activeCount === 1 ? "filtro" : "filtros"}
             </button>
-            {tags.map((tag) => (
-              <button
-                key={tag.id}
-                onClick={() =>
-                  setSelectedTagId(tag.id === selectedTagId ? null : tag.id)
-                }
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
-                  selectedTagId === tag.id
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-accent"
-                )}
-                style={
-                  tag.color && selectedTagId !== tag.id
-                    ? {
-                        backgroundColor: `${tag.color}20`,
-                        color: tag.color,
-                      }
-                    : undefined
-                }
-              >
-                {tag.name}
-              </button>
-            ))}
-          </div>
-        )}
+          )}
+
+          {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
       </div>
 
-      {/* Table */}
       <div className="flex-1 overflow-auto">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Users className="h-10 w-10 text-muted-foreground/40" />
-            <p className="mt-3 text-sm font-medium text-muted-foreground">
-              No contacts found
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
-              Contacts are created automatically when someone messages your channels
-            </p>
-          </div>
+        {contacts.length === 0 ? (
+          <EmptyState filtered={activeCount > 0} onClear={clearAll} onCreate={() => setCreating(true)} />
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/50 text-left">
-                <th className="px-8 py-3 text-xs font-medium uppercase text-muted-foreground">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                  Email
-                </th>
-                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                  Last Interaction
-                </th>
-                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                  Tags
-                </th>
-                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">
-                  Subscribed
-                </th>
+                <th className="px-8 py-3 text-xs font-medium uppercase text-muted-foreground">Nombre</th>
+                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Contacto</th>
+                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Setter</th>
+                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Vendedor</th>
+                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Tags</th>
+                <th className="px-4 py-3 text-xs font-medium uppercase text-muted-foreground">Última</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((contact) => {
-                const contactTags = contact.contact_tags
-                  .map((ct) => ct.tags)
-                  .filter(Boolean) as Tag[];
-
-                return (
-                  <tr
-                    key={contact.id}
-                    className="border-b border-border transition-colors hover:bg-accent/50"
-                  >
-                    <td className="px-8 py-3">
-                      <Link
-                        href={`/dashboard/contacts/${contact.id}`}
-                        className="flex items-center gap-3"
-                      >
-                        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {contact.avatar_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={contact.avatar_url}
-                              alt={contact.display_name || "Contact"}
-                              className="h-8 w-8 rounded-full object-cover"
-                            />
-                          ) : (
-                            contact.display_name?.[0]?.toUpperCase() ?? "?"
-                          )}
-                        </div>
-                        <span className="text-sm font-medium hover:underline">
-                          {contact.display_name ?? "Unknown"}
+              {contacts.map((contact) => (
+                <tr key={contact.id} className="border-b border-border transition-colors hover:bg-accent/40">
+                  <td className="px-8 py-3">
+                    <Link href={`/dashboard/contacts/${contact.id}`} className="block">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {contact.displayName ?? "Sin nombre"}
                         </span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      {contact.email ? (
-                        <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <Mail className="h-3 w-3" />
-                          {contact.email}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50">
-                          No email
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(contact.last_interaction_at)}
+                        <TemperatureBadge value={contact.temperature} />
+                        {contact.doNotContact && <DoNotContactBadge />}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {contactTags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {contactTags.slice(0, 3).map((tag) => (
-                            <span
-                              key={tag.id}
-                              className="inline-flex rounded-full border border-border px-2 py-0.5 text-[10px] font-medium"
-                              style={
-                                tag.color
-                                  ? {
-                                      backgroundColor: `${tag.color}20`,
-                                      borderColor: `${tag.color}40`,
-                                      color: tag.color,
-                                    }
-                                  : undefined
-                              }
-                            >
-                              {tag.name}
-                            </span>
-                          ))}
-                          {contactTags.length > 3 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              +{contactTags.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/50">
-                          No tags
-                        </span>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link href={`/dashboard/contacts/${contact.id}`} className="block text-sm">
+                      <span className="block text-muted-foreground">{contact.email ?? "—"}</span>
+                      {contact.phone && (
+                        <span className="block text-xs text-muted-foreground/70">{contact.phone}</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {contact.is_subscribed ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                          <CheckCircle className="h-3.5 w-3.5" />
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                          <XCircle className="h-3.5 w-3.5" />
-                          No
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {contact.setterId ? (memberLabel.get(contact.setterId) ?? "—") : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {contact.vendedorId ? (memberLabel.get(contact.vendedorId) ?? "—") : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="flex flex-wrap gap-1">
+                      {contact.tags.map((tag) => (
+                        <TagChip key={tag.id} name={tag.name} color={tag.color} />
+                      ))}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {formatRelative(contact.lastInteractionAt)}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
+      </div>
+
+      {lastPage > 1 && (
+        <div className="flex items-center justify-between border-t border-border px-8 py-3">
+          <p className="text-xs text-muted-foreground">
+            Página {page} de {lastPage}
+          </p>
+          <div className="flex gap-2">
+            <PageButton
+              disabled={page <= 1}
+              onClick={() => setParam("page", String(page - 1))}
+              label="Anterior"
+              icon={<ChevronLeft className="h-3.5 w-3.5" />}
+            />
+            <PageButton
+              disabled={page >= lastPage}
+              onClick={() => setParam("page", String(page + 1))}
+              label="Siguiente"
+              icon={<ChevronRight className="h-3.5 w-3.5" />}
+              iconRight
+            />
+          </div>
+        </div>
+      )}
+
+      {creating && <NewContactDialog onClose={() => setCreating(false)} />}
+    </div>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  if (options.length === 0) return null;
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(
+        "rounded-lg border bg-background px-3 py-2 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-ring",
+        value ? "border-primary text-foreground" : "border-input text-muted-foreground",
+      )}
+    >
+      <option value="">{label}: todos</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function PageButton({
+  disabled,
+  onClick,
+  label,
+  icon,
+  iconRight,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  iconRight?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded-lg border border-input px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {!iconRight && icon}
+      {label}
+      {iconRight && icon}
+    </button>
+  );
+}
+
+/**
+ * Dos estados vacios distintos: "todavia no hay nada" pide conectar un canal,
+ * "el filtro no encontro nada" pide limpiar el filtro. Mostrar el primero
+ * cuando en realidad hay contactos hace pensar que se perdieron los datos.
+ */
+function EmptyState({
+  filtered,
+  onClear,
+  onCreate,
+}: {
+  filtered: boolean;
+  onClear: () => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <Users className="h-10 w-10 text-muted-foreground/40" />
+      {filtered ? (
+        <>
+          <p className="mt-3 text-sm font-medium text-muted-foreground">
+            Ningún contacto coincide con estos filtros
+          </p>
+          <button
+            onClick={onClear}
+            className="mt-3 rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            Limpiar filtros
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 text-sm font-medium text-muted-foreground">
+            Todavía no hay contactos
+          </p>
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground/70">
+            Se crean solos cuando alguien escribe por un canal conectado. También
+            los podés cargar a mano.
+          </p>
+          <button
+            onClick={onCreate}
+            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            Nuevo contacto
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Alta manual. Los mismos campos minimos que pide la deduplicacion: nombre, email o telefono. */
+function NewContactDialog({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [values, setValues] = useState({ display_name: "", email: "", phone: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [duplicateId, setDuplicateId] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function submit() {
+    start(async () => {
+      const result = await createContact(values);
+      if (!result.ok) {
+        setError(result.error);
+        setDuplicateId(result.duplicate ? (result.contactId ?? null) : null);
+        return;
+      }
+      router.push(`/dashboard/contacts/${result.contactId}`);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg">
+        <h2 className="text-base font-semibold">Nuevo contacto</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Con el teléfono o el email alcanza para que no se duplique más adelante.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          {(
+            [
+              ["display_name", "Nombre", "text"],
+              ["email", "Email", "email"],
+              ["phone", "Teléfono", "tel"],
+            ] as const
+          ).map(([key, label, type]) => (
+            <div key={key}>
+              <label htmlFor={`new-${key}`} className="mb-1 block text-xs font-medium text-muted-foreground">
+                {label}
+              </label>
+              <input
+                id={`new-${key}`}
+                type={type}
+                value={values[key]}
+                onChange={(e) => {
+                  setValues((prev) => ({ ...prev, [key]: e.target.value }));
+                  setError(null);
+                }}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          ))}
+        </div>
+
+        <ActionError message={error} />
+
+        {duplicateId && (
+          <Link
+            href={`/dashboard/contacts/${duplicateId}`}
+            className="mt-2 inline-block text-sm font-medium underline underline-offset-2"
+          >
+            Ir a la ficha del contacto que ya existe
+          </Link>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-input px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={pending}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Crear
+          </button>
+        </div>
       </div>
     </div>
   );
