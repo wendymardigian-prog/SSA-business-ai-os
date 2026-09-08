@@ -34,6 +34,7 @@ export type AuditEntityType =
   | "channel"
   | "workspace"
   | "workspace_member"
+  | "response_template"
   | "csv_import";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =

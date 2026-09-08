@@ -12,6 +12,7 @@ import {
   Plug,
   Users,
   ChevronRight,
+  MessageSquareQuote,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -235,6 +236,27 @@ export function SettingsView({
             >
               <Users className="h-4 w-4" />
               Manage Team
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          </section>
+
+          <hr className="border-border" />
+
+          {/* Respuestas rapidas (F17) */}
+          <section>
+            <div className="flex items-center gap-2">
+              <MessageSquareQuote className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Respuestas rápidas</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Textos que el equipo reutiliza en la bandeja, con variables del contacto.
+            </p>
+            <Link
+              href="/dashboard/settings/templates"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <MessageSquareQuote className="h-4 w-4" />
+              Gestionar respuestas
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
           </section>
