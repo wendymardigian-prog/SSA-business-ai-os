@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { toInboxThread } from "@/lib/zernio-message";
 import { messagePreview } from "@/lib/message-preview";
 import {
   EvolutionError,
   getEvolutionConfig,
   sendText,
 } from "@/lib/evolution-client";
+
+/**
+ * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
+ * para cualquier conversacion real de la bandeja; si algun dia hace falta ver
+ * mas atras, la API pagina por cursor.
+ */
+const THREAD_PAGE_SIZE = 100;
 
 /**
  * GET /api/v1/messages?conversationId=...
@@ -79,34 +87,20 @@ export async function GET(request: NextRequest) {
     const zernio = createZernioClient(apiKey);
     const res = await zernio.messages.getInboxConversationMessages({
       path: { conversationId: conversation.late_conversation_id },
-      query: { accountId: channel.late_account_id },
+      // sortOrder "desc" trae los MAS RECIENTES. El default del SDK es
+      // ascendente, asi que sin esto una conversacion larga mostraba los cien
+      // mensajes mas viejos y nunca el ultimo, justo el que se ve en el preview
+      // de la lista. toInboxThread devuelve el hilo ya en orden de lectura.
+      query: {
+        accountId: channel.late_account_id,
+        limit: THREAD_PAGE_SIZE,
+        sortOrder: "desc",
+      },
     });
 
-    // The Zernio endpoint returns { success, messages: [...] } — NOT { data }.
-    const zernioMessages =
-      (res.data as { messages?: unknown[] })?.messages ??
-      (res.data as { data?: unknown[] })?.data ??
-      [];
-
-    // Map Zernio messages to the shape the inbox UI expects
-    const messages = zernioMessages.map((m: any) => ({
-      id: m.id,
-      conversation_id: conversationId,
-      direction: m.direction === "outbound" ? "outbound" : "inbound",
-      text: m.text ?? m.message ?? null,
-      attachments: m.attachments?.length ? m.attachments : null,
-      quick_reply_payload: null,
-      postback_payload: null,
-      callback_data: null,
-      platform_message_id: m.platformMessageId ?? null,
-      sent_by_flow_id: null,
-      sent_by_node_id: null,
-      sent_by_user_id: null,
-      status: "sent",
-      created_at: m.sentAt ?? m.createdAt ?? new Date().toISOString(),
-    }));
-
-    return NextResponse.json(messages);
+    // Toda la interpretacion de la respuesta vive en lib/zernio-message.ts,
+    // que es donde se prueba con payloads reales.
+    return NextResponse.json(toInboxThread(res, conversationId));
   } catch (error) {
     console.error("Failed to fetch messages from Zernio API:", error);
     return NextResponse.json(
