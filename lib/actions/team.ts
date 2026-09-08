@@ -6,6 +6,7 @@ import { ASSIGNABLE_ROLES, isAdminRole, ROLE_LABELS, type WorkspaceRole } from "
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { teamInviteEmail } from "@/lib/email/templates";
 import { inviteUrl } from "@/lib/app-url";
+import { logAudit } from "@/lib/audit";
 
 /**
  * Como termino el email de la invitacion.
@@ -112,6 +113,13 @@ export async function inviteTeamMember(
       ? "not_configured"
       : "failed";
 
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "workspace_member", entityId: invite.id,
+    action: "create",
+    metadata: { stage: "invite", email: trimmedEmail, role: invite.role, email_status: emailStatus },
+    performedBy: user.id,
+  });
+
   return { ok: true, invite, inviteUrl: url, emailStatus, emailError: sent.ok ? null : sent.error };
 }
 
@@ -151,6 +159,13 @@ export async function removeTeamMember(
   if (deleteError) {
     return { error: deleteError.message };
   }
+
+  // La entidad es la persona que se fue: es lo que se va a querer buscar
+  // cuando alguien pregunte por que un lead quedo sin dueño.
+  await logAudit({
+    supabase, workspaceId, entityType: "workspace_member", entityId: userId,
+    action: "delete", performedBy: user.id,
+  });
 
   return { ok: true };
 }
@@ -265,6 +280,11 @@ export async function revokeInvite(inviteId: string) {
     return { error: deleteError.message };
   }
 
+  await logAudit({
+    supabase, workspaceId: invite.workspace_id, entityType: "workspace_member", entityId: inviteId,
+    action: "delete", metadata: { stage: "invite_revoked" }, performedBy: user.id,
+  });
+
   return { ok: true };
 }
 
@@ -340,6 +360,13 @@ export async function changeMemberRole(
   if (updateError) {
     return { error: updateError.message };
   }
+
+  await logAudit({
+    supabase, workspaceId, entityType: "workspace_member", entityId: userId,
+    action: "update",
+    changes: { role: { old: target.role, new: newRole } },
+    performedBy: user.id,
+  });
 
   return { ok: true, role: newRole };
 }

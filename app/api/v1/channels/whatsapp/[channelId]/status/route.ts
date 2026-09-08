@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { getAdminContext } from "@/lib/auth/guards";
 import { getConnectionState, getEvolutionConfig } from "@/lib/evolution-client";
 
@@ -56,6 +57,19 @@ export async function GET(
             : {}),
         })
         .eq("id", channel.id);
+
+      // F20: el historial de caidas y reconexiones del canal. Solo cuando
+      // cambia de verdad: esta consulta se hace cada vez que alguien mira la
+      // pantalla, y auditar cada vistazo llenaria el log de nada.
+      await logAudit({
+        supabase: ctx.supabase,
+        workspaceId: ctx.workspace.id,
+        entityType: "channel",
+        entityId: channel.id,
+        action: "update",
+        changes: { connection_status: { old: channel.connection_status, new: connectionStatus } },
+        performedBy: ctx.user.id,
+      });
     }
 
     return NextResponse.json({ state, connectionStatus });

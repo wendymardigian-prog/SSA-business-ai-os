@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { getAdminContext } from "@/lib/auth/guards";
 import {
   EvolutionError,
@@ -54,6 +55,19 @@ export async function GET(
           disconnected_notified_at: null,
         })
         .eq("id", channel.id);
+
+      // F20: quedo conectado escaneando el QR desde la pantalla, asi que la
+      // reconexion tiene nombre y apellido.
+      await logAudit({
+        supabase: ctx.supabase,
+        workspaceId: ctx.workspace.id,
+        entityType: "channel",
+        entityId: channel.id,
+        action: "update",
+        metadata: { connection_status: "connected", via: "qr" },
+        performedBy: ctx.user.id,
+      });
+
       return NextResponse.json({ state, qr: null });
     }
 

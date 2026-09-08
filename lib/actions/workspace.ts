@@ -4,8 +4,9 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
-import { logAudit } from "@/lib/audit";
+import { logAudit, diffFields } from "@/lib/audit";
 import { WORKSPACE_COOKIE } from "@/lib/workspace";
+import type { Json } from "@/lib/types/database";
 
 export async function switchWorkspace(workspaceId: string) {
   const supabase = await createClient();
@@ -133,5 +134,84 @@ export async function updateLeadScope(settings: {
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/contacts");
+  return { ok: true };
+}
+
+/**
+ * Nombre del workspace y palabras clave globales (F20).
+ *
+ * Antes esto se guardaba con un update directo desde el navegador. Funcionaba,
+ * pero no habia donde registrar quien cambio que: el audit log necesita correr
+ * del lado del servidor, con el usuario ya resuelto. Es la razon por la que
+ * existe esta accion.
+ *
+ * Las palabras clave no son decoracion: disparan flows y dan de baja
+ * contactos. Que se cambien sin dejar rastro es exactamente el caso que F20
+ * viene a cubrir.
+ */
+export async function updateWorkspaceSettings(settings: {
+  name?: string;
+  globalKeywords?: unknown[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar la configuracion" };
+
+  const { workspace, supabase, user } = ctx;
+
+  const patch: Record<string, unknown> = {};
+
+  if (settings.name !== undefined) {
+    const name = settings.name.trim();
+    if (!name) return { ok: false, error: "El workspace necesita un nombre" };
+    if (name.length > 100) return { ok: false, error: "El nombre es muy largo (maximo 100 caracteres)" };
+    patch.name = name;
+  }
+
+  if (settings.globalKeywords !== undefined) {
+    if (!Array.isArray(settings.globalKeywords)) {
+      return { ok: false, error: "Formato invalido en las palabras clave" };
+    }
+    if (settings.globalKeywords.length > 100) {
+      return { ok: false, error: "Son demasiadas palabras clave (maximo 100)" };
+    }
+    patch.global_keywords = settings.globalKeywords as Json;
+  }
+
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { data: before } = await supabase
+    .from("workspaces")
+    .select("name, global_keywords")
+    .eq("id", workspace.id)
+    .single();
+
+  const { error } = await supabase.from("workspaces").update(patch).eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude guardar la configuracion:", error.message);
+    return { ok: false, error: `No pude guardar los cambios: ${error.message}` };
+  }
+
+  // Las keywords se comparan como texto: diffFields no entra en un array, y
+  // para el historial alcanza con ver que lista habia y cual quedo.
+  const changes = diffFields(
+    {
+      name: before?.name ?? "",
+      global_keywords: JSON.stringify(before?.global_keywords ?? []),
+    },
+    {
+      name: (patch.name as string) ?? before?.name ?? "",
+      global_keywords: JSON.stringify(patch.global_keywords ?? before?.global_keywords ?? []),
+    },
+  );
+
+  if (changes) {
+    await logAudit({
+      supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id,
+      action: "update", changes, performedBy: user.id,
+    });
+  }
+
+  revalidatePath("/dashboard/settings");
   return { ok: true };
 }

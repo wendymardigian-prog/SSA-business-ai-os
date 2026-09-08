@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState, getEvolutionConfig } from "@/lib/evolution-client";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
@@ -70,6 +71,15 @@ export async function GET(request: NextRequest) {
             disconnected_notified_at: null,
           })
           .eq("id", channel.id);
+
+        // Sin autor: lo detecto el cron, no una persona (F20).
+        await logAudit({
+          supabase, workspaceId: channel.workspace_id, entityType: "channel",
+          entityId: channel.id, action: "update",
+          changes: { connection_status: { old: channel.connection_status, new: "connected" } },
+          metadata: { via: "health_check" },
+          performedBy: null,
+        });
       }
       continue;
     }
@@ -90,6 +100,17 @@ export async function GET(request: NextRequest) {
             : "WhatsApp se desconecto. Hay que volver a escanear el QR.",
       })
       .eq("id", channel.id);
+
+    // Solo la caida, no cada pasada del cron encontrandolo caido.
+    if (wasConnected) {
+      await logAudit({
+        supabase, workspaceId: channel.workspace_id, entityType: "channel",
+        entityId: channel.id, action: "update",
+        changes: { connection_status: { old: "connected", new: "disconnected" } },
+        metadata: { via: "health_check", state },
+        performedBy: null,
+      });
+    }
 
     // Un solo aviso por caida.
     if (!channel.disconnected_notified_at) {

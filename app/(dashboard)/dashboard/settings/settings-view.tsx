@@ -15,7 +15,7 @@ import {
   MessageSquareQuote,
 } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 
@@ -55,40 +55,28 @@ export function SettingsView({
     setKeywords((prev) => prev.filter((k) => k !== kw));
   }
 
+  /**
+   * Guarda por Server Action y no con un update directo desde acá. El motivo
+   * es el audit log (F20): registrar quien cambio el nombre del workspace o
+   * las palabras clave necesita el usuario resuelto del lado del servidor.
+   */
   async function handleSave() {
     if (saving) return;
     setSaving(true);
     setError(null);
     setSaved(false);
 
-    try {
-      const supabase = createClient();
+    const result = await updateWorkspaceSettings({ name, globalKeywords: keywords });
 
-      const update: Record<string, unknown> = {
-        name: name.trim(),
-        global_keywords: keywords,
-      };
-
-      const { error: updateError } = await supabase
-        .from("workspaces")
-        .update(update)
-        .eq("id", workspace.id)
-        .select("id")
-        .single();
-
-      if (updateError) {
-        console.error("Settings save error:", updateError);
-        throw new Error(updateError.message);
-      }
-
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      console.error("Failed to save settings:", err);
-      setError(err instanceof Error ? err.message : "Failed to save settings. Please try again.");
-    } finally {
+    if (!result.ok) {
+      setError(result.error);
       setSaving(false);
+      return;
     }
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+    setSaving(false);
   }
 
   return (

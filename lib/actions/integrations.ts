@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
+import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret } from "@/lib/vault";
 import {
   getProvider,
@@ -107,6 +108,21 @@ export async function saveIntegration(
     return { ok: false, error: `La key se guardo pero no pude activar la integracion: ${error.message}` };
   }
 
+  // F20: conectar un canal es de las cosas que despues nadie se acuerda quien
+  // hizo. La entidad es el workspace porque integration_configs no tiene una
+  // fila estable a la que apuntar (se hace upsert), y el proveedor va en el
+  // metadata. Nunca la key, obvio.
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: existing?.is_active ? "update" : "create",
+    metadata: {
+      provider: provider.id,
+      type: provider.type,
+      key_rotated: Boolean(newKey) && hadKey,
+    },
+    performedBy: ctx.user.id,
+  });
+
   revalidatePath(INTEGRATIONS_PATH);
   return { ok: true };
 }
@@ -151,6 +167,12 @@ export async function disconnectIntegration(
     console.error(`[integrations] desconectar "${provider.id}" fallido:`, error.message);
     return { ok: false, error: error.message };
   }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: "delete", metadata: { provider: provider.id, type: provider.type },
+    performedBy: ctx.user.id,
+  });
 
   revalidatePath(INTEGRATIONS_PATH);
   return { ok: true };

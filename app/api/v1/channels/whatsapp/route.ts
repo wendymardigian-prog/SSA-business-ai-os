@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { getAdminContext } from "@/lib/auth/guards";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import {
@@ -50,7 +51,7 @@ export async function POST() {
     );
   }
 
-  const { workspace, supabase } = ctx;
+  const { workspace, supabase, user } = ctx;
   const instance = instanceNameFor(config, workspace.id);
 
   try {
@@ -93,6 +94,16 @@ export async function POST() {
     console.error("[whatsapp] no pude guardar el canal:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // F20: conectar un canal es de las cosas que despues nadie se acuerda quien
+  // hizo, y es justo la que hay que poder reconstruir cuando deja de llegar
+  // un mensaje.
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: channel.id,
+    action: "create",
+    metadata: { platform: "whatsapp", provider: "evolution", instance, connection_status: connectionStatus },
+    performedBy: user.id,
+  });
 
   return NextResponse.json({ channel, state });
 }
