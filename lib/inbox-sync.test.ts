@@ -152,6 +152,7 @@ const conv = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
   participantId: `sender-${id}`,
   participantName: `Sender ${id}`,
+  participantUsername: `sender_${id}`,
   participantPicture: null,
   lastMessage: `hello from ${id}`,
   updatedTime: "2026-07-01T10:00:00.000Z",
@@ -187,6 +188,9 @@ describe("backfillInboxConversations", () => {
       p_channel_id: "ch-1",
       p_sender_id: "sender-c1",
       p_display_name: "Sender c1",
+      // El @usuario que manda Zernio tiene que llegar a la base: sin esto los
+      // contactos importados quedaban sin usuario aunque el dato estuviera.
+      p_username: "sender_c1",
       p_interaction_at: "2026-07-01T10:00:00.000Z",
       // El backfill no sella last_interaction_at de un contacto que ya existia:
       // lo hace despues, solo si la conversacion se importo de verdad.
@@ -399,5 +403,23 @@ describe("backfillInboxConversations", () => {
 
     expect(res.imported).toBe(1);
     expect(fake.upserts[0].row).toMatchObject({ channel_id: "ch-1" });
+  });
+});
+
+describe("el @usuario del backfill", () => {
+  it("pasa null cuando Zernio no lo manda, en vez de inventarlo", async () => {
+    const fake = makeFakeSupabase({});
+    const z = fakeZernio([
+      { data: [conv("sin-user", { participantUsername: undefined })], pagination: { hasMore: false } },
+    ]);
+
+    await backfillInboxConversations({
+      supabase: fake.client,
+      zernio: z.client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    expect(fake.rpcCalls[0].args.p_username).toBeNull();
   });
 });

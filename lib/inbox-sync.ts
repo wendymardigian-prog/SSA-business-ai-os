@@ -27,6 +27,13 @@ interface ZernioInboxConversation {
   participantId?: string;
   participantName?: string;
   participantPicture?: string | null;
+  /**
+   * El @usuario de la persona. Zernio lo manda cuando Instagram lo expone (o
+   * sea, cuando la persona ya escribio). Faltaba en esta interfaz, y como el
+   * backfill no lo pasaba, ningun contacto importado quedaba con su usuario
+   * aunque el dato estuviera ahi.
+   */
+  participantUsername?: string | null;
   lastMessage?: string;
   updatedTime?: string;
   status?: "active" | "archived";
@@ -204,6 +211,7 @@ async function importConversation({
     senderId: conv.participantId!,
     senderName: conv.participantName || conv.participantId!,
     senderPicture: conv.participantPicture || null,
+    senderUsername: conv.participantUsername || null,
     interactionAt,
     stampExisting: false,
   });
