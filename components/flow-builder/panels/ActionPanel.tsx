@@ -295,19 +295,20 @@ function GoToFlowConfig({ data, onChange }: ActionSubPanelProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        <label className="relative inline-flex cursor-pointer items-center">
+        <label className="relative inline-flex cursor-not-allowed items-center">
           <input
             type="checkbox"
-            checked={data.returnAfter || false}
-            onChange={(e) => onChange({ ...data, returnAfter: e.target.checked })}
+            checked={false}
+            disabled
+            readOnly
             className="peer sr-only"
           />
           <div className="peer h-5 w-9 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-card after:transition-all peer-checked:bg-muted0 peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-ring" />
         </label>
         <div>
-          <p className="text-sm font-medium text-foreground">Return after</p>
+          <p className="text-sm font-medium text-muted-foreground">Volver después</p>
           <p className="text-xs text-muted-foreground">
-            Come back to this flow after the target flow completes
+            Todavía no disponible: el salto es de ida y este flow no continúa
           </p>
         </div>
       </div>
