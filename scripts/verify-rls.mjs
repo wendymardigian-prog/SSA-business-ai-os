@@ -9,7 +9,8 @@
  * Complementa a los tests de vitest: eso prueba logica de la app, esto prueba
  * las policies de la base, que es donde vive la restriccion de verdad.
  *
- * Volver a correrlo despues de cada migracion que toque policies.
+ * Volver a correrlo despues de cada migracion que toque policies O GRANTS DE
+ * FUNCIONES: la pasada de hardening (00045-00047) toca grants, no policies.
  *
  *   node scripts/verify-rls.mjs
  */
@@ -330,6 +331,83 @@ try {
       { secret_name: "zz_test2", secret_value: "x", workspace_id: ws.id });
     check(!!e2 && /forbidden/.test(e2.message), "ni guardarlos");
     await svc.rpc("delete_secret", { secret_name: "zz_test", workspace_id: ws.id }); }
+
+
+  console.log("\n— RPC heredadas: la anon key no puede escribir —");
+  { // increment_unread es SECURITY DEFINER y no valida nada. Estuvo abierta a
+    // anon (la key publica del frontend) hasta la migracion 00045: cualquiera
+    // podia reabrir conversaciones ajenas y escribir en el preview que se ve en
+    // la bandeja.
+    const anon = createClient(URL, ANON, { auth: { persistSession: false } });
+
+    const { data: antes } = await svc.from("conversations")
+      .select("last_message_preview, status").eq("id", conv.id).single();
+
+    const { error } = await anon.rpc("increment_unread",
+      { conv_id: conv.id, preview: "zz-defaceado" });
+    check(!!error, "anon no puede llamar increment_unread", "no dio error");
+
+    // Chequear solo el error no alcanza: podria venir de otro lado con la
+    // escritura ya hecha.
+    const { data: despues } = await svc.from("conversations")
+      .select("last_message_preview, status").eq("id", conv.id).single();
+    check(despues.last_message_preview === antes.last_message_preview,
+      "y el preview de la conversacion quedo intacto",
+      `quedo: ${despues.last_message_preview}`);
+
+    const { error: e2 } = await anon.rpc("increment_broadcast_sent",
+      { b_id: "00000000-0000-0000-0000-000000000000" });
+    check(!!e2, "anon tampoco puede tocar los contadores de broadcast");
+
+    const { error: e3 } = await member.client.rpc("increment_unread",
+      { conv_id: conv.id, preview: "zz" });
+    check(!!e3, "un usuario logueado tampoco: es una primitiva del sistema");
+
+    const { error: e4 } = await anon.rpc("is_workspace_member", { ws_id: ws.id });
+    check(!!e4, "anon no puede llamar is_workspace_member"); }
+
+  console.log("\n— Canario: la app sigue leyendo —");
+  { // is_workspace_member la llaman ~37 policies, y una expresion de policy se
+    // evalua con el rol de la sesion. Si alguien le revoca EXECUTE a
+    // `authenticated` para callar al linter, TODA lectura de la app se cae con
+    // "permission denied for function". Este caso es lo que lo detecta.
+    const { error } = await admin.client.from("contacts").select("id").limit(1);
+    check(!error, "un usuario logueado sigue pudiendo leer contactos",
+      error?.message);
+    const { error: e2 } = await admin.client.from("conversations").select("id").limit(1);
+    check(!e2, "y conversaciones", e2?.message); }
+
+  console.log("\n— scheduled_jobs es solo del service role —");
+  { const { data: job } = await svc.from("scheduled_jobs").insert({
+      type: "zz_test_job",
+      payload: { zz: "dato sensible de prueba" },
+      run_at: new Date(Date.now() + 3600_000).toISOString(),
+    }).select("id").single();
+
+    // El payload de los jobs reales lleva el texto del mensaje del lead.
+    const { data: vistosMember } = await member.client.from("scheduled_jobs").select("id");
+    check((vistosMember ?? []).length === 0,
+      "un Member no ve ningun job", `vio ${(vistosMember ?? []).length}`);
+
+    // Que un Admin tampoco lea es intencional: es una cola interna. Si alguien
+    // "arregla" esto agregando una policy, este caso lo frena.
+    const { data: vistosAdmin } = await admin.client.from("scheduled_jobs").select("id");
+    check((vistosAdmin ?? []).length === 0,
+      "un Admin tampoco: la cola no es una pantalla", `vio ${(vistosAdmin ?? []).length}`);
+
+    const { data: insertado } = await member.client.from("scheduled_jobs")
+      .insert({ type: "zz_intruso", payload: {}, run_at: new Date().toISOString() })
+      .select("id");
+    check((insertado ?? []).length === 0, "un Member no puede encolar trabajo");
+
+    // El UPDATE abierto permitia colgar todos los flows con una espera.
+    await member.client.from("scheduled_jobs").update({ status: "completed" }).eq("id", job.id);
+    const { data: sigue } = await svc.from("scheduled_jobs")
+      .select("status").eq("id", job.id).single();
+    check(sigue.status === "pending",
+      "ni marcar como completados los jobs pendientes", `quedo en ${sigue.status}`);
+
+    await svc.from("scheduled_jobs").delete().eq("id", job.id); }
 
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
