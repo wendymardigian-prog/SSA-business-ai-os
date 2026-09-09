@@ -9,9 +9,17 @@ import {
   validateSequenceName,
   validateSequenceSteps,
 } from "@/lib/sequences/validate";
+import {
+  detectSequenceCollision,
+  parseSnapshot,
+  type CollisionSnapshotEntry,
+} from "@/lib/sequences/collisions";
+import { computeNextStepAt, parseSteps } from "@/lib/sequences/steps";
 import type {
+  Json,
   SequenceStatus,
   SequenceStep,
+  SequenceCollisionResolution,
   SequenceEnrollmentStatus,
 } from "@/lib/types/database";
 
@@ -287,6 +295,297 @@ export async function listSequenceOptions(): Promise<
     return [];
   }
   return data ?? [];
+}
+
+export interface CollisionInfo {
+  /** Con que otras secuencias choca, para poder decidir. */
+  with: Array<{ enrollmentId: string; sequenceId: string; sequenceName: string }>;
+}
+
+export type EnrollResult =
+  | { ok: true; enrollmentId: string; collision?: CollisionInfo }
+  | { ok: false; error: string; collision?: CollisionInfo };
+
+/**
+ * Inscribe un contacto a mano.
+ *
+ * Antes de inscribir corre la deteccion de colision (F13). Si hay otra
+ * secuencia viva en el mismo canal y quien inscribe no dijo que hacer, no se
+ * inscribe: se devuelve la colision para que la pantalla pregunte. Es la
+ * diferencia con el nodo del flow, que inscribe igual porque no tiene a quien
+ * preguntarle.
+ */
+export async function enrollContact(
+  sequenceId: string,
+  contactId: string,
+  channelId: string,
+  options: { confirmCollision?: boolean } = {}
+): Promise<EnrollResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden inscribir contactos" };
+  const { workspace, supabase, user } = ctx;
+
+  const { data: sequence } = await supabase
+    .from("sequences")
+    .select("id, name, status, steps")
+    .eq("id", sequenceId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!sequence) return { ok: false, error: "No encontré esa secuencia" };
+  if (sequence.status !== "active") {
+    return { ok: false, error: "La secuencia no está activa. Activala antes de inscribir a alguien." };
+  }
+
+  const steps = parseSteps(sequence.steps);
+  if (steps.length === 0) return { ok: false, error: "La secuencia todavía no tiene pasos" };
+
+  // El scope de leads y la pertenencia al workspace los aplica la RLS; esto
+  // ademas da un mensaje claro en vez de un error de base.
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id, do_not_contact")
+    .eq("id", contactId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!contact) return { ok: false, error: "No encontré ese contacto" };
+  if (contact.do_not_contact) {
+    return {
+      ok: false,
+      error: "El contacto está marcado como «no contactar». Sacale la marca antes de inscribirlo.",
+    };
+  }
+
+  const collision = await detectSequenceCollision(supabase, {
+    workspaceId: workspace.id,
+    contactId,
+    channelId,
+    excludeSequenceId: sequenceId,
+  });
+
+  const info: CollisionInfo | undefined = collision.hasCollision
+    ? {
+        with: collision.colliding.map((c) => ({
+          enrollmentId: c.id,
+          sequenceId: c.sequenceId,
+          sequenceName: c.sequenceName,
+        })),
+      }
+    : undefined;
+
+  if (collision.hasCollision && !options.confirmCollision) {
+    return {
+      ok: false,
+      error: `Este contacto ya está en ${collision.colliding.length === 1 ? "otra secuencia" : `otras ${collision.colliding.length} secuencias`} por el mismo canal.`,
+      collision: info,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("sequence_enrollments")
+    .insert({
+      sequence_id: sequenceId,
+      contact_id: contactId,
+      channel_id: channelId,
+      next_step_at: computeNextStepAt(steps, 0) ?? new Date().toISOString(),
+      collision_detected_at: collision.hasCollision ? new Date().toISOString() : null,
+      collision_with: collision.hasCollision ? (collision.snapshot as unknown as Json) : null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    // El unique parcial de la 00041: ya tiene una inscripcion viva en ESTA
+    // secuencia. Distinto de la colision, que es con otra secuencia.
+    if (error?.code === "23505") {
+      return { ok: false, error: "El contacto ya está en esta secuencia" };
+    }
+    console.error("[sequences] no pude inscribir:", error?.message);
+    return { ok: false, error: `No pude inscribir el contacto: ${error?.message ?? "error desconocido"}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "sequence_enrollment",
+    entityId: data.id,
+    action: "enroll",
+    metadata: {
+      sequence_id: sequenceId,
+      sequence_name: sequence.name,
+      contact_id: contactId,
+      channel_id: channelId,
+      source: "manual",
+    },
+    performedBy: user.id,
+  });
+
+  if (collision.hasCollision) {
+    await logAudit({
+      supabase,
+      workspaceId: workspace.id,
+      entityType: "sequence_enrollment",
+      entityId: data.id,
+      action: "collision_detected",
+      metadata: {
+        contact_id: contactId,
+        channel_id: channelId,
+        with: collision.snapshot as unknown as Json,
+      },
+      performedBy: user.id,
+    });
+  }
+
+  revalidatePath(detailPath(sequenceId));
+  revalidatePath(`/dashboard/contacts/${contactId}`);
+  return { ok: true, enrollmentId: data.id, collision: info };
+}
+
+/**
+ * Que hacer con una colision ya detectada.
+ *
+ * La marca se estampa en la inscripcion nueva Y en las del snapshot, para que
+ * el aviso desaparezca de los dos lados a la vez: si no, el admin resuelve
+ * mirando una secuencia y le sigue apareciendo desde la otra.
+ */
+export async function resolveCollision(
+  enrollmentId: string,
+  resolution: SequenceCollisionResolution
+): Promise<SequenceActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden resolver colisiones" };
+  const { workspace, supabase, user } = ctx;
+
+  const { data: enrollment } = await supabase
+    .from("sequence_enrollments")
+    .select("id, sequence_id, contact_id, channel_id, collision_with, sequences!inner(workspace_id)")
+    .eq("id", enrollmentId)
+    .maybeSingle();
+
+  if (!enrollment) return { ok: false, error: "No encontré esa inscripción" };
+
+  const sequence = enrollment.sequences as unknown as { workspace_id: string };
+  if (sequence.workspace_id !== workspace.id) {
+    return { ok: false, error: "No encontré esa inscripción" };
+  }
+
+  const others: CollisionSnapshotEntry[] = parseSnapshot(enrollment.collision_with);
+  const otherIds = others.map((o) => o.enrollment_id);
+  const now = new Date().toISOString();
+
+  if (resolution === "paused_other" && otherIds.length > 0) {
+    await supabase
+      .from("sequence_enrollments")
+      .update({ status: "paused", paused_reason: "collision", paused_at: now, locked_at: null })
+      .in("id", otherIds)
+      .eq("status", "active");
+  }
+
+  if (resolution === "removed_other" && otherIds.length > 0) {
+    await supabase
+      .from("sequence_enrollments")
+      .update({ status: "cancelled", next_step_at: null, locked_at: null })
+      .in("id", otherIds)
+      .in("status", ["active", "paused"]);
+  }
+
+  if (resolution === "removed_this") {
+    await supabase
+      .from("sequence_enrollments")
+      .update({ status: "cancelled", next_step_at: null, locked_at: null })
+      .eq("id", enrollmentId);
+  }
+
+  const reviewed = {
+    collision_reviewed_at: now,
+    collision_reviewed_by: user.id,
+    collision_resolution: resolution,
+  };
+
+  await supabase.from("sequence_enrollments").update(reviewed).eq("id", enrollmentId);
+  if (otherIds.length > 0) {
+    // El aviso tiene que apagarse tambien del lado de la otra secuencia.
+    await supabase
+      .from("sequence_enrollments")
+      .update(reviewed)
+      .in("id", otherIds)
+      .is("collision_reviewed_at", null);
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "sequence_enrollment",
+    entityId: enrollmentId,
+    action: "collision_resolved",
+    metadata: {
+      resolution,
+      contact_id: enrollment.contact_id,
+      channel_id: enrollment.channel_id,
+      other_enrollment_ids: otherIds as unknown as Json,
+    },
+    performedBy: user.id,
+  });
+
+  revalidatePath(LIST_PATH);
+  revalidatePath(detailPath(enrollment.sequence_id));
+  revalidatePath(`/dashboard/contacts/${enrollment.contact_id}`);
+  return { ok: true };
+}
+
+/**
+ * Contactos para el buscador del dialogo de inscripcion.
+ *
+ * Devuelve tambien los canales por los que se le puede escribir: sin una
+ * conversacion abierta no hay por donde mandar el primer paso.
+ */
+export async function searchContactsForEnrollment(query: string): Promise<
+  Array<{ id: string; name: string; channels: Array<{ id: string; label: string }> }>
+> {
+  const { workspace, supabase } = await getWorkspace();
+
+  const term = query.trim();
+  if (term.length < 2) return [];
+
+  // El scope de leads lo aplica la RLS: un Member solo encuentra los suyos.
+  const escaped = term.replace(/[%_,()]/g, " ").trim();
+  if (!escaped) return [];
+
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, display_name, email, conversations(channel_id, channels(id, platform))")
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .eq("do_not_contact", false)
+    .or(`display_name.ilike.%${escaped}%,email.ilike.%${escaped}%`)
+    .limit(10);
+
+  if (error) {
+    console.error("[sequences] busqueda de contactos fallida:", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((contact) => {
+    const conversations = (contact.conversations ?? []) as unknown as Array<{
+      channel_id: string;
+      channels: { id: string; platform: string } | null;
+    }>;
+
+    const channels = new Map<string, string>();
+    for (const conversation of conversations) {
+      if (conversation.channels) {
+        channels.set(conversation.channels.id, conversation.channels.platform);
+      }
+    }
+
+    return {
+      id: contact.id,
+      name: contact.display_name || contact.email || "Contacto sin nombre",
+      channels: [...channels].map(([id, label]) => ({ id, label })),
+    };
+  });
 }
 
 /**

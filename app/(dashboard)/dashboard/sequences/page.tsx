@@ -5,6 +5,8 @@ import { isAdminRole } from "@/lib/auth/roles";
 import { CreateSequenceButton } from "@/components/sequences/create-sequence-button";
 import { sequenceStatusStyle, stepCountLabel } from "@/lib/sequences/labels";
 import { formatDateTime } from "@/components/contacts/ui";
+import { listOpenCollisions } from "@/lib/sequences/collisions";
+import { AlertTriangle } from "lucide-react";
 
 export default async function SequencesPage() {
   const { workspace, supabase, role } = await getWorkspace();
@@ -20,16 +22,25 @@ export default async function SequencesPage() {
 
   const sequenceIds = (sequences ?? []).map((s) => s.id);
   const enrolled: Record<string, number> = {};
+  const collisions: Record<string, number> = {};
 
   if (sequenceIds.length > 0) {
-    const { data: counts } = await supabase
-      .from("sequence_enrollments")
-      .select("sequence_id")
-      .in("sequence_id", sequenceIds)
-      .eq("status", "active");
+    const [{ data: counts }, open] = await Promise.all([
+      supabase
+        .from("sequence_enrollments")
+        .select("sequence_id")
+        .in("sequence_id", sequenceIds)
+        .eq("status", "active"),
+      // El aviso de colision (F13). El centro de notificaciones del Bloque 3
+      // va a leer estas mismas filas.
+      listOpenCollisions(supabase, { workspaceId: workspace.id }),
+    ]);
 
     for (const row of counts ?? []) {
       enrolled[row.sequence_id] = (enrolled[row.sequence_id] ?? 0) + 1;
+    }
+    for (const row of open) {
+      collisions[row.sequenceId] = (collisions[row.sequenceId] ?? 0) + 1;
     }
   }
 
@@ -69,6 +80,7 @@ export default async function SequencesPage() {
               const status = sequenceStatusStyle(sequence.status);
               const stepCount = Array.isArray(sequence.steps) ? sequence.steps.length : 0;
               const active = enrolled[sequence.id] ?? 0;
+              const colliding = collisions[sequence.id] ?? 0;
 
               return (
                 <Link
@@ -90,6 +102,15 @@ export default async function SequencesPage() {
                         >
                           {status.label}
                         </span>
+                        {colliding > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                            title={`${colliding} ${colliding === 1 ? "contacto está" : "contactos están"} también en otra secuencia por el mismo canal`}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {colliding}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {stepCountLabel(stepCount)}

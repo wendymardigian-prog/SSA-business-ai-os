@@ -4,6 +4,9 @@ import { isAdminRole } from "@/lib/auth/roles";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { SequenceEditor } from "@/components/sequences/sequence-editor";
 import { EnrollmentList, type EnrollmentRow } from "@/components/sequences/enrollment-list";
+import { CollisionAlert, type CollisionRow } from "@/components/sequences/collision-alert";
+import { EnrollButton } from "@/components/sequences/enroll-button";
+import { listOpenCollisions } from "@/lib/sequences/collisions";
 import type { SequenceEnrollmentStatus, SequenceStep } from "@/lib/types/database";
 
 export default async function SequenceDetailPage({
@@ -26,7 +29,7 @@ export default async function SequenceDetailPage({
 
   // El scope de leads lo aplica la RLS (migracion 00041): un Member solo ve
   // las inscripciones de los contactos que le corresponden.
-  const [{ data: enrollments }, aiProviders] = await Promise.all([
+  const [{ data: enrollments }, aiProviders, openCollisions] = await Promise.all([
     supabase
       .from("sequence_enrollments")
       .select(
@@ -36,7 +39,15 @@ export default async function SequenceDetailPage({
       .order("enrolled_at", { ascending: false })
       .limit(200),
     listConnectedAiProviders(workspace.id, supabase),
+    listOpenCollisions(supabase, { workspaceId: workspace.id, sequenceId }),
   ]);
+
+  const collisions: CollisionRow[] = openCollisions.map((c) => ({
+    enrollmentId: c.enrollmentId,
+    contactId: c.contactId,
+    contactName: c.contactName,
+    with: c.with.map((w) => ({ sequence_id: w.sequence_id, sequence_name: w.sequence_name })),
+  }));
 
   const rows: EnrollmentRow[] = (enrollments ?? []).map((e) => {
     const contact = e.contacts as { display_name: string | null; email: string | null } | null;
@@ -66,7 +77,22 @@ export default async function SequenceDetailPage({
         aiProviders={aiProviders}
       />
       <div className="border-t border-border">
-        <EnrollmentList enrollments={rows} canManage={canEdit} />
+        {collisions.length > 0 && (
+          <div className="px-8 pt-6">
+            <div className="mx-auto max-w-2xl">
+              <CollisionAlert collisions={collisions} canResolve={canEdit} />
+            </div>
+          </div>
+        )}
+        <EnrollmentList
+          enrollments={rows}
+          canManage={canEdit}
+          action={
+            canEdit && sequence.status === "active" ? (
+              <EnrollButton sequence={{ id: sequence.id, name: sequence.name }} />
+            ) : null
+          }
+        />
       </div>
     </div>
   );

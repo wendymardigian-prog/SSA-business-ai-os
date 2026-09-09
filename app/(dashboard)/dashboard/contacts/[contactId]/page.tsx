@@ -26,6 +26,10 @@ import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection, type HistoryEntry } from "@/components/contacts/history-section";
 import {
+  ContactSequencesSection,
+  type ContactEnrollment,
+} from "@/components/contacts/sequences-section";
+import {
   LinkSuggestionBanner,
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
@@ -51,8 +55,17 @@ export default async function ContactDetailPage({
   const { workspace, supabase, user, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
-  const [contactRes, channelsRes, conversationsRes, fieldDefsRes, fieldValuesRes, tagsRes, auditRes] =
-    await Promise.all([
+  const [
+    contactRes,
+    channelsRes,
+    conversationsRes,
+    fieldDefsRes,
+    fieldValuesRes,
+    tagsRes,
+    auditRes,
+    enrollmentsRes,
+    activeSequencesRes,
+  ] = await Promise.all([
       supabase
         .from("contacts")
         .select("*, contact_tags(tag_id)")
@@ -65,7 +78,7 @@ export default async function ContactDetailPage({
         .eq("contact_id", contactId),
       supabase
         .from("conversations")
-        .select("id, platform, status, last_message_at, last_message_preview, unread_count, assigned_to")
+        .select("id, channel_id, platform, status, last_message_at, last_message_preview, unread_count, assigned_to")
         .eq("contact_id", contactId)
         .eq("workspace_id", workspace.id)
         .is("deleted_at", null)
@@ -88,6 +101,22 @@ export default async function ContactDetailPage({
         .eq("entity_id", contactId)
         .order("performed_at", { ascending: false })
         .limit(20),
+      // Todas las secuencias por las que paso, no solo las que corren: saber
+      // que ya recibio una bienvenida cambia lo que se le escribe hoy.
+      supabase
+        .from("sequence_enrollments")
+        .select(
+          "id, sequence_id, status, paused_reason, current_step_index, enrolled_at, completed_at, sequences(name)"
+        )
+        .eq("contact_id", contactId)
+        .order("enrolled_at", { ascending: false })
+        .limit(50),
+      supabase
+        .from("sequences")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .eq("status", "active")
+        .order("name"),
     ]);
 
   const contact = contactRes.data;
@@ -116,6 +145,30 @@ export default async function ContactDetailPage({
 
   const conversations = conversationsRes.data ?? [];
   const channels = channelsRes.data ?? [];
+
+  const enrollments: ContactEnrollment[] = (enrollmentsRes.data ?? []).map((e) => {
+    const sequence = e.sequences as unknown as { name: string } | null;
+    return {
+      id: e.id,
+      sequenceId: e.sequence_id,
+      sequenceName: sequence?.name ?? "Secuencia eliminada",
+      status: e.status,
+      pausedReason: e.paused_reason,
+      currentStepIndex: e.current_step_index,
+      enrolledAt: e.enrolled_at,
+      completedAt: e.completed_at,
+    };
+  });
+
+  // Solo se puede inscribir por un canal donde ya haya una conversacion: sin
+  // eso no hay por donde mandar el primer paso.
+  const enrollableChannels = [
+    ...new Map(
+      conversations
+        .filter((c) => c.channel_id)
+        .map((c) => [c.channel_id as string, c.platform as string])
+    ),
+  ].map(([id, label]) => ({ id, label }));
   const temperature = contact.lead_temperature as LeadTemperature | null;
 
   return (
@@ -258,6 +311,17 @@ export default async function ContactDetailPage({
                 </ul>
               )}
             </Section>
+
+            <ContactSequencesSection
+              enrollments={enrollments}
+              canEnroll={isAdmin}
+              contact={{
+                id: contact.id,
+                name: contact.display_name || contact.email || "Contacto sin nombre",
+                channels: enrollableChannels,
+              }}
+              sequences={activeSequencesRes.data ?? []}
+            />
 
             <NotesSection contactId={contact.id} notes={contact.notes} />
 
