@@ -189,4 +189,15 @@ export interface IncomingMessage {
   quickReplyPayload?: string;
   callbackData?: string;
   sender?: { id: string; name?: string; username?: string };
+  /**
+   * True cuando el mensaje es una respuesta a una historia de Instagram.
+   *
+   * Zernio lo manda en metadata.storyReply. Es lo que permite el filtro "es
+   * respuesta a historia" del trigger de palabra clave (F6): responder una
+   * historia es una señal de interes bastante mas fuerte que un DM suelto, y
+   * merece su propia automatizacion.
+   */
+  isStoryReply?: boolean;
+  /** Id de la historia respondida, cuando lo hay. */
+  storyId?: string;
 }

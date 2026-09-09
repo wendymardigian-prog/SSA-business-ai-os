@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
+import type { IncomingMessage } from "@/lib/flow-engine/types";
 
 type Db = SupabaseClient<Database>;
 
@@ -238,13 +239,14 @@ export async function applyOptOut({
   return { matched: Boolean(result?.matched), phrase: result?.phrase ?? null };
 }
 
-export interface IncomingMessage {
-  text?: string;
-  postbackPayload?: string;
-  quickReplyPayload?: string;
-  callbackData?: string;
-  sender?: { id: string; name?: string; username?: string };
-}
+/**
+ * El mensaje entrante, tal como lo entiende el motor.
+ *
+ * Se re-exporta el del flow-engine en vez de mantener una copia: eran dos
+ * definiciones identicas que ya se habian empezado a separar (la marca de
+ * respuesta a historia que suma F6 estaba en una y no en la otra).
+ */
+export type { IncomingMessage };
 
 /**
  * Palabras clave globales del workspace (suscribir / desuscribir).

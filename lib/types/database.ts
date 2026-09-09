@@ -45,7 +45,9 @@ export type AuditAction =
   | "assign"
   | "link"
   | "import"
-  | "do_not_contact";
+  | "do_not_contact"
+  /** Un evento del CRM disparo un flow (Fase 2, F3/F4). */
+  | "automation_triggered";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -65,7 +67,11 @@ export type TriggerType =
   | "quick_reply"
   | "welcome"
   | "default"
-  | "comment_keyword";
+  | "comment_keyword"
+  // Los tres que suma la Fase 2 (CHECK de la migracion 00038).
+  | "new_contact"
+  | "crm_event"
+  | "inactivity";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -640,6 +646,9 @@ export interface Database {
           priority: number;
           is_active: boolean;
           created_at: string;
+          /** Desnormalizado desde flows (migracion 00038). Lo llena un trigger de la base. */
+          workspace_id: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -650,6 +659,8 @@ export interface Database {
           priority?: number;
           is_active?: boolean;
           created_at?: string;
+          workspace_id?: string;
+          updated_at?: string;
         };
         Update: {
           channel_id?: string | null;
@@ -657,6 +668,7 @@ export interface Database {
           config?: Json;
           priority?: number;
           is_active?: boolean;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -1126,6 +1138,78 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      /** Cola de cambios del CRM que pueden disparar un flow (migracion 00039). */
+      automation_events: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          event_type: string;
+          contact_id: string;
+          payload: Json;
+          created_at: string;
+          processed_at: string | null;
+          error: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          event_type: string;
+          contact_id: string;
+          payload?: Json;
+          created_at?: string;
+          processed_at?: string | null;
+          error?: string | null;
+        };
+        Update: {
+          payload?: Json;
+          processed_at?: string | null;
+          error?: string | null;
+        };
+        Relationships: [];
+      };
+      /** Un disparo ya ocurrido, para no repetirlo (migracion 00038). */
+      trigger_fires: {
+        Row: {
+          id: string;
+          trigger_id: string;
+          workspace_id: string;
+          dedupe_key: string;
+          contact_id: string | null;
+          fired_at: string;
+        };
+        Insert: {
+          id?: string;
+          trigger_id: string;
+          workspace_id: string;
+          dedupe_key: string;
+          contact_id?: string | null;
+          fired_at?: string;
+        };
+        Update: {
+          dedupe_key?: string;
+        };
+        Relationships: [];
+      };
+      /** Contador de envios automatizados por canal y por hora (migracion 00037). */
+      channel_send_windows: {
+        Row: {
+          channel_id: string;
+          window_start: string;
+          sent_count: number;
+          updated_at: string;
+        };
+        Insert: {
+          channel_id: string;
+          window_start: string;
+          sent_count?: number;
+          updated_at?: string;
+        };
+        Update: {
+          sent_count?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       webhook_events: {
         Row: {

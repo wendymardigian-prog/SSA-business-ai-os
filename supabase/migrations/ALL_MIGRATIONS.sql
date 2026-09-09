@@ -4356,3 +4356,582 @@ SELECT cron.schedule(
   '20 4 * * *',
   $$SELECT public.purge_send_windows(2)$$
 );
+
+-- ============================================================
+-- MIGRATION 38: AUTOMATION TRIGGERS
+-- ============================================================
+-- ============================================================
+-- MIGRACION 00038 — TIPOS NUEVOS DE TRIGGER (F3, F4, F5)
+-- ============================================================
+-- La tabla `triggers` viene de ZernFlow con seis tipos, todos disparados por
+-- algo que hace el contacto en el chat: una palabra clave, un boton, el primer
+-- mensaje. La Fase 2 suma tres que nacen en otro lado:
+--
+--   new_contact  — se creo un contacto (por mensaje, por import o a mano)
+--   crm_event    — cambio algo del contacto (tag, campo, setter/vendedor,
+--                  marca de no contactar)
+--   inactivity   — pasaron X horas sin respuesta del lead
+--
+-- F6 (palabra clave en respuesta a historia) NO suma un tipo: es un filtro
+-- adicional adentro del config del trigger `keyword`, que es exactamente como
+-- lo pide el requerimiento. Un tipo nuevo ahi seria un duplicado del matcher.
+--
+-- Lo que crea:
+--   1. Los tres tipos nuevos en el CHECK de triggers.type.
+--   2. triggers.workspace_id, desnormalizado.
+--   3. triggers.updated_at.
+--   4. RLS mas estricta: escribir triggers pasa a ser cosa de Owner/Admin.
+--   5. La tabla trigger_fires, que resuelve la idempotencia de los tres.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. Tipos nuevos
+-- ------------------------------------------------------------
+-- Mismo patron que la 00016 con channels.platform: se tira el CHECK y se
+-- rehace, porque Postgres no deja extender uno existente.
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (
+  type IN (
+    'keyword',
+    'postback',
+    'quick_reply',
+    'welcome',
+    'default',
+    'comment_keyword',
+    'new_contact',
+    'crm_event',
+    'inactivity'
+  )
+);
+
+-- ------------------------------------------------------------
+-- 2. workspace_id desnormalizado
+-- ------------------------------------------------------------
+-- Hasta ahora al workspace de un trigger se llegaba por join con flows. Para
+-- los triggers de mensaje daba igual, porque la consulta ya joineaba flows para
+-- filtrar por status. Pero el cron de inactividad y el drenaje de eventos de
+-- CRM arrancan al reves —tienen un workspace y buscan sus triggers— y ahi el
+-- join es puro peso. Ademas permite escribir la RLS sin subconsulta.
+ALTER TABLE public.triggers ADD COLUMN IF NOT EXISTS workspace_id uuid
+  REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+UPDATE public.triggers t
+   SET workspace_id = f.workspace_id
+  FROM public.flows f
+ WHERE f.id = t.flow_id
+   AND t.workspace_id IS DISTINCT FROM f.workspace_id;
+
+DO $$
+BEGIN
+  -- Recien despues del backfill: si quedara alguna fila huerfana, mejor que
+  -- falle aca y no en un insert cualquiera dentro de seis meses.
+  IF NOT EXISTS (SELECT 1 FROM public.triggers WHERE workspace_id IS NULL) THEN
+    ALTER TABLE public.triggers ALTER COLUMN workspace_id SET NOT NULL;
+  ELSE
+    RAISE WARNING 'Quedan triggers sin workspace_id: la columna queda opcional. Revisar filas huerfanas.';
+  END IF;
+END;
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_triggers_workspace_type
+  ON public.triggers(workspace_id, type, is_active);
+
+-- Lo mantiene al dia sin que el codigo tenga que acordarse.
+CREATE OR REPLACE FUNCTION public.triggers_set_workspace_id()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.workspace_id IS NULL THEN
+    SELECT f.workspace_id INTO NEW.workspace_id
+      FROM public.flows f WHERE f.id = NEW.flow_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS triggers_fill_workspace_id ON public.triggers;
+CREATE TRIGGER triggers_fill_workspace_id
+  BEFORE INSERT OR UPDATE OF flow_id ON public.triggers
+  FOR EACH ROW EXECUTE FUNCTION public.triggers_set_workspace_id();
+
+-- ------------------------------------------------------------
+-- 3. updated_at
+-- ------------------------------------------------------------
+ALTER TABLE public.triggers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- ------------------------------------------------------------
+-- 4. RLS mas estricta
+-- ------------------------------------------------------------
+-- Las policies que venian de ZernFlow (migracion 00002) daban FOR ALL a
+-- cualquier miembro del workspace: un Member podia crear, editar y borrar
+-- triggers de cualquier flow. Es incoherente con el resto del sistema, donde
+-- crear y publicar flows es cosa de Owner/Admin, y ademas es un agujero: un
+-- trigger es lo que decide que automatizacion le contesta a un lead.
+DROP POLICY IF EXISTS "Users can view triggers via flow" ON public.triggers;
+DROP POLICY IF EXISTS "Users can manage triggers via flow" ON public.triggers;
+
+DROP POLICY IF EXISTS "triggers_select" ON public.triggers;
+CREATE POLICY "triggers_select" ON public.triggers
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "triggers_insert" ON public.triggers;
+CREATE POLICY "triggers_insert" ON public.triggers
+  FOR INSERT WITH CHECK (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "triggers_update" ON public.triggers;
+CREATE POLICY "triggers_update" ON public.triggers
+  FOR UPDATE USING (public.is_workspace_admin(workspace_id))
+  WITH CHECK (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "triggers_delete" ON public.triggers;
+CREATE POLICY "triggers_delete" ON public.triggers
+  FOR DELETE USING (public.is_workspace_admin(workspace_id));
+
+-- ------------------------------------------------------------
+-- 5. Idempotencia de los disparos
+-- ------------------------------------------------------------
+-- Los tres tipos nuevos necesitan lo mismo: no disparar dos veces por el mismo
+-- motivo. Cambia solo que es "el mismo motivo":
+--
+--   new_contact — el contacto (dispara una vez en la vida)
+--   crm_event   — el evento puntual que lo genero
+--   inactivity  — la conversacion y la ventana ("conv:<id>:24h")
+--
+-- Una sola tabla con una clave de deduplicacion que arma quien dispara. El
+-- indice unico es lo que garantiza la idempotencia: dos corridas del cron en
+-- paralelo chocan en la base, no en la logica.
+CREATE TABLE IF NOT EXISTS public.trigger_fires (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trigger_id   uuid NOT NULL REFERENCES public.triggers(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  dedupe_key   text NOT NULL,
+  contact_id   uuid REFERENCES public.contacts(id) ON DELETE CASCADE,
+  fired_at     timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.trigger_fires IS
+  'Un disparo ya ocurrido. El indice unico sobre (trigger_id, dedupe_key) es lo que impide que un trigger dispare dos veces por el mismo motivo.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_trigger_fires_dedupe
+  ON public.trigger_fires(trigger_id, dedupe_key);
+
+CREATE INDEX IF NOT EXISTS idx_trigger_fires_workspace
+  ON public.trigger_fires(workspace_id, fired_at DESC);
+
+ALTER TABLE public.trigger_fires ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "trigger_fires_select" ON public.trigger_fires;
+CREATE POLICY "trigger_fires_select" ON public.trigger_fires
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+-- Escribe solo el motor, con service role. Sin policies de escritura.
+
+-- Los disparos viejos no le sirven a nadie, salvo los de new_contact, que
+-- valen para toda la vida del contacto. Se limpian los de mas de 90 dias que
+-- tengan una ventana en la clave (los de inactividad).
+CREATE OR REPLACE FUNCTION public.purge_trigger_fires(p_retention_days integer DEFAULT 90)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_deleted integer;
+BEGIN
+  DELETE FROM public.trigger_fires
+  WHERE fired_at < now() - make_interval(days => p_retention_days)
+    AND dedupe_key LIKE 'conv:%';
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.purge_trigger_fires(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_trigger_fires(integer) TO service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-trigger-fires') THEN
+    PERFORM cron.unschedule('ssa-cron-purge-trigger-fires');
+  END IF;
+END;
+$$;
+
+SELECT cron.schedule(
+  'ssa-cron-purge-trigger-fires',
+  '30 4 * * *',
+  $$SELECT public.purge_trigger_fires(90)$$
+);
+
+-- El trigger de inactividad corre por cron cada 15 minutos.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-inactivity') THEN
+    PERFORM cron.unschedule('ssa-cron-inactivity');
+  END IF;
+END;
+$$;
+
+SELECT cron.schedule(
+  'ssa-cron-inactivity',
+  '*/15 * * * *',
+  $$SELECT private.call_app_cron('inactivity')$$
+);
+
+-- ============================================================
+-- MIGRATION 39: CRM AUTOMATION EVENTS
+-- ============================================================
+-- ============================================================
+-- MIGRACION 00039 — EVENTOS DE CRM QUE DISPARAN FLOWS (F3, F4)
+-- ============================================================
+-- Los triggers "nuevo contacto" y "evento de CRM" reaccionan a cosas que pasan
+-- en el CRM, no en el chat. La pregunta es donde detectarlas.
+--
+-- Se detectan en la base, con triggers de Postgres, y no en el codigo de las
+-- Server Actions. El motivo es concreto: un contacto se crea por tres caminos
+-- distintos (mensaje entrante, import de CSV, alta manual) y los tags se
+-- agregan desde la ficha, desde un flow y desde el import. Emitir el evento en
+-- cada lugar significa acordarse en cada lugar, hoy y en cada camino nuevo que
+-- se sume. En la base se captura una vez y no se escapa ninguno.
+--
+-- Los eventos NO disparan el flow desde la base: se encolan en una tabla y los
+-- drena un cron. El motor de flows corre en Node —manda mensajes, llama a la
+-- IA, habla con APIs— y nada de eso se puede hacer desde una funcion de
+-- Postgres. Ademas, si el disparo fuera sincronico, un flow lento o caido
+-- frenaria el guardado del contacto.
+--
+-- SOBRE EL SCOPE DE LEADS: el disparo lo hace el sistema, sin usuario. Se
+-- respeta el scope porque el evento solo puede nacer de un cambio que la RLS ya
+-- permitio: un Member no puede tocar un lead que no ve, asi que no puede
+-- generar un evento sobre el. La barrera esta antes, en la escritura.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. La cola de eventos
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.automation_events (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  -- contact_created | tag_added | tag_removed | field_changed |
+  -- assignment_changed | do_not_contact
+  event_type   text NOT NULL,
+  contact_id   uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  -- Con que valor. Un tag trae su nombre, un campo su slug y su valor nuevo.
+  -- Es lo que permite filtrar "cuando se agrega el tag interesado".
+  payload      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  processed_at timestamptz,
+  error        text
+);
+
+COMMENT ON TABLE public.automation_events IS
+  'Cola de cambios del CRM que pueden disparar un flow. La llenan triggers de Postgres y la drena /api/cron/automation-events.';
+
+-- El cron busca siempre lo mismo: lo no procesado, mas viejo primero.
+CREATE INDEX IF NOT EXISTS idx_automation_events_pending
+  ON public.automation_events(created_at)
+  WHERE processed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_automation_events_contact
+  ON public.automation_events(contact_id, created_at DESC);
+
+ALTER TABLE public.automation_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "automation_events_select" ON public.automation_events;
+CREATE POLICY "automation_events_select" ON public.automation_events
+  FOR SELECT USING (public.is_workspace_admin(workspace_id));
+-- Escriben los triggers de la base (SECURITY DEFINER) y el cron (service role).
+
+-- ------------------------------------------------------------
+-- 2. Emisor comun
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.emit_automation_event(
+  p_workspace_id uuid,
+  p_event_type text,
+  p_contact_id uuid,
+  p_payload jsonb DEFAULT '{}'::jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (p_workspace_id, p_event_type, p_contact_id, p_payload);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.emit_automation_event(uuid, text, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 3. Contacto creado (F3)
+-- ------------------------------------------------------------
+-- Cubre los tres origenes de una sola vez. Se ignoran los anonimos: un contacto
+-- sin datos todavia no es un lead, y ya se ocultan de la lista (migracion
+-- 00032). Cuando se completa deja de ser anonimo y ahi si emite.
+CREATE OR REPLACE FUNCTION public.contacts_emit_created()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(NEW.is_anonymous, false) THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM public.emit_automation_event(
+    NEW.workspace_id,
+    'contact_created',
+    NEW.id,
+    jsonb_build_object('source', COALESCE(NEW.attribution->>'source', 'unknown'))
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contacts_automation_created ON public.contacts;
+CREATE TRIGGER contacts_automation_created
+  AFTER INSERT ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_created();
+
+-- Un contacto que nacio anonimo (por ejemplo, de un mensaje sin perfil) y
+-- despues se completa cuenta como contacto nuevo recien en ese momento.
+CREATE OR REPLACE FUNCTION public.contacts_emit_deanonymized()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(OLD.is_anonymous, false) AND NOT COALESCE(NEW.is_anonymous, false) THEN
+    PERFORM public.emit_automation_event(
+      NEW.workspace_id,
+      'contact_created',
+      NEW.id,
+      jsonb_build_object('source', COALESCE(NEW.attribution->>'source', 'unknown'), 'deanonymized', true)
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contacts_automation_deanonymized ON public.contacts;
+CREATE TRIGGER contacts_automation_deanonymized
+  AFTER UPDATE OF is_anonymous ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_deanonymized();
+
+-- ------------------------------------------------------------
+-- 4. Cambios en el contacto (F4)
+-- ------------------------------------------------------------
+-- Asignacion de setter o vendedor, y marca de no contactar. Cada campo emite
+-- su propio evento: un flow que espera "se asigno vendedor" no tiene por que
+-- despertarse porque cambio el setter.
+CREATE OR REPLACE FUNCTION public.contacts_emit_changes()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.setter_id IS DISTINCT FROM OLD.setter_id AND NEW.setter_id IS NOT NULL THEN
+    PERFORM public.emit_automation_event(
+      NEW.workspace_id, 'assignment_changed', NEW.id,
+      jsonb_build_object('role', 'setter', 'user_id', NEW.setter_id)
+    );
+  END IF;
+
+  IF NEW.vendedor_id IS DISTINCT FROM OLD.vendedor_id AND NEW.vendedor_id IS NOT NULL THEN
+    PERFORM public.emit_automation_event(
+      NEW.workspace_id, 'assignment_changed', NEW.id,
+      jsonb_build_object('role', 'vendedor', 'user_id', NEW.vendedor_id)
+    );
+  END IF;
+
+  -- Solo al activarse: desmarcar no es un evento que valga la pena automatizar.
+  IF COALESCE(NEW.do_not_contact, false) AND NOT COALESCE(OLD.do_not_contact, false) THEN
+    PERFORM public.emit_automation_event(
+      NEW.workspace_id, 'do_not_contact', NEW.id,
+      jsonb_build_object('reason', NEW.do_not_contact_reason)
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contacts_automation_changes ON public.contacts;
+CREATE TRIGGER contacts_automation_changes
+  AFTER UPDATE OF setter_id, vendedor_id, do_not_contact ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_changes();
+
+-- ------------------------------------------------------------
+-- 5. Tags (F4)
+-- ------------------------------------------------------------
+-- El payload lleva el NOMBRE del tag, no solo el id: el trigger se configura
+-- escribiendo "interesado" en el editor, y comparar contra un uuid obligaria a
+-- resolverlo en cada evaluacion.
+CREATE OR REPLACE FUNCTION public.contact_tags_emit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact  public.contacts%ROWTYPE;
+  v_tag_name text;
+  v_tag_id   uuid;
+BEGIN
+  v_tag_id := COALESCE(NEW.tag_id, OLD.tag_id);
+
+  SELECT * INTO v_contact FROM public.contacts
+   WHERE id = COALESCE(NEW.contact_id, OLD.contact_id);
+  IF NOT FOUND THEN
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
+  SELECT name INTO v_tag_name FROM public.tags WHERE id = v_tag_id;
+
+  PERFORM public.emit_automation_event(
+    v_contact.workspace_id,
+    CASE WHEN TG_OP = 'INSERT' THEN 'tag_added' ELSE 'tag_removed' END,
+    v_contact.id,
+    jsonb_build_object('tag_id', v_tag_id, 'tag_name', v_tag_name)
+  );
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contact_tags_automation ON public.contact_tags;
+CREATE TRIGGER contact_tags_automation
+  AFTER INSERT OR DELETE ON public.contact_tags
+  FOR EACH ROW EXECUTE FUNCTION public.contact_tags_emit();
+
+-- ------------------------------------------------------------
+-- 6. Campos personalizados (F4)
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.contact_custom_fields_emit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact public.contacts%ROWTYPE;
+  v_slug    text;
+BEGIN
+  -- Un update que deja el mismo valor no es un cambio.
+  IF TG_OP = 'UPDATE' AND NEW.value IS NOT DISTINCT FROM OLD.value THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO v_contact FROM public.contacts WHERE id = NEW.contact_id;
+  IF NOT FOUND THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT slug INTO v_slug FROM public.custom_field_definitions WHERE id = NEW.field_id;
+
+  PERFORM public.emit_automation_event(
+    v_contact.workspace_id, 'field_changed', v_contact.id,
+    jsonb_build_object(
+      'field_id', NEW.field_id,
+      'field_slug', v_slug,
+      'value', NEW.value,
+      'previous_value', CASE WHEN TG_OP = 'UPDATE' THEN OLD.value ELSE NULL END
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS contact_custom_fields_automation ON public.contact_custom_fields;
+CREATE TRIGGER contact_custom_fields_automation
+  AFTER INSERT OR UPDATE ON public.contact_custom_fields
+  FOR EACH ROW EXECUTE FUNCTION public.contact_custom_fields_emit();
+
+-- ------------------------------------------------------------
+-- 7. Limpieza y agenda
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.purge_automation_events(p_retention_days integer DEFAULT 7)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_deleted integer;
+BEGIN
+  DELETE FROM public.automation_events
+  WHERE processed_at IS NOT NULL
+    AND processed_at < now() - make_interval(days => p_retention_days);
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.purge_automation_events(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_automation_events(integer) TO service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-automation-events') THEN
+    PERFORM cron.unschedule('ssa-cron-automation-events');
+  END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-automation-events') THEN
+    PERFORM cron.unschedule('ssa-cron-purge-automation-events');
+  END IF;
+END;
+$$;
+
+-- Cada minuto: un contacto nuevo que tiene que recibir un mensaje de
+-- bienvenida no puede esperar un cuarto de hora.
+SELECT cron.schedule(
+  'ssa-cron-automation-events',
+  '* * * * *',
+  $$SELECT private.call_app_cron('automation-events')$$
+);
+
+SELECT cron.schedule(
+  'ssa-cron-purge-automation-events',
+  '40 4 * * *',
+  $$SELECT public.purge_automation_events(7)$$
+);
+
+-- ============================================================
+-- MIGRATION 40: FIX DEANONYMIZED TRIGGER
+-- ============================================================
+-- ============================================================
+-- MIGRACION 00040 — ARREGLO: EL AVISO DE "CONTACTO IDENTIFICADO" NO DISPARABA
+-- ============================================================
+-- La migracion 00039 dejo un trigger sobre `AFTER UPDATE OF is_anonymous` para
+-- avisar cuando un contacto que habia entrado sin datos (por ejemplo, un DM de
+-- alguien cuyo perfil Instagram no expone) se completa y pasa a ser un lead de
+-- verdad.
+--
+-- Ese trigger nunca se iba a disparar. `is_anonymous` es una columna GENERATED
+-- ALWAYS (migracion 00032): la calcula la base a partir del nombre, el mail, el
+-- telefono y el usuario de Instagram. Postgres dispara `UPDATE OF <columna>`
+-- cuando esa columna aparece en el SET del UPDATE, y una columna generada nunca
+-- puede aparecer ahi. El trigger se creaba sin error y no hacia nada.
+--
+-- Se escucha, entonces, a las columnas que la alimentan. La condicion sigue
+-- siendo la misma —era anonimo y dejo de serlo— y esa se evalua igual sobre
+-- OLD/NEW, donde el valor generado si esta disponible.
+-- ============================================================
+
+DROP TRIGGER IF EXISTS contacts_automation_deanonymized ON public.contacts;
+
+CREATE TRIGGER contacts_automation_deanonymized
+  AFTER UPDATE OF display_name, email, secondary_email, phone, whatsapp_phone, instagram_username
+  ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_emit_deanonymized();
+
+COMMENT ON FUNCTION public.contacts_emit_deanonymized() IS
+  'Emite contact_created cuando un contacto anonimo se completa. Escucha las columnas que alimentan is_anonymous, porque una columna generada nunca aparece en el SET de un UPDATE y un trigger UPDATE OF sobre ella no dispara nunca.';

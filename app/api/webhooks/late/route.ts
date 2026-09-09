@@ -68,6 +68,12 @@ interface WebhookPayload {
     callbackData?: string;
     postbackPayload?: string;
     postbackTitle?: string;
+    /**
+     * Instagram: viene cuando el mensaje es una respuesta a una historia de la
+     * cuenta. Lo usa el filtro "es respuesta a historia" del trigger de
+     * palabra clave (F6).
+     */
+    storyReply?: { storyId: string; storyUrl?: string };
   };
   timestamp: string;
 }
@@ -274,6 +280,8 @@ async function processMessageEvent(
       postbackPayload: metadata?.postbackPayload || undefined,
       quickReplyPayload: metadata?.quickReplyPayload || undefined,
       callbackData: metadata?.callbackData || undefined,
+      isStoryReply: Boolean(metadata?.storyReply),
+      storyId: metadata?.storyReply?.storyId,
       sender: {
         id: msg.sender.id,
         name: msg.sender.name,

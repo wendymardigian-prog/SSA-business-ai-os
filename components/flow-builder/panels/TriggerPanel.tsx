@@ -15,6 +15,14 @@ interface TriggerPanelData {
   keywords?: Keyword[];
   payload?: string;
   alsoMatchInDms?: boolean;
+  /** F6: acota el trigger de palabra clave a las respuestas a historias. */
+  storyReply?: boolean;
+  /** F4: que evento del CRM se espera, y con que valor. */
+  event?: string;
+  value?: string;
+  /** F5: ventana de inactividad. */
+  amount?: number;
+  unit?: "hours" | "days";
   [key: string]: unknown;
 }
 
@@ -24,12 +32,24 @@ interface TriggerPanelProps {
 }
 
 const triggerTypes: Array<{ value: TriggerType; label: string; description: string }> = [
-  { value: "keyword", label: "Keyword", description: "Triggered when a user sends a matching keyword" },
-  { value: "postback", label: "Button Click", description: "Triggered when a user clicks a button" },
-  { value: "quick_reply", label: "Quick Reply", description: "Triggered when a user taps a quick reply" },
-  { value: "welcome", label: "Welcome Message", description: "Triggered when a user starts a conversation" },
-  { value: "default", label: "Default Reply", description: "Triggered when no other trigger matches" },
-  { value: "comment_keyword", label: "Comment Keyword", description: "Triggered by keywords in post comments" },
+  { value: "keyword", label: "Palabra clave", description: "Cuando el lead escribe una palabra que coincide" },
+  { value: "postback", label: "Clic en un boton", description: "Cuando el lead toca un boton del mensaje" },
+  { value: "quick_reply", label: "Respuesta rapida", description: "Cuando el lead toca una respuesta rapida" },
+  { value: "welcome", label: "Primer mensaje", description: "La primera vez que el lead escribe" },
+  { value: "default", label: "Respuesta por defecto", description: "Cuando ningun otro trigger coincide" },
+  { value: "comment_keyword", label: "Palabra clave en comentarios", description: "Por palabras clave en los comentarios de una publicacion" },
+  { value: "new_contact", label: "Contacto nuevo", description: "Cuando se crea un contacto, venga de donde venga (mensaje, import o alta manual)" },
+  { value: "crm_event", label: "Evento del CRM", description: "Cuando cambia algo del contacto: un tag, un campo, el setter o el vendedor" },
+  { value: "inactivity", label: "Inactividad", description: "Cuando pasan X horas sin que el lead conteste" },
+];
+
+/** Los eventos del CRM que pueden disparar un flow (F4). */
+const CRM_EVENTS: Array<{ value: string; label: string; valueLabel: string; valuePlaceholder: string }> = [
+  { value: "tag_added", label: "Se agrego un tag", valueLabel: "Solo este tag", valuePlaceholder: "interesado" },
+  { value: "tag_removed", label: "Se quito un tag", valueLabel: "Solo este tag", valuePlaceholder: "interesado" },
+  { value: "field_changed", label: "Cambio un campo personalizado", valueLabel: "Solo este campo", valuePlaceholder: "presupuesto" },
+  { value: "assignment_changed", label: "Se asigno setter o vendedor", valueLabel: "Solo este rol", valuePlaceholder: "vendedor" },
+  { value: "do_not_contact", label: 'Se marco "no contactar"', valueLabel: "Solo por este motivo", valuePlaceholder: "" },
 ];
 
 const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: string }> = [
@@ -78,6 +98,7 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
 
   const showKeywords = triggerType === "keyword" || triggerType === "comment_keyword";
   const showPayload = triggerType === "postback" || triggerType === "quick_reply";
+  const selectedEvent = CRM_EVENTS.find((e) => e.value === data.event) ?? CRM_EVENTS[0];
 
   return (
     <div className="space-y-5">
@@ -226,6 +247,107 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
               </div>
             </label>
           )}
+        </div>
+      )}
+
+      {/* F6: filtro de respuesta a historia */}
+      {triggerType === "keyword" && (
+        <div className="rounded-lg border border-border bg-card p-3">
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(data.storyReply)}
+              onChange={(e) => onChange({ ...data, storyReply: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-input text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-foreground">
+                Solo respuestas a historias
+              </span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                El flow corre unicamente cuando la palabra llega respondiendo una
+                historia de Instagram. Un DM comun con la misma palabra no lo
+                dispara.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
+      {/* F4: evento del CRM */}
+      {triggerType === "crm_event" && (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-foreground">
+              Que tiene que pasar
+            </label>
+            <select
+              value={data.event ?? CRM_EVENTS[0].value}
+              onChange={(e) => onChange({ ...data, event: e.target.value, value: "" })}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              {CRM_EVENTS.map((e) => (
+                <option key={e.value} value={e.value}>
+                  {e.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold text-foreground">
+              {selectedEvent.valueLabel}
+            </label>
+            <input
+              type="text"
+              value={data.value ?? ""}
+              onChange={(e) => onChange({ ...data, value: e.target.value })}
+              placeholder={selectedEvent.valuePlaceholder || "Cualquiera"}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground/60">
+              Dejalo vacio para que dispare con cualquier valor.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* F5: ventana de inactividad */}
+      {triggerType === "inactivity" && (
+        <div>
+          <label className="mb-2 block text-xs font-semibold text-foreground">
+            Cuanto esperar sin respuesta
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={1}
+              value={data.amount ?? 24}
+              onChange={(e) =>
+                onChange({ ...data, amount: parseInt(e.target.value) || 1 })
+              }
+              className="w-24 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <select
+              value={data.unit ?? "hours"}
+              onChange={(e) =>
+                onChange({ ...data, unit: e.target.value as "hours" | "days" })
+              }
+              className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="hours">horas</option>
+              <option value="days">dias</option>
+            </select>
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+            Se cuenta desde la ultima vez que el lead interactuo. Dispara una
+            sola vez por conversacion y por ventana, aunque el chequeo corra
+            cada quince minutos.
+          </p>
+          <p className="mt-2 rounded-md bg-muted px-2.5 py-2 text-[11px] text-muted-foreground">
+            Solo aplica a canales donde se puede saber si el lead contesto:
+            Instagram hoy, WhatsApp cuando se conecte el numero.
+          </p>
         </div>
       )}
 

@@ -28,6 +28,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   link: "vinculó el contacto",
   import: "importó el contacto",
   do_not_contact: "cambió la marca de no contactar",
+  automation_triggered: "disparó una automatización",
 };
 
 const FIELD_LABELS: Record<string, string> = {

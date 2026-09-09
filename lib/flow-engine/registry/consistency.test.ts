@@ -67,14 +67,34 @@ describe("el editor de triggers y el registro dicen lo mismo", () => {
   const panel = leer("components/flow-builder/panels/TriggerPanel.tsx");
 
   it("todo tipo de trigger que ofrece el editor esta registrado", () => {
-    const tipos = [...panel.matchAll(/value:\s*"([^"]+)"\s*,\s*label:/g)].map((m) => m[1]);
-    const registrados = new Set(listTriggers().map((t) => t.type));
+    // Solo el array triggerTypes: el panel tiene otras listas con la misma
+    // forma (los eventos de CRM, los tipos de coincidencia) que no son tipos
+    // de trigger.
+    const bloque = panel.match(/const triggerTypes[^=]*=\s*\[([\s\S]*?)\n\];/);
+    expect(bloque, "no encontre el array triggerTypes en el panel").not.toBeNull();
 
-    const desconocidos = tipos.filter(
-      (t) => !registrados.has(t) && !["exact", "contains", "startsWith"].includes(t)
-    );
+    const tipos = [...bloque![1].matchAll(/value:\s*"([^"]+)"/g)].map((m) => m[1]);
+    expect(tipos.length).toBeGreaterThan(0);
+
+    const registrados = new Set(listTriggers().map((t) => t.type));
+    const desconocidos = tipos.filter((t) => !registrados.has(t));
 
     expect(desconocidos, `el editor ofrece triggers sin registrar: ${desconocidos.join(", ")}`).toEqual(
+      []
+    );
+  });
+
+  it("todo trigger registrado se puede configurar desde el editor", () => {
+    const bloque = panel.match(/const triggerTypes[^=]*=\s*\[([\s\S]*?)\n\];/);
+    const ofrecidos = new Set(
+      [...bloque![1].matchAll(/value:\s*"([^"]+)"/g)].map((m) => m[1])
+    );
+
+    const faltantes = listTriggers()
+      .map((t) => t.type)
+      .filter((t) => !ofrecidos.has(t));
+
+    expect(faltantes, `hay triggers que nadie puede configurar: ${faltantes.join(", ")}`).toEqual(
       []
     );
   });

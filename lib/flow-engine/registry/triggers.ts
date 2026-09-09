@@ -39,7 +39,15 @@ registerTrigger({
   label: "Palabra clave",
   scope: "message",
   priority: 80,
-  matches: keywordMatches,
+  matches: (args) => {
+    // F6: filtro adicional de respuesta a historia. Con storyReply en true, el
+    // trigger solo corre para respuestas a historias; un DM comun con la misma
+    // palabra no lo dispara. Es un filtro, no un tipo aparte: la palabra clave
+    // se compara igual, solo se acota cuando aplica.
+    const config = args.config as { storyReply?: boolean };
+    if (config.storyReply === true && !args.message.isStoryReply) return false;
+    return keywordMatches(args);
+  },
 });
 
 registerTrigger({
@@ -91,4 +99,83 @@ export function keywordMatches(args: TriggerMatchArgs): boolean {
     if (matchType === "startsWith" && args.text.startsWith(keyword)) return true;
   }
   return false;
+}
+
+// ------------------------------------------------------------
+// Triggers que no nacen de un mensaje
+// ------------------------------------------------------------
+// Estos tres no tienen `matches`: no los evalua el matcher del inbox, los
+// dispara un cron o un evento del CRM. Se registran igual para que el editor
+// los ofrezca, para que la prioridad valga si alguna vez se cruzan, y para que
+// el sistema tenga una sola lista de que tipos existen.
+
+registerTrigger({
+  type: "new_contact",
+  label: "Contacto nuevo",
+  scope: "event",
+  priority: 60,
+});
+
+registerTrigger({
+  type: "crm_event",
+  label: "Evento del CRM",
+  scope: "event",
+  priority: 50,
+});
+
+registerTrigger({
+  type: "inactivity",
+  label: "Inactividad",
+  scope: "scheduled",
+  priority: 40,
+});
+
+/**
+ * Decide si un evento del CRM le corresponde a un trigger.
+ *
+ * La config del trigger dice que evento espera y, opcionalmente, con que valor:
+ * "cuando se agrega el tag interesado" es `{ event: "tag_added", value:
+ * "interesado" }`. Sin valor, alcanza con que coincida el tipo de evento.
+ *
+ * Vive aca y no en el cron para que el cron no sepa de reglas: recorre eventos
+ * y pregunta.
+ */
+export function crmEventMatches(
+  config: Record<string, unknown>,
+  event: { event_type: string; payload: Record<string, unknown> }
+): boolean {
+  if (config.event !== event.event_type) return false;
+
+  const expected = config.value;
+  if (expected === undefined || expected === null || expected === "") return true;
+
+  const actual = valueForEvent(event.event_type, event.payload);
+  if (actual === undefined) return false;
+
+  return String(actual).toLowerCase().trim() === String(expected).toLowerCase().trim();
+}
+
+/** Que valor del payload se compara, segun el tipo de evento. */
+function valueForEvent(
+  eventType: string,
+  payload: Record<string, unknown>
+): unknown {
+  switch (eventType) {
+    case "tag_added":
+    case "tag_removed":
+      return payload.tag_name;
+    case "field_changed":
+      // Se filtra por que campo cambio, no por su valor: "cuando cambia el
+      // presupuesto" es lo que se quiere automatizar, no "cuando el presupuesto
+      // vale exactamente 5000".
+      return payload.field_slug;
+    case "assignment_changed":
+      return payload.role;
+    case "contact_created":
+      return payload.source;
+    case "do_not_contact":
+      return payload.reason;
+    default:
+      return undefined;
+  }
 }
