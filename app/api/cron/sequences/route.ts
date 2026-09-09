@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processSequenceSteps } from "@/lib/sequence-processor";
+import { processSequenceSteps } from "@/lib/sequences/processor";
 
 /**
  * Cron job handler that processes sequence enrollments.
