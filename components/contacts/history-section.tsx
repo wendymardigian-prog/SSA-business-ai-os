@@ -29,6 +29,11 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   import: "importó el contacto",
   do_not_contact: "cambió la marca de no contactar",
   automation_triggered: "disparó una automatización",
+  enroll: "lo inscribió en una secuencia",
+  collision_detected: "quedó en más de una secuencia por el mismo canal",
+  collision_resolved: "resolvió la colisión de secuencias",
+  sequence_paused: "pausó las secuencias del contacto",
+  sequence_resumed: "reanudó una secuencia del contacto",
 };
 
 const FIELD_LABELS: Record<string, string> = {

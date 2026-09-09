@@ -35,7 +35,9 @@ export type AuditEntityType =
   | "workspace"
   | "workspace_member"
   | "response_template"
-  | "csv_import";
+  | "csv_import"
+  | "sequence"
+  | "sequence_enrollment";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -47,7 +49,17 @@ export type AuditAction =
   | "import"
   | "do_not_contact"
   /** Un evento del CRM disparo un flow (Fase 2, F3/F4). */
-  | "automation_triggered";
+  | "automation_triggered"
+  /** Se inscribio un contacto en una secuencia (Fase 2, F13/F15). */
+  | "enroll"
+  /** Al inscribir habia otra secuencia viva en el mismo canal (F13). */
+  | "collision_detected"
+  /** Un admin decidio que hacer con una colision (F13). */
+  | "collision_resolved"
+  /** Se frenaron secuencias del contacto (F11: respondio; o decision de un admin). */
+  | "sequence_paused"
+  /** Se reanudo una inscripcion pausada. */
+  | "sequence_resumed";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -101,19 +113,60 @@ export type SequenceStatus = "draft" | "active" | "paused";
 /**
  * Estado de una inscripcion a una secuencia.
  *
- * "paused" lo suma el Bloque 4 (F18): la inscripcion queda frenada porque el
- * contacto pidio no ser contactado. No se reanuda sola, ni siquiera cuando un
- * Owner o Admin le saca la marca — volver a inscribirlo es una decision
- * explicita de una persona.
+ * "paused" es una frenada reversible; el motivo esta en paused_reason y decide
+ * si se puede reanudar. La unica pausa que NO se reanuda sola ni a mano es la
+ * de opt-out: volver a escribirle a alguien que pidio que no lo contacten es
+ * una decision explicita de una persona, y se hace re-inscribiendolo.
  */
 export type SequenceEnrollmentStatus = "active" | "paused" | "completed" | "cancelled";
 
+/**
+ * Por que quedo pausada una inscripcion (migracion 00042).
+ *
+ * Se guarda como texto libre en la base para que sumar un motivo no pida DDL,
+ * pero estos son los que el sistema escribe hoy.
+ */
+export type SequencePauseReason =
+  /** El lead respondio por ese canal (F11). */
+  | "contact_replied"
+  /** Pidio no ser contactado, o esta marcado como tal. */
+  | "opt_out"
+  /** Se pauso la secuencia entera. */
+  | "sequence_paused"
+  /** No hay conversacion abierta por donde escribirle. */
+  | "no_conversation"
+  /** Un admin la freno al resolver una colision (F13). */
+  | "collision";
+
+/** Como se resolvio una colision de secuencias (F13). */
+export type SequenceCollisionResolution =
+  | "kept_both"
+  | "paused_other"
+  | "removed_other"
+  | "removed_this";
+
 export interface SequenceStep {
-  type: "message" | "delay";
-  /** Message text (for message steps) */
+  type: "message" | "delay" | "aiMessage";
+  /** Texto del paso de mensaje. Admite {{variables}} del contacto. */
   content?: string;
-  /** Delay in minutes (for delay steps) */
+  /** Espera del paso de delay, en minutos. */
   delayMinutes?: number;
+  /**
+   * Consigna para el modelo, en los pasos de IA (F10).
+   *
+   * A diferencia del nodo AI Response de un flow, aca no hay un mensaje
+   * entrante al que contestar: hay una instruccion ("escribile recordandole
+   * que la promo vence manana"). Admite {{variables}}.
+   */
+  prompt?: string;
+  /** Proveedor de IA. Si falta, se usa el que este conectado. */
+  provider?: string;
+  /** Modelo. Si falta, el que tenga por defecto el proveedor. */
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  /** Cuantos mensajes del hilo se le pasan al modelo como contexto. */
+  contextMessages?: number;
 }
 
 export interface Database {
@@ -1274,6 +1327,19 @@ export interface Database {
           enrolled_at: string;
           next_step_at: string | null;
           completed_at: string | null;
+          /** Migracion 00042: estado de corrida. */
+          paused_reason: string | null;
+          paused_at: string | null;
+          attempt_count: number;
+          last_error: string | null;
+          last_error_at: string | null;
+          locked_at: string | null;
+          /** Migracion 00043: colision (F13). */
+          collision_detected_at: string | null;
+          collision_with: Json | null;
+          collision_reviewed_at: string | null;
+          collision_reviewed_by: string | null;
+          collision_resolution: SequenceCollisionResolution | null;
         };
         Insert: {
           id?: string;
@@ -1285,12 +1351,34 @@ export interface Database {
           enrolled_at?: string;
           next_step_at?: string | null;
           completed_at?: string | null;
+          paused_reason?: string | null;
+          paused_at?: string | null;
+          attempt_count?: number;
+          last_error?: string | null;
+          last_error_at?: string | null;
+          locked_at?: string | null;
+          collision_detected_at?: string | null;
+          collision_with?: Json | null;
+          collision_reviewed_at?: string | null;
+          collision_reviewed_by?: string | null;
+          collision_resolution?: SequenceCollisionResolution | null;
         };
         Update: {
           current_step_index?: number;
           status?: SequenceEnrollmentStatus;
           next_step_at?: string | null;
           completed_at?: string | null;
+          paused_reason?: string | null;
+          paused_at?: string | null;
+          attempt_count?: number;
+          last_error?: string | null;
+          last_error_at?: string | null;
+          locked_at?: string | null;
+          collision_detected_at?: string | null;
+          collision_with?: Json | null;
+          collision_reviewed_at?: string | null;
+          collision_reviewed_by?: string | null;
+          collision_resolution?: SequenceCollisionResolution | null;
         };
         Relationships: [
           {
@@ -1640,6 +1728,29 @@ export interface Database {
           p_limit?: number;
         };
         Returns: boolean;
+      };
+      /**
+       * Reclama las inscripciones vencidas para una corrida del cron
+       * (migracion 00042). El claim es lo que evita que dos corridas
+       * solapadas manden el mismo mensaje dos veces. Solo service_role.
+       */
+      claim_sequence_enrollments: {
+        Args: {
+          p_limit?: number;
+          p_stale_after?: string;
+        };
+        Returns: Database["public"]["Tables"]["sequence_enrollments"]["Row"][];
+      };
+      /**
+       * Pausa las secuencias activas del contacto en ese canal cuando responde
+       * (migracion 00044, F11). Devuelve cuantas freno. Solo service_role.
+       */
+      pause_sequences_on_reply: {
+        Args: {
+          p_contact_id: string;
+          p_channel_id: string;
+        };
+        Returns: number;
       };
       /** Borra las ventanas de envio viejas (migracion 00037). Solo service_role. */
       purge_send_windows: {
