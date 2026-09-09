@@ -45,8 +45,14 @@ export function EnrollContactDialog({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ContactOption[]>([]);
-  const [searching, setSearching] = useState(false);
+  // Los resultados se guardan junto al término que los produjo. Asi
+  // "estoy buscando" y "esto es lo que hay que mostrar" se derivan, en vez de
+  // ser dos estados que hay que mantener en sincronía a mano — que es lo que
+  // dejaba el "Buscando..." pegado cuando borrabas el texto.
+  const [resultado, setResultado] = useState<{ term: string; items: ContactOption[] }>({
+    term: "",
+    items: [],
+  });
   const [selectedContact, setSelectedContact] = useState<ContactOption | null>(contact ?? null);
   const [sequenceId, setSequenceId] = useState(sequence?.id ?? "");
   const [channelId, setChannelId] = useState(contact?.channels[0]?.id ?? "");
@@ -54,20 +60,38 @@ export function EnrollContactDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Búsqueda con freno: no se consulta en cada tecla.
+  const term = query.trim();
+  const buscando = !contact && term.length >= 2;
+
+  /**
+   * Búsqueda con freno: no se consulta en cada tecla.
+   *
+   * El estado se toca solo adentro del timeout y del callback, nunca en el
+   * cuerpo del efecto: hacerlo de forma síncrona encadena renders (y lo marca
+   * el linter). Lo que hay que mostrar cuando la búsqueda no aplica se deriva
+   * más abajo en vez de vaciar `results` a mano.
+   */
   useEffect(() => {
-    if (contact || query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    setSearching(true);
-    const timer = setTimeout(async () => {
-      const found = await searchContactsForEnrollment(query);
-      setResults(found);
-      setSearching(false);
+    if (!buscando) return;
+
+    let vigente = true;
+    const timer = setTimeout(() => {
+      searchContactsForEnrollment(term).then((found) => {
+        // Descartar la respuesta si el usuario siguió tipeando: si no, una
+        // consulta lenta pisa el resultado de una más nueva.
+        if (vigente) setResultado({ term, items: found });
+      });
     }, 300);
-    return () => clearTimeout(timer);
-  }, [query, contact]);
+
+    return () => {
+      vigente = false;
+      clearTimeout(timer);
+    };
+  }, [term, buscando]);
+
+  const alDia = resultado.term === term;
+  const searching = buscando && !alDia;
+  const visibles = buscando && alDia ? resultado.items : [];
 
   function submit(confirmCollision: boolean) {
     if (!selectedContact || !sequenceId || !channelId) return;
@@ -132,20 +156,20 @@ export function EnrollContactDialog({
                   />
                 </div>
 
-                {searching && (
+                {buscando && searching && (
                   <p className="mt-2 text-xs text-muted-foreground">Buscando...</p>
                 )}
 
-                {!searching && query.trim().length >= 2 && results.length === 0 && (
+                {buscando && !searching && visibles.length === 0 && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     No encontré a nadie. Ojo que los contactos marcados «no contactar» no
                     aparecen acá.
                   </p>
                 )}
 
-                {results.length > 0 && (
+                {visibles.length > 0 && (
                   <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
-                    {results.map((option) => (
+                    {visibles.map((option) => (
                       <li key={option.id}>
                         <button
                           onClick={() => {
