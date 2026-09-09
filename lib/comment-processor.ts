@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
+import { keywordMatches } from "@/lib/flow-engine/registry/triggers";
+import type { TriggerRow } from "@/lib/flow-engine/registry/types";
 import { createZernioClient } from "@/lib/zernio-client";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
@@ -40,16 +42,20 @@ export function matchCommentTrigger(
 
   for (const trigger of triggers) {
     const config = trigger.config as unknown as CommentKeywordConfig;
-    if (!config.keywords?.length) continue;
+    // El filtro por publicacion es propio de los comentarios: acota el trigger
+    // a posts puntuales. La comparacion de palabras clave en si la hace el
+    // registro, para que no queden dos implementaciones que se separen.
     if (config.postIds?.length && !config.postIds.includes(comment.postId)) continue;
 
-    for (const kw of config.keywords) {
-      const keyword = kw.value.toLowerCase();
-      const matchType = kw.matchType || "contains";
-      if (matchType === "exact" && text === keyword) return trigger;
-      if (matchType === "contains" && text.includes(keyword)) return trigger;
-      if (matchType === "startsWith" && text.startsWith(keyword)) return trigger;
-    }
+    const matched = keywordMatches({
+      trigger: trigger as unknown as TriggerRow,
+      config: (trigger.config ?? {}) as Record<string, unknown>,
+      message: { text: comment.text },
+      text,
+      isFirstMessage: false,
+    });
+
+    if (matched) return trigger;
   }
 
   return null;

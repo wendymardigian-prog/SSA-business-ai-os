@@ -1,26 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
-import type {
-  FlowNode,
-  FlowEdge,
-  FlowExecutionContext,
-  SendMessageNodeData,
-  ConditionNodeData,
-  DelayNodeData,
-  TagNodeData,
-  SetFieldNodeData,
-  HttpRequestNodeData,
-  GoToFlowNodeData,
-  ABSplitNodeData,
-  CommentReplyNodeData,
-  PrivateReplyNodeData,
-  AiResponseNodeData,
-  EnrollSequenceNodeData,
-} from "./types";
-import { executeAiResponse } from "./nodes/ai-response";
-import { adaptMessage } from "./platform-adapter";
-import { createZernioClient } from "@/lib/zernio-client";
-import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import type { FlowNode, FlowEdge, FlowExecutionContext } from "./types";
+import { getNode } from "./registry";
+import type { FlowRuntime } from "./registry/types";
+
+/**
+ * Lo que el motor le presta a los nodos que necesitan arrancar otro flow.
+ *
+ * Va por parametro y no por import para que el registro pueda importar los
+ * nodos sin que los nodos importen al motor.
+ */
+const runtime: FlowRuntime = {
+  executeFlow: async (supabase, context) => {
+    await executeFlow(supabase, context);
+  },
+};
 
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
@@ -286,9 +280,11 @@ async function traverseNodes(
   // Execute the node
   const result = await executeNode(supabase, node, context, sessionId);
 
-  // Persist variables written by output-producing nodes so they survive
-  // pauses (resumeSession reloads them from the session row).
-  if (node.type === "aiResponse" || node.type === "httpRequest") {
+  // Los nodos que escriben variables las guardan en la sesion para que
+  // sobrevivan a una pausa (resumeSession las vuelve a leer de ahi). Cual lo
+  // hace lo declara cada nodo en el registro; antes eran dos tipos escritos a
+  // mano aca, y sumar un tercero implicaba acordarse de tocar el motor.
+  if (getNode(node)?.persistsVariables) {
     await supabase
       .from("flow_sessions")
       .update({ variables: (context.variables ?? {}) as Json })
@@ -326,644 +322,42 @@ async function traverseNodes(
   await traverseNodes(supabase, sessionId, nextNode, nodes, edges, context, depth + 1);
 }
 
+/**
+ * Ejecuta un nodo pidiendoselo al registro.
+ *
+ * El motor no sabe que tipos existen. Antes habia aca un switch con dieciocho
+ * casos y un `default: return` que se comia en silencio todo lo que no
+ * reconociera — que resulto ser los once nodos de accion del panel, porque el
+ * canvas los guarda como `type: "action"` con el tipo real adentro de
+ * `data.actionType`. Pasaban el panel de Test y en produccion no hacian nada.
+ *
+ * Ahora un nodo desconocido se avisa fuerte en vez de desaparecer.
+ */
 async function executeNode(
   supabase: SupabaseClient<Database>,
   node: FlowNode,
   context: FlowExecutionContext,
   sessionId: string
 ): Promise<string | void> {
-  switch (node.type) {
-    case "sendMessage":
-      return executeSendMessage(supabase, node.data as SendMessageNodeData, context);
-    case "condition":
-      return executeCondition(supabase, node.data as ConditionNodeData, context);
-    case "delay":
-      return executeDelay(supabase, node.data as DelayNodeData, sessionId, node.id, context);
-    case "addTag":
-    case "removeTag":
-      return executeTag(supabase, node.data as TagNodeData, context);
-    case "setCustomField":
-      return executeSetField(supabase, node.data as SetFieldNodeData, context);
-    case "httpRequest":
-      return executeHttpRequest(node.data as HttpRequestNodeData, context);
-    case "goToFlow":
-      return executeGoToFlow(supabase, node.data as GoToFlowNodeData, context, sessionId);
-    case "humanTakeover":
-      return executeHumanTakeover(supabase, context, sessionId);
-    case "subscribe":
-    case "unsubscribe":
-      return executeSubscription(supabase, node.type, context);
-    case "commentReply":
-      return executeCommentReply(supabase, node.data as CommentReplyNodeData, context);
-    case "privateReply":
-      return executePrivateReply(supabase, node.data as PrivateReplyNodeData, context);
-    case "aiResponse":
-      return executeAiResponse(supabase, node.data as AiResponseNodeData, context, sessionId);
-    case "abSplit":
-      return executeABSplit(node.data as ABSplitNodeData);
-    case "smartDelay":
-      // Wait for next input
-      await supabase
-        .from("flow_sessions")
-        .update({ waiting_for_input: true, current_node_id: node.id })
-        .eq("id", sessionId);
-      return "pause";
-    case "enrollSequence":
-      return executeEnrollSequence(supabase, node.data as EnrollSequenceNodeData, context);
-    default:
-      return;
-  }
-}
+  const definition = getNode(node);
 
-async function sendFirstMessageAsPrivateReply(
-  supabase: SupabaseClient<Database>,
-  zernio: ReturnType<typeof createZernioClient>,
-  data: SendMessageNodeData,
-  context: FlowExecutionContext,
-  lateAccountId: string
-) {
-  const first = data.messages[0];
-  if (!first) return;
-
-  const text = interpolateVariables(
-    adaptMessage(first, context.platform ?? "instagram").text,
-    context.variables || {}
-  );
-
-  try {
-    await zernio.comments.sendPrivateReplyToComment({
-      path: {
-        postId: String(context.variables!.post_id),
-        commentId: String(context.variables!.comment_id),
-      },
-      body: { accountId: lateAccountId, message: text },
-    });
-
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      sent_by_flow_id: context.flowId,
-      status: "sent",
-    });
-
-    await supabase.from("analytics_events").insert({
-      workspace_id: context.workspaceId,
-      flow_id: context.flowId,
-      contact_id: context.contactId,
-      event_type: "message_sent",
-    });
-  } catch (error) {
-    console.error("Failed to send comment-context message as private reply:", error);
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      sent_by_flow_id: context.flowId,
-      status: "failed",
-    });
-    return;
-  }
-
-  if (data.messages.length > 1) {
-    console.warn(
-      "Comment flow Send Message node had multiple messages; only the first was sent (one private reply per comment)."
+  if (!definition) {
+    console.error(
+      `Nodo sin definicion en el registro (type="${node.type}", actionType="${
+        (node.data as { actionType?: string } | undefined)?.actionType ?? "-"
+      }"). El flow sigue de largo.`
     );
-  }
-}
-
-async function executeSendMessage(
-  supabase: SupabaseClient<Database>,
-  data: SendMessageNodeData,
-  context: FlowExecutionContext
-) {
-  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-  if (!apiKey) return;
-
-  const zernio = createZernioClient(apiKey);
-
-  // Resolve late_account_id from channel if not in context
-  let lateAccountId = context.lateAccountId;
-  if (!lateAccountId) {
-    const { data: channel } = await supabase
-      .from("channels")
-      .select("late_account_id, platform")
-      .eq("id", context.channelId)
-      .single();
-
-    if (!channel) return;
-    lateAccountId = channel.late_account_id;
-    if (!context.platform) {
-      context.platform = channel.platform as FlowExecutionContext["platform"];
-    }
-  }
-
-  // Resolve late_conversation_id from conversation if not in context
-  let lateConversationId = context.lateConversationId;
-  if (!lateConversationId) {
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("late_conversation_id")
-      .eq("id", context.conversationId)
-      .single();
-
-    if (!conversation?.late_conversation_id) {
-      // Comment-triggered flows have no DM conversation yet. Instagram allows
-      // exactly one private reply per comment, so deliver the first message via
-      // the private-reply endpoint instead of silently dropping the whole node
-      // (users build comment flows with plain Send Message nodes, not Private Reply).
-      if (context.variables?.comment_id && context.variables?.post_id && lateAccountId) {
-        await sendFirstMessageAsPrivateReply(supabase, zernio, data, context, lateAccountId);
-        return;
-      }
-      console.error("No late_conversation_id found for conversation:", context.conversationId);
-      return;
-    }
-    lateConversationId = conversation.late_conversation_id;
-  }
-
-  for (const msg of data.messages) {
-    const adapted = adaptMessage(msg, context.platform!);
-    const text = interpolateVariables(adapted.text, context.variables || {});
-
-    try {
-      // Media (image/video/audio) is platform-agnostic, so read it from the raw
-      // message. `mediaUrl` + `mediaType` supersede the legacy image-only `imageUrl`.
-      const rawMsg = msg as { mediaUrl?: string; mediaType?: string; imageUrl?: string };
-      const mediaUrl = rawMsg.mediaUrl || rawMsg.imageUrl;
-      const mediaType = rawMsg.mediaType || (rawMsg.imageUrl ? "image" : undefined);
-
-      const attachments = mediaUrl
-        ? [{ type: mediaType || "image", url: mediaUrl }]
-        : undefined;
-
-      // Build the API body with rich messaging fields
-      const body: Record<string, unknown> = {
-        accountId: lateAccountId,
-        message: text,
-      };
-      // Actually send the media to the recipient. Previously the attachment was only
-      // stored locally and never included in the send body, so flow media never
-      // reached the contact.
-      if (mediaUrl) {
-        body.attachmentUrl = mediaUrl;
-        body.attachmentType = mediaType || "image";
-      }
-
-      if (adapted.buttons?.length) {
-        body.buttons = adapted.buttons;
-      }
-      if (adapted.quickReplies?.length) {
-        body.quickReplies = adapted.quickReplies;
-      }
-      if (adapted.template) {
-        body.template = adapted.template;
-      }
-      if (adapted.replyMarkup) {
-        body.replyMarkup = adapted.replyMarkup;
-      }
-
-      const response = await zernio.messages.sendInboxMessage({
-        path: { conversationId: lateConversationId },
-        body: body as Parameters<typeof zernio.messages.sendInboxMessage>[0]["body"],
-      });
-
-      // Store outbound message
-      await supabase.from("messages").insert({
-        conversation_id: context.conversationId,
-        direction: "outbound",
-        text,
-        attachments: attachments || null,
-        sent_by_flow_id: context.flowId,
-        sent_by_node_id: null,
-        platform_message_id: response.data?.data?.messageId || null,
-        status: "sent",
-      });
-
-      await supabase.from("analytics_events").insert({
-        workspace_id: context.workspaceId,
-        flow_id: context.flowId,
-        contact_id: context.contactId,
-        event_type: "message_sent",
-      });
-    } catch (error) {
-      console.error("Failed to send message:", error);
-      await supabase.from("messages").insert({
-        conversation_id: context.conversationId,
-        direction: "outbound",
-        text,
-        sent_by_flow_id: context.flowId,
-        status: "failed",
-      });
-
-      await supabase.from("analytics_events").insert({
-        workspace_id: context.workspaceId,
-        flow_id: context.flowId,
-        contact_id: context.contactId,
-        event_type: "message_failed",
-        metadata: { error: error instanceof Error ? error.message : "Unknown error" },
-      });
-    }
-
-    // Small delay between messages
-    if (data.messages.length > 1) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-}
-
-async function executeCondition(
-  supabase: SupabaseClient<Database>,
-  data: ConditionNodeData,
-  context: FlowExecutionContext
-): Promise<string> {
-  const { data: contact } = await supabase
-    .from("contacts")
-    .select("*, contact_tags(tag_id, tags(name)), contact_custom_fields(field_id, value, custom_field_definitions(slug))")
-    .eq("id", context.contactId)
-    .single();
-
-  if (!contact) return "handle:false";
-
-  const results = data.conditions.map((condition) => {
-    let fieldValue: string | undefined;
-
-    // Check built-in fields
-    if (condition.field === "platform") {
-      fieldValue = context.platform;
-    } else if (condition.field === "is_subscribed") {
-      fieldValue = String(contact.is_subscribed);
-    } else if (condition.field.startsWith("tag:")) {
-      const tagName = condition.field.replace("tag:", "");
-      const hasTags = Array.isArray(contact.contact_tags);
-      const hasTag = hasTags && (contact.contact_tags as Array<{ tags: { name: string } | null }>).some(
-        (ct) => ct.tags?.name === tagName
-      );
-      fieldValue = String(hasTag);
-    } else if (condition.field.startsWith("variable:")) {
-      const varName = condition.field.replace("variable:", "");
-      fieldValue = context.variables?.[varName];
-    } else {
-      // Check custom fields
-      const customFields = contact.contact_custom_fields as Array<{
-        value: string;
-        custom_field_definitions: { slug: string } | null;
-      }> | null;
-      const field = customFields?.find(
-        (f) => f.custom_field_definitions?.slug === condition.field
-      );
-      fieldValue = field?.value;
-    }
-
-    return evaluateCondition(fieldValue, condition.operator, condition.value);
-  });
-
-  const passed =
-    data.logic === "and" ? results.every(Boolean) : results.some(Boolean);
-
-  return passed ? "handle:true" : "handle:false";
-}
-
-function evaluateCondition(
-  actual: string | undefined,
-  operator: string,
-  expected: string
-): boolean {
-  switch (operator) {
-    case "equals":
-      return actual === expected;
-    case "not_equals":
-      return actual !== expected;
-    case "contains":
-      return actual?.includes(expected) || false;
-    case "exists":
-      return actual !== undefined && actual !== null && actual !== "";
-    case "gt":
-      return Number(actual) > Number(expected);
-    case "lt":
-      return Number(actual) < Number(expected);
-    default:
-      return false;
-  }
-}
-
-async function executeDelay(
-  supabase: SupabaseClient<Database>,
-  data: DelayNodeData,
-  sessionId: string,
-  nodeId: string,
-  context: FlowExecutionContext
-) {
-  const multipliers: Record<string, number> = {
-    seconds: 1000,
-    minutes: 60 * 1000,
-    hours: 60 * 60 * 1000,
-    days: 24 * 60 * 60 * 1000,
-  };
-
-  const delayMs = data.duration * (multipliers[data.unit] || 1000);
-  const runAt = new Date(Date.now() + delayMs).toISOString();
-
-  // Schedule a job to resume the flow
-  await supabase.from("scheduled_jobs").insert({
-    type: "resume_flow",
-    payload: {
-      sessionId,
-      nodeId,
-      flowId: context.flowId,
-      channelId: context.channelId,
-      contactId: context.contactId,
-      conversationId: context.conversationId,
-      workspaceId: context.workspaceId,
-      lateConversationId: context.lateConversationId || null,
-      lateAccountId: context.lateAccountId || null,
-      variables: context.variables || {},
-    },
-    run_at: runAt,
-  });
-
-  // Update session to waiting
-  await supabase
-    .from("flow_sessions")
-    .update({
-      waiting_until: runAt,
-      current_node_id: nodeId,
-    })
-    .eq("id", sessionId);
-
-  return "pause";
-}
-
-async function executeTag(
-  supabase: SupabaseClient<Database>,
-  data: TagNodeData,
-  context: FlowExecutionContext
-) {
-  // Find or create tag
-  const { data: tag } = await supabase
-    .from("tags")
-    .upsert(
-      { workspace_id: context.workspaceId, name: data.tagName },
-      { onConflict: "workspace_id,name" }
-    )
-    .select("id")
-    .single();
-
-  if (!tag) return;
-
-  if (data.action === "add") {
-    await supabase
-      .from("contact_tags")
-      .upsert({ contact_id: context.contactId, tag_id: tag.id })
-      .select();
-  } else {
-    await supabase
-      .from("contact_tags")
-      .delete()
-      .eq("contact_id", context.contactId)
-      .eq("tag_id", tag.id);
-  }
-}
-
-async function executeSetField(
-  supabase: SupabaseClient<Database>,
-  data: SetFieldNodeData,
-  context: FlowExecutionContext
-) {
-  // Find field definition
-  const { data: fieldDef } = await supabase
-    .from("custom_field_definitions")
-    .select("id")
-    .eq("workspace_id", context.workspaceId)
-    .eq("slug", data.fieldSlug)
-    .is("deleted_at", null)
-    .single();
-
-  if (!fieldDef) return;
-
-  const value = interpolateVariables(data.value, context.variables || {});
-
-  await supabase.from("contact_custom_fields").upsert(
-    {
-      contact_id: context.contactId,
-      field_id: fieldDef.id,
-      value,
-    },
-    { onConflict: "contact_id,field_id" }
-  );
-}
-
-async function executeHttpRequest(
-  data: HttpRequestNodeData,
-  context: FlowExecutionContext
-) {
-  try {
-    const url = interpolateVariables(data.url, context.variables || {});
-    const body = data.body
-      ? interpolateVariables(data.body, context.variables || {})
-      : undefined;
-
-    const response = await fetch(url, {
-      method: data.method,
-      headers: {
-        "Content-Type": "application/json",
-        ...data.headers,
-      },
-      body: data.method !== "GET" ? body : undefined,
-    });
-
-    const responseData = await response.text();
-
-    // Store response in variable if configured
-    if (data.responseVariable && context.variables) {
-      try {
-        context.variables[data.responseVariable] = JSON.parse(responseData);
-      } catch {
-        context.variables[data.responseVariable] = responseData;
-      }
-    }
-  } catch (error) {
-    console.error("HTTP request failed:", error);
-  }
-}
-
-async function executeGoToFlow(
-  supabase: SupabaseClient<Database>,
-  data: GoToFlowNodeData,
-  context: FlowExecutionContext,
-  _sessionId: string
-) {
-  // Execute the target flow
-  await executeFlow(supabase, {
-    ...context,
-    flowId: data.flowId,
-  });
-  // If returnAfter is true, the current flow will continue after the target flow completes
-  // For now, we just stop the current traversal
-  return "pause";
-}
-
-async function executeHumanTakeover(
-  supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
-  sessionId: string
-) {
-  // Pause automation on the conversation
-  await supabase
-    .from("conversations")
-    .update({ is_automation_paused: true })
-    .eq("id", context.conversationId);
-
-  // Mark session
-  await supabase
-    .from("flow_sessions")
-    .update({
-      human_takeover_at: new Date().toISOString(),
-      status: "completed",
-    })
-    .eq("id", sessionId);
-
-  return "pause";
-}
-
-async function executeSubscription(
-  supabase: SupabaseClient<Database>,
-  action: string,
-  context: FlowExecutionContext
-) {
-  await supabase
-    .from("contacts")
-    .update({ is_subscribed: action === "subscribe" })
-    .eq("id", context.contactId);
-}
-
-function executeABSplit(data: ABSplitNodeData): string {
-  const totalWeight = data.paths.reduce((sum, p) => sum + p.weight, 0);
-  const random = Math.random() * totalWeight;
-
-  let cumulative = 0;
-  for (let i = 0; i < data.paths.length; i++) {
-    cumulative += data.paths[i].weight;
-    if (random <= cumulative) {
-      return `handle:${data.paths[i].name}`;
-    }
-  }
-
-  return `handle:${data.paths[0].name}`;
-}
-
-/**
- * Post a public reply to the comment that triggered this flow.
- * Uses the comment_id and post_id variables set by the comment processor.
- */
-async function executeCommentReply(
-  supabase: SupabaseClient<Database>,
-  data: CommentReplyNodeData,
-  context: FlowExecutionContext
-) {
-  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-  if (!apiKey) return;
-
-  const zernio = createZernioClient(apiKey);
-
-  // Resolve late_account_id
-  let lateAccountId = context.lateAccountId;
-  if (!lateAccountId) {
-    const { data: channel } = await supabase
-      .from("channels")
-      .select("late_account_id")
-      .eq("id", context.channelId)
-      .single();
-
-    if (!channel) return;
-    lateAccountId = channel.late_account_id;
-  }
-
-  const commentId = context.variables?.comment_id || context.incomingMessage.sender?.id;
-  if (!commentId) return;
-
-  const postId = context.variables?.post_id;
-  if (!postId) {
-    console.error("No post_id in context variables for commentReply node");
     return;
   }
 
-  const text = interpolateVariables(data.text, context.variables || {});
-
-  try {
-    await zernio.comments.replyToInboxPost({
-      path: { postId },
-      body: { accountId: lateAccountId, message: text, commentId },
-    });
-  } catch (error) {
-    console.error("Failed to post comment reply:", error);
-  }
-}
-
-/**
- * Send a private DM to the commenter via the Zernio API's private reply endpoint.
- * This creates a DM conversation from a comment context.
- */
-async function executePrivateReply(
-  supabase: SupabaseClient<Database>,
-  data: PrivateReplyNodeData,
-  context: FlowExecutionContext
-) {
-  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-  if (!apiKey) return;
-
-  const zernio = createZernioClient(apiKey);
-
-  // Resolve late_account_id
-  let lateAccountId = context.lateAccountId;
-  if (!lateAccountId) {
-    const { data: channel } = await supabase
-      .from("channels")
-      .select("late_account_id")
-      .eq("id", context.channelId)
-      .single();
-
-    if (!channel) return;
-    lateAccountId = channel.late_account_id;
-  }
-
-  const commentId = context.variables?.comment_id || context.incomingMessage.sender?.id;
-  if (!commentId) return;
-
-  const postId = context.variables?.post_id;
-  if (!postId) {
-    console.error("No post_id in context variables for privateReply node");
-    return;
-  }
-
-  const text = interpolateVariables(data.text, context.variables || {});
-
-  try {
-    await zernio.comments.sendPrivateReplyToComment({
-      path: { postId, commentId },
-      body: { accountId: lateAccountId, message: text },
-    });
-
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      attachments: data.imageUrl
-        ? [{ type: "image", url: data.imageUrl }]
-        : null,
-      sent_by_flow_id: context.flowId,
-      status: "sent",
-    });
-  } catch (error) {
-    console.error("Failed to send private reply:", error);
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      sent_by_flow_id: context.flowId,
-      status: "failed",
-    });
-  }
+  return definition.execute({
+    supabase,
+    node,
+    data: node.data as never,
+    context,
+    sessionId,
+    runtime,
+  });
 }
 
 async function completeSession(
@@ -997,80 +391,4 @@ async function completeSession(
       });
     }
   }
-}
-
-async function executeEnrollSequence(
-  supabase: SupabaseClient<Database>,
-  data: EnrollSequenceNodeData,
-  context: FlowExecutionContext
-) {
-  if (!data.sequenceId) {
-    console.error("enrollSequence node missing sequenceId");
-    return;
-  }
-
-  // Verify sequence exists and is active
-  const { data: sequence } = await supabase
-    .from("sequences")
-    .select("id, steps, status")
-    .eq("id", data.sequenceId)
-    .single();
-
-  if (!sequence || sequence.status !== "active") {
-    console.error("Sequence not found or not active:", data.sequenceId);
-    return;
-  }
-
-  const steps = (sequence.steps as Array<{ type: string; delayMinutes?: number }>) || [];
-  if (steps.length === 0) return;
-
-  // Calculate next_step_at based on first step
-  let nextStepAt: string;
-  const firstStep = steps[0];
-  if (firstStep.type === "delay" && firstStep.delayMinutes) {
-    nextStepAt = new Date(
-      Date.now() + firstStep.delayMinutes * 60 * 1000
-    ).toISOString();
-  } else {
-    nextStepAt = new Date().toISOString();
-  }
-
-  // Create enrollment (ignore duplicate errors)
-  const { error } = await supabase
-    .from("sequence_enrollments")
-    .insert({
-      sequence_id: data.sequenceId,
-      contact_id: context.contactId,
-      channel_id: context.channelId,
-      next_step_at: nextStepAt,
-    });
-
-  if (error && error.code !== "23505") {
-    console.error("Failed to enroll contact in sequence:", error);
-  }
-}
-
-function resolveVariablePath(
-  variables: Record<string, unknown>,
-  path: string
-): unknown {
-  let value: unknown = variables;
-  for (const key of path.split(".")) {
-    if (typeof value !== "object" || value === null) return undefined;
-    value = (value as Record<string, unknown>)[key];
-  }
-  return value;
-}
-
-function interpolateVariables(
-  text: string,
-  variables: Record<string, unknown>
-): string {
-  // Supports dot paths ({{myvar.data.name}}) into object variables (e.g. parsed
-  // httpRequest JSON responses). Unresolved paths leave the token literal.
-  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (token, path: string) => {
-    const value = resolveVariablePath(variables, path);
-    if (value === null || value === undefined) return token;
-    return typeof value === "object" ? JSON.stringify(value) : String(value);
-  });
 }

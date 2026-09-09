@@ -1,15 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-
-interface IncomingMessage {
-  text?: string;
-  postbackPayload?: string;
-  quickReplyPayload?: string;
-  sender?: { id: string };
-}
+import type { IncomingMessage } from "./types";
+import { getTrigger, listTriggers } from "./registry";
+import type { TriggerRow } from "./registry/types";
 
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
 
+/**
+ * Elige que trigger le corresponde a un mensaje entrante.
+ *
+ * El orden entre tipos lo declara cada trigger en el registro con su prioridad,
+ * no una cascada de `if` escrita aca: eso era lo que obligaba a abrir este
+ * archivo cada vez que se sumaba un tipo. Adentro de un mismo tipo manda la
+ * columna `priority` de la fila, que es lo que ordena la consulta.
+ *
+ * Un trigger sin `matches` (el de respuesta por defecto) matchea siempre que se
+ * llegue hasta el, que es justamente para lo que existe.
+ */
 export async function matchTrigger(
   supabase: SupabaseClient<Database>,
   {
@@ -23,14 +30,14 @@ export async function matchTrigger(
     workspaceId: string;
     conversationId: string;
     message: IncomingMessage;
-    /** Caller-known "first inbound message" signal; inbound messages are not
-     * mirrored locally, so the legacy count query below always sees 0. */
+    /** El llamador sabe si es el primer mensaje: los entrantes no se guardan
+     * localmente, asi que la consulta de respaldo de abajo veria siempre 0. */
     isFirstMessage?: boolean;
   }
 ): Promise<Trigger | null> {
-  // Triggers with null channel_id are workspace-wide, NOT global: the flows
-  // join must be pinned to the channel's workspace or one tenant's triggers
-  // (and flows) would run on another tenant's channels.
+  // Un trigger con channel_id null vale para todo el workspace, NO para todos:
+  // el join con flows tiene que quedar clavado al workspace del canal o los
+  // triggers de un negocio correrian sobre el canal de otro.
   const { data: triggers } = await supabase
     .from("triggers")
     .select("*, flows!inner(status, workspace_id)")
@@ -42,71 +49,62 @@ export async function matchTrigger(
 
   if (!triggers || triggers.length === 0) return null;
 
-  // Priority order: postback > quick_reply > keyword > welcome > default
-  // 1. Check postback triggers
-  if (message.postbackPayload) {
-    const match = triggers.find(
-      (t) =>
-        t.type === "postback" &&
-        (t.config as { payload?: string })?.payload === message.postbackPayload
-    );
-    if (match) return match;
-  }
+  const text = message.text?.toLowerCase().trim() ?? "";
+  const firstMessage = await resolveIsFirstMessage(
+    supabase,
+    conversationId,
+    isFirstMessage
+  );
 
-  // 2. Check quick_reply triggers
-  if (message.quickReplyPayload) {
-    const match = triggers.find(
-      (t) =>
-        t.type === "quick_reply" &&
-        (t.config as { payload?: string })?.payload ===
-          message.quickReplyPayload
-    );
-    if (match) return match;
-  }
+  for (const definition of listTriggers("message")) {
+    for (const trigger of triggers.filter((t) => t.type === definition.type)) {
+      if (!definition.matches) return trigger;
 
-  // 3. Check keyword triggers
-  if (message.text) {
-    const text = message.text.toLowerCase().trim();
+      const matched = definition.matches({
+        trigger: trigger as unknown as TriggerRow,
+        config: (trigger.config ?? {}) as Record<string, unknown>,
+        message,
+        text,
+        isFirstMessage: firstMessage,
+      });
 
-    for (const trigger of triggers.filter((t) => t.type === "keyword")) {
-      const config = trigger.config as {
-        keywords?: Array<string | { value: string; matchType?: "exact" | "contains" | "startsWith" }>;
-        matchType?: "exact" | "contains" | "startsWith";
-      };
+      if (!matched) continue;
 
-      if (!config.keywords) continue;
-
-      for (const kw of config.keywords) {
-        // Support both formats: plain string or { value, matchType } object
-        const keyword = (typeof kw === "string" ? kw : kw.value).toLowerCase();
-        const matchType =
-          (typeof kw === "object" && kw.matchType) || config.matchType || "contains";
-
-        if (matchType === "exact" && text === keyword) return trigger;
-        if (matchType === "contains" && text.includes(keyword)) return trigger;
-        if (matchType === "startsWith" && text.startsWith(keyword))
-          return trigger;
+      // Puerta extra opcional. Hoy ningun trigger la usa; esta para las
+      // condiciones de arranque del agente de la Fase 3.
+      if (definition.guard) {
+        const allowed = await definition.guard({
+          supabase,
+          trigger: trigger as unknown as TriggerRow,
+          workspaceId,
+          contactId: "",
+          conversationId,
+        });
+        if (!allowed) continue;
       }
+
+      return trigger;
     }
   }
 
-  // 4. Check welcome trigger (first inbound message for this contact on this channel)
-  let firstMessage = isFirstMessage;
-  if (firstMessage === undefined) {
-    const { count } = await supabase
-      .from("messages")
-      .select("*", { count: "exact", head: true })
-      .eq("conversation_id", conversationId)
-      .eq("direction", "inbound");
-    firstMessage = count === 1;
-  }
-
-  if (firstMessage) {
-    const welcomeTrigger = triggers.find((t) => t.type === "welcome");
-    if (welcomeTrigger) return welcomeTrigger;
-  }
-
-  // 5. Default trigger
-  const defaultTrigger = triggers.find((t) => t.type === "default");
-  return defaultTrigger || null;
+  return null;
 }
+
+async function resolveIsFirstMessage(
+  supabase: SupabaseClient<Database>,
+  conversationId: string,
+  known: boolean | undefined
+): Promise<boolean> {
+  if (known !== undefined) return known;
+
+  const { count } = await supabase
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .eq("conversation_id", conversationId)
+    .eq("direction", "inbound");
+
+  return count === 1;
+}
+
+/** Re-export para quien necesite mirar una definicion puntual. */
+export { getTrigger };

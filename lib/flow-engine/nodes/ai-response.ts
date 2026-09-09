@@ -4,6 +4,7 @@ import type { FlowExecutionContext, AiResponseNodeData } from "../types";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { generateText, createGateway } from "ai";
+import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 
 // Halt the run: continuing would let a downstream Send Message deliver the
 // literal "{{ai_response}}" token to the contact (same pause mechanism as
@@ -19,7 +20,7 @@ async function cancelRun(
   return "pause";
 }
 
-export async function executeAiResponse(
+async function executeAiResponse(
   supabase: SupabaseClient<Database>,
   data: AiResponseNodeData,
   context: FlowExecutionContext,
@@ -166,3 +167,21 @@ export async function executeAiResponse(
     return cancelRun(supabase, sessionId);
   }
 }
+
+/**
+ * Genera una respuesta con IA y, si esta configurado asi, la manda.
+ *
+ * Es una respuesta puntual adentro de un flow, no el agente conversacional en
+ * loop: eso es la Fase 3.
+ *
+ * Ante cualquier falla cancela la corrida en vez de seguir. Si siguiera, un
+ * Send Message posterior le entregaria al lead el texto literal
+ * "{{ai_response}}", que es peor que no contestar.
+ */
+export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
+  type: "aiResponse",
+  label: "Respuesta con IA",
+  persistsVariables: true,
+  execute: ({ supabase, data, context, sessionId }: NodeExecutionArgs<AiResponseNodeData>) =>
+    executeAiResponse(supabase, data, context, sessionId),
+};

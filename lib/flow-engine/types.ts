@@ -165,13 +165,21 @@ export interface FlowExecutionContext {
   lateConversationId?: string;
   /** The Zernio API account ID (from channels.late_account_id) */
   lateAccountId?: string;
-  incomingMessage: {
-    text?: string;
-    postbackPayload?: string;
-    quickReplyPayload?: string;
-    callbackData?: string;
-    sender?: { id: string; name?: string; username?: string };
-  };
+  incomingMessage: IncomingMessage;
   variables?: Record<string, string>;
   platform?: Platform;
+}
+
+/**
+ * El mensaje que disparo la ejecucion.
+ *
+ * Estaba escrito adentro de FlowExecutionContext; se le puso nombre porque el
+ * registro de triggers lo necesita para declarar sus handlers de match.
+ */
+export interface IncomingMessage {
+  text?: string;
+  postbackPayload?: string;
+  quickReplyPayload?: string;
+  callbackData?: string;
+  sender?: { id: string; name?: string; username?: string };
 }
