@@ -26,11 +26,11 @@ import {
   extractText,
   messageTimestamp,
 } from "@/lib/evolution-message";
+import { constantTimeEquals } from "@/lib/crypto";
 import {
   applyOptOut,
   pauseSequencesOnReply,
   claimWebhookEvent,
-  constantTimeEquals,
   insertMessage,
   runInboundAutomation,
   upsertConversation,
