@@ -78,14 +78,14 @@ export function ConditionNode({ data, selected }: NodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        id="yes"
+        id="true"
         style={{ left: "30%" }}
         className="!h-3 !w-3 !border-2 !border-emerald-500 !bg-white"
       />
       <Handle
         type="source"
         position={Position.Bottom}
-        id="no"
+        id="false"
         style={{ left: "70%" }}
         className="!h-3 !w-3 !border-2 !border-red-500 !bg-white"
       />

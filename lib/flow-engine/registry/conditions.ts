@@ -83,3 +83,52 @@ registerConditionField({
   label: "Variable del flow",
   resolve: ({ context, argument }) => context.variables?.[argument],
 });
+
+/**
+ * ¿Esta en la secuencia X? (F14)
+ *
+ * Una inscripcion pausada sigue contando: el contacto sigue adentro, solo que
+ * frenado porque respondio o porque se pauso la secuencia. Deja de contar
+ * cuando termino o cuando lo sacaron.
+ *
+ * El argumento es el ID de la secuencia, no el nombre: los nombres se editan, y
+ * un flow no puede romperse porque alguien renombro algo.
+ */
+registerConditionField({
+  prefix: "sequence:",
+  label: "Esta en la secuencia",
+  resolve: async ({ supabase, argument, context }) => {
+    if (!argument) return undefined;
+    const { data } = await supabase
+      .from("sequence_enrollments")
+      .select("id, sequences!inner(workspace_id)")
+      .eq("contact_id", context.contactId)
+      .eq("sequence_id", argument)
+      .eq("sequences.workspace_id", context.workspaceId)
+      .in("status", ["active", "paused"])
+      .limit(1);
+    return String((data?.length ?? 0) > 0);
+  },
+});
+
+/**
+ * ¿Estuvo alguna vez en la secuencia X? (F14)
+ *
+ * Es exacto sin llevar un historial aparte: la fila de la inscripcion nunca se
+ * borra, se marca como completada o cancelada.
+ */
+registerConditionField({
+  prefix: "sequence_ever:",
+  label: "Estuvo alguna vez en la secuencia",
+  resolve: async ({ supabase, argument, context }) => {
+    if (!argument) return undefined;
+    const { data } = await supabase
+      .from("sequence_enrollments")
+      .select("id, sequences!inner(workspace_id)")
+      .eq("contact_id", context.contactId)
+      .eq("sequence_id", argument)
+      .eq("sequences.workspace_id", context.workspaceId)
+      .limit(1);
+    return String((data?.length ?? 0) > 0);
+  },
+});

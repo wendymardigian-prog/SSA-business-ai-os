@@ -146,8 +146,14 @@ export function matchConditionField(
   const exact = fields.get(field);
   if (exact) return { definition: exact, argument: "" };
 
-  for (const definition of fields.values()) {
-    if (definition.prefix.endsWith(":") && field.startsWith(definition.prefix)) {
+  // De mas largo a mas corto: si un prefijo fuera prefijo de otro, ganar por
+  // orden de registro elegiria el campo equivocado sin que nadie se entere.
+  const byLength = [...fields.values()]
+    .filter((d) => d.prefix.endsWith(":"))
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+
+  for (const definition of byLength) {
+    if (field.startsWith(definition.prefix)) {
       return { definition, argument: field.slice(definition.prefix.length) };
     }
   }
