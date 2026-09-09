@@ -21,6 +21,7 @@ import type { Database } from "@/lib/types/database";
 import { messagePreview } from "@/lib/message-preview";
 import {
   applyOptOut,
+  pauseSequencesOnReply,
   claimWebhookEvent,
   runInboundAutomation,
   upsertConversation,
@@ -253,6 +254,16 @@ async function processMessageEvent(
   if (!conversation) return;
 
   // Messages are stored by Zernio (source of truth) — no local insert needed.
+
+  // ── Auto-pausa de secuencias (F11) ────────────────────────────────────────
+  // El lead contesto: el seguimiento automatico de este canal se frena. Va
+  // antes que todo lo demas y fuera de runInboundAutomation a proposito —
+  // aquella corta cuando alguien tomo la conversacion a mano o cuando una
+  // palabra clave global consume el mensaje, y en los dos casos el lead igual
+  // respondio. Frenar el drip es un reflejo sobre el hecho de que contesto, no
+  // una automatizacion mas.
+
+  await pauseSequencesOnReply({ supabase, contactId, channelId: channel.id });
 
   // ── Marca "no contactar" (F18) ───────────────────────────────────────────
   // Va ANTES de las automatizaciones a proposito: si el lead acaba de pedir que

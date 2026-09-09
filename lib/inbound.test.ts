@@ -10,6 +10,7 @@ vi.mock("@/lib/flow-engine/engine", () => ({ executeFlow }));
 import {
   applyOptOut,
   claimWebhookEvent,
+  pauseSequencesOnReply,
   handleGlobalKeywords,
   insertMessage,
   runInboundAutomation,
@@ -203,6 +204,46 @@ describe("insertMessage", () => {
         text: "hola", platformMessageId: "WA-1", createdAt: "2026-09-08T10:00:00Z",
       })
     ).resolves.toBe(false);
+  });
+});
+
+describe("pauseSequencesOnReply", () => {
+  it("delega en la funcion de base, pasandole contacto Y canal", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { client, calls } = fakeDb({ rpcResult: { data: 2 } });
+
+    const res = await pauseSequencesOnReply({
+      supabase: client,
+      contactId: "c-1",
+      channelId: "ch-1",
+    });
+
+    expect(res).toEqual({ paused: 2 });
+    // El canal es lo que hace que responder por Instagram no frene el
+    // seguimiento que corre por WhatsApp (F12).
+    expect(calls.rpcs[0]).toEqual({
+      name: "pause_sequences_on_reply",
+      args: { p_contact_id: "c-1", p_channel_id: "ch-1" },
+    });
+  });
+
+  it("si la base falla no lanza: un mensaje ya guardado no se pierde por esto", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeDb({ rpcResult: { error: { message: "boom" } } });
+
+    await expect(
+      pauseSequencesOnReply({ supabase: client, contactId: "c-1", channelId: "ch-1" })
+    ).resolves.toEqual({ paused: 0 });
+  });
+
+  it("sin nada activo devuelve cero y no dice nada", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { client } = fakeDb({ rpcResult: { data: 0 } });
+
+    await expect(
+      pauseSequencesOnReply({ supabase: client, contactId: "c-1", channelId: "ch-1" })
+    ).resolves.toEqual({ paused: 0 });
+    expect(log).not.toHaveBeenCalled();
   });
 });
 

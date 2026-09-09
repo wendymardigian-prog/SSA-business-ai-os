@@ -197,6 +197,51 @@ export async function insertMessage({
 }
 
 /**
+ * Frena las secuencias del contacto en ese canal porque contesto (F11).
+ *
+ * Esto no existia: una secuencia solo se paraba si el lead escribia una frase
+ * de baja ("stop", "no me contactes") o si estaba marcado "no contactar". Si
+ * contestaba "gracias, lo veo manana", el seguimiento le seguia mandando pasos
+ * como si nada — que es exactamente lo contrario de lo que un seguimiento
+ * automatico tiene que hacer.
+ *
+ * La pausa y su entrada en el audit log viven en pause_sequences_on_reply
+ * (migracion 00044) para que pasen juntas, en una transaccion, sin importar
+ * cual de los dos receptores recibio el mensaje.
+ *
+ * Se limita al canal del mensaje: un lead que contesta por Instagram no tiene
+ * por que frenar el seguimiento que corre por WhatsApp.
+ *
+ * Nunca lanza: que una pausa falle no puede tumbar la recepcion de un mensaje
+ * que ya quedo guardado.
+ */
+export async function pauseSequencesOnReply({
+  supabase,
+  contactId,
+  channelId,
+}: {
+  supabase: Db;
+  contactId: string;
+  channelId: string;
+}): Promise<{ paused: number }> {
+  const { data, error } = await supabase.rpc("pause_sequences_on_reply", {
+    p_contact_id: contactId,
+    p_channel_id: channelId,
+  });
+
+  if (error) {
+    console.error("[inbound] no pude pausar las secuencias:", error.message);
+    return { paused: 0 };
+  }
+
+  const paused = typeof data === "number" ? data : 0;
+  if (paused > 0) {
+    console.log(`[inbound] ${paused} secuencia(s) pausadas porque el contacto respondio`);
+  }
+  return { paused };
+}
+
+/**
  * Marca "no contactar" si el mensaje entrante trae una frase de baja.
  *
  * La lista de frases y el marcado viven en apply_opt_out_check (migracion
