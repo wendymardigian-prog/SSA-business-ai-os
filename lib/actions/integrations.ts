@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret } from "@/lib/vault";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
 import {
   getProvider,
   validateApiKey,
@@ -176,4 +177,21 @@ export async function disconnectIntegration(
 
   revalidatePath(INTEGRATIONS_PATH);
   return { ok: true };
+}
+
+/**
+ * Los proveedores de IA conectados, para el selector del nodo AI Response.
+ *
+ * Solo lectura y sin nada sensible: id, etiqueta y modelos disponibles. La key
+ * no sale de Vault ni aparece por ningun lado.
+ *
+ * Es Owner/Admin porque configurar el nodo de IA tambien lo es. Un Member que
+ * mira un flow ve el nodo, no el selector.
+ */
+export async function listAiProviders(): Promise<
+  Array<{ provider: string; label: string; defaultModel: string; models: string[] }>
+> {
+  const ctx = await getAdminContext();
+  if (!ctx) return [];
+  return listConnectedAiProviders(ctx.workspace.id);
 }

@@ -11,6 +11,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.116",
+    "@ai-sdk/google": "^3.0.121",
+    "@ai-sdk/openai": "^3.0.110",
     "@icons-pack/react-simple-icons": "^13.11.2",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",

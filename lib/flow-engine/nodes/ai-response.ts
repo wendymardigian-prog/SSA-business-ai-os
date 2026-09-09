@@ -1,24 +1,54 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowExecutionContext, AiResponseNodeData } from "../types";
-import { createZernioClient } from "@/lib/zernio-client";
-import { getZernioApiKey } from "@/lib/integrations/zernio-key";
-import { sendChannelMessage, recordSend } from "../send";
-import { generateText, createGateway } from "ai";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
+import type { FlowExecutionContext, AiResponseNodeData } from "../types";
+import { generateText } from "ai";
+import { getWorkspaceModel } from "@/lib/ai/provider";
+import { sendChannelMessage, recordSend } from "../send";
 
-// Halt the run: continuing would let a downstream Send Message deliver the
-// literal "{{ai_response}}" token to the contact (same pause mechanism as
-// humanTakeover, but the session is cancelled rather than completed).
+/**
+ * Corta la corrida.
+ *
+ * Seguir seria peor que frenar: un Send Message aguas abajo le entregaria al
+ * lead el texto literal "{{ai_response}}". Misma pausa que el nodo de
+ * derivacion, pero la sesion queda cancelada, no completada.
+ */
 async function cancelRun(
   supabase: SupabaseClient<Database>,
   sessionId: string
 ): Promise<"pause"> {
-  await supabase
-    .from("flow_sessions")
-    .update({ status: "cancelled" })
-    .eq("id", sessionId);
+  await supabase.from("flow_sessions").update({ status: "cancelled" }).eq("id", sessionId);
   return "pause";
+}
+
+/**
+ * Deja registrado por que no se pudo generar la respuesta.
+ *
+ * Va a analytics_events para que quede la traza, y a la conversacion para que
+ * el operador vea que paso sin tener que mirar logs. Nunca se guarda el error
+ * crudo del proveedor: puede traer fragmentos del prompt.
+ */
+async function recordFailure(
+  supabase: SupabaseClient<Database>,
+  context: FlowExecutionContext,
+  reason: string,
+  message: string
+): Promise<void> {
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "ai_response_failed",
+    metadata: { reason, message },
+  });
+
+  await supabase.from("messages").insert({
+    conversation_id: context.conversationId,
+    direction: "outbound",
+    text: message,
+    sent_by_flow_id: context.flowId,
+    status: "failed",
+  });
 }
 
 async function executeAiResponse(
@@ -27,59 +57,27 @@ async function executeAiResponse(
   context: FlowExecutionContext,
   sessionId: string
 ) {
-  // La key de IA sigue saliendo del workspace: el BYOK multi-proveedor de
-  // integration_configs lo consume la Fase 2, cuando se rehaga este nodo.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("ai_api_key")
-    .eq("id", context.workspaceId)
-    .single();
+  // La key sale de Vault via integration_configs. Nunca llega hasta aca: lo
+  // que vuelve es un modelo ya instanciado.
+  const resolved = await getWorkspaceModel(context.workspaceId, {
+    preferredProvider: data.provider,
+    modelId: data.model,
+    supabase,
+  });
 
-  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
-
-  if (!apiKey) {
-    console.error("No Zernio API key for workspace:", context.workspaceId);
+  if (!resolved.ok || !resolved.model) {
+    // Falta la key o el proveedor: no es un error del flow, es configuracion.
+    // Se avisa claro y se corta, sin romper nada mas.
+    await recordFailure(
+      supabase,
+      context,
+      resolved.problem ?? "no_provider",
+      resolved.message ?? "No hay un proveedor de IA disponible."
+    );
     return cancelRun(supabase, sessionId);
   }
 
-  const zernio = createZernioClient(apiKey);
-
-  // Resolve late_account_id from channel if not in context
-  let lateAccountId = context.lateAccountId;
-  if (!lateAccountId) {
-    const { data: channel } = await supabase
-      .from("channels")
-      .select("late_account_id, platform")
-      .eq("id", context.channelId)
-      .single();
-
-    if (!channel) {
-      console.error("No channel found for id:", context.channelId);
-      return cancelRun(supabase, sessionId);
-    }
-    lateAccountId = channel.late_account_id;
-    if (!context.platform) {
-      context.platform = channel.platform as FlowExecutionContext["platform"];
-    }
-  }
-
-  // Resolve late_conversation_id from conversation if not in context
-  let lateConversationId = context.lateConversationId;
-  if (!lateConversationId) {
-    const { data: conversation } = await supabase
-      .from("conversations")
-      .select("late_conversation_id")
-      .eq("id", context.conversationId)
-      .single();
-
-    if (!conversation?.late_conversation_id) {
-      console.error("No late_conversation_id found for conversation:", context.conversationId);
-      return cancelRun(supabase, sessionId);
-    }
-    lateConversationId = conversation.late_conversation_id;
-  }
-
-  // Fetch last N messages from the conversation for context
+  // Historial de la conversacion, del mas viejo al mas nuevo.
   const contextMessages = data.contextMessages || 10;
   const { data: recentMessages } = await supabase
     .from("messages")
@@ -88,74 +86,70 @@ async function executeAiResponse(
     .order("created_at", { ascending: false })
     .limit(contextMessages);
 
-  // Build messages array for the AI
   const aiMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
-
-  if (recentMessages && recentMessages.length > 0) {
-    // Reverse to get chronological order (oldest first)
-    const chronological = [...recentMessages].reverse();
-    for (const msg of chronological) {
-      if (!msg.text) continue;
-      aiMessages.push({
-        role: msg.direction === "inbound" ? "user" : "assistant",
-        content: msg.text,
-      });
-    }
+  for (const msg of [...(recentMessages ?? [])].reverse()) {
+    if (!msg.text) continue;
+    aiMessages.push({
+      role: msg.direction === "inbound" ? "user" : "assistant",
+      content: msg.text,
+    });
   }
 
+  let text: string;
   try {
-    const model = data.model || "openai/gpt-4o-mini";
-    const aiGatewayKey = workspace?.ai_api_key || process.env.AI_GATEWAY_API_KEY;
-    const gw = createGateway({ apiKey: aiGatewayKey || undefined });
     const result = await generateText({
-      model: gw(model),
-      system: data.systemPrompt || "You are a helpful customer support agent.",
+      model: resolved.model,
+      system: data.systemPrompt || "Sos un asistente de atencion al cliente. Responde en español rioplatense, breve y claro.",
       messages: aiMessages,
       temperature: data.temperature ?? 0.7,
       maxOutputTokens: data.maxTokens ?? 500,
     });
-
-    const text = result.text;
-
-    // Expose the generated text to downstream nodes as {{ai_response}}
-    context.variables = { ...(context.variables ?? {}), ai_response: text };
-
-    if (data.sendDirectly !== false) {
-      // Sale por la capa unificada: respeta el tope horario del canal y
-      // traduce el rechazo de la API a algo que se pueda leer en la bandeja.
-      const outcome = await sendChannelMessage(supabase, context, { text });
-      await recordSend(
-        supabase,
-        context,
-        outcome.ok ? text : outcome.failure?.message ?? text,
-        outcome
-      );
-
-      // El texto ya se genero y quedo en {{ai_response}}: si el envio fallo, el
-      // flow puede seguir (por ejemplo, para derivar a una persona). Lo que no
-      // se hace es cancelar la corrida, que es lo que se hace cuando falla la
-      // generacion.
-    }
+    text = result.text;
   } catch (error) {
-    console.error("Failed to generate or send AI response:", error);
-
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text: "[AI response failed]",
-      sent_by_flow_id: context.flowId,
-      status: "failed",
-    });
-
-    await supabase.from("analytics_events").insert({
-      workspace_id: context.workspaceId,
-      flow_id: context.flowId,
-      contact_id: context.contactId,
-      event_type: "message_failed",
-      metadata: { error: error instanceof Error ? error.message : "Unknown error" },
-    });
-
+    // Key invalida, cuota agotada, modelo inexistente, corte de red. El detalle
+    // va al log del servidor; a la conversacion va algo legible.
+    console.error(
+      `[ai] fallo la generacion con ${resolved.provider}/${resolved.modelId}:`,
+      error instanceof Error ? error.message : "error desconocido"
+    );
+    await recordFailure(
+      supabase,
+      context,
+      "generation_failed",
+      "No se pudo generar la respuesta con IA. Conviene revisar que la API key del proveedor siga siendo valida y tenga saldo."
+    );
     return cancelRun(supabase, sessionId);
+  }
+
+  // Queda disponible para los nodos siguientes como {{ai_response}}.
+  context.variables = { ...(context.variables ?? {}), ai_response: text };
+
+  // Traza de la ejecucion. Sin el prompt ni la respuesta: el conteo fino de
+  // tokens es Fase 3, esto es para saber que corrio y con que.
+  await supabase.from("analytics_events").insert({
+    workspace_id: context.workspaceId,
+    flow_id: context.flowId,
+    contact_id: context.contactId,
+    event_type: "ai_response_generated",
+    metadata: {
+      provider: resolved.provider,
+      model: resolved.modelId,
+      chars: text.length,
+      contextMessages: aiMessages.length,
+    },
+  });
+
+  if (data.sendDirectly !== false) {
+    const outcome = await sendChannelMessage(supabase, context, { text });
+    await recordSend(
+      supabase,
+      context,
+      outcome.ok ? text : outcome.failure?.message ?? text,
+      outcome
+    );
+    // Si el envio fallo, el texto igual quedo en {{ai_response}} y el flow
+    // puede seguir (por ejemplo, para derivar a una persona). Solo se cancela
+    // cuando falla la generacion, que es cuando no hay nada que decir.
   }
 }
 
@@ -164,10 +158,6 @@ async function executeAiResponse(
  *
  * Es una respuesta puntual adentro de un flow, no el agente conversacional en
  * loop: eso es la Fase 3.
- *
- * Ante cualquier falla cancela la corrida en vez de seguir. Si siguiera, un
- * Send Message posterior le entregaria al lead el texto literal
- * "{{ai_response}}", que es peor que no contestar.
  */
 export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
   type: "aiResponse",

@@ -135,6 +135,13 @@ export interface PrivateReplyNodeData {
 }
 
 export interface AiResponseNodeData {
+  /**
+   * Proveedor de IA a usar (openai | anthropic | google_ai).
+   *
+   * Opcional: si no se elige, o si el elegido no esta conectado, se usa el que
+   * si lo este. Mejor contestar con otro modelo que no contestar.
+   */
+  provider?: string;
   label?: string;
   model: string;
   systemPrompt: string;
