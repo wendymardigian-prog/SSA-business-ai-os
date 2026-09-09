@@ -409,6 +409,32 @@ try {
 
     await svc.from("scheduled_jobs").delete().eq("id", job.id); }
 
+
+  console.log("\n— find_or_link_contact es solo del service role —");
+  { const args = {
+      p_channel_id: ch.id,
+      p_sender_id: `zz-intruso-${Date.now()}`,
+      p_display_name: "zz intruso",
+      p_username: null, p_avatar_url: null, p_phone: null, p_email: null,
+      p_interaction_at: new Date().toISOString(),
+      p_stamp_existing: false,
+    };
+
+    const { error: eMember } = await member.client.rpc("find_or_link_contact", args);
+    check(!!eMember, "un Member no puede crear contactos por RPC directo");
+
+    // Que un Admin tampoco pueda es a proposito: el acceso admin se ejerce por
+    // las rutas, que validan el rol y despues usan service client.
+    const { error: eAdmin } = await admin.client.rpc("find_or_link_contact", args);
+    check(!!eAdmin, "un Admin tampoco: pasa por las rutas, no por la RPC");
+
+    // Y que el service SI pueda, para que un revoke de mas no deje el backfill
+    // del Inbox fallando en silencio.
+    const { data: creado, error: eSvc } = await svc.rpc("find_or_link_contact", args);
+    check(!eSvc && !!creado?.contact_id,
+      "el service role si puede: el backfill del Inbox sigue andando", eSvc?.message);
+    if (creado?.contact_id) await svc.from("contacts").delete().eq("id", creado.contact_id); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente
