@@ -1,143 +1,138 @@
-import { getWorkspace } from "@/lib/workspace";
 import Link from "next/link";
 import { ListOrdered } from "lucide-react";
+import { getWorkspace } from "@/lib/workspace";
+import { isAdminRole } from "@/lib/auth/roles";
 import { CreateSequenceButton } from "@/components/sequences/create-sequence-button";
-import type { SequenceStatus, Json } from "@/lib/types/database";
-
-const statusConfig: Record<SequenceStatus, { label: string; classes: string }> = {
-  draft: {
-    label: "Draft",
-    classes: "bg-muted text-muted-foreground",
-  },
-  active: {
-    label: "Active",
-    classes: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-  },
-  paused: {
-    label: "Paused",
-    classes: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  },
-};
-
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+import { sequenceStatusStyle, stepCountLabel } from "@/lib/sequences/labels";
+import { formatDateTime } from "@/components/contacts/ui";
+import { listOpenCollisions } from "@/lib/sequences/collisions";
+import { AlertTriangle } from "lucide-react";
 
 export default async function SequencesPage() {
-  const { workspace, supabase } = await getWorkspace();
+  const { workspace, supabase, role } = await getWorkspace();
+  const canEdit = isAdminRole(role);
 
-  const { data: sequences } = await supabase
+  const { data: sequences, error } = await supabase
     .from("sequences")
-    .select("*")
+    .select("id, name, description, status, steps, updated_at")
     .eq("workspace_id", workspace.id)
     .order("updated_at", { ascending: false });
 
-  // Get enrollment counts per sequence
+  if (error) console.error("[sequences] listado fallido:", error.message);
+
   const sequenceIds = (sequences ?? []).map((s) => s.id);
-  let enrollmentCounts: Record<string, number> = {};
+  const enrolled: Record<string, number> = {};
+  const collisions: Record<string, number> = {};
 
   if (sequenceIds.length > 0) {
-    const { data: counts } = await supabase
-      .from("sequence_enrollments")
-      .select("sequence_id")
-      .in("sequence_id", sequenceIds)
-      .eq("status", "active");
+    const [{ data: counts }, open] = await Promise.all([
+      supabase
+        .from("sequence_enrollments")
+        .select("sequence_id")
+        .in("sequence_id", sequenceIds)
+        .eq("status", "active"),
+      // El aviso de colision (F13). El centro de notificaciones del Bloque 3
+      // va a leer estas mismas filas.
+      listOpenCollisions(supabase, { workspaceId: workspace.id }),
+    ]);
 
-    if (counts) {
-      enrollmentCounts = counts.reduce<Record<string, number>>((acc, row) => {
-        acc[row.sequence_id] = (acc[row.sequence_id] || 0) + 1;
-        return acc;
-      }, {});
+    for (const row of counts ?? []) {
+      enrolled[row.sequence_id] = (enrolled[row.sequence_id] ?? 0) + 1;
+    }
+    for (const row of open) {
+      collisions[row.sequenceId] = (collisions[row.sequenceId] ?? 0) + 1;
     }
   }
 
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Sequences</h1>
+            <h1 className="text-2xl font-bold">Secuencias</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create drip campaigns to nurture contacts over time
+              Seguimientos que corren solos y se pausan apenas el contacto responde
             </p>
           </div>
-          <CreateSequenceButton />
+          {canEdit && <CreateSequenceButton />}
         </div>
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
-      {!sequences || sequences.length === 0 ? (
-        <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
-          <ListOrdered className="mx-auto h-10 w-10 text-muted-foreground" />
-          <h2 className="mt-4 text-lg font-semibold">No sequences yet</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Create your first sequence to start nurturing contacts automatically.
-          </p>
-          <div className="mt-4">
-            <CreateSequenceButton />
+        {!sequences || sequences.length === 0 ? (
+          <div className="mt-12 rounded-xl border border-dashed border-border p-12 text-center">
+            <ListOrdered className="mx-auto h-10 w-10 text-muted-foreground/40" />
+            <h2 className="mt-4 text-lg font-semibold">Todavía no hay secuencias</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+              {canEdit
+                ? "Una secuencia es un seguimiento que se manda solo: un mensaje, una espera, otro mensaje. Si el contacto responde, se frena."
+                : "Cuando un Owner o Admin cree la primera, la vas a ver acá."}
+            </p>
+            {canEdit && (
+              <div className="mt-4 flex justify-center">
+                <CreateSequenceButton label="Crear la primera" />
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sequences.map((sequence) => {
-            const status =
-              statusConfig[sequence.status as SequenceStatus] ?? statusConfig.draft;
-            const steps = Array.isArray(sequence.steps)
-              ? sequence.steps
-              : [];
-            const stepCount = steps.length;
-            const enrolled = enrollmentCounts[sequence.id] || 0;
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sequences.map((sequence) => {
+              const status = sequenceStatusStyle(sequence.status);
+              const stepCount = Array.isArray(sequence.steps) ? sequence.steps.length : 0;
+              const active = enrolled[sequence.id] ?? 0;
+              const colliding = collisions[sequence.id] ?? 0;
 
-            return (
-              <Link
-                key={sequence.id}
-                href={`/dashboard/sequences/${sequence.id}`}
-                className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <ListOrdered className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium group-hover:text-primary transition-colors">
-                        {sequence.name}
-                      </h3>
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${status.classes}`}
-                      >
-                        {status.label}
-                      </span>
+              return (
+                <Link
+                  key={sequence.id}
+                  href={`/dashboard/sequences/${sequence.id}`}
+                  className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                      <ListOrdered className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {stepCount} {stepCount === 1 ? "step" : "steps"}
-                      {enrolled > 0 && (
-                        <span className="ml-2">
-                          {enrolled} enrolled
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-medium transition-colors group-hover:text-primary">
+                          {sequence.name}
+                        </h3>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${status.classes}`}
+                        >
+                          {status.label}
                         </span>
-                      )}
-                    </p>
+                        {colliding > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                            title={`${colliding} ${colliding === 1 ? "contacto está" : "contactos están"} también en otra secuencia por el mismo canal`}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            {colliding}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {stepCountLabel(stepCount)}
+                        {active > 0 && <span className="ml-2">{active} en curso</span>}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                {sequence.description && (
-                  <p className="mt-3 text-xs text-muted-foreground line-clamp-2">
-                    {sequence.description}
+
+                  {sequence.description && (
+                    <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">
+                      {sequence.description}
+                    </p>
+                  )}
+
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Editada el {formatDateTime(sequence.updated_at)}
                   </p>
-                )}
-                <p className="mt-4 text-xs text-muted-foreground">
-                  Updated {formatDate(sequence.updated_at)}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

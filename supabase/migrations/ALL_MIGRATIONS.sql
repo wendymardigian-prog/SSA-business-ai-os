@@ -4935,3 +4935,408 @@ CREATE TRIGGER contacts_automation_deanonymized
 
 COMMENT ON FUNCTION public.contacts_emit_deanonymized() IS
   'Emite contact_created cuando un contacto anonimo se completa. Escucha las columnas que alimentan is_anonymous, porque una columna generada nunca aparece en el SET de un UPDATE y un trigger UPDATE OF sobre ella no dispara nunca.';
+
+-- ============================================================
+-- MIGRATION 41: SEQUENCES STATUS ROLES AND SCOPE
+-- ============================================================
+-- ============================================================================
+-- 00041 — Secuencias: estados validos, roles y scope de leads (F9)
+-- ============================================================================
+-- Que hace:
+--   1. CHECK en sequences.status y sequence_enrollments.status. Venian de la
+--      00005 como texto libre: cualquier valor entra, y uno inesperado hace
+--      crashear la lista de inscriptos (busca el estado en un diccionario y
+--      lee .classes de undefined).
+--   2. RLS por rol en sequences: hoy una sola policy FOR ALL deja que un Member
+--      active, edite o borre una secuencia que le manda DMs a leads ajenos.
+--   3. RLS con scope de leads en sequence_enrollments. La 00018/00024 ato el
+--      scope a contacts y conversations, pero las inscripciones cuelgan de
+--      sequences, asi que quedaron fuera: un Member ve y cancela inscripciones
+--      de leads que la RLS le esconde en todos los demas lados.
+--   4. Re-inscripcion: el UNIQUE(sequence_id, contact_id) de la 00005 impedia
+--      volver a inscribir a un contacto para siempre, incluso despues de que
+--      terminara la secuencia. Pasa a ser un unique parcial sobre las
+--      inscripciones vivas.
+--
+-- Idempotente. No crea tablas ni funciones nuevas.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Estados validos
+-- ----------------------------------------------------------------------------
+
+-- Se normaliza antes de restringir: si quedo algun valor viejo fuera de la
+-- lista, agregar el CHECK fallaria y la migracion no seria idempotente.
+UPDATE public.sequences
+SET status = 'draft'
+WHERE status IS NULL OR status NOT IN ('draft', 'active', 'paused');
+
+UPDATE public.sequence_enrollments
+SET status = 'active'
+WHERE status IS NULL OR status NOT IN ('active', 'paused', 'completed', 'cancelled');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sequences_status_check'
+  ) THEN
+    ALTER TABLE public.sequences
+      ADD CONSTRAINT sequences_status_check
+      CHECK (status IN ('draft', 'active', 'paused'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sequence_enrollments_status_check'
+  ) THEN
+    ALTER TABLE public.sequence_enrollments
+      ADD CONSTRAINT sequence_enrollments_status_check
+      CHECK (status IN ('active', 'paused', 'completed', 'cancelled'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.sequences.status IS
+  'draft = todavia no corre | active = inscribe y manda | paused = frenada; sus inscripciones se pausan, no se cancelan (00041).';
+
+-- ----------------------------------------------------------------------------
+-- 2. Re-inscripcion: unique solo sobre lo vivo
+-- ----------------------------------------------------------------------------
+-- Un contacto no puede estar dos veces a la vez en la misma secuencia, pero si
+-- ya la termino (o se lo saco), se lo puede volver a inscribir. El indice
+-- parcial es ademas el que necesita la deteccion de colision (00043).
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'sequence_enrollments_sequence_id_contact_id_key'
+  ) THEN
+    ALTER TABLE public.sequence_enrollments
+      DROP CONSTRAINT sequence_enrollments_sequence_id_contact_id_key;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sequence_enrollments_one_live
+  ON public.sequence_enrollments(sequence_id, contact_id)
+  WHERE status IN ('active', 'paused');
+
+-- ----------------------------------------------------------------------------
+-- 3. RLS de sequences: leer todo el workspace, escribir solo Owner/Admin
+-- ----------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS "sequences_workspace" ON public.sequences;
+DROP POLICY IF EXISTS "sequences_select" ON public.sequences;
+DROP POLICY IF EXISTS "sequences_insert" ON public.sequences;
+DROP POLICY IF EXISTS "sequences_update" ON public.sequences;
+DROP POLICY IF EXISTS "sequences_delete" ON public.sequences;
+
+CREATE POLICY "sequences_select" ON public.sequences
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+CREATE POLICY "sequences_insert" ON public.sequences
+  FOR INSERT WITH CHECK (public.is_workspace_admin(workspace_id));
+
+CREATE POLICY "sequences_update" ON public.sequences
+  FOR UPDATE USING (public.is_workspace_admin(workspace_id))
+  WITH CHECK (public.is_workspace_admin(workspace_id));
+
+CREATE POLICY "sequences_delete" ON public.sequences
+  FOR DELETE USING (public.is_workspace_admin(workspace_id));
+
+-- ----------------------------------------------------------------------------
+-- 4. RLS de sequence_enrollments: workspace + scope de leads
+-- ----------------------------------------------------------------------------
+-- can_see_contact recibe la fila entera de contacts, no un uuid, por eso va
+-- como subconsulta y no como llamada directa. Adentro de una POLICY la
+-- subconsulta a contacts hereda la RLS de contacts; en una funcion
+-- SECURITY DEFINER no lo haria (leccion escrita en la 00028).
+
+DROP POLICY IF EXISTS "enrollments_via_sequence" ON public.sequence_enrollments;
+DROP POLICY IF EXISTS "enrollments_select" ON public.sequence_enrollments;
+DROP POLICY IF EXISTS "enrollments_insert" ON public.sequence_enrollments;
+DROP POLICY IF EXISTS "enrollments_update" ON public.sequence_enrollments;
+DROP POLICY IF EXISTS "enrollments_delete" ON public.sequence_enrollments;
+
+CREATE POLICY "enrollments_select" ON public.sequence_enrollments
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.sequences s
+      WHERE s.id = sequence_enrollments.sequence_id
+        AND public.is_workspace_member(s.workspace_id)
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.id = sequence_enrollments.contact_id
+        AND public.can_see_contact(c)
+    )
+  );
+
+CREATE POLICY "enrollments_insert" ON public.sequence_enrollments
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.sequences s
+      WHERE s.id = sequence_enrollments.sequence_id
+        AND public.is_workspace_member(s.workspace_id)
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.id = sequence_enrollments.contact_id
+        AND public.can_see_contact(c)
+    )
+  );
+
+CREATE POLICY "enrollments_update" ON public.sequence_enrollments
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.sequences s
+      WHERE s.id = sequence_enrollments.sequence_id
+        AND public.is_workspace_member(s.workspace_id)
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.id = sequence_enrollments.contact_id
+        AND public.can_see_contact(c)
+    )
+  );
+
+-- Borrar una inscripcion es perder la evidencia de que el contacto estuvo ahi.
+-- El camino normal es cancelarla (UPDATE); el DELETE queda para Owner/Admin.
+CREATE POLICY "enrollments_delete" ON public.sequence_enrollments
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.sequences s
+      WHERE s.id = sequence_enrollments.sequence_id
+        AND public.is_workspace_admin(s.workspace_id)
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 42: SEQUENCE ENROLLMENT RUNTIME
+-- ============================================================
+-- ============================================================================
+-- 00042 — Secuencias: estado de corrida y claim atomico del procesador
+-- ============================================================================
+-- Que hace:
+--   1. Columnas de corrida en sequence_enrollments: por que se pauso, cuantos
+--      intentos lleva el paso actual, cual fue el ultimo error, y desde cuando
+--      esta reclamada por una corrida del cron.
+--   2. claim_sequence_enrollments(): reclama las inscripciones vencidas de
+--      forma atomica.
+--
+-- Por que el claim: el procesador hacia "select ... limit 50" sin reclamar
+-- nada. En cuanto cada paso implica un POST a Instagram, una corrida dura mas
+-- que el intervalo del cron (un minuto) y dos ticks leen las mismas filas: el
+-- mismo DM sale dos veces. Es el mismo problema que webhook_events resolvio
+-- del lado de entrada, ahora del lado de salida.
+--
+-- Idempotente.
+-- ============================================================================
+
+ALTER TABLE public.sequence_enrollments
+  ADD COLUMN IF NOT EXISTS paused_reason text,
+  ADD COLUMN IF NOT EXISTS paused_at timestamptz,
+  ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_error text,
+  ADD COLUMN IF NOT EXISTS last_error_at timestamptz,
+  ADD COLUMN IF NOT EXISTS locked_at timestamptz;
+
+COMMENT ON COLUMN public.sequence_enrollments.paused_reason IS
+  'contact_replied = el lead contesto (F11) | opt_out = pidio no ser contactado | sequence_paused = se pauso la secuencia | no_conversation = no hay hilo abierto por donde escribir | collision = un admin la freno por colision (F13). Solo las tres primeras y collision se reanudan.';
+
+COMMENT ON COLUMN public.sequence_enrollments.attempt_count IS
+  'Intentos del paso actual. Se limpia al avanzar. Ver MAX_STEP_ATTEMPTS en lib/sequences/steps.ts.';
+
+COMMENT ON COLUMN public.sequence_enrollments.locked_at IS
+  'La reclamo una corrida del cron. Se limpia al terminar el paso; una corrida caida la libera sola pasado p_stale_after.';
+
+-- ----------------------------------------------------------------------------
+-- claim_sequence_enrollments
+-- ----------------------------------------------------------------------------
+-- FOR UPDATE SKIP LOCKED hace que dos corridas simultaneas se repartan las
+-- filas en vez de pelearlas. La ventana de 5 minutos recupera lo que quedo
+-- trabado por una corrida que se cayo antes de soltar el lock (mismo criterio
+-- que /api/cron/jobs con las invocaciones muertas).
+
+CREATE OR REPLACE FUNCTION public.claim_sequence_enrollments(
+  p_limit integer DEFAULT 25,
+  p_stale_after interval DEFAULT '5 minutes'
+)
+RETURNS SETOF public.sequence_enrollments
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  WITH due AS (
+    SELECT e.id
+    FROM public.sequence_enrollments e
+    WHERE e.status = 'active'
+      AND e.next_step_at IS NOT NULL
+      AND e.next_step_at <= now()
+      AND (e.locked_at IS NULL OR e.locked_at < now() - p_stale_after)
+    ORDER BY e.next_step_at
+    LIMIT p_limit
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.sequence_enrollments e
+  SET locked_at = now()
+  FROM due
+  WHERE e.id = due.id
+  RETURNING e.*;
+$$;
+
+REVOKE ALL ON FUNCTION public.claim_sequence_enrollments(integer, interval) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_sequence_enrollments(integer, interval) TO service_role;
+
+COMMENT ON FUNCTION public.claim_sequence_enrollments(integer, interval) IS
+  'Reclama inscripciones vencidas para una corrida del cron. Solo service_role: la ejecuta el procesador, nunca la UI.';
+
+-- ============================================================
+-- MIGRATION 43: SEQUENCE COLLISIONS
+-- ============================================================
+-- ============================================================================
+-- 00043 — Secuencias: deteccion de colision (F13)
+-- ============================================================================
+-- Una colision es que un contacto quede en mas de una secuencia viva por el
+-- mismo canal: dos seguimientos automaticos escribiendole en paralelo.
+--
+-- No lleva tabla nueva: la deteccion es una query sobre sequence_enrollments.
+-- Lo unico que hace falta persistir es que la colision se detecto y que alguien
+-- ya la resolvio, y eso es una propiedad de la inscripcion en el momento en que
+-- se creo, no una entidad con vida propia.
+--
+-- collision_with guarda un snapshot ({enrollment_id, sequence_id,
+-- sequence_name}) para que el aviso siga siendo legible despues de que la otra
+-- inscripcion se cancelo o la otra secuencia se renombro.
+--
+-- Idempotente.
+-- ============================================================================
+
+ALTER TABLE public.sequence_enrollments
+  ADD COLUMN IF NOT EXISTS collision_detected_at timestamptz,
+  ADD COLUMN IF NOT EXISTS collision_with jsonb,
+  ADD COLUMN IF NOT EXISTS collision_reviewed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS collision_reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS collision_resolution text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'sequence_enrollments_collision_resolution_check'
+  ) THEN
+    ALTER TABLE public.sequence_enrollments
+      ADD CONSTRAINT sequence_enrollments_collision_resolution_check
+      CHECK (collision_resolution IS NULL OR collision_resolution IN (
+        'kept_both', 'paused_other', 'removed_other', 'removed_this'
+      ));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.sequence_enrollments.collision_with IS
+  'Snapshot de las otras inscripciones vivas al momento de inscribir: [{enrollment_id, sequence_id, sequence_name}]. Snapshot y no join, para que el aviso siga siendo legible si despues se cancela o renombra.';
+
+COMMENT ON COLUMN public.sequence_enrollments.collision_reviewed_at IS
+  'Null = colision sin resolver; es lo que filtra el aviso en la pantalla de la secuencia.';
+
+-- Alimenta el badge de la lista y del detalle sin escanear inscripciones viejas.
+CREATE INDEX IF NOT EXISTS idx_sequence_enrollments_open_collision
+  ON public.sequence_enrollments(sequence_id)
+  WHERE collision_detected_at IS NOT NULL AND collision_reviewed_at IS NULL;
+
+-- La consulta de la deteccion: otras inscripciones vivas de este contacto en
+-- este canal. El indice viejo (contact_id, status) no filtra canal e incluye
+-- las completed/cancelled, que con el tiempo son la mayoria de la tabla.
+CREATE INDEX IF NOT EXISTS idx_sequence_enrollments_live_channel
+  ON public.sequence_enrollments(contact_id, channel_id)
+  WHERE status IN ('active', 'paused');
+
+-- ============================================================
+-- MIGRATION 44: SEQUENCE AUTOPAUSE ON REPLY
+-- ============================================================
+-- ============================================================================
+-- 00044 — Secuencias: auto-pausa cuando el contacto responde (F11)
+-- ============================================================================
+-- Hasta ahora una secuencia solo se frenaba si el lead escribia una frase de
+-- baja ("stop", "no me contactes") o si estaba marcado "no contactar". Si
+-- contestaba "gracias, lo veo manana", el drip le seguia mandando pasos.
+--
+-- Va en SQL y no en TypeScript por lo mismo que find_or_link_contact (00025) y
+-- apply_opt_out_check (00027): hay dos receptores de webhook, y la pausa mas su
+-- entrada en el audit log tienen que pasar juntas en una transaccion.
+--
+-- Se limita al canal del mensaje a proposito: un lead que contesta por
+-- Instagram no tiene por que frenar el seguimiento que corre por WhatsApp. Eso
+-- es exactamente F12.
+--
+-- Idempotente: sobre un contacto sin nada activo no escribe nada, asi que no
+-- llena el audit log con una entrada por cada mensaje entrante.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.pause_sequences_on_reply(
+  p_contact_id uuid,
+  p_channel_id uuid
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ids uuid[];
+  v_count integer;
+  v_workspace_id uuid;
+BEGIN
+  IF p_contact_id IS NULL OR p_channel_id IS NULL THEN
+    RETURN 0;
+  END IF;
+
+  -- El UPDATE va adentro de un CTE para poder juntar los ids de TODAS las
+  -- filas tocadas: un RETURNING ... INTO suelto sobre varias filas se queda
+  -- solo con una.
+  WITH paused AS (
+    UPDATE public.sequence_enrollments
+    SET status = 'paused',
+        paused_reason = 'contact_replied',
+        paused_at = now(),
+        locked_at = NULL
+    WHERE contact_id = p_contact_id
+      AND channel_id = p_channel_id
+      AND status = 'active'
+    RETURNING id
+  )
+  SELECT array_agg(id) INTO v_ids FROM paused;
+
+  v_count := COALESCE(array_length(v_ids, 1), 0);
+  IF v_count = 0 THEN
+    RETURN 0;
+  END IF;
+
+  SELECT workspace_id INTO v_workspace_id
+  FROM public.contacts WHERE id = p_contact_id;
+
+  -- Una sola entrada por respuesta, no una por inscripcion: lo que paso es un
+  -- hecho del contacto, y las inscripciones afectadas son su detalle.
+  INSERT INTO public.audit_log (
+    workspace_id, entity_type, entity_id, action, metadata, performed_by
+  ) VALUES (
+    v_workspace_id,
+    'contact',
+    p_contact_id,
+    'sequence_paused',
+    jsonb_build_object(
+      'source', 'auto',
+      'reason', 'contact_replied',
+      'channel_id', p_channel_id,
+      'enrollment_ids', to_jsonb(v_ids),
+      'count', v_count
+    ),
+    NULL
+  );
+
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.pause_sequences_on_reply(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.pause_sequences_on_reply(uuid, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.pause_sequences_on_reply(uuid, uuid) IS
+  'Pausa las secuencias activas del contacto en ESE canal cuando responde (F11). La llaman los dos receptores de webhook con service role.';

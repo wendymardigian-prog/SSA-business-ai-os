@@ -1,53 +1,51 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2 } from "lucide-react";
 import { createSequence } from "@/lib/actions/sequences";
+import { ActionError } from "@/components/contacts/ui";
 
-export function CreateSequenceButton() {
+export function CreateSequenceButton({ label }: { label?: string }) {
   const router = useRouter();
-  const [creating, setCreating] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const pendingRef = useRef(false);
 
   async function handleCreate() {
     if (pendingRef.current) return;
     pendingRef.current = true;
-    setCreating(true);
+    setPending(true);
+    setError(null);
 
     try {
-      const result = await createSequence("Untitled Sequence");
-
-      if (result.error) {
-        console.error("Failed to create sequence:", result.error);
-        alert(`Failed to create sequence: ${result.error}`);
+      const result = await createSequence("Secuencia sin nombre");
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
-
-      if (result.sequence) {
-        router.push(`/dashboard/sequences/${result.sequence.id}`);
-      }
-    } catch (err) {
-      console.error("Failed to create sequence:", err);
-      alert(`Failed to create sequence: ${err instanceof Error ? err.message : "Unknown error"}`);
+      if (result.sequenceId) router.push(`/dashboard/sequences/${result.sequenceId}`);
     } finally {
       pendingRef.current = false;
-      setCreating(false);
+      setPending(false);
     }
   }
 
   return (
-    <button
-      onClick={handleCreate}
-      disabled={creating}
-      className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
-    >
-      {creating ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Plus className="h-4 w-4" />
-      )}
-      {creating ? "Creating..." : "New Sequence"}
-    </button>
+    <div className="flex flex-col items-end gap-2">
+      <button
+        onClick={handleCreate}
+        disabled={pending}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {pending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Plus className="h-4 w-4" />
+        )}
+        {label ?? "Nueva secuencia"}
+      </button>
+      <ActionError message={error} />
+    </div>
   );
 }

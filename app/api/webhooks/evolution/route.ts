@@ -28,6 +28,7 @@ import {
 } from "@/lib/evolution-message";
 import {
   applyOptOut,
+  pauseSequencesOnReply,
   claimWebhookEvent,
   constantTimeEquals,
   insertMessage,
@@ -253,6 +254,15 @@ async function processMessage(
 
   // Lo que escribimos nosotros no se evalua: ni marca opt-out ni dispara flows.
   if (fromMe) return;
+
+  // El lead contesto: se frena el seguimiento automatico de este canal (F11).
+  // Los de otros canales siguen corriendo, que es lo que hace conviviles a
+  // varias secuencias a la vez (F12).
+  await pauseSequencesOnReply({
+    supabase,
+    contactId: contact.contactId,
+    channelId: channel.id,
+  });
 
   // Antes de automatizar: si el lead acaba de pedir que dejen de escribirle, no
   // se le contesta con un bot.

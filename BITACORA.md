@@ -129,3 +129,82 @@ Todas aplicadas y verificadas contra la base real.
 - **La verificación visual de la bandeja** (aviso de conversación enfriada,
   burbuja de envío rechazado) quedó sin hacer: la app pide login y no se ingresan
   credenciales.
+
+---
+
+## Etapa 1 · Fase 2 · Bloque 2 — Secuencias
+
+**Qué se construyó:** F9 a F15. Los seguimientos automáticos: pasos con
+intervalos, pasos generados con IA, auto-pausa cuando el lead contesta,
+detección de colisión, inscripción manual, y la condición "¿está en la
+secuencia X?" en el flow builder.
+
+### Lo que el plano daba por hecho y no estaba
+
+El documento marca F9, F11, F12 y F15 como "verificación". El módulo del fork
+estaba bastante más crudo:
+
+| # | Qué encontramos | Consecuencia real |
+|---|---|---|
+| 1 | **La auto-pausa al responder no existía.** Solo se pausaba con una frase de baja ("stop") o con la marca "no contactar" | Si el lead contestaba "gracias, lo veo mañana", el drip le seguía mandando pasos |
+| 2 | El procesador mandaba **por Zernio hardcodeado**, sin pasar por `sendChannelMessage` | Sin tope de 200 msg/hora, sin WhatsApp, con los errores de la API crudos |
+| 3 | Un envío fallido **avanzaba el paso igual** (`return` sin `throw`) | El mensaje se perdía sin traza y el lead no lo recibía nunca |
+| 4 | El cron **no reclamaba** lo que procesaba | Dos corridas solapadas mandaban el mismo DM dos veces |
+| 5 | Pausar una secuencia **cancelaba** sus inscripciones, irreversible | Y con el `UNIQUE` viejo tampoco se podía re-inscribir al contacto |
+| 6 | **Cero chequeo de rol**, ni en código ni en RLS | Un Member podía activar, editar o borrar cualquier secuencia |
+| 7 | El nodo Condition dibujaba `yes`/`no` y el motor buscaba `true`/`false` | Las condiciones armadas a mano nunca ramificaban. Bloqueaba F14 |
+| 8 | El panel del Condition guardaba `tag` y el registro busca `tag:<nombre>`, sin campo para el argumento | **Ninguna** condición del builder resolvía |
+
+Todo eso se arregló: eran las condiciones para que F9–F15 funcionen de verdad.
+
+### Decisiones tomadas
+
+| Decisión | Por qué |
+|---|---|
+| Re-inscripción permitida | El `UNIQUE(sequence_id, contact_id)` pasa a índice único **parcial** sobre `active`/`paused`. Un contacto que ya terminó puede volver a entrar; no puede estar dos veces a la vez |
+| Pausar la secuencia **pausa** sus inscripciones | Reversibles, con motivo visible y botón Reanudar. Tocar un botón no puede matar el seguimiento de todos |
+| El opt-out no se reanuda nunca | Volver a escribirle a quien pidió que no lo contacten es una decisión explícita: se re-inscribe, no se destraba |
+| La generación con IA se extrajo a `lib/ai/generate-reply.ts` | El nodo AI Response dependía de `FlowExecutionContext` + `sessionId`. Una secuencia no tiene ninguno, y `messages.sent_by_flow_id` tiene FK a `flows`: un contexto inventado rompe el insert |
+| Un solo mensaje por (contacto, canal) por tick | Varias secuencias a la vez son deliberadas (F12); que coincidan en el mismo minuto es casualidad del cronograma. La segunda espera |
+| Un paso de IA que falla se reintenta y se saltea | Perder un paso es malo; matar el seguimiento entero por una key vencida es peor |
+| El tope horario reprograma **sin** gastar intento | No es culpa del paso |
+| La colisión se resuelve por query, con columnas y sin tabla | No es una entidad con vida propia: es una propiedad de la inscripción en el momento en que se creó |
+| `collision_with` guarda un **snapshot** con el nombre | Para que el aviso siga siendo legible después de que la otra inscripción se cancele o la secuencia se renombre |
+| El nodo Enroll **inscribe igual** ante una colisión | Una automatización no puede frenarse a preguntarle a una persona. Deja la marca para que un admin decida |
+| La condición usa el **ID** de la secuencia, no el nombre | Los nombres se editan; un flow no puede romperse porque alguien renombró algo |
+
+### Enganche para el Bloque 3
+
+El centro de notificaciones **no** se adelantó. La colisión se ve hoy en la
+pantalla de secuencias (aviso ámbar con las tres decisiones, badge por fila y
+contador en la tarjeta). Quedan dos costuras listas:
+
+- `listOpenCollisions(supabase, { workspaceId })` — la consulta que el centro
+  va a querer, escrita una vez.
+- Cada detección escribe `analytics_events` (`sequence_collision_detected`) y
+  `audit_log` (`collision_detected`).
+
+### Scope de leads
+
+`sequence_enrollments` colgaba de `sequences`, así que había quedado fuera del
+scope de la 00018/00024: un Member veía y cancelaba inscripciones de contactos
+que la RLS le esconde en todas las demás pantallas. Ahora las policies exigen
+además `can_see_contact` sobre el contacto de la inscripción.
+
+### Migraciones
+
+| # | Qué crea |
+|---|---|
+| 00041 | CHECK de los dos `status`, RLS por rol en `sequences`, scope de leads en `sequence_enrollments`, unique parcial para la re-inscripción |
+| 00042 | Columnas de corrida (`paused_reason`, `attempt_count`, `locked_at`…) y `claim_sequence_enrollments()` con `FOR UPDATE SKIP LOCKED` |
+| 00043 | Columnas de colisión y los dos índices parciales (el del aviso y el de la detección) |
+| 00044 | `pause_sequences_on_reply(contacto, canal)` — la auto-pausa de F11, con su entrada en el audit log en la misma transacción |
+
+### Deuda anotada (fuera del alcance de este bloque)
+
+- **El cron de secuencias acepta el secreto por query string** (`?key=`) y lo
+  compara con `!==`, no en tiempo constante. El webhook de Evolution ya usa
+  `constantTimeEquals`; conviene unificar.
+- **`goToFlow` sigue sin volver al flow original** (heredado del Bloque 1).
+- **`scheduled_jobs` sigue con la RLS abierta** (heredado del Bloque 1).
+- El editor de secuencias no avisa si salís con cambios sin guardar.

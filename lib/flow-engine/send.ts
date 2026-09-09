@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowExecutionContext } from "./types";
+
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { getEvolutionConfig, sendText, EvolutionError } from "@/lib/evolution-client";
@@ -21,6 +21,31 @@ import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib
 
 /** Tope de mensajes automatizados por hora que impone Instagram. */
 const INSTAGRAM_HOURLY_LIMIT = 200;
+
+/**
+ * Lo minimo que hace falta para mandar un mensaje y dejarlo registrado.
+ *
+ * Antes esto pedia un FlowExecutionContext entero, que ademas de estos campos
+ * exige triggerId, incomingMessage y un flowId que existe en la tabla `flows`.
+ * Las secuencias no tienen nada de eso: corren por cron, sin trigger y sin
+ * sesion. Inventar un contexto falso no alcanzaba porque messages.sent_by_flow_id
+ * tiene FK a flows, asi que un uuid inventado rompia el insert.
+ *
+ * Un FlowExecutionContext es estructuralmente un SendContext, asi que el motor
+ * sigue llamando igual que antes.
+ */
+export interface SendContext {
+  workspaceId: string;
+  channelId: string;
+  contactId: string;
+  conversationId: string;
+  /** Id de la conversacion en Zernio, si ya se conoce. Se resuelve solo si falta. */
+  lateConversationId?: string;
+  /** Id de la cuenta en Zernio, si ya se conoce. Sale del canal si falta. */
+  lateAccountId?: string;
+  /** null cuando el envio no nace de un flow (secuencias, envios manuales). */
+  flowId?: string | null;
+}
 
 export interface OutboundMessage {
   text: string;
@@ -57,7 +82,7 @@ interface ChannelRow {
  */
 export async function sendChannelMessage(
   supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
+  context: SendContext,
   message: OutboundMessage
 ): Promise<SendOutcome> {
   const channel = await loadChannel(supabase, context.channelId);
@@ -123,7 +148,7 @@ async function claimSend(
 
 async function sendViaZernio(
   supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
+  context: SendContext,
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
@@ -189,7 +214,7 @@ async function sendViaZernio(
  */
 async function sendViaEvolution(
   supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
+  context: SendContext,
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
@@ -249,7 +274,7 @@ async function sendViaEvolution(
 
 async function resolveLateConversation(
   supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext
+  context: SendContext
 ): Promise<string | null> {
   if (!context.conversationId) return null;
   const { data } = await supabase
@@ -269,7 +294,7 @@ async function resolveLateConversation(
  */
 export async function recordSend(
   supabase: SupabaseClient<Database>,
-  context: FlowExecutionContext,
+  context: SendContext,
   text: string,
   outcome: SendOutcome,
   attachments?: unknown[] | null
@@ -279,14 +304,14 @@ export async function recordSend(
     direction: "outbound",
     text,
     attachments: (attachments as never) ?? null,
-    sent_by_flow_id: context.flowId,
+    sent_by_flow_id: context.flowId ?? null,
     platform_message_id: outcome.platformMessageId ?? null,
     status: outcome.ok ? "sent" : "failed",
   });
 
   await supabase.from("analytics_events").insert({
     workspace_id: context.workspaceId,
-    flow_id: context.flowId,
+    flow_id: context.flowId ?? null,
     contact_id: context.contactId,
     event_type: outcome.ok ? "message_sent" : "message_failed",
     metadata: outcome.ok

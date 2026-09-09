@@ -301,7 +301,7 @@ async function traverseNodes(
     // Condition/split nodes specify which handle to follow
     const handle = result.replace("handle:", "");
     nextEdge = edges.find(
-      (e) => e.source === node.id && e.sourceHandle === handle
+      (e) => e.source === node.id && edgeMatchesHandle(e.sourceHandle, handle)
     );
   } else {
     nextEdge = edges.find((e) => e.source === node.id);
@@ -391,4 +391,24 @@ async function completeSession(
       });
     }
   }
+}
+
+/**
+ * Compara la salida que pidio el nodo con la que declara la arista.
+ *
+ * El nodo visual del canvas dibujaba sus salidas como "yes"/"no" mientras el
+ * motor buscaba "true"/"false": una condicion armada a mano en el builder no
+ * ramificaba nunca — la arista no se encontraba, nextEdge quedaba undefined y
+ * el flow se cerraba en silencio. Solo funcionaban las de template, que ya
+ * guardaban "true"/"false".
+ *
+ * El nodo ya usa los ids correctos. Esto acepta ademas los viejos para no
+ * tener que migrar el jsonb de los flows que la gente ya dibujo.
+ */
+const HANDLE_ALIASES: Record<string, string> = { yes: "true", no: "false" };
+
+function edgeMatchesHandle(sourceHandle: string | undefined, handle: string): boolean {
+  if (!sourceHandle) return false;
+  if (sourceHandle === handle) return true;
+  return HANDLE_ALIASES[sourceHandle] === handle;
 }
