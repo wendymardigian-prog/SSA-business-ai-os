@@ -1545,6 +1545,25 @@ export interface Database {
         };
         Returns: boolean;
       };
+      /**
+       * Reclama un envio automatizado en la ventana horaria del canal
+       * (migracion 00037). Devuelve false cuando se llego al tope de la hora.
+       * Solo service_role.
+       */
+      claim_automated_send: {
+        Args: {
+          p_channel_id: string;
+          p_limit?: number;
+        };
+        Returns: boolean;
+      };
+      /** Borra las ventanas de envio viejas (migracion 00037). Solo service_role. */
+      purge_send_windows: {
+        Args: {
+          p_retention_days?: number;
+        };
+        Returns: number;
+      };
       /** Purga de los borrados logicos (migracion 00025). Solo service_role. */
       purge_soft_deleted: {
         Args: {

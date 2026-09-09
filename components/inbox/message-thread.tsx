@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2 } from "lucide-react";
+import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search";
@@ -49,6 +49,7 @@ function shouldShowDateSeparator(
 function MessageBubble({ message }: { message: Message }) {
   const isInbound = message.direction === "inbound";
   const isBot = message.sent_by_flow_id !== null;
+  const failed = !isInbound && message.status === "failed";
 
   return (
     <div
@@ -69,9 +70,19 @@ function MessageBubble({ message }: { message: Message }) {
             "rounded-2xl px-4 py-2 text-sm",
             isInbound
               ? "rounded-tl-md bg-muted text-foreground"
+              : failed
+              ? // Un envio rechazado no se pinta como un mensaje entregado: el
+                // texto que guarda es el motivo, no lo que se quiso mandar.
+                "rounded-tr-md border border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200"
               : "rounded-tr-md bg-primary text-primary-foreground"
           )}
         >
+          {failed && (
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              No se pudo enviar
+            </div>
+          )}
           {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
           {message.attachments && (
             <div className="mt-1">
@@ -90,15 +101,7 @@ function MessageBubble({ message }: { message: Message }) {
             <Bot className="h-3 w-3" />
           )}
           <span>{formatMessageTime(message.created_at)}</span>
-          {!isInbound && message.status !== "sent" && (
-            <span className="capitalize">
-              {message.status === "delivered"
-                ? "Entregado"
-                : message.status === "failed"
-                ? "Falló"
-                : ""}
-            </span>
-          )}
+          {!isInbound && message.status === "delivered" && <span>Entregado</span>}
         </div>
       </div>
 
@@ -112,6 +115,41 @@ function MessageBubble({ message }: { message: Message }) {
           <Bot className="h-3.5 w-3.5 text-primary" />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Dias enteros desde una fecha. null si no hay fecha. */
+function daysSince(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  const ms = Date.now() - new Date(dateStr).getTime();
+  if (Number.isNaN(ms)) return null;
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Aviso de conversacion enfriada (F8).
+ *
+ * Instagram solo deja escribirle a alguien dentro de las 24 horas posteriores a
+ * su ultimo mensaje. A los 7 dias sin respuesta la conversacion ya esta cerrada
+ * de hecho, y lo que se escriba va a rebotar. El aviso existe para que el
+ * operador lo sepa ANTES de escribir, en vez de enterarse por un mensaje en
+ * rojo despues.
+ *
+ * No hay logica proactiva de ventana: no se bloquea el envio ni se calcula
+ * nada. Se avisa, y si igual se manda y la API rechaza, el error se explica.
+ */
+function StaleConversationNotice({ days }: { days: number }) {
+  return (
+    <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+      <p>
+        <span className="font-medium">
+          Hace {days} dias que este contacto no responde.
+        </span>{" "}
+        Instagram solo permite escribir dentro de las 24 horas posteriores al
+        ultimo mensaje del lead, asi que es probable que el envio sea rechazado.
+      </p>
     </div>
   );
 }
@@ -141,6 +179,11 @@ export function MessageThread({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
+  // ultimo mensaje del hilo porque los entrantes de Instagram no se guardan
+  // localmente: contarlos daria siempre cero.
+  const staleDays = daysSince(conversation?.contacts?.last_interaction_at);
 
   const updateConversationStatus = useCallback(async (status: ConversationStatus) => {
     if (!conversation || statusUpdating) return;
@@ -441,6 +484,10 @@ export function MessageThread({
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {staleDays !== null && staleDays >= 7 && (
+        <StaleConversationNotice days={staleDays} />
+      )}
 
       {/* Composer */}
       <div className="border-t border-border p-4">

@@ -23,6 +23,13 @@ export interface InboxContact {
   do_not_contact_reason: string | null;
   setter_id: string | null;
   vendedor_id: string | null;
+  /**
+   * Ultima vez que el lead interactuo. La bandeja la usa para avisar cuando la
+   * conversacion se enfrio: Instagram no deja escribirle a alguien que no
+   * contesta hace mas de 24 horas, y a los 7 dias ya es una conversacion
+   * practicamente perdida.
+   */
+  last_interaction_at: string | null;
 }
 
 export type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"] & {

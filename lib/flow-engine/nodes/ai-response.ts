@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import type { FlowExecutionContext, AiResponseNodeData } from "../types";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { sendChannelMessage, recordSend } from "../send";
 import { generateText, createGateway } from "ai";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 
@@ -120,30 +121,20 @@ async function executeAiResponse(
     context.variables = { ...(context.variables ?? {}), ai_response: text };
 
     if (data.sendDirectly !== false) {
-      // Send via Zernio REST API (same pattern as executeSendMessage)
-      const response = await zernio.messages.sendInboxMessage({
-        path: { conversationId: lateConversationId },
-        body: { accountId: lateAccountId, message: text },
-      });
+      // Sale por la capa unificada: respeta el tope horario del canal y
+      // traduce el rechazo de la API a algo que se pueda leer en la bandeja.
+      const outcome = await sendChannelMessage(supabase, context, { text });
+      await recordSend(
+        supabase,
+        context,
+        outcome.ok ? text : outcome.failure?.message ?? text,
+        outcome
+      );
 
-      // Store outbound message
-      await supabase.from("messages").insert({
-        conversation_id: context.conversationId,
-        direction: "outbound",
-        text,
-        attachments: null,
-        sent_by_flow_id: context.flowId,
-        sent_by_node_id: null,
-        platform_message_id: response.data?.data?.messageId || null,
-        status: "sent",
-      });
-
-      await supabase.from("analytics_events").insert({
-        workspace_id: context.workspaceId,
-        flow_id: context.flowId,
-        contact_id: context.contactId,
-        event_type: "message_sent",
-      });
+      // El texto ya se genero y quedo en {{ai_response}}: si el envio fallo, el
+      // flow puede seguir (por ejemplo, para derivar a una persona). Lo que no
+      // se hace es cancelar la corrida, que es lo que se hace cuando falla la
+      // generacion.
     }
   } catch (error) {
     console.error("Failed to generate or send AI response:", error);

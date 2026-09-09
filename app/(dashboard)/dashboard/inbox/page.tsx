@@ -79,7 +79,7 @@ export default async function InboxPage({
   // datos del contacto de las que vuelven. Es el mismo mecanismo que usa la
   // lista de contactos para filtrar por tag.
   let select =
-    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id)";
+    "*, contacts!inner(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at)";
   if (tagIds.length > 0) select += ", tag_match:contacts!inner(contact_tags!inner(tag_id))";
 
   let query = supabase
@@ -159,7 +159,7 @@ export default async function InboxPage({
     const { data } = await supabase
       .from("conversations")
       .select(
-        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id)",
+        "*, contacts(id, display_name, avatar_url, do_not_contact, do_not_contact_reason, setter_id, vendedor_id, last_interaction_at)",
       )
       .eq("id", selectedId)
       .eq("workspace_id", workspace.id)
