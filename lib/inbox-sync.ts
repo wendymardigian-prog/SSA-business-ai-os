@@ -108,11 +108,22 @@ export async function upsertContactForSender({
  */
 export async function backfillInboxConversations({
   supabase,
+  service,
   zernio,
   workspaceId,
   channels,
 }: {
+  /** Cliente del usuario: lee y escribe `conversations` con su RLS. */
   supabase: SupabaseClient;
+  /**
+   * Service client, solo para resolver contactos.
+   *
+   * find_or_link_contact no tiene control de permisos propio (solo deriva el
+   * workspace del canal), asi que quedo restringida al service role. Quien
+   * llama a este backfill ya valido que sea Owner/Admin; la resolucion del
+   * contacto es una operacion del sistema, no del usuario.
+   */
+  service: SupabaseClient;
   zernio: Zernio;
   workspaceId: string;
   channels: BackfillChannel[];
@@ -121,7 +132,7 @@ export async function backfillInboxConversations({
 
   for (const channel of channels) {
     try {
-      imported += await backfillChannel({ supabase, zernio, workspaceId, channel });
+      imported += await backfillChannel({ supabase, service, zernio, workspaceId, channel });
     } catch (err) {
       console.error(
         `[inbox-sync] backfill failed for channel ${channel.id} (${channel.platform}):`,
@@ -135,11 +146,13 @@ export async function backfillInboxConversations({
 
 async function backfillChannel({
   supabase,
+  service,
   zernio,
   workspaceId,
   channel,
 }: {
   supabase: SupabaseClient;
+  service: SupabaseClient;
   zernio: Zernio;
   workspaceId: string;
   channel: BackfillChannel;
@@ -180,7 +193,7 @@ async function backfillChannel({
       if (seenParticipants.has(conv.participantId)) continue;
       seenParticipants.add(conv.participantId);
       if (known.has(conv.id)) continue;
-      if (await importConversation({ supabase, workspaceId, channel, conv })) {
+      if (await importConversation({ supabase, service, workspaceId, channel, conv })) {
         imported++;
       }
     }
@@ -195,18 +208,22 @@ async function backfillChannel({
 
 async function importConversation({
   supabase,
+  service,
   workspaceId,
   channel,
   conv,
 }: {
   supabase: SupabaseClient;
+  service: SupabaseClient;
   workspaceId: string;
   channel: BackfillChannel;
   conv: ZernioInboxConversation;
 }): Promise<boolean> {
   const interactionAt = conv.updatedTime ?? new Date().toISOString();
+  // Resolver el contacto va con service: es lo unico de este backfill que
+  // llama a find_or_link_contact.
   const contact = await upsertContactForSender({
-    supabase,
+    supabase: service,
     channel: { id: channel.id, workspace_id: workspaceId },
     senderId: conv.participantId!,
     senderName: conv.participantName || conv.participantId!,
