@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
@@ -31,19 +32,16 @@ function wasSessionWrittenRecently(updatedAt: string): boolean {
 
 /**
  * Cron job handler that processes scheduled jobs.
- * Call via Vercel Cron or external cron every 10-30 seconds.
- * GET /api/cron/jobs?key=CRON_SECRET
+ * Lo llama pg_cron cada minuto (migracion 00036).
+ * GET /api/cron/jobs
+ *
+ * Autenticacion: header `Authorization: Bearer <CRON_SECRET>`. La query string
+ * `?key=` ya no autoriza (un secreto en la URL queda en los logs del proxy y en
+ * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  */
 export async function GET(request: NextRequest) {
-  // Simple auth via query param or header
-  const cronSecret = process.env.CRON_SECRET;
-  const providedSecret =
-    request.nextUrl.searchParams.get("key") ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!cronSecret || providedSecret !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   const supabase = await createServiceClient();
 

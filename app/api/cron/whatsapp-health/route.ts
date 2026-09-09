@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState, getEvolutionConfig } from "@/lib/evolution-client";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 
 /**
- * GET /api/cron/whatsapp-health?key=CRON_SECRET
+ * GET /api/cron/whatsapp-health
+ *
+ * Autenticacion: header `Authorization: Bearer <CRON_SECRET>`. La query string
+ * `?key=` ya no autoriza (un secreto en la URL queda en los logs del proxy y en
+ * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  *
  * Le pregunta a Evolution como esta cada instancia de WhatsApp y actualiza el
  * canal. Existe ademas del webhook connection.update porque una caida no
@@ -17,14 +22,8 @@ import { notifyWorkspaceAdmins } from "@/lib/notifications";
  * y el contador se limpia al reconectar para que la proxima vez vuelva a avisar.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const provided =
-    request.nextUrl.searchParams.get("key") ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!cronSecret || provided !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   const config = getEvolutionConfig();
   if (!config) {

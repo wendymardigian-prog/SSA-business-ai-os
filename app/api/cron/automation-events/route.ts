@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import { crmEventMatches } from "@/lib/flow-engine/registry/triggers";
@@ -6,6 +7,10 @@ import { logAudit } from "@/lib/audit";
 
 /**
  * GET /api/cron/automation-events
+ *
+ * Autenticacion: header `Authorization: Bearer <CRON_SECRET>`. La query string
+ * `?key=` ya no autoriza (un secreto en la URL queda en los logs del proxy y en
+ * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  *
  * Drena la cola de eventos del CRM y dispara los flows que correspondan
  * (F3: contacto nuevo, F4: evento de CRM).
@@ -35,14 +40,8 @@ interface AutomationEvent {
 }
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const provided =
-    request.nextUrl.searchParams.get("key") ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!cronSecret || provided !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   const supabase = await createServiceClient();
 
