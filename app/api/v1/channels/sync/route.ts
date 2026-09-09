@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getAdminContext } from "@/lib/auth/guards";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
@@ -10,23 +11,6 @@ import { backfillInboxConversations } from "@/lib/inbox-sync";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 
-async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, workspaces(*)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.workspaces) return null;
-  return membership.workspaces;
-}
-
 /**
  * POST /api/v1/channels/sync
  *
@@ -35,10 +19,18 @@ async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) 
  * Deactivates channels whose Zernio accounts no longer exist.
  */
 export async function POST() {
-  const supabase = await createClient();
-  const workspace = await getWorkspace(supabase);
-  if (!workspace)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Sincronizar canales toca la configuracion del workspace entero, igual que
+  // conectarlos: no es parte del rol de un Member. La ruta hermana test-key ya
+  // lo exigia; esta se habia quedado con un guard propio que solo pedia estar
+  // en el workspace.
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Solo Owner y Admin pueden sincronizar canales" },
+      { status: 403 }
+    );
+  }
+  const { supabase, workspace } = ctx;
 
   const apiKey = await getZernioApiKey(workspace.id);
   if (!apiKey) {
@@ -171,6 +163,7 @@ export async function POST() {
 
       const { imported } = await backfillInboxConversations({
         supabase,
+        service: await createServiceClient(),
         zernio,
         workspaceId: workspace.id,
         channels: activeChannels ?? [],
