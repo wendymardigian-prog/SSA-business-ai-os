@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { scheduleBroadcastDelivery } from "@/lib/scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, Platform } from "@/lib/types/database";
@@ -173,7 +173,12 @@ export async function POST(
   }
 
   // Schedule delivery
-  await scheduleBroadcastDelivery(supabase, broadcastId, recipientIds);
+  await scheduleBroadcastDelivery({
+    userClient: supabase,
+    serviceClient: await createServiceClient(),
+    broadcastId,
+    recipientIds,
+  });
 
   return NextResponse.json({
     broadcastId,
