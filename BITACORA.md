@@ -208,3 +208,91 @@ además `can_see_contact` sobre el contacto de la inscripción.
 - **`goToFlow` sigue sin volver al flow original** (heredado del Bloque 1).
 - **`scheduled_jobs` sigue con la RLS abierta** (heredado del Bloque 1).
 - El editor de secuencias no avisa si salís con cambios sin guardar.
+
+---
+
+## Etapa 1 · Fase 2 · Pasada de seguridad y deuda técnica
+
+**Qué se hizo:** ni features ni pantallas. Se corrió el linter de seguridad de
+Supabase, se verificó **cada hallazgo contra la base real** (`has_function_privilege`,
+`pg_policies`, `pg_get_functiondef`) y se cerró lo que era un agujero de verdad.
+Más los cuatro ítems de deuda que quedaron anotados en los Bloques 1 y 2.
+
+El linter pasó de **40 hallazgos a 15**, y los 15 están documentados en
+[docs/seguridad-advertencias-aceptadas.md](docs/seguridad-advertencias-aceptadas.md).
+Las dos categorías que importaban quedaron en cero: ninguna función
+`SECURITY DEFINER` es ejecutable por `anon`, y ninguna tiene el `search_path` sin fijar.
+
+### Agujeros reales que se cerraron
+
+| Qué | Gravedad | Qué permitía |
+|---|---|---|
+| **`scheduled_jobs` con RLS abierta** (migración 00046) | Alta | Sus 3 policies decían `auth.uid() IS NOT NULL`: *cualquier usuario logueado*, no "de este workspace" — la tabla no tiene `workspace_id`. El payload de los jobs `resume_flow` lleva `contactId`, los ids de Zernio y `variables`, que arrastra **el texto del DM del lead**: fuga de conversaciones entre negocios distintos. El UPDATE abierto además dejaba colgar todos los flows con un nodo de espera |
+| **`increment_unread` + los dos contadores de broadcast** (00045) | Media | `SECURITY DEFINER`, sin guard, ejecutables por `anon` — la key pública que va en el frontend. Reabrir conversaciones ajenas y escribir texto arbitrario en `last_message_preview`, que es lo que se pinta en la bandeja |
+| **`find_or_link_contact` sin control de permisos** (00047) | Baja-media | Un Member podía llamarla por REST directo para crear o vincular contactos, salteándose el scope de leads |
+| **`POST /api/v1/channels/sync` sin chequeo de rol** | Baja-media | Cualquier Member podía sincronizar los canales del workspace. Su hermana `test-key` sí exigía Owner/Admin |
+| **Crons con `?key=` y comparación con `!==`** | Baja | El secreto podía terminar en los logs del proxy y en la tabla de pg_net |
+
+### Dos cosas que la verificación corrigió
+
+1. **Casi rompo la app.** El plan inicial revocaba `is_workspace_member` de
+   `authenticated`, razonando que no tenía consumidores porque no aparece en
+   ningún `.rpc()`. Falso: **37 policies sobre 23 tablas la llaman dentro de su
+   propia expresión**, y una expresión de policy se evalúa con el rol de la
+   sesión, no como definer. Revocarla habría hecho fallar toda lectura de la app
+   con `permission denied`. Quedó un comentario en la migración 00045 y un
+   canario en `verify-rls.mjs` para que nadie lo intente de nuevo.
+2. **Apareció un hallazgo que no estaba en la lista**: el guard de `sync`.
+
+### Deuda de los bloques anteriores
+
+| Ítem | Qué se hizo |
+|---|---|
+| Cron con `?key=` y `!==` | Cerrado. Helper compartido (`lib/cron-auth.ts`) para las seis rutas, solo header, comparación en tiempo constante. `CRON_SECRET` ausente pasa de 401 a **500**: el 401 mentía |
+| RLS de `scheduled_jobs` | Cerrado (arriba) |
+| `goToFlow` / `returnAfter` | **Parcial.** Se cerró la fuga: el nodo dejaba la sesión del flow original `active` para siempre, sin que la despertara ni el cron ni un mensaje entrante. Ahora se cierra al saltar. El toggle `returnAfter` se deshabilitó, porque prenderlo no hacía nada más que producir esa sesión huérfana. **`returnAfter` de verdad sigue pendiente** — ver abajo |
+| Editor sin aviso de cambios sin guardar | Cerrado, y también en el flow builder |
+
+### Decisiones
+
+| Decisión | Por qué |
+|---|---|
+| `scheduled_jobs` va a service-only, sin `workspace_id` | Ninguna pantalla lee la cola ni está planificado que lo haga. Una columna con backfill y policies que nadie usa es costo sin consumidor. Deny-all es la postura correcta por defecto: el día que se sume un job con payload sensible, ya está cerrada |
+| Las funciones de Vault **no** se tocan | Su control está adentro y funciona (verificado). Sus llamadores usan cliente de usuario a propósito: es el usuario quien tiene que estar autorizado |
+| Los dos clientes viajan como parámetros con nombre | En `scheduleBroadcastDelivery` y en el backfill del Inbox. Son del mismo tipo: posicionales e invertidos, TypeScript no diría nada y el bug sería justo el que la separación viene a arreglar |
+| La lógica de "cambios sin guardar" va en un módulo puro | Vitest corre en `environment: node` sin jsdom, así que un hook de React no se puede testear hoy. Lo que merece test quedó afuera del hook |
+| La huella del flow normaliza el grafo | React Flow escribe `selected`, `dragging` y `measured` sobre los mismos objetos, y reordena el array al seleccionar. Sin normalizar, el aviso aparecería con el primer click y alguien lo terminaría sacando |
+
+### Migraciones
+
+| # | Qué |
+|---|---|
+| 00045 | `search_path` y service-only en las RPC heredadas de la 00003; `anon` fuera de las trigger functions y de `is_workspace_member`; comentarios que explican qué NO tocar |
+| 00046 | `scheduled_jobs` vuelve a deny-all, como la había dejado la 00002 |
+| 00047 | `find_or_link_contact` solo para service role (desplegada aparte: su rotura sería silenciosa) |
+| 00048 | `authenticated` fuera de las trigger functions, para que el linter quede legible |
+
+### Deuda que queda anotada, a conciencia
+
+- **`returnAfter` de `goToFlow`.** Volver al flow original necesita: reusar la
+  sesión en vez de crear otra, ampliar la interfaz `FlowRuntime`, reescribir
+  `completeSession` y sus **cinco** llamadores en `engine.ts`, tocar
+  `resumeSession`, propagar el presupuesto de profundidad entre flows, y decidir
+  qué pasa con las variables en el cruce (¿el sub-flow ve las del padre? ¿las
+  que escribe vuelven?) — que es una decisión de producto sin respuesta obvia.
+  La columna `flow_stack` existe desde la 00001 y nunca se leyó ni escribió; es
+  ahí donde iría la pila. Toca el camino caliente del Inbox, donde un bug no se
+  ve en tests: se ve como DMs que no salen. **Es su propio bloque.**
+- **El aviso de cambios sin guardar no cubre la navegación interna.** Next 16 no
+  expone una API estable para bloquear el App Router, así que un click en el
+  sidebar sigue perdiendo los cambios. Cubierto: cerrar la pestaña, recargar,
+  salir del sitio y los botones de volver. La salida correcta, si algún día
+  molesta, es un provider en el layout del dashboard que el sidebar consulte.
+- **Leaked password protection** sigue desactivada: es un setting del panel de
+  Auth, no versionable, y activarla cambia el flujo de registro. Decisión de
+  producto, anotada en el checklist de despliegue.
+- **`pg_net` sigue en el schema `public`**, y así se queda: moverla exige un
+  `DROP EXTENSION CASCADE` que se llevaría los seis crons por delante.
+- **Tres sistemas siguen recibiendo los mismos DMs de @wenmardigian** (este OS,
+  WenOS y Agente Chat). Sigue sin resolverse y sigue siendo lo primero a
+  resolver antes de dejar automatizaciones encendidas en serio.
