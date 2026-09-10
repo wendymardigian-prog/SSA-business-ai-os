@@ -7,6 +7,7 @@ import type { Json } from "@/lib/types/database";
 import {
   indexDocument,
   INDEX_DOCUMENT_JOB,
+  KNOWLEDGE_BUCKET,
   type IndexDocumentPayload,
 } from "@/lib/knowledge/index-document";
 
@@ -56,6 +57,8 @@ export async function GET(request: NextRequest) {
     .from("webhook_events")
     .delete()
     .lt("received_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
+
+  await purgeDeletedKnowledgeDocuments(supabase);
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is
   // stale: if the claim UPDATE commits but the response is lost, nothing else
@@ -411,6 +414,75 @@ async function isSessionParkedRecoverably({
     );
   }
   return (count ?? 0) > 0;
+}
+
+/**
+ * Cierra la ventana de retencion de los documentos de la base de conocimiento.
+ *
+ * Va aca y no en purge_soft_deleted (migracion 00025), que es donde se purga
+ * todo lo demas, por una razon concreta: esa funcion la llama pg_cron por SQL
+ * directo, y desde SQL no se puede borrar del bucket de Storage. Borrar solo la
+ * fila dejaria el archivo huerfano ocupando espacio para siempre, sin nada que
+ * lo referencie.
+ *
+ * Corre en este cron —que es por minuto— y no en uno diario porque no amerita
+ * un cron propio: es una consulta sobre un indice parcial que casi siempre
+ * devuelve cero filas. Si no hay nada vencido, no toca Storage ni la base.
+ *
+ * Best-effort: si falla, se reintenta en la proxima corrida. El archivo se
+ * borra ANTES que la fila; si el borrado del archivo falla, la fila se deja
+ * para el proximo intento, porque perder el puntero al archivo es lo unico
+ * irreversible.
+ */
+async function purgeDeletedKnowledgeDocuments(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>
+) {
+  const RETENTION_DAYS = 30;
+  const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: expired, error } = await supabase
+    .from("knowledge_base")
+    .select("id, source_file_path")
+    .not("deleted_at", "is", null)
+    .lt("deleted_at", cutoff)
+    .limit(50);
+
+  if (error) {
+    console.error("[cron/jobs] no pude buscar documentos vencidos:", error.message);
+    return;
+  }
+
+  if (!expired || expired.length === 0) return;
+
+  const paths = expired
+    .map((doc) => doc.source_file_path)
+    .filter((path): path is string => Boolean(path));
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabase.storage
+      .from(KNOWLEDGE_BUCKET)
+      .remove(paths);
+
+    if (storageError) {
+      // Sin borrar el archivo no se borra la fila: si se perdiera el puntero,
+      // el archivo quedaria en el bucket sin forma de encontrarlo.
+      console.error("[cron/jobs] no pude borrar los archivos vencidos:", storageError.message);
+      return;
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from("knowledge_base")
+    .delete()
+    .in("id", expired.map((doc) => doc.id));
+
+  if (deleteError) {
+    console.error("[cron/jobs] no pude purgar los documentos vencidos:", deleteError.message);
+    return;
+  }
+
+  // Sin titulos: el log no lleva datos de los documentos.
+  console.log(`[cron/jobs] purgados ${expired.length} documentos vencidos de la base de conocimiento`);
 }
 
 async function processJob(

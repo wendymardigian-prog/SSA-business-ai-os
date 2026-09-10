@@ -435,6 +435,113 @@ try {
       "el service role si puede: el backfill del Inbox sigue andando", eSvc?.message);
     if (creado?.contact_id) await svc.from("contacts").delete().eq("id", creado.contact_id); }
 
+  console.log("\n— Base de conocimiento (00049) —");
+  { const { data: doc } = await svc.from("knowledge_base").insert({
+      workspace_id: ws.id, title: "zz-test documento", status: "ready",
+      content_md: "El plan avanzado cuesta 1200 dolares.", chunk_count: 1,
+    }).select("id").single();
+
+    // Un embedding cualquiera de la dimension correcta.
+    const embedding = `[${Array.from({ length: 1024 }, (_, i) => (i === 0 ? 1 : 0)).join(",")}]`;
+    const { error: eChunk } = await svc.from("knowledge_chunks").insert({
+      workspace_id: ws.id, document_id: doc.id, chunk_index: 0,
+      content: "El plan avanzado cuesta 1200 dolares.", embedding,
+    });
+    check(!eChunk, "el service role puede indexar fragmentos", eChunk?.message);
+
+    // La KB es conocimiento del negocio, no de un lead: todo el equipo la lee.
+    check((await sees(member, "knowledge_base", doc.id)).seen,
+      "un Member LEE la base de conocimiento");
+    check((await sees(admin, "knowledge_base", doc.id)).seen,
+      "un Admin LEE la base de conocimiento");
+
+    // Pero solo Owner/Admin la gestionan.
+    const { error: eIns } = await member.client.from("knowledge_base")
+      .insert({ workspace_id: ws.id, title: "zz-test intruso", status: "ready" });
+    check(!!eIns, "un Member NO puede crear documentos");
+
+    const { data: upd } = await member.client.from("knowledge_base")
+      .update({ title: "pisado por un member" }).eq("id", doc.id).select("id");
+    check(!upd || upd.length === 0, "un Member NO puede editar documentos");
+
+    const { data: del } = await member.client.from("knowledge_base")
+      .delete().eq("id", doc.id).select("id");
+    check(!del || del.length === 0, "un Member NO puede borrar documentos");
+
+    // Los fragmentos no los escribe nadie a mano, ni un Admin.
+    const { error: eChunkAdmin } = await admin.client.from("knowledge_chunks").insert({
+      workspace_id: ws.id, document_id: doc.id, chunk_index: 99,
+      content: "inyectado", embedding,
+    });
+    check(!!eChunkAdmin, "ni un Admin puede escribir un fragmento a mano");
+
+    // La busqueda semantica exige pertenecer al workspace.
+    const { error: eBusca } = await member.client.rpc("match_knowledge_chunks", {
+      p_workspace_id: ws.id, p_query_embedding: embedding, p_match_count: 5, p_min_similarity: 0,
+    });
+    check(!eBusca, "un miembro del workspace puede buscar en la KB", eBusca?.message);
+
+    const { error: eAjeno } = await member.client.rpc("match_knowledge_chunks", {
+      p_workspace_id: randomUUID(), p_query_embedding: embedding, p_match_count: 5, p_min_similarity: 0,
+    });
+    check(!!eAjeno, "buscar en la KB de OTRO workspace se rechaza");
+
+    // Cascade: borrar el documento se lleva los fragmentos.
+    await svc.from("knowledge_base").delete().eq("id", doc.id);
+    const { data: huerfanos } = await svc.from("knowledge_chunks")
+      .select("id").eq("document_id", doc.id);
+    check((huerfanos ?? []).length === 0, "borrar el documento se lleva sus fragmentos"); }
+
+  console.log("\n— Notificaciones y scope (00051) —");
+  { // Una del workspace, sin destinatario: es para los admins.
+    const { data: nAdmin } = await svc.from("notifications").insert({
+      workspace_id: ws.id, type: "channel_disconnected",
+      title: "zz-test canal caido", entity_type: "channel", entity_id: ch.id,
+    }).select("id").single();
+
+    check((await sees(admin, "notifications", nAdmin.id)).seen,
+      "un Admin VE las notificaciones del workspace");
+    check(!(await sees(member, "notifications", nAdmin.id)).seen,
+      "un Member NO ve un aviso de administracion (canal caido)");
+
+    // Una dirigida al Member: la ve aunque no sea de un lead suyo.
+    const { data: nSuya } = await svc.from("notifications").insert({
+      workspace_id: ws.id, type: "human_takeover", title: "zz-test para el member",
+      recipient_id: member.id,
+    }).select("id").single();
+    check((await sees(member, "notifications", nSuya.id)).seen,
+      "un Member VE las dirigidas a el");
+
+    // Y el scope de leads: una que apunta a una conversacion que NO le toca.
+    await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
+
+    const { data: nAjena } = await svc.from("notifications").insert({
+      workspace_id: ws.id, type: "human_takeover", title: "zz-test lead ajeno",
+      entity_type: "conversation", entity_id: conv.id,
+    }).select("id").single();
+    check(!(await sees(member, "notifications", nAjena.id)).seen,
+      "un Member NO ve el aviso de un lead que no le corresponde");
+
+    // La misma notificacion, con la conversacion asignada a el: ahora si.
+    await svc.from("conversations").update({ assigned_to: member.id }).eq("id", conv.id);
+    check((await sees(member, "notifications", nAjena.id)).seen,
+      "y SI la ve cuando la conversacion pasa a ser suya");
+
+    // Marcar leido es lo unico que se puede hacer.
+    const { data: leida } = await admin.client.from("notifications")
+      .update({ read_at: new Date().toISOString() }).eq("id", nAdmin.id).select("id");
+    check((leida ?? []).length === 1, "un Admin puede marcar leido");
+
+    // Nadie inserta a mano: si pudiera, le fabricaria un aviso a otro.
+    const { error: eFalso } = await admin.client.from("notifications").insert({
+      workspace_id: ws.id, type: "human_takeover", title: "zz-test fabricado",
+    });
+    check(!!eFalso, "ni un Admin puede crear notificaciones a mano");
+
+    await setFlags(ws.id, { lead_scope_enabled: false });
+    await svc.from("notifications").delete().eq("workspace_id", ws.id); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente
