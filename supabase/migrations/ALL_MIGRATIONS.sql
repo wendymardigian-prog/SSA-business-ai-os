@@ -5855,7 +5855,12 @@ BEGIN
     RAISE EXCEPTION 'workspace_id is required';
   END IF;
 
-  IF auth.role() <> 'service_role' AND NOT public.is_workspace_member(p_workspace_id) THEN
+  -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
+  -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
+  -- y el chequeo de permiso se saltea solo. Con coalesce, sin rol conocido se
+  -- exige pertenencia al workspace, que es el lado seguro.
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND NOT public.is_workspace_member(p_workspace_id) THEN
     RAISE EXCEPTION 'forbidden: not a member of this workspace';
   END IF;
 
