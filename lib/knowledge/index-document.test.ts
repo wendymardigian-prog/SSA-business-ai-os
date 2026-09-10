@@ -191,6 +191,25 @@ describe("fallos permanentes: marcan error y NO se reintentan", () => {
     expect(String(updates.at(-1)?.error_detail)).toContain("Voyage");
   });
 
+  it("guarda igual el markdown: la conversion anduvo, lo que fallo fue indexar", async () => {
+    // Sin esto no habria forma de distinguir "no pude leer el archivo" de "lo
+    // lei bien pero no lo pude indexar", y la pantalla de detalle quedaria vacia
+    // para un documento que en realidad se convirtio perfecto.
+    generateEmbeddings.mockResolvedValue({
+      ok: false,
+      problem: "not_connected",
+      message: "Voyage AI no esta conectado.",
+      retryable: false,
+    });
+
+    const { client, updates } = fakeClient({ document: DOC, file: PDF });
+    await indexDocument(client, PAYLOAD);
+
+    const conContenido = updates.find((u) => typeof u.content_md === "string");
+    expect(conContenido).toBeDefined();
+    expect(String(conContenido?.content_md)).toContain("1200 dolares");
+  });
+
   it("con la key invalida", async () => {
     generateEmbeddings.mockResolvedValue({
       ok: false,

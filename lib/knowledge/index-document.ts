@@ -73,6 +73,18 @@ export async function indexDocument(
       throw new PermanentIndexError("El documento quedo vacio despues de procesarlo.");
     }
 
+    // El markdown se guarda ANTES de pedir los embeddings, no despues.
+    //
+    // Si se guardara solo al final, un documento que se convirtio perfecto pero
+    // no se pudo indexar (falta la key de Voyage, por ejemplo) quedaria sin
+    // contenido a la vista, y no habria forma de distinguir "no pude leer el
+    // archivo" de "lo lei bien pero no lo pude indexar". Con el texto guardado,
+    // la pantalla de detalle lo muestra igual y se ve que la conversion anduvo.
+    await supabase
+      .from("knowledge_base")
+      .update({ content_md: markdown })
+      .eq("id", documentId);
+
     const embedded = await generateEmbeddings(
       workspaceId,
       chunks.map((c) => c.content),
@@ -95,8 +107,9 @@ export async function indexDocument(
     await supabase
       .from("knowledge_base")
       .update({
+        // content_md ya se guardo arriba: es el campo mas pesado de la fila y
+        // no hace falta reescribirlo.
         status: "ready",
-        content_md: markdown,
         chunk_count: chunks.length,
         embedding_model: embedded.model,
         indexed_at: new Date().toISOString(),
