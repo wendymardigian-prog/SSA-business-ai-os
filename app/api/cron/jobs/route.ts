@@ -4,6 +4,11 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
 import type { Json } from "@/lib/types/database";
+import {
+  indexDocument,
+  INDEX_DOCUMENT_JOB,
+  type IndexDocumentPayload,
+} from "@/lib/knowledge/index-document";
 
 // Signals the handler to skip retry/backoff and route straight to the
 // failed + settle branch (which performs/re-attempts the session cancel).
@@ -221,6 +226,14 @@ async function failJobAndSettleSession({
     return;
   }
 
+  // Un job de indexado sin reintentos dejaria el documento en 'processing' para
+  // siempre: nada mas vuelve a mirar esa fila, y en pantalla se veria un spinner
+  // eterno sin explicacion. Se cierra como error con el ultimo motivo.
+  if (job.type === INDEX_DOCUMENT_JOB) {
+    await settleKnowledgeDocumentAsFailed({ supabase, job, errorMessage });
+    return;
+  }
+
   if (job.type !== "resume_flow") return;
   const payload = job.payload as { sessionId?: string; nodeId?: string } | null;
   const sessionId = payload?.sessionId;
@@ -282,6 +295,42 @@ async function failJobAndSettleSession({
     console.error(
       `Failed to settle session ${sessionId} after job ${job.id} exhausted retries; session left active:`,
       settleError
+    );
+  }
+}
+
+/**
+ * Deja el documento en 'error' cuando su job se quedo sin reintentos.
+ *
+ * Best-effort: el job ya esta marcado como failed. Solo toca documentos que
+ * sigan en 'processing', para no pisar un 'ready' de un reintento que en
+ * realidad habia salido bien y cuya respuesta se perdio.
+ */
+async function settleKnowledgeDocumentAsFailed({
+  supabase,
+  job,
+  errorMessage,
+}: {
+  supabase: Awaited<ReturnType<typeof createServiceClient>>;
+  job: { id: string; payload: Json };
+  errorMessage: string;
+}) {
+  const payload = job.payload as { documentId?: string } | null;
+  if (!payload?.documentId) return;
+
+  const { error } = await supabase
+    .from("knowledge_base")
+    .update({
+      status: "error",
+      error_detail: `No se pudo indexar despues de varios intentos: ${errorMessage}`,
+    })
+    .eq("id", payload.documentId)
+    .eq("status", "processing");
+
+  if (error) {
+    console.error(
+      `[cron/jobs] no pude cerrar el documento ${payload.documentId} tras agotar los intentos del job ${job.id}:`,
+      error.message
     );
   }
 }
@@ -369,6 +418,36 @@ async function processJob(
   job: { id: string; type: string; payload: Json }
 ) {
   switch (job.type) {
+    // Indexado de un documento de la base de conocimiento (F16).
+    //
+    // Entra aca y no en un cron propio porque este runner ya trae lo que el
+    // trabajo necesita: claim optimista para que dos corridas no lo procesen a
+    // la vez, tope de intentos y backoff.
+    //
+    // indexDocument solo lanza cuando el fallo es transitorio (Voyage caido,
+    // rate limit, blip de la base). Un fallo permanente —falta la key, el PDF
+    // esta danado— deja el documento en 'error' con el motivo y vuelve normal,
+    // para no quemar los tres intentos contra algo que no se va a arreglar.
+    case INDEX_DOCUMENT_JOB: {
+      const payload = job.payload as Partial<IndexDocumentPayload> | null;
+
+      if (!payload?.documentId || !payload?.workspaceId) {
+        console.error(`[cron/jobs] job ${job.id} de indexado sin documentId o workspaceId`);
+        return;
+      }
+
+      const outcome = await indexDocument(supabase, {
+        documentId: payload.documentId,
+        workspaceId: payload.workspaceId,
+      });
+
+      // Sin el titulo ni el contenido: el log no lleva datos del documento.
+      console.log(
+        `[cron/jobs] documento ${payload.documentId}: ${outcome.status}, ${outcome.chunks} fragmentos`
+      );
+      return;
+    }
+
     case "resume_flow": {
       const payload = job.payload as {
         sessionId: string;

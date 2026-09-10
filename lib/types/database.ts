@@ -24,6 +24,9 @@ export type ChannelConnectionStatus =
   | "unknown";
 /** Clase de integracion en integration_configs (migracion 00020). */
 export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+
+/** Estado de procesamiento de un documento de la base de conocimiento (00049). */
+export type KnowledgeStatus = "processing" | "ready" | "error";
 /** Por que se vinculo un remitente a un contacto ya existente (migracion 00025). */
 export type ContactLinkReason = "channel" | "phone" | "email" | "username";
 /** Entidades que registra el audit log (migracion 00023). */
@@ -1660,6 +1663,124 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "response_templates_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /** Documentos de la base de conocimiento (migracion 00049). */
+      knowledge_base: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          title: string;
+          tags: string[];
+          source_file_path: string | null;
+          source_mime: string | null;
+          source_size_bytes: number | null;
+          source_filename: string | null;
+          content_md: string | null;
+          status: KnowledgeStatus;
+          error_detail: string | null;
+          chunk_count: number;
+          embedding_model: string | null;
+          indexed_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          title: string;
+          tags?: string[];
+          source_file_path?: string | null;
+          source_mime?: string | null;
+          source_size_bytes?: number | null;
+          source_filename?: string | null;
+          content_md?: string | null;
+          status?: KnowledgeStatus;
+          error_detail?: string | null;
+          chunk_count?: number;
+          embedding_model?: string | null;
+          indexed_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          title?: string;
+          tags?: string[];
+          source_file_path?: string | null;
+          source_mime?: string | null;
+          source_size_bytes?: number | null;
+          source_filename?: string | null;
+          content_md?: string | null;
+          status?: KnowledgeStatus;
+          error_detail?: string | null;
+          chunk_count?: number;
+          embedding_model?: string | null;
+          indexed_at?: string | null;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_base_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /**
+       * Fragmentos indexados (migracion 00049).
+       *
+       * `embedding` se escribe como el literal que espera pgvector
+       * ("[0.1,0.2,...]", ver toPgVector) y se lee como string: el tipo vector
+       * no tiene representacion propia en JS.
+       */
+      knowledge_chunks: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          document_id: string;
+          chunk_index: number;
+          content: string;
+          token_estimate: number | null;
+          embedding: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          document_id: string;
+          chunk_index: number;
+          content: string;
+          token_estimate?: number | null;
+          embedding: string;
+          created_at?: string;
+        };
+        Update: {
+          content?: string;
+          token_estimate?: number | null;
+          embedding?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_chunks_document_id_fkey";
+            columns: ["document_id"];
+            isOneToOne: false;
+            referencedRelation: "knowledge_base";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "knowledge_chunks_workspace_id_fkey";
             columns: ["workspace_id"];
             isOneToOne: false;
             referencedRelation: "workspaces";
