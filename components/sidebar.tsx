@@ -13,6 +13,7 @@ import {
   Sprout,
   Plug,
   Blocks,
+  BookOpen,
   Settings,
   LogOut,
   Moon,
@@ -51,6 +52,12 @@ const navigation = [
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, adminOnly: false },
   { name: "Growth", href: "/dashboard/growth", icon: Sprout, adminOnly: false },
   { name: "Channels", href: "/dashboard/channels", icon: Plug, adminOnly: true },
+  {
+    name: "Conocimiento",
+    href: "/dashboard/knowledge",
+    icon: BookOpen,
+    adminOnly: true,
+  },
   { name: "Integraciones", href: "/dashboard/settings/integrations", icon: Blocks, adminOnly: true },
   { name: "Settings", href: "/dashboard/settings", icon: Settings, adminOnly: true },
 ];
