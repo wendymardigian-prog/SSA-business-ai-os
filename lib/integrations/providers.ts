@@ -32,10 +32,25 @@ export interface ConfigField {
   validate?: (value: string) => string | null;
 }
 
+/**
+ * Que sabe hacer un proveedor de IA.
+ *
+ * No es decorativo: `integration_configs.type` vale 'ai_provider' tanto para el
+ * que genera texto como para el que genera embeddings, asi que sin esta marca
+ * el nodo AI Response podria elegir a Voyage —que no genera texto— y dejar de
+ * contestar. Lo usa getWorkspaceModel() para filtrar. Ver lib/ai/provider.ts.
+ */
+export type ProviderCapability = "text" | "embeddings";
+
 export interface ProviderDefinition {
   /** Valor de integration_configs.provider. */
   id: string;
   type: IntegrationType;
+  /**
+   * Solo para type 'ai_provider'. Ausente = "text", que es lo que eran todos
+   * los proveedores de IA antes de que existiera Voyage.
+   */
+  capability?: ProviderCapability;
   label: string;
   /** Una linea explicando para que sirve, en la card. */
   description: string;
@@ -139,7 +154,40 @@ export const PROVIDERS: ProviderDefinition[] = [
     ],
     docsUrl: "https://aistudio.google.com/app/apikey",
   },
+  {
+    id: "voyage",
+    type: "ai_provider",
+    capability: "embeddings",
+    label: "Voyage AI (embeddings)",
+    description:
+      "Indexa los documentos de la base de conocimiento para que la IA los pueda buscar. Solo hace eso: no genera respuestas, asi que convive con el proveedor que uses para conversar.",
+    secretName: SECRET_NAMES.voyageApiKey,
+    // Voyage no documenta un prefijo estable para sus keys, asi que se valida
+    // solo el largo. Mismo criterio que Google.
+    minKeyLength: 20,
+    configFields: [
+      {
+        key: "embedding_model",
+        label: "Modelo de embeddings",
+        hint: "Cambiar el modelo obliga a reindexar toda la base de conocimiento: los embeddings de modelos distintos no se pueden comparar entre si.",
+        required: true,
+        options: ["voyage-4-lite", "voyage-4", "voyage-4-large"],
+        defaultValue: "voyage-4-lite",
+      },
+    ],
+    docsUrl: "https://dashboard.voyageai.com/api-keys",
+  },
 ];
+
+/** Los proveedores de IA que generan texto (los que puede usar el nodo AI Response). */
+export function isTextProvider(definition: ProviderDefinition): boolean {
+  return definition.type === "ai_provider" && (definition.capability ?? "text") === "text";
+}
+
+/** Los proveedores de IA que generan embeddings (los que indexan la base de conocimiento). */
+export function isEmbeddingProvider(definition: ProviderDefinition): boolean {
+  return definition.type === "ai_provider" && definition.capability === "embeddings";
+}
 
 export function getProvider(id: string): ProviderDefinition | undefined {
   return PROVIDERS.find((p) => p.id === id);

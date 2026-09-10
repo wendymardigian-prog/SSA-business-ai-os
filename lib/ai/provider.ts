@@ -4,7 +4,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { readSecret, type SecretName } from "@/lib/vault";
-import { getProvider } from "@/lib/integrations/providers";
+import { getProvider, isTextProvider } from "@/lib/integrations/providers";
 import { createServiceClient } from "@/lib/supabase/server";
 
 /**
@@ -81,13 +81,23 @@ export async function getWorkspaceModel(
     };
   }
 
-  const rows = (data ?? []) as AiIntegrationRow[];
+  // Solo los que generan TEXTO. Voyage tambien es type 'ai_provider' pero hace
+  // embeddings: sin este filtro, si es la primera fila que vuelve, el fallback
+  // a rows[0] lo elegiria y el nodo dejaria de contestar con un
+  // "no se puede usar para generar texto" imposible de rastrear.
+  const rows = ((data ?? []) as AiIntegrationRow[]).filter((row) => {
+    const definition = getProvider(row.provider);
+    // Un proveedor que el catalogo no conoce se deja pasar: mas abajo hay un
+    // error especifico para eso, mas util que decir "no hay ninguno conectado".
+    return !definition || isTextProvider(definition);
+  });
+
   if (rows.length === 0) {
     return {
       ok: false,
       problem: "no_provider",
       message:
-        "No hay ningun proveedor de IA conectado. Se configura en Ajustes > Integraciones.",
+        "No hay ningun proveedor de IA conectado para generar texto. Se configura en Ajustes > Integraciones.",
     };
   }
 
@@ -195,6 +205,8 @@ export async function listConnectedAiProviders(
   return ((data ?? []) as AiIntegrationRow[]).flatMap((row) => {
     const definition = getProvider(row.provider);
     if (!definition) return [];
+    // Que Voyage no aparezca en el selector de proveedor del nodo AI Response.
+    if (!isTextProvider(definition)) return [];
     const field = definition.configFields?.find((f) => f.key === "default_model");
     return [
       {
