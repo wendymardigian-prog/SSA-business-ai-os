@@ -1670,6 +1670,47 @@ export interface Database {
           },
         ];
       };
+      /** Centro de notificaciones in-app (migracion 00051). */
+      notifications: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          type: string;
+          title: string;
+          body: string | null;
+          entity_type: string | null;
+          entity_id: string | null;
+          metadata: Json;
+          recipient_id: string | null;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          type: string;
+          title: string;
+          body?: string | null;
+          entity_type?: string | null;
+          entity_id?: string | null;
+          metadata?: Json;
+          recipient_id?: string | null;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          read_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       /** Documentos de la base de conocimiento (migracion 00049). */
       knowledge_base: {
         Row: {

@@ -1,19 +1,26 @@
 /**
  * Avisos a los administradores del workspace.
  *
- * El aviso siempre queda registrado en la base y visible en la app (la
- * pantalla de canales muestra el estado y el motivo en rojo). Ademas se manda
- * por email a los Owner/Admin si hay Resend conectado; si no lo hay, el aviso
- * en pantalla sigue siendo el canal.
+ * El aviso va al centro de notificaciones (tabla `notifications`, F18): la
+ * campana lo muestra en el momento por Realtime y queda con estado de leido.
+ * Ademas se manda por email a los Owner/Admin si hay Resend conectado.
+ *
+ * Hasta el Bloque 3 esto escribia en analytics_events, que era el sustituto
+ * declarado mientras no existia la tabla. El unico cambio fue el destino: la
+ * firma, el contrato y el email siguen igual, y por eso el cron de canales no
+ * se toco. Eso es lo que hace que el aviso de "canal desconectado" quede
+ * canal-agnostico: cualquier canal que reporte una caida usa esta funcion.
  *
  * Nada de esto lanza: un aviso que falla nunca puede tumbar la operacion que
  * lo genero (recibir un mensaje, detectar una desconexion).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/types/database";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { channelAlertEmail } from "@/lib/email/templates";
 import { appUrl } from "@/lib/app-url";
+import { createNotificationOnce } from "@/lib/notifications/create";
 
 export type NotificationKind =
   | "channel_disconnected"
@@ -30,6 +37,8 @@ export interface AdminNotification {
   body: string;
   /** Datos del evento. No meter aca API keys ni datos personales. */
   metadata?: Record<string, unknown>;
+  /** El canal (u otra entidad) al que apunta el aviso, para el deep-link. */
+  entityId?: string | null;
 }
 
 /**
@@ -43,18 +52,27 @@ export async function notifyWorkspaceAdmins({
   title,
   body,
   metadata = {},
+  entityId = null,
 }: AdminNotification): Promise<void> {
   console.warn(`[aviso:${kind}] ${title} — ${body}`);
 
-  const { error } = await supabase.from("analytics_events").insert({
-    workspace_id: workspaceId,
-    event_type: `notification.${kind}`,
-    metadata: { title, body, ...metadata },
+  // recipientId queda sin definir: es un aviso para los Owner/Admin, y quien
+  // decide quien lo ve es la RLS (can_see_notification), no este codigo.
+  //
+  // createNotificationOnce y no createNotification: un canal que rebota
+  // generaria un aviso por cada chequeo del cron y la campana dejaria de
+  // servir. Si ya hay uno sin leer del mismo canal en la ultima hora, alcanza.
+  await createNotificationOnce({
+    supabase: supabase as SupabaseClient<Database>,
+    workspaceId,
+    type: kind,
+    title,
+    body,
+    entityType: "channel",
+    entityId,
+    metadata,
+    withinMinutes: 60,
   });
-
-  if (error) {
-    console.error("[aviso] no pude registrar el aviso:", error.message);
-  }
 
   // Email a los admins. Best-effort en dos sentidos: si Resend no esta
   // conectado no pasa nada (el aviso ya quedo en pantalla), y si algo falla se

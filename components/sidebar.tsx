@@ -23,6 +23,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAdminRole } from "@/lib/auth/roles";
 import type { Database } from "@/lib/types/database";
 
@@ -66,11 +67,14 @@ export function Sidebar({
   workspace,
   role,
   workspaces,
+  unreadNotifications = 0,
 }: {
   workspace: Workspace;
   user: { id: string; email?: string };
   role: string;
   workspaces: WorkspaceItem[];
+  /** Conteo del servidor: evita que el numerito de la campana parpadee. */
+  unreadNotifications?: number;
 }) {
   const navItems = navigation.filter(
     (item) => !item.adminOnly || isAdminRole(role)
@@ -98,8 +102,16 @@ export function Sidebar({
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
-      <div className="border-b border-sidebar-border px-3 py-3">
-        <WorkspaceSwitcher current={workspace} workspaces={workspaces} />
+      <div className="flex items-center gap-1 border-b border-sidebar-border px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher current={workspace} workspaces={workspaces} />
+        </div>
+        {/*
+          La campana va aca y no en un item del menu: tiene que estar visible en
+          todas las pantallas, y esta es la unica banda persistente que hay (el
+          layout no tiene topbar).
+        */}
+        <NotificationBell workspaceId={workspace.id} initialUnread={unreadNotifications} />
       </div>
 
       <nav className="flex-1 space-y-1 p-3">

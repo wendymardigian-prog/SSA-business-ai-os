@@ -124,6 +124,8 @@ export async function GET(request: NextRequest) {
         kind: "channel_disconnected",
         title: "WhatsApp se desconecto",
         body: `El canal "${channel.display_name ?? "WhatsApp"}" perdio la conexion. Los mensajes que lleguen mientras tanto no se reciben. Entra a Canales y volve a escanear el QR para reconectarlo.`,
+        // entityId para que la notificacion linkee derecho a Canales.
+        entityId: channel.id,
         metadata: { channelId: channel.id, previousStatus: channel.connection_status, wasConnected },
       });
       notified++;

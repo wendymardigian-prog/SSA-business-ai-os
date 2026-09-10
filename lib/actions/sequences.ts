@@ -15,6 +15,8 @@ import {
   type CollisionSnapshotEntry,
 } from "@/lib/sequences/collisions";
 import { computeNextStepAt, parseSteps } from "@/lib/sequences/steps";
+import { createServiceClient } from "@/lib/supabase/server";
+import { createNotification } from "@/lib/notifications/create";
 import type {
   Json,
   SequenceStatus,
@@ -435,6 +437,32 @@ export async function enrollContact(
         with: collision.snapshot as unknown as Json,
       },
       performedBy: user.id,
+    });
+
+    // El mismo aviso que emite el nodo del flow (F18). Se inscribe desde dos
+    // lados —a mano y por automatizacion— y los dos tienen que avisar, si no la
+    // campana solo mostraria la mitad de las colisiones.
+    //
+    // Con el service client: la tabla notifications no tiene policy de INSERT,
+    // para que nadie pueda fabricarle un aviso a otro.
+    const service = await createServiceClient();
+    await createNotification({
+      supabase: service,
+      workspaceId: workspace.id,
+      type: "sequence_collision",
+      title: "Un contacto quedo en mas de una secuencia",
+      body: `Se inscribio en "${sequence.name}" por el mismo canal en el que ya tenia ${collision.snapshot
+        .map((c) => c.sequence_name)
+        .join(", ")}. Van a escribirle en paralelo hasta que decidas cual dejar.`,
+      entityType: "sequence_enrollment",
+      entityId: data.id,
+      metadata: {
+        sequence_id: sequenceId,
+        enrollment_id: data.id,
+        contact_id: contactId,
+        channel_id: channelId,
+        with: collision.snapshot,
+      },
     });
   }
 
