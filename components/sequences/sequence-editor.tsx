@@ -18,6 +18,8 @@ import { updateSequence, deleteSequence } from "@/lib/actions/sequences";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { canActivate } from "@/lib/sequences/validate";
 import { sequenceStatusStyle } from "@/lib/sequences/labels";
+import { sequenceFingerprint } from "@/lib/unsaved-changes";
+import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
 import type { SequenceStatus, SequenceStep } from "@/lib/types/database";
 
 export interface AiProviderOption {
@@ -54,6 +56,18 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
   const [success, setSuccess] = useState<string | null>(null);
 
   const statusStyle = sequenceStatusStyle(status);
+
+  // Un Member la ve en modo lectura: no tiene sentido avisarle de cambios que
+  // no puede guardar.
+  const unsaved = useUnsavedChanges({
+    current: sequenceFingerprint({ name, description, steps }),
+    initial: sequenceFingerprint({
+      name: sequence.name,
+      description: sequence.description,
+      steps: sequence.steps,
+    }),
+    enabled: canEdit,
+  });
 
   const updateStep = useCallback((index: number, patch: Partial<SequenceStep>) => {
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -100,6 +114,7 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
       return;
     }
     if (nextStatus) setStatus(nextStatus);
+    unsaved.markSaved();
     setSuccess("Cambios guardados");
     router.refresh();
   }
@@ -136,7 +151,7 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
       <div className="border-b border-border px-8 py-5">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <button
-            onClick={() => router.push("/dashboard/sequences")}
+            onClick={() => unsaved.guard(() => router.push("/dashboard/sequences"))}
             className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
             aria-label="Volver a las secuencias"
           >
@@ -165,6 +180,10 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
           >
             {statusStyle.label}
           </span>
+
+          {unsaved.dirty && (
+            <span className="shrink-0 text-xs text-muted-foreground">Sin guardar</span>
+          )}
 
           {canEdit && (
             <>
@@ -264,6 +283,8 @@ export function SequenceEditor({ sequence, canEdit, aiProviders }: SequenceEdito
           ))}
         </div>
       </div>
+
+      {unsaved.confirmProps.open && <ConfirmDialog {...unsaved.confirmProps} />}
 
       {confirmDelete && (
         <ConfirmDialog

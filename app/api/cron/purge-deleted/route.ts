@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 
 /**
- * GET /api/cron/purge-deleted?key=CRON_SECRET
+ * GET /api/cron/purge-deleted
+ *
+ * Autenticacion: header `Authorization: Bearer <CRON_SECRET>`. La query string
+ * `?key=` ya no autoriza (un secreto en la URL queda en los logs del proxy y en
+ * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  *
  * Borra de verdad lo que lleva mas de 30 dias marcado como eliminado (F15):
  * contactos, notas, conversaciones y templates de respuesta.
@@ -19,14 +24,8 @@ import { createServiceClient } from "@/lib/supabase/server";
  * Diario, no cada minuto: la retencion se mide en dias.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const provided =
-    request.nextUrl.searchParams.get("key") ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!cronSecret || provided !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   const supabase = await createServiceClient();
 

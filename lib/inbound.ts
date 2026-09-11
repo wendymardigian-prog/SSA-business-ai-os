@@ -13,7 +13,6 @@
  * las llama, no las reimplementa.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
@@ -23,21 +22,6 @@ import type { IncomingMessage } from "@/lib/flow-engine/types";
 type Db = SupabaseClient<Database>;
 
 export type ChannelRow = Database["public"]["Tables"]["channels"]["Row"];
-
-/**
- * Compara dos strings en tiempo constante.
- *
- * Para el token del webhook de Evolution: con `===` el tiempo de comparacion
- * depende de cuantos caracteres coinciden, y eso alcanza para adivinarlo de a
- * un byte. La diferencia de largo si se filtra, pero eso no ayuda a adivinar el
- * contenido.
- */
-export function constantTimeEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
 
 /**
  * Reserva el id de un evento antes de procesarlo.

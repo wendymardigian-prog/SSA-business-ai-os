@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { processSequenceSteps } from "@/lib/sequences/processor";
 
 /**
  * Cron job handler that processes sequence enrollments.
- * Call via Vercel Cron or external cron every 30-60 seconds.
- * GET /api/cron/sequences?key=CRON_SECRET
+ * Lo llama pg_cron cada minuto (migracion 00036).
+ * GET /api/cron/sequences
+ *
+ * Autenticacion: header `Authorization: Bearer <CRON_SECRET>`. La query string
+ * `?key=` ya no autoriza (un secreto en la URL queda en los logs del proxy y en
+ * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const providedSecret =
-    request.nextUrl.searchParams.get("key") ||
-    request.headers.get("authorization")?.replace("Bearer ", "");
-
-  if (!cronSecret || providedSecret !== cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   try {
     const result = await processSequenceSteps();

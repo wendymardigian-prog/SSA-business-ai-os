@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getAdminContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { storeSecret, SECRET_NAMES } from "@/lib/vault";
 import {
   ensureWebhookRegistered,
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
 
     await backfillInboxConversations({
       supabase,
+      service: await createServiceClient(),
       zernio: createZernioClient(apiKey.trim()),
       workspaceId,
       channels: activeChannels ?? [],

@@ -21,6 +21,8 @@ import { useCallback, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save, Rocket, Loader2, History, Play, Download, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { flowFingerprint } from "@/lib/unsaved-changes";
+import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, FlowStatus, Json } from "@/lib/types/database";
@@ -98,6 +100,12 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const unsaved = useUnsavedChanges({
+    current: flowFingerprint(nodes, edges, flowName),
+    initial: flowFingerprint(initialNodes, initialEdges, flow.name),
+  });
+  const { markSaved } = unsaved;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -228,12 +236,13 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
 
         setSaveError(null);
         setLastSaved(new Date());
+        markSaved();
       } finally {
         setSaving(false);
         setPublishing(false);
       }
     },
-    [flowName, nodes, edges, flow.id, supabase]
+    [flowName, nodes, edges, flow.id, supabase, markSaved]
   );
 
   const handleSave = useCallback(() => saveFlow(), [saveFlow]);
@@ -287,7 +296,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-2">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => router.push("/dashboard/flows")}
+            onClick={() => unsaved.guard(() => router.push("/dashboard/flows"))}
             className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -321,9 +330,19 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
               {saveError}
             </span>
           )}
-          {!saveError && lastSaved && (
+          {/*
+            Antes decia "Saved 14:32" aunque hubieras movido veinte nodos
+            despues: lastSaved es la hora del ultimo guardado y nunca se
+            comparaba con el estado actual. Ahora son tres estados excluyentes.
+          */}
+          {!saveError && unsaved.dirty && (
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              Cambios sin guardar
+            </span>
+          )}
+          {!saveError && !unsaved.dirty && lastSaved && (
             <span className="text-xs text-muted-foreground">
-              Saved {lastSaved.toLocaleTimeString()}
+              Guardado {lastSaved.toLocaleTimeString()}
             </span>
           )}
           <button
@@ -422,6 +441,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
               <Trash2 className="h-4 w-4" />
             )}
           </button>
+          <ConfirmDialog {...unsaved.confirmProps} />
           <ConfirmDialog
             open={confirmDelete}
             title="Delete flow"

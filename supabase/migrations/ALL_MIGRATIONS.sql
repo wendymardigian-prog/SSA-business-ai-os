@@ -5340,3 +5340,292 @@ GRANT EXECUTE ON FUNCTION public.pause_sequences_on_reply(uuid, uuid) TO service
 
 COMMENT ON FUNCTION public.pause_sequences_on_reply(uuid, uuid) IS
   'Pausa las secuencias activas del contacto en ESE canal cuando responde (F11). La llaman los dos receptores de webhook con service role.';
+
+-- ============================================================
+-- MIGRATION 45: SECURE LEGACY RPCS
+-- ============================================================
+-- ============================================================================
+-- 00045 — Asegurar las funciones de la era pre-hardening
+-- ============================================================================
+-- Las migraciones 00001-00003 son anteriores al convenio que el repo adopto en
+-- la 00017 (REVOKE a PUBLIC/anon + GRANT explicito + SET search_path = '').
+-- Postgres le da EXECUTE a PUBLIC a toda funcion nueva, anon hereda de PUBLIC,
+-- y PostgREST publica todo lo invocable del schema public. Nadie escribio el
+-- REVOKE, asi que quedaron abiertas.
+--
+-- El agujero concreto: increment_unread es SECURITY DEFINER, no valida nada, y
+-- cualquiera con la anon key (que es publica, va en el frontend) podia llamarla
+-- por REST para reabrir conversaciones de cualquier workspace y escribir texto
+-- arbitrario en last_message_preview, que es lo que se pinta en la bandeja.
+-- Los dos contadores de broadcast son el mismo defecto sobre las metricas.
+-- Sus unicos llamadores son los webhooks y el cron, todos con service role.
+--
+-- Sobre lo que NO se toca, para que el proximo scan no lo reabra:
+--
+--   * Las funciones de Vault (read_secret, store_secret, delete_secret,
+--     list_secret_names) siguen con EXECUTE de authenticated, y esta bien: el
+--     control esta adentro (assert_can_manage_secrets exige Owner/Admin o
+--     service_role, y a un Member lo rechaza con "forbidden"). Sus llamadores
+--     usan el cliente del usuario a proposito, porque es el usuario quien tiene
+--     que estar autorizado. Pasarlas a service role moveria la decision de
+--     autorizacion de la base a la app, que es al reves de como funciona todo
+--     el resto del sistema.
+--
+--   * is_workspace_member y sus hermanas conservan EXECUTE de authenticated
+--     porque es OBLIGATORIO. Ver el comentario de cada una mas abajo.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Las tres RPC sin guard: search_path fijo y solo service role
+-- ----------------------------------------------------------------------------
+-- El CREATE OR REPLACE va ANTES del REVOKE y califica las tablas: fijar
+-- search_path = '' sin calificar los nombres las romperia en silencio.
+
+CREATE OR REPLACE FUNCTION public.increment_unread(conv_id uuid, preview text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  UPDATE public.conversations
+  SET unread_count = unread_count + 1,
+      last_message_at = now(),
+      last_message_preview = preview,
+      status = 'open'
+  WHERE id = conv_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.increment_broadcast_sent(b_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  UPDATE public.broadcasts
+  SET sent = sent + 1,
+      delivered = delivered + 1
+  WHERE id = b_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.increment_broadcast_failed(b_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  UPDATE public.broadcasts
+  SET failed = failed + 1
+  WHERE id = b_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.increment_unread(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_unread(uuid, text) TO service_role;
+
+REVOKE ALL ON FUNCTION public.increment_broadcast_sent(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_broadcast_sent(uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION public.increment_broadcast_failed(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.increment_broadcast_failed(uuid) TO service_role;
+
+COMMENT ON FUNCTION public.increment_unread(uuid, text) IS
+  'Suma un no leido y pisa el preview de la conversacion. Solo service_role: la llaman los receptores de webhooks (lib/inbound.ts). No valida permisos, por eso no puede quedar expuesta a la anon key.';
+
+-- ----------------------------------------------------------------------------
+-- 2. update_updated_at: search_path fijo
+-- ----------------------------------------------------------------------------
+-- La unica de las ocho trigger functions con un defecto propio. Corre como
+-- definer en el contexto del rol que dispara el trigger, y ese rol controla el
+-- search_path.
+
+CREATE OR REPLACE FUNCTION public.update_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
+-- 3. Trigger functions: sacarles el EXECUTE de anon
+-- ----------------------------------------------------------------------------
+-- No son explotables: retornan `trigger` y Postgres rechaza llamarlas fuera de
+-- un trigger ("trigger functions can only be called as triggers"). El linter
+-- las marca porque mira el GRANT, no la invocabilidad. Se revocan para que el
+-- reporte quede limpio y siga siendo legible: un linter con ruido cronico es
+-- uno que nadie lee. Un trigger corre con los privilegios del dueño de la
+-- tabla, asi que esto no los afecta.
+
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.update_updated_at() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.triggers_set_workspace_id() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.contacts_emit_created() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.contacts_emit_deanonymized() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.contacts_emit_changes() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.contact_tags_emit() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.contact_custom_fields_emit() FROM PUBLIC, anon;
+
+-- ----------------------------------------------------------------------------
+-- 4. is_workspace_member: revocar anon, JAMAS authenticated
+-- ----------------------------------------------------------------------------
+-- Es la unica del grupo de helpers a la que nunca se le aplico el REVOKE.
+-- Para anon devuelve false para cualquier entrada (no hay auth.uid()), asi que
+-- no filtra nada; se cierra igual porque cuesta una linea.
+
+REVOKE ALL ON FUNCTION public.is_workspace_member(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_workspace_member(uuid) TO authenticated, service_role;
+
+-- ADVERTENCIA, y el motivo de que este escrita:
+--
+-- Un scanner de seguridad va a seguir marcando estas cinco funciones como
+-- "SECURITY DEFINER ejecutable por usuarios logueados". NO se les puede revocar
+-- authenticated. Las llaman ~37 expresiones de policy RLS sobre 23 tablas, y
+-- una expresion de policy se evalua con el rol de la SESION, no como definer:
+-- sin EXECUTE, cada SELECT sobre contacts, conversations, channels o flows
+-- falla con "permission denied for function ...". Es decir, la app entera.
+--
+-- Si el objetivo es callar al linter, la unica salida correcta seria mover las
+-- funciones a un schema no publicado por PostgREST y actualizar las 37
+-- policies. No vale la pena por un warning.
+
+COMMENT ON FUNCTION public.is_workspace_member(uuid) IS
+  'Helper de RLS. authenticated NECESITA EXECUTE: la llaman ~37 policies y una expresion de policy se evalua con el rol de la sesion. Revocarlo rompe toda lectura de la app.';
+COMMENT ON FUNCTION public.is_workspace_admin(uuid) IS
+  'Helper de RLS. authenticated NECESITA EXECUTE (ver is_workspace_member).';
+COMMENT ON FUNCTION public.is_workspace_owner(uuid) IS
+  'Helper de RLS. authenticated NECESITA EXECUTE (ver is_workspace_member).';
+COMMENT ON FUNCTION public.can_see_contact(public.contacts) IS
+  'Scope de leads. authenticated NECESITA EXECUTE (ver is_workspace_member).';
+COMMENT ON FUNCTION public.can_see_conversation(public.conversations) IS
+  'Scope de leads. authenticated NECESITA EXECUTE (ver is_workspace_member).';
+
+-- ============================================================
+-- MIGRATION 46: SCHEDULED JOBS SERVICE ONLY
+-- ============================================================
+-- ============================================================================
+-- 00046 — scheduled_jobs vuelve a ser solo del service role
+-- ============================================================================
+-- La migracion 00002 la habia dejado bien: RLS habilitada y CERO policies, con
+-- el comentario "service role only, no user RLS needed". La 00009 lo revirtio
+-- al sumar broadcasts —"Jobs are workspace-agnostic (system-level), so allow
+-- authenticated users"— porque el envio de broadcasts insertaba con el cliente
+-- del usuario. En vez de mover ese insert a service role, se abrio la tabla.
+--
+-- Lo que eso dejaba abierto:
+--
+--   * SELECT con `auth.uid() IS NOT NULL` significa "cualquier usuario logueado
+--     del sistema", no "de este workspace" — la tabla no tiene workspace_id,
+--     asi que no habia con que filtrar. El payload de los jobs resume_flow
+--     (lib/flow-engine/nodes/delay.ts) lleva contactId, conversationId, los ids
+--     de Zernio y `variables`, que arrastra el TEXTO DEL MENSAJE del lead. Es
+--     fuga de conversaciones y de datos personales entre negocios distintos.
+--
+--   * UPDATE abierto: marcar los jobs pendientes como completados deja colgados
+--     para siempre todos los flows con un nodo de espera.
+--
+--   * INSERT abierto: encolar un resume_flow con la sesion de otro.
+--
+-- Se vuelve a deny-all. Ninguna pantalla ni Server Action lee esta tabla: los
+-- unicos consumidores son app/api/cron/jobs (service) y los productores
+-- lib/flow-engine/nodes/delay.ts y lib/scheduler.ts, este ultimo ya migrado a
+-- service client en el commit anterior.
+--
+-- Por que no se agrega workspace_id: no hay ninguna pantalla que necesite leer
+-- la cola, ni esta planificada. Una columna con backfill y policies que nadie
+-- usa es costo de mantenimiento sin consumidor. Deny-all ademas es la postura
+-- correcta por defecto: el dia que se sume un tipo de job con un payload
+-- sensible, la tabla ya esta cerrada.
+--
+-- Idempotente.
+-- ============================================================================
+
+DROP POLICY IF EXISTS "Authenticated users can insert jobs" ON public.scheduled_jobs;
+DROP POLICY IF EXISTS "Authenticated users can read jobs" ON public.scheduled_jobs;
+DROP POLICY IF EXISTS "Authenticated users can update jobs" ON public.scheduled_jobs;
+
+-- La RLS ya estaba habilitada desde la 00002; se reafirma por si esta migracion
+-- corre sobre una base donde alguien la apago.
+ALTER TABLE public.scheduled_jobs ENABLE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE public.scheduled_jobs IS
+  'Cola interna del motor (delays de flows, entrega de broadcasts). RLS habilitada y SIN POLICIES a proposito: solo el service role entra. No es un descuido — el payload lleva variables de flow y texto de mensajes de los leads, y ninguna pantalla necesita leer esto. Si hace falta exponerla, agregar workspace_id primero.';
+
+-- ============================================================
+-- MIGRATION 47: FIND OR LINK CONTACT SERVICE ONLY
+-- ============================================================
+-- ============================================================================
+-- 00047 — find_or_link_contact queda solo para el service role
+-- ============================================================================
+-- La funcion no tiene ningun control de permisos propio: lo unico que hace es
+-- derivar el workspace del canal que le pasan. Con EXECUTE de `authenticated`,
+-- un Member —que por diseño solo ve los leads que le asignaron— podia llamarla
+-- por REST directo para crear o vincular contactos en el workspace, saltandose
+-- el scope de leads. Y con p_stamp_existing pisar last_interaction_at de
+-- cualquier contacto.
+--
+-- No cruza workspaces (el canal ancla el workspace), asi que no es una fuga
+-- entre negocios: es escalada de privilegios adentro del workspace.
+--
+-- PRECONDICION: los dos unicos llamadores con cliente de usuario ya se
+-- migraron a service client en commits anteriores —
+--   app/api/v1/channels/sync/route.ts  (ademas ahora exige Owner/Admin)
+--   app/api/v1/channels/test-key/route.ts
+-- via lib/inbox-sync.ts, que recibe el service client como parametro aparte.
+-- Los webhooks siempre la llamaron con service role.
+--
+-- Va sola y despues del resto porque su rotura seria silenciosa: el backfill
+-- del Inbox falla adentro de un catch que solo loguea, asi que el usuario veria
+-- "conectado, todo bien" con la bandeja vacia.
+--
+-- Idempotente.
+-- ============================================================================
+
+REVOKE EXECUTE ON FUNCTION public.find_or_link_contact(
+  uuid, text, text, text, text, text, text, timestamptz, boolean
+) FROM authenticated;
+
+COMMENT ON FUNCTION public.find_or_link_contact(
+  uuid, text, text, text, text, text, text, timestamptz, boolean
+) IS
+  'Dedup cross-canal. Solo service_role: no valida permisos, solo deriva el workspace del canal. Las rutas que la usan validan el rol antes y llaman con service client (lib/inbox-sync.ts).';
+
+-- ============================================================
+-- MIGRATION 48: TRIGGER FUNCTIONS NOT CALLABLE
+-- ============================================================
+-- ============================================================================
+-- 00048 — Las trigger functions tampoco quedan expuestas a usuarios logueados
+-- ============================================================================
+-- La 00045 les saco el EXECUTE de `anon` pero dejo el de `authenticated`, asi
+-- que el linter las sigue reportando. No son explotables por ninguno de los dos
+-- roles —retornan `trigger` y Postgres rechaza llamarlas fuera de un trigger—,
+-- pero mientras esten en el reporte tapan a las que si hay que mirar, y un
+-- reporte con ruido cronico es uno que nadie lee.
+--
+-- Un trigger corre con los privilegios del dueño de la tabla, no del invocante,
+-- asi que revocar EXECUTE no afecta a ninguno de los triggers que las usan.
+--
+-- Despues de esto, lo unico que el linter sigue marcando en esta categoria son
+-- las funciones de Vault y los helpers de RLS, las dos cosas documentadas en la
+-- 00045 como intencionales.
+--
+-- Idempotente.
+-- ============================================================================
+
+REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.update_updated_at() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.triggers_set_workspace_id() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.contacts_emit_created() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.contacts_emit_deanonymized() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.contacts_emit_changes() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.contact_tags_emit() FROM authenticated;
+REVOKE EXECUTE ON FUNCTION public.contact_custom_fields_emit() FROM authenticated;

@@ -168,6 +168,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -224,6 +227,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -251,6 +257,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -272,6 +281,9 @@ describe("backfillInboxConversations", () => {
     const z = fakeZernio([{ data: [conv("c1")], pagination: { hasMore: false } }]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -291,6 +303,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -309,6 +324,9 @@ describe("backfillInboxConversations", () => {
     const z = fakeZernio([{ data: [conv("c1")], pagination: { hasMore: false } }]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -332,6 +350,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -352,6 +373,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -371,6 +395,9 @@ describe("backfillInboxConversations", () => {
     ]);
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -392,6 +419,9 @@ describe("backfillInboxConversations", () => {
     const zernio = { messages: { listInboxConversations: list } } as unknown as Zernio;
 
     const res = await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio,
       workspaceId: "ws-1",
@@ -414,6 +444,9 @@ describe("el @usuario del backfill", () => {
     ]);
 
     await backfillInboxConversations({
+      // En el test los dos son el mismo fake; lo que importa es que la firma
+      // obligue a pasarlos por separado.
+      service: fake.client,
       supabase: fake.client,
       zernio: z.client,
       workspaceId: "ws-1",
@@ -421,5 +454,45 @@ describe("el @usuario del backfill", () => {
     });
 
     expect(fake.rpcCalls[0].args.p_username).toBeNull();
+  });
+});
+
+describe("separacion de clientes en el backfill", () => {
+  it("find_or_link_contact se llama con el service client, no con el del usuario", async () => {
+    // find_or_link_contact quedo restringida al service role: no tiene control
+    // de permisos propio, solo deriva el workspace del canal. Si el backfill
+    // volviera a usar el cliente del usuario, el Inbox se quedaria vacio en
+    // silencio (el fallo cae en un catch que solo loguea).
+    const usuario = makeFakeSupabase({});
+    const service = makeFakeSupabase({});
+    const z = fakeZernio([{ data: [conv("c1")], pagination: { hasMore: false } }]);
+
+    await backfillInboxConversations({
+      supabase: usuario.client,
+      service: service.client,
+      zernio: z.client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    expect(service.rpcCalls.map((c) => c.fn)).toContain("find_or_link_contact");
+    expect(usuario.rpcCalls.map((c) => c.fn)).not.toContain("find_or_link_contact");
+  });
+
+  it("las conversaciones se siguen escribiendo con el cliente del usuario, para que la RLS valide", async () => {
+    const usuario = makeFakeSupabase({});
+    const service = makeFakeSupabase({});
+    const z = fakeZernio([{ data: [conv("c1")], pagination: { hasMore: false } }]);
+
+    await backfillInboxConversations({
+      supabase: usuario.client,
+      service: service.client,
+      zernio: z.client,
+      workspaceId: "ws-1",
+      channels: [channel],
+    });
+
+    expect(usuario.upserts.length + usuario.inserts.length).toBeGreaterThan(0);
+    expect(service.upserts.length).toBe(0);
   });
 });
