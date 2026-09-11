@@ -180,3 +180,61 @@ describe("lista de proveedores para la UI", () => {
     expect(await listConnectedAiProviders("ws-1", client)).toEqual([]);
   });
 });
+
+/**
+ * Voyage es type 'ai_provider' pero solo hace embeddings.
+ *
+ * Estos casos existen porque el fallback del selector es `rows[0]`: si Voyage
+ * queda primero en lo que devuelve la base y nadie filtra por capacidad, el
+ * nodo AI Response lo elige, buildModel() devuelve null, y todos los flows con
+ * IA dejan de contestar. Es un bug silencioso, y este test es lo que lo tapa.
+ */
+describe("Voyage no se usa nunca para generar texto", () => {
+  const VOYAGE_ROW = {
+    provider: "voyage",
+    vault_secret_name: "voyage_api_key",
+    config: { embedding_model: "voyage-4-lite" },
+  };
+
+  it("con Voyage primero, elige igual el proveedor de texto", async () => {
+    readSecret.mockResolvedValue("sk-ant-loquesea");
+    const { client } = fakeClient([VOYAGE_ROW, ANTHROPIC_ROW]);
+
+    const r = await getWorkspaceModel("ws-1", { supabase: client });
+
+    expect(r.ok).toBe(true);
+    expect(r.provider).toBe("anthropic");
+  });
+
+  it("aunque lo pidan por preferredProvider, no lo elige", async () => {
+    readSecret.mockResolvedValue("sk-ant-loquesea");
+    const { client } = fakeClient([VOYAGE_ROW, ANTHROPIC_ROW]);
+
+    const r = await getWorkspaceModel("ws-1", {
+      supabase: client,
+      preferredProvider: "voyage",
+    });
+
+    expect(r.ok).toBe(true);
+    expect(r.provider).toBe("anthropic");
+  });
+
+  it("si Voyage es lo unico conectado, avisa que falta uno de texto", async () => {
+    const { client } = fakeClient([VOYAGE_ROW]);
+
+    const r = await getWorkspaceModel("ws-1", { supabase: client });
+
+    expect(r.ok).toBe(false);
+    expect(r.problem).toBe("no_provider");
+    // No tiene que leer la key de Voyage para descartarlo.
+    expect(readSecret).not.toHaveBeenCalled();
+  });
+
+  it("no aparece en el selector de proveedor del nodo AI Response", async () => {
+    const { client } = fakeClient([VOYAGE_ROW, ANTHROPIC_ROW]);
+
+    const list = await listConnectedAiProviders("ws-1", client);
+
+    expect(list.map((p) => p.provider)).toEqual(["anthropic"]);
+  });
+});

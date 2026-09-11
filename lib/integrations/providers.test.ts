@@ -5,6 +5,8 @@ import {
   providersByType,
   validateApiKey,
   validateConfig,
+  isTextProvider,
+  isEmbeddingProvider,
 } from "./providers";
 
 describe("catalogo de proveedores", () => {
@@ -16,18 +18,47 @@ describe("catalogo de proveedores", () => {
     expect(new Set(secrets).size).toBe(secrets.length);
   });
 
-  it("agrupa por tipo: un email provider y tres de IA", () => {
+  it("agrupa por tipo: un email provider y cuatro de IA", () => {
     expect(providersByType("email_provider").map((p) => p.id)).toEqual(["resend"]);
     expect(providersByType("ai_provider").map((p) => p.id)).toEqual([
       "openai",
       "anthropic",
       "google_ai",
+      "voyage",
     ]);
   });
 
-  it("cada proveedor de IA tiene un modelo por defecto sugerido", () => {
+  // La marca de capacidad no es cosmetica: es lo que evita que el nodo AI
+  // Response elija a Voyage, que no genera texto. Ver lib/ai/provider.test.ts.
+  it("separa los que generan texto de los que generan embeddings", () => {
+    const text = providersByType("ai_provider").filter(isTextProvider).map((p) => p.id);
+    const embeddings = providersByType("ai_provider").filter(isEmbeddingProvider).map((p) => p.id);
+
+    expect(text).toEqual(["openai", "anthropic", "google_ai"]);
+    expect(embeddings).toEqual(["voyage"]);
+  });
+
+  it("los proveedores de texto no se quedan sin capacidad por olvido", () => {
     for (const provider of providersByType("ai_provider")) {
+      const isText = isTextProvider(provider);
+      const isEmbedding = isEmbeddingProvider(provider);
+      // Exactamente una de las dos. Un proveedor que no sea ninguna de las dos
+      // no lo usaria nadie; uno que fuera las dos rompe el filtro del selector.
+      expect(isText !== isEmbedding, provider.id).toBe(true);
+    }
+  });
+
+  it("cada proveedor de texto tiene un modelo por defecto sugerido", () => {
+    for (const provider of providersByType("ai_provider").filter(isTextProvider)) {
       const model = provider.configFields.find((f) => f.key === "default_model");
+      expect(model?.defaultValue, provider.id).toBeTruthy();
+      expect(model?.options?.length, provider.id).toBeGreaterThan(0);
+    }
+  });
+
+  it("cada proveedor de embeddings declara su modelo", () => {
+    for (const provider of providersByType("ai_provider").filter(isEmbeddingProvider)) {
+      const model = provider.configFields.find((f) => f.key === "embedding_model");
       expect(model?.defaultValue, provider.id).toBeTruthy();
       expect(model?.options?.length, provider.id).toBeGreaterThan(0);
     }

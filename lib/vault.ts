@@ -21,6 +21,7 @@ export const SECRET_NAMES = {
   openaiApiKey: "openai_api_key",
   anthropicApiKey: "anthropic_api_key",
   googleAiApiKey: "google_ai_api_key",
+  voyageApiKey: "voyage_api_key",
 } as const;
 
 export type SecretName = (typeof SECRET_NAMES)[keyof typeof SECRET_NAMES] | (string & {});

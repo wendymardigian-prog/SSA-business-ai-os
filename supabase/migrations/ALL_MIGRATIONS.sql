@@ -5629,3 +5629,573 @@ REVOKE EXECUTE ON FUNCTION public.contacts_emit_deanonymized() FROM authenticate
 REVOKE EXECUTE ON FUNCTION public.contacts_emit_changes() FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.contact_tags_emit() FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.contact_custom_fields_emit() FROM authenticated;
+
+-- ============================================================
+-- MIGRATION 49: KNOWLEDGE BASE
+-- ============================================================
+-- ============================================================================
+-- 00049 — Base de conocimiento con busqueda semantica (F16)
+-- ============================================================================
+-- Documentos del negocio (PDF/DOCX/TXT/MD) convertidos a markdown, troceados y
+-- indexados con embeddings, para que el agente de la Fase 3 responda con
+-- informacion real y no inventada.
+--
+-- Dos tablas y no una: el documento es lo que la usuaria ve y edita; el chunk
+-- es una unidad de recuperacion que solo existe para la busqueda. Mezclarlos
+-- obligaria a reescribir la fila del documento en cada reindexado.
+--
+-- workspace_id desnormalizado en knowledge_chunks: se deriva del documento,
+-- pero tenerlo directo evita un JOIN en la busqueda semantica, que es lo unico
+-- sensible a performance de todo esto, y hace la RLS de una sola condicion.
+--
+-- DIMENSION DEL EMBEDDING — leer antes de tocar:
+-- La columna esta anclada a vector(1024) porque el modelo es Voyage AI
+-- 'voyage-4-lite' con output_dimension 1024 (su default). voyage-4-lite tambien
+-- soporta 256/512/2048, pero una columna vector(N) admite UN solo N: mezclar
+-- embeddings de dimensiones distintas no funciona, y comparar embeddings de
+-- modelos distintos aunque coincida la dimension da resultados sin sentido.
+-- Si algun dia se cambia de modelo o de dimension hay que: cambiar el tipo de
+-- la columna, recrear el indice, y REINDEXAR TODOS los documentos.
+--
+-- Indice HNSW y no IVFFlat: IVFFlat necesita datos para entrenar sus listas y
+-- aca el indice se crea con la tabla vacia (quedaria mal calibrado para siempre
+-- salvo que alguien se acuerde de recrearlo). HNSW se construye incremental.
+-- Distancia coseno, que es la que recomienda Voyage para sus embeddings.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- pgvector va al esquema 'extensions', que es donde Supabase pone las suyas
+-- (pgcrypto, uuid-ossp, pg_stat_statements). public queda solo con lo nuestro.
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+
+-- ----------------------------------------------------------------------------
+-- 1. knowledge_base — el documento
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.knowledge_base (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  tags text[] NOT NULL DEFAULT '{}',
+  -- Ruta dentro del bucket privado 'knowledge' (migracion 00050).
+  source_file_path text,
+  source_mime text,
+  source_size_bytes bigint,
+  source_filename text,
+  content_md text,
+  status text NOT NULL DEFAULT 'processing',
+  error_detail text,
+  chunk_count integer NOT NULL DEFAULT 0,
+  -- Que modelo genero los embeddings de este documento. Si se cambia de modelo,
+  -- esto dice cuales hay que reindexar.
+  embedding_model text,
+  indexed_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_base_status_check'
+  ) THEN
+    ALTER TABLE public.knowledge_base
+      ADD CONSTRAINT knowledge_base_status_check
+      CHECK (status IN ('processing', 'ready', 'error'));
+  END IF;
+END $$;
+
+COMMENT ON TABLE public.knowledge_base IS
+  'Documentos de la base de conocimiento. El archivo original vive en el bucket privado "knowledge"; content_md es su conversion a markdown. Soft delete con deleted_at (retencion 30 dias, purga por el cron de Fase 1).';
+
+COMMENT ON COLUMN public.knowledge_base.status IS
+  'processing = el job async todavia corre; ready = indexado; error = fallo, el motivo esta en error_detail.';
+
+COMMENT ON COLUMN public.knowledge_base.embedding_model IS
+  'Modelo que genero los embeddings de este documento (ej: voyage-4-lite). Si se cambia de modelo, identifica que hay que reindexar.';
+
+-- El listado de la pantalla: los del workspace, sin borrar, mas nuevos primero.
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_ws_created
+  ON public.knowledge_base(workspace_id, created_at DESC)
+  WHERE deleted_at IS NULL;
+
+-- Lo que mira el cron de purga de soft-deleted.
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_deleted
+  ON public.knowledge_base(deleted_at)
+  WHERE deleted_at IS NOT NULL;
+
+-- Filtro por etiqueta.
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_tags
+  ON public.knowledge_base USING gin(tags);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_updated_at_knowledge_base') THEN
+    CREATE TRIGGER set_updated_at_knowledge_base
+      BEFORE UPDATE ON public.knowledge_base
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 2. knowledge_chunks — los fragmentos indexados
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.knowledge_chunks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES public.knowledge_base(id) ON DELETE CASCADE,
+  chunk_index integer NOT NULL,
+  content text NOT NULL,
+  -- Estimacion, no cuenta real: sirve para no pasarse del limite de tokens por
+  -- request de Voyage al armar los lotes.
+  token_estimate integer,
+  embedding extensions.vector(1024) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.knowledge_chunks IS
+  'Fragmentos indexados de un documento. Se borran en cascada con su documento. Los escribe solo el service role, desde el job de indexacion.';
+
+COMMENT ON COLUMN public.knowledge_chunks.embedding IS
+  'Embedding de Voyage AI voyage-4-lite, 1024 dimensiones (su default). Ver la cabecera de esta migracion antes de cambiar la dimension: obliga a reindexar todo.';
+
+COMMENT ON COLUMN public.knowledge_chunks.workspace_id IS
+  'Desnormalizado del documento a proposito: evita un JOIN en la busqueda semantica y hace la RLS de una sola condicion.';
+
+-- Un reindexado borra e inserta de nuevo; el unique atrapa un job duplicado que
+-- intente escribir dos veces el mismo fragmento.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_chunks_doc_index
+  ON public.knowledge_chunks(document_id, chunk_index);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_ws
+  ON public.knowledge_chunks(workspace_id);
+
+-- El indice de la busqueda semantica. La opclass va calificada con el esquema
+-- para que resuelva sin depender del search_path con el que corra la migracion.
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding
+  ON public.knowledge_chunks
+  USING hnsw (embedding extensions.vector_cosine_ops);
+
+-- ----------------------------------------------------------------------------
+-- 3. RLS
+-- ----------------------------------------------------------------------------
+-- La KB no lleva scope de leads: es conocimiento del negocio, no de un lead.
+-- Todo el equipo la lee; solo Owner/Admin la gestiona (F17).
+ALTER TABLE public.knowledge_base ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "knowledge_base_select" ON public.knowledge_base;
+CREATE POLICY "knowledge_base_select" ON public.knowledge_base
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "knowledge_base_insert" ON public.knowledge_base;
+CREATE POLICY "knowledge_base_insert" ON public.knowledge_base
+  FOR INSERT WITH CHECK (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "knowledge_base_update" ON public.knowledge_base;
+CREATE POLICY "knowledge_base_update" ON public.knowledge_base
+  FOR UPDATE USING (public.is_workspace_admin(workspace_id))
+  WITH CHECK (public.is_workspace_admin(workspace_id));
+
+-- El borrado real lo hace el cron de purga (service role) 30 dias despues; esta
+-- policy existe por si un admin necesita borrar de verdad.
+DROP POLICY IF EXISTS "knowledge_base_delete" ON public.knowledge_base;
+CREATE POLICY "knowledge_base_delete" ON public.knowledge_base
+  FOR DELETE USING (public.is_workspace_admin(workspace_id));
+
+ALTER TABLE public.knowledge_chunks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "knowledge_chunks_select" ON public.knowledge_chunks;
+CREATE POLICY "knowledge_chunks_select" ON public.knowledge_chunks
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+-- Sin policies de INSERT/UPDATE/DELETE a proposito: los fragmentos los escribe
+-- solo el job de indexacion, con el service role, y se borran en cascada con su
+-- documento. Un usuario no tiene por que poder escribir un embedding a mano.
+DROP POLICY IF EXISTS "knowledge_chunks_insert" ON public.knowledge_chunks;
+DROP POLICY IF EXISTS "knowledge_chunks_update" ON public.knowledge_chunks;
+DROP POLICY IF EXISTS "knowledge_chunks_delete" ON public.knowledge_chunks;
+
+-- ----------------------------------------------------------------------------
+-- 4. Busqueda semantica
+-- ----------------------------------------------------------------------------
+-- Es SECURITY DEFINER para poder ordenar por el indice HNSW sin que la RLS de
+-- knowledge_chunks se meta en el plan, asi que la pertenencia al workspace se
+-- chequea a mano adentro. Sin ese chequeo, cualquiera leeria la KB de cualquier
+-- workspace pasando otro id.
+--
+-- El operador de distancia va calificado —OPERATOR(extensions.<=>)— porque con
+-- search_path = '' no hay forma de resolverlo por nombre. Escrito asi el
+-- planner igual lo reconoce y usa el indice HNSW.
+--
+-- 1 - distancia_coseno = similitud, para que el numero que vuelve se lea como
+-- "cuanto se parece" (1 = identico) y no al reves.
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks(
+  p_workspace_id uuid,
+  p_query_embedding extensions.vector(1024),
+  p_match_count integer DEFAULT 8,
+  p_min_similarity double precision DEFAULT 0.0
+)
+RETURNS TABLE (
+  chunk_id uuid,
+  document_id uuid,
+  document_title text,
+  chunk_index integer,
+  content text,
+  similarity double precision
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'workspace_id is required';
+  END IF;
+
+  -- coalesce y no auth.role() pelado: una conexion sin JWT devuelve NULL, y
+  -- "NULL <> 'service_role' AND ..." evalua a NULL, con lo cual el IF no entra
+  -- y el chequeo de permiso se saltea solo. Con coalesce, sin rol conocido se
+  -- exige pertenencia al workspace, que es el lado seguro.
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND NOT public.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.document_id,
+    kb.title,
+    kc.chunk_index,
+    kc.content,
+    (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+  FROM public.knowledge_chunks kc
+  JOIN public.knowledge_base kb ON kb.id = kc.document_id
+  WHERE kc.workspace_id = p_workspace_id
+    AND kb.deleted_at IS NULL
+    AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= p_min_similarity
+  ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+  LIMIT GREATEST(p_match_count, 1);
+END;
+$$;
+
+COMMENT ON FUNCTION public.match_knowledge_chunks(uuid, extensions.vector, integer, double precision) IS
+  'Busqueda semantica sobre la base de conocimiento. Recibe el embedding de la consulta (Voyage voyage-4-lite, 1024 dim, input_type=query) y devuelve los fragmentos mas parecidos. La consumira el agente en la Fase 3.';
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks(uuid, extensions.vector, integer, double precision) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks(uuid, extensions.vector, integer, double precision) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 50: KNOWLEDGE STORAGE
+-- ============================================================
+-- ============================================================================
+-- 00050 — Bucket privado para los documentos de la base de conocimiento (F16)
+-- ============================================================================
+-- Primer bucket del proyecto. Los documentos de la KB pueden tener info
+-- sensible del negocio (precios, procesos, contratos), asi que el bucket es
+-- privado y se baja siempre por signed URL de vida corta.
+--
+-- SIN POLICIES sobre storage.objects, a proposito. Es el mismo criterio
+-- deny-all que scheduled_jobs: nadie toca el bucket directo. Subir, bajar y
+-- borrar pasa por Server Actions que verifican Owner/Admin y despues usan el
+-- service role. Una policy sobre storage.objects que dejara entrar a
+-- 'authenticated' abriria el bucket a cualquier miembro con la anon key en la
+-- mano, salteando esa verificacion.
+--
+-- El limite de tamano y la lista de MIME que van aca son la ultima linea, no la
+-- primera: la validacion de verdad (tipo real por magic bytes, no por
+-- extension) corre en el servidor antes de subir. Esto atrapa lo que se le
+-- escape a esa validacion.
+--
+-- Idempotente.
+-- ============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'knowledge',
+  'knowledge',
+  false,
+  26214400,  -- 25 MB
+  ARRAY[
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'text/markdown'
+  ]
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Si el bucket ya existia (creado a mano desde el panel, por ejemplo), se
+-- fuerzan las tres cosas que no son negociables. Sin esto, una migracion que
+-- "corrio bien" podria estar dejando un bucket publico.
+UPDATE storage.buckets
+SET
+  public = false,
+  file_size_limit = 26214400,
+  allowed_mime_types = ARRAY[
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'text/markdown'
+  ]
+WHERE id = 'knowledge';
+
+-- Por si una version anterior de esta migracion, o alguien a mano, dejo
+-- policies abiertas sobre el bucket.
+DROP POLICY IF EXISTS "knowledge_objects_select" ON storage.objects;
+DROP POLICY IF EXISTS "knowledge_objects_insert" ON storage.objects;
+DROP POLICY IF EXISTS "knowledge_objects_update" ON storage.objects;
+DROP POLICY IF EXISTS "knowledge_objects_delete" ON storage.objects;
+
+-- ============================================================
+-- MIGRATION 51: NOTIFICATIONS
+-- ============================================================
+-- ============================================================================
+-- 00051 — Centro de notificaciones in-app (F18)
+-- ============================================================================
+-- Avisos operativos dentro del sistema: se derivo una conversacion a una
+-- persona, se cayo un canal, un contacto quedo en dos secuencias a la vez.
+--
+-- Por que una tabla y no seguir usando analytics_events, que es donde vivian
+-- hasta ahora: un aviso necesita estado de leido/no leido por persona y un
+-- indice pensado para contar los no leidos. analytics_events es una bitacora de
+-- metricas; meterle ese estado la convertia en dos cosas a la vez.
+--
+-- SCOPE — es lo unico delicado de esta migracion:
+-- Un Member solo puede ver los avisos de SUS leads. Una notificacion de "se
+-- derivo una conversacion" apunta a una conversacion concreta, asi que la
+-- pregunta "puede ver este aviso?" se reduce a "puede ver esa conversacion?",
+-- que ya sabe contestar can_see_conversation (00018/00028). Por eso el helper
+-- delega en las funciones que ya existen en vez de reimplementar el scope: si
+-- manana cambia la regla de scope, cambia en un solo lugar.
+--
+-- recipient_id NULL significa "para los admins del workspace". No significa
+-- "para cualquiera".
+--
+-- Sin soft delete: un aviso leido no es historia que haya que conservar. Se
+-- purgan los viejos por cron.
+--
+-- Idempotente.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  -- Sin CHECK a proposito: el catalogo de tipos vive en TypeScript
+  -- (lib/notifications/types.ts), igual que integration_configs.provider y
+  -- audit_log.action. Un tipo nuevo no tiene que ser una migracion.
+  type text NOT NULL,
+  title text NOT NULL,
+  body text,
+  -- A que apunta el aviso. entity_type manda el deep-link Y el scope.
+  entity_type text,
+  entity_id uuid,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- NULL = para los Owner/Admin del workspace.
+  recipient_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  read_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.notifications IS
+  'Centro de notificaciones in-app (F18). Las escribe solo el service role. Un Member ve las de sus leads; Owner/Admin, las del workspace.';
+
+COMMENT ON COLUMN public.notifications.recipient_id IS
+  'Destinatario puntual. NULL = para los Owner/Admin del workspace (no "para cualquiera").';
+
+COMMENT ON COLUMN public.notifications.entity_type IS
+  'A que apunta el aviso: conversation, channel, sequence_enrollment, contact. Define el deep-link y, para un Member, si puede verlo.';
+
+COMMENT ON COLUMN public.notifications.metadata IS
+  'Datos del evento. Nunca API keys, contenido de mensajes ni PII de mas.';
+
+-- El contador de la campana: no leidas del workspace, mas nuevas primero.
+CREATE INDEX IF NOT EXISTS idx_notifications_ws_unread
+  ON public.notifications(workspace_id, created_at DESC)
+  WHERE read_at IS NULL;
+
+-- El listado completo del panel.
+CREATE INDEX IF NOT EXISTS idx_notifications_ws_created
+  ON public.notifications(workspace_id, created_at DESC);
+
+-- Las de un destinatario puntual.
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient
+  ON public.notifications(recipient_id, created_at DESC)
+  WHERE recipient_id IS NOT NULL;
+
+-- Lo que mira la purga.
+CREATE INDEX IF NOT EXISTS idx_notifications_read_at
+  ON public.notifications(read_at)
+  WHERE read_at IS NOT NULL;
+
+-- ----------------------------------------------------------------------------
+-- Scope: puede esta persona ver este aviso?
+-- ----------------------------------------------------------------------------
+-- Recibe la fila entera como tipo compuesto, igual que can_see_contact: asi la
+-- policy se escribe can_see_notification(notifications) y el planner no tiene
+-- que resolver nada raro.
+CREATE OR REPLACE FUNCTION public.can_see_notification(n public.notifications)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_visible boolean;
+BEGIN
+  IF NOT public.is_workspace_member(n.workspace_id) THEN
+    RETURN false;
+  END IF;
+
+  -- Owner y Admin ven todo lo del workspace.
+  IF public.is_workspace_admin(n.workspace_id) THEN
+    RETURN true;
+  END IF;
+
+  -- Dirigida a mi personalmente.
+  IF n.recipient_id = auth.uid() THEN
+    RETURN true;
+  END IF;
+
+  -- De aca para abajo: es un Member y el aviso no es suyo. Solo lo ve si apunta
+  -- a un lead que le corresponde. La pregunta se delega en las funciones de
+  -- scope que ya existen, para no tener la regla escrita dos veces.
+  IF n.entity_id IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF n.entity_type = 'conversation' THEN
+    SELECT public.can_see_conversation(c) INTO v_visible
+    FROM public.conversations c
+    WHERE c.id = n.entity_id;
+    RETURN COALESCE(v_visible, false);
+  END IF;
+
+  IF n.entity_type = 'contact' THEN
+    SELECT public.can_see_contact(ct) INTO v_visible
+    FROM public.contacts ct
+    WHERE ct.id = n.entity_id;
+    RETURN COALESCE(v_visible, false);
+  END IF;
+
+  -- Todo lo demas (canales caidos, colisiones de secuencias) es informacion de
+  -- administracion: un Member no la ve.
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.can_see_notification(public.notifications) IS
+  'Scope de leads aplicado a las notificaciones (F18). Owner/Admin ven todo el workspace; un Member ve las suyas y las que apuntan a un lead que le corresponde. Delega en can_see_conversation / can_see_contact.';
+
+REVOKE ALL ON FUNCTION public.can_see_notification(public.notifications) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_notification(public.notifications) TO authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- RLS
+-- ----------------------------------------------------------------------------
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "notifications_select" ON public.notifications;
+CREATE POLICY "notifications_select" ON public.notifications
+  FOR SELECT USING (public.can_see_notification(notifications));
+
+-- Marcar leido y nada mas. El USING y el WITH CHECK son el mismo predicado, asi
+-- que nadie puede mover un aviso a otro workspace ni "leer" el de otro.
+DROP POLICY IF EXISTS "notifications_update" ON public.notifications;
+CREATE POLICY "notifications_update" ON public.notifications
+  FOR UPDATE USING (public.can_see_notification(notifications))
+  WITH CHECK (public.can_see_notification(notifications));
+
+DROP POLICY IF EXISTS "notifications_delete" ON public.notifications;
+CREATE POLICY "notifications_delete" ON public.notifications
+  FOR DELETE USING (public.is_workspace_admin(workspace_id));
+
+-- Sin policy de INSERT: los avisos los genera el sistema con el service role.
+-- Si un usuario pudiera insertar, podria fabricarle un aviso a otro.
+DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
+
+-- ----------------------------------------------------------------------------
+-- Realtime — para que la campana se actualice sola
+-- ----------------------------------------------------------------------------
+-- Con guard: el ALTER pelado falla al re-correr con "table is already member of
+-- publication", y esta migracion tiene que poder correrse dos veces.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'notifications'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- Purga
+-- ----------------------------------------------------------------------------
+-- Un aviso leido de hace dos meses no lo mira nadie y la tabla crece sola.
+-- Los NO leidos no se tocan nunca: si nadie lo vio, sigue pendiente.
+CREATE OR REPLACE FUNCTION public.purge_read_notifications(p_retention_days integer DEFAULT 60)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  DELETE FROM public.notifications
+  WHERE read_at IS NOT NULL
+    AND read_at < now() - make_interval(days => GREATEST(p_retention_days, 1));
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+COMMENT ON FUNCTION public.purge_read_notifications(integer) IS
+  'Borra las notificaciones LEIDAS de mas de N dias. Las no leidas no se tocan nunca. La llama el cron diario.';
+
+REVOKE ALL ON FUNCTION public.purge_read_notifications(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_read_notifications(integer) TO service_role;
+
+-- ============================================================
+-- MIGRATION 52: PURGE NOTIFICATIONS CRON
+-- ============================================================
+-- ============================================================================
+-- 00052 — Agendar la purga de notificaciones leidas (F18)
+-- ============================================================================
+-- La funcion purge_read_notifications quedo creada en la 00051 pero no la
+-- llamaba nadie: una funcion de purga sin cron es una tabla que crece igual.
+--
+-- Va por SQL directo y no por HTTP, como purge_soft_deleted: es puro SQL, no
+-- necesita Storage ni nada de la app, y dar la vuelta por la red solo suma un
+-- punto de falla.
+--
+-- Los documentos borrados de la base de conocimiento NO se purgan aca. Esos si
+-- necesitan borrar el archivo del bucket de Storage, y eso desde SQL no se
+-- puede: lo hace la app, en /api/cron/jobs. Borrar la fila desde aca dejaria el
+-- archivo huerfano para siempre.
+--
+-- Idempotente: cron.unschedule antes de agendar, envuelto para que no falle si
+-- el job todavia no existe.
+-- ============================================================================
+
+DO $$
+BEGIN
+  PERFORM cron.unschedule('ssa-cron-purge-notifications');
+EXCEPTION
+  WHEN OTHERS THEN NULL;  -- todavia no existia
+END $$;
+
+-- 4:50: las otras purgas ya ocupan :00, :10, :20, :30 y :40.
+SELECT cron.schedule(
+  'ssa-cron-purge-notifications',
+  '50 4 * * *',
+  $$SELECT public.purge_read_notifications(60)$$
+);

@@ -1,6 +1,7 @@
 import type { NodeDefinition } from "../registry/types";
 import type { EnrollSequenceNodeData } from "../types";
 import { detectSequenceCollision } from "@/lib/sequences/collisions";
+import { createNotification } from "@/lib/notifications/create";
 import { computeNextStepAt, parseSteps } from "@/lib/sequences/steps";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
@@ -114,19 +115,29 @@ export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
         performedBy: null,
       });
 
-      // La costura para el centro de notificaciones del Bloque 3: cuando
-      // exista, lee de aca y no hay que tocar nada de esto.
-      await supabase.from("analytics_events").insert({
-        workspace_id: context.workspaceId,
-        flow_id: context.flowId,
-        contact_id: context.contactId,
-        event_type: "sequence_collision_detected",
+      // El aviso a los admins (F18). Esta era la costura que el Bloque 2 dejo
+      // apuntada al centro de notificaciones: la deteccion y el audit log de
+      // arriba no cambiaron, solo cambio a donde va el aviso.
+      //
+      // Sin recipientId: una colision es informacion de administracion, y
+      // can_see_notification no se la muestra a un Member.
+      const otras = collision.snapshot.map((c) => c.sequence_name).join(", ");
+
+      await createNotification({
+        supabase,
+        workspaceId: context.workspaceId,
+        type: "sequence_collision",
+        title: "Un contacto quedo en mas de una secuencia",
+        body: `Se inscribio en una secuencia por el mismo canal en el que ya tenia ${otras}. Van a escribirle en paralelo hasta que decidas cual dejar.`,
+        entityType: "sequence_enrollment",
+        entityId: created.id,
         metadata: {
           sequence_id: data.sequenceId,
           enrollment_id: created.id,
+          contact_id: context.contactId,
           channel_id: context.channelId,
           with: collision.snapshot,
-        } as never,
+        },
       });
     }
   },

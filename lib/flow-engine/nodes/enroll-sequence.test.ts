@@ -5,9 +5,13 @@ import type { FlowExecutionContext } from "../types";
 
 vi.mock("@/lib/sequences/collisions", () => ({ detectSequenceCollision: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/notifications/create", () => ({
+  createNotification: vi.fn().mockResolvedValue(true),
+}));
 
 import { detectSequenceCollision } from "@/lib/sequences/collisions";
 import { logAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { enrollSequenceNode } from "./enroll-sequence";
 
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -147,8 +151,19 @@ describe("nodo Enroll in Sequence (F15)", () => {
     expect(logAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "collision_detected" })
     );
-    // La costura para el centro de notificaciones del Bloque 3.
-    expect(inserted.some((i) => i.table === "analytics_events")).toBe(true);
+    // El aviso al centro de notificaciones (F18). Hasta el Bloque 3 esto
+    // escribia en analytics_events como sustituto; ahora va a la tabla real.
+    expect(createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "sequence_collision",
+        entityType: "sequence_enrollment",
+        // Sin recipientId: una colision es informacion de administracion y la
+        // RLS no se la muestra a un Member.
+        metadata: expect.objectContaining({ with: snapshot }),
+      })
+    );
+    // Y el aviso nombra la otra secuencia, para que se entienda sin abrirlo.
+    expect(String(vi.mocked(createNotification).mock.calls.at(-1)?.[0].body)).toContain("Otra");
   });
 
   it("no inscribe a un contacto marcado como no contactar", async () => {
