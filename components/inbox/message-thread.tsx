@@ -181,8 +181,9 @@ export function MessageThread({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
-  // ultimo mensaje del hilo porque los entrantes de Instagram no se guardan
-  // localmente: contarlos daria siempre cero.
+  // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
+  // recibir, sin depender de que el guardado de mensajes este prendido ni de
+  // que el hilo que se esta mostrando venga de la base o de Zernio.
   const staleDays = daysSince(conversation?.contacts?.last_interaction_at);
 
   const updateConversationStatus = useCallback(async (status: ConversationStatus) => {

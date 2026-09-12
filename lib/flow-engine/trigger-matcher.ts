@@ -30,8 +30,11 @@ export async function matchTrigger(
     workspaceId: string;
     conversationId: string;
     message: IncomingMessage;
-    /** El llamador sabe si es el primer mensaje: los entrantes no se guardan
-     * localmente, asi que la consulta de respaldo de abajo veria siempre 0. */
+    /** El llamador ya sabe si es el primer mensaje (los dos receptores lo
+     * pasan, mirando si el contacto existia), asi que la consulta de respaldo
+     * de abajo no corre en produccion. Desde la Fase 3 los entrantes SI se
+     * guardan, asi que ese respaldo por fin devuelve algo real — pero sigue
+     * siendo el respaldo: preguntarle al contacto es una consulta menos. */
     isFirstMessage?: boolean;
   }
 ): Promise<Trigger | null> {

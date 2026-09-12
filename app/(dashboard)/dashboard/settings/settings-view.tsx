@@ -18,6 +18,7 @@ import {
 import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
+import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 
 interface WorkspaceSettings {
@@ -27,6 +28,7 @@ interface WorkspaceSettings {
   optOutPhrases: string[];
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
+  persistZernioInbound: boolean;
 }
 
 export function SettingsView({
@@ -118,6 +120,10 @@ export function SettingsView({
             leadScopeEnabled={workspace.leadScopeEnabled}
             unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
           />
+
+          <hr className="border-border" />
+
+          <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
 
           <hr className="border-border" />
 

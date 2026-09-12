@@ -138,6 +138,58 @@ export async function updateLeadScope(settings: {
 }
 
 /**
+ * Prende y apaga el guardado local de los mensajes entrantes de Instagram (F19).
+ *
+ * Por que existe este interruptor: persistir el contenido de los DMs es lo que
+ * necesitan el agente de IA (lee el historial de la base) y los dashboards
+ * (los arma con un GROUP BY sobre la tabla local), pero queda por confirmar si
+ * entra dentro de los terminos de Zernio y de Meta para este tipo de cuenta.
+ * Hasta tener esa respuesta, tiene que poder apagarse en el momento, sin un
+ * deploy: por eso es una fila en la base y no una variable de entorno.
+ *
+ * Apagarlo frena el guardado hacia adelante y nada mas. Lo ya guardado se borra
+ * con scripts/purge-zernio-inbound.mjs, que es la otra mitad del interruptor.
+ *
+ * Solo afecta a los canales de Zernio. WhatsApp sigue guardando siempre: ahi la
+ * tabla es la unica fuente del hilo y apagarla vaciaria la bandeja.
+ *
+ * Es de Owner/Admin, como todo lo que toca la configuracion del workspace.
+ */
+export async function updateMessagePersistence(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return { ok: false, error: "Solo Owner y Admin pueden cambiar el guardado de mensajes" };
+  }
+
+  const { workspace, supabase, user } = ctx;
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ persist_zernio_inbound: enabled })
+    .eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar el guardado de mensajes:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { persist_zernio_inbound: { old: !enabled, new: enabled } },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
  * Nombre del workspace y palabras clave globales (F20).
  *
  * Antes esto se guardaba con un update directo desde el navegador. Funcionaba,

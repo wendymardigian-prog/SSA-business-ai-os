@@ -150,6 +150,7 @@ zernflow/
 │   └── api/
 │       ├── webhooks/late/      # Webhook receiver — Zernio / Instagram (HMAC)
 │       ├── webhooks/evolution/ # Webhook receiver — Evolution / WhatsApp (token)
+│                               # Both persist incoming messages — see docs/flujo-de-mensajes.md
 │       ├── cron/jobs/          # Job scheduler
 │       ├── cron/sequences/     # Sequence step processor
 │       └── v1/                 # CRUD API routes

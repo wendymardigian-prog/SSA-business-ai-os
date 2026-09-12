@@ -5,6 +5,123 @@ cada bloque.
 
 ---
 
+## Etapa 1 · Fase 3 · Bloque 1 — Persistencia de mensajes
+
+**Fecha:** 11 de septiembre de 2026
+**Alcance:** F19, F20 y F21 del documento de requerimientos de la Fase 3.
+
+**Qué se construyó:** los mensajes entrantes de todos los canales ahora se
+guardan en la base. Hasta acá los DMs de Instagram no se guardaban —Zernio era
+la fuente de verdad y la bandeja le pedía el hilo en vivo—, y eso bloqueaba las
+dos cosas que vienen: el agente lee el historial de la base, y los dashboards se
+arman con un GROUP BY sobre la tabla local.
+
+Es **dual-write**: se guarda en paralelo y la bandeja sigue leyendo de Zernio.
+No se cambió la fuente de lectura.
+
+### El hallazgo que cambió el diseño
+
+Había **tres espacios de identificadores** conviviendo, y elegir mal habría
+duplicado todo:
+
+| Camino | Qué id usa |
+|---|---|
+| `recordSend` al enviar | id de Zernio |
+| `toInboxMessage` al leer | id de Zernio |
+| El endpoint de historial (backfill) | id de Zernio — **y no devuelve el nativo** |
+| El webhook | trae **los dos** |
+
+Si el receptor hubiera guardado `msg.platformMessageId` (el id nativo de Meta),
+el índice único no habría servido para nada: el backfill trae el id de Zernio,
+así que para Postgres serían dos filas distintas y cada corrida habría insertado
+una copia de cada mensaje. **El que deduplica es el de Zernio.**
+
+El nativo igual se guarda, en `platform_native_message_id`: es el único handle
+para un pedido de borrado o un reclamo ante Meta, y el endpoint de historial no
+lo devuelve — lo que no se guarde cuando entra el webhook se pierde para
+siempre.
+
+### Decisiones y por qué
+
+| Decisión | Por qué |
+|---|---|
+| **`workspace_id` sí**, llenado por un trigger de base | Los dashboards agrupan por día/canal/dirección sobre la tabla que más va a crecer; sin la columna, cada consulta arrastra un join. El trigger y no el código porque hay **seis** inserts dispersos que no pasan por `insertMessage`: confiar en acordarse seis veces es confiar en la séptima |
+| **`deleted_at` no**: el borrado es físico | Las FK en cascada ya se llevan los mensajes cuando `purge_soft_deleted` borra el contacto. Y un soft delete sobre un DM deja el texto del lead en la base *aparentando* estar borrado, que es lo contrario de lo que las reglas de retención de Meta piden cumplir |
+| La policy **suma** el filtro de workspace, no reemplaza el `EXISTS` | Ese `EXISTS` sobre `conversations` es de donde sale **todo** el scope de leads de los mensajes (una subconsulta dentro de una policy pasa por la RLS de la tabla que consulta). Cambiarlo por `is_workspace_member(workspace_id)` se habría leído como una simplificación equivalente y habría dejado a cualquier Member ver los mensajes de todos los leads |
+| UPDATE y DELETE **siguen sin policy** | Con RLS activa y sin policy ya están denegadas, y para una tabla que es un log esa es la postura correcta. La purga corre `SECURITY DEFINER` y no las necesita. Queda documentado en un `COMMENT` para que se lea como decisión y no como olvido |
+| El interruptor es una **columna en `workspaces`** | Mismo patrón que `lead_scope_enabled`. Un interruptor que existe por una duda legal tiene que apagar sin deploy — y se lee **sin cachear**, porque tiene que apagar cuando se lo apaga, no cuando venza un TTL |
+| El trigger de inactividad **sigue con `last_interaction_at`** | Mide lo que el trigger pregunta, y lo llenan los dos receptores **aunque el guardado esté apagado**. Si contara mensajes, apagar el interruptor rompería una automatización que hoy funciona |
+| "No contactar" **no borra** mensajes | Dice que no le escribamos más, no que borremos lo que dijo. El operador necesita ese contexto para no repetir el error |
+| El backfill **no trae los mensajes borrados** por el remitente | Zernio conserva el texto aunque la persona lo haya dado de baja. Traerlo a propósito iría contra las reglas de Meta que la política de esta fase se compromete a honrar |
+
+### Lo que la exploración corrigió sobre el plano
+
+- **El límite real del historial no es un parámetro nuestro:** Meta replica 500
+  conversaciones por cuenta y 500 mensajes por conversación. Lo anterior no lo
+  tiene nadie. El backfill conviene correrlo **dos veces con días de
+  diferencia**, porque el replay de Meta termina en segundo plano (lo advierte
+  el propio SDK).
+- **Zernio informa estados que el CHECK de la columna rechaza** (`read`,
+  `deleted`). Sin mapearlos, un lote entero del backfill se caía.
+- **El Realtime de la bandeja escucha `conversations`, no `messages`**, así que
+  el dual-write es invisible para la UI. Era la duda principal sobre si guardar
+  en paralelo podía duplicar burbujas.
+
+### Migraciones
+
+| # | Qué crea |
+|---|---|
+| 00053 | `messages.workspace_id` + trigger + backfill, `sent_by_agent_id` (sin FK: `agents` es del Bloque 2), índices para los dashboards, y `workspaces.persist_zernio_inbound` |
+| 00054 | RLS de `messages` con el filtro de workspace **sumado** al `EXISTS` |
+| 00055 | `purge_old_messages(12)` + cron a las 5:00 (los seis slots de las 4 ya estaban tomados) |
+| 00056 | `platform_native_message_id` |
+| 00057 | `purge_zernio_inbound_messages`: la otra mitad del interruptor |
+
+### Scope de leads
+
+Probado en los **dos** sentidos, que es lo que el caso pedía: un Member no ve
+los mensajes de un lead ajeno, **y sí ve los de su propia conversación**. El
+segundo check se agregó a `verify-rls.mjs` a propósito — una condición de más en
+una policy puede negar acceso legítimo tan fácil como una de menos, y sin esa
+línea un `workspace_id` mal completado se habría visto como "todo verde".
+
+### Verificación
+
+- 731 tests de vitest (26 nuevos), `npx tsc`, `npm run build` y `npm run lint`
+  sin errores.
+- `verify-message-persistence.mjs` (nuevo, 16 checks contra la base real): el
+  trigger completa la columna, **el mismo mensaje no entra dos veces**, el mismo
+  id en otra conversación sí entra, la retención borra el de 13 meses y respeta
+  el de 11, y borrar el contacto se lleva sus mensajes.
+- `verify-rls.mjs` en verde, con el check nuevo.
+- El backfill corrido en seco contra la API real: 20 mensajes de 3
+  conversaciones.
+- El linter de seguridad de Supabase no reporta ninguna de las tres funciones
+  nuevas.
+
+### Deuda anotada
+
+- **El backfill no se corrió en firme.** Queda listo; correrlo con `--apply`
+  escribe el contenido de los DMs y los términos de Zernio/Meta siguen sin
+  confirmarse. Es una decisión de Wendy, no del código.
+- **La pantalla de Ajustes se verificó por compilación, no a ojo.** La app pide
+  login y no se ingresan credenciales — el mismo límite que ya tenía anotado el
+  Bloque 1 de la Fase 2.
+- **`sent_by_node_id` sigue sin escribirse nunca.** Está declarado desde la
+  00001. Es del Bloque 2, cuando el agente necesite la trazabilidad fina.
+- **Tres sistemas siguen recibiendo los mismos DMs de @wenmardigian.** Ahora
+  además este los guarda. Va junto con la confirmación de términos.
+
+### Para el Bloque 2
+
+- La constraint de `messages.sent_by_agent_id` está pedida en un comentario
+  dentro de la 00053, para agregarla cuando exista la tabla `agents`.
+- `messages.agent_run_id` no se creó: va con la tabla de runs.
+- `docs/flujo-de-mensajes.md` documenta el flujo completo, los dos ids, la
+  retención y el interruptor.
+
+---
+
 ## Etapa 1 · Fase 2 · Bloque 1 — Flow builder y triggers
 
 **Fecha:** 8 de septiembre de 2026
