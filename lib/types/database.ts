@@ -189,6 +189,11 @@ export interface Database {
           opt_out_phrases: string[];
           lead_scope_enabled: boolean;
           unassigned_leads_visible_to_members: boolean;
+          /**
+           * Si se guardan localmente los entrantes de los canales de Zernio
+           * (Instagram). Apagado, el receptor no inserta (migracion 00053).
+           */
+          persist_zernio_inbound: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -204,6 +209,7 @@ export interface Database {
           opt_out_phrases?: string[];
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
+          persist_zernio_inbound?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -219,6 +225,7 @@ export interface Database {
           opt_out_phrases?: string[];
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
+          persist_zernio_inbound?: boolean;
           updated_at?: string;
         };
         Relationships: [];
@@ -894,8 +901,12 @@ export interface Database {
           sent_by_flow_id: string | null;
           sent_by_node_id: string | null;
           sent_by_user_id: string | null;
+          /** Que agente de IA lo mando. Sin FK hasta que exista `agents` (Bloque 2). */
+          sent_by_agent_id: string | null;
           status: MessageStatus;
           created_at: string;
+          /** Denormalizado desde conversations (migracion 00053). */
+          workspace_id: string;
         };
         Insert: {
           id?: string;
@@ -910,8 +921,15 @@ export interface Database {
           sent_by_flow_id?: string | null;
           sent_by_node_id?: string | null;
           sent_by_user_id?: string | null;
+          sent_by_agent_id?: string | null;
           status?: MessageStatus;
           created_at?: string;
+          /**
+           * Opcional a proposito: si no viene, lo completa el trigger
+           * messages_fill_workspace_id desde la conversacion (migracion 00053).
+           * Por eso los inserts que ya existian siguen compilando sin tocarlos.
+           */
+          workspace_id?: string;
         };
         Update: {
           status?: MessageStatus;

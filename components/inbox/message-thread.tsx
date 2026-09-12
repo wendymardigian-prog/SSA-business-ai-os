@@ -316,8 +316,10 @@ export function MessageThread({
       sent_by_flow_id: null,
       sent_by_node_id: null,
       sent_by_user_id: null,
+      sent_by_agent_id: null,
       status: "pending",
       created_at: new Date().toISOString(),
+      workspace_id: conversation.workspace_id,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
 
