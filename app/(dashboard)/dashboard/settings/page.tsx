@@ -17,6 +17,7 @@ export default async function SettingsPage() {
         unassignedVisibleToMembers: Boolean(
           workspace.unassigned_leads_visible_to_members,
         ),
+        persistZernioInbound: Boolean(workspace.persist_zernio_inbound),
       }}
     />
   );

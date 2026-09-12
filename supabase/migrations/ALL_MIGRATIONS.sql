@@ -6199,3 +6199,469 @@ SELECT cron.schedule(
   '50 4 * * *',
   $$SELECT public.purge_read_notifications(60)$$
 );
+
+-- ============================================================
+-- MIGRATION 53: MESSAGES PERSISTENCE
+-- ============================================================
+-- ============================================================================
+-- 00053 — Persistencia de mensajes: workspace_id, autoria del agente e interruptor
+-- ============================================================================
+-- Prepara la tabla `messages` para que empiece a recibir los entrantes de TODOS
+-- los canales, incluidos los DMs de Instagram que hasta ahora no se guardaban
+-- (Zernio era la fuente de verdad y la bandeja le pedia el hilo por API).
+--
+-- Tres cosas:
+--
+-- 1. `workspace_id` denormalizado. Hasta hoy el aislamiento se resolvia por
+--    join contra `conversations`, y alcanzaba porque casi nadie consultaba
+--    `messages`. Los dashboards de la Fase 3 agrupan por dia, canal y direccion
+--    sobre esta tabla, que va a ser la mas grande del sistema: sin la columna,
+--    cada consulta arrastra un join. La tabla tiene 0 filas hoy, asi que es el
+--    momento mas barato para agregarla.
+--
+-- 2. `sent_by_agent_id`, para distinguir lo que manda el agente de IA de lo que
+--    manda una persona (`sent_by_user_id`) o un flow (`sent_by_flow_id`).
+--
+-- 3. El interruptor `workspaces.persist_zernio_inbound`, para poder apagar el
+--    guardado de los entrantes de Zernio sin un deploy.
+--
+-- Lo que NO se hace aca, a proposito:
+--   - `deleted_at` en messages. El borrado es fisico: messages.conversation_id
+--     y conversations.contact_id son ON DELETE CASCADE, asi que purge_soft_deleted
+--     (00025) ya se lleva los mensajes de un contacto purgado. Un soft delete
+--     dejaria el texto del lead en la base aparentando estar borrado, que es lo
+--     contrario de lo que exigen las reglas de retencion de Meta.
+--   - `agent_run_id`. Es del Bloque 2, junto con la tabla `agent_runs`.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. workspace_id en messages
+-- ------------------------------------------------------------
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS workspace_id uuid REFERENCES public.workspaces(id) ON DELETE CASCADE;
+
+COMMENT ON COLUMN public.messages.workspace_id IS
+  'Denormalizado desde conversations. Lo completa el trigger messages_fill_workspace_id, asi que ningun insert tiene que acordarse. Existe para que los dashboards agrupen sin join; NO reemplaza al EXISTS de la policy, que es de donde sale el scope de leads.';
+
+-- Las filas que ya estaban (los de WhatsApp y los salientes de flow).
+UPDATE public.messages m
+   SET workspace_id = c.workspace_id
+  FROM public.conversations c
+ WHERE c.id = m.conversation_id
+   AND m.workspace_id IS NULL;
+
+-- NOT NULL solo si quedo todo completo. Mismo criterio que la 00038: una fila
+-- huerfana no puede bloquear la migracion entera, pero tiene que avisar.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.messages WHERE workspace_id IS NULL) THEN
+    ALTER TABLE public.messages ALTER COLUMN workspace_id SET NOT NULL;
+  ELSE
+    RAISE WARNING 'Quedan mensajes sin workspace_id: la columna queda opcional. Revisar filas huerfanas.';
+  END IF;
+END $$;
+
+-- Lo mantiene al dia sin que el codigo tenga que acordarse. Hace falta porque
+-- hay seis lugares que insertan en messages sin pasar por insertMessage
+-- (flow-engine/send.ts, los nodos send-message y comment-reply, ai-response y
+-- el envio manual de /api/v1/messages): confiar en que cada uno mande la
+-- columna es confiar en acordarse seis veces, y en la septima.
+CREATE OR REPLACE FUNCTION public.messages_set_workspace_id()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.workspace_id IS NULL THEN
+    SELECT c.workspace_id INTO NEW.workspace_id
+      FROM public.conversations c WHERE c.id = NEW.conversation_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- Un trigger corre con los privilegios del dueño de la tabla, no del invocante:
+-- revocar EXECUTE no lo afecta. Es lo que pide la 00048 para que el linter no
+-- la reporte.
+REVOKE ALL ON FUNCTION public.messages_set_workspace_id() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS messages_fill_workspace_id ON public.messages;
+CREATE TRIGGER messages_fill_workspace_id
+  BEFORE INSERT OR UPDATE OF conversation_id ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_set_workspace_id();
+
+-- ------------------------------------------------------------
+-- 2. Autoria del agente de IA
+-- ------------------------------------------------------------
+-- SIN foreign key a proposito: la tabla `agents` todavia no existe, se crea en
+-- el Bloque 2 de esta fase.
+--
+--   >>> BLOQUE 2: agregar aca la constraint cuando exista `agents`:
+--   >>> ALTER TABLE public.messages
+--   >>>   ADD CONSTRAINT messages_sent_by_agent_id_fkey
+--   >>>   FOREIGN KEY (sent_by_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL;
+--
+-- Y en esa misma migracion va `agent_run_id`, que tampoco se crea aca.
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS sent_by_agent_id uuid;
+
+COMMENT ON COLUMN public.messages.sent_by_agent_id IS
+  'Que agente de IA mando este mensaje. Sin FK todavia: la tabla agents se crea en el Bloque 2 de la Fase 3, que es donde hay que agregar la constraint.';
+
+-- ------------------------------------------------------------
+-- 3. Indices para los dashboards del Bloque 3
+-- ------------------------------------------------------------
+-- El grafico es un GROUP BY por dia y direccion dentro de un rango de fechas.
+-- Con estos dos, y la columna recien agregada, sale del indice sin tocar
+-- conversations.
+
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_created
+  ON public.messages(workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_direction_created
+  ON public.messages(workspace_id, direction, created_at);
+
+-- Para el "abrir el run que genero este mensaje" del Bloque 2, y para que
+-- desactivar un agente no obligue a un seq scan.
+CREATE INDEX IF NOT EXISTS idx_messages_sent_by_agent
+  ON public.messages(sent_by_agent_id) WHERE sent_by_agent_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 4. El interruptor del guardado de entrantes de Zernio
+-- ------------------------------------------------------------
+-- Un registro en la base y no una variable de entorno: apagarlo no puede
+-- depender de un deploy. Mismo patron que lead_scope_enabled (00018/00024).
+--
+-- Arranca en true: los mensajes no son retroactivos mas alla de los ~500 por
+-- conversacion que devuelve la API de Zernio, asi que cada dia apagado es
+-- historia que no se recupera. Si la confirmacion de los terminos de Zernio y
+-- Meta sale mal, se apaga desde Ajustes y se purga lo guardado.
+--
+-- Solo gobierna los entrantes de los canales de Zernio. Los de WhatsApp
+-- (Evolution) y los salientes se guardan siempre: para WhatsApp esta tabla es
+-- la unica fuente del hilo, apagarlo vaciaria la bandeja.
+--
+-- No hace falta policy nueva: workspaces_update ya es Owner/Admin (00018).
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS persist_zernio_inbound boolean NOT NULL DEFAULT true;
+
+COMMENT ON COLUMN public.workspaces.persist_zernio_inbound IS
+  'Si se guardan localmente los mensajes entrantes de los canales de Zernio (Instagram). Apagado, el receptor no inserta y el sistema se comporta como antes de la Fase 3. No afecta a WhatsApp ni a los salientes.';
+
+-- ============================================================
+-- MIGRATION 54: MESSAGES RLS
+-- ============================================================
+-- ============================================================================
+-- 00054 — RLS de messages con workspace_id, sin perder el scope de leads
+-- ============================================================================
+-- Las dos policies de messages vienen intactas desde la 00002 y dicen, las dos,
+-- lo mismo: "existe una conversacion con este id de la que sos miembro".
+--
+-- Ese EXISTS es mas importante de lo que parece, y hay que entender por que
+-- antes de tocarlo. Una subconsulta dentro de una POLICY pasa por la RLS de la
+-- tabla que consulta (esta documentado en la 00018, lineas 203-206). Asi que
+-- ese `select 1 from conversations` no devuelve cualquier conversacion:
+-- devuelve las que la policy conversations_select deja ver, que llama a
+-- can_see_conversation -> can_see_contact. De ahi sale, gratis y sin nombrarlo,
+-- TODO el scope de leads de los mensajes: un Member no ve los mensajes de un
+-- lead ajeno porque no ve la conversacion.
+--
+-- Por eso esta migracion NO reemplaza el EXISTS por un filtro sobre la columna
+-- workspace_id recien agregada. Cambiar
+--
+--     EXISTS (select 1 from conversations ...)     -- scope de leads incluido
+--   por
+--     public.is_workspace_member(workspace_id)     -- solo aislamiento
+--
+-- se leeria como una simplificacion equivalente y seria un agujero: cualquier
+-- Member pasaria a ver los mensajes de todos los leads del workspace. El
+-- aislamiento por workspace y el scope de leads no son la misma regla.
+--
+-- Lo que se hace es SUMAR la condicion, no cambiarla. Queda igual de estricta
+-- que antes mas una barrera extra, y el planner puede arrancar por el indice
+-- de workspace_id en vez de por el join.
+--
+-- UPDATE y DELETE siguen sin policy, y eso es deliberado: con RLS activa y sin
+-- policy, nadie que no sea service role puede tocar un mensaje. Es lo correcto
+-- —ninguna pantalla edita ni borra mensajes; el status lo escribe el servidor y
+-- el borrado es por cascade o por la purga de retencion— y es el mismo criterio
+-- que la 00046 dejo escrito para scheduled_jobs. Se documenta en un COMMENT
+-- para que se lea como una decision y no como un olvido.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- Los nombres viejos, de la 00002. Se borran por nombre exacto para no dejar
+-- dos policies permisivas conviviendo (en RLS se suman con OR: la vieja, mas
+-- laxa, ganaria y esta migracion no haria nada).
+DROP POLICY IF EXISTS "Users can view messages via conversation" ON public.messages;
+DROP POLICY IF EXISTS "Users can insert messages via conversation" ON public.messages;
+
+DROP POLICY IF EXISTS "messages_select" ON public.messages;
+CREATE POLICY "messages_select" ON public.messages
+  FOR SELECT USING (
+    public.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1 FROM public.conversations conv
+      WHERE conv.id = messages.conversation_id
+    )
+  );
+
+DROP POLICY IF EXISTS "messages_insert" ON public.messages;
+CREATE POLICY "messages_insert" ON public.messages
+  FOR INSERT WITH CHECK (
+    public.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1 FROM public.conversations conv
+      WHERE conv.id = messages.conversation_id
+    )
+  );
+
+COMMENT ON TABLE public.messages IS
+  'Mensajes de todos los canales. Desde la Fase 3 guarda tambien los entrantes de Zernio (Instagram), sujeto al interruptor workspaces.persist_zernio_inbound. SELECT e INSERT exigen ver la conversacion (de ahi sale el scope de leads) ademas de ser miembro del workspace. UPDATE y DELETE no tienen policy a proposito: solo el service role escribe estados y solo la purga borra.';
+
+-- ============================================================
+-- MIGRATION 55: MESSAGES RETENTION
+-- ============================================================
+-- ============================================================================
+-- 00055 — Retencion de los mensajes crudos (F20)
+-- ============================================================================
+-- Desde la 00053 se guardan los entrantes de todos los canales, incluido el
+-- contenido de los DMs de Instagram. Guardar texto de leads sin una fecha de
+-- vencimiento no es una tabla que crece: es un compromiso que no se esta
+-- cumpliendo. Esta migracion le pone el vencimiento.
+--
+-- **Politica: 12 meses para los mensajes crudos.** Los agregados que alimenten
+-- los dashboards (Bloque 3) son otra cosa y se conservan indefinidamente: son
+-- conteos por dia, canal y direccion, sin texto ni datos personales. La linea
+-- divisoria es esa — lo que tiene contenido del lead vence, lo que es un numero
+-- no.
+--
+-- Que NO borra esta purga, y por que:
+--
+--   - **Los mensajes de un contacto marcado "no contactar".** Esa marca dice
+--     que no le escribamos mas, no que borremos lo que dijo. Borrarlos ademas
+--     dejaria al operador sin el contexto de por que pidio la baja, que es
+--     justo lo que necesita para no volver a equivocarse. Siguen la retencion
+--     normal de 12 meses como cualquier otro.
+--
+--   - **Los mensajes de un contacto borrado.** No hacen falta reglas nuevas:
+--     messages.conversation_id y conversations.contact_id son ON DELETE
+--     CASCADE, asi que cuando purge_soft_deleted (00025) borra el contacto a
+--     los 30 dias del soft delete, sus mensajes se van con el. El borrado en
+--     cascada ya existia; lo que faltaba era el vencimiento por antiguedad.
+--
+-- Los mensajes no tienen deleted_at: el borrado es fisico. Es lo que
+-- corresponde cuando lo que se promete es borrar de verdad.
+--
+-- Idempotente.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.purge_old_messages(
+  p_retention_months integer DEFAULT 12,
+  p_batch_size       integer DEFAULT 5000
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cutoff  timestamptz := now() - make_interval(months => GREATEST(p_retention_months, 1));
+  v_deleted integer := 0;
+  v_batch   integer := 0;
+  v_rounds  integer := 0;
+BEGIN
+  -- Por lotes y no de un saque. Todo corre igual dentro de una transaccion
+  -- (plpgsql no puede commitear en el medio), asi que esto no libera el lock
+  -- entre vueltas; lo que evita es un unico DELETE enorme la primera vez que
+  -- corra sobre una tabla con anios de historia. A la escala de una agencia el
+  -- borrado diario es de unos pocos miles de filas y termina al instante.
+  LOOP
+    DELETE FROM public.messages
+    WHERE id IN (
+      SELECT id FROM public.messages
+      WHERE created_at < v_cutoff
+      ORDER BY created_at
+      LIMIT GREATEST(p_batch_size, 1)
+    );
+
+    GET DIAGNOSTICS v_batch = ROW_COUNT;
+    v_deleted := v_deleted + v_batch;
+    v_rounds  := v_rounds + 1;
+
+    EXIT WHEN v_batch = 0;
+
+    -- Freno de mano: 200 lotes son un millon de filas. Si un dia hiciera falta
+    -- borrar mas que eso de una vez, es una migracion pensada, no un cron que
+    -- se queda toda la noche tomando la tabla del inbox.
+    IF v_rounds >= 200 THEN
+      RAISE WARNING 'purge_old_messages corto en % lotes (% filas). Queda historia por borrar: volve a correrla.', v_rounds, v_deleted;
+      EXIT;
+    END IF;
+  END LOOP;
+
+  RETURN v_deleted;
+END;
+$$;
+
+COMMENT ON FUNCTION public.purge_old_messages(integer, integer) IS
+  'Borra los mensajes de mas de N meses (default 12). Politica de retencion de la Fase 3. No distingue canal ni contacto: un mensaje de un contacto "no contactar" vence igual que cualquier otro, y los de un contacto borrado ya se van por cascade con purge_soft_deleted. La llama el cron diario.';
+
+REVOKE ALL ON FUNCTION public.purge_old_messages(integer, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_old_messages(integer, integer) TO service_role;
+
+-- ------------------------------------------------------------
+-- El cron
+-- ------------------------------------------------------------
+-- SQL directo, sin dar la vuelta por HTTP: es puro SQL y no necesita nada de la
+-- app, igual que purge_soft_deleted. Dar la vuelta por la red solo sumaria un
+-- punto de falla.
+--
+-- 5:00. Las purgas van encadenadas cada 10 minutos desde las 4:00 y los seis
+-- slots de esa hora ya estan tomados (:00 borrados, :10 pg_net, :20 ventanas de
+-- envio, :30 trigger_fires, :40 automation_events, :50 notificaciones).
+
+DO $$
+BEGIN
+  PERFORM cron.unschedule('ssa-cron-purge-messages');
+EXCEPTION
+  WHEN OTHERS THEN NULL;  -- todavia no existia
+END $$;
+
+SELECT cron.schedule(
+  'ssa-cron-purge-messages',
+  '0 5 * * *',
+  $$SELECT public.purge_old_messages(12)$$
+);
+
+-- ============================================================
+-- MIGRATION 56: MESSAGES NATIVE ID
+-- ============================================================
+-- ============================================================================
+-- 00056 — Guardar tambien el id nativo de la plataforma
+-- ============================================================================
+-- `platform_message_id` guarda el id de ZERNIO. Es lo correcto y no cambia: es
+-- el que devuelve la API al enviar, el que usa la bandeja al leer y el unico
+-- que trae el endpoint de historial, asi que es el que hace funcionar al indice
+-- unico que evita los duplicados.
+--
+-- Pero el webhook trae DOS ids y hasta ahora se tiraba uno: `message.id` (el de
+-- Zernio) y `message.platformMessageId` (el que Meta le dio al mensaje en
+-- Instagram). Ese segundo es el unico handle que sirve para hablar con Meta
+-- —un pedido de borrado, un reclamo de soporte, una verificacion— y NO se puede
+-- recuperar despues: el endpoint de historial no lo devuelve, asi que lo que no
+-- se guarde cuando entra el webhook se pierde para siempre.
+--
+-- Por eso va en su propia columna y no adentro de `attachments`: attachments es
+-- la lista de media que la bandeja recorre para pintar imagenes, y meterle un
+-- metadato que no es un adjunto obliga a filtrarlo en cada lectura. Una columna
+-- nullable cuesta menos y se explica sola.
+--
+-- Queda en null en dos casos, los dos esperados:
+--   - Los mensajes que trae el backfill, porque la API no lo devuelve.
+--   - Los de WhatsApp, donde el id de Evolution ya es el nativo y esta en
+--     platform_message_id.
+--
+-- Sin indice: no se busca por esta columna, se la consulta cuando ya se tiene
+-- el mensaje. El dia que haya que buscar al reves, se agrega.
+--
+-- Idempotente.
+-- ============================================================================
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS platform_native_message_id text;
+
+COMMENT ON COLUMN public.messages.platform_native_message_id IS
+  'Id que le dio la plataforma al mensaje (Instagram via Meta), distinto del de platform_message_id, que es el de Zernio. Solo lo trae el webhook en vivo: el endpoint de historial no lo devuelve, asi que los mensajes del backfill lo tienen en null. Es el handle para pedidos de borrado o soporte contra Meta.';
+
+-- ============================================================
+-- MIGRATION 57: PURGE ZERNIO INBOUND
+-- ============================================================
+-- ============================================================================
+-- 00057 — Borrar todo lo persistido de los entrantes de Zernio
+-- ============================================================================
+-- El interruptor `workspaces.persist_zernio_inbound` existe por una duda que
+-- todavia no esta resuelta: si persistir el contenido de los DMs de Instagram
+-- entra dentro de los terminos de Zernio y de Meta para este tipo de cuenta.
+--
+-- Apagarlo frena el guardado hacia adelante, pero deja intacto todo lo que ya
+-- se guardo, y la purga por antiguedad (00055) recien lo alcanzaria a los 12
+-- meses. Si la respuesta llega y es que no, doce meses no es una respuesta.
+--
+-- Esta funcion es la otra mitad del interruptor: deja la base como si el
+-- guardado nunca se hubiera prendido.
+--
+-- Que borra, exactamente:
+--   - Mensajes ENTRANTES (direction = 'inbound')
+--   - de conversaciones cuyo canal es de Zernio (provider = 'zernio')
+--
+-- Que NO borra, y es a proposito:
+--   - Los SALIENTES de Zernio. Esos son nuestros, no del lead: los escribio el
+--     sistema o una persona del equipo, y son los que dejan ver en la bandeja
+--     que el bot contesto. Nunca estuvieron en discusion.
+--   - Nada de WhatsApp. Evolution no pasa por los terminos de Zernio, y para
+--     ese canal esta tabla es la unica fuente del hilo: borrarlo vaciaria la
+--     bandeja de WhatsApp.
+--
+-- No la agenda ningun cron, y no deberia: es una decision que se toma una vez,
+-- a mano, cuando hay una respuesta. Se corre con scripts/purge-zernio-inbound.mjs,
+-- que primero muestra cuanto va a borrar y solo escribe con --apply.
+--
+-- Con p_apply en false (el default) no borra: cuenta. El default es el lado
+-- seguro a proposito, para que una llamada sin argumentos nunca sea destructiva.
+--
+-- Idempotente.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.purge_zernio_inbound_messages(
+  p_workspace_id uuid,
+  p_apply        boolean DEFAULT false
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_count integer := 0;
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'purge_zernio_inbound_messages necesita un workspace: sin el, borraria de todos';
+  END IF;
+
+  IF NOT p_apply THEN
+    SELECT count(*) INTO v_count
+      FROM public.messages m
+      JOIN public.conversations c ON c.id = m.conversation_id
+      JOIN public.channels ch     ON ch.id = c.channel_id
+     WHERE m.workspace_id = p_workspace_id
+       AND m.direction = 'inbound'
+       AND ch.provider = 'zernio';
+    RETURN v_count;
+  END IF;
+
+  DELETE FROM public.messages m
+   USING public.conversations c, public.channels ch
+   WHERE c.id = m.conversation_id
+     AND ch.id = c.channel_id
+     AND m.workspace_id = p_workspace_id
+     AND m.direction = 'inbound'
+     AND ch.provider = 'zernio';
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) IS
+  'La otra mitad del interruptor persist_zernio_inbound: borra TODOS los mensajes entrantes ya guardados de los canales de Zernio, para cuando haya que deshacer la persistencia. No toca los salientes ni WhatsApp. Con p_apply en false solo cuenta. No la llama ningun cron: se corre a mano con scripts/purge-zernio-inbound.mjs.';
+
+REVOKE ALL ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) TO service_role;

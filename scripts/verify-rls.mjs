@@ -114,6 +114,19 @@ try {
   await svc.from("conversations").update({ assigned_to: member.id }).eq("id", conv.id);
   { const r = await seesContact(member); check(r.seen, "el Member ve el contacto donde esta asignado", r.error); }
   { const r = await seesConv(member); check(r.seen, "y ve su conversacion", r.error); }
+  // El caso positivo de los mensajes. Va pegado al negativo de mas arriba a
+  // proposito: desde la Fase 3 la policy de messages exige ADEMAS ser miembro
+  // del workspace (columna workspace_id, migracion 00054), y una condicion de
+  // mas puede negar acceso legitimo tan facil como una de menos. Sin esta
+  // linea, un workspace_id mal completado se veria como "todo verde".
+  {
+    await svc.from("messages").insert({
+      conversation_id: conv.id, direction: "inbound",
+      text: "zz-test-scope", platform_message_id: `zz-scope-${Date.now()}`, status: "delivered",
+    });
+    const { data: m } = await member.client.from("messages").select("id").eq("conversation_id", conv.id);
+    check((m ?? []).length > 0, "y SI ve los mensajes de su propia conversacion");
+  }
 
   // Bloque 4 (migracion 00028): ver la conversacion y ver al lead pasaron a ser
   // lo mismo. Lo primero que hay que fijar es que la unificacion no ESCONDA

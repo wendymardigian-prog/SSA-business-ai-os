@@ -13,6 +13,11 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    // Permite escribir la extension .ts en un import. Hace falta para los
+    // modulos que comparten los scripts de scripts/*.mjs, que corren con el
+    // type-stripping de Node y, como todo ESM, exigen la extension. Solo
+    // habilita la forma: el resto del codigo sigue importando sin extension.
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",

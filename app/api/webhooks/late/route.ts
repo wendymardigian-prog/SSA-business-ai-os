@@ -5,10 +5,15 @@
  * app y no en una Edge Function porque el motor de flows, las secuencias y (en
  * Fase 3) el agente de IA corren en Node: desde Deno no se pueden llamar.
  *
- * Los mensajes de Instagram NO se guardan en la tabla local: Zernio es la fuente
- * de verdad y la app le pide el hilo por API (ver app/api/v1/messages). Lo que se
- * guarda aca es el contacto y la conversacion, que es lo que hace aparecer el
- * chat en la bandeja.
+ * Desde la Fase 3 los mensajes entrantes SI se guardan en la tabla local, ademas
+ * del contacto y la conversacion. Es un dual-write: la bandeja sigue pidiendole
+ * el hilo a Zernio por API (ver app/api/v1/messages), y lo que cambio es que
+ * tambien se guarda una copia, porque el agente de IA lee el historial de la
+ * base y los dashboards se arman sobre la tabla local.
+ *
+ * El guardado se puede apagar sin deploy con workspaces.persist_zernio_inbound,
+ * mientras se confirman los terminos de Zernio y Meta (ver persistInboundMessage
+ * en lib/inbound.ts).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,6 +28,7 @@ import {
   applyOptOut,
   pauseSequencesOnReply,
   claimWebhookEvent,
+  persistInboundMessage,
   runInboundAutomation,
   upsertConversation,
 } from "@/lib/inbound";
@@ -253,7 +259,35 @@ async function processMessageEvent(
 
   if (!conversation) return;
 
-  // Messages are stored by Zernio (source of truth) — no local insert needed.
+  // ── Guardado del mensaje (F19) ───────────────────────────────────────────
+  // Va antes de las automatizaciones para que el agente de la Fase 3 y el nodo
+  // AI Response encuentren el mensaje al armar el historial: si se guardara
+  // despues, el turno que lo disparo seria el unico que no lo ve.
+  //
+  // Se guardan los DOS ids del mensaje, en columnas distintas:
+  //
+  //   - platform_message_id lleva el de ZERNIO (msg.id). Es el que deduplica:
+  //     el mismo espacio de ids que usa recordSend al enviar y el unico que
+  //     devuelve el endpoint de historial, asi que el indice unico funciona.
+  //   - platform_native_message_id lleva el de Meta (msg.platformMessageId).
+  //     No lo usa nada del sistema, pero es el unico handle para un pedido de
+  //     borrado o un reclamo de soporte contra Meta, y el endpoint de historial
+  //     no lo devuelve: si no se guarda ahora, se pierde para siempre.
+  //
+  // attachments va tal cual: son links a la media, no el archivo.
+  await persistInboundMessage({
+    supabase,
+    channel,
+    conversationId: conversation.id,
+    text: msg.text ?? null,
+    platformMessageId: msg.id ?? null,
+    platformNativeMessageId: msg.platformMessageId ?? null,
+    attachments: msg.attachments?.length ? msg.attachments : null,
+    createdAt: msg.sentAt || new Date().toISOString(),
+    quickReplyPayload: metadata?.quickReplyPayload ?? null,
+    postbackPayload: metadata?.postbackPayload ?? null,
+    callbackData: metadata?.callbackData ?? null,
+  });
 
   // ── Auto-pausa de secuencias (F11) ────────────────────────────────────────
   // El lead contesto: el seguimiento automatico de este canal se frena. Va

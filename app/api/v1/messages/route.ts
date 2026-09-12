@@ -21,10 +21,20 @@ const THREAD_PAGE_SIZE = 100;
  * GET /api/v1/messages?conversationId=...
  *
  * De donde sale el hilo depende del canal:
- * - Zernio (Instagram, ...): Zernio es la fuente de verdad, se le pide por API
- *   y la tabla local messages queda vacia para esos canales.
+ * - Zernio (Instagram, ...): se le pide por API a Zernio, que es la fuente de
+ *   verdad de la LECTURA.
  * - Evolution (WhatsApp): no hay una API equivalente donde vivan los mensajes,
- *   asi que la fuente de verdad es nuestra tabla messages, que llena el webhook.
+ *   asi que el hilo sale de nuestra tabla messages, que llena el webhook.
+ *
+ * Desde la Fase 3 la tabla local ya NO queda vacia para los canales de Zernio:
+ * el receptor guarda ahi una copia de cada entrante (dual-write). Pero la
+ * lectura sigue viniendo de Zernio a proposito, hasta tener confianza en la
+ * data local. Es un cambio de una linea el dia que se decida moverla, y hasta
+ * entonces la bandeja se comporta exactamente como siempre.
+ *
+ * Consecuencia a tener presente si algun dia se mueve: el hilo de Zernio trae
+ * los salientes mandados desde cualquier lado (incluida la app de Instagram),
+ * mientras que la tabla local solo tiene los que salieron por el sistema.
  */
 export async function GET(request: NextRequest) {
   const supabase = await createClient();

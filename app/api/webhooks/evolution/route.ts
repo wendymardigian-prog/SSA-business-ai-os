@@ -10,9 +10,14 @@
  * (lib/evolution-client.ts). Sin eso, cualquiera que descubra la URL podria
  * inyectar mensajes falsos en la bandeja.
  *
- * A diferencia de Instagram, los mensajes de WhatsApp SI se guardan en la tabla
- * local: Evolution no tiene una API donde vivan, asi que nuestra base es la
- * fuente de verdad del hilo.
+ * Desde la Fase 3 los mensajes de todos los canales se guardan en la tabla
+ * local. Lo que sigue distinguiendo a WhatsApp es de donde se LEE: Evolution no
+ * tiene una API donde vivan los mensajes, asi que nuestra base es la fuente de
+ * verdad del hilo (en Instagram la bandeja se lo sigue pidiendo a Zernio).
+ *
+ * Por eso mismo el guardado de WhatsApp no pasa por el interruptor
+ * persist_zernio_inbound: apagarlo aca no seria "no guardar", seria vaciar la
+ * bandeja.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -242,6 +247,11 @@ async function processMessage(
   // por WhatsApp Web o desde el telefono, el hilo de la bandeja tiene que
   // mostrarlo. El indice unico (conversation_id, platform_message_id) evita
   // duplicar el eco del mensaje que ya guardamos al enviarlo desde la app.
+  //
+  // No pasa por persistInboundMessage, que es solo para entrantes y ademas
+  // consulta el interruptor: este insert cubre las dos direcciones, y para
+  // WhatsApp esta tabla es la unica fuente del hilo. Apagar el guardado aca no
+  // seria "no guardar", seria vaciar la bandeja.
   await insertMessage({
     supabase,
     conversationId: conversation.id,
@@ -250,6 +260,7 @@ async function processMessage(
     platformMessageId: messageId,
     attachments: text ? null : (data?.message ?? null),
     createdAt: at,
+    workspaceId: channel.workspace_id,
   });
 
   // Lo que escribimos nosotros no se evalua: ni marca opt-out ni dispara flows.

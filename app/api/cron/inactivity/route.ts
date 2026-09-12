@@ -18,8 +18,21 @@ import { executeFlow } from "@/lib/flow-engine/engine";
  *
  * Como se decide que una conversacion esta inactiva: por
  * contacts.last_interaction_at, que es cuando el lead interactuo por ultima
- * vez. No sirve mirar la tabla `messages`, porque los mensajes entrantes de
- * Instagram no se guardan localmente y el conteo daria siempre cero.
+ * vez.
+ *
+ * Desde la Fase 3 los entrantes de Instagram SI se guardan, asi que mirar la
+ * tabla `messages` ya seria posible. Se sigue usando last_interaction_at, y es
+ * una eleccion, no una herencia:
+ *
+ *   1. Mide lo que el trigger pregunta —cuando interactuo el lead por ultima
+ *      vez—, no "cuando entro el ultimo mensaje", que se le parece pero no es
+ *      lo mismo.
+ *   2. Lo llenan los dos receptores aunque el guardado de mensajes este
+ *      apagado (workspaces.persist_zernio_inbound). Si este cron contara
+ *      mensajes, apagar ese interruptor romperia una automatizacion que hoy
+ *      funciona, y no tienen por que estar atados.
+ *   3. Es una columna indexada de contacts; contar mensajes es mas caro y no
+ *      responde mejor.
  *
  * Se dispara una sola vez por conversacion y por ventana. Lo garantiza el
  * indice unico de trigger_fires con una clave que incluye la ventana: dos

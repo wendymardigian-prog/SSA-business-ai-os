@@ -13,6 +13,7 @@ import {
   pauseSequencesOnReply,
   handleGlobalKeywords,
   insertMessage,
+  persistInboundMessage,
   runInboundAutomation,
   upsertConversation,
 } from "./inbound";
@@ -204,6 +205,121 @@ describe("insertMessage", () => {
         text: "hola", platformMessageId: "WA-1", createdAt: "2026-09-08T10:00:00Z",
       })
     ).resolves.toBe(false);
+  });
+});
+
+describe("persistInboundMessage", () => {
+  const zernio = { id: "ch-1", workspace_id: "ws-1", provider: "zernio" as const };
+  const evolution = { id: "ch-2", workspace_id: "ws-1", provider: "evolution" as const };
+  const base = {
+    conversationId: "cv-1",
+    text: "hola",
+    platformMessageId: "zernio-msg-1",
+    createdAt: "2026-09-11T10:00:00Z",
+  };
+
+  it("guarda el entrante de Zernio cuando el interruptor esta prendido", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+    });
+
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
+      true,
+    );
+    expect(calls.inserts).toHaveLength(1);
+    expect(calls.inserts[0].values).toMatchObject({
+      conversation_id: "cv-1",
+      direction: "inbound",
+      platform_message_id: "zernio-msg-1",
+      workspace_id: "ws-1",
+    });
+  });
+
+  it("con el interruptor apagado no guarda nada: el sistema queda como antes", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: false } },
+    });
+
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
+      false,
+    );
+    expect(calls.inserts).toHaveLength(0);
+  });
+
+  it("WhatsApp no depende del interruptor: esta tabla es su unica fuente del hilo", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: false } },
+    });
+
+    await expect(
+      persistInboundMessage({ supabase: client, channel: evolution, ...base }),
+    ).resolves.toBe(true);
+    expect(calls.inserts).toHaveLength(1);
+  });
+
+  it("un duplicado no es un error: lo frena el indice unico y el receptor sigue", async () => {
+    const { client } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+      insertError: { code: "23505", message: "duplicate key" },
+    });
+
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
+      false,
+    );
+  });
+
+  it("si el insert falla, no lanza: guardar no puede tumbar la recepcion", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+      insertError: { code: "42501", message: "permission denied" },
+    });
+
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
+      false,
+    );
+  });
+
+  it("si la base explota al leer el interruptor tampoco lanza", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = {
+      from() {
+        throw new Error("conexion caida");
+      },
+    } as unknown as Parameters<typeof persistInboundMessage>[0]["supabase"];
+
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
+      false,
+    );
+  });
+
+  it("guarda los dos ids: el de Zernio deduplica, el nativo es el handle contra Meta", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+    });
+
+    await persistInboundMessage({
+      supabase: client,
+      channel: zernio,
+      ...base,
+      platformNativeMessageId: "aWdfZG1fMTc4NDI",
+    });
+
+    expect(calls.inserts[0].values).toMatchObject({
+      platform_message_id: "zernio-msg-1",
+      platform_native_message_id: "aWdfZG1fMTc4NDI",
+    });
+  });
+
+  it("guarda el link de la media, no el archivo", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+    });
+    const attachments = [{ type: "image", url: "https://cdn.example/foto.jpg" }];
+
+    await persistInboundMessage({ supabase: client, channel: zernio, ...base, attachments });
+
+    expect(calls.inserts[0].values).toMatchObject({ attachments });
   });
 });
 
