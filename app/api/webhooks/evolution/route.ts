@@ -242,6 +242,11 @@ async function processMessage(
   // por WhatsApp Web o desde el telefono, el hilo de la bandeja tiene que
   // mostrarlo. El indice unico (conversation_id, platform_message_id) evita
   // duplicar el eco del mensaje que ya guardamos al enviarlo desde la app.
+  //
+  // No pasa por persistInboundMessage, que es solo para entrantes y ademas
+  // consulta el interruptor: este insert cubre las dos direcciones, y para
+  // WhatsApp esta tabla es la unica fuente del hilo. Apagar el guardado aca no
+  // seria "no guardar", seria vaciar la bandeja.
   await insertMessage({
     supabase,
     conversationId: conversation.id,
@@ -250,6 +255,7 @@ async function processMessage(
     platformMessageId: messageId,
     attachments: text ? null : (data?.message ?? null),
     createdAt: at,
+    workspaceId: channel.workspace_id,
   });
 
   // Lo que escribimos nosotros no se evalua: ni marca opt-out ni dispara flows.
