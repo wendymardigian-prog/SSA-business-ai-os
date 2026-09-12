@@ -897,7 +897,10 @@ export interface Database {
           quick_reply_payload: string | null;
           postback_payload: string | null;
           callback_data: string | null;
+          /** Id de Zernio (o de Evolution). Es el que deduplica: ver migracion 00019. */
           platform_message_id: string | null;
+          /** Id nativo de la plataforma (Meta). Solo lo trae el webhook en vivo (migracion 00056). */
+          platform_native_message_id: string | null;
           sent_by_flow_id: string | null;
           sent_by_node_id: string | null;
           sent_by_user_id: string | null;
@@ -918,6 +921,7 @@ export interface Database {
           postback_payload?: string | null;
           callback_data?: string | null;
           platform_message_id?: string | null;
+          platform_native_message_id?: string | null;
           sent_by_flow_id?: string | null;
           sent_by_node_id?: string | null;
           sent_by_user_id?: string | null;

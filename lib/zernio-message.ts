@@ -33,6 +33,8 @@ export interface InboxMessage {
   postback_payload: null;
   callback_data: null;
   platform_message_id: string | null;
+  /** El endpoint de historial de Zernio no devuelve el id nativo de la plataforma. */
+  platform_native_message_id: null;
   sent_by_flow_id: null;
   sent_by_node_id: null;
   sent_by_user_id: null;
@@ -152,6 +154,8 @@ export function toInboxMessage(raw: unknown, conversationId: string): InboxMessa
     postback_payload: null,
     callback_data: null,
     platform_message_id: asString(record.id) || null,
+    // El endpoint de historial no devuelve el id nativo de la plataforma.
+    platform_native_message_id: null,
     sent_by_flow_id: null,
     sent_by_node_id: null,
     sent_by_user_id: null,

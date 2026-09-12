@@ -293,6 +293,24 @@ describe("persistInboundMessage", () => {
     );
   });
 
+  it("guarda los dos ids: el de Zernio deduplica, el nativo es el handle contra Meta", async () => {
+    const { client, calls } = fakeDb({
+      select: { workspaces: { persist_zernio_inbound: true } },
+    });
+
+    await persistInboundMessage({
+      supabase: client,
+      channel: zernio,
+      ...base,
+      platformNativeMessageId: "aWdfZG1fMTc4NDI",
+    });
+
+    expect(calls.inserts[0].values).toMatchObject({
+      platform_message_id: "zernio-msg-1",
+      platform_native_message_id: "aWdfZG1fMTc4NDI",
+    });
+  });
+
   it("guarda el link de la media, no el archivo", async () => {
     const { client, calls } = fakeDb({
       select: { workspaces: { persist_zernio_inbound: true } },

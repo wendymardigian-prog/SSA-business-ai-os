@@ -154,12 +154,19 @@ export async function upsertConversation({
  * evita duplicar el eco de un mensaje que ya guardamos al enviarlo, y lo que
  * hace que el backfill se pueda correr dos veces sin miedo.
  *
- * OJO con el id que se le pasa en platformMessageId: para los canales de Zernio
- * tiene que ser el id de ZERNIO (`message.id`), no el nativo de la plataforma
- * (`message.platformMessageId`). Es el que ya usan recordSend al enviar y
- * toInboxMessage al leer, y es el unico que devuelve el endpoint de historial
- * que usa el backfill. Mezclar los dos espacios de ids deja el indice unico sin
- * efecto: el mismo mensaje entraria dos veces con dos ids distintos.
+ * Los mensajes de Zernio tienen DOS ids y se guardan los dos, en columnas
+ * distintas, porque sirven para cosas distintas:
+ *
+ * - `platformMessageId` lleva el id de ZERNIO (`message.id`). Es el que
+ *   deduplica: el mismo que usan recordSend al enviar y toInboxMessage al leer,
+ *   y el unico que devuelve el endpoint de historial del backfill. Mezclar los
+ *   dos espacios de ids dejaria el indice unico sin efecto — el mismo mensaje
+ *   entraria dos veces con dos ids distintos.
+ * - `platformNativeMessageId` lleva el de la plataforma
+ *   (`message.platformMessageId`, el que asigna Meta). No lo usa nada del
+ *   sistema, pero es el unico handle para un pedido de borrado o un reclamo de
+ *   soporte contra Meta, y el backfill no lo devuelve: lo que no se guarde
+ *   cuando entra el webhook no se recupera nunca.
  */
 export async function insertMessage({
   supabase,
@@ -175,6 +182,7 @@ export async function insertMessage({
   quickReplyPayload = null,
   postbackPayload = null,
   callbackData = null,
+  platformNativeMessageId = null,
 }: {
   supabase: Db;
   conversationId: string;
@@ -189,12 +197,14 @@ export async function insertMessage({
   quickReplyPayload?: string | null;
   postbackPayload?: string | null;
   callbackData?: string | null;
+  platformNativeMessageId?: string | null;
 }): Promise<boolean> {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     direction,
     text,
     platform_message_id: platformMessageId,
+    platform_native_message_id: platformNativeMessageId,
     attachments: attachments as never,
     sent_by_user_id: sentByUserId,
     quick_reply_payload: quickReplyPayload,
@@ -258,6 +268,7 @@ export async function persistInboundMessage({
   quickReplyPayload = null,
   postbackPayload = null,
   callbackData = null,
+  platformNativeMessageId = null,
 }: {
   supabase: Db;
   channel: Pick<ChannelRow, "id" | "workspace_id" | "provider">;
@@ -269,6 +280,7 @@ export async function persistInboundMessage({
   quickReplyPayload?: string | null;
   postbackPayload?: string | null;
   callbackData?: string | null;
+  platformNativeMessageId?: string | null;
 }): Promise<boolean> {
   try {
     if (channel.provider === "zernio") {
@@ -297,6 +309,7 @@ export async function persistInboundMessage({
       quickReplyPayload,
       postbackPayload,
       callbackData,
+      platformNativeMessageId,
     });
   } catch (err) {
     // Nunca lanza: guardar el mensaje no puede hacer fallar la recepcion.

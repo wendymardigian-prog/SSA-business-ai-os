@@ -264,9 +264,15 @@ async function processMessageEvent(
   // AI Response encuentren el mensaje al armar el historial: si se guardara
   // despues, el turno que lo disparo seria el unico que no lo ve.
   //
-  // El id que se guarda es el de ZERNIO (msg.id), no msg.platformMessageId: es
-  // el mismo espacio de ids que usa recordSend al enviar y el que devuelve el
-  // endpoint de historial, asi que el indice unico puede hacer su trabajo.
+  // Se guardan los DOS ids del mensaje, en columnas distintas:
+  //
+  //   - platform_message_id lleva el de ZERNIO (msg.id). Es el que deduplica:
+  //     el mismo espacio de ids que usa recordSend al enviar y el unico que
+  //     devuelve el endpoint de historial, asi que el indice unico funciona.
+  //   - platform_native_message_id lleva el de Meta (msg.platformMessageId).
+  //     No lo usa nada del sistema, pero es el unico handle para un pedido de
+  //     borrado o un reclamo de soporte contra Meta, y el endpoint de historial
+  //     no lo devuelve: si no se guarda ahora, se pierde para siempre.
   //
   // attachments va tal cual: son links a la media, no el archivo.
   await persistInboundMessage({
@@ -275,6 +281,7 @@ async function processMessageEvent(
     conversationId: conversation.id,
     text: msg.text ?? null,
     platformMessageId: msg.id ?? null,
+    platformNativeMessageId: msg.platformMessageId ?? null,
     attachments: msg.attachments?.length ? msg.attachments : null,
     createdAt: msg.sentAt || new Date().toISOString(),
     quickReplyPayload: metadata?.quickReplyPayload ?? null,
