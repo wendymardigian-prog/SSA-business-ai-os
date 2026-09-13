@@ -71,7 +71,10 @@ function fakeDb(prices: PriceRow[] = [], opts: { failInsert?: boolean } = {}) {
       },
       then: (resolve: (v: unknown) => unknown) => {
         if (pendingUpdate) updates.push(pendingUpdate);
-        return resolve({ data: [{ id: "stale-1" }], error: null });
+        return resolve({
+          data: [{ id: "stale-1", source: "agent", workspace_id: "ws-1", conversation_id: "cv-1" }],
+          error: null,
+        });
       },
     };
     return builder;
@@ -275,7 +278,7 @@ describe("runs colgados", () => {
     const { client, updates } = fakeDb([]);
     const closed = await closeStaleRuns(client, { now: new Date("2026-09-20T12:00:00Z") });
 
-    expect(closed).toBe(1);
+    expect(closed).toEqual([{ id: "stale-1", source: "agent", workspace_id: "ws-1", conversation_id: "cv-1" }]);
     expect(updates[0]).toMatchObject({ status: "error", status_detail: "stale_running" });
   });
 });

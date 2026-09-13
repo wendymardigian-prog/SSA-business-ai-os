@@ -672,6 +672,39 @@ try {
     });
     check(!!eFiltAjeno, "la busqueda filtrada contra OTRO workspace se rechaza");
 
+    // El filtro de acceso del agente, ADENTRO del SQL (00062). Tres documentos
+    // con el MISMO embedding (misma similitud): la unica diferencia entre ellos
+    // es el tag y el flag internal_only, asi que lo que filtra es la consulta.
+    const docBase = { workspace_id: ws.id, status: "ready", chunk_count: 1 };
+    const { data: kbDocs } = await svc.from("knowledge_base").insert([
+      { ...docBase, title: "zz-test publico ventas", tags: ["ventas"], internal_only: false },
+      { ...docBase, title: "zz-test interno ventas", tags: ["ventas"], internal_only: true },
+      { ...docBase, title: "zz-test otro tag", tags: ["equipo"], internal_only: false },
+    ]).select("id, title");
+    const byTitle = Object.fromEntries((kbDocs ?? []).map((d) => [d.title, d.id]));
+    await svc.from("knowledge_chunks").insert((kbDocs ?? []).map((d) => ({
+      workspace_id: ws.id, document_id: d.id, chunk_index: 0, content: d.title, embedding: vec,
+    })));
+    const buscar = (tags) => svc.rpc("match_knowledge_chunks_filtered", {
+      p_workspace_id: ws.id, p_query_embedding: vec, p_match_count: 10,
+      p_min_similarity: 0, p_tags: tags, p_include_internal: false,
+    });
+    const { data: todos, error: eTodos } = await buscar(null);
+    const idsTodos = (todos ?? []).map((r) => r.document_id);
+    check(!eTodos && !idsTodos.includes(byTitle["zz-test interno ventas"]),
+      "un documento internal_only NO sale de la busqueda del agente", eTodos?.message);
+    check(idsTodos.includes(byTitle["zz-test publico ventas"]) && idsTodos.includes(byTitle["zz-test otro tag"]),
+      "sin tags configurados, trae toda la base salvo lo interno");
+    const { data: ventas } = await buscar(["ventas"]);
+    const idsVentas = (ventas ?? []).map((r) => r.document_id);
+    check(idsVentas.length === 1 && idsVentas[0] === byTitle["zz-test publico ventas"],
+      "con tags configurados, solo trae documentos de esos tags (y nunca el interno)");
+    const { data: original } = await svc.rpc("match_knowledge_chunks", {
+      p_workspace_id: ws.id, p_query_embedding: vec, p_match_count: 10, p_min_similarity: 0,
+    });
+    check((original ?? []).length === 3, "la busqueda original (00049) sigue intacta para los scripts de siempre");
+    await svc.from("knowledge_base").delete().eq("workspace_id", ws.id);
+
     // La cola de jobs sigue siendo solo del service role
     const { error: ePush } = await admin.client.rpc("push_debounced_job", {
       p_type: "agent_burst", p_dedupe_key: "zz-test", p_payload: {}, p_run_at: new Date().toISOString(), p_deadline: null,

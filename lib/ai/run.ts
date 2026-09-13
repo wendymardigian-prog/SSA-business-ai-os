@@ -364,10 +364,17 @@ export async function recordRunOutcome(
  * Cierra en `error` los runs que quedaron abiertos: el proceso murio a mitad
  * del turno. Lo corre el cron del agente.
  */
+export interface StaleRun {
+  id: string;
+  source: AgentRunSource;
+  workspace_id: string;
+  conversation_id: string | null;
+}
+
 export async function closeStaleRuns(
   supabase: Db,
   { olderThanMinutes = 10, now = new Date() }: { olderThanMinutes?: number; now?: Date } = {},
-): Promise<number> {
+): Promise<StaleRun[]> {
   const cutoff = new Date(now.getTime() - olderThanMinutes * 60_000).toISOString();
   const { data, error } = await supabase
     .from("agent_runs")
@@ -379,11 +386,11 @@ export async function closeStaleRuns(
     })
     .eq("status", "running")
     .lt("created_at", cutoff)
-    .select("id");
+    .select("id, source, workspace_id, conversation_id");
 
   if (error) {
     console.error("[ai-run] no pude cerrar runs colgados:", error.message);
-    return 0;
+    return [];
   }
-  return data?.length ?? 0;
+  return (data ?? []) as StaleRun[];
 }

@@ -15,6 +15,8 @@ export const NOTIFICATION_TYPES = [
   "channel_reconnected",
   "channel_error",
   "sequence_collision",
+  "agent_error",
+  "agent_spend_limit",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -65,6 +67,19 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Secuencias en colision",
     tone: "warning",
     entity: "sequence_enrollment",
+  },
+  /** El agente no pudo responder y el lead puede estar sin respuesta (Fase 3). */
+  agent_error: {
+    type: "agent_error",
+    label: "El agente no pudo responder",
+    tone: "warning",
+    entity: "conversation",
+  },
+  /** Se alcanzo un tope de gasto de IA (Fase 3). */
+  agent_spend_limit: {
+    type: "agent_spend_limit",
+    label: "Tope de gasto de IA",
+    tone: "warning",
   },
 };
 
