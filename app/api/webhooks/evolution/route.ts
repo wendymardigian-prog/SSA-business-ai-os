@@ -41,6 +41,7 @@ import {
   upsertConversation,
   type ChannelRow,
 } from "@/lib/inbound";
+import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 
 interface EvolutionPayload {
   event?: string;
@@ -285,7 +286,7 @@ async function processMessage(
   });
   if (optOut.matched) return;
 
-  await runInboundAutomation({
+  const automation = await runInboundAutomation({
     supabase,
     channel,
     contactId: contact.contactId,
@@ -296,5 +297,17 @@ async function processMessage(
       text: text || undefined,
       sender: { id: phone, name: data?.pushName || undefined },
     },
+  });
+
+  // ── Agente de IA (Fase 3) ─────────────────────────────────────────────────
+  // Despues de las automatizaciones, nunca antes: si un flow reclamo el
+  // mensaje, el agente se abstiene y lo deja registrado. Es el unico lugar que
+  // agenda un turno del agente.
+  await maybeScheduleAgentTurn(supabase, {
+    workspaceId: channel.workspace_id,
+    channelId: channel.id,
+    contactId: contact.contactId,
+    conversationId: conversation.id,
+    automation,
   });
 }

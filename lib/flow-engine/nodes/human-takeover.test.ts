@@ -76,6 +76,8 @@ describe("nodo Human Takeover (F18)", () => {
     expect(result).toBe("pause");
     expect(updates.find((u) => u.table === "conversations")?.values).toMatchObject({
       is_automation_paused: true,
+      // Fase 3: derivar a una persona calla tambien al agente de IA.
+      agent_enabled: false,
     });
     const session = updates.find((u) => u.table === "flow_sessions")?.values;
     expect(session?.status).toBe("completed");

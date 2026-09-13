@@ -28,7 +28,9 @@ export type AiProviderProblem =
   | "no_provider"
   | "no_key"
   | "unsupported_provider"
-  | "read_failed";
+  | "read_failed"
+  /** Se pidio un proveedor puntual y no esta conectado (resolvedor estricto). */
+  | "provider_unavailable";
 
 export interface AiModelResult {
   ok: boolean;
@@ -104,6 +106,74 @@ export async function getWorkspaceModel(
   const chosen =
     rows.find((r) => r.provider === options.preferredProvider) ?? rows[0];
 
+  return instantiateModel(supabase, workspaceId, chosen, options.modelId);
+}
+
+/**
+ * Resolvedor ESTRICTO, para el agente conversacional.
+ *
+ * getWorkspaceModel cae al primer proveedor conectado si el pedido no esta:
+ * para un flow "mejor contestar con otro modelo que no contestar". Para el
+ * agente eso es peligroso: con un modelo de respaldo configurado, el
+ * "respaldo" podria devolver el mismo proveedor que acaba de fallar, y el
+ * operador veria en la pantalla un modelo que no es el que corre.
+ *
+ * Aca, si el proveedor pedido no esta conectado, se falla con
+ * provider_unavailable. Nunca se reemplaza en silencio.
+ */
+export async function getExactWorkspaceModel(
+  workspaceId: string,
+  options: { provider: string; modelId: string; supabase?: SupabaseClient },
+): Promise<AiModelResult> {
+  const supabase = options.supabase ?? (await createServiceClient());
+
+  const { data, error } = await supabase
+    .from("integration_configs")
+    .select("provider, vault_secret_name, config")
+    .eq("workspace_id", workspaceId)
+    .eq("type", "ai_provider")
+    .eq("provider", options.provider)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[ai] no pude leer el proveedor pedido:", error.message);
+    return {
+      ok: false,
+      problem: "read_failed",
+      message: "No se pudo leer la configuracion de IA del workspace.",
+    };
+  }
+
+  const row = data as AiIntegrationRow | null;
+  const definition = row ? getProvider(row.provider) : undefined;
+  if (!row || (definition && !isTextProvider(definition))) {
+    return {
+      ok: false,
+      problem: "provider_unavailable",
+      message: `El proveedor "${options.provider}" no esta conectado. Se configura en Ajustes > Integraciones.`,
+    };
+  }
+
+  if (!options.modelId) {
+    return {
+      ok: false,
+      problem: "unsupported_provider",
+      message: "Falta elegir el modelo.",
+    };
+  }
+
+  return instantiateModel(supabase, workspaceId, row, options.modelId);
+}
+
+/** Lee la key de Vault y arma el modelo. La key no sale de esta funcion. */
+async function instantiateModel(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  chosen: AiIntegrationRow,
+  requestedModelId: string | undefined,
+): Promise<AiModelResult> {
+
   const definition = getProvider(chosen.provider);
   if (!definition) {
     return {
@@ -138,7 +208,7 @@ export async function getWorkspaceModel(
   }
 
   const modelId =
-    options.modelId ||
+    requestedModelId ||
     (chosen.config?.default_model as string | undefined) ||
     defaultModelFor(chosen.provider);
 

@@ -9,6 +9,10 @@ import { createNotification } from "@/lib/notifications/create";
  * la misma que mira runInboundAutomation para no meterse cuando un humano tomo
  * la conversacion.
  *
+ * Fase 3: apaga tambien el agente de IA de la conversacion (agent_enabled).
+ * is_automation_paused gobierna los flows; el silencio del agente lo da su
+ * propio toggle. Derivar a una persona tiene que callar a los dos.
+ *
  * Y avisa (F18). Sin el aviso, derivar a una persona significaba que la
  * conversacion se quedaba esperando hasta que alguien la encontrara mirando la
  * bandeja: justo lo contrario de lo que el nodo promete.
@@ -20,7 +24,7 @@ export const humanTakeoverNode: NodeDefinition<unknown> = {
   async execute({ supabase, context, sessionId }: NodeExecutionArgs<unknown>) {
     await supabase
       .from("conversations")
-      .update({ is_automation_paused: true })
+      .update({ is_automation_paused: true, agent_enabled: false })
       .eq("id", context.conversationId);
 
     await supabase

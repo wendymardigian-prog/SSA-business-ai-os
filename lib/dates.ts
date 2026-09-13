@@ -227,3 +227,46 @@ export function formatDateOnly(iso: string | null | undefined, timeZone: string 
     year: "numeric",
   }).format(date);
 }
+
+/**
+ * La zona del negocio para los cortes del agente de IA: dia y mes de los topes
+ * de gasto, y el horario de atencion. Es la que fija el documento de la Fase 3.
+ *
+ * OJO: no coincide con APP_TIMEZONE, que es la que usan desde antes los filtros
+ * de fecha de la bandeja. Unificarlas es una decision pendiente (o, mejor, una
+ * columna workspaces.timezone); mientras tanto cada uso declara la suya.
+ */
+export const BUSINESS_TIMEZONE = "America/Costa_Rica";
+
+/** El instante UTC en que empezo el dia de `now` en la zona. */
+export function startOfZonedDay(now: Date = new Date(), timeZone: string = BUSINESS_TIMEZONE): Date {
+  const { year, month, day } = civilDate(now, timeZone);
+  return startOfDay(year, month, day, timeZone);
+}
+
+/** El instante UTC en que empezo el mes de `now` en la zona. */
+export function startOfZonedMonth(now: Date = new Date(), timeZone: string = BUSINESS_TIMEZONE): Date {
+  const { year, month } = civilDate(now, timeZone);
+  return startOfDay(year, month, 1, timeZone);
+}
+
+/**
+ * Dia de la semana (0 = domingo) y minutos desde la medianoche en la zona.
+ * Lo usa el horario de atencion del agente.
+ */
+export function zonedClock(
+  now: Date = new Date(),
+  timeZone: string = BUSINESS_TIMEZONE,
+): { weekday: number; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
+  const hour = Number(get("hour")) % 24;
+  return { weekday, minutes: hour * 60 + Number(get("minute")) };
+}

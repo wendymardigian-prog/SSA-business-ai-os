@@ -7,6 +7,7 @@
  */
 
 import { registerConditionField, registerConditionOperator } from "./registry";
+import { agentStateForConversation } from "@/lib/agent/state";
 
 // ------------------------------------------------------------
 // Operadores
@@ -130,5 +131,25 @@ registerConditionField({
       .eq("sequences.workspace_id", context.workspaceId)
       .limit(1);
     return String((data?.length ?? 0) > 0);
+  },
+});
+
+/**
+ * ¿El agente de IA esta activo en esta conversacion? (Fase 3, F32)
+ *
+ * "true" si esta encendido, atiende el canal, tiene el toggle prendido y no
+ * esta pausado. Es el guard dentro de un flow: "seguir solo si el agente esta
+ * apagado" es una Condition con agent_active igual a false.
+ */
+registerConditionField({
+  prefix: "agent_active",
+  label: "El agente de IA esta activo",
+  resolve: async ({ supabase, context }) => {
+    if (!context.conversationId) return "false";
+    const state = await agentStateForConversation(supabase, {
+      workspaceId: context.workspaceId,
+      conversationId: context.conversationId,
+    });
+    return String(state.state === "active");
   },
 });

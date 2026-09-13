@@ -36,6 +36,7 @@ export async function logAudit({
   changes,
   metadata,
   performedBy = null,
+  performedByAgentId = null,
 }: {
   supabase: SupabaseClient;
   workspaceId: string;
@@ -46,8 +47,13 @@ export async function logAudit({
   metadata?: Record<string, Json> | null;
   /** null = lo hizo el sistema. */
   performedBy?: string | null;
-}): Promise<void> {
-  const { error } = await supabase.from("audit_log").insert({
+  /**
+   * El agente de IA que ejecuto la accion (Fase 3). Con performedBy en null.
+   * Es lo que permite filtrar "lo que hizo el agente" en la vista de Acciones.
+   */
+  performedByAgentId?: string | null;
+}): Promise<string | null> {
+  const { data, error } = await supabase.from("audit_log").insert({
     workspace_id: workspaceId,
     entity_type: entityType,
     entity_id: entityId,
@@ -55,11 +61,15 @@ export async function logAudit({
     changes: (changes ?? null) as Json,
     metadata: (metadata ?? null) as Json,
     performed_by: performedBy,
-  });
+    performed_by_agent_id: performedByAgentId,
+  }).select("id").single();
 
   if (error) {
     console.error(`[audit] no pude registrar ${action} en ${entityType}:`, error.message);
+    return null;
   }
+  // Devuelve el id para que un paso del run lo referencie sin duplicar el efecto.
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 /**

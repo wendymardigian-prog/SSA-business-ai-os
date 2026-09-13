@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { generateText } from "ai";
 import { getWorkspaceModel, type AiProviderProblem } from "./provider";
+import { openAiRun, type AiRunHandle, type OpenRunInput } from "./run";
 
 /**
  * Generar una respuesta con IA, sin saber nada de flows.
@@ -20,6 +21,11 @@ import { getWorkspaceModel, type AiProviderProblem } from "./provider";
  * Y lo que NO hace, a proposito: no lanza, no envia, no escribe en `messages`,
  * no toca flow_sessions. Que hacer cuando falla lo decide quien llama, porque
  * un flow y una secuencia tienen que reaccionar distinto.
+ *
+ * Fase 3: cada generacion deja un run en agent_runs (lib/ai/run.ts) con sus
+ * tokens y su costo congelado, con source flow_ai_node o sequence_ai_step.
+ * Es cableado, no comportamiento: el resultado que ve quien llama es el mismo,
+ * mas un runId opcional. La traza en analytics_events se queda como estaba.
  */
 
 export type AiReplyProblem = AiProviderProblem | "generation_failed";
@@ -51,11 +57,34 @@ export interface AiReplyRequest {
   maxTokens?: number;
   contextMessages?: number;
   trace: AiReplyTrace;
+  /**
+   * Run ya abierto por quien llama. Si no viene, se abre uno con el source que
+   * corresponde al trace.
+   */
+  run?: AiRunHandle;
 }
 
 export type AiReplyResult =
-  | { ok: true; text: string; provider: string; modelId: string }
-  | { ok: false; problem: AiReplyProblem; message: string };
+  | { ok: true; text: string; provider: string; modelId: string; runId?: string | null }
+  | { ok: false; problem: AiReplyProblem; message: string; runId?: string | null };
+
+/** El run que le corresponde a cada procedencia. */
+export function runInputForTrace(request: AiReplyRequest): OpenRunInput {
+  const fromSequence = request.trace.source === "sequence";
+  return {
+    workspaceId: request.workspaceId,
+    source: fromSequence ? "sequence_ai_step" : "flow_ai_node",
+    trigger: fromSequence ? "sequence_step" : "flow_node",
+    conversationId: request.conversationId,
+    contactId: request.contactId ?? null,
+    // Lo que agrupa estas llamadas cuando no hay agente: el flow o la inscripcion.
+    threadId: fromSequence
+      ? request.trace.enrollmentId ?? request.trace.sequenceId ?? null
+      : request.trace.flowId ?? null,
+    provider: request.provider ?? null,
+    model: request.modelId ?? null,
+  };
+}
 
 const DEFAULT_SYSTEM_PROMPT =
   "Sos un asistente de atencion al cliente. Responde en español rioplatense, breve y claro.";
@@ -85,6 +114,9 @@ export async function generateAiReply(
   supabase: SupabaseClient<Database>,
   request: AiReplyRequest
 ): Promise<AiReplyResult> {
+  const ownsRun = !request.run;
+  const run = request.run ?? (await openAiRun(supabase, runInputForTrace(request)));
+
   // La key sale de Vault via integration_configs. Nunca llega hasta aca: lo
   // que vuelve es un modelo ya instanciado.
   const resolved = await getWorkspaceModel(request.workspaceId, {
@@ -100,8 +132,11 @@ export async function generateAiReply(
       reason: problem,
       message,
     });
-    return { ok: false, problem, message };
+    if (ownsRun) await run.close({ status: "error", statusDetail: problem, error: message });
+    return { ok: false, problem, message, runId: run.runId };
   }
+
+  run.setModel(resolved.provider ?? "", resolved.modelId ?? "");
 
   const { data: recentMessages } = await supabase
     .from("messages")
@@ -125,6 +160,7 @@ export async function generateAiReply(
   }
 
   let text: string;
+  const startedAt = Date.now();
   try {
     const result = await generateText({
       model: resolved.model,
@@ -134,6 +170,14 @@ export async function generateAiReply(
       maxOutputTokens: request.maxTokens ?? 500,
     });
     text = result.text;
+    run.setFinalUsage(result.totalUsage);
+    await run.step({
+      kind: "model_call",
+      name: `${resolved.provider}/${resolved.modelId}`,
+      // Metadatos, no contenido: el texto ya queda en messages si se envia.
+      output: { chars: text.length, finishReason: result.finishReason },
+      durationMs: Date.now() - startedAt,
+    });
   } catch (error) {
     // Key invalida, cuota agotada, modelo inexistente, corte de red. El detalle
     // va al log del servidor; hacia afuera va algo legible.
@@ -147,11 +191,18 @@ export async function generateAiReply(
       reason: "generation_failed",
       message,
     });
-    return { ok: false, problem: "generation_failed", message };
+    await run.step({
+      kind: "model_call",
+      name: `${resolved.provider}/${resolved.modelId}`,
+      durationMs: Date.now() - startedAt,
+      error: "generation_failed",
+    });
+    if (ownsRun) await run.close({ status: "error", statusDetail: "generation_failed", error: message });
+    return { ok: false, problem: "generation_failed", message, runId: run.runId };
   }
 
-  // Traza de la ejecucion. Sin el prompt ni la respuesta: el conteo fino de
-  // tokens es Fase 3, esto es para saber que corrio y con que.
+  // Traza de la ejecucion. Sin el prompt ni la respuesta. Los tokens y el costo
+  // van en el run (agent_runs); esto queda para las metricas que ya lo leen.
   await recordTrace(supabase, request, "ai_response_generated", {
     provider: resolved.provider ?? null,
     model: resolved.modelId ?? null,
@@ -159,11 +210,14 @@ export async function generateAiReply(
     contextMessages: aiMessages.length,
   });
 
+  if (ownsRun) await run.close({ status: "completed" });
+
   return {
     ok: true,
     text,
     provider: resolved.provider ?? "",
     modelId: resolved.modelId ?? "",
+    runId: run.runId,
   };
 }
 

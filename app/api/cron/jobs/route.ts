@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
 import type { Json } from "@/lib/types/database";
+import { AGENT_BURST_JOB } from "@/lib/scheduler";
 import {
   indexDocument,
   INDEX_DOCUMENT_JOB,
@@ -76,6 +77,10 @@ export async function GET(request: NextRequest) {
       `status.eq.pending,and(status.eq.processing,or(claimed_at.lt.${staleClaimCutoff},claimed_at.is.null))`
     )
     .lte("run_at", new Date().toISOString())
+    // Los turnos del agente los procesa su propia ruta (/api/cron/agent-bursts,
+    // cada 15 s, sin reintentos). Si este runner los tomara, caerian en el
+    // default de processJob y se marcarian completados sin responder.
+    .neq("type", AGENT_BURST_JOB)
     .order("run_at", { ascending: true })
     .limit(20);
 

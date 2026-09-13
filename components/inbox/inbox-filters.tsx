@@ -179,6 +179,15 @@ export function InboxFiltersBar({
             )}
           </FilterGroup>
 
+          <FilterGroup label="Agente de IA">
+            <Chip
+              active={filters.agentError}
+              onClick={() => setParam("error-agente", filters.agentError ? "" : "1")}
+            >
+              Con error del agente
+            </Chip>
+          </FilterGroup>
+
           <FilterGroup label="Asignación">
             <select
               value={filters.assignment}

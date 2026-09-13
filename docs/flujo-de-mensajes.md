@@ -109,7 +109,31 @@ Meta que se honra en la retención.
 | `sent_by_user_id` | una persona del equipo |
 | `sent_by_flow_id` | un flow del builder |
 | `sent_by_node_id` | el nodo puntual — **declarado desde la 00001 y nunca escrito**. Deuda conocida |
-| `sent_by_agent_id` | el agente de IA. **Sin foreign key todavía**: la tabla `agents` se crea en el Bloque 2 de la Fase 3, que es donde hay que agregar la constraint |
+| `sent_by_agent_id` | el agente de IA. FK a `agents` desde la 00058. El run que lo generó queda en `agent_run_id` (00059) |
+
+## Qué pasa después de guardar un entrante
+
+En `runInboundAutomation` (`lib/inbound.ts`), en este orden:
+
+1. **Conversación tomada a mano** (`is_automation_paused`): los flows no corren.
+2. **Palabra clave global** (STOP, START): consume el mensaje.
+3. **Sesión de flow esperando respuesta** (un "Esperar respuesta"): se retoma con
+   este mensaje, **matchee o no un trigger**.
+4. **Triggers de flows**: el primero que matchee arranca su flow.
+5. **Agente de IA**: `runInboundAutomation` devuelve quién reclamó el mensaje y,
+   si nadie lo hizo, `maybeScheduleAgentTurn` agenda el turno del agente. Ver
+   [agente-ia.md](agente-ia.md).
+
+Desde la Fase 3 los envíos manuales desde la bandeja también se guardan en
+`messages` (con `sent_by_user_id`), para Instagram y WhatsApp: el agente lee el
+historial de la base y necesita ver lo que contestó una persona.
+
+El paso 3 cambió en la Fase 3 (Bloque 2a). Antes el chequeo de la sesión en
+espera vivía adentro de `executeFlow`, que solo se llamaba si algún trigger
+reclamaba el mensaje: una conversación parada en "Esperar respuesta" quedaba
+dormida si la respuesta del lead no matcheaba nada. Con el agente de IA eso
+hubiera sido peor: el agente se habría llevado las respuestas que el flow estaba
+esperando. Test de regresión: `lib/flow-engine/resume-on-inbound.test.ts`.
 
 ## Dónde mirar
 

@@ -15,6 +15,8 @@ import {
   Hourglass,
   Sparkles,
   ListOrdered,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -141,6 +143,20 @@ const categories: PaletteCategory[] = [
         label: "Enroll in Sequence",
         icon: ListOrdered,
         actionType: "enrollSequence",
+      },
+      {
+        type: "action",
+        nodeType: "pauseAgent",
+        label: "Pausar agente IA",
+        icon: PauseCircle,
+        actionType: "pauseAgent",
+      },
+      {
+        type: "action",
+        nodeType: "resumeAgent",
+        label: "Reanudar agente IA",
+        icon: PlayCircle,
+        actionType: "resumeAgent",
       },
     ],
   },

@@ -18,7 +18,7 @@ export default async function KnowledgePage() {
     supabase
       .from("knowledge_base")
       .select(
-        "id, title, tags, status, error_detail, chunk_count, source_mime, source_size_bytes, created_at, indexed_at",
+        "id, title, tags, internal_only, status, error_detail, chunk_count, source_mime, source_size_bytes, created_at, indexed_at",
       )
       .eq("workspace_id", workspace.id)
       .is("deleted_at", null)
@@ -37,6 +37,7 @@ export default async function KnowledgePage() {
         status: d.status as KnowledgeStatus,
         errorDetail: d.error_detail,
         chunkCount: d.chunk_count ?? 0,
+        internalOnly: Boolean(d.internal_only),
         mime: d.source_mime,
         sizeBytes: d.source_size_bytes,
         createdAt: d.created_at,

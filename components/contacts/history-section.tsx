@@ -34,6 +34,11 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   collision_resolved: "resolvió la colisión de secuencias",
   sequence_paused: "pausó las secuencias del contacto",
   sequence_resumed: "reanudó una secuencia del contacto",
+  human_takeover: "derivó la conversación a una persona",
+  agent_toggled: "cambió el agente de IA en la conversación",
+  agent_paused: "pausó el agente de IA",
+  agent_resumed: "reanudó el agente de IA",
+  prompt_version: "cambió el prompt del agente",
 };
 
 const FIELD_LABELS: Record<string, string> = {

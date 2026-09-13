@@ -13,6 +13,7 @@
 import "./nodes";
 import "./conditions";
 import "./triggers";
+import "./guards";
 
 export * from "./registry";
 export type * from "./types";

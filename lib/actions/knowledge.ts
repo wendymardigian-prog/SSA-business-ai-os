@@ -179,11 +179,16 @@ async function enqueueIndexing(
   }
 }
 
-/** Cambia titulo y etiquetas. No toca el archivo ni reindexado. */
+/**
+ * Cambia titulo, etiquetas y el flag de uso interno. No toca el archivo ni
+ * reindexa: el filtro de internal_only y de tags se aplica en la consulta del
+ * agente (00062), asi que el cambio vale desde la proxima busqueda.
+ */
 export async function updateDocumentMetadata(
   documentId: string,
   rawTitle: string,
   rawTags: string,
+  internalOnly?: boolean,
 ): Promise<KnowledgeResult> {
   const ctx = await getAdminContext();
   if (!ctx) {
@@ -199,7 +204,7 @@ export async function updateDocumentMetadata(
 
   const { data: before } = await supabase
     .from("knowledge_base")
-    .select("title, tags")
+    .select("title, tags, internal_only")
     .eq("id", documentId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -209,7 +214,11 @@ export async function updateDocumentMetadata(
 
   const { error } = await supabase
     .from("knowledge_base")
-    .update({ title: rawTitle.trim(), tags })
+    .update({
+      title: rawTitle.trim(),
+      tags,
+      ...(typeof internalOnly === "boolean" ? { internal_only: internalOnly } : {}),
+    })
     .eq("id", documentId)
     .eq("workspace_id", workspace.id);
 
@@ -225,8 +234,12 @@ export async function updateDocumentMetadata(
     entityId: workspace.id,
     action: "update",
     changes: diffFields(
-      { title: before.title, tags: (before.tags ?? []).join(", ") },
-      { title: rawTitle.trim(), tags: tags.join(", ") },
+      { title: before.title, tags: (before.tags ?? []).join(", "), internal_only: before.internal_only },
+      {
+        title: rawTitle.trim(),
+        tags: tags.join(", "),
+        internal_only: typeof internalOnly === "boolean" ? internalOnly : before.internal_only,
+      },
     ),
     metadata: { section: "knowledge_base", document_id: documentId },
     performedBy: user.id,

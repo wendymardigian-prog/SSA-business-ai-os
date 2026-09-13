@@ -6665,3 +6665,1226 @@ COMMENT ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) IS
 
 REVOKE ALL ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.purge_zernio_inbound_messages(uuid, boolean) TO service_role;
+
+-- ============================================================
+-- MIGRATION 58: AGENTS
+-- ============================================================
+-- ============================================================================
+-- 00058 — Agentes de IA, historial del system prompt y las palancas nuevas
+-- ============================================================================
+-- Fase 3, Bloque 2a. Crea la configuracion del agente conversacional y las
+-- columnas que lo conectan con el resto del sistema.
+--
+-- 1. `agents`. Una fila por agente. En la Etapa 1 hay un solo tipo (`chat`),
+--    pero la tabla no lo asume: `type` es texto libre validado en la app contra
+--    el registro de tipos, asi que el agente de contenido (Etapa 2/3) y el de
+--    gestion (Etapa 3) entran como filas nuevas, sin migracion.
+--    - El encendido por canal vive en `enabled_channel_ids` y no en una tabla
+--      join: single-tenant, pocos canales, un agente. Al no haber FK, la app
+--      valida que cada id exista y sea del workspace.
+--    - Lo heterogeneo va en jsonb (`tools_config`, `guardrails`,
+--      `output_format`) y se valida contra los schemas del registro.
+--    - Dos defaults se apartan del documento de requerimientos a proposito:
+--      `knowledge_enabled` arranca en false (el agente arranca con la base de
+--      conocimiento apagada) y `knowledge_fallback` en 'general' (quien decide
+--      "no se" es el agente usando la herramienta de derivar, no una busqueda
+--      que volvio vacia).
+--    - Tres campos que no estaban en el documento: `response_delay_seconds`
+--      (demora deliberada despues de la ventana de silencio),
+--      `model_timeout_seconds` y `max_replies_per_conversation`.
+--    - Topes de gasto con una accion por tope: el diario avisa, el mensual
+--      apaga. Cortar leads por un numero que todavia no conocemos es peor que
+--      avisar, pero un loop que se come la key en una noche tiene que frenarse.
+--
+-- 2. `agent_prompt_versions`. Mismo patron que `flow_versions` (00010): cada
+--    guardado del prompt es una fila nueva e inmutable, unica por
+--    (agent_id, version). Sin policy de UPDATE ni de DELETE: el historial no se
+--    reescribe. Se va en cascada solo si el agente se borra fisicamente, cosa
+--    que la app no hace (soft delete).
+--
+-- 3. Columnas nuevas en tablas existentes:
+--    - conversations.agent_enabled: el toggle de la bandeja. Decision tuya.
+--    - conversations.agent_paused_until: la pausa temporal que ponen los flows
+--      ("pausar agente"). Separada del toggle a proposito: "reanudar agente"
+--      levanta la pausa y nunca prende un agente que nadie prendio. NULL = sin
+--      pausa; 'infinity' = pausado hasta que un flow lo reanude.
+--    - knowledge_base.internal_only: documento de uso interno, nunca llega al
+--      prompt del agente tenga el tag que tenga.
+--    - audit_log.performed_by_agent_id: performed_by apunta a un usuario, asi
+--      que sin esta columna no hay forma de filtrar "lo que hizo el agente".
+--    - La FK que la 00053 dejo pendiente: messages.sent_by_agent_id -> agents.
+--    - workspaces.ai_daily_cost_limit_usd / ai_monthly_cost_limit_usd: topes
+--      globales de gasto de IA del workspace (todas las fuentes). NULL = sin
+--      tope global; los del agente siguen valiendo.
+--
+-- Los costos de los topes (`daily_cost_limit_usd`, `monthly_cost_limit_usd`)
+-- solo los lee Owner/Admin: el privilegio de columna se ajusta en la 00060.
+--
+-- El estado efectivo del agente NO se guarda: se deriva de agente global +
+-- canal + toggle + pausa + guardarrailes + automatizaciones + control humano.
+-- Guardar solo las palancas evita estados inconsistentes.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. agents
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.agents (
+  id                           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id                 uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name                         text NOT NULL,
+  type                         text NOT NULL DEFAULT 'chat',
+  is_enabled                   boolean NOT NULL DEFAULT false,
+
+  system_prompt                text,
+  active_prompt_version        integer,
+
+  provider                     text,
+  model                        text,
+  fallback_provider            text,
+  fallback_model               text,
+  temperature                  numeric(3,2),
+  max_output_tokens            integer,
+  model_timeout_seconds        integer NOT NULL DEFAULT 120,
+
+  bundle_window_seconds        integer NOT NULL DEFAULT 60,
+  response_delay_seconds       integer NOT NULL DEFAULT 20,
+  max_wait_seconds             integer DEFAULT 300,
+  max_replies_per_conversation integer NOT NULL DEFAULT 12,
+
+  output_format                jsonb NOT NULL DEFAULT '{}'::jsonb,
+  allowed_tools                text[] NOT NULL DEFAULT '{}',
+  tools_config                 jsonb NOT NULL DEFAULT '{}'::jsonb,
+  guardrails                   jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+  knowledge_enabled            boolean NOT NULL DEFAULT false,
+  knowledge_tags               text[] NOT NULL DEFAULT '{}',
+  knowledge_fallback           text NOT NULL DEFAULT 'general',
+
+  daily_cost_limit_usd         numeric(10,2) DEFAULT 5,
+  daily_cost_limit_action      text NOT NULL DEFAULT 'notify',
+  monthly_cost_limit_usd       numeric(10,2) DEFAULT 100,
+  monthly_cost_limit_action    text NOT NULL DEFAULT 'disable',
+
+  enabled_channel_ids          uuid[] NOT NULL DEFAULT '{}',
+  config                       jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+  created_by                   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at                   timestamptz NOT NULL DEFAULT now(),
+  updated_at                   timestamptz NOT NULL DEFAULT now(),
+  deleted_at                   timestamptz
+);
+
+COMMENT ON TABLE public.agents IS
+  'Agentes de IA del workspace. type dirige que configuracion y herramientas se muestran (validado en la app, no con CHECK, para sumar tipos sin migracion). El encendido por canal vive en enabled_channel_ids. Soft delete con deleted_at: los runs historicos siguen apuntando aca.';
+COMMENT ON COLUMN public.agents.enabled_channel_ids IS
+  'Canales que el agente atiende (interruptor maestro). Sin FK: la app valida que existan y sean del workspace. Vacio = ninguno.';
+COMMENT ON COLUMN public.agents.response_delay_seconds IS
+  'Demora deliberada despues de que cierra la ventana de silencio. El envio apunta a ultimo_mensaje + bundle_window_seconds + response_delay_seconds; la generacion y el tic del cron se absorben dentro de esta demora.';
+COMMENT ON COLUMN public.agents.knowledge_fallback IS
+  'escalate | general. Default general: si la busqueda no encuentra nada, el agente sigue y decide el mismo si deriva.';
+
+-- Checks con nombre, agregados por separado para que la migracion sea
+-- re-ejecutable sobre una tabla que ya existe.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_type_format') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_type_format
+      CHECK (type ~ '^[a-z][a-z0-9_]{1,39}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_name_not_blank') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_name_not_blank
+      CHECK (length(btrim(name)) BETWEEN 1 AND 80);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_temperature_range') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_temperature_range
+      CHECK (temperature IS NULL OR temperature BETWEEN 0 AND 2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_max_output_tokens_range') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_max_output_tokens_range
+      CHECK (max_output_tokens IS NULL OR max_output_tokens BETWEEN 16 AND 16000);
+  END IF;
+  -- Techo del tiempo de la invocacion: la ruta de cron tiene maxDuration 300 s
+  -- y la espera al objetivo suma demora + timeout dentro de la misma ejecucion.
+  -- La app valida la regla completa (demora + timeout + 30 < 300); la base
+  -- sostiene la version dura por si alguien escribe por fuera de la app.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_time_budget') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_time_budget
+      CHECK (
+        model_timeout_seconds BETWEEN 10 AND 240
+        AND response_delay_seconds BETWEEN 0 AND 180
+        AND response_delay_seconds + model_timeout_seconds + 30 < 300
+      );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_windows_range') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_windows_range
+      CHECK (
+        bundle_window_seconds BETWEEN 15 AND 3600
+        AND (max_wait_seconds IS NULL OR max_wait_seconds >= bundle_window_seconds)
+        AND max_replies_per_conversation BETWEEN 1 AND 500
+      );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_knowledge_fallback_values') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_knowledge_fallback_values
+      CHECK (knowledge_fallback IN ('escalate', 'general'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_cost_limits') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_cost_limits
+      CHECK (
+        (daily_cost_limit_usd IS NULL OR daily_cost_limit_usd >= 0)
+        AND (monthly_cost_limit_usd IS NULL OR monthly_cost_limit_usd >= 0)
+        AND daily_cost_limit_action IN ('notify', 'disable')
+        AND monthly_cost_limit_action IN ('notify', 'disable')
+      );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_agents_workspace
+  ON public.agents(workspace_id) WHERE deleted_at IS NULL;
+
+-- "Que agente atiende este canal" es la consulta de cada mensaje entrante.
+CREATE INDEX IF NOT EXISTS idx_agents_enabled_channels
+  ON public.agents USING gin(enabled_channel_ids) WHERE deleted_at IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_updated_at_agents') THEN
+    CREATE TRIGGER set_updated_at_agents
+      BEFORE UPDATE ON public.agents
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. agent_prompt_versions
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.agent_prompt_versions (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  agent_id      uuid NOT NULL REFERENCES public.agents(id) ON DELETE CASCADE,
+  version       integer NOT NULL,
+  system_prompt text NOT NULL,
+  note          text,
+  created_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.agent_prompt_versions IS
+  'Historial inmutable del system prompt de cada agente. Mismo patron que flow_versions. Cada run guarda la version que uso (agent_runs.prompt_version).';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_prompt_versions_agent_version
+  ON public.agent_prompt_versions(agent_id, version);
+
+-- ------------------------------------------------------------
+-- 3. Columnas nuevas en tablas existentes
+-- ------------------------------------------------------------
+
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS agent_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS agent_paused_until timestamptz;
+
+COMMENT ON COLUMN public.conversations.agent_enabled IS
+  'Toggle del agente en esta conversacion (bandeja). Lo apaga Human Takeover y una respuesta manual del operador. Ortogonal a is_automation_paused, que gobierna los flows.';
+COMMENT ON COLUMN public.conversations.agent_paused_until IS
+  'Pausa temporal del agente puesta por un flow ("pausar agente"). NULL = sin pausa, infinity = hasta que un flow lo reanude. Reanudar la levanta sin tocar agent_enabled.';
+
+ALTER TABLE public.knowledge_base
+  ADD COLUMN IF NOT EXISTS internal_only boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.knowledge_base.internal_only IS
+  'Uso interno: nunca llega al prompt de un agente, tenga el tag que tenga. El filtro va dentro de match_knowledge_chunks_filtered (00062).';
+
+ALTER TABLE public.audit_log
+  ADD COLUMN IF NOT EXISTS performed_by_agent_id uuid REFERENCES public.agents(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.audit_log.performed_by_agent_id IS
+  'Agente que ejecuto la accion. performed_by (usuario) queda NULL en ese caso. Es la base de la vista de Acciones.';
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS ai_daily_cost_limit_usd numeric(10,2),
+  ADD COLUMN IF NOT EXISTS ai_monthly_cost_limit_usd numeric(10,2);
+
+COMMENT ON COLUMN public.workspaces.ai_daily_cost_limit_usd IS
+  'Tope diario de gasto de IA de todo el workspace (todas las fuentes). NULL = sin tope global. Corte del dia en la zona del negocio.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_sent_by_agent_id_fkey') THEN
+    -- NOT VALID + VALIDATE: si quedo algun id huerfano de pruebas, la
+    -- validacion avisa en vez de tumbar toda la migracion.
+    ALTER TABLE public.messages
+      ADD CONSTRAINT messages_sent_by_agent_id_fkey
+      FOREIGN KEY (sent_by_agent_id) REFERENCES public.agents(id) ON DELETE SET NULL
+      NOT VALID;
+    BEGIN
+      ALTER TABLE public.messages VALIDATE CONSTRAINT messages_sent_by_agent_id_fkey;
+    EXCEPTION WHEN foreign_key_violation THEN
+      RAISE WARNING 'messages.sent_by_agent_id tiene ids que no existen en agents: la FK queda NOT VALID. Revisar.';
+    END;
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.messages.sent_by_agent_id IS
+  'Que agente de IA mando este mensaje. FK a agents desde la 00058.';
+
+-- El agente se busca por conversacion en cada mensaje entrante y en cada turno.
+CREATE INDEX IF NOT EXISTS idx_conversations_agent_enabled
+  ON public.conversations(workspace_id) WHERE agent_enabled;
+
+-- ============================================================
+-- MIGRATION 59: AGENT RUNS
+-- ============================================================
+-- ============================================================================
+-- 00059 — Runs, pasos, precios por modelo y la marca de error del agente
+-- ============================================================================
+-- Fase 3, Bloque 2a. La observabilidad va junto con el agente y no despues:
+-- el historial de runs y el costo no son retroactivos.
+--
+-- 1. `agent_runs`. Una fila por llamada a IA del sistema, no solo del agente.
+--    - Un run del agente es un TURNO (un disparo y su respuesta), no una
+--      conversacion: es la unidad que hace el costo atribuible y el error
+--      localizable. Una rafaga respondida junta es un run.
+--    - `source` cubre todo el gasto de IA: agent / flow_ai_node /
+--      sequence_ai_step / kb_indexing / conversation_summary. El documento
+--      listaba cuatro; los pasos de IA de las secuencias son un quinto llamador
+--      real y meterlos en flow_ai_node haria mentir la pestana de costos.
+--    - `status` suma dos valores a los cinco del documento: `running` (el run
+--      se abre ANTES de la llamada, asi un proceso que muere deja evidencia y no
+--      un agujero; un barrido del cron los cierra) y `completed` (indexar un
+--      documento no "responde").
+--    - `conversation_id` nullable + `thread_id`: el agente de contenido de la
+--      Etapa 2/3 no vive en una conversacion de la bandeja.
+--    - `cost_usd` se calcula y se congela al cerrar el run. Si el precio cambia
+--      despues, el historial no se reescribe. NULL si el modelo no tenia precio
+--      cargado: el run se guarda igual.
+--    - Los runs NO se borran con el agente ni con el contacto: son la serie
+--      historica del gasto. Las FKs son ON DELETE SET NULL.
+--
+-- 2. `agent_run_steps`. Una fila por llamada a modelo, busqueda en la KB o
+--    herramienta. Guarda el detalle tecnico; el efecto de negocio vive en
+--    audit_log y el paso lo referencia (`audit_log_id`) sin duplicarlo.
+--    `input`/`output` pueden tener texto del lead y fragmentos de documentos:
+--    siguen la retencion de los mensajes (12 meses) y se vacian cuando el
+--    contacto se purga. La fila y sus metricas se conservan.
+--
+-- 3. `model_pricing`. Precio por millon de tokens con `valid_from`. Nunca se
+--    sobrescribe: un precio nuevo es una fila nueva. Se siembra con
+--    supabase/seeds/00_model_pricing.sql, separado de la estructura.
+--
+-- 4. `messages.agent_run_id`: desde un mensaje de la bandeja se abre el run que
+--    lo genero.
+--
+-- 5. `conversations.last_agent_error_at` / `last_agent_error_run_id`: la marca
+--    de "el agente fallo aca y este lead puede estar sin respuesta". La pone el
+--    runner cuando un turno termina en error o se descarta; la borran una
+--    respuesta buena del agente, un mensaje de una persona del equipo o el
+--    cierre de la conversacion. Nunca la borra el paso del tiempo.
+--
+-- Indices: los de la seccion 7.3 del documento, mas los de audit_log para la
+-- vista de Acciones (Bloque 2b) y el parcial del filtro de errores de la bandeja.
+--
+-- Las policies y los privilegios de columna van en la 00060.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. model_pricing (primero: agent_runs la referencia)
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.model_pricing (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id          uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  provider              text NOT NULL,
+  model                 text NOT NULL,
+  input_per_mtok        numeric(12,6) NOT NULL,
+  output_per_mtok       numeric(12,6) NOT NULL,
+  cached_input_per_mtok numeric(12,6) NOT NULL,
+  currency              text NOT NULL DEFAULT 'USD',
+  valid_from            timestamptz NOT NULL DEFAULT now(),
+  note                  text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.model_pricing IS
+  'Precios por millon de tokens por modelo, con vigencia. Un cambio de precio es una fila nueva con valid_from nuevo: el historial se conserva y los runs viejos no se recalculan. model es texto libre, sin lista cerrada. Solo Owner/Admin la leen.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'model_pricing_non_negative') THEN
+    ALTER TABLE public.model_pricing ADD CONSTRAINT model_pricing_non_negative
+      CHECK (input_per_mtok >= 0 AND output_per_mtok >= 0 AND cached_input_per_mtok >= 0);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_model_pricing_version
+  ON public.model_pricing(workspace_id, provider, model, valid_from);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_updated_at_model_pricing') THEN
+    CREATE TRIGGER set_updated_at_model_pricing
+      BEFORE UPDATE ON public.model_pricing
+      FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. agent_runs
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.agent_runs (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id     uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  source           text NOT NULL,
+  agent_id         uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  prompt_version   integer,
+  conversation_id  uuid REFERENCES public.conversations(id) ON DELETE SET NULL,
+  thread_id        text,
+  contact_id       uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  channel_id       uuid REFERENCES public.channels(id) ON DELETE SET NULL,
+  trigger          text NOT NULL,
+  status           text NOT NULL DEFAULT 'running',
+  status_detail    text,
+  provider         text,
+  model            text,
+  input_tokens     integer,
+  output_tokens    integer,
+  cached_tokens    integer,
+  embedding_tokens integer,
+  cost_usd         numeric(12,6),
+  pricing_id       uuid REFERENCES public.model_pricing(id) ON DELETE SET NULL,
+  latency_ms       integer,
+  step_count       integer NOT NULL DEFAULT 0,
+  error            text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  completed_at     timestamptz
+);
+
+COMMENT ON TABLE public.agent_runs IS
+  'Una fila por llamada a IA del sistema (source). Para el agente, un run = un turno. Solo la escribe el service role. Las columnas de tokens y costo solo son legibles por Owner/Admin via servidor (privilegio de columna en la 00060).';
+COMMENT ON COLUMN public.agent_runs.cost_usd IS
+  'Costo congelado al cerrar el run: tokens de chat + embeddings del turno por el precio vigente en ese momento. NULL si el modelo no tenia precio cargado (status_detail lo aclara).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_runs_source_values') THEN
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_values
+      CHECK (source IN ('agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_runs_trigger_values') THEN
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_trigger_values
+      CHECK (trigger IN ('inbound_message', 'cron_close', 'manual', 'flow_node', 'sequence_step', 'job'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_runs_status_values') THEN
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_status_values
+      CHECK (status IN ('running', 'responded', 'escalated', 'skipped_automation',
+                        'blocked_guardrail', 'completed', 'error'));
+  END IF;
+  -- Cuando la fuente no es el agente, agent_id queda nulo (documento, 4.5).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_runs_agent_only_for_agent_sources') THEN
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_agent_only_for_agent_sources
+      CHECK (agent_id IS NULL OR source IN ('agent', 'conversation_summary'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace_created
+  ON public.agent_runs(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_created
+  ON public.agent_runs(agent_id, created_at DESC) WHERE agent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_runs_conversation
+  ON public.agent_runs(conversation_id, created_at DESC) WHERE conversation_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_agent_runs_status
+  ON public.agent_runs(status);
+-- El barrido de runs colgados mira solo los abiertos.
+CREATE INDEX IF NOT EXISTS idx_agent_runs_running
+  ON public.agent_runs(created_at) WHERE status = 'running';
+
+-- ------------------------------------------------------------
+-- 3. agent_run_steps
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.agent_run_steps (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  run_id       uuid NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE,
+  step_index   integer NOT NULL,
+  kind         text NOT NULL,
+  name         text,
+  input        jsonb,
+  output       jsonb,
+  kb_chunk_ids uuid[],
+  audit_log_id uuid REFERENCES public.audit_log(id) ON DELETE SET NULL,
+  duration_ms  integer,
+  error        text,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.agent_run_steps IS
+  'Detalle tecnico de cada run: una fila por llamada al modelo, busqueda en la KB o herramienta. input/output pueden tener texto del lead: siguen la retencion de los mensajes y nunca van a los logs.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agent_run_steps_kind_values') THEN
+    ALTER TABLE public.agent_run_steps ADD CONSTRAINT agent_run_steps_kind_values
+      CHECK (kind IN ('model_call', 'kb_search', 'tool_call', 'guardrail'));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_run_steps_run_index
+  ON public.agent_run_steps(run_id, step_index);
+CREATE INDEX IF NOT EXISTS idx_agent_run_steps_audit
+  ON public.agent_run_steps(audit_log_id) WHERE audit_log_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 4. messages.agent_run_id
+-- ------------------------------------------------------------
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS agent_run_id uuid REFERENCES public.agent_runs(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.messages.agent_run_id IS
+  'Run del agente que genero este mensaje. Desde la bandeja se abre el run; desde el run se salta a la conversacion.';
+
+CREATE INDEX IF NOT EXISTS idx_messages_agent_run
+  ON public.messages(agent_run_id) WHERE agent_run_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 5. La marca de error del agente en la conversacion
+-- ------------------------------------------------------------
+
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS last_agent_error_at timestamptz,
+  ADD COLUMN IF NOT EXISTS last_agent_error_run_id uuid REFERENCES public.agent_runs(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.conversations.last_agent_error_at IS
+  'El agente fallo en esta conversacion y el lead puede estar sin respuesta. Se pone con un turno en error, descartado o con el proveedor caido despues del respaldo. Se borra con una respuesta buena del agente, un mensaje de una persona del equipo o el cierre de la conversacion. No se borra por paso del tiempo ni porque el lead vuelva a escribir.';
+
+-- El filtro "con error del agente" de la bandeja. Parcial: son pocas filas.
+CREATE INDEX IF NOT EXISTS idx_conversations_agent_error
+  ON public.conversations(workspace_id, last_agent_error_at DESC)
+  WHERE last_agent_error_at IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 6. Indices de audit_log para la vista de Acciones (Bloque 2b)
+-- ------------------------------------------------------------
+-- (workspace_id, performed_at DESC) ya existe desde la 00023 con otro nombre;
+-- IF NOT EXISTS por nombre no lo detecta, asi que se chequea por definicion.
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public' AND tablename = 'audit_log'
+      AND indexdef ILIKE '%(workspace_id, performed_at DESC)%'
+  ) THEN
+    CREATE INDEX idx_audit_log_workspace_performed
+      ON public.audit_log(workspace_id, performed_at DESC);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_workspace_action
+  ON public.audit_log(workspace_id, action, performed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_agent
+  ON public.audit_log(performed_by_agent_id, performed_at DESC)
+  WHERE performed_by_agent_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 7. Retencion del contenido textual de los pasos
+-- ------------------------------------------------------------
+-- Dos casos, los dos vacian input/output y conservan la fila con sus metricas:
+--   - Antiguedad: la misma que los mensajes (12 meses, 00055).
+--   - Contacto purgado: purge_soft_deleted (00025) borra el contacto y, por
+--     ON DELETE SET NULL, el run queda sin contact_id ni conversation_id. Si la
+--     fuente era una conversacion con un lead (agent / conversation_summary),
+--     ese texto ya no tiene dueno y se vacia.
+
+CREATE OR REPLACE FUNCTION public.purge_agent_run_step_content(p_retention_months integer DEFAULT 12)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cutoff  timestamptz := now() - make_interval(months => GREATEST(p_retention_months, 1));
+  v_cleared integer := 0;
+BEGIN
+  UPDATE public.agent_run_steps s
+     SET input = NULL, output = NULL
+    FROM public.agent_runs r
+   WHERE r.id = s.run_id
+     AND (s.input IS NOT NULL OR s.output IS NOT NULL)
+     AND (
+       s.created_at < v_cutoff
+       OR (r.source IN ('agent', 'conversation_summary')
+           AND r.contact_id IS NULL AND r.conversation_id IS NULL AND r.thread_id IS NULL)
+     );
+
+  GET DIAGNOSTICS v_cleared = ROW_COUNT;
+  RETURN v_cleared;
+END;
+$$;
+
+COMMENT ON FUNCTION public.purge_agent_run_step_content(integer) IS
+  'Vacia input/output de los pasos de runs vencidos (misma retencion que messages) o cuyo contacto fue purgado. Conserva la fila y sus metricas. La llama el cron diario.';
+
+REVOKE ALL ON FUNCTION public.purge_agent_run_step_content(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_agent_run_step_content(integer) TO service_role;
+
+DO $$
+BEGIN
+  PERFORM cron.unschedule('ssa-cron-purge-agent-steps');
+EXCEPTION
+  WHEN OTHERS THEN NULL;  -- todavia no existia
+END $$;
+
+-- 5:10, despues de la purga de mensajes de las 5:00.
+SELECT cron.schedule(
+  'ssa-cron-purge-agent-steps',
+  '10 5 * * *',
+  $$SELECT public.purge_agent_run_step_content(12)$$
+);
+
+-- ============================================================
+-- MIGRATION 60: AGENTS RLS
+-- ============================================================
+-- ============================================================================
+-- 00060 — RLS y privilegios de columna de las tablas del agente
+-- ============================================================================
+-- Fase 3, Bloque 2a. Todas las tablas nuevas con RLS y policies explicitas.
+--
+-- | Tabla                 | SELECT                                  | INSERT        | UPDATE        | DELETE  |
+-- |-----------------------|-----------------------------------------|---------------|---------------|---------|
+-- | agents                | Miembros (sin columnas de topes)        | Owner, Admin  | Owner, Admin  | nadie (soft delete) |
+-- | agent_prompt_versions | Owner, Admin                            | Owner, Admin  | nadie         | nadie   |
+-- | agent_runs            | Owner/Admin; Member los de su scope     | service role  | service role  | nadie   |
+-- | agent_run_steps       | igual que su run                        | service role  | nadie         | cascada |
+-- | model_pricing         | Owner, Admin                            | Owner         | Owner         | Owner   |
+--
+-- ---------------------------------------------------------------------------
+-- LOS COSTOS: privilegio de columna, no una vista
+-- ---------------------------------------------------------------------------
+-- La RLS es de fila: no esconde columnas. Para que un Member no pueda leer el
+-- costo de un run que si puede ver, se usa el privilegio de columna.
+--
+-- Ojo con un detalle de Postgres que hace inutil la version ingenua: un
+-- `REVOKE SELECT (col) ON t FROM authenticated` NO tiene ningun efecto si el rol
+-- tiene SELECT a nivel tabla, y Supabase se lo otorga por defecto a toda tabla
+-- nueva de public. Por eso se revoca el SELECT de la tabla entera y se vuelve a
+-- otorgar solo sobre la lista de columnas publicas.
+--
+-- Consecuencias, las dos deseadas:
+--   - `select('*')` sobre agent_runs con el cliente de un usuario falla con
+--     permission denied, sea Member u Owner. Las consultas del cliente listan
+--     columnas explicitas (AGENT_RUN_PUBLIC_COLUMNS en lib/agent/runs.ts).
+--   - Los costos se leen solo desde el servidor con service role, detras de un
+--     requireWorkspaceAdmin() explicito.
+--
+-- CUANDO SE AGREGUE UNA COLUMNA a agent_runs o agents, hay que decidir si va al
+-- GRANT de abajo. Si no se agrega, el cliente de usuario no la puede leer.
+--
+-- Scope de leads: la policy de agent_runs para un Member usa un EXISTS sobre
+-- conversations, que pasa por la RLS de conversations y arrastra el scope gratis.
+-- Mismo truco que la 00054 en messages. Un run sin conversacion (indexacion,
+-- nodo de flow sin conversacion) solo lo ven Owner/Admin.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. agents
+-- ------------------------------------------------------------
+
+ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "agents_select" ON public.agents;
+CREATE POLICY "agents_select" ON public.agents
+  FOR SELECT USING (public.is_workspace_member(workspace_id) AND deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "agents_insert" ON public.agents;
+CREATE POLICY "agents_insert" ON public.agents
+  FOR INSERT WITH CHECK (public.is_workspace_admin(workspace_id));
+
+-- El soft delete es un UPDATE que setea deleted_at: por eso el filtro de
+-- deleted_at va solo en el SELECT (mismo criterio que la 00024).
+DROP POLICY IF EXISTS "agents_update" ON public.agents;
+CREATE POLICY "agents_update" ON public.agents
+  FOR UPDATE USING (public.is_workspace_admin(workspace_id))
+  WITH CHECK (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "agents_delete" ON public.agents;
+
+REVOKE ALL ON TABLE public.agents FROM anon;
+REVOKE SELECT ON TABLE public.agents FROM authenticated;
+GRANT SELECT (
+  id, workspace_id, name, type, is_enabled,
+  system_prompt, active_prompt_version,
+  provider, model, fallback_provider, fallback_model,
+  temperature, max_output_tokens, model_timeout_seconds,
+  bundle_window_seconds, response_delay_seconds, max_wait_seconds,
+  max_replies_per_conversation,
+  output_format, allowed_tools, tools_config, guardrails,
+  knowledge_enabled, knowledge_tags, knowledge_fallback,
+  enabled_channel_ids, config,
+  created_by, created_at, updated_at, deleted_at
+) ON public.agents TO authenticated;
+-- Sin GRANT de lectura: daily_cost_limit_usd, daily_cost_limit_action,
+-- monthly_cost_limit_usd, monthly_cost_limit_action.
+
+-- ------------------------------------------------------------
+-- 2. agent_prompt_versions
+-- ------------------------------------------------------------
+
+ALTER TABLE public.agent_prompt_versions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "agent_prompt_versions_select" ON public.agent_prompt_versions;
+CREATE POLICY "agent_prompt_versions_select" ON public.agent_prompt_versions
+  FOR SELECT USING (public.is_workspace_admin(workspace_id));
+
+-- Quien guarda queda escrito como quien guardo, y la version tiene que ser de
+-- un agente del mismo workspace.
+DROP POLICY IF EXISTS "agent_prompt_versions_insert" ON public.agent_prompt_versions;
+CREATE POLICY "agent_prompt_versions_insert" ON public.agent_prompt_versions
+  FOR INSERT WITH CHECK (
+    public.is_workspace_admin(workspace_id)
+    AND created_by = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_prompt_versions.agent_id
+        AND a.workspace_id = agent_prompt_versions.workspace_id
+    )
+  );
+
+-- Inmutable: sin policies de UPDATE ni DELETE, y sin el privilegio.
+DROP POLICY IF EXISTS "agent_prompt_versions_update" ON public.agent_prompt_versions;
+DROP POLICY IF EXISTS "agent_prompt_versions_delete" ON public.agent_prompt_versions;
+REVOKE ALL ON TABLE public.agent_prompt_versions FROM anon;
+REVOKE UPDATE, DELETE ON TABLE public.agent_prompt_versions FROM authenticated;
+
+-- ------------------------------------------------------------
+-- 3. agent_runs
+-- ------------------------------------------------------------
+
+ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "agent_runs_select" ON public.agent_runs;
+CREATE POLICY "agent_runs_select" ON public.agent_runs
+  FOR SELECT USING (
+    public.is_workspace_admin(workspace_id)
+    OR (
+      public.is_workspace_member(workspace_id)
+      AND conversation_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM public.conversations conv
+        WHERE conv.id = agent_runs.conversation_id
+      )
+    )
+  );
+
+-- Sin INSERT/UPDATE/DELETE: solo el service role escribe runs.
+DROP POLICY IF EXISTS "agent_runs_insert" ON public.agent_runs;
+DROP POLICY IF EXISTS "agent_runs_update" ON public.agent_runs;
+DROP POLICY IF EXISTS "agent_runs_delete" ON public.agent_runs;
+
+REVOKE ALL ON TABLE public.agent_runs FROM anon, authenticated;
+GRANT SELECT (
+  id, workspace_id, source, agent_id, prompt_version,
+  conversation_id, thread_id, contact_id, channel_id,
+  trigger, status, status_detail, provider, model,
+  latency_ms, step_count, error, created_at, completed_at
+) ON public.agent_runs TO authenticated;
+-- Sin GRANT de lectura: input_tokens, output_tokens, cached_tokens,
+-- embedding_tokens, cost_usd, pricing_id.
+
+-- ------------------------------------------------------------
+-- 4. agent_run_steps
+-- ------------------------------------------------------------
+
+ALTER TABLE public.agent_run_steps ENABLE ROW LEVEL SECURITY;
+
+-- El EXISTS pasa por la RLS de agent_runs: un paso se ve si se ve su run.
+DROP POLICY IF EXISTS "agent_run_steps_select" ON public.agent_run_steps;
+CREATE POLICY "agent_run_steps_select" ON public.agent_run_steps
+  FOR SELECT USING (
+    public.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1 FROM public.agent_runs r WHERE r.id = agent_run_steps.run_id
+    )
+  );
+
+DROP POLICY IF EXISTS "agent_run_steps_insert" ON public.agent_run_steps;
+DROP POLICY IF EXISTS "agent_run_steps_update" ON public.agent_run_steps;
+DROP POLICY IF EXISTS "agent_run_steps_delete" ON public.agent_run_steps;
+
+REVOKE ALL ON TABLE public.agent_run_steps FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.agent_run_steps FROM authenticated;
+
+-- ------------------------------------------------------------
+-- 5. model_pricing
+-- ------------------------------------------------------------
+
+ALTER TABLE public.model_pricing ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "model_pricing_select" ON public.model_pricing;
+CREATE POLICY "model_pricing_select" ON public.model_pricing
+  FOR SELECT USING (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS "model_pricing_insert" ON public.model_pricing;
+CREATE POLICY "model_pricing_insert" ON public.model_pricing
+  FOR INSERT WITH CHECK (public.is_workspace_owner(workspace_id));
+
+DROP POLICY IF EXISTS "model_pricing_update" ON public.model_pricing;
+CREATE POLICY "model_pricing_update" ON public.model_pricing
+  FOR UPDATE USING (public.is_workspace_owner(workspace_id))
+  WITH CHECK (public.is_workspace_owner(workspace_id));
+
+DROP POLICY IF EXISTS "model_pricing_delete" ON public.model_pricing;
+CREATE POLICY "model_pricing_delete" ON public.model_pricing
+  FOR DELETE USING (public.is_workspace_owner(workspace_id));
+
+REVOKE ALL ON TABLE public.model_pricing FROM anon;
+
+-- ============================================================
+-- MIGRATION 61: DEBOUNCED JOBS
+-- ============================================================
+-- ============================================================================
+-- 00061 — Jobs reprogramables: la ventana de silencio del agente
+-- ============================================================================
+-- Fase 3, Bloque 2a. El agente no responde al instante: espera una ventana de
+-- silencio desde el ULTIMO mensaje del lead, y cada mensaje nuevo la reinicia.
+-- Un temporizador en memoria (setTimeout) se pierde con cada reinicio del
+-- proceso, asi que la ventana es una fila en scheduled_jobs que cada mensaje
+-- empuja hacia adelante.
+--
+-- ---------------------------------------------------------------------------
+-- dedupe_key + indice unico parcial SOLO sobre 'pending'
+-- ---------------------------------------------------------------------------
+-- La clave es "agent_burst:<conversation_id>". El indice unico cubre solo las
+-- filas pending, y esa restriccion es la que hace todo el mecanismo:
+--
+--   - Mientras la rafaga esta abierta hay UNA fila pending por conversacion.
+--     Dos webhooks a la vez no pueden crear dos: la exclusion la hace el motor,
+--     no un "fijate si existe y si no inserto" que se pisa solo.
+--
+--   - Cuando el runner reclama el job (pending -> processing) la fila SALE del
+--     indice. Un mensaje que llega mientras el agente esta generando puede
+--     insertar una fila pending nueva con la misma clave: abre una ventana
+--     nueva sin pisar el turno en curso. Si el indice cubriera processing, ese
+--     mensaje tardio no tendria donde anotarse.
+--
+-- ---------------------------------------------------------------------------
+-- push_debounced_job
+-- ---------------------------------------------------------------------------
+-- Atomica: INSERT ... ON CONFLICT DO UPDATE.
+--
+--   - El tope de espera (burst_deadline) se congela en el PRIMER mensaje de la
+--     rafaga y las reprogramaciones lo leen del payload: es imposible empujar la
+--     rafaga mas alla del techo aunque el lead escriba cuarenta veces.
+--   - Sin tope (p_deadline NULL): LEAST(x, NULL) devuelve x en Postgres, asi que
+--     el mecanismo funciona igual sin ramas. Hay test de este borde.
+--   - GREATEST con el run_at existente: un webhook viejo que llega tarde (fuera
+--     de orden) nunca adelanta la ventana.
+--   - Si el UPDATE no afecta filas es porque la fila en conflicto paso a
+--     processing entre el conflicto y el update: se reintenta el INSERT, que
+--     ahora ya no choca.
+--
+-- El payload NO lleva textos de mensajes: el job los lee de messages al
+-- ejecutarse. Eso resuelve solo la carrera del mensaje que llega entre el
+-- agendado y la ejecucion, y mantiene la cola sin datos del lead.
+--
+-- Solo service role, como el resto de la cola (00046).
+--
+-- Idempotente.
+-- ============================================================================
+
+ALTER TABLE public.scheduled_jobs
+  ADD COLUMN IF NOT EXISTS dedupe_key text;
+
+COMMENT ON COLUMN public.scheduled_jobs.dedupe_key IS
+  'Clave de un job reprogramable. Unica solo entre los pending: un job en processing sale del indice y deja lugar a una ventana nueva.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduled_jobs_dedupe_pending
+  ON public.scheduled_jobs(dedupe_key)
+  WHERE dedupe_key IS NOT NULL AND status = 'pending';
+
+-- La ruta de cron del agente pide solo sus jobs.
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_type_pending
+  ON public.scheduled_jobs(type, run_at)
+  WHERE status = 'pending';
+
+CREATE OR REPLACE FUNCTION public.push_debounced_job(
+  p_type       text,
+  p_dedupe_key text,
+  p_payload    jsonb,
+  p_run_at     timestamptz,
+  p_deadline   timestamptz
+)
+RETURNS TABLE (job_id uuid, job_run_at timestamptz, created boolean)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_attempt integer := 0;
+BEGIN
+  IF p_type IS NULL OR p_dedupe_key IS NULL OR p_run_at IS NULL THEN
+    RAISE EXCEPTION 'push_debounced_job: type, dedupe_key y run_at son obligatorios';
+  END IF;
+
+  LOOP
+    v_attempt := v_attempt + 1;
+
+    RETURN QUERY
+    INSERT INTO public.scheduled_jobs AS j (type, payload, run_at, dedupe_key)
+    VALUES (
+      p_type,
+      COALESCE(p_payload, '{}'::jsonb) || jsonb_build_object('burst_deadline', p_deadline),
+      LEAST(p_run_at, p_deadline),
+      p_dedupe_key
+    )
+    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending'
+    DO UPDATE SET
+      run_at = GREATEST(
+        j.run_at,
+        LEAST(p_run_at, (j.payload->>'burst_deadline')::timestamptz)
+      ),
+      payload = j.payload || jsonb_build_object(
+        'last_message_at', COALESCE(p_payload->'last_message_at', to_jsonb(now()))
+      )
+    WHERE j.status = 'pending'
+    RETURNING j.id, j.run_at, (j.xmax = 0);
+
+    IF FOUND THEN
+      RETURN;
+    END IF;
+
+    IF v_attempt >= 3 THEN
+      RAISE EXCEPTION 'push_debounced_job: no se pudo agendar % despues de % intentos', p_dedupe_key, v_attempt;
+    END IF;
+  END LOOP;
+END;
+$$;
+
+COMMENT ON FUNCTION public.push_debounced_job(text, text, jsonb, timestamptz, timestamptz) IS
+  'Agenda o empuja hacia adelante un job reprogramable (ventana de silencio del agente). Atomica. El tope se congela en el primer mensaje de la rafaga. Solo service role.';
+
+REVOKE ALL ON FUNCTION public.push_debounced_job(text, text, jsonb, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.push_debounced_job(text, text, jsonb, timestamptz, timestamptz) TO service_role;
+
+-- ============================================================
+-- MIGRATION 62: KNOWLEDGE SEARCH FILTERED
+-- ============================================================
+-- ============================================================================
+-- 00062 — Busqueda semantica con el filtro de acceso adentro de la consulta
+-- ============================================================================
+-- Fase 3, Bloque 2a (F27). El agente accede a la base de conocimiento solo por
+-- los tags que tenga habilitados, y nunca a un documento marcado internal_only.
+--
+-- El filtro va DENTRO del SQL y no despues de traer los fragmentos. Si se
+-- filtrara en el codigo que consume la busqueda, el contenido prohibido ya
+-- habria viajado hasta el proceso de la app: un bug, un log de mas o un cambio
+-- de orden y termina en el prompt. Con el filtro en el WHERE, esas filas no
+-- salen de la base.
+--
+-- Es una funcion NUEVA y no un cambio a match_knowledge_chunks (00049), que
+-- queda intacta: la usan scripts/verify-knowledge.mjs y verify-rls.mjs. Los dos
+-- parametros nuevos van SIN default a proposito: con defaults, una llamada de
+-- cuatro argumentos quedaria ambigua entre las dos firmas si alguna vez se
+-- unificaran los nombres.
+--
+-- Semantica de p_tags:
+--   - NULL o vacio: toda la base de conocimiento (salvo lo interno).
+--   - Con valores: documentos que tengan AL MENOS UNO de esos tags.
+-- p_include_internal existe para el agente de gestion de la Etapa 3 (que opera
+-- para el dueno y si puede leer lo interno). El agente de leads siempre pasa
+-- false. Un Member que llame la funcion con true no gana nada: ya puede leer
+-- knowledge_chunks por RLS (00049).
+--
+-- Idempotente.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.match_knowledge_chunks_filtered(
+  p_workspace_id     uuid,
+  p_query_embedding  extensions.vector(1024),
+  p_match_count      integer,
+  p_min_similarity   double precision,
+  p_tags             text[],
+  p_include_internal boolean
+)
+RETURNS TABLE (
+  chunk_id       uuid,
+  document_id    uuid,
+  document_title text,
+  chunk_index    integer,
+  content        text,
+  similarity     double precision
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+BEGIN
+  IF p_workspace_id IS NULL THEN
+    RAISE EXCEPTION 'workspace_id is required';
+  END IF;
+
+  -- Mismo chequeo que match_knowledge_chunks (ver el comentario de la 00049
+  -- sobre por que va el coalesce).
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND NOT public.is_workspace_member(p_workspace_id) THEN
+    RAISE EXCEPTION 'forbidden: not a member of this workspace';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    kc.id,
+    kc.document_id,
+    kb.title,
+    kc.chunk_index,
+    kc.content,
+    (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding))::double precision
+  FROM public.knowledge_chunks kc
+  JOIN public.knowledge_base kb ON kb.id = kc.document_id
+  WHERE kc.workspace_id = p_workspace_id
+    AND kb.deleted_at IS NULL
+    AND (COALESCE(p_include_internal, false) OR kb.internal_only = false)
+    AND (p_tags IS NULL OR cardinality(p_tags) = 0 OR kb.tags && p_tags)
+    AND (1 - (kc.embedding OPERATOR(extensions.<=>) p_query_embedding)) >= COALESCE(p_min_similarity, 0)
+  ORDER BY kc.embedding OPERATOR(extensions.<=>) p_query_embedding
+  LIMIT GREATEST(COALESCE(p_match_count, 8), 1);
+END;
+$$;
+
+COMMENT ON FUNCTION public.match_knowledge_chunks_filtered(uuid, extensions.vector, integer, double precision, text[], boolean) IS
+  'Busqueda semantica con el filtro de acceso del agente adentro de la consulta: tags permitidos (vacio = todos) y exclusion de documentos internal_only. El contenido excluido nunca sale de la base.';
+
+REVOKE ALL ON FUNCTION public.match_knowledge_chunks_filtered(uuid, extensions.vector, integer, double precision, text[], boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.match_knowledge_chunks_filtered(uuid, extensions.vector, integer, double precision, text[], boolean) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 63: AGENT BURSTS CRON
+-- ============================================================
+-- ============================================================================
+-- 00063 — Cron del agente cada 15 segundos y purgas ajustadas al volumen nuevo
+-- ============================================================================
+-- Fase 3, Bloque 2a.
+--
+-- 1. Ruta de cron propia: /api/cron/agent-bursts.
+--    El runner general (/api/cron/jobs) procesa 20 jobs por corrida y una tanda
+--    de broadcasts podria demorar el turno del agente varios minutos. Separarlo
+--    lo aisla de esa cola.
+--
+-- 2. Cada 15 segundos y no cada minuto. El envio apunta a un objetivo absoluto
+--    (ultimo_mensaje + ventana + demora), y la demora absorbe el tic del cron y
+--    el tiempo de generacion. Con un cron por minuto el tic mete hasta 60 s de
+--    azar y la demora default no alcanza a taparlo; con 15 s, si. pg_cron 1.6.4
+--    soporta intervalos sub-minuto ('15 seconds').
+--    Son ~5.760 llamadas por dia que salen por la puerta de atras cuando no hay
+--    turnos pendientes.
+--
+-- 3. Purgas. Ese volumen se acumula en dos lugares:
+--    - net._http_response: la purga pasa de diaria con 3 dias de retencion a
+--      CADA HORA con 1 dia. Pico entre purgas: ~12.000 filas en vez de ~47.000.
+--    - cron.job_run_details: pg_cron anota cada ejecucion y hasta hoy nadie la
+--      limpiaba. Con este cron sumaria 5.760 filas por dia para siempre. Se
+--      purga una vez por dia con 3 dias de retencion.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. Lista blanca de rutas
+-- ------------------------------------------------------------
+-- Misma funcion de la 00036, con 'agent-bursts' agregado. Todo lo demas igual.
+
+CREATE OR REPLACE FUNCTION private.call_app_cron(p_path text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_base   text;
+  v_secret text;
+BEGIN
+  IF p_path NOT IN ('jobs', 'sequences', 'whatsapp-health', 'inactivity', 'automation-events', 'agent-bursts') THEN
+    RAISE EXCEPTION 'ruta de cron no permitida: %', p_path;
+  END IF;
+
+  SELECT value INTO v_base   FROM private.system_config WHERE key = 'app_url';
+  SELECT value INTO v_secret FROM private.system_config WHERE key = 'cron_secret';
+
+  IF v_base IS NULL OR v_secret IS NULL THEN
+    RAISE WARNING 'private.system_config sin app_url o cron_secret: el cron "%" no se ejecuto', p_path;
+    RETURN NULL;
+  END IF;
+
+  RETURN net.http_get(
+    url     => rtrim(v_base, '/') || '/api/cron/' || p_path,
+    headers => jsonb_build_object(
+                 'Authorization', 'Bearer ' || v_secret,
+                 'Content-Type',  'application/json'
+               ),
+    timeout_milliseconds => 60000
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 2. Limpieza de cron.job_run_details
+-- ------------------------------------------------------------
+-- Mismo patron defensivo que purge_pg_net_responses: la tabla es interna de
+-- pg_cron, asi que si cambia de esquema la funcion avisa en vez de reventar.
+
+CREATE OR REPLACE FUNCTION private.purge_cron_run_details(p_retention_days integer DEFAULT 3)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_deleted integer := 0;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_tables
+    WHERE schemaname = 'cron' AND tablename = 'job_run_details'
+  ) THEN
+    RAISE WARNING 'cron.job_run_details no existe: pg_cron cambio de esquema, hay que revisar la limpieza';
+    RETURN 0;
+  END IF;
+
+  EXECUTE 'DELETE FROM cron.job_run_details WHERE end_time < now() - make_interval(days => $1)'
+  USING GREATEST(p_retention_days, 1);
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.purge_cron_run_details(integer) FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION private.purge_cron_run_details(integer) IS
+  'Borra el historial de ejecuciones de pg_cron de mas de N dias. Sin esto cron.job_run_details crece sin techo (el cron del agente corre cada 15 s).';
+
+-- ------------------------------------------------------------
+-- 3. Los schedules
+-- ------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_job text;
+BEGIN
+  FOREACH v_job IN ARRAY ARRAY[
+    'ssa-cron-agent-bursts',
+    'ssa-cron-purge-pg-net',
+    'ssa-cron-purge-cron-runs'
+  ] LOOP
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
+      PERFORM cron.unschedule(v_job);
+    END IF;
+  END LOOP;
+END;
+$$;
+
+SELECT cron.schedule(
+  'ssa-cron-agent-bursts',
+  '15 seconds',
+  $$SELECT private.call_app_cron('agent-bursts')$$
+);
+
+-- Cada hora al minuto 10, 1 dia de retencion (antes: 4:10 diario, 3 dias).
+SELECT cron.schedule(
+  'ssa-cron-purge-pg-net',
+  '10 * * * *',
+  $$SELECT private.purge_pg_net_responses(1)$$
+);
+
+-- 5:20, despues de las purgas de mensajes (5:00) y de pasos del agente (5:10).
+SELECT cron.schedule(
+  'ssa-cron-purge-cron-runs',
+  '20 5 * * *',
+  $$SELECT private.purge_cron_run_details(3)$$
+);
+
+-- ============================================================
+-- MIGRATION 64: AI SPEND SUM
+-- ============================================================
+-- ============================================================================
+-- 00064 — Suma del gasto de IA, en la base
+-- ============================================================================
+-- Fase 3, Bloque 2a (F25/F29). Los topes de gasto se evaluan ANTES de cada
+-- llamada al modelo, sumando cost_usd sobre agent_runs desde el inicio del dia
+-- o del mes en la zona del negocio.
+--
+-- La suma va en SQL y no en la app por un motivo concreto: PostgREST devuelve
+-- como maximo 1.000 filas por consulta. Un mes con mas runs que eso sumado del
+-- lado de la app da un total por debajo del real, y un tope que subestima el
+-- gasto no protege nada. Con sum() el total es exacto y sale del indice
+-- (workspace_id, created_at) o (agent_id, created_at) de la 00059.
+--
+-- Los runs con cost_usd NULL (modelo sin precio cargado) suman 0: no hay un
+-- numero mejor, y la pantalla ya avisa que falta el precio.
+--
+-- Solo service role: el gasto es informacion de Owner/Admin y la evalua el
+-- motor del agente, que corre sin usuario.
+--
+-- Idempotente.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.sum_ai_spend(
+  p_workspace_id uuid,
+  p_since        timestamptz,
+  p_agent_id     uuid DEFAULT NULL
+)
+RETURNS numeric
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+  SELECT COALESCE(SUM(r.cost_usd), 0)
+  FROM public.agent_runs r
+  WHERE r.workspace_id = p_workspace_id
+    AND r.created_at >= p_since
+    AND (p_agent_id IS NULL OR r.agent_id = p_agent_id);
+$$;
+
+COMMENT ON FUNCTION public.sum_ai_spend(uuid, timestamptz, uuid) IS
+  'Gasto de IA en USD desde un instante: de todo el workspace o de un agente. Lo usan los topes de gasto antes de cada llamada. Solo service role.';
+
+REVOKE ALL ON FUNCTION public.sum_ai_spend(uuid, timestamptz, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sum_ai_spend(uuid, timestamptz, uuid) TO service_role;
+
+-- ============================================================
+-- MIGRATION 65: AGENT RUNS SKIPPED STATUS
+-- ============================================================
+-- ============================================================================
+-- 00065 — Resultado "skipped" para los runs del agente
+-- ============================================================================
+-- Fase 3, Bloque 2a. Toda abstencion del agente deja un run con su motivo,
+-- y los cinco resultados del documento no cubrian uno muy comun: el agente no
+-- actuo porque estaba apagado (global, por canal o en la conversacion), pausado
+-- por un flow, o porque una persona tomo la conversacion mientras generaba.
+--
+-- Ninguno encaja: no es "se abstuvo por automatizacion" (no hubo automatizacion)
+-- ni "bloqueado por guardarrail" (no bloqueo un limite). Meterlo en uno de esos
+-- haria mentir el filtro de runs. El motivo puntual va en status_detail.
+--
+-- Idempotente: reemplaza el CHECK por nombre.
+-- ============================================================================
+
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_status_values;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_status_values
+  CHECK (status IN ('running', 'responded', 'escalated', 'skipped_automation',
+                    'skipped', 'blocked_guardrail', 'completed', 'error'));
+
+COMMENT ON COLUMN public.agent_runs.status IS
+  'running | responded | escalated | skipped_automation | skipped | blocked_guardrail | completed | error. skipped = el agente no actuo por una palanca (apagado, canal, conversacion, pausa, una persona tomo la conversacion); el motivo va en status_detail.';

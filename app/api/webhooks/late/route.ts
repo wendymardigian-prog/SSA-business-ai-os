@@ -32,6 +32,7 @@ import {
   runInboundAutomation,
   upsertConversation,
 } from "@/lib/inbound";
+import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -313,7 +314,7 @@ async function processMessageEvent(
 
   // ── Automatizaciones ──────────────────────────────────────────────────────
 
-  await runInboundAutomation({
+  const automation = await runInboundAutomation({
     supabase,
     channel,
     contactId,
@@ -335,6 +336,18 @@ async function processMessageEvent(
     },
     lateConversationId: conv.id,
     lateAccountId: account.id,
+  });
+
+  // ── Agente de IA (Fase 3) ─────────────────────────────────────────────────
+  // Despues de las automatizaciones, nunca antes: si un flow reclamo el
+  // mensaje, el agente se abstiene y lo deja registrado. Es el unico lugar que
+  // agenda un turno del agente.
+  await maybeScheduleAgentTurn(supabase, {
+    workspaceId: channel.workspace_id,
+    channelId: channel.id,
+    contactId: contactId,
+    conversationId: conversation.id,
+    automation,
   });
 }
 

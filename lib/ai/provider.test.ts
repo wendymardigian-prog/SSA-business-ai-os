@@ -7,7 +7,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
   return { ...actual, readSecret };
 });
 
-import { getWorkspaceModel, listConnectedAiProviders } from "./provider";
+import { getExactWorkspaceModel, getWorkspaceModel, listConnectedAiProviders } from "./provider";
 
 /**
  * Cliente falso que devuelve las filas de integration_configs que le pidas.
@@ -236,5 +236,61 @@ describe("Voyage no se usa nunca para generar texto", () => {
     const list = await listConnectedAiProviders("ws-1", client);
 
     expect(list.map((p) => p.provider)).toEqual(["anthropic"]);
+  });
+});
+
+describe("resolvedor estricto del agente (getExactWorkspaceModel)", () => {
+  function singleRowClient(row: unknown | null) {
+    const eq = vi.fn();
+    const builder: Record<string, unknown> = {
+      select: () => builder,
+      eq: (...args: unknown[]) => {
+        eq(...args);
+        return builder;
+      },
+      maybeSingle: async () => ({ data: row, error: null }),
+    };
+    return { client: { from: () => builder } as unknown as SupabaseClient, eq };
+  }
+
+  it("con el proveedor pedido conectado, arma ese modelo exacto", async () => {
+    readSecret.mockResolvedValue("sk-ant-x");
+    const { client, eq } = singleRowClient(ANTHROPIC_ROW);
+
+    const r = await getExactWorkspaceModel("ws-1", {
+      provider: "anthropic",
+      modelId: "claude-opus-5",
+      supabase: client,
+    });
+
+    expect(r).toMatchObject({ ok: true, provider: "anthropic", modelId: "claude-opus-5" });
+    expect(eq).toHaveBeenCalledWith("provider", "anthropic");
+  });
+
+  it("si el proveedor pedido NO esta conectado, falla: nunca lo reemplaza por otro", async () => {
+    const { client } = singleRowClient(null);
+
+    const r = await getExactWorkspaceModel("ws-1", {
+      provider: "openai",
+      modelId: "gpt-5",
+      supabase: client,
+    });
+
+    expect(r.ok).toBe(false);
+    expect(r.problem).toBe("provider_unavailable");
+    expect(readSecret).not.toHaveBeenCalled();
+  });
+
+  it("un proveedor de embeddings no sirve como modelo de chat", async () => {
+    const { client } = singleRowClient({ provider: "voyage", vault_secret_name: null, config: {} });
+
+    const r = await getExactWorkspaceModel("ws-1", {
+      provider: "voyage",
+      modelId: "voyage-4-lite",
+      supabase: client,
+    });
+
+    expect(r.ok).toBe(false);
+    expect(r.problem).toBe("provider_unavailable");
   });
 });
