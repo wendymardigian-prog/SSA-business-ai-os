@@ -120,6 +120,13 @@ En `runInboundAutomation` (`lib/inbound.ts`), en este orden:
 3. **Sesión de flow esperando respuesta** (un "Esperar respuesta"): se retoma con
    este mensaje, **matchee o no un trigger**.
 4. **Triggers de flows**: el primero que matchee arranca su flow.
+5. **Agente de IA**: `runInboundAutomation` devuelve quién reclamó el mensaje y,
+   si nadie lo hizo, `maybeScheduleAgentTurn` agenda el turno del agente. Ver
+   [agente-ia.md](agente-ia.md).
+
+Desde la Fase 3 los envíos manuales desde la bandeja también se guardan en
+`messages` (con `sent_by_user_id`), para Instagram y WhatsApp: el agente lee el
+historial de la base y necesita ver lo que contestó una persona.
 
 El paso 3 cambió en la Fase 3 (Bloque 2a). Antes el chequeo de la sesión en
 espera vivía adentro de `executeFlow`, que solo se llamaba si algún trigger
