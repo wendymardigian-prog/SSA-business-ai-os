@@ -204,12 +204,18 @@ export async function generateEmbeddings(
   };
 }
 
-/** El embedding de una consulta, para la busqueda semantica. */
+/**
+ * El embedding de una consulta, para la busqueda semantica.
+ *
+ * Devuelve tambien el modelo y los tokens: cada busqueda del agente llama a
+ * Voyage, y si ese consumo no entra al run, el gasto reportado queda siempre
+ * por debajo del real.
+ */
 export async function embedQuery(
   workspaceId: string,
   query: string,
   options: Omit<GenerateEmbeddingsOptions, "inputType"> = {},
-): Promise<{ ok: true; embedding: number[] } | EmbeddingFailure> {
+): Promise<{ ok: true; embedding: number[]; model: string; totalTokens: number } | EmbeddingFailure> {
   const result = await generateEmbeddings(workspaceId, [query], {
     ...options,
     inputType: "query",
@@ -227,5 +233,5 @@ export async function embedQuery(
     };
   }
 
-  return { ok: true, embedding };
+  return { ok: true, embedding, model: result.model, totalTokens: result.totalTokens };
 }

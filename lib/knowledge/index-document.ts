@@ -11,6 +11,12 @@
  * red, se lanza para que el runner reintente con backoff.
  *
  * Nunca se loguea el contenido del documento ni la API key.
+ *
+ * Fase 3: la llamada a Voyage abre un run (source kb_indexing) con los tokens
+ * reales y el costo congelado. El run se abre recien antes de pedir los
+ * embeddings: un PDF que no se pudo leer no llamo a ninguna IA y no gasto nada.
+ * Cada reintento del runner abre su propio run, porque cada intento gasto
+ * tokens de verdad.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -19,6 +25,7 @@ import { detectMimeType, extractMarkdown, type SupportedMime } from "./extract";
 import { chunkMarkdown } from "./chunk";
 import { generateEmbeddings } from "./embeddings";
 import { toPgVector } from "./voyage";
+import { openAiRun, type AiRunHandle } from "@/lib/ai/run";
 
 /** Nombre del bucket privado (migracion 00050). */
 export const KNOWLEDGE_BUCKET = "knowledge";
@@ -42,6 +49,7 @@ export interface IndexOutcome {
   status: "ready" | "error";
   chunks: number;
   detail?: string;
+  runId?: string | null;
 }
 
 type Db = SupabaseClient<Database>;
@@ -57,6 +65,7 @@ export async function indexDocument(
   payload: IndexDocumentPayload,
 ): Promise<IndexOutcome> {
   const { documentId, workspaceId } = payload;
+  let run: AiRunHandle | null = null;
 
   try {
     const document = await loadDocument(supabase, documentId, workspaceId);
@@ -85,17 +94,36 @@ export async function indexDocument(
       .update({ content_md: markdown })
       .eq("id", documentId);
 
+    run = await openAiRun(supabase, {
+      workspaceId,
+      source: "kb_indexing",
+      trigger: "job",
+      threadId: documentId,
+    });
+    const startedAt = Date.now();
+
     const embedded = await generateEmbeddings(
       workspaceId,
       chunks.map((c) => c.content),
       { inputType: "document", supabase },
     );
 
+    await run.step({
+      kind: "model_call",
+      name: embedded.ok ? `voyage/${embedded.model}` : "voyage",
+      output: embedded.ok ? { chunks: chunks.length } : null,
+      durationMs: Date.now() - startedAt,
+      error: embedded.ok ? null : embedded.problem,
+    });
+
     if (!embedded.ok) {
       // Aca vive la distincion que ordena todo el archivo.
       if (embedded.retryable) throw new Error(embedded.message);
       throw new PermanentIndexError(embedded.message);
     }
+
+    run.setModel("voyage", embedded.model);
+    run.addEmbeddingUsage({ provider: "voyage", model: embedded.model, tokens: embedded.totalTokens });
 
     await writeChunks(supabase, {
       documentId,
@@ -117,12 +145,18 @@ export async function indexDocument(
       })
       .eq("id", documentId);
 
-    return { status: "ready", chunks: chunks.length };
+    await run.close({ status: "completed" });
+    return { status: "ready", chunks: chunks.length, runId: run.runId };
   } catch (err) {
+    const message = err instanceof Error ? err.message : "error desconocido";
+
     if (err instanceof PermanentIndexError) {
+      await run?.close({ status: "error", statusDetail: "permanent", error: message });
       await markFailed(supabase, documentId, err.message);
-      return { status: "error", chunks: 0, detail: err.message };
+      return { status: "error", chunks: 0, detail: err.message, runId: run?.runId ?? null };
     }
+
+    await run?.close({ status: "error", statusDetail: "transient_retry", error: message });
 
     // Transitorio: se deja el motivo visible pero el documento sigue en
     // 'processing', porque el runner lo va a volver a intentar.

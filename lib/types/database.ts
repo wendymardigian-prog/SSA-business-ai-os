@@ -2366,6 +2366,15 @@ export interface Database {
           similarity: number;
         }[];
       };
+      /** Gasto de IA en USD desde un instante (migracion 00064). Solo service_role. */
+      sum_ai_spend: {
+        Args: {
+          p_workspace_id: string;
+          p_since: string;
+          p_agent_id?: string | null;
+        };
+        Returns: number;
+      };
       increment_unread: {
         Args: {
           conv_id: string;

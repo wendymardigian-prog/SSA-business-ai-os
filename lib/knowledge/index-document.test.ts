@@ -5,6 +5,18 @@ import type { Database } from "@/lib/types/database";
 const generateEmbeddings = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/knowledge/embeddings", () => ({ generateEmbeddings }));
 
+const runHandle = vi.hoisted(() => ({
+  runId: "run-kb",
+  setModel: vi.fn(),
+  addStepUsage: vi.fn(),
+  setFinalUsage: vi.fn(),
+  addEmbeddingUsage: vi.fn(),
+  step: vi.fn().mockResolvedValue(null),
+  close: vi.fn().mockResolvedValue({ costUsd: 0, pricingMissing: [] }),
+}));
+const openAiRun = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/ai/run", () => ({ openAiRun }));
+
 import { indexDocument } from "./index-document";
 import { EMBEDDING_DIMENSIONS } from "./voyage";
 import { makePdf } from "./extract.fixtures";
@@ -87,6 +99,10 @@ const PAYLOAD = { documentId: "doc-1", workspaceId: "ws-1" };
 
 beforeEach(() => {
   generateEmbeddings.mockReset();
+  vi.clearAllMocks();
+  openAiRun.mockResolvedValue(runHandle);
+  runHandle.step.mockResolvedValue(null);
+  runHandle.close.mockResolvedValue({ costUsd: 0, pricingMissing: [] });
 });
 
 describe("el camino feliz", () => {
@@ -110,6 +126,19 @@ describe("el camino feliz", () => {
     expect(final.embedding_model).toBe("voyage-4-lite");
     expect(final.error_detail).toBeNull();
     expect(final.indexed_at).toBeTruthy();
+
+    // El costo de Voyage queda en un run kb_indexing con los tokens REALES.
+    expect(openAiRun).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ source: "kb_indexing", trigger: "job", threadId: "doc-1" }),
+    );
+    expect(runHandle.addEmbeddingUsage).toHaveBeenCalledWith({
+      provider: "voyage",
+      model: "voyage-4-lite",
+      tokens: 30,
+    });
+    expect(runHandle.close).toHaveBeenCalledWith({ status: "completed" });
+    expect(outcome.runId).toBe("run-kb");
   });
 
   it("indexa con input_type=document, no con el de consulta", async () => {
@@ -189,6 +218,10 @@ describe("fallos permanentes: marcan error y NO se reintentan", () => {
     expect(outcome.status).toBe("error");
     expect(updates.at(-1)?.status).toBe("error");
     expect(String(updates.at(-1)?.error_detail)).toContain("Voyage");
+    expect(runHandle.close).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "error", statusDetail: "permanent" }),
+    );
+    expect(runHandle.addEmbeddingUsage).not.toHaveBeenCalled();
   });
 
   it("guarda igual el markdown: la conversion anduvo, lo que fallo fue indexar", async () => {
@@ -234,6 +267,8 @@ describe("fallos permanentes: marcan error y NO se reintentan", () => {
     expect(outcome.status).toBe("error");
     expect(String(updates.at(-1)?.error_detail)).toContain("No se reconoce");
     expect(generateEmbeddings).not.toHaveBeenCalled();
+    // No se llamo a ninguna IA: no hay run.
+    expect(openAiRun).not.toHaveBeenCalled();
   });
 
   it("con un documento sin archivo asociado", async () => {
@@ -263,6 +298,10 @@ describe("fallos transitorios: se lanzan para que el runner reintente", () => {
     // El documento sigue en processing: no se marca error todavia.
     expect(updates.at(-1)?.status).toBeUndefined();
     expect(updates.at(-1)?.error_detail).toBeTruthy();
+    // Cada intento deja su run cerrado: el reintento abre uno nuevo.
+    expect(runHandle.close).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "error", statusDetail: "transient_retry" }),
+    );
   });
 
   it("cuando no se puede bajar el archivo", async () => {
