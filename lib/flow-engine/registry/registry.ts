@@ -13,12 +13,14 @@ import type {
   ConditionOperator,
   NodeDefinition,
   TriggerDefinition,
+  TriggerGuardDefinition,
 } from "./types";
 
 const nodes = new Map<string, NodeDefinition<never>>();
 const triggers = new Map<string, TriggerDefinition>();
 const operators = new Map<string, ConditionOperator>();
 const fields = new Map<string, ConditionField>();
+const triggerGuards = new Map<string, TriggerGuardDefinition>();
 
 /** type del canvas -> actionType -> tipo canonico. */
 const aliasIndex = new Map<string, Map<string | undefined, string>>();
@@ -65,6 +67,17 @@ export function registerTrigger(definition: TriggerDefinition): void {
     throw new Error(`El trigger "${definition.type}" ya estaba registrado`);
   }
   triggers.set(definition.type, definition);
+}
+
+export function registerTriggerGuard(definition: TriggerGuardDefinition): void {
+  if (triggerGuards.has(definition.configKey)) {
+    throw new Error(`La puerta de trigger "${definition.configKey}" ya estaba registrada`);
+  }
+  triggerGuards.set(definition.configKey, definition);
+}
+
+export function listTriggerGuards(): TriggerGuardDefinition[] {
+  return [...triggerGuards.values()];
 }
 
 export function registerConditionOperator(definition: ConditionOperator): void {
@@ -170,5 +183,6 @@ export function resetRegistry(): void {
   triggers.clear();
   operators.clear();
   fields.clear();
+  triggerGuards.clear();
   aliasIndex.clear();
 }

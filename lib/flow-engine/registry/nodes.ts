@@ -19,6 +19,7 @@ import { abSplitNode } from "../nodes/ab-split";
 import { commentReplyNode, privateReplyNode } from "../nodes/comment-reply";
 import { aiResponseNode } from "../nodes/ai-response";
 import { enrollSequenceNode } from "../nodes/enroll-sequence";
+import { pauseAgentNode, resumeAgentNode } from "../nodes/agent-toggle";
 
 registerNode(sendMessageNode);
 registerNode(aiResponseNode);
@@ -37,3 +38,5 @@ registerNode(abSplitNode);
 registerNode(commentReplyNode);
 registerNode(privateReplyNode);
 registerNode(enrollSequenceNode);
+registerNode(pauseAgentNode);
+registerNode(resumeAgentNode);

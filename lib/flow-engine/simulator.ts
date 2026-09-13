@@ -396,6 +396,21 @@ export function simulateFlow(
         break;
       }
 
+      case "pauseAgent":
+      case "resumeAgent": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: node.type,
+          nodeLabel: label,
+          result: {
+            type: "action",
+            actionType: node.type,
+            detail: node.type === "pauseAgent" ? "Pausa el agente de IA" : "Reanuda el agente de IA",
+          },
+        });
+        break;
+      }
+
       case "humanTakeover": {
         steps.push({
           nodeId: node.id,

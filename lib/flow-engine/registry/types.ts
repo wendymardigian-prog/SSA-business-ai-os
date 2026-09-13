@@ -134,15 +134,29 @@ export interface TriggerDefinition {
   /** Decide si este trigger le corresponde al mensaje. Solo para scope "message"/"comment". */
   matches?(args: TriggerMatchArgs): boolean;
   /**
-   * Puerta de entrada extra, evaluada despues del match y antes de disparar.
-   *
-   * Todavia no la usa nadie. Esta puesta para lo que viene en la Fase 3: la
-   * convivencia del agente de IA con las automatizaciones necesita condiciones
-   * de arranque del tipo "ejecutar solo si el agente esta apagado en esta
-   * conversacion", que se apoyan en conversations.is_automation_paused. Cuando
-   * llegue, es completar este campo en la definicion, no tocar el motor.
+   * Puerta de entrada extra de ESTE tipo, evaluada despues del match y antes
+   * de disparar. Las puertas que valen para cualquier tipo y se prenden desde
+   * la config del trigger son TriggerGuardDefinition (abajo).
    */
   guard?(args: TriggerGuardArgs): Promise<boolean>;
+}
+
+/**
+ * Una puerta de arranque que se aplica a cualquier trigger y se prende desde su
+ * config (Fase 3). La primera es "solo si el agente de IA esta apagado": con
+ * eso, un flow con trigger por defecto deja de capturar los mensajes de las
+ * conversaciones que atiende el agente.
+ *
+ * Se evalua despues del match, tambien para el trigger por defecto (que no
+ * tiene matches y antes se devolvia sin pasar por ninguna puerta).
+ */
+export interface TriggerGuardDefinition {
+  /** Clave booleana en trigger.config que la prende. */
+  configKey: string;
+  label: string;
+  description: string;
+  /** true = el trigger puede disparar. */
+  allows(args: TriggerGuardArgs): Promise<boolean>;
 }
 
 // ------------------------------------------------------------

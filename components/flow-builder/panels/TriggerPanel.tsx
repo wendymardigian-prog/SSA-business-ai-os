@@ -23,8 +23,13 @@ interface TriggerPanelData {
   /** F5: ventana de inactividad. */
   amount?: number;
   unit?: "hours" | "days";
+  /** Fase 3: el flow no arranca en conversaciones que atiende el agente de IA. */
+  onlyIfAgentOff?: boolean;
   [key: string]: unknown;
 }
+
+/** Triggers de mensaje directo: son los que compiten con el agente de IA. */
+const MESSAGE_TRIGGER_TYPES = ["keyword", "postback", "quick_reply", "welcome", "default"];
 
 interface TriggerPanelProps {
   data: Record<string, unknown>;
@@ -349,6 +354,26 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
             Instagram hoy, WhatsApp cuando se conecte el numero.
           </p>
         </div>
+      )}
+
+      {/* Fase 3: convivencia con el agente de IA */}
+      {(MESSAGE_TRIGGER_TYPES.includes(triggerType) || (triggerType === "comment_keyword" && data.alsoMatchInDms)) && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3">
+          <input
+            type="checkbox"
+            checked={data.onlyIfAgentOff === true}
+            onChange={(e) => onChange({ ...data, onlyIfAgentOff: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-input text-emerald-500 focus:ring-emerald-500"
+          />
+          <span>
+            <span className="block text-sm font-medium text-foreground">Solo si el agente de IA esta apagado</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {triggerType === "default"
+                ? "Recomendado: sin esto, este flow responde todos los mensajes y el agente nunca contesta."
+                : "El flow no arranca en las conversaciones que esta atendiendo el agente."}
+            </span>
+          </span>
+        </label>
       )}
 
       {/* Payload Section */}

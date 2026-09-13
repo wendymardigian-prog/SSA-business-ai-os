@@ -469,8 +469,54 @@ describe("runInboundAutomation", () => {
     executeFlow.mockRejectedValue(new Error("el nodo de IA fallo"));
     const { client } = fakeDb({ select: { workspaces: { global_keywords: [] } } });
 
+    // No lanza, y el flow que exploto igual reclama el mensaje: el agente no
+    // puede meterse encima de una corrida a medias.
     await expect(
       runInboundAutomation({ supabase: client, ...base, isAutomationPaused: false })
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ claimed: true, by: "flow_error", flowId: "fl-1" });
+  });
+
+  describe("devuelve quien se hizo cargo del mensaje (Fase 3)", () => {
+    it("conversacion tomada a mano: no reclama, los flows no corren pero el agente lo decide por su toggle", async () => {
+      const { client } = fakeDb({});
+      await expect(
+        runInboundAutomation({ supabase: client, ...base, isAutomationPaused: true })
+      ).resolves.toEqual({ claimed: false, reason: "automation_paused" });
+    });
+
+    it("palabra clave global: reclama", async () => {
+      const { client } = fakeDb({
+        select: { workspaces: { global_keywords: [{ keyword: "hola", action: "unsubscribe" }] } },
+      });
+      await expect(
+        runInboundAutomation({ supabase: client, ...base, isAutomationPaused: false })
+      ).resolves.toEqual({ claimed: true, by: "global_keyword" });
+    });
+
+    it("sesion de flow esperando respuesta: reclama y la retoma", async () => {
+      findWaitingSession.mockResolvedValueOnce({ id: "ses-1", flow_id: "fl-espera" });
+      const { client } = fakeDb({ select: { workspaces: { global_keywords: [] } } });
+      await expect(
+        runInboundAutomation({ supabase: client, ...base, isAutomationPaused: false })
+      ).resolves.toEqual({ claimed: true, by: "flow_session", flowId: "fl-espera" });
+      expect(resumeSession).toHaveBeenCalledTimes(1);
+      expect(matchTrigger).not.toHaveBeenCalled();
+    });
+
+    it("trigger que matchea: reclama con el flow y el trigger", async () => {
+      matchTrigger.mockResolvedValue({ id: "tr-1", flow_id: "fl-1" });
+      const { client } = fakeDb({ select: { workspaces: { global_keywords: [] } } });
+      await expect(
+        runInboundAutomation({ supabase: client, ...base, isAutomationPaused: false })
+      ).resolves.toEqual({ claimed: true, by: "flow", flowId: "fl-1", triggerId: "tr-1" });
+    });
+
+    it("sin trigger: nadie reclama, el agente puede actuar", async () => {
+      matchTrigger.mockResolvedValue(null);
+      const { client } = fakeDb({ select: { workspaces: { global_keywords: [] } } });
+      await expect(
+        runInboundAutomation({ supabase: client, ...base, isAutomationPaused: false })
+      ).resolves.toEqual({ claimed: false, reason: "no_trigger" });
+    });
   });
 });

@@ -40,7 +40,9 @@ export type AuditEntityType =
   | "response_template"
   | "csv_import"
   | "sequence"
-  | "sequence_enrollment";
+  | "sequence_enrollment"
+  /** Configuracion de un agente de IA (Fase 3). */
+  | "agent";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -62,7 +64,16 @@ export type AuditAction =
   /** Se frenaron secuencias del contacto (F11: respondio; o decision de un admin). */
   | "sequence_paused"
   /** Se reanudo una inscripcion pausada. */
-  | "sequence_resumed";
+  | "sequence_resumed"
+  /** La conversacion paso a una persona (agente o nodo Human Takeover). */
+  | "human_takeover"
+  /** Se encendio o apago el agente en una conversacion. */
+  | "agent_toggled"
+  /** Un flow pauso o reanudo el agente en una conversacion. */
+  | "agent_paused"
+  | "agent_resumed"
+  /** Se guardo o se restauro una version del system prompt. */
+  | "prompt_version";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -100,6 +111,8 @@ export type AgentRunStatus =
   | "responded"
   | "escalated"
   | "skipped_automation"
+  /** No actuo por una palanca: apagado, canal, conversacion, pausa (migracion 00065). */
+  | "skipped"
   | "blocked_guardrail"
   | "completed"
   | "error";
@@ -140,7 +153,10 @@ export type NodeType =
   | "abSplit"
   | "smartDelay"
   | "aiResponse"
-  | "enrollSequence";
+  | "enrollSequence"
+  /** Pausar / reanudar el agente de IA en la conversacion (Fase 3). */
+  | "pauseAgent"
+  | "resumeAgent";
 
 export type SequenceStatus = "draft" | "active" | "paused";
 /**

@@ -11,6 +11,8 @@ import {
   Shuffle,
   Hourglass,
   Cog,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -93,6 +95,16 @@ const actionConfig: Record<
   smartDelay: {
     icon: Hourglass,
     label: "Smart Delay",
+    color: "bg-gray-500",
+  },
+  pauseAgent: {
+    icon: PauseCircle,
+    label: "Pausar agente IA",
+    color: "bg-gray-500",
+  },
+  resumeAgent: {
+    icon: PlayCircle,
+    label: "Reanudar agente IA",
     color: "bg-gray-500",
   },
 };

@@ -29,11 +29,14 @@ const NODOS_DE_ACCION = [
   "subscribe",
   "unsubscribe",
   "enrollSequence",
+  "pauseAgent",
+  "resumeAgent",
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 17 tipos ejecutables", () => {
-    expect(listNodes()).toHaveLength(17);
+  it("tiene los 19 tipos ejecutables", () => {
+    // 17 de la Fase 2 + pausar y reanudar el agente de IA (Fase 3).
+    expect(listNodes()).toHaveLength(19);
   });
 
   it.each(NODOS_DE_ACCION)(

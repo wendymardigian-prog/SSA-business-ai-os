@@ -1,6 +1,79 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 
+/** Tipo de job de un turno del agente conversacional (Fase 3). */
+export const AGENT_BURST_JOB = "agent_burst";
+
+/** Anticipacion con la que se agenda un turno: un tic del cron del agente (00063). */
+export const AGENT_CRON_TICK_SECONDS = 15;
+
+export interface AgentBurstPayload {
+  workspaceId: string;
+  conversationId: string;
+  channelId: string;
+  contactId: string;
+  agentId: string;
+  /** Instante del ultimo mensaje que reprogramo la ventana. */
+  last_message_at: string;
+  /** Tope de espera de la rafaga, congelado en el primer mensaje. null = sin tope. */
+  burst_deadline?: string | null;
+}
+
+/**
+ * Cuando tiene que correr el turno del agente para una ventana de silencio.
+ *
+ * El envio apunta a un objetivo absoluto (ultimo mensaje + ventana + demora)
+ * y el turno espera en proceso lo que falte. Por eso el job se agenda UN TIC
+ * ANTES de que cierre la ventana: asi el cron cada 15 s lo levanta a tiempo y
+ * la espera absorbe el azar del tic. Pura.
+ */
+export function agentBurstTiming(args: {
+  lastMessageAt: Date;
+  bundleWindowSeconds: number;
+  maxWaitSeconds: number | null;
+  now: Date;
+}): { runAt: Date; deadline: Date | null } {
+  const windowEnd = args.lastMessageAt.getTime() + args.bundleWindowSeconds * 1000;
+  const runAt = new Date(Math.max(args.now.getTime(), windowEnd - AGENT_CRON_TICK_SECONDS * 1000));
+  const deadline =
+    args.maxWaitSeconds === null
+      ? null
+      : new Date(args.now.getTime() + args.maxWaitSeconds * 1000 - AGENT_CRON_TICK_SECONDS * 1000);
+  return { runAt, deadline };
+}
+
+/**
+ * Agenda o empuja hacia adelante el turno del agente de una conversacion
+ * (push_debounced_job, 00061). Atomico: dos mensajes a la vez no crean dos
+ * turnos. Si el turno anterior ya esta generando, abre una ventana nueva.
+ */
+export async function pushDebouncedJob(
+  service: SupabaseClient<Database>,
+  args: {
+    type: string;
+    dedupeKey: string;
+    payload: Record<string, unknown>;
+    runAt: Date;
+    deadline: Date | null;
+  },
+): Promise<{ jobId: string; runAt: string; created: boolean }> {
+  const { data, error } = await service.rpc("push_debounced_job", {
+    p_type: args.type,
+    p_dedupe_key: args.dedupeKey,
+    p_payload: args.payload as unknown as Json,
+    p_run_at: args.runAt.toISOString(),
+    p_deadline: args.deadline ? args.deadline.toISOString() : null,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) throw new Error("push_debounced_job no devolvio el job");
+  return { jobId: row.job_id, runAt: row.job_run_at, created: row.created };
+}
+
+export function agentBurstKey(conversationId: string): string {
+  return `${AGENT_BURST_JOB}:${conversationId}`;
+}
+
 /**
  * Agenda un job.
  *

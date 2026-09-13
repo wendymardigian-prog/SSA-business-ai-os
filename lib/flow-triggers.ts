@@ -61,6 +61,12 @@ export function buildDesiredTriggers(
         if (payload !== undefined) config.payload = payload;
       }
 
+      // Fase 3: puerta "solo si el agente de IA esta apagado" (registry/guards.ts).
+      // Vale para los triggers de mensaje; la evalua el matcher despues del match.
+      if (data.onlyIfAgentOff === true && type !== "comment_keyword") {
+        config.only_if_agent_off = true;
+      }
+
       const row: DesiredTrigger = {
         flow_id: flowId,
         channel_id: null,
@@ -74,6 +80,7 @@ export function buildDesiredTriggers(
       // are dropped from the DM row: a DM has neither a post nor a comment.
       if (type === "comment_keyword" && data.alsoMatchInDms === true && config.keywords?.length) {
         const { postIds: _postIds, replyText: _replyText, ...dmConfig } = config;
+        if (data.onlyIfAgentOff === true) dmConfig.only_if_agent_off = true;
         return [row, { ...row, type: "keyword" as TriggerType, config: dmConfig }];
       }
 

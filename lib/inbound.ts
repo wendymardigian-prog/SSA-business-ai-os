@@ -466,6 +466,22 @@ export async function handleGlobalKeywords(
 }
 
 /**
+ * Quien se hizo cargo de un mensaje entrante (Fase 3).
+ *
+ * Es la base de "un solo respondedor autonomo por mensaje": el agente de IA
+ * solo puede actuar si NADIE reclamo el mensaje. `automation_paused` no es un
+ * reclamo: significa que los flows no corren en esa conversacion, y el
+ * silencio del agente lo gobierna su propio toggle (agent_enabled).
+ */
+export type InboundAutomationOutcome =
+  | { claimed: false; reason: "no_trigger" | "automation_paused" }
+  | { claimed: true; by: "global_keyword" }
+  | { claimed: true; by: "flow_session"; flowId: string }
+  | { claimed: true; by: "flow"; flowId: string; triggerId: string }
+  /** Un flow arranco y fallo: igual reclama. El agente no rellena una corrida a medias. */
+  | { claimed: true; by: "flow_error"; flowId: string };
+
+/**
  * Evalua automatizaciones para un mensaje entrante: palabras clave globales
  * primero, despues los triggers de flow.
  *
@@ -497,9 +513,9 @@ export async function runInboundAutomation({
   incomingMessage: IncomingMessage;
   lateConversationId?: string | null;
   lateAccountId?: string | null;
-}): Promise<void> {
+}): Promise<InboundAutomationOutcome> {
   // Alguien tomo la conversacion a mano: el bot no se mete.
-  if (isAutomationPaused) return;
+  if (isAutomationPaused) return { claimed: false, reason: "automation_paused" };
 
   const handled = await handleGlobalKeywords(
     supabase,
@@ -507,7 +523,7 @@ export async function runInboundAutomation({
     contactId,
     incomingMessage.text,
   );
-  if (handled) return;
+  if (handled) return { claimed: true, by: "global_keyword" };
 
   // Una conversacion parada en "Esperar respuesta" se retoma con ESTE mensaje,
   // matchee o no un trigger. Va antes del matcher: si no, la sesion solo
@@ -534,7 +550,7 @@ export async function runInboundAutomation({
     } catch (err) {
       console.error("[inbound] error retomando la sesion del flow:", err instanceof Error ? err.message : err);
     }
-    return;
+    return { claimed: true, by: "flow_session", flowId: waiting.flow_id };
   }
 
   const trigger = await matchTrigger(supabase, {
@@ -544,7 +560,7 @@ export async function runInboundAutomation({
     message: incomingMessage,
     isFirstMessage,
   });
-  if (!trigger) return;
+  if (!trigger) return { claimed: false, reason: "no_trigger" };
 
   try {
     await executeFlow(supabase, {
@@ -560,5 +576,7 @@ export async function runInboundAutomation({
     });
   } catch (err) {
     console.error("[inbound] error ejecutando el flow:", err);
+    return { claimed: true, by: "flow_error", flowId: trigger.flow_id };
   }
+  return { claimed: true, by: "flow", flowId: trigger.flow_id, triggerId: trigger.id };
 }

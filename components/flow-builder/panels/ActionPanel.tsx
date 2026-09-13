@@ -63,6 +63,10 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <SmartDelayConfig data={data} onChange={onChange} />;
     case "enrollSequence":
       return <EnrollSequencePanel data={rawData} onChange={onChange} />;
+    case "pauseAgent":
+      return <PauseAgentConfig data={data} onChange={onChange} />;
+    case "resumeAgent":
+      return <ResumeAgentConfig />;
     default:
       return (
         <p className="text-sm text-muted-foreground">
@@ -350,6 +354,53 @@ function SubscribeConfig({ data, onChange }: ActionSubPanelProps) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ───────── Agente de IA (Fase 3) ───────── */
+function PauseAgentConfig({ data, onChange }: ActionSubPanelProps) {
+  const minutes = typeof data.minutes === "number" ? data.minutes : "";
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
+        <p className="text-sm font-medium text-foreground">Pausar el agente de IA en esta conversacion</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Mientras el flow hace su parte, el agente no responde. Usa &ldquo;Reanudar agente IA&rdquo; al final para devolverle la
+          conversacion. No cambia el interruptor del agente de la bandeja.
+        </p>
+      </div>
+      <div>
+        <label htmlFor="pause-agent-minutes" className="mb-2 block text-xs font-semibold text-foreground">
+          Minutos de pausa (opcional)
+        </label>
+        <input
+          id="pause-agent-minutes"
+          type="number"
+          min={1}
+          max={43200}
+          value={minutes}
+          onChange={(e) =>
+            onChange({ ...data, minutes: e.target.value === "" ? null : Math.max(1, Number(e.target.value)) })
+          }
+          placeholder="Hasta que se reanude"
+          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Vacio: queda pausado hasta que un flow lo reanude. Con minutos: se reanuda solo al vencer.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ResumeAgentConfig() {
+  return (
+    <div className="rounded-lg border border-border bg-muted p-4">
+      <p className="text-sm font-medium text-foreground">Reanudar el agente de IA</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Levanta la pausa que puso un flow. Si nadie habia encendido el agente en esta conversacion, sigue apagado.
+      </p>
     </div>
   );
 }

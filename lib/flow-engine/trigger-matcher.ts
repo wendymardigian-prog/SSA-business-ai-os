@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { IncomingMessage } from "./types";
-import { getTrigger, listTriggers } from "./registry";
+import { getTrigger, listTriggerGuards, listTriggers } from "./registry";
 import type { TriggerRow } from "./registry/types";
 
 type Trigger = Database["public"]["Tables"]["triggers"]["Row"];
@@ -61,30 +61,41 @@ export async function matchTrigger(
 
   for (const definition of listTriggers("message")) {
     for (const trigger of triggers.filter((t) => t.type === definition.type)) {
-      if (!definition.matches) return trigger;
-
-      const matched = definition.matches({
-        trigger: trigger as unknown as TriggerRow,
-        config: (trigger.config ?? {}) as Record<string, unknown>,
-        message,
-        text,
-        isFirstMessage: firstMessage,
-      });
+      const config = (trigger.config ?? {}) as Record<string, unknown>;
+      const matched = definition.matches
+        ? definition.matches({
+            trigger: trigger as unknown as TriggerRow,
+            config,
+            message,
+            text,
+            isFirstMessage: firstMessage,
+          })
+        : true;
 
       if (!matched) continue;
 
-      // Puerta extra opcional. Hoy ningun trigger la usa; esta para las
-      // condiciones de arranque del agente de la Fase 3.
-      if (definition.guard) {
-        const allowed = await definition.guard({
-          supabase,
-          trigger: trigger as unknown as TriggerRow,
-          workspaceId,
-          contactId: "",
-          conversationId,
-        });
-        if (!allowed) continue;
+      const guardArgs = {
+        supabase,
+        trigger: trigger as unknown as TriggerRow,
+        workspaceId,
+        contactId: "",
+        conversationId,
+      };
+
+      // Puerta propia del tipo, si la declara.
+      if (definition.guard && !(await definition.guard(guardArgs))) continue;
+
+      // Puertas que se prenden desde la config (Fase 3). Van tambien para el
+      // trigger por defecto: antes se devolvia antes de llegar aca, y ninguna
+      // puerta podia aplicarse justo al trigger que captura todo.
+      let blocked = false;
+      for (const guard of listTriggerGuards()) {
+        if (config[guard.configKey] === true && !(await guard.allows(guardArgs))) {
+          blocked = true;
+          break;
+        }
       }
+      if (blocked) continue;
 
       return trigger;
     }
