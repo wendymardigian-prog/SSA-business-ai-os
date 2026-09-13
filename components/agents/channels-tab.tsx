@@ -38,8 +38,17 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
     });
   }
 
+  const zernioOn = channels.some((c) => agent.enabledChannelIds.includes(c.id) && c.platform !== "whatsapp");
+
   return (
     <>
+      {!data.persistZernioInbound && zernioOn && (
+        <Notice tone="error">
+          El guardado de mensajes entrantes de Instagram está apagado en{" "}
+          <Link href="/dashboard/settings" className="underline underline-offset-2">Ajustes</Link>. El agente lee la
+          conversación de la base: con el guardado apagado no puede responder en Instagram.
+        </Notice>
+      )}
       {flowsCapturingAll.length > 0 && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />

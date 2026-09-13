@@ -42,6 +42,7 @@ const DETAIL_LABELS: Record<string, string> = {
   sent_early_new_message: "se envio antes porque el lead volvio a escribir",
   output_truncated: "la respuesta se recorto al largo maximo",
   stale_running: "el proceso se corto antes de terminar",
+  message_persistence_off: "el guardado de mensajes entrantes esta apagado en Ajustes",
 };
 
 /** "guardrail:blocked_topic | pricing_missing:x" -> lista legible. */

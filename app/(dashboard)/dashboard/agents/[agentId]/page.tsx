@@ -101,6 +101,7 @@ export default async function AgentDetailPage({
       status: d.status,
     })),
     flowsCapturingAll: [...flowsCapturingAll].map(([id, name]) => ({ id, name })),
+    persistZernioInbound: workspace.persist_zernio_inbound !== false,
   };
 
   const requested = typeof query.tab === "string" ? query.tab : "config";
