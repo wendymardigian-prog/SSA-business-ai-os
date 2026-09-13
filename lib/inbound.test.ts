@@ -4,8 +4,10 @@ import type { Database } from "@/lib/types/database";
 
 const matchTrigger = vi.hoisted(() => vi.fn());
 const executeFlow = vi.hoisted(() => vi.fn());
+const findWaitingSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const resumeSession = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/flow-engine/trigger-matcher", () => ({ matchTrigger }));
-vi.mock("@/lib/flow-engine/engine", () => ({ executeFlow }));
+vi.mock("@/lib/flow-engine/engine", () => ({ executeFlow, findWaitingSession, resumeSession }));
 
 import {
   applyOptOut,

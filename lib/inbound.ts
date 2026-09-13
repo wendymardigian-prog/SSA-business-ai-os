@@ -15,7 +15,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { executeFlow } from "@/lib/flow-engine/engine";
+import { executeFlow, findWaitingSession, resumeSession } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import type { IncomingMessage } from "@/lib/flow-engine/types";
 
@@ -508,6 +508,34 @@ export async function runInboundAutomation({
     incomingMessage.text,
   );
   if (handled) return;
+
+  // Una conversacion parada en "Esperar respuesta" se retoma con ESTE mensaje,
+  // matchee o no un trigger. Va antes del matcher: si no, la sesion solo
+  // despertaba cuando algun trigger reclamaba el mensaje, y el agente de la
+  // Fase 3 se hubiera llevado las respuestas que el flow estaba esperando.
+  const waiting = await findWaitingSession(supabase, {
+    contactId,
+    channelId: channel.id,
+  });
+  if (waiting) {
+    try {
+      await resumeSession(supabase, waiting, {
+        // Retomar no dispara un trigger nuevo: flow_started no se vuelve a anotar.
+        triggerId: "",
+        flowId: waiting.flow_id,
+        channelId: channel.id,
+        contactId,
+        conversationId,
+        workspaceId: channel.workspace_id,
+        incomingMessage,
+        lateConversationId: lateConversationId ?? undefined,
+        lateAccountId: lateAccountId ?? undefined,
+      });
+    } catch (err) {
+      console.error("[inbound] error retomando la sesion del flow:", err instanceof Error ? err.message : err);
+    }
+    return;
+  }
 
   const trigger = await matchTrigger(supabase, {
     channelId: channel.id,

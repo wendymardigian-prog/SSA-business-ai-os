@@ -16,6 +16,43 @@ const runtime: FlowRuntime = {
   },
 };
 
+type FlowSessionRow = Database["public"]["Tables"]["flow_sessions"]["Row"];
+
+/**
+ * La sesion de flow que esta esperando la respuesta de este contacto en este
+ * canal (un "Esperar respuesta"), si hay una.
+ *
+ * Esta afuera de executeFlow porque el receptor de mensajes la necesita ANTES
+ * de buscar triggers: una conversacion parada esperando respuesta tiene que
+ * despertar con el proximo mensaje aunque ese mensaje no matchee ningun
+ * trigger. Antes el chequeo vivia solo aca adentro, despues del matcher, y la
+ * sesion quedaba dormida si nadie la reclamaba.
+ *
+ * Si hubiera mas de una esperando (no deberia), se toma la mas reciente en vez
+ * de fallar: con .single() una duplicada hacia que no se retomara ninguna.
+ */
+export async function findWaitingSession(
+  supabase: SupabaseClient<Database>,
+  { contactId, channelId }: { contactId: string; channelId: string }
+): Promise<FlowSessionRow | null> {
+  const { data, error } = await supabase
+    .from("flow_sessions")
+    .select("*")
+    .eq("contact_id", contactId)
+    .eq("channel_id", channelId)
+    .eq("status", "active")
+    .eq("waiting_for_input", true)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[flow-engine] no pude buscar la sesion en espera:", error.message);
+    return null;
+  }
+  return data ?? null;
+}
+
 export async function executeFlow(
   supabase: SupabaseClient<Database>,
   context: FlowExecutionContext
@@ -33,14 +70,10 @@ export async function executeFlow(
   }
 
   // Check for active session waiting for input
-  const { data: activeSession } = await supabase
-    .from("flow_sessions")
-    .select("*")
-    .eq("contact_id", context.contactId)
-    .eq("channel_id", context.channelId)
-    .eq("status", "active")
-    .eq("waiting_for_input", true)
-    .single();
+  const activeSession = await findWaitingSession(supabase, {
+    contactId: context.contactId,
+    channelId: context.channelId,
+  });
 
   if (activeSession) {
     return resumeSession(supabase, activeSession, context);
