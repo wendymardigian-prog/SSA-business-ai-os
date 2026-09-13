@@ -31,9 +31,11 @@ export function ConversationAgentToggle({
   const [askAssignment, setAskAssignment] = useState<{ assignedName: string | null } | null>(null);
   const reasonId = useId();
 
+  // El instante se toma una vez al montar: un render no puede leer el reloj.
+  const [mountedAt] = useState(() => Date.now());
   const blocked = !info?.available;
   const paused =
-    enabled && pausedUntil !== null && (pausedUntil === "infinity" || new Date(pausedUntil).getTime() > Date.now());
+    enabled && pausedUntil !== null && (pausedUntil === "infinity" || new Date(pausedUntil).getTime() > mountedAt);
 
   function send(next: boolean, assignment?: "keep" | "reassign") {
     setError(null);
