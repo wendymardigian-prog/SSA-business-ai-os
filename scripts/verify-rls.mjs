@@ -555,6 +555,131 @@ try {
     await setFlags(ws.id, { lead_scope_enabled: false });
     await svc.from("notifications").delete().eq("workspace_id", ws.id); }
 
+  console.log("\n— Agente de IA: config, runs y costos (00058-00060) —");
+  { // Scope prendido y la conversacion de prueba asignada al Admin: para el
+    // Member es un lead ajeno.
+    await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    await svc.from("conversations").update({ assigned_to: admin.id }).eq("id", conv.id);
+
+    // Config del agente
+    const { data: ag, error: eAg } = await admin.client.from("agents")
+      .insert({ workspace_id: ws.id, name: "zz-test agente" }).select("id").single();
+    check(!eAg && !!ag, "un Admin puede crear un agente", eAg?.message);
+    const { error: eAgMember } = await member.client.from("agents")
+      .insert({ workspace_id: ws.id, name: "zz-test agente del member" });
+    check(!!eAgMember, "un Member NO puede crear un agente");
+
+    if (ag) {
+      const { data: agVisto } = await member.client.from("agents")
+        .select("id, is_enabled, enabled_channel_ids").eq("id", ag.id);
+      check((agVisto ?? []).length === 1,
+        "un Member VE el estado del agente (lo necesita para el toggle de la bandeja)");
+      const { error: eTopes } = await member.client.from("agents")
+        .select("daily_cost_limit_usd").eq("id", ag.id);
+      check(!!eTopes, "un Member NO puede leer los topes de gasto del agente");
+      const { error: eTopesAdmin } = await admin.client.from("agents")
+        .select("monthly_cost_limit_usd").eq("id", ag.id);
+      check(!!eTopesAdmin,
+        "ni un Admin lee los topes con el cliente de usuario (se leen con service role)");
+      const { data: upd } = await member.client.from("agents")
+        .update({ is_enabled: true }).eq("id", ag.id).select("id");
+      check((upd ?? []).length === 0, "un Member NO puede encender el agente");
+
+      // Versiones del prompt: inmutables
+      const { data: v1, error: eV1 } = await admin.client.from("agent_prompt_versions")
+        .insert({ workspace_id: ws.id, agent_id: ag.id, version: 1, system_prompt: "zz", created_by: admin.id })
+        .select("id").single();
+      check(!eV1 && !!v1, "un Admin guarda una version del prompt", eV1?.message);
+      const { error: eFirma } = await admin.client.from("agent_prompt_versions")
+        .insert({ workspace_id: ws.id, agent_id: ag.id, version: 2, system_prompt: "zz", created_by: member.id });
+      check(!!eFirma, "no se puede guardar una version firmada por otro usuario");
+      if (v1) {
+        const { data: editada } = await admin.client.from("agent_prompt_versions")
+          .update({ system_prompt: "reescrito" }).eq("id", v1.id).select("id");
+        check((editada ?? []).length === 0, "una version del prompt NO se puede editar (inmutable)");
+      }
+      check(!(await sees(member, "agent_prompt_versions", v1?.id ?? randomUUID())).seen,
+        "un Member NO ve el historial del prompt");
+
+      // Runs
+      const runBase = { workspace_id: ws.id, source: "agent", agent_id: ag.id, trigger: "inbound_message",
+        status: "responded", provider: "anthropic", model: "claude-sonnet-5",
+        input_tokens: 1000, output_tokens: 200, cost_usd: 0.004 };
+      const { data: runAjeno } = await svc.from("agent_runs")
+        .insert({ ...runBase, conversation_id: conv.id, contact_id: contact.id, channel_id: ch.id })
+        .select("id").single();
+      const { data: runSinConv } = await svc.from("agent_runs")
+        .insert({ workspace_id: ws.id, source: "kb_indexing", trigger: "job", status: "completed", cost_usd: 0.0001 })
+        .select("id").single();
+      await svc.from("agent_run_steps").insert({
+        workspace_id: ws.id, run_id: runAjeno.id, step_index: 0, kind: "model_call",
+        input: { texto: "zz-test contenido del lead" },
+      });
+
+      check((await sees(admin, "agent_runs", runAjeno.id)).seen, "un Admin VE los runs del workspace");
+      check(!(await sees(member, "agent_runs", runAjeno.id)).seen,
+        "un Member NO ve el run de un lead ajeno");
+      const { data: pasoAjeno } = await member.client.from("agent_run_steps")
+        .select("id").eq("run_id", runAjeno.id);
+      check((pasoAjeno ?? []).length === 0, "un Member NO ve los pasos (texto del lead) de un run ajeno");
+      check(!(await sees(member, "agent_runs", runSinConv.id)).seen,
+        "un Member NO ve runs sin conversacion (indexacion, costos del sistema)");
+
+      // La conversacion pasa a ser suya: ve el run, pero nunca el costo.
+      await svc.from("conversations").update({ assigned_to: member.id }).eq("id", conv.id);
+      check((await sees(member, "agent_runs", runAjeno.id)).seen,
+        "un Member VE el run cuando la conversacion es suya");
+      const { data: pasoSuyo } = await member.client.from("agent_run_steps")
+        .select("id").eq("run_id", runAjeno.id);
+      check((pasoSuyo ?? []).length === 1, "y sus pasos");
+      for (const col of ["cost_usd", "input_tokens", "pricing_id"]) {
+        const { error: eCol } = await member.client.from("agent_runs").select(col).eq("id", runAjeno.id);
+        check(!!eCol, `un Member NO puede leer agent_runs.${col}`);
+      }
+      const { error: eStar } = await member.client.from("agent_runs").select("*").eq("id", runAjeno.id);
+      check(!!eStar, "select('*') sobre agent_runs se rechaza (el REVOKE esta aplicado de verdad)");
+      const { error: eStarAdmin } = await admin.client.from("agent_runs").select("cost_usd").eq("id", runAjeno.id);
+      check(!!eStarAdmin, "ni un Admin lee costos con el cliente de usuario (solo servidor)");
+
+      // Escritura: solo service role
+      const { error: eRunIns } = await admin.client.from("agent_runs")
+        .insert({ workspace_id: ws.id, source: "agent", trigger: "manual", status: "responded" });
+      check(!!eRunIns, "ni un Admin puede crear un run a mano");
+      const { data: runUpd } = await admin.client.from("agent_runs")
+        .update({ status: "error" }).eq("id", runAjeno.id).select("id");
+      check((runUpd ?? []).length === 0, "ni un Admin puede modificar un run");
+      const { error: eStepIns } = await admin.client.from("agent_run_steps")
+        .insert({ workspace_id: ws.id, run_id: runAjeno.id, step_index: 9, kind: "tool_call" });
+      check(!!eStepIns, "ni un Admin puede crear un paso a mano");
+    }
+
+    // Precios: Owner/Admin leen, solo Owner escribe
+    const { data: precio } = await svc.from("model_pricing").insert({
+      workspace_id: ws.id, provider: "zz", model: "zz-test-model",
+      input_per_mtok: 1, output_per_mtok: 2, cached_input_per_mtok: 0.1,
+    }).select("id").single();
+    check((await sees(admin, "model_pricing", precio.id)).seen, "un Admin VE la tabla de precios");
+    check(!(await sees(member, "model_pricing", precio.id)).seen, "un Member NO ve la tabla de precios");
+    const { data: precioAdmin } = await admin.client.from("model_pricing")
+      .update({ input_per_mtok: 0 }).eq("id", precio.id).select("id");
+    check((precioAdmin ?? []).length === 0, "un Admin NO puede cambiar precios (solo Owner)");
+
+    // Busqueda filtrada: rechaza otro workspace, igual que la original
+    const vec = `[${Array.from({ length: 1024 }, () => 0.001).join(",")}]`;
+    const { error: eFiltAjeno } = await member.client.rpc("match_knowledge_chunks_filtered", {
+      p_workspace_id: randomUUID(), p_query_embedding: vec, p_match_count: 3,
+      p_min_similarity: 0, p_tags: null, p_include_internal: false,
+    });
+    check(!!eFiltAjeno, "la busqueda filtrada contra OTRO workspace se rechaza");
+
+    // La cola de jobs sigue siendo solo del service role
+    const { error: ePush } = await admin.client.rpc("push_debounced_job", {
+      p_type: "agent_burst", p_dedupe_key: "zz-test", p_payload: {}, p_run_at: new Date().toISOString(), p_deadline: null,
+    });
+    check(!!ePush, "ni un Admin puede agendar un turno del agente a mano");
+
+    await setFlags(ws.id, { lead_scope_enabled: false }); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

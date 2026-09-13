@@ -76,6 +76,36 @@ export type BroadcastStatus =
   | "completed"
   | "cancelled";
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
+
+/** Que origino una llamada a IA (migracion 00059). */
+export type AgentRunSource =
+  | "agent"
+  | "flow_ai_node"
+  | "sequence_ai_step"
+  | "kb_indexing"
+  | "conversation_summary";
+export type AgentRunTrigger =
+  | "inbound_message"
+  | "cron_close"
+  | "manual"
+  | "flow_node"
+  | "sequence_step"
+  | "job";
+/**
+ * Resultado de un run. `running` = abierto (el run se crea antes de llamar al
+ * proveedor); `completed` = fuentes que no "responden" (indexacion).
+ */
+export type AgentRunStatus =
+  | "running"
+  | "responded"
+  | "escalated"
+  | "skipped_automation"
+  | "blocked_guardrail"
+  | "completed"
+  | "error";
+export type AgentRunStepKind = "model_call" | "kb_search" | "tool_call" | "guardrail";
+export type KnowledgeFallback = "escalate" | "general";
+export type CostLimitAction = "notify" | "disable";
 export type TriggerType =
   | "keyword"
   | "postback"
@@ -194,6 +224,9 @@ export interface Database {
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
+          ai_daily_cost_limit_usd: number | null;
+          ai_monthly_cost_limit_usd: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -210,6 +243,8 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          ai_daily_cost_limit_usd?: number | null;
+          ai_monthly_cost_limit_usd?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -226,6 +261,8 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          ai_daily_cost_limit_usd?: number | null;
+          ai_monthly_cost_limit_usd?: number | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -829,6 +866,13 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           is_automation_paused: boolean;
+          /** Toggle del agente en esta conversacion (migracion 00058). */
+          agent_enabled: boolean;
+          /** Pausa temporal puesta por un flow. NULL = sin pausa; "infinity" = hasta reanudar. */
+          agent_paused_until: string | null;
+          /** El agente fallo aca y el lead puede estar sin respuesta (migracion 00059). */
+          last_agent_error_at: string | null;
+          last_agent_error_run_id: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -846,6 +890,10 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
+          agent_enabled?: boolean;
+          agent_paused_until?: string | null;
+          last_agent_error_at?: string | null;
+          last_agent_error_run_id?: string | null;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -860,6 +908,10 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
+          agent_enabled?: boolean;
+          agent_paused_until?: string | null;
+          last_agent_error_at?: string | null;
+          last_agent_error_run_id?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
         };
@@ -904,8 +956,10 @@ export interface Database {
           sent_by_flow_id: string | null;
           sent_by_node_id: string | null;
           sent_by_user_id: string | null;
-          /** Que agente de IA lo mando. Sin FK hasta que exista `agents` (Bloque 2). */
+          /** Que agente de IA lo mando. FK a agents desde la migracion 00058. */
           sent_by_agent_id: string | null;
+          /** Run del agente que genero este mensaje (migracion 00059). */
+          agent_run_id: string | null;
           status: MessageStatus;
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */
@@ -926,6 +980,7 @@ export interface Database {
           sent_by_node_id?: string | null;
           sent_by_user_id?: string | null;
           sent_by_agent_id?: string | null;
+          agent_run_id?: string | null;
           status?: MessageStatus;
           created_at?: string;
           /**
@@ -1060,6 +1115,8 @@ export interface Database {
           attempts: number;
           last_error: string | null;
           claimed_at: string | null;
+          /** Clave de un job reprogramable; unica entre los pending (migracion 00061). */
+          dedupe_key: string | null;
           created_at: string;
         };
         Insert: {
@@ -1071,6 +1128,7 @@ export interface Database {
           attempts?: number;
           last_error?: string | null;
           claimed_at?: string | null;
+          dedupe_key?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1078,6 +1136,9 @@ export interface Database {
           attempts?: number;
           last_error?: string | null;
           claimed_at?: string | null;
+          run_at?: string;
+          payload?: Json;
+          dedupe_key?: string | null;
         };
         Relationships: [];
       };
@@ -1582,6 +1643,8 @@ export interface Database {
           changes: Json | null;
           metadata: Json | null;
           performed_by: string | null;
+          /** Agente que ejecuto la accion (migracion 00058). */
+          performed_by_agent_id: string | null;
           performed_at: string;
         };
         Insert: {
@@ -1593,6 +1656,7 @@ export interface Database {
           changes?: Json | null;
           metadata?: Json | null;
           performed_by?: string | null;
+          performed_by_agent_id?: string | null;
           performed_at?: string;
         };
         // Inmutable: no hay UPDATE ni DELETE en la RLS.
@@ -1750,6 +1814,8 @@ export interface Database {
           chunk_count: number;
           embedding_model: string | null;
           indexed_at: string | null;
+          /** Uso interno: nunca llega al prompt de un agente (migracion 00058). */
+          internal_only: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -1770,6 +1836,7 @@ export interface Database {
           chunk_count?: number;
           embedding_model?: string | null;
           indexed_at?: string | null;
+          internal_only?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1788,6 +1855,7 @@ export interface Database {
           chunk_count?: number;
           embedding_model?: string | null;
           indexed_at?: string | null;
+          internal_only?: boolean;
           updated_at?: string;
           deleted_at?: string | null;
         };
@@ -1850,6 +1918,312 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+
+      /**
+       * Agentes de IA (migracion 00058). Las columnas de topes de gasto no las
+       * puede leer el cliente de un usuario (privilegio de columna, 00060): se
+       * leen con service role detras de requireWorkspaceAdmin().
+       */
+      agents: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          type: string;
+          is_enabled: boolean;
+          system_prompt: string | null;
+          active_prompt_version: number | null;
+          provider: string | null;
+          model: string | null;
+          fallback_provider: string | null;
+          fallback_model: string | null;
+          temperature: number | null;
+          max_output_tokens: number | null;
+          model_timeout_seconds: number;
+          bundle_window_seconds: number;
+          response_delay_seconds: number;
+          max_wait_seconds: number | null;
+          max_replies_per_conversation: number;
+          output_format: Json;
+          allowed_tools: string[];
+          tools_config: Json;
+          guardrails: Json;
+          knowledge_enabled: boolean;
+          knowledge_tags: string[];
+          knowledge_fallback: KnowledgeFallback;
+          daily_cost_limit_usd: number | null;
+          daily_cost_limit_action: CostLimitAction;
+          monthly_cost_limit_usd: number | null;
+          monthly_cost_limit_action: CostLimitAction;
+          enabled_channel_ids: string[];
+          config: Json;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          type?: string;
+          is_enabled?: boolean;
+          system_prompt?: string | null;
+          active_prompt_version?: number | null;
+          provider?: string | null;
+          model?: string | null;
+          fallback_provider?: string | null;
+          fallback_model?: string | null;
+          temperature?: number | null;
+          max_output_tokens?: number | null;
+          model_timeout_seconds?: number;
+          bundle_window_seconds?: number;
+          response_delay_seconds?: number;
+          max_wait_seconds?: number | null;
+          max_replies_per_conversation?: number;
+          output_format?: Json;
+          allowed_tools?: string[];
+          tools_config?: Json;
+          guardrails?: Json;
+          knowledge_enabled?: boolean;
+          knowledge_tags?: string[];
+          knowledge_fallback?: KnowledgeFallback;
+          daily_cost_limit_usd?: number | null;
+          daily_cost_limit_action?: CostLimitAction;
+          monthly_cost_limit_usd?: number | null;
+          monthly_cost_limit_action?: CostLimitAction;
+          enabled_channel_ids?: string[];
+          config?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          type?: string;
+          is_enabled?: boolean;
+          system_prompt?: string | null;
+          active_prompt_version?: number | null;
+          provider?: string | null;
+          model?: string | null;
+          fallback_provider?: string | null;
+          fallback_model?: string | null;
+          temperature?: number | null;
+          max_output_tokens?: number | null;
+          model_timeout_seconds?: number;
+          bundle_window_seconds?: number;
+          response_delay_seconds?: number;
+          max_wait_seconds?: number | null;
+          max_replies_per_conversation?: number;
+          output_format?: Json;
+          allowed_tools?: string[];
+          tools_config?: Json;
+          guardrails?: Json;
+          knowledge_enabled?: boolean;
+          knowledge_tags?: string[];
+          knowledge_fallback?: KnowledgeFallback;
+          daily_cost_limit_usd?: number | null;
+          daily_cost_limit_action?: CostLimitAction;
+          monthly_cost_limit_usd?: number | null;
+          monthly_cost_limit_action?: CostLimitAction;
+          enabled_channel_ids?: string[];
+          config?: Json;
+          created_by?: string | null;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [];
+      };
+      /** Historial inmutable del system prompt (migracion 00058). */
+      agent_prompt_versions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          agent_id: string;
+          version: number;
+          system_prompt: string;
+          note: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          agent_id: string;
+          version: number;
+          system_prompt: string;
+          note?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        // Inmutable: sin UPDATE en la RLS.
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      /**
+       * Una fila por llamada a IA del sistema (migracion 00059). Solo la escribe
+       * el service role. Tokens y costo: solo legibles por service role (00060);
+       * el cliente de usuario tiene que listar AGENT_RUN_PUBLIC_COLUMNS.
+       */
+      agent_runs: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          source: AgentRunSource;
+          agent_id: string | null;
+          prompt_version: number | null;
+          conversation_id: string | null;
+          thread_id: string | null;
+          contact_id: string | null;
+          channel_id: string | null;
+          trigger: AgentRunTrigger;
+          status: AgentRunStatus;
+          status_detail: string | null;
+          provider: string | null;
+          model: string | null;
+          input_tokens: number | null;
+          output_tokens: number | null;
+          cached_tokens: number | null;
+          embedding_tokens: number | null;
+          cost_usd: number | null;
+          pricing_id: string | null;
+          latency_ms: number | null;
+          step_count: number;
+          error: string | null;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          source: AgentRunSource;
+          agent_id?: string | null;
+          prompt_version?: number | null;
+          conversation_id?: string | null;
+          thread_id?: string | null;
+          contact_id?: string | null;
+          channel_id?: string | null;
+          trigger: AgentRunTrigger;
+          status?: AgentRunStatus;
+          status_detail?: string | null;
+          provider?: string | null;
+          model?: string | null;
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+          cached_tokens?: number | null;
+          embedding_tokens?: number | null;
+          cost_usd?: number | null;
+          pricing_id?: string | null;
+          latency_ms?: number | null;
+          step_count?: number;
+          error?: string | null;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          prompt_version?: number | null;
+          conversation_id?: string | null;
+          thread_id?: string | null;
+          contact_id?: string | null;
+          channel_id?: string | null;
+          status?: AgentRunStatus;
+          status_detail?: string | null;
+          provider?: string | null;
+          model?: string | null;
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+          cached_tokens?: number | null;
+          embedding_tokens?: number | null;
+          cost_usd?: number | null;
+          pricing_id?: string | null;
+          latency_ms?: number | null;
+          step_count?: number;
+          error?: string | null;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      agent_run_steps: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          run_id: string;
+          step_index: number;
+          kind: AgentRunStepKind;
+          name: string | null;
+          input: Json | null;
+          output: Json | null;
+          kb_chunk_ids: string[] | null;
+          audit_log_id: string | null;
+          duration_ms: number | null;
+          error: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          run_id: string;
+          step_index: number;
+          kind: AgentRunStepKind;
+          name?: string | null;
+          input?: Json | null;
+          output?: Json | null;
+          kb_chunk_ids?: string[] | null;
+          audit_log_id?: string | null;
+          duration_ms?: number | null;
+          error?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          input?: Json | null;
+          output?: Json | null;
+        };
+        Relationships: [];
+      };
+      /** Precios por millon de tokens con vigencia (migracion 00059). */
+      model_pricing: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          provider: string;
+          model: string;
+          input_per_mtok: number;
+          output_per_mtok: number;
+          cached_input_per_mtok: number;
+          currency: string;
+          valid_from: string;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          provider: string;
+          model: string;
+          input_per_mtok: number;
+          output_per_mtok: number;
+          cached_input_per_mtok: number;
+          currency?: string;
+          valid_from?: string;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          provider?: string;
+          model?: string;
+          input_per_mtok?: number;
+          output_per_mtok?: number;
+          cached_input_per_mtok?: number;
+          currency?: string;
+          valid_from?: string;
+          note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: {
@@ -1955,6 +2329,42 @@ export interface Database {
           contact_notes: number;
           response_templates: number;
         };
+      };
+      /**
+       * Agenda o empuja un job reprogramable (migracion 00061). Atomica. Solo
+       * service_role.
+       */
+      push_debounced_job: {
+        Args: {
+          p_type: string;
+          p_dedupe_key: string;
+          p_payload: Json;
+          p_run_at: string;
+          p_deadline: string | null;
+        };
+        Returns: { job_id: string; job_run_at: string; created: boolean }[];
+      };
+      /**
+       * Busqueda semantica con el filtro de acceso del agente adentro del SQL
+       * (migracion 00062): tags permitidos y exclusion de internal_only.
+       */
+      match_knowledge_chunks_filtered: {
+        Args: {
+          p_workspace_id: string;
+          p_query_embedding: string;
+          p_match_count: number;
+          p_min_similarity: number;
+          p_tags: string[] | null;
+          p_include_internal: boolean;
+        };
+        Returns: {
+          chunk_id: string;
+          document_id: string;
+          document_title: string;
+          chunk_index: number;
+          content: string;
+          similarity: number;
+        }[];
       };
       increment_unread: {
         Args: {
