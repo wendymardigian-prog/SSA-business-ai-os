@@ -13,6 +13,7 @@ import type { ConversationRow } from "@/lib/inbox/types";
 import type { SearchableTemplate } from "@/lib/templates/search";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
+import type { ChannelAgentInfo } from "@/lib/agent/public";
 
 type Conversation = ConversationRow;
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -31,6 +32,7 @@ export function InboxView({
   tags,
   platforms,
   members,
+  agentByChannel,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -47,6 +49,8 @@ export function InboxView({
   tags: { id: string; name: string; color: string | null }[];
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
+  /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
+  agentByChannel: Record<string, ChannelAgentInfo>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -214,6 +218,7 @@ export function InboxView({
               messages={messages}
               templates={templates}
               workspaceName={workspaceName}
+              agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
             />
           )}
         </div>

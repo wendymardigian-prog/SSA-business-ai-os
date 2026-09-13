@@ -51,6 +51,8 @@ export interface InboxFilters {
   datePreset: DatePreset | "";
   dateFrom: string;
   dateTo: string;
+  /** Solo conversaciones donde el agente de IA fallo (Fase 3). */
+  agentError: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -62,6 +64,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   datePreset: "",
   dateFrom: "",
   dateTo: "",
+  agentError: false,
 };
 
 /**
@@ -80,6 +83,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.tagIds.length > 0) count++;
   if (filters.assignment) count++;
   if (filters.datePreset) count++;
+  if (filters.agentError) count++;
   return count;
 }
 
@@ -102,6 +106,7 @@ export interface FilterableRow {
   created_at: string;
   last_message_preview: string | null;
   contacts: { display_name: string | null } | null;
+  last_agent_error_at?: string | null;
 }
 
 /**
@@ -121,6 +126,8 @@ export function matchesInboxRow(
   if (filters.status !== "all" && row.status !== filters.status) return false;
 
   if (filters.platforms.length > 0 && !filters.platforms.includes(row.platform)) return false;
+
+  if (filters.agentError && !row.last_agent_error_at) return false;
 
   const when = row.last_message_at ?? row.created_at;
   if (range.from && when < range.from) return false;

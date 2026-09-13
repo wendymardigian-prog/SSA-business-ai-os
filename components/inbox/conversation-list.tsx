@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { MessageSquare, Ban, ChevronLeft, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -207,8 +208,21 @@ export function ConversationList({
           </div>
         ) : (
           conversations.map((conversation) => (
+            <div key={conversation.id} className="relative">
+            {/* Fase 3: el agente fallo en esta conversacion. Un punto discreto que
+                lleva al run; nunca nada visible para el lead. Va afuera del
+                boton de la fila porque un link no puede ir adentro de un boton. */}
+            {conversation.last_agent_error_at && (
+              <Link
+                href={conversation.last_agent_error_run_id ? `/dashboard/agents/runs/${conversation.last_agent_error_run_id}` : "/dashboard/agents"}
+                title="El agente de IA no pudo responder en esta conversación. Ver el run."
+                aria-label="El agente de IA no pudo responder. Ver el run que falló"
+                className="absolute left-2 top-2 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+              </Link>
+            )}
             <button
-              key={conversation.id}
               onClick={() => onSelect(conversation)}
               className={cn(
                 "flex w-full items-start gap-3 border-b border-border p-3 text-left transition-colors hover:bg-accent/50",
@@ -272,6 +286,7 @@ export function ConversationList({
                 </div>
               </div>
             </button>
+            </div>
           ))
         )}
       </div>

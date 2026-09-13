@@ -4,6 +4,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { toInboxThread } from "@/lib/zernio-message";
 import { messagePreview } from "@/lib/message-preview";
+import { applyManualReply } from "@/lib/agent/manual-reply";
 import {
   EvolutionError,
   getEvolutionConfig,
@@ -211,7 +212,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "API key not configured" }, { status: 400 });
   }
 
-  // Send via Zernio SDK — Zernio stores the message, no local insert needed
+  // Send via Zernio SDK. Zernio guarda el mensaje de su lado, y desde la Fase 3
+  // tambien lo guardamos nosotros (abajo): el agente de IA lee el historial de
+  // la base, y sin esta fila no veria lo que contesto la persona ni sabria que
+  // una persona intervino.
   try {
     const zernio = createZernioClient(apiKey);
     const res = await zernio.messages.sendInboxMessage({
@@ -220,15 +224,39 @@ export async function POST(request: NextRequest) {
     });
 
     const messageId = (res.data as any)?.data?.messageId ?? null;
+    const sentAt = new Date().toISOString();
+
+    // Guardar nunca puede hacer fallar un envio que ya salio: si el insert
+    // falla, se loguea y la respuesta sigue.
+    const { error: storeError } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      direction: "outbound",
+      text,
+      platform_message_id: messageId,
+      sent_by_user_id: user.id,
+      status: "sent",
+      created_at: sentAt,
+    });
+    if (storeError && storeError.code !== "23505") {
+      console.error("[messages] no pude guardar el envio manual:", storeError.message);
+    }
 
     // Update conversation's last message info (ZernFlow-specific metadata)
     await supabase
       .from("conversations")
       .update({
-        last_message_at: new Date().toISOString(),
+        last_message_at: sentAt,
         last_message_preview: messagePreview(text),
       })
       .eq("id", conversationId);
+
+    // Una persona respondio: se apaga el agente en esta conversacion y se borra
+    // la marca de error (Fase 3, F31).
+    await applyManualReply(supabase, {
+      conversationId,
+      workspaceId: conversation.workspace_id,
+      userId: user.id,
+    });
 
     // Return a message-shaped response for the UI's optimistic update
     return NextResponse.json(
@@ -341,6 +369,14 @@ async function sendViaEvolution({
     .from("conversations")
     .update({ last_message_at: now, last_message_preview: messagePreview(text) })
     .eq("id", conversationId);
+
+  // Una persona respondio: se apaga el agente en esta conversacion (F31).
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("workspace_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (conv) await applyManualReply(supabase, { conversationId, workspaceId: conv.workspace_id, userId });
 
   return NextResponse.json(
     stored ?? {

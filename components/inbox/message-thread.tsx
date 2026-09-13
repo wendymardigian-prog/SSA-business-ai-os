@@ -12,6 +12,8 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import type { ChannelAgentInfo } from "@/lib/agent/public";
+import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
@@ -48,7 +50,7 @@ function shouldShowDateSeparator(
 
 function MessageBubble({ message }: { message: Message }) {
   const isInbound = message.direction === "inbound";
-  const isBot = message.sent_by_flow_id !== null;
+  const isBot = message.sent_by_flow_id !== null || Boolean(message.sent_by_agent_id);
   const failed = !isInbound && message.status === "failed";
 
   return (
@@ -159,12 +161,15 @@ export function MessageThread({
   messages: initialMessages,
   templates = [],
   workspaceName = "",
+  agentInfo = null,
 }: {
   conversation: Conversation | null;
   messages: Message[];
   /** Respuestas rapidas del workspace, para el selector "/" (F17). */
   templates?: SearchableTemplate[];
   workspaceName?: string;
+  /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
+  agentInfo?: ChannelAgentInfo | null;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -190,9 +195,11 @@ export function MessageThread({
     if (!conversation || statusUpdating) return;
     setStatusUpdating(status);
     try {
+      // Cerrar es la forma de decir "ya me hice cargo": borra tambien la marca
+      // de error del agente (Fase 3), aunque no haya hecho falta contestar.
       const { error } = await createClient()
         .from("conversations")
-        .update({ status })
+        .update(status === "closed" ? { status, last_agent_error_at: null, last_agent_error_run_id: null } : { status })
         .eq("id", conversation.id);
       if (error) throw error;
       router.refresh();
@@ -344,6 +351,9 @@ export function MessageThread({
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticId ? confirmedMessage : m))
       );
+      // Responder a mano apaga el agente de la conversacion (lo hace el
+      // servidor): se refresca para que el toggle lo muestre.
+      if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
     } catch (err) {
       console.error("Failed to send message:", err);
       // Mark optimistic message as failed
@@ -428,9 +438,15 @@ export function MessageThread({
           </span>
           {conversation.is_automation_paused && (
             <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
-              Bot pausado
+              Flows pausados
             </span>
           )}
+          <ConversationAgentToggle
+            conversationId={conversation.id}
+            enabled={conversation.agent_enabled}
+            pausedUntil={conversation.agent_paused_until}
+            info={agentInfo}
+          />
           <div className="flex items-center gap-1">
             {conversation.status !== "closed" && (
               <button

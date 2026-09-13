@@ -14,6 +14,7 @@ import {
   type InboxStatus,
 } from "@/lib/inbox/filters";
 import { InboxView } from "./inbox-view";
+import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
 
 /**
@@ -47,11 +48,19 @@ export default async function InboxPage({
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
-  const [tagsRes, channelsRes, members] = await Promise.all([
+  const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
     supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("channels").select("platform").eq("workspace_id", workspace.id).eq("is_active", true),
+    supabase.from("channels").select("id, platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
+    // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
+    supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
   ]);
+
+  // Por canal, si el agente lo atiende: decide si el toggle se puede operar.
+  const agents = (agentsRes.data ?? []) as PublicAgent[];
+  const agentByChannel: Record<string, ChannelAgentInfo> = Object.fromEntries(
+    (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) })]),
+  );
 
   const tags = tagsRes.data ?? [];
   const platformOptions = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
@@ -70,6 +79,7 @@ export default async function InboxPage({
   const datePreset = pickEnum<DatePreset>(params.fecha, DATE_PRESETS);
   const dateFrom = firstParam(params.desde);
   const dateTo = firstParam(params.hasta);
+  const agentError = firstParam(params["error-agente"]) === "1";
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
@@ -94,6 +104,8 @@ export default async function InboxPage({
   if (tagIds.length > 0) query = query.in("tag_match.contact_tags.tag_id", tagIds);
   if (range.from) query = query.gte("last_message_at", range.from);
   if (range.to) query = query.lte("last_message_at", range.to);
+  // Fase 3: las conversaciones donde el agente fallo (indice parcial 00059).
+  if (agentError) query = query.not("last_agent_error_at", "is", null);
 
   if (search) {
     // La busqueda por nombre del contacto va sobre la tabla embebida; el
@@ -177,6 +189,7 @@ export default async function InboxPage({
     datePreset,
     dateFrom,
     dateTo,
+    agentError,
   };
 
   return (
@@ -194,6 +207,7 @@ export default async function InboxPage({
       tags={tags}
       platforms={platformOptions.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
+      agentByChannel={agentByChannel}
     />
   );
 }
