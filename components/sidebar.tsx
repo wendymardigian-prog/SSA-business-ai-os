@@ -14,6 +14,7 @@ import {
   Plug,
   Blocks,
   BookOpen,
+  Bot,
   Settings,
   LogOut,
   Moon,
@@ -53,6 +54,7 @@ const navigation = [
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, adminOnly: false },
   { name: "Growth", href: "/dashboard/growth", icon: Sprout, adminOnly: false },
   { name: "Channels", href: "/dashboard/channels", icon: Plug, adminOnly: true },
+  { name: "Agentes", href: "/dashboard/agents", icon: Bot, adminOnly: true },
   {
     name: "Conocimiento",
     href: "/dashboard/knowledge",

@@ -39,6 +39,8 @@ export interface KnowledgeDocument {
   status: KnowledgeStatus;
   errorDetail: string | null;
   chunkCount: number;
+  /** Uso interno: nunca llega a un agente que conversa con leads (Fase 3). */
+  internalOnly: boolean;
   mime: string | null;
   sizeBytes: number | null;
   createdAt: string;
@@ -342,8 +344,13 @@ function DocumentRow({
             {` · Subido el ${formatDateTime(document.createdAt)}`}
           </p>
 
-          {document.tags.length > 0 && (
+          {(document.tags.length > 0 || document.internalOnly) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
+              {document.internalOnly && (
+                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                  Uso interno
+                </span>
+              )}
               {document.tags.map((tag) => (
                 <span
                   key={tag}
@@ -452,13 +459,14 @@ function EditDialog({
 }) {
   const [title, setTitle] = useState(document.title);
   const [tags, setTags] = useState(document.tags.join(", "));
+  const [internalOnly, setInternalOnly] = useState(document.internalOnly);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function save() {
     setError(null);
     startTransition(async () => {
-      const result = await updateDocumentMetadata(document.id, title, tags);
+      const result = await updateDocumentMetadata(document.id, title, tags, internalOnly);
       if (result.ok) onSaved();
       else setError(result.error);
     });
@@ -502,6 +510,21 @@ function EditDialog({
             />
             <p className="mt-1 text-xs text-muted-foreground">Separadas por coma.</p>
           </div>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+            <input
+              type="checkbox"
+              checked={internalOnly}
+              onChange={(e) => setInternalOnly(e.target.checked)}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              <span className="block text-sm font-medium">Uso interno — no usar con leads</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                El agente de IA nunca lo lee, tenga las etiquetas que tenga.
+              </span>
+            </span>
+          </label>
 
           {error && (
             <p role="alert" className="text-sm text-red-700 dark:text-red-400">
