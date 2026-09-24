@@ -5,6 +5,88 @@ cada bloque.
 
 ---
 
+## Etapa 1 · Fase 3 · Bloque 2b — Herramientas, memoria, cierre y observabilidad del agente
+
+**Fecha:** 24 de septiembre de 2026
+**Alcance:** F23 (completa), F24, F28, F29 (completas), F33 y F34 del documento
+de requerimientos de la Fase 3, más el interruptor de tres estados (decisión
+tomada con Wendy). El agente sigue **apagado y sin canales**: la verificación
+en vivo se hace después, con los ocho casos listados en
+`docs/agente-ia.md`.
+
+**Qué se construyó:** las seis herramientas que faltaban, con parámetros y
+límites validados en el servidor; la memoria acumulativa por contacto y la
+clasificación al cierre; el cierre por inactividad; el interruptor de tres
+estados por conversación; y las cuatro pestañas de la pantalla de Agentes que
+quedaban (Herramientas, Runs, Acciones, Costos), con acceso de un Member a
+Runs y Acciones acotado por RLS.
+
+### Decisiones tomadas
+
+| Decisión | Por qué |
+|---|---|
+| **Interruptor de tres estados** (`agent_enabled` NULL = heredar) y las 583 conversaciones pasan a heredar | Con el default `false` el agente nunca atendía a un lead nuevo. Ninguna conversación había sido apagada a propósito. La migración solo lo hace la primera vez (chequea que la columna todavía sea NOT NULL) |
+| Heredar con el maestro apagado **no deja run** | Es el estado de todas las conversaciones: un run por mensaje sería ruido. Forzado prendido sin poder actuar sí deja run: alguien lo pidió |
+| **La ráfaga ignora entrantes más viejos que 6 h** (`burst_max_age_hours`) | 137 conversaciones sin una sola respuesta: "lo posterior a la última salida" era todo el historial y el primer turno contestaría preguntas de hace semanas. Condición de Wendy |
+| **El barrido de inactividad solo cierra conversaciones donde el agente ya participó** (tiene un run) | 578 conversaciones inactivas de antes del agente: cerrarlas y resumirlas el día que se prenda el maestro serían 578 llamadas al modelo. Condición de Wendy. El backlog se cierra a mano |
+| **Una sola llamada al modelo al cierre** devuelve resumen + clasificación | Las dos salen de leer lo mismo y cada llamada cuesta. La clasificación pasa por los mismos ejecutores que las herramientas |
+| `configFields` en cada herramienta, además del zod | Introspectar zod para adivinar que un `string[]` es "tags" es frágil. El descriptor es explícito y la pestaña no tiene condicionales por nombre |
+| La lectura del CRM no escribe en `audit_log` | No hay nada que revertir en una lectura; llenaría Acciones de ruido. Deja su paso en el run |
+| Runs/Acciones/Costos muestran datos del workspace con el agente preseleccionado | Los runs de flows, secuencias e indexación no tienen agente; Costos pide desglose por fuente |
+| Revertir: inverso con el cliente del usuario, marca con service role | La RLS decide si puede tocar ese lead; `audit_log` sigue sin UPDATE para usuarios, así nadie desmarca una reversión |
+
+### Lo que la exploración corrigió sobre lo que se asumía
+
+- **No existía ningún cierre automático** de conversaciones; el cierre manual
+  era un update desde el navegador. Ahora pasa por una server action.
+- **La RLS de `audit_log` no dejaba a un Member ver las acciones del agente**
+  (solo sus propias filas). Sin la policy nueva la pestaña le quedaba vacía.
+- **La pantalla de Agentes era solo admin.** Para que un Member vea Runs y
+  Acciones en su scope, el detalle se abre por rol y no le manda topes,
+  prompt ni configuración.
+
+### Migraciones
+
+| # | Qué crea |
+|---|---|
+| 00066 | `conversations.agent_enabled` nullable (tres estados) + migración única de las filas; `agents.burst_max_age_hours` |
+| 00067 | `agents.close_after_inactive_hours / summary_on_close / classify_on_close`; `conversations.closed_at / summarized_at`; índice del barrido |
+| 00068 | `audit_log.reverted_at / reverted_by_audit_id`; policy para que un Member vea las acciones del agente sobre sus leads; índices de la vista de Acciones |
+| 00069 | `ai_cost_report()` para la pestaña Costos (solo service role) |
+
+Las cuatro aplicadas en producción el 24/9/2026. Todas idempotentes, funciones
+con `SET search_path = ''`, columnas nuevas de `agents` sumadas al GRANT de la
+00060.
+
+### Verificación
+
+- 971 tests en verde (de 904 al empezar): cada herramienta respetando sus
+  parámetros (el tag fuera de la lista blanca no se aplica), el resumen
+  reconciliando un dato que cambió, la clasificación al cierre con límites, el
+  estado efectivo en los tres estados, la ráfaga con antigüedad máxima, el
+  barrido que no toca el backlog, y la reversión auditada.
+- `verify-rls.mjs` en verde con un Member real: ve las acciones del agente
+  sobre sus leads y no sobre ajenos, no puede marcar una reversión, no lee
+  ninguna columna de costo; las columnas nuevas de `agents` son legibles.
+- `npm run build`, `tsc` y `eslint` limpios en cada commit.
+- Las pantallas se verificaron por compilación, no a ojo: la app pide login y
+  no se ingresan credenciales (mismo límite de bloques anteriores).
+
+### Deuda anotada
+
+- **El system prompt sigue con `[[ COMPLETAR: link de agenda ]]`.** El agente
+  no se prende hasta que Wendy lo corrija y se corran los ocho casos en vivo.
+- **Los ocho casos en vivo** están en `docs/agente-ia.md`; la verificación
+  contra Instagram real es de la próxima sesión.
+- **Zona horaria:** Runs y Acciones filtran en la de la app (Buenos Aires),
+  Costos y topes en la del negocio (Costa Rica). Unificar con
+  `workspaces.timezone`.
+- **El backlog de 578 conversaciones** queda abierto; cerrarlo a mano dispara
+  un resumen por conversación.
+- **Segunda pasada del backfill** en la semana del 1 de octubre de 2026.
+
+---
+
 ## Etapa 1 · Fase 3 · Backfill de Zernio corrido en firme
 
 **Fecha:** 24 de septiembre de 2026
