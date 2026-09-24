@@ -55,6 +55,49 @@ export interface AgentToolResult {
   endsTurn?: boolean;
 }
 
+/**
+ * De donde salen las opciones de un campo de configuracion que depende de la
+ * base. La pagina las carga una vez y las pasa por nombre: la pestana no sabe
+ * que herramienta pide "tags", solo que hay una fuente que se llama asi.
+ */
+export type ToolOptionSource = "tags" | "members" | "contact_fields";
+
+export interface ToolConfigOption {
+  value: string;
+  label: string;
+  /** Ayuda corta al lado de la opcion (ej. "sensible"). */
+  hint?: string;
+}
+
+/**
+ * Como se muestra cada parametro de una herramienta. Es la parte "de pantalla"
+ * del configSchema: el zod valida en el servidor, esto dice que control usar.
+ * La pestana Herramientas renderiza cualquier herramienta leyendo esto, sin
+ * condicionales por nombre.
+ */
+export type ToolConfigField = {
+  key: string;
+  label: string;
+  hint?: string;
+  /** Mostrar solo cuando otro campo tiene este valor (ej. usuario fijo). */
+  showIf?: { key: string; equals: unknown };
+} & (
+  | { kind: "boolean" }
+  | { kind: "number"; min?: number; max?: number; step?: number }
+  | { kind: "select"; options?: ToolConfigOption[]; optionSource?: ToolOptionSource }
+  | {
+      kind: "multiselect";
+      options?: ToolConfigOption[];
+      optionSource?: ToolOptionSource;
+      /**
+       * Sin opciones en la fuente, la herramienta no se puede habilitar y la
+       * pantalla muestra este mensaje en vez de un desplegable vacio.
+       */
+      requiredForTool?: boolean;
+      emptySourceMessage?: string;
+    }
+);
+
 export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   /** Nombre estable que ve el modelo. snake_case. */
   name: string;
@@ -64,6 +107,8 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   description: string;
   inputSchema: z.ZodType<TInput>;
   configSchema: z.ZodType<TConfig>;
+  /** Como renderizar cada parametro del configSchema en la pestana Herramientas. */
+  configFields: ToolConfigField[];
   /**
    * Si la herramienta existe para este agente. Una herramienta que no aplica
    * no se ofrece: no existe-y-devuelve-error, directamente no esta en la caja.

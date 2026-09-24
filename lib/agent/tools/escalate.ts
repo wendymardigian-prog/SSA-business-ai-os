@@ -32,6 +32,14 @@ export const escalateTool: AgentToolDefinition<z.infer<typeof inputSchema>, z.in
     "Pasa la conversacion a una persona del equipo y termina tu turno sin responder. Usala si no sabes la respuesta, si no estas seguro, si el lead pide hablar con una persona, o si el tema se sale de lo que podes resolver. Nunca inventes una respuesta: derivar es siempre mejor que inventar.",
   inputSchema,
   configSchema,
+  configFields: [
+    {
+      key: "reopenConversation",
+      label: "Reabrir la conversacion al derivar",
+      hint: "Si estaba cerrada o pospuesta, vuelve a abiertas para que alguien la vea.",
+      kind: "boolean",
+    },
+  ],
   required: true,
   auditAction: "human_takeover",
   async execute({ input, config, ctx }) {

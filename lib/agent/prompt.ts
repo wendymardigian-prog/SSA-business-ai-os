@@ -50,6 +50,14 @@ export function buildSystemPrompt(agent: AgentConfig, nonce: string, toolNames: 
       "Si necesitas un dato del negocio que no esta en estas instrucciones, usa buscar_en_conocimiento antes de responder. Si no aparece, no lo inventes.",
     );
   }
+  const crmTools = toolNames.filter((t) =>
+    ["etiquetar_contacto", "cambiar_temperatura", "programar_seguimiento", "asignar_conversacion", "pausarse"].includes(t),
+  );
+  if (crmTools.length > 0) {
+    rules.push(
+      "Las herramientas del CRM (etiquetar, temperatura, seguimiento, asignar, pausarte) se usan cuando la conversacion lo justifica, sin anunciarselo al lead. Si una herramienta te dice que algo no esta permitido, no insistas.",
+    );
+  }
 
   return `${operator}
 

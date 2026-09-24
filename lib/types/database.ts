@@ -73,7 +73,17 @@ export type AuditAction =
   | "agent_paused"
   | "agent_resumed"
   /** Se guardo o se restauro una version del system prompt. */
-  | "prompt_version";
+  | "prompt_version"
+  /** El agente etiqueto un contacto (Fase 3, Bloque 2b). changes.tags {old,new}. */
+  | "tag"
+  /** El agente cambio la temperatura del lead. */
+  | "temperature"
+  /** El agente programo el proximo seguimiento. */
+  | "followup"
+  /** El agente guardo el resumen acumulativo del contacto. */
+  | "summary"
+  /** Una persona revirtio una accion del agente. metadata.reverted_audit_id. */
+  | "revert";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
