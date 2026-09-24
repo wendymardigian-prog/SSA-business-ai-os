@@ -22,7 +22,8 @@ export interface TurnConversation {
   workspace_id: string;
   channel_id: string;
   contact_id: string;
-  agent_enabled: boolean;
+  /** null = hereda del canal; true = forzado prendido; false = forzado apagado (00066). */
+  agent_enabled: boolean | null;
   agent_paused_until: string | null;
   is_automation_paused: boolean;
   assigned_to: string | null;
@@ -79,13 +80,27 @@ export async function loadRecentMessages(
 /**
  * La rafaga: los entrantes posteriores a la ultima salida (del agente, de un
  * flow o de una persona). Es lo que este turno tiene que responder.
+ *
+ * Con `maxAgeMs` se descartan ademas los entrantes mas viejos que eso,
+ * contados desde `now` (el instante del turno, no el del mensaje mas nuevo).
+ * Motivo: hay conversaciones sin una sola respuesta, donde "lo posterior a la
+ * ultima salida" es todo el historial; sin este corte, el primer turno del
+ * agente contestaria junto una pregunta de hace tres semanas. Lo viejo sigue
+ * entrando al prompt por el historial: esto decide QUE se responde, no que se
+ * lee.
  */
-export function extractBurst(messages: StoredMessage[]): StoredMessage[] {
+export function extractBurst(
+  messages: StoredMessage[],
+  opts: { maxAgeMs?: number; now?: Date } = {},
+): StoredMessage[] {
   let lastOutbound = -1;
   messages.forEach((m, i) => {
     if (m.direction === "outbound") lastOutbound = i;
   });
-  return messages.slice(lastOutbound + 1).filter((m) => m.direction === "inbound");
+  const pending = messages.slice(lastOutbound + 1).filter((m) => m.direction === "inbound");
+  if (!opts.maxAgeMs) return pending;
+  const cutoff = (opts.now ?? new Date()).getTime() - opts.maxAgeMs;
+  return pending.filter((m) => new Date(m.created_at).getTime() >= cutoff);
 }
 
 export function toHistory(messages: StoredMessage[]): HistoryMessage[] {

@@ -30,6 +30,7 @@ export const agentConfigInputSchema = z
     responseDelaySeconds: z.number().int().min(0).max(180, "La demora maxima es 180 s."),
     maxWaitSeconds: z.number().int().min(15).max(7200).nullable(),
     maxRepliesPerConversation: z.number().int().min(1).max(500),
+    burstMaxAgeHours: z.number().int().min(1, "Minimo 1 hora.").max(720, "Maximo 720 horas (30 dias)."),
     outputFormat: outputFormatSchema,
     guardrails: guardrailsSchema,
     dailyCostLimitUsd: z.number().min(0).max(100000).nullable(),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveAgentState, toAgentConfig, isPaused } from "./config";
+import { resolveAgentState, toAgentConfig, isPaused, toAgentMode, fromAgentMode } from "./config";
 import { agentRow } from "./testing/fixtures";
 
 const NOW = new Date("2026-09-15T16:00:00Z");
@@ -27,11 +27,57 @@ describe("estado efectivo del agente (derivado, nunca guardado)", () => {
     expect(resolveAgentState({ agents: [off], channelId: "ch-ig", conversation: on, now: NOW }).state).toBe("agent_off");
   });
 
-  it("toggle de la conversacion apagado", () => {
-    expect(
-      resolveAgentState({ agents: [agent], channelId: "ch-ig", conversation: { ...on, agent_enabled: false }, now: NOW })
-        .state,
-    ).toBe("conversation_off");
+  it("forzado apagado en la conversacion: no atiende aunque el maestro este prendido", () => {
+    const state = resolveAgentState({ agents: [agent], channelId: "ch-ig", conversation: { ...on, agent_enabled: false }, now: NOW });
+    expect(state).toMatchObject({ state: "conversation_off", inherited: false });
+  });
+
+  describe("heredar del canal (agent_enabled NULL, el default desde la 00066)", () => {
+    const inherit = { agent_enabled: null, agent_paused_until: null };
+
+    it("con el maestro del canal prendido, la conversacion esta atendida", () => {
+      expect(resolveAgentState({ agents: [agent], channelId: "ch-ig", conversation: inherit, now: NOW })).toMatchObject({
+        state: "active",
+        inherited: true,
+      });
+    });
+
+    it("con el maestro del canal apagado, no esta atendida, y se sabe que es por herencia", () => {
+      expect(resolveAgentState({ agents: [agent], channelId: "ch-wa", conversation: inherit, now: NOW })).toMatchObject({
+        state: "channel_off",
+        inherited: true,
+      });
+    });
+
+    it("con el agente apagado globalmente, tampoco", () => {
+      const off = toAgentConfig(agentRow({ is_enabled: false, enabled_channel_ids: ["ch-ig"] }));
+      expect(resolveAgentState({ agents: [off], channelId: "ch-ig", conversation: inherit, now: NOW })).toMatchObject({
+        state: "agent_off",
+        inherited: true,
+      });
+    });
+
+    it("una pausa de un flow se respeta igual en heredar", () => {
+      expect(
+        resolveAgentState({ agents: [agent], channelId: "ch-ig", conversation: { ...inherit, agent_paused_until: "infinity" }, now: NOW }),
+      ).toMatchObject({ state: "paused", inherited: true });
+    });
+  });
+
+  it("forzado prendido con el maestro prendido: activo, y no es herencia", () => {
+    expect(resolveAgentState({ agents: [agent], channelId: "ch-ig", conversation: on, now: NOW })).toMatchObject({
+      state: "active",
+      inherited: false,
+    });
+  });
+
+  it("los tres estados se traducen ida y vuelta", () => {
+    expect(toAgentMode(null)).toBe("inherit");
+    expect(toAgentMode(true)).toBe("on");
+    expect(toAgentMode(false)).toBe("off");
+    expect(fromAgentMode("inherit")).toBeNull();
+    expect(fromAgentMode("on")).toBe(true);
+    expect(fromAgentMode("off")).toBe(false);
   });
 
   it("pausado por un flow hasta que lo reanude", () => {

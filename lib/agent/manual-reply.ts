@@ -6,7 +6,9 @@ import { logAudit } from "@/lib/audit";
  * Una persona del equipo respondio a mano en una conversacion (F31).
  *
  * Tres efectos, siempre juntos:
- *   - El agente se apaga en esa conversacion (Human Takeover implicito). Si la
+ *   - El agente queda FORZADO APAGADO en esa conversacion (false, no "heredar":
+ *     si una persona tomo la conversacion, el agente no vuelve solo aunque el
+ *     maestro del canal este prendido). Human Takeover implicito. Si la
  *     persona escribio, la conversacion es suya; el agente no puede contestar
  *     encima.
  *   - La marca de error del agente se borra: alguien ya se hizo cargo.
@@ -25,7 +27,10 @@ export async function applyManualReply(
     .select("agent_enabled, last_agent_error_at")
     .eq("id", args.conversationId)
     .maybeSingle();
-  if (!before || (!before.agent_enabled && !before.last_agent_error_at)) return;
+  // Ya estaba forzado apagado y sin marca de error: nada que hacer.
+  if (!before || (before.agent_enabled === false && !before.last_agent_error_at)) return;
+  // Se copia antes de escribir: el audit tiene que decir de que estado vino.
+  const previous = before.agent_enabled ?? null;
 
   const { error } = await supabase
     .from("conversations")
@@ -36,14 +41,14 @@ export async function applyManualReply(
     return;
   }
 
-  if (before.agent_enabled) {
+  if (previous !== false) {
     await logAudit({
       supabase,
       workspaceId: args.workspaceId,
       entityType: "conversation",
       entityId: args.conversationId,
       action: "agent_toggled",
-      changes: { agent_enabled: { old: true, new: false } },
+      changes: { agent_enabled: { old: previous, new: false } },
       metadata: { reason: "manual_reply" },
       performedBy: args.userId,
     });

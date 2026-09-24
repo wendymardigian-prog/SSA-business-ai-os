@@ -347,6 +347,46 @@ describe("coexistencia: nunca respuesta doble", () => {
     expect(w.sent).toHaveLength(0);
   });
 
+  it("en heredar (agent_enabled null) con el maestro prendido, el turno responde igual que forzado prendido", async () => {
+    const w = turnWorld({ conversation: { agent_enabled: null } });
+    w.addInbound("hola", 0);
+    w.clock.ms = T0 + 45_000;
+
+    const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(outcome).toMatchObject({ kind: "run", status: "responded" });
+    expect(w.sent).toHaveLength(1);
+  });
+
+  it("la rafaga ignora los entrantes mas viejos que burst_max_age_hours, pero siguen en el contexto", async () => {
+    const w = turnWorld({ agent: { burst_max_age_hours: 6 } });
+    // Una conversacion que nadie respondio: pregunta de hace tres semanas y una de ahora.
+    w.addInbound("hola, cuanto sale el curso?", -21 * 24 * 3600);
+    w.addInbound("sigue disponible?", 0);
+    w.clock.ms = T0 + 45_000;
+
+    const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(outcome).toMatchObject({ kind: "run", status: "responded" });
+    const prompt = JSON.stringify(w.modelCalls[0].messages);
+    // El contexto lo tiene, para que el agente sepa de que se hablo.
+    expect(prompt).toContain("cuanto sale el curso");
+    expect(prompt).toContain("sigue disponible");
+    // Pero el envio cae en funcion del mensaje reciente (0 + 60 + 20), no del viejo.
+    expect(w.sent[0].at).toBe(at(80));
+  });
+
+  it("si todo lo pendiente es mas viejo que burst_max_age_hours, no hay turno ni run", async () => {
+    const w = turnWorld({ agent: { burst_max_age_hours: 6 } });
+    w.addInbound("hola?", -48 * 3600);
+    w.clock.ms = T0 + 45_000;
+
+    const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(outcome).toEqual({ kind: "no_turn", reason: "nothing_to_answer" });
+    expect(w.db.rows("agent_runs")).toHaveLength(0);
+  });
+
   it("si alguien apago el agente durante la ventana, el turno deja un run skipped y no llama al modelo", async () => {
     const w = turnWorld({ conversation: { agent_enabled: false } });
     w.addInbound("hola", 0);

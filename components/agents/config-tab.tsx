@@ -33,6 +33,7 @@ function toForm(agent: AgentScreenData["agent"]): Form {
     responseDelaySeconds: agent.responseDelaySeconds,
     maxWaitSeconds: agent.maxWaitSeconds,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
+    burstMaxAgeHours: agent.burstMaxAgeHours,
     outputFormat: agent.outputFormat,
     guardrails: agent.guardrails,
     dailyCostLimitUsd: agent.dailyCostLimitUsd,
@@ -178,6 +179,12 @@ function TimingSection({ form, set }: SectionProps) {
         Va a responder unos <strong>{total} segundos</strong> después del último mensaje del lead
         {form.maxWaitSeconds ? `, y como mucho ${form.maxWaitSeconds + form.responseDelaySeconds} segundos después del primero aunque siga escribiendo` : ""}.
       </Notice>
+      <Field
+        label="Antigüedad máxima de la ráfaga (horas)"
+        hint="Los mensajes del lead más viejos que esto no se responden (siguen en el contexto). Evita que el primer turno conteste una pregunta de hace semanas en una conversación que nadie respondió."
+      >
+        {(id) => <NumberInput id={id} value={form.burstMaxAgeHours} min={1} max={720} onChange={(v) => set({ burstMaxAgeHours: v ?? 6 })} />}
+      </Field>
     </Section>
   );
 }

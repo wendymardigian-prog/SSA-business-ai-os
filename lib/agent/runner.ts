@@ -7,7 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { findWaitingSession } from "@/lib/flow-engine/engine";
 import { createNotificationOnce } from "@/lib/notifications/create";
 import { AGENT_CRON_TICK_SECONDS, type AgentBurstPayload } from "@/lib/scheduler";
-import { loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
+import { DEFAULT_BURST_MAX_AGE_HOURS, loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
 import {
   countAgentReplies,
   exchangeStart,
@@ -123,14 +123,20 @@ export async function runAgentTurn(
     agentId: payload.agentId,
   };
 
-  // 1. Idempotencia: la rafaga sin responder.
-  let messages = await loadRecentMessages(supabase, conversation.id);
-  let burst = extractBurst(messages);
-  if (burst.length === 0) return { kind: "no_turn", reason: "nothing_to_answer" };
-
   const agents = await loadWorkspaceAgents(supabase, conversation.workspace_id);
   const agentForRun = agents.find((a) => a.id === payload.agentId) ?? null;
   const tick = AGENT_CRON_TICK_SECONDS * 1000;
+
+  // 1. Idempotencia: la rafaga sin responder. Los entrantes mas viejos que
+  // burst_max_age_hours no se responden (siguen en el contexto).
+  const burstOf = (msgs: StoredMessage[]) =>
+    extractBurst(msgs, {
+      maxAgeMs: (agentForRun?.burstMaxAgeHours ?? DEFAULT_BURST_MAX_AGE_HOURS) * 3_600_000,
+      now: deps.now(),
+    });
+  let messages = await loadRecentMessages(supabase, conversation.id);
+  let burst = burstOf(messages);
+  if (burst.length === 0) return { kind: "no_turn", reason: "nothing_to_answer" };
 
   // 2. La ventana de silencio.
   const deadlineAt = payload.burst_deadline ? new Date(payload.burst_deadline).getTime() + tick : Infinity;
@@ -153,7 +159,7 @@ export async function runAgentTurn(
   if (windowEnd > nowMs) {
     await deps.sleep(windowEnd - nowMs);
     messages = await loadRecentMessages(supabase, conversation.id);
-    burst = extractBurst(messages);
+    burst = burstOf(messages);
     if (burst.length === 0) return { kind: "no_turn", reason: "nothing_to_answer" };
     const newest = burst[burst.length - 1];
     if (newest.id !== lastInbound.id) return { kind: "no_turn", reason: "superseded" };
@@ -422,10 +428,12 @@ async function continueTurn(
   const lastBurstId = burst[burst.length - 1].id;
   const interrupted = await waitUntilTarget(supabase, deps, conversation.id, target, lastBurstId);
 
-  // 8. Nadie tomo la conversacion mientras se generaba.
+  // 8. Nadie tomo la conversacion mientras se generaba. Un "forzado apagado"
+  // (false) es lo que dejan Human Takeover y una respuesta manual; "heredar"
+  // (null) sigue siendo del agente.
   const latest = await loadTurnConversation(supabase, conversation.id);
   const humanAfter = await lastHumanReplyAt(supabase, conversation.id);
-  if (!latest || !latest.agent_enabled || (humanAfter && isAfter(humanAfter, burst[0].created_at))) {
+  if (!latest || latest.agent_enabled === false || (humanAfter && isAfter(humanAfter, burst[0].created_at))) {
     return close("skipped", "human_took_over_during_generation");
   }
   const waiting = await findWaitingSession(supabase, {

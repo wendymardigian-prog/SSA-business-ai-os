@@ -15,6 +15,7 @@ const valid = {
   responseDelaySeconds: 20,
   maxWaitSeconds: 300,
   maxRepliesPerConversation: 12,
+  burstMaxAgeHours: 6,
   outputFormat: outputFormatSchema.parse({}),
   guardrails: guardrailsSchema.parse({}),
   dailyCostLimitUsd: 5,

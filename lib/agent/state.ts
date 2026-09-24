@@ -18,7 +18,7 @@ export async function agentStateForConversation(
     .select("channel_id, agent_enabled, agent_paused_until")
     .eq("id", args.conversationId)
     .maybeSingle();
-  if (!conversation) return { state: "no_agent" };
+  if (!conversation) return { state: "no_agent", inherited: false };
 
   const agents = await loadWorkspaceAgents(supabase, args.workspaceId);
   return resolveAgentState({

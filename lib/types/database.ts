@@ -882,8 +882,11 @@ export interface Database {
           last_message_preview: string | null;
           unread_count: number;
           is_automation_paused: boolean;
-          /** Toggle del agente en esta conversacion (migracion 00058). */
-          agent_enabled: boolean;
+          /**
+           * Agente de IA en esta conversacion, tres estados (migracion 00066).
+           * null = hereda del canal; true = forzado prendido; false = forzado apagado.
+           */
+          agent_enabled: boolean | null;
           /** Pausa temporal puesta por un flow. NULL = sin pausa; "infinity" = hasta reanudar. */
           agent_paused_until: string | null;
           /** El agente fallo aca y el lead puede estar sin respuesta (migracion 00059). */
@@ -906,7 +909,7 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
-          agent_enabled?: boolean;
+          agent_enabled?: boolean | null;
           agent_paused_until?: string | null;
           last_agent_error_at?: string | null;
           last_agent_error_run_id?: string | null;
@@ -924,7 +927,7 @@ export interface Database {
           last_message_preview?: string | null;
           unread_count?: number;
           is_automation_paused?: boolean;
-          agent_enabled?: boolean;
+          agent_enabled?: boolean | null;
           agent_paused_until?: string | null;
           last_agent_error_at?: string | null;
           last_agent_error_run_id?: string | null;
@@ -1961,6 +1964,8 @@ export interface Database {
           response_delay_seconds: number;
           max_wait_seconds: number | null;
           max_replies_per_conversation: number;
+          /** La rafaga ignora entrantes mas viejos que esto, en horas (migracion 00066). */
+          burst_max_age_hours: number;
           output_format: Json;
           allowed_tools: string[];
           tools_config: Json;
@@ -1998,6 +2003,7 @@ export interface Database {
           response_delay_seconds?: number;
           max_wait_seconds?: number | null;
           max_replies_per_conversation?: number;
+          burst_max_age_hours?: number;
           output_format?: Json;
           allowed_tools?: string[];
           tools_config?: Json;
@@ -2033,6 +2039,7 @@ export interface Database {
           response_delay_seconds?: number;
           max_wait_seconds?: number | null;
           max_replies_per_conversation?: number;
+          burst_max_age_hours?: number;
           output_format?: Json;
           allowed_tools?: string[];
           tools_config?: Json;

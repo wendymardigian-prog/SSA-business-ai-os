@@ -38,10 +38,12 @@ export interface PublicAgent {
 export type ChannelAgentReason = "no_agent" | "agent_off" | "channel_off";
 
 export interface ChannelAgentInfo {
-  /** Si el toggle de una conversacion de este canal se puede operar. */
+  /** Si el agente atiende este canal (maestro prendido y agente encendido). */
   available: boolean;
   reason: ChannelAgentReason | null;
   agentName: string | null;
+  /** Nombre del canal para las frases de la bandeja ("atiende Instagram"). */
+  channelLabel: string;
   /** Explicacion lista para mostrar cuando no esta disponible. */
   message: string | null;
 }
@@ -60,6 +62,7 @@ export function channelAgentInfo(
       available: false,
       reason: "no_agent",
       agentName: null,
+      channelLabel: channel.label,
       message: "Todavia no hay un agente de IA. Se crea en Agentes.",
     };
   }
@@ -69,6 +72,7 @@ export function channelAgentInfo(
       available: false,
       reason: "channel_off",
       agentName: live[0].name,
+      channelLabel: channel.label,
       message: `El agente esta apagado para ${channel.label}; activalo en Agentes para poder encenderlo por conversacion.`,
     };
   }
@@ -77,8 +81,9 @@ export function channelAgentInfo(
       available: false,
       reason: "agent_off",
       agentName: forChannel.name,
+      channelLabel: channel.label,
       message: `"${forChannel.name}" esta apagado. Se enciende desde Agentes.`,
     };
   }
-  return { available: true, reason: null, agentName: forChannel.name, message: null };
+  return { available: true, reason: null, agentName: forChannel.name, channelLabel: channel.label, message: null };
 }

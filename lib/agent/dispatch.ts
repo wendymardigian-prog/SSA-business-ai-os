@@ -22,14 +22,17 @@ import { loadWorkspaceAgents, resolveAgentState, type AgentAvailability } from "
  *
  * y los guardarrailes se evaluan en el turno, sobre la rafaga completa.
  *
- * Que runs deja el despacho:
- *   - Si la conversacion tiene el agente encendido y no puede actuar (canal
- *     apagado, agente apagado, pausado por un flow, o una automatizacion
- *     reclamo el mensaje), un run con el motivo. Toda abstencion deja rastro.
- *   - Si la conversacion NUNCA tuvo el agente encendido, ninguno: el toggle
- *     arranca apagado en todas las conversaciones, y anotar "no respondi porque
- *     no me lo pidieron" en cada mensaje de cada conversacion llenaria la tabla
- *     de ruido sin decir nada.
+ * Que runs deja el despacho (interruptor de tres estados, 00066):
+ *   - Forzado apagado (false): ninguno. Alguien decidio que aca no atienda.
+ *   - Heredar (null) y el maestro del canal apagado: ninguno. Es el estado por
+ *     defecto de todas las conversaciones; anotar "no respondi porque el canal
+ *     esta apagado" en cada mensaje de cada conversacion llenaria la tabla de
+ *     ruido sin decir nada.
+ *   - Heredar o forzado prendido, y el agente activo pero una automatizacion
+ *     reclamo el mensaje: un run "se abstuvo por automatizacion".
+ *   - Forzado prendido (true) y el agente no puede actuar (canal apagado,
+ *     agente apagado, pausado por un flow): un run con el motivo. Alguien pidio
+ *     explicitamente que atienda y no pudo: eso si deja rastro.
  *
  * Nunca lanza: un fallo aca no puede tumbar la recepcion del mensaje.
  */
@@ -70,8 +73,8 @@ export async function maybeScheduleAgentTurn(
       return { scheduled: false, reason: "error" };
     }
 
-    // Nadie le pidio al agente que atienda esta conversacion.
-    if (!conversation.agent_enabled) return { scheduled: false, reason: "not_enabled_here" };
+    // Forzado apagado: alguien decidio que aca no atienda.
+    if (conversation.agent_enabled === false) return { scheduled: false, reason: "not_enabled_here" };
 
     const state = resolveAgentState({ agents, channelId: args.channelId, conversation, now });
     const agentId = "agent" in state ? state.agent.id : null;
@@ -87,6 +90,8 @@ export async function maybeScheduleAgentTurn(
     };
 
     if (state.state !== "active") {
+      // En "heredar" no hay nadie que haya pedido que atienda: sin run.
+      if (state.inherited) return { scheduled: false, reason: state.state };
       const runId = await recordRunOutcome(supabase, { ...runBase, status: "skipped", statusDetail: state.state });
       return { scheduled: false, reason: state.state, runId };
     }

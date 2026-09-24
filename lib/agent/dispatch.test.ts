@@ -10,12 +10,12 @@ import { agentRow } from "./testing/fixtures";
 
 const NOW = new Date("2026-09-15T16:00:00.000Z");
 
-function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabled?: boolean; paused?: string | null; persist?: boolean } = {}) {
+function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabled?: boolean | null; paused?: string | null; persist?: boolean } = {}) {
   return memoryDb(
     {
       agents: opts.agent === null ? [] : [agentRow({ enabled_channel_ids: ["ch-1"], ...opts.agent })],
       conversations: [
-        { id: "cv-1", agent_enabled: opts.agentEnabled ?? true, agent_paused_until: opts.paused ?? null },
+        { id: "cv-1", agent_enabled: opts.agentEnabled === undefined ? true : opts.agentEnabled, agent_paused_until: opts.paused ?? null },
       ],
       agent_runs: [],
       channels: [{ id: "ch-1", provider: "zernio", workspaces: { persist_zernio_inbound: opts.persist ?? true } }],
@@ -105,11 +105,43 @@ describe("las palancas", () => {
     expect(db.rows("agent_runs")[0]).toMatchObject({ status: "skipped", status_detail: "message_persistence_off" });
   });
 
-  it("si la conversacion nunca tuvo el agente encendido, no agenda y NO llena la tabla de runs", async () => {
+  it("forzado apagado en la conversacion: no agenda y NO deja run", async () => {
     const db = world({ agentEnabled: false });
     const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
     expect(outcome).toMatchObject({ scheduled: false, reason: "not_enabled_here" });
     expect(db.rows("agent_runs")).toHaveLength(0);
+  });
+
+  describe("heredar del canal (el default desde la 00066)", () => {
+    it("con el maestro prendido, agenda el turno igual que forzado prendido", async () => {
+      const db = world({ agentEnabled: null });
+      const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
+      expect(outcome).toMatchObject({ scheduled: true });
+    });
+
+    it("con el maestro apagado, no agenda y NO deja run: es el estado de todas las conversaciones, seria ruido", async () => {
+      const db = world({ agentEnabled: null, agent: { enabled_channel_ids: ["otro-canal"] } });
+      const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
+      expect(outcome).toMatchObject({ scheduled: false, reason: "channel_off" });
+      expect(db.rows("agent_runs")).toHaveLength(0);
+    });
+
+    it("con el agente apagado globalmente, lo mismo: sin run", async () => {
+      const db = world({ agentEnabled: null, agent: { is_enabled: false } });
+      const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
+      expect(outcome).toMatchObject({ scheduled: false, reason: "agent_off" });
+      expect(db.rows("agent_runs")).toHaveLength(0);
+    });
+
+    it("pero si una automatizacion reclamo el mensaje con el agente activo, la abstencion si deja rastro", async () => {
+      const db = world({ agentEnabled: null });
+      const outcome = await maybeScheduleAgentTurn(db.client, {
+        ...base,
+        automation: { claimed: true, by: "flow", flowId: "f", triggerId: "t" },
+      });
+      expect(outcome).toMatchObject({ scheduled: false, reason: "automation_claimed" });
+      expect(db.rows("agent_runs")).toHaveLength(1);
+    });
   });
 
   it("sin agentes en el workspace no hace nada", async () => {

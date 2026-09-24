@@ -443,7 +443,7 @@ export function MessageThread({
           )}
           <ConversationAgentToggle
             conversationId={conversation.id}
-            enabled={conversation.agent_enabled}
+            mode={conversation.agent_enabled}
             pausedUntil={conversation.agent_paused_until}
             info={agentInfo}
           />

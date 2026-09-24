@@ -25,6 +25,7 @@ export interface AgentScreenData {
     responseDelaySeconds: number;
     maxWaitSeconds: number | null;
     maxRepliesPerConversation: number;
+    burstMaxAgeHours: number;
     outputFormat: OutputFormat;
     guardrails: Guardrails;
     knowledgeEnabled: boolean;
@@ -70,6 +71,7 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     responseDelaySeconds: agent.responseDelaySeconds,
     maxWaitSeconds: agent.maxWaitSeconds,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
+    burstMaxAgeHours: agent.burstMaxAgeHours,
     outputFormat: agent.outputFormat,
     guardrails: agent.guardrails,
     knowledgeEnabled: agent.knowledgeEnabled,

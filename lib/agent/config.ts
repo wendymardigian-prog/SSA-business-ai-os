@@ -41,6 +41,8 @@ export interface AgentConfig {
   responseDelaySeconds: number;
   maxWaitSeconds: number | null;
   maxRepliesPerConversation: number;
+  /** La rafaga ignora entrantes mas viejos que esto (horas desde el turno). */
+  burstMaxAgeHours: number;
   outputFormat: OutputFormat;
   allowedTools: string[];
   toolsConfig: Record<string, unknown>;
@@ -58,6 +60,9 @@ export interface AgentConfig {
 
 const num = (value: unknown): number | null =>
   value === null || value === undefined || value === "" ? null : Number(value);
+
+/** Default de agents.burst_max_age_hours (00066), por si una fila vieja no lo trae. */
+export const DEFAULT_BURST_MAX_AGE_HOURS = 6;
 
 export function toAgentConfig(row: AgentRow): AgentConfig {
   return {
@@ -79,6 +84,7 @@ export function toAgentConfig(row: AgentRow): AgentConfig {
     responseDelaySeconds: row.response_delay_seconds,
     maxWaitSeconds: row.max_wait_seconds,
     maxRepliesPerConversation: row.max_replies_per_conversation,
+    burstMaxAgeHours: row.burst_max_age_hours ?? DEFAULT_BURST_MAX_AGE_HOURS,
     outputFormat: parseWithDefaults(outputFormatSchema, row.output_format),
     allowedTools: row.allowed_tools ?? [],
     toolsConfig:
@@ -131,17 +137,33 @@ export async function loadAgentById(service: Db, agentId: string): Promise<Agent
   return data ? toAgentConfig(data) : null;
 }
 
-export type AgentAvailability =
+export type AgentAvailability = (
   | { state: "active"; agent: AgentConfig }
   | { state: "no_agent" }
   | { state: "agent_off"; agent: AgentConfig }
   | { state: "channel_off"; agent: AgentConfig }
   | { state: "conversation_off"; agent: AgentConfig }
-  | { state: "paused"; agent: AgentConfig; until: string };
+  | { state: "paused"; agent: AgentConfig; until: string }
+) & {
+  /** Si la conversacion esta en "heredar" (agent_enabled NULL): el maestro del canal decidio. */
+  inherited: boolean;
+};
+
+/** Los tres estados del interruptor por conversacion (00066). */
+export type ConversationAgentMode = "inherit" | "on" | "off";
 
 export interface ConversationLevers {
-  agent_enabled: boolean;
+  /** null = heredar del canal; true = forzado prendido; false = forzado apagado. */
+  agent_enabled: boolean | null;
   agent_paused_until: string | null;
+}
+
+export function toAgentMode(value: boolean | null | undefined): ConversationAgentMode {
+  return value === true ? "on" : value === false ? "off" : "inherit";
+}
+
+export function fromAgentMode(mode: ConversationAgentMode): boolean | null {
+  return mode === "on" ? true : mode === "off" ? false : null;
 }
 
 /**
@@ -161,7 +183,17 @@ export function isPaused(pausedUntil: string | null, now: Date): boolean {
 }
 
 /**
- * Estado efectivo del agente en una conversacion. Pura.
+ * Estado efectivo del agente en una conversacion. Pura. Es EL unico lugar que
+ * combina las palancas; todo el que necesita saber si el agente atiende pasa
+ * por aca (despacho, turno, primitivos del flow builder, bandeja).
+ *
+ * El interruptor por conversacion tiene tres estados (00066):
+ *   - NULL (heredar): el maestro del canal decide. Es el default.
+ *   - true (forzado prendido): igual que heredar con el maestro prendido; sin
+ *     maestro tampoco atiende (no hay agente para ese canal). La diferencia con
+ *     "heredar" es para el operador y para el despacho: alguien lo pidio
+ *     explicitamente, asi que una abstencion deja rastro.
+ *   - false (forzado apagado): no atiende aunque el maestro este prendido.
  *
  * El orden de los motivos es el que ve el operador: primero lo mas general
  * (no hay agente, esta apagado), despues el canal, despues la conversacion.
@@ -172,22 +204,26 @@ export function resolveAgentState(args: {
   conversation: ConversationLevers;
   now: Date;
 }): AgentAvailability {
+  const inherited = args.conversation.agent_enabled === null || args.conversation.agent_enabled === undefined;
+
   // Solo los tipos que conversan con leads: un agente de contenido o de
   // gestion (etapas futuras) nunca atiende una conversacion de la bandeja.
   const chatAgents = args.agents.filter((a) => getAgentType(a.type)?.conversational);
-  if (chatAgents.length === 0) return { state: "no_agent" };
+  if (chatAgents.length === 0) return { state: "no_agent", inherited };
 
   const forChannel = agentForChannel(chatAgents, args.channelId);
   if (!forChannel) {
     // Hay agente, pero ninguno atiende este canal. Se reporta el primero para
     // que el mensaje pueda nombrarlo.
     const first = chatAgents[0];
-    return first.isEnabled ? { state: "channel_off", agent: first } : { state: "agent_off", agent: first };
+    return first.isEnabled
+      ? { state: "channel_off", agent: first, inherited }
+      : { state: "agent_off", agent: first, inherited };
   }
-  if (!forChannel.isEnabled) return { state: "agent_off", agent: forChannel };
-  if (!args.conversation.agent_enabled) return { state: "conversation_off", agent: forChannel };
+  if (!forChannel.isEnabled) return { state: "agent_off", agent: forChannel, inherited };
+  if (args.conversation.agent_enabled === false) return { state: "conversation_off", agent: forChannel, inherited: false };
   if (isPaused(args.conversation.agent_paused_until, args.now)) {
-    return { state: "paused", agent: forChannel, until: args.conversation.agent_paused_until as string };
+    return { state: "paused", agent: forChannel, until: args.conversation.agent_paused_until as string, inherited };
   }
-  return { state: "active", agent: forChannel };
+  return { state: "active", agent: forChannel, inherited };
 }

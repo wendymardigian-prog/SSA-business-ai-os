@@ -23,6 +23,7 @@ export function agentRow(over: Partial<AgentRow> = {}): AgentRow {
     response_delay_seconds: 20,
     max_wait_seconds: 300,
     max_replies_per_conversation: 12,
+    burst_max_age_hours: 6,
     output_format: {},
     allowed_tools: [],
     tools_config: {},
