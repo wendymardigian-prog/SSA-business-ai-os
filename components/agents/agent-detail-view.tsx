@@ -7,12 +7,13 @@ import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { setAgentEnabled } from "@/lib/actions/agents";
-import type { AgentTypeDefinition } from "@/lib/agent/agent-types";
+import { tabsForViewer, type AgentTypeDefinition } from "@/lib/agent/agent-types";
 import type { AgentScreenData } from "@/lib/agent/screen";
 import { ConfigTab } from "./config-tab";
 import { KnowledgeTab } from "./knowledge-tab";
 import { ChannelsTab } from "./channels-tab";
 import { ToolsTab } from "./tools-tab";
+import { RunsTab } from "./runs-tab";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -22,6 +23,7 @@ import { ToolsTab } from "./tools-tab";
 const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: AgentTypeDefinition }) => React.ReactNode> = {
   config: (p) => <ConfigTab {...p} />,
   tools: (p) => <ToolsTab {...p} />,
+  runs: (p) => <RunsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
   channels: (p) => <ChannelsTab {...p} />,
 };
@@ -39,6 +41,8 @@ export function AgentDetailView({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const { agent } = data;
+  const isAdmin = data.viewer.isAdmin;
+  const { tabs } = tabsForViewer(typeDef, isAdmin);
 
   const providerConnected = data.providers.some((p) => p.provider === agent.provider);
   const modelLabel = agent.model
@@ -68,11 +72,12 @@ export function AgentDetailView({
             <h1 className="text-2xl font-bold">{agent.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {typeDef.label} · {modelLabel}
-              {agent.model && !providerConnected && (
+              {isAdmin && agent.model && !providerConnected && (
                 <span className="ml-2 font-medium text-red-600 dark:text-red-400">(proveedor no conectado)</span>
               )}
             </p>
           </div>
+          {isAdmin ? (
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-3">
               <span className={cn("text-sm font-medium", agent.isEnabled ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
@@ -89,10 +94,15 @@ export function AgentDetailView({
               </p>
             )}
           </div>
+          ) : (
+            <span className={cn("text-sm font-medium", agent.isEnabled ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground")}>
+              {agent.isEnabled ? "Encendido" : "Apagado"}
+            </span>
+          )}
         </div>
 
         <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones del agente">
-          {typeDef.tabs.map((t) =>
+          {tabs.map((t) =>
             t.available ? (
               <Link
                 key={t.key}
@@ -119,7 +129,9 @@ export function AgentDetailView({
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
-        <div className="mx-auto max-w-3xl space-y-6">{content ? content({ data, typeDef }) : null}</div>
+        <div className={cn("mx-auto space-y-6", tab === "runs" || tab === "actions" || tab === "costs" ? "max-w-5xl" : "max-w-3xl")}>
+          {content ? content({ data, typeDef }) : null}
+        </div>
       </div>
     </div>
   );

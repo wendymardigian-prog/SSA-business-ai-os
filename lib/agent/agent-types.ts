@@ -26,8 +26,11 @@ export interface AgentTypeDefinition {
   description: string;
   /** Secciones de la pestana Configuracion, en orden. */
   configSections: AgentConfigSection[];
-  /** Pestanas del detalle. Las del Bloque 2b quedan declaradas como pendientes. */
-  tabs: Array<{ key: string; label: string; available: boolean }>;
+  /**
+   * Pestanas del detalle. adminOnly: solo Owner/Admin; un Member ve Runs y
+   * Acciones (acotadas a su scope por RLS) y nada de configuracion ni costos.
+   */
+  tabs: Array<{ key: string; label: string; available: boolean; adminOnly: boolean }>;
   /** Si responde a leads en conversaciones de la bandeja. */
   conversational: boolean;
 }
@@ -39,13 +42,13 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     description: "Responde a los leads en los canales conectados, con su prompt, sus limites y la base de conocimiento.",
     configSections: ["identity", "prompt", "model", "timing", "output", "guardrails", "closing"],
     tabs: [
-      { key: "config", label: "Configuracion", available: true },
-      { key: "tools", label: "Herramientas", available: true },
-      { key: "knowledge", label: "Conocimiento", available: true },
-      { key: "channels", label: "Canales", available: true },
-      { key: "runs", label: "Runs", available: false },
-      { key: "actions", label: "Acciones", available: false },
-      { key: "costs", label: "Costos", available: false },
+      { key: "config", label: "Configuracion", available: true, adminOnly: true },
+      { key: "tools", label: "Herramientas", available: true, adminOnly: true },
+      { key: "knowledge", label: "Conocimiento", available: true, adminOnly: true },
+      { key: "channels", label: "Canales", available: true, adminOnly: true },
+      { key: "runs", label: "Runs", available: true, adminOnly: false },
+      { key: "actions", label: "Acciones", available: false, adminOnly: false },
+      { key: "costs", label: "Costos", available: false, adminOnly: true },
     ],
     conversational: true,
   },
@@ -53,4 +56,11 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
 
 export function getAgentType(type: string): AgentTypeDefinition | null {
   return AGENT_TYPES[type] ?? null;
+}
+
+/** Las pestanas que puede ver un rol, y cual abre por defecto. */
+export function tabsForViewer(typeDef: AgentTypeDefinition, isAdmin: boolean) {
+  const tabs = typeDef.tabs.filter((t) => isAdmin || !t.adminOnly);
+  const first = tabs.find((t) => t.available)?.key ?? "runs";
+  return { tabs, defaultTab: first };
 }

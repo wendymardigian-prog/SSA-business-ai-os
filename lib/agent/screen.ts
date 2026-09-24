@@ -1,5 +1,7 @@
 import type { AgentConfig } from "./config";
 import type { Guardrails, OutputFormat } from "./schemas";
+import type { Json } from "@/lib/types/database";
+import type { DatePreset } from "@/lib/dates";
 import type { ScreenTool } from "./tools/config";
 import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
 
@@ -8,7 +10,85 @@ import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
  * dependencias de servidor: lo importan los componentes cliente.
  */
 
+/** Filtros de la pestana Runs, ya validados contra lo que existe. */
+export interface RunFilters {
+  page: number;
+  datePreset: DatePreset | "";
+  dateFrom: string;
+  dateTo: string;
+  /** id de un agente, "todos" o "sin-agente". */
+  agente: string;
+  canal: string;
+  contacto: string;
+  conversacion: string;
+  q: string;
+  resultado: string;
+  modelo: string;
+  accion: string;
+  costoMin: number | null;
+  costoMax: number | null;
+}
+
+export interface RunStepRow {
+  id: string;
+  index: number;
+  kind: string;
+  name: string | null;
+  input: Json | null;
+  output: Json | null;
+  kbChunks: Array<{ id: string; label: string | null }>;
+  auditLogId: string | null;
+  durationMs: number | null;
+  error: string | null;
+}
+
+export interface RunRow {
+  id: string;
+  createdAt: string;
+  completedAt: string | null;
+  source: string;
+  trigger: string;
+  status: string;
+  statusDetail: string | null;
+  agentId: string | null;
+  agentName: string | null;
+  promptVersion: number | null;
+  conversationId: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  channelId: string | null;
+  channelLabel: string | null;
+  provider: string | null;
+  model: string | null;
+  latencyMs: number | null;
+  stepCount: number;
+  error: string | null;
+  /** Solo Owner/Admin. Un Member recibe null. */
+  cost: { usd: number | null; inputTokens: number | null; outputTokens: number | null; cachedTokens: number | null; embeddingTokens: number | null } | null;
+  steps: RunStepRow[];
+}
+
+export interface RunsTabData {
+  filters: RunFilters;
+  rows: RunRow[];
+  total: number;
+  pageSize: number;
+  /** Si el workspace tiene algun run (para distinguir "vacio" de "el filtro no encontro"). */
+  anyRuns: boolean;
+  options: {
+    agents: Array<{ id: string; name: string }>;
+    channels: Array<{ id: string; label: string }>;
+    models: string[];
+    tools: Array<{ name: string; label: string }>;
+  };
+  showCost: boolean;
+}
+
 export interface AgentScreenData {
+  /** Quien mira: decide pestanas y columnas. */
+  viewer: { isAdmin: boolean };
+  /** Solo cuando la pestana activa es Runs. */
+  runs?: RunsTabData;
   agent: {
     id: string;
     name: string;

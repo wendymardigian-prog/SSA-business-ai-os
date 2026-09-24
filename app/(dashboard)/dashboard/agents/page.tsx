@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bot, ChevronRight } from "lucide-react";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { getWorkspace } from "@/lib/workspace";
+import { isAdminRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType } from "@/lib/agent/agent-types";
@@ -8,14 +9,17 @@ import { getProvider } from "@/lib/integrations/providers";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 
 /**
- * Agentes (F24, Bloque 2a): lista de agentes con su estado.
+ * Agentes (F24): lista de agentes con su estado.
  *
- * Solo Owner/Admin: requireWorkspaceAdmin ademas de la RLS. Se lee con service
- * role detras del guard porque la fila completa incluye topes de gasto, que el
- * rol authenticated no puede leer.
+ * La ven todos los miembros: un Member entra a las pestanas Runs y Acciones
+ * de sus conversaciones. Se lee con service role (la fila completa incluye
+ * topes de gasto que el rol authenticated no puede leer), pero de esa fila
+ * solo se muestra nombre, estado, modelo y canales. Crear un agente sigue
+ * siendo de Owner/Admin.
  */
 export default async function AgentsPage() {
-  const { workspace } = await requireWorkspaceAdmin();
+  const { workspace, role } = await getWorkspace();
+  const isAdmin = isAdminRole(role);
   const service = await createServiceClient();
   const agents = await loadWorkspaceAgents(service, workspace.id);
 
@@ -36,9 +40,11 @@ export default async function AgentsPage() {
             <p className="mt-2 text-sm text-muted-foreground">
               Se crea apagado y sin canales, con un prompt inicial y límites seguros. Lo encendés cuando lo hayas revisado.
             </p>
-            <div className="mt-6 flex justify-center">
-              <CreateAgentButton />
-            </div>
+            {isAdmin && (
+              <div className="mt-6 flex justify-center">
+                <CreateAgentButton />
+              </div>
+            )}
           </div>
         ) : (
           <ul className="space-y-3">

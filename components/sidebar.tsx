@@ -54,7 +54,8 @@ const navigation = [
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, adminOnly: false },
   { name: "Growth", href: "/dashboard/growth", icon: Sprout, adminOnly: false },
   { name: "Channels", href: "/dashboard/channels", icon: Plug, adminOnly: true },
-  { name: "Agentes", href: "/dashboard/agents", icon: Bot, adminOnly: true },
+  // Un Member entra a ver los runs y las acciones de sus conversaciones.
+  { name: "Agentes", href: "/dashboard/agents", icon: Bot, adminOnly: false },
   {
     name: "Conocimiento",
     href: "/dashboard/knowledge",
