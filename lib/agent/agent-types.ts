@@ -47,7 +47,7 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
       { key: "knowledge", label: "Conocimiento", available: true, adminOnly: true },
       { key: "channels", label: "Canales", available: true, adminOnly: true },
       { key: "runs", label: "Runs", available: true, adminOnly: false },
-      { key: "actions", label: "Acciones", available: false, adminOnly: false },
+      { key: "actions", label: "Acciones", available: true, adminOnly: false },
       { key: "costs", label: "Costos", available: false, adminOnly: true },
     ],
     conversational: true,

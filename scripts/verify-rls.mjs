@@ -713,6 +713,43 @@ try {
 
     await setFlags(ws.id, { lead_scope_enabled: false }); }
 
+  console.log("\n— Acciones del agente en el audit log y reversion (00068) —");
+  { await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    const { data: agRow } = await svc.from("agents").insert({ workspace_id: ws.id, name: "zz-test agente acciones" }).select("id").single();
+    const { data: leadAjeno } = await svc.from("contacts")
+      .insert({ workspace_id: ws.id, display_name: "zz-test lead ajeno", setter_id: admin.id }).select("id").single();
+    await svc.from("contacts").update({ setter_id: member.id }).eq("id", contact.id);
+    const { data: acciones } = await svc.from("audit_log").insert([
+      { workspace_id: ws.id, entity_type: "contact", entity_id: contact.id, action: "temperature",
+        changes: { lead_temperature: { old: null, new: "hot" } }, performed_by_agent_id: agRow.id },
+      { workspace_id: ws.id, entity_type: "contact", entity_id: leadAjeno.id, action: "temperature",
+        changes: { lead_temperature: { old: null, new: "hot" } }, performed_by_agent_id: agRow.id },
+      { workspace_id: ws.id, entity_type: "conversation", entity_id: conv.id, action: "human_takeover",
+        changes: { agent_enabled: { old: null, new: false } }, performed_by_agent_id: agRow.id },
+    ]).select("id, entity_id");
+    const propia = acciones.find((a) => a.entity_id === contact.id);
+    const ajena = acciones.find((a) => a.entity_id === leadAjeno.id);
+    const deConv = acciones.find((a) => a.entity_id === conv.id);
+    check((await sees(member, "audit_log", propia.id)).seen, "un Member VE la accion del agente sobre su lead (performed_by NULL, via scope)");
+    check(!(await sees(member, "audit_log", ajena.id)).seen, "un Member NO ve la accion del agente sobre un lead ajeno");
+    check((await sees(member, "audit_log", deConv.id)).seen, "un Member VE la accion del agente sobre su conversacion");
+    check((await sees(admin, "audit_log", ajena.id)).seen, "un Admin ve todas las acciones del agente");
+    const { data: marcada } = await member.client.from("audit_log")
+      .update({ reverted_at: new Date().toISOString() }).eq("id", propia.id).select("id");
+    check((marcada ?? []).length === 0, "un Member NO puede marcar una accion como revertida (solo service role)");
+    const { data: marcadaAdmin } = await admin.client.from("audit_log")
+      .update({ reverted_at: new Date().toISOString() }).eq("id", propia.id).select("id");
+    check((marcadaAdmin ?? []).length === 0, "ni un Admin: la marca la pone el servidor");
+    const { data: rev, error: eRev } = await member.client.from("audit_log").insert({
+      workspace_id: ws.id, entity_type: "contact", entity_id: contact.id, action: "revert",
+      changes: { lead_temperature: { old: "hot", new: null } }, metadata: { reverted_audit_id: propia.id }, performed_by: member.id,
+    }).select("id").single();
+    check(!eRev && !!rev, "un Member puede dejar su entrada revert firmada por el", eRev?.message);
+    const { error: eCols } = await member.client.from("agents").select("close_after_inactive_hours, burst_max_age_hours").eq("id", agRow.id);
+    check(!eCols, "las columnas nuevas de agents (00066/00067) son legibles por el cliente", eCols?.message);
+    await svc.from("contacts").update({ setter_id: null }).eq("id", contact.id);
+    await setFlags(ws.id, { lead_scope_enabled: false }); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

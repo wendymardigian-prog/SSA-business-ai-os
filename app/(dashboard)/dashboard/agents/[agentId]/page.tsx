@@ -8,9 +8,10 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
-import { toScreenAgent, type AgentScreenData, type RunsTabData } from "@/lib/agent/screen";
+import { toScreenAgent, type ActionsTabData, type AgentScreenData, type RunsTabData } from "@/lib/agent/screen";
 import { serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
+import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
 /**
@@ -143,9 +144,41 @@ export default async function AgentDetailPage({
     };
   }
 
+  let actions: ActionsTabData | undefined;
+  if (tab === "actions") {
+    const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
+    const filters = parseActionFilters(query, {
+      currentAgentId: agent.id,
+      agentIds: agents.map((a) => a.id),
+      channelIds: channels.map((c) => c.id),
+    });
+    // Siempre con el cliente del usuario: la policy de la 00068 acota a un
+    // Member a las acciones sobre sus leads; un Admin ve todas.
+    const [{ rows, total }, anyRes] = await Promise.all([
+      loadActions(supabase, {
+        workspaceId: workspace.id,
+        filters,
+        agentNames: new Map(agents.map((a) => [a.id, a.name])),
+        channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
+        tagNames: new Map((tagsRes.data ?? []).map((t) => [t.id, t.name])),
+        memberNames,
+      }),
+      supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).not("performed_by_agent_id", "is", null),
+    ]);
+    actions = {
+      filters,
+      rows,
+      total,
+      pageSize: ACTIONS_PAGE_SIZE,
+      anyActions: (anyRes.count ?? 0) > 0,
+      options: { agents: agents.map((a) => ({ id: a.id, name: a.name })), channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })) },
+    };
+  }
+
   const data: AgentScreenData = {
     viewer: { isAdmin },
     runs,
+    actions,
     agent: screenAgent,
     tools: serializeToolsForScreen(),
     toolOptionSources: {

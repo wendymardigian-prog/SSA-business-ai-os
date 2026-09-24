@@ -14,6 +14,7 @@ import { KnowledgeTab } from "./knowledge-tab";
 import { ChannelsTab } from "./channels-tab";
 import { ToolsTab } from "./tools-tab";
 import { RunsTab } from "./runs-tab";
+import { ActionsTab } from "./actions-tab";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -24,6 +25,7 @@ const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: Agen
   config: (p) => <ConfigTab {...p} />,
   tools: (p) => <ToolsTab {...p} />,
   runs: (p) => <RunsTab {...p} />,
+  actions: (p) => <ActionsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
   channels: (p) => <ChannelsTab {...p} />,
 };

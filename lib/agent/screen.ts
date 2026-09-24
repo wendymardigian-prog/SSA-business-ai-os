@@ -84,11 +84,59 @@ export interface RunsTabData {
   showCost: boolean;
 }
 
+export interface ActionFilters {
+  page: number;
+  accion: string;
+  datePreset: DatePreset | "";
+  dateFrom: string;
+  dateTo: string;
+  /** id de un agente o "todos". */
+  agente: string;
+  canal: string;
+  contacto: string;
+  /** "", "si" o "no". */
+  revertida: string;
+}
+
+export interface ActionRow {
+  id: string;
+  performedAt: string;
+  action: string;
+  actionLabel: string;
+  agentId: string | null;
+  agentName: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  conversationId: string | null;
+  channelId: string | null;
+  channelLabel: string | null;
+  runId: string | null;
+  origin: string | null;
+  changes: Array<{ field: string; before: string; after: string }>;
+  reason: string | null;
+  revertedAt: string | null;
+  revertible: boolean;
+}
+
+export interface ActionsTabData {
+  filters: ActionFilters;
+  rows: ActionRow[];
+  total: number;
+  pageSize: number;
+  anyActions: boolean;
+  options: {
+    agents: Array<{ id: string; name: string }>;
+    channels: Array<{ id: string; label: string }>;
+  };
+}
+
 export interface AgentScreenData {
   /** Quien mira: decide pestanas y columnas. */
   viewer: { isAdmin: boolean };
   /** Solo cuando la pestana activa es Runs. */
   runs?: RunsTabData;
+  /** Solo cuando la pestana activa es Acciones. */
+  actions?: ActionsTabData;
   agent: {
     id: string;
     name: string;

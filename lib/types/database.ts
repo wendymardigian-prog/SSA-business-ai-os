@@ -1682,6 +1682,9 @@ export interface Database {
           /** Agente que ejecuto la accion (migracion 00058). */
           performed_by_agent_id: string | null;
           performed_at: string;
+          /** Marca de reversion desde la pestana Acciones (migracion 00068). */
+          reverted_at: string | null;
+          reverted_by_audit_id: string | null;
         };
         Insert: {
           id?: string;
@@ -1694,9 +1697,15 @@ export interface Database {
           performed_by?: string | null;
           performed_by_agent_id?: string | null;
           performed_at?: string;
+          reverted_at?: string | null;
+          reverted_by_audit_id?: string | null;
         };
-        // Inmutable: no hay UPDATE ni DELETE en la RLS.
-        Update: Record<string, never>;
+        // Inmutable para los usuarios (sin UPDATE ni DELETE en la RLS). Solo el
+        // service role marca la reversion.
+        Update: {
+          reverted_at?: string | null;
+          reverted_by_audit_id?: string | null;
+        };
         Relationships: [
           {
             foreignKeyName: "audit_log_workspace_id_fkey";
