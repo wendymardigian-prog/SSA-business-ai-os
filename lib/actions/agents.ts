@@ -9,6 +9,7 @@ import { DEFAULT_AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
 import { loadAgentById, loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { validateAgentConfig, validateSystemPrompt } from "@/lib/agent/validate";
+import { normalizeToolsConfig } from "@/lib/agent/tools/config";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -458,6 +459,59 @@ export async function setAgentChannel(agentId: string, channelId: string, enable
     action: "update",
     changes: { enabled_channel_ids: { old: agent.enabledChannelIds.join(", "), new: [...next].join(", ") } },
     metadata: { section: "channels", channel_id: channelId },
+    performedBy: user.id,
+  });
+
+  revalidate(agent.id);
+  return { ok: true, agentId: agent.id };
+}
+
+/**
+ * Herramientas del agente y sus parametros (F23). Cada configuracion se valida
+ * contra el configSchema de su herramienta en el registro, y lo que apunta a
+ * la base (tags, miembros) se recorta a lo que existe.
+ */
+export async function updateAgentTools(
+  agentId: string,
+  input: { allowedTools: unknown; toolsConfig: unknown },
+): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase, user } = ctx;
+
+  const agent = await loadOwnAgent(workspace.id, agentId);
+  if (!agent) return { ok: false, error: "El agente no existe." };
+
+  const [{ data: tags }, { data: members }] = await Promise.all([
+    supabase.from("tags").select("id").eq("workspace_id", workspace.id),
+    supabase.from("workspace_members").select("user_id").eq("workspace_id", workspace.id),
+  ]);
+  const normalized = normalizeToolsConfig(input, {
+    existingTagIds: (tags ?? []).map((t) => t.id),
+    memberIds: (members ?? []).map((m) => m.user_id),
+  });
+  if (!normalized.ok) return normalized;
+
+  const { error } = await supabase
+    .from("agents")
+    .update({ allowed_tools: normalized.allowedTools, tools_config: normalized.toolsConfig as Json })
+    .eq("id", agent.id);
+  if (error) {
+    console.error("[agents] no pude guardar las herramientas:", error.message);
+    return { ok: false, error: "No pude guardar las herramientas." };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "agent",
+    entityId: agent.id,
+    action: "update",
+    changes: diffFields(
+      { allowed_tools: [...agent.allowedTools].sort().join(", "), tools_config: JSON.stringify(agent.toolsConfig) },
+      { allowed_tools: [...normalized.allowedTools].sort().join(", "), tools_config: JSON.stringify(normalized.toolsConfig) },
+    ),
+    metadata: { section: "tools" },
     performedBy: user.id,
   });
 

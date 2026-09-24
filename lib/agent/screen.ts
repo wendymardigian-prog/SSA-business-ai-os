@@ -1,5 +1,7 @@
 import type { AgentConfig } from "./config";
 import type { Guardrails, OutputFormat } from "./schemas";
+import type { ScreenTool } from "./tools/config";
+import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
 
 /**
  * Lo que la pantalla de Agentes recibe del servidor, ya aplanado. Sin
@@ -36,7 +38,13 @@ export interface AgentScreenData {
     monthlyCostLimitUsd: number | null;
     monthlyCostLimitAction: "notify" | "disable";
     enabledChannelIds: string[];
+    allowedTools: string[];
+    toolsConfig: Record<string, unknown>;
   };
+  /** Las herramientas del registro, ya planas para la pestana Herramientas. */
+  tools: ScreenTool[];
+  /** Opciones que dependen de la base, por nombre de fuente (tags, miembros). */
+  toolOptionSources: Record<ToolOptionSource, ToolConfigOption[]>;
   versions: Array<{ version: number; systemPrompt: string; note: string | null; createdAt: string; authorLabel: string | null }>;
   /** Proveedores de texto con key activa. Lo unico que se puede elegir. */
   providers: Array<{ provider: string; label: string; defaultModel: string; models: string[] }>;
@@ -82,6 +90,8 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     monthlyCostLimitUsd: agent.monthlyCostLimitUsd,
     monthlyCostLimitAction: agent.monthlyCostLimitAction,
     enabledChannelIds: agent.enabledChannelIds,
+    allowedTools: agent.allowedTools,
+    toolsConfig: agent.toolsConfig,
   };
 }
 

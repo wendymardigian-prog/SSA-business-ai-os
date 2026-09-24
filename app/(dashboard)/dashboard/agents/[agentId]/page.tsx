@@ -8,6 +8,7 @@ import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
 import { toScreenAgent, type AgentScreenData } from "@/lib/agent/screen";
+import { serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
 /**
@@ -35,7 +36,7 @@ export default async function AgentDetailPage({
   const typeDef = getAgentType(agent.type);
   if (!typeDef) notFound();
 
-  const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members] = await Promise.all([
+  const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes] = await Promise.all([
     supabase
       .from("agent_prompt_versions")
       .select("version, system_prompt, note, created_at, created_by")
@@ -62,6 +63,7 @@ export default async function AgentDetailPage({
       .eq("flows.status", "published")
       .eq("flows.workspace_id", workspace.id),
     getWorkspaceMembers(workspace.id),
+    supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name"),
   ]);
 
   const memberNames = new Map(members.map((m) => [m.userId, m.name]));
@@ -75,6 +77,12 @@ export default async function AgentDetailPage({
 
   const data: AgentScreenData = {
     agent: toScreenAgent(agent),
+    tools: serializeToolsForScreen(),
+    toolOptionSources: {
+      tags: (tagsRes.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+      members: members.map((m) => ({ value: m.userId, label: m.name, hint: m.role })),
+      contact_fields: [],
+    },
     versions: (versionsRes.data ?? []).map((v) => ({
       version: v.version,
       systemPrompt: v.system_prompt,

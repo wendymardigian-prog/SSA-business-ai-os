@@ -12,6 +12,7 @@ import type { AgentScreenData } from "@/lib/agent/screen";
 import { ConfigTab } from "./config-tab";
 import { KnowledgeTab } from "./knowledge-tab";
 import { ChannelsTab } from "./channels-tab";
+import { ToolsTab } from "./tools-tab";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -20,6 +21,7 @@ import { ChannelsTab } from "./channels-tab";
 
 const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: AgentTypeDefinition }) => React.ReactNode> = {
   config: (p) => <ConfigTab {...p} />,
+  tools: (p) => <ToolsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
   channels: (p) => <ChannelsTab {...p} />,
 };

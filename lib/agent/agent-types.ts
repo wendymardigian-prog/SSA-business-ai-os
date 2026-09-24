@@ -39,7 +39,7 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     configSections: ["identity", "prompt", "model", "timing", "output", "guardrails"],
     tabs: [
       { key: "config", label: "Configuracion", available: true },
-      { key: "tools", label: "Herramientas", available: false },
+      { key: "tools", label: "Herramientas", available: true },
       { key: "knowledge", label: "Conocimiento", available: true },
       { key: "channels", label: "Canales", available: true },
       { key: "runs", label: "Runs", available: false },
