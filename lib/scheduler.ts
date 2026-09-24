@@ -4,6 +4,16 @@ import type { Database, Json } from "@/lib/types/database";
 /** Tipo de job de un turno del agente conversacional (Fase 3). */
 export const AGENT_BURST_JOB = "agent_burst";
 
+/** Tipo de job del cierre de una conversacion: resumen + clasificacion (F33, F34). */
+export const CONVERSATION_CLOSE_JOB = "conversation_close";
+
+export interface ConversationClosePayload {
+  workspaceId: string;
+  conversationId: string;
+  /** Como se cerro: el barrido de inactividad o una persona desde la bandeja. */
+  trigger: "cron_close" | "manual";
+}
+
 /** Anticipacion con la que se agenda un turno: un tic del cron del agente (00063). */
 export const AGENT_CRON_TICK_SECONDS = 15;
 

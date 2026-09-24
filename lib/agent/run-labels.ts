@@ -43,6 +43,12 @@ const DETAIL_LABELS: Record<string, string> = {
   output_truncated: "la respuesta se recorto al largo maximo",
   stale_running: "el proceso se corto antes de terminar",
   message_persistence_off: "el guardado de mensajes entrantes esta apagado en Ajustes",
+  reopened: "la conversacion se reabrio antes de resumirla",
+  no_new_messages: "no habia mensajes nuevos desde el ultimo resumen",
+  bad_output: "el modelo no devolvio un resumen valido",
+  summary_condensed: "el resumen se condenso por largo",
+  summary_truncated: "el resumen se recorto al tope",
+  classified: "aplico la clasificacion al cierre",
 };
 
 /** "guardrail:blocked_topic | pricing_missing:x" -> lista legible. */

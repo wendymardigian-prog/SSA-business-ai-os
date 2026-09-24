@@ -16,6 +16,7 @@ export type AgentConfigSection =
   | "timing"
   | "output"
   | "guardrails"
+  | "closing"
   | "knowledge"
   | "channels";
 
@@ -36,7 +37,7 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
     type: "chat",
     label: "Agente de conversacion",
     description: "Responde a los leads en los canales conectados, con su prompt, sus limites y la base de conocimiento.",
-    configSections: ["identity", "prompt", "model", "timing", "output", "guardrails"],
+    configSections: ["identity", "prompt", "model", "timing", "output", "guardrails", "closing"],
     tabs: [
       { key: "config", label: "Configuracion", available: true },
       { key: "tools", label: "Herramientas", available: true },

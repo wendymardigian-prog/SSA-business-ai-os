@@ -28,6 +28,9 @@ export interface AgentScreenData {
     maxWaitSeconds: number | null;
     maxRepliesPerConversation: number;
     burstMaxAgeHours: number;
+    closeAfterInactiveHours: number;
+    summaryOnClose: boolean;
+    classifyOnClose: boolean;
     outputFormat: OutputFormat;
     guardrails: Guardrails;
     knowledgeEnabled: boolean;
@@ -80,6 +83,9 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     maxWaitSeconds: agent.maxWaitSeconds,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
     burstMaxAgeHours: agent.burstMaxAgeHours,
+    closeAfterInactiveHours: agent.closeAfterInactiveHours,
+    summaryOnClose: agent.summaryOnClose,
+    classifyOnClose: agent.classifyOnClose,
     outputFormat: agent.outputFormat,
     guardrails: agent.guardrails,
     knowledgeEnabled: agent.knowledgeEnabled,

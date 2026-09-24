@@ -902,6 +902,9 @@ export interface Database {
           /** El agente fallo aca y el lead puede estar sin respuesta (migracion 00059). */
           last_agent_error_at: string | null;
           last_agent_error_run_id: string | null;
+          /** Cierre y resumen (migracion 00067). */
+          closed_at: string | null;
+          summarized_at: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -923,6 +926,8 @@ export interface Database {
           agent_paused_until?: string | null;
           last_agent_error_at?: string | null;
           last_agent_error_run_id?: string | null;
+          closed_at?: string | null;
+          summarized_at?: string | null;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -941,6 +946,8 @@ export interface Database {
           agent_paused_until?: string | null;
           last_agent_error_at?: string | null;
           last_agent_error_run_id?: string | null;
+          closed_at?: string | null;
+          summarized_at?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
         };
@@ -1976,6 +1983,10 @@ export interface Database {
           max_replies_per_conversation: number;
           /** La rafaga ignora entrantes mas viejos que esto, en horas (migracion 00066). */
           burst_max_age_hours: number;
+          /** Cierre por inactividad, resumen y clasificacion al cierre (migracion 00067). */
+          close_after_inactive_hours: number;
+          summary_on_close: boolean;
+          classify_on_close: boolean;
           output_format: Json;
           allowed_tools: string[];
           tools_config: Json;
@@ -2014,6 +2025,9 @@ export interface Database {
           max_wait_seconds?: number | null;
           max_replies_per_conversation?: number;
           burst_max_age_hours?: number;
+          close_after_inactive_hours?: number;
+          summary_on_close?: boolean;
+          classify_on_close?: boolean;
           output_format?: Json;
           allowed_tools?: string[];
           tools_config?: Json;
@@ -2050,6 +2064,9 @@ export interface Database {
           max_wait_seconds?: number | null;
           max_replies_per_conversation?: number;
           burst_max_age_hours?: number;
+          close_after_inactive_hours?: number;
+          summary_on_close?: boolean;
+          classify_on_close?: boolean;
           output_format?: Json;
           allowed_tools?: string[];
           tools_config?: Json;

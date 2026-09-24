@@ -142,6 +142,9 @@ export async function updateAgentConfig(agentId: string, input: unknown): Promis
     max_wait_seconds: v.maxWaitSeconds,
     max_replies_per_conversation: v.maxRepliesPerConversation,
     burst_max_age_hours: v.burstMaxAgeHours,
+    close_after_inactive_hours: v.closeAfterInactiveHours,
+    summary_on_close: v.summaryOnClose,
+    classify_on_close: v.classifyOnClose,
     output_format: v.outputFormat as unknown as Json,
     guardrails: v.guardrails as unknown as Json,
     daily_cost_limit_usd: v.dailyCostLimitUsd,
@@ -177,6 +180,9 @@ export async function updateAgentConfig(agentId: string, input: unknown): Promis
         max_wait_seconds: agent.maxWaitSeconds,
         max_replies_per_conversation: agent.maxRepliesPerConversation,
         burst_max_age_hours: agent.burstMaxAgeHours,
+        close_after_inactive_hours: agent.closeAfterInactiveHours,
+        summary_on_close: agent.summaryOnClose,
+        classify_on_close: agent.classifyOnClose,
         output_format: agent.outputFormat,
         guardrails: agent.guardrails,
         daily_cost_limit_usd: agent.dailyCostLimitUsd,
@@ -205,6 +211,7 @@ function describeDbError(message: string): string {
   if (message.includes("agents_time_budget")) return "La demora mas el timeout no entran en el tiempo maximo de un turno.";
   if (message.includes("agents_windows_range")) return "Revisa la ventana de silencio, el tope de espera y el tope de respuestas.";
   if (message.includes("agents_burst_max_age_range")) return "La antiguedad maxima de la rafaga va de 1 a 720 horas.";
+  if (message.includes("agents_close_after_range")) return "Las horas de inactividad para cerrar van de 1 a 720.";
   return "No se pudieron guardar los cambios. Proba de nuevo.";
 }
 

@@ -34,6 +34,9 @@ function toForm(agent: AgentScreenData["agent"]): Form {
     maxWaitSeconds: agent.maxWaitSeconds,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
     burstMaxAgeHours: agent.burstMaxAgeHours,
+    closeAfterInactiveHours: agent.closeAfterInactiveHours,
+    summaryOnClose: agent.summaryOnClose,
+    classifyOnClose: agent.classifyOnClose,
     outputFormat: agent.outputFormat,
     guardrails: agent.guardrails,
     dailyCostLimitUsd: agent.dailyCostLimitUsd,
@@ -363,6 +366,31 @@ function GuardrailsSection({ form, set }: SectionProps) {
   );
 }
 
+function ClosingSection({ form, set }: SectionProps) {
+  return (
+    <Section
+      title="Cierre de la conversación y memoria"
+      description="Cuando una conversación que el agente atiende (y en la que ya participó) queda sin mensajes, se cierra sola. Al cerrar, a mano o sola, el agente resume lo hablado en la memoria del contacto y lo clasifica con las mismas reglas de sus herramientas."
+    >
+      <Field label="Cerrar por inactividad después de (horas)" hint="Las conversaciones que maneja una persona no se cierran solas.">
+        {(id) => <NumberInput id={id} value={form.closeAfterInactiveHours} min={1} max={720} onChange={(v) => set({ closeAfterInactiveHours: v ?? 12 })} />}
+      </Field>
+      <Checkbox
+        checked={form.summaryOnClose}
+        onChange={(summaryOnClose) => set({ summaryOnClose })}
+        label="Generar el resumen acumulativo del contacto al cerrar"
+        description="Integra lo previo con lo nuevo y corrige lo que cambió. Es una llamada al modelo: deja su run y su costo (fuente «Resumen de conversación»)."
+      />
+      <Checkbox
+        checked={form.classifyOnClose}
+        onChange={(classifyOnClose) => set({ classifyOnClose })}
+        label="Clasificar al cerrar (etiquetas, temperatura, próximo seguimiento)"
+        description="Solo con las herramientas habilitadas y dentro de sus límites. Todo queda en Acciones y se puede revertir."
+      />
+    </Section>
+  );
+}
+
 /** Cada seccion declarable por un tipo de agente. Las que viven en otra pestana no se renderizan aca. */
 const SECTIONS: Record<AgentConfigSection, ((props: SectionProps) => React.ReactNode) | null> = {
   identity: (p) => <IdentitySection {...p} />,
@@ -371,6 +399,7 @@ const SECTIONS: Record<AgentConfigSection, ((props: SectionProps) => React.React
   timing: (p) => <TimingSection {...p} />,
   output: (p) => <OutputSection {...p} />,
   guardrails: (p) => <GuardrailsSection {...p} />,
+  closing: (p) => <ClosingSection {...p} />,
   knowledge: null,
   channels: null,
 };

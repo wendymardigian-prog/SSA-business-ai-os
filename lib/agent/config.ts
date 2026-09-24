@@ -43,6 +43,10 @@ export interface AgentConfig {
   maxRepliesPerConversation: number;
   /** La rafaga ignora entrantes mas viejos que esto (horas desde el turno). */
   burstMaxAgeHours: number;
+  /** Cierre por inactividad y que hacer al cerrar (00067). */
+  closeAfterInactiveHours: number;
+  summaryOnClose: boolean;
+  classifyOnClose: boolean;
   outputFormat: OutputFormat;
   allowedTools: string[];
   toolsConfig: Record<string, unknown>;
@@ -85,6 +89,9 @@ export function toAgentConfig(row: AgentRow): AgentConfig {
     maxWaitSeconds: row.max_wait_seconds,
     maxRepliesPerConversation: row.max_replies_per_conversation,
     burstMaxAgeHours: row.burst_max_age_hours ?? DEFAULT_BURST_MAX_AGE_HOURS,
+    closeAfterInactiveHours: row.close_after_inactive_hours ?? 12,
+    summaryOnClose: row.summary_on_close ?? true,
+    classifyOnClose: row.classify_on_close ?? true,
     outputFormat: parseWithDefaults(outputFormatSchema, row.output_format),
     allowedTools: row.allowed_tools ?? [],
     toolsConfig:

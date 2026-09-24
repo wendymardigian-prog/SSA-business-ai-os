@@ -4,7 +4,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { FlowLoadError, resumeSession } from "@/lib/flow-engine/engine";
 import type { Json } from "@/lib/types/database";
-import { AGENT_BURST_JOB } from "@/lib/scheduler";
+import { AGENT_BURST_JOB, CONVERSATION_CLOSE_JOB, type ConversationClosePayload } from "@/lib/scheduler";
+import { processConversationClose, sweepInactiveConversations } from "@/lib/agent/closing";
 import {
   indexDocument,
   INDEX_DOCUMENT_JOB,
@@ -60,6 +61,15 @@ export async function GET(request: NextRequest) {
     .lt("received_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString());
 
   await purgeDeletedKnowledgeDocuments(supabase);
+
+  // Cierre por inactividad de las conversaciones que atiende el agente (F33).
+  // Consulta indexada, lote chico, casi siempre vacia. Nunca lanza.
+  try {
+    const sweep = await sweepInactiveConversations(supabase);
+    if (sweep.closed > 0) console.log(`[cron/jobs] cerradas por inactividad: ${sweep.closed}`);
+  } catch (err) {
+    console.error("[cron/jobs] fallo el barrido de inactividad:", err instanceof Error ? err.message : String(err));
+  }
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is
   // stale: if the claim UPDATE commits but the response is lost, nothing else
@@ -521,6 +531,18 @@ async function processJob(
       // Sin el titulo ni el contenido: el log no lleva datos del documento.
       console.log(
         `[cron/jobs] documento ${payload.documentId}: ${outcome.status}, ${outcome.chunks} fragmentos`
+      );
+      return;
+    }
+
+    // Cierre de una conversacion: resumen acumulativo + clasificacion (F33, F34).
+    // summarizeConversationOnClose no lanza: un fallo del modelo queda en el
+    // run. Aca solo se lanza si el payload no sirve, para que el job falle.
+    case CONVERSATION_CLOSE_JOB: {
+      const payload = job.payload as Partial<ConversationClosePayload> | null;
+      const outcome = await processConversationClose(supabase, payload);
+      console.log(
+        `[cron/jobs] cierre ${payload?.conversationId ?? "?"}: ${outcome.kind === "run" ? `${outcome.status} (${outcome.detail ?? "-"})` : outcome.reason}`,
       );
       return;
     }

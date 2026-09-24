@@ -14,6 +14,7 @@ import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
+import { closeConversation } from "@/lib/actions/conversation-status";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
@@ -195,13 +196,15 @@ export function MessageThread({
     if (!conversation || statusUpdating) return;
     setStatusUpdating(status);
     try {
-      // Cerrar es la forma de decir "ya me hice cargo": borra tambien la marca
-      // de error del agente (Fase 3), aunque no haya hecho falta contestar.
-      const { error } = await createClient()
-        .from("conversations")
-        .update(status === "closed" ? { status, last_agent_error_at: null, last_agent_error_run_id: null } : { status })
-        .eq("id", conversation.id);
-      if (error) throw error;
+      if (status === "closed") {
+        // Cerrar pasa por el servidor: es "ya me hice cargo" (borra la marca de
+        // error del agente) y dispara el resumen y la clasificacion del cierre.
+        const result = await closeConversation(conversation.id);
+        if (!result.ok) throw new Error(result.error);
+      } else {
+        const { error } = await createClient().from("conversations").update({ status }).eq("id", conversation.id);
+        if (error) throw error;
+      }
       router.refresh();
     } catch {
       alert("No pude cambiar el estado de la conversación. Probá de nuevo.");
