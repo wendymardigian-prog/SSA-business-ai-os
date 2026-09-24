@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType, tabsForViewer } from "@/lib/agent/agent-types";
@@ -8,10 +8,11 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
-import { toScreenAgent, type ActionsTabData, type AgentScreenData, type RunsTabData } from "@/lib/agent/screen";
+import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData } from "@/lib/agent/screen";
 import { serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
+import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
 /**
@@ -175,8 +176,33 @@ export default async function AgentDetailPage({
     };
   }
 
+  // Costos y los indicadores de la cabecera: solo Owner/Admin, con service role.
+  let costs: CostsTabData | undefined;
+  let kpis: HeaderKpis | undefined;
+  if (isAdmin) {
+    const workspaceLimits = {
+      daily: workspace.ai_daily_cost_limit_usd === null || workspace.ai_daily_cost_limit_usd === undefined ? null : Number(workspace.ai_daily_cost_limit_usd),
+      monthly: workspace.ai_monthly_cost_limit_usd === null || workspace.ai_monthly_cost_limit_usd === undefined ? null : Number(workspace.ai_monthly_cost_limit_usd),
+    };
+    [kpis, costs] = await Promise.all([
+      loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id }),
+      tab === "costs"
+        ? loadCostsTab(service, {
+            workspaceId: workspace.id,
+            agent,
+            filters: parseCostFilters(query),
+            agentNames: new Map(agents.map((a) => [a.id, a.name])),
+            workspaceLimits,
+            canEditPricing: isOwnerRole(role),
+          })
+        : Promise.resolve(undefined),
+    ]);
+  }
+
   const data: AgentScreenData = {
     viewer: { isAdmin },
+    kpis,
+    costs,
     runs,
     actions,
     agent: screenAgent,

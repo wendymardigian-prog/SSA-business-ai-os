@@ -2425,6 +2425,15 @@ export interface Database {
           similarity: number;
         }[];
       };
+      /** Agregados de costo de IA de un periodo (migracion 00069). Solo service_role. */
+      ai_cost_report: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
       /** Gasto de IA en USD desde un instante (migracion 00064). Solo service_role. */
       sum_ai_spend: {
         Args: {

@@ -130,9 +130,64 @@ export interface ActionsTabData {
   };
 }
 
+export interface CostFilters {
+  datePreset: DatePreset;
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface CostReport {
+  totals: {
+    runs: number;
+    costUsd: number;
+    conversations: number;
+    escalations: number;
+    responded: number;
+    missingPricing: number;
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+    embeddingTokens: number;
+  };
+  bySource: Array<{ source: string; label: string; runs: number; costUsd: number }>;
+  byAgent: Array<{ agentId: string | null; name: string; runs: number; costUsd: number }>;
+  byModel: Array<{ provider: string | null; model: string; runs: number; costUsd: number; inputTokens: number; outputTokens: number; missingPricing: number }>;
+  topConversations: Array<{ conversationId: string; contactId: string | null; contactName: string | null; runs: number; costUsd: number }>;
+}
+
+export interface CostsTabData {
+  filters: CostFilters;
+  rangeLabel: string;
+  report: CostReport;
+  averages: { perRun: number | null; perConversation: number | null; perEscalation: number | null; escalationRatePct: number | null };
+  limits: {
+    agentDailyUsd: number | null;
+    agentDailyAction: "notify" | "disable";
+    agentMonthlyUsd: number | null;
+    agentMonthlyAction: "notify" | "disable";
+    workspaceDailyUsd: number | null;
+    workspaceMonthlyUsd: number | null;
+  };
+  pricing: Array<{ id: string; provider: string; model: string; inputPerMtok: number; outputPerMtok: number; cachedInputPerMtok: number; validFrom: string; note: string | null }>;
+  /** Solo Owner edita la tabla de precios. */
+  canEditPricing: boolean;
+}
+
+/** Cabecera del detalle (solo Owner/Admin): runs de hoy, gasto del mes, % de derivaciones. */
+export interface HeaderKpis {
+  runsToday: number;
+  monthCostUsd: number | null;
+  escalationRatePct: number | null;
+  missingPricing: number;
+}
+
 export interface AgentScreenData {
   /** Quien mira: decide pestanas y columnas. */
   viewer: { isAdmin: boolean };
+  /** Solo Owner/Admin. */
+  kpis?: HeaderKpis;
+  /** Solo cuando la pestana activa es Costos (y solo Owner/Admin). */
+  costs?: CostsTabData;
   /** Solo cuando la pestana activa es Runs. */
   runs?: RunsTabData;
   /** Solo cuando la pestana activa es Acciones. */

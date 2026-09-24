@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getAdminContext, isOwnerRole } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
@@ -524,4 +524,100 @@ export async function updateAgentTools(
 
   revalidate(agent.id);
   return { ok: true, agentId: agent.id };
+}
+
+/** Topes globales de gasto de IA del workspace (F29). Owner/Admin. */
+export async function updateWorkspaceAiLimits(input: { dailyUsd: number | null; monthlyUsd: number | null }): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase, user } = ctx;
+
+  const valid = (v: unknown) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1_000_000);
+  if (!valid(input?.dailyUsd) || !valid(input?.monthlyUsd)) return { ok: false, error: "Los topes tienen que ser numeros positivos (o vacios)." };
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ ai_daily_cost_limit_usd: input.dailyUsd, ai_monthly_cost_limit_usd: input.monthlyUsd })
+    .eq("id", workspace.id);
+  if (error) {
+    console.error("[agents] no pude guardar los topes del workspace:", error.message);
+    return { ok: false, error: "No pude guardar los topes del workspace." };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: diffFields(
+      { ai_daily_cost_limit_usd: workspace.ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd: workspace.ai_monthly_cost_limit_usd },
+      { ai_daily_cost_limit_usd: input.dailyUsd, ai_monthly_cost_limit_usd: input.monthlyUsd },
+    ),
+    metadata: { section: "ai_limits" },
+    performedBy: user.id,
+  });
+
+  revalidate();
+  return { ok: true };
+}
+
+/**
+ * Precio nuevo para un modelo (F29). Solo Owner (la RLS de model_pricing lo
+ * exige; aca se repite para el mensaje). Nunca se pisa un precio: es una fila
+ * nueva con valid_from ahora, y los runs viejos conservan el que tenian.
+ */
+export async function addModelPrice(input: {
+  provider: string;
+  model: string;
+  inputPerMtok: number;
+  outputPerMtok: number;
+  cachedInputPerMtok: number;
+  note?: string | null;
+}): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  if (!isOwnerRole(ctx.role)) return { ok: false, error: "Solo el Owner puede cambiar la tabla de precios." };
+  const { workspace, supabase, user } = ctx;
+
+  const provider = typeof input?.provider === "string" ? input.provider.trim().toLowerCase() : "";
+  const model = typeof input?.model === "string" ? input.model.trim() : "";
+  const price = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10_000;
+  if (!/^[a-z0-9_-]{2,40}$/.test(provider)) return { ok: false, error: "Proveedor invalido (ej: anthropic, openai, google, voyage)." };
+  if (!model || model.length > 120) return { ok: false, error: "Indica el modelo." };
+  if (!price(input.inputPerMtok) || !price(input.outputPerMtok) || !price(input.cachedInputPerMtok)) {
+    return { ok: false, error: "Los precios son USD por millon de tokens, numeros positivos." };
+  }
+  const note = typeof input.note === "string" ? input.note.trim().slice(0, 200) || null : null;
+
+  const { data, error } = await supabase
+    .from("model_pricing")
+    .insert({
+      workspace_id: workspace.id,
+      provider,
+      model,
+      input_per_mtok: input.inputPerMtok,
+      output_per_mtok: input.outputPerMtok,
+      cached_input_per_mtok: input.cachedInputPerMtok,
+      note,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("[agents] no pude guardar el precio:", error?.message);
+    return { ok: false, error: error?.code === "23505" ? "Ya hay un precio para ese modelo en este instante. Proba en un momento." : "No pude guardar el precio." };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    metadata: { section: "model_pricing", pricing_id: data.id, provider, model, input_per_mtok: input.inputPerMtok, output_per_mtok: input.outputPerMtok, cached_input_per_mtok: input.cachedInputPerMtok },
+    performedBy: user.id,
+  });
+
+  revalidate();
+  return { ok: true };
 }

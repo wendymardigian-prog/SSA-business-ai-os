@@ -15,6 +15,8 @@ import { ChannelsTab } from "./channels-tab";
 import { ToolsTab } from "./tools-tab";
 import { RunsTab } from "./runs-tab";
 import { ActionsTab } from "./actions-tab";
+import { CostsTab } from "./costs-tab";
+import { formatUsd } from "./filters";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -26,6 +28,7 @@ const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: Agen
   tools: (p) => <ToolsTab {...p} />,
   runs: (p) => <RunsTab {...p} />,
   actions: (p) => <ActionsTab {...p} />,
+  costs: (p) => <CostsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
   channels: (p) => <ChannelsTab {...p} />,
 };
@@ -102,6 +105,29 @@ export function AgentDetailView({
             </span>
           )}
         </div>
+
+        {data.kpis && (
+          <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+            <div>
+              <dt className="inline">Runs de hoy: </dt>
+              <dd className="inline font-medium text-foreground">{data.kpis.runsToday}</dd>
+            </div>
+            <div>
+              <dt className="inline">Gasto del mes: </dt>
+              <dd className="inline font-medium text-foreground">{formatUsd(data.kpis.monthCostUsd)}</dd>
+              <span> (estimado)</span>
+            </div>
+            <div>
+              <dt className="inline">Derivaciones: </dt>
+              <dd className="inline font-medium text-foreground">{data.kpis.escalationRatePct === null ? "—" : `${data.kpis.escalationRatePct}%`}</dd>
+            </div>
+            {data.kpis.missingPricing > 0 && (
+              <div className="text-amber-700 dark:text-amber-400">
+                {data.kpis.missingPricing} run{data.kpis.missingPricing === 1 ? "" : "s"} sin precio cargado
+              </div>
+            )}
+          </dl>
+        )}
 
         <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones del agente">
           {tabs.map((t) =>
