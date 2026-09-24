@@ -5,6 +5,47 @@ cada bloque.
 
 ---
 
+## Etapa 1 · Fase 3 · Backfill de Zernio corrido en firme
+
+**Fecha:** 24 de septiembre de 2026
+**Alcance:** la deuda "el backfill no se corrió en firme" del Bloque 1 (F20).
+
+**Qué pasó:** se corrió `scripts/backfill-zernio-messages.mjs` primero en
+seco y después con `--apply`. El primer dry-run destapó dos cosas que había
+que arreglar antes de escribir:
+
+| Hallazgo | Consecuencia si se aplicaba tal cual | Arreglo |
+|---|---|---|
+| **El historial de Zernio devuelve en `id` el id nativo de Meta**, no el ObjectId corto de Zernio que guarda el webhook en `platform_message_id`. El Bloque 1 asumió lo contrario y su dry-run (20 mensajes de 3 conversaciones) no se contrastó con filas guardadas | 0 "ya estaban" sobre 234 mensajes guardados por webhook: **se habría duplicado todo lo que entró por webhook** | Dedup contra las dos columnas de id (`platform_message_id` y `platform_native_message_id`) y, como red de seguridad, dirección + fecha al milisegundo + texto. Las filas del backfill llevan el id del historial en las dos columnas cuando tiene forma de id de Meta |
+| **Rate limit de Zernio** a partir de las ~220 conversaciones seguidas ("retry after N seconds"), sin reintento | 366 de 583 conversaciones quedaban sin leer | Espera lo que pide la API y reintenta hasta 3 veces por página |
+
+**Cifras de la corrida en firme** (583 conversaciones de Instagram, 0 errores):
+
+| Dato | Valor |
+|---|---|
+| Mensajes que devolvió la API | 2.448 |
+| Guardados | **2.206** |
+| Ya estaban (webhook) | 236 |
+| Descartados (borrados por el remitente o sin id) | 6 |
+| `messages` después de la corrida | 2.444 filas (852 entrantes, 1.592 salientes) en 582 conversaciones |
+| Dobles (misma conversación, dirección, fecha y texto) | 0, verificado contra la base |
+
+**Dos cosas a tener presentes:**
+
+- **44 mensajes son anteriores al 24 de septiembre de 2025** (el más viejo,
+  de marzo de 2024). La retención de 12 meses (`purge_old_messages`, cron
+  diario a las 5:00 UTC) los borra en la próxima corrida. Es la política
+  vigente, no un error: quedan a propósito fuera.
+- **Hay que volver a correrlo en la semana del 1 de octubre de 2026.** El
+  replay de Meta hacia Zernio corre en segundo plano y el SDK recomienda no
+  confiar en una sola pasada. La segunda corrida es gratis: solo suma lo que
+  apareció en el medio.
+
+Los términos de Zernio/Meta sobre persistir DMs siguen como pendiente
+explícito; la decisión de correrlo en firme es de Wendy (24/9/2026).
+
+---
+
 ## Etapa 1 · Fase 3 · Bloque 1 — Persistencia de mensajes
 
 **Fecha:** 11 de septiembre de 2026

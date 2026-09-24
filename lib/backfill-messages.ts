@@ -18,13 +18,26 @@
  * indice unico (conversation_id, platform_message_id) descarta todo lo que ya
  * este, asi que la segunda corrida solo suma lo que aparecio en el medio.
  *
- * **Por que el id de Zernio y no el de Instagram.** Este endpoint devuelve
- * unicamente su propio `id`; el nativo de la plataforma no viene. Por suerte es
- * el mismo que guarda recordSend al enviar y el mismo que usa la bandeja al
- * leer, asi que los salientes que ya estaban guardados se reconocen solos y no
- * se duplican. Si el receptor de webhooks guardara el id nativo, este backfill
- * insertaria una copia de cada mensaje: es la razon por la que toda la Fase 3
- * usa un solo espacio de ids.
+ * **Los ids, verificados contra la API real (24 de septiembre de 2026).** El
+ * endpoint de historial devuelve UN solo id por mensaje, en `id`, y es el id
+ * NATIVO de Meta (el `mid` largo en base64), no el ObjectId corto de Zernio que
+ * el webhook guarda en `platform_message_id`. El Bloque 1 asumio lo contrario
+ * y el primer dry-run en firme lo desmintio: 0 "ya estaban" con 234 mensajes
+ * guardados por webhook. Si se dedupara solo por `platform_message_id`, cada
+ * corrida insertaria una copia de todo lo que entro por webhook.
+ *
+ * Por eso la deduplicacion mira LAS DOS columnas de id (`platform_message_id`
+ * y `platform_native_message_id`) y, como red de seguridad ante un id en un
+ * espacio que no conocemos, tambien direccion + fecha (al milisegundo) + texto.
+ * Las filas que escribe el backfill llevan el id del historial en
+ * `platform_message_id` (la columna del indice unico: la segunda corrida lo
+ * descarta sola) y, cuando tiene forma de id de Meta, tambien en
+ * `platform_native_message_id`, que es lo que es.
+ *
+ * **Rate limit.** Zernio corta a partir de las ~200 conversaciones seguidas con
+ * "Rate limit exceeded. Please retry after N seconds". Se espera lo que pide y
+ * se reintenta, hasta 3 veces por pagina; el barrido de las otras
+ * conversaciones sigue igual.
  *
  * No se guarda ningun archivo: de la media queda el link que viene en
  * `attachments`, igual que en el camino en vivo.
@@ -76,6 +89,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/** Los ids propios de Zernio son ObjectId de Mongo: 24 caracteres hexadecimales. */
+export function isZernioId(id: string): boolean {
+  return /^[0-9a-f]{24}$/i.test(id);
+}
+
+/**
+ * Cuantos milisegundos pide esperar un error de rate limit, o null si el error
+ * es otra cosa. Zernio responde 429 con "Please retry after N seconds".
+ */
+export function rateLimitWaitMs(err: unknown): number | null {
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const status = isRecord(err) ? err.statusCode : undefined;
+  const match = /retry after (\d+) seconds?/i.exec(message);
+  if (match) return (Number(match[1]) + 1) * 1000;
+  if (status === 429 || /rate limit/i.test(message)) return 30_000;
+  return null;
+}
+
 /**
  * Traduce un mensaje de Zernio a una fila de `messages`.
  *
@@ -111,10 +142,16 @@ export function toMessageRow(
     text: mapped.text,
     attachments: mapped.attachments as MessageInsert["attachments"],
     platform_message_id: mapped.platform_message_id,
+    // El historial devuelve el id nativo de Meta en `id` (ver cabecera). Se
+    // guarda tambien en su columna, salvo que tenga forma de id de Zernio.
+    platform_native_message_id: isZernioId(mapped.platform_message_id) ? null : mapped.platform_message_id,
     status: toMessageStatus(isRecord(raw) ? raw.deliveryStatus : undefined),
     created_at: mapped.created_at,
   };
 }
+
+const MAX_RATE_LIMIT_RETRIES = 3;
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * Trae el historial completo de una conversacion, paginando por cursor.
@@ -122,7 +159,10 @@ export function toMessageRow(
  * `sortOrder: "asc"` para que las paginas avancen del mas viejo al mas nuevo:
  * Instagram respeta ese orden entre paginas (Facebook y Bluesky no, pero no son
  * de esta etapa). Nunca lanza: una conversacion que falla no puede cortar el
- * barrido de las otras 452.
+ * barrido de las otras 582.
+ *
+ * Ante un rate limit espera lo que pide la API y reintenta la misma pagina,
+ * hasta MAX_RATE_LIMIT_RETRIES veces. `sleep` se inyecta para los tests.
  */
 export async function fetchConversationHistory(
   zernio: Zernio,
@@ -130,20 +170,36 @@ export async function fetchConversationHistory(
     lateConversationId,
     accountId,
     maxPages = MAX_PAGES,
-  }: { lateConversationId: string; accountId: string; maxPages?: number },
+    sleep = defaultSleep,
+  }: {
+    lateConversationId: string;
+    accountId: string;
+    maxPages?: number;
+    sleep?: (ms: number) => Promise<void>;
+  },
 ): Promise<{ messages: unknown[]; error: string | null }> {
   const all: unknown[] = [];
   let cursor: string | undefined;
 
   for (let page = 0; page < maxPages; page++) {
     let res;
-    try {
-      res = await zernio.messages.getInboxConversationMessages({
-        path: { conversationId: lateConversationId },
-        query: { accountId, limit: PAGE_SIZE, sortOrder: "asc", ...(cursor ? { cursor } : {}) },
-      });
-    } catch (err) {
-      return { messages: all, error: err instanceof Error ? err.message : "error de red" };
+    let retries = 0;
+    for (;;) {
+      try {
+        res = await zernio.messages.getInboxConversationMessages({
+          path: { conversationId: lateConversationId },
+          query: { accountId, limit: PAGE_SIZE, sortOrder: "asc", ...(cursor ? { cursor } : {}) },
+        });
+        break;
+      } catch (err) {
+        const wait = rateLimitWaitMs(err);
+        if (wait !== null && retries < MAX_RATE_LIMIT_RETRIES) {
+          retries++;
+          await sleep(wait);
+          continue;
+        }
+        return { messages: all, error: err instanceof Error ? err.message : "error de red" };
+      }
     }
 
     // La respuesta viene doble envuelta y no siempre igual, como ya documenta
@@ -188,12 +244,16 @@ export const emptyStats = (): BackfillStats => ({
 /**
  * Backfill de UNA conversacion.
  *
- * Primero se pregunta que ids ya estan guardados y se filtra en memoria, en vez
- * de tirar los mensajes contra el indice unico y contar los rebotes: son ~450
+ * Primero se pregunta que hay guardado y se filtra en memoria, en vez de tirar
+ * los mensajes contra el indice unico y contar los rebotes: son ~580
  * conversaciones y la mayoria de las corridas no tienen nada nuevo que traer.
  * El indice sigue siendo la red de seguridad —si dos corridas se pisan, el
  * insert en lote cae a uno por uno y los duplicados se cuentan como skipped—,
  * pero no es el camino normal.
+ *
+ * Un mensaje del historial "ya esta" si su id coincide con cualquiera de las
+ * dos columnas de id, o si ya hay una fila con la misma direccion, la misma
+ * fecha al milisegundo y el mismo texto (ver la cabecera del archivo).
  *
  * Con `apply: false` no escribe nada: cuenta lo que escribiria.
  */
@@ -206,6 +266,7 @@ export async function backfillConversation({
   workspaceId,
   apply,
   maxPages = MAX_PAGES,
+  sleep,
 }: {
   supabase: Db;
   zernio: Zernio;
@@ -215,6 +276,7 @@ export async function backfillConversation({
   workspaceId: string;
   apply: boolean;
   maxPages?: number;
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<BackfillStats & { error: string | null }> {
   const stats = emptyStats();
 
@@ -222,6 +284,7 @@ export async function backfillConversation({
     lateConversationId,
     accountId,
     maxPages,
+    sleep,
   });
   stats.fetched = messages.length;
   if (messages.length === 0) return { ...stats, error };
@@ -236,16 +299,14 @@ export async function backfillConversation({
 
   const { data: existing, error: readError } = await supabase
     .from("messages")
-    .select("platform_message_id")
-    .eq("conversation_id", conversationId)
-    .not("platform_message_id", "is", null);
+    .select("platform_message_id, platform_native_message_id, direction, created_at, text")
+    .eq("conversation_id", conversationId);
 
   if (readError) {
     return { ...stats, error: `no pude leer lo ya guardado: ${readError.message}` };
   }
 
-  const known = new Set((existing ?? []).map((m) => m.platform_message_id));
-  const nuevos = rows.filter((r) => !known.has(r.platform_message_id ?? null));
+  const nuevos = rows.filter((r) => !isAlreadyStored(r, existing ?? []));
   stats.skipped = rows.length - nuevos.length;
 
   if (nuevos.length === 0) return { ...stats, error };
@@ -270,6 +331,35 @@ export async function backfillConversation({
   }
 
   return { ...stats, error };
+}
+
+export interface StoredMessageKey {
+  platform_message_id: string | null;
+  platform_native_message_id?: string | null;
+  direction?: string | null;
+  created_at?: string | null;
+  text?: string | null;
+}
+
+const sameInstant = (a: string | null | undefined, b: string | null | undefined) =>
+  Boolean(a && b) && new Date(a as string).getTime() === new Date(b as string).getTime();
+
+/**
+ * Si una fila del historial ya esta guardada. Pura, exportada para probarla.
+ * Mira las dos columnas de id y, como red de seguridad, direccion + fecha +
+ * texto: los formatos de fecha difieren entre la API ("...Z") y Postgres
+ * ("...+00:00"), por eso se comparan como instantes y no como texto.
+ */
+export function isAlreadyStored(row: MessageInsert, existing: StoredMessageKey[]): boolean {
+  const id = row.platform_message_id;
+  return existing.some((e) => {
+    if (id && (e.platform_message_id === id || e.platform_native_message_id === id)) return true;
+    return (
+      e.direction === row.direction &&
+      sameInstant(e.created_at, row.created_at) &&
+      (e.text ?? null) === (row.text ?? null)
+    );
+  });
 }
 
 /** Suma en el acumulador, para ir juntando el total del barrido. */

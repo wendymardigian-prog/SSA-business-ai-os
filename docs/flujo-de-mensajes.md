@@ -31,14 +31,23 @@ más fácil de cometer en esta parte del sistema.
 
 | Columna | Qué guarda | Para qué |
 |---|---|---|
-| `platform_message_id` | El id de **Zernio** | Es el que **deduplica**. Lo usan el envío (`recordSend`), la lectura de la bandeja (`toInboxMessage`) y el backfill. El índice único `(conversation_id, platform_message_id)` cuelga de él |
-| `platform_native_message_id` | El id de **Meta** | No lo usa nada del sistema. Es el handle para un pedido de borrado o un reclamo de soporte ante Meta |
+| `platform_message_id` | El id de **Zernio** (webhook y `recordSend`) | Es la columna del índice único `(conversation_id, platform_message_id)`. La usan el envío, la lectura de la bandeja (`toInboxMessage`) y el backfill |
+| `platform_native_message_id` | El id de **Meta** (el `mid` largo) | El handle para un pedido de borrado o un reclamo de soporte ante Meta. **Y la segunda clave de deduplicación del backfill** |
 
-**El que deduplica es el de Zernio, no el nativo.** Si el receptor guardara el
-nativo, el backfill —que solo devuelve el de Zernio— insertaría una copia de
-cada mensaje. El id nativo, en cambio, solo llega por webhook: el endpoint de
-historial no lo devuelve, así que lo que no se guarde cuando el mensaje entra
-no se recupera nunca. De ahí que se guarden los dos.
+**Ojo: el endpoint de historial de Zernio devuelve en `id` el id nativo de
+Meta, no el de Zernio.** Verificado contra la API real el 24 de septiembre de
+2026: un mensaje guardado por webhook con `platform_message_id = 6ab5…` (24
+hex, ObjectId de Zernio) y `platform_native_message_id = aWdf…` vuelve del
+historial con `id = aWdf…` y sin otro campo de id. La versión anterior de este
+documento afirmaba lo contrario, y con esa suposición el backfill habría
+duplicado todos los mensajes entrados por webhook.
+
+Por eso el backfill deduplica contra **las dos columnas** y, como red de
+seguridad, contra dirección + fecha (al milisegundo) + texto. Sus filas llevan
+el id del historial en `platform_message_id` (para que la segunda corrida lo
+descarte por el índice) y, si tiene forma de id de Meta, también en
+`platform_native_message_id`. El receptor de webhooks sigue guardando los dos
+ids, cada uno en su columna.
 
 ## De dónde lee la bandeja
 
@@ -92,10 +101,27 @@ Dos aclaraciones que suelen sorprender:
 techo es de Meta y no se puede mover: **500 conversaciones por cuenta y 500
 mensajes por conversación**. Lo anterior no existe para nadie.
 
-Se corre a mano, con `--dry-run` por defecto. Conviene correrlo **dos veces con
-días de diferencia**: el replay de Meta corre en segundo plano y puede terminar
-después del primer barrido. Correrlo de nuevo es gratis — el índice único
-descarta lo que ya está.
+Se corre a mano desde la raíz del repo. Sin flags es una **simulación** (no
+escribe nada); con `--apply` escribe; con `--limit=N` prueba con pocas
+conversaciones.
+
+```bash
+node scripts/backfill-zernio-messages.mjs
+```
+
+**Hay que volver a correrlo unos días después de cada pasada.** El replay de
+Meta hacia Zernio corre en segundo plano y puede terminar después del primer
+barrido: el propio SDK recomienda no confiar en una sola pasada. Correrlo de
+nuevo es gratis, la deduplicación descarta lo que ya está y solo suma lo que
+apareció en el medio. La primera pasada en firme fue el 24 de septiembre de
+2026 (ver `BITACORA.md`); **la segunda conviene hacerla en la semana del 1 de
+octubre de 2026.** Mientras la ventana de 500 mensajes por conversación siga
+corriéndose, lo que se cae del borde no lo recupera nadie.
+
+Zernio limita la cantidad de llamadas seguidas ("Rate limit exceeded. Please
+retry after N seconds"): el script espera lo que pide y reintenta hasta tres
+veces por página, así que una corrida completa de ~580 conversaciones tarda
+varios minutos. Es normal.
 
 No trae los mensajes que el remitente borró (`isDeleted`), por la misma regla de
 Meta que se honra en la retención.
