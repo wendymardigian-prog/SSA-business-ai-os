@@ -17,10 +17,13 @@ export function TagsEditor({
   contactId,
   allTags,
   assignedIds,
+  onSaved,
 }: {
   contactId: string;
   allTags: TagOption[];
   assignedIds: string[];
+  /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -45,6 +48,7 @@ export function TagsEditor({
       setError(null);
       setDraft("");
       router.refresh();
+      onSaved?.();
     });
   }
 
@@ -58,6 +62,7 @@ export function TagsEditor({
       setError(null);
       setOpen(false);
       router.refresh();
+      onSaved?.();
     });
   }
 

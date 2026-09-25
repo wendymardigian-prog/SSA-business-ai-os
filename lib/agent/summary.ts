@@ -259,7 +259,7 @@ export async function summarizeConversationOnClose(
     };
 
     if (agent.summaryOnClose) {
-      const { error } = await supabase.from("contacts").update({ ai_conversation_summary: output.resumen }).eq("id", conversation.contact_id);
+      const { error } = await supabase.from("contacts").update({ ai_conversation_summary: output.resumen, ai_summary_updated_at: deps.now().toISOString() }).eq("id", conversation.contact_id);
       if (error) {
         await run.close({ status: "error", statusDetail: "save_failed", error: "No se pudo guardar el resumen." });
         return { kind: "run", status: "error", detail: "save_failed", runId: run.runId };

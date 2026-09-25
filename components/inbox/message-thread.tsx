@@ -523,7 +523,7 @@ export function MessageThread({
       )}
 
       {/* Bloque 2c: el borrador del agente, arriba del campo de escritura. */}
-      <PendingDraft conversationId={conversation.id} />
+      <PendingDraft key={conversation.id} conversationId={conversation.id} />
 
       {/* Composer */}
       <div className="border-t border-border p-4">

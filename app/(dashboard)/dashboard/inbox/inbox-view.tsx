@@ -33,6 +33,8 @@ export function InboxView({
   platforms,
   members,
   agentByChannel,
+  currentUserId,
+  isAdmin,
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -51,6 +53,9 @@ export function InboxView({
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
   agentByChannel: Record<string, ChannelAgentInfo>;
+  /** Para el panel del contacto (Bloque 2c): editar setter y vendedor. */
+  currentUserId: string;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -230,6 +235,10 @@ export function InboxView({
           contactId={selected.contact_id}
           workspaceId={workspaceId}
           onClose={() => setShowContactPanel(false)}
+          members={members}
+          allTags={tags}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
         />
       )}
     </div>

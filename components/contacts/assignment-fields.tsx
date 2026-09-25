@@ -29,6 +29,7 @@ export function AssignmentFields({
   vendedorId,
   currentUserId,
   isAdmin,
+  onSaved,
 }: {
   contactId: string;
   members: WorkspaceMemberOption[];
@@ -36,6 +37,8 @@ export function AssignmentFields({
   vendedorId: string | null;
   currentUserId: string;
   isAdmin: boolean;
+  /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +71,7 @@ export function AssignmentFields({
       }
       setError(null);
       router.refresh();
+      onSaved?.();
     });
   }
 

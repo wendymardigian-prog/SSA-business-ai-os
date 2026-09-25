@@ -22,9 +22,12 @@ import { ActionError } from "./ui";
 export function FollowupField({
   contactId,
   value,
+  onSaved,
 }: {
   contactId: string;
   value: string | null;
+  /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,7 @@ export function FollowupField({
         return;
       }
       router.refresh();
+      onSaved?.();
     });
   }
 

@@ -21,9 +21,12 @@ import { Section, ActionError } from "./ui";
 export function NotesSection({
   contactId,
   notes: initial,
+  onSaved,
 }: {
   contactId: string;
   notes: string | null;
+  /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initial ?? "");
@@ -48,6 +51,7 @@ export function NotesSection({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
+      onSaved?.();
     });
   }
 

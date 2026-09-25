@@ -26,14 +26,15 @@ export function PendingDraft({ conversationId }: { conversationId: string }) {
     }
   }, [conversationId]);
 
+  // Montado con key={conversationId}: cambiar de conversacion arranca de cero.
   useEffect(() => {
-    setDraft(null);
-    reload();
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
     (async () => {
       await supabase.auth.getSession();
+      if (cancelled) return;
+      await reload();
       if (cancelled) return;
       channel = supabase
         .channel(`conversation-draft-${conversationId}`)
