@@ -452,7 +452,15 @@ export async function setAgentChannel(agentId: string, channelId: string, enable
   if (enabled) next.add(channelId);
   else next.delete(channelId);
 
-  const { error } = await supabase.from("agents").update({ enabled_channel_ids: [...next] }).eq("id", agent.id);
+  // El modo por canal (00070) solo vale para los canales encendidos: al apagar
+  // uno se borra su entrada, asi no queda una segunda fuente de verdad que
+  // reaparezca el dia que se vuelva a prender.
+  const modes = Object.fromEntries(Object.entries(agent.channelModes).filter(([id]) => next.has(id)));
+
+  const { error } = await supabase
+    .from("agents")
+    .update({ enabled_channel_ids: [...next], channel_modes: modes as Json })
+    .eq("id", agent.id);
   if (error) {
     console.error("[agents] no pude cambiar los canales:", error.message);
     return { ok: false, error: "No pude cambiar el canal." };
@@ -470,6 +478,58 @@ export async function setAgentChannel(agentId: string, channelId: string, enable
   });
 
   revalidate(agent.id);
+  return { ok: true, agentId: agent.id };
+}
+
+/**
+ * Modo de entrega de un canal (Bloque 2c): "send" envia directo, "draft" deja
+ * borradores para que una persona los apruebe. Solo para canales que el agente
+ * atiende: el modo de un canal apagado no significa nada.
+ */
+export async function setAgentChannelMode(
+  agentId: string,
+  channelId: string,
+  mode: "send" | "draft",
+): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase, user } = ctx;
+  if (typeof channelId !== "string" || (mode !== "send" && mode !== "draft")) {
+    return { ok: false, error: "Pedido invalido." };
+  }
+
+  const agent = await loadOwnAgent(workspace.id, agentId);
+  if (!agent) return { ok: false, error: "El agente no existe." };
+  if (!agent.enabledChannelIds.includes(channelId)) {
+    return { ok: false, error: "Primero encendé el agente en ese canal." };
+  }
+
+  const previous = agent.channelModes[channelId] === "draft" ? "draft" : "send";
+  if (previous === mode) return { ok: true, agentId: agent.id };
+
+  const modes: Record<string, "send" | "draft"> = { ...agent.channelModes };
+  if (mode === "draft") modes[channelId] = "draft";
+  else delete modes[channelId];
+
+  const { error } = await supabase.from("agents").update({ channel_modes: modes as Json }).eq("id", agent.id);
+  if (error) {
+    console.error("[agents] no pude cambiar el modo del canal:", error.message);
+    return { ok: false, error: "No pude cambiar el modo del canal." };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "agent",
+    entityId: agent.id,
+    action: "update",
+    changes: { channel_mode: { old: previous, new: mode } },
+    metadata: { section: "channels", channel_id: channelId },
+    performedBy: user.id,
+  });
+
+  revalidate(agent.id);
+  revalidatePath("/dashboard/drafts");
   return { ok: true, agentId: agent.id };
 }
 

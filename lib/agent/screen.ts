@@ -224,6 +224,8 @@ export interface AgentScreenData {
     monthlyCostLimitUsd: number | null;
     monthlyCostLimitAction: "notify" | "disable";
     enabledChannelIds: string[];
+    /** Modo por canal (00070). Sin entrada = envio directo. */
+    channelModes: Record<string, "send" | "draft">;
     allowedTools: string[];
     toolsConfig: Record<string, unknown>;
   };
@@ -279,6 +281,7 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     monthlyCostLimitUsd: agent.monthlyCostLimitUsd,
     monthlyCostLimitAction: agent.monthlyCostLimitAction,
     enabledChannelIds: agent.enabledChannelIds,
+    channelModes: agent.channelModes,
     allowedTools: agent.allowedTools,
     toolsConfig: agent.toolsConfig,
   };
