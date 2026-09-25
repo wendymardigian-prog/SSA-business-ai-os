@@ -18,7 +18,7 @@ export function newNonce(): string {
   return randomBytes(4).toString("hex");
 }
 
-export function wrapUntrusted(kind: "lead" | "conocimiento" | "crm" | "memoria", nonce: string, content: string): string {
+export function wrapUntrusted(kind: "lead" | "conocimiento" | "crm" | "memoria" | "operador", nonce: string, content: string): string {
   // Si alguien escribio el delimitador en el texto, se neutraliza.
   const safe = content.replace(/<<</g, "‹‹‹").replace(/>>>/g, "›››");
   return `<<<${kind} ${nonce}>>>\n${safe}\n<<<fin ${kind} ${nonce}>>>`;

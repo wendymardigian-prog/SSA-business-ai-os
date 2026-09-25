@@ -42,6 +42,16 @@ export const escalateTool: AgentToolDefinition<z.infer<typeof inputSchema>, z.in
   ],
   required: true,
   auditAction: "human_takeover",
+  descriptionInDraft:
+    "Sugiere pasar la conversacion a una persona del equipo. En este canal tus respuestas las revisa una persona antes de salir: la sugerencia le llega a ella junto con tu borrador. Usala en los mismos casos (no sabes, no estas seguro, el lead pide una persona, el tema se sale de lo que podes resolver). Despues podes escribir una respuesta breve para el lead, o no responder nada.",
+  deferInDraft({ input, config }) {
+    return {
+      suggestion: { type: "escalate", reason: input.motivo, summary: input.resumen, reopen: config.reopenConversation },
+      forModel:
+        "Anotado: la derivacion queda como sugerencia para la persona que revisa. Si tenes algo breve para decirle al lead mientras tanto, escribilo; si no, no respondas nada.",
+      detail: { motivo: input.motivo },
+    };
+  },
   async execute({ input, config, ctx }) {
     if (!ctx.conversationId) {
       return { ok: false, forModel: "No hay una conversacion para derivar." };

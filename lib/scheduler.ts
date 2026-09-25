@@ -27,7 +27,33 @@ export interface AgentBurstPayload {
   last_message_at: string;
   /** Tope de espera de la rafaga, congelado en el primer mensaje. null = sin tope. */
   burst_deadline?: string | null;
+  /**
+   * Regenerar un borrador (Bloque 2c): el borrador anterior. Se conserva si el
+   * job se fusiona con un mensaje nuevo, para no cortar la cadena.
+   */
+  regenerate_of?: string | null;
+  /**
+   * La instruccion de la persona ("mas corto"). VOLATIL: si el job se fusiona
+   * con un mensaje nuevo del lead, push_debounced_job la descarta (era sobre
+   * un borrador que ya quedo viejo). Ver AGENT_BURST_VOLATILE_KEYS.
+   */
+  regenerate_instruction?: string | null;
+  /**
+   * El turno anterior no pudo dejar su borrador porque otro estaba saliendo en
+   * ese instante (Bloque 2c) y se reprogramo. Este turno no se descarta por
+   * viejo: la ventana cerro hace rato a proposito.
+   */
+  blocked_retry?: boolean;
 }
+
+/**
+ * Claves del payload de un turno que dejan de valer si el job se fusiona con
+ * otro disparador (00070). Contraintuitivo a proposito: un mensaje nuevo del
+ * lead mientras espera una regeneracion LIMPIA la instruccion ("no menciones
+ * el precio" era sobre el borrador viejo, no sobre lo que acaba de escribir)
+ * pero conserva regenerate_of, que no es volatil.
+ */
+export const AGENT_BURST_VOLATILE_KEYS = ["regenerate_instruction"] as const;
 
 /**
  * Cuando tiene que correr el turno del agente para una ventana de silencio.
@@ -65,6 +91,8 @@ export async function pushDebouncedJob(
     payload: Record<string, unknown>;
     runAt: Date;
     deadline: Date | null;
+    /** Claves que se descartan si el job se fusiona con otro disparador (00070). */
+    volatileKeys?: readonly string[];
   },
 ): Promise<{ jobId: string; runAt: string; created: boolean }> {
   const { data, error } = await service.rpc("push_debounced_job", {
@@ -73,6 +101,7 @@ export async function pushDebouncedJob(
     p_payload: args.payload as unknown as Json,
     p_run_at: args.runAt.toISOString(),
     p_deadline: args.deadline ? args.deadline.toISOString() : null,
+    ...(args.volatileKeys?.length ? { p_volatile_keys: [...args.volatileKeys] } : {}),
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : null;
@@ -94,7 +123,9 @@ export async function scheduleJob(
   service: SupabaseClient<Database>,
   type: string,
   payload: Record<string, unknown>,
-  runAt: Date
+  runAt: Date,
+  /** Clave de dedupe (00061): con un job pending de la misma clave, el insert falla con 23505. */
+  dedupeKey?: string
 ) {
   const { data, error } = await service
     .from("scheduled_jobs")
@@ -102,6 +133,7 @@ export async function scheduleJob(
       type,
       payload: payload as unknown as Json,
       run_at: runAt.toISOString(),
+      ...(dedupeKey ? { dedupe_key: dedupeKey } : {}),
     })
     .select("id")
     .single();

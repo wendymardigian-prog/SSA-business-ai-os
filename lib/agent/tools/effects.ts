@@ -28,8 +28,13 @@ export interface EffectContext {
   conversationId: string | null;
   contactId: string | null;
   channelId: string | null;
-  /** Quien pidio el efecto: la herramienta en un turno, o la clasificacion al cierre. */
-  origin: "tool" | "close_classification";
+  /**
+   * Quien pidio el efecto: la herramienta en un turno, la clasificacion al
+   * cierre, o una persona que aprobo un borrador con esa sugerencia (2c).
+   */
+  origin: "tool" | "close_classification" | "draft_approval";
+  /** Metadata extra para el audit (en draft_approval: approved_by, draft_id). */
+  extraMeta?: Record<string, Json>;
 }
 
 export interface EffectResult {
@@ -48,6 +53,7 @@ function auditMeta(ctx: EffectContext, extra: Record<string, Json> = {}): Record
     contact_id: ctx.contactId,
     channel_id: ctx.channelId,
     agent_id: ctx.agentId,
+    ...(ctx.extraMeta ?? {}),
     ...extra,
   };
 }

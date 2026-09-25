@@ -3,6 +3,7 @@ import type { z } from "zod";
 import type { AuditAction, Database } from "@/lib/types/database";
 import type { AiRunHandle } from "@/lib/ai/run";
 import type { AgentConfig } from "../config";
+import type { SuggestedAction } from "../drafts/types";
 
 /**
  * Contrato de una herramienta del agente (tool registry).
@@ -29,6 +30,12 @@ export interface AgentToolContext {
   run: AiRunHandle;
   /** Codigo del turno para delimitar contenido no confiable (lib/agent/untrusted.ts). */
   nonce: string;
+  /**
+   * Como entrega el turno (Bloque 2c). En "draft" las herramientas que cambian
+   * el control de la conversacion no se ejecutan: quedan como sugerencia en el
+   * borrador. Default "send".
+   */
+  mode?: "send" | "draft";
 }
 
 export interface AgentToolResult {
@@ -126,4 +133,17 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   managedFrom?: "knowledge";
   auditAction?: AuditAction;
   execute(args: { input: TInput; config: TConfig; ctx: AgentToolContext }): Promise<AgentToolResult>;
+  /**
+   * Modo borrador (Bloque 2c): si la herramienta cambia el control de la
+   * conversacion (derivar, pausarse), en vez de ejecutarse devuelve una
+   * sugerencia que se aplica si la persona aprueba el borrador. Una
+   * herramienta sin esto se ejecuta igual en los dos modos.
+   */
+  deferInDraft?(args: { input: TInput; config: TConfig; ctx: AgentToolContext }): {
+    suggestion: SuggestedAction;
+    forModel: string;
+    detail?: unknown;
+  };
+  /** Descripcion para el modelo en modo borrador, si cambia (derivar ya no termina el turno). */
+  descriptionInDraft?: string;
 }

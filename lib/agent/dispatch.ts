@@ -6,6 +6,7 @@ import {
   AGENT_BURST_JOB,
   agentBurstKey,
   agentBurstTiming,
+  AGENT_BURST_VOLATILE_KEYS,
   pushDebouncedJob,
   type AgentBurstPayload,
 } from "@/lib/scheduler";
@@ -147,6 +148,9 @@ export async function maybeScheduleAgentTurn(
       payload: payload as unknown as Record<string, unknown>,
       runAt: timing.runAt,
       deadline: timing.deadline,
+      // Si este mensaje se fusiona con una regeneracion en espera, la
+      // instruccion de la regeneracion deja de valer (ver scheduler.ts).
+      volatileKeys: AGENT_BURST_VOLATILE_KEYS,
     });
     return { scheduled: true, jobId: job.jobId, runAt: job.runAt, created: job.created };
   } catch (err) {

@@ -60,6 +60,8 @@ export interface OpenRunInput {
   channelId?: string | null;
   provider?: string | null;
   model?: string | null;
+  /** Ultimo entrante de la rafaga que responde el turno (00070). */
+  inboundAt?: string | null;
 }
 
 /** Lo que importa del LanguageModelUsage del AI SDK, tolerante a campos que faltan. */
@@ -176,6 +178,7 @@ export async function openAiRun(
         channel_id: input.channelId ?? null,
         provider: input.provider ?? null,
         model: input.model ?? null,
+        inbound_at: input.inboundAt ?? null,
         status: "running",
         created_at: openedAt.toISOString(),
       })
