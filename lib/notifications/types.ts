@@ -17,12 +17,13 @@ export const NOTIFICATION_TYPES = [
   "sequence_collision",
   "agent_error",
   "agent_spend_limit",
+  "draft_window",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** A que apunta la notificacion. Define el deep-link y el scope en la RLS. */
-export type NotificationEntity = "conversation" | "channel" | "sequence_enrollment" | "contact";
+export type NotificationEntity = "conversation" | "channel" | "sequence_enrollment" | "contact" | "draft_queue";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -81,6 +82,16 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Tope de gasto de IA",
     tone: "warning",
   },
+  /**
+   * Borradores por vencer (Bloque 2c, 00072): agregado por persona y corte de
+   * la ventana. Los sin asignar van a Owner/Admin.
+   */
+  draft_window: {
+    type: "draft_window",
+    label: "Borradores por vencer",
+    tone: "warning",
+    entity: "draft_queue",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -123,6 +134,12 @@ export function linkFor(
 
     case "contact":
       return entityId ? `/dashboard/contacts/${entityId}` : "/dashboard/contacts";
+
+    case "draft_queue":
+      // Avisos de ventana: a la cola, filtrada por los que estan por vencer.
+      return metadata?.unassigned === true
+        ? "/dashboard/drafts?quien=sin-asignar&ventana=por-vencer"
+        : "/dashboard/drafts?ventana=por-vencer";
 
     default:
       return null;
