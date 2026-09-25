@@ -750,6 +750,116 @@ try {
     await svc.from("contacts").update({ setter_id: null }).eq("id", contact.id);
     await setFlags(ws.id, { lead_scope_enabled: false }); }
 
+  console.log("\n— Borradores del agente (00070/00071, Bloque 2c) —");
+  { await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    const { data: agRow } = await svc.from("agents").insert({ workspace_id: ws.id, name: "zz-test agente borradores" }).select("id").single();
+    await svc.from("contacts").update({ setter_id: member.id }).eq("id", contact.id);
+    const { data: ajenoC } = await svc.from("contacts")
+      .insert({ workspace_id: ws.id, display_name: "zz-test lead ajeno 2c", setter_id: admin.id }).select("id").single();
+    const { data: ajenoConv } = await svc.from("conversations").insert({
+      workspace_id: ws.id, channel_id: ch.id, contact_id: ajenoC.id, platform: "instagram",
+    }).select("id").single();
+    const base = { workspace_id: ws.id, agent_id: agRow.id, channel_id: ch.id, body: "Hola, te cuento", burst_last_inbound_at: new Date().toISOString() };
+    const { data: propio, error: eIns } = await svc.from("agent_drafts")
+      .insert({ ...base, conversation_id: conv.id, contact_id: contact.id }).select("id").single();
+    check(!eIns && !!propio, "el service role deja un borrador", eIns?.message);
+    const { data: ajeno } = await svc.from("agent_drafts")
+      .insert({ ...base, conversation_id: ajenoConv.id, contact_id: ajenoC.id }).select("id").single();
+
+    check((await sees(member, "agent_drafts", propio.id)).seen, "un Member VE el borrador de su lead");
+    check(!(await sees(member, "agent_drafts", ajeno.id)).seen, "un Member NO ve el borrador de un lead ajeno");
+    check((await sees(admin, "agent_drafts", ajeno.id)).seen, "un Admin ve todos los borradores");
+
+    const { error: eMemberIns } = await member.client.from("agent_drafts")
+      .insert({ ...base, conversation_id: conv.id, contact_id: contact.id, status: "discarded" });
+    check(!!eMemberIns, "un Member NO puede crear un borrador (INSERT solo service role)");
+    const { error: eBody } = await member.client.from("agent_drafts").update({ body: "otra cosa" }).eq("id", propio.id);
+    check(!!eBody, "un Member NO puede cambiar el texto propuesto (sin GRANT sobre body)");
+    const { data: comoOtro } = await member.client.from("agent_drafts")
+      .update({ status: "discarded", decided_by: admin.id }).eq("id", propio.id).select("id");
+    check((comoOtro ?? []).length === 0, "un Member NO puede decidir a nombre de otra persona (WITH CHECK decided_by)");
+    const { data: marcaSent } = await member.client.from("agent_drafts")
+      .update({ status: "sent", decided_by: member.id, sent_body: "x" }).eq("id", propio.id).select("id");
+    check((marcaSent ?? []).length === 0, "un Member NO puede marcar 'sent' (lo marca el servidor despues de enviar)");
+    const { data: ajenoTomado } = await member.client.from("agent_drafts")
+      .update({ status: "sending", decided_by: member.id, decided_at: new Date().toISOString() }).eq("id", ajeno.id).select("id");
+    check((ajenoTomado ?? []).length === 0, "un Member NO puede tomar el borrador de un lead ajeno");
+    const { data: tomado, error: eTomar } = await member.client.from("agent_drafts")
+      .update({ status: "sending", decided_by: member.id, decided_at: new Date().toISOString(), sent_body: "Hola, te cuento" })
+      .eq("id", propio.id).in("status", ["pending", "failed"]).select("id");
+    check(!eTomar && (tomado ?? []).length === 1, "un Member SI toma (aprueba) el borrador de su lead", eTomar?.message);
+    const { data: otraVez } = await member.client.from("agent_drafts")
+      .update({ status: "sending", decided_by: member.id }).eq("id", propio.id).in("status", ["pending", "failed"]).select("id");
+    check((otraVez ?? []).length === 0, "bloqueo optimista: tomarlo dos veces no afecta filas");
+
+    const { error: eDos } = await svc.from("agent_drafts").insert({ ...base, conversation_id: conv.id, contact_id: contact.id });
+    check(eDos?.code === "23505", "dos borradores vivos en la misma conversacion son imposibles (indice unico, con uno en sending)", eDos?.message);
+    await svc.from("agent_drafts").update({ status: "failed", send_error: "zz" }).eq("id", propio.id);
+    const { error: eFailed } = await svc.from("agent_drafts").insert({ ...base, conversation_id: conv.id, contact_id: contact.id });
+    check(eFailed?.code === "23505", "failed tambien es vivo: no puede convivir con un pending", eFailed?.message);
+    await svc.from("agent_drafts").update({ status: "sent", sent_body: "Hola, te cuento" }).eq("id", propio.id);
+    const { data: resucitado } = await member.client.from("agent_drafts")
+      .update({ status: "discarded", decided_by: member.id }).eq("id", propio.id).select("id");
+    check((resucitado ?? []).length === 0, "un borrador terminado no se toca desde el navegador");
+
+    // El panel del contacto (§8): un Member edita el estado de SUS leads y no el de los ajenos.
+    const { data: tempPropia, error: eTemp } = await member.client.from("contacts")
+      .update({ lead_temperature: "hot", next_followup_date: new Date().toISOString(), notes: "zz nota" }).eq("id", contact.id).select("id");
+    check(!eTemp && (tempPropia ?? []).length === 1, "un Member edita temperatura, seguimiento y notas de su lead", eTemp?.message);
+    const { data: tempAjena } = await member.client.from("contacts").update({ lead_temperature: "cold" }).eq("id", ajenoC.id).select("id");
+    check((tempAjena ?? []).length === 0, "un Member NO edita el estado de un lead ajeno");
+
+    const { error: eModes } = await member.client.from("agents").select("channel_modes").eq("id", agRow.id);
+    check(!eModes, "agents.channel_modes es legible por el cliente (GRANT de la 00070)", eModes?.message);
+    const { error: eRunCols } = await member.client.from("agent_runs").select("inbound_at, responded_at").limit(1);
+    check(!eRunCols, "agent_runs.inbound_at y responded_at son legibles por el cliente", eRunCols?.message);
+
+    // Metricas que se defienden solas (00071)
+    await svc.from("agent_drafts").insert({
+      ...base, conversation_id: ajenoConv.id, contact_id: ajenoC.id, status: "discarded",
+      decided_by: admin.id, decided_at: new Date().toISOString(), discard_reason: "no aplica",
+    });
+    const desde = new Date(Date.now() - 3_600_000).toISOString(), hasta = new Date(Date.now() + 60_000).toISOString();
+    const { data: mMember, error: eMm } = await member.client.rpc("draft_queue_metrics", {
+      p_workspace_id: ws.id, p_from: desde, p_to: hasta, p_user_id: admin.id,
+    });
+    check(!eMm && mMember?.scope === "person" && mMember?.discarded === 0,
+      "un Member que pide los numeros de otra persona recibe los suyos (la base lo fuerza)", eMm?.message ?? JSON.stringify(mMember));
+    const { data: mAdmin, error: eMa } = await admin.client.rpc("draft_queue_metrics", {
+      p_workspace_id: ws.id, p_from: desde, p_to: hasta, p_user_id: admin.id,
+    });
+    check(!eMa && mAdmin?.discarded === 1, "un Admin si puede pedir los numeros de una persona", eMa?.message ?? JSON.stringify(mAdmin));
+    const { error: ePersonM } = await member.client.rpc("draft_queue_metrics_by_person", { p_workspace_id: ws.id, p_from: desde, p_to: hasta });
+    check(!!ePersonM, "el desglose por persona rebota para un Member");
+    const { error: ePersonA } = await admin.client.rpc("draft_queue_metrics_by_person", { p_workspace_id: ws.id, p_from: desde, p_to: hasta });
+    check(!ePersonA, "y funciona para un Admin", ePersonA?.message);
+
+    // push_debounced_job: la instruccion de regenerar es volatil en los dos sentidos
+    const pushJob = (key, payload, volatile) => svc.rpc("push_debounced_job", {
+      p_type: "zz_test_job", p_dedupe_key: key, p_payload: payload,
+      p_run_at: new Date(Date.now() + 3_600_000).toISOString(), p_deadline: null,
+      ...(volatile ? { p_volatile_keys: volatile } : {}),
+    });
+    const payloadOf = async (key) => (await svc.from("scheduled_jobs").select("payload").eq("dedupe_key", key).eq("status", "pending").single()).data?.payload;
+    const k1 = `zz-test-volatile-a-${Date.now()}`, k2 = `zz-test-volatile-b-${Date.now()}`;
+    await pushJob(k1, { regenerate_of: "d-1", regenerate_instruction: "mas corto", last_message_at: "a" });
+    await pushJob(k1, { last_message_at: "b" }, ["regenerate_instruction"]);
+    const p1 = await payloadOf(k1);
+    check(p1 && !("regenerate_instruction" in p1) && p1.regenerate_of === "d-1",
+      "mensaje nuevo sobre una regeneracion en espera: se descarta la instruccion y se conserva la cadena", JSON.stringify(p1));
+    await pushJob(k2, { last_message_at: "a" });
+    await pushJob(k2, { regenerate_of: "d-2", regenerate_instruction: "no el precio", last_message_at: "b" }, ["regenerate_instruction"]);
+    const p2 = await payloadOf(k2);
+    check(p2 && !("regenerate_instruction" in p2), "regeneracion sobre un mensaje en espera: la instruccion tampoco entra", JSON.stringify(p2));
+    const { error: eOld } = await svc.rpc("push_debounced_job", {
+      p_type: "zz_test_job", p_dedupe_key: `zz-test-firma-vieja-${Date.now()}`, p_payload: {}, p_run_at: new Date(Date.now() + 3_600_000).toISOString(), p_deadline: null,
+    });
+    check(!eOld, "la firma vieja de cinco parametros sigue funcionando", eOld?.message);
+    await svc.from("scheduled_jobs").delete().eq("type", "zz_test_job");
+
+    await svc.from("contacts").update({ setter_id: null }).eq("id", contact.id);
+    await setFlags(ws.id, { lead_scope_enabled: false }); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

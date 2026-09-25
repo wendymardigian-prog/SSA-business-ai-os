@@ -42,6 +42,8 @@ import {
   type ChannelRow,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
+import { discardPendingDrafts, supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
+import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
 
 interface EvolutionPayload {
   event?: string;
@@ -263,6 +265,16 @@ async function processMessage(
     createdAt: at,
     workspaceId: channel.workspace_id,
   });
+
+  // Modo borrador (Bloque 2c). Un mensaje del lead deja viejo al borrador
+  // pendiente (se reemplaza); uno que la operadora mando desde el celular es
+  // una respuesta real por otro lado (se descarta): aprobar despues el
+  // borrador le mandaria al lead dos respuestas.
+  if (fromMe) {
+    await discardPendingDrafts(supabase, conversation.id, { reason: AUTO_DISCARD.answeredElsewhere, decidedBy: null });
+  } else {
+    await supersedePendingDrafts(supabase, conversation.id);
+  }
 
   // Lo que escribimos nosotros no se evalua: ni marca opt-out ni dispara flows.
   if (fromMe) return;

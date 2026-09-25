@@ -6,8 +6,15 @@ import { checkSpendLimits, type SpendCheck } from "@/lib/ai/spend";
 import { logAudit } from "@/lib/audit";
 import { findWaitingSession } from "@/lib/flow-engine/engine";
 import { createNotificationOnce } from "@/lib/notifications/create";
-import { AGENT_CRON_TICK_SECONDS, type AgentBurstPayload } from "@/lib/scheduler";
-import { DEFAULT_BURST_MAX_AGE_HOURS, loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
+import {
+  AGENT_BURST_JOB,
+  AGENT_BURST_VOLATILE_KEYS,
+  AGENT_CRON_TICK_SECONDS,
+  agentBurstKey,
+  pushDebouncedJob,
+  type AgentBurstPayload,
+} from "@/lib/scheduler";
+import { DEFAULT_BURST_MAX_AGE_HOURS, channelMode, loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
 import {
   countAgentReplies,
   exchangeStart,
@@ -28,9 +35,11 @@ import {
   type ModelResolver,
   type ModelRunner,
 } from "./fallback";
-import { evaluateGuardrails } from "./guardrails";
+import { createDraft, type CreateDraftInput } from "./drafts/create";
+import { parseAppliedActions, type AppliedAction, type SuggestedAction } from "./drafts/types";
+import { evaluateGuardrails, isWithinBusinessHours } from "./guardrails";
 import { validateOutput } from "./output";
-import { buildModelMessages, buildSystemPrompt } from "./prompt";
+import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
 import { defaultSend, sendAgentParts, type SendFn } from "./send";
 import { buildToolSet } from "./tools/build";
 import { newNonce } from "./untrusted";
@@ -61,6 +70,15 @@ import { newNonce } from "./untrusted";
  *
  * Toda salida deja su run, salvo las que no son un turno (no habia nada que
  * responder, o otro turno ya se hizo cargo).
+ *
+ * Modo borrador (Bloque 2c): si el canal esta en "draft", todo lo anterior es
+ * identico salvo el final. En vez de enviar, el turno deja la respuesta en
+ * agent_drafts y el run cierra `drafted`. Sin demora deliberada (no hay nadie
+ * del otro lado esperando que parezca humano), sin horario de atencion (si hay
+ * una persona para aprobar, no esta fuera de horario), y lo que en envio
+ * directo deriva (un guardarrail, un fallo del proveedor) deja una fila sin
+ * texto con el motivo: la cola es el unico lugar donde vive "lo que necesita
+ * una respuesta". El borrador NO es un mensaje: no cierra la rafaga.
  */
 
 type Db = SupabaseClient<Database>;
@@ -113,10 +131,16 @@ export async function runAgentTurn(
   const conversation = await loadTurnConversation(supabase, payload.conversationId);
   if (!conversation || conversation.deleted_at) return { kind: "no_turn", reason: "no_conversation" };
 
+  // Regenerar un borrador (Bloque 2c): el turno responde la misma rafaga del
+  // borrador anterior, sin esperar ventana ni descartarse por viejo.
+  const previousDraft = payload.regenerate_of
+    ? await loadPreviousDraft(supabase, payload.regenerate_of, conversation.id)
+    : null;
+
   const runBase: OpenRunInput = {
     workspaceId: conversation.workspace_id,
     source: "agent",
-    trigger: "inbound_message",
+    trigger: previousDraft ? "manual" : "inbound_message",
     conversationId: conversation.id,
     contactId: conversation.contact_id,
     channelId: conversation.channel_id,
@@ -130,10 +154,14 @@ export async function runAgentTurn(
   // 1. Idempotencia: la rafaga sin responder. Los entrantes mas viejos que
   // burst_max_age_hours no se responden (siguen en el contexto).
   const burstOf = (msgs: StoredMessage[]) =>
-    extractBurst(msgs, {
-      maxAgeMs: (agentForRun?.burstMaxAgeHours ?? DEFAULT_BURST_MAX_AGE_HOURS) * 3_600_000,
-      now: deps.now(),
-    });
+    previousDraft?.burst_started_at
+      ? // Regenerar: lo mismo que respondia el borrador anterior (mas lo que el
+        // lead haya escrito despues), sin el corte por antiguedad.
+        extractBurst(msgs).filter((m) => ms(m.created_at) >= ms(previousDraft.burst_started_at as string))
+      : extractBurst(msgs, {
+          maxAgeMs: (agentForRun?.burstMaxAgeHours ?? DEFAULT_BURST_MAX_AGE_HOURS) * 3_600_000,
+          now: deps.now(),
+        });
   let messages = await loadRecentMessages(supabase, conversation.id);
   let burst = burstOf(messages);
   if (burst.length === 0) return { kind: "no_turn", reason: "nothing_to_answer" };
@@ -147,16 +175,25 @@ export async function runAgentTurn(
   let windowEnd = windowEndFor(lastInbound, agentForRun);
   const nowMs = deps.now().getTime();
 
-  if (nowMs - windowEnd > STALE_TURN_MS) {
+  // Una regeneracion sin mensajes nuevos no espera ventana: la pidio una
+  // persona ahora. Si el lead escribio despues del borrador, es un turno
+  // normal (con la cadena enlazada) y la instruccion ya no vale.
+  const newerThanPrevious =
+    previousDraft !== null && ms(lastInbound.created_at) > ms(previousDraft.burst_last_inbound_at ?? lastInbound.created_at);
+  const skipWindow = previousDraft !== null && !newerThanPrevious;
+
+  if (skipWindow) {
+    windowEnd = nowMs;
+  } else if (nowMs - windowEnd > STALE_TURN_MS && !payload.blocked_retry) {
     return await discardStale(supabase, { runBase, conversation, agent: agentForRun, now: deps.now() });
   }
-  if (windowEnd - nowMs > tick + 5_000) {
+  if (!skipWindow && windowEnd - nowMs > tick + 5_000) {
     // Se levanto demasiado temprano (un mensaje reprogramo la ventana despues
     // de que el job ya estaba reclamado): el webhook de ese mensaje ya agendo
     // otro turno, que es el que va a responder.
     return { kind: "no_turn", reason: "window_open" };
   }
-  if (windowEnd > nowMs) {
+  if (!skipWindow && windowEnd > nowMs) {
     await deps.sleep(windowEnd - nowMs);
     messages = await loadRecentMessages(supabase, conversation.id);
     burst = burstOf(messages);
@@ -166,6 +203,8 @@ export async function runAgentTurn(
     lastInbound = newest;
     windowEnd = windowEndFor(lastInbound, agentForRun);
   }
+
+  runBase.inboundAt = lastInbound.created_at;
 
   // 3. Palancas, re-verificadas.
   const fresh = (await loadTurnConversation(supabase, conversation.id)) ?? conversation;
@@ -198,11 +237,35 @@ export async function runAgentTurn(
     return { kind: "run", status: "skipped_automation", detail: "flow_session", runId };
   }
 
+  // Una regeneracion siempre deja borrador, aunque el canal haya vuelto a
+  // envio directo en el medio: nadie pidio que salga sin revisar.
+  const mode = previousDraft ? "draft" : channelMode(agent, fresh.channel_id);
+  const revision: TurnRevision | null = previousDraft
+    ? {
+        previousDraftId: previousDraft.id,
+        previousBody: previousDraft.body,
+        instruction: skipWindow ? (payload.regenerate_instruction?.trim() || null) : null,
+        alreadyApplied: parseAppliedActions(previousDraft.applied_actions).map((a) => a.label),
+      }
+    : null;
+
   // Desde aca hay turno de verdad: se abre el run.
   const run = await openAiRun(supabase, { ...runBase, provider: agent.provider, model: agent.model }, () => deps.now());
 
   try {
-    return await continueTurn(supabase, { deps, agent, conversation: fresh, messages, burst, windowEnd, run, startedAt });
+    return await continueTurn(supabase, {
+      deps,
+      agent,
+      conversation: fresh,
+      messages,
+      burst,
+      windowEnd,
+      run,
+      startedAt,
+      mode,
+      revision,
+      payload,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "error desconocido";
     console.error("[agent-turn] el turno fallo:", message);
@@ -230,14 +293,55 @@ async function continueTurn(
     windowEnd: number;
     run: AiRunHandle;
     startedAt: number;
+    mode: "send" | "draft";
+    revision: TurnRevision | null;
+    payload: AgentBurstPayload;
   },
 ): Promise<TurnOutcome> {
   const { deps, agent, conversation, messages, burst, run } = args;
   const runId = run.runId;
+  const draftMode = args.mode === "draft";
   const close = async (status: Parameters<AiRunHandle["close"]>[0]["status"], detail: string | null, error?: string) => {
     await run.close({ status, statusDetail: detail, error: error ?? null });
     return { kind: "run" as const, status, detail, runId };
   };
+  const joinDetails = (...parts: Array<string | null | undefined | false>) => parts.filter(Boolean).join(",") || null;
+
+  // En modo borrador el horario de atencion no aplica: si hay una persona para
+  // aprobar, no esta fuera de horario. Queda anotado en el run.
+  const outsideHoursNote = draftMode && !isWithinBusinessHours(agent.guardrails, deps.now()) ? "outside_hours" : null;
+
+  /**
+   * Termina el turno dejando el borrador (modo borrador). Si otro borrador de
+   * la conversacion esta saliendo en este instante, no es un error: el turno
+   * se reprograma y el reintento responde la rafaga completa.
+   */
+  const leaveDraft = async (
+    draft: Pick<CreateDraftInput, "body" | "bodyParts" | "noReplyReason" | "suggestedActions" | "appliedActions">,
+    detail: string | null,
+    error?: string,
+  ): Promise<TurnOutcome> => {
+    const result = await createDraft(supabase, {
+      ...draft,
+      workspaceId: conversation.workspace_id,
+      agentId: agent.id,
+      conversationId: conversation.id,
+      contactId: conversation.contact_id,
+      channelId: conversation.channel_id,
+      runId,
+      burst: burst.map((m) => ({ id: m.id, created_at: m.created_at })),
+      previousDraftId: args.revision?.previousDraftId ?? null,
+      regenerateInstruction: args.revision?.instruction ?? null,
+    });
+    if (result.kind === "blocked_by_in_flight_send") {
+      await rescheduleBlockedTurn(supabase, { deps, conversation, agent, burst });
+      return close("skipped", "draft_blocked_by_send");
+    }
+    if (result.kind === "failed") return close("error", "draft_insert_failed", result.message);
+    if (result.kind === "created") await clearAgentError(supabase, conversation.id);
+    return close("drafted", joinDetails(detail, outsideHoursNote, result.kind === "superseded_on_create" && "superseded_on_create"), error);
+  };
+  const escalateSuggestion = (reason: string): SuggestedAction => ({ type: "escalate", reason, summary: null, reopen: true });
 
   // 4. Guardarrailes, sin modelo.
   const burstText = burst.map((m) => m.text ?? "").join("\n");
@@ -248,7 +352,9 @@ async function continueTurn(
   const unresolvedTurns = await countAgentReplies(supabase, { conversationId: conversation.id, since: unresolvedSince });
 
   const block = evaluateGuardrails({
-    guardrails: agent.guardrails,
+    guardrails: draftMode
+      ? { ...agent.guardrails, businessHours: { ...agent.guardrails.businessHours, enabled: false } }
+      : agent.guardrails,
     burstText,
     now: deps.now(),
     repliesSinceHuman,
@@ -258,6 +364,20 @@ async function continueTurn(
 
   if (block) {
     await run.step({ kind: "guardrail", name: block.kind, output: { accion: block.action, detalle: block.detail } });
+    if (draftMode) {
+      // En modo borrador el guardarrail no apaga el agente: deja una fila sin
+      // texto en la cola, con el motivo, para que responda una persona.
+      return leaveDraft(
+        {
+          body: null,
+          bodyParts: null,
+          noReplyReason: `guardrail:${block.kind}`,
+          suggestedActions: [escalateSuggestion(`Guardarrail: ${block.detail}`)],
+          appliedActions: [],
+        },
+        `guardrail:${block.kind}`,
+      );
+    }
     if (block.action === "escalate") {
       await escalateToHuman(supabase, {
         workspaceId: conversation.workspace_id,
@@ -309,6 +429,18 @@ async function continueTurn(
     }
     await disableForSpend(supabase, agent, spend.blocking.scope);
     await run.step({ kind: "guardrail", name: "spend_limit", output: spend.blocking });
+    if (draftMode) {
+      return leaveDraft(
+        {
+          body: null,
+          bodyParts: null,
+          noReplyReason: "guardrail:spend",
+          suggestedActions: [escalateSuggestion("Se alcanzo el tope de gasto de IA")],
+          appliedActions: [],
+        },
+        `spend:${spend.blocking.scope}`,
+      );
+    }
     // Tope alcanzado: el lead no puede quedar sin nadie. Pasa a una persona.
     await escalateToHuman(supabase, {
       workspaceId: conversation.workspace_id,
@@ -337,10 +469,14 @@ async function continueTurn(
       channelId: conversation.channel_id,
       run,
       nonce,
+      mode: args.mode,
     }),
   ]);
   const system = buildSystemPrompt(agent, nonce, Object.keys(toolSet.tools));
-  const modelMessages = buildModelMessages({ history: toHistory(messages), contact, nonce });
+  const revision: DraftRevision | null = args.revision
+    ? { previousBody: args.revision.previousBody, instruction: args.revision.instruction, alreadyApplied: args.revision.alreadyApplied }
+    : null;
+  const modelMessages = buildModelMessages({ history: toHistory(messages), contact, nonce, revision });
 
   const generation = await generateWithFallback({
     candidates: [
@@ -377,8 +513,28 @@ async function continueTurn(
     return close("escalated", "tool:derivar_a_humano");
   }
 
+  const suggestions = toolSet.state.suggestions;
+  const applied: AppliedAction[] = toolSet.state.applied;
+  const withEscalate = (reason: string): SuggestedAction[] =>
+    suggestions.some((s) => s.type === "escalate") ? suggestions : [...suggestions, escalateSuggestion(reason)];
+
   if (!generation.ok) {
     const kind: AgentErrorKind = generation.reason === "model_timeout" ? "model_timeout" : "provider_unavailable";
+    if (draftMode) {
+      // La fila en la cola es la unica senal: sin marca de error ni aviso de
+      // "se derivo a una persona", que en modo borrador no seria cierto.
+      return leaveDraft(
+        {
+          body: null,
+          bodyParts: null,
+          noReplyReason: `error:${kind}`,
+          suggestedActions: withEscalate(kind === "model_timeout" ? "El modelo no respondio a tiempo" : "Fallaron el modelo principal y el de respaldo"),
+          appliedActions: applied,
+        },
+        kind,
+        generation.attempts.map((a) => `${a.role}: ${a.problem}`).join("; "),
+      );
+    }
     await escalateToHuman(supabase, {
       workspaceId: conversation.workspace_id,
       conversationId: conversation.id,
@@ -407,6 +563,28 @@ async function continueTurn(
 
   // 6. Formato, en codigo.
   const output = validateOutput(generation.output.text, agent.outputFormat);
+  if (!output.ok && draftMode) {
+    const suggestedEscalate = suggestions.some((s) => s.type === "escalate");
+    // El agente decidio derivar y no hay nada que redactar: igual queda la
+    // fila en la cola, con el motivo y sin texto, para responder a mano.
+    if (output.reason === "empty" && suggestedEscalate) {
+      return leaveDraft(
+        { body: null, bodyParts: null, noReplyReason: "escalate", suggestedActions: suggestions, appliedActions: applied },
+        joinDetails("suggested:derivar_a_humano", modelDetail),
+      );
+    }
+    await run.step({ kind: "guardrail", name: "output_format", error: output.reason });
+    return leaveDraft(
+      {
+        body: null,
+        bodyParts: null,
+        noReplyReason: `error:output_${output.reason}`,
+        suggestedActions: withEscalate(output.reason === "empty" ? "El agente no genero una respuesta" : "La respuesta del agente no paso la validacion"),
+        appliedActions: applied,
+      },
+      `output:${output.reason}`,
+    );
+  }
   if (!output.ok) {
     await run.step({ kind: "guardrail", name: "output_format", error: output.reason });
     await escalateToHuman(supabase, {
@@ -423,10 +601,11 @@ async function continueTurn(
     return close("escalated", `output:${output.reason}`);
   }
 
-  // 7. Espera hasta el objetivo.
+  // 7. Espera hasta el objetivo. En modo borrador no hay demora deliberada: el
+  // borrador se guarda apenas esta listo.
   const target = args.windowEnd + agent.responseDelaySeconds * 1000;
   const lastBurstId = burst[burst.length - 1].id;
-  const interrupted = await waitUntilTarget(supabase, deps, conversation.id, target, lastBurstId);
+  const interrupted = draftMode ? false : await waitUntilTarget(supabase, deps, conversation.id, target, lastBurstId);
 
   // 8. Nadie tomo la conversacion mientras se generaba. Un "forzado apagado"
   // (false) es lo que dejan Human Takeover y una respuesta manual; "heredar"
@@ -441,6 +620,19 @@ async function continueTurn(
     channelId: conversation.channel_id,
   });
   if (waiting) return close("skipped_automation", "flow_session_during_generation");
+
+  if (draftMode) {
+    return leaveDraft(
+      {
+        body: output.parts.join("\n\n"),
+        bodyParts: output.parts,
+        noReplyReason: null,
+        suggestedActions: suggestions,
+        appliedActions: applied,
+      },
+      joinDetails(modelDetail, output.truncated && "output_truncated"),
+    );
+  }
 
   const sent = await sendAgentParts(supabase, sendCtx(latest, agent, runId), output.parts, deps.send);
   if (sent.sent === 0) {
@@ -586,4 +778,76 @@ async function disableForSpend(supabase: Db, agent: AgentConfig, scope: string):
     metadata: { agent_id: agent.id, scope, disabled: true },
     withinMinutes: 12 * 60,
   });
+}
+
+/** Lo que la regeneracion le pasa al turno (Bloque 2c). */
+interface TurnRevision {
+  previousDraftId: string;
+  previousBody: string | null;
+  /** null si no hubo instruccion o si un mensaje nuevo del lead la dejo sin efecto. */
+  instruction: string | null;
+  alreadyApplied: string[];
+}
+
+interface PreviousDraft {
+  id: string;
+  body: string | null;
+  burst_started_at: string | null;
+  burst_last_inbound_at: string | null;
+  applied_actions: unknown;
+}
+
+async function loadPreviousDraft(supabase: Db, draftId: string, conversationId: string): Promise<PreviousDraft | null> {
+  const { data, error } = await supabase
+    .from("agent_drafts")
+    .select("id, body, burst_started_at, burst_last_inbound_at, applied_actions")
+    .eq("id", draftId)
+    .eq("conversation_id", conversationId)
+    .maybeSingle();
+  if (error) console.error("[agent-turn] no pude leer el borrador a regenerar:", error.message);
+  return (data as PreviousDraft | null) ?? null;
+}
+
+/**
+ * El borrador no se pudo guardar porque otro de la misma conversacion esta
+ * saliendo en este instante (alguien lo aprobo). No es un error: se vuelve a
+ * agendar el turno en un minuto. El envio termina en segundos, o el barrido de
+ * 5 minutos lo pasa a failed, asi que el reintento siempre encuentra el camino
+ * libre. Como el borrador no cierra la rafaga, el reintento responde todo.
+ */
+export const BLOCKED_RETRY_SECONDS = 60;
+
+async function rescheduleBlockedTurn(
+  supabase: Db,
+  args: { deps: TurnDeps; conversation: TurnConversation; agent: AgentConfig; burst: StoredMessage[] },
+): Promise<void> {
+  const payload: AgentBurstPayload = {
+    workspaceId: args.conversation.workspace_id,
+    conversationId: args.conversation.id,
+    channelId: args.conversation.channel_id,
+    contactId: args.conversation.contact_id,
+    agentId: args.agent.id,
+    last_message_at: args.burst[args.burst.length - 1].created_at,
+    blocked_retry: true,
+  };
+  try {
+    await pushDebouncedJob(supabase, {
+      type: AGENT_BURST_JOB,
+      dedupeKey: agentBurstKey(args.conversation.id),
+      payload: payload as unknown as Record<string, unknown>,
+      runAt: new Date(args.deps.now().getTime() + BLOCKED_RETRY_SECONDS * 1000),
+      deadline: null,
+      volatileKeys: AGENT_BURST_VOLATILE_KEYS,
+    });
+  } catch (err) {
+    console.error("[agent-turn] no pude reprogramar el turno bloqueado:", err instanceof Error ? err.message : "error desconocido");
+    await markAgentError(supabase, {
+      workspaceId: args.conversation.workspace_id,
+      conversationId: args.conversation.id,
+      runId: null,
+      kind: "turn_error",
+      assignedTo: args.conversation.assigned_to,
+      now: args.deps.now(),
+    });
+  }
 }

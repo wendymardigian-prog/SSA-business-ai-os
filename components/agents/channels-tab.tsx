@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { PlatformIcon } from "@/components/platform-icon";
-import { setAgentChannel } from "@/lib/actions/agents";
+import { setAgentChannel, setAgentChannelMode } from "@/lib/actions/agents";
 import type { AgentScreenData } from "@/lib/agent/screen";
 import type { Platform } from "@/lib/platforms";
 import { Notice, Section } from "./fields";
@@ -26,6 +26,17 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
   const [pendingChannel, setPendingChannel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
+
+  function changeMode(channelId: string, mode: "send" | "draft") {
+    setError(null);
+    setPendingChannel(channelId);
+    start(async () => {
+      const result = await setAgentChannelMode(agent.id, channelId, mode);
+      setPendingChannel(null);
+      if (!result.ok) return setError(result.error);
+      router.refresh();
+    });
+  }
 
   function toggle(channelId: string, next: boolean) {
     setError(null);
@@ -81,8 +92,11 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
             {channels.map((channel) => {
               const on = agent.enabledChannelIds.includes(channel.id);
               const blockedByOther = !on && channel.takenBy !== null;
+              const mode = agent.channelModes[channel.id] === "draft" ? "draft" : "send";
+              const modeId = `channel-mode-${channel.id}`;
               return (
-                <li key={channel.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <li key={channel.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
                   <div className="flex min-w-0 items-center gap-3">
                     <PlatformIcon platform={channel.platform as Platform} className="h-5 w-5" size={20} />
                     <div className="min-w-0">
@@ -107,6 +121,29 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
                     onChange={(next) => toggle(channel.id, next)}
                     label={`Agente en ${channel.label}`}
                   />
+                </div>
+                {on && (
+                  <div className="mt-3 flex flex-col gap-1.5 pl-8 sm:flex-row sm:items-center sm:gap-3">
+                    <label htmlFor={modeId} className="text-xs font-medium text-muted-foreground">
+                      Cómo responde
+                    </label>
+                    <select
+                      id={modeId}
+                      value={mode}
+                      disabled={pendingChannel === channel.id}
+                      onChange={(e) => changeMode(channel.id, e.target.value as "send" | "draft")}
+                      className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                    >
+                      <option value="send">Envía directo</option>
+                      <option value="draft">Deja borradores para aprobar</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      {mode === "draft"
+                        ? "El agente redacta, pero el lead no recibe nada hasta que alguien lo apruebe en Borradores."
+                        : "El agente responde solo, sin que nadie lo revise antes."}
+                    </p>
+                  </div>
+                )}
                 </li>
               );
             })}

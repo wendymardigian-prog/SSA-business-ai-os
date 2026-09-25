@@ -153,6 +153,12 @@ export interface CostReport {
   byAgent: Array<{ agentId: string | null; name: string; runs: number; costUsd: number }>;
   byModel: Array<{ provider: string | null; model: string; runs: number; costUsd: number; inputTokens: number; outputTokens: number; missingPricing: number }>;
   topConversations: Array<{ conversationId: string; contactId: string | null; contactName: string | null; runs: number; costUsd: number }>;
+  /**
+   * Modo borrador (Bloque 2c): cuantos turnos dejaron borrador, cuanto se gasto
+   * en los que se descartaron (lo que cuesta la desconfianza) y cuantos se
+   * enviaron sin editar (el dato para pasar a envio directo).
+   */
+  drafts: { drafted: number; discarded: number; discardedCostUsd: number; sent: number; sentUnedited: number };
 }
 
 export interface CostsTabData {
@@ -209,7 +215,7 @@ export interface AgentScreenData {
     bundleWindowSeconds: number;
     responseDelaySeconds: number;
     maxWaitSeconds: number | null;
-    maxRepliesPerConversation: number;
+    maxRepliesPerConversation: number | null;
     burstMaxAgeHours: number;
     closeAfterInactiveHours: number;
     summaryOnClose: boolean;
@@ -224,6 +230,8 @@ export interface AgentScreenData {
     monthlyCostLimitUsd: number | null;
     monthlyCostLimitAction: "notify" | "disable";
     enabledChannelIds: string[];
+    /** Modo por canal (00070). Sin entrada = envio directo. */
+    channelModes: Record<string, "send" | "draft">;
     allowedTools: string[];
     toolsConfig: Record<string, unknown>;
   };
@@ -279,6 +287,7 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     monthlyCostLimitUsd: agent.monthlyCostLimitUsd,
     monthlyCostLimitAction: agent.monthlyCostLimitAction,
     enabledChannelIds: agent.enabledChannelIds,
+    channelModes: agent.channelModes,
     allowedTools: agent.allowedTools,
     toolsConfig: agent.toolsConfig,
   };

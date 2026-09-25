@@ -75,3 +75,10 @@ describe("relativeTime", () => {
     expect(relativeTime("no es una fecha", ahora)).toBe("");
   });
 });
+
+describe("avisos de ventana de borradores (Bloque 2c)", () => {
+  it("llevan a la cola filtrada por los que estan por vencer; los sin asignar, a ese bucket", () => {
+    expect(linkFor("draft_queue", null, { unassigned: false })).toBe("/dashboard/drafts?ventana=por-vencer");
+    expect(linkFor("draft_queue", null, { unassigned: true })).toBe("/dashboard/drafts?quien=sin-asignar&ventana=por-vencer");
+  });
+});

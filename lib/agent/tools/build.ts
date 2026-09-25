@@ -1,5 +1,6 @@
 import { tool, type ToolSet } from "ai";
 import type { AgentToolContext, AgentToolDefinition } from "./types";
+import type { AppliedAction, SuggestedAction } from "../drafts/types";
 import { toolsForAgent } from "./index";
 
 /**
@@ -19,8 +20,13 @@ import { toolsForAgent } from "./index";
 
 export interface BuiltToolSet {
   tools: ToolSet;
-  /** Se prende cuando una herramienta termino el turno (derivar a una persona). */
-  state: { turnEnded: boolean; escalated: boolean };
+  /**
+   * turnEnded/escalated: una herramienta termino el turno (derivar a una
+   * persona, solo en envio directo). suggestions: lo que en modo borrador
+   * quedo como sugerencia en vez de ejecutarse. applied: lo que el turno ya
+   * aplico en el CRM, para mostrarlo en el borrador.
+   */
+  state: { turnEnded: boolean; escalated: boolean; suggestions: SuggestedAction[]; applied: AppliedAction[] };
 }
 
 function resolveConfig(
@@ -36,7 +42,8 @@ function resolveConfig(
 }
 
 export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet> {
-  const state = { turnEnded: false, escalated: false };
+  const state: BuiltToolSet["state"] = { turnEnded: false, escalated: false, suggestions: [], applied: [] };
+  const draft = ctx.mode === "draft";
   const tools: ToolSet = {};
 
   for (const definition of toolsForAgent(ctx.agent)) {
@@ -51,7 +58,7 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
     }
 
     tools[definition.name] = tool({
-      description: definition.description,
+      description: draft && definition.descriptionInDraft ? definition.descriptionInDraft : definition.description,
       inputSchema: definition.inputSchema,
       execute: async (input: unknown) => {
         const startedAt = Date.now();
@@ -60,7 +67,24 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
           return "El turno ya termino. No hagas nada mas.";
         }
         try {
+          // Modo borrador: derivar y pausarse no se ejecutan. Quedan como
+          // sugerencia y se aplican si la persona aprueba el borrador.
+          if (draft && definition.deferInDraft) {
+            const deferred = definition.deferInDraft({ input, config: resolved.config, ctx });
+            state.suggestions.push(deferred.suggestion);
+            await ctx.run.step({
+              kind: "tool_call",
+              name: definition.name,
+              input,
+              output: { diferida: true, sugerencia: deferred.suggestion, ...(deferred.detail ? { detalle: deferred.detail } : {}) },
+              durationMs: Date.now() - startedAt,
+            });
+            return deferred.forModel;
+          }
           const result = await definition.execute({ input, config: resolved.config, ctx });
+          if (result.ok && result.auditLogId) {
+            state.applied.push({ tool: definition.name, label: definition.label, detail: result.detail ?? null, auditLogId: result.auditLogId });
+          }
           if (result.endsTurn) {
             state.turnEnded = true;
             if (definition.auditAction === "human_takeover") state.escalated = true;

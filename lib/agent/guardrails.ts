@@ -29,7 +29,8 @@ export interface GuardrailInput {
   now: Date;
   /** Respuestas del agente desde la ultima intervencion de una persona del equipo. */
   repliesSinceHuman: number;
-  maxRepliesPerConversation: number;
+  /** null = sin tope: el guardarrail solo actua con un numero cargado (00070). */
+  maxRepliesPerConversation: number | null;
   /** Turnos seguidos del agente en el intercambio actual. */
   unresolvedTurns: number;
   timeZone?: string;
@@ -74,7 +75,7 @@ export function evaluateGuardrails(input: GuardrailInput): GuardrailBlock | null
     return { kind: "outside_hours", action: g.businessHours.outsideMode, detail: "fuera del horario de atencion" };
   }
 
-  if (input.repliesSinceHuman >= input.maxRepliesPerConversation) {
+  if (input.maxRepliesPerConversation !== null && input.repliesSinceHuman >= input.maxRepliesPerConversation) {
     return {
       kind: "reply_cap",
       action: "escalate",

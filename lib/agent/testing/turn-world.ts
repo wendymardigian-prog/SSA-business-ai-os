@@ -26,13 +26,29 @@ export interface World {
   payload: Record<string, unknown>;
 }
 
-export function turnWorld(opts: { agent?: Partial<AgentRow>; conversation?: Record<string, unknown> } = {}): World {
+/** Un borrador vivo choca con otro vivo de la misma conversacion (00070). */
+const LIVE = ["pending", "sending", "failed"];
+export const oneLiveDraftPerConversation = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+  a.conversation_id === b.conversation_id && LIVE.includes(a.status as string) && LIVE.includes(b.status as string);
+
+export function turnWorld(
+  opts: {
+    agent?: Partial<AgentRow>;
+    conversation?: Record<string, unknown>;
+    /** Deja el canal ch-1 en modo borrador (agents.channel_modes, 00070). */
+    draft?: boolean;
+    channel?: Record<string, unknown>;
+  } = {},
+): World {
   const clock = { ms: T0 };
   const now = () => new Date(clock.ms);
   const db = memoryDb(
     {
       workspaces: [{ id: "ws-1", ai_daily_cost_limit_usd: null, ai_monthly_cost_limit_usd: null }],
-      agents: [agentRow(opts.agent)],
+      agents: [agentRow({ ...(opts.draft ? { channel_modes: { "ch-1": "draft" } } : {}), ...opts.agent })],
+      channels: [{ id: "ch-1", workspace_id: "ws-1", platform: "instagram", messaging_window_hours: null, ...opts.channel }],
+      agent_drafts: [],
+      scheduled_jobs: [],
       conversations: [
         {
           id: "cv-1",
@@ -61,7 +77,29 @@ export function turnWorld(opts: { agent?: Partial<AgentRow>; conversation?: Reco
       audit_log: [],
       notifications: [],
     },
-    { now },
+    {
+      now,
+      unique: { agent_drafts: oneLiveDraftPerConversation },
+      rpc: {
+        // push_debounced_job en memoria: con un pending de la misma clave, lo
+        // empuja y descarta las claves volatiles; si no, crea uno.
+        push_debounced_job: (args, mdb) => {
+          const jobs = mdb.rows("scheduled_jobs");
+          const existing = jobs.find((j) => j.dedupe_key === args.p_dedupe_key && j.status === "pending");
+          const volatile = (args.p_volatile_keys as string[] | undefined) ?? [];
+          if (existing) {
+            existing.run_at = args.p_run_at;
+            const payload = { ...(existing.payload as Record<string, unknown>) };
+            for (const k of volatile) delete payload[k];
+            existing.payload = payload;
+            return [{ job_id: existing.id, job_run_at: existing.run_at, created: false }];
+          }
+          const job = { id: `job-${jobs.length + 1}`, type: args.p_type, dedupe_key: args.p_dedupe_key, status: "pending", run_at: args.p_run_at, payload: args.p_payload };
+          jobs.push(job);
+          return [{ job_id: job.id, job_run_at: job.run_at, created: true }];
+        },
+      },
+    },
   );
 
   const modelCalls: ModelRunInput[] = [];

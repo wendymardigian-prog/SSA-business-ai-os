@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
@@ -191,10 +192,56 @@ export async function setDoNotContact(
     do_not_contact_at: value ? new Date().toISOString() : null,
   };
 
-  return applyPatch({
+  const result = await applyPatch({
     supabase, workspaceId: workspace.id, userId: user.id,
     contactId, patch, action: "do_not_contact",
   });
+
+  // Marcar "no contactar" a mano pausa las secuencias activas del contacto,
+  // igual que la deteccion automatica (apply_opt_out_check, 00027). Hasta el
+  // Bloque 2c solo lo hacia la automatica: la marca manual quedaba con los
+  // drips corriendo y el procesador los salteaba de a uno.
+  if (result.ok && value) {
+    await pauseSequencesForOptOut(workspace.id, contactId, user.id);
+  }
+  return result;
+}
+
+/**
+ * Pausa las inscripciones activas del contacto con motivo opt_out (el mismo
+ * que usa la deteccion automatica; resumeEnrollment no deja reanudarlas).
+ * Service role: sequence_enrollments es de Owner/Admin por RLS y una persona
+ * que marca a su lead igual tiene que poder frenarle los drips. El contacto ya
+ * paso por la RLS en applyPatch, asi que es de su scope.
+ */
+async function pauseSequencesForOptOut(workspaceId: string, contactId: string, userId: string): Promise<void> {
+  try {
+    const service = await createServiceClient();
+    const now = new Date().toISOString();
+    const { data, error } = await service
+      .from("sequence_enrollments")
+      .update({ status: "paused", paused_reason: "opt_out", paused_at: now, locked_at: null })
+      .eq("contact_id", contactId)
+      .eq("status", "active")
+      .select("id");
+    if (error) {
+      console.error("[contacts] no pude pausar las secuencias del contacto:", error.message);
+      return;
+    }
+    const ids = (data ?? []).map((r) => r.id);
+    if (ids.length === 0) return;
+    await logAudit({
+      supabase: service,
+      workspaceId,
+      entityType: "contact",
+      entityId: contactId,
+      action: "sequence_paused",
+      metadata: { source: "manual", reason: "opt_out", enrollment_ids: ids, count: ids.length, sequences_paused: ids.length },
+      performedBy: userId,
+    });
+  } catch (err) {
+    console.error("[contacts] no pude pausar las secuencias del contacto:", err instanceof Error ? err.message : "error desconocido");
+  }
 }
 
 // ------------------------------------------------------------------

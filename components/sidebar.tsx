@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   GitBranch,
   MessageSquare,
@@ -16,6 +16,7 @@ import {
   BookOpen,
   Bot,
   Settings,
+  FileText,
   LogOut,
   Moon,
   Sun,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAdminRole } from "@/lib/auth/roles";
+import { countPendingDrafts, type PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
@@ -48,6 +50,9 @@ function subscribeToThemeClass(callback: () => void) {
 const navigation = [
   { name: "Flows", href: "/dashboard/flows", icon: GitBranch, adminOnly: false },
   { name: "Inbox", href: "/dashboard/inbox", icon: MessageSquare, adminOnly: false },
+  // Bloque 2c: las respuestas del agente que esperan aprobacion. Aprobar es
+  // operar, no configurar: la ve cualquiera (la RLS acota a sus leads).
+  { name: "Borradores", href: "/dashboard/drafts", icon: FileText, adminOnly: false },
   { name: "Contacts", href: "/dashboard/contacts", icon: Users, adminOnly: false },
   { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio, adminOnly: false },
   { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered, adminOnly: false },
@@ -71,6 +76,7 @@ export function Sidebar({
   role,
   workspaces,
   unreadNotifications = 0,
+  draftCounts,
 }: {
   workspace: Workspace;
   user: { id: string; email?: string };
@@ -78,6 +84,8 @@ export function Sidebar({
   workspaces: WorkspaceItem[];
   /** Conteo del servidor: evita que el numerito de la campana parpadee. */
   unreadNotifications?: number;
+  /** Borradores esperando (Bloque 2c). Coincide con la vista por defecto de la cola: los mios. */
+  draftCounts?: PendingDraftCounts;
 }) {
   const navItems = navigation.filter(
     (item) => !item.adminOnly || isAdminRole(role)
@@ -85,6 +93,7 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const drafts = useDraftCounts(workspace.id, draftCounts);
   const dark = useSyncExternalStore(
     subscribeToThemeClass,
     () => document.documentElement.classList.contains("dark"),
@@ -133,6 +142,7 @@ export function Sidebar({
             >
               <item.icon className="h-4 w-4" />
               {item.name}
+              {item.href === "/dashboard/drafts" && drafts && <DraftBadge counts={drafts} />}
             </Link>
           );
         })}
@@ -156,4 +166,63 @@ export function Sidebar({
       </div>
     </div>
   );
+}
+
+/**
+ * El contador de Borradores. El numero grande son los mios (lo que muestra la
+ * cola por defecto); para Owner/Admin, al lado, el total del workspace: un
+ * Owner sin contactos propios no puede ver "0" con doce esperando.
+ */
+function DraftBadge({ counts }: { counts: PendingDraftCounts }) {
+  const total = counts.total ?? null;
+  if (counts.mine === 0 && !total) return null;
+  const title =
+    total !== null
+      ? `${counts.mine} tuyos · ${total} en total${counts.unassigned ? ` (${counts.unassigned} sin asignar)` : ""}`
+      : `${counts.mine} esperando`;
+  return (
+    <span className="ml-auto flex items-center gap-1" title={title} aria-label={title}>
+      {counts.mine > 0 && (
+        <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">{counts.mine}</span>
+      )}
+      {total !== null && total > counts.mine && <span className="text-[10px] text-sidebar-foreground/60">· {total}</span>}
+    </span>
+  );
+}
+
+/** Los contadores, al dia con Realtime sobre agent_drafts. */
+function useDraftCounts(workspaceId: string, initial: PendingDraftCounts | undefined) {
+  const [counts, setCounts] = useState<PendingDraftCounts | undefined>(initial);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setCounts(initial);
+  }, [initial]);
+  useEffect(() => {
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    (async () => {
+      await supabase.auth.getSession();
+      if (cancelled) return;
+      channel = supabase
+        .channel(`sidebar-drafts-${workspaceId}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "agent_drafts", filter: `workspace_id=eq.${workspaceId}` }, () => {
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(async () => {
+            try {
+              setCounts(await countPendingDrafts());
+            } catch (err) {
+              console.error("[sidebar] no pude actualizar el contador de borradores:", err instanceof Error ? err.message : "error");
+            }
+          }, 800);
+        })
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (timer.current) clearTimeout(timer.current);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [workspaceId]);
+  return counts;
 }

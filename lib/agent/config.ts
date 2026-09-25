@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CostLimitAction, Database, KnowledgeFallback } from "@/lib/types/database";
+import type { AgentChannelMode, CostLimitAction, Database, KnowledgeFallback } from "@/lib/types/database";
 import {
   guardrailsSchema,
   outputFormatSchema,
@@ -40,7 +40,8 @@ export interface AgentConfig {
   bundleWindowSeconds: number;
   responseDelaySeconds: number;
   maxWaitSeconds: number | null;
-  maxRepliesPerConversation: number;
+  /** Tope de respuestas por conversacion. null = sin tope (default desde la 00070). */
+  maxRepliesPerConversation: number | null;
   /** La rafaga ignora entrantes mas viejos que esto (horas desde el turno). */
   burstMaxAgeHours: number;
   /** Cierre por inactividad y que hacer al cerrar (00067). */
@@ -59,6 +60,11 @@ export interface AgentConfig {
   monthlyCostLimitUsd: number | null;
   monthlyCostLimitAction: CostLimitAction;
   enabledChannelIds: string[];
+  /**
+   * Modo de entrega por canal (00070): "draft" deja un borrador para aprobar en
+   * vez de enviar. Sin entrada = "send". Leer siempre con channelMode().
+   */
+  channelModes: Record<string, AgentChannelMode>;
   createdAt: string;
 }
 
@@ -107,8 +113,32 @@ export function toAgentConfig(row: AgentRow): AgentConfig {
     monthlyCostLimitUsd: num(row.monthly_cost_limit_usd),
     monthlyCostLimitAction: row.monthly_cost_limit_action,
     enabledChannelIds: row.enabled_channel_ids ?? [],
+    channelModes: parseChannelModes(row.channel_modes),
     createdAt: row.created_at,
   };
+}
+
+/**
+ * El mapa channel_id -> modo, tolerante: lo que no sea "draft" es "send". Un
+ * jsonb escrito a mano nunca puede dejar un canal en un modo desconocido.
+ */
+export function parseChannelModes(raw: unknown): Record<string, AgentChannelMode> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, AgentChannelMode> = {};
+  for (const [channelId, mode] of Object.entries(raw as Record<string, unknown>)) {
+    if (mode === "draft") out[channelId] = "draft";
+  }
+  return out;
+}
+
+/**
+ * Como entrega el agente en un canal: "send" (envia directo, el default) o
+ * "draft" (deja un borrador para aprobar). Un canal apagado nunca esta en draft:
+ * el modo solo tiene sentido para los canales que el agente atiende.
+ */
+export function channelMode(agent: Pick<AgentConfig, "channelModes" | "enabledChannelIds">, channelId: string): AgentChannelMode {
+  if (!agent.enabledChannelIds.includes(channelId)) return "send";
+  return agent.channelModes[channelId] === "draft" ? "draft" : "send";
 }
 
 /**

@@ -81,3 +81,21 @@ describe("sweepInactiveConversations", () => {
     expect((await sweepInactiveConversations(db.client, NOW)).closed).toBe(1);
   });
 });
+
+describe("con un borrador esperando (Bloque 2c)", () => {
+  it("no cierra una conversacion con un borrador vivo: el lead espera que alguien apruebe", async () => {
+    const db = world([conv("a")], [{ id: "r-1", conversation_id: "a", source: "agent", status: "drafted" }]);
+    db.rows("agent_drafts").push({ id: "d-1", conversation_id: "a", status: "pending" });
+
+    const result = await sweepInactiveConversations(db.client, NOW);
+
+    expect(result.closed).toBe(0);
+    expect(db.rows("conversations")[0].status).toBe("open");
+  });
+
+  it("un borrador ya decidido no la frena", async () => {
+    const db = world([conv("a")], [{ id: "r-1", conversation_id: "a", source: "agent", status: "drafted" }]);
+    db.rows("agent_drafts").push({ id: "d-1", conversation_id: "a", status: "discarded" });
+    expect((await sweepInactiveConversations(db.client, NOW)).closed).toBe(1);
+  });
+});

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { LIVE_DRAFT_STATUSES } from "./drafts/types";
 import type { Database } from "@/lib/types/database";
 import { CONVERSATION_CLOSE_JOB, scheduleJob, type ConversationClosePayload } from "@/lib/scheduler";
 import { getAgentType } from "./agent-types";
@@ -83,6 +84,17 @@ export async function sweepInactiveConversations(service: Db, now: Date = new Da
           .eq("conversation_id", conv.id)
           .eq("source", "agent");
         if (!count) continue;
+
+        // Un lead esperando que alguien apruebe su respuesta no es una
+        // conversacion inactiva (Bloque 2c): el borrador no mueve
+        // last_message_at, asi que sin esto se cerraria con la pregunta sin
+        // responder.
+        const { count: liveDrafts } = await service
+          .from("agent_drafts")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conv.id)
+          .in("status", LIVE_DRAFT_STATUSES);
+        if (liveDrafts) continue;
 
         // CAS sobre el estado: si un entrante la reabrio en el medio, no se cierra.
         const { data: updated } = await service

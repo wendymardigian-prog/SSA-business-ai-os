@@ -1,5 +1,6 @@
 import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
+import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel, type Platform } from "@/lib/platforms";
 import { firstParam, listParam, pickEnum, pickIds, pickPage, sanitizeSearch } from "@/lib/url-params";
 import { resolveDateRange, DATE_PRESETS, type DatePreset } from "@/lib/dates";
@@ -44,7 +45,7 @@ export default async function InboxPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const { workspace, supabase } = await getWorkspace();
+  const { workspace, supabase, user, role } = await getWorkspace();
 
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
@@ -208,6 +209,8 @@ export default async function InboxPage({
       platforms={platformOptions.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
       agentByChannel={agentByChannel}
+      currentUserId={user.id}
+      isAdmin={isAdminRole(role)}
     />
   );
 }

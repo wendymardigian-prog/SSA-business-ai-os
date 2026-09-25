@@ -19,7 +19,7 @@ export type OutputValidation =
 const EMOJI = /\p{Extended_Pictographic}|‍|️|[\u{1f3fb}-\u{1f3ff}]/gu;
 
 /** Restos del armado del prompt que nunca pueden llegar al lead. */
-const LEAK_MARKERS = [/<<<\s*(lead|dato|conocimiento|crm|memoria|fin)/i, /"toolCallId"\s*:/i];
+const LEAK_MARKERS = [/<<<\s*(lead|dato|conocimiento|crm|memoria|operador|fin)/i, /"toolCallId"\s*:/i];
 
 export function stripEmojis(text: string): string {
   return text.replace(EMOJI, "").replace(/[ \t]{2,}/g, " ").replace(/ +\n/g, "\n").trim();

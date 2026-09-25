@@ -125,7 +125,10 @@ export function exchangeStart(messages: StoredMessage[], gapMinutes: number): st
   return start;
 }
 
-/** Cuando escribio por ultima vez una persona del equipo en la conversacion. */
+/**
+ * Cuando escribio por ultima vez una persona del equipo en la conversacion, A
+ * MANO. Un borrador aprobado no cuenta (ver el filtro).
+ */
 export async function lastHumanReplyAt(supabase: Db, conversationId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from("messages")
@@ -133,6 +136,11 @@ export async function lastHumanReplyAt(supabase: Db, conversationId: string): Pr
     .eq("conversation_id", conversationId)
     .eq("direction", "outbound")
     .not("sent_by_user_id", "is", null)
+    // Un borrador aprobado lleva las dos autorias (agente y quien aprobo): es
+    // una respuesta del agente, no de una persona. Sin este filtro, aprobar un
+    // borrador envenenaria los guardarrailes (reinicia el tope) y haria abortar
+    // el turno siguiente con human_took_over_during_generation.
+    .is("sent_by_agent_id", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -145,26 +153,41 @@ export async function lastHumanReplyAt(supabase: Db, conversationId: string): Pr
 
 /**
  * Cuantas veces respondio el agente en la conversacion desde un instante.
- * Derivado de agent_runs, no guardado: un contador guardado se desincroniza.
+ * Derivado, no guardado: un contador guardado se desincroniza.
+ *
+ * Una respuesta del agente es un run `responded` (envio directo) o un borrador
+ * que alguien aprobo y salio (modo borrador, 00070). Sin lo segundo, en modo
+ * borrador el contador no subiria nunca y la regla de turnos sin resolver
+ * quedaria muerta justo donde mas hace falta. Los borradores descartados no
+ * cuentan: el lead nunca los recibio.
  */
 export async function countAgentReplies(
   supabase: Db,
   args: { conversationId: string; since: string | null },
 ): Promise<number> {
-  let query = supabase
+  let runs = supabase
     .from("agent_runs")
     .select("id", { count: "exact", head: true })
     .eq("conversation_id", args.conversationId)
     .eq("source", "agent")
     .eq("status", "responded");
-  if (args.since) query = query.gt("created_at", args.since);
-  const { count, error } = await query;
+  if (args.since) runs = runs.gt("created_at", args.since);
+
+  let drafts = supabase
+    .from("agent_drafts")
+    .select("id", { count: "exact", head: true })
+    .eq("conversation_id", args.conversationId)
+    .eq("status", "sent");
+  if (args.since) drafts = drafts.gt("decided_at", args.since);
+
+  const [runsRes, draftsRes] = await Promise.all([runs, drafts]);
+  const error = runsRes.error ?? draftsRes.error;
   if (error) {
     console.error("[agent-context] no pude contar las respuestas del agente:", error.message);
     // Del lado seguro: si no se puede contar, se asume el tope alcanzado.
     return Number.MAX_SAFE_INTEGER;
   }
-  return count ?? 0;
+  return (runsRes.count ?? 0) + (draftsRes.count ?? 0);
 }
 
 export async function loadContactContext(supabase: Db, contactId: string): Promise<ContactContext> {

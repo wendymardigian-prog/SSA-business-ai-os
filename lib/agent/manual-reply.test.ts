@@ -15,6 +15,7 @@ function world(agentEnabled: boolean | null, lastError: string | null = null) {
   return memoryDb({
     conversations: [{ id: "cv-1", workspace_id: "ws-1", agent_enabled: agentEnabled, last_agent_error_at: lastError, last_agent_error_run_id: null }],
     audit_log: [],
+    agent_drafts: [],
   });
 }
 
@@ -50,5 +51,21 @@ describe("applyManualReply con el interruptor de tres estados", () => {
     await applyManualReply(db.client, args);
     expect(db.rows("conversations")[0].last_agent_error_at).toBeNull();
     expect(db.rows("audit_log")).toHaveLength(0);
+  });
+});
+
+describe("respuesta manual y modo borrador (Bloque 2c)", () => {
+  it("una respuesta a mano descarta el borrador pendiente: el lead ya tuvo su respuesta", async () => {
+    const db = world(null);
+    db.rows("agent_drafts").push({ id: "d-1", conversation_id: "cv-1", status: "pending" });
+    await applyManualReply(db.client, args);
+    expect(db.rows("agent_drafts")[0]).toMatchObject({ status: "discarded", discard_reason: "auto:manual_reply", decided_by: "user-1" });
+  });
+
+  it("aunque el agente ya estuviera apagado, el borrador vivo igual se descarta", async () => {
+    const db = world(false);
+    db.rows("agent_drafts").push({ id: "d-1", conversation_id: "cv-1", status: "failed" });
+    await applyManualReply(db.client, args);
+    expect(db.rows("agent_drafts")[0].status).toBe("discarded");
   });
 });

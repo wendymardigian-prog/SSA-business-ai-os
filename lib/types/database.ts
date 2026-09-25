@@ -125,7 +125,20 @@ export type AgentRunStatus =
   | "skipped"
   | "blocked_guardrail"
   | "completed"
-  | "error";
+  | "error"
+  /** El turno dejo un borrador en vez de enviar (modo borrador, migracion 00070). */
+  | "drafted";
+/** Estado de un borrador del agente (migracion 00070). */
+export type AgentDraftStatus =
+  | "pending"
+  | "sending"
+  | "sent"
+  | "failed"
+  | "discarded"
+  | "superseded"
+  | "regenerated";
+/** Modo de entrega del agente en un canal (agents.channel_modes, migracion 00070). */
+export type AgentChannelMode = "send" | "draft";
 export type AgentRunStepKind = "model_call" | "kb_search" | "tool_call" | "guardrail";
 export type KnowledgeFallback = "escalate" | "general";
 export type CostLimitAction = "notify" | "disable";
@@ -339,6 +352,8 @@ export interface Database {
           last_connected_at: string | null;
           last_error: string | null;
           disconnected_notified_at: string | null;
+          /** Ventana de mensajeria en horas; NULL = default por plataforma (00070). */
+          messaging_window_hours: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -361,6 +376,7 @@ export interface Database {
           last_connected_at?: string | null;
           last_error?: string | null;
           disconnected_notified_at?: string | null;
+          messaging_window_hours?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -381,6 +397,7 @@ export interface Database {
           last_connected_at?: string | null;
           last_error?: string | null;
           disconnected_notified_at?: string | null;
+          messaging_window_hours?: number | null;
           updated_at?: string;
         };
         Relationships: [
@@ -421,6 +438,8 @@ export interface Database {
           do_not_contact_reason: string | null;
           do_not_contact_at: string | null;
           ai_conversation_summary: string | null;
+          /** Cuando se actualizo la memoria del agente (00070). */
+          ai_summary_updated_at: string | null;
           lead_temperature: LeadTemperature | null;
           attribution: Json;
           /** Notas internas del contacto, en un solo texto (migracion 00033). */
@@ -461,6 +480,7 @@ export interface Database {
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
           ai_conversation_summary?: string | null;
+          ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
           notes?: string | null;
@@ -492,6 +512,7 @@ export interface Database {
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
           ai_conversation_summary?: string | null;
+          ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
           attribution?: Json;
           notes?: string | null;
@@ -1989,7 +2010,8 @@ export interface Database {
           bundle_window_seconds: number;
           response_delay_seconds: number;
           max_wait_seconds: number | null;
-          max_replies_per_conversation: number;
+          /** NULL = sin tope (default desde la 00070). */
+          max_replies_per_conversation: number | null;
           /** La rafaga ignora entrantes mas viejos que esto, en horas (migracion 00066). */
           burst_max_age_hours: number;
           /** Cierre por inactividad, resumen y clasificacion al cierre (migracion 00067). */
@@ -2008,6 +2030,8 @@ export interface Database {
           monthly_cost_limit_usd: number | null;
           monthly_cost_limit_action: CostLimitAction;
           enabled_channel_ids: string[];
+          /** { channel_id: "send" | "draft" }; sin entrada = send (00070). */
+          channel_modes: Json;
           config: Json;
           created_by: string | null;
           created_at: string;
@@ -2032,7 +2056,7 @@ export interface Database {
           bundle_window_seconds?: number;
           response_delay_seconds?: number;
           max_wait_seconds?: number | null;
-          max_replies_per_conversation?: number;
+          max_replies_per_conversation?: number | null;
           burst_max_age_hours?: number;
           close_after_inactive_hours?: number;
           summary_on_close?: boolean;
@@ -2049,6 +2073,7 @@ export interface Database {
           monthly_cost_limit_usd?: number | null;
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
+          channel_modes?: Json;
           config?: Json;
           created_by?: string | null;
           created_at?: string;
@@ -2071,7 +2096,7 @@ export interface Database {
           bundle_window_seconds?: number;
           response_delay_seconds?: number;
           max_wait_seconds?: number | null;
-          max_replies_per_conversation?: number;
+          max_replies_per_conversation?: number | null;
           burst_max_age_hours?: number;
           close_after_inactive_hours?: number;
           summary_on_close?: boolean;
@@ -2088,6 +2113,7 @@ export interface Database {
           monthly_cost_limit_usd?: number | null;
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
+          channel_modes?: Json;
           config?: Json;
           created_by?: string | null;
           updated_at?: string;
@@ -2153,6 +2179,10 @@ export interface Database {
           error: string | null;
           created_at: string;
           completed_at: string | null;
+          /** Ultimo entrante de la rafaga que responde el turno (00070). */
+          inbound_at: string | null;
+          /** Cuando salio la respuesta de verdad (00070). */
+          responded_at: string | null;
         };
         Insert: {
           id?: string;
@@ -2180,6 +2210,8 @@ export interface Database {
           error?: string | null;
           created_at?: string;
           completed_at?: string | null;
+          inbound_at?: string | null;
+          responded_at?: string | null;
         };
         Update: {
           prompt_version?: number | null;
@@ -2201,6 +2233,95 @@ export interface Database {
           step_count?: number;
           error?: string | null;
           completed_at?: string | null;
+          inbound_at?: string | null;
+          responded_at?: string | null;
+        };
+        Relationships: [];
+      };
+      /**
+       * Respuestas del agente que esperan aprobacion (modo borrador, 00070).
+       * Solo el service role inserta. El usuario puede tomar (sending),
+       * descartar o pedir otra version, siempre a su nombre (RLS).
+       */
+      agent_drafts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          agent_id: string | null;
+          conversation_id: string;
+          contact_id: string;
+          channel_id: string;
+          run_id: string | null;
+          status: AgentDraftStatus;
+          body: string | null;
+          body_parts: Json | null;
+          no_reply_reason: string | null;
+          suggested_actions: Json;
+          applied_actions: Json;
+          burst_message_ids: string[];
+          burst_started_at: string | null;
+          burst_last_inbound_at: string | null;
+          sendable_until: string | null;
+          alerted_thresholds: number[];
+          window_missed_at: string | null;
+          missed_while_assigned_to: string | null;
+          sent_body: string | null;
+          send_error: string | null;
+          sent_message_id: string | null;
+          discard_reason: string | null;
+          regenerate_instruction: string | null;
+          previous_draft_id: string | null;
+          decided_at: string | null;
+          decided_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          agent_id?: string | null;
+          conversation_id: string;
+          contact_id: string;
+          channel_id: string;
+          run_id?: string | null;
+          status?: AgentDraftStatus;
+          body?: string | null;
+          body_parts?: Json | null;
+          no_reply_reason?: string | null;
+          suggested_actions?: Json;
+          applied_actions?: Json;
+          burst_message_ids?: string[];
+          burst_started_at?: string | null;
+          burst_last_inbound_at?: string | null;
+          sendable_until?: string | null;
+          alerted_thresholds?: number[];
+          window_missed_at?: string | null;
+          missed_while_assigned_to?: string | null;
+          sent_body?: string | null;
+          send_error?: string | null;
+          sent_message_id?: string | null;
+          discard_reason?: string | null;
+          regenerate_instruction?: string | null;
+          previous_draft_id?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: AgentDraftStatus;
+          sendable_until?: string | null;
+          alerted_thresholds?: number[];
+          window_missed_at?: string | null;
+          missed_while_assigned_to?: string | null;
+          sent_body?: string | null;
+          send_error?: string | null;
+          sent_message_id?: string | null;
+          discard_reason?: string | null;
+          regenerate_instruction?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -2400,6 +2521,11 @@ export interface Database {
           p_payload: Json;
           p_run_at: string;
           p_deadline: string | null;
+          /**
+           * Claves del payload que se descartan si el job se fusiona con otro
+           * disparador (migracion 00070). Opcional: sin ellas, la firma vieja.
+           */
+          p_volatile_keys?: string[];
         };
         Returns: { job_id: string; job_run_at: string; created: boolean }[];
       };
@@ -2427,6 +2553,28 @@ export interface Database {
       };
       /** Agregados de costo de IA de un periodo (migracion 00069). Solo service_role. */
       ai_cost_report: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string;
+          p_to: string;
+        };
+        Returns: Json;
+      };
+      /**
+       * Franja de la cola de borradores (migracion 00071). Se llama con el
+       * cliente del usuario: a un Member le devuelve sus numeros siempre.
+       */
+      draft_queue_metrics: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string;
+          p_to: string;
+          p_user_id?: string | null;
+        };
+        Returns: Json;
+      };
+      /** Desglose por persona de la cola de borradores (00071). Solo Owner/Admin. */
+      draft_queue_metrics_by_person: {
         Args: {
           p_workspace_id: string;
           p_from: string;

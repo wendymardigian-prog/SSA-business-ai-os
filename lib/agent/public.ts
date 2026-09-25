@@ -1,4 +1,5 @@
 import { getAgentType } from "./agent-types";
+import type { AgentChannelMode } from "@/lib/types/database";
 
 /**
  * Lo que cualquier miembro puede leer de un agente con su propio cliente.
@@ -10,7 +11,7 @@ import { getAgentType } from "./agent-types";
  * Sin dependencias de servidor: lo importan paginas y componentes.
  */
 
-export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel_ids, deleted_at" as const;
+export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel_ids, channel_modes, deleted_at" as const;
 
 /** Columnas de agent_runs sin tokens ni costo (00060). */
 export const AGENT_RUN_PUBLIC_COLUMNS =
@@ -32,6 +33,8 @@ export interface PublicAgent {
   type: string;
   is_enabled: boolean;
   enabled_channel_ids: string[];
+  /** { channel_id: "send" | "draft" } (00070). Opcional para filas armadas a mano. */
+  channel_modes?: unknown;
   deleted_at: string | null;
 }
 
@@ -46,6 +49,19 @@ export interface ChannelAgentInfo {
   channelLabel: string;
   /** Explicacion lista para mostrar cuando no esta disponible. */
   message: string | null;
+  /**
+   * Como entrega el agente en este canal (00070): "draft" deja borradores para
+   * aprobar. Solo significa algo con available en true.
+   */
+  mode: AgentChannelMode;
+}
+
+/** El modo de un canal leido de la fila publica. Espejo de channelMode() de config.ts. */
+export function publicChannelMode(agent: PublicAgent, channelId: string): AgentChannelMode {
+  if (!agent.enabled_channel_ids.includes(channelId)) return "send";
+  const modes = agent.channel_modes;
+  if (!modes || typeof modes !== "object" || Array.isArray(modes)) return "send";
+  return (modes as Record<string, unknown>)[channelId] === "draft" ? "draft" : "send";
 }
 
 /**
@@ -64,6 +80,7 @@ export function channelAgentInfo(
       agentName: null,
       channelLabel: channel.label,
       message: "Todavia no hay un agente de IA. Se crea en Agentes.",
+      mode: "send",
     };
   }
   const forChannel = live.find((a) => a.enabled_channel_ids.includes(channel.id));
@@ -74,6 +91,7 @@ export function channelAgentInfo(
       agentName: live[0].name,
       channelLabel: channel.label,
       message: `El agente esta apagado para ${channel.label}; activalo en Agentes para poder encenderlo por conversacion.`,
+      mode: "send",
     };
   }
   if (!forChannel.is_enabled) {
@@ -83,7 +101,15 @@ export function channelAgentInfo(
       agentName: forChannel.name,
       channelLabel: channel.label,
       message: `"${forChannel.name}" esta apagado. Se enciende desde Agentes.`,
+      mode: publicChannelMode(forChannel, channel.id),
     };
   }
-  return { available: true, reason: null, agentName: forChannel.name, channelLabel: channel.label, message: null };
+  return {
+    available: true,
+    reason: null,
+    agentName: forChannel.name,
+    channelLabel: channel.label,
+    message: null,
+    mode: publicChannelMode(forChannel, channel.id),
+  };
 }

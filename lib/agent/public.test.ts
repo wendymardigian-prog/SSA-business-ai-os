@@ -33,3 +33,15 @@ describe("toggle de la bandeja segun el maestro del canal", () => {
     expect(channelAgentInfo([], { id: "ch-ig", label: "Instagram" })).toMatchObject({ reason: "no_agent" });
   });
 });
+
+describe("modo del canal en la bandeja (00070)", () => {
+  const base = { id: "a-1", name: "Agente", type: "chat", is_enabled: true, enabled_channel_ids: ["ch-ig"], deleted_at: null };
+
+  it("sin entrada, el canal envia directo", () => {
+    expect(channelAgentInfo([base], { id: "ch-ig", label: "Instagram" }).mode).toBe("send");
+  });
+  it("en draft, la bandeja lo sabe", () => {
+    const agent = { ...base, channel_modes: { "ch-ig": "draft" } };
+    expect(channelAgentInfo([agent], { id: "ch-ig", label: "Instagram" }).mode).toBe("draft");
+  });
+});

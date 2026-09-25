@@ -99,3 +99,17 @@ describe("horario de atencion, cortado en Costa Rica", () => {
     expect(block).toMatchObject({ kind: "blocked_topic" });
   });
 });
+
+describe("tope de respuestas por conversacion (00070: vacio = sin tope)", () => {
+  it("sin tope (null), el agente no se frena por cantidad de respuestas", () => {
+    expect(evaluateGuardrails({ ...base, maxRepliesPerConversation: null, repliesSinceHuman: 50 })).toBeNull();
+  });
+
+  it("con un numero cargado, frena al llegar", () => {
+    expect(evaluateGuardrails({ ...base, maxRepliesPerConversation: 3, repliesSinceHuman: 2 })).toBeNull();
+    expect(evaluateGuardrails({ ...base, maxRepliesPerConversation: 3, repliesSinceHuman: 3 })).toMatchObject({
+      kind: "reply_cap",
+      action: "escalate",
+    });
+  });
+});

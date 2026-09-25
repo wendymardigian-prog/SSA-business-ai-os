@@ -39,6 +39,19 @@ export const pauseSelfTool: AgentToolDefinition<z.infer<typeof inputSchema>, z.i
     },
   ],
   auditAction: "agent_paused",
+  deferInDraft({ input, config }) {
+    return {
+      suggestion: {
+        type: "pause",
+        minutes: input.minutos,
+        reason: input.motivo,
+        maxMinutes: config.maxMinutes,
+        autoResume: config.autoResume,
+      },
+      forModel: "Anotado como sugerencia: la pausa se aplica si la persona que revisa aprueba tu respuesta. Responde como corresponda.",
+      detail: { minutos: input.minutos },
+    };
+  },
   async execute({ input, config, ctx }) {
     const result = await pauseAgentInConversation(
       {

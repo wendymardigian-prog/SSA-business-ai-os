@@ -32,8 +32,13 @@ export interface EscalateArgs {
   reason: string;
   /** Resumen del contexto para quien toma la conversacion. */
   summary?: string | null;
-  /** Origen, para distinguir en el audit: la herramienta, un guardarrail o un fallo. */
-  origin: "tool" | "guardrail" | "provider_failure";
+  /**
+   * Origen, para distinguir en el audit: la herramienta, un guardarrail, un
+   * fallo, o una persona que aprobo un borrador que sugeria derivar (2c).
+   */
+  origin: "tool" | "guardrail" | "provider_failure" | "draft_approval";
+  /** Metadata extra para el audit (en draft_approval: approved_by, draft_id). */
+  extraMeta?: Record<string, string | null>;
   /** Si ademas se reabre la conversacion (status open). */
   reopen?: boolean;
 }
@@ -78,6 +83,7 @@ export async function escalateToHuman(
       run_id: args.runId,
       contact_id: args.contactId,
       channel_id: args.channelId,
+      ...(args.extraMeta ?? {}),
     },
     performedByAgentId: args.agentId,
   });
