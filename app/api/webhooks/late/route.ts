@@ -33,6 +33,7 @@ import {
   upsertConversation,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
+import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
 
@@ -289,6 +290,13 @@ async function processMessageEvent(
     postbackPayload: metadata?.postbackPayload ?? null,
     callbackData: metadata?.callbackData ?? null,
   });
+
+  // ── Modo borrador (Bloque 2c) ─────────────────────────────────────────────
+  // El lead escribio antes de que alguien aprobara: el borrador pendiente quedo
+  // viejo. Se marca reemplazado ANTES de las automatizaciones y del agente, sin
+  // importar si el agente esta prendido: aprobarlo mandaria una respuesta que
+  // ignora lo ultimo que dijo. El turno de este mensaje genera otro.
+  await supersedePendingDrafts(supabase, conversation.id);
 
   // ── Auto-pausa de secuencias (F11) ────────────────────────────────────────
   // El lead contesto: el seguimiento automatico de este canal se frena. Va

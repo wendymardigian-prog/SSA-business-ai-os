@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { enqueueConversationClose } from "@/lib/agent/closing";
+import { discardPendingDrafts } from "@/lib/agent/drafts/lifecycle";
+import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
 
 /**
  * Cerrar una conversacion desde la bandeja (F33/F34).
@@ -34,6 +36,10 @@ export async function closeConversation(conversationId: string): Promise<{ ok: t
     console.error("[conversation-status] no pude cerrar:", error?.message ?? "sin filas");
     return { ok: false, error: "No pude cerrar la conversación. Probá de nuevo." };
   }
+
+  // Cerrar es decidir que no hace falta responder: el borrador pendiente, si
+  // habia, sale de la cola (Bloque 2c).
+  await discardPendingDrafts(supabase, conversationId, { reason: AUTO_DISCARD.conversationClosed, decidedBy: user.id });
 
   const service = await createServiceClient();
   await enqueueConversationClose(service, { workspaceId: updated[0].workspace_id, conversationId, trigger: "manual" });
