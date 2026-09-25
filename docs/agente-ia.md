@@ -1,8 +1,9 @@
 # Agente de IA conversacional
 
-Fase 3, Bloques 2a y 2b. El motor del agente que conversa con los leads: el
-loop, sus límites, sus herramientas con parámetros, su memoria por contacto,
-el registro de lo que hace y lo que gasta, y la convivencia con los flows.
+Fase 3, Bloques 2a, 2b y 2c. El motor del agente que conversa con los leads:
+el loop, sus límites, sus herramientas con parámetros, su memoria por contacto,
+el registro de lo que hace y lo que gasta, la convivencia con los flows, y el
+modo borrador (el agente redacta y una persona aprueba antes de que salga).
 
 ## La regla corta
 
@@ -19,6 +20,9 @@ el registro de lo que hace y lo que gasta, y la convivencia con los flows.
   cambiar la temperatura, programar un seguimiento, asignar, derivar,
   pausarse y guardar el resumen dejan su entrada en `audit_log` con el agente
   como actor, y se deshacen desde la pestaña Acciones.
+- **Aprobar un borrador no es una respuesta manual.** El mensaje sale con las
+  dos autorías (agente y quien aprobó) y el agente sigue encendido. Una
+  respuesta escrita a mano sí lo apaga.
 
 ## Qué pasa con un mensaje entrante
 
@@ -41,6 +45,7 @@ webhook (late / evolution)
 |---|---|---|
 | Encendido global | `agents.is_enabled` | Owner/Admin en Agentes. Un tope de gasto con acción "apagar" |
 | Maestro por canal | `agents.enabled_channel_ids` | Owner/Admin en Agentes → Canales. Un canal, un agente |
+| Modo de entrega por canal (00070) | `agents.channel_modes` | Owner/Admin en Agentes → Canales: "Envía directo" o "Deja borradores para aprobar". Sin entrada = envía directo. Decide **cómo** entrega, no **si** actúa |
 | Por conversación, **tres estados** (00066) | `conversations.agent_enabled` | Cualquiera en su scope, desde la bandeja. `NULL` = **heredar del canal** (el default); `true` = forzado prendido; `false` = forzado apagado |
 | Pausa de un flow o del propio agente | `conversations.agent_paused_until` | Nodos "Pausar / Reanudar agente IA" y la herramienta `pausarse`. Reanudar nunca prende lo que nadie prendió |
 
@@ -100,6 +105,13 @@ Validación: `demora + timeout + 30 < 300` (el `maxDuration` de la ruta).
 En este orden, antes del modelo: temas vedados → enojo → urgencia → horario
 (Costa Rica) → tope de respuestas (se reinicia cuando escribe una persona) →
 turnos sin resolver → topes de gasto. Los que derivan no marcan error.
+
+**El tope de respuestas por conversación es opcional desde la 00070** y por
+defecto está vacío (sin tope). La columna y el guardarraíl quedan: volver a
+tenerlo es escribir un número. El freno contra un agente en loop son los topes
+de gasto y la regla de turnos sin resolver. Los dos contadores
+(`countAgentReplies`) suman los runs `responded` **y** los borradores enviados:
+sin lo segundo, en modo borrador no subirían nunca.
 
 ## Base de conocimiento
 
@@ -217,6 +229,140 @@ modelos. Se borra con una respuesta buena del agente, un mensaje de una persona 
 el cierre de la conversación. En la bandeja: filtro "Con error del agente" y un
 punto rojo que lleva al run.
 
+## Modo borrador (Bloque 2c)
+
+Cuando el canal de la conversación está en modo borrador, el turno es idéntico
+hasta el final (guardarraíles, contexto, KB, herramientas, formato), pero en vez
+de enviar **deja la respuesta en `agent_drafts`** y el run cierra `drafted`. Una
+persona la revisa en **Borradores** (o arriba del campo de escritura de la
+conversación) y decide: enviar, editar y enviar, regenerar o descartar.
+
+### Por qué una tabla aparte y no un mensaje "borrador"
+
+Una fila en `messages` la contarían los dashboards como enviada, el contexto del
+agente la leería como algo que dijo, y `extractBurst` la tomaría como la salida
+que cierra la ráfaga. **El borrador no es un mensaje: no cierra la ráfaga.** El
+turno siguiente responde todo lo acumulado desde la última salida real. Tampoco
+lo leen la memoria ni el resumen de cierre: un borrador descartado no contamina
+nada.
+
+### Qué cambia en el turno (`lib/agent/runner.ts`)
+
+| | Envío directo | Modo borrador |
+|---|---|---|
+| Demora deliberada | sí | **no**: no hay nadie del otro lado esperando que parezca humano |
+| Horario de atención | aplica | **no**: si hay una persona para aprobar, no está fuera de horario (queda `outside_hours` en el run) |
+| Guardarraíl que deriva, tope de gasto, fallo del proveedor, salida vacía | deriva y apaga el agente | **fila sin texto** con el motivo y la sugerencia de derivar; el agente no se apaga. La cola es el único lugar de "lo que necesita respuesta" |
+| `derivar_a_humano` y `pausarse` | se ejecutan | **no se ejecutan**: quedan como sugerencia en el borrador y se aplican si alguien lo aprueba |
+| Etiquetar, temperatura, seguimiento, asignar, leer CRM, KB | se ejecutan | se ejecutan igual; quedan listadas en el borrador. Si se descarta, se revierten desde Acciones |
+
+Un run nuevo: **`drafted`**. El costo existe igual (se descarte o no).
+
+### El ciclo de vida
+
+| Estado | Cuándo |
+|---|---|
+| `pending` | El agente terminó su turno. Espera decisión |
+| `sending` | Alguien lo aprobó y está saliendo en este instante |
+| `sent` | Salió (al menos una parte; las que ya salieron no se reenvían nunca) |
+| `failed` | El envío falló. Se puede reintentar |
+| `discarded` | Alguien lo descartó, o hubo una salida real por otro lado (motivos `auto:`) |
+| `superseded` | El lead escribió antes de que se aprobara: el turno nuevo genera otro |
+| `regenerated` | Alguien pidió otra versión: hay un borrador nuevo con `previous_draft_id` |
+
+**Un solo borrador vivo por conversación** (`pending`, `sending` o `failed`),
+garantizado por el índice único parcial `agent_drafts_one_open_per_conversation`.
+
+- **Un entrante nuevo** marca `superseded` el pendiente o fallido, en los dos
+  webhooks, antes de las automatizaciones. **Nunca uno en `sending`**: ese está
+  saliendo y lo termina el servidor.
+- **Una salida real lo descarta**: una respuesta a mano (`applyManualReply`), un
+  mensaje desde el celular por WhatsApp (`fromMe`), o cerrar la conversación.
+- **Un turno lento no pisa uno más nuevo**: si al guardar ya hay un entrante o
+  un borrador más reciente, el suyo nace `superseded`.
+- **Si hay uno en `sending`, el turno no revienta**: cierra `skipped` /
+  `draft_blocked_by_send` y se reprograma en 60 s con la misma clave del burst.
+- El barrido de inactividad **no cierra** conversaciones con un borrador vivo.
+
+### La trampa: aprobar no es una respuesta manual
+
+`sendDraft` (`lib/agent/drafts/actions.ts`) envía por `sendAgentParts` con
+`sent_by_agent_id` **y** `sent_by_user_id`, y nunca pasa por `applyManualReply`.
+Además `lastHumanReplyAt` ignora los mensajes con `sent_by_agent_id`, así un
+borrador aprobado no reinicia los guardarraíles ni hace abortar el turno
+siguiente. Si cualquiera de las dos cosas se rompe, el modo borrador funciona
+una sola vez por conversación.
+
+### Las acciones (`lib/actions/agent-drafts.ts`)
+
+Leen y toman con el **cliente del usuario** (la RLS aplica el scope de leads: un
+Member decide solo sobre los suyos, y el `WITH CHECK` exige
+`decided_by = auth.uid()`); envían y marcan `sent`/`failed` con el service role.
+
+- **Enviar**: bloqueo optimista (`pending|failed → sending`). Antes recalcula la
+  ventana contra el último mensaje del lead, y si el lead volvió a escribir o ya
+  hubo una respuesta, no sale. "No contactar" pide confirmación. Las
+  sugerencias se aplican con el agente como actor y `approved_by` en metadata.
+- **Editar y enviar**: guarda `sent_body` distinto de `body` (esa diferencia es
+  la métrica de calidad). El texto editado no se recorta ni se le sacan emojis.
+- **Regenerar**: si ya hay un turno agendado para la conversación, no encola
+  otro. Si no, toma el borrador y encola un turno **con la clave del burst**
+  (`agent_burst:<conv>`): nunca corren dos turnos a la vez. La instrucción es
+  una clave **volátil** (`push_debounced_job`, 00070): si el lead escribe
+  mientras espera, la instrucción se descarta (era sobre el borrador viejo) y
+  se conserva la cadena.
+- **Descartar**: con motivo opcional. Es una decisión, no una ventana perdida.
+
+### La ventana de mensajería
+
+El SDK de Zernio no la expone por conversación. Se usa lo que documenta Meta:
+**24 h desde el último mensaje del lead** para Instagram y Facebook, sin ventana
+para WhatsApp por Evolution. Configurable por canal en
+`channels.messaging_window_hours` (NULL = default, 0 = sin ventana). La regla
+vive en `lib/messaging-window.ts` y en SQL como `messaging_window_hours()`.
+
+"No enviable" no es un estado: es el cálculo sobre `sendable_until`. La cola lo
+muestra en cinco niveles, derivados de la ventana del canal (mitad, cuarto,
+octavo; con 24 h son 12, 6 y 3 h), con leyenda. Pasada la ventana la fila ofrece
+**responder a mano**. Nada se autovence: el borrador sigue `pending`.
+
+El barrido de la 00070 (cada 5 minutos) marca `window_missed_at` y congela de
+quién era (`missed_while_assigned_to`), y pasa a `failed` los `sending`
+colgados más de 5 minutos. **Los avisos a las personas son la 00072**, que está
+escrita y probada pero **sin aplicar** (ver abajo).
+
+### La cola (`/dashboard/drafts`)
+
+- **De quién es un borrador**: del setter del contacto; sin setter, del
+  vendedor; sin ninguno, "sin asignar" (visible, no escondido). Se resuelve por
+  el contacto, sin campo propio. **La regla la confirma Wendy.**
+- Por defecto muestra **los míos**; filtros: sin asignar, una persona, todos,
+  historial, por vencer, canal. El contador del menú coincide con esa vista
+  (Owner/Admin ven además el total).
+- Cinco columnas: contacto, lo que escribió el lead, la respuesta propuesta, lo
+  que hizo el agente (columna propia), la decisión. Ordenada por ventana: lo
+  que vence antes primero, cerrados y sin ventana al fondo.
+- **Cmd/Ctrl + Enter** envía la fila activa. Realtime sobre `agent_drafts`.
+
+### La medición
+
+Arriba de la cola, cinco números, de `draft_queue_metrics` (00071):
+
+| Número | Qué mide |
+|---|---|
+| Respuesta | `responded_at − inbound_at`: lo que percibe el lead, **desde su último mensaje** |
+| Lo que tarda el agente | `completed_at − inbound_at`: **incluye la espera de la ráfaga**, no es la velocidad del modelo |
+| Lo que tarda la aprobación | `responded_at − completed_at`, **solo sobre runs con borrador**. El único que se puede mejorar |
+| Ventanas perdidas (7 días) | Borradores que quedaron pendientes hasta que cerró la ventana. Descartar no cuenta |
+| Aprobados sin editar (7 días) | El dato para decidir cuándo pasar a envío directo |
+
+`agent_runs.inbound_at` y `responded_at` se llenan **en los dos modos**, así el
+número compara envío directo contra borrador. La función se llama con el
+cliente del usuario y **se defiende sola**: a un Member le devuelve siempre sus
+números, pase el id que pase. El desglose por persona
+(`draft_queue_metrics_by_person`) es solo Owner/Admin. En Costos: gasto en
+borradores descartados y porcentaje enviado sin editar.
+
 ## Verificación en vivo pendiente (los ocho casos)
 
 El agente no corrió nunca con un mensaje real. Cuando el system prompt esté
@@ -253,11 +399,63 @@ F30, F31, F32, F33):
    aparece la entrada `revert` en el historial del contacto. Con un Member:
    ve solo lo de sus leads y ninguna columna de costo.
 
+## Verificación en vivo del modo borrador (Bloque 2c)
+
+Con el system prompt completo y el agente encendido **solo en modo borrador**
+en Instagram, con Borradores y la pestaña Runs abiertas:
+
+1. **Poner el canal en borrador y volver**: en Agentes → Canales, "Deja
+   borradores para aprobar"; volver a "Envía directo" con un clic y otra vez a
+   borrador. Queda en el historial de la configuración.
+2. **Un DM genera un borrador y no sale nada**: el lead no recibe nada, la fila
+   aparece sola en Borradores (sin recargar), y el run queda `drafted` con sus
+   tokens y su costo. En la conversación, el borrador arriba del campo de
+   escritura con borde punteado y "no enviado".
+3. **Enviar**: sale tal cual; el mensaje de la bandeja es del agente y de quien
+   aprobó; **el interruptor de la conversación sigue igual** (no pasa a
+   "Apagado"). Mandar otro DM: vuelve a dejar un borrador (la trampa).
+4. **Editar y enviar**: cambiar el texto; en Costos, "enviados sin editar" no
+   lo cuenta.
+5. **Regenerar** con "más corto": aparece un borrador nuevo en segundos, con un
+   run nuevo `trigger: manual`; el anterior queda "Se pidió otra versión".
+6. **Descartar**: sale de la cola; en Costos aparece el gasto descartado.
+7. **`superseded` en vivo**: con un borrador pendiente, escribir otra cosa desde
+   la cuenta de prueba: el viejo desaparece y el nuevo responde los dos
+   mensajes.
+8. **Responder a mano con un borrador pendiente**: el borrador se descarta y el
+   agente queda "Apagado" en esa conversación (esto sí es manual).
+9. **Guardarraíl a la cola**: un DM con "descuento": fila sin texto, "Tema
+   vedado", sin llamar al modelo, y el agente sigue encendido.
+10. **Derivar y pausarse como sugerencia**: pedir "quiero hablar con alguien y
+    no me escribas hasta el lunes": chips de sugerencia en la fila; al enviar,
+    la conversación pasa a una persona y queda la entrada en Acciones con
+    `approved_by`.
+11. **No enviable**: dejar un borrador más de 24 h (o bajar la ventana del
+    canal para probar): la fila pasa por amarillo, naranja y rojo con la
+    leyenda, y al cerrar ofrece "Responder a mano". La franja suma una ventana
+    perdida.
+12. **Member real**: con un Member setter de un solo lead, ve y aprueba solo
+    ese borrador, su contador del menú coincide con "míos", y su franja muestra
+    sus números.
+13. **Panel del contacto**: editar temperatura, seguimiento, setter, notas y
+    etiquetas desde la bandeja; todo queda en el historial de la ficha con
+    quién lo cambió. "No contactar" pide confirmación y pausa las secuencias.
+
+La 00072 (avisos de ventana) se aplica después de un par de días de cola, y se
+verifica con un borrador que cruce la mitad de la ventana: un solo aviso, para
+el setter, que no se repite.
+
 ## Lo que no está resuelto
 
 - **Respuestas dadas fuera del sistema.** Si alguien contesta desde la app de
   Instagram (no desde la bandeja), el sistema no se entera: el webhook de Zernio
-  descarta los salientes. El agente no se apaga solo en ese caso.
+  descarta los salientes. El agente no se apaga solo en ese caso. **En modo
+  borrador pesa mucho más**: un borrador vive horas, en esas horas es muy
+  probable contestar desde el celular, y ni se descarta el borrador ni lo ve la
+  guarda de "ya hubo una respuesta" de Enviar. Contestar desde la bandeja, o
+  descartar el borrador a mano.
+- **Avisos de ventana (00072)** escritos y probados, sin aplicar: se enchufan
+  cuando la cola tenga un par de días y se sepa su volumen.
 - **WhatsApp:** los ecos de lo que manda el propio sistema llegan como `fromMe`,
   y no se distinguen de forma confiable de una respuesta desde el teléfono. Hoy
   un `fromMe` no apaga el agente. Revisar cuando se conecte el número.

@@ -5,6 +5,115 @@ cada bloque.
 
 ---
 
+## Etapa 1 · Fase 3 · Bloque 2c — Modo borrador del agente
+
+**Fecha:** 25 de septiembre de 2026
+**Alcance:** el documento `requerimientos-bloque2c-modo-borrador.md` (v1.1),
+más los ajustes de las dos rondas de revisión del plan (estados `sending` y
+`failed`, medición en los dos modos, trabajo de varias personas en la misma
+cola). El agente sigue **apagado y sin canales**: lo prueba Wendy con la lista
+de verificación en vivo de `docs/agente-ia.md`.
+
+**Qué se construyó:** el modo por canal (envía directo / deja borradores); la
+rama del turno que deja la respuesta en `agent_drafts` y cierra el run
+`drafted`; el ciclo de vida del borrador (reemplazo por un entrante nuevo,
+descarte por una salida real, un solo vivo por conversación garantizado en la
+base); las cuatro decisiones (enviar, editar y enviar, regenerar, descartar)
+con bloqueo optimista; la pantalla Borradores con su contador en el menú, la
+franja de medición y Realtime; el borrador dentro de la conversación; la
+métrica de gasto descartado en Costos; el panel del contacto ampliado; y los
+avisos de ventana (00072, sin aplicar).
+
+### Decisiones tomadas
+
+| Decisión | Por qué |
+|---|---|
+| **Aprobar un borrador no es una respuesta manual** | Si pasara por `applyManualReply`, el agente quedaría apagado y el modo funcionaría una vez por conversación. El mensaje lleva las dos autorías, y `lastHumanReplyAt` lo ignora (era un segundo lugar, silencioso, que envenenaba los guardarraíles) |
+| **Tabla aparte**, nunca un mensaje "borrador" | Un mensaje lo contarían los dashboards, lo leería el contexto y cerraría la ráfaga |
+| **Estados `sending` y `failed`**, además de los cinco del plano | Un envío en varias partes que falla a mitad no puede quedar `sent` ni volver a `pending` (chocaría con el índice único). `failed` es vivo: entra en el índice y se reemplaza con un entrante nuevo |
+| **Un entrante nuevo reemplaza `pending` y `failed`, nunca `sending`** | Lo que está saliendo lo termina el servidor. Si el turno nuevo encuentra uno saliendo, no falla: se reprograma en 60 s |
+| **Un turno lento no pisa uno más nuevo** | Sin salida que cierre la ráfaga, dos turnos pueden terminar en cualquier orden. El que responde una ráfaga más vieja nace `superseded` |
+| **Regenerar usa la clave del burst** y la instrucción es volátil | Nunca corren dos turnos sobre la misma conversación. `push_debounced_job` descarta en un conflicto las claves que le dicen (genérico, no sabe de borradores): la instrucción era sobre el borrador viejo, la cadena se conserva |
+| **En modo borrador no aplican la demora ni el horario de atención** | No hay nadie esperando que parezca humano; si hay una persona para aprobar, no está fuera de horario |
+| **Guardarraíles, fallos y derivaciones dejan una fila sin texto** | La cola es el único lugar de "lo que necesita respuesta". En modo borrador el agente no se apaga y no hay marca de error: la fila es la señal |
+| **Las herramientas de clasificación se aplican al redactar** (decisión del plano) | Un borrador descartado ya etiquetó: se revierte desde Acciones. Al regenerar, el prompt dice lo que ya aplicó |
+| **Ventana: 24 h desde el último mensaje del lead** (Instagram/Facebook), configurable por canal | El SDK de Zernio no la expone por conversación; es el plazo que documenta Meta. WhatsApp por Evolution no tiene ventana |
+| **Nada se autovence** | Un borrador pendiente queda pendiente; la ventana cerrada es un cálculo, y la acción pasa a "responder a mano" |
+| **De quién es un borrador: setter, si no vendedor, si no "sin asignar"**, por el contacto | Un campo propio se desincronizaría al reasignar. **La regla la confirma Wendy** |
+| **Cola en "míos" por defecto**, sin lock ni presencia | Dos personas no abren el mismo borrador si cada una ve el suyo; el bloqueo optimista cubre el resto |
+| **Tres tiempos separados**; el de aprobación solo sobre borradores | Con un solo número no se ve cuál se puede mejorar; con los de envío directo, la mediana se llenaría de ceros |
+| **Las métricas se defienden solas** en la base | Se llaman con el cliente del usuario; un Member recibe sus números pase el id que pase. `ai_cost_report` sigue solo service role porque son costos |
+| **Tope de respuestas vacío = sin tope**, y es el default | Lo que protegía contra un loop lo cubren los topes de gasto y la regla de escalamiento. La fila existente pasó a vacío porque tenía el default 12 |
+| **Los avisos de ventana (00072) se aplican después** | Es lo único que notifica a una persona; conviene enchufarlo sabiendo el volumen. Las ventanas perdidas y los envíos colgados ya los cubre el barrido de la 00070 |
+
+### Lo que la exploración corrigió sobre lo que se asumía
+
+- El resultado de un run es la columna `status`, no "resultado".
+- `manual-reply.ts` no detecta nada: lo llama la ruta de envío manual. La
+  detección para los guardarraíles era otro lugar (`lastHumanReplyAt`).
+- `countAgentReplies` contaba solo runs `responded`: en modo borrador el tope y
+  la regla de turnos sin resolver no habrían subido nunca.
+- Marcar "no contactar" a mano no pausaba las secuencias (solo la detección
+  automática). Ahora sí.
+- No existía la fecha de actualización de la memoria del agente.
+- Al reintentar un envío fallido, el mensaje fallido del primer intento se
+  contaba como "ya hubo una respuesta". Lo encontró un test; ahora los envíos
+  fallidos no cuentan.
+
+### Migraciones
+
+| # | Qué crea |
+|---|---|
+| 00070 | `agent_drafts` (RLS por scope de leads, índice único de un vivo por conversación, Realtime, retención de 12 meses); `agents.channel_modes`; tope de respuestas opcional; run `drafted` e `inbound_at`/`responded_at`; `channels.messaging_window_hours`; `contacts.ai_summary_updated_at`; `messaging_window_hours()`; barrido cada 5 minutos; `push_debounced_job` con claves volátiles |
+| 00071 | `ai_cost_report` con borradores; `draft_queue_metrics` y `draft_queue_metrics_by_person` |
+| 00072 | Avisos de ventana por persona y corte. **Escrita y probada, sin aplicar** |
+
+00070 y 00071 aplicadas en producción el 25/9/2026. Idempotentes, funciones con
+`SET search_path = ''`.
+
+### Verificación
+
+- 1050 tests en verde (de 978 al empezar): el turno en modo borrador no envía
+  y deja el run `drafted`; aprobar **no** apaga el agente (el test de la
+  trampa); un entrante nuevo marca `superseded`; dos vivos en la misma
+  conversación son imposibles; el borrador no cierra la ráfaga; derivar y
+  pausarse quedan como sugerencia y se aplican al aprobar; un guardarraíl deja
+  fila sin texto; un envío en vuelo no hace reventar el turno; la regeneración
+  con y sin instrucción; los cinco estados de la ventana; el cálculo de
+  enviable.
+- `verify-rls.mjs` en verde con un Member real: ve y aprueba solo los
+  borradores de sus leads, no crea, no cambia el texto, no decide a nombre de
+  otro, no marca `sent`; dos vivos se rechazan; las métricas le devuelven sus
+  números aunque pida los de otra persona; las claves volátiles en los dos
+  sentidos; edita el estado de sus leads y no el de ajenos.
+- El barrido de la 00070 y la 00072 completa, probados dentro de transacciones
+  que se deshacen (la 00072 corrida dos veces: la segunda no avisa).
+- `npm run build`, `tsc` y `eslint` limpios.
+- Las pantallas se verificaron por compilación, no a ojo: la app pide login y
+  no se ingresan credenciales.
+
+### Deuda anotada
+
+- **Respuestas desde la app de Instagram** no llegan por webhook: no descartan
+  el borrador ni las ve la guarda de "ya hubo una respuesta". En modo borrador
+  pesa mucho más que en envío directo, porque un borrador vive horas y en esas
+  horas es muy probable contestar desde el celular. No se arregla en este
+  bloque.
+- **El eco de WhatsApp desde el celular** (`fromMe`) no lleva
+  `sent_by_user_id` ni apaga el agente (sí descarta el borrador).
+- **Dos enlaces usan `?conversation=`** y la bandeja lee `?c=`: el de la campana
+  (`lib/notifications/types.ts`) y el de la ficha del contacto.
+- **La 00072** se aplica cuando la cola tenga un par de días.
+- **La regla de pertenencia** (setter → vendedor → sin asignar) espera la
+  confirmación de Wendy.
+- **El índice de la cola** no cubre la expresión con la que empieza el orden; a
+  este volumen no importa.
+- Siguen las del 2b: el hueco del system prompt, los ocho casos en vivo, la
+  zona horaria, el backlog de 578 conversaciones y la segunda pasada del
+  backfill.
+
+---
+
 ## Etapa 1 · Fase 3 · Bloque 2b — Herramientas, memoria, cierre y observabilidad del agente
 
 **Fecha:** 24 de septiembre de 2026
