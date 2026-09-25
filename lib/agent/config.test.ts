@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveAgentState, toAgentConfig, isPaused, toAgentMode, fromAgentMode } from "./config";
+import { resolveAgentState, toAgentConfig, isPaused, toAgentMode, fromAgentMode, channelMode, parseChannelModes } from "./config";
 import { agentRow } from "./testing/fixtures";
 
 const NOW = new Date("2026-09-15T16:00:00Z");
@@ -107,5 +107,21 @@ describe("estado efectivo del agente (derivado, nunca guardado)", () => {
     const broken = toAgentConfig(agentRow({ guardrails: { escalation: { maxUnresolvedTurns: "muchos" } } as never }));
     expect(broken.guardrails.escalation.maxUnresolvedTurns).toBe(6);
     expect(broken.guardrails.blockedTopics.enabled).toBe(true);
+  });
+});
+
+describe("channelMode (00070)", () => {
+  const agent = { enabledChannelIds: ["ch-1", "ch-2"], channelModes: parseChannelModes({ "ch-2": "draft", "ch-3": "draft", "ch-1": "raro" }) };
+
+  it("sin entrada es envio directo; un valor desconocido tambien", () => {
+    expect(channelMode(agent, "ch-1")).toBe("send");
+  });
+  it("draft solo en un canal que el agente atiende", () => {
+    expect(channelMode(agent, "ch-2")).toBe("draft");
+    expect(channelMode(agent, "ch-3")).toBe("send");
+  });
+  it("un jsonb que no es objeto no rompe nada", () => {
+    expect(parseChannelModes(null)).toEqual({});
+    expect(parseChannelModes(["draft"])).toEqual({});
   });
 });

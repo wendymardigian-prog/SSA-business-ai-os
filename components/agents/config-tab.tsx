@@ -311,8 +311,8 @@ function GuardrailsSection({ form, set }: SectionProps) {
       <div className="space-y-3 rounded-lg border border-border p-4">
         <p className="text-sm font-medium">Escalamiento</p>
         <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Tope de respuestas por conversación" hint="Se reinicia cuando escribe una persona del equipo.">
-            {(id) => <NumberInput id={id} value={form.maxRepliesPerConversation} min={1} max={500} onChange={(v) => set({ maxRepliesPerConversation: v ?? 12 })} />}
+          <Field label="Tope de respuestas por conversación" hint="Vacío = sin tope. El freno real son los topes de gasto y la regla de escalamiento. Si ponés un número, se reinicia cuando escribe una persona del equipo.">
+            {(id) => <NumberInput id={id} value={form.maxRepliesPerConversation} min={1} max={500} allowEmpty placeholder="Sin tope" onChange={(v) => set({ maxRepliesPerConversation: v })} />}
           </Field>
           <Field label="Turnos seguidos sin resolver">
             {(id) => <NumberInput id={id} value={g.escalation.maxUnresolvedTurns} min={1} max={50} onChange={(v) => patch({ escalation: { ...g.escalation, maxUnresolvedTurns: v ?? 6 } })} />}

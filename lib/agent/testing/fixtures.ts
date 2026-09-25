@@ -39,6 +39,7 @@ export function agentRow(over: Partial<AgentRow> = {}): AgentRow {
     monthly_cost_limit_usd: 100,
     monthly_cost_limit_action: "disable",
     enabled_channel_ids: ["ch-1"],
+    channel_modes: {},
     config: {},
     created_by: null,
     created_at: "2026-09-01T00:00:00.000Z",

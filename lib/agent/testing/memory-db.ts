@@ -34,6 +34,13 @@ export function memoryDb(
     /** Relaciones embebidas simples: "tabla.relacion" -> resolver(row, db). */
     joins?: Record<string, (row: Row, db: MemoryDb) => unknown>;
     now?: () => Date;
+    /**
+     * Indices unicos parciales: "tabla" -> una funcion que dice si dos filas
+     * chocan. Un insert o update que choca devuelve el error 23505, igual que
+     * Postgres. Sin esto, la garantia de "un solo borrador vivo" no se podria
+     * probar en memoria.
+     */
+    unique?: Record<string, (a: Row, b: Row) => boolean>;
   } = {},
 ): MemoryDb {
   const tables: Record<string, Row[]> = {};
@@ -64,19 +71,29 @@ export function memoryDb(
     let orderBy: { col: string; asc: boolean } | null = null;
     let limitN: number | null = null;
 
-    const apply = (): { data: unknown; error: null; count?: number } => {
+    const clash = options.unique?.[table];
+    const duplicate = { data: null, error: { code: "23505", message: `duplicate key value violates unique constraint on ${table}` } };
+
+    const apply = (): { data: unknown; error: null | { code: string; message: string }; count?: number } => {
       const rows = db.rows(table);
       if (mode === "insert") {
         const list = (Array.isArray(payload) ? payload : [payload]) as Row[];
-        const inserted = list.map((r) => {
-          const row: Row = { id: newId(table), created_at: clock().toISOString(), ...r };
-          rows.push(row);
-          return row;
-        });
-        return { data: inserted, error: null };
+        const candidates = list.map((r) => ({ id: newId(table), created_at: clock().toISOString(), ...r }) as Row);
+        if (clash && candidates.some((c, i) => rows.some((r) => clash(c, r)) || candidates.some((o, j) => j !== i && clash(c, o)))) {
+          return duplicate;
+        }
+        candidates.forEach((row) => rows.push(row));
+        return { data: candidates, error: null };
       }
       let matched = rows.filter((r) => filters.every((f) => f(r)));
       if (mode === "update") {
+        if (clash) {
+          const after = matched.map((r) => ({ ...r, ...(payload as Row) }));
+          const others = rows.filter((r) => !matched.includes(r));
+          if (after.some((a, i) => others.some((o) => clash(a, o)) || after.some((o, j) => j !== i && clash(a, o)))) {
+            return duplicate;
+          }
+        }
         matched.forEach((r) => Object.assign(r, payload));
         return { data: matched, error: null };
       }
@@ -147,10 +164,12 @@ export function memoryDb(
       single: async () => {
         const res = apply();
         const list = res.data as Row[];
+        if (res.error) return { data: null, error: res.error };
         return list?.length === 1 ? { data: list[0], error: null } : { data: null, error: { message: "no single row" } };
       },
       maybeSingle: async () => {
         const res = apply();
+        if (res.error) return { data: null, error: res.error };
         const list = (res.data as Row[]) ?? [];
         return { data: list[0] ?? null, error: null };
       },

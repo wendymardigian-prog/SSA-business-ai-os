@@ -209,7 +209,7 @@ export interface AgentScreenData {
     bundleWindowSeconds: number;
     responseDelaySeconds: number;
     maxWaitSeconds: number | null;
-    maxRepliesPerConversation: number;
+    maxRepliesPerConversation: number | null;
     burstMaxAgeHours: number;
     closeAfterInactiveHours: number;
     summaryOnClose: boolean;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractBurst, exchangeStart, type StoredMessage } from "./context";
+import { countAgentReplies, extractBurst, exchangeStart, lastHumanReplyAt, type StoredMessage } from "./context";
+import { memoryDb } from "./testing/memory-db";
 
 /**
  * La rafaga: que responde un turno. Pura.
@@ -64,5 +65,42 @@ describe("exchangeStart", () => {
   it("arranca despues del ultimo silencio largo", () => {
     const messages = [msg("a", "inbound", hoursAgo(10)), msg("b", "outbound", hoursAgo(9.9)), msg("c", "inbound", hoursAgo(1))];
     expect(exchangeStart(messages, 120)).toBe(hoursAgo(1));
+  });
+});
+
+describe("lastHumanReplyAt y countAgentReplies con borradores (00070)", () => {
+  const out = (id: string, created_at: string, who: { user?: string; agent?: string }) => ({
+    id,
+    conversation_id: "cv-1",
+    direction: "outbound",
+    text: "x",
+    created_at,
+    sent_by_user_id: who.user ?? null,
+    sent_by_agent_id: who.agent ?? null,
+  });
+
+  it("un borrador aprobado (agente + persona) NO es una respuesta humana", async () => {
+    const db = memoryDb({
+      messages: [
+        out("m1", "2026-09-15T10:00:00.000Z", { user: "u-1" }),
+        out("m2", "2026-09-15T11:00:00.000Z", { user: "u-1", agent: "agent-1" }),
+      ],
+    });
+    expect(await lastHumanReplyAt(db.client, "cv-1")).toBe("2026-09-15T10:00:00.000Z");
+  });
+
+  it("cuenta los runs responded y los borradores enviados; no los descartados", async () => {
+    const db = memoryDb({
+      agent_runs: [
+        { id: "r1", conversation_id: "cv-1", source: "agent", status: "responded", created_at: "2026-09-15T12:00:00.000Z" },
+        { id: "r2", conversation_id: "cv-1", source: "agent", status: "drafted", created_at: "2026-09-15T12:05:00.000Z" },
+      ],
+      agent_drafts: [
+        { id: "d1", conversation_id: "cv-1", status: "sent", decided_at: "2026-09-15T12:10:00.000Z" },
+        { id: "d2", conversation_id: "cv-1", status: "discarded", decided_at: "2026-09-15T12:20:00.000Z" },
+        { id: "d3", conversation_id: "cv-1", status: "sent", decided_at: "2026-09-15T09:00:00.000Z" },
+      ],
+    });
+    expect(await countAgentReplies(db.client, { conversationId: "cv-1", since: "2026-09-15T10:00:00.000Z" })).toBe(2);
   });
 });
