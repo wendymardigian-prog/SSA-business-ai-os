@@ -153,6 +153,12 @@ export interface CostReport {
   byAgent: Array<{ agentId: string | null; name: string; runs: number; costUsd: number }>;
   byModel: Array<{ provider: string | null; model: string; runs: number; costUsd: number; inputTokens: number; outputTokens: number; missingPricing: number }>;
   topConversations: Array<{ conversationId: string; contactId: string | null; contactName: string | null; runs: number; costUsd: number }>;
+  /**
+   * Modo borrador (Bloque 2c): cuantos turnos dejaron borrador, cuanto se gasto
+   * en los que se descartaron (lo que cuesta la desconfianza) y cuantos se
+   * enviaron sin editar (el dato para pasar a envio directo).
+   */
+  drafts: { drafted: number; discarded: number; discardedCostUsd: number; sent: number; sentUnedited: number };
 }
 
 export interface CostsTabData {

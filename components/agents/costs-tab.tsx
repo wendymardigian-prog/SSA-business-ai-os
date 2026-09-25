@@ -46,6 +46,21 @@ export function CostsTab({ data }: { data: AgentScreenData }) {
             <Stat label="Promedio por conversación" value={formatUsd(averages.perConversation)} hint={`${t.conversations} conversaciones`} />
             <Stat label="Costo por derivación" value={formatUsd(averages.perEscalation)} hint={averages.escalationRatePct === null ? "sin derivaciones" : `${t.escalations} derivaciones (${averages.escalationRatePct}% de los turnos)`} />
           </div>
+          {report.drafts.drafted > 0 && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Stat
+                label="Gasto en borradores descartados"
+                value={formatUsd(report.drafts.discardedCostUsd)}
+                hint={`${report.drafts.discarded} descartado${report.drafts.discarded === 1 ? "" : "s"}${t.costUsd > 0 ? ` · ${Math.round((report.drafts.discardedCostUsd / t.costUsd) * 100)}% del total` : ""}. Es lo que cuesta revisar antes de enviar.`}
+              />
+              <Stat
+                label="Borradores enviados sin editar"
+                value={report.drafts.sent > 0 ? `${Math.round((report.drafts.sentUnedited / report.drafts.sent) * 100)}%` : "—"}
+                hint={`${report.drafts.sentUnedited} de ${report.drafts.sent} enviados salieron tal cual. Es el dato para pasar a envío directo.`}
+              />
+              <Stat label="Turnos que dejaron borrador" value={String(report.drafts.drafted)} hint="En canales en modo borrador." />
+            </div>
+          )}
           {t.missingPricing > 0 && (
             <Notice tone="warning">
               {t.missingPricing} run{t.missingPricing === 1 ? "" : "s"} del período no tienen precio cargado para su modelo: el total está por debajo del real. Cargá el precio abajo.

@@ -35,6 +35,7 @@ interface RawReport {
     escalations: number;
     responded: number;
     missing_pricing: number;
+    drafted?: number;
     input_tokens: number;
     output_tokens: number;
     cached_tokens: number;
@@ -44,6 +45,8 @@ interface RawReport {
   by_agent: Array<{ agent_id: string | null; runs: number; cost_usd: number | string }>;
   by_model: Array<{ provider: string | null; model: string; runs: number; cost_usd: number | string; input_tokens: number; output_tokens: number; missing_pricing: number }>;
   top_conversations: Array<{ conversation_id: string; contact_id: string | null; runs: number; cost_usd: number | string }>;
+  /** 00071. Opcional: un reporte de antes de la migracion no lo trae. */
+  drafts?: { discarded: number; discarded_cost_usd: number | string; sent: number; sent_unedited: number };
 }
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
@@ -128,6 +131,13 @@ export async function loadCostsTab(
         byAgent: raw.by_agent.map((a) => ({ agentId: a.agent_id, name: a.agent_id ? args.agentNames.get(a.agent_id) ?? "Agente borrado" : "Sin agente (flows, secuencias, indexación)", runs: a.runs, costUsd: n(a.cost_usd) })),
         byModel: raw.by_model.map((m) => ({ provider: m.provider, model: m.model, runs: m.runs, costUsd: n(m.cost_usd), inputTokens: m.input_tokens, outputTokens: m.output_tokens, missingPricing: m.missing_pricing })),
         topConversations: raw.top_conversations.map((t) => ({ conversationId: t.conversation_id, contactId: t.contact_id, contactName: null, runs: t.runs, costUsd: n(t.cost_usd) })),
+        drafts: {
+          drafted: raw.totals.drafted ?? 0,
+          discarded: raw.drafts?.discarded ?? 0,
+          discardedCostUsd: n(raw.drafts?.discarded_cost_usd),
+          sent: raw.drafts?.sent ?? 0,
+          sentUnedited: raw.drafts?.sent_unedited ?? 0,
+        },
       }
     : emptyReport();
 
@@ -180,5 +190,6 @@ function emptyReport(): CostReport {
     byAgent: [],
     byModel: [],
     topConversations: [],
+    drafts: { drafted: 0, discarded: 0, discardedCostUsd: 0, sent: 0, sentUnedited: 0 },
   };
 }

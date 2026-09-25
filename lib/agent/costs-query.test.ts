@@ -76,3 +76,29 @@ describe("loadHeaderKpis", () => {
     expect(kpis).toEqual({ runsToday: 1, monthCostUsd: 0.08, escalationRatePct: 25, missingPricing: 1 });
   });
 });
+
+describe("borradores en Costos (Bloque 2c)", () => {
+  const load = (report: unknown) =>
+    loadCostsTab(world(report).client, {
+      workspaceId: "ws-1",
+      agent,
+      filters: parseCostFilters({}),
+      agentNames: new Map(),
+      workspaceLimits: { daily: null, monthly: null },
+      canEditPricing: false,
+    });
+
+  it("lee el gasto en borradores descartados y los enviados sin editar", async () => {
+    const data = await load({
+      ...rpcReport,
+      totals: { ...rpcReport.totals, drafted: 5 },
+      drafts: { discarded: 2, discarded_cost_usd: "0.03", sent: 3, sent_unedited: 2 },
+    });
+    expect(data.report.drafts).toEqual({ drafted: 5, discarded: 2, discardedCostUsd: 0.03, sent: 3, sentUnedited: 2 });
+  });
+
+  it("un reporte sin la parte de borradores (antes de la 00071) no rompe nada", async () => {
+    const data = await load(rpcReport);
+    expect(data.report.drafts).toEqual({ drafted: 0, discarded: 0, discardedCostUsd: 0, sent: 0, sentUnedited: 0 });
+  });
+});
