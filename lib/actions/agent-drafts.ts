@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
-import { draftOwner } from "@/lib/agent/drafts/queue-query";
+import { draftOwner, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 
 /**
@@ -73,16 +74,20 @@ export async function regenerateDraftAction(draftId: string, instruction?: strin
  * vendedor). Para Owner/Admin suma los sin asignar y el total del workspace,
  * asi un Owner sin contactos propios no ve "0" con doce esperando.
  */
-export async function countPendingDrafts(
-  workspaceId: string,
-  role: string | null,
-): Promise<{ mine: number; unassigned: number | null; total: number | null }> {
-  const { supabase, user } = await session();
-  if (!user) return { mine: 0, unassigned: null, total: null };
+export interface PendingDraftCounts {
+  mine: number;
+  /** Solo Owner/Admin. */
+  unassigned: number | null;
+  /** Solo Owner/Admin: todo el workspace. */
+  total: number | null;
+}
+
+export async function countPendingDrafts(): Promise<PendingDraftCounts> {
+  const { workspace, role, supabase, user } = await getWorkspace();
   const { data, error } = await supabase
     .from("agent_drafts")
     .select("id, contacts(setter_id, vendedor_id)")
-    .eq("workspace_id", workspaceId)
+    .eq("workspace_id", workspace.id)
     .in("status", LIVE_DRAFT_STATUSES)
     .limit(1000);
   if (error) {
@@ -97,4 +102,12 @@ export async function countPendingDrafts(
     unassigned: admin ? owners.filter((o) => o === null).length : null,
     total: admin ? rows.length : null,
   };
+}
+
+/** El borrador vivo de una conversacion (bandeja). La RLS acota al scope de leads. */
+export async function loadConversationDraft(conversationId: string): Promise<DraftQueueRow | null> {
+  if (typeof conversationId !== "string" || !conversationId) return null;
+  const { supabase, user } = await session();
+  if (!user) return null;
+  return loadLiveDraft(supabase, conversationId);
 }

@@ -304,3 +304,21 @@ export async function loadDraftQueue(
   const messages = await loadBurstMessages(user, raws);
   return { rows: raws.map((r) => toRow(r, now, messages)), total: count ?? raws.length, aboutToExpire: 0, anyDraft };
 }
+
+/** El borrador vivo de una conversacion, para mostrarlo arriba del campo de escritura. */
+export async function loadLiveDraft(user: Db, conversationId: string, now: Date = new Date()): Promise<DraftQueueRow | null> {
+  const { data, error } = await user
+    .from("agent_drafts")
+    .select(QUEUE_COLUMNS)
+    .eq("conversation_id", conversationId)
+    .in("status", LIVE_DRAFT_STATUSES)
+    .maybeSingle();
+  if (error) {
+    console.error("[drafts] no pude leer el borrador de la conversacion:", error.message);
+    return null;
+  }
+  if (!data) return null;
+  const raw = data as unknown as RawDraft;
+  const messages = await loadBurstMessages(user, [raw]);
+  return toRow(raw, now, messages);
+}
