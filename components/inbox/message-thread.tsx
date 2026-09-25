@@ -14,6 +14,7 @@ import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
+import { PendingDraft } from "@/components/inbox/pending-draft";
 import { closeConversation } from "@/lib/actions/conversation-status";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -444,6 +445,14 @@ export function MessageThread({
               Flows pausados
             </span>
           )}
+          {agentInfo?.available && agentInfo.mode === "draft" && (
+            <span
+              className="rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"
+              title="En este canal el agente deja borradores para aprobar: nada sale sin que alguien lo envíe."
+            >
+              Modo borrador
+            </span>
+          )}
           <ConversationAgentToggle
             conversationId={conversation.id}
             mode={conversation.agent_enabled}
@@ -512,6 +521,9 @@ export function MessageThread({
       {staleDays !== null && staleDays >= 7 && (
         <StaleConversationNotice days={staleDays} />
       )}
+
+      {/* Bloque 2c: el borrador del agente, arriba del campo de escritura. */}
+      <PendingDraft conversationId={conversation.id} />
 
       {/* Composer */}
       <div className="border-t border-border p-4">
