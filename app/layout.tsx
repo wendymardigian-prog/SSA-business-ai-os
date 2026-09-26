@@ -44,9 +44,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/*
+          Las dos preferencias que cambian como se ve la pantalla apenas carga:
+          el tema y si el menu lateral esta colapsado. Se aplican como clase en
+          el <html> desde aca, antes de que se pinte nada, porque si esperaran a
+          que React hidrate se veria un parpadeo (claro que se pone oscuro, menu
+          ancho que se achica).
+        */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("theme")==="dark"||(!localStorage.getItem("theme")&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
+            __html: `try{if(localStorage.getItem("theme")==="dark"||(!localStorage.getItem("theme")&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}
+try{if(localStorage.getItem("sidebar-collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}`,
           }}
         />
       </head>
