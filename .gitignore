@@ -39,3 +39,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 supabase/.temp
+
+# codigo de referencia de la etapa 2 (se lee, nunca se importa; se borra al cerrar)
+docs/referencia/

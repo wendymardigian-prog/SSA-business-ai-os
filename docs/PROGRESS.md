@@ -1,61 +1,144 @@
-# Progreso — Fase 3, Bloques 2e y 3
+# Progreso — Etapa 2 (Integraciones, Publicación, Contenido, Métricas, Email y Roles)
 
-Corrida autónoma en la rama `oneshot-fase3-2e-3`. Plano: `docs/requerimientos-fase3-bloques-2e-3.md` (v1.1).
+Corrida autónoma en la rama `etapa2`. Plano: [docs/requerimientos-etapa2.md](requerimientos-etapa2.md) (v2.0).
+Este archivo es la memoria de la corrida: se actualiza por funcionalidad, no solo al cerrar cada bloque.
 
-## Punto de partida (26/9/2026, `main` @ `4c3d24a`)
+## Punto de partida (26/9/2026, `main` = `origin/main` = `3706c23`)
 
 | Comando | Resultado de hoy |
 |---|---|
-| `npx vitest run` | 90 archivos, **1059 tests en verde** |
+| `npx vitest run` | 117 archivos, **1258 tests en verde** |
 | `npm run build` | OK (exit 0) |
-| `npm run lint` | 0 errores, **45 warnings preexistentes** (directivas `eslint-disable` sin uso) |
+| `npm run lint` | 0 errores, **44 warnings preexistentes** (directivas `eslint-disable` sin uso) |
 | `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
+| `node scripts/verify-crm.mjs` | Todo verde, limpieza OK |
+| `node scripts/verify-inbox-filters.mjs` | Todo verde, limpieza OK |
+| `node scripts/verify-dashboards.mjs` | Todo verde, limpieza OK |
 
-Base: última migración aplicada `00073_tag_effects`. La `00072` **no está aplicada** (diferida). 1580 salientes (0 con autor), 837 entrantes, 593 conversaciones, 0 runs, 0 borradores. Agente apagado, Instagram en `draft`. Sin `workspaces.timezone`, sin `messages.origin`.
+"Sin errores nuevos de lint" = seguir en **0 errores**; los 44 warnings son la línea base.
+
+**Base** (`knrxjnmxnmjavivyuwew`): última migración aplicada `00080_background_tasks` (la base tiene además
+`00078_chat_dashboard_trends`, `00079b` y `00079c`, que en el repo viven dentro de 00078/00079).
+**La Etapa 2 empieza en `00081`.** La `00072_draft_window_alerts` **no está aplicada** (verificado: no existen
+`private.alert_draft_windows` ni su cron); sigue diferida.
+
+**Datos al arrancar:** 1 workspace, 1 solo miembro (Owner, no hay ningún Member real), 1 canal
+(Instagram/Zernio, `connection_status = unknown`), sin canal de WhatsApp. Vault tiene solo `anthropic_api_key`
+y `voyage_api_key`: la API key de Zernio sigue en `workspaces.late_api_key_encrypted` y el secreto del webhook
+en `workspaces.webhook_secret`. `integration_configs`: 2 filas (Anthropic, Voyage), ninguna de Zernio.
+Un solo bucket (`knowledge`), 0 policies en `storage.objects`. `scheduled_jobs`: 9 `bg_task` y 1
+`index_document`, todos `completed`.
+
+**Diferencias con §3 del plano** encontradas en la exploración: 8 páginas con `requireWorkspaceAdmin` (no 7),
+51 acciones con `getAdminContext` (no ~40), lista blanca de `call_app_cron` redefinida en 00036/00063/00077/00080,
+`lib/vault.ts` no está protegido como server-only, el filtro de la bandeja no usa `PLATFORMS`, los dos scripts
+que leen la key vieja llaman `read_secret` con parámetros equivocados, y `bg_task` se reencola cada 15 minutos.
+Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 ## Bloques
 
-- [x] **Bloque 0 — Arranque:** rama, copia del plano, PROGRESS/PENDIENTE
-- [x] **Bloque 1 — Base común** — 00074/00075/00076 aplicadas
-  - [x] F1 · Diagnóstico de autoría (`docs/diagnostico-autoria.md`) — conclusión (a): 1580 salientes por historial
-  - [x] F2 · Columna `messages.origin` (builder único + 11 caminos + backfill + `message.sent`) — 1580 external, 838 inbound null
-  - [x] F3 · Zona horaria del workspace (`workspaces.timezone`, selector en Settings)
-  - [x] F4 · `already_answered` + fuentes del clasificador + `normalize_for_grouping` (paridad SQL/TS en 20 casos)
-- [x] **Bloque 2 — Verificación y reglas de respuesta** — 00077 aplicada, agente sigue apagado
-  - [x] F5 · Verificación antes de responder (momentos 1/2 + refresco Zernio, `lib/agent/refresh.ts`, `reply-check.ts`)
-  - [x] F6 · Borrador respondido por otro medio (refresco en `approveDraft` + trigger momento 3 + cron `drafts-refresh` + aviso en la cola)
-  - [x] F7 · Espera tras respuesta externa (`external_reply_cooldown_minutes`, campo en config)
-  - [x] F8 · Evaluador de reglas (`lib/agent/rules/`: fields, evaluate, schema, template, known-buttons)
-  - [x] F9 · Integración de reglas en el turno (modo `rules`, evaluación previa/final, `routing`)
-  - [x] F10 · Editor de reglas + plantilla + modo del canal (`rules-editor.tsx`, acciones de servidor, unreachable)
-  - [x] F11 · Simulación (`simulate.ts` + loader best-effort desde borradores)
-  - [x] F12 · Visibilidad (oración de decisión en Runs, etiqueta de regla en la cola, salud del refresco + notificación)
-- [x] **Bloque 3 — Navegación y dashboard de Chat** — 00078 aplicada
-  - [x] F13 · Navegación: Dashboards primero, redirect 308 de `/dashboard/analytics`, `PageHeader` 56 px + tooltip (rollout global a otras páginas en PENDIENTE)
-  - [x] F14 · Filtros y período (11 atajos, estado en URL) — tests puros
-  - [x] F15 · Funciones de métricas SQL + `verify-dashboards.mjs` en verde (valores a mano, caso Member)
-  - [x] F16 · Números con comparación + tendencias (1 serie; 4 pestañas en PENDIENTE)
-  - [x] F17 · Sección del agente (3 %, tres estados) — se oculta al filtrar por persona
-  - [x] F18 · Tabla "Quién responde" (umbrales de color, filtro por clic, scope por rol)
-- [x] **Bloque 4 — Patrones de mensajes** — 00079 aplicada
-  - [x] F19 · `message_categories`/`message_texts`, `messages.text_norm`, trigger, categorías fallback, siembra de 12 botones, backfill (533 textos) — verify-dashboards cubre variantes/emoji
-  - [x] F20 · Clasificador (`lib/patterns/classifier.ts`): selección de pendientes, ≤3 categorías nuevas, no toca human/rule, JSON inválido — tests con modelo mockeado
-  - [x] F21 · Correcciones (`lib/patterns/corrections.ts` + Server Actions): mover, nueva categoría, renombrar, unir; "Otro" protegida — tests
-  - [x] F22 · Sección Patrones en el dashboard (`chat_dashboard_patterns`, variantes con confianza ámbar <70%) — "qué le responden" (§11.7) en PENDIENTE
-- [x] **Bloque 5 — Tareas en segundo plano, calidad e intención** — 00080 aplicada
-  - [x] F23 · `workspaces.ai_background_settings` + Settings → Tareas en segundo plano (defaults §13.1, indexación no apagable) — módulo testeado + página
-  - [x] F24 · Ventanas de despacho (`dueWindow`, `planDispatch`, dedupe idempotente) + rutas cron `bg-dispatch`/`bg-collect` + interfaz `BatchProvider`; ejecución del lote/recolección en PENDIENTE
-  - [x] F25 · Fórmulas de calidad (`lib/patterns/quality.ts`: precisión, corregidos, sin categoría por volumen, dudosos, calibración) — testeadas; UI de revisión/versiones en PENDIENTE
-  - [x] F26 · `agent_runs.intent` + herramienta `declarar_intencion` (opt-in) + captura en el runner + `validateIntent` + condición en el evaluador + graduación (`graduation.ts`) — testeados
+- [x] **Bloque 0 — Arranque:** rama `etapa2`, plano en `docs/`, `docs/referencia/` ignorada (git, TypeScript, ESLint y Vitest), PROGRESS y PENDIENTE nuevos
+
+### FASE 1 — Integraciones, contenido y publicación
+
+- [ ] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081)
+  - [ ] Caracterización · webhook de Evolution y webhook de Zernio (firma y comentarios)
+  - [ ] F1 · Catálogo extendido con tipos de conexión
+  - [ ] F2 · Pantalla en grid con cards compactas
+  - [ ] F3 · Modal de configuración genérico
+  - [ ] F4 · Evolution en Vault con fallback
+  - [ ] F5 · Secreto del webhook de Zernio en Vault con fallback
+  - [ ] F6 · Cards de las integraciones existentes y barra de uso
+  - [ ] F7 · Barra superior en todas las pantallas
+- [ ] **Bloque 2 — Conexiones de redes** (migración 00082)
+  - [ ] F8 · Tablas de conexiones y cuentas sociales
+  - [ ] F9 · Flujo OAuth genérico con `state` firmado
+  - [ ] F10 · Conexión con Google (YouTube)
+  - [ ] F11 · Conexión con LinkedIn
+  - [ ] F12 · Conexión con Threads
+  - [ ] F13 · Cuentas sociales y publicadores disponibles
+  - [ ] F14 · Conexión de Postproxy
+  - [ ] F15 · Avisos de conexiones
+- [ ] **Bloque 3a — Modelo de contenido y kanban** (migración 00083)
+  - [ ] F16 · Tablas de contenido y bucket
+  - [ ] F17 · Estados del post
+  - [ ] F19 · Ideas
+  - [ ] F20 · Kanban
+- [ ] **Bloque 3b — Media, calendario y versiones**
+  - [ ] F18 · Subida de media
+  - [ ] F21 · Calendario y lista
+  - [ ] F22 · Historial de versiones
+  - [ ] F23 · Limpieza de media
+- [ ] **Bloque 4a — Editor e IA** (migración 00084)
+  - [ ] F24 · Editor del post en una sola página
+  - [ ] F25 · Fecha por red: tentativa y programado
+  - [ ] F26 · Validación por red
+  - [ ] F27 · Palabras clave y automatizaciones
+  - [ ] F28 · Variantes, duplicar y redistribución
+  - [ ] F29 · Generar guion y caption con IA
+- [ ] **Bloque 4b — Publicadores y dispatcher**
+  - [ ] F30 · Interfaz común de publicadores y registro de jobs
+  - [ ] F31 · Publicador Zernio (Instagram y TikTok)
+  - [ ] F32 · Publicador Postproxy (YouTube)
+  - [ ] F33 · Publicador YouTube API oficial
+  - [ ] F34 · Publicadores LinkedIn y Threads
+  - [ ] F35 · Dispatcher, reintentos y webhooks de estado
+  - [ ] F36 · Detalle del post
+  - [ ] F37 · Aprobación
+  - [ ] F38 · Prueba de publicación directa de YouTube
+  - [ ] F39 · Menú de Contenido
+- [ ] **Fase 1 lista:** suite completa en 0
+
+### FASE 2 — Métricas, Social y anuncios
+
+- [ ] **Bloque 5 — Recolección de métricas y comentarios** (migración 00085)
+  - [ ] F40 · Card de Meta y cuentas publicitarias
+  - [ ] F41 · Tablas de métricas
+  - [ ] F42 · Lector de Zernio (Instagram y TikTok)
+  - [ ] F43 · Lector de Instagram Graph
+  - [ ] F44 · Lectores de YouTube y Threads
+  - [ ] F45 · Reglas de recolección y engagement a 7 días
+  - [ ] F46 · Comentarios
+  - [ ] F47 · Cron de métricas y actualización manual
+- [ ] **Bloque 6a — Dashboard orgánico**
+  - [ ] F48 · Dashboard de contenido orgánico
+  - [ ] F49 · Explorador de tendencias (doble eje por red)
+  - [ ] F50 · Engagement a 7 días por semana de publicación
+  - [ ] F53 · Datos al día
+- [ ] **Bloque 6b — Análisis por post y página Social**
+  - [ ] F51 · Análisis histórico de un post
+  - [ ] F52 · Seguidores alrededor de la publicación
+  - [ ] F54 · Página Social
+- [ ] **Bloque 7a — Meta Ads (cuenta)**
+  - [ ] F55 · Sincronización de insights
+  - [ ] F56 · Dashboard de Meta Ads (cuenta)
+  - [ ] F58 · Datos en vivo con caché
+- [ ] **Bloque 7b — Detalles, unificado e IA**
+  - [ ] F57 · Detalles de campaña, ad set y anuncio
+  - [ ] F59 · Dashboard unificado
+  - [ ] F60 · Leads por campaña (nice-to-have)
+  - [ ] F61 · Analizar con IA (nice-to-have)
+- [ ] **Fase 2 lista:** suite completa en 0
+
+### FASE 3 — Email entrante y roles
+
+- [ ] **Bloque 8 — Email como canal** (migración 00086)
+  - [ ] F62 · Canal Email y cambios de esquema
+  - [ ] F63 · Recepción de email
+  - [ ] F64 · Email en la bandeja
+  - [ ] F65 · Responder email
+  - [ ] F66 · Cuota de Resend
+  - [ ] F67 · Trigger "email recibido" en flows (nice-to-have)
+- [ ] **Bloque 9 — Roles personalizados** (migraciones 00087, 00088 y 00089 sin aplicar)
+  - [ ] F68 · Catálogo de permisos (con la caracterización del Member ANTES)
+  - [ ] F69 · Tablas y funciones de roles
+  - [ ] F70 · Guards y menú por permiso
+  - [ ] F71 · Pantalla de roles
+  - [ ] F72 · Asignar rol a una persona
+- [ ] **Fase 3 lista y cierre:** suite completa en 0, documentación al día, `docs/referencia/` borrada, merge a `main`
 
 ## Migraciones creadas
 
 | # | Qué crea | Aplicada |
 |---|---|---|
-| 00074 | `messages.origin` + CHECK + backfill + trigger `messages_fill_origin` + índice | ✅ |
-| 00075 | `workspaces.timezone` (default America/Costa_Rica) | ✅ |
-| 00076 | `agent_runs.status` +`already_answered`; `source` +clasificador; `normalize_for_grouping()` | ✅ |
-| 00077 | `agents.response_rules`/`response_rules_default`/`external_reply_cooldown_minutes`; `agent_runs.routing`; RPC `claim_agent_reply`; trigger momento 3; cron `ssa-cron-drafts-refresh` | ✅ |
-| 00078 | Funciones SQL del dashboard: `chat_episodes`, `chat_dashboard_numbers/agent/team/trends`, `chat_waiting_now`, `chat_author_match` | ✅ |
-| 00079 | Patrones: `message_categories`, `message_texts`, `messages.text_norm`, triggers (upsert texto, seed de categorías por workspace), `chat_dashboard_patterns` | ✅ |
-| 00080 | `workspaces.ai_background_settings`; `agent_runs.intent`; crons `ssa-cron-bg-dispatch`/`ssa-cron-bg-collect` | ✅ |
+| — | (todavía ninguna) | — |

@@ -1,6 +1,6 @@
-# Pendientes de la corrida — Fase 3, Bloques 2e y 3
+# Pendientes
 
-Lo que quedó sin cerrar durante la corrida autónoma, para retomar con Wendy. Formato de cada entrada:
+Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
 - **Qué quedó:** …
 - **Por qué:** …
@@ -8,46 +8,99 @@ Lo que quedó sin cerrar durante la corrida autónoma, para retomar con Wendy. F
 
 ---
 
-## API por lote (Bloque 5, §21.2)
+## Etapa 2
+
+### Migración destructiva escrita y sin aplicar (§9.10)
+- **Qué quedó:** `drop_legacy_secret_columns` (`workspaces.late_api_key_encrypted`, `workspaces.webhook_secret`,
+  `channels.webhook_secret`) se escribe como archivo y **no se aplica**.
+- **Por qué:** borra columnas que hoy tienen los secretos en uso. Aplicarla antes de que todo lea de Vault
+  dejaría a Instagram sin API key y al webhook sin secreto.
+- **Qué se decidió en su lugar:** se aplica en la verificación en vivo (§18 del plano), después de confirmar con
+  cuentas reales que Vault responde, y junto con el borrado de las variables `EVOLUTION_*` de Railway.
+
+### "Migrar a Vault" se construye pero no se aprieta
+- **Qué quedó:** el botón de la card de Zernio (F5) queda funcionando, pero durante la corrida no se usa.
+- **Por qué:** copiar un secreto es cambiar configuración real, y la regla de la corrida (§0) lo prohíbe.
+- **Qué se decidió en su lugar:** mientras Vault esté vacío, `resolveWebhookSecret` y `getZernioApiKey` siguen
+  leyendo las columnas de hoy, así que nada cambia de comportamiento. El botón se usa en §18.
+
+---
+
+## Heredado de la Fase 3
+
+Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resuelve en F7.
+
+### Barra superior global de 56 px en todas las páginas (F13 de la Fase 3)
+- **Qué quedó:** el `PageHeader` existía y lo usaba solo el dashboard de Chat; las otras ~21 páginas tenían su
+  encabezado propio y en el celular convivían dos barras.
+- **Por qué:** reemplazar el encabezado en 21 pantallas es un cambio cosmético grande.
+- **Qué se decidió en su lugar:** **lo resuelve F7 de esta etapa.** Se saca de la lista al cerrar el Bloque 1.
+
+### API por lote (Bloque 5 de la Fase 3, §21.2)
 - **Qué quedó:** el proveedor de IA se llama con pedidos agrupados, no con la API por lote (batch) real.
-- **Por qué:** el AI SDK v6 (`ai` + `@ai-sdk/*`) no expone modo batch para ningún proveedor, y los SDK crudos no están instalados.
-- **Qué se decidió en su lugar:** interfaz `BatchProvider` lista para sumar el lote real por `fetch` cuando se quiera; el modo "Económico" agrupa pedidos. Se construye en el Bloque 5.
+- **Por qué:** el AI SDK v6 no expone modo batch para ningún proveedor, y los SDK crudos no están instalados.
+- **Qué se decidió en su lugar:** interfaz `BatchProvider` lista para sumar el lote real por `fetch`.
 
-## Barra superior global de 56 px en todas las páginas (F13)
-- **Qué quedó:** el componente `PageHeader` (56 px, ⓘ con tooltip) existe y se usa en el dashboard de Chat, pero las otras ~21 páginas siguen con su encabezado propio (h1 + subtítulo).
-- **Por qué:** reemplazar el encabezado en 21 pantallas y unificar la barra móvil (`MobileTopBar` → un solo `PageHeader` responsive) es un cambio cosmético grande, y las pantallas se verifican a ojo, no por test.
-- **Qué se decidió en su lugar:** se dejó el componente y la navegación nuevos (Dashboards primero, redirect 308 de `/dashboard/analytics`), y el rollout a las demás páginas queda para hacerlo con Wendy mirando. En mobile el dashboard muestra la `MobileTopBar` del layout más su `PageHeader` (dos barras) hasta unificarlas.
+### Handler de `bg_task` y recolección (F24/F25 de la Fase 3)
+- **Qué quedó:** falta el handler de `scheduled_jobs` tipo `bg_task` que ejecuta el clasificador, y la
+  recolección de resultados en `bg-collect` (hoy la ruta es un stub con un TODO).
+- **Por qué:** el lote real no existe en el SDK y el pipeline completo era grande.
+- **Qué se decidió en su lugar:** quedaron la lógica de ventanas (`planDispatch`), las rutas cron y el
+  clasificador. **Hallazgo nuevo de esta corrida:** como el dedupe de `scheduled_jobs` solo cubre las filas
+  `pending`, cada `bg_task` que el runner completa se vuelve a encolar 15 minutos después. Al 26/9/2026 hay 9 así,
+  y crecen ~96 por día. No se rompe nada (el job no hace nada), pero conviene cerrarlo al construir el handler.
+  El registro de jobs del Bloque 4b le deja un handler explícito que conserva ese comportamiento.
 
-## Detalle de tendencias con 4 pestañas (F16)
-- **Qué quedó:** el dashboard muestra una serie (conversaciones nuevas por día). La función SQL `chat_dashboard_trends` ya devuelve recibidos, enviados y nuevas por día.
-- **Por qué:** las 4 pestañas con leyenda, colores por serie y paso a semanal >62 días son presentación; el dato está.
-- **Qué se decidió en su lugar:** una barra simple sobre el dato real; las pestañas se completan en la pasada de pantallas con Wendy.
+### UI de calidad, revisión rápida y versiones del clasificador (F25 de la Fase 3)
+- **Qué quedó:** las fórmulas de calidad (`lib/patterns/quality.ts`) están testeadas, falta la pantalla: 4
+  indicadores, calibración, revisión rápida de 20 y versiones del clasificador con "volver a esta".
+- **Por qué:** volumen del bloque.
+- **Qué se decidió en su lugar:** la lógica quedó testeada; la pantalla se hace con Wendy mirando.
 
-## Recorrida de pantallas en vivo (Bloques 2 y 3)
-- **Qué quedó:** no se recorrieron las pantallas nuevas (editor de reglas, dashboard) a ojo.
-- **Por qué:** la app pide login y no se ingresan credenciales en la corrida autónoma.
-- **Qué se decidió en su lugar:** la lógica va en funciones puras con tests y en scripts `verify-*`; la recorrida a 1440 y 390 px queda para hacerla con Wendy (lista en §19 del plano).
+### Detalle de tendencias con 4 pestañas (F16 de la Fase 3)
+- **Qué quedó:** el dashboard de Chat muestra una serie; la función SQL ya devuelve las tres.
+- **Por qué:** las 4 pestañas con leyenda y paso a semanal son presentación; el dato está.
+- **Qué se decidió en su lugar:** se completan en la pasada de pantallas con Wendy.
 
-## Bloque 4 (Patrones) — empezado, sin aplicar ni commitear
-- **Qué quedó:** el archivo `supabase/migrations/00079_message_patterns.sql` está escrito (tablas `message_categories`/`message_texts`, `messages.text_norm`, trigger, categorías fallback, siembra de los 12 botones y backfill), pero **NO está aplicado a la base** (la base sigue en 00078) ni commiteado. Falta todo el código de app del bloque: clasificador (F20), correcciones (F21) y la sección Patrones del dashboard (F22), con sus tests.
-- **Por qué:** se alcanzó el límite de uso a mitad del Bloque 4.
-- **Qué se decidió en su lugar:** no aplicar una migración sin verificarla contra un `verify-dashboards` extendido, para no dejar la base adelantada respecto del código. Al retomar: revisar la 00079, aplicarla, y construir F20-F22 + F23-F26 (Bloque 5).
+### "Qué le responden" (§11.7) y drilldown de correcciones (F22 de la Fase 3)
+- **Qué quedó:** falta la sección "qué le responden" y los controles de corrección enganchados en la UI (las
+  Server Actions ya existen en `lib/actions/patterns.ts`).
+- **Por qué:** volumen del bloque.
+- **Qué se decidió en su lugar:** se completa en la pasada de pantallas con Wendy.
 
-## Bloque 5 (Tareas en segundo plano, calidad, intención) — no empezado
-- **Qué quedó:** F23-F26 completos sin construir (migración 00080, jobs de despacho/recolección, calidad, versiones del clasificador, herramienta `declarar_intencion` + graduación).
-- **Por qué:** límite de uso.
+### `declarar_intencion` es opt-in (F26 de la Fase 3)
+- **Qué quedó:** la herramienta existe pero no es `required`: se habilita por agente.
+- **Por qué:** marcarla `required` cambiaba el set por defecto y rompía los tests de caracterización del runner.
+- **Qué se decidió en su lugar:** queda opt-in; al prender el agente, activarla en Herramientas.
 
-## F22 "Qué le responden" (§11.7) y drilldown de correcciones en la UI
-- **Qué quedó:** la sección Patrones muestra "lo que más se recibe" (categorías, variantes, confianza). Falta "qué le responden" (§11.7, entrante que sigue a un saliente de una categoría dentro de 24 h) y los controles de corrección (Mover a…/Renombrar/Unir) enganchados en la UI (las Server Actions ya existen en `lib/actions/patterns.ts`).
-- **Por qué:** el volumen del bloque; la lógica y las acciones están, falta el cableado visual y una función SQL extra.
-- **Qué se decidió en su lugar:** se dejó la sección de lectura y las acciones probadas; el drilldown y "qué le responden" se completan en la pasada de pantallas con Wendy.
+### Migración 00072 (avisos de ventana) escrita y sin aplicar
+- **Qué quedó:** `00072_draft_window_alerts` está escrita y probada, y **no está aplicada**. Verificado contra la
+  base el 26/9/2026: no existen `private.alert_draft_windows` ni el cron `ssa-cron-draft-window-alerts`.
+  (La bitácora del Bloque 2c dice en un lugar que se aplicó: es un error, la base manda.)
+- **Por qué:** es lo único que notifica a una persona; conviene enchufarlo sabiendo el volumen de la cola.
+- **Qué se decidió en su lugar:** se aplica cuando la cola de borradores tenga un par de días.
 
-## F24/F25 pipeline de lote y UI de calidad — parcial
-- **Qué quedó:** están la configuración (F23), la lógica de ventanas de despacho con dedupe idempotente (`planDispatch`, testeada), las rutas cron `bg-dispatch`/`bg-collect` (autorizadas), la interfaz `BatchProvider` (con `groupedRequestsProvider`) y las fórmulas de calidad (`lib/patterns/quality.ts`, testeadas). Falta: el handler de `scheduled_jobs` type `bg_task` que ejecuta el clasificador (lote real o pedidos agrupados) y la recolección de resultados en `bg-collect`; y la UI de calidad (4 indicadores, calibración, revisión rápida de 20, versiones del clasificador con "volver a esta") dentro de Settings → Tareas en segundo plano.
-- **Por qué:** el lote real no existe en el SDK (ver nota de API por lote) y el pipeline completo + la UI de calidad/versiones es grande; se priorizó dejar la lógica testeada y los seams listos.
-- **Qué se decidió en su lugar:** despacho idempotente que encola `bg_task`; el clasificador (`lib/patterns/classifier.ts`) ya aplica resultados dado el output del modelo. Al retomar: enganchar el handler de `bg_task` (usar `groupedRequestsProvider` + `openAiRun` source `message_classification`) y construir la UI de calidad/revisión/versiones.
+### Recorrida de pantallas en vivo
+- **Qué quedó:** las pantallas no se recorrieron a ojo en las corridas autónomas.
+- **Por qué:** la app pide login y no se ingresan credenciales.
+- **Qué se decidió en su lugar:** la lógica va en funciones puras con tests y en scripts `verify-*`; la recorrida
+  a 1440 y 390 px se hace con Wendy.
 
-## declarar_intencion es opt-in (F26)
-- **Qué quedó:** la herramienta existe y captura la intención, pero no es `required`: se habilita por agente desde la pestaña Herramientas.
-- **Por qué:** marcarla `required` cambiaba el set de herramientas por defecto y rompía los tests de caracterización del runner.
-- **Qué se decidió en su lugar:** queda opt-in; al prender el agente, activarla en Herramientas para que declare intención en cada turno.
+### Deuda del agente que sigue abierta
+- **Qué quedó:** `approveDraft` no mira `agent_enabled`; un Member no ve en Acciones los `tag_effect` del agente;
+  las respuestas desde la app de Instagram no llegan por webhook; el eco `fromMe` de WhatsApp no apaga el agente;
+  la zona horaria está partida entre la de la app y la del negocio; el backlog de 578 conversaciones sigue abierto;
+  la regla de pertenencia de un borrador (setter → vendedor → sin asignar) espera confirmación de Wendy;
+  falta la segunda pasada del backfill de Zernio (semana del 1/10/2026); y el Bloque 2d-B completo.
+- **Por qué:** son decisiones de producto o necesitan al agente corriendo con datos reales.
+- **Qué se decidió en su lugar:** todo documentado en [agente-ia.md](agente-ia.md); no se toca en la Etapa 2.
+
+### Hallazgos de la exploración de la Etapa 2 que no son de su alcance
+- **Qué quedó:** (a) `lib/ai/generate-reply.ts` (nodo AI Response y pasos de secuencia) **no chequea los topes de
+  gasto**: solo el runner del agente llama a `checkSpendLimits`. (b) `next.config.ts` no configura
+  `serverActions.bodySizeLimit`, así que la subida de documentos de la base de conocimiento (que pasa por una
+  Server Action) topea en 1 MB por defecto, muy por debajo del límite de 25 MB del bucket. (c) Los broadcasts
+  envían solo por Zernio: un destinatario de WhatsApp se saltea en silencio.
+- **Por qué:** son zonas declaradas intocables por §4.2 del plano de la Etapa 2.
+- **Qué se decidió en su lugar:** quedan anotados. (a) y (c) son arreglos chicos y acotados; (b) es una línea de
+  configuración, pero cambiarla toca el límite de todas las Server Actions.
