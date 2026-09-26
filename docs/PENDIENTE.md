@@ -41,3 +41,13 @@ Lo que quedó sin cerrar durante la corrida autónoma, para retomar con Wendy. F
 - **Qué quedó:** la sección Patrones muestra "lo que más se recibe" (categorías, variantes, confianza). Falta "qué le responden" (§11.7, entrante que sigue a un saliente de una categoría dentro de 24 h) y los controles de corrección (Mover a…/Renombrar/Unir) enganchados en la UI (las Server Actions ya existen en `lib/actions/patterns.ts`).
 - **Por qué:** el volumen del bloque; la lógica y las acciones están, falta el cableado visual y una función SQL extra.
 - **Qué se decidió en su lugar:** se dejó la sección de lectura y las acciones probadas; el drilldown y "qué le responden" se completan en la pasada de pantallas con Wendy.
+
+## F24/F25 pipeline de lote y UI de calidad — parcial
+- **Qué quedó:** están la configuración (F23), la lógica de ventanas de despacho con dedupe idempotente (`planDispatch`, testeada), las rutas cron `bg-dispatch`/`bg-collect` (autorizadas), la interfaz `BatchProvider` (con `groupedRequestsProvider`) y las fórmulas de calidad (`lib/patterns/quality.ts`, testeadas). Falta: el handler de `scheduled_jobs` type `bg_task` que ejecuta el clasificador (lote real o pedidos agrupados) y la recolección de resultados en `bg-collect`; y la UI de calidad (4 indicadores, calibración, revisión rápida de 20, versiones del clasificador con "volver a esta") dentro de Settings → Tareas en segundo plano.
+- **Por qué:** el lote real no existe en el SDK (ver nota de API por lote) y el pipeline completo + la UI de calidad/versiones es grande; se priorizó dejar la lógica testeada y los seams listos.
+- **Qué se decidió en su lugar:** despacho idempotente que encola `bg_task`; el clasificador (`lib/patterns/classifier.ts`) ya aplica resultados dado el output del modelo. Al retomar: enganchar el handler de `bg_task` (usar `groupedRequestsProvider` + `openAiRun` source `message_classification`) y construir la UI de calidad/revisión/versiones.
+
+## declarar_intencion es opt-in (F26)
+- **Qué quedó:** la herramienta existe y captura la intención, pero no es `required`: se habilita por agente desde la pestaña Herramientas.
+- **Por qué:** marcarla `required` cambiaba el set de herramientas por defecto y rompía los tests de caracterización del runner.
+- **Qué se decidió en su lugar:** queda opt-in; al prender el agente, activarla en Herramientas para que declare intención en cada turno.

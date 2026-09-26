@@ -384,6 +384,7 @@ export interface Database {
           persist_zernio_inbound: boolean;
           /** Zona horaria IANA del negocio (migracion 00075). */
           timezone: string;
+          ai_background_settings: Json;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
@@ -404,6 +405,7 @@ export interface Database {
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
           timezone?: string;
+          ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           created_at?: string;
@@ -423,6 +425,7 @@ export interface Database {
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
           timezone?: string;
+          ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           updated_at?: string;
@@ -2320,6 +2323,7 @@ export interface Database {
           status_detail: string | null;
           /** Que decidio el turno (00077, F9/F12). */
           routing: Json | null;
+          intent: Json | null;
           provider: string | null;
           model: string | null;
           input_tokens: number | null;
@@ -2351,6 +2355,7 @@ export interface Database {
           trigger: AgentRunTrigger;
           status?: AgentRunStatus;
           routing?: Json | null;
+          intent?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;
@@ -2376,6 +2381,7 @@ export interface Database {
           channel_id?: string | null;
           status?: AgentRunStatus;
           routing?: Json | null;
+          intent?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;

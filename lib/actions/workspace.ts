@@ -316,3 +316,33 @@ export async function updateWorkspaceSettings(settings: {
   revalidatePath("/dashboard/settings");
   return { ok: true };
 }
+
+/**
+ * Configuración de tareas de IA en segundo plano (F23). Owner/Admin. La
+ * validación (indexación no apagable, frecuencias) vive en lib/background/settings.ts.
+ */
+export async function updateBackgroundSettings(
+  raw: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar las tareas en segundo plano" };
+  const { workspace, supabase, user } = ctx;
+
+  const { validateBackgroundSettings } = await import("@/lib/background/settings");
+  const validated = validateBackgroundSettings(raw);
+  if (!validated.ok) return { ok: false, error: validated.error ?? "Configuración inválida" };
+
+  const { data: prev } = await supabase.from("workspaces").select("ai_background_settings").eq("id", workspace.id).single();
+  const { error } = await supabase.from("workspaces").update({ ai_background_settings: validated.settings as unknown as Json }).eq("id", workspace.id);
+  if (error) {
+    console.error("[workspace] no pude guardar las tareas en segundo plano:", error.message);
+    return { ok: false, error: "No pude guardar el cambio." };
+  }
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id, action: "update",
+    changes: { ai_background_settings: { old: ((prev as { ai_background_settings?: unknown } | null)?.ai_background_settings ?? {}) as Json, new: validated.settings as unknown as Json } },
+    performedBy: user.id,
+  });
+  revalidatePath("/dashboard/settings/background");
+  return { ok: true };
+}

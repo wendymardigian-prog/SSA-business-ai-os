@@ -45,6 +45,7 @@ import { defaultRefresh, type RefreshFn } from "./refresh";
 import { alreadyAnsweredSince, claimAgentReply, lastExternalOutboundAt, withinExternalCooldown } from "./reply-check";
 import { evaluateRules, type RuleEvalResult } from "./rules/evaluate";
 import { buildPreRuleContext, fillResponseContext } from "./rules/context";
+import { validateIntent } from "./tools/declare-intent";
 import type { RuleAction } from "./rules/fields";
 import { buildToolSet } from "./tools/build";
 import { newNonce } from "./untrusted";
@@ -675,6 +676,19 @@ async function continueTurn(
   run.setFinalUsage(generation.output.totalUsage);
   run.setModel(generation.provider, generation.model);
   const modelDetail = generation.role === "fallback" ? "fallback_model" : null;
+
+  // F26: intención declarada por el agente. Se valida contra las categorías
+  // inbound activas; un id inexistente guarda null.
+  if (toolSet.state.intent) {
+    const { data: cats } = await supabase
+      .from("message_categories")
+      .select("id")
+      .eq("workspace_id", conversation.workspace_id)
+      .eq("direction", "inbound")
+      .is("archived_at", null);
+    const validIds = new Set((cats ?? []).map((c) => (c as { id: string }).id));
+    run.setIntent(validateIntent(toolSet.state.intent, validIds));
+  }
 
   // 6. Formato, en codigo.
   const output = validateOutput(generation.output.text, agent.outputFormat);

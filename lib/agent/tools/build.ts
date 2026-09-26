@@ -26,7 +26,7 @@ export interface BuiltToolSet {
    * quedo como sugerencia en vez de ejecutarse. applied: lo que el turno ya
    * aplico en el CRM, para mostrarlo en el borrador.
    */
-  state: { turnEnded: boolean; escalated: boolean; suggestions: SuggestedAction[]; applied: AppliedAction[] };
+  state: { turnEnded: boolean; escalated: boolean; suggestions: SuggestedAction[]; applied: AppliedAction[]; intent: { category_id: string; confidence: number } | null };
 }
 
 function resolveConfig(
@@ -42,7 +42,7 @@ function resolveConfig(
 }
 
 export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet> {
-  const state: BuiltToolSet["state"] = { turnEnded: false, escalated: false, suggestions: [], applied: [] };
+  const state: BuiltToolSet["state"] = { turnEnded: false, escalated: false, suggestions: [], applied: [], intent: null };
   const draft = ctx.mode === "draft";
   const tools: ToolSet = {};
 
@@ -92,6 +92,12 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
             return deferred.forModel;
           }
           const result = await definition.execute({ input, config: resolved.config, ctx });
+          if (definition.capturesIntent && result.ok) {
+            const ii = input as { category_id?: string; confidence?: number };
+            if (typeof ii.category_id === "string" && typeof ii.confidence === "number") {
+              state.intent = { category_id: ii.category_id, confidence: ii.confidence };
+            }
+          }
           if (result.ok && result.auditLogId) {
             state.applied.push({ tool: definition.name, label: definition.label, detail: result.detail ?? null, auditLogId: result.auditLogId });
           }

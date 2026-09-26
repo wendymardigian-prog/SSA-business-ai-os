@@ -64,6 +64,8 @@ export interface OpenRunInput {
   inboundAt?: string | null;
   /** Que decidio el turno (00077, F9/F12): mode, rule_id, action, check, moment, refresh. */
   routing?: Json | null;
+  /** Intención declarada por el agente (F26). */
+  intent?: Json | null;
 }
 
 /** Lo que importa del LanguageModelUsage del AI SDK, tolerante a campos que faltan. */
@@ -108,6 +110,8 @@ export interface AiRunHandle {
   step(input: StepInput): Promise<string | null>;
   /** Deja el routing del turno (F9/F12); se escribe al cerrar. */
   setRouting(routing: Json | null): void;
+  /** Deja la intención declarada (F26); se escribe al cerrar. */
+  setIntent(intent: Json | null): void;
   close(input: CloseRunInput): Promise<CloseRunResult>;
 }
 
@@ -184,6 +188,7 @@ export async function openAiRun(
         model: input.model ?? null,
         inbound_at: input.inboundAt ?? null,
         routing: input.routing ?? null,
+        intent: input.intent ?? null,
         status: "running",
         created_at: openedAt.toISOString(),
       })
@@ -202,6 +207,7 @@ export async function openAiRun(
   let provider = input.provider ?? null;
   let model = input.model ?? null;
   let routing: Json | null = input.routing ?? null;
+  let intent: Json | null = input.intent ?? null;
   const stepBucket = emptyBucket();
   let finalBucket: Bucket | null = null;
   const embeddings = new Map<string, { provider: string; model: string; tokens: number }>();
@@ -222,6 +228,10 @@ export async function openAiRun(
 
     setRouting(r) {
       routing = r;
+    },
+
+    setIntent(i) {
+      intent = i;
     },
 
     addStepUsage(usage) {
@@ -345,6 +355,7 @@ export async function openAiRun(
             latency_ms: Math.max(0, at.getTime() - openedAt.getTime()),
             step_count: stepCount,
             routing,
+            intent,
             completed_at: at.toISOString(),
           })
           .eq("id", runId);

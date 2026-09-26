@@ -42,11 +42,11 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
   - [x] F20 · Clasificador (`lib/patterns/classifier.ts`): selección de pendientes, ≤3 categorías nuevas, no toca human/rule, JSON inválido — tests con modelo mockeado
   - [x] F21 · Correcciones (`lib/patterns/corrections.ts` + Server Actions): mover, nueva categoría, renombrar, unir; "Otro" protegida — tests
   - [x] F22 · Sección Patrones en el dashboard (`chat_dashboard_patterns`, variantes con confianza ámbar <70%) — "qué le responden" (§11.7) en PENDIENTE
-- [ ] **Bloque 5 — Tareas en segundo plano, calidad e intención**
-  - [ ] F23 · Configuración de tareas en segundo plano
-  - [ ] F24 · Jobs de despacho y recolección
-  - [ ] F25 · Calidad, revisión rápida, set de control y versiones
-  - [ ] F26 · Intención declarada por el agente y reglas por intención
+- [x] **Bloque 5 — Tareas en segundo plano, calidad e intención** — 00080 aplicada
+  - [x] F23 · `workspaces.ai_background_settings` + Settings → Tareas en segundo plano (defaults §13.1, indexación no apagable) — módulo testeado + página
+  - [x] F24 · Ventanas de despacho (`dueWindow`, `planDispatch`, dedupe idempotente) + rutas cron `bg-dispatch`/`bg-collect` + interfaz `BatchProvider`; ejecución del lote/recolección en PENDIENTE
+  - [x] F25 · Fórmulas de calidad (`lib/patterns/quality.ts`: precisión, corregidos, sin categoría por volumen, dudosos, calibración) — testeadas; UI de revisión/versiones en PENDIENTE
+  - [x] F26 · `agent_runs.intent` + herramienta `declarar_intencion` (opt-in) + captura en el runner + `validateIntent` + condición en el evaluador + graduación (`graduation.ts`) — testeados
 
 ## Migraciones creadas
 
@@ -58,3 +58,4 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 | 00077 | `agents.response_rules`/`response_rules_default`/`external_reply_cooldown_minutes`; `agent_runs.routing`; RPC `claim_agent_reply`; trigger momento 3; cron `ssa-cron-drafts-refresh` | ✅ |
 | 00078 | Funciones SQL del dashboard: `chat_episodes`, `chat_dashboard_numbers/agent/team/trends`, `chat_waiting_now`, `chat_author_match` | ✅ |
 | 00079 | Patrones: `message_categories`, `message_texts`, `messages.text_norm`, triggers (upsert texto, seed de categorías por workspace), `chat_dashboard_patterns` | ✅ |
+| 00080 | `workspaces.ai_background_settings`; `agent_runs.intent`; crons `ssa-cron-bg-dispatch`/`ssa-cron-bg-collect` | ✅ |
