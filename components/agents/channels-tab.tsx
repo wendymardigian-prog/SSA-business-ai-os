@@ -10,6 +10,7 @@ import { setAgentChannel, setAgentChannelMode } from "@/lib/actions/agents";
 import type { AgentScreenData } from "@/lib/agent/screen";
 import type { Platform } from "@/lib/platforms";
 import { Notice, Section } from "./fields";
+import { RulesEditor } from "./rules-editor";
 
 /**
  * Pestana Canales (F30): el interruptor maestro por canal. Con el maestro
@@ -27,7 +28,7 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
 
-  function changeMode(channelId: string, mode: "send" | "draft") {
+  function changeMode(channelId: string, mode: "send" | "draft" | "rules") {
     setError(null);
     setPendingChannel(channelId);
     start(async () => {
@@ -92,7 +93,8 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
             {channels.map((channel) => {
               const on = agent.enabledChannelIds.includes(channel.id);
               const blockedByOther = !on && channel.takenBy !== null;
-              const mode = agent.channelModes[channel.id] === "draft" ? "draft" : "send";
+              const stored = agent.channelModes[channel.id];
+              const mode = stored === "draft" || stored === "rules" ? stored : "send";
               const modeId = `channel-mode-${channel.id}`;
               return (
                 <li key={channel.id} className="px-4 py-3">
@@ -131,17 +133,31 @@ export function ChannelsTab({ data }: { data: AgentScreenData }) {
                       id={modeId}
                       value={mode}
                       disabled={pendingChannel === channel.id}
-                      onChange={(e) => changeMode(channel.id, e.target.value as "send" | "draft")}
+                      onChange={(e) => changeMode(channel.id, e.target.value as "send" | "draft" | "rules")}
                       className="rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                     >
                       <option value="send">Envía directo</option>
                       <option value="draft">Deja borradores para aprobar</option>
+                      <option value="rules">Según reglas</option>
                     </select>
                     <p className="text-xs text-muted-foreground">
                       {mode === "draft"
                         ? "El agente redacta, pero el lead no recibe nada hasta que alguien lo apruebe en Borradores."
-                        : "El agente responde solo, sin que nadie lo revise antes."}
+                        : mode === "rules"
+                          ? "Cada respuesta se decide con las reglas de abajo: enviar directo, dejar borrador o no responder."
+                          : "El agente responde solo, sin que nadie lo revise antes."}
                     </p>
+                  </div>
+                )}
+                {on && mode === "rules" && (
+                  <div className="mt-2 pl-8">
+                    <RulesEditor
+                      agentId={agent.id}
+                      initialRules={agent.responseRules}
+                      initialDefault={agent.responseRulesDefault}
+                      channels={channels.map((c) => ({ id: c.id, label: c.label }))}
+                      tags={data.toolOptionSources?.tags?.map((t) => t.value) ?? []}
+                    />
                   </div>
                 )}
                 </li>

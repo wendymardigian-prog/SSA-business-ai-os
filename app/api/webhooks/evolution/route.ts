@@ -264,6 +264,9 @@ async function processMessage(
     attachments: text ? null : (data?.message ?? null),
     createdAt: at,
     workspaceId: channel.workspace_id,
+    // El eco de un envío desde el teléfono es un saliente externo (F2). Si el
+    // insert propio ya guardó este id, el índice único lo descarta.
+    origin: fromMe ? "external" : null,
   });
 
   // Modo borrador (Bloque 2c). Un mensaje del lead deja viejo al borrador

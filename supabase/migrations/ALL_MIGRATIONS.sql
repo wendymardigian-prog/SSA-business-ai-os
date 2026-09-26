@@ -9729,3 +9729,972 @@ REVOKE ALL ON FUNCTION public.contact_tags_apply_effects() FROM PUBLIC, anon, au
 REVOKE ALL ON FUNCTION public.tags_effect_changed() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.conversations_inherit_tag_effects() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.conversations_keep_tag_marker() FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 74: MESSAGES ORIGIN
+-- ============================================================
+-- ============================================================================
+-- 00074 — Origen de los salientes (Fase 3, Bloque 1, F2)
+-- ============================================================================
+-- Hasta ahora ningun saliente guardaba de donde salio. Los 1.580 del historial
+-- entraron sin autor (ver docs/diagnostico-autoria.md). El dashboard del
+-- Bloque 3 necesita separar Agente / Equipo / Automatizaciones / Fuera del
+-- sistema, y la verificacion del Bloque 2 necesita distinguir un saliente
+-- externo (ManyChat) de uno propio. Ese dato es `messages.origin`.
+--
+--   1. Columna `origin` con su lista cerrada. null en entrantes; no null en
+--      salientes (el CHECK se exige recien despues del backfill).
+--   2. Backfill: agent > user > flow por sus sent_by_*, y external si no tiene
+--      ninguno (que es el caso de todo el historial).
+--   3. Trigger BEFORE INSERT que deriva el origin de cualquier saliente que
+--      llegue sin el. Protege la base mientras la version vieja de la app siga
+--      desplegada: un saliente que entre por un camino todavia sin actualizar
+--      no queda con origin null (romperia el CHECK), se deriva de sus autores.
+--   4. Indice (workspace_id, origin, created_at) para el dashboard.
+--
+-- Idempotente. Solo aditiva: agrega una columna, la puebla y la indexa. No
+-- borra ni modifica datos existentes mas alla de completar `origin`.
+-- ============================================================================
+
+-- 1. Columna --------------------------------------------------------------
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS origin text;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_origin_values') THEN
+    ALTER TABLE public.messages ADD CONSTRAINT messages_origin_values
+      CHECK (origin IS NULL OR origin IN ('agent', 'user', 'flow', 'sequence', 'broadcast', 'external'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.messages.origin IS
+  'De donde salio el saliente: agent, user, flow, sequence, broadcast o external. null en entrantes. Lo escribe cada camino de envio; el trigger messages_fill_origin lo deriva si falta (F2).';
+
+-- 2. Backfill de lo ya guardado ------------------------------------------
+-- Prioridad agent > user > flow: un borrador aprobado lleva las dos autorias
+-- (agente y quien aprobo), y ahi manda el agente. sequence/broadcast no tienen
+-- columna propia en el historial, asi que un saliente sin ningun autor es
+-- external (todo el historial cae aca).
+UPDATE public.messages
+SET origin = CASE
+    WHEN sent_by_agent_id IS NOT NULL THEN 'agent'
+    WHEN sent_by_user_id IS NOT NULL THEN 'user'
+    WHEN sent_by_flow_id IS NOT NULL THEN 'flow'
+    ELSE 'external'
+  END
+WHERE direction = 'outbound' AND origin IS NULL;
+
+UPDATE public.messages
+SET origin = NULL
+WHERE direction = 'inbound' AND origin IS NOT NULL;
+
+-- 3. Trigger que deriva el origin en salientes sin el --------------------
+CREATE OR REPLACE FUNCTION public.messages_fill_origin()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.direction = 'inbound' THEN
+    NEW.origin := NULL;
+  ELSIF NEW.origin IS NULL THEN
+    NEW.origin := CASE
+      WHEN NEW.sent_by_agent_id IS NOT NULL THEN 'agent'
+      WHEN NEW.sent_by_user_id IS NOT NULL THEN 'user'
+      WHEN NEW.sent_by_flow_id IS NOT NULL THEN 'flow'
+      ELSE 'external'
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_fill_origin ON public.messages;
+CREATE TRIGGER messages_fill_origin
+  BEFORE INSERT OR UPDATE OF origin, direction, sent_by_agent_id, sent_by_user_id, sent_by_flow_id
+  ON public.messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.messages_fill_origin();
+
+-- 4. CHECK duro: todo saliente tiene origin -------------------------------
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_outbound_has_origin') THEN
+    ALTER TABLE public.messages ADD CONSTRAINT messages_outbound_has_origin
+      CHECK (direction <> 'outbound' OR origin IS NOT NULL);
+  END IF;
+END $$;
+
+-- 5. Indice para el dashboard ---------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_origin_created
+  ON public.messages (workspace_id, origin, created_at);
+
+-- 6. Verificacion: no puede quedar un saliente sin origin -----------------
+DO $$
+DECLARE v_missing integer;
+BEGIN
+  SELECT count(*) INTO v_missing
+  FROM public.messages
+  WHERE direction = 'outbound' AND origin IS NULL;
+  IF v_missing > 0 THEN
+    RAISE EXCEPTION 'Quedaron % salientes sin origin despues del backfill', v_missing;
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 75: WORKSPACE TIMEZONE
+-- ============================================================
+-- ============================================================================
+-- 00075 — Zona horaria del workspace (Fase 3, Bloque 1, F3)
+-- ============================================================================
+-- Los dashboards del Bloque 3 cortan los dias en la zona del negocio ("Hoy",
+-- "Esta semana"). Hasta ahora la zona vivia como constante en el codigo
+-- (BUSINESS_TIMEZONE = America/Costa_Rica). Se guarda en el workspace para que
+-- las funciones de metricas la usen. Los lectores viejos (guardarrailes,
+-- costos, topes) siguen con la constante por ahora; unificarlos queda anotado.
+--
+-- Idempotente y aditiva: una columna con default.
+-- ============================================================================
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'America/Costa_Rica';
+
+COMMENT ON COLUMN public.workspaces.timezone IS
+  'Zona horaria IANA del negocio. Los dashboards cortan dias y semanas con esta zona (F3). Default America/Costa_Rica.';
+
+-- authenticated ya puede leer todas las columnas de workspaces por su policy;
+-- no hace falta GRANT de columna (a diferencia de agents, que revoca costos).
+
+-- ============================================================
+-- MIGRATION 76: RUN VALUES AND NORMALIZE
+-- ============================================================
+-- ============================================================================
+-- 00076 — Valores nuevos en agent_runs y normalizador para agrupar (F4)
+-- ============================================================================
+-- Fase 3, Bloque 1.
+--
+--   1. agent_runs.status suma `already_answered`: el turno se retira porque ya
+--      hubo una respuesta (Bloque 2, verificacion antes de responder).
+--   2. agent_runs.source suma `message_classification` y
+--      `message_classification_eval`: las corridas del clasificador de patrones
+--      y su evaluacion contra el set de control (Bloques 4 y 5). No llevan
+--      agent_id, asi que el CHECK agent_only_for_agent_sources no cambia.
+--   3. public.normalize_for_grouping(text): normaliza para AGRUPAR mensajes
+--      (colapsa letras repetidas: "siii" y "si" caen juntas). Es distinta de
+--      normalize_message_text (00027), que se sigue usando para detectar frases
+--      de "no contactar" y NO se toca: cambiarla movería esa deteccion.
+--
+-- Idempotente. Aditiva: recrea CHECKs para sumar valores (patron del repo) y
+-- crea una funcion nueva. No borra datos.
+-- ============================================================================
+
+-- 1 y 2. CHECKs de agent_runs --------------------------------------------
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_status_values;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_status_values
+  CHECK (status IN ('running', 'responded', 'escalated', 'skipped_automation',
+                    'skipped', 'blocked_guardrail', 'completed', 'error', 'drafted',
+                    'already_answered'));
+
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_values;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_values
+  CHECK (source IN ('agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+                    'conversation_summary', 'message_classification',
+                    'message_classification_eval'));
+
+-- 3. Normalizador para agrupar -------------------------------------------
+-- minusculas → saca acentos con translate (no unaccent) → elimina todo lo que
+-- no sea letra, numero o espacio → colapsa 2+ caracteres iguales seguidos en
+-- uno → colapsa espacios y recorta → trunca a 300.
+CREATE OR REPLACE FUNCTION public.normalize_for_grouping(p_raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT left(
+    btrim(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            translate(lower(coalesce(p_raw, '')),
+              'áàäâãéèëêíìïîóòöôõúùüûñç',
+              'aaaaaeeeeiiiiooooouuuunc'),
+            '[^a-z0-9 ]', '', 'g'),
+          '(.)\1+', '\1', 'g'),
+        '\s+', ' ', 'g')
+    ),
+    300
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.normalize_for_grouping(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.normalize_for_grouping(text) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.normalize_for_grouping(text) IS
+  'Normaliza para AGRUPAR mensajes por lo que significan (colapsa letras repetidas: siii=si). Distinta de normalize_message_text (00027), que detecta frases de no contactar. Espejo exacto de lib/text/normalize.ts (F4).';
+
+-- ============================================================
+-- MIGRATION 77: AGENT REPLY RULES
+-- ============================================================
+-- ============================================================================
+-- 00077 — Verificación antes de responder y reglas de respuesta (Bloque 2)
+-- ============================================================================
+-- Fase 3, Bloque 2 (F5–F12).
+--
+--   1. Columnas de reglas en `agents`: response_rules (lista jsonb),
+--      response_rules_default (send/draft/skip), external_reply_cooldown_minutes
+--      (0–120). Con su GRANT SELECT a authenticated (regla de la 00060).
+--   2. agent_runs.routing jsonb: qué decidió el turno (modo, regla, chequeo,
+--      salud del refresco). Con GRANT SELECT (no es un costo).
+--   3. RPC claim_agent_reply: bajo pg_advisory_xact_lock por conversación,
+--      mira si ya hubo un saliente después del inbound del turno que no es el
+--      propio. Es el "momento 2": el chequeo antes de enviar/guardar.
+--      Elección de atomicidad (F5): la app no puede sostener una transacción a
+--      través de la llamada a Zernio, así que el lock serializa turno-vs-turno
+--      del agente (que además ya es imposible por el índice único de un job
+--      pendiente por conversación). El caso "una PERSONA responde entre el
+--      chequeo y el envío" queda cubierto por el paso 8 del runner (respuesta
+--      humana) y, en modo borrador, por el descarte del momento 3. No se
+--      reserva una fila `pending` en messages a propósito: contaminaría la
+--      bandeja, los conteos y la ráfaga.
+--   4. Trigger messages_discard_answered_drafts (momento 3): cuando entra un
+--      saliente, descarta el borrador pendiente/fallido de esa conversación si
+--      es posterior a su ráfaga y no salió de su propio run. auto:manual_reply
+--      si el saliente es de una persona, auto:answered_elsewhere si no.
+--   5. Cron ssa-cron-drafts-refresh cada 5 min (refresca contra Zernio las
+--      conversaciones con borrador pendiente) + whitelist de call_app_cron.
+--
+-- Idempotente. Aditiva.
+-- ============================================================================
+
+-- 1. Columnas de reglas ---------------------------------------------------
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS response_rules jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS response_rules_default text NOT NULL DEFAULT 'draft';
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS external_reply_cooldown_minutes integer NOT NULL DEFAULT 10;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_response_rules_default_values') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_response_rules_default_values
+      CHECK (response_rules_default IN ('send', 'draft', 'skip'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_external_cooldown_range') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_external_cooldown_range
+      CHECK (external_reply_cooldown_minutes BETWEEN 0 AND 120);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'agents_response_rules_is_array') THEN
+    ALTER TABLE public.agents ADD CONSTRAINT agents_response_rules_is_array
+      CHECK (jsonb_typeof(response_rules) = 'array');
+  END IF;
+END $$;
+
+GRANT SELECT (response_rules, response_rules_default, external_reply_cooldown_minutes)
+  ON public.agents TO authenticated;
+
+-- 2. agent_runs.routing ---------------------------------------------------
+ALTER TABLE public.agent_runs ADD COLUMN IF NOT EXISTS routing jsonb;
+GRANT SELECT (routing) ON public.agent_runs TO authenticated;
+
+COMMENT ON COLUMN public.agent_runs.routing IS
+  'Qué decidió el turno (F9/F12): mode, rule_id, rule_index, action, matched, check, moment, refresh. Se lee en Runs y en la cola; la pantalla arma una oración, nunca muestra rule:<id>.';
+
+-- 3. RPC claim_agent_reply (momento 2) -----------------------------------
+CREATE OR REPLACE FUNCTION public.claim_agent_reply(
+  p_conversation_id uuid,
+  p_inbound_at timestamptz,
+  p_run_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_answered boolean;
+BEGIN
+  -- Serializa contra otro turno del agente sobre la misma conversación. Se
+  -- libera al terminar la transacción (commit o rollback): un turno que muere
+  -- nunca deja el lock tomado.
+  PERFORM pg_advisory_xact_lock(hashtext(p_conversation_id::text));
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.messages
+    WHERE conversation_id = p_conversation_id
+      AND direction = 'outbound'
+      AND created_at > p_inbound_at
+      AND status <> 'failed'
+      AND (p_run_id IS NULL OR agent_run_id IS DISTINCT FROM p_run_id)
+  ) INTO v_answered;
+
+  RETURN v_answered;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.claim_agent_reply(uuid, timestamptz, uuid) IS
+  'Momento 2 (F5): bajo advisory lock por conversación, true si ya hay un saliente posterior al inbound del turno que no es el propio run. Ver la elección de atomicidad en la cabecera de 00077.';
+
+-- 4. Trigger momento 3: un saliente descarta el borrador pendiente --------
+CREATE OR REPLACE FUNCTION public.messages_discard_answered_drafts()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.direction <> 'outbound' OR NEW.status = 'failed' THEN
+    RETURN NEW;
+  END IF;
+
+  UPDATE public.agent_drafts d
+  SET status = 'discarded',
+      discard_reason = CASE WHEN NEW.origin = 'user' THEN 'auto:manual_reply' ELSE 'auto:answered_elsewhere' END,
+      decided_at = now()
+  WHERE d.conversation_id = NEW.conversation_id
+    AND d.status IN ('pending', 'failed')
+    -- Solo si el saliente es posterior a la ráfaga del borrador y no salió del
+    -- propio run del borrador (aprobar un borrador no se descarta a sí mismo).
+    AND (d.burst_last_inbound_at IS NULL OR d.burst_last_inbound_at < NEW.created_at)
+    AND (NEW.agent_run_id IS NULL OR d.run_id IS DISTINCT FROM NEW.agent_run_id);
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_discard_answered_drafts ON public.messages;
+CREATE TRIGGER messages_discard_answered_drafts
+  AFTER INSERT ON public.messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.messages_discard_answered_drafts();
+
+-- 5. Cron drafts-refresh + whitelist -------------------------------------
+CREATE OR REPLACE FUNCTION private.call_app_cron(p_path text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_base   text;
+  v_secret text;
+BEGIN
+  IF p_path NOT IN ('jobs', 'sequences', 'whatsapp-health', 'inactivity', 'automation-events', 'agent-bursts', 'drafts-refresh') THEN
+    RAISE EXCEPTION 'ruta de cron no permitida: %', p_path;
+  END IF;
+
+  SELECT value INTO v_base   FROM private.system_config WHERE key = 'app_url';
+  SELECT value INTO v_secret FROM private.system_config WHERE key = 'cron_secret';
+
+  IF v_base IS NULL OR v_secret IS NULL THEN
+    RAISE WARNING 'private.system_config sin app_url o cron_secret: el cron "%" no se ejecuto', p_path;
+    RETURN NULL;
+  END IF;
+
+  RETURN net.http_get(
+    url     => rtrim(v_base, '/') || '/api/cron/' || p_path,
+    headers => jsonb_build_object(
+                 'Authorization', 'Bearer ' || v_secret,
+                 'Content-Type',  'application/json'
+               ),
+    timeout_milliseconds => 60000
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-drafts-refresh') THEN
+    PERFORM cron.unschedule('ssa-cron-drafts-refresh');
+  END IF;
+  PERFORM cron.schedule('ssa-cron-drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
+END $$;
+
+-- ============================================================
+-- MIGRATION 78: CHAT DASHBOARD METRICS
+-- ============================================================
+-- ============================================================================
+-- 00078 — Funciones de métricas del dashboard de Chat (Bloque 3, F15)
+-- ============================================================================
+-- Todas SECURITY INVOKER: se llaman con el cliente del usuario, así la RLS de
+-- messages/conversations aplica el scope de leads (un Member ve solo lo suyo).
+-- Reciben los mismos filtros (p_from, p_to, p_channel, p_author) y cortan los
+-- días en la zona del workspace. "Período anterior" se calcula del lado de la
+-- app y se pasa como otro rango.
+--
+-- No crean tablas: los episodios se derivan con una función (§12.4).
+-- Idempotente (CREATE OR REPLACE) y aditiva.
+-- ============================================================================
+
+-- Episodios (§11.3): un episodio arranca con un entrante que es el primero de
+-- la conversación, o el primero tras una inactividad mayor que
+-- close_after_inactive_hours. Termina con el siguiente arranque o el final.
+CREATE OR REPLACE FUNCTION public.chat_episodes(
+  p_workspace_id uuid,
+  p_channel text DEFAULT NULL
+)
+RETURNS TABLE (
+  conversation_id uuid,
+  contact_id uuid,
+  channel_id uuid,
+  episode_no integer,
+  episode_start timestamptz,
+  first_inbound_at timestamptz,
+  first_outbound_at timestamptz,
+  first_outbound_origin text
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH gap AS (
+    SELECT COALESCE(MIN(close_after_inactive_hours), 12) AS hours
+    FROM public.agents WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+  ),
+  msgs AS (
+    SELECT m.conversation_id, m.direction, m.origin, m.created_at,
+           c.contact_id AS c_contact, c.channel_id AS c_channel
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id
+      AND c.deleted_at IS NULL
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+  ),
+  ordered AS (
+    SELECT *, LAG(created_at) OVER (PARTITION BY conversation_id ORDER BY created_at) AS prev_at
+    FROM msgs
+  ),
+  starts AS (
+    SELECT *,
+      CASE WHEN direction = 'inbound'
+             AND (prev_at IS NULL OR created_at - prev_at > ((SELECT hours FROM gap) || ' hours')::interval)
+           THEN 1 ELSE 0 END AS is_start
+    FROM ordered
+  ),
+  numbered AS (
+    SELECT *, SUM(is_start) OVER (PARTITION BY conversation_id ORDER BY created_at ROWS UNBOUNDED PRECEDING) AS episode_no
+    FROM starts
+  )
+  SELECT conversation_id,
+         c_contact AS contact_id,
+         c_channel AS channel_id,
+         episode_no::integer,
+         MIN(created_at) AS episode_start,
+         MIN(created_at) FILTER (WHERE direction = 'inbound') AS first_inbound_at,
+         MIN(created_at) FILTER (WHERE direction = 'outbound') AS first_outbound_at,
+         (ARRAY_AGG(origin ORDER BY created_at) FILTER (WHERE direction = 'outbound'))[1] AS first_outbound_origin
+  FROM numbered
+  WHERE episode_no >= 1
+  GROUP BY conversation_id, episode_no, c_contact, c_channel;
+$$;
+
+-- Filtro "respondido por" aplicado a los salientes: 'all'/NULL = todos;
+-- 'agent'/'user'/'flow'/'sequence'/'broadcast'/'external' = ese origin;
+-- un uuid = ese sent_by_user_id. Devuelve true si el saliente entra.
+CREATE OR REPLACE FUNCTION public.chat_author_match(p_author text, p_origin text, p_sent_by_user uuid)
+RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_author IS NULL OR p_author = 'all' THEN true
+    WHEN p_author = 'automations' THEN p_origin IN ('flow', 'sequence', 'broadcast')
+    WHEN p_author IN ('agent', 'user', 'external') THEN p_origin = p_author
+    WHEN p_author ~ '^[0-9a-f-]{36}$' THEN p_sent_by_user::text = p_author
+    ELSE false
+  END;
+$$;
+
+-- Números principales (§11.1, §11.4). Un rango; la app llama dos veces para el
+-- período anterior. Devuelve una fila.
+CREATE OR REPLACE FUNCTION public.chat_dashboard_numbers(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL,
+  p_author text DEFAULT NULL
+)
+RETURNS TABLE (
+  new_conversations bigint,
+  messages_in bigint,
+  messages_out bigint,
+  first_response_median_seconds numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH ep AS (
+    SELECT * FROM public.chat_episodes(p_workspace_id, p_channel)
+  ),
+  msgs AS (
+    SELECT m.direction, m.origin, m.sent_by_user_id, m.created_at
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+      AND (p_from IS NULL OR m.created_at >= p_from)
+      AND (p_to IS NULL OR m.created_at <= p_to)
+  )
+  SELECT
+    (SELECT COUNT(*) FROM ep
+       WHERE (p_from IS NULL OR episode_start >= p_from) AND (p_to IS NULL OR episode_start <= p_to)),
+    (SELECT COUNT(*) FROM msgs WHERE direction = 'inbound'),
+    (SELECT COUNT(*) FROM msgs WHERE direction = 'outbound'
+       AND public.chat_author_match(p_author, origin, sent_by_user_id)),
+    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (first_outbound_at - first_inbound_at)))
+       FROM ep
+       WHERE first_inbound_at IS NOT NULL AND first_outbound_at IS NOT NULL
+         AND first_outbound_at >= first_inbound_at
+         AND (p_from IS NULL OR episode_start >= p_from) AND (p_to IS NULL OR episode_start <= p_to));
+$$;
+
+-- Esperando respuesta ahora (§11.9): conversaciones abiertas, no borradas, sin
+-- do_not_contact ni agent_disabled_by_tag_id, con último mensaje entrante de
+-- hace más de 1 hora.
+CREATE OR REPLACE FUNCTION public.chat_waiting_now(
+  p_workspace_id uuid,
+  p_channel text DEFAULT NULL
+)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH last_msg AS (
+    SELECT DISTINCT ON (m.conversation_id) m.conversation_id, m.direction, m.created_at
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id
+    ORDER BY m.conversation_id, m.created_at DESC
+  )
+  SELECT COUNT(*)
+  FROM public.conversations c
+  JOIN public.contacts ct ON ct.id = c.contact_id
+  JOIN last_msg lm ON lm.conversation_id = c.id
+  WHERE c.workspace_id = p_workspace_id
+    AND c.deleted_at IS NULL
+    AND c.status = 'open'
+    AND c.agent_disabled_by_tag_id IS NULL
+    AND COALESCE(ct.do_not_contact, false) = false
+    AND lm.direction = 'inbound'
+    AND lm.created_at < now() - interval '1 hour'
+    AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel);
+$$;
+
+-- Tabla "Quién responde" (§11.4, §15.2). Una fila por autor (agente + cada
+-- persona). Tiempos en segundos (mediana). RLS aplica el scope.
+CREATE OR REPLACE FUNCTION public.chat_dashboard_team(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL
+)
+RETURNS TABLE (
+  author text,
+  messages_out bigint,
+  first_response_median_seconds numeric,
+  reply_median_seconds numeric,
+  replies_under_1h_pct numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH outs AS (
+    SELECT
+      CASE WHEN m.origin = 'user' THEN m.sent_by_user_id::text ELSE m.origin END AS author,
+      m.conversation_id, m.created_at,
+      LAG(m.direction) OVER (PARTITION BY m.conversation_id ORDER BY m.created_at) AS prev_dir,
+      LAG(m.created_at) OVER (PARTITION BY m.conversation_id ORDER BY m.created_at) AS prev_at
+    FROM public.messages m
+    JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+  ),
+  replies AS (
+    SELECT author, EXTRACT(EPOCH FROM (created_at - prev_at)) AS secs
+    FROM outs
+    WHERE prev_dir = 'inbound' AND author IS NOT NULL
+      AND (p_from IS NULL OR created_at >= p_from) AND (p_to IS NULL OR created_at <= p_to)
+  ),
+  sent AS (
+    SELECT author, COUNT(*) AS n
+    FROM outs
+    WHERE author IS NOT NULL
+      AND (p_from IS NULL OR created_at >= p_from) AND (p_to IS NULL OR created_at <= p_to)
+    GROUP BY author
+  )
+  SELECT s.author, s.n,
+    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY secs) FROM replies r0 WHERE r0.author = s.author) AS first_resp,
+    (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY secs) FROM replies r1 WHERE r1.author = s.author) AS reply_med,
+    (SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE secs < 3600) / NULLIF(COUNT(*), 0), 1) FROM replies r2 WHERE r2.author = s.author) AS under1h
+  FROM sent s;
+$$;
+
+-- Sección del agente (§11.5): actuó, tomó desde el primer mensaje, derivó.
+-- Sobre las conversaciones nuevas (episodios) del período.
+CREATE OR REPLACE FUNCTION public.chat_dashboard_agent(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL
+)
+RETURNS TABLE (
+  new_conversations bigint,
+  agent_acted bigint,
+  agent_took_first bigint,
+  agent_escalated bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH ep AS (
+    SELECT * FROM public.chat_episodes(p_workspace_id, p_channel)
+    WHERE (p_from IS NULL OR episode_start >= p_from) AND (p_to IS NULL OR episode_start <= p_to)
+  )
+  SELECT
+    COUNT(*),
+    COUNT(*) FILTER (WHERE first_outbound_origin = 'agent'
+      OR EXISTS (SELECT 1 FROM public.agent_drafts d WHERE d.conversation_id = ep.conversation_id)
+      OR EXISTS (SELECT 1 FROM public.audit_log al WHERE al.entity_id = ep.conversation_id AND al.performed_by_agent_id IS NOT NULL)),
+    COUNT(*) FILTER (WHERE first_outbound_origin = 'agent'),
+    COUNT(*) FILTER (WHERE EXISTS (
+      SELECT 1 FROM public.agent_runs r WHERE r.conversation_id = ep.conversation_id AND r.status = 'escalated'))
+  FROM ep;
+$$;
+
+REVOKE ALL ON FUNCTION public.chat_episodes(uuid, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_author_match(text, text, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_dashboard_numbers(uuid, timestamptz, timestamptz, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_waiting_now(uuid, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_dashboard_team(uuid, timestamptz, timestamptz, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.chat_dashboard_agent(uuid, timestamptz, timestamptz, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_episodes(uuid, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_author_match(text, text, uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_numbers(uuid, timestamptz, timestamptz, text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_waiting_now(uuid, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_team(uuid, timestamptz, timestamptz, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_agent(uuid, timestamptz, timestamptz, text) TO authenticated, service_role;
+
+-- Series de tendencias por día (F16). La app agrupa a semanal si el período
+-- supera 62 días. Corta los días en la zona que se pasa.
+CREATE OR REPLACE FUNCTION public.chat_dashboard_trends(
+  p_workspace_id uuid,
+  p_from timestamptz,
+  p_to timestamptz,
+  p_channel text DEFAULT NULL,
+  p_author text DEFAULT NULL,
+  p_tz text DEFAULT 'America/Costa_Rica'
+)
+RETURNS TABLE (day date, messages_in bigint, messages_out bigint, new_conversations bigint)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
+  WITH msgs AS (
+    SELECT (m.created_at AT TIME ZONE p_tz)::date AS d, m.direction, m.origin, m.sent_by_user_id
+    FROM public.messages m JOIN public.conversations c ON c.id = m.conversation_id
+    WHERE m.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+      AND (p_channel IS NULL OR c.channel_id::text = p_channel OR c.platform = p_channel)
+      AND (p_from IS NULL OR m.created_at >= p_from) AND (p_to IS NULL OR m.created_at <= p_to)
+  ),
+  eps AS (
+    SELECT (episode_start AT TIME ZONE p_tz)::date AS d
+    FROM public.chat_episodes(p_workspace_id, p_channel)
+    WHERE (p_from IS NULL OR episode_start >= p_from) AND (p_to IS NULL OR episode_start <= p_to)
+  ),
+  days AS (
+    SELECT d FROM msgs UNION SELECT d FROM eps
+  )
+  SELECT d,
+    (SELECT COUNT(*) FROM msgs WHERE msgs.d = days.d AND direction = 'inbound'),
+    (SELECT COUNT(*) FROM msgs WHERE msgs.d = days.d AND direction = 'outbound' AND public.chat_author_match(p_author, origin, sent_by_user_id)),
+    (SELECT COUNT(*) FROM eps WHERE eps.d = days.d)
+  FROM days ORDER BY d;
+$$;
+
+REVOKE ALL ON FUNCTION public.chat_dashboard_trends(uuid, timestamptz, timestamptz, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_trends(uuid, timestamptz, timestamptz, text, text, text) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 79: MESSAGE PATTERNS
+-- ============================================================
+-- ============================================================================
+-- 00079 — Patrones de mensajes (Bloque 4, F19-F22)
+-- ============================================================================
+-- Agrupa los mensajes por lo que significan. Capa 1 gratis (normalización);
+-- capa 2 con un LLM chico en lote (Bloque 4/5). Dos tablas nuevas
+-- (message_categories, message_texts), la columna generada messages.text_norm
+-- y un trigger que crea la fila del texto al entrar cada mensaje.
+--
+-- Idempotente y aditiva. El backfill solo inserta.
+-- ============================================================================
+
+-- 1. Tablas -----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.message_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  direction text NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  name text NOT NULL,
+  description text,
+  examples text[] NOT NULL DEFAULT '{}',
+  is_fallback boolean NOT NULL DEFAULT false,
+  created_by text NOT NULL CHECK (created_by IN ('model', 'user', 'system')),
+  created_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  merged_into_id uuid REFERENCES public.message_categories(id) ON DELETE SET NULL,
+  archived_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_categories_name
+  ON public.message_categories (workspace_id, direction, lower(name)) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_categories_fallback
+  ON public.message_categories (workspace_id, direction) WHERE is_fallback;
+
+CREATE TABLE IF NOT EXISTS public.message_texts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  direction text NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  normalized_text text NOT NULL,
+  sample_text text NOT NULL,
+  category_id uuid REFERENCES public.message_categories(id) ON DELETE SET NULL,
+  confidence numeric(3, 2),
+  source text CHECK (source IN ('rule', 'model', 'human')),
+  prompt_version integer,
+  run_id uuid REFERENCES public.agent_runs(id) ON DELETE SET NULL,
+  is_button boolean NOT NULL DEFAULT false,
+  classified_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  review_result text CHECK (review_result IN ('ok', 'corrected')),
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_message_texts_norm
+  ON public.message_texts (workspace_id, direction, normalized_text);
+CREATE INDEX IF NOT EXISTS idx_message_texts_category ON public.message_texts (workspace_id, category_id);
+CREATE INDEX IF NOT EXISTS idx_message_texts_unclassified
+  ON public.message_texts (workspace_id, direction) WHERE category_id IS NULL;
+
+-- 2. Columna generada messages.text_norm -----------------------------------
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'text_norm') THEN
+    ALTER TABLE public.messages ADD COLUMN text_norm text GENERATED ALWAYS AS (public.normalize_for_grouping(text)) STORED;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_textnorm ON public.messages (workspace_id, direction, text_norm);
+
+-- 3. RLS --------------------------------------------------------------------
+ALTER TABLE public.message_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.message_texts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS message_categories_select ON public.message_categories;
+CREATE POLICY message_categories_select ON public.message_categories FOR SELECT USING (public.is_workspace_member(workspace_id));
+DROP POLICY IF EXISTS message_categories_write ON public.message_categories;
+CREATE POLICY message_categories_write ON public.message_categories FOR ALL
+  USING (public.is_workspace_admin(workspace_id)) WITH CHECK (public.is_workspace_admin(workspace_id));
+
+DROP POLICY IF EXISTS message_texts_select ON public.message_texts;
+CREATE POLICY message_texts_select ON public.message_texts FOR SELECT USING (public.is_workspace_member(workspace_id));
+DROP POLICY IF EXISTS message_texts_write ON public.message_texts;
+CREATE POLICY message_texts_write ON public.message_texts FOR ALL
+  USING (public.is_workspace_admin(workspace_id)) WITH CHECK (public.is_workspace_admin(workspace_id));
+
+-- 4. Categorías fallback por dirección --------------------------------------
+INSERT INTO public.message_categories (workspace_id, direction, name, is_fallback, created_by)
+SELECT w.id, d.dir, 'Otro', true, 'system'
+FROM public.workspaces w CROSS JOIN (VALUES ('inbound'), ('outbound')) AS d(dir)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.message_categories (workspace_id, direction, name, is_fallback, created_by)
+SELECT w.id, d.dir, 'Solo emoji o adjunto', false, 'system'
+FROM public.workspaces w CROSS JOIN (VALUES ('inbound'), ('outbound')) AS d(dir)
+ON CONFLICT DO NOTHING;
+
+-- 5. Trigger: cada mensaje con texto crea (o reusa) su fila ------------------
+CREATE OR REPLACE FUNCTION public.messages_upsert_text()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_norm text;
+  v_emoji_cat uuid;
+BEGIN
+  IF NEW.text IS NULL OR btrim(NEW.text) = '' THEN
+    RETURN NEW;
+  END IF;
+  v_norm := public.normalize_for_grouping(NEW.text);
+
+  IF v_norm = '' THEN
+    -- Solo emoji/adjunto: va directo a su categoría con source rule.
+    SELECT id INTO v_emoji_cat FROM public.message_categories
+      WHERE workspace_id = NEW.workspace_id AND direction = NEW.direction AND name = 'Solo emoji o adjunto' LIMIT 1;
+    INSERT INTO public.message_texts (workspace_id, direction, normalized_text, sample_text, category_id, source, first_seen_at)
+    VALUES (NEW.workspace_id, NEW.direction, '', NEW.text, v_emoji_cat, 'rule', NEW.created_at)
+    ON CONFLICT (workspace_id, direction, normalized_text) DO NOTHING;
+  ELSE
+    INSERT INTO public.message_texts (workspace_id, direction, normalized_text, sample_text, first_seen_at)
+    VALUES (NEW.workspace_id, NEW.direction, v_norm, NEW.text, NEW.created_at)
+    ON CONFLICT (workspace_id, direction, normalized_text) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_upsert_text ON public.messages;
+CREATE TRIGGER messages_upsert_text
+  AFTER INSERT ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.messages_upsert_text();
+
+-- 6. Backfill de message_texts con lo ya guardado --------------------------
+-- Un texto distinto por (workspace, dirección, normalizado). sample_text = el
+-- más viejo. first_seen_at = su primera aparición.
+INSERT INTO public.message_texts (workspace_id, direction, normalized_text, sample_text, first_seen_at)
+SELECT m.workspace_id, m.direction, public.normalize_for_grouping(m.text),
+       (ARRAY_AGG(m.text ORDER BY m.created_at))[1],
+       MIN(m.created_at)
+FROM public.messages m
+WHERE m.text IS NOT NULL AND btrim(m.text) <> ''
+GROUP BY m.workspace_id, m.direction, public.normalize_for_grouping(m.text)
+ON CONFLICT (workspace_id, direction, normalized_text) DO NOTHING;
+
+-- Los textos vacíos (solo emoji/adjunto) van a su categoría con source rule.
+UPDATE public.message_texts t
+SET category_id = c.id, source = 'rule'
+FROM public.message_categories c
+WHERE t.normalized_text = '' AND t.category_id IS NULL
+  AND c.workspace_id = t.workspace_id AND c.direction = t.direction AND c.name = 'Solo emoji o adjunto';
+
+-- 7. Textos de botón conocidos (§10.6). Categoría inbound "Respuesta a botón",
+-- los 12 textos con is_button = true y source = 'rule' (no los toca el modelo).
+INSERT INTO public.message_categories (workspace_id, direction, name, description, is_fallback, created_by)
+SELECT w.id, 'inbound', 'Respuesta a botón', 'Clic en un botón de ManyChat u otra automatización', false, 'system'
+FROM public.workspaces w
+ON CONFLICT DO NOTHING;
+
+WITH buttons(t) AS (VALUES
+  ('si enviamelo'), ('quiero aprender'), ('tengo un negocio'), ('tengo una base'),
+  ('si quiero a clase'), ('si quiero la clase'), ('generar contenido'), ('empiezo de 0'),
+  ('automatizar todo'), ('equipo ventas ia'), ('agentes'), ('responder mensajes')
+)
+UPDATE public.message_texts t
+SET is_button = true, source = 'rule',
+    category_id = c.id
+FROM buttons b, public.message_categories c
+WHERE t.direction = 'inbound' AND t.normalized_text = b.t
+  AND c.direction = 'inbound' AND c.name = 'Respuesta a botón' AND c.workspace_id = t.workspace_id;
+
+-- 8. Categorías de sistema al crear un workspace ----------------------------
+-- Sin esto, un workspace nuevo (o el de prueba de verify-dashboards) no tiene
+-- "Otro" ni "Solo emoji o adjunto", y el trigger de textos no puede clasificar
+-- los emojis. Con esto cada workspace nace con sus categorías fallback.
+CREATE OR REPLACE FUNCTION public.seed_message_categories()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  INSERT INTO public.message_categories (workspace_id, direction, name, is_fallback, created_by)
+  VALUES (NEW.id, 'inbound', 'Otro', true, 'system'), (NEW.id, 'outbound', 'Otro', true, 'system'),
+         (NEW.id, 'inbound', 'Solo emoji o adjunto', false, 'system'), (NEW.id, 'outbound', 'Solo emoji o adjunto', false, 'system')
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+END; $$;
+
+DROP TRIGGER IF EXISTS seed_message_categories ON public.workspaces;
+CREATE TRIGGER seed_message_categories AFTER INSERT ON public.workspaces FOR EACH ROW EXECUTE FUNCTION public.seed_message_categories();
+
+-- 9. Patrones para el dashboard (F22): categorías con su volumen de mensajes y
+-- las variantes principales. El volumen cuenta MENSAJES (no textos distintos).
+CREATE OR REPLACE FUNCTION public.chat_dashboard_patterns(
+  p_workspace_id uuid, p_direction text, p_from timestamptz, p_to timestamptz
+)
+RETURNS TABLE (category_id uuid, category_name text, is_fallback boolean, message_count bigint, text_count bigint, top_variants jsonb)
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
+  WITH msg_counts AS (
+    SELECT m.text_norm, COUNT(*) AS n
+    FROM public.messages m
+    WHERE m.workspace_id = p_workspace_id AND m.direction = p_direction
+      AND m.text_norm IS NOT NULL AND m.text_norm <> ''
+      AND (p_from IS NULL OR m.created_at >= p_from) AND (p_to IS NULL OR m.created_at <= p_to)
+    GROUP BY m.text_norm
+  ),
+  texts AS (
+    SELECT t.id, t.category_id, t.normalized_text, t.sample_text, t.confidence, t.is_button,
+           COALESCE(mc.n, 0) AS msg_n
+    FROM public.message_texts t
+    LEFT JOIN msg_counts mc ON mc.text_norm = t.normalized_text
+    WHERE t.workspace_id = p_workspace_id AND t.direction = p_direction
+  )
+  SELECT c.id, c.name, c.is_fallback,
+    COALESCE(SUM(t.msg_n), 0)::bigint AS message_count,
+    COUNT(t.id)::bigint AS text_count,
+    COALESCE((
+      SELECT jsonb_agg(v) FROM (
+        SELECT jsonb_build_object('text', t2.sample_text, 'count', t2.msg_n, 'confidence', t2.confidence, 'is_button', t2.is_button) AS v
+        FROM texts t2 WHERE t2.category_id IS NOT DISTINCT FROM c.id ORDER BY t2.msg_n DESC LIMIT 5
+      ) top
+    ), '[]'::jsonb) AS top_variants
+  FROM public.message_categories c
+  LEFT JOIN texts t ON t.category_id = c.id
+  WHERE c.workspace_id = p_workspace_id AND c.direction = p_direction AND c.archived_at IS NULL
+  GROUP BY c.id, c.name, c.is_fallback
+  ORDER BY COALESCE(SUM(t.msg_n), 0) DESC;
+$$;
+REVOKE ALL ON FUNCTION public.chat_dashboard_patterns(uuid, text, timestamptz, timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.chat_dashboard_patterns(uuid, text, timestamptz, timestamptz) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 80: BACKGROUND TASKS
+-- ============================================================
+-- ============================================================================
+-- 00080 — Tareas en segundo plano, calidad e intención (Bloque 5, F23-F26)
+-- ============================================================================
+--   1. workspaces.ai_background_settings (jsonb): modo de cada tarea de IA que
+--      no es conversación en vivo (clasificación, resumen, cierre, indexación).
+--   2. agent_runs.intent (jsonb): la intención que declara el agente en cada
+--      turno (F26). Con GRANT SELECT (no es un costo).
+--   3. Cron ssa-cron-bg-dispatch y ssa-cron-bg-collect cada 15 min + whitelist.
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS ai_background_settings jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE public.agent_runs ADD COLUMN IF NOT EXISTS intent jsonb;
+GRANT SELECT (intent) ON public.agent_runs TO authenticated;
+COMMENT ON COLUMN public.agent_runs.intent IS
+  'Intención declarada por el agente en el turno (F26): { category_id, confidence }. null si no la declaró o el id no existe.';
+
+CREATE OR REPLACE FUNCTION private.call_app_cron(p_path text)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_base text; v_secret text;
+BEGIN
+  IF p_path NOT IN ('jobs', 'sequences', 'whatsapp-health', 'inactivity', 'automation-events', 'agent-bursts', 'drafts-refresh', 'bg-dispatch', 'bg-collect') THEN
+    RAISE EXCEPTION 'ruta de cron no permitida: %', p_path;
+  END IF;
+  SELECT value INTO v_base FROM private.system_config WHERE key = 'app_url';
+  SELECT value INTO v_secret FROM private.system_config WHERE key = 'cron_secret';
+  IF v_base IS NULL OR v_secret IS NULL THEN
+    RAISE WARNING 'private.system_config sin app_url o cron_secret: el cron "%" no se ejecuto', p_path;
+    RETURN NULL;
+  END IF;
+  RETURN net.http_get(
+    url => rtrim(v_base, '/') || '/api/cron/' || p_path,
+    headers => jsonb_build_object('Authorization', 'Bearer ' || v_secret, 'Content-Type', 'application/json'),
+    timeout_milliseconds => 60000);
+END; $$;
+REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-dispatch') THEN PERFORM cron.unschedule('ssa-cron-bg-dispatch'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-collect') THEN PERFORM cron.unschedule('ssa-cron-bg-collect'); END IF;
+  PERFORM cron.schedule('ssa-cron-bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
+  PERFORM cron.schedule('ssa-cron-bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
+END $$;

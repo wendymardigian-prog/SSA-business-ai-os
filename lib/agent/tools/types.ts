@@ -134,6 +134,8 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
    * salida de emergencia (derivar a una persona).
    */
   required?: boolean;
+  /** Captura la intención declarada en state.intent (F26). */
+  capturesIntent?: boolean;
   /**
    * Si su encendido se decide en otra pestana (la busqueda en la KB se prende
    * desde Conocimiento). La pantalla de Herramientas la muestra, sin switch.

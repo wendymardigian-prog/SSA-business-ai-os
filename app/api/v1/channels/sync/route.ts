@@ -5,6 +5,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
   ensureWebhookRegistered,
+  SUBSCRIBED_EVENTS,
   getOrCreateWorkspaceWebhookSecret,
 } from "@/lib/zernio-webhook";
 import { backfillInboxConversations } from "@/lib/inbox-sync";
@@ -142,7 +143,7 @@ export async function POST() {
       const { action } = await ensureWebhookRegistered(zernio, {
         url,
         secret,
-        events: ["message.received", "comment.received"],
+        events: SUBSCRIBED_EVENTS,
       });
       webhook = { url, action };
     } catch (err) {

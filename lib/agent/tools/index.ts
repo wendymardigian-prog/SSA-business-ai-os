@@ -15,6 +15,7 @@ import { followupTool } from "./followup";
 import { assignConversationTool } from "./assign-conversation";
 import { crmLookupTool } from "./crm-lookup";
 import { pauseSelfTool } from "./pause-self";
+import { declareIntentTool } from "./declare-intent";
 
 registerAgentTool(escalateTool);
 registerAgentTool(searchKnowledgeTool);
@@ -24,6 +25,7 @@ registerAgentTool(followupTool);
 registerAgentTool(assignConversationTool);
 registerAgentTool(crmLookupTool);
 registerAgentTool(pauseSelfTool);
+registerAgentTool(declareIntentTool);
 
 export * from "./registry";
 export type * from "./types";

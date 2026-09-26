@@ -20,6 +20,7 @@ import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
+import { TimezoneSettings } from "@/components/settings/timezone-settings";
 
 interface WorkspaceSettings {
   id: string;
@@ -29,6 +30,7 @@ interface WorkspaceSettings {
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
   persistZernioInbound: boolean;
+  timezone: string;
 }
 
 export function SettingsView({
@@ -113,6 +115,10 @@ export function SettingsView({
               />
             </div>
           </section>
+
+          <hr className="border-border" />
+
+          <TimezoneSettings timezone={workspace.timezone} />
 
           <hr className="border-border" />
 
@@ -254,6 +260,27 @@ export function SettingsView({
             >
               <ListPlus className="h-4 w-4" />
               Gestionar campos
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          </section>
+
+          <hr className="border-border" />
+
+          {/* Tareas de IA en segundo plano (F23) */}
+          <section>
+            <div className="flex items-center gap-2">
+              <ListPlus className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Tareas en segundo plano</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Cómo corre cada tarea de IA que no es conversación en vivo: inmediato o económico por lote.
+            </p>
+            <Link
+              href="/dashboard/settings/background"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <ListPlus className="h-4 w-4" />
+              Configurar tareas
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
           </section>

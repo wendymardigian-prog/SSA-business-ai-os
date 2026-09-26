@@ -50,6 +50,7 @@ export interface RunRow {
   trigger: string;
   status: string;
   statusDetail: string | null;
+  routing: Record<string, unknown> | null;
   agentId: string | null;
   agentName: string | null;
   promptVersion: number | null;
@@ -75,6 +76,8 @@ export interface RunsTabData {
   pageSize: number;
   /** Si el workspace tiene algun run (para distinguir "vacio" de "el filtro no encontro"). */
   anyRuns: boolean;
+  /** Salud del refresco contra Zernio en 7 días (F12). */
+  refreshHealth: { total: number; failedPct: number };
   options: {
     agents: Array<{ id: string; name: string }>;
     channels: Array<{ id: string; label: string }>;
@@ -250,7 +253,11 @@ export interface AgentScreenData {
     monthlyCostLimitAction: "notify" | "disable";
     enabledChannelIds: string[];
     /** Modo por canal (00070). Sin entrada = envio directo. */
-    channelModes: Record<string, "send" | "draft">;
+    channelModes: Record<string, "send" | "draft" | "rules">;
+    /** Reglas de respuesta y su acción por defecto (F10). */
+    responseRules: import("./rules/evaluate").Rule[];
+    responseRulesDefault: "send" | "draft" | "skip";
+    externalReplyCooldownMinutes: number;
     allowedTools: string[];
     toolsConfig: Record<string, unknown>;
   };
@@ -307,6 +314,9 @@ export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {
     monthlyCostLimitAction: agent.monthlyCostLimitAction,
     enabledChannelIds: agent.enabledChannelIds,
     channelModes: agent.channelModes,
+    responseRules: agent.responseRules,
+    responseRulesDefault: agent.responseRulesDefault,
+    externalReplyCooldownMinutes: agent.externalReplyCooldownMinutes,
     allowedTools: agent.allowedTools,
     toolsConfig: agent.toolsConfig,
   };

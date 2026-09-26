@@ -4,6 +4,64 @@ Registro de qué se construyó, qué se decidió y por qué. Se actualiza al cer
 cada bloque.
 
 ---
+## Etapa 1 · Fase 3 · Bloques 2e y 3 — Verificación, reglas, dashboards, patrones e intención
+
+**Fecha:** 26 de septiembre de 2026
+**Alcance:** el documento `docs/requerimientos-fase3-bloques-2e-3.md` (v1.1), F1 a F26,
+en cinco bloques. Corrida autónoma en la rama `oneshot-fase3-2e-3`. El agente
+sigue **apagado**.
+
+**Qué se construyó (por bloque):**
+- **Bloque 1 (F1-F4):** `messages.origin` con un builder único (`lib/messages/outbound.ts`)
+  en los 11 caminos de envío; los broadcasts ahora guardan su saliente; suscripción
+  a `message.sent` de Zernio; `workspaces.timezone`; `normalize_for_grouping` con
+  paridad exacta SQL/TS. Backfill: 1580 salientes `external`.
+- **Bloque 2 (F5-F12):** refresco contra Zernio (`lib/agent/refresh.ts`) y
+  verificación en tres momentos (RPC `claim_agent_reply` con advisory lock en el
+  momento 2, trigger `messages_discard_answered_drafts` en el momento 3); espera
+  externa; modo "Según reglas" con evaluador puro (`lib/agent/rules/`), editor con
+  simulación, y visibilidad (oración de decisión, salud del refresco).
+- **Bloque 3 (F13-F18):** navegación con Dashboards primero (redirect 308 de
+  Analytics); funciones SQL de métricas `SECURITY INVOKER` (00078) con
+  `verify-dashboards.mjs`; pantalla del dashboard de Chat.
+- **Bloque 4 (F19-F22):** `message_categories`/`message_texts`, `text_norm`, trigger,
+  siembra de botones y backfill (533 textos); clasificador con modelo inyectado;
+  correcciones; sección Patrones.
+- **Bloque 5 (F23-F26):** `ai_background_settings` + página de tareas; ventanas de
+  despacho testeadas + rutas cron + interfaz `BatchProvider`; fórmulas de calidad;
+  `agent_runs.intent` + herramienta `declarar_intencion` + graduación.
+
+### Decisiones tomadas
+| Decisión | Por qué |
+|---|---|
+| **Builder único de salientes** en vez de tocar 11 inserts sueltos | El `origin` tenía que salir bien de cada camino; un solo lugar testeable |
+| **Se sumó `message.sent`** además del refresco | El SDK dice que los ecos de la app nativa llegan por ese evento; el refresco cubre si no |
+| **Momento 2 con advisory lock, sin fila `pending`** | Reservar una fila en `messages` contaminaría bandeja, conteos y ráfaga; el lock serializa turno-vs-turno y el momento 3 cubre la respuesta humana |
+| **`normalize_for_grouping` nueva, no se tocó `normalize_message_text`** | Redefinir la del opt-out cambiaría la detección de "no contactar" |
+| **Categorías de sistema por trigger en `workspaces`** | Un workspace nuevo nace con "Otro" y "Solo emoji o adjunto" |
+| **`declarar_intencion` opt-in, no `required`** | Forzarla cambiaba el set por defecto y rompía tests de caracterización |
+| **Sin librerías de test de UI ni Playwright** | Decisión de Wendy: lógica en funciones puras + scripts `verify-*`; pantallas a ojo con ella |
+
+### Migraciones
+00074 (origin), 00075 (timezone), 00076 (checks + normalize), 00077 (reglas +
+routing + RPC + trigger momento 3 + cron drafts-refresh), 00078 (métricas del
+dashboard), 00079 (patrones), 00080 (tareas en segundo plano + intent). Todas
+aplicadas en producción, idempotentes, funciones con `SET search_path = ''`.
+
+### Verificación
+- 1253 tests en verde (de 1059 al empezar). `npm run build`, `tsc` y `eslint`
+  limpios (0 errores, 44 warnings preexistentes). `verify-rls.mjs` y
+  `verify-dashboards.mjs` en verde (correr de a uno: comparten prefijo `zz-test-`).
+- Pantallas no verificadas a ojo (la app pide login): en `docs/PENDIENTE.md`.
+
+### Deuda anotada
+Todo en `docs/PENDIENTE.md`: rollout de la barra de 56 px a las 21 páginas, 4
+pestañas de tendencias, "qué le responden" (§11.7) y drilldown de correcciones,
+pipeline de lote real + recolección + UI de calidad/versiones, API por lote,
+unificación de zona horaria, y la recorrida de pantallas en vivo (§19 del plano).
+
+---
+
 
 ## Etapa 1 · Fase 3 · Bloque 2d-A — Aprobar desde el teléfono y etiquetas con efecto
 

@@ -32,6 +32,7 @@ function toForm(agent: AgentScreenData["agent"]): Form {
     bundleWindowSeconds: agent.bundleWindowSeconds,
     responseDelaySeconds: agent.responseDelaySeconds,
     maxWaitSeconds: agent.maxWaitSeconds,
+    externalReplyCooldownMinutes: agent.externalReplyCooldownMinutes,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
     burstMaxAgeHours: agent.burstMaxAgeHours,
     closeAfterInactiveHours: agent.closeAfterInactiveHours,
@@ -187,6 +188,12 @@ function TimingSection({ form, set }: SectionProps) {
         hint="Los mensajes del lead más viejos que esto no se responden (siguen en el contexto). Evita que el primer turno conteste una pregunta de hace semanas en una conversación que nadie respondió."
       >
         {(id) => <NumberInput id={id} value={form.burstMaxAgeHours} min={1} max={720} onChange={(v) => set({ burstMaxAgeHours: v ?? 6 })} />}
+      </Field>
+      <Field
+        label="Espera después de una respuesta externa (minutos)"
+        hint="Si otra herramienta (por ejemplo ManyChat) respondió hace menos de N minutos, el agente no se mete. 0 la desactiva."
+      >
+        {(id) => <NumberInput id={id} value={form.externalReplyCooldownMinutes} min={0} max={120} onChange={(v) => set({ externalReplyCooldownMinutes: v ?? 0 })} />}
       </Field>
     </Section>
   );

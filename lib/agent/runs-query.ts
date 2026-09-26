@@ -88,6 +88,7 @@ interface RawRun {
   trigger: string;
   status: string;
   status_detail: string | null;
+  routing: Record<string, unknown> | null;
   provider: string | null;
   model: string | null;
   latency_ms: number | null;
@@ -160,6 +161,7 @@ export async function loadRuns(
       trigger: r.trigger,
       status: r.status,
       statusDetail: r.status_detail,
+      routing: (r.routing ?? null) as Record<string, unknown> | null,
       agentId: r.agent_id,
       agentName: r.agent_id ? args.agentNames.get(r.agent_id) ?? null : null,
       promptVersion: r.prompt_version,

@@ -14,6 +14,14 @@ export type FlowStatus = "draft" | "published" | "archived";
 export type ConversationStatus = "open" | "closed" | "snoozed";
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "pending" | "sent" | "delivered" | "failed";
+/** Origen de un saliente (migracion 00074). null en entrantes. */
+export type MessageOrigin =
+  | "agent"
+  | "user"
+  | "flow"
+  | "sequence"
+  | "broadcast"
+  | "external";
 /** De donde sale la conexion del canal (migracion 00019). */
 export type ChannelProvider = "zernio" | "evolution";
 export type ChannelConnectionStatus =
@@ -44,7 +52,10 @@ export type AuditEntityType =
   /** Configuracion de un agente de IA (Fase 3). */
   | "agent"
   /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
-  | "tag";
+  | "tag"
+  /** Patrones de mensajes (Bloque 4): categorías y textos. */
+  | "message_category"
+  | "message_text";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -111,7 +122,10 @@ export type AgentRunSource =
   | "flow_ai_node"
   | "sequence_ai_step"
   | "kb_indexing"
-  | "conversation_summary";
+  | "conversation_summary"
+  /** Corridas del clasificador de patrones y su evaluacion (00076, Bloques 4-5). */
+  | "message_classification"
+  | "message_classification_eval";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -134,7 +148,9 @@ export type AgentRunStatus =
   | "completed"
   | "error"
   /** El turno dejo un borrador en vez de enviar (modo borrador, migracion 00070). */
-  | "drafted";
+  | "drafted"
+  /** El turno se retiro porque ya hubo una respuesta (verificacion, 00076/00077). */
+  | "already_answered";
 /** Estado de un borrador del agente (migracion 00070). */
 export type AgentDraftStatus =
   | "pending"
@@ -145,7 +161,10 @@ export type AgentDraftStatus =
   | "superseded"
   | "regenerated";
 /** Modo de entrega del agente en un canal (agents.channel_modes, migracion 00070). */
-export type AgentChannelMode = "send" | "draft";
+/** Modo de entrega del agente en un canal: envía directo, deja borrador, o decide por reglas (F9). */
+export type AgentChannelMode = "send" | "draft" | "rules";
+/** Acción por defecto de las reglas de respuesta (agents.response_rules_default, 00077). */
+export type ResponseRuleAction = "send" | "draft" | "skip";
 export type AgentRunStepKind = "model_call" | "kb_search" | "tool_call" | "guardrail";
 export type KnowledgeFallback = "escalate" | "general";
 export type CostLimitAction = "notify" | "disable";
@@ -251,6 +270,99 @@ export interface SequenceStep {
 export interface Database {
   public: {
     Tables: {
+      message_categories: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          name: string;
+          description: string | null;
+          examples: string[];
+          is_fallback: boolean;
+          created_by: "model" | "user" | "system";
+          created_by_user_id: string | null;
+          merged_into_id: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          name: string;
+          description?: string | null;
+          examples?: string[];
+          is_fallback?: boolean;
+          created_by: "model" | "user" | "system";
+          created_by_user_id?: string | null;
+          merged_into_id?: string | null;
+          archived_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          examples?: string[];
+          merged_into_id?: string | null;
+          archived_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      message_texts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          normalized_text: string;
+          sample_text: string;
+          category_id: string | null;
+          confidence: number | null;
+          source: "rule" | "model" | "human" | null;
+          prompt_version: number | null;
+          run_id: string | null;
+          is_button: boolean;
+          classified_at: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          review_result: "ok" | "corrected" | null;
+          first_seen_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          normalized_text: string;
+          sample_text: string;
+          category_id?: string | null;
+          confidence?: number | null;
+          source?: "rule" | "model" | "human" | null;
+          prompt_version?: number | null;
+          run_id?: string | null;
+          is_button?: boolean;
+          classified_at?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          review_result?: "ok" | "corrected" | null;
+          first_seen_at?: string;
+        };
+        Update: {
+          category_id?: string | null;
+          confidence?: number | null;
+          source?: "rule" | "model" | "human" | null;
+          prompt_version?: number | null;
+          run_id?: string | null;
+          is_button?: boolean;
+          classified_at?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          review_result?: "ok" | "corrected" | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       workspaces: {
         Row: {
           id: string;
@@ -270,6 +382,9 @@ export interface Database {
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          /** Zona horaria IANA del negocio (migracion 00075). */
+          timezone: string;
+          ai_background_settings: Json;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
@@ -289,6 +404,8 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          timezone?: string;
+          ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           created_at?: string;
@@ -307,6 +424,8 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          timezone?: string;
+          ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           updated_at?: string;
@@ -1038,6 +1157,8 @@ export interface Database {
           sent_by_agent_id: string | null;
           /** Run del agente que genero este mensaje (migracion 00059). */
           agent_run_id: string | null;
+          /** De donde salio el saliente (migracion 00074). null en entrantes. */
+          origin: MessageOrigin | null;
           status: MessageStatus;
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */
@@ -1059,6 +1180,8 @@ export interface Database {
           sent_by_user_id?: string | null;
           sent_by_agent_id?: string | null;
           agent_run_id?: string | null;
+          /** Requerido en salientes despues del backfill; null en entrantes. El trigger lo deriva si falta. */
+          origin?: MessageOrigin | null;
           status?: MessageStatus;
           created_at?: string;
           /**
@@ -2051,8 +2174,13 @@ export interface Database {
           monthly_cost_limit_usd: number | null;
           monthly_cost_limit_action: CostLimitAction;
           enabled_channel_ids: string[];
-          /** { channel_id: "send" | "draft" }; sin entrada = send (00070). */
+          /** { channel_id: "send" | "draft" | "rules" }; sin entrada = send (00070/00077). */
           channel_modes: Json;
+          /** Reglas de respuesta condición→acción (00077). */
+          response_rules: Json;
+          response_rules_default: ResponseRuleAction;
+          /** Espera tras un saliente externo, en minutos (00077, F7). */
+          external_reply_cooldown_minutes: number;
           config: Json;
           created_by: string | null;
           created_at: string;
@@ -2095,6 +2223,9 @@ export interface Database {
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
           channel_modes?: Json;
+          response_rules?: Json;
+          response_rules_default?: ResponseRuleAction;
+          external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
           created_at?: string;
@@ -2135,6 +2266,9 @@ export interface Database {
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
           channel_modes?: Json;
+          response_rules?: Json;
+          response_rules_default?: ResponseRuleAction;
+          external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
           updated_at?: string;
@@ -2187,6 +2321,9 @@ export interface Database {
           trigger: AgentRunTrigger;
           status: AgentRunStatus;
           status_detail: string | null;
+          /** Que decidio el turno (00077, F9/F12). */
+          routing: Json | null;
+          intent: Json | null;
           provider: string | null;
           model: string | null;
           input_tokens: number | null;
@@ -2217,6 +2354,8 @@ export interface Database {
           channel_id?: string | null;
           trigger: AgentRunTrigger;
           status?: AgentRunStatus;
+          routing?: Json | null;
+          intent?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;
@@ -2241,6 +2380,8 @@ export interface Database {
           contact_id?: string | null;
           channel_id?: string | null;
           status?: AgentRunStatus;
+          routing?: Json | null;
+          intent?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;
@@ -2475,6 +2616,53 @@ export interface Database {
           p_phrase: string | null;
         };
         Returns: boolean;
+      };
+      /**
+       * Momento 2 de la verificación (migración 00077): bajo advisory lock por
+       * conversación, true si ya hubo un saliente posterior al inbound del turno
+       * que no es el propio run. Solo service_role.
+       */
+      claim_agent_reply: {
+        Args: {
+          p_conversation_id: string;
+          p_inbound_at: string;
+          p_run_id: string | null;
+        };
+        Returns: boolean;
+      };
+      /** Normaliza un texto para agrupar mensajes (migración 00076). */
+      normalize_for_grouping: {
+        Args: { p_raw: string | null };
+        Returns: string;
+      };
+      /** Funciones de métricas del dashboard de Chat (migración 00078, F15). */
+      chat_dashboard_numbers: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null };
+        Returns: { new_conversations: number; messages_in: number; messages_out: number; first_response_median_seconds: number | null }[];
+      };
+      chat_waiting_now: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: number;
+      };
+      chat_dashboard_agent: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { new_conversations: number; agent_acted: number; agent_took_first: number; agent_escalated: number }[];
+      };
+      chat_dashboard_team: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { author: string; messages_out: number; first_response_median_seconds: number | null; reply_median_seconds: number | null; replies_under_1h_pct: number | null }[];
+      };
+      chat_dashboard_trends: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null; p_tz?: string };
+        Returns: { day: string; messages_in: number; messages_out: number; new_conversations: number }[];
+      };
+      chat_episodes: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: { conversation_id: string; contact_id: string; channel_id: string; episode_no: number; episode_start: string; first_inbound_at: string | null; first_outbound_at: string | null; first_outbound_origin: string | null }[];
+      };
+      chat_dashboard_patterns: {
+        Args: { p_workspace_id: string; p_direction: string; p_from: string | null; p_to: string | null };
+        Returns: { category_id: string; category_name: string; is_fallback: boolean; message_count: number; text_count: number; top_variants: Json }[];
       };
       /**
        * Reclama un envio automatizado en la ventana horaria del canal

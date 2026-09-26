@@ -14,7 +14,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/database";
+import type { Database, MessageOrigin } from "@/lib/types/database";
 import { executeFlow, findWaitingSession, resumeSession } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import type { IncomingMessage } from "@/lib/flow-engine/types";
@@ -183,6 +183,7 @@ export async function insertMessage({
   postbackPayload = null,
   callbackData = null,
   platformNativeMessageId = null,
+  origin = null,
 }: {
   supabase: Db;
   conversationId: string;
@@ -198,6 +199,11 @@ export async function insertMessage({
   postbackPayload?: string | null;
   callbackData?: string | null;
   platformNativeMessageId?: string | null;
+  /**
+   * Origen del saliente (F2). Los entrantes van con null. El eco de WhatsApp
+   * (`fromMe`) entra por acá como `external`.
+   */
+  origin?: MessageOrigin | null;
 }): Promise<boolean> {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
@@ -211,6 +217,7 @@ export async function insertMessage({
     postback_payload: postbackPayload,
     callback_data: callbackData,
     status,
+    origin: direction === "outbound" ? origin : null,
     created_at: createdAt,
     ...(workspaceId ? { workspace_id: workspaceId } : {}),
   });
@@ -579,4 +586,73 @@ export async function runInboundAutomation({
     return { claimed: true, by: "flow_error", flowId: trigger.flow_id };
   }
   return { claimed: true, by: "flow", flowId: trigger.flow_id, triggerId: trigger.id };
+}
+
+/**
+ * Guarda el eco de un saliente que salió fuera de la app (F2).
+ *
+ * Zernio dispara `message.sent` cuando alguien responde desde la app nativa de
+ * Instagram, desde ManyChat o desde la app de WhatsApp Business. Hasta ahora la
+ * app no se suscribía a ese evento y esos salientes solo aparecían al correr el
+ * backfill del historial a mano. Ahora se guardan como `origin = 'external'`.
+ *
+ * - Busca la conversación local por su id de Zernio (`late_conversation_id`).
+ *   Si no existe todavía, no hay a dónde colgar el mensaje: se saltea (el
+ *   backfill/refresco lo traerá con el resto del historial).
+ * - Deduplica por `platform_message_id`: si este saliente es el eco de un envío
+ *   propio que ya guardamos (mismo id de Zernio), el índice único lo descarta y
+ *   no se marca `external`.
+ *
+ * Nunca lanza: un fallo al guardar no puede voltear el webhook.
+ */
+export async function handleMessageSentEcho({
+  supabase,
+  channel,
+  message,
+}: {
+  supabase: Db;
+  channel: { id: string; workspace_id: string };
+  message: {
+    id?: string | null;
+    conversationId?: string | null;
+    platformMessageId?: string | null;
+    direction?: string | null;
+    text?: string | null;
+    attachments?: unknown[] | null;
+    sentAt?: string | null;
+  };
+}): Promise<{ stored: boolean; reason?: string }> {
+  // Solo ecos de salientes. Un `message.sent` con direction incoming no debería
+  // pasar, pero si pasa no es un saliente y no se toca.
+  if (message.direction && message.direction !== "outgoing") {
+    return { stored: false, reason: "no es saliente" };
+  }
+  const lateConversationId = message.conversationId;
+  if (!lateConversationId) return { stored: false, reason: "sin conversación" };
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("channel_id", channel.id)
+    .eq("late_conversation_id", lateConversationId)
+    .maybeSingle();
+
+  if (!conversation) return { stored: false, reason: "conversación no encontrada" };
+
+  const stored = await insertMessage({
+    supabase,
+    conversationId: conversation.id,
+    direction: "outbound",
+    text: message.text ?? null,
+    // Mismo espacio de ids que un envío propio: el id de Zernio en
+    // platform_message_id (deduplica), el nativo de Meta aparte.
+    platformMessageId: message.id ?? null,
+    platformNativeMessageId: message.platformMessageId ?? null,
+    attachments: message.attachments?.length ? message.attachments : null,
+    createdAt: message.sentAt || new Date().toISOString(),
+    workspaceId: channel.workspace_id,
+    origin: "external",
+  });
+
+  return { stored };
 }

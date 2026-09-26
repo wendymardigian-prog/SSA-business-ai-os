@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = [
   "agent_error",
   "agent_spend_limit",
   "draft_window",
+  "refresh_health",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -91,6 +92,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Borradores por vencer",
     tone: "warning",
     entity: "draft_queue",
+  },
+  /** Salud del refresco contra Zernio (F12): sin refresco la verificación queda ciega. */
+  refresh_health: {
+    type: "refresh_health",
+    label: "Fallos en el refresco contra Zernio",
+    tone: "warning",
   },
 };
 

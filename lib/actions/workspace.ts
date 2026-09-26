@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { WORKSPACE_COOKIE } from "@/lib/workspace";
+import { isValidTimeZone } from "@/lib/timezone";
 import type { Json } from "@/lib/types/database";
 
 export async function switchWorkspace(workspaceId: string) {
@@ -190,6 +191,54 @@ export async function updateMessagePersistence(
 }
 
 /**
+ * Zona horaria del workspace (F3). Los dashboards del Bloque 3 cortan los días
+ * en esta zona. Se valida en el servidor: una zona inválida se rechaza con un
+ * mensaje claro, nunca se guarda.
+ */
+export async function updateWorkspaceTimezone(
+  timezone: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return { ok: false, error: "Solo Owner y Admin pueden cambiar la zona horaria" };
+  }
+  if (!isValidTimeZone(timezone)) {
+    return { ok: false, error: "Esa zona horaria no es válida" };
+  }
+
+  const { workspace, supabase, user } = ctx;
+
+  const { data: prev } = await supabase
+    .from("workspaces")
+    .select("timezone")
+    .eq("id", workspace.id)
+    .single();
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ timezone })
+    .eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar la zona horaria:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { timezone: { old: (prev as { timezone?: string } | null)?.timezone ?? null, new: timezone } },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
  * Nombre del workspace y palabras clave globales (F20).
  *
  * Antes esto se guardaba con un update directo desde el navegador. Funcionaba,
@@ -265,5 +314,35 @@ export async function updateWorkspaceSettings(settings: {
   }
 
   revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
+ * Configuración de tareas de IA en segundo plano (F23). Owner/Admin. La
+ * validación (indexación no apagable, frecuencias) vive en lib/background/settings.ts.
+ */
+export async function updateBackgroundSettings(
+  raw: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar las tareas en segundo plano" };
+  const { workspace, supabase, user } = ctx;
+
+  const { validateBackgroundSettings } = await import("@/lib/background/settings");
+  const validated = validateBackgroundSettings(raw);
+  if (!validated.ok) return { ok: false, error: validated.error ?? "Configuración inválida" };
+
+  const { data: prev } = await supabase.from("workspaces").select("ai_background_settings").eq("id", workspace.id).single();
+  const { error } = await supabase.from("workspaces").update({ ai_background_settings: validated.settings as unknown as Json }).eq("id", workspace.id);
+  if (error) {
+    console.error("[workspace] no pude guardar las tareas en segundo plano:", error.message);
+    return { ok: false, error: "No pude guardar el cambio." };
+  }
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id, action: "update",
+    changes: { ai_background_settings: { old: ((prev as { ai_background_settings?: unknown } | null)?.ai_background_settings ?? {}) as Json, new: validated.settings as unknown as Json } },
+    performedBy: user.id,
+  });
+  revalidatePath("/dashboard/settings/background");
   return { ok: true };
 }

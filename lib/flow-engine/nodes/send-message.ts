@@ -7,7 +7,7 @@ import { interpolateVariables } from "../interpolate";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
-
+import { outboundMessageRow } from "@/lib/messages/outbound";
 /**
  * Manda uno o varios mensajes por el canal de la conversacion.
  *
@@ -18,7 +18,7 @@ import { sendChannelMessage, recordSend } from "../send";
 export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
   type: "sendMessage",
   label: "Enviar mensaje",
-  async execute({ supabase, data, context }: NodeExecutionArgs<SendMessageNodeData>) {
+  async execute({ supabase, data, context, node }: NodeExecutionArgs<SendMessageNodeData>) {
     // La plataforma hace falta para adaptar el formato del mensaje. Si no vino
     // en el contexto, se resuelve una vez y se reusa para todos los mensajes.
     if (!context.platform) {
@@ -36,7 +36,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
     // comentario, asi que el primer mensaje sale por ahi en vez de perderse: la
     // gente arma esos flows con un Send Message comun, no con Private Reply.
     if (await needsCommentFallback(supabase, context)) {
-      await sendFirstMessageAsPrivateReply(supabase, data, context);
+      await sendFirstMessageAsPrivateReply(supabase, data, context, node.id);
       return;
     }
 
@@ -62,7 +62,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
 
       await recordSend(
         supabase,
-        context,
+        { ...context, nodeId: node.id },
         // Un envio rechazado guarda el motivo en lugar del texto que no salio:
         // es lo que va a leer el operador en la conversacion.
         outcome.ok ? text : outcome.failure?.message ?? text,
@@ -105,7 +105,8 @@ async function needsCommentFallback(
 async function sendFirstMessageAsPrivateReply(
   supabase: SupabaseClient<Database>,
   data: SendMessageNodeData,
-  context: FlowExecutionContext
+  context: FlowExecutionContext,
+  nodeId: string
 ) {
   const first = data.messages[0];
   if (!first) return;
@@ -140,13 +141,16 @@ async function sendFirstMessageAsPrivateReply(
       body: { accountId: lateAccountId, message: text },
     });
 
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      sent_by_flow_id: context.flowId,
-      status: "sent",
-    });
+    await supabase.from("messages").insert(
+      outboundMessageRow({
+        conversationId: context.conversationId,
+        origin: "flow",
+        text,
+        sentByFlowId: context.flowId ?? null,
+        sentByNodeId: nodeId,
+        status: "sent",
+      }),
+    );
 
     await supabase.from("analytics_events").insert({
       workspace_id: context.workspaceId,
@@ -156,13 +160,16 @@ async function sendFirstMessageAsPrivateReply(
     });
   } catch (error) {
     console.error("Failed to send comment-context message as private reply:", error);
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text,
-      sent_by_flow_id: context.flowId,
-      status: "failed",
-    });
+    await supabase.from("messages").insert(
+      outboundMessageRow({
+        conversationId: context.conversationId,
+        origin: "flow",
+        text,
+        sentByFlowId: context.flowId ?? null,
+        sentByNodeId: nodeId,
+        status: "failed",
+      }),
+    );
     return;
   }
 

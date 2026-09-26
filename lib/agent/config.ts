@@ -8,6 +8,9 @@ import {
   type OutputFormat,
 } from "./schemas";
 import { getAgentType } from "./agent-types";
+import { validateRules } from "./rules/schema";
+import type { Rule } from "./rules/evaluate";
+import type { RuleAction } from "./rules/fields";
 
 /**
  * La configuracion del agente, normalizada, y su estado efectivo.
@@ -65,6 +68,12 @@ export interface AgentConfig {
    * vez de enviar. Sin entrada = "send". Leer siempre con channelMode().
    */
   channelModes: Record<string, AgentChannelMode>;
+  /** Espera tras un saliente externo, en minutos. 0 = desactivada (00077, F7). */
+  externalReplyCooldownMinutes: number;
+  /** Reglas de respuesta condición→acción (00077, F8-F10). Se validan al leer. */
+  responseRules: Rule[];
+  /** Acción por defecto de las reglas si ninguna coincide (00077). */
+  responseRulesDefault: RuleAction;
   createdAt: string;
 }
 
@@ -114,8 +123,21 @@ export function toAgentConfig(row: AgentRow): AgentConfig {
     monthlyCostLimitAction: row.monthly_cost_limit_action,
     enabledChannelIds: row.enabled_channel_ids ?? [],
     channelModes: parseChannelModes(row.channel_modes),
+    externalReplyCooldownMinutes: row.external_reply_cooldown_minutes ?? 10,
+    responseRules: parseResponseRules(row.response_rules),
+    responseRulesDefault: parseRulesDefault(row.response_rules_default),
     createdAt: row.created_at,
   };
+}
+
+/** Reglas guardadas, validadas al leer: una regla corrupta se descarta, no rompe el turno. */
+function parseResponseRules(raw: unknown): Rule[] {
+  const result = validateRules(raw ?? []);
+  return result.ok ? (result.rules ?? []) : [];
+}
+
+function parseRulesDefault(raw: unknown): RuleAction {
+  return raw === "send" || raw === "skip" ? raw : "draft";
 }
 
 /**
@@ -126,7 +148,7 @@ export function parseChannelModes(raw: unknown): Record<string, AgentChannelMode
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out: Record<string, AgentChannelMode> = {};
   for (const [channelId, mode] of Object.entries(raw as Record<string, unknown>)) {
-    if (mode === "draft") out[channelId] = "draft";
+    if (mode === "draft" || mode === "rules") out[channelId] = mode;
   }
   return out;
 }
@@ -138,7 +160,8 @@ export function parseChannelModes(raw: unknown): Record<string, AgentChannelMode
  */
 export function channelMode(agent: Pick<AgentConfig, "channelModes" | "enabledChannelIds">, channelId: string): AgentChannelMode {
   if (!agent.enabledChannelIds.includes(channelId)) return "send";
-  return agent.channelModes[channelId] === "draft" ? "draft" : "send";
+  const mode = agent.channelModes[channelId];
+  return mode === "draft" || mode === "rules" ? mode : "send";
 }
 
 /**

@@ -125,6 +125,8 @@ export interface DraftQueueRow {
   windowHours: number;
   window: WindowInfo;
   conversationId: string;
+  /** El routing del run que dejó el borrador (F12), para mostrar qué regla lo decidió. */
+  routing: Record<string, unknown> | null;
   /**
    * El agente quedo apagado en la conversacion por una etiqueta con efecto
    * (00073, "es-conocido"/"no-es-lead") despues de redactar este borrador.
@@ -155,7 +157,7 @@ export interface DraftQueue {
 }
 
 const QUEUE_COLUMNS =
-  "id, status, body, body_parts, no_reply_reason, suggested_actions, applied_actions, send_error, sent_body, discard_reason, regenerate_instruction, previous_draft_id, created_at, decided_at, decided_by, sendable_until, conversation_id, contact_id, channel_id, burst_message_ids, contacts!inner(id, display_name, avatar_url, instagram_username, setter_id, vendedor_id, do_not_contact, do_not_contact_reason), channels(id, platform, messaging_window_hours), conversations(agent_disabled_by_tag_id)";
+  "id, status, body, body_parts, no_reply_reason, suggested_actions, applied_actions, send_error, sent_body, discard_reason, regenerate_instruction, previous_draft_id, created_at, decided_at, decided_by, sendable_until, conversation_id, contact_id, channel_id, burst_message_ids, run_id, agent_runs(routing), contacts!inner(id, display_name, avatar_url, instagram_username, setter_id, vendedor_id, do_not_contact, do_not_contact_reason), channels(id, platform, messaging_window_hours), conversations(agent_disabled_by_tag_id)";
 
 interface RawDraft {
   id: string;
@@ -178,6 +180,8 @@ interface RawDraft {
   contact_id: string;
   channel_id: string;
   burst_message_ids: string[] | null;
+  run_id: string | null;
+  agent_runs: { routing: Record<string, unknown> | null } | { routing: Record<string, unknown> | null }[] | null;
   contacts: {
     id: string;
     display_name: string | null;
@@ -212,6 +216,7 @@ function toRow(raw: RawDraft, now: Date, messages: Map<string, { text: string | 
     decidedAt: raw.decided_at,
     decidedBy: raw.decided_by,
     sendableUntil: raw.sendable_until,
+    routing: (Array.isArray(raw.agent_runs) ? raw.agent_runs[0]?.routing : raw.agent_runs?.routing) ?? null,
     windowHours: hours,
     window: windowInfo(raw.sendable_until, hours, now),
     conversationId: raw.conversation_id,

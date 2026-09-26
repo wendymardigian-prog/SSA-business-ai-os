@@ -4,6 +4,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { toInboxThread } from "@/lib/zernio-message";
 import { messagePreview } from "@/lib/message-preview";
+import { outboundMessageRow } from "@/lib/messages/outbound";
 import { applyManualReply } from "@/lib/agent/manual-reply";
 import {
   EvolutionError,
@@ -228,15 +229,17 @@ export async function POST(request: NextRequest) {
 
     // Guardar nunca puede hacer fallar un envio que ya salio: si el insert
     // falla, se loguea y la respuesta sigue.
-    const { error: storeError } = await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      direction: "outbound",
-      text,
-      platform_message_id: messageId,
-      sent_by_user_id: user.id,
-      status: "sent",
-      created_at: sentAt,
-    });
+    const { error: storeError } = await supabase.from("messages").insert(
+      outboundMessageRow({
+        conversationId,
+        origin: "user",
+        text,
+        platformMessageId: messageId,
+        sentByUserId: user.id,
+        status: "sent",
+        createdAt: sentAt,
+      }),
+    );
     if (storeError && storeError.code !== "23505") {
       console.error("[messages] no pude guardar el envio manual:", storeError.message);
     }
@@ -353,15 +356,17 @@ async function sendViaEvolution({
   // importar cual de los dos llegue primero.
   const { data: stored } = await supabase
     .from("messages")
-    .insert({
-      conversation_id: conversationId,
-      direction: "outbound",
-      text,
-      platform_message_id: messageId,
-      sent_by_user_id: userId,
-      status: "sent",
-      created_at: now,
-    })
+    .insert(
+      outboundMessageRow({
+        conversationId,
+        origin: "user",
+        text,
+        platformMessageId: messageId,
+        sentByUserId: userId,
+        status: "sent",
+        createdAt: now,
+      }),
+    )
     .select("*")
     .single();
 

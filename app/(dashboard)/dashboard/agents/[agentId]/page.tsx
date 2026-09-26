@@ -123,7 +123,8 @@ export default async function AgentDetailPage({
     const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
     // Admin: service role, con costos. Member: su cliente, RLS = scope, sin costos.
     const client = isAdmin ? service : supabase;
-    const [{ rows, total }, anyRes] = await Promise.all([
+    const since7d = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
+    const [{ rows, total }, anyRes, healthRes] = await Promise.all([
       loadRuns(client, {
         workspaceId: workspace.id,
         filters,
@@ -132,13 +133,17 @@ export default async function AgentDetailPage({
         channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
       }),
       client.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
+      client.from("agent_runs").select("routing").eq("workspace_id", workspace.id).gte("created_at", since7d).not("routing", "is", null).limit(2000),
     ]);
+    const { refreshHealth } = await import("@/lib/agent/refresh-health");
+    const health = refreshHealth(((healthRes.data ?? []) as Array<{ routing?: { refresh?: string } }>).map((r) => r.routing ?? null));
     runs = {
       filters,
       rows,
       total,
       pageSize: RUNS_PAGE_SIZE,
       anyRuns: (anyRes.count ?? 0) > 0,
+      refreshHealth: { total: health.total, failedPct: health.failedPct },
       options: {
         agents: agents.map((a) => ({ id: a.id, name: a.name })),
         channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })),

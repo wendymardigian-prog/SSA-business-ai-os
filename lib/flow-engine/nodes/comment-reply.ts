@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
+import { outboundMessageRow } from "@/lib/messages/outbound";
 import type { CommentReplyNodeData, FlowExecutionContext, PrivateReplyNodeData } from "../types";
 import { interpolateVariables } from "../interpolate";
 import { createZernioClient } from "@/lib/zernio-client";
@@ -66,7 +67,7 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
 export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
   type: "privateReply",
   label: "Responder por privado",
-  async execute({ supabase, data, context }: NodeExecutionArgs<PrivateReplyNodeData>) {
+  async execute({ supabase, data, context, node }: NodeExecutionArgs<PrivateReplyNodeData>) {
     const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
     if (!apiKey) return;
 
@@ -88,23 +89,29 @@ export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
         body: { accountId: lateAccountId, message: text },
       });
 
-      await supabase.from("messages").insert({
-        conversation_id: context.conversationId,
-        direction: "outbound",
-        text,
-        attachments: data.imageUrl ? [{ type: "image", url: data.imageUrl }] : null,
-        sent_by_flow_id: context.flowId,
-        status: "sent",
-      });
+      await supabase.from("messages").insert(
+        outboundMessageRow({
+          conversationId: context.conversationId,
+          origin: "flow",
+          text,
+          attachments: data.imageUrl ? [{ type: "image", url: data.imageUrl }] : null,
+          sentByFlowId: context.flowId ?? null,
+          sentByNodeId: node.id,
+          status: "sent",
+        }),
+      );
     } catch (error) {
       console.error("Failed to send private reply:", error);
-      await supabase.from("messages").insert({
-        conversation_id: context.conversationId,
-        direction: "outbound",
-        text,
-        sent_by_flow_id: context.flowId,
-        status: "failed",
-      });
+      await supabase.from("messages").insert(
+        outboundMessageRow({
+          conversationId: context.conversationId,
+          origin: "flow",
+          text,
+          sentByFlowId: context.flowId ?? null,
+          sentByNodeId: node.id,
+          status: "failed",
+        }),
+      );
     }
   },
 };

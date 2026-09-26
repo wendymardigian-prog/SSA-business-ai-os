@@ -98,6 +98,19 @@ export function turnWorld(
           jobs.push(job);
           return [{ job_id: job.id, job_run_at: job.run_at, created: true }];
         },
+        // Momento 2 (00077): espeja la lógica del RPC SQL sobre la base en memoria.
+        claim_agent_reply: (args, mdb) => {
+          const inbound = new Date(args.p_inbound_at as string).getTime();
+          const answered = mdb.rows("messages").some(
+            (m) =>
+              m.conversation_id === args.p_conversation_id &&
+              m.direction === "outbound" &&
+              new Date(m.created_at as string).getTime() > inbound &&
+              m.status !== "failed" &&
+              (args.p_run_id == null || m.agent_run_id !== args.p_run_id),
+          );
+          return answered;
+        },
       },
     },
   );
@@ -129,6 +142,9 @@ export function turnWorld(
       return { ok: true, platformMessageId: `pm-${sent.length}` };
     },
     checkSpend: async () => ({ allowed: true, warnings: [] }),
+    // Por defecto el refresco no trae nada (ok, 0 insertados). Los tests que
+    // simulan una respuesta de ManyChat sobrescriben world.deps.refresh.
+    refresh: async () => ({ ok: true, inserted: 0, error: null }),
   };
 
   return {

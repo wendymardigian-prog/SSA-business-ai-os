@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { storeSecret, SECRET_NAMES } from "@/lib/vault";
 import {
   ensureWebhookRegistered,
+  SUBSCRIBED_EVENTS,
   getOrCreateWorkspaceWebhookSecret,
 } from "@/lib/zernio-webhook";
 import { backfillInboxConversations } from "@/lib/inbox-sync";
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     await ensureWebhookRegistered(zernio, {
       url: channelWebhookUrl("zernio"),
       secret,
-      events: ["message.received", "comment.received"],
+      events: SUBSCRIBED_EVENTS,
     });
   } catch (err) {
     console.error("[test-key] webhook auto-registration failed:", err);

@@ -17,6 +17,7 @@ describe("registro de herramientas", () => {
         "buscar_datos_del_contacto",
         "buscar_en_conocimiento",
         "cambiar_temperatura",
+        "declarar_intencion",
         "derivar_a_humano",
         "etiquetar_contacto",
         "pausarse",

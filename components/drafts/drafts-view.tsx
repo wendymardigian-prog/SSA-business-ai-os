@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
+import { noticeForDraftChange } from "@/lib/agent/drafts/queue-notices";
 import { DRAFTS_PAGE_SIZE, QUIEN_ALL, QUIEN_MINE, QUIEN_UNASSIGNED, type DraftFilters, type DraftQueue } from "@/lib/agent/drafts/queue-query";
 import { DraftQueueItem } from "./draft-card";
 import { WindowLegend } from "./window-badge";
@@ -46,6 +47,7 @@ export function DraftsView({
   const router = useRouter();
   const { pending, setParam, setPage, clearAll } = useUrlFilters();
   const labels = new Map(members.map((m) => [m.userId, m.label]));
+  const [autoNotice, setAutoNotice] = useState<string | null>(null);
 
   // Realtime: cualquier cambio en los borradores del workspace refresca la
   // consulta (la RLS filtra que eventos llegan). Con un pequeno retardo, para
@@ -61,7 +63,14 @@ export function DraftsView({
       if (cancelled) return;
       channel = supabase
         .channel(`agent-drafts-${workspaceId}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "agent_drafts", filter: `workspace_id=eq.${workspaceId}` }, () => {
+        .on("postgres_changes", { event: "*", schema: "public", table: "agent_drafts", filter: `workspace_id=eq.${workspaceId}` }, (payload) => {
+          // Cuando un borrador se descarta solo (respondido por otro medio o a
+          // mano), la fila desaparece: el aviso explica por qué (F6).
+          const notice = noticeForDraftChange(payload as { eventType?: string; new?: { status?: string | null; discard_reason?: string | null } | null });
+          if (notice) {
+            setAutoNotice(notice);
+            setTimeout(() => setAutoNotice(null), 6000);
+          }
           if (timer.current) clearTimeout(timer.current);
           timer.current = setTimeout(() => router.refresh(), 800);
         })
@@ -92,6 +101,15 @@ export function DraftsView({
   return (
     <div className="space-y-4">
       {metrics}
+
+      {autoNotice && (
+        <div
+          role="status"
+          className="rounded-lg border border-border bg-accent/40 px-3 py-2 text-sm text-muted-foreground"
+        >
+          {autoNotice}
+        </div>
+      )}
 
       <FilterBar activeCount={activeCount} onClear={() => clearAll([])} pending={pending}>
         <FilterSelect
