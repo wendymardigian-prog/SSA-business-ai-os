@@ -27,7 +27,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 | F | Qué entra | Archivos y tests | Estado |
 |---|---|---|---|
 | — | Atribución y dependencia | `THIRD_PARTY_NOTICES.md`, `dayjs` + plugins | [x] |
-| F8 | `formatInTz`, `rangeForFilter` | `lib/scheduling/time/*`, `tz.test.ts` | [ ] |
+| F8 | `formatInTz`, `rangeForFilter` | `lib/scheduling/time/*`, `tz.test.ts` | [x] |
 | F9, F11, F12 | Esquemas Zod de `weekly_hours` y `date_overrides` + validación compartida | `lib/scheduling/availability-schema.ts`, `rules-validation.test.ts`, `overrides.test.ts` | [ ] |
 | F10 | `summarizeSchedule` | `schedules.test.ts` | [ ] |
 | F13 | Tiempo fuera de días completos a UTC | `out-of-office.test.ts` | [ ] |
@@ -45,7 +45,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 | F58 | `resolveUnavailableMessage`, `buildCtaHref`, respaldo del embed | `unavailable.test.ts`, `fallback.test.ts` | [ ] |
 
 ## Grupos de ejecución
-- [ ] 1 · Tiempo y zonas horarias (F8)
+- [x] 1 · Tiempo y zonas horarias (F8) — `types.ts`, `time/dayjs.ts`, `time/tz.ts` (18 tests)
 - [ ] 2 · Esquemas de horarios (F9, F11, F12, F10, F13)
 - [ ] 3 · Límites (F21)
 - [ ] 4 · Motor (F23)
