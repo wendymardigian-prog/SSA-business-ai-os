@@ -61,7 +61,7 @@ la regeneración que no vuelve a tocar el CRM.
 
 | # | Qué crea |
 |---|---|
-| 00073 | `tags.disables_agent` y `tags.assigns_to`; policies de `tags` por comando; `conversations.agent_disabled_by_tag_id`; triggers en `contact_tags` (poner, sacar, fusión), `tags` (borrar, prender o apagar el efecto) y `conversations` (heredar en las nuevas y movidas; limpiar la marca si una persona cambia el estado). **Escrita y probada, sin aplicar** |
+| 00073 | `tags.disables_agent` y `tags.assigns_to`; policies de `tags` por comando; `conversations.agent_disabled_by_tag_id`; triggers en `contact_tags` (poner, sacar, fusión), `tags` (borrar, prender o apagar el efecto) y `conversations` (heredar en las nuevas y movidas; limpiar la marca si una persona cambia el estado). **Aplicada en producción el 26/9/2026** |
 
 La 00073 se probó con diez escenarios contra producción dentro de un lote que
 se deshace (verificado después que no quedó nada): etiquetar, contestar a mano
@@ -78,7 +78,7 @@ borrar la etiqueta y fusión.
 - `verify-rls.mjs` suma los casos de la 00073 (Member no crea ni toca
   etiquetas con efecto, pero puede aplicarlas a sus leads; el caso etiquetar →
   contestar a mano → sacar; prender a mano gana; conversación nueva apagada;
-  borrar la etiqueta libera). **Corre recién con la 00073 aplicada.**
+  borrar la etiqueta libera). En verde con la 00073 aplicada.
 - `npm run build`, `tsc` y `eslint` limpios.
 - Las pantallas no se verificaron a ojo: la app pide login y no se ingresan
   credenciales. La lista en vivo está en `docs/agente-ia.md`.
@@ -159,7 +159,7 @@ avisos de ventana (00072, sin aplicar).
 |---|---|
 | 00070 | `agent_drafts` (RLS por scope de leads, índice único de un vivo por conversación, Realtime, retención de 12 meses); `agents.channel_modes`; tope de respuestas opcional; run `drafted` e `inbound_at`/`responded_at`; `channels.messaging_window_hours`; `contacts.ai_summary_updated_at`; `messaging_window_hours()`; barrido cada 5 minutos; `push_debounced_job` con claves volátiles |
 | 00071 | `ai_cost_report` con borradores; `draft_queue_metrics` y `draft_queue_metrics_by_person` |
-| 00072 | Avisos de ventana por persona y corte. **Escrita y probada, sin aplicar** |
+| 00072 | Avisos de ventana por persona y corte. **Aplicada en producción el 26/9/2026** |
 
 00070 y 00071 aplicadas en producción el 25/9/2026. Idempotentes, funciones con
 `SET search_path = ''`.
