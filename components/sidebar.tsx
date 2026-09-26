@@ -8,12 +8,8 @@ import {
   GitBranch,
   MessageSquare,
   Users,
-  Radio,
-  ListOrdered,
   LayoutGrid,
-  Sprout,
   Plug,
-  Blocks,
   BookOpen,
   Bot,
   Settings,
@@ -55,8 +51,11 @@ function subscribeToThemeClass(callback: () => void) {
 // envio directo, el item quedaria para siempre apuntando a una pantalla vacia.
 // La cola (/dashboard/drafts) sigue existiendo y se llega por el numero sobre
 // Inbox, la pestana de la bandeja, el chip de cada conversacion y los avisos.
+// Radio, ListOrdered y Sprout ya no estan aca: se mudaron a las sub-pestañas
+// de Inbox (components/comunicacion/section-tabs.tsx). Blocks era de
+// Integraciones, que ahora se llega desde Settings.
 const ICONS: Record<string, LucideIcon> = {
-  LayoutGrid, GitBranch, MessageSquare, Users, Radio, ListOrdered, Sprout, Plug, Bot, BookOpen, Blocks, Settings,
+  LayoutGrid, GitBranch, MessageSquare, Users, Plug, Bot, BookOpen, Settings,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
