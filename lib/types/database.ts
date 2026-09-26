@@ -41,6 +41,13 @@ export type IntegrationType =
   | "google"
   | "meta";
 
+/** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
+export type OAuthProvider = "google" | "linkedin" | "threads";
+/** En que estado esta una conexion OAuth (00082). */
+export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
+/** Redes sociales en las que el sistema publica o lee metricas (00082). */
+export type SocialPlatform = "instagram" | "tiktok" | "youtube" | "linkedin" | "threads";
+
 /** Estado de procesamiento de un documento de la base de conocimiento (00049). */
 export type KnowledgeStatus = "processing" | "ready" | "error";
 /** Por que se vinculo un remitente a un contacto ya existente (migracion 00025). */
@@ -2571,6 +2578,122 @@ export interface Database {
           currency?: string;
           valid_from?: string;
           note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Etapa 2, bloque 2 (migracion 00082) ────────────────────────────
+      oauth_connections: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          provider: OAuthProvider;
+          /** null = la conexion es del workspace, no de una persona. */
+          user_id: string | null;
+          external_account_id: string | null;
+          account_label: string | null;
+          /** Los permisos otorgados de verdad, no los pedidos. */
+          granted_scopes: string[];
+          token_expires_at: string | null;
+          refresh_expires_at: string | null;
+          status: OAuthConnectionStatus;
+          last_error: string | null;
+          last_refreshed_at: string | null;
+          /** Los tokens viven en Vault con este prefijo, nunca en esta tabla. */
+          vault_secret_prefix: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          provider: OAuthProvider;
+          user_id?: string | null;
+          external_account_id?: string | null;
+          account_label?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          refresh_expires_at?: string | null;
+          status?: OAuthConnectionStatus;
+          last_error?: string | null;
+          last_refreshed_at?: string | null;
+          vault_secret_prefix: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          external_account_id?: string | null;
+          account_label?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          refresh_expires_at?: string | null;
+          status?: OAuthConnectionStatus;
+          last_error?: string | null;
+          last_refreshed_at?: string | null;
+          vault_secret_prefix?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      social_accounts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          platform: SocialPlatform;
+          handle: string | null;
+          username: string | null;
+          display_name: string | null;
+          avatar_url: string | null;
+          bio: string | null;
+          profile_url: string | null;
+          website: string | null;
+          external_id: string | null;
+          /** El canal de la bandeja, cuando la misma cuenta ademas conversa. */
+          channel_id: string | null;
+          default_publisher: string | null;
+          /** Validado con Zod (lib/social/accounts-schema.ts) al escribir. */
+          publishers: Json;
+          is_active: boolean;
+          profile_synced_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          platform: SocialPlatform;
+          handle?: string | null;
+          username?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          profile_url?: string | null;
+          website?: string | null;
+          external_id?: string | null;
+          channel_id?: string | null;
+          default_publisher?: string | null;
+          publishers?: Json;
+          is_active?: boolean;
+          profile_synced_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          handle?: string | null;
+          username?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
+          bio?: string | null;
+          profile_url?: string | null;
+          website?: string | null;
+          external_id?: string | null;
+          channel_id?: string | null;
+          default_publisher?: string | null;
+          publishers?: Json;
+          is_active?: boolean;
+          profile_synced_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];

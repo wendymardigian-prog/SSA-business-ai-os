@@ -56,14 +56,21 @@ function migrationFiles(): string[] {
     .sort();
 }
 
-/** The platform list from the newest migration that redefines the constraint. */
+/**
+ * The platform list from the newest migration that redefines the constraint.
+ *
+ * Anclado al NOMBRE de la constraint (`channels_platform_check`) y no a
+ * "aparece channels y despues platform": desde la etapa 2 hay otras tablas con
+ * una columna `platform` y su propio CHECK (social_accounts), y la version
+ * anterior de esta busqueda agarraba la ultima que encontraba.
+ */
 function latestChannelsPlatformConstraint(): string[] {
   const dir = migrationsDir();
 
   for (const file of [...migrationFiles()].reverse()) {
     const sql = readFileSync(join(dir, file), "utf8");
     const match = sql.match(
-      /channels[\s\S]*?platform[\s\S]*?check\s*\(\s*platform\s+in\s*\(([^)]*)\)/i
+      /channels_platform_check[\s\S]*?check\s*\(\s*platform\s+in\s*\(([^)]*)\)/i
     );
     if (match) {
       return match[1]

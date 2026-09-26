@@ -946,6 +946,81 @@ try {
     await svc.from("contacts").update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
     await setFlags(ws.id, { lead_scope_enabled: false }); }
 
+  console.log("\n— Etapa 2: conexiones y cuentas sociales (00082) —");
+  { // Un segundo workspace, con su propio Owner, para probar que nadie cruza.
+    const otro = await makeUser("otro");
+    const { data: wsOtro } = await svc.from("workspaces")
+      .insert({ name: "zz-test-otro-ws", slug: `zz-test-otro-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtro.id, user_id: otro.id, role: "owner" });
+
+    const { data: conn } = await svc.from("oauth_connections").insert({
+      workspace_id: ws.id, provider: "google", vault_secret_prefix: "oauth_google_zz",
+      account_label: "Canal de prueba", granted_scopes: ["youtube.upload"],
+    }).select("id").single();
+    const { data: cuenta } = await svc.from("social_accounts").insert({
+      workspace_id: ws.id, platform: "youtube", username: "zz-test-yt", display_name: "Canal de prueba",
+      publishers: [{ publisher: "postproxy", status: "available", account_ref: null, status_reason: null, verified_at: null, manually_enabled: false }],
+    }).select("id").single();
+
+    // Lectura: el Admin del workspace si, el Member no, el de afuera tampoco.
+    check((await sees(admin, "oauth_connections", conn.id)).seen,
+      "un Admin ve las conexiones OAuth de su workspace");
+    check(!(await sees(member, "oauth_connections", conn.id)).seen,
+      "un Member NO ve las conexiones OAuth (dicen con que cuenta y que permisos)");
+    check(!(await sees(otro, "oauth_connections", conn.id)).seen,
+      "el Owner de OTRO workspace no ve estas conexiones");
+
+    check((await sees(member, "social_accounts", cuenta.id)).seen,
+      "un Member SI ve las cuentas sociales: el editor de contenido las necesita");
+    check(!(await sees(otro, "social_accounts", cuenta.id)).seen,
+      "el Owner de OTRO workspace no ve estas cuentas");
+
+    // Escritura cruzada: ni con el id correcto.
+    { const { error } = await otro.client.from("social_accounts")
+        .update({ display_name: "secuestrado" }).eq("id", cuenta.id);
+      const { data: after } = await svc.from("social_accounts").select("display_name").eq("id", cuenta.id).single();
+      check(after.display_name === "Canal de prueba",
+        "otro workspace no puede editar una cuenta social ajena", error?.message); }
+
+    { const { error } = await otro.client.from("social_accounts").insert({
+        workspace_id: ws.id, platform: "tiktok", username: "colado",
+      }).select("id");
+      const { data: rows } = await svc.from("social_accounts").select("id").eq("workspace_id", ws.id).eq("platform", "tiktok");
+      check((rows ?? []).length === 0,
+        "otro workspace no puede crear una cuenta social dentro del nuestro", error?.message); }
+
+    // Un Member no escribe cuentas sociales ni siquiera en su propio workspace.
+    { const { error } = await member.client.from("social_accounts")
+        .update({ display_name: "cambiado por el member" }).eq("id", cuenta.id);
+      const { data: after } = await svc.from("social_accounts").select("display_name").eq("id", cuenta.id).single();
+      check(after.display_name === "Canal de prueba",
+        "un Member no edita por donde publica el negocio", error?.message); }
+
+    // Nadie escribe oauth_connections con el cliente de un usuario: solo el
+    // servidor, que ya verifico el rol antes de empezar el flujo.
+    { const { error } = await admin.client.from("oauth_connections")
+        .update({ account_label: "cambiado" }).eq("id", conn.id);
+      const { data: after } = await svc.from("oauth_connections").select("account_label").eq("id", conn.id).single();
+      check(after.account_label === "Canal de prueba",
+        "ni un Admin escribe oauth_connections directo: eso es del servidor", error?.message); }
+
+    // Los unicos: una cuenta por red y una conexion por proveedor.
+    { const { error } = await svc.from("social_accounts")
+        .insert({ workspace_id: ws.id, platform: "youtube", username: "otra" });
+      check(!!error, "no se pueden tener dos cuentas de la misma red en un workspace"); }
+    { const { error } = await svc.from("oauth_connections")
+        .insert({ workspace_id: ws.id, provider: "google", vault_secret_prefix: "otro" });
+      check(!!error, "no se pueden tener dos conexiones del mismo proveedor en un workspace"); }
+    { const { error } = await svc.from("oauth_connections")
+        .insert({ workspace_id: wsOtro.id, provider: "google", vault_secret_prefix: "oauth_google_otro" });
+      check(!error, "pero otro workspace si puede conectar el mismo proveedor", error?.message); }
+
+    // La base rechaza un publishers que no es un array.
+    { const { error } = await svc.from("social_accounts")
+        .update({ publishers: { publisher: "zernio" } }).eq("id", cuenta.id);
+      check(!!error, "publishers tiene que ser una lista, no un objeto suelto"); }
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente
