@@ -32,6 +32,7 @@ import {
   messageTimestamp,
 } from "@/lib/evolution-message";
 import { constantTimeEquals } from "@/lib/crypto";
+import { getEvolutionWebhookToken } from "@/lib/evolution-config";
 import {
   applyOptOut,
   pauseSequencesOnReply,
@@ -77,17 +78,11 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleWebhook(request: NextRequest) {
-  const expected = process.env.EVOLUTION_WEBHOOK_TOKEN?.trim();
-  if (!expected) {
-    console.error("[evolution] falta EVOLUTION_WEBHOOK_TOKEN en el entorno");
-    return NextResponse.json({ error: "Webhook no configurado" }, { status: 500 });
-  }
-
-  const provided = request.headers.get("x-webhook-token");
-  if (!provided || !constantTimeEquals(provided, expected)) {
-    return NextResponse.json({ error: "Token invalido" }, { status: 401 });
-  }
-
+  // El token es por workspace (F4), asi que primero hay que saber de que
+  // workspace es este mensaje, y eso sale de la instancia que viene en el
+  // cuerpo. Leer el cuerpo antes de validar no abre nada: lo unico que se hace
+  // con el es buscar un canal por su nombre de instancia, y sin token valido
+  // no se procesa ni se escribe nada.
   const body = await request.text();
   let payload: EvolutionPayload;
   try {
@@ -108,6 +103,21 @@ async function handleWebhook(request: NextRequest) {
     .select("*")
     .eq("evolution_instance", instance)
     .maybeSingle();
+
+  // Vault del workspace del canal y, si no hay, la variable de entorno: es el
+  // camino que deja a WhatsApp funcionando igual que antes mientras la clave
+  // no se haya movido. Sin canal conocido queda el token del entorno, que es
+  // lo que se validaba siempre.
+  const expected = await getEvolutionWebhookToken(supabase, channel?.workspace_id ?? null);
+  if (!expected) {
+    console.error("[evolution] no hay token de webhook ni en Vault ni en el entorno");
+    return NextResponse.json({ error: "Webhook no configurado" }, { status: 500 });
+  }
+
+  const provided = request.headers.get("x-webhook-token");
+  if (!provided || !constantTimeEquals(provided, expected)) {
+    return NextResponse.json({ error: "Token invalido" }, { status: 401 });
+  }
 
   // El mismo Evolution puede estar compartido con otro sistema: una instancia
   // que no es nuestra se ignora sin ruido, no es un error.

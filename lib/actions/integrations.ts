@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { storeSecret, deleteSecret, listSecretNames } from "@/lib/vault";
+import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
 import {
@@ -236,6 +236,79 @@ export async function disconnectIntegration(
 
   revalidatePath(INTEGRATIONS_PATH);
   return { ok: true };
+}
+
+/**
+ * Mueve a Vault los secretos de Zernio que todavia viven en columnas (F5).
+ *
+ * Son dos: el secreto con el que se verifica la firma del webhook
+ * (`workspaces.webhook_secret`) y la API key (`workspaces.late_api_key_encrypted`,
+ * en texto plano). Los dos se leen del servidor y se escriben en Vault sin
+ * pasar en ningun momento por el navegador ni por un log.
+ *
+ * No borra las columnas: eso lo hace `drop_legacy_secret_columns` despues de
+ * la verificacion en vivo. Mientras tanto los dos caminos conviven, y
+ * `resolveWebhookSecret` y `getZernioApiKey` prefieren Vault.
+ *
+ * Es idempotente: lo que ya esta en Vault no se vuelve a escribir.
+ */
+export async function migrateZernioSecretsToVault(): Promise<
+  IntegrationActionResult & { migrated?: string[] }
+> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
+
+  const { workspace, supabase } = ctx;
+
+  const { data: row, error } = await supabase
+    .from("workspaces")
+    .select("webhook_secret, late_api_key_encrypted")
+    .eq("id", workspace.id)
+    .single();
+
+  if (error || !row) {
+    return { ok: false, error: "No pude leer la configuracion del workspace" };
+  }
+
+  const stored = new Set(await listSecretNames(supabase, workspace.id));
+  const pendientes: Array<{ name: string; value: string; label: string }> = [];
+
+  if (row.webhook_secret && !stored.has(SECRET_NAMES.zernioWebhookSecret)) {
+    pendientes.push({
+      name: SECRET_NAMES.zernioWebhookSecret,
+      value: row.webhook_secret,
+      label: "el secreto del webhook",
+    });
+  }
+  if (row.late_api_key_encrypted && !stored.has(SECRET_NAMES.zernioApiKey)) {
+    pendientes.push({
+      name: SECRET_NAMES.zernioApiKey,
+      value: row.late_api_key_encrypted,
+      label: "la API key",
+    });
+  }
+
+  if (pendientes.length === 0) {
+    return { ok: true, migrated: [] };
+  }
+
+  for (const secreto of pendientes) {
+    const result = await storeSecret(supabase, workspace.id, secreto.name, secreto.value);
+    if (!result.ok) {
+      return { ok: false, error: `No pude mover ${secreto.label}: ${result.error}` };
+    }
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: "update",
+    // Que se movio, nunca el valor.
+    metadata: { provider: "zernio", migrated_to_vault: pendientes.map((p) => p.name) },
+    performedBy: ctx.user.id,
+  });
+
+  revalidatePath(INTEGRATIONS_PATH);
+  return { ok: true, migrated: pendientes.map((p) => p.name) };
 }
 
 /**

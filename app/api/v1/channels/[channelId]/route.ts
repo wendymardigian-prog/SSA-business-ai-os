@@ -4,9 +4,9 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
   deleteInstance,
-  getEvolutionConfig,
   logoutInstance,
 } from "@/lib/evolution-client";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 
 async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
   const {
@@ -64,7 +64,7 @@ export async function DELETE(
     channel.provider === "evolution" ? null : await getZernioApiKey(workspace.id);
 
   if (channel.provider === "evolution") {
-    const config = getEvolutionConfig();
+    const config = await getEvolutionConfig(supabase, workspace.id);
     if (config && channel.evolution_instance) {
       try {
         await logoutInstance(config, channel.evolution_instance);

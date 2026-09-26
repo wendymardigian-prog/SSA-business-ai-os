@@ -13,6 +13,7 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import type { Zernio } from "./zernio-client";
 
 /** Name used to identify Zernflow's webhook among a profile's webhooks. */
@@ -182,14 +183,37 @@ export interface ChannelSecretRef {
 }
 
 /**
- * Resolves the secret used to verify a webhook signature, preferring the
- * workspace-level secret and falling back to the legacy per-channel secret
- * during the transition. Returns null when neither is configured.
+ * Con que secreto se verifica la firma de un webhook entrante.
+ *
+ * Tres lugares, en este orden (F5):
+ *
+ *   1. **Vault** (`zernio_webhook_secret`), que es donde va a vivir.
+ *   2. `workspaces.webhook_secret`, donde vive hoy.
+ *   3. `channels.webhook_secret`, el mas viejo de todos.
+ *
+ * El orden importa y el fallback no es decorativo: mientras el secreto no se
+ * haya movido a Vault, Instagram tiene que seguir entrando igual. Las dos
+ * columnas se borran recien despues de la verificacion en vivo, con la
+ * migracion `drop_legacy_secret_columns`, que se escribe y no se aplica.
+ *
+ * Devuelve null si no hay secreto en ningun lado, y entonces el receptor
+ * rechaza con 401: esta URL es publica y aceptar sin verificar seria peor.
  */
 export async function resolveWebhookSecret(
   supabase: SupabaseClient,
   channel: ChannelSecretRef,
 ): Promise<string | null> {
+  try {
+    const fromVault = await readSecret(
+      supabase,
+      channel.workspace_id,
+      SECRET_NAMES.zernioWebhookSecret,
+    );
+    if (fromVault) return fromVault;
+  } catch {
+    // Vault caido no puede dejar sin recibir: se sigue con las columnas.
+  }
+
   const { data } = await supabase
     .from("workspaces")
     .select("webhook_secret")

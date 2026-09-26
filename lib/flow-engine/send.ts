@@ -3,7 +3,8 @@ import type { Database } from "@/lib/types/database";
 
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
-import { getEvolutionConfig, sendText, EvolutionError } from "@/lib/evolution-client";
+import { sendText, EvolutionError } from "@/lib/evolution-client";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 /**
@@ -225,7 +226,7 @@ async function sendViaEvolution(
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
-  const config = getEvolutionConfig();
+  const config = await getEvolutionConfig(supabase, channel.workspace_id);
   if (!config || !channel.evolution_instance) {
     return {
       ok: false,

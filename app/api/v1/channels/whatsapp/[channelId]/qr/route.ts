@@ -4,9 +4,9 @@ import { getAdminContext } from "@/lib/auth/guards";
 import {
   EvolutionError,
   getConnectionState,
-  getEvolutionConfig,
   getQrCode,
 } from "@/lib/evolution-client";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 
 /**
  * GET /api/v1/channels/whatsapp/[channelId]/qr
@@ -26,7 +26,7 @@ export async function GET(
     return NextResponse.json({ error: "Solo Owner y Admin" }, { status: 403 });
   }
 
-  const config = getEvolutionConfig();
+  const config = await getEvolutionConfig(ctx.supabase, ctx.workspace.id);
   if (!config) {
     return NextResponse.json({ error: "WhatsApp no esta configurado" }, { status: 400 });
   }

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { logAudit } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getConnectionState, getEvolutionConfig } from "@/lib/evolution-client";
+import { getConnectionState, type EvolutionConfig } from "@/lib/evolution-client";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 import { notifyWorkspaceAdmins } from "@/lib/notifications";
 
 /**
@@ -25,13 +26,18 @@ export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
   if (denied) return denied;
 
-  const config = getEvolutionConfig();
-  if (!config) {
-    // Sin Evolution configurado no hay nada que chequear; no es un error.
-    return NextResponse.json({ ok: true, skipped: "Evolution no configurado" });
-  }
-
   const supabase = await createServiceClient();
+
+  // La configuracion es por workspace (F4), y este cron recorre los canales de
+  // todos. Se resuelve una vez por workspace y se reusa: son una consulta a
+  // integration_configs y una lectura de Vault cada una.
+  const configByWorkspace = new Map<string, EvolutionConfig | null>();
+  const configFor = async (workspaceId: string) => {
+    if (!configByWorkspace.has(workspaceId)) {
+      configByWorkspace.set(workspaceId, await getEvolutionConfig(supabase, workspaceId));
+    }
+    return configByWorkspace.get(workspaceId) ?? null;
+  };
 
   const { data: channels, error } = await supabase
     .from("channels")
@@ -48,6 +54,11 @@ export async function GET(request: NextRequest) {
   let notified = 0;
 
   for (const channel of channels ?? []) {
+    const config = await configFor(channel.workspace_id);
+    // Un workspace sin Evolution configurado no es un error: no hay nada que
+    // chequear ahi.
+    if (!config) continue;
+
     checked++;
     let state: string;
     try {

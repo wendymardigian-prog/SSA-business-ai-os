@@ -134,12 +134,18 @@ describe("webhook de Evolution: el token", () => {
     expect(await res.json()).toEqual({ ok: true, queued: true });
   });
 
-  it("con un token equivocado responde 401 y no mira la base", async () => {
+  it("con un token equivocado responde 401 sin procesar el mensaje", async () => {
+    // Desde F4 el token es por workspace, y para saber de que workspace es
+    // este mensaje hay que buscar el canal por su instancia. Por eso la ruta
+    // consulta la base ANTES de validar el token, que es lo unico que cambio:
+    // el codigo sigue siendo 401 y no se escribe ni se procesa nada.
     db();
     const res = await callRoute(post(message(), { "x-webhook-token": "otro" }));
 
     expect(res.status).toBe(401);
-    expect(createServiceClient).not.toHaveBeenCalled();
+    await runAfter();
+    expect(insertMessage).not.toHaveBeenCalled();
+    expect(claimWebhookEvent).not.toHaveBeenCalled();
   });
 
   it("sin el header responde 401", async () => {

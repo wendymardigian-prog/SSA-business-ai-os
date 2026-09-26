@@ -104,6 +104,9 @@ export default async function IntegrationsPage() {
     <IntegrationsGrid
       integrations={integrations}
       webhookUrls={webhookUrls()}
+      zernioLegacySecrets={
+        Boolean(workspace.late_api_key_encrypted) && !storedSecrets.has(SECRET_NAMES.zernioApiKey)
+      }
       channelsSummary={activeChannels
         .filter((c) => c.provider === "zernio")
         .map((c) => ({

@@ -37,21 +37,10 @@ export interface EvolutionConfig {
   instancePrefix: string;
 }
 
-/**
- * Lee la configuracion del entorno. Devuelve null si falta algo, para que la
- * UI pueda decir "WhatsApp no esta configurado" en vez de romperse.
- */
-export function getEvolutionConfig(): EvolutionConfig | null {
-  const baseUrl = process.env.EVOLUTION_API_URL?.trim().replace(/\/$/, "");
-  const apiKey = process.env.EVOLUTION_API_KEY?.trim();
-  if (!baseUrl || !apiKey) return null;
-
-  return {
-    baseUrl,
-    apiKey,
-    instancePrefix: process.env.EVOLUTION_INSTANCE_PREFIX?.trim() || "ssa",
-  };
-}
+// La configuracion ya no se lee aca: vive en lib/evolution-config.ts, que la
+// arma por workspace (Vault + integration_configs) con las variables de entorno
+// como respaldo (F4). Este archivo quedo con el transporte y las operaciones,
+// que es lo que hace: hablar con el servidor de Evolution.
 
 /** Nombre de instancia propio de este proyecto, para no chocar con otros sistemas. */
 export function instanceNameFor(config: EvolutionConfig, workspaceId: string): string {

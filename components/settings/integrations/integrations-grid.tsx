@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { migrateZernioSecretsToVault } from "@/lib/actions/integrations";
 import { providersBySection, getProvider } from "@/lib/integrations/providers";
 import { needsAttention } from "@/lib/integrations/status";
 import { IntegrationCard } from "./integration-card";
@@ -21,12 +23,15 @@ export function IntegrationsGrid({
   integrations,
   webhookUrls,
   channelsSummary,
+  zernioLegacySecrets = false,
 }: {
   integrations: Record<string, IntegrationCardData>;
   /** Direcciones que hay que pegar en cada proveedor, por id. */
   webhookUrls: Record<string, string>;
   /** Cuentas conectadas por Zernio, para mostrarlas en su modal. */
   channelsSummary: Array<{ id: string; label: string; platform: string }>;
+  /** Hay secretos de Zernio todavia en las columnas viejas (F5). */
+  zernioLegacySecrets?: boolean;
 }) {
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -105,7 +110,7 @@ export function IntegrationsGrid({
           onSave={openProvider.id === "zernio" ? saveZernio : undefined}
           extraFooter={
             openProvider.id === "zernio" ? (
-              <ZernioFooter channels={channelsSummary} />
+              <ZernioFooter channels={channelsSummary} legacySecrets={zernioLegacySecrets} />
             ) : openProvider.connection === "qr" ? (
               <Link href="/dashboard/channels" className="text-sm underline">
                 Abrir WhatsApp (QR)
@@ -145,14 +150,73 @@ async function saveZernio(values: { secrets: Record<string, string> }) {
   return { ok: true as const };
 }
 
-function ZernioFooter({ channels }: { channels: Array<{ id: string; label: string; platform: string }> }) {
-  if (channels.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Todavia no hay cuentas conectadas. Al guardar la clave se sincronizan solas.
+function ZernioFooter({
+  channels,
+  legacySecrets,
+}: {
+  channels: Array<{ id: string; label: string; platform: string }>;
+  legacySecrets: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      {legacySecrets && <MigrateToVault />}
+      {channels.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Todavia no hay cuentas conectadas. Al guardar la clave se sincronizan solas.
+        </p>
+      ) : (
+        <ZernioChannels channels={channels} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Mueve a Vault los secretos que todavia viven en columnas (F5).
+ *
+ * No hay que volver a pegar nada: el servidor los lee y los escribe encriptados
+ * sin que pasen por el navegador. Las columnas viejas se borran despues, con la
+ * verificacion en vivo.
+ */
+function MigrateToVault() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+
+  return (
+    <div className="rounded-lg bg-amber-500/10 p-3">
+      <p className="text-xs text-amber-700 dark:text-amber-300">
+        La clave y el secreto del webhook todavia estan guardados a la vista en la base. Se pueden
+        mover a Vault sin volver a pegarlos.
       </p>
-    );
-  }
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const result = await migrateZernioSecretsToVault();
+            if (!result.ok) {
+              setMessage(result.error);
+              return;
+            }
+            setMessage(
+              result.migrated && result.migrated.length > 0
+                ? "Listo: ya estan en Vault."
+                : "No habia nada para mover.",
+            );
+            router.refresh();
+          })
+        }
+        className="mt-2 h-8 rounded-lg border border-amber-500 px-3 text-xs font-medium disabled:opacity-60"
+      >
+        {pending ? "Moviendo..." : "Migrar a Vault"}
+      </button>
+      {message && <p className="mt-2 text-xs">{message}</p>}
+    </div>
+  );
+}
+
+function ZernioChannels({ channels }: { channels: Array<{ id: string; label: string; platform: string }> }) {
   return (
     <div>
       <p className="text-xs font-medium">Cuentas conectadas</p>

@@ -46,8 +46,8 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F1 · Catálogo extendido con tipos de conexión (`connection`, `section`, `visible`, `secretFields`, `usage`, `providersBySection()`; entradas zernio, evolution, postproxy, google, linkedin, threads, meta oculta, resend_inbound oculta) + `lib/secret-names.ts` + `lib/vault-boundary.test.ts`
   - [x] F2 · Pantalla en grid con cards compactas (`integrationStatus()`, filtro "Requiere atención" en la barra superior)
   - [x] F3 · Modal de configuración genérico (armado desde el catálogo, varios secretos, "Guardado ✓ · Reemplazar", desconectar con confirmación)
-  - [ ] F4 · Evolution en Vault con fallback
-  - [ ] F5 · Secreto del webhook de Zernio en Vault con fallback
+  - [x] F4 · Evolution en Vault con fallback (`lib/evolution-config.ts`, 8 llamadores, webhook por workspace, test que prohíbe leer `process.env.EVOLUTION_` en otro lado)
+  - [x] F5 · Secreto del webhook de Zernio en Vault con fallback (Vault → workspace → canal) + "Migrar a Vault" (construido, no apretado)
   - [x] F6 · Cards de las integraciones existentes y barra de uso (`buildUsage`, Zernio 2 cuentas gratis; Zernio sigue guardándose por `test-key`)
   - [ ] F7 · Barra superior en todas las pantallas
 - [ ] **Bloque 2 — Conexiones de redes** (migración 00082)

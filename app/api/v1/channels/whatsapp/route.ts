@@ -6,9 +6,9 @@ import {
   EvolutionError,
   createInstance,
   getConnectionState,
-  getEvolutionConfig,
   instanceNameFor,
 } from "@/lib/evolution-client";
+import { getEvolutionConfig, getEvolutionWebhookToken } from "@/lib/evolution-config";
 
 /**
  * POST /api/v1/channels/whatsapp
@@ -29,7 +29,7 @@ export async function POST() {
     );
   }
 
-  const config = getEvolutionConfig();
+  const config = await getEvolutionConfig(ctx.supabase, ctx.workspace.id);
   if (!config) {
     return NextResponse.json(
       {
@@ -40,7 +40,9 @@ export async function POST() {
     );
   }
 
-  const webhookToken = process.env.EVOLUTION_WEBHOOK_TOKEN?.trim();
+  // El token sale de Vault y, si no hay, del entorno (F4): es el mismo que
+  // despues valida el receptor.
+  const webhookToken = await getEvolutionWebhookToken(ctx.supabase, ctx.workspace.id);
   if (!webhookToken) {
     return NextResponse.json(
       {

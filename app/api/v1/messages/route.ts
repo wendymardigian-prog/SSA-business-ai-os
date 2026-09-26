@@ -6,11 +6,8 @@ import { toInboxThread } from "@/lib/zernio-message";
 import { messagePreview } from "@/lib/message-preview";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { applyManualReply } from "@/lib/agent/manual-reply";
-import {
-  EvolutionError,
-  getEvolutionConfig,
-  sendText,
-} from "@/lib/evolution-client";
+import { EvolutionError, sendText } from "@/lib/evolution-client";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -179,6 +176,7 @@ export async function POST(request: NextRequest) {
 
   const outChannel = conversation.channels as {
     id: string;
+    workspace_id: string;
     late_account_id: string;
     provider: string;
     evolution_instance: string | null;
@@ -304,12 +302,12 @@ async function sendViaEvolution({
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   conversationId: string;
-  channel: { id: string; evolution_instance: string | null };
+  channel: { id: string; workspace_id: string; evolution_instance: string | null };
   contactId: string;
   text: string;
   userId: string;
 }) {
-  const config = getEvolutionConfig();
+  const config = await getEvolutionConfig(supabase, channel.workspace_id);
   if (!config || !channel.evolution_instance) {
     return NextResponse.json(
       { error: "WhatsApp no esta configurado en este entorno" },
