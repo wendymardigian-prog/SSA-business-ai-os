@@ -18,6 +18,7 @@ export const DASHBOARDS = [
   { key: "chat", label: "Chat", href: "/dashboard/dashboards/chat" },
   { key: "content", label: "Contenido organico", href: "/dashboard/dashboards/content" },
   { key: "ads", label: "Anuncios", href: "/dashboard/dashboards/ads" },
+  { key: "unified", label: "Unificado", href: "/dashboard/dashboards/unified" },
 ] as const;
 
 export function DashboardSwitcher({

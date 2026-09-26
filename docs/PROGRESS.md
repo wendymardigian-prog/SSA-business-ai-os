@@ -123,11 +123,20 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F55 · Sincronización de insights (los cuatro niveles, paginación completa hasta agotar el cursor, últimos 3 días por corrida y 90 al activar; códigos 17 y 80004 reintentables, token inválido no)
   - [x] F56 · Dashboard de Meta Ads (8 KPI con variación, evolución de dos ejes, embudo, retención de video y desglose por campaña, conjunto y anuncio con total y colores de CTR y leads en cero)
   - [x] F58 · Datos en vivo con caché de 15 minutos por cuenta, nivel, objeto y período; un error no se guarda en caché y una tarjeta que falla no vacía la pantalla
-- [ ] **Bloque 7b — Detalles, unificado e IA**
-  - [ ] F57 · Detalles de campaña, ad set y anuncio
-  - [ ] F59 · Dashboard unificado
-  - [ ] F60 · Leads por campaña (nice-to-have)
-  - [ ] F61 · Analizar con IA (nice-to-have)
+- [x] **Bloque 7b — Detalles, unificado e IA** (sin migración)
+  - [x] F57 · Detalles de campaña, conjunto y anuncio (una plantilla para los tres; un detalle muestra SOLO lo suyo, con migas que llevan la cuenta y el período en cada link)
+  - [x] F59 · Dashboard unificado — sin columna "total": el alcance orgánico y el pago se superponen y Meta no dice cuánto, así que sumarlos daría un número que no existe
+  - [x] F60 · Leads por campaña, cruzando `contacts.attribution`. Los dos números casi nunca coinciden y la pantalla explica por qué: Meta cuenta eventos y el CRM cuenta personas.
+  - [x] F61 · Analizar con IA (contexto en texto con los números reales, tope de objetos por gasto, costo registrado y topes del workspace respetados antes de llamar)
+  - El chequeo de topes de IA se extrajo a `lib/ai/workspace-budget.ts`: lo comparten la generación de copy y el análisis de anuncios, para que "llegué al tope" no signifique dos cosas distintas según quién pregunte.
+- [x] **Fase 2 lista:** suite completa en 0 (26/9/2026)
+
+  | Comando | Resultado al cerrar la Fase 2 |
+  |---|---|
+  | `npx vitest run` | 2239 tests, todo en verde |
+  | `npm run build` | Compila |
+  | `npm run lint` | 0 errores, 44 warnings (la línea base) |
+  | `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
 - [ ] **Fase 2 lista:** suite completa en 0
 
 ### FASE 3 — Email entrante y roles

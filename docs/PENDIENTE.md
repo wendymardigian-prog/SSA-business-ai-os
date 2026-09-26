@@ -198,3 +198,19 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 **Por qué.** Necesita una ruta con caché de 15 minutos por workspace, y el bloque 6 ya era el más grande de la fase.
 
 **Qué se decidió en su lugar.** La grilla muestra las publicaciones guardadas, que es lo que contesta la pregunta principal. Las historias van con el bloque 7, donde ya hay una caché en memoria para Meta y se comparte el patrón.
+
+### El detalle de anuncios no muestra las tarjetas de desglose
+
+**Qué quedó.** Las pantallas de campaña, conjunto y anuncio muestran las cifras, la evolución, el embudo, la retención de video, los rankings y el creativo. No muestran las tarjetas de placement, dispositivo, audiencia ni rendimiento por hora.
+
+**Por qué.** Las cuatro salen de consultas en vivo a Meta (`fetchBreakdown`, ya construida y probada), y cada una es una llamada más por pantalla abierta. Con la cuenta real todavía sin conectar, no había forma de ver si el volumen de llamadas es razonable en el nivel Development.
+
+**Qué se decidió en su lugar.** `fetchBreakdown` queda lista con su caché de 15 minutos. Agregar las tarjetas es consumirla desde la pantalla, sin tocar nada más. Se hace en la verificación en vivo, cuando se pueda medir cuánta cuota cuesta abrir un detalle.
+
+### El análisis con IA no guarda los análisis anteriores
+
+**Qué quedó.** Cada análisis se muestra y se pierde al cerrar el panel. El costo sí queda registrado en `agent_runs`.
+
+**Por qué.** Guardarlos necesita una tabla con su RLS, y el plano lo pedía como nice-to-have dentro del último bloque de la fase.
+
+**Qué se decidió en su lugar.** El análisis se puede copiar del panel. Si resulta que se relee, la tabla es una migración chica y el panel ya tiene dónde listarlos.

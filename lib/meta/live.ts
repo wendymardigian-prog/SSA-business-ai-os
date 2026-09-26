@@ -232,3 +232,93 @@ function genderLabel(gender: string): string {
   if (gender === "male") return "Varones";
   return "Sin especificar";
 }
+
+export interface ObjectMeta {
+  objective: string | null;
+  dailyBudget: number | null;
+  lifetimeBudget: number | null;
+  status: string | null;
+  creative: {
+    title: string | null;
+    body: string | null;
+    thumbnailUrl: string | null;
+    cta: string | null;
+  } | null;
+}
+
+/**
+ * Lo que no cambia por dia: objetivo, presupuesto, estado y creativo.
+ *
+ * No se guarda porque no es una serie: es como esta configurado el objeto
+ * AHORA. Guardarlo por dia seria guardar la misma fila treinta veces.
+ *
+ * Los presupuestos de Meta vienen en centavos.
+ */
+export async function fetchObjectMeta(params: {
+  token: string;
+  adAccountId: string;
+  objectId: string;
+  level: "campaign" | "adset" | "ad";
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<LiveResult<ObjectMeta>> {
+  const fields =
+    params.level === "campaign"
+      ? "objective,daily_budget,lifetime_budget,effective_status"
+      : params.level === "adset"
+        ? "daily_budget,lifetime_budget,effective_status,optimization_goal"
+        : "effective_status,creative{title,body,thumbnail_url,call_to_action_type}";
+
+  const result = await liveQuery<{
+    objective?: string;
+    daily_budget?: string;
+    lifetime_budget?: string;
+    effective_status?: string;
+    creative?: {
+      title?: string;
+      body?: string;
+      thumbnail_url?: string;
+      call_to_action_type?: string;
+    };
+  }>({
+    key: cacheKey({
+      adAccountId: params.adAccountId,
+      kind: `meta:${params.level}`,
+      objectId: params.objectId,
+      since: "-",
+      until: "-",
+    }),
+    token: params.token,
+    path: params.objectId,
+    query: { fields },
+    fetchImpl: params.fetchImpl,
+    now: params.now,
+  });
+
+  if (!result.ok) return result;
+
+  // Meta manda los presupuestos en centavos.
+  const cents = (v: unknown) => {
+    const n = v === undefined || v === null ? null : Number(v);
+    return n === null || !Number.isFinite(n) ? null : n / 100;
+  };
+
+  return {
+    ok: true,
+    fromCache: result.fromCache,
+    data: {
+      objective: result.data.objective ?? null,
+      dailyBudget: cents(result.data.daily_budget),
+      lifetimeBudget: cents(result.data.lifetime_budget),
+      status: result.data.effective_status ?? null,
+      creative: result.data.creative
+        ? {
+            title: result.data.creative.title ?? null,
+            body: result.data.creative.body ?? null,
+            thumbnailUrl: result.data.creative.thumbnail_url ?? null,
+            cta: result.data.creative.call_to_action_type ?? null,
+          }
+        : null,
+    },
+  };
+}

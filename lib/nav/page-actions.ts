@@ -50,6 +50,22 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "Como rinden tus anuncios de Meta: gasto, clics, leads y que campaña los trae.",
   },
+  "/dashboard/dashboards/unified": {
+    title: "Dashboards",
+    tooltip: "Lo organico y lo pago del mismo periodo, uno al lado del otro.",
+  },
+  "/dashboard/dashboards/ads/campaigns/[id]": {
+    title: "Campaña",
+    tooltip: "Como rinde esta campaña, con sus conjuntos y sus anuncios.",
+  },
+  "/dashboard/dashboards/ads/adsets/[id]": {
+    title: "Conjunto de anuncios",
+    tooltip: "Como rinde este conjunto y cada uno de sus anuncios.",
+  },
+  "/dashboard/dashboards/ads/ads/[id]": {
+    title: "Anuncio",
+    tooltip: "Como rinde este anuncio, con su creativo y sus rankings.",
+  },
   "/dashboard/dashboards/content": {
     title: "Dashboards",
     tooltip:

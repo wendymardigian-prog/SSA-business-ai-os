@@ -19,8 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { getWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun } from "@/lib/ai/run";
-import { evaluateSpend } from "@/lib/ai/spend";
-import { BUSINESS_TIMEZONE } from "@/lib/dates";
+import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import {
   buildPrompt,
   copyOutputSchema,
@@ -35,70 +34,6 @@ type Db = SupabaseClient<Database>;
 export type GenerateCopyResult =
   | (Extract<CopyValidation, { ok: true }> & { runId: string | null; costUsd: number | null })
   | { ok: false; error: string; reason: "no_provider" | "spend_limit" | "invalid_output" | "failed" };
-
-/**
- * El gasto del workspace en el mes, contra su tope.
- *
- * Se usa `evaluateSpend`, la misma funcion pura que el agente: que la regla
- * sea una sola es lo que evita que "llegue al tope" signifique dos cosas
- * distintas segun quien pregunte.
- */
-async function withinBudget(
-  supabase: Db,
-  workspaceId: string,
-): Promise<{ allowed: boolean; message?: string }> {
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  const daily = workspace?.ai_daily_cost_limit_usd ?? null;
-  const monthly = workspace?.ai_monthly_cost_limit_usd ?? null;
-  if (daily === null && monthly === null) return { allowed: true };
-
-  const now = new Date();
-  const dayStart = new Date(
-    new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" })
-      .format(now) + "T00:00:00Z",
-  );
-  const monthStart = new Date(`${dayStart.toISOString().slice(0, 7)}-01T00:00:00Z`);
-
-  const [spentDay, spentMonth] = await Promise.all([
-    sumSpend(supabase, workspaceId, dayStart),
-    sumSpend(supabase, workspaceId, monthStart),
-  ]);
-
-  // Si no se puede leer el gasto, no se llama: del lado seguro.
-  if (spentDay === null || spentMonth === null) {
-    return { allowed: false, message: "No pude verificar el gasto de IA del workspace." };
-  }
-
-  const check = evaluateSpend([
-    { scope: "workspace_daily", limitUsd: daily, action: "disable", spentUsd: spentDay },
-    { scope: "workspace_monthly", limitUsd: monthly, action: "disable", spentUsd: spentMonth },
-  ]);
-
-  if (check.allowed) return { allowed: true };
-
-  return {
-    allowed: false,
-    message: `El workspace llego a su tope de gasto de IA (USD ${check.blocking.limitUsd}). Subilo en Agentes → Costos o espera al proximo periodo.`,
-  };
-}
-
-async function sumSpend(supabase: Db, workspaceId: string, since: Date): Promise<number | null> {
-  const { data, error } = await supabase.rpc("sum_ai_spend", {
-    p_workspace_id: workspaceId,
-    p_agent_id: null,
-    p_since: since.toISOString(),
-  });
-  if (error) {
-    console.error("[content] no pude leer el gasto de IA:", error.message);
-    return null;
-  }
-  return Number(data ?? 0);
-}
 
 /**
  * Genera el guion y los captions.
@@ -116,7 +51,7 @@ export async function generateCopy(
     request: CopyRequest;
   },
 ): Promise<GenerateCopyResult> {
-  const budget = await withinBudget(supabase, params.workspaceId);
+  const budget = await withinWorkspaceBudget(supabase, params.workspaceId);
   if (!budget.allowed) {
     return { ok: false, reason: "spend_limit", error: budget.message ?? "Tope de gasto alcanzado" };
   }

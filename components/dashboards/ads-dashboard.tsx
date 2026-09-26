@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
 import { DualAxisChart, type ChartSeries } from "./charts";
+import { AdsAiPanel } from "./ads-ai-panel";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import {
   computeTotals,
@@ -60,6 +62,7 @@ const TONE_CLASS = {
 
 export function AdsDashboard(props: AdsDashboardProps) {
   const [tab, setTab] = useState<Tab>("campaign");
+  const [aiOpen, setAiOpen] = useState(false);
   const [barMetric, setBarMetric] = useState<"spend" | "impressions" | "clicks" | "reach" | "leads">("spend");
   const [lineMetric, setLineMetric] = useState<"ctr" | "cpc" | "cpm" | "leads">("ctr");
 
@@ -175,6 +178,14 @@ export function AdsDashboard(props: AdsDashboardProps) {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setAiOpen(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs"
+            >
+              <Sparkles className="h-3.5 w-3.5" aria-hidden />
+              Analizar con IA
+            </button>
           </div>
         }
       />
@@ -352,6 +363,14 @@ export function AdsDashboard(props: AdsDashboardProps) {
           )}
         </section>
       </div>
+
+      {aiOpen && (
+        <AdsAiPanel
+          period={props.period}
+          adAccountId={props.adAccountId}
+          onClose={() => setAiOpen(false)}
+        />
+      )}
     </div>
   );
 }
