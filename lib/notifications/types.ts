@@ -19,12 +19,19 @@ export const NOTIFICATION_TYPES = [
   "agent_spend_limit",
   "draft_window",
   "refresh_health",
+  "integration_attention",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /** A que apunta la notificacion. Define el deep-link y el scope en la RLS. */
-export type NotificationEntity = "conversation" | "channel" | "sequence_enrollment" | "contact" | "draft_queue";
+export type NotificationEntity =
+  | "conversation"
+  | "channel"
+  | "sequence_enrollment"
+  | "contact"
+  | "draft_queue"
+  | "integration";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -99,6 +106,20 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Fallos en el refresco contra Zernio",
     tone: "warning",
   },
+  /**
+   * Una integracion necesita atencion (etapa 2, F15): el token vence pronto o
+   * se revoco, falta un permiso, o se llego al tope del plan.
+   *
+   * Es un solo tipo y no cuatro: lo que cambia es el motivo, que va en el
+   * texto y en la metadata. Cuatro tipos obligarian a cuatro iconos y cuatro
+   * links para llevar siempre al mismo lugar.
+   */
+  integration_attention: {
+    type: "integration_attention",
+    label: "Una integracion necesita atencion",
+    tone: "warning",
+    entity: "integration",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -141,6 +162,11 @@ export function linkFor(
 
     case "contact":
       return entityId ? `/dashboard/contacts/${entityId}` : "/dashboard/contacts";
+
+    case "integration":
+      // Todas llevan a la pantalla de integraciones, con el filtro puesto:
+      // desde ahi se reconecta, que es lo unico que se puede hacer.
+      return "/dashboard/settings/integrations";
 
     case "draft_queue":
       // Avisos de ventana: a la cola, filtrada por los que estan por vencer.

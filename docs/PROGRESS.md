@@ -50,15 +50,15 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F5 · Secreto del webhook de Zernio en Vault con fallback (Vault → workspace → canal) + "Migrar a Vault" (construido, no apretado)
   - [x] F6 · Cards de las integraciones existentes y barra de uso (`buildUsage`, Zernio 2 cuentas gratis; Zernio sigue guardándose por `test-key`)
   - [x] F7 · Barra superior en todas las pantallas (una sola barra también en el celular; `lib/nav/page-actions.ts` con título, explicación y acciones por rol; 22 pantallas migradas; `MobileTopBar` eliminada)
-- [ ] **Bloque 2 — Conexiones de redes** (migración 00082)
+- [x] **Bloque 2 — Conexiones de redes** (migración 00082 aplicada)
   - [x] F8 · Tablas de conexiones y cuentas sociales (00082 aplicada, publishers validado con Zod, 13 casos nuevos en verify-rls)
   - [x] F9 · Flujo OAuth genérico con `state` firmado (HMAC + nonce en cookie + vencimiento, rutas start/callback)
   - [x] F10 · Conexión con Google (YouTube) (`access_type=offline`, detección de `invalid_grant`, canal por `channels.list`)
   - [x] F11 · Conexión con LinkedIn (`LINKEDIN_API_VERSION`, sin refresh, URN de la persona)
   - [x] F12 · Conexión con Threads (portado: token corto → largo, renovación a los 15 días)
   - [x] F13 · Cuentas sociales y publicadores disponibles (`computeAccounts` puro; conserva lo elegido a mano y avisa al cambiar)
-  - [ ] F14 · Conexión de Postproxy
-  - [ ] F15 · Avisos de conexiones
+  - [x] F14 · Conexión de Postproxy (cliente según su documentación real; "Probar y guardar" llama a `/profiles` antes de escribir)
+  - [x] F15 · Avisos de conexiones (`integration_attention` con ventana por causa y uuid derivado para no tapar un aviso con otro) + cron semanal de renovación
 - [ ] **Bloque 3a — Modelo de contenido y kanban** (migración 00083)
   - [ ] F16 · Tablas de contenido y bucket
   - [ ] F17 · Estados del post

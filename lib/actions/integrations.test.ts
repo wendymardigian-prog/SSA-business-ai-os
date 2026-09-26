@@ -14,12 +14,14 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 // vi.hoisted: las factorias de vi.mock se suben arriba de todo, asi que no
 // pueden usar constantes declaradas despues. Esto declara los espias tambien
 // arriba, y los dos lados ven el mismo objeto.
-const { getAdminContext, storeSecret, deleteSecret, listSecretNames, logAudit } = vi.hoisted(() => ({
+const { getAdminContext, storeSecret, deleteSecret, listSecretNames, logAudit, fetchMock } = vi.hoisted(() => ({
   getAdminContext: vi.fn(),
   storeSecret: vi.fn(),
   deleteSecret: vi.fn(),
   listSecretNames: vi.fn(),
   logAudit: vi.fn(),
+  /** El unico proveedor que se llama de verdad al guardar es Postproxy. */
+  fetchMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/guards", () => ({ getAdminContext }));
@@ -59,6 +61,7 @@ function admin(seed: Record<string, Array<Record<string, unknown>>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal("fetch", fetchMock);
   storeSecret.mockResolvedValue({ ok: true });
   deleteSecret.mockResolvedValue({ ok: true });
   listSecretNames.mockResolvedValue([]);
@@ -368,5 +371,50 @@ describe("migrar los secretos viejos de Zernio a Vault (F5)", () => {
 
     expect((await migrateZernioSecretsToVault()).ok).toBe(false);
     expect(storeSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe("probar antes de guardar (F3)", () => {
+  it("si el proveedor rechaza la clave, no se guarda nada", async () => {
+    // El caso que justifica la prueba: el formato esta bien pero la clave fue
+    // revocada. Sin esto la card quedaria en verde y la falla apareceria el
+    // dia de publicar.
+    const db = admin();
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+
+    const result = await saveIntegration({
+      providerId: "postproxy",
+      secrets: { api_key: "clave-revocada-pero-bien-formada" },
+    });
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("no reconoce") });
+    expect(storeSecret).not.toHaveBeenCalled();
+    expect(db.rows("integration_configs")).toHaveLength(0);
+  });
+
+  it("si la clave sirve, se guarda", async () => {
+    const db = admin();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ profiles: [{ id: "p1", platform: "youtube" }] }),
+    });
+
+    const result = await saveIntegration({
+      providerId: "postproxy",
+      secrets: { api_key: "clave-que-si-sirve-1234" },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(storeSecret).toHaveBeenCalledWith(expect.anything(), WS, "postproxy_api_key", "clave-que-si-sirve-1234");
+  });
+
+  it("editar la config sin tocar la clave no llama al proveedor", async () => {
+    listSecretNames.mockResolvedValue(["postproxy_api_key"]);
+    admin();
+
+    await updateIntegrationConfig("postproxy", {});
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

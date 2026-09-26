@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
+import { testConnection } from "@/lib/integrations/test-connection";
 import {
   configProviderOf,
   getVisibleProvider,
@@ -115,6 +116,15 @@ export async function saveIntegration(
 
   const configCheck = validateConfig(provider.id, config);
   if (!configCheck.ok) return configCheck;
+
+  // La prueba va antes de escribir nada: si la clave no sirve, no queda
+  // guardada ni la integracion marcada como conectada.
+  const tested = await testConnection({
+    providerId: provider.id,
+    secrets: Object.fromEntries(toStore.map((s) => [s.field.key, s.value])),
+    config,
+  });
+  if (!tested.ok) return tested;
 
   for (const { field, value } of toStore) {
     const stored = await storeSecret(supabase, workspace.id, field.secretName, value);

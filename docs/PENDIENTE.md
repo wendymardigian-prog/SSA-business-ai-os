@@ -36,6 +36,17 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
 ---
 
+### La documentación de Postproxy no coincide con el plano
+- **Qué quedó:** el plano (F32) suponía campos propios de YouTube (título, privacidad, Short, miniatura) y un
+  webhook de estado con firma. La documentación real (postproxy.dev, consultada el 26/9/2026) expone
+  `POST /posts` con `{ post: { body, draft, scheduled_at }, profiles, media }`, sin campos por red
+  documentados, y su guía de inicio **no documenta webhooks**.
+- **Por qué:** gana la documentación (§19 del plano).
+- **Qué se decidió en su lugar:** el cliente implementa lo que la API tiene de verdad, y el estado final se
+  consulta con `GET /posts/:id` en vez de esperar un webhook. El publicador de F32 agenda ese chequeo. Si
+  Postproxy documenta webhooks más adelante, se cambia el camino sin tocar la interfaz común. Al conectar la
+  cuenta real hay que confirmar cómo se manda el título del video: puede ir en `platforms[].params`.
+
 ## Heredado de la Fase 3
 
 Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resuelve en F7.

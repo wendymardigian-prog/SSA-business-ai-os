@@ -218,6 +218,10 @@ export function IntegrationModal({
           {webhookUrl && <CopyableUrl label="Direccion para pegar en el proveedor" url={webhookUrl} />}
         </div>
 
+        {provider.connection === "oauth_app" && (
+          <ConnectWithProvider provider={provider} connected={connected} allSecretsSaved={fields.every((f) => stored.has(f.key))} />
+        )}
+
         {extraFooter && <div className="mt-4 border-t border-border pt-4">{extraFooter}</div>}
 
         {error && (
@@ -312,6 +316,51 @@ function CopyableUrl({ label, url }: { label: string; url: string }) {
           {copied ? "Copiada" : "Copiar"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * El paso de autorizar, para las integraciones de OAuth.
+ *
+ * Son dos pasos y en este orden: primero se guardan Client ID y Secret (los
+ * datos de la app del negocio), y recien despues se autoriza la cuenta. Sin
+ * los secretos guardados el boton no sirve, asi que se muestra deshabilitado
+ * con el motivo en vez de mandar a una pantalla de error del proveedor.
+ *
+ * Es un link y no un boton con fetch: el navegador tiene que NAVEGAR al
+ * proveedor, y la cookie del `state` se pone en esa misma respuesta.
+ */
+function ConnectWithProvider({
+  provider,
+  connected,
+  allSecretsSaved,
+}: {
+  provider: ProviderDefinition;
+  connected: boolean;
+  allSecretsSaved: boolean;
+}) {
+  const href = `/api/oauth/${provider.id}/start?redirect_to=${encodeURIComponent("/dashboard/settings/integrations")}`;
+
+  return (
+    <div className="mt-4 rounded-lg border border-border p-3">
+      <p className="text-xs text-muted-foreground">
+        {connected
+          ? "La cuenta ya esta autorizada. Volver a autorizar sirve si cambiaron los permisos."
+          : "Guarda los datos de la app y despues autoriza la cuenta."}
+      </p>
+      {allSecretsSaved ? (
+        <a
+          href={href}
+          className="mt-2 inline-flex h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
+        >
+          {connected ? `Volver a autorizar ${provider.label}` : `Autorizar ${provider.label}`}
+        </a>
+      ) : (
+        <p className="mt-2 text-xs">
+          Guarda primero el Client ID y el Secret para poder autorizar.
+        </p>
+      )}
     </div>
   );
 }
