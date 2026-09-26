@@ -28,9 +28,9 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 |---|---|---|---|
 | — | Atribución y dependencia | `THIRD_PARTY_NOTICES.md`, `dayjs` + plugins | [x] |
 | F8 | `formatInTz`, `rangeForFilter` | `lib/scheduling/time/*`, `tz.test.ts` | [x] |
-| F9, F11, F12 | Esquemas Zod de `weekly_hours` y `date_overrides` + validación compartida | `lib/scheduling/availability-schema.ts`, `rules-validation.test.ts`, `overrides.test.ts` | [ ] |
-| F10 | `summarizeSchedule` | `schedules.test.ts` | [ ] |
-| F13 | Tiempo fuera de días completos a UTC | `out-of-office.test.ts` | [ ] |
+| F9, F11, F12 | Esquemas Zod de `weekly_hours` y `date_overrides` + validación compartida | `lib/scheduling/availability-schema.ts`, `rules-validation.test.ts`, `overrides.test.ts` | [x] |
+| F10 | `summarizeSchedule` | `schedules.ts`, `schedules.test.ts` | [x] |
+| F13 | Tiempo fuera de días completos a UTC | `out-of-office.ts`, `out-of-office.test.ts` (solo lo puro; `conflictingBookings` va en la Tanda B) | [x] |
 | F17, F18 | `slugify` y validaciones puras del evento | `event-types.test.ts`, `event-validation.test.ts` | [ ] |
 | F20 | `buildBookingSchema` y tipo de `booking_fields` | `lib/scheduling/booking-fields.ts`, `booking-fields.test.ts` | [ ] |
 | F21 | Límites y buffers | `lib/scheduling/limits/*` | [ ] |
@@ -46,7 +46,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 
 ## Grupos de ejecución
 - [x] 1 · Tiempo y zonas horarias (F8) — `types.ts`, `time/dayjs.ts`, `time/tz.ts` (18 tests)
-- [ ] 2 · Esquemas de horarios (F9, F11, F12, F10, F13)
+- [x] 2 · Esquemas de horarios (F9, F11, F12, F10, F13) — 29 tests
 - [ ] 3 · Límites (F21)
 - [ ] 4 · Motor (F23)
 - [ ] 5 · Formulario (F20)
