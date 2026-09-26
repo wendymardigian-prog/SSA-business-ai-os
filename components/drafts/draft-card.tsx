@@ -482,6 +482,11 @@ export function DraftQueueItem({
           {ownerLabel ? `De ${ownerLabel}` : "Sin asignar"}
         </p>
         {draft.contact.doNotContact && <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">No contactar</p>}
+        {draft.agentOffByTag && (
+          <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+            Contacto marcado con una etiqueta que apaga el agente: revisá antes de enviar.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 queue:hidden">

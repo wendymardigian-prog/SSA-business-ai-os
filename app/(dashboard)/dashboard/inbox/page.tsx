@@ -52,7 +52,7 @@ export default async function InboxPage({
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
   const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
-    supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("id, platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
@@ -65,7 +65,13 @@ export default async function InboxPage({
     (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) })]),
   );
 
-  const tags = tagsRes.data ?? [];
+  const tags = (tagsRes.data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    disablesAgent: t.disables_agent,
+    assignsTo: t.assigns_to,
+  }));
   const platformOptions = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
 
   const search = sanitizeSearch(firstParam(params.q));

@@ -8,7 +8,8 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
-import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData } from "@/lib/agent/screen";
+import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData, type TagsTabData } from "@/lib/agent/screen";
+import { agentUsableTagIds } from "@/lib/tags/effects";
 import { serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
@@ -74,8 +75,11 @@ export default async function AgentDetailPage({
           .eq("flows.workspace_id", workspace.id)
       : Promise.resolve({ data: [] }),
     getWorkspaceMembers(workspace.id),
-    supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
   ]);
+  const allTags = tagsRes.data ?? [];
+  // La lista blanca del agente nunca ofrece una etiqueta con efecto (00073).
+  const usableTagIds = agentUsableTagIds(allTags.map((t) => ({ id: t.id, disablesAgent: t.disables_agent, assignsTo: t.assigns_to })));
 
   const memberNames = new Map(members.map((m) => [m.userId, m.name]));
   const flowsCapturingAll = new Map<string, string>();
@@ -161,7 +165,7 @@ export default async function AgentDetailPage({
         filters,
         agentNames: new Map(agents.map((a) => [a.id, a.name])),
         channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
-        tagNames: new Map((tagsRes.data ?? []).map((t) => [t.id, t.name])),
+        tagNames: new Map(allTags.map((t) => [t.id, t.name])),
         memberNames,
       }),
       supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).not("performed_by_agent_id", "is", null),
@@ -173,6 +177,30 @@ export default async function AgentDetailPage({
       pageSize: ACTIONS_PAGE_SIZE,
       anyActions: (anyRes.count ?? 0) > 0,
       options: { agents: agents.map((a) => ({ id: a.id, name: a.name })), channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })) },
+    };
+  }
+
+  // Etiquetas (Bloque 2d-A): el efecto de cada una sobre el agente.
+  let tags: TagsTabData | undefined;
+  if (tab === "tags" && isAdmin) {
+    const { data: counts, error: countError } = await supabase
+      .from("tags")
+      .select("id, contact_tags(count)")
+      .eq("workspace_id", workspace.id);
+    if (countError) console.error("[agents] no pude contar los contactos por etiqueta:", countError.message);
+    const countOf = new Map(
+      ((counts ?? []) as Array<{ id: string; contact_tags: Array<{ count: number }> | null }>).map((t) => [t.id, t.contact_tags?.[0]?.count ?? 0]),
+    );
+    tags = {
+      tags: allTags.map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        disablesAgent: t.disables_agent,
+        assignsTo: t.assigns_to,
+        contactCount: countOf.get(t.id) ?? 0,
+      })),
+      members: members.map((m) => ({ userId: m.userId, label: m.name })),
     };
   }
 
@@ -205,10 +233,11 @@ export default async function AgentDetailPage({
     costs,
     runs,
     actions,
+    tags,
     agent: screenAgent,
     tools: serializeToolsForScreen(),
     toolOptionSources: {
-      tags: (tagsRes.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+      tags: allTags.filter((t) => usableTagIds.has(t.id)).map((t) => ({ value: t.id, label: t.name })),
       members: members.map((m) => ({ value: m.userId, label: m.name, hint: m.role })),
       contact_fields: [],
     },

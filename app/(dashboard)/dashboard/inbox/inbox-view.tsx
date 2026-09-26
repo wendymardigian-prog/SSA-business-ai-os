@@ -51,7 +51,7 @@ export function InboxView({
   pageSize: number;
   filters: InboxFilters;
   dateRange: DateRange;
-  tags: { id: string; name: string; color: string | null }[];
+  tags: { id: string; name: string; color: string | null; disablesAgent?: boolean; assignsTo?: string | null }[];
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */

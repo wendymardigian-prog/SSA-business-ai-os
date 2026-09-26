@@ -105,7 +105,7 @@ export default async function ContactsPage({
       .order("last_interaction_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1),
-    supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase
       .from("channels")
       .select("platform")
@@ -150,7 +150,13 @@ export default async function ContactsPage({
       total={contactsRes.count ?? 0}
       page={page}
       pageSize={PAGE_SIZE}
-      tags={tagsRes.data ?? []}
+      tags={(tagsRes.data ?? []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        disablesAgent: t.disables_agent,
+        assignsTo: t.assigns_to,
+      }))}
       platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
       filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon }}

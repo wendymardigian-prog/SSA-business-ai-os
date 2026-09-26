@@ -9,6 +9,7 @@ import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
 import { mergeAttribution, parseTrackingParams } from "@/lib/contacts/attribution";
 import { findDuplicateContact } from "@/lib/contacts/dedup";
 import type { Json } from "@/lib/types/database";
+import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
 
 /**
  * Server Actions de contactos.
@@ -490,6 +491,116 @@ export async function setContactTags(
 
   revalidateContact(contactId);
   return { ok: true, contactId };
+}
+
+/**
+ * Pone o saca UNA etiqueta (Bloque 2d-A: las acciones rapidas del panel).
+ *
+ * No reemplaza el conjunto como setContactTags: un clic sobre "es-conocido"
+ * no puede pisar una etiqueta que otra persona puso un segundo antes. Si la
+ * etiqueta tiene efecto sobre el agente, lo aplican los triggers de la 00073.
+ */
+export async function toggleContactTag(
+  contactId: string,
+  tagId: string,
+  on: boolean,
+): Promise<ContactActionResult> {
+  const { workspace, supabase, user } = await getWorkspace();
+  if (typeof contactId !== "string" || typeof tagId !== "string" || typeof on !== "boolean") {
+    return { ok: false, error: "Pedido invalido" };
+  }
+
+  const [{ data: tag }, { data: contact }] = await Promise.all([
+    supabase.from("tags").select("id, name").eq("id", tagId).eq("workspace_id", workspace.id).maybeSingle(),
+    // Pasa por la RLS: un lead fuera del scope no vuelve.
+    supabase.from("contacts").select("id").eq("id", contactId).eq("workspace_id", workspace.id).maybeSingle(),
+  ]);
+  if (!tag) return { ok: false, error: "No encontre esa etiqueta" };
+  if (!contact) return { ok: false, error: "No encontre ese contacto" };
+
+  const { error } = on
+    ? await supabase
+        .from("contact_tags")
+        .upsert({ contact_id: contactId, tag_id: tagId }, { onConflict: "contact_id,tag_id", ignoreDuplicates: true })
+    : await supabase.from("contact_tags").delete().eq("contact_id", contactId).eq("tag_id", tagId);
+  if (error) {
+    console.error("[contacts] no pude cambiar la etiqueta:", error.message);
+    return { ok: false, error: on ? "No pude poner la etiqueta. Probá de nuevo." : "No pude sacar la etiqueta. Probá de nuevo." };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
+    action: "update",
+    metadata: { tag: tag.name, tag_id: tag.id, [on ? "added" : "removed"]: true, origin: "quick_action" },
+    performedBy: user.id,
+  });
+
+  revalidateContact(contactId);
+  revalidatePath("/dashboard/inbox");
+  return { ok: true, contactId };
+}
+
+export type BulkTagResult =
+  | { ok: true; tagged: number; alreadyHad: number; notAllowed: number }
+  | { ok: false; error: string };
+
+/**
+ * Etiqueta varios contactos de una vez (Bloque 2d-A). Wendy va a marcar varias
+ * decenas de conocidos de una sentada; de a uno es la diferencia entre que lo
+ * haga y que no.
+ *
+ * Con el cliente del usuario: la RLS de contact_tags (EXISTS sobre contacts)
+ * decide que contactos puede tocar, asi un Member solo etiqueta sus leads.
+ * Los que ya tenian la etiqueta no se tocan (ON CONFLICT DO NOTHING): no
+ * disparan el efecto de nuevo, asi una conversacion que alguien prendio a
+ * mano no se vuelve a apagar.
+ */
+export async function bulkAddTag(contactIds: string[], tagId: string): Promise<BulkTagResult> {
+  const { workspace, supabase, user } = await getWorkspace();
+
+  if (!Array.isArray(contactIds) || typeof tagId !== "string") return { ok: false, error: "Pedido invalido" };
+  const ids = [...new Set(contactIds.filter((id): id is string => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))];
+  if (ids.length === 0) return { ok: false, error: "No hay contactos seleccionados" };
+  if (ids.length > BULK_TAG_LIMIT) {
+    return { ok: false, error: `Son demasiados: hasta ${BULK_TAG_LIMIT} contactos por vez.` };
+  }
+
+  const { data: tag } = await supabase.from("tags").select("id, name").eq("id", tagId).eq("workspace_id", workspace.id).maybeSingle();
+  if (!tag) return { ok: false, error: "No encontre esa etiqueta" };
+
+  // Los que puede ver (RLS) y los que ya la tenian.
+  const [{ data: visible }, { data: had }] = await Promise.all([
+    supabase.from("contacts").select("id").eq("workspace_id", workspace.id).in("id", ids),
+    supabase.from("contact_tags").select("contact_id").eq("tag_id", tagId).in("contact_id", ids),
+  ]);
+  const allowed = new Set((visible ?? []).map((c) => c.id));
+  const already = new Set((had ?? []).map((r) => r.contact_id));
+  const toTag = ids.filter((id) => allowed.has(id) && !already.has(id));
+
+  if (toTag.length > 0) {
+    const { data: inserted, error } = await supabase
+      .from("contact_tags")
+      .upsert(toTag.map((contact_id) => ({ contact_id, tag_id: tagId })), { onConflict: "contact_id,tag_id", ignoreDuplicates: true })
+      .select("contact_id");
+    if (error) {
+      console.error("[contacts] fallo el etiquetado masivo:", error.message);
+      return { ok: false, error: "No pude etiquetar los contactos. Probá de nuevo." };
+    }
+    const done = (inserted ?? []).map((r) => r.contact_id);
+    for (const contactId of done) {
+      await logAudit({
+        supabase, workspaceId: workspace.id, entityType: "contact", entityId: contactId,
+        action: "update",
+        metadata: { tag: tag.name, tag_id: tag.id, added: true, origin: "bulk", batch_size: toTag.length },
+        performedBy: user.id,
+      });
+    }
+    revalidatePath(LIST_PATH);
+    revalidatePath("/dashboard/inbox");
+    return { ok: true, tagged: done.length, alreadyHad: ids.filter((id) => already.has(id)).length, notAllowed: ids.length - allowed.size };
+  }
+
+  return { ok: true, tagged: 0, alreadyHad: ids.filter((id) => already.has(id)).length, notAllowed: ids.length - allowed.size };
 }
 
 /**

@@ -471,6 +471,14 @@ export function MessageThread({
               Flows pausados
             </span>
           )}
+          {conversation.agent_disabled_by_tag_id && (
+            <span
+              className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              title="El contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano acá gana sobre la etiqueta."
+            >
+              Apagado por etiqueta
+            </span>
+          )}
           {agentInfo?.available && agentInfo.mode === "draft" && (
             <span
               className="rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"

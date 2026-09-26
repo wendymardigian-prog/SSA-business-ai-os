@@ -85,11 +85,13 @@ export async function applyTags(
   // Solo la lista blanca, y solo los que sigan existiendo en el workspace.
   const { data: allowedRows, error: tagsError } = await ctx.supabase
     .from("tags")
-    .select("id, name")
+    .select("id, name, disables_agent, assigns_to")
     .eq("workspace_id", ctx.workspaceId)
     .in("id", config.allowedTagIds);
   if (tagsError) return { ok: false, message: "No pude leer las etiquetas." };
-  const allowed = allowedRows ?? [];
+  // Nunca una etiqueta con efecto (00073), aunque una configuracion vieja la
+  // tenga en la lista: el agente se apagaria a si mismo en medio del turno.
+  const allowed = (allowedRows ?? []).filter((t) => !t.disables_agent && !t.assigns_to);
   const byName = new Map(allowed.map((t) => [t.name.trim().toLowerCase(), t]));
 
   const resolve = (names: string[]) => {

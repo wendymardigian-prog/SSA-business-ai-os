@@ -16,6 +16,7 @@ import { ToolsTab } from "./tools-tab";
 import { RunsTab } from "./runs-tab";
 import { ActionsTab } from "./actions-tab";
 import { CostsTab } from "./costs-tab";
+import { TagsTab } from "./tags-tab";
 import { formatUsd } from "./filters";
 
 /**
@@ -31,6 +32,7 @@ const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: Agen
   costs: (p) => <CostsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
   channels: (p) => <ChannelsTab {...p} />,
+  tags: (p) => <TagsTab {...p} />,
 };
 
 export function AgentDetailView({

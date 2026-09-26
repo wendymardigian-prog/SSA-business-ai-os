@@ -42,7 +42,9 @@ export type AuditEntityType =
   | "sequence"
   | "sequence_enrollment"
   /** Configuracion de un agente de IA (Fase 3). */
-  | "agent";
+  | "agent"
+  /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
+  | "tag";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"

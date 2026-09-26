@@ -10,6 +10,9 @@ export interface TagOption {
   id: string;
   name: string;
   color: string | null;
+  /** Etiqueta con efecto sobre el agente (00073). */
+  disablesAgent?: boolean;
+  assignsTo?: string | null;
 }
 
 /** Tags del contacto: se agregan de una lista y se quitan con la X. */

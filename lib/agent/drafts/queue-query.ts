@@ -125,6 +125,12 @@ export interface DraftQueueRow {
   windowHours: number;
   window: WindowInfo;
   conversationId: string;
+  /**
+   * El agente quedo apagado en la conversacion por una etiqueta con efecto
+   * (00073, "es-conocido"/"no-es-lead") despues de redactar este borrador.
+   * approveDraft no lo bloquea; la fila lo avisa.
+   */
+  agentOffByTag: boolean;
   ownerId: string | null;
   contact: {
     id: string;
@@ -149,7 +155,7 @@ export interface DraftQueue {
 }
 
 const QUEUE_COLUMNS =
-  "id, status, body, body_parts, no_reply_reason, suggested_actions, applied_actions, send_error, sent_body, discard_reason, regenerate_instruction, previous_draft_id, created_at, decided_at, decided_by, sendable_until, conversation_id, contact_id, channel_id, burst_message_ids, contacts!inner(id, display_name, avatar_url, instagram_username, setter_id, vendedor_id, do_not_contact, do_not_contact_reason), channels(id, platform, messaging_window_hours)";
+  "id, status, body, body_parts, no_reply_reason, suggested_actions, applied_actions, send_error, sent_body, discard_reason, regenerate_instruction, previous_draft_id, created_at, decided_at, decided_by, sendable_until, conversation_id, contact_id, channel_id, burst_message_ids, contacts!inner(id, display_name, avatar_url, instagram_username, setter_id, vendedor_id, do_not_contact, do_not_contact_reason), channels(id, platform, messaging_window_hours), conversations(agent_disabled_by_tag_id)";
 
 interface RawDraft {
   id: string;
@@ -183,6 +189,7 @@ interface RawDraft {
     do_not_contact_reason: string | null;
   } | null;
   channels: { id: string; platform: string; messaging_window_hours: number | null } | null;
+  conversations?: { agent_disabled_by_tag_id: string | null } | null;
 }
 
 function toRow(raw: RawDraft, now: Date, messages: Map<string, { text: string | null; created_at: string }>): DraftQueueRow {
@@ -208,6 +215,7 @@ function toRow(raw: RawDraft, now: Date, messages: Map<string, { text: string | 
     windowHours: hours,
     window: windowInfo(raw.sendable_until, hours, now),
     conversationId: raw.conversation_id,
+    agentOffByTag: Boolean(raw.conversations?.agent_disabled_by_tag_id),
     ownerId: draftOwner(raw.contacts),
     contact: {
       id: raw.contact_id,

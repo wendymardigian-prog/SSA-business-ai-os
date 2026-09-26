@@ -11,6 +11,7 @@ import { AssignmentFields } from "@/components/contacts/assignment-fields";
 import { FollowupField } from "@/components/contacts/followup-field";
 import { NotesSection } from "@/components/contacts/notes-section";
 import { TagsEditor, type TagOption } from "@/components/contacts/tags-editor";
+import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
 import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
@@ -189,6 +190,19 @@ export function ContactPanel({
           </PanelSection>
 
           <AgentMemory contact={details.contact} />
+
+          {/* Bloque 2d-A: las etiquetas con efecto sobre el agente, a un clic. */}
+          {allTags.some((t) => t.disablesAgent || t.assignsTo) && (
+            <PanelSection title="Acciones rápidas">
+              <QuickTagActions
+                contactId={details.contact.id}
+                allTags={allTags}
+                assignedIds={details.tagIds}
+                memberNames={Object.fromEntries(members.map((m) => [m.userId, m.label]))}
+                onSaved={reload}
+              />
+            </PanelSection>
+          )}
 
           <PanelSection title="Etiquetas">
             <TagsEditor contactId={details.contact.id} allTags={allTags} assignedIds={details.tagIds} onSaved={reload} />
