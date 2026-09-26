@@ -46,6 +46,11 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "Como viene la operacion de chat: cuanto se responde, que tan rapido y quien.",
   },
+  "/dashboard/dashboards/content": {
+    title: "Dashboards",
+    tooltip:
+      "Como rinde lo que publicas: seguidores, alcance, engagement y que formato funciona en cada red.",
+  },
   "/dashboard/flows": {
     title: "Flows",
     tooltip: "Automatizaciones que responden solas segun lo que escribe el contacto.",

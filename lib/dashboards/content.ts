@@ -1,0 +1,527 @@
+/**
+ * Las cuentas del dashboard de contenido organico (F48, F50, F53).
+ *
+ * Todo puro: recibe las filas diarias ya leidas y devuelve lo que dibuja
+ * cada tarjeta. Las consultas viven en la pagina; aca esta lo que hay que
+ * poder probar sin base, que es donde se esconden los errores caros.
+ *
+ * Tres reglas que atraviesan el archivo:
+ *
+ * 1. **Un hueco es un hueco.** Un dia sin fila no aparece como cero: el
+ *    grafico dibuja el corte. Un cero dice "ese dia no paso nada", y eso es
+ *    una afirmacion distinta de "ese dia no sabemos".
+ * 2. **Los seguidores no se suman, se toman.** Son un total acumulado: la
+ *    semana no es la suma de sus dias, es el ULTIMO dia de la semana.
+ *    Sumarlos daria numeros siete veces mas grandes.
+ * 3. **Una red que no da una metrica no aporta cero.** LinkedIn sin alcance
+ *    no baja el promedio: se excluye y se dice por que.
+ */
+
+import { daysBetween } from "@/lib/metrics/rules";
+
+export type Grouping = "day" | "week" | "month";
+
+/** Una fila diaria de una publicacion, ya cruzada con su post. */
+export interface PostDailyRow {
+  socialPostId: string;
+  platform: string;
+  /** El formato de la publicacion: reel, carousel, short... */
+  mediaType: string | null;
+  date: string;
+  views: number | null;
+  impressions: number | null;
+  reach: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  extra?: Record<string, unknown> | null;
+}
+
+/** Una fila diaria de una cuenta. */
+export interface AccountDailyRow {
+  platform: string;
+  date: string;
+  followers: number | null;
+  followersGained: number | null;
+  followersLost: number | null;
+}
+
+/** Una publicacion, para contar y agrupar por formato. */
+export interface PublishedPost {
+  socialPostId: string;
+  platform: string;
+  mediaType: string | null;
+  publishedAt: string | null;
+  origin: "system" | "external";
+  engagementD7: number | null;
+}
+
+// ── Agrupar por dia, semana o mes ────────────────────────────────────────
+
+/** El lunes de la semana de esa fecha, como `YYYY-MM-DD`. */
+export function weekStart(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  // getUTCDay: 0 = domingo. Se corre al lunes anterior.
+  const delta = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - delta);
+  return d.toISOString().slice(0, 10);
+}
+
+/** El primer dia del mes de esa fecha. */
+export function monthStart(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** A que grupo cae una fecha. */
+export function bucketOf(date: string, grouping: Grouping): string {
+  if (grouping === "week") return weekStart(date);
+  if (grouping === "month") return monthStart(date);
+  return date;
+}
+
+export interface SeriesPoint {
+  bucket: string;
+  value: number | null;
+}
+
+/**
+ * Suma una metrica por grupo.
+ *
+ * Un grupo SIN NINGUN dato no aparece en el resultado: lo dibuja como hueco
+ * quien grafica. Un grupo con algunos dias sin dato suma los que hay, que es
+ * lo correcto para una metrica de flujo (likes, alcance).
+ */
+export function sumByBucket(
+  rows: Array<{ date: string; value: number | null }>,
+  grouping: Grouping,
+): SeriesPoint[] {
+  const buckets = new Map<string, number>();
+
+  for (const row of rows) {
+    if (row.value === null) continue;
+    const key = bucketOf(row.date, grouping);
+    buckets.set(key, (buckets.get(key) ?? 0) + row.value);
+  }
+
+  return [...buckets.entries()]
+    .map(([bucket, value]) => ({ bucket, value }))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+/**
+ * El ULTIMO valor de cada grupo.
+ *
+ * Para los seguidores, que son un total acumulado y no un flujo. Sumarlos
+ * daria la cifra multiplicada por la cantidad de dias.
+ */
+export function lastByBucket(
+  rows: Array<{ date: string; value: number | null }>,
+  grouping: Grouping,
+): SeriesPoint[] {
+  const buckets = new Map<string, { date: string; value: number }>();
+
+  for (const row of rows) {
+    if (row.value === null) continue;
+    const key = bucketOf(row.date, grouping);
+    const current = buckets.get(key);
+    if (!current || row.date > current.date) buckets.set(key, { date: row.date, value: row.value });
+  }
+
+  return [...buckets.entries()]
+    .map(([bucket, { value }]) => ({ bucket, value }))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+// ── KPI ──────────────────────────────────────────────────────────────────
+
+export interface Kpi {
+  key: string;
+  label: string;
+  value: number | null;
+  /** Variacion contra el periodo anterior del mismo largo, en porcentaje. */
+  changePercent: number | null;
+  /** Cuando no se puede calcular, por que. */
+  note?: string;
+}
+
+/**
+ * La variacion entre dos numeros, en porcentaje.
+ *
+ * Null cuando no se puede: sin dato anterior no hay con que comparar, y
+ * "creció 100%" desde cero es una afirmacion vacia que en un dashboard se
+ * lee como un logro.
+ */
+export function changePercent(current: number | null, previous: number | null): number | null {
+  if (current === null || previous === null || previous === 0) return null;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
+
+/** Suma una metrica de todas las filas, ignorando los nulls. */
+export function total(rows: Array<{ value: number | null }>): number | null {
+  const values = rows.map((r) => r.value).filter((v): v is number => v !== null);
+  return values.length > 0 ? values.reduce((a, b) => a + b, 0) : null;
+}
+
+/** El total de seguidores al final del periodo, por red. */
+export function followersAtEnd(rows: AccountDailyRow[]): Map<string, number> {
+  const byPlatform = new Map<string, { date: string; followers: number }>();
+
+  for (const row of rows) {
+    if (row.followers === null) continue;
+    const current = byPlatform.get(row.platform);
+    if (!current || row.date > current.date) {
+      byPlatform.set(row.platform, { date: row.date, followers: row.followers });
+    }
+  }
+
+  return new Map([...byPlatform].map(([p, v]) => [p, v.followers]));
+}
+
+export interface KpiInput {
+  posts: PublishedPost[];
+  postDaily: PostDailyRow[];
+  accountDaily: AccountDailyRow[];
+  previous: {
+    posts: PublishedPost[];
+    postDaily: PostDailyRow[];
+    accountDaily: AccountDailyRow[];
+  };
+}
+
+/**
+ * Las cinco cifras de arriba.
+ *
+ * "Engagement promedio" es el promedio de los engagement de cada post, no
+ * interacciones sobre alcance del periodo entero: un post viral con mucho
+ * alcance no tiene que tapar a los otros diez.
+ */
+export function computeKpis(input: KpiInput): Kpi[] {
+  const followersNow = [...followersAtEnd(input.accountDaily).values()];
+  const followersBefore = [...followersAtEnd(input.previous.accountDaily).values()];
+
+  const sum = (values: number[]) => (values.length > 0 ? values.reduce((a, b) => a + b, 0) : null);
+
+  const reachOf = (rows: PostDailyRow[]) =>
+    total(rows.map((r) => ({ value: r.reach ?? r.views ?? r.impressions })));
+
+  const engagementOf = (rows: PostDailyRow[]) => {
+    const byPost = new Map<string, { interactions: number; denominator: number | null }>();
+    for (const row of rows) {
+      const interactions = [row.likes, row.comments, row.shares, row.saves].filter(
+        (v): v is number => v !== null,
+      );
+      if (interactions.length === 0) continue;
+      const denominator = row.reach ?? row.views ?? null;
+      const current = byPost.get(row.socialPostId);
+      // La ultima foto de cada post: las metricas son acumuladas.
+      if (!current || (denominator ?? 0) >= (current.denominator ?? 0)) {
+        byPost.set(row.socialPostId, {
+          interactions: interactions.reduce((a, b) => a + b, 0),
+          denominator,
+        });
+      }
+    }
+
+    const rates = [...byPost.values()]
+      .filter((p) => p.denominator !== null && p.denominator > 0)
+      .map((p) => (p.interactions / (p.denominator as number)) * 100);
+
+    return rates.length > 0 ? Number((rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(2)) : null;
+  };
+
+  const followsOf = (rows: PostDailyRow[]) =>
+    total(
+      rows.map((r) => ({
+        value: typeof r.extra?.follows === "number" ? (r.extra.follows as number) : null,
+      })),
+    );
+
+  return [
+    {
+      key: "followers",
+      label: "Seguidores",
+      value: sum(followersNow),
+      changePercent: changePercent(sum(followersNow), sum(followersBefore)),
+    },
+    {
+      key: "reach",
+      label: "Alcance y vistas",
+      value: reachOf(input.postDaily),
+      changePercent: changePercent(reachOf(input.postDaily), reachOf(input.previous.postDaily)),
+    },
+    {
+      key: "posts",
+      label: "Publicaciones",
+      value: input.posts.length,
+      changePercent: changePercent(input.posts.length, input.previous.posts.length),
+    },
+    {
+      key: "engagement",
+      label: "Engagement promedio",
+      value: engagementOf(input.postDaily),
+      changePercent: changePercent(engagementOf(input.postDaily), engagementOf(input.previous.postDaily)),
+    },
+    {
+      key: "follows",
+      label: "Follows organicos",
+      value: followsOf(input.postDaily),
+      changePercent: changePercent(followsOf(input.postDaily), followsOf(input.previous.postDaily)),
+      note: "Solo Instagram lo informa.",
+    },
+  ];
+}
+
+// ── Crecimiento de seguidores ────────────────────────────────────────────
+
+export interface GrowthPoint {
+  bucket: string;
+  gained: number | null;
+  lost: number | null;
+  total: number | null;
+}
+
+/**
+ * Ganados, perdidos y total por grupo.
+ *
+ * Cuando la red no informa ganados y perdidos por separado (casi todas), se
+ * DERIVAN de la diferencia entre dias consecutivos. Un dia que sube 12 son
+ * 12 ganados; uno que baja 5 son 5 perdidos. No es exacto (alguien pudo
+ * seguir y otro dejar de seguir el mismo dia) y por eso la pantalla lo
+ * llama "neto".
+ */
+export function followerGrowth(rows: AccountDailyRow[], grouping: Grouping): GrowthPoint[] {
+  const byDate = new Map<string, { followers: number | null; gained: number | null; lost: number | null }>();
+
+  for (const row of [...rows].sort((a, b) => a.date.localeCompare(b.date))) {
+    const current = byDate.get(row.date) ?? { followers: null, gained: null, lost: null };
+    byDate.set(row.date, {
+      followers: row.followers === null ? current.followers : (current.followers ?? 0) + row.followers,
+      gained: row.followersGained === null ? current.gained : (current.gained ?? 0) + row.followersGained,
+      lost: row.followersLost === null ? current.lost : (current.lost ?? 0) + row.followersLost,
+    });
+  }
+
+  const dates = [...byDate.keys()].sort();
+  const derived: Array<{ date: string; gained: number | null; lost: number | null; total: number | null }> = [];
+
+  let previousTotal: number | null = null;
+  for (const date of dates) {
+    const entry = byDate.get(date)!;
+    let gained = entry.gained;
+    let lost = entry.lost;
+
+    if (gained === null && lost === null && entry.followers !== null && previousTotal !== null) {
+      const delta = entry.followers - previousTotal;
+      gained = delta > 0 ? delta : 0;
+      lost = delta < 0 ? -delta : 0;
+    }
+
+    derived.push({ date, gained, lost, total: entry.followers });
+    if (entry.followers !== null) previousTotal = entry.followers;
+  }
+
+  const gainedByBucket = sumByBucket(derived.map((d) => ({ date: d.date, value: d.gained })), grouping);
+  const lostByBucket = sumByBucket(derived.map((d) => ({ date: d.date, value: d.lost })), grouping);
+  const totalByBucket = lastByBucket(derived.map((d) => ({ date: d.date, value: d.total })), grouping);
+
+  const buckets = [
+    ...new Set([...gainedByBucket, ...lostByBucket, ...totalByBucket].map((p) => p.bucket)),
+  ].sort();
+
+  return buckets.map((bucket) => ({
+    bucket,
+    gained: gainedByBucket.find((p) => p.bucket === bucket)?.value ?? null,
+    lost: lostByBucket.find((p) => p.bucket === bucket)?.value ?? null,
+    total: totalByBucket.find((p) => p.bucket === bucket)?.value ?? null,
+  }));
+}
+
+// ── Actividad y formatos ─────────────────────────────────────────────────
+
+export interface ActivityPoint {
+  bucket: string;
+  /** Cuantas publicaciones de cada formato. */
+  byFormat: Record<string, number>;
+  total: number;
+}
+
+/** Publicaciones por grupo, apiladas por formato. */
+export function publishActivity(posts: PublishedPost[], grouping: Grouping): ActivityPoint[] {
+  const buckets = new Map<string, Record<string, number>>();
+
+  for (const post of posts) {
+    if (!post.publishedAt) continue;
+    const key = bucketOf(post.publishedAt.slice(0, 10), grouping);
+    const format = post.mediaType ?? "otro";
+    const entry = buckets.get(key) ?? {};
+    entry[format] = (entry[format] ?? 0) + 1;
+    buckets.set(key, entry);
+  }
+
+  return [...buckets.entries()]
+    .map(([bucket, byFormat]) => ({
+      bucket,
+      byFormat,
+      total: Object.values(byFormat).reduce((a, b) => a + b, 0),
+    }))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+export interface FormatPerformance {
+  format: string;
+  posts: number;
+  avgReach: number | null;
+  avgEngagement: number | null;
+}
+
+/** Como rinde cada formato, en promedio. */
+export function formatPerformance(
+  posts: PublishedPost[],
+  latestByPost: Map<string, PostDailyRow>,
+): FormatPerformance[] {
+  const byFormat = new Map<string, { posts: number; reach: number[]; engagement: number[] }>();
+
+  for (const post of posts) {
+    const format = post.mediaType ?? "otro";
+    const entry = byFormat.get(format) ?? { posts: 0, reach: [], engagement: [] };
+    entry.posts += 1;
+
+    const row = latestByPost.get(post.socialPostId);
+    const reach = row?.reach ?? row?.views ?? null;
+    if (reach !== null) entry.reach.push(reach);
+
+    const interactions = [row?.likes, row?.comments, row?.shares, row?.saves].filter(
+      (v): v is number => typeof v === "number",
+    );
+    if (interactions.length > 0 && reach !== null && reach > 0) {
+      entry.engagement.push((interactions.reduce((a, b) => a + b, 0) / reach) * 100);
+    }
+
+    byFormat.set(format, entry);
+  }
+
+  const avg = (values: number[]) =>
+    values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)) : null;
+
+  return [...byFormat.entries()]
+    .map(([format, entry]) => ({
+      format,
+      posts: entry.posts,
+      avgReach: entry.reach.length > 0 ? Math.round(avg(entry.reach) as number) : null,
+      avgEngagement: avg(entry.engagement),
+    }))
+    .sort((a, b) => b.posts - a.posts);
+}
+
+// ── Engagement a 7 dias por semana (F50) ─────────────────────────────────
+
+export interface WeeklyD7 {
+  week: string;
+  /** Promedio por red. */
+  byPlatform: Record<string, number>;
+  /** La semana todavia tiene posts de menos de 7 dias. */
+  inProgress: boolean;
+}
+
+/**
+ * El engagement comparable, por semana de publicacion.
+ *
+ * La semana en curso se marca: sus posts todavia no cumplieron 7 dias y su
+ * promedio va a subir. Mostrarla igual que las cerradas haria parecer que
+ * el rendimiento se derrumbo esta semana.
+ */
+export function weeklyD7(posts: PublishedPost[], now: Date): WeeklyD7[] {
+  const weeks = new Map<string, { byPlatform: Map<string, number[]>; inProgress: boolean }>();
+
+  for (const post of posts) {
+    if (!post.publishedAt) continue;
+    const week = weekStart(post.publishedAt.slice(0, 10));
+    const entry = weeks.get(week) ?? { byPlatform: new Map<string, number[]>(), inProgress: false };
+
+    if (post.engagementD7 !== null) {
+      const values = entry.byPlatform.get(post.platform) ?? [];
+      values.push(post.engagementD7);
+      entry.byPlatform.set(post.platform, values);
+    } else if (daysBetween(post.publishedAt, now) < 7) {
+      entry.inProgress = true;
+    }
+
+    weeks.set(week, entry);
+  }
+
+  return [...weeks.entries()]
+    .map(([week, entry]) => ({
+      week,
+      byPlatform: Object.fromEntries(
+        [...entry.byPlatform.entries()].map(([platform, values]) => [
+          platform,
+          Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)),
+        ]),
+      ),
+      inProgress: entry.inProgress,
+    }))
+    .sort((a, b) => a.week.localeCompare(b.week));
+}
+
+// ── Datos al dia (F53) ───────────────────────────────────────────────────
+
+export interface FreshnessRow {
+  platform: string;
+  /** Cuando se sincronizo por ultima vez. */
+  syncedAt: string | null;
+  /** El ultimo dia con dato bueno. */
+  lastDataDate: string | null;
+  error: string | null;
+  /** Que decir, en palabras. */
+  label: string;
+}
+
+/**
+ * Que tan fresco esta cada dato, por red.
+ *
+ * Un dashboard sin esto es un dashboard en el que nadie sabe si los numeros
+ * son de hoy o de hace una semana porque algo se rompio.
+ */
+export function freshness(
+  accounts: Array<{ platform: string; syncedAt: string | null; error: string | null }>,
+  lastDataByPlatform: Map<string, string>,
+  now: Date,
+): FreshnessRow[] {
+  return accounts.map((account) => {
+    const lastDataDate = lastDataByPlatform.get(account.platform) ?? null;
+
+    let label: string;
+    if (account.error) {
+      label = lastDataDate
+        ? `La ultima actualizacion fallo. El ultimo dato bueno es del ${lastDataDate}.`
+        : "La ultima actualizacion fallo y todavia no hay ningun dato.";
+    } else if (!account.syncedAt) {
+      label = "Todavia no se actualizo.";
+    } else {
+      const hours = Math.floor((now.getTime() - new Date(account.syncedAt).getTime()) / 3_600_000);
+      label =
+        hours < 1
+          ? "Datos al dia."
+          : hours < 24
+            ? `Datos de hace ${hours} ${hours === 1 ? "hora" : "horas"}.`
+            : `Datos de hace ${Math.floor(hours / 24)} dias.`;
+    }
+
+    return {
+      platform: account.platform,
+      syncedAt: account.syncedAt,
+      lastDataDate,
+      error: account.error,
+      label,
+    };
+  });
+}
+
+/** Lo que se muestra cuando se filtra por una red que no da metricas. */
+export function unavailableMetricsNote(platform: string, postCount: number): string | null {
+  if (platform !== "linkedin") return null;
+  return postCount > 0
+    ? `LinkedIn no ofrece metricas con esta conexion. En este periodo se publicaron ${postCount} ${postCount === 1 ? "pieza" : "piezas"}.`
+    : "LinkedIn no ofrece metricas con esta conexion.";
+}

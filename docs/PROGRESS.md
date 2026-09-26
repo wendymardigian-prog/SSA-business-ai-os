@@ -108,11 +108,12 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F45 · Reglas de recolección y engagement a 7 días (diario hasta 30, semanal hasta 90, nunca después; nunca un cero inventado)
   - [x] F46 · Comentarios (el receptor ahora encuentra cuentas de TikTok, guarda también los propios sin disparar flows, y crea la publicación externa si no existe)
   - [x] F47 · Cron de métricas y actualización manual (cada hora, encola a quien son las 3 en su zona; "Actualizar ahora" con tope de 15 minutos)
-- [ ] **Bloque 6a — Dashboard orgánico**
-  - [ ] F48 · Dashboard de contenido orgánico
-  - [ ] F49 · Explorador de tendencias (doble eje por red)
-  - [ ] F50 · Engagement a 7 días por semana de publicación
-  - [ ] F53 · Datos al día
+- [x] **Bloque 6a — Dashboard orgánico** (sin migración)
+  - [x] F48 · Dashboard de contenido orgánico — selector de dashboards en la barra (el de Chat no cambió de ruta ni de datos), KPI con variación, crecimiento de seguidores, actividad, engagement en el tiempo y rendimiento por formato. **La tabla "Tus posts" va en el 6b**, porque su columna "Seguidores ±1 d" es F52 y cada fila abre el análisis, que es F51: escribirla ahora sería escribirla dos veces.
+  - [x] F49 · Explorador de tendencias (doble eje por red, atajos, redes por pastilla, configuración en la URL con ida y vuelta probada)
+  - [x] F50 · Engagement a 7 días por semana de publicación (la semana en curso se marca)
+  - [x] F53 · Datos al día por red, con el último dato bueno cuando la última lectura falló
+  - Gráficos en SVG a mano, sin librería nueva: un hueco se dibuja como hueco, nunca como cero.
 - [ ] **Bloque 6b — Análisis por post y página Social**
   - [ ] F51 · Análisis histórico de un post
   - [ ] F52 · Seguidores alrededor de la publicación

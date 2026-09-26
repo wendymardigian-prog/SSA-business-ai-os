@@ -4,6 +4,7 @@ import { useMemo, useTransition } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { DashboardSwitcher } from "./dashboard-switcher";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { dashboardFiltersToParams, activeFilterChips, type DashboardFilters } from "@/lib/dashboards/url-state";
 import { compare, firstResponseTone, formatDuration } from "@/lib/dashboards/cards";
@@ -61,7 +62,7 @@ export function ChatDashboard({
       <PageHeader
         title="Dashboards"
         tooltip={TOOLTIP}
-        left={<span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-medium">Chat</span>}
+        left={<DashboardSwitcher />}
         right={
           <div className="flex items-center gap-2">
             <select
