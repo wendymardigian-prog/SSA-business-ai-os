@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, ChevronLeft, ChevronRight } from "lucide-react";
+import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -17,6 +17,7 @@ import {
 import type { DateRange } from "@/lib/dates";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
 
@@ -54,6 +55,8 @@ export function ConversationList({
   page,
   pageSize,
   onPageChange,
+  draftCounts,
+  draftConversationIds = [],
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -68,6 +71,10 @@ export function ConversationList({
   page: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** Borradores esperando: la pestana "Borradores (N)" (Bloque 2d). */
+  draftCounts?: PendingDraftCounts;
+  /** Conversaciones de la pagina con un borrador vivo del agente. */
+  draftConversationIds?: string[];
 }) {
   const router = useRouter();
   const [conversations, setConversations] = useState(initialConversations);
@@ -161,6 +168,7 @@ export function ConversationList({
     };
   }, [workspaceId, filters, dateRange, router]);
 
+  const withDraft = new Set(draftConversationIds);
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters = countActiveFilters(filters) > 0;
 
@@ -179,6 +187,8 @@ export function ConversationList({
         tags={tags}
         platforms={platforms}
         members={members}
+        workspaceId={workspaceId}
+        draftCounts={draftCounts}
       />
 
       {/* Conversation list */}
@@ -278,6 +288,18 @@ export function ConversationList({
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {conversation.last_message_preview ?? "Sin mensajes todavía"}
                   </p>
+                  {/* Bloque 2d: el agente dejo una respuesta para aprobar. Un
+                      borrador es una conversacion esperando respuesta: se
+                      entra directo al hilo, donde esta arriba del composer. */}
+                  {withDraft.has(conversation.id) && (
+                    <span
+                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-dashed border-amber-400 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200"
+                      title="El agente dejó una respuesta para aprobar en esta conversación"
+                    >
+                      <FileText className="h-3 w-3" aria-hidden />
+                      Borrador esperando
+                    </span>
+                  )}
                   {conversation.unread_count > 0 && (
                     <span className="ml-2 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
                       {conversation.unread_count}

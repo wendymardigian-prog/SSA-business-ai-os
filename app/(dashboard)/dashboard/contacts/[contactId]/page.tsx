@@ -282,7 +282,7 @@ export default async function ContactDetailPage({
                   {conversations.map((conv) => (
                     <li key={conv.id}>
                       <Link
-                        href={`/dashboard/inbox?conversation=${conv.id}`}
+                        href={`/dashboard/inbox?c=${conv.id}`}
                         className="flex items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent/50"
                       >
                         <PlatformIcon platform={conv.platform} className="mt-0.5 h-4 w-4" size={16} />

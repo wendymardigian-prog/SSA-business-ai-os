@@ -74,7 +74,9 @@ export async function MetricsStrip({
           >
             <p className="text-[11px] font-medium text-muted-foreground">{t.label}</p>
             <p className="mt-1 text-lg font-semibold tabular-nums">{t.value}</p>
-            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{t.hint}</p>
+            {/* En el telefono la explicacion queda en el title: con las cinco
+                abiertas, la cola arrancaria dos pantallas mas abajo. */}
+            <p className="mt-0.5 hidden text-[11px] leading-snug text-muted-foreground queue:block">{t.hint}</p>
           </div>
         ))}
       </div>

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Search, SlidersHorizontal, X, Loader2 } from "lucide-react";
+import { Search, SlidersHorizontal, X, Loader2, FileText } from "lucide-react";
 import { toggleListParam } from "@/lib/url-params";
 import { DATE_PRESETS, DATE_PRESET_LABELS } from "@/lib/dates";
 import {
@@ -14,6 +15,8 @@ import {
   type InboxFilters,
 } from "@/lib/inbox/filters";
 import { cn } from "@/lib/utils";
+import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
+import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 /**
  * Barra de filtros de la bandeja (F16).
@@ -33,11 +36,16 @@ export function InboxFiltersBar({
   tags,
   platforms,
   members,
+  workspaceId,
+  draftCounts,
 }: {
   filters: InboxFilters;
   tags: { id: string; name: string; color: string | null }[];
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
+  workspaceId: string;
+  /** Valor inicial de la pestana "Borradores (N)"; Realtime la mantiene al dia. */
+  draftCounts?: PendingDraftCounts;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -47,6 +55,8 @@ export function InboxFiltersBar({
   const [searchDraft, setSearchDraft] = useState(filters.search);
 
   const activeCount = countActiveFilters(filters);
+  const drafts = useDraftCounts(workspaceId, draftCounts, "inbox-drafts");
+  const waitingDrafts = visibleDraftCount(drafts);
 
   /**
    * Cambiar cualquier filtro vuelve a la pagina 1: quedarse en la 3 despues de
@@ -124,13 +134,14 @@ export function InboxFiltersBar({
         </button>
       </div>
 
-      <div className="flex gap-1 px-4 pb-3">
+      <div className="flex flex-wrap gap-1 px-4 pb-3">
         {INBOX_STATUS_VALUES.map((value) => (
           <button
             key={value}
             onClick={() => setParam("estado", value)}
+            aria-pressed={filters.status === value}
             className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              "min-h-9 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors md:min-h-0",
               filters.status === value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-accent",
@@ -139,6 +150,18 @@ export function InboxFiltersBar({
             {INBOX_STATUS_LABELS[value]}
           </button>
         ))}
+        {/* Bloque 2d: la cola de borradores vive aca y no en el menu. Un
+            borrador es una conversacion esperando respuesta, no otra seccion
+            del sistema. Con cero no aparece. */}
+        {waitingDrafts > 0 && (
+          <Link
+            href="/dashboard/drafts"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-dashed border-amber-400 px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30 md:min-h-0"
+          >
+            <FileText className="h-3 w-3" aria-hidden />
+            Borradores ({waitingDrafts})
+          </Link>
+        )}
       </div>
 
       {open && (

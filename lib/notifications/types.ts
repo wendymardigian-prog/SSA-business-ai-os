@@ -118,7 +118,7 @@ export function linkFor(
 
   switch (entityType) {
     case "conversation":
-      return entityId ? `/dashboard/inbox?conversation=${entityId}` : "/dashboard/inbox";
+      return entityId ? `/dashboard/inbox?c=${entityId}` : "/dashboard/inbox";
 
     case "channel":
       return "/dashboard/channels";

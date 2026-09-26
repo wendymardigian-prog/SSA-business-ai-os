@@ -31,7 +31,9 @@ describe("catalogo", () => {
 
 describe("linkFor", () => {
   it("una derivacion lleva a la conversacion", () => {
-    expect(linkFor("conversation", "conv-1")).toBe("/dashboard/inbox?conversation=conv-1");
+    // La bandeja abre el hilo con ?c= (inbox/page.tsx). Con ?conversation= el
+    // link abria la bandeja sin el hilo (Bloque 2d).
+    expect(linkFor("conversation", "conv-1")).toBe("/dashboard/inbox?c=conv-1");
   });
 
   it("un canal caido lleva a Canales", () => {

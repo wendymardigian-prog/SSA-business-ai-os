@@ -2,6 +2,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { countUnreadNotifications } from "@/lib/actions/notifications";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { Sidebar } from "@/components/sidebar";
+import { MobileTopBar } from "@/components/mobile-top-bar";
 
 export default async function DashboardLayout({
   children,
@@ -28,8 +29,11 @@ export default async function DashboardLayout({
     }))
     .filter((w) => w.id);
 
+  // En el telefono el menu lateral se esconde y queda la barra de arriba
+  // (Bloque 2d). h-dvh y no h-screen: en el telefono la barra del navegador
+  // aparece y desaparece, y con h-screen el pie de la pantalla queda tapado.
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar
         workspace={workspace}
         user={user}
@@ -38,7 +42,16 @@ export default async function DashboardLayout({
         unreadNotifications={unreadNotifications}
         draftCounts={draftCounts}
       />
-      <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <MobileTopBar
+          workspace={workspace}
+          workspaces={workspaces}
+          role={role}
+          unreadNotifications={unreadNotifications}
+          draftCounts={draftCounts}
+        />
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
+      </div>
     </div>
   );
 }
