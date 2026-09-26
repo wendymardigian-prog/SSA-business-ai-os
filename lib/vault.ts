@@ -6,25 +6,21 @@
  * real, asi que aca solo se pasa el nombre "limpio" (ej: "zernio_api_key").
  *
  * Reglas:
- * - Solo desde el servidor. Nunca importar esto en un Client Component.
+ * - Solo desde el servidor. Nunca importar esto en un Client Component: lo
+ *   verifica lib/vault-boundary.test.ts siguiendo los imports.
  * - El valor del secret nunca se loguea ni se mete en un mensaje de error:
  *   los errores que devuelven estas funciones son seguros para mostrar.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Nombres de secret que usa el sistema. Centralizados para no tipear strings sueltos. */
-export const SECRET_NAMES = {
-  zernioApiKey: "zernio_api_key",
-  evolutionApiKey: "evolution_api_key",
-  resendApiKey: "resend_api_key",
-  openaiApiKey: "openai_api_key",
-  anthropicApiKey: "anthropic_api_key",
-  googleAiApiKey: "google_ai_api_key",
-  voyageApiKey: "voyage_api_key",
-} as const;
+// Los nombres viven en lib/secret-names.ts, que no importa nada: el catalogo de
+// integraciones los necesita y ese catalogo lo lee tambien el navegador. Se
+// re-exportan para no romper a quien ya los importaba desde aca.
+export { SECRET_NAMES, ALL_SECRET_NAMES, oauthSecretName } from "@/lib/secret-names";
+export type { SecretName } from "@/lib/secret-names";
 
-export type SecretName = (typeof SECRET_NAMES)[keyof typeof SECRET_NAMES] | (string & {});
+import type { SecretName } from "@/lib/secret-names";
 
 /** Mensaje de la RPC cuando el usuario no es owner/admin del workspace. */
 export function isForbiddenSecretError(message: string): boolean {

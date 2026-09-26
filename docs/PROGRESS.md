@@ -42,8 +42,8 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 ### FASE 1 — Integraciones, contenido y publicación
 
 - [ ] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081)
-  - [ ] Caracterización · webhook de Evolution y webhook de Zernio (firma y comentarios)
-  - [ ] F1 · Catálogo extendido con tipos de conexión
+  - [x] Caracterización · webhook de Evolution (18 casos) y webhook de Zernio (22 casos), en verde
+  - [x] F1 · Catálogo extendido con tipos de conexión (`connection`, `section`, `visible`, `secretFields`, `usage`, `providersBySection()`; entradas zernio, evolution, postproxy, google, linkedin, threads, meta oculta, resend_inbound oculta) + `lib/secret-names.ts` + `lib/vault-boundary.test.ts`
   - [ ] F2 · Pantalla en grid con cards compactas
   - [ ] F3 · Modal de configuración genérico
   - [ ] F4 · Evolution en Vault con fallback
@@ -141,4 +141,14 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 | # | Qué crea | Aplicada |
 |---|---|---|
-| — | (todavía ninguna) | — |
+| 00081 | `integration_configs.type` suma `social_network`, `publishing_service`, `google`, `meta` | **No** — escrita y sin aplicar cuando se cortó la corrida. Es aditiva: se aplica al retomar, antes de F3 |
+
+## Dónde se cortó la corrida (límite de uso, 26/9/2026)
+
+Terminado y commiteado: Bloque 0 completo, la caracterización de los dos receptores y F1.
+Lo primero al retomar: aplicar la 00081 a la base (aditiva, idempotente) y seguir con F6 → F2 → F3 → F4 → F5 → F7.
+
+**Aviso de coordinación:** hay otra sesión trabajando la Etapa 4 en paralelo sobre la misma base
+(`.claude/worktrees/etapa4-agendamiento-tanda-a-85d668`). Se le pidió tomar la banda de migraciones
+desde `00121` y no correr los scripts `verify-*` en simultáneo, porque borran todos los datos `zz-test-`.
+Verificar `list_migrations` justo antes de aplicar cualquier migración.

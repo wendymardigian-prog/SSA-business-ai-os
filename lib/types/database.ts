@@ -31,7 +31,15 @@ export type ChannelConnectionStatus =
   | "error"
   | "unknown";
 /** Clase de integracion en integration_configs (migracion 00020). */
-export type IntegrationType = "channel" | "ai_provider" | "email_provider";
+export type IntegrationType =
+  | "channel"
+  | "ai_provider"
+  | "email_provider"
+  // Etapa 2 (migracion 00081). El CHECK de la tabla acepta los siete.
+  | "social_network"
+  | "publishing_service"
+  | "google"
+  | "meta";
 
 /** Estado de procesamiento de un documento de la base de conocimiento (00049). */
 export type KnowledgeStatus = "processing" | "ready" | "error";
