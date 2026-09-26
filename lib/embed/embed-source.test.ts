@@ -127,7 +127,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     expect(container.find((e) => e.tag === "h3")?.textContent).toBe("No carga (custom)");
     expect(container.find((e) => e.tag === "a")?.attrs.href).toBe("https://wa.me/1");
     // Reintentar vuelve a crear el iframe.
-    container.find((e) => e.tag === "button")!.listeners.click[0]();
+    container.find((e) => e.tag === "button")!.listeners.click[0]({});
     expect(container.find((e) => e.tag === "iframe")).toBeTruthy();
   });
 

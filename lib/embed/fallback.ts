@@ -83,7 +83,10 @@ export function createLoadWatchdog(options: {
 
 /** Lee `data-ssa-fallback`. Si falta o está roto (código viejo), el texto por defecto. */
 export function parseFallbackAttr(raw: string | null | undefined): FallbackPayload {
-  const fallback: FallbackPayload = { ...DEFAULT_UNAVAILABLE_MESSAGES.load_error };
+  const fallback: FallbackPayload = {
+    title: DEFAULT_UNAVAILABLE_MESSAGES.load_error.title,
+    body: DEFAULT_UNAVAILABLE_MESSAGES.load_error.body,
+  };
   if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as Partial<FallbackPayload>;

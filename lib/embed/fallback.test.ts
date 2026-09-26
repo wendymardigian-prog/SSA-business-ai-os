@@ -118,7 +118,7 @@ describe("renderFallback", () => {
   it("sin botón propio muestra 'Abrir el calendario en otra pestaña', y con onRetry el botón Reintentar", () => {
     const container = new FakeEl("div");
     const onRetry = vi.fn();
-    renderFallback(container, DEFAULT_UNAVAILABLE_MESSAGES.load_error, doc, { openUrl: "https://agenda.ejemplo.com/calendario/wendy/llamada", onRetry });
+    renderFallback(container, { title: DEFAULT_UNAVAILABLE_MESSAGES.load_error.title, body: DEFAULT_UNAVAILABLE_MESSAGES.load_error.body }, doc, { openUrl: "https://agenda.ejemplo.com/calendario/wendy/llamada", onRetry });
     const root = container.children[0];
     expect(root.find("a")?.textContent).toBe(OPEN_IN_TAB_LABEL);
     const btn = root.find("button")!;
