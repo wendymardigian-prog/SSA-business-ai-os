@@ -65,3 +65,29 @@ export function isLocalUrl(url: string): boolean {
     host.endsWith(".local")
   );
 }
+
+/**
+ * La direccion de retorno del OAuth de un proveedor.
+ *
+ * Tiene que coincidir EXACTAMENTE con la que se carga en el panel del
+ * proveedor, incluida la barra final (no la lleva). Se arma igual que la de
+ * los webhooks y con la misma regla: se niega a devolver una direccion local,
+ * porque un cliente OAuth apuntando a localhost no falla, simplemente nunca
+ * vuelve a la app desplegada.
+ */
+export function oauthCallbackUrl(provider: string): string {
+  const base = appUrl();
+
+  if (!base) {
+    throw new Error(
+      "No puedo armar la direccion de retorno: falta NEXT_PUBLIC_APP_URL en el entorno",
+    );
+  }
+  if (isLocalUrl(base)) {
+    throw new Error(
+      `No puedo usar "${base}" como direccion de retorno de OAuth: es local y el proveedor no puede llegar ahi`,
+    );
+  }
+
+  return `${base.replace(/\/+$/, "")}/api/oauth/${provider}/callback`;
+}
