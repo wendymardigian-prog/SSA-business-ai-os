@@ -35,13 +35,13 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 | F20 | `buildBookingSchema` y tipo de `booking_fields` | `lib/scheduling/booking-fields.ts`, `phone-countries.ts` (constante de países, decisión de Wendy), `booking-fields.test.ts` | [x] |
 | F21 | Límites y buffers | `lib/scheduling/limits/{buffers,period,counts,validation}.ts` + tests | [x] |
 | F23 | Motor de horarios completo | `lib/scheduling/slots/{date-ranges,busy,slots,index}.ts`, `slots.test.ts` (8 casos del plano + otros), `split.test.ts` y `date-ranges.test.ts` (portados de Cal.diy) | [x] |
-| F25 | `buildMonthView`, `formatSlotLabel`, `parseEmbedParams` | `lib/scheduling/booker/*.test.ts` | [ ] |
-| F27 | `buildIcs` | `ics.test.ts` | [ ] |
+| F25 | `buildMonthView`, `formatSlotLabel`, `parseEmbedParams` | `lib/scheduling/booker/{month-view,format,embed-params}.ts` + tests | [x] |
+| F27 | `buildIcs` (+ links de Google y Outlook) | `ics.ts`, `ics.test.ts` | [x] |
 | F32 | Estados, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops` | `booking-status.ts`, `bookings-view.ts`, `booking-status.test.ts`, `bookings-view.test.ts` (sin `filterBookings`, Tanda B; `BOOKING_STATUS_KEYS` exportada para comparar con el CHECK) | [x] |
 | F34 | Reglas de arrastre | `kanban.ts`, `kanban.test.ts` | [x] |
 | F35 | `placeInCalendar` | `calendar-view.ts`, `calendar-view.test.ts` | [x] |
 | F39, F40, F41 | Fuente del embed, `buildEmbedIframeUrl`, `generateEmbedCode`, eventos | `lib/embed/*`, `url.test.ts`, `code.test.ts`, `events.test.ts` | [ ] |
-| F47 | `bookingVariables` | `variables.test.ts` | [ ] |
+| F47 | `bookingVariables`, `emptyBookingVariables`, `schedulingLinkVariables` | `automation/variables.ts`, `automation/variables.test.ts` | [x] |
 | F58 | `resolveUnavailableMessage`, `buildCtaHref`, respaldo del embed | `unavailable.test.ts`, `fallback.test.ts` | [ ] |
 
 ## Grupos de ejecución
@@ -52,6 +52,6 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 - [x] 5 · Formulario (F20) — 16 tests
 - [x] 6 · Validaciones del evento (F17, F18) — 19 tests
 - [x] 7 · Estados y vistas (F32, F34, F35) — 23 tests
-- [ ] 8 · Helpers del booker, `.ics` y variables (F25, F27, F47)
+- [x] 8 · Helpers del booker, `.ics` y variables (F25, F27, F47) — 26 tests
 - [ ] 9 · Embed y mensajes (F39, F40, F41, F58)
 - [ ] Cierre · `docs/etapa4/nucleo.md`
