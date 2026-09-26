@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Clapperboard,
   GitBranch,
+  Grid3x3,
   MessageSquare,
   Users,
   LayoutGrid,
@@ -50,7 +51,7 @@ interface WorkspaceItem {
 // Integraciones, que ahora se llega desde Settings.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Plug, Bot, BookOpen, Settings,
-  Clapperboard,
+  Clapperboard, Grid3x3,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({

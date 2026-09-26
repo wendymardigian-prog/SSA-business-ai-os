@@ -182,3 +182,19 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 **Por qué.** Las dos cosas necesitan el programa de partners de LinkedIn. Con los permisos que da una app común, los endpoints existen pero devuelven vacío o 403.
 
 **Qué se decidió en su lugar.** Decirlo en pantalla: "LinkedIn no deja leer los comentarios desde afuera. Se contestan desde LinkedIn." Es información, no un error que alguien pueda arreglar reconectando.
+
+### La página Social muestra tres cifras vacías
+
+**Qué quedó.** En el perfil, "Seguidos" (Instagram), "Me gusta" (TikTok) y "Vistas" (YouTube) aparecen con una raya.
+
+**Por qué.** Ninguna recolección los trae: el lector de Zernio da seguidores y nada más, y la Data API de YouTube da el total de vistas del canal, que hoy no se guarda en ninguna columna.
+
+**Qué se decidió en su lugar.** Mostrar una raya y no un cero. Un cero diría que la cuenta no sigue a nadie y que el canal no tuvo vistas nunca. Cuando se sumen esas columnas a `social_account_metrics_daily.extra`, la pantalla las toma sin cambios.
+
+### Las historias activas no se muestran todavía
+
+**Qué quedó.** `readActiveStories` existe y está probada, pero la página Social no la llama.
+
+**Por qué.** Necesita una ruta con caché de 15 minutos por workspace, y el bloque 6 ya era el más grande de la fase.
+
+**Qué se decidió en su lugar.** La grilla muestra las publicaciones guardadas, que es lo que contesta la pregunta principal. Las historias van con el bloque 7, donde ya hay una caché en memoria para Meta y se comparte el patrón.

@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
 import { BarList, DualAxisChart, colorFor, type ChartSeries } from "./charts";
 import { TrendExplorer } from "./trend-explorer";
+import { PostsTable, toRows } from "./posts-table";
+import { PostAnalysisPanel } from "./post-analysis-panel";
 import { refreshMetricsNow } from "@/lib/actions/metrics";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { platformLabel } from "@/lib/platforms";
@@ -44,6 +46,8 @@ export interface ContentDashboardProps {
   previous: { posts: PublishedPost[]; postDaily: PostDailyRow[]; accountDaily: AccountDailyRow[] };
   accounts: Array<{ platform: string; syncedAt: string | null; error: string | null }>;
   lastDataByPlatform: Array<[string, string]>;
+  /** El caption y la miniatura de cada publicacion, para la tabla. */
+  postDetails: Array<[string, { caption: string | null; thumbnailUrl: string | null }]>;
   connectedPlatforms: string[];
   period: PeriodPreset;
   platform: string | null;
@@ -71,6 +75,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
   const [growthGrouping, setGrowthGrouping] = useState<Grouping>("day");
   const [activityGrouping, setActivityGrouping] = useState<Grouping>("week");
   const [engagementMetric, setEngagementMetric] = useState<"saves" | "shares" | "comments" | "likes">("saves");
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
 
   const latestByPost = useMemo(() => new Map(props.latestByPost), [props.latestByPost]);
   const lastDataByPlatform = useMemo(() => new Map(props.lastDataByPlatform), [props.lastDataByPlatform]);
@@ -103,6 +108,14 @@ export function ContentDashboard(props: ContentDashboardProps) {
   );
 
   const d7 = useMemo(() => weeklyD7(props.posts, now), [props.posts, now]);
+
+  const tableRows = useMemo(
+    () => toRows(props.posts, latestByPost, new Map(props.postDetails)),
+    [props.posts, latestByPost, props.postDetails],
+  );
+
+  /** El orden de la tabla manda para las flechas del panel. */
+  const openIndex = openPostId ? tableRows.findIndex((r) => r.socialPostId === openPostId) : -1;
 
   const fresh = useMemo(
     () => freshness(props.accounts, lastDataByPlatform, now),
@@ -358,7 +371,27 @@ export function ContentDashboard(props: ContentDashboardProps) {
             </p>
           )}
         </section>
+
+        <section className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold">Tus posts</h2>
+          <PostsTable rows={tableRows} onOpen={setOpenPostId} />
+        </section>
       </div>
+
+      {openPostId && (
+        <PostAnalysisPanel
+          socialPostId={openPostId}
+          onClose={() => setOpenPostId(null)}
+          onPrevious={
+            openIndex > 0 ? () => setOpenPostId(tableRows[openIndex - 1].socialPostId) : undefined
+          }
+          onNext={
+            openIndex >= 0 && openIndex < tableRows.length - 1
+              ? () => setOpenPostId(tableRows[openIndex + 1].socialPostId)
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }

@@ -25,6 +25,8 @@ export interface ContentDashboardData {
   accounts: Array<{ platform: string; syncedAt: string | null; error: string | null }>;
   /** El ultimo dia con dato, por red. */
   lastDataByPlatform: Map<string, string>;
+  /** El caption y la miniatura de cada publicacion, para la tabla. */
+  postDetails: Map<string, { caption: string | null; thumbnailUrl: string | null }>;
 }
 
 const EMPTY: ContentDashboardData = {
@@ -34,6 +36,7 @@ const EMPTY: ContentDashboardData = {
   latestByPost: new Map(),
   accounts: [],
   lastDataByPlatform: new Map(),
+  postDetails: new Map(),
 };
 
 /** El rango como fechas `YYYY-MM-DD`, que es como se guardan las filas. */
@@ -52,7 +55,7 @@ export async function loadContentDashboard(
 
   let postsQuery = supabase
     .from("social_posts")
-    .select("id, platform, media_type, published_at, origin, engagement_d7, external_post_id")
+    .select("id, platform, media_type, published_at, origin, engagement_d7, caption, thumbnail_url")
     .eq("workspace_id", params.workspaceId)
     .is("deleted_at", null)
     .not("published_at", "is", null);
@@ -170,5 +173,11 @@ export async function loadContentDashboard(
         error: null,
       })),
     lastDataByPlatform,
+    postDetails: new Map(
+      (postRows ?? []).map((row) => [
+        row.id,
+        { caption: row.caption, thumbnailUrl: row.thumbnail_url },
+      ]),
+    ),
   };
 }

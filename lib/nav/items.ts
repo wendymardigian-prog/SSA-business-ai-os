@@ -19,6 +19,10 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", adminOnly: false },
   { name: "Flows", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false },
   { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false },
+  // Social: el perfil de cada red y sus publicaciones. Owner/Admin hasta el
+  // bloque 9, donde pasa al permiso `social.view` y un rol personalizado
+  // puede darselo a un Member.
+  { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: true },
   { name: "Inbox", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false },
   { name: "Contacts", href: "/dashboard/contacts", icon: "Users", adminOnly: false },
   { name: "Channels", href: "/dashboard/channels", icon: "Plug", adminOnly: true },

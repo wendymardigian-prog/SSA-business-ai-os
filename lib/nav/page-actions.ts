@@ -97,6 +97,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Pieza",
     tooltip: "Como quedo en cada red, que se puede reintentar y que metricas tuvo.",
   },
+  "/dashboard/social": {
+    title: "Social",
+    tooltip: "Tu perfil de cada red y sus publicaciones, con las metricas que la red no muestra.",
+  },
   "/dashboard/contacts": {
     title: "Contactos",
     tooltip: "El CRM: cada persona con su historial, sus etiquetas y quien la atiende.",

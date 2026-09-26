@@ -114,10 +114,11 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F50 · Engagement a 7 días por semana de publicación (la semana en curso se marca)
   - [x] F53 · Datos al día por red, con el último dato bueno cuando la última lectura falló
   - Gráficos en SVG a mano, sin librería nueva: un hueco se dibuja como hueco, nunca como cero.
-- [ ] **Bloque 6b — Análisis por post y página Social**
-  - [ ] F51 · Análisis histórico de un post
-  - [ ] F52 · Seguidores alrededor de la publicación
-  - [ ] F54 · Página Social
+- [x] **Bloque 6b — Análisis por post y página Social** (sin migración)
+  - [x] F51 · Análisis histórico de un post (panel lateral desde la tabla y desde Social, con flechas y Esc; las fotos acumuladas se convierten en "lo nuevo de cada día", un día faltante se reparte y se marca, y un acumulado que baja suma cero en vez de un negativo)
+  - [x] F52 · Seguidores alrededor de la publicación — **señal, no atribución**, y el rótulo lo dice. Mediana de 28 días, casos parcial y cuenta chica, y los posts vecinos de esas 48 h.
+  - [x] F54 · Página Social (perfil con las cifras que usa cada red, grilla con la proporción de cada red, métricas al pasar el mouse, "A mano" en lo que no salió del sistema)
+  - [x] Tabla "Tus posts" del F48, que se difirió del 6a: ordenable por cualquier columna, los sin dato siempre al final, y cada fila abre el análisis.
 - [ ] **Bloque 7a — Meta Ads (cuenta)**
   - [ ] F55 · Sincronización de insights
   - [ ] F56 · Dashboard de Meta Ads (cuenta)
