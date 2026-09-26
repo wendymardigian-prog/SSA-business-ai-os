@@ -44,6 +44,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   followup: "programó el próximo seguimiento",
   summary: "guardó el resumen del agente",
   revert: "revirtió una acción del agente",
+  tag_effect: "aplicó el efecto de una etiqueta",
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -73,6 +74,7 @@ export function HistorySection({ entries }: { entries: HistoryEntry[] }) {
               </p>
               {renderChanges(entry.changes)}
               {renderLinkNote(entry)}
+              {renderTagEffectNote(entry)}
             </li>
           ))}
         </ol>
@@ -125,6 +127,45 @@ function renderLinkNote({ action, metadata }: HistoryEntry) {
     <p className="mt-1 text-xs text-muted-foreground">
       {automatic ? "Automático" : "Manual"}
       {reason && ` · ${REASONS[reason] ?? reason}`}
+    </p>
+  );
+}
+
+/**
+ * Una etiqueta con efecto (00073): las dos consecuencias en lenguaje llano.
+ * Lo escriben los triggers de la base, con quien puso o saco la etiqueta.
+ */
+function renderTagEffectNote({ action, metadata }: HistoryEntry) {
+  if (action !== "tag_effect" || !metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const meta = metadata as Record<string, unknown>;
+  const tag = typeof meta.tag_name === "string" ? `«${meta.tag_name}»` : "una etiqueta borrada";
+  const count = (key: string) => (Array.isArray(meta[key]) ? (meta[key] as unknown[]).length : 0);
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+  if (meta.removed === true) {
+    const restored = count("conversations_restored");
+    const still = count("conversations_still_disabled");
+    return (
+      <p className="mt-1 text-xs text-muted-foreground">
+        Se sacó {tag}.{" "}
+        {still > 0
+          ? `El agente sigue apagado en ${plural(still, "conversación", "conversaciones")} por otra etiqueta.`
+          : restored > 0
+            ? `${plural(restored, "conversación volvió", "conversaciones volvieron")} a heredar el agente del canal.`
+            : "No había conversaciones apagadas por la etiqueta."}{" "}
+        La asignación no cambia.
+      </p>
+    );
+  }
+
+  const off = count("conversations_forced_off");
+  const origin = meta.origin === "new_conversation" ? " (conversación nueva)" : meta.origin === "contact_merge" ? " (fusión de contactos)" : "";
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {tag}
+      {origin}:{" "}
+      {off > 0 ? `el agente quedó apagado en ${plural(off, "conversación", "conversaciones")}` : "sin conversaciones para apagar"}
+      {typeof meta.assigned_to === "string" ? "; setter y vendedor pasaron a la persona de la etiqueta." : "."}
     </p>
   );
 }
