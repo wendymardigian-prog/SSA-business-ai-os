@@ -54,4 +54,4 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 - [x] 7 · Estados y vistas (F32, F34, F35) — 23 tests
 - [x] 8 · Helpers del booker, `.ics` y variables (F25, F27, F47) — 26 tests
 - [ ] 9 · Embed y mensajes (F39, F40, F41, F58)
-- [ ] Cierre · `docs/etapa4/nucleo.md`
+- [x] Cierre · `docs/etapa4/nucleo.md` — 237 tests del módulo en 29 archivos; suite total 1495 en verde; tsc y lint en 0
