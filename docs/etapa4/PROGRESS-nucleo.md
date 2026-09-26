@@ -34,7 +34,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 | F17, F18 | `slugify` y validaciones puras del evento | `event-types.test.ts`, `event-validation.test.ts` | [ ] |
 | F20 | `buildBookingSchema` y tipo de `booking_fields` | `lib/scheduling/booking-fields.ts`, `booking-fields.test.ts` | [ ] |
 | F21 | Límites y buffers | `lib/scheduling/limits/{buffers,period,counts,validation}.ts` + tests | [x] |
-| F23 | Motor de horarios completo | `lib/scheduling/slots/*`, `slots.test.ts` + casos portados | [ ] |
+| F23 | Motor de horarios completo | `lib/scheduling/slots/{date-ranges,busy,slots,index}.ts`, `slots.test.ts` (8 casos del plano + otros), `split.test.ts` y `date-ranges.test.ts` (portados de Cal.diy) | [x] |
 | F25 | `buildMonthView`, `formatSlotLabel`, `parseEmbedParams` | `lib/scheduling/booker/*.test.ts` | [ ] |
 | F27 | `buildIcs` | `ics.test.ts` | [ ] |
 | F32 | Estados, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops` | `booking-status.ts`, `bookings-view.ts`, `booking-status.test.ts` | [ ] |
@@ -48,7 +48,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 - [x] 1 · Tiempo y zonas horarias (F8) — `types.ts`, `time/dayjs.ts`, `time/tz.ts` (18 tests)
 - [x] 2 · Esquemas de horarios (F9, F11, F12, F10, F13) — 29 tests
 - [x] 3 · Límites (F21) — 22 tests
-- [ ] 4 · Motor (F23)
+- [x] 4 · Motor (F23) — 42 tests; `getAvailableSlots`, `availableSlots`, `freeWindows`, `isSlotAvailable`
 - [ ] 5 · Formulario (F20)
 - [ ] 6 · Validaciones del evento (F17, F18)
 - [ ] 7 · Estados y vistas (F32, F34, F35)
