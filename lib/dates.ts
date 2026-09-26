@@ -73,7 +73,7 @@ function offsetMs(instant: Date, timeZone: string): number {
 }
 
 /** El ano, mes y dia que muestra el calendario de la zona en ese instante. */
-function civilDate(instant: Date, timeZone: string): { year: number; month: number; day: number } {
+export function civilDate(instant: Date, timeZone: string): { year: number; month: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -109,11 +109,11 @@ function zonedWallClockToUtc(
   return new Date(asUtc - offsetMs(firstGuess, timeZone));
 }
 
-function startOfDay(year: number, month: number, day: number, timeZone: string): Date {
+export function startOfDay(year: number, month: number, day: number, timeZone: string): Date {
   return zonedWallClockToUtc(year, month, day, 0, 0, 0, 0, timeZone);
 }
 
-function endOfDay(year: number, month: number, day: number, timeZone: string): Date {
+export function endOfDay(year: number, month: number, day: number, timeZone: string): Date {
   return zonedWallClockToUtc(year, month, day, 23, 59, 59, 999, timeZone);
 }
 

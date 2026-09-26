@@ -2533,6 +2533,31 @@ export interface Database {
         Args: { p_raw: string | null };
         Returns: string;
       };
+      /** Funciones de métricas del dashboard de Chat (migración 00078, F15). */
+      chat_dashboard_numbers: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null };
+        Returns: { new_conversations: number; messages_in: number; messages_out: number; first_response_median_seconds: number | null }[];
+      };
+      chat_waiting_now: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: number;
+      };
+      chat_dashboard_agent: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { new_conversations: number; agent_acted: number; agent_took_first: number; agent_escalated: number }[];
+      };
+      chat_dashboard_team: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { author: string; messages_out: number; first_response_median_seconds: number | null; reply_median_seconds: number | null; replies_under_1h_pct: number | null }[];
+      };
+      chat_dashboard_trends: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null; p_tz?: string };
+        Returns: { day: string; messages_in: number; messages_out: number; new_conversations: number }[];
+      };
+      chat_episodes: {
+        Args: { p_workspace_id: string; p_channel?: string | null };
+        Returns: { conversation_id: string; contact_id: string; channel_id: string; episode_no: number; episode_start: string; first_inbound_at: string | null; first_outbound_at: string | null; first_outbound_origin: string | null }[];
+      };
       /**
        * Reclama un envio automatizado en la ventana horaria del canal
        * (migracion 00037). Devuelve false cuando se llego al tope de la hora.

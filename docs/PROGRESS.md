@@ -30,13 +30,13 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
   - [x] F10 · Editor de reglas + plantilla + modo del canal (`rules-editor.tsx`, acciones de servidor, unreachable)
   - [x] F11 · Simulación (`simulate.ts` + loader best-effort desde borradores)
   - [x] F12 · Visibilidad (oración de decisión en Runs, etiqueta de regla en la cola, salud del refresco + notificación)
-- [ ] **Bloque 3 — Navegación y dashboard de Chat**
-  - [ ] F13 · Navegación global (barra 56 px)
-  - [ ] F14 · Filtros y período
-  - [ ] F15 · Funciones de métricas + `verify-dashboards.mjs`
-  - [ ] F16 · Pantalla: números, tendencias, contexto
-  - [ ] F17 · Sección del agente y aprobación de borradores
-  - [ ] F18 · Tabla "Quién responde"
+- [x] **Bloque 3 — Navegación y dashboard de Chat** — 00078 aplicada
+  - [x] F13 · Navegación: Dashboards primero, redirect 308 de `/dashboard/analytics`, `PageHeader` 56 px + tooltip (rollout global a otras páginas en PENDIENTE)
+  - [x] F14 · Filtros y período (11 atajos, estado en URL) — tests puros
+  - [x] F15 · Funciones de métricas SQL + `verify-dashboards.mjs` en verde (valores a mano, caso Member)
+  - [x] F16 · Números con comparación + tendencias (1 serie; 4 pestañas en PENDIENTE)
+  - [x] F17 · Sección del agente (3 %, tres estados) — se oculta al filtrar por persona
+  - [x] F18 · Tabla "Quién responde" (umbrales de color, filtro por clic, scope por rol)
 - [ ] **Bloque 4 — Patrones de mensajes**
   - [ ] F19 · Textos y categorías
   - [ ] F20 · Clasificador
@@ -56,3 +56,4 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 | 00075 | `workspaces.timezone` (default America/Costa_Rica) | ✅ |
 | 00076 | `agent_runs.status` +`already_answered`; `source` +clasificador; `normalize_for_grouping()` | ✅ |
 | 00077 | `agents.response_rules`/`response_rules_default`/`external_reply_cooldown_minutes`; `agent_runs.routing`; RPC `claim_agent_reply`; trigger momento 3; cron `ssa-cron-drafts-refresh` | ✅ |
+| 00078 | Funciones SQL del dashboard: `chat_episodes`, `chat_dashboard_numbers/agent/team/trends`, `chat_waiting_now`, `chat_author_match` | ✅ |

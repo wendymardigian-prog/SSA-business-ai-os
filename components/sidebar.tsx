@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   GitBranch,
   MessageSquare,
   Users,
   Radio,
   ListOrdered,
-  BarChart3,
+  LayoutGrid,
   Sprout,
   Plug,
   Blocks,
@@ -20,6 +21,7 @@ import {
   Moon,
   Sun,
 } from "lucide-react";
+import { NAV_ITEMS } from "@/lib/nav/items";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -53,26 +55,16 @@ function subscribeToThemeClass(callback: () => void) {
 // envio directo, el item quedaria para siempre apuntando a una pantalla vacia.
 // La cola (/dashboard/drafts) sigue existiendo y se llega por el numero sobre
 // Inbox, la pestana de la bandeja, el chip de cada conversacion y los avisos.
-export const navigation = [
-  { name: "Flows", href: "/dashboard/flows", icon: GitBranch, adminOnly: false },
-  { name: "Inbox", href: "/dashboard/inbox", icon: MessageSquare, adminOnly: false },
-  { name: "Contacts", href: "/dashboard/contacts", icon: Users, adminOnly: false },
-  { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio, adminOnly: false },
-  { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered, adminOnly: false },
-  { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3, adminOnly: false },
-  { name: "Growth", href: "/dashboard/growth", icon: Sprout, adminOnly: false },
-  { name: "Channels", href: "/dashboard/channels", icon: Plug, adminOnly: true },
-  // Un Member entra a ver los runs y las acciones de sus conversaciones.
-  { name: "Agentes", href: "/dashboard/agents", icon: Bot, adminOnly: false },
-  {
-    name: "Conocimiento",
-    href: "/dashboard/knowledge",
-    icon: BookOpen,
-    adminOnly: true,
-  },
-  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: Blocks, adminOnly: true },
-  { name: "Settings", href: "/dashboard/settings", icon: Settings, adminOnly: true },
-];
+const ICONS: Record<string, LucideIcon> = {
+  LayoutGrid, GitBranch, MessageSquare, Users, Radio, ListOrdered, Sprout, Plug, Bot, BookOpen, Blocks, Settings,
+};
+
+export const navigation = NAV_ITEMS.map((item) => ({
+  name: item.name,
+  href: item.href,
+  icon: ICONS[item.icon] ?? LayoutGrid,
+  adminOnly: item.adminOnly,
+}));
 
 export function Sidebar({
   workspace,
