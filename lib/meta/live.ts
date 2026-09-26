@@ -1,0 +1,234 @@
+/**
+ * Lo que se consulta a Meta en vivo, con cache (F58).
+ *
+ * No todo se puede guardar por dia. El alcance unico de un periodo no es la
+ * suma de los alcances diarios: la misma persona alcanzada el lunes y el
+ * martes cuenta una vez. Sumarlos da un numero inflado que despues nadie
+ * entiende por que no cierra con lo que muestra Meta.
+ *
+ * Lo mismo con los desgloses (edad, genero, hora, placement, dispositivo):
+ * guardarlos por dia y por combinacion multiplicaria la tabla por veinte
+ * para algo que se mira de a un periodo por vez.
+ *
+ * Por eso: se piden al abrir la pantalla y se guardan **15 minutos en
+ * memoria del servidor**. Es lo que dura mirar un dashboard, y evita que
+ * cambiar una pestaña vuelva a gastar cuota.
+ */
+
+import { GRAPH, humanizeGraphError, type GraphError } from "./graph";
+
+/** Cuanto vive una entrada de la cache. */
+export const CACHE_TTL_MS = 15 * 60 * 1000;
+
+interface Entry {
+  value: unknown;
+  expires: number;
+}
+
+const cache = new Map<string, Entry>();
+
+/**
+ * La clave de cache: cuenta, nivel, objeto y periodo.
+ *
+ * Los cuatro importan. Sin el objeto, abrir dos campañas devolveria los
+ * datos de la primera; sin el periodo, cambiar de mes no cambiaria nada.
+ */
+export function cacheKey(params: {
+  adAccountId: string;
+  kind: string;
+  objectId: string;
+  since: string;
+  until: string;
+}): string {
+  return [params.adAccountId, params.kind, params.objectId, params.since, params.until].join("|");
+}
+
+export function readCache<T>(key: string, now = Date.now()): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (entry.expires <= now) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value as T;
+}
+
+export function writeCache(key: string, value: unknown, now = Date.now()): void {
+  cache.set(key, { value, expires: now + CACHE_TTL_MS });
+}
+
+/** Para los tests y para forzar una lectura nueva. */
+export function clearLiveCache(): void {
+  cache.clear();
+}
+
+export type LiveResult<T> = { ok: true; data: T; fromCache: boolean } | { ok: false; error: string };
+
+/**
+ * Pide algo a Meta pasando por la cache.
+ *
+ * Cada tarjeta llama a esto por su cuenta: si el desglose por edad falla,
+ * las demas se muestran igual. Un error de una tarjeta no puede vaciar la
+ * pantalla.
+ */
+export async function liveQuery<T>(params: {
+  key: string;
+  token: string;
+  path: string;
+  query: Record<string, string>;
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<LiveResult<T>> {
+  const now = params.now ?? Date.now();
+  const cached = readCache<T>(params.key, now);
+  if (cached !== null) return { ok: true, data: cached, fromCache: true };
+
+  const url = new URL(`${GRAPH}/${params.path.replace(/^\//, "")}`);
+  for (const [k, v] of Object.entries(params.query)) url.searchParams.set(k, v);
+  url.searchParams.set("access_token", params.token);
+
+  try {
+    const response = await (params.fetchImpl ?? fetch)(url.toString());
+    const body = (await response.json()) as T & { error?: GraphError };
+    if (body?.error) return { ok: false, error: humanizeGraphError(body.error) };
+    if (!response.ok) return { ok: false, error: `Meta respondio ${response.status}` };
+
+    writeCache(params.key, body, now);
+    return { ok: true, data: body as T, fromCache: false };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface UniqueReach {
+  reach: number | null;
+  frequency: number | null;
+  impressions: number | null;
+}
+
+/**
+ * El alcance unico del periodo.
+ *
+ * Sin `time_increment`: eso es lo que hace que Meta devuelva UN numero para
+ * todo el rango, contando cada persona una vez.
+ */
+export async function fetchUniqueReach(params: {
+  token: string;
+  adAccountId: string;
+  objectId?: string;
+  since: string;
+  until: string;
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<LiveResult<UniqueReach>> {
+  const target = params.objectId ?? params.adAccountId;
+
+  const result = await liveQuery<{ data?: Array<{ reach?: string; frequency?: string; impressions?: string }> }>({
+    key: cacheKey({
+      adAccountId: params.adAccountId,
+      kind: "reach",
+      objectId: target,
+      since: params.since,
+      until: params.until,
+    }),
+    token: params.token,
+    path: `${target}/insights`,
+    query: {
+      fields: "reach,frequency,impressions",
+      time_range: JSON.stringify({ since: params.since, until: params.until }),
+    },
+    fetchImpl: params.fetchImpl,
+    now: params.now,
+  });
+
+  if (!result.ok) return result;
+
+  const row = result.data.data?.[0];
+  const num = (v: unknown) => (v === undefined || v === null ? null : Number(v));
+
+  return {
+    ok: true,
+    fromCache: result.fromCache,
+    data: {
+      reach: num(row?.reach),
+      frequency: num(row?.frequency),
+      impressions: num(row?.impressions),
+    },
+  };
+}
+
+export type BreakdownKind = "age,gender" | "publisher_platform" | "impression_device" | "hourly_stats_aggregated_by_advertiser_time_zone";
+
+export interface BreakdownRow {
+  key: string;
+  spend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  ctr: number | null;
+}
+
+/** Un desglose del periodo (edad y genero, placement, dispositivo, hora). */
+export async function fetchBreakdown(params: {
+  token: string;
+  adAccountId: string;
+  objectId?: string;
+  breakdown: BreakdownKind;
+  since: string;
+  until: string;
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<LiveResult<BreakdownRow[]>> {
+  const target = params.objectId ?? params.adAccountId;
+
+  const result = await liveQuery<{ data?: Array<Record<string, unknown>> }>({
+    key: cacheKey({
+      adAccountId: params.adAccountId,
+      kind: `breakdown:${params.breakdown}`,
+      objectId: target,
+      since: params.since,
+      until: params.until,
+    }),
+    token: params.token,
+    path: `${target}/insights`,
+    query: {
+      fields: "spend,impressions,clicks,ctr",
+      breakdowns: params.breakdown,
+      time_range: JSON.stringify({ since: params.since, until: params.until }),
+      limit: "200",
+    },
+    fetchImpl: params.fetchImpl,
+    now: params.now,
+  });
+
+  if (!result.ok) return result;
+
+  const num = (v: unknown) => (v === undefined || v === null ? null : Number(v));
+
+  return {
+    ok: true,
+    fromCache: result.fromCache,
+    data: (result.data.data ?? []).map((row) => ({
+      key: breakdownKeyOf(row, params.breakdown),
+      spend: num(row.spend),
+      impressions: num(row.impressions),
+      clicks: num(row.clicks),
+      ctr: num(row.ctr),
+    })),
+  };
+}
+
+/** Como se llama cada fila del desglose. */
+export function breakdownKeyOf(row: Record<string, unknown>, breakdown: BreakdownKind): string {
+  if (breakdown === "age,gender") {
+    return `${row.age ?? "?"} · ${genderLabel(String(row.gender ?? ""))}`;
+  }
+  if (breakdown === "publisher_platform") return String(row.publisher_platform ?? "?");
+  if (breakdown === "impression_device") return String(row.impression_device ?? "?");
+  return String(row.hourly_stats_aggregated_by_advertiser_time_zone ?? "?");
+}
+
+function genderLabel(gender: string): string {
+  if (gender === "female") return "Mujeres";
+  if (gender === "male") return "Varones";
+  return "Sin especificar";
+}

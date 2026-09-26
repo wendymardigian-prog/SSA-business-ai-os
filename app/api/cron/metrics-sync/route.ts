@@ -16,6 +16,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { scheduleJob } from "@/lib/scheduler";
 import { isSyncHour } from "@/lib/metrics/rules";
 import { METRICS_SYNC_JOB } from "@/lib/jobs/handlers/metrics-sync";
+import { adAccountsToSync, META_ADS_SYNC_JOB } from "@/lib/jobs/handlers/meta-ads-sync";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -60,6 +61,23 @@ export async function GET(request: NextRequest) {
       } catch {
         // Ya habia uno pendiente para esta cuenta y esta hora: es el
         // comportamiento que se busca, no un error.
+      }
+    }
+
+    // Las cuentas publicitarias van en su propio job: Meta tiene su cuota y
+    // sus limites, y no tiene por que compartir suerte con Instagram.
+    for (const adAccountId of await adAccountsToSync(supabase, workspace.id)) {
+      try {
+        await scheduleJob(
+          supabase,
+          META_ADS_SYNC_JOB,
+          { workspaceId: workspace.id, adAccountId },
+          now,
+          `meta-ads:${adAccountId}:${now.toISOString().slice(0, 13)}`,
+        );
+        queued += 1;
+      } catch {
+        // Ya habia uno pendiente.
       }
     }
   }

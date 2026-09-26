@@ -119,10 +119,10 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F52 · Seguidores alrededor de la publicación — **señal, no atribución**, y el rótulo lo dice. Mediana de 28 días, casos parcial y cuenta chica, y los posts vecinos de esas 48 h.
   - [x] F54 · Página Social (perfil con las cifras que usa cada red, grilla con la proporción de cada red, métricas al pasar el mouse, "A mano" en lo que no salió del sistema)
   - [x] Tabla "Tus posts" del F48, que se difirió del 6a: ordenable por cualquier columna, los sin dato siempre al final, y cada fila abre el análisis.
-- [ ] **Bloque 7a — Meta Ads (cuenta)**
-  - [ ] F55 · Sincronización de insights
-  - [ ] F56 · Dashboard de Meta Ads (cuenta)
-  - [ ] F58 · Datos en vivo con caché
+- [x] **Bloque 7a — Meta Ads (cuenta)** (sin migración: las tablas son de la 00086)
+  - [x] F55 · Sincronización de insights (los cuatro niveles, paginación completa hasta agotar el cursor, últimos 3 días por corrida y 90 al activar; códigos 17 y 80004 reintentables, token inválido no)
+  - [x] F56 · Dashboard de Meta Ads (8 KPI con variación, evolución de dos ejes, embudo, retención de video y desglose por campaña, conjunto y anuncio con total y colores de CTR y leads en cero)
+  - [x] F58 · Datos en vivo con caché de 15 minutos por cuenta, nivel, objeto y período; un error no se guarda en caché y una tarjeta que falla no vacía la pantalla
 - [ ] **Bloque 7b — Detalles, unificado e IA**
   - [ ] F57 · Detalles de campaña, ad set y anuncio
   - [ ] F59 · Dashboard unificado
