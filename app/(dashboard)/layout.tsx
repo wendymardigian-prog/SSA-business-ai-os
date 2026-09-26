@@ -45,6 +45,7 @@ export default async function DashboardLayout({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <MobileTopBar
           workspace={workspace}
+          user={user}
           workspaces={workspaces}
           role={role}
           unreadNotifications={unreadNotifications}

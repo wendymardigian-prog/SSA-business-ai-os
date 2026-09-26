@@ -99,3 +99,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * El menú lateral colapsado (solo escritorio).
+ *
+ * La clase `sidebar-collapsed` la pone un script en el <head> (app/layout.tsx)
+ * leyendo localStorage antes del primer pintado: asi el menu arranca angosto si
+ * esa es la preferencia, en vez de aparecer ancho y achicarse medio segundo
+ * despues.
+ *
+ * El :where(...) encierra la variante adentro del menu de escritorio. El panel
+ * del telefono usa los mismos componentes (NavLinks, la campana, el perfil) y
+ * nunca se colapsa, asi que la variante no lo puede tocar.
+ */
+@custom-variant collapsed (html.sidebar-collapsed &:where([data-sidebar="desktop"], [data-sidebar="desktop"] *));

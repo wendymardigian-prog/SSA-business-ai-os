@@ -15,3 +15,26 @@ describe("orden del menú (F13)", () => {
     expect(new Set(NAV_ITEMS.map((i) => i.name)).size).toBe(NAV_ITEMS.length);
   });
 });
+
+describe("lo que salio del menú", () => {
+  // Broadcasts, Sequences y Growth se llegan por las sub-pestañas de Inbox;
+  // Integraciones, desde Settings. Las rutas siguen vivas: lo que se testea
+  // aca es que no vuelvan a aparecer como item del menu lateral.
+  const fuera = [
+    { name: "Broadcasts", href: "/dashboard/broadcasts" },
+    { name: "Sequences", href: "/dashboard/sequences" },
+    { name: "Growth", href: "/dashboard/growth" },
+    { name: "Integraciones", href: "/dashboard/settings/integrations" },
+  ];
+
+  for (const item of fuera) {
+    it(`${item.name} no esta en el menú`, () => {
+      expect(NAV_ITEMS.some((i) => i.name === item.name)).toBe(false);
+      expect(NAV_ITEMS.some((i) => i.href === item.href)).toBe(false);
+    });
+  }
+
+  it("Inbox si sigue estando: es el hub de comunicacion", () => {
+    expect(NAV_ITEMS.some((i) => i.href === "/dashboard/inbox")).toBe(true);
+  });
+});

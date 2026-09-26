@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import {
   listNotifications,
   markNotificationRead,
@@ -30,9 +31,22 @@ interface Props {
   workspaceId: string;
   /** Conteo calculado en el servidor: evita que el numerito parpadee al cargar. */
   initialUnread: number;
+  /**
+   * Como se dibuja el boton. "icon" es la campana suelta de la barra del
+   * telefono; "row" es la fila del pie del menu lateral (campana + el texto
+   * "Notificaciones" + el contador al final), para que se lea como una opcion
+   * mas del menu y no como un adorno de la banda de arriba.
+   */
+  variant?: "icon" | "row";
+  /**
+   * Hacia donde se abre el panel en escritorio. Viviendo en el pie tiene que
+   * ser "up": un panel que baje desde ahi se sale de la pantalla.
+   */
+  placement?: "down" | "up";
 }
 
-export function NotificationBell({ workspaceId, initialUnread }: Props) {
+export function NotificationBell({ workspaceId, initialUnread, variant = "icon", placement = "down" }: Props) {
+  const isRow = variant === "row";
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
@@ -149,11 +163,17 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
   }
 
   return (
-    <div className="relative">
+    <div className={cn("relative", isRow && "w-full")}>
+      {/*
+        Las clases `collapsed:` valen solo adentro del menu lateral de
+        escritorio (ver app/globals.css): en la barra del telefono no hacen
+        nada, y por eso se pueden dejar puestas sin condicionarlas.
+      */}
       <button
         ref={buttonRef}
         type="button"
         onClick={toggle}
+        title={isRow ? "Notificaciones" : undefined}
         aria-label={
           unread > 0
             ? `Notificaciones, ${unread} sin leer`
@@ -161,11 +181,24 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
         }
         aria-expanded={open}
         aria-haspopup="true"
-        className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:min-h-0 md:min-w-0"
+        className={cn(
+          "relative flex items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isRow
+            ? "w-full gap-3 px-3 py-2 text-sm font-medium collapsed:justify-center collapsed:gap-0 collapsed:px-0"
+            : "min-h-11 min-w-11 justify-center p-2 md:min-h-0 md:min-w-0",
+        )}
       >
-        <Bell className="h-4 w-4" aria-hidden="true" />
+        <Bell className="h-4 w-4 shrink-0" aria-hidden="true" />
+        {isRow && <span className="collapsed:hidden">Notificaciones</span>}
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
+          <span
+            className={cn(
+              "flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white",
+              isRow
+                ? "ml-auto collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0"
+                : "absolute -right-0.5 -top-0.5",
+            )}
+          >
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -176,7 +209,12 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
           ref={panelRef}
           role="dialog"
           aria-label="Notificaciones"
-          className="fixed inset-x-3 top-16 z-50 rounded-xl border border-border bg-card shadow-lg md:absolute md:inset-x-auto md:left-0 md:top-full md:mt-2 md:w-80"
+          className={cn(
+            // En el telefono el panel se ancla a la pantalla (la barra de
+            // arriba es angosta); en escritorio cuelga del boton.
+            "fixed inset-x-3 top-16 z-50 rounded-xl border border-border bg-card shadow-lg md:absolute md:inset-x-auto md:left-0 md:w-80",
+            placement === "up" ? "md:bottom-full md:top-auto md:mb-2" : "md:top-full md:mt-2",
+          )}
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">Notificaciones</h2>
