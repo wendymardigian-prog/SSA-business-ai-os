@@ -114,7 +114,7 @@ describe("limite del servidor: lib/vault.ts", () => {
   it("la busqueda encuentra caminos que si existen (si no, el test seria vacio)", () => {
     // Un test que solo afirma "no encontre nada" pasa igual si la herramienta
     // esta rota. Este camino existe de verdad: la pantalla importa el catalogo.
-    const screen = join(ROOT, "components/settings/integrations-view.tsx");
+    const screen = join(ROOT, "components/settings/integrations/integrations-grid.tsx");
     const catalog = join(ROOT, "lib/integrations/providers.ts");
     expect(pathTo(screen, catalog)).not.toBeNull();
   });

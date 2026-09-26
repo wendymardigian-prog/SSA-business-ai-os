@@ -63,7 +63,9 @@ export function memoryDb(
 
   function builder(table: string) {
     const filters: Filter[] = [];
-    let mode: "select" | "insert" | "update" | "delete" = "select";
+    let mode: "select" | "insert" | "update" | "delete" | "upsert" = "select";
+    /** Columnas de `onConflict` del upsert, ya separadas. */
+    let conflictCols: string[] = [];
     let payload: Row | Row[] | null = null;
     let selectCols: string | null = null;
     let countMode = false;
@@ -84,6 +86,30 @@ export function memoryDb(
         }
         candidates.forEach((row) => rows.push(row));
         return { data: candidates, error: null };
+      }
+      if (mode === "upsert") {
+        // Como PostgREST: si hay una fila que coincide en las columnas de
+        // onConflict, se actualiza; si no, se inserta. `undefined` no pisa,
+        // igual que en la base (connected_at: undefined es "no lo toques").
+        const list = (Array.isArray(payload) ? payload : [payload]) as Row[];
+        const result: Row[] = [];
+        for (const values of list) {
+          const defined = Object.fromEntries(
+            Object.entries(values).filter(([, v]) => v !== undefined),
+          ) as Row;
+          const existing = conflictCols.length
+            ? rows.find((r) => conflictCols.every((col) => r[col] === values[col]))
+            : undefined;
+          if (existing) {
+            Object.assign(existing, defined);
+            result.push(existing);
+          } else {
+            const row = { id: newId(table), created_at: clock().toISOString(), ...defined } as Row;
+            rows.push(row);
+            result.push(row);
+          }
+        }
+        return { data: result, error: null };
       }
       let matched = rows.filter((r) => filters.every((f) => f(r)));
       if (mode === "update") {
@@ -131,6 +157,12 @@ export function memoryDb(
       insert: (values: Row | Row[]) => {
         mode = "insert";
         payload = values;
+        return b;
+      },
+      upsert: (values: Row | Row[], opts?: { onConflict?: string }) => {
+        mode = "upsert";
+        payload = values;
+        conflictCols = (opts?.onConflict ?? "").split(",").map((c) => c.trim()).filter(Boolean);
         return b;
       },
       update: (values: Row) => {

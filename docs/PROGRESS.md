@@ -44,11 +44,11 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 - [ ] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081)
   - [x] Caracterización · webhook de Evolution (18 casos) y webhook de Zernio (22 casos), en verde
   - [x] F1 · Catálogo extendido con tipos de conexión (`connection`, `section`, `visible`, `secretFields`, `usage`, `providersBySection()`; entradas zernio, evolution, postproxy, google, linkedin, threads, meta oculta, resend_inbound oculta) + `lib/secret-names.ts` + `lib/vault-boundary.test.ts`
-  - [ ] F2 · Pantalla en grid con cards compactas
-  - [ ] F3 · Modal de configuración genérico
+  - [x] F2 · Pantalla en grid con cards compactas (`integrationStatus()`, filtro "Requiere atención" en la barra superior)
+  - [x] F3 · Modal de configuración genérico (armado desde el catálogo, varios secretos, "Guardado ✓ · Reemplazar", desconectar con confirmación)
   - [ ] F4 · Evolution en Vault con fallback
   - [ ] F5 · Secreto del webhook de Zernio en Vault con fallback
-  - [ ] F6 · Cards de las integraciones existentes y barra de uso
+  - [x] F6 · Cards de las integraciones existentes y barra de uso (`buildUsage`, Zernio 2 cuentas gratis; Zernio sigue guardándose por `test-key`)
   - [ ] F7 · Barra superior en todas las pantallas
 - [ ] **Bloque 2 — Conexiones de redes** (migración 00082)
   - [ ] F8 · Tablas de conexiones y cuentas sociales
@@ -141,14 +141,14 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 | # | Qué crea | Aplicada |
 |---|---|---|
-| 00081 | `integration_configs.type` suma `social_network`, `publishing_service`, `google`, `meta` | **No** — escrita y sin aplicar cuando se cortó la corrida. Es aditiva: se aplica al retomar, antes de F3 |
+| 00081 | `integration_configs.type` suma `social_network`, `publishing_service`, `google`, `meta` | ✅ aplicada y verificada (acepta los cuatro nuevos, rechaza uno inventado) |
 
-## Dónde se cortó la corrida (límite de uso, 26/9/2026)
+## Deuda que deja el Bloque 1
 
-Terminado y commiteado: Bloque 0 completo, la caracterización de los dos receptores y F1.
-Lo primero al retomar: aplicar la 00081 a la base (aditiva, idempotente) y seguir con F6 → F2 → F3 → F4 → F5 → F7.
+- `countScheduledUses` (aviso antes de desconectar) devuelve 0 hasta el Bloque 3: la tabla `social_posts`
+  todavía no existe. Al crearla en B3a hay que completar el cuerpo; la pantalla ya pregunta.
 
 **Aviso de coordinación:** hay otra sesión trabajando la Etapa 4 en paralelo sobre la misma base
-(`.claude/worktrees/etapa4-agendamiento-tanda-a-85d668`). Se le pidió tomar la banda de migraciones
-desde `00121` y no correr los scripts `verify-*` en simultáneo, porque borran todos los datos `zz-test-`.
+(`.claude/worktrees/etapa4-agendamiento-tanda-a-85d668`). Confirmó que toma la banda desde `00121`
+y que no corre scripts `verify-*` en esta tanda. Igual conviene verificar `list_migrations` antes de aplicar.
 Verificar `list_migrations` justo antes de aplicar cualquier migración.

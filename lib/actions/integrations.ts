@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { storeSecret, deleteSecret } from "@/lib/vault";
+import { storeSecret, deleteSecret, listSecretNames } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { validateSecretValue } from "@/lib/integrations/secret-validation";
 import {
-  getProvider,
-  validateApiKey,
+  configProviderOf,
+  getVisibleProvider,
+  secretFieldsOf,
   validateConfig,
+  type ProviderDefinition,
+  type SecretField,
 } from "@/lib/integrations/providers";
 
 /**
@@ -32,69 +36,100 @@ const INTEGRATIONS_PATH = "/dashboard/settings/integrations";
 
 export type IntegrationActionResult = { ok: true } | { ok: false; error: string };
 
-/** Guarda (o rota) la API key de una integracion y la deja conectada. */
-export async function saveIntegration(
-  providerId: string,
-  apiKey: string,
+
+/** Solo los campos que declara el proveedor: nada de guardar lo que mande el cliente. */
+function cleanConfigOf(
+  provider: ProviderDefinition,
   config: Record<string, string>,
+): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const field of provider.configFields) {
+    const value = (config[field.key] ?? "").trim();
+    if (value) clean[field.key] = value;
+  }
+  return clean;
+}
+
+export interface SaveIntegrationInput {
+  providerId: string;
+  /** Los secretos nuevos, por la clave del campo. Lo que no venga, no se toca. */
+  secrets?: Record<string, string>;
+  config?: Record<string, string>;
+}
+
+/**
+ * Guarda (o rota) los secretos de una integracion y la deja conectada.
+ *
+ * Una integracion puede tener varios secretos (Evolution: la API key del
+ * servidor y el token del webhook; una app de OAuth: Client ID y Secret), asi
+ * que se recibe un mapa y no un string suelto. Lo que no viene en el mapa se
+ * deja como estaba: el modal muestra "Guardado ✓ · Reemplazar" y solo manda lo
+ * que la persona volvio a escribir.
+ *
+ * Nunca devuelve el valor de un secreto.
+ */
+export async function saveIntegration(
+  input: SaveIntegrationInput,
 ): Promise<IntegrationActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
 
-  const provider = getProvider(providerId);
-  if (!provider || !provider.secretName) {
-    return { ok: false, error: "Integracion desconocida" };
-  }
+  // getVisibleProvider y no getProvider: una integracion que todavia no se
+  // muestra tampoco se puede guardar, aunque alguien arme el pedido a mano.
+  const provider = getVisibleProvider(input.providerId);
+  if (!provider) return { ok: false, error: "Integracion desconocida" };
 
   const { workspace, supabase } = ctx;
+  const secrets = input.secrets ?? {};
+  const config = input.config ?? {};
+  const fields = secretFieldsOf(provider);
 
-  // Si ya hay una key guardada, se puede editar solo la config sin volver a
-  // pegarla. Si no hay ninguna, la key es obligatoria.
-  const { data: existing } = await supabase
-    .from("integration_configs")
-    .select("id, vault_secret_name, is_active")
-    .eq("workspace_id", workspace.id)
-    .eq("type", provider.type)
-    .eq("provider", provider.id)
-    .maybeSingle();
+  const [{ data: existing }, storedNames] = await Promise.all([
+    supabase
+      .from("integration_configs")
+      .select("id, is_active")
+      .eq("workspace_id", workspace.id)
+      .eq("type", provider.type)
+      .eq("provider", configProviderOf(provider))
+      .maybeSingle(),
+    fields.length > 0 ? listSecretNames(supabase, workspace.id) : Promise.resolve([] as string[]),
+  ]);
 
-  const newKey = apiKey.trim();
-  const hadKey = Boolean(existing?.vault_secret_name);
+  const alreadyStored = new Set(storedNames);
 
-  if (!newKey && !hadKey) {
-    return { ok: false, error: `Pega la API key de ${provider.label}` };
-  }
-
-  if (newKey) {
-    const keyCheck = validateApiKey(provider.id, newKey);
-    if (!keyCheck.ok) return keyCheck;
+  // Se valida TODO antes de escribir nada: si el segundo secreto esta mal, no
+  // puede quedar el primero guardado y la integracion a medio conectar.
+  const toStore: Array<{ field: SecretField; value: string }> = [];
+  for (const field of fields) {
+    const value = (secrets[field.key] ?? "").trim();
+    if (!value) {
+      if (field.required && !alreadyStored.has(field.secretName)) {
+        return { ok: false, error: `Falta ${field.label.toLowerCase()}` };
+      }
+      continue;
+    }
+    const check = validateSecretValue(field, value);
+    if (!check.ok) return check;
+    toStore.push({ field, value });
   }
 
   const configCheck = validateConfig(provider.id, config);
   if (!configCheck.ok) return configCheck;
 
-  // Solo los campos que declara el proveedor: nada de guardar lo que mande el
-  // cliente por su cuenta.
-  const cleanConfig: Record<string, string> = {};
-  for (const field of provider.configFields) {
-    const value = (config[field.key] ?? "").trim();
-    if (value) cleanConfig[field.key] = value;
-  }
-
-  if (newKey) {
-    const stored = await storeSecret(supabase, workspace.id, provider.secretName, newKey);
+  for (const { field, value } of toStore) {
+    const stored = await storeSecret(supabase, workspace.id, field.secretName, value);
     if (!stored.ok) {
-      return { ok: false, error: `No se pudo guardar la key de forma segura: ${stored.error}` };
+      return { ok: false, error: `No se pudo guardar ${field.label.toLowerCase()} de forma segura: ${stored.error}` };
     }
   }
 
   const row = {
     workspace_id: workspace.id,
     type: provider.type,
-    provider: provider.id,
+    provider: configProviderOf(provider),
     display_name: provider.label,
     vault_secret_name: provider.secretName,
-    config: cleanConfig,
+    config: cleanConfigOf(provider, config),
     is_active: true,
     connected_at: existing?.is_active ? undefined : new Date().toISOString(),
     last_error: null,
@@ -106,20 +141,23 @@ export async function saveIntegration(
 
   if (error) {
     console.error(`[integrations] upsert "${provider.id}" fallido:`, error.message);
-    return { ok: false, error: `La key se guardo pero no pude activar la integracion: ${error.message}` };
+    return {
+      ok: false,
+      error: `Los datos se guardaron pero no pude activar la integracion: ${error.message}`,
+    };
   }
 
-  // F20: conectar un canal es de las cosas que despues nadie se acuerda quien
-  // hizo. La entidad es el workspace porque integration_configs no tiene una
-  // fila estable a la que apuntar (se hace upsert), y el proveedor va en el
-  // metadata. Nunca la key, obvio.
+  // Conectar una integracion es de las cosas que despues nadie se acuerda quien
+  // hizo. La entidad es el workspace porque integration_configs se hace upsert
+  // y no tiene una fila estable a la que apuntar. Nunca un valor de secreto:
+  // solo QUE campos se rotaron.
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
     action: existing?.is_active ? "update" : "create",
     metadata: {
       provider: provider.id,
       type: provider.type,
-      key_rotated: Boolean(newKey) && hadKey,
+      secrets_rotated: toStore.map((s) => s.field.key),
     },
     performedBy: ctx.user.id,
   });
@@ -128,30 +166,51 @@ export async function saveIntegration(
   return { ok: true };
 }
 
-/** Cambia la config (remitente, modelo) sin tocar la key. */
+/** Cambia la config (remitente, modelo) sin tocar ningun secreto. */
 export async function updateIntegrationConfig(
   providerId: string,
   config: Record<string, string>,
 ): Promise<IntegrationActionResult> {
-  return saveIntegration(providerId, "", config);
+  return saveIntegration({ providerId, config });
 }
 
-/** Borra la key de Vault y deja la integracion desconectada. */
+/**
+ * Cuantas publicaciones programadas dependen de esta integracion.
+ *
+ * Se muestra ANTES de desconectar: desconectar LinkedIn con tres posts
+ * programados para el jueves los deja fallando el jueves, y enterarse ese dia
+ * es tarde.
+ *
+ * Hoy devuelve 0 siempre: la tabla `social_posts` la crea el bloque 3. La
+ * funcion existe desde ahora para que el modal tenga donde preguntar y el
+ * bloque 3 solo tenga que cambiar el cuerpo, no la pantalla.
+ */
+export async function countScheduledUses(providerId: string): Promise<number> {
+  const ctx = await getAdminContext();
+  if (!ctx) return 0;
+  if (!getVisibleProvider(providerId)) return 0;
+
+  // TODO(bloque 3): contar social_posts con status 'scheduled' cuyo publicador
+  // sea de esta integracion.
+  return 0;
+}
+
+/** Borra los secretos de Vault y deja la integracion desconectada. */
 export async function disconnectIntegration(
   providerId: string,
 ): Promise<IntegrationActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
 
-  const provider = getProvider(providerId);
+  const provider = getVisibleProvider(providerId);
   if (!provider) return { ok: false, error: "Integracion desconocida" };
 
   const { workspace, supabase } = ctx;
 
-  if (provider.secretName) {
-    const removed = await deleteSecret(supabase, workspace.id, provider.secretName);
+  for (const field of secretFieldsOf(provider)) {
+    const removed = await deleteSecret(supabase, workspace.id, field.secretName);
     if (!removed.ok) {
-      return { ok: false, error: `No se pudo borrar la key: ${removed.error}` };
+      return { ok: false, error: `No se pudo borrar ${field.label.toLowerCase()}: ${removed.error}` };
     }
   }
 
@@ -162,7 +221,7 @@ export async function disconnectIntegration(
     .update({ is_active: false, vault_secret_name: null, connected_at: null, last_error: null })
     .eq("workspace_id", workspace.id)
     .eq("type", provider.type)
-    .eq("provider", provider.id);
+    .eq("provider", configProviderOf(provider));
 
   if (error) {
     console.error(`[integrations] desconectar "${provider.id}" fallido:`, error.message);
