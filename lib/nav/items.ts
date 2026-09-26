@@ -18,6 +18,7 @@ export interface NavItemMeta {
 export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", adminOnly: false },
   { name: "Flows", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false },
+  { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false },
   { name: "Inbox", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false },
   { name: "Contacts", href: "/dashboard/contacts", icon: "Users", adminOnly: false },
   { name: "Channels", href: "/dashboard/channels", icon: "Plug", adminOnly: true },

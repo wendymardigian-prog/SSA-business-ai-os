@@ -38,3 +38,21 @@ describe("lo que salio del menú", () => {
     expect(NAV_ITEMS.some((i) => i.href === "/dashboard/inbox")).toBe(true);
   });
 });
+
+// ── Etapa 2 ────────────────────────────────────────────────────────────────
+
+describe("Contenido en el menu (F39)", () => {
+  it("esta, y lo ve cualquiera", () => {
+    // Un Member crea ideas y piezas: si fuera adminOnly no podria ni entrar.
+    const contenido = NAV_ITEMS.find((i) => i.name === "Contenido");
+
+    expect(contenido).toBeDefined();
+    expect(contenido?.href).toBe("/dashboard/content");
+    expect(contenido?.adminOnly).toBe(false);
+  });
+
+  it("va despues de Flows", () => {
+    const nombres = NAV_ITEMS.map((i) => i.name);
+    expect(nombres.indexOf("Contenido")).toBe(nombres.indexOf("Flows") + 1);
+  });
+});

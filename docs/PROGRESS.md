@@ -59,11 +59,11 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F13 · Cuentas sociales y publicadores disponibles (`computeAccounts` puro; conserva lo elegido a mano y avisa al cambiar)
   - [x] F14 · Conexión de Postproxy (cliente según su documentación real; "Probar y guardar" llama a `/profiles` antes de escribir)
   - [x] F15 · Avisos de conexiones (`integration_attention` con ventana por causa y uuid derivado para no tapar un aviso con otro) + cron semanal de renovación
-- [ ] **Bloque 3a — Modelo de contenido y kanban** (migración 00083)
-  - [ ] F16 · Tablas de contenido y bucket
-  - [ ] F17 · Estados del post
-  - [ ] F19 · Ideas
-  - [ ] F20 · Kanban
+- [x] **Bloque 3a — Modelo de contenido y kanban** (migraciones 00083 y 00084 aplicadas)
+  - [x] F16 · Tablas de contenido y bucket (`verify-content.mjs`: 29 casos con dos workspaces, incluido el bucket)
+  - [x] F17 · Estados del post (`canTransition` por rol y `aggregatePostStatus` derivado de las redes)
+  - [x] F19 · Ideas (aprobar es una sola transacción SQL; los botones dicen por qué están deshabilitados)
+  - [x] F20 · Kanban (7 columnas, arrastre validado antes de pedirlo, abre el editor cuando falta la fecha)
 - [ ] **Bloque 3b — Media, calendario y versiones**
   - [ ] F18 · Subida de media
   - [ ] F21 · Calendario y lista
@@ -86,7 +86,7 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [ ] F36 · Detalle del post
   - [ ] F37 · Aprobación
   - [ ] F38 · Prueba de publicación directa de YouTube
-  - [ ] F39 · Menú de Contenido
+  - [x] F39 · Menú de Contenido (adelantado desde B4b: la pantalla ya existe y sin el ítem no se llega)
 - [ ] **Fase 1 lista:** suite completa en 0
 
 ### FASE 2 — Métricas, Social y anuncios
@@ -143,6 +143,8 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 |---|---|---|
 | 00081 | `integration_configs.type` suma `social_network`, `publishing_service`, `google`, `meta` | ✅ aplicada y verificada (acepta los cuatro nuevos, rechaza uno inventado) |
 | 00082 | `oauth_connections`, `social_accounts`, cron `social-token-refresh` + lista blanca | ✅ aplicada y verificada (RLS, únicos y CHECK probados con dos workspaces) |
+| 00083 | Pipeline de contenido: 4 tablas, bucket `content-media` con policies por workspace, cron de limpieza | ✅ aplicada y verificada |
+| 00084 | `approve_content_idea()`: crea la pieza y aprueba la idea en una transacción | ✅ aplicada y verificada |
 
 ## Deuda que deja el Bloque 1
 

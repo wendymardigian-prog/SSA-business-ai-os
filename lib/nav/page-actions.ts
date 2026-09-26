@@ -74,6 +74,15 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Growth",
     tooltip: "Automatizaciones por comentario: una palabra en un post dispara un mensaje.",
   },
+  "/dashboard/content": {
+    title: "Contenido",
+    tooltip:
+      "De la idea a la publicacion: el guion, el caption, la media y en que redes sale cada pieza.",
+  },
+  "/dashboard/content/new": {
+    title: "Nueva pieza",
+    tooltip: "Una idea o una pieza nueva. Lo minimo para no perderla; el resto se completa despues.",
+  },
   "/dashboard/contacts": {
     title: "Contactos",
     tooltip: "El CRM: cada persona con su historial, sus etiquetas y quien la atiende.",
@@ -187,6 +196,10 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
   ],
   "/dashboard/settings/team": () => [
     { id: "invite", label: "Invitar", kind: "primary", adminOnly: true },
+  ],
+  "/dashboard/content": () => [
+    { id: "new_idea", label: "Nueva idea", kind: "secondary" },
+    { id: "new_post", label: "Nuevo post", kind: "primary" },
   ],
   "/dashboard/contacts": () => [
     { id: "import", label: "Importar", kind: "secondary", href: "/dashboard/contacts/import", adminOnly: false },

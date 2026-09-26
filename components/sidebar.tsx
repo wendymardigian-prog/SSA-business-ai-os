@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
+  Clapperboard,
   GitBranch,
   MessageSquare,
   Users,
@@ -49,6 +50,7 @@ interface WorkspaceItem {
 // Integraciones, que ahora se llega desde Settings.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Plug, Bot, BookOpen, Settings,
+  Clapperboard,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({

@@ -45,6 +45,32 @@ export type IntegrationType =
 export type OAuthProvider = "google" | "linkedin" | "threads";
 /** En que estado esta una conexion OAuth (00082). */
 export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
+/** Estados de una idea de contenido (00083). */
+export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
+/** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
+export type ContentPostStatus =
+  | "draft"
+  | "in_production"
+  | "in_review"
+  | "approved"
+  | "scheduled"
+  | "publishing"
+  | "published"
+  | "partially_published"
+  | "failed";
+/** Como viene la grabacion del material (00083). */
+export type MaterialStatus = "pendiente" | "grabado" | "editado" | "listo";
+/** Quien escribio el copy (00083). */
+export type CopySource = "manual" | "ai" | "mixed";
+/** Estado de una publicacion en una red (00083). Null en las externas. */
+export type SocialPostStatus = "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+/** Tipo de media de una publicacion (00083). */
+export type SocialPostMediaType =
+  | "image" | "carousel" | "reel" | "story" | "video" | "short" | "text" | "document";
+/** Por que se guardo una version del post (00083). */
+export type VersionReason =
+  | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore";
+
 /** Redes sociales en las que el sistema publica o lee metricas (00082). */
 export type SocialPlatform = "instagram" | "tiktok" | "youtube" | "linkedin" | "threads";
 
@@ -2637,6 +2663,251 @@ export interface Database {
         Relationships: [];
       };
 
+      // ── Etapa 2, bloque 3 (migracion 00083) ───────────────────────────
+      content_ideas: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          title: string;
+          hook: string | null;
+          angle: string | null;
+          format: string | null;
+          pillar: string | null;
+          reference: string | null;
+          notes: string | null;
+          status: ContentIdeaStatus;
+          source: "manual" | "agent";
+          position: number;
+          created_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          discarded_reason: string | null;
+          /** Reservados para la etapa 3: hoy siempre vacios. */
+          score: number | null;
+          target_audience: string | null;
+          awareness_level: string | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          title: string;
+          hook?: string | null;
+          angle?: string | null;
+          format?: string | null;
+          pillar?: string | null;
+          reference?: string | null;
+          notes?: string | null;
+          status?: ContentIdeaStatus;
+          source?: "manual" | "agent";
+          position?: number;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          title?: string;
+          hook?: string | null;
+          angle?: string | null;
+          format?: string | null;
+          pillar?: string | null;
+          reference?: string | null;
+          notes?: string | null;
+          status?: ContentIdeaStatus;
+          position?: number;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          discarded_reason?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      content_posts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          idea_id: string | null;
+          title: string;
+          format: string | null;
+          /** { hook, body, cta, recording_notes } */
+          copy: Json;
+          caption: string | null;
+          /** Lo propio de cada red, incluida su fecha tentativa. */
+          networks: Json;
+          media: Json;
+          material_status: MaterialStatus;
+          copy_source: CopySource;
+          ai_unreviewed: boolean;
+          status: ContentPostStatus;
+          current_version: number;
+          position: number;
+          created_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          review_note: string | null;
+          source: "manual" | "agent";
+          archived_at: string | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          idea_id?: string | null;
+          title: string;
+          format?: string | null;
+          copy?: Json;
+          caption?: string | null;
+          networks?: Json;
+          media?: Json;
+          material_status?: MaterialStatus;
+          copy_source?: CopySource;
+          ai_unreviewed?: boolean;
+          status?: ContentPostStatus;
+          position?: number;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          idea_id?: string | null;
+          title?: string;
+          format?: string | null;
+          copy?: Json;
+          caption?: string | null;
+          networks?: Json;
+          media?: Json;
+          material_status?: MaterialStatus;
+          copy_source?: CopySource;
+          ai_unreviewed?: boolean;
+          status?: ContentPostStatus;
+          current_version?: number;
+          position?: number;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          review_note?: string | null;
+          archived_at?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      content_post_versions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          post_id: string;
+          version_no: number;
+          snapshot: Json;
+          author_kind: "human" | "ai" | "system";
+          author_id: string | null;
+          reason: VersionReason;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          post_id: string;
+          version_no: number;
+          snapshot: Json;
+          author_kind?: "human" | "ai" | "system";
+          author_id?: string | null;
+          reason: VersionReason;
+          created_at?: string;
+        };
+        Update: { snapshot?: Json };
+        Relationships: [];
+      };
+
+      social_posts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          content_post_id: string | null;
+          social_account_id: string | null;
+          platform: SocialPlatform;
+          publisher: string | null;
+          publisher_ref: string | null;
+          origin: "system" | "external";
+          status: SocialPostStatus | null;
+          scheduled_at: string | null;
+          attempts: number;
+          last_error: string | null;
+          last_error_kind: "temporary" | "permanent" | null;
+          requested_visibility: string | null;
+          actual_visibility: string | null;
+          warning: string | null;
+          external_post_id: string | null;
+          url: string | null;
+          published_at: string | null;
+          caption: string | null;
+          media_type: SocialPostMediaType | null;
+          thumbnail_url: string | null;
+          last_synced_at: string | null;
+          sync_error: string | null;
+          engagement_d7: number | null;
+          interactions_d7: number | null;
+          reach_d7: number | null;
+          views_d7: number | null;
+          d7_computed_at: string | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          content_post_id?: string | null;
+          social_account_id?: string | null;
+          platform: SocialPlatform;
+          publisher?: string | null;
+          publisher_ref?: string | null;
+          origin?: "system" | "external";
+          status?: SocialPostStatus | null;
+          scheduled_at?: string | null;
+          attempts?: number;
+          external_post_id?: string | null;
+          url?: string | null;
+          published_at?: string | null;
+          caption?: string | null;
+          media_type?: SocialPostMediaType | null;
+          thumbnail_url?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          publisher?: string | null;
+          publisher_ref?: string | null;
+          status?: SocialPostStatus | null;
+          scheduled_at?: string | null;
+          attempts?: number;
+          last_error?: string | null;
+          last_error_kind?: "temporary" | "permanent" | null;
+          requested_visibility?: string | null;
+          actual_visibility?: string | null;
+          warning?: string | null;
+          external_post_id?: string | null;
+          url?: string | null;
+          published_at?: string | null;
+          caption?: string | null;
+          media_type?: SocialPostMediaType | null;
+          thumbnail_url?: string | null;
+          last_synced_at?: string | null;
+          sync_error?: string | null;
+          engagement_d7?: number | null;
+          interactions_d7?: number | null;
+          reach_d7?: number | null;
+          views_d7?: number | null;
+          d7_computed_at?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       social_accounts: {
         Row: {
           id: string;
@@ -2753,6 +3024,19 @@ export interface Database {
        * conversación, true si ya hubo un saliente posterior al inbound del turno
        * que no es el propio run. Solo service_role.
        */
+      /**
+       * Crea el post y marca la idea aprobada, en una transaccion (00084).
+       * SECURITY INVOKER: la RLS decide si quien llama puede aprobar.
+       */
+      approve_content_idea: {
+        Args: {
+          p_idea_id: string;
+          p_title: string;
+          p_format: string | null;
+          p_copy: Json;
+        };
+        Returns: string;
+      };
       claim_agent_reply: {
         Args: {
           p_conversation_id: string;
