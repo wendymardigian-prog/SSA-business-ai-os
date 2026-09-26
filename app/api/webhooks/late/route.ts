@@ -31,6 +31,7 @@ import {
   persistInboundMessage,
   runInboundAutomation,
   upsertConversation,
+  handleMessageSentEcho,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
@@ -139,6 +140,13 @@ async function handleWebhook(request: NextRequest) {
     return handleCommentWebhook(parsed as CommentWebhookPayload, body, signature, eventId);
   }
 
+  // Eco de un saliente externo (respuesta desde la app de Instagram, ManyChat,
+  // WhatsApp Business): se guarda como `external` para que el dashboard lo vea
+  // y la verificación del Bloque 2 lo tenga en cuenta (F2).
+  if (parsed.event === "message.sent") {
+    return handleMessageSentWebhook(parsed as MessageSentPayload, body, signature, eventId);
+  }
+
   // Everything else besides message.received is acknowledged and ignored
   if (parsed.event !== "message.received") {
     return NextResponse.json({ ok: true, skipped: parsed.event ?? "sin evento" });
@@ -148,8 +156,9 @@ async function handleWebhook(request: NextRequest) {
 
   const { message: msg, account } = payload;
 
-  // Ignore outbound messages (sent by the bot itself) to prevent loops
-  if (msg.direction === "outbound") {
+  // Ignore outbound messages to prevent loops. El SDK dice la dirección como
+  // 'incoming' | 'outgoing'; el saliente llega por message.sent, no por acá.
+  if (msg.direction === "outgoing" || msg.direction === "outbound") {
     return NextResponse.json({ ok: true, skipped: "mensaje saliente" });
   }
 
@@ -360,6 +369,76 @@ async function processMessageEvent(
 }
 
 // ── Comment webhook ─────────────────────────────────────────────────────────
+
+interface MessageSentPayload {
+  id?: string;
+  event: "message.sent";
+  message: {
+    id: string;
+    conversationId: string;
+    platform: string;
+    platformMessageId: string;
+    direction: string;
+    text: string | null;
+    attachments?: Array<{ type: string; url: string; payload?: string }>;
+    sentAt?: string;
+  };
+  account: { id: string };
+}
+
+/**
+ * Eco de un saliente externo (`message.sent`). Mismo esqueleto que los otros
+ * receptores: encuentra el canal, valida la firma, deduplica el evento y guarda
+ * en `after()`. Guardar el mensaje no puede voltear el webhook.
+ */
+async function handleMessageSentWebhook(
+  payload: MessageSentPayload,
+  rawBody: string,
+  signature: string | null,
+  eventId: string | null | undefined
+) {
+  const supabase = await createServiceClient();
+
+  const { data: channel } = await supabase
+    .from("channels")
+    .select("id, workspace_id, webhook_secret")
+    .eq("late_account_id", payload.account.id)
+    .eq("is_active", true)
+    .single();
+
+  if (!channel) {
+    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+  }
+
+  const secret = await resolveWebhookSecret(supabase, channel);
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, eventId))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  after(async () => {
+    try {
+      await handleMessageSentEcho({
+        supabase,
+        channel: { id: channel.id, workspace_id: channel.workspace_id },
+        message: payload.message,
+      });
+    } catch (err) {
+      console.error("Webhook message.sent processing error:", err);
+    }
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
+}
 
 async function handleCommentWebhook(
   payload: CommentWebhookPayload,

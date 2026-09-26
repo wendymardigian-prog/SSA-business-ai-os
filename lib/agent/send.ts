@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { sendChannelMessage, type SendOutcome } from "@/lib/flow-engine/send";
 import { messagePreview } from "@/lib/message-preview";
+import { outboundMessageRow } from "@/lib/messages/outbound";
 
 /**
  * Envio de la respuesta del agente.
@@ -57,16 +58,18 @@ export async function sendAgentParts(
   let firstMessageId: string | null = null;
   for (const part of parts) {
     const outcome = await send(supabase, ctx, part);
-    const { data: stored, error } = await supabase.from("messages").insert({
-      conversation_id: ctx.conversationId,
-      direction: "outbound",
-      text: part,
-      sent_by_agent_id: ctx.agentId,
-      sent_by_user_id: ctx.sentByUserId ?? null,
-      agent_run_id: ctx.runId,
-      platform_message_id: outcome.platformMessageId ?? null,
-      status: outcome.ok ? "sent" : "failed",
-    }).select("id").single();
+    const { data: stored, error } = await supabase.from("messages").insert(
+      outboundMessageRow({
+        conversationId: ctx.conversationId,
+        origin: "agent",
+        text: part,
+        sentByAgentId: ctx.agentId,
+        sentByUserId: ctx.sentByUserId ?? null,
+        agentRunId: ctx.runId,
+        platformMessageId: outcome.platformMessageId ?? null,
+        status: outcome.ok ? "sent" : "failed",
+      }),
+    ).select("id").single();
     if (error) console.error("[agent-send] no pude guardar el mensaje enviado:", error.message);
     if (outcome.ok && !firstMessageId) firstMessageId = stored?.id ?? null;
 

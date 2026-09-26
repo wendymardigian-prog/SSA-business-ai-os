@@ -146,6 +146,9 @@ export function toMessageRow(
     // guarda tambien en su columna, salvo que tenga forma de id de Zernio.
     platform_native_message_id: isZernioId(mapped.platform_message_id) ? null : mapped.platform_message_id,
     status: toMessageStatus(isRecord(raw) ? raw.deliveryStatus : undefined),
+    // Lo que trae el historial y no salió de la app es un saliente externo
+    // (ManyChat, la app de Instagram). Los entrantes van con origin null (F2).
+    origin: mapped.direction === "outbound" ? "external" : null,
     created_at: mapped.created_at,
   };
 }

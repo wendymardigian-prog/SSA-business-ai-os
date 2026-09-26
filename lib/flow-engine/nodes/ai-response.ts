@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
+import { outboundMessageRow } from "@/lib/messages/outbound";
 import type { FlowExecutionContext, AiResponseNodeData } from "../types";
 import { generateAiReply } from "@/lib/ai/generate-reply";
 import { sendChannelMessage, recordSend } from "../send";
@@ -24,7 +25,8 @@ async function executeAiResponse(
   supabase: SupabaseClient<Database>,
   data: AiResponseNodeData,
   context: FlowExecutionContext,
-  sessionId: string
+  sessionId: string,
+  nodeId: string
 ) {
   // La generacion (BYOK, historial, traza) vive en lib/ai/generate-reply.ts,
   // que es lo mismo que usan los pasos de IA de las secuencias. Lo que sigue
@@ -47,13 +49,16 @@ async function executeAiResponse(
     // Falta la key, es invalida o el proveedor fallo: no es un error del flow,
     // es configuracion. Se avisa en la conversacion para que el operador lo vea
     // sin mirar logs, y se corta sin romper nada mas.
-    await supabase.from("messages").insert({
-      conversation_id: context.conversationId,
-      direction: "outbound",
-      text: reply.message,
-      sent_by_flow_id: context.flowId,
-      status: "failed",
-    });
+    await supabase.from("messages").insert(
+      outboundMessageRow({
+        conversationId: context.conversationId,
+        origin: "flow",
+        text: reply.message,
+        sentByFlowId: context.flowId ?? null,
+        sentByNodeId: nodeId,
+        status: "failed",
+      }),
+    );
     return cancelRun(supabase, sessionId);
   }
 
@@ -64,7 +69,7 @@ async function executeAiResponse(
     const outcome = await sendChannelMessage(supabase, context, { text: reply.text });
     await recordSend(
       supabase,
-      context,
+      { ...context, nodeId },
       outcome.ok ? reply.text : outcome.failure?.message ?? reply.text,
       outcome
     );
@@ -84,6 +89,6 @@ export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
   type: "aiResponse",
   label: "Respuesta con IA",
   persistsVariables: true,
-  execute: ({ supabase, data, context, sessionId }: NodeExecutionArgs<AiResponseNodeData>) =>
-    executeAiResponse(supabase, data, context, sessionId),
+  execute: ({ supabase, data, context, sessionId, node }: NodeExecutionArgs<AiResponseNodeData>) =>
+    executeAiResponse(supabase, data, context, sessionId, node.id),
 };

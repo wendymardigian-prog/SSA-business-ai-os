@@ -15,12 +15,12 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 
 ## Bloques
 
-- [ ] **Bloque 0 — Arranque:** rama, copia del plano, PROGRESS/PENDIENTE
-- [ ] **Bloque 1 — Base común**
-  - [ ] F1 · Diagnóstico de autoría (`docs/diagnostico-autoria.md`)
-  - [ ] F2 · Columna `messages.origin` (todos los caminos + backfill)
-  - [ ] F3 · Zona horaria del workspace
-  - [ ] F4 · Valores nuevos en checks + `normalize_for_grouping`
+- [x] **Bloque 0 — Arranque:** rama, copia del plano, PROGRESS/PENDIENTE
+- [x] **Bloque 1 — Base común** — 00074/00075/00076 aplicadas
+  - [x] F1 · Diagnóstico de autoría (`docs/diagnostico-autoria.md`) — conclusión (a): 1580 salientes por historial
+  - [x] F2 · Columna `messages.origin` (builder único + 11 caminos + backfill + `message.sent`) — 1580 external, 838 inbound null
+  - [x] F3 · Zona horaria del workspace (`workspaces.timezone`, selector en Settings)
+  - [x] F4 · `already_answered` + fuentes del clasificador + `normalize_for_grouping` (paridad SQL/TS en 20 casos)
 - [ ] **Bloque 2 — Verificación y reglas de respuesta**
   - [ ] F5 · Verificación antes de responder (3 momentos + refresco Zernio)
   - [ ] F6 · Borrador respondido por otro medio
@@ -50,4 +50,8 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 
 ## Migraciones creadas
 
-_(ninguna todavía; continúan desde 00074)_
+| # | Qué crea | Aplicada |
+|---|---|---|
+| 00074 | `messages.origin` + CHECK + backfill + trigger `messages_fill_origin` + índice | ✅ |
+| 00075 | `workspaces.timezone` (default America/Costa_Rica) | ✅ |
+| 00076 | `agent_runs.status` +`already_answered`; `source` +clasificador; `normalize_for_grouping()` | ✅ |

@@ -18,6 +18,7 @@ export default async function SettingsPage() {
           workspace.unassigned_leads_visible_to_members,
         ),
         persistZernioInbound: Boolean(workspace.persist_zernio_inbound),
+        timezone: (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica",
       }}
     />
   );

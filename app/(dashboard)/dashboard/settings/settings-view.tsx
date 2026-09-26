@@ -20,6 +20,7 @@ import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
+import { TimezoneSettings } from "@/components/settings/timezone-settings";
 
 interface WorkspaceSettings {
   id: string;
@@ -29,6 +30,7 @@ interface WorkspaceSettings {
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
   persistZernioInbound: boolean;
+  timezone: string;
 }
 
 export function SettingsView({
@@ -113,6 +115,10 @@ export function SettingsView({
               />
             </div>
           </section>
+
+          <hr className="border-border" />
+
+          <TimezoneSettings timezone={workspace.timezone} />
 
           <hr className="border-border" />
 

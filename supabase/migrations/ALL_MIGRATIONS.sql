@@ -9729,3 +9729,205 @@ REVOKE ALL ON FUNCTION public.contact_tags_apply_effects() FROM PUBLIC, anon, au
 REVOKE ALL ON FUNCTION public.tags_effect_changed() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.conversations_inherit_tag_effects() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.conversations_keep_tag_marker() FROM PUBLIC, anon, authenticated;
+
+-- ============================================================
+-- MIGRATION 74: MESSAGES ORIGIN
+-- ============================================================
+-- ============================================================================
+-- 00074 — Origen de los salientes (Fase 3, Bloque 1, F2)
+-- ============================================================================
+-- Hasta ahora ningun saliente guardaba de donde salio. Los 1.580 del historial
+-- entraron sin autor (ver docs/diagnostico-autoria.md). El dashboard del
+-- Bloque 3 necesita separar Agente / Equipo / Automatizaciones / Fuera del
+-- sistema, y la verificacion del Bloque 2 necesita distinguir un saliente
+-- externo (ManyChat) de uno propio. Ese dato es `messages.origin`.
+--
+--   1. Columna `origin` con su lista cerrada. null en entrantes; no null en
+--      salientes (el CHECK se exige recien despues del backfill).
+--   2. Backfill: agent > user > flow por sus sent_by_*, y external si no tiene
+--      ninguno (que es el caso de todo el historial).
+--   3. Trigger BEFORE INSERT que deriva el origin de cualquier saliente que
+--      llegue sin el. Protege la base mientras la version vieja de la app siga
+--      desplegada: un saliente que entre por un camino todavia sin actualizar
+--      no queda con origin null (romperia el CHECK), se deriva de sus autores.
+--   4. Indice (workspace_id, origin, created_at) para el dashboard.
+--
+-- Idempotente. Solo aditiva: agrega una columna, la puebla y la indexa. No
+-- borra ni modifica datos existentes mas alla de completar `origin`.
+-- ============================================================================
+
+-- 1. Columna --------------------------------------------------------------
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS origin text;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_origin_values') THEN
+    ALTER TABLE public.messages ADD CONSTRAINT messages_origin_values
+      CHECK (origin IS NULL OR origin IN ('agent', 'user', 'flow', 'sequence', 'broadcast', 'external'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.messages.origin IS
+  'De donde salio el saliente: agent, user, flow, sequence, broadcast o external. null en entrantes. Lo escribe cada camino de envio; el trigger messages_fill_origin lo deriva si falta (F2).';
+
+-- 2. Backfill de lo ya guardado ------------------------------------------
+-- Prioridad agent > user > flow: un borrador aprobado lleva las dos autorias
+-- (agente y quien aprobo), y ahi manda el agente. sequence/broadcast no tienen
+-- columna propia en el historial, asi que un saliente sin ningun autor es
+-- external (todo el historial cae aca).
+UPDATE public.messages
+SET origin = CASE
+    WHEN sent_by_agent_id IS NOT NULL THEN 'agent'
+    WHEN sent_by_user_id IS NOT NULL THEN 'user'
+    WHEN sent_by_flow_id IS NOT NULL THEN 'flow'
+    ELSE 'external'
+  END
+WHERE direction = 'outbound' AND origin IS NULL;
+
+UPDATE public.messages
+SET origin = NULL
+WHERE direction = 'inbound' AND origin IS NOT NULL;
+
+-- 3. Trigger que deriva el origin en salientes sin el --------------------
+CREATE OR REPLACE FUNCTION public.messages_fill_origin()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.direction = 'inbound' THEN
+    NEW.origin := NULL;
+  ELSIF NEW.origin IS NULL THEN
+    NEW.origin := CASE
+      WHEN NEW.sent_by_agent_id IS NOT NULL THEN 'agent'
+      WHEN NEW.sent_by_user_id IS NOT NULL THEN 'user'
+      WHEN NEW.sent_by_flow_id IS NOT NULL THEN 'flow'
+      ELSE 'external'
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS messages_fill_origin ON public.messages;
+CREATE TRIGGER messages_fill_origin
+  BEFORE INSERT OR UPDATE OF origin, direction, sent_by_agent_id, sent_by_user_id, sent_by_flow_id
+  ON public.messages
+  FOR EACH ROW
+  EXECUTE FUNCTION public.messages_fill_origin();
+
+-- 4. CHECK duro: todo saliente tiene origin -------------------------------
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'messages_outbound_has_origin') THEN
+    ALTER TABLE public.messages ADD CONSTRAINT messages_outbound_has_origin
+      CHECK (direction <> 'outbound' OR origin IS NOT NULL);
+  END IF;
+END $$;
+
+-- 5. Indice para el dashboard ---------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_messages_workspace_origin_created
+  ON public.messages (workspace_id, origin, created_at);
+
+-- 6. Verificacion: no puede quedar un saliente sin origin -----------------
+DO $$
+DECLARE v_missing integer;
+BEGIN
+  SELECT count(*) INTO v_missing
+  FROM public.messages
+  WHERE direction = 'outbound' AND origin IS NULL;
+  IF v_missing > 0 THEN
+    RAISE EXCEPTION 'Quedaron % salientes sin origin despues del backfill', v_missing;
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 75: WORKSPACE TIMEZONE
+-- ============================================================
+-- ============================================================================
+-- 00075 — Zona horaria del workspace (Fase 3, Bloque 1, F3)
+-- ============================================================================
+-- Los dashboards del Bloque 3 cortan los dias en la zona del negocio ("Hoy",
+-- "Esta semana"). Hasta ahora la zona vivia como constante en el codigo
+-- (BUSINESS_TIMEZONE = America/Costa_Rica). Se guarda en el workspace para que
+-- las funciones de metricas la usen. Los lectores viejos (guardarrailes,
+-- costos, topes) siguen con la constante por ahora; unificarlos queda anotado.
+--
+-- Idempotente y aditiva: una columna con default.
+-- ============================================================================
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'America/Costa_Rica';
+
+COMMENT ON COLUMN public.workspaces.timezone IS
+  'Zona horaria IANA del negocio. Los dashboards cortan dias y semanas con esta zona (F3). Default America/Costa_Rica.';
+
+-- authenticated ya puede leer todas las columnas de workspaces por su policy;
+-- no hace falta GRANT de columna (a diferencia de agents, que revoca costos).
+
+-- ============================================================
+-- MIGRATION 76: RUN VALUES AND NORMALIZE
+-- ============================================================
+-- ============================================================================
+-- 00076 — Valores nuevos en agent_runs y normalizador para agrupar (F4)
+-- ============================================================================
+-- Fase 3, Bloque 1.
+--
+--   1. agent_runs.status suma `already_answered`: el turno se retira porque ya
+--      hubo una respuesta (Bloque 2, verificacion antes de responder).
+--   2. agent_runs.source suma `message_classification` y
+--      `message_classification_eval`: las corridas del clasificador de patrones
+--      y su evaluacion contra el set de control (Bloques 4 y 5). No llevan
+--      agent_id, asi que el CHECK agent_only_for_agent_sources no cambia.
+--   3. public.normalize_for_grouping(text): normaliza para AGRUPAR mensajes
+--      (colapsa letras repetidas: "siii" y "si" caen juntas). Es distinta de
+--      normalize_message_text (00027), que se sigue usando para detectar frases
+--      de "no contactar" y NO se toca: cambiarla movería esa deteccion.
+--
+-- Idempotente. Aditiva: recrea CHECKs para sumar valores (patron del repo) y
+-- crea una funcion nueva. No borra datos.
+-- ============================================================================
+
+-- 1 y 2. CHECKs de agent_runs --------------------------------------------
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_status_values;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_status_values
+  CHECK (status IN ('running', 'responded', 'escalated', 'skipped_automation',
+                    'skipped', 'blocked_guardrail', 'completed', 'error', 'drafted',
+                    'already_answered'));
+
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_values;
+ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_values
+  CHECK (source IN ('agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+                    'conversation_summary', 'message_classification',
+                    'message_classification_eval'));
+
+-- 3. Normalizador para agrupar -------------------------------------------
+-- minusculas → saca acentos con translate (no unaccent) → elimina todo lo que
+-- no sea letra, numero o espacio → colapsa 2+ caracteres iguales seguidos en
+-- uno → colapsa espacios y recorta → trunca a 300.
+CREATE OR REPLACE FUNCTION public.normalize_for_grouping(p_raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT left(
+    btrim(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            translate(lower(coalesce(p_raw, '')),
+              'áàäâãéèëêíìïîóòöôõúùüûñç',
+              'aaaaaeeeeiiiiooooouuuunc'),
+            '[^a-z0-9 ]', '', 'g'),
+          '(.)\1+', '\1', 'g'),
+        '\s+', ' ', 'g')
+    ),
+    300
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.normalize_for_grouping(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.normalize_for_grouping(text) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.normalize_for_grouping(text) IS
+  'Normaliza para AGRUPAR mensajes por lo que significan (colapsa letras repetidas: siii=si). Distinta de normalize_message_text (00027), que detecta frases de no contactar. Espejo exacto de lib/text/normalize.ts (F4).';

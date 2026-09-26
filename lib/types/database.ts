@@ -14,6 +14,14 @@ export type FlowStatus = "draft" | "published" | "archived";
 export type ConversationStatus = "open" | "closed" | "snoozed";
 export type MessageDirection = "inbound" | "outbound";
 export type MessageStatus = "pending" | "sent" | "delivered" | "failed";
+/** Origen de un saliente (migracion 00074). null en entrantes. */
+export type MessageOrigin =
+  | "agent"
+  | "user"
+  | "flow"
+  | "sequence"
+  | "broadcast"
+  | "external";
 /** De donde sale la conexion del canal (migracion 00019). */
 export type ChannelProvider = "zernio" | "evolution";
 export type ChannelConnectionStatus =
@@ -270,6 +278,8 @@ export interface Database {
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          /** Zona horaria IANA del negocio (migracion 00075). */
+          timezone: string;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
@@ -289,6 +299,7 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          timezone?: string;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           created_at?: string;
@@ -307,6 +318,7 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          timezone?: string;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
           updated_at?: string;
@@ -1038,6 +1050,8 @@ export interface Database {
           sent_by_agent_id: string | null;
           /** Run del agente que genero este mensaje (migracion 00059). */
           agent_run_id: string | null;
+          /** De donde salio el saliente (migracion 00074). null en entrantes. */
+          origin: MessageOrigin | null;
           status: MessageStatus;
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */
@@ -1059,6 +1073,8 @@ export interface Database {
           sent_by_user_id?: string | null;
           sent_by_agent_id?: string | null;
           agent_run_id?: string | null;
+          /** Requerido en salientes despues del backfill; null en entrantes. El trigger lo deriva si falta. */
+          origin?: MessageOrigin | null;
           status?: MessageStatus;
           created_at?: string;
           /**

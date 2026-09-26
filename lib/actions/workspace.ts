@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { WORKSPACE_COOKIE } from "@/lib/workspace";
+import { isValidTimeZone } from "@/lib/timezone";
 import type { Json } from "@/lib/types/database";
 
 export async function switchWorkspace(workspaceId: string) {
@@ -182,6 +183,54 @@ export async function updateMessagePersistence(
     entityId: workspace.id,
     action: "update",
     changes: { persist_zernio_inbound: { old: !enabled, new: enabled } },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
+ * Zona horaria del workspace (F3). Los dashboards del Bloque 3 cortan los días
+ * en esta zona. Se valida en el servidor: una zona inválida se rechaza con un
+ * mensaje claro, nunca se guarda.
+ */
+export async function updateWorkspaceTimezone(
+  timezone: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return { ok: false, error: "Solo Owner y Admin pueden cambiar la zona horaria" };
+  }
+  if (!isValidTimeZone(timezone)) {
+    return { ok: false, error: "Esa zona horaria no es válida" };
+  }
+
+  const { workspace, supabase, user } = ctx;
+
+  const { data: prev } = await supabase
+    .from("workspaces")
+    .select("timezone")
+    .eq("id", workspace.id)
+    .single();
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ timezone })
+    .eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar la zona horaria:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { timezone: { old: (prev as { timezone?: string } | null)?.timezone ?? null, new: timezone } },
     performedBy: user.id,
   });
 

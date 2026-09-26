@@ -51,6 +51,8 @@ export async function buildSequenceSendContext(
       // No nace de un flow. La columna sent_by_flow_id tiene FK a flows, asi
       // que null es lo unico correcto: un uuid inventado rompe el insert.
       flowId: null,
+      // El saliente es de una secuencia (drip), no de un flow (F2).
+      origin: "sequence",
     },
   };
 }

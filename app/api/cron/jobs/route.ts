@@ -12,6 +12,7 @@ import {
   KNOWLEDGE_BUCKET,
   type IndexDocumentPayload,
 } from "@/lib/knowledge/index-document";
+import { outboundMessageRow } from "@/lib/messages/outbound";
 
 // Signals the handler to skip retry/backoff and route straight to the
 // failed + settle branch (which performs/re-attempts the session cancel).
@@ -737,7 +738,7 @@ async function processJob(
       // Get the conversation for this contact+channel (need late_conversation_id)
       const { data: conv } = await supabase
         .from("conversations")
-        .select("late_conversation_id")
+        .select("id, late_conversation_id, workspace_id")
         .eq("contact_id", recipient.contact_id)
         .eq("channel_id", recipient.channel_id)
         .single();
@@ -766,10 +767,28 @@ async function processJob(
       if (!sendClaim || sendClaim.length === 0) return;
 
       try {
-        await zernio.messages.sendInboxMessage({
+        const sendRes = await zernio.messages.sendInboxMessage({
           path: { conversationId: conv.late_conversation_id },
           body: { accountId: channel.late_account_id, message: messageContent?.text || "" },
         });
+
+        // Guardar el saliente del broadcast (F2): antes no quedaba en messages,
+        // así que el dashboard no lo podía atribuir a Automatizaciones. El
+        // índice único por platform_message_id descarta un eco duplicado.
+        const broadcastMessageId = (sendRes?.data as { data?: { messageId?: string } } | undefined)?.data?.messageId ?? null;
+        const { error: broadcastStoreError } = await supabase.from("messages").insert(
+          outboundMessageRow({
+            conversationId: conv.id,
+            workspaceId: conv.workspace_id,
+            origin: "broadcast",
+            text: messageContent?.text || "",
+            platformMessageId: broadcastMessageId,
+            status: "sent",
+          }),
+        );
+        if (broadcastStoreError && broadcastStoreError.code !== "23505") {
+          console.error("[broadcast] no pude guardar el saliente:", broadcastStoreError.message);
+        }
 
         await supabase
           .from("broadcast_recipients")

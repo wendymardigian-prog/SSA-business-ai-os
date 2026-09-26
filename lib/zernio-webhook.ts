@@ -19,7 +19,20 @@ import type { Zernio } from "./zernio-client";
 export const WEBHOOK_NAME = "Zernflow";
 
 /** Events Zernflow needs delivered to its webhook. */
-export type WebhookEvent = "message.received" | "comment.received";
+export type WebhookEvent = "message.received" | "comment.received" | "message.sent";
+
+/**
+ * Eventos que la app se suscribe. `message.sent` trae los ecos de lo que se
+ * mandó fuera de la app (la doc del SDK: "operator replied from the native
+ * app"), que hoy no llegan por webhook. Se guarda como saliente `external`
+ * (F2). El refresco contra Zernio (Bloque 2) cubre igual el caso por si el
+ * proveedor no dispara el eco de ManyChat.
+ */
+export const SUBSCRIBED_EVENTS: WebhookEvent[] = [
+  "message.received",
+  "comment.received",
+  "message.sent",
+];
 
 export interface EnsureWebhookOptions {
   /**

@@ -5,7 +5,7 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { getEvolutionConfig, sendText, EvolutionError } from "@/lib/evolution-client";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
-
+import { outboundMessageRow } from "@/lib/messages/outbound";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -45,6 +45,13 @@ export interface SendContext {
   lateAccountId?: string;
   /** null cuando el envio no nace de un flow (secuencias, envios manuales). */
   flowId?: string | null;
+  /** Nodo del flow que originó el envío, para atribuir el saliente (F2). */
+  nodeId?: string | null;
+  /**
+   * Origen del saliente (F2). Por defecto `flow`; las secuencias pasan
+   * `sequence`. Determina `messages.origin`.
+   */
+  origin?: "flow" | "sequence";
 }
 
 export interface OutboundMessage {
@@ -299,15 +306,18 @@ export async function recordSend(
   outcome: SendOutcome,
   attachments?: unknown[] | null
 ): Promise<void> {
-  await supabase.from("messages").insert({
-    conversation_id: context.conversationId,
-    direction: "outbound",
-    text,
-    attachments: (attachments as never) ?? null,
-    sent_by_flow_id: context.flowId ?? null,
-    platform_message_id: outcome.platformMessageId ?? null,
-    status: outcome.ok ? "sent" : "failed",
-  });
+  await supabase.from("messages").insert(
+    outboundMessageRow({
+      conversationId: context.conversationId,
+      origin: context.origin ?? "flow",
+      text,
+      attachments: attachments ?? null,
+      sentByFlowId: context.flowId ?? null,
+      sentByNodeId: context.nodeId ?? null,
+      platformMessageId: outcome.platformMessageId ?? null,
+      status: outcome.ok ? "sent" : "failed",
+    }),
+  );
 
   await supabase.from("analytics_events").insert({
     workspace_id: context.workspaceId,
