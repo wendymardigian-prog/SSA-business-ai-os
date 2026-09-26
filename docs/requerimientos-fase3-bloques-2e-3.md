@@ -1,7 +1,7 @@
 # Requerimientos — Sistema Operativo de Negocio con IA
 ## Etapa 1 — Fase 3: Bloques 2e y 3 · Verificación y reglas de respuesta + Dashboards
 
-**Versión:** 1.1 (documento único para construcción one-shot) — ajustada después de revisar el repo: salientes externos que no llegan por webhook, Bloque 2d-B diferido, descarte `auto:answered_elsewhere` ya existente
+**Versión:** 1.2 (documento único para construcción one-shot) — ajustada después de revisar el repo: salientes externos que no llegan por webhook, Bloque 2d-B diferido, descarte `auto:answered_elsewhere` ya existente
 **Fecha:** 25 de septiembre de 2026
 **Cliente:** Wendy Mardigian (Scaling Systems Academy)
 **Reemplaza a:** `requerimientos-bloque2e-reglas-respuesta.md` y `requerimientos-bloque3-dashboards.md` (quedan como antecedente). También reemplaza la sección 4.9 y los criterios F35–F37 de `requerimientos-etapa1-fase3-v2.md`.
@@ -167,6 +167,8 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 - `RLS` = `node scripts/verify-rls.mjs` sale 0 (extenderlo con los casos nuevos).
 - `VERIFY-DASH` = `node scripts/verify-dashboards.mjs` (script nuevo, mismo patrón que `verify-rls.mjs` y `verify-crm.mjs`: crea un workspace de prueba con datos fijos, llama a las funciones reales y compara contra valores esperados; limpia al terminar y trata una limpieza fallida como falla).
 - Todas las APIs externas (Zernio, proveedores de IA, API por lote) van **mockeadas** en los tests.
+- **Tests de pantallas:** el repo corre Vitest en entorno `node`, sin Playwright ni Testing Library. **No sumes dependencias de testing nuevas.** La lógica de cada pantalla (qué se muestra según el estado, cálculos, formatos, umbrales, estado de la URL) va en funciones puras (`lib/dashboards/`, `lib/agent/rules/`, etc.) que se testean con Vitest; los componentes solo las componen. Los archivos de test sugeridos abajo son `.ts` por eso.
+- **Revisión visual con el navegador de Claude Code:** al terminar cada bloque con pantallas (3, 4 y 5), Claude Code levanta `npm run dev` y recorre las pantallas nuevas con su propia herramienta de navegador, a 1440 px y a 390 px de ancho: que se vean, que no haya scroll horizontal, que los estados vacíos y de error aparezcan. La app pide login y **no se ingresan credenciales**: si no hay una sesión ya iniciada disponible, la revisión se anota en `docs/PENDIENTE.md` como lista para hacer con Wendy. Esta revisión **no** es parte de la condición de "listo" (depende de una sesión), pero lo que encuentre sí se corrige o se anota.
 - Migraciones idempotentes, numeradas continuando la secuencia real, funciones con `SET search_path = ''`.
 
 ---
@@ -308,7 +310,7 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 - `/dashboard/analytics` DEBE redirigir (308) a `/dashboard/dashboards/chat`.
 - La barra superior DEBE medir 56 px en todas las páginas y ninguna página DEBE renderizar subtítulo. Cada página DEBE tener un ícono ⓘ con tooltip accesible (abre con hover y con foco, `aria-describedby`).
 - En anchos menores a 860 px, la barra sigue midiendo 56 px y los filtros del dashboard pasan a una franja fija de 48 px debajo, con scroll horizontal propio.
-- Test: `tests/layout/topbar.test.tsx` renderiza el componente de barra superior y verifica alto, ausencia de subtítulo y tooltip. `tests/layout/nav.test.tsx` verifica orden y nombre del menú. Test e2e (Playwright, ya disponible en el entorno) `e2e/topbar.spec.ts` recorre Dashboards, Inbox, Contacts, Agentes y Settings a 1440 px y a 390 px y mide la barra (56 px) y la ausencia de scroll horizontal. Pasan con `TEST` y `npx playwright test e2e/topbar.spec.ts`.
+- Test: `tests/layout/nav.test.ts` verifica la definición del menú (orden, nombre, ícono) y que ninguna página declare subtítulo en su configuración de barra; `tests/layout/redirect.test.ts` verifica la redirección. Una sola constante de alto (`TOPBAR_HEIGHT = 56`) compartida por el sidebar y la barra, verificada en el test. Pasan con `TEST`. Revisión visual con el navegador de Claude Code en Dashboards, Inbox, Contacts, Agentes y Settings a 1440 y 390 px (ver convenciones).
 
 #### F14: Filtros y período
 **Criterios:**
@@ -334,7 +336,7 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 **Criterios:** según §15.2 (franja de contexto, aviso de borradores, 5 tarjetas, tendencias con 4 pestañas, tooltips por barra/punto, leyenda con más de una serie, colores estables por serie, barras semanales para más de 62 días).
 - Cada bloque DEBE pedirse en paralelo y mostrarse apenas llega, con su skeleton.
 - CUANDO una función falla, el bloque DEBE mostrar qué falló y "Reintentar". Nunca un número de relleno.
-- Test: `tests/dashboards/cards.test.tsx` (comparación con período anterior, color de "Primera respuesta" cuando baja, "Esperando respuesta ahora" sin comparación) y `tests/dashboards/trends.test.tsx` (4 pestañas, paso a semanal con 63 días, leyenda). Pasan con `TEST`.
+- Test: `tests/dashboards/cards.test.ts` sobre la función que arma las tarjetas (comparación con período anterior, tono de "Primera respuesta" cuando baja, "Esperando respuesta ahora" sin comparación) y `tests/dashboards/trends.test.ts` sobre la que arma las series (4 pestañas, paso a semanal con 63 días, cuándo hay leyenda). Pasan con `TEST`.
 
 #### F17: Sección del agente y aprobación de borradores
 **Criterios:** según §15.2 y las definiciones de §11.4 y §11.5.
@@ -343,16 +345,16 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 - CUANDO ningún canal está en `draft` ni en `rules`, la tarjeta de aprobación y el aviso superior NO DEBEN mostrarse como activos; la tarjeta explica cómo activarlo.
 - El botón del aviso DEBE ir a `/dashboard/drafts`.
 - La tarjeta de resultados de reglas (cuántos turnos se enviaron directo, quedaron en borrador o no se respondieron, por regla) DEBE mostrarse si algún canal está en `rules`.
-- Test: incluido en `VERIFY-DASH` (valores) y `tests/dashboards/agent-section.test.tsx` (los tres estados de la sección). Pasan.
+- Test: incluido en `VERIFY-DASH` (valores) y `tests/dashboards/agent-section.test.ts` (la función que decide cuál de los tres estados de la sección se muestra). Pasan.
 
 #### F18: Tabla "Quién responde"
 **Criterios:** según §15.2.
 - Tocar una fila DEBE aplicar el filtro de esa persona (y actualizar la URL); tocarla otra vez lo quita.
 - Tiempos > 1 h en ámbar con ícono de reloj; > 4 h en rojo con ícono.
 - Un Member DEBE ver solo la fila del agente y la suya.
-- Test: `tests/dashboards/team-table.test.tsx` (colores por umbral, filtro por clic) y caso Member en `VERIFY-DASH` y `RLS`. Pasan.
+- Test: `tests/dashboards/team-table.test.ts` (tono por umbral de tiempo, filas visibles por rol, URL resultante al tocar una fila) y caso Member en `VERIFY-DASH` y `RLS`. Pasan.
 
-> **Bloque 3 listo cuando:** F13 a F18 cumplen sus criterios, `TEST`, `BUILD`, `RLS`, `VERIFY-DASH` y `npx playwright test e2e/topbar.spec.ts` salen 0, y ningún test previo se rompió.
+> **Bloque 3 listo cuando:** F13 a F18 cumplen sus criterios, `TEST`, `BUILD`, `RLS` y `VERIFY-DASH` salen 0, y ningún test previo se rompió. La revisión visual quedó hecha o anotada.
 
 ---
 
@@ -394,7 +396,7 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 - "Qué le responden" DEBE calcularse según §11.7.
 - Los porcentajes de "Qué le responden" DEBEN sumar 100% de las respuestas, y el "% no respondió" DEBE ser exacto.
 - Un Member ve los patrones de su scope sin controles de edición.
-- Test: valores en `VERIFY-DASH`; `tests/patterns/section.test.tsx` (despliegue de variantes, confianza en ámbar < 70%, controles ocultos para Member). Pasan.
+- Test: valores en `VERIFY-DASH`; `tests/patterns/section.test.ts` (armado de categorías con variantes, tono de confianza < 70%, controles de edición según rol). Pasan.
 
 > **Bloque 4 listo cuando:** F19 a F22 cumplen sus criterios, `TEST`, `BUILD`, `RLS` y `VERIFY-DASH` salen 0, y ningún test previo se rompió.
 
@@ -444,7 +446,7 @@ Primer usuario: Owner (sin cambios). Invitaciones: sin cambios.
 
 ### Definición de "listo" de toda la corrida
 
-Los bloques 1 a 5 están listos; `npx vitest run`, `npm run build`, `npm run lint`, `node scripts/verify-rls.mjs`, `node scripts/verify-dashboards.mjs` y `npx playwright test` salen 0; las migraciones se aplicaron en orden; `docs/agente-ia.md`, `docs/dashboards.md` (nuevo) y la bitácora de construcción están actualizados; **el agente sigue apagado**; y cualquier bloqueo o decisión tomada sin confirmación quedó anotado en `docs/PENDIENTE.md` con qué se hizo y por qué.
+Los bloques 1 a 5 están listos; `npx vitest run`, `npm run build`, `npm run lint`, `node scripts/verify-rls.mjs`, y `node scripts/verify-dashboards.mjs` salen 0; la revisión visual de los bloques 3, 4 y 5 quedó hecha o anotada en `docs/PENDIENTE.md`; las migraciones se aplicaron en orden; `docs/agente-ia.md`, `docs/dashboards.md` (nuevo) y la bitácora de construcción están actualizados; **el agente sigue apagado**; y cualquier bloqueo o decisión tomada sin confirmación quedó anotado en `docs/PENDIENTE.md` con qué se hizo y por qué.
 
 ### Funcionalidades de fases siguientes (no se construyen ahora)
 - Asistente para armar reglas en lenguaje natural — después de Etapa 1
@@ -830,7 +832,7 @@ Revisión rápida: tarjetas de a una, 20 por sesión, primero menor confianza y 
 | Evaluador de reglas | Función pura TS en `lib/agent/rules/` | Testeable, compartida por turno y simulación |
 | Clasificador | Helper único de IA del proyecto, con API por lote del proveedor cuando exista | BYOK, costos registrados |
 | Jobs | `scheduled_jobs` + `pg_cron` | Patrón existente |
-| Tests | Vitest 3 + Playwright (e2e de la barra) + scripts `verify-*.mjs` | Verificación por máquina |
+| Tests | Vitest 3 (entorno node, lógica de pantallas en funciones puras) + scripts `verify-*.mjs` + revisión visual con el navegador de Claude Code | Verificación por máquina sin sumar dependencias |
 
 **Diagrama conceptual:**
 `Instagram → Zernio → webhook → guardar (origin, text_norm, trigger message_texts, momento 3) → ¿automatización interna? → ventana de silencio → momento 1 → espera externa → guardarraíles → reglas (previa) → agente (+intent) → reglas (final) → momento 2 + envío/borrador (atómico) → routing`
