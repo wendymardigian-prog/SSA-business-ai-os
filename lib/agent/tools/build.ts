@@ -47,6 +47,16 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
   const tools: ToolSet = {};
 
   for (const definition of toolsForAgent(ctx.agent)) {
+    // Solo lectura: nada que escriba en el CRM. Las diferidas en borrador se
+    // quedan: solo dejan una sugerencia.
+    if (ctx.readOnly && definition.auditAction && !(draft && definition.deferInDraft)) {
+      await ctx.run.step({
+        kind: "tool_call",
+        name: definition.name,
+        error: "herramienta omitida: esta version no puede modificar el CRM",
+      });
+      continue;
+    }
     const resolved = resolveConfig(definition, ctx.agent.toolsConfig[definition.name]);
     if (!resolved.ok) {
       await ctx.run.step({

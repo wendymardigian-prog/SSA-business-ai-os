@@ -265,6 +265,9 @@ export async function runAgentTurn(
       mode,
       revision,
       payload,
+      // Regenerar sin mensajes nuevos reescribe el texto: no vuelve a tocar el
+      // CRM (Bloque 2d-A). Con un mensaje nuevo del lead es un turno normal.
+      readOnlyTools: previousDraft !== null && skipWindow,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "error desconocido";
@@ -296,6 +299,7 @@ async function continueTurn(
     mode: "send" | "draft";
     revision: TurnRevision | null;
     payload: AgentBurstPayload;
+    readOnlyTools: boolean;
   },
 ): Promise<TurnOutcome> {
   const { deps, agent, conversation, messages, burst, run } = args;
@@ -470,11 +474,17 @@ async function continueTurn(
       run,
       nonce,
       mode: args.mode,
+      readOnly: args.readOnlyTools,
     }),
   ]);
   const system = buildSystemPrompt(agent, nonce, Object.keys(toolSet.tools));
   const revision: DraftRevision | null = args.revision
-    ? { previousBody: args.revision.previousBody, instruction: args.revision.instruction, alreadyApplied: args.revision.alreadyApplied }
+    ? {
+        previousBody: args.revision.previousBody,
+        instruction: args.revision.instruction,
+        alreadyApplied: args.revision.alreadyApplied,
+        readOnly: args.readOnlyTools,
+      }
     : null;
   const modelMessages = buildModelMessages({ history: toHistory(messages), contact, nonce, revision });
 

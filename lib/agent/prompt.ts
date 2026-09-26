@@ -102,6 +102,11 @@ export interface DraftRevision {
   instruction: string | null;
   /** Lo que el turno anterior ya aplico en el CRM ("Etiqueto: interesado"). */
   alreadyApplied: string[];
+  /**
+   * La revision no puede tocar el CRM (Bloque 2d-A): regenerar sin mensajes
+   * nuevos del lead reescribe el texto, no vuelve a etiquetar ni a asignar.
+   */
+  readOnly?: boolean;
 }
 
 export function buildModelMessages(args: {
@@ -158,7 +163,7 @@ export function buildModelMessages(args: {
   // pedido de la persona como ultimo turno. Sin esto el modelo devuelve casi el
   // mismo texto.
   const revision = args.revision;
-  if (revision && (revision.instruction || revision.alreadyApplied.length)) {
+  if (revision && (revision.instruction || revision.alreadyApplied.length || revision.readOnly)) {
     if (revision.previousBody && revision.instruction) {
       messages.push({ role: "assistant", content: revision.previousBody });
     }
@@ -169,8 +174,9 @@ export function buildModelMessages(args: {
         : null,
       revision.instruction ? "Escribi otra respuesta para el lead teniendo en cuenta ese pedido. No repitas la anterior." : null,
       revision.alreadyApplied.length
-        ? `En el intento anterior ya aplicaste: ${revision.alreadyApplied.join("; ")}. No las repitas.`
+        ? `En el intento anterior ya aplicaste: ${revision.alreadyApplied.join("; ")}. ${revision.readOnly ? "Siguen aplicadas." : "No las repitas."}`
         : null,
+      revision.readOnly ? "En esta version no podes modificar el CRM (etiquetas, temperatura, seguimiento, asignacion): solo reescribir la respuesta." : null,
     ].filter(Boolean);
     messages.push({ role: "user", content: lines.join("\n\n") });
   }
