@@ -173,6 +173,17 @@ export function Sidebar({
       </nav>
 
       <div className="space-y-1 border-t border-sidebar-border p-3 collapsed:px-2">
+        {/*
+          La campana vive en el pie y no en la banda de arriba: tiene que estar
+          visible en todas las pantallas, y el pie es tan persistente como la
+          banda. Ahi arriba ahora esta el boton de colapsar.
+        */}
+        <NotificationBell
+          workspaceId={workspace.id}
+          initialUnread={unreadNotifications}
+          variant="row"
+          placement="up"
+        />
         <button
           onClick={toggleTheme}
           title={collapsed ? (dark ? "Light mode" : "Dark mode") : undefined}
