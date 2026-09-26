@@ -31,7 +31,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 | F9, F11, F12 | Esquemas Zod de `weekly_hours` y `date_overrides` + validación compartida | `lib/scheduling/availability-schema.ts`, `rules-validation.test.ts`, `overrides.test.ts` | [x] |
 | F10 | `summarizeSchedule` | `schedules.ts`, `schedules.test.ts` | [x] |
 | F13 | Tiempo fuera de días completos a UTC | `out-of-office.ts`, `out-of-office.test.ts` (solo lo puro; `conflictingBookings` va en la Tanda B) | [x] |
-| F17, F18 | `slugify` y validaciones puras del evento | `event-types.test.ts`, `event-validation.test.ts` | [ ] |
+| F17, F18 | `slugify` y validaciones puras del evento | `slug.ts`, `event-validation.ts`, `event-types.test.ts`, `event-validation.test.ts` (incluye los casos puros de F21) | [x] |
 | F20 | `buildBookingSchema` y tipo de `booking_fields` | `lib/scheduling/booking-fields.ts`, `phone-countries.ts` (constante de países, decisión de Wendy), `booking-fields.test.ts` | [x] |
 | F21 | Límites y buffers | `lib/scheduling/limits/{buffers,period,counts,validation}.ts` + tests | [x] |
 | F23 | Motor de horarios completo | `lib/scheduling/slots/{date-ranges,busy,slots,index}.ts`, `slots.test.ts` (8 casos del plano + otros), `split.test.ts` y `date-ranges.test.ts` (portados de Cal.diy) | [x] |
@@ -50,7 +50,7 @@ Corrida autónoma en la rama `etapa4-nucleo`. Plano: `docs/requerimientos-agenda
 - [x] 3 · Límites (F21) — 22 tests
 - [x] 4 · Motor (F23) — 42 tests; `getAvailableSlots`, `availableSlots`, `freeWindows`, `isSlotAvailable`
 - [x] 5 · Formulario (F20) — 16 tests
-- [ ] 6 · Validaciones del evento (F17, F18)
+- [x] 6 · Validaciones del evento (F17, F18) — 19 tests
 - [ ] 7 · Estados y vistas (F32, F34, F35)
 - [ ] 8 · Helpers del booker, `.ics` y variables (F25, F27, F47)
 - [ ] 9 · Embed y mensajes (F39, F40, F41, F58)
