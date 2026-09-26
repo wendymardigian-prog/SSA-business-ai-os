@@ -25,6 +25,7 @@ import {
   revokeInvite,
 } from "@/lib/actions/team";
 import { ASSIGNABLE_ROLES, isAdminRole, ROLE_LABELS } from "@/lib/auth/roles";
+import { setMemberRole } from "@/lib/actions/team";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
@@ -32,9 +33,18 @@ import { PageHeader } from "@/components/page-header";
 interface MemberDetail {
   userId: string;
   role: string;
+  /** El rol del workspace con los permisos finos (00088). */
+  roleId: string | null;
   joinedAt: string;
   email: string;
   name: string;
+}
+
+/** Un rol del workspace, para el selector (F72). */
+interface WorkspaceRoleOption {
+  id: string;
+  name: string;
+  systemRole: "owner" | "admin" | "member" | null;
 }
 
 interface PendingInvite {
@@ -67,6 +77,7 @@ export function TeamView({
   currentUserRole,
   members: initialMembers,
   pendingInvites: initialInvites,
+  workspaceRoles = [],
 }: {
   workspaceId: string;
   workspaceName: string;
@@ -74,6 +85,8 @@ export function TeamView({
   currentUserRole: string;
   members: MemberDetail[];
   pendingInvites: PendingInvite[];
+  /** Los roles del workspace. Vacio = el selector viejo (admin/member). */
+  workspaceRoles?: WorkspaceRoleOption[];
 }) {
   const router = useRouter();
   const isOwner = currentUserRole === "owner";
@@ -177,6 +190,37 @@ export function TeamView({
     setChangingRoleFor(null);
   }
 
+  /**
+   * Asignar un rol del workspace (F72).
+   *
+   * `role` sigue siendo owner/admin/member y `role_id` apunta al rol con los
+   * permisos finos: un rol personalizado es siempre un `member` con permisos
+   * de mas, asi ninguna policy vieja cambia de comportamiento.
+   */
+  async function handleWorkspaceRoleChange(userId: string, roleId: string) {
+    setChangingRoleFor(userId);
+    setRoleError(null);
+
+    const previous = members;
+    const role = workspaceRoles.find((r) => r.id === roleId);
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.userId === userId
+          ? { ...m, roleId, role: role?.systemRole ?? "member" }
+          : m,
+      ),
+    );
+
+    const result = await setMemberRole({ userId, roleId });
+
+    if (!result.ok) {
+      setMembers(previous);
+      setRoleError(result.error);
+    }
+
+    setChangingRoleFor(null);
+  }
+
   async function handleRevoke(inviteId: string) {
     setRevokingId(inviteId);
 
@@ -250,20 +294,43 @@ export function TeamView({
                         <span className="sr-only">
                           Rol de {member.name}
                         </span>
-                        <select
-                          value={member.role}
-                          onChange={(e) =>
-                            handleRoleChange(member.userId, e.target.value)
-                          }
-                          disabled={changingRoleFor === member.userId}
-                          className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] capitalize disabled:opacity-50"
-                        >
-                          {ASSIGNABLE_ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
-                            </option>
-                          ))}
-                        </select>
+                        {workspaceRoles.length > 0 ? (
+                          // Con roles del workspace se elige uno de ellos: el
+                          // selector viejo solo ofrecia admin y member, y un
+                          // rol personalizado no entraria.
+                          <select
+                            value={member.roleId ?? ""}
+                            onChange={(e) =>
+                              handleWorkspaceRoleChange(member.userId, e.target.value)
+                            }
+                            disabled={changingRoleFor === member.userId}
+                            className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] disabled:opacity-50"
+                          >
+                            {member.roleId === null && <option value="">Sin rol</option>}
+                            {workspaceRoles
+                              .filter((r) => r.systemRole !== "owner")
+                              .map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name}
+                                </option>
+                              ))}
+                          </select>
+                        ) : (
+                          <select
+                            value={member.role}
+                            onChange={(e) =>
+                              handleRoleChange(member.userId, e.target.value)
+                            }
+                            disabled={changingRoleFor === member.userId}
+                            className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] capitalize disabled:opacity-50"
+                          >
+                            {ASSIGNABLE_ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         {changingRoleFor === member.userId && (
                           <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                         )}

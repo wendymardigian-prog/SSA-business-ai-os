@@ -24,7 +24,10 @@ export const getWorkspace = cache(async () => {
   if (selectedId) {
     const { data: membership } = await supabase
       .from("workspace_members")
-      .select("workspace_id, role, workspaces(*)")
+      // role_id se suma en la etapa 2: es el rol con los permisos finos
+      // (00088). `role` sigue siendo owner/admin/member y es lo que leen las
+      // policies que ya existian.
+      .select("workspace_id, role, role_id, workspaces(*)")
       .eq("user_id", user.id)
       .eq("workspace_id", selectedId)
       .single();
@@ -34,6 +37,7 @@ export const getWorkspace = cache(async () => {
         user,
         workspace: membership.workspaces,
         role: membership.role,
+        roleId: membership.role_id,
         supabase,
       };
     }
@@ -42,7 +46,7 @@ export const getWorkspace = cache(async () => {
   // Fallback to first workspace
   const { data: membership } = await supabase
     .from("workspace_members")
-    .select("workspace_id, role, workspaces(*)")
+    .select("workspace_id, role, role_id, workspaces(*)")
     .eq("user_id", user.id)
     .limit(1)
     .single();
@@ -53,6 +57,7 @@ export const getWorkspace = cache(async () => {
     user,
     workspace: membership.workspaces,
     role: membership.role,
+    roleId: membership.role_id,
     supabase,
   };
 });

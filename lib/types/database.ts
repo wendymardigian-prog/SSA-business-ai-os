@@ -491,21 +491,61 @@ export interface Database {
         };
         Relationships: [];
       };
+      workspace_roles: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          description: string | null;
+          /** owner/admin/member si es de sistema; null si es personalizado. */
+          system_role: "owner" | "admin" | "member" | null;
+          /** { keys: [...], scopes: { leads, conversations } }. */
+          permissions: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          description?: string | null;
+          system_role?: "owner" | "admin" | "member" | null;
+          permissions?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          permissions?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       workspace_members: {
         Row: {
           workspace_id: string;
           user_id: string;
           role: string;
+          /**
+           * El rol con los permisos finos (00088). `role` sigue siendo
+           * owner/admin/member: un rol personalizado es siempre un `member`
+           * con permisos de mas, asi ninguna policy vieja cambia.
+           */
+          role_id: string | null;
           created_at: string;
         };
         Insert: {
           workspace_id: string;
           user_id: string;
           role?: string;
+          role_id?: string | null;
           created_at?: string;
         };
         Update: {
           role?: string;
+          role_id?: string | null;
         };
         Relationships: [
           {

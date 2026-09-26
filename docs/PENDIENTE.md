@@ -230,3 +230,22 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 **Por qué.** La bandeja es un Client Component y necesitaba el nombre del bucket. Importarlo de `lib/email/inbound.ts` arrastró todo el procesamiento del correo y con él `next/headers`, y el build falló señalando un archivo que nadie había tocado.
 
 **Qué se decidió en su lugar.** El mismo patrón que `lib/secret-names.ts`: un archivo hoja con la constante. Y el test de frontera ahora cubre los dos módulos, así el próximo caso sale nombrando la cadena de imports en vez de un error de Turbopack.
+
+### Bloque 9: falta el script de verificación y el cierre de la etapa
+
+**Qué quedó.** F68 a F72 están construidos, probados y en `main` remoto de la rama `etapa2`. Falta:
+
+- `scripts/verify-roles.mjs`: el script con usuarios reales que prueba que un rol personalizado con alcance `all` ve todos los contactos, y que uno con `own` no. Las dos migraciones están aplicadas y `verify-rls.mjs` pasa con ellas, así que la parte de "no rompí nada" está cubierta; lo que falta es la prueba positiva del alcance `all` contra la base.
+- La migración `drop_legacy_secret_columns`, que se escribe y no se aplica.
+- El cierre de la Etapa 2: la documentación (`.env.example`, `CLAUDE.md`, `docs/integraciones.md`, `docs/publicacion.md`, `docs/contenido.md`, `docs/dashboards.md`, la bitácora), borrar `docs/referencia/`, y el merge de `etapa2` a `main`.
+
+**Por qué.** Se terminó el límite de uso de la sesión.
+
+**Qué se decidió en su lugar.** Dejar todo compilando y con la suite en verde, y commitear. No se mergeó a `main`: la regla 13 pide los nueve comandos en 0 y `verify-roles.mjs` todavía no existe.
+
+### Dos errores que encontró `verify-rls.mjs` en el bloque 9
+
+Los dos se arreglaron, y valen como anotación porque el script es la única razón por la que se encontraron:
+
+1. **El trigger que protege los roles de sistema frenaba el borrado en cascada de un workspace.** Faltaba distinguir "alguien borra un rol de sistema a mano" de "el workspace se va y sus roles con él". Se arregló mirando si el workspace todavía existe.
+2. **El primer intento de la 00089 copió la lógica de leads dentro de `can_see_conversation`** en vez de delegar en `can_see_contact`, deshaciendo lo que la 00028 había hecho a propósito, y perdiendo la exclusión de contactos borrados. El Member volvía a ver la conversación sin asignar de un lead que no puede ver. Se volvió a delegar, y el alcance `conversations: all` quedó como un camino más, antes de delegar: solo ensancha.

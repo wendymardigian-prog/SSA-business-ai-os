@@ -13,8 +13,16 @@ export default async function TeamPage() {
   // Use service client to bypass RLS (workspace_members SELECT policy only returns own rows)
   const { data: members } = await serviceClient
     .from("workspace_members")
-    .select("workspace_id, user_id, role, created_at")
+    .select("workspace_id, user_id, role, role_id, created_at")
     .eq("workspace_id", workspace.id);
+
+  // Los roles del workspace, para el selector de F72. Con el cliente del
+  // usuario: la policy de SELECT los deja ver a cualquier miembro.
+  const { data: workspaceRoles } = await supabase
+    .from("workspace_roles")
+    .select("id, name, system_role")
+    .eq("workspace_id", workspace.id)
+    .order("name");
 
   // Fetch user details for each member via service client (auth.users is not accessible via RLS)
   const memberDetails = await Promise.all(
@@ -26,6 +34,7 @@ export default async function TeamPage() {
       return {
         userId: member.user_id,
         role: member.role,
+        roleId: member.role_id,
         joinedAt: member.created_at,
         email: memberUser?.email ?? "Unknown",
         name:
@@ -53,6 +62,11 @@ export default async function TeamPage() {
       currentUserRole={role}
       members={memberDetails}
       pendingInvites={pendingInvites ?? []}
+      workspaceRoles={(workspaceRoles ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        systemRole: r.system_role,
+      }))}
     />
   );
 }

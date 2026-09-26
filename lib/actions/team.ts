@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { ASSIGNABLE_ROLES, isAdminRole, ROLE_LABELS, type WorkspaceRole } from "@/lib/auth/roles";
@@ -7,6 +8,7 @@ import { sendTransactionalEmail } from "@/lib/email/send";
 import { teamInviteEmail } from "@/lib/email/templates";
 import { inviteUrl } from "@/lib/app-url";
 import { logAudit } from "@/lib/audit";
+import { getPermissionAction } from "@/lib/auth/guards";
 
 /**
  * Como termino el email de la invitacion.
@@ -369,4 +371,87 @@ export async function changeMemberRole(
   });
 
   return { ok: true, role: newRole };
+}
+
+/**
+ * Cambiar el rol de una persona del equipo (F72).
+ *
+ * Dos reglas:
+ *
+ * 1. **`role` sigue siendo owner/admin/member.** Un rol personalizado es
+ *    siempre un `member` con permisos de mas: asi las cuarenta policies que
+ *    leen `role` no cambian de comportamiento. Lo que cambia es `role_id`.
+ * 2. **No se puede quedar sin Owner.** Es la unica persona que puede
+ *    transferir la propiedad y recuperar el workspace si algo sale mal.
+ */
+export async function setMemberRole(input: {
+  userId: string;
+  /** El id de un rol del workspace (de sistema o personalizado). */
+  roleId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("team.manage");
+  if (!ctx) return { ok: false, error: "No tenes permiso para administrar el equipo" };
+
+  const [{ data: role }, { data: member }] = await Promise.all([
+    ctx.supabase
+      .from("workspace_roles")
+      .select("id, name, system_role")
+      .eq("id", input.roleId)
+      .eq("workspace_id", ctx.workspace.id)
+      .maybeSingle(),
+    ctx.supabase
+      .from("workspace_members")
+      .select("user_id, role")
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("user_id", input.userId)
+      .maybeSingle(),
+  ]);
+
+  if (!role) return { ok: false, error: "No encontre ese rol" };
+  if (!member) return { ok: false, error: "Esa persona no esta en el equipo" };
+
+  // El rol base: los personalizados son siempre `member`.
+  const baseRole = role.system_role ?? "member";
+
+  // Sacarle el Owner al ultimo Owner deja el workspace sin quien pueda
+  // transferirlo ni recuperarlo.
+  if (member.role === "owner" && baseRole !== "owner") {
+    const { count } = await ctx.supabase
+      .from("workspace_members")
+      .select("user_id", { count: "exact", head: true })
+      .eq("workspace_id", ctx.workspace.id)
+      .eq("role", "owner");
+
+    if ((count ?? 0) <= 1) {
+      return {
+        ok: false,
+        error: "Es el unico Owner del negocio. Nombra a otro Owner antes de cambiarle el rol.",
+      };
+    }
+  }
+
+  const { error } = await ctx.supabase
+    .from("workspace_members")
+    .update({ role: baseRole, role_id: role.id })
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("user_id", input.userId);
+
+  if (error) {
+    console.error("[equipo] no pude cambiar el rol:", error.message);
+    return { ok: false, error: "No pude cambiar el rol" };
+  }
+
+  await logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspace.id,
+    entityType: "channel",
+    entityId: ctx.workspace.id,
+    action: "update",
+    // El id de la persona, no su email: el log no lleva PII de mas.
+    metadata: { kind: "member_role_changed", user_id: input.userId, role: role.name },
+    performedBy: ctx.user.id,
+  });
+
+  revalidatePath("/dashboard/settings/team");
+  return { ok: true };
 }

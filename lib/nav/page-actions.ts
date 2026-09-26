@@ -121,6 +121,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Social",
     tooltip: "Tu perfil de cada red y sus publicaciones, con las metricas que la red no muestra.",
   },
+  "/dashboard/settings/roles": {
+    title: "Roles",
+    tooltip: "Que puede hacer cada persona del equipo, y que leads ve.",
+  },
   "/dashboard/contacts": {
     title: "Contactos",
     tooltip: "El CRM: cada persona con su historial, sus etiquetas y quien la atiende.",
