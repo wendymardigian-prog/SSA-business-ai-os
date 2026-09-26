@@ -423,6 +423,8 @@ export interface Database {
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          /** Dias que se conserva la media publicada. 0 = nunca se borra (00083). */
+          content_media_retention_days: number;
           /** Zona horaria IANA del negocio (migracion 00075). */
           timezone: string;
           ai_background_settings: Json;
@@ -445,6 +447,7 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          content_media_retention_days?: number;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
@@ -465,6 +468,7 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          content_media_retention_days?: number;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;

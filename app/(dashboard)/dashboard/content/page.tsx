@@ -2,7 +2,12 @@ import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
+import { ContentCalendar } from "@/components/content/calendar-view";
+import { ContentList, type ListRow } from "@/components/content/list-view";
+import { ContentViewSwitcher, CountModeSwitcher } from "@/components/content/view-switcher";
+import { parseContentFilters } from "@/lib/content/filters";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import type { BoardIdea, BoardPost } from "@/lib/content/board";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -13,7 +18,12 @@ import type { ContentPostStatus } from "@/lib/types/database";
  * cualquiera crea ideas y piezas, y aprobar, programar y generar con IA es de
  * Owner y Admin (en el bloque 9 pasa a ser un permiso configurable).
  */
-export default async function ContentPage() {
+export default async function ContentPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const filters = parseContentFilters(await searchParams);
   const { workspace, user, role, supabase } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
@@ -109,19 +119,68 @@ export default async function ContentPage() {
     };
   });
 
+  // Los nombres del equipo, para la columna Autor y su filtro.
+  const authorNames = memberLabels(await getWorkspaceMembers(workspace.id));
+
+  const timeZone = workspace.timezone || "America/Costa_Rica";
+  const month =
+    filters.month ??
+    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit" })
+      .format(new Date())
+      .slice(0, 7);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/content"
+        left={<ContentViewSwitcher current={filters.view} />}
+        filters={filters.view === "calendar" ? <CountModeSwitcher current={filters.count} /> : undefined}
         right={<NewContentButtons canCreate />}
       />
-      <ContentKanban
-        ideas={ideas}
-        posts={posts}
-        perms={{ create: true, approve: isAdmin, publish: isAdmin, ai: isAdmin }}
-        currentUserId={user.id}
-        aiAvailable={aiProviders.length > 0}
-      />
+
+      {filters.view === "kanban" && (
+        <ContentKanban
+          ideas={ideas}
+          posts={posts}
+          perms={{ create: true, approve: isAdmin, publish: isAdmin, ai: isAdmin }}
+          currentUserId={user.id}
+          aiAvailable={aiProviders.length > 0}
+        />
+      )}
+
+      {filters.view === "calendar" && (
+        <ContentCalendar
+          pieces={posts.map((post) => ({
+            id: post.id,
+            title: post.title,
+            format: post.format,
+            networks: post.networks
+              .filter((n) => n.at)
+              .map((n) => ({ platform: n.platform, at: n.at!, status: n.status })),
+          }))}
+          timeZone={timeZone}
+          month={month}
+          countMode={filters.count}
+        />
+      )}
+
+      {filters.view === "list" && (
+        <ContentList
+          rows={posts.map<ListRow>((post) => ({
+            id: post.id,
+            title: post.title,
+            status: post.status,
+            createdBy: post.createdBy,
+            platforms: post.networks.map((n) => n.platform),
+            format: post.format,
+            authorName: authorNames.get(post.createdBy ?? "") ?? null,
+            firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
+          }))}
+          filters={filters}
+          authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
+          platforms={[...new Set(posts.flatMap((p) => p.networks.map((n) => n.platform)))]}
+        />
+      )}
     </div>
   );
 }

@@ -47,6 +47,14 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
   Postproxy documenta webhooks más adelante, se cambia el camino sin tocar la interfaz común. Al conectar la
   cuenta real hay que confirmar cómo se manda el título del video: puede ir en `platforms[].params`.
 
+### 20 vulnerabilidades de npm, previas a esta etapa
+- **Qué quedó:** `npm audit` reporta 20 vulnerabilidades (1 crítica, 10 altas), entre ellas `ws` y otras
+  dependencias transitivas.
+- **Por qué:** ya estaban antes de la Etapa 2. Se verificó: el conteo es idéntico con y sin `tus-js-client`,
+  la única dependencia que suma esta etapa. Arreglarlas implica `npm audit fix --force`, que trae cambios
+  incompatibles y no es algo para hacer en medio de una corrida autónoma.
+- **Qué se decidió en su lugar:** anotarlo. Conviene revisarlo aparte, con la suite en verde antes y después.
+
 ## Heredado de la Fase 3
 
 Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resuelve en F7.

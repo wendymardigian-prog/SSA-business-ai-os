@@ -64,11 +64,11 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F17 · Estados del post (`canTransition` por rol y `aggregatePostStatus` derivado de las redes)
   - [x] F19 · Ideas (aprobar es una sola transacción SQL; los botones dicen por qué están deshabilitados)
   - [x] F20 · Kanban (7 columnas, arrastre validado antes de pedirlo, abre el editor cuando falta la fecha)
-- [ ] **Bloque 3b — Media, calendario y versiones**
-  - [ ] F18 · Subida de media
-  - [ ] F21 · Calendario y lista
-  - [ ] F22 · Historial de versiones
-  - [ ] F23 · Limpieza de media
+- [x] **Bloque 3b — Media, calendario y versiones**
+  - [x] F18 · Subida de media (tipo real por magic bytes, TUS sobre 6 MB, `tus-js-client`)
+  - [x] F21 · Calendario y lista (una tarjeta por pieza por día, Piezas/Publicaciones, filtros en la URL)
+  - [x] F22 · Historial de versiones (el autoguardado no crea versión; comparar y restaurar sin perder nada)
+  - [x] F23 · Limpieza de media (cron diario; cuenta desde la última red publicada)
 - [ ] **Bloque 4a — Editor e IA** (migración 00084)
   - [ ] F24 · Editor del post en una sola página
   - [ ] F25 · Fecha por red: tentativa y programado
