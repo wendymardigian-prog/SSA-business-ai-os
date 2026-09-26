@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   GitBranch,
@@ -13,18 +12,15 @@ import {
   BookOpen,
   Bot,
   Settings,
-  LogOut,
-  Moon,
-  Sun,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/nav/items";
-import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
+import { useHtmlClass } from "@/components/use-html-class";
 import { isAdminRole } from "@/lib/auth/roles";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
@@ -37,26 +33,6 @@ interface WorkspaceItem {
   name: string;
   slug: string;
   role: string;
-}
-
-/**
- * Las dos preferencias que viven como clase en el <html>: el tema y el menu
- * colapsado. Se leen de ahi y no de un estado propio porque el script del
- * <head> (app/layout.tsx) ya las aplico antes del primer pintado; el
- * componente solo se entera de cual es.
- */
-function subscribeToHtmlClass(callback: () => void) {
-  const observer = new MutationObserver(callback);
-  observer.observe(document.documentElement, { attributeFilter: ["class"] });
-  return () => observer.disconnect();
-}
-
-function useHtmlClass(name: string) {
-  return useSyncExternalStore(
-    subscribeToHtmlClass,
-    () => document.documentElement.classList.contains(name),
-    () => false
-  );
 }
 
 // adminOnly: la pantalla ademas esta protegida por requireWorkspaceAdmin y por
@@ -91,7 +67,7 @@ export function Sidebar({
   draftCounts,
 }: {
   workspace: Workspace;
-  user: { id: string; email?: string };
+  user: ProfileUser;
   role: string;
   workspaces: WorkspaceItem[];
   /** Conteo del servidor: evita que el numerito de la campana parpadee. */
@@ -99,17 +75,8 @@ export function Sidebar({
   /** Borradores esperando (Bloque 2c). Coincide con la vista por defecto de la cola: los mios. */
   draftCounts?: PendingDraftCounts;
 }) {
-  const router = useRouter();
-  const supabase = createClient();
   const drafts = useDraftCounts(workspace.id, draftCounts, "sidebar-drafts");
-  const dark = useHtmlClass("dark");
   const collapsed = useHtmlClass("sidebar-collapsed");
-
-  function toggleTheme() {
-    const next = !dark;
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
-  }
 
   /**
    * Colapsar es una preferencia, no un estado de pantalla: quien trabaja todo
@@ -123,12 +90,6 @@ export function Sidebar({
     const next = !collapsed;
     document.documentElement.classList.toggle("sidebar-collapsed", next);
     localStorage.setItem("sidebar-collapsed", next ? "1" : "0");
-  }
-
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
   }
 
   return (
@@ -184,22 +145,7 @@ export function Sidebar({
           variant="row"
           placement="up"
         />
-        <button
-          onClick={toggleTheme}
-          title={collapsed ? (dark ? "Light mode" : "Dark mode") : undefined}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground collapsed:justify-center collapsed:gap-0 collapsed:px-0"
-        >
-          {dark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
-          <span className="collapsed:hidden">{dark ? "Light mode" : "Dark mode"}</span>
-        </button>
-        <button
-          onClick={handleSignOut}
-          title={collapsed ? "Sign out" : undefined}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground collapsed:justify-center collapsed:gap-0 collapsed:px-0"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          <span className="collapsed:hidden">Sign out</span>
-        </button>
+        <ProfileMenu user={user} collapsed={collapsed} />
       </div>
     </div>
   );

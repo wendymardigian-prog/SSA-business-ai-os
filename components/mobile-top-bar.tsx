@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, Moon, Sun, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { usePathname } from "next/navigation";
+import { Menu, X } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NavLinks } from "@/components/sidebar";
+import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import type { Database } from "@/lib/types/database";
@@ -25,20 +25,16 @@ type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
  * borradores esperando (lleva directo a la cola) y el menu desplegable.
  */
 
-function subscribeToThemeClass(callback: () => void) {
-  const observer = new MutationObserver(callback);
-  observer.observe(document.documentElement, { attributeFilter: ["class"] });
-  return () => observer.disconnect();
-}
-
 export function MobileTopBar({
   workspace,
+  user,
   workspaces,
   role,
   unreadNotifications,
   draftCounts,
 }: {
   workspace: Workspace;
+  user: ProfileUser;
   workspaces: Array<{ id: string; name: string; slug: string; role: string }>;
   role: string;
   unreadNotifications: number;
@@ -50,14 +46,8 @@ export function MobileTopBar({
   const [openAt, setOpenAt] = useState<string | null>(null);
   const open = openAt === pathname;
   const setOpen = (next: boolean) => setOpenAt(next ? pathname : null);
-  const router = useRouter();
   const drafts = useDraftCounts(workspace.id, draftCounts, "mobile-drafts");
   const waiting = visibleDraftCount(drafts);
-  const dark = useSyncExternalStore(
-    subscribeToThemeClass,
-    () => document.documentElement.classList.contains("dark"),
-    () => false,
-  );
 
   // Escape cierra; con el menu abierto el fondo no scrollea.
   useEffect(() => {
@@ -73,18 +63,6 @@ export function MobileTopBar({
       document.body.style.overflow = previous;
     };
   }, [open]);
-
-  function toggleTheme() {
-    const next = !dark;
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
-  }
-
-  async function handleSignOut() {
-    await createClient().auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
 
   return (
     <>
@@ -132,23 +110,12 @@ export function MobileTopBar({
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
               <NavLinks role={role} drafts={drafts} onNavigate={() => setOpen(false)} />
             </nav>
-            <div className="space-y-1 border-t border-sidebar-border p-3">
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent"
-              >
-                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {dark ? "Light mode" : "Dark mode"}
-              </button>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent"
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </button>
+            {/*
+              El mismo boton de perfil que el menu de escritorio, para no tener
+              dos pies distintos. Aca nunca esta colapsado.
+            */}
+            <div className="border-t border-sidebar-border p-3">
+              <ProfileMenu user={user} />
             </div>
           </div>
         </div>
