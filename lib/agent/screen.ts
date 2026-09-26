@@ -187,9 +187,28 @@ export interface HeaderKpis {
   missingPricing: number;
 }
 
+/**
+ * Pestana Etiquetas (Bloque 2d-A): el efecto de cada etiqueta sobre el agente.
+ * Solo Owner/Admin. En 2d-B suma las sugeridas y las reglas de boton.
+ */
+export interface TagsTabData {
+  tags: Array<{
+    id: string;
+    name: string;
+    color: string | null;
+    disablesAgent: boolean;
+    assignsTo: string | null;
+    /** Cuantos contactos la tienen hoy: prender el efecto los afecta ya. */
+    contactCount: number;
+  }>;
+  members: Array<{ userId: string; label: string }>;
+}
+
 export interface AgentScreenData {
   /** Quien mira: decide pestanas y columnas. */
   viewer: { isAdmin: boolean };
+  /** Solo cuando la pestana activa es Etiquetas (y solo Owner/Admin). */
+  tags?: TagsTabData;
   /** Solo Owner/Admin. */
   kpis?: HeaderKpis;
   /** Solo cuando la pestana activa es Costos (y solo Owner/Admin). */

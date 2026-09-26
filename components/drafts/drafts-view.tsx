@@ -185,8 +185,11 @@ export function DraftsView({
           </div>
         )
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <div className="hidden grid-cols-[minmax(150px,0.9fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(200px,1fr)] gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase text-muted-foreground lg:grid">
+        // Sin overflow-hidden en el telefono: cortaria la barra de botones
+        // pegada al pie de cada tarjeta (sticky no funciona adentro de un
+        // contenedor que recorta).
+        <div className="rounded-xl border border-border queue:overflow-hidden">
+          <div className="hidden grid-cols-[minmax(150px,0.9fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(200px,1fr)] gap-3 border-b border-border bg-muted/40 px-4 py-2 text-[11px] font-medium uppercase text-muted-foreground queue:grid">
             <span>Contacto</span>
             <span>Lo que escribió</span>
             <span>Respuesta propuesta</span>

@@ -860,6 +860,92 @@ try {
     await svc.from("contacts").update({ setter_id: null }).eq("id", contact.id);
     await setFlags(ws.id, { lead_scope_enabled: false }); }
 
+  console.log("\n— Etiquetas con efecto sobre el agente (00073) —");
+  { await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    await svc.from("contacts").update({ setter_id: member.id, vendedor_id: null }).eq("id", contact.id);
+    await svc.from("conversations").update({ agent_enabled: null, assigned_to: null }).eq("id", conv.id);
+    const convState = async (id = conv.id) =>
+      (await svc.from("conversations").select("agent_enabled, agent_disabled_by_tag_id").eq("id", id).single()).data;
+
+    // Quien puede crear y tocar etiquetas con efecto.
+    const { data: comun, error: eComun } = await member.client.from("tags")
+      .insert({ workspace_id: ws.id, name: "zz-comun" }).select("id").single();
+    check(!eComun && !!comun, "un Member crea una etiqueta comun", eComun?.message);
+    const { error: eEfecto } = await member.client.from("tags")
+      .insert({ workspace_id: ws.id, name: "zz-efecto-member", disables_agent: true });
+    check(!!eEfecto, "un Member NO crea una etiqueta con efecto");
+    const { data: updComun } = await member.client.from("tags").update({ disables_agent: true }).eq("id", comun.id).select("id");
+    check((updComun ?? []).length === 0, "un Member NO le pone efecto a una etiqueta comun");
+    const { data: known, error: eKnown } = await admin.client.from("tags")
+      .insert({ workspace_id: ws.id, name: "zz-es-conocido", disables_agent: true, assigns_to: admin.id }).select("id").single();
+    check(!eKnown && !!known, "un Admin crea una etiqueta con efecto", eKnown?.message);
+    const { data: renom } = await member.client.from("tags").update({ name: "zz-otro" }).eq("id", known.id).select("id");
+    check((renom ?? []).length === 0, "un Member no renombra una etiqueta con efecto");
+    const { data: borrada } = await member.client.from("tags").delete().eq("id", known.id).select("id");
+    check((borrada ?? []).length === 0, "ni la borra");
+
+    // Ponerla: apaga y asigna. La pone el Member sobre un lead suyo.
+    const { error: eApply } = await member.client.from("contact_tags").insert({ contact_id: contact.id, tag_id: known.id });
+    check(!eApply, "un Member puede aplicarle la etiqueta a un lead suyo", eApply?.message);
+    let st = await convState();
+    check(st.agent_enabled === false && st.agent_disabled_by_tag_id === known.id, "etiquetar apaga el agente y deja la marca", JSON.stringify(st));
+    { const { data } = await svc.from("contacts").select("setter_id, vendedor_id").eq("id", contact.id).single();
+      check(data.setter_id === admin.id && data.vendedor_id === admin.id, "y asigna setter y vendedor a la persona de la etiqueta", JSON.stringify(data)); }
+    { const { data } = await svc.from("audit_log").select("performed_by, metadata")
+        .eq("entity_id", contact.id).eq("action", "tag_effect").order("performed_at", { ascending: false }).limit(1).single();
+      const forced = data?.metadata?.conversations_forced_off;
+      check(data?.performed_by === member.id && Array.isArray(forced) && forced[0]?.id === conv.id && "previous" in forced[0],
+        "el audit dice quien la puso y el estado previo de cada conversacion", JSON.stringify(data)); }
+
+    // El caso pedido: etiquetar -> contestar a mano -> sacar -> vuelve a heredar.
+    // La respuesta a mano se simula como applyManualReply con una marca de
+    // error vieja: reescribe agent_enabled = false aunque ya estaba en false.
+    await svc.from("conversations").update({ last_agent_error_at: new Date().toISOString() }).eq("id", conv.id);
+    await svc.from("conversations").update({ agent_enabled: false, last_agent_error_at: null, last_agent_error_run_id: null }).eq("id", conv.id);
+    st = await convState();
+    check(st.agent_disabled_by_tag_id === known.id, "contestar a mano una conversacion ya apagada por la etiqueta no borra la marca", JSON.stringify(st));
+    await admin.client.from("contact_tags").delete().eq("contact_id", contact.id).eq("tag_id", known.id);
+    st = await convState();
+    check(st.agent_enabled === null && st.agent_disabled_by_tag_id === null,
+      "etiquetar, contestar a mano y sacar la etiqueta: la conversacion vuelve a heredar", JSON.stringify(st));
+    { const { data } = await svc.from("contacts").select("setter_id").eq("id", contact.id).single();
+      check(data.setter_id === admin.id, "sacar la etiqueta no toca la asignacion"); }
+
+    // Prender y volver a apagar a mano: sacar la etiqueta no la toca.
+    await admin.client.from("contact_tags").insert({ contact_id: contact.id, tag_id: known.id });
+    await admin.client.from("conversations").update({ agent_enabled: true }).eq("id", conv.id);
+    st = await convState();
+    check(st.agent_enabled === true && st.agent_disabled_by_tag_id === null, "prender a mano gana sobre la etiqueta y limpia la marca", JSON.stringify(st));
+    await admin.client.from("conversations").update({ agent_enabled: false }).eq("id", conv.id);
+    await admin.client.from("contact_tags").delete().eq("contact_id", contact.id).eq("tag_id", known.id);
+    st = await convState();
+    check(st.agent_enabled === false, "apagada a mano despues: sacar la etiqueta la deja apagada", JSON.stringify(st));
+
+    // Conversaciones nuevas nacen apagadas; borrar la etiqueta revierte.
+    await svc.from("conversations").update({ agent_enabled: null }).eq("id", conv.id);
+    await admin.client.from("contact_tags").insert({ contact_id: contact.id, tag_id: known.id });
+    const { data: ch2 } = await svc.from("channels").insert({
+      workspace_id: ws.id, platform: "whatsapp", late_account_id: `zz-test-wa-${Date.now()}`, is_active: true,
+    }).select("id").single();
+    const { data: conv2 } = await svc.from("conversations").insert({
+      workspace_id: ws.id, channel_id: ch2.id, contact_id: contact.id, platform: "whatsapp",
+    }).select("id, agent_enabled, agent_disabled_by_tag_id").single();
+    check(conv2?.agent_enabled === false && conv2?.agent_disabled_by_tag_id === known.id,
+      "una conversacion nueva de un contacto etiquetado nace con el agente apagado", JSON.stringify(conv2));
+    const { error: eDel } = await admin.client.from("tags").delete().eq("id", known.id);
+    check(!eDel, "un Admin puede borrar la etiqueta con efecto", eDel?.message);
+    const [s1, s2] = [await convState(), await convState(conv2.id)];
+    check(s1.agent_enabled === null && s2.agent_enabled === null, "borrar la etiqueta de la tabla libera todas sus conversaciones", JSON.stringify([s1, s2]));
+
+    // La accion masiva va con el cliente del usuario: la RLS decide.
+    const { data: ajeno, error: eAjeno } = await member.client.from("contact_tags")
+      .insert({ contact_id: contact.id, tag_id: comun.id }).select("contact_id");
+    check(!!eAjeno || (ajeno ?? []).length === 0, "un Member no etiqueta un lead que ya no es suyo");
+
+    await svc.from("conversations").update({ agent_enabled: null }).eq("id", conv.id);
+    await svc.from("contacts").update({ setter_id: null, vendedor_id: null }).eq("id", contact.id);
+    await setFlags(ws.id, { lead_scope_enabled: false }); }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

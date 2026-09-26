@@ -57,7 +57,7 @@ export function PendingDraft({ conversationId }: { conversationId: string }) {
 
   if (!draft) return null;
   return (
-    <div className="border-t border-border px-4 pt-3">
+    <div className="border-t border-border px-3 pt-3 md:px-4">
       <ThreadDraft key={draft.id} draft={draft} onDone={reload} />
     </div>
   );

@@ -14,6 +14,7 @@ import type { SearchableTemplate } from "@/lib/templates/search";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
+import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 type Conversation = ConversationRow;
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -35,6 +36,8 @@ export function InboxView({
   agentByChannel,
   currentUserId,
   isAdmin,
+  draftCounts,
+  draftConversationIds = [],
 }: {
   conversations: Conversation[];
   workspaceId: string;
@@ -48,7 +51,7 @@ export function InboxView({
   pageSize: number;
   filters: InboxFilters;
   dateRange: DateRange;
-  tags: { id: string; name: string; color: string | null }[];
+  tags: { id: string; name: string; color: string | null; disablesAgent?: boolean; assignsTo?: string | null }[];
   platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
@@ -56,6 +59,10 @@ export function InboxView({
   /** Para el panel del contacto (Bloque 2c): editar setter y vendedor. */
   currentUserId: string;
   isAdmin: boolean;
+  /** Borradores esperando, para la pestana "Borradores (N)" (Bloque 2d). */
+  draftCounts?: PendingDraftCounts;
+  /** Las conversaciones de la pagina con un borrador vivo: llevan un chip. */
+  draftConversationIds?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,6 +70,9 @@ export function InboxView({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [showContactPanel, setShowContactPanel] = useState(true);
+  // En el telefono el panel del contacto es una hoja que se abre a pedido:
+  // abierto por defecto taparia el hilo entero.
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
@@ -111,6 +121,14 @@ export function InboxView({
     [router, pathname, searchParams],
   );
 
+  /** Telefono: volver del hilo a la lista (saca ?c= de la URL). */
+  const handleBack = useCallback(() => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("c");
+    setContactSheetOpen(false);
+    router.replace(`${pathname}${next.toString() ? `?${next.toString()}` : ""}`, { scroll: false });
+  }, [router, pathname, searchParams]);
+
   // Load messages when a conversation is selected
   useEffect(() => {
     if (!selected) {
@@ -152,9 +170,11 @@ export function InboxView({
   }, [selected?.id]);
 
   return (
+    // En el telefono (Bloque 2d) es lista -> hilo a pantalla completa: con una
+    // conversacion abierta se ve el hilo, sin ninguna se ve la lista.
     <div className="flex h-full">
       {/* Left panel: Conversation list */}
-      <div className="w-80 flex-shrink-0">
+      <div className={cn("w-full flex-shrink-0 md:block md:w-80", selected ? "hidden" : "block")}>
         <ConversationList
           conversations={conversations}
           workspaceId={workspaceId}
@@ -169,14 +189,16 @@ export function InboxView({
           page={page}
           pageSize={pageSize}
           onPageChange={goToPage}
+          draftCounts={draftCounts}
+          draftConversationIds={draftConversationIds}
         />
       </div>
 
       {/* Center panel: Message thread */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className={cn("min-h-0 min-w-0 flex-1 flex-col md:flex", selected ? "flex" : "hidden")}>
         {/* Toggle contact panel button */}
         {selected && !showContactPanel && (
-          <div className="flex shrink-0 justify-end border-b border-border px-2 py-1">
+          <div className="hidden shrink-0 justify-end border-b border-border px-2 py-1 md:flex">
             <button
               onClick={() => setShowContactPanel(true)}
               className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -224,22 +246,33 @@ export function InboxView({
               templates={templates}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
+              onBack={selected ? handleBack : undefined}
+              onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
             />
           )}
         </div>
       </div>
 
-      {/* Right panel: Contact info */}
-      {showContactPanel && selected?.contact_id && (
-        <ContactPanel
-          contactId={selected.contact_id}
-          workspaceId={workspaceId}
-          onClose={() => setShowContactPanel(false)}
-          members={members}
-          allTags={tags}
-          currentUserId={currentUserId}
-          isAdmin={isAdmin}
-        />
+      {/* Right panel: Contact info. En la computadora es la tercera columna; en
+          el telefono, una hoja a pantalla completa que se abre a pedido. Una
+          sola instancia, para no cargar el contacto dos veces. */}
+      {selected?.contact_id && (showContactPanel || contactSheetOpen) && (
+        <div
+          className={cn(
+            contactSheetOpen ? "fixed inset-0 z-40 flex bg-background" : "hidden",
+            showContactPanel ? "md:static md:z-auto md:flex" : "md:hidden",
+          )}
+        >
+          <ContactPanel
+            contactId={selected.contact_id}
+            workspaceId={workspaceId}
+            onClose={() => (contactSheetOpen ? setContactSheetOpen(false) : setShowContactPanel(false))}
+            members={members}
+            allTags={tags}
+            currentUserId={currentUserId}
+            isAdmin={isAdmin}
+          />
+        </div>
       )}
     </div>
   );

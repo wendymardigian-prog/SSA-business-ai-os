@@ -36,6 +36,14 @@ export interface AgentToolContext {
    * borrador. Default "send".
    */
   mode?: "send" | "draft";
+  /**
+   * Solo lectura (Bloque 2d-A): las herramientas que escriben en el CRM no se
+   * ofrecen. Lo usa la regeneracion de un borrador sin mensajes nuevos del
+   * lead: con asignacion en round-robin, regenerar tres veces paseaba la
+   * conversacion por tres personas. Las que en borrador quedan como
+   * sugerencia (derivar, pausarse) si se ofrecen: no ejecutan nada.
+   */
+  readOnly?: boolean;
 }
 
 export interface AgentToolResult {

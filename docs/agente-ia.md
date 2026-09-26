@@ -141,7 +141,7 @@ valida server-side contra el schema de cada una (`updateAgentTools`).
 |---|---|
 | `derivar_a_humano` (obligatoria) | Si reabre la conversación |
 | `buscar_en_conocimiento` (se prende desde Conocimiento) | Fragmentos por búsqueda, similitud mínima |
-| `etiquetar_contacto` | Lista blanca de tags (solo de `tags`, **nunca crea**); si puede quitar. Sin tags en el workspace, no se puede habilitar y la pantalla dice por qué |
+| `etiquetar_contacto` | Lista blanca de tags (solo de `tags`, **nunca crea**, **nunca una etiqueta con efecto**: ver "Etiquetas con efecto"); si puede quitar. Sin tags en el workspace, no se puede habilitar y la pantalla dice por qué |
 | `cambiar_temperatura` | Si puede bajarla (default: solo sube) |
 | `programar_seguimiento` | Máximo de días (90); si puede pisar una fecha puesta a mano por una persona (se detecta por el audit) |
 | `asignar_conversacion` | Usuarios habilitados; criterio: round-robin (sin estado nuevo, por el audit), usuario fijo, o el setter del contacto |
@@ -311,6 +311,12 @@ Member decide solo sobre los suyos, y el `WITH CHECK` exige
   una clave **volátil** (`push_debounced_job`, 00070): si el lead escribe
   mientras espera, la instrucción se descarta (era sobre el borrador viejo) y
   se conserva la cadena.
+  **Regenerar sin mensajes nuevos no toca el CRM** (Bloque 2d-A): el turno se
+  arma con `readOnly` y las herramientas que escriben (etiquetar, temperatura,
+  seguimiento, asignar) no se ofrecen; derivar y pausarse sí, porque en
+  borrador solo dejan una sugerencia. Sin esto, con asignación en round-robin,
+  regenerar tres veces paseaba la conversación por tres personas. Si el lead
+  escribió después del borrador, es un turno normal y las herramientas corren.
 - **Descartar**: con motivo opcional. Es una decisión, no una ventana perdida.
 
 ### La ventana de mensajería
@@ -332,6 +338,31 @@ colgados más de 5 minutos. **Los avisos a las personas son la 00072**, que est�
 escrita y probada pero **sin aplicar** (ver abajo).
 
 ### La cola (`/dashboard/drafts`)
+
+**No está en el menú** (Bloque 2d-A). El modo borrador es una rampa para
+confiar en el agente, no una sección permanente: el día que un canal vuelve a
+envío directo, un ítem de menú quedaría para siempre apuntando a una pantalla
+vacía. La ruta sigue existiendo (enlazable, y a donde apuntan los avisos) y se
+llega por cuatro lados:
+
+- el **número sobre Inbox** en el menú (y en la barra del teléfono): los míos;
+  Owner/Admin ven además el total. Con cero no aparece.
+- la pestaña **Borradores (N)** en la bandeja, junto a Todas/Abiertas/…; con
+  cero no aparece.
+- el chip **Borrador esperando** en cada conversación de la lista, que entra
+  directo al hilo (el borrador está arriba del campo de escritura).
+- las notificaciones de ventana (00072).
+
+La pantalla de la cola tiene **← Volver a Inbox** arriba de todo.
+
+**En el teléfono** (abajo de 980 px, variante `queue:` en `globals.css`) la
+tabla pasa a tarjetas: contacto y canal, **el estado de la ventana** (lo
+primero que decide si vale la pena leer el resto), lo que escribió, la
+respuesta, lo que hizo el agente y, pegados al pie de la tarjeta, **Enviar y
+Descartar** (44 px, `sticky`, no `fixed`: el teclado no los tapa). Editar y
+Regenerar van en "Más". `⌘↵` sigue como atajo, nunca como única vía. La barra
+de arriba del teléfono reemplaza al menú lateral, y la bandeja es lista → hilo
+a pantalla completa con "Volver".
 
 - **De quién es un borrador**: del setter del contacto; sin setter, del
   vendedor; sin ninguno, "sin asignar" (visible, no escondido). Se resuelve por
@@ -362,6 +393,64 @@ cliente del usuario y **se defiende sola**: a un Member le devuelve siempre sus
 números, pase el id que pase. El desglose por persona
 (`draft_queue_metrics_by_person`) es solo Owner/Admin. En Costos: gasto en
 borradores descartados y porcentaje enviado sin editar.
+
+## Etiquetas con efecto sobre el agente (Bloque 2d-A, 00073)
+
+Wendy tiene contactos personales en el mismo Instagram por el que entran los
+leads. **El peor error posible es que el agente le ofrezca la academia a un
+amigo.** Una etiqueta que solo queda guardada no alcanza: el agente igual
+redactaría la respuesta de venta. Tiene que tener efecto.
+
+Una sola regla genérica, configurable por etiqueta desde **Agentes → Etiquetas**
+(solo Owner/Admin):
+
+- **Apaga el agente** (`tags.disables_agent`): las conversaciones del contacto
+  pasan a forzado apagado, también las que se abran después. No se genera
+  borrador ni corre turno: no se gastan tokens.
+- **Asigna a** (`tags.assigns_to`): setter y vendedor pasan a esa persona al
+  poner la etiqueta.
+
+`es-conocido` (apaga + asigna a Wendy) y `no-es-lead` (apaga) son dos filas de
+esa pantalla, no dos casos especiales en el código.
+
+**Vive en la base, no en una Server Action**, porque son seis los caminos que
+ponen etiquetas (ficha, panel de la bandeja, acción masiva, CSV, nodo de flow,
+herramienta del agente) y no comparten una función. Los triggers:
+
+| Cuándo | Qué hace |
+|---|---|
+| Se pone la etiqueta (`contact_tags` INSERT) | Apaga las conversaciones del contacto que **no** estaban apagadas y les deja la marca `conversations.agent_disabled_by_tag_id`. Si asigna, pasa setter y vendedor (solo si algo cambia). Una fila `tag_effect` en `audit_log` con quién, las dos consecuencias y el estado previo de cada conversación. |
+| Se saca (`contact_tags` DELETE) | Vuelven a **heredar** solo las conversaciones con la marca de esa etiqueta. La asignación queda (decisión de Wendy). Si el contacto conserva otra etiqueta con efecto, la marca pasa a esa y nada se prende. |
+| Conversación nueva o movida por una fusión | Nace apagada con la marca. |
+| Una persona cambia el estado del agente en la conversación | La marca se limpia sola (`BEFORE UPDATE OF agent_enabled`), **solo si el estado cambia de verdad**. |
+| Se borra la etiqueta de `tags` o se le apaga el efecto | Libera sus conversaciones. Prenderle el efecto a una etiqueta en uso lo aplica ya (la pantalla pide confirmación con el número). |
+
+**La marca** es lo que permite revertir solo lo que apagó la etiqueta y nunca
+un apagado a mano (Human Takeover, respuesta manual, el toggle). La regla del
+trigger — limpiar solo si el estado cambia — resuelve el caso principal:
+etiquetar a un conocido, **contestarle a mano** (que reescribe `false` sobre
+`false` cuando había una marca de error vieja) y sacar la etiqueta meses
+después: la conversación **vuelve a heredar**. Y prender el agente a mano en un
+hilo gana sobre la etiqueta: la marca se limpia y sacarla después no toca ese
+hilo. No depende de que cada archivo de TypeScript se acuerde de limpiarla.
+
+**Permisos**: policies de `tags` por comando. Un Member crea y usa etiquetas
+comunes, y **puede aplicarle** una con efecto a un lead suyo; solo Owner/Admin
+crea, edita o borra una con efecto. No se usa privilegio de columna: todos los
+usuarios son el mismo rol `authenticated`.
+
+**El agente nunca usa una etiqueta con efecto**: no aparece en su lista blanca
+(pantalla, `updateAgentTools`, `applyTags` y la clasificación al cierre la
+excluyen, también de configuraciones viejas). Si pudiera poner "es-conocido",
+se apagaría a sí mismo en medio del turno y el lead quedaría sin respuesta ni
+aviso.
+
+**Dónde se pone**: "Acciones rápidas" en el panel de la bandeja y en la ficha
+(un clic, con la consecuencia escrita), y la **acción masiva** de Contactos
+(selección por fila o por página, tope 200, con el cliente del usuario: la RLS
+decide qué contactos puede tocar; los que ya la tenían no se tocan, así una
+conversación prendida a mano no se vuelve a apagar). La cola y el hilo avisan
+"Apagado por etiqueta".
 
 ## Verificación en vivo pendiente (los ocho casos)
 
@@ -445,6 +534,33 @@ La 00072 (avisos de ventana) se aplica después de un par de días de cola, y se
 verifica con un borrador que cruce la mitad de la ventana: un solo aviso, para
 el setter, que no se repite.
 
+## Verificación en vivo del Bloque 2d-A
+
+Con la 00073 aplicada, el agente apagado, desde la computadora y desde un
+teléfono (o Chrome device toolbar a 390 px):
+
+1. **El caso de la etiqueta, en este orden**: marcar un contacto de prueba
+   `es-conocido` desde el panel de la bandeja → **contestarle a mano** desde la
+   bandeja → sacar la etiqueta → la conversación **vuelve a heredar** (el
+   toggle dice "hereda" y el chip "Apagado por etiqueta" desaparece).
+2. `es-conocido` desde el panel: el toggle queda en "forzado apagado", setter y
+   vendedor pasan a Wendy, y el historial de la ficha muestra dos entradas.
+   Prender el agente a mano en ese hilo, sacar y volver a poner la etiqueta:
+   el hilo prendido a mano queda prendido.
+3. **Acción masiva** sobre 3 contactos con `es-conocido`: pide confirmación con
+   la consecuencia, los 3 quedan etiquetados y cada uno con su historial.
+4. **Agentes → Etiquetas**: prender "Apaga el agente" en `no-es-lead` con un
+   contacto que ya la tiene: pide confirmación con el número y la conversación
+   se apaga en el acto.
+5. **Teléfono (390 px)**: sin scroll horizontal ni texto cortado. Menú de la
+   barra de arriba; número de borradores sobre Inbox; pestaña "Borradores (N)"
+   en la bandeja con un borrador de prueba; en la cola, la tarjeta con la
+   ventana arriba y **Enviar/Descartar al pie**, Editar sin que el teclado tape
+   el botón, y aprobar de punta a punta con una mano. En la bandeja, lista →
+   hilo → Volver, y los datos del contacto como hoja.
+6. **Regenerar** un borrador con la asignación en round-robin habilitada, tres
+   veces: la conversación no cambia de asignado y Acciones no suma entradas.
+
 ## Lo que no está resuelto
 
 - **Respuestas dadas fuera del sistema.** Si alguien contesta desde la app de
@@ -454,6 +570,12 @@ el setter, que no se repite.
   probable contestar desde el celular, y ni se descarta el borrador ni lo ve la
   guarda de "ya hubo una respuesta" de Enviar. Contestar desde la bandeja, o
   descartar el borrador a mano.
+- **Aprobar un borrador no mira si el agente quedó apagado por una etiqueta.**
+  Un borrador que ya estaba en la cola se puede enviar aunque el contacto
+  acabe de marcarse `no-es-lead`: decide una persona, y la fila lo avisa en
+  rojo. Si hace falta bloquearlo, es un cambio en las cuatro acciones.
+- **Un Member no ve en Acciones los `tag_effect` que dispara el agente** (sin
+  `performed_by_agent_id`); los ve un Admin.
 - **Avisos de ventana (00072)** escritos y probados, sin aplicar: se enchufan
   cuando la cola tenga un par de días y se sepa su volumen.
 - **WhatsApp:** los ecos de lo que manda el propio sistema llegan como `fromMe`,

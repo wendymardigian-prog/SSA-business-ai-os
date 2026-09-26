@@ -29,6 +29,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /*
+   * La cola de borradores (Bloque 2d): abajo de 980 px la tabla de cinco
+   * columnas no se comprime, pasa a tarjetas apiladas. Variante `queue:`.
+   */
+  --breakpoint-queue: 980px;
 }
 
 :root {

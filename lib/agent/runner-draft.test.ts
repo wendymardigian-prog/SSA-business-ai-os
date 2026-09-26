@@ -314,6 +314,61 @@ describe("regenerar", () => {
     expect(live(w)).toHaveLength(1);
   });
 
+  describe("no vuelve a tocar el CRM (Bloque 2d-A)", () => {
+    // Round-robin entre dos personas: sin el candado, cada regeneracion
+    // elegia a la que hace mas que no recibe una y paseaba la conversacion.
+    const U1 = "00000000-0000-4000-8000-000000000001";
+    const U2 = "00000000-0000-4000-8000-000000000002";
+    function withRoundRobin() {
+      const w = withPrevious();
+      const agent = w.db.rows("agents")[0];
+      agent.allowed_tools = ["asignar_conversacion"];
+      agent.tools_config = { asignar_conversacion: { allowedUserIds: [U1, U2], strategy: "round_robin", fixedUserId: null } };
+      w.db.rows("workspace_members").push(
+        { workspace_id: "ws-1", user_id: U1, role: "member" },
+        { workspace_id: "ws-1", user_id: U2, role: "member" },
+      );
+      w.setModel(async (input) => {
+        if (input.tools.asignar_conversacion) await call(input.tools, "asignar_conversacion", { motivo: "quiere precios" });
+        return { text: "Te paso la info.", totalUsage: { inputTokens: 100, outputTokens: 10 } };
+      });
+      return w;
+    }
+
+    it("regenerar sin mensajes nuevos no ofrece las herramientas que escriben: no reasigna", async () => {
+      const w = withRoundRobin();
+      const outcome = await runAgentTurn(w.db.client, { ...w.payload, regenerate_of: "d-prev", regenerate_instruction: "mas corto" }, w.deps);
+
+      expect(outcome).toMatchObject({ status: "drafted" });
+      expect(w.modelCalls[0].tools.asignar_conversacion).toBeUndefined();
+      expect(w.db.rows("agent_run_steps").some((st) => st.name === "asignar_conversacion" && /no puede modificar el CRM/.test(String(st.error)))).toBe(true);
+      // Derivar sigue: en borrador solo deja una sugerencia.
+      expect(w.modelCalls[0].tools.derivar_a_humano).toBeDefined();
+      expect(w.db.rows("conversations")[0].assigned_to).toBeNull();
+      expect(w.db.rows("audit_log").filter((a) => a.action === "assign")).toHaveLength(0);
+      expect(JSON.stringify(w.modelCalls[0].messages)).toContain("no podes modificar el CRM");
+    });
+
+    it("tres regeneraciones seguidas no pasean la conversacion por el equipo", async () => {
+      const w = withRoundRobin();
+      for (let i = 0; i < 3; i++) {
+        const prev = live(w)[0];
+        if (prev) prev.status = "regenerated";
+        await runAgentTurn(w.db.client, { ...w.payload, regenerate_of: prev?.id ?? "d-prev" }, w.deps);
+      }
+      expect(w.db.rows("conversations")[0].assigned_to).toBeNull();
+      expect(w.db.rows("audit_log")).toHaveLength(0);
+    });
+
+    it("si el lead escribio despues, es un turno normal y las herramientas corren", async () => {
+      const w = withRoundRobin();
+      w.addInbound("y me pasas con alguien?", 5 * 3600 - 70);
+      await runAgentTurn(w.db.client, { ...w.payload, last_message_at: at(5 * 3600 - 70), regenerate_of: "d-prev" }, w.deps);
+      expect(w.modelCalls[0].tools.asignar_conversacion).toBeDefined();
+      expect(w.db.rows("conversations")[0].assigned_to).toBe(U1);
+    });
+  });
+
   it("si el lead escribio despues, es un turno normal: la instruccion no vale pero la cadena se conserva", async () => {
     const w = withPrevious();
     w.addInbound("ah y hay cuotas?", 5 * 3600 - 70);

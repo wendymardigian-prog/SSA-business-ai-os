@@ -42,7 +42,9 @@ export type AuditEntityType =
   | "sequence"
   | "sequence_enrollment"
   /** Configuracion de un agente de IA (Fase 3). */
-  | "agent";
+  | "agent"
+  /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
+  | "tag";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -83,7 +85,12 @@ export type AuditAction =
   /** El agente guardo el resumen acumulativo del contacto. */
   | "summary"
   /** Una persona revirtio una accion del agente. metadata.reverted_audit_id. */
-  | "revert";
+  | "revert"
+  /**
+   * Una etiqueta con efecto apago el agente y/o asigno el contacto, o se
+   * libero al sacarla (Bloque 2d-A, 00073). Lo escriben los triggers.
+   */
+  | "tag_effect";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -574,6 +581,10 @@ export interface Database {
           workspace_id: string;
           name: string;
           color: string | null;
+          /** Etiqueta con efecto (00073): apaga el agente en las conversaciones del contacto. */
+          disables_agent: boolean;
+          /** Etiqueta con efecto (00073): al ponerla, setter y vendedor pasan a esta persona. */
+          assigns_to: string | null;
           created_at: string;
         };
         Insert: {
@@ -581,11 +592,16 @@ export interface Database {
           workspace_id: string;
           name: string;
           color?: string | null;
+          disables_agent?: boolean;
+          assigns_to?: string | null;
           created_at?: string;
         };
         Update: {
           name?: string;
           color?: string | null;
+          /** Solo Owner/Admin (policies de tags, 00073). */
+          disables_agent?: boolean;
+          assigns_to?: string | null;
         };
         Relationships: [
           {
@@ -926,6 +942,11 @@ export interface Database {
           /** Cierre y resumen (migracion 00067). */
           closed_at: string | null;
           summarized_at: string | null;
+          /**
+           * La etiqueta que apago el agente aca (00073). La escriben y la limpian
+           * solo los triggers: nunca se actualiza desde la app.
+           */
+          agent_disabled_by_tag_id: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;

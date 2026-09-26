@@ -17,6 +17,8 @@ import {
 import { InboxView } from "./inbox-view";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
+import { countPendingDrafts } from "@/lib/actions/agent-drafts";
+import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 
 /**
  * Bandeja de conversaciones (F16).
@@ -50,7 +52,7 @@ export default async function InboxPage({
   // Lo que necesitan los filtros para poder validar lo que viene de la URL:
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
   const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
-    supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
+    supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase.from("channels").select("id, platform").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
@@ -63,7 +65,13 @@ export default async function InboxPage({
     (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) })]),
   );
 
-  const tags = tagsRes.data ?? [];
+  const tags = (tagsRes.data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    disablesAgent: t.disables_agent,
+    assignsTo: t.assigns_to,
+  }));
   const platformOptions = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
 
   const search = sanitizeSearch(firstParam(params.q));
@@ -136,7 +144,7 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, templatesRes] = await Promise.all([
+  const [conversationsRes, templatesRes, draftCounts] = await Promise.all([
     query
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -148,6 +156,9 @@ export default async function InboxPage({
       .eq("workspace_id", workspace.id)
       .is("deleted_at", null)
       .order("name"),
+    // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
+    // mantiene al dia Realtime (useDraftCounts).
+    countPendingDrafts(),
   ]);
 
   if (conversationsRes.error) {
@@ -181,6 +192,14 @@ export default async function InboxPage({
     selected = toRows(data ? [data] : [])[0] ?? null;
   }
 
+  // Las conversaciones de esta pagina con un borrador del agente esperando
+  // (Bloque 2d): llevan un chip para entrar directo al hilo. La RLS de
+  // agent_drafts acota a un Member a sus leads.
+  const draftConversationIds = await loadDraftConversationIds(supabase, [
+    ...conversations.map((c) => c.id),
+    ...(selected && !conversations.some((c) => c.id === selected!.id) ? [selected.id] : []),
+  ]);
+
   const filters: InboxFilters = {
     search,
     status,
@@ -211,6 +230,8 @@ export default async function InboxPage({
       agentByChannel={agentByChannel}
       currentUserId={user.id}
       isAdmin={isAdminRole(role)}
+      draftCounts={draftCounts}
+      draftConversationIds={draftConversationIds}
     />
   );
 }
@@ -246,4 +267,22 @@ async function keepOnlyBotAnswered(
 
   const answered = new Set((data ?? []).map((m) => m.conversation_id));
   return conversations.filter((c) => answered.has(c.id));
+}
+
+/** De estas conversaciones, cuales tienen un borrador vivo del agente. */
+async function loadDraftConversationIds(
+  supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"],
+  conversationIds: string[],
+): Promise<string[]> {
+  if (conversationIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("agent_drafts")
+    .select("conversation_id")
+    .in("conversation_id", conversationIds)
+    .in("status", LIVE_DRAFT_STATUSES);
+  if (error) {
+    console.error("[inbox] no pude leer los borradores de la pagina:", error.message);
+    return [];
+  }
+  return [...new Set((data ?? []).map((d) => d.conversation_id))];
 }

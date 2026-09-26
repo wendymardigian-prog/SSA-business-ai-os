@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle } from "lucide-react";
+import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search";
@@ -68,7 +68,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
       )}
 
-      <div className="max-w-[70%]">
+      <div className="max-w-[85%] md:max-w-[70%]">
         <div
           className={cn(
             "rounded-2xl px-4 py-2 text-sm",
@@ -164,6 +164,8 @@ export function MessageThread({
   templates = [],
   workspaceName = "",
   agentInfo = null,
+  onBack,
+  onOpenContact,
 }: {
   conversation: Conversation | null;
   messages: Message[];
@@ -172,6 +174,10 @@ export function MessageThread({
   workspaceName?: string;
   /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
   agentInfo?: ChannelAgentInfo | null;
+  /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
+  onBack?: () => void;
+  /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
+  onOpenContact?: () => void;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
@@ -387,10 +393,20 @@ export function MessageThread({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b border-border px-4">
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      {/* Header. En el telefono se parte en dos renglones en vez de cortarse. */}
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-2 py-1.5 md:flex-nowrap md:px-4 md:py-0">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Volver a la bandeja"
+              className="-ml-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+            >
+              <ChevronLeft className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+          <div className="relative flex-shrink-0">
             {conversation.contacts?.avatar_url ? (
               <img
                 src={conversation.contacts.avatar_url}
@@ -410,8 +426,8 @@ export function MessageThread({
               />
             </div>
           </div>
-          <div>
-            <p className="text-sm font-medium">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">
               {conversation.contacts?.display_name ?? "Sin nombre"}
             </p>
             {/* F18: quien esta por escribir tiene que verlo antes de escribir,
@@ -427,7 +443,17 @@ export function MessageThread({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenContact && (
+            <button
+              type="button"
+              onClick={onOpenContact}
+              aria-label="Ver datos del contacto"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent md:hidden"
+            >
+              <UserRound className="h-4 w-4" aria-hidden />
+            </button>
+          )}
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[10px] font-medium capitalize",
@@ -443,6 +469,14 @@ export function MessageThread({
           {conversation.is_automation_paused && (
             <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
               Flows pausados
+            </span>
+          )}
+          {conversation.agent_disabled_by_tag_id && (
+            <span
+              className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              title="El contacto tiene una etiqueta que apaga el agente (por ejemplo es-conocido). Prenderlo a mano acá gana sobre la etiqueta."
+            >
+              Apagado por etiqueta
             </span>
           )}
           {agentInfo?.available && agentInfo.mode === "draft" && (
@@ -498,7 +532,7 @@ export function MessageThread({
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-4">
         <div className="mx-auto max-w-2xl space-y-4">
           {messages.map((message, i) => (
             <div key={message.id}>
@@ -526,7 +560,7 @@ export function MessageThread({
       <PendingDraft key={conversation.id} conversationId={conversation.id} />
 
       {/* Composer */}
-      <div className="border-t border-border p-4">
+      <div className="border-t border-border p-3 md:p-4">
         <div className="mx-auto flex max-w-2xl items-end gap-2">
           <div className="relative flex-1">
             {pickerOpen && (

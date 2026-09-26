@@ -156,8 +156,13 @@ export async function summarizeConversationOnClose(
   const canClassify = agent.classifyOnClose;
   let allowedTagNames: string[] = [];
   if (canClassify && tagConfig && tagConfig.allowedTagIds.length > 0) {
-    const { data: tags } = await supabase.from("tags").select("name").eq("workspace_id", conversation.workspace_id).in("id", tagConfig.allowedTagIds);
-    allowedTagNames = (tags ?? []).map((t) => t.name);
+    const { data: tags } = await supabase
+      .from("tags")
+      .select("name, disables_agent, assigns_to")
+      .eq("workspace_id", conversation.workspace_id)
+      .in("id", tagConfig.allowedTagIds);
+    // Las etiquetas con efecto (00073) nunca se le ofrecen al agente.
+    allowedTagNames = (tags ?? []).filter((t) => !t.disables_agent && !t.assigns_to).map((t) => t.name);
   }
 
   const run = await openAiRun(

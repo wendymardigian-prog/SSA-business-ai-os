@@ -10,6 +10,7 @@ import { loadAgentById, loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { validateAgentConfig, validateSystemPrompt } from "@/lib/agent/validate";
 import { normalizeToolsConfig } from "@/lib/agent/tools/config";
+import { agentUsableTagIds } from "@/lib/tags/effects";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -550,11 +551,12 @@ export async function updateAgentTools(
   if (!agent) return { ok: false, error: "El agente no existe." };
 
   const [{ data: tags }, { data: members }] = await Promise.all([
-    supabase.from("tags").select("id").eq("workspace_id", workspace.id),
+    supabase.from("tags").select("id, disables_agent, assigns_to").eq("workspace_id", workspace.id),
     supabase.from("workspace_members").select("user_id").eq("workspace_id", workspace.id),
   ]);
   const normalized = normalizeToolsConfig(input, {
-    existingTagIds: (tags ?? []).map((t) => t.id),
+    // Las etiquetas con efecto (00073) no entran en la lista del agente.
+    existingTagIds: agentUsableTagIds((tags ?? []).map((t) => ({ id: t.id, disablesAgent: t.disables_agent, assignsTo: t.assigns_to }))),
     memberIds: (members ?? []).map((m) => m.user_id),
   });
   if (!normalized.ok) return normalized;

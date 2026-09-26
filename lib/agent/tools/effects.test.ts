@@ -55,6 +55,23 @@ function ctxFor(db: ReturnType<typeof memoryDb>, over: Partial<EffectContext> = 
 }
 
 describe("etiquetar: solo la lista blanca, nunca crea", () => {
+  it("nunca aplica una etiqueta con efecto sobre el agente, aunque una config vieja la tenga en la lista (00073)", async () => {
+    const db = world({
+      tags: [
+        { id: "t-conocido", workspace_id: "ws-1", name: "es-conocido", disables_agent: true, assigns_to: null },
+        { id: "t-asigna", workspace_id: "ws-1", name: "vip-wendy", disables_agent: false, assigns_to: "u-1" },
+        { id: "t-interesado", workspace_id: "ws-1", name: "Interesado", disables_agent: false, assigns_to: null },
+      ],
+    });
+    const r = await applyTags(
+      ctxFor(db),
+      { allowedTagIds: ["t-conocido", "t-asigna", "t-interesado"], canRemove: false },
+      { add: ["es-conocido", "vip-wendy", "Interesado"], remove: [] },
+    );
+    expect(db.rows("contact_tags").map((t) => t.tag_id)).toEqual(["t-interesado"]);
+    expect(r.message).toContain("es-conocido");
+  });
+
   it("agrega un tag permitido y lo audita con el agente como actor", async () => {
     const db = world();
     const r = await applyTags(ctxFor(db), { allowedTagIds: ["t-interesado"], canRemove: false }, { add: ["interesado"], remove: [] });

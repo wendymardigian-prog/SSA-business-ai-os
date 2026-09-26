@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useTransition } from "react";
+import { useState, useEffect, useRef, useCallback, useTransition, useId } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, Loader2 } from "lucide-react";
@@ -41,6 +41,9 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
   const [pending, startTransition] = useTransition();
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  // Hay dos campanas montadas (menu lateral y barra del telefono, una oculta
+  // por CSS): cada una necesita su propio canal de Realtime.
+  const channelId = useId();
 
   const refresh = useCallback(async (withList: boolean) => {
     if (withList) setLoading(true);
@@ -61,7 +64,7 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
     const supabase = createClient();
 
     const channel = supabase
-      .channel("notifications-bell")
+      .channel(`notifications-bell-${channelId}`)
       .on(
         "postgres_changes",
         {
@@ -82,7 +85,7 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [workspaceId, refresh]);
+  }, [workspaceId, refresh, channelId]);
 
   // Cerrar al hacer clic afuera o con Escape.
   useEffect(() => {
@@ -158,7 +161,7 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
         }
         aria-expanded={open}
         aria-haspopup="true"
-        className="relative rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        className="relative flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:min-h-0 md:min-w-0"
       >
         <Bell className="h-4 w-4" aria-hidden="true" />
         {unread > 0 && (
@@ -173,7 +176,7 @@ export function NotificationBell({ workspaceId, initialUnread }: Props) {
           ref={panelRef}
           role="dialog"
           aria-label="Notificaciones"
-          className="absolute left-0 top-full z-50 mt-2 w-80 rounded-xl border border-border bg-card shadow-lg"
+          className="fixed inset-x-3 top-16 z-50 rounded-xl border border-border bg-card shadow-lg md:absolute md:inset-x-auto md:left-0 md:top-full md:mt-2 md:w-80"
         >
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">Notificaciones</h2>

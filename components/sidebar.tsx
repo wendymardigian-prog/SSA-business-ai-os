@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   GitBranch,
   MessageSquare,
@@ -16,7 +16,6 @@ import {
   BookOpen,
   Bot,
   Settings,
-  FileText,
   LogOut,
   Moon,
   Sun,
@@ -27,7 +26,8 @@ import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { isAdminRole } from "@/lib/auth/roles";
-import { countPendingDrafts, type PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
+import { useDraftCounts } from "@/components/drafts/use-draft-counts";
 import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
@@ -47,12 +47,15 @@ function subscribeToThemeClass(callback: () => void) {
 
 // adminOnly: la pantalla ademas esta protegida por requireWorkspaceAdmin y por
 // RLS. Ocultarla del menu es para no ofrecerle a un Member un link que rebota.
-const navigation = [
+//
+// Borradores NO esta en el menu (Bloque 2d): el modo borrador es una rampa para
+// confiar en el agente, no una seccion permanente. El dia que un canal vuelve a
+// envio directo, el item quedaria para siempre apuntando a una pantalla vacia.
+// La cola (/dashboard/drafts) sigue existiendo y se llega por el numero sobre
+// Inbox, la pestana de la bandeja, el chip de cada conversacion y los avisos.
+export const navigation = [
   { name: "Flows", href: "/dashboard/flows", icon: GitBranch, adminOnly: false },
   { name: "Inbox", href: "/dashboard/inbox", icon: MessageSquare, adminOnly: false },
-  // Bloque 2c: las respuestas del agente que esperan aprobacion. Aprobar es
-  // operar, no configurar: la ve cualquiera (la RLS acota a sus leads).
-  { name: "Borradores", href: "/dashboard/drafts", icon: FileText, adminOnly: false },
   { name: "Contacts", href: "/dashboard/contacts", icon: Users, adminOnly: false },
   { name: "Broadcasts", href: "/dashboard/broadcasts", icon: Radio, adminOnly: false },
   { name: "Sequences", href: "/dashboard/sequences", icon: ListOrdered, adminOnly: false },
@@ -87,13 +90,9 @@ export function Sidebar({
   /** Borradores esperando (Bloque 2c). Coincide con la vista por defecto de la cola: los mios. */
   draftCounts?: PendingDraftCounts;
 }) {
-  const navItems = navigation.filter(
-    (item) => !item.adminOnly || isAdminRole(role)
-  );
-  const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const drafts = useDraftCounts(workspace.id, draftCounts);
+  const drafts = useDraftCounts(workspace.id, draftCounts, "sidebar-drafts");
   const dark = useSyncExternalStore(
     subscribeToThemeClass,
     () => document.documentElement.classList.contains("dark"),
@@ -113,7 +112,8 @@ export function Sidebar({
   }
 
   return (
-    <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
+    // En el telefono el menu vive en la barra de arriba (mobile-top-bar.tsx).
+    <div className="hidden h-full w-60 flex-shrink-0 flex-col border-r border-border bg-sidebar md:flex">
       <div className="flex items-center gap-1 border-b border-sidebar-border px-3 py-3">
         <div className="min-w-0 flex-1">
           <WorkspaceSwitcher current={workspace} workspaces={workspaces} />
@@ -127,25 +127,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.name}
-              {item.href === "/dashboard/drafts" && drafts && <DraftBadge counts={drafts} />}
-            </Link>
-          );
-        })}
+        <NavLinks role={role} drafts={drafts} />
       </nav>
 
       <div className="border-t border-sidebar-border p-3 space-y-1">
@@ -169,60 +151,74 @@ export function Sidebar({
 }
 
 /**
- * El contador de Borradores. El numero grande son los mios (lo que muestra la
- * cola por defecto); para Owner/Admin, al lado, el total del workspace: un
- * Owner sin contactos propios no puede ver "0" con doce esperando.
+ * Los items del menu. Los usa el menu lateral y el panel del telefono: una
+ * sola lista, para que los dos no se desincronicen.
  */
-function DraftBadge({ counts }: { counts: PendingDraftCounts }) {
+export function NavLinks({
+  role,
+  drafts,
+  onNavigate,
+}: {
+  role: string;
+  drafts: PendingDraftCounts | undefined;
+  /** El panel del telefono se cierra al elegir. */
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const navItems = navigation.filter((item) => !item.adminOnly || isAdminRole(role));
+  return (
+    <>
+      {navItems.map((item) => {
+        // La cola de borradores cuelga de Inbox: estando ahi, Inbox queda marcado.
+        const isActive =
+          pathname.startsWith(item.href) || (item.href === "/dashboard/inbox" && pathname.startsWith("/dashboard/drafts"));
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            onClick={onNavigate}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0",
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+          >
+            <item.icon className="h-4 w-4" />
+            {item.name}
+            {item.href === "/dashboard/inbox" && drafts && <DraftBadge counts={drafts} />}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Los borradores esperando, sobre Inbox (Bloque 2d). El numero grande son los
+ * mios (lo que muestra la cola por defecto); para Owner/Admin, al lado, el
+ * total del workspace: un Owner sin contactos propios no puede ver "0" con
+ * doce esperando. Con cero no se muestra nada: el numero desaparece solo
+ * cuando ningun canal deja borradores.
+ */
+export function DraftBadge({ counts }: { counts: PendingDraftCounts }) {
   const total = counts.total ?? null;
   if (counts.mine === 0 && !total) return null;
   const title =
     total !== null
-      ? `${counts.mine} tuyos · ${total} en total${counts.unassigned ? ` (${counts.unassigned} sin asignar)` : ""}`
-      : `${counts.mine} esperando`;
+      ? `Borradores esperando: ${counts.mine} tuyos · ${total} en total${counts.unassigned ? ` (${counts.unassigned} sin asignar)` : ""}`
+      : `Borradores esperando: ${counts.mine}`;
   return (
     <span className="ml-auto flex items-center gap-1" title={title} aria-label={title}>
       {counts.mine > 0 && (
         <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">{counts.mine}</span>
       )}
-      {total !== null && total > counts.mine && <span className="text-[10px] text-sidebar-foreground/60">· {total}</span>}
+      {total !== null && total > counts.mine && (
+        <span className={cn(counts.mine > 0 ? "text-[10px] text-sidebar-foreground/60" : "rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary")}>
+          {counts.mine > 0 ? `· ${total}` : total}
+        </span>
+      )}
     </span>
   );
-}
-
-/** Los contadores, al dia con Realtime sobre agent_drafts. */
-function useDraftCounts(workspaceId: string, initial: PendingDraftCounts | undefined) {
-  const [counts, setCounts] = useState<PendingDraftCounts | undefined>(initial);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    setCounts(initial);
-  }, [initial]);
-  useEffect(() => {
-    const supabase = createClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let cancelled = false;
-    (async () => {
-      await supabase.auth.getSession();
-      if (cancelled) return;
-      channel = supabase
-        .channel(`sidebar-drafts-${workspaceId}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "agent_drafts", filter: `workspace_id=eq.${workspaceId}` }, () => {
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(async () => {
-            try {
-              setCounts(await countPendingDrafts());
-            } catch (err) {
-              console.error("[sidebar] no pude actualizar el contador de borradores:", err instanceof Error ? err.message : "error");
-            }
-          }, 800);
-        })
-        .subscribe();
-    })();
-    return () => {
-      cancelled = true;
-      if (timer.current) clearTimeout(timer.current);
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [workspaceId]);
-  return counts;
 }

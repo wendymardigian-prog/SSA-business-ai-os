@@ -5,6 +5,99 @@ cada bloque.
 
 ---
 
+## Etapa 1 · Fase 3 · Bloque 2d-A — Aprobar desde el teléfono y etiquetas con efecto
+
+**Fecha:** 26 de septiembre de 2026
+**Alcance:** las Tareas 1 y 4 del prompt del Bloque 2d, más el candado de solo
+lectura en la regeneración. Las Tareas 2 y 3 (backfill manual, reglas botón →
+etiqueta y propuestas de etiqueta) pasan a **2d-B**, después de una semana con
+el agente prendido: el estimador de costos del backfill necesita runs reales y
+la similitud de etiquetas se diseña mejor viendo qué propone el agente. Es lo
+único que falta para prender el agente con seguridad: aprobar desde el
+teléfono y que un conocido nunca reciba un pitch. El agente sigue **apagado**.
+
+**Qué se construyó:** Borradores sale del menú y queda como número sobre Inbox,
+pestaña en la bandeja, chip por conversación y "Volver a Inbox"; la versión
+para el teléfono (barra de arriba con menú, bandeja lista → hilo, datos del
+contacto como hoja, cola en tarjetas con Enviar/Descartar al pie); las
+etiquetas con efecto sobre el agente (00073) con su pestaña en Agentes, las
+acciones rápidas del panel y la ficha, y el etiquetado masivo en Contactos; y
+la regeneración que no vuelve a tocar el CRM.
+
+### Decisiones tomadas
+
+| Decisión | Por qué |
+|---|---|
+| **Borradores fuera del menú** | El modo borrador es una rampa para confiar en el agente. Con un canal de vuelta en envío directo, el ítem quedaría para siempre apuntando a una pantalla vacía. El número sí queda a la vista: la lógica de ventanas existe por la presión de tiempo |
+| **Cascarón mobile completo**, no solo la cola | No había nada mobile (el sidebar eran 240 px fijos). Un borrador con tres horas de ventana un domingo se aprueba desde el teléfono o no se aprueba |
+| **Tarjetas abajo de 980 px** (variante `queue:`), botones `sticky` y no `fixed` | La tabla de cinco columnas no se comprime. `sticky` dentro del scroll: el teclado no tapa Enviar |
+| **Etiqueta con efecto genérica**, no dos casos especiales | `es-conocido` y `no-es-lead` piden lo mismo y solo difieren en si asignan. Dos columnas en `tags` y triggers |
+| **El efecto vive en la base** | Seis caminos ponen etiquetas y no comparten una función de TypeScript |
+| **La marca se limpia solo si el estado del agente cambia de verdad** | Revisión de Wendy: limpiarla en cada escritor la borraba en la primera respuesta a mano a un conocido, y sacar la etiqueta después no la prendía nunca. Un trigger en la base vale para cualquier escritor y los cuatro archivos de TypeScript no se tocaron |
+| **Sacar la etiqueta no revierte la asignación** | Decisión de Wendy: la persona sigue siendo la responsable |
+| **Permisos por policies, no por privilegio de columna** | Todos los usuarios son el rol `authenticated`: revocar la columna se la sacaba también a Wendy |
+| **El agente nunca usa una etiqueta con efecto** | Se apagaría a sí mismo en medio del turno y el lead quedaría sin respuesta ni aviso |
+| **Regenerar sin mensajes nuevos es de solo lectura** | Con round-robin, regenerar tres veces paseaba la conversación por tres personas; el único freno era una línea del prompt. Derivar y pausarse siguen: en borrador solo sugieren |
+| **Backfill y propuestas de etiqueta a 2d-B** | Sin runs no hay con qué calibrar el costo, y el vocabulario de etiquetas se ve mejor con el agente corriendo |
+
+### Lo que la exploración corrigió sobre lo que se asumía
+
+- El aviso del dashboard "N respuestas esperando aprobación" no existía: la
+  página redirige a Flows.
+- La bandeja no tenía versión mobile (el prompt lo daba por hecho, sacado de
+  los requerimientos de la Fase 1).
+- En modo borrador las herramientas del CRM se ejecutan de verdad (solo
+  derivar y pausarse se difieren). Pesa en el backfill (2d-B) y en regenerar.
+- `push_debounced_job` solo empuja el `run_at` hacia adelante, y el tope de
+  gasto con acción "apagar" corre antes del corte de modo borrador. Los dos
+  pesan en el backfill: quedan resueltos en el diseño de 2d-B.
+- Las respuestas de botón llegan con payloads opacos (`ACT::…`) y solo en un
+  tercio de los mensajes: la regla botón → etiqueta de 2d-B se casa por texto.
+- Con las 18 etiquetas reales, `ya-usa-ia`/`no-usa-ia` y
+  `tiene-negocio`/`sin-negocio` se habrían fusionado en el diseño de
+  similitud: 2d-B lleva polaridad `no`/`sin`.
+
+### Migraciones
+
+| # | Qué crea |
+|---|---|
+| 00073 | `tags.disables_agent` y `tags.assigns_to`; policies de `tags` por comando; `conversations.agent_disabled_by_tag_id`; triggers en `contact_tags` (poner, sacar, fusión), `tags` (borrar, prender o apagar el efecto) y `conversations` (heredar en las nuevas y movidas; limpiar la marca si una persona cambia el estado). **Aplicada en producción el 26/9/2026** |
+
+La 00073 se probó con diez escenarios contra producción dentro de un lote que
+se deshace (verificado después que no quedó nada): etiquetar, contestar a mano
+con una marca de error previa, prender a mano, sacar, apagado a mano no
+reclamado, conversación nueva, dos etiquetas con efecto, apagar el efecto,
+borrar la etiqueta y fusión.
+
+### Verificación
+
+- 1059 tests en verde (de 1055): el agente no aplica etiquetas con efecto ni
+  con una configuración vieja; regenerar sin mensajes nuevos no ofrece
+  asignar ni reasigna en tres regeneraciones seguidas; con un mensaje nuevo del
+  lead las herramientas corren; los links de notificación usan `?c=`.
+- `verify-rls.mjs` suma los casos de la 00073 (Member no crea ni toca
+  etiquetas con efecto, pero puede aplicarlas a sus leads; el caso etiquetar →
+  contestar a mano → sacar; prender a mano gana; conversación nueva apagada;
+  borrar la etiqueta libera). En verde con la 00073 aplicada.
+- `npm run build`, `tsc` y `eslint` limpios.
+- Las pantallas no se verificaron a ojo: la app pide login y no se ingresan
+  credenciales. La lista en vivo está en `docs/agente-ia.md`.
+
+### Deuda anotada
+
+- **`approveDraft` no mira `agent_enabled`**: un borrador en cola se puede
+  enviar aunque el contacto acabe de marcarse `no-es-lead`. La fila lo avisa.
+- **Un Member no ve en Acciones los `tag_effect` que dispara el agente.**
+- El resto de las pantallas del dashboard (Flows, Secuencias, Agentes) no
+  tiene versión mobile: tienen el menú nuevo, pero sus tablas no se adaptaron.
+- **2d-B** (después de una semana con el agente prendido): backfill manual,
+  reglas botón → etiqueta, propuestas de etiqueta con similitud. Diseño y
+  correcciones en el plan del bloque.
+- Siguen las del 2c: la regla de pertenencia, la 00072, las respuestas desde
+  la app de Instagram.
+
+---
+
 ## Etapa 1 · Fase 3 · Bloque 2c — Modo borrador del agente
 
 **Fecha:** 25 de septiembre de 2026
@@ -66,7 +159,7 @@ avisos de ventana (00072, sin aplicar).
 |---|---|
 | 00070 | `agent_drafts` (RLS por scope de leads, índice único de un vivo por conversación, Realtime, retención de 12 meses); `agents.channel_modes`; tope de respuestas opcional; run `drafted` e `inbound_at`/`responded_at`; `channels.messaging_window_hours`; `contacts.ai_summary_updated_at`; `messaging_window_hours()`; barrido cada 5 minutos; `push_debounced_job` con claves volátiles |
 | 00071 | `ai_cost_report` con borradores; `draft_queue_metrics` y `draft_queue_metrics_by_person` |
-| 00072 | Avisos de ventana por persona y corte. **Escrita y probada, sin aplicar** |
+| 00072 | Avisos de ventana por persona y corte. **Aplicada en producción el 26/9/2026** |
 
 00070 y 00071 aplicadas en producción el 25/9/2026. Idempotentes, funciones con
 `SET search_path = ''`.

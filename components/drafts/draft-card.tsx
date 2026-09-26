@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Ban, Bot, Check, Loader2, MessageSquareReply, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
+import { Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -182,9 +182,12 @@ function ProposedReply({ draft, decision }: { draft: DraftQueueRow; decision: De
           }}
           rows={Math.min(10, Math.max(3, Math.ceil(decision.text.length / 60)))}
           autoFocus
-          className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          // Crece con el texto (field-sizing donde el navegador lo soporta; el
+          // calculo de rows queda como respaldo). En el telefono el tope es la
+          // mitad de la pantalla: el teclado ocupa la otra mitad.
+          className="field-sizing-content max-h-[50dvh] min-h-24 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring queue:text-sm"
         />
-        <p className="text-[11px] text-muted-foreground">{SHORTCUT} envía el texto editado · Esc cancela</p>
+        <p className="hidden text-[11px] text-muted-foreground queue:block">{SHORTCUT} envía el texto editado · Esc cancela</p>
       </div>
     );
   }
@@ -239,12 +242,14 @@ function Btn({
   variant = "secondary",
   disabled,
   title,
+  className,
 }: {
   onClick: () => void;
   children: ReactNode;
   variant?: "primary" | "secondary" | "danger";
   disabled?: boolean;
   title?: string;
+  className?: string;
 }) {
   return (
     <button
@@ -253,7 +258,10 @@ function Btn({
       disabled={disabled}
       title={title}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+        className,
+        // 44 px de alto en el telefono y la tableta (se aprueba con el pulgar);
+        // compacto recien donde la cola es una tabla.
+        "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 queue:min-h-0 queue:px-2.5 queue:py-1.5 queue:text-xs",
         variant === "primary" && "bg-primary text-primary-foreground hover:opacity-90",
         variant === "secondary" && "border border-input hover:bg-accent",
         variant === "danger" && "border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/40",
@@ -286,7 +294,7 @@ function Decisions({ draft, decision, inboxHref }: { draft: DraftQueueRow; decis
           placeholder="más corto, no menciones el precio…"
           maxLength={500}
           autoFocus
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-ring queue:min-h-0 queue:text-sm"
         />
         <div className="flex flex-wrap gap-1.5">
           <Btn variant="primary" onClick={d.regenerate} disabled={d.pending}>
@@ -317,7 +325,7 @@ function Decisions({ draft, decision, inboxHref }: { draft: DraftQueueRow; decis
           }}
           maxLength={300}
           autoFocus
-          className="w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-ring queue:min-h-0 queue:text-sm"
         />
         <div className="flex flex-wrap gap-1.5">
           <Btn variant="danger" onClick={d.discard} disabled={d.pending}>
@@ -331,49 +339,71 @@ function Decisions({ draft, decision, inboxHref }: { draft: DraftQueueRow; decis
   }
 
   const sending = draft.status === "sending";
+  const editing = d.mode === "editing";
+  const canEdit = d.canSend && !editing;
+  const canRegenerate = !sending && !editing && !d.closed;
+  // Lo secundario (editar, regenerar): en la tabla va en fila; en el telefono,
+  // detras de "Mas", para que Enviar y Descartar entren al alcance del pulgar.
+  const secondary = (inMenu: boolean) => (
+    <>
+      {canEdit && (
+        <Btn onClick={() => d.setMode("editing")} className={inMenu ? "w-full justify-start" : undefined}>
+          <Pencil className="h-3.5 w-3.5" /> Editar
+        </Btn>
+      )}
+      {canRegenerate && (
+        <Btn onClick={() => d.setMode("regenerating")} className={inMenu ? "w-full justify-start" : undefined}>
+          <RefreshCw className="h-3.5 w-3.5" /> Regenerar
+        </Btn>
+      )}
+    </>
+  );
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {sending ? (
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saliendo…
         </span>
       ) : d.canSend ? (
-        <>
-          <Btn variant="primary" onClick={() => d.send()} disabled={d.pending} title={`Enviar (${SHORTCUT})`}>
-            {d.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            {d.mode === "editing" ? "Enviar editado" : draft.status === "failed" ? "Reintentar" : "Enviar"}
-            <kbd className="ml-0.5 hidden rounded bg-primary-foreground/20 px-1 text-[10px] sm:inline">{SHORTCUT}</kbd>
-          </Btn>
-          {d.mode === "editing" ? (
-            <Btn onClick={() => d.setMode("idle")}>
-              <X className="h-3.5 w-3.5" /> Cancelar
-            </Btn>
-          ) : (
-            <Btn onClick={() => d.setMode("editing")}>
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </Btn>
-          )}
-        </>
+        <Btn variant="primary" onClick={() => d.send()} disabled={d.pending} title={`Enviar (${SHORTCUT})`} className="flex-1 queue:flex-none">
+          {d.pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          {editing ? "Enviar editado" : draft.status === "failed" ? "Reintentar" : "Enviar"}
+          <kbd className="ml-0.5 hidden rounded bg-primary-foreground/20 px-1 text-[10px] queue:inline">{SHORTCUT}</kbd>
+        </Btn>
       ) : (
         inboxHref && (
           <Link
             href={inboxHref}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 queue:min-h-0 queue:flex-none queue:px-2.5 queue:py-1.5 queue:text-xs"
           >
             <MessageSquareReply className="h-3.5 w-3.5" /> Responder a mano
           </Link>
         )
       )}
-      {!sending && d.mode !== "editing" && (
+      {editing && (
+        <Btn onClick={() => d.setMode("idle")}>
+          <X className="h-3.5 w-3.5" /> Cancelar
+        </Btn>
+      )}
+      {!sending && !editing && (
         <>
-          {!d.closed && (
-            <Btn onClick={() => d.setMode("regenerating")}>
-              <RefreshCw className="h-3.5 w-3.5" /> Regenerar
-            </Btn>
-          )}
+          <span className="hidden gap-1.5 queue:inline-flex">{secondary(false)}</span>
           <Btn onClick={() => d.setMode("discarding")}>
             <Trash2 className="h-3.5 w-3.5" /> Descartar
           </Btn>
+          {(canEdit || canRegenerate) && (
+            <details className="relative queue:hidden">
+              <summary
+                aria-label="Más acciones"
+                className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-lg border border-input hover:bg-accent [&::-webkit-details-marker]:hidden"
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+              </summary>
+              <div className="absolute bottom-full right-0 z-20 mb-2 flex w-44 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-lg">
+                {secondary(true)}
+              </div>
+            </details>
+          )}
         </>
       )}
     </div>
@@ -435,7 +465,11 @@ export function DraftQueueItem({
       tabIndex={0}
       onKeyDown={onShortcut(decision)}
       aria-label={`Borrador para ${contactName(draft)}`}
-      className="grid grid-cols-1 gap-3 px-4 py-4 outline-none focus-within:bg-accent/30 focus:bg-accent/30 lg:grid-cols-[minmax(150px,0.9fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(200px,1fr)]"
+      // Abajo de 980 px es una tarjeta: contacto y canal, la ventana (lo
+      // primero que decide si vale la pena leer el resto), lo que escribio, la
+      // respuesta, lo que hizo el agente y los botones al pie. Arriba, las
+      // cinco columnas de siempre.
+      className="grid grid-cols-1 gap-3 px-4 pt-4 outline-none focus-within:bg-accent/30 focus:bg-accent/30 queue:grid-cols-[minmax(150px,0.9fr)_minmax(0,1.1fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(200px,1fr)] queue:pb-4"
     >
       <div className="min-w-0 space-y-1">
         <div className="flex items-center gap-2">
@@ -448,30 +482,46 @@ export function DraftQueueItem({
           {ownerLabel ? `De ${ownerLabel}` : "Sin asignar"}
         </p>
         {draft.contact.doNotContact && <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">No contactar</p>}
+        {draft.agentOffByTag && (
+          <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+            Contacto marcado con una etiqueta que apaga el agente: revisá antes de enviar.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 queue:hidden">
+        <WindowBadge info={draft.window} />
+        <span className="text-[11px] text-muted-foreground">{timeAgo(draft.createdAt)}</span>
       </div>
 
       <div className="min-w-0">
-        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground lg:hidden">Lo que escribió</p>
+        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground queue:hidden">Lo que escribió</p>
         <BurstQuote draft={draft} />
       </div>
 
       <div className="min-w-0">
-        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground lg:hidden">Respuesta propuesta</p>
+        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground queue:hidden">Respuesta propuesta</p>
         {decided ? <DecidedSummary draft={draft} /> : <ProposedReply draft={draft} decision={decision} />}
       </div>
 
       <div className="min-w-0">
-        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground lg:hidden">Lo que hizo el agente</p>
+        <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground queue:hidden">Lo que hizo el agente</p>
         <AgentActions draft={draft} />
       </div>
 
-      <div className="min-w-0 space-y-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="min-w-0 space-y-2 pb-4 queue:pb-0">
+        <div className="hidden flex-wrap items-center gap-1.5 queue:flex">
           <WindowBadge info={draft.window} />
           <span className="text-[11px] text-muted-foreground">{timeAgo(draft.createdAt)}</span>
         </div>
-        {!decided && <Decisions draft={draft} decision={decision} inboxHref={inboxHref} />}
         <Feedback draft={draft} decision={decision} />
+        {!decided && (
+          // En el telefono la barra de botones queda pegada al pie mientras la
+          // tarjeta esta en pantalla. sticky y no fixed: el teclado no la tapa.
+          <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-background/95 px-4 py-2 backdrop-blur queue:static queue:mx-0 queue:border-0 queue:bg-transparent queue:p-0 queue:backdrop-blur-none">
+            <Decisions draft={draft} decision={decision} inboxHref={inboxHref} />
+          </div>
+        )}
       </div>
     </li>
   );

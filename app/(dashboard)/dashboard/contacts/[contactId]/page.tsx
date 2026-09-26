@@ -22,6 +22,7 @@ import { AssignmentFields } from "@/components/contacts/assignment-fields";
 import { NotesSection } from "@/components/contacts/notes-section";
 import { FollowupField } from "@/components/contacts/followup-field";
 import { TagsEditor } from "@/components/contacts/tags-editor";
+import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection, type HistoryEntry } from "@/components/contacts/history-section";
@@ -92,7 +93,7 @@ export default async function ContactDetailPage({
         .is("deleted_at", null)
         .order("name"),
       supabase.from("contact_custom_fields").select("field_id, value").eq("contact_id", contactId),
-      supabase.from("tags").select("id, name, color").eq("workspace_id", workspace.id).order("name"),
+      supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
       supabase
         .from("audit_log")
         .select("id, action, changes, metadata, performed_at, performed_by")
@@ -123,6 +124,13 @@ export default async function ContactDetailPage({
   if (!contact) notFound();
 
   const members = await getWorkspaceMembers(workspace.id);
+  const tagOptions = (tagsRes.data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    color: t.color,
+    disablesAgent: t.disables_agent,
+    assignsTo: t.assigns_to,
+  }));
   const labels = memberLabels(members);
 
   const assignedTagIds = (contact.contact_tags ?? []).map(
@@ -282,7 +290,7 @@ export default async function ContactDetailPage({
                   {conversations.map((conv) => (
                     <li key={conv.id}>
                       <Link
-                        href={`/dashboard/inbox?conversation=${conv.id}`}
+                        href={`/dashboard/inbox?c=${conv.id}`}
                         className="flex items-start gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-accent/50"
                       >
                         <PlatformIcon platform={conv.platform} className="mt-0.5 h-4 w-4" size={16} />
@@ -350,10 +358,21 @@ export default async function ContactDetailPage({
               />
             </Section>
 
+            {tagOptions.some((t) => t.disablesAgent || t.assignsTo) && (
+              <Section title="Acciones rápidas">
+                <QuickTagActions
+                  contactId={contact.id}
+                  allTags={tagOptions}
+                  assignedIds={assignedTagIds}
+                  memberNames={Object.fromEntries(members.map((m) => [m.userId, m.name]))}
+                />
+              </Section>
+            )}
+
             <Section title="Tags">
               <TagsEditor
                 contactId={contact.id}
-                allTags={tagsRes.data ?? []}
+                allTags={tagOptions}
                 assignedIds={assignedTagIds}
               />
             </Section>
