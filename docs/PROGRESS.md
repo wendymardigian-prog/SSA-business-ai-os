@@ -148,12 +148,12 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F65 · Responder email con `In-Reply-To` y `References`, en los dos caminos de envío, con rama explícita por proveedor
   - [x] F66 · Cuota de Resend (barra en la card contando entrada y salida, aviso al 90% una vez por día)
   - [x] F67 · Trigger "email recibido" con filtro por asunto, registrado y ofrecido en el editor
-- [ ] **Bloque 9 — Roles personalizados** (migraciones 00087, 00088 y 00089 sin aplicar)
-  - [ ] F68 · Catálogo de permisos (con la caracterización del Member ANTES)
-  - [ ] F69 · Tablas y funciones de roles
-  - [ ] F70 · Guards y menú por permiso
-  - [ ] F71 · Pantalla de roles
-  - [ ] F72 · Asignar rol a una persona
+- [~] **Bloque 9 — Roles personalizados** (migraciones **00088** y **00089**, aplicadas; falta `verify-roles.mjs` y el cierre de la etapa)
+  - [x] F68 · Catálogo de permisos — la caracterización del Member va primero (15 chequeos sobre el código real); 35 claves con etiqueta en castellano y `SYSTEM_ROLE_PERMISSIONS.member` derivado de esa caracterización
+  - [x] F69 · Tablas y funciones de roles — `workspace_roles` con los tres de sistema por workspace, `role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema, y `can_see_*` con el alcance del rol
+  - [x] F70 · Guards y menú por permiso — `requirePermission`, `getPermissionContext` y `getPermissionAction`, con `requireWorkspaceAdmin` y `getAdminContext` intactos para Owner/Admin
+  - [x] F71 · Pantalla de roles: crear, editar, borrar exigiendo reasignar primero, y permisos por módulo con un botón de todos
+  - [x] F72 · Asignar rol a una persona: `role_id` cambia y `role` sigue en `member`; no se puede quitar al último Owner
 - [ ] **Fase 3 lista y cierre:** suite completa en 0, documentación al día, `docs/referencia/` borrada, merge a `main`
 
 ## Migraciones creadas
