@@ -18,6 +18,7 @@ import { ActionsTab } from "./actions-tab";
 import { CostsTab } from "./costs-tab";
 import { TagsTab } from "./tags-tab";
 import { formatUsd } from "./filters";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -69,14 +70,23 @@ export function AgentDetailView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 pt-6">
-        <Link href="/dashboard/agents" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-          Agentes
-        </Link>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+      <PageHeader
+        route="/dashboard/agents/[agentId]"
+        title={agent.name}
+        backHref={
+          <Link
+            href="/dashboard/agents"
+            aria-label="Volver a Agentes"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Link>
+        }
+      />
+      <div className="border-b border-border px-4 pt-4 md:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">{agent.name}</h1>
+            <h2 className="sr-only">{agent.name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {typeDef.label} · {modelLabel}
               {isAdmin && agent.model && !providerConnected && (

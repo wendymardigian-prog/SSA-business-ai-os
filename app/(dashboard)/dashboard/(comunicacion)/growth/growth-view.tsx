@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, Json } from "@/lib/types/database";
 import { PLATFORM_LABELS } from "@/lib/platforms";
+import { PageHeader } from "@/components/page-header";
+import { SectionTabs } from "@/components/comunicacion/section-tabs";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type CommentLog = Database["public"]["Tables"]["comment_logs"]["Row"];
@@ -285,27 +287,20 @@ export function GrowthView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">
-              Growth Tools
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Comment-to-DM automation for lead capture and engagement
-            </p>
-          </div>
+      <PageHeader
+        route="/dashboard/growth"
+        right={
           <button
             onClick={() => { setEditingId(null); setShowCreate(true); }}
             disabled={channels.length === 0 || flows.length === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
-            New Comment Rule
+            <span className="hidden sm:inline">Nueva regla</span>
           </button>
-        </div>
-      </div>
+        }
+      />
+      <SectionTabs />
 
       <div className="flex-1 overflow-auto p-8">
         {/* Stats cards */}

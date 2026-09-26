@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { PageHeader } from "@/components/page-header";
 
 // --- Template types ---
 
@@ -312,34 +313,28 @@ export function TemplatesView({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <Link
-                href="/dashboard/flows"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Flows
-              </Link>
-            </div>
-            <h1 className="text-2xl font-bold">Flow Templates</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Start with a pre-built flow and customize it to your needs
-            </p>
-          </div>
+      <PageHeader
+        route="/dashboard/flows/templates"
+        backHref={
+          <Link
+            href="/dashboard/flows"
+            aria-label="Volver a Flows"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        }
+        right={
           <button
             disabled
-            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60"
-            title="Coming soon"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-dashed border-border px-3 text-sm font-medium text-muted-foreground opacity-60"
+            title="Proximamente"
           >
             <BookmarkPlus className="h-4 w-4" />
-            Save Current Flow as Template
+            <span className="hidden lg:inline">Guardar el flow actual como plantilla</span>
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Template gallery */}
       <div className="flex-1 overflow-auto p-8">

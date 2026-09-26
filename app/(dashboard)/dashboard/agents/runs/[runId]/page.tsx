@@ -10,6 +10,7 @@ import {
   describeRunDetail,
 } from "@/lib/agent/run-labels";
 import { formatDateTime } from "@/components/contacts/ui";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Detalle de un run (minimo, Bloque 2a).
@@ -43,15 +44,20 @@ export default async function AgentRunPage({ params }: { params: Promise<{ runId
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <Link
-          href={run.conversation_id ? `/dashboard/inbox?c=${run.conversation_id}` : "/dashboard/inbox"}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-          {run.conversation_id ? "Volver a la conversación" : "Volver a la bandeja"}
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold">{RUN_STATUS_LABELS[run.status] ?? run.status}</h1>
+      <PageHeader
+        route="/dashboard/agents/runs/[runId]"
+        title={RUN_STATUS_LABELS[run.status] ?? run.status}
+        backHref={
+          <Link
+            href={run.conversation_id ? `/dashboard/inbox?c=${run.conversation_id}` : "/dashboard/inbox"}
+            aria-label={run.conversation_id ? "Volver a la conversación" : "Volver a la bandeja"}
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Link>
+        }
+      />
+      <div className="border-b border-border px-4 py-4 md:px-8">
         <p className="mt-1 text-sm text-muted-foreground">
           {RUN_SOURCE_LABELS[run.source] ?? run.source} · {formatDateTime(run.created_at)}
           {run.model ? ` · ${run.provider}/${run.model}` : ""}

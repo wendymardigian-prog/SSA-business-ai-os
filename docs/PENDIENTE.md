@@ -10,6 +10,16 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
 ## Etapa 2
 
+### Las pantallas del Bloque 1 no se recorrieron a ojo
+- **Qué quedó:** la pantalla de integraciones nueva (grilla, modal, filtro "Requiere atención") y la barra
+  superior en las 22 pantallas no se vieron en el navegador, ni en 1440 ni en 390 px.
+- **Por qué:** la app pide login y en la corrida autónoma no se ingresan credenciales. Se levantó el servidor
+  y toda ruta del dashboard redirige a `/login`.
+- **Qué se decidió en su lugar:** la lógica va en funciones puras con tests (`status`, `usage`, `page-actions`)
+  y hay dos tests que recorren los archivos: uno verifica que toda pantalla con título dibuje la barra siguiendo
+  sus imports, y otro que ningún componente de navegador llegue al módulo de Vault. La recorrida visual queda
+  para hacerla con Wendy.
+
 ### Migración destructiva escrita y sin aplicar (§9.10)
 - **Qué quedó:** `drop_legacy_secret_columns` (`workspaces.late_api_key_encrypted`, `workspaces.webhook_secret`,
   `channels.webhook_secret`) se escribe como archivo y **no se aplica**.
@@ -29,12 +39,6 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 ## Heredado de la Fase 3
 
 Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resuelve en F7.
-
-### Barra superior global de 56 px en todas las páginas (F13 de la Fase 3)
-- **Qué quedó:** el `PageHeader` existía y lo usaba solo el dashboard de Chat; las otras ~21 páginas tenían su
-  encabezado propio y en el celular convivían dos barras.
-- **Por qué:** reemplazar el encabezado en 21 pantallas es un cambio cosmético grande.
-- **Qué se decidió en su lugar:** **lo resuelve F7 de esta etapa.** Se saca de la lista al cerrar el Bloque 1.
 
 ### API por lote (Bloque 5 de la Fase 3, §21.2)
 - **Qué quedó:** el proveedor de IA se llama con pedidos agrupados, no con la API por lote (batch) real.

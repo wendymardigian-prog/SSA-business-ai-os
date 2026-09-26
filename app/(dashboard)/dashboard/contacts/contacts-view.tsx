@@ -18,6 +18,7 @@ import { bulkAddTag, createContact } from "@/lib/actions/contacts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
 import type { LeadTemperature } from "@/lib/types/database";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Lista de contactos.
@@ -120,42 +121,44 @@ export function ContactsView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">Contactos</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {total} {total === 1 ? "contacto" : "contactos"}
-              {activeCount > 0 && " con los filtros aplicados"}
-              {/* Que la lista pase de 171 a 72 sin decir por que parece que se
-                  perdieron contactos. */}
-              {!filters.anon && anonymousCount > 0 && (
-                <span className="text-muted-foreground/70">
-                  {" · "}
-                  {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
-                </span>
-              )}
-            </p>
-          </div>
+      <PageHeader
+        route="/dashboard/contacts"
+        left={
+          <span className="hidden truncate text-xs text-muted-foreground lg:inline">
+            {total} {total === 1 ? "contacto" : "contactos"}
+            {activeCount > 0 && " con los filtros aplicados"}
+            {/* Que la lista pase de 171 a 72 sin decir por que parece que se
+                perdieron contactos. */}
+            {!filters.anon && anonymousCount > 0 && (
+              <span className="text-muted-foreground/70">
+                {" · "}
+                {anonymousCount} sin datos {anonymousCount === 1 ? "oculto" : "ocultos"}
+              </span>
+            )}
+          </span>
+        }
+        right={
           <div className="flex flex-wrap gap-2">
             <Link
               href="/dashboard/contacts/import"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent"
             >
               <Upload className="h-4 w-4" />
-              Importar CSV
+              <span className="hidden sm:inline">Importar CSV</span>
             </Link>
             <button
               onClick={() => setCreating(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               <Plus className="h-4 w-4" />
-              Nuevo contacto
+              <span className="hidden sm:inline">Nuevo contacto</span>
             </button>
           </div>
-        </div>
+        }
+      />
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="border-b border-border px-4 py-3 md:px-8">
+        <div className="flex flex-wrap items-center gap-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();

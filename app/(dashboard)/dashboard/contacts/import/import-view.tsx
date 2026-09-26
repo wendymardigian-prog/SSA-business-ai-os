@@ -10,6 +10,7 @@ import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { startImport, importBatch, finishImport } from "@/lib/actions/csv-import";
 import { IMPORT_BATCH_SIZE, MAX_IMPORT_ROWS, MAX_IMPORT_BYTES } from "@/lib/csv/limits";
 import { ActionError } from "@/components/contacts/ui";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Importacion de CSV en cuatro pasos: archivo, mapeo, opciones y resultado.
@@ -154,21 +155,19 @@ export function ImportView({
 
   return (
     <div className="flex h-full flex-col overflow-auto">
-      <div className="border-b border-border px-8 py-6">
-        <Link
-          href="/dashboard/contacts"
-          className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Contactos
-        </Link>
-        <h1 className="text-xl font-semibold">Importar contactos</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Desde un archivo CSV. Si un contacto ya existe con el mismo email o teléfono, se
-          completan sus datos vacíos en vez de duplicarlo.
-        </p>
-        {error && <div className="mt-4 max-w-2xl"><ActionError message={error} /></div>}
-      </div>
+      <PageHeader
+        route="/dashboard/contacts/import"
+        backHref={
+          <Link
+            href="/dashboard/contacts"
+            aria-label="Volver a Contactos"
+            className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        }
+      />
+      {error && <div className="px-4 pt-4 md:px-8"><ActionError message={error} /></div>}
 
       <div className="flex-1 px-8 py-6">
         {step === "upload" && <UploadStep onFile={handleFile} />}

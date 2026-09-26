@@ -16,6 +16,7 @@ import {
 import type { CustomFieldType } from "@/lib/types/database";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError, EmptyHint } from "@/components/contacts/ui";
+import { PageHeader } from "@/components/page-header";
 
 export interface FieldRow {
   id: string;
@@ -49,35 +50,28 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
 
   return (
     <div className="flex h-full flex-col overflow-auto">
-      <div className="border-b border-border px-8 py-6">
-        <Link
-          href="/dashboard/settings"
-          className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Configuración
-        </Link>
-
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold">Campos personalizados</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Datos propios de tu negocio que no vienen con el sistema. Se completan
-              en la ficha de cada contacto, y los flows pueden leerlos y escribirlos.
-            </p>
-          </div>
-
+      <PageHeader
+        route="/dashboard/settings/custom-fields"
+        backHref={
+          <Link
+            href="/dashboard/settings"
+            aria-label="Volver a Ajustes"
+            className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        }
+        right={
           <button
             onClick={() => { setError(null); setEditing("new"); }}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             <Plus className="h-4 w-4" />
-            Nuevo campo
+            <span className="hidden sm:inline">Nuevo campo</span>
           </button>
-        </div>
-
-        {error && <div className="mt-4 max-w-2xl"><ActionError message={error} /></div>}
-      </div>
+        }
+      />
+      {error && <div className="px-4 pt-4 md:px-8"><ActionError message={error} /></div>}
 
       <div className="flex-1">
         {fields.length === 0 ? (

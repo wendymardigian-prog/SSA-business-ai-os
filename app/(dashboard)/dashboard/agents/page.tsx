@@ -7,6 +7,7 @@ import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { getProvider } from "@/lib/integrations/providers";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Agentes (F24): lista de agentes con su estado.
@@ -25,12 +26,7 @@ export default async function AgentsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <h1 className="text-2xl font-bold">Agentes</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Los agentes de IA que conversan con tus leads: su prompt, sus límites y los canales que atienden
-        </p>
-      </div>
+      <PageHeader route="/dashboard/agents" />
 
       <div className="flex-1 overflow-auto px-8 py-6">
         {agents.length === 0 ? (

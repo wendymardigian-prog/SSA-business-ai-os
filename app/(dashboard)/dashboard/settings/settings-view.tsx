@@ -21,6 +21,7 @@ import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
+import { PageHeader } from "@/components/page-header";
 
 interface WorkspaceSettings {
   id: string;
@@ -86,13 +87,7 @@ export function SettingsView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage your workspace settings
-        </p>
-      </div>
+      <PageHeader route="/dashboard/settings" />
 
       {/* Settings form */}
       <div className="flex-1 overflow-auto">

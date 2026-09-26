@@ -7,6 +7,8 @@ import { sequenceStatusStyle, stepCountLabel } from "@/lib/sequences/labels";
 import { formatDateTime } from "@/components/contacts/ui";
 import { listOpenCollisions } from "@/lib/sequences/collisions";
 import { AlertTriangle } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
+import { SectionTabs } from "@/components/comunicacion/section-tabs";
 
 export default async function SequencesPage() {
   const { workspace, supabase, role } = await getWorkspace();
@@ -46,17 +48,11 @@ export default async function SequencesPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Secuencias</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Seguimientos que corren solos y se pausan apenas el contacto responde
-            </p>
-          </div>
-          {canEdit && <CreateSequenceButton />}
-        </div>
-      </div>
+      <PageHeader
+        route="/dashboard/sequences"
+        right={canEdit ? <CreateSequenceButton /> : null}
+      />
+      <SectionTabs />
 
       <div className="flex-1 overflow-auto px-8 py-6">
         {!sequences || sequences.length === 0 ? (

@@ -24,6 +24,8 @@ import {
   type SegmentFilter,
 } from "@/components/segment-builder";
 import type { Database, BroadcastStatus, Json } from "@/lib/types/database";
+import { PageHeader } from "@/components/page-header";
+import { SectionTabs } from "@/components/comunicacion/section-tabs";
 
 type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
 
@@ -141,24 +143,21 @@ export function BroadcastsView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Broadcasts</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Send messages to multiple contacts at once
-            </p>
-          </div>
+      <PageHeader
+        route="/dashboard/broadcasts"
+        right={
           <button
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
             <Plus className="h-4 w-4" />
-            Create Broadcast
+            <span className="hidden sm:inline">Nuevo broadcast</span>
           </button>
-        </div>
+        }
+      />
+      <SectionTabs />
 
+      <div className="px-4 md:px-8">
         {/* Create form */}
         {showCreate && (
           <div className="mt-4 rounded-lg border border-border bg-card p-4 space-y-4">

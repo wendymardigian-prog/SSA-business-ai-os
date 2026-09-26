@@ -7,6 +7,7 @@ import { StatusBadge } from "../knowledge-view";
 import { DownloadOriginalButton } from "./download-button";
 import { formatBytes, MIME_LABELS, type SupportedMime } from "@/lib/knowledge/validate";
 import type { KnowledgeStatus } from "@/lib/types/database";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Detalle de un documento (F17).
@@ -45,19 +46,24 @@ export default async function KnowledgeDocumentPage({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <Link
-          href="/dashboard/knowledge"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Base de conocimiento
-        </Link>
-
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+      <PageHeader
+        route="/dashboard/knowledge/[documentId]"
+        title={document.title}
+        backHref={
+          <Link
+            href="/dashboard/knowledge"
+            aria-label="Volver a la base de conocimiento"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        }
+      />
+      <div className="border-b border-border px-4 py-4 md:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold">{document.title}</h1>
+              <h2 className="text-2xl font-bold">{document.title}</h2>
               <StatusBadge status={document.status as KnowledgeStatus} />
             </div>
 

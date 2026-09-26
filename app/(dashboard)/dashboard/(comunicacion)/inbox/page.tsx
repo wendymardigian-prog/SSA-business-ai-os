@@ -19,6 +19,8 @@ import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type Pub
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
+import { PageHeader } from "@/components/page-header";
+import { SectionTabs } from "@/components/comunicacion/section-tabs";
 
 /**
  * Bandeja de conversaciones (F16).
@@ -213,7 +215,11 @@ export default async function InboxPage({
   };
 
   return (
-    <InboxView
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader route="/dashboard/inbox" />
+      <SectionTabs />
+      <div className="min-h-0 flex-1">
+        <InboxView
       conversations={conversations}
       selected={selected}
       total={conversationsRes.count ?? conversations.length}
@@ -232,7 +238,9 @@ export default async function InboxPage({
       isAdmin={isAdminRole(role)}
       draftCounts={draftCounts}
       draftConversationIds={draftConversationIds}
-    />
+        />
+      </div>
+    </div>
   );
 }
 

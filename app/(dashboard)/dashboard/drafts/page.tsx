@@ -9,6 +9,7 @@ import { getAgentType } from "@/lib/agent/agent-types";
 import { loadDraftQueue, parseDraftFilters } from "@/lib/agent/drafts/queue-query";
 import { DraftsView } from "@/components/drafts/drafts-view";
 import { MetricsStrip } from "@/components/drafts/metrics-strip";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Borradores (Bloque 2c): las respuestas que el agente dejo para aprobar.
@@ -50,20 +51,20 @@ export default async function DraftsPage({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-4 queue:px-8 queue:py-6">
-        {/* Bloque 2d: la cola no tiene entrada en el menu; necesita una salida evidente. */}
-        <Link
-          href="/dashboard/inbox"
-          className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-1 text-sm text-muted-foreground hover:text-foreground queue:min-h-0 queue:text-xs"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-          Volver a Inbox
-        </Link>
-        <h1 className="mt-1 text-xl font-bold queue:mt-2 queue:text-2xl">Borradores</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Las respuestas que el agente redactó y esperan que alguien las apruebe. Lo que vence antes aparece primero.
-        </p>
-      </div>
+      <PageHeader
+        route="/dashboard/drafts"
+        backHref={
+          // Bloque 2d: la cola no tiene entrada en el menu; necesita una
+          // salida evidente.
+          <Link
+            href="/dashboard/inbox"
+            aria-label="Volver a Inbox"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Link>
+        }
+      />
 
       <div className="flex-1 overflow-auto px-4 py-4 queue:px-8 queue:py-6">
         <DraftsView

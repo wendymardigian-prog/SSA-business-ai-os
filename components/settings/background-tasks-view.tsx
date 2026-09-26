@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { updateBackgroundSettings } from "@/lib/actions/workspace";
 import { BACKGROUND_TASKS, type BackgroundSettings, type BackgroundTask, type TaskMode, type TaskFrequency } from "@/lib/background/settings";
+import { PageHeader } from "@/components/page-header";
 
 const TASK_LABELS: Record<BackgroundTask, { name: string; desc: string; note?: string }> = {
   message_classification: { name: "Clasificación de mensajes", desc: "Agrupa los mensajes por intención para el dashboard." },
@@ -38,9 +39,7 @@ export function BackgroundTasksView({ settings: initial }: { settings: Backgroun
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-8 py-6">
-        <h1 className="text-2xl font-bold">Tareas en segundo plano</h1>
-      </div>
+      <PageHeader route="/dashboard/settings/background" />
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl space-y-4 px-8 py-8">
           <p className="text-sm text-muted-foreground">

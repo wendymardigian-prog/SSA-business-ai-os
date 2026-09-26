@@ -34,6 +34,7 @@ import {
   LinkSuggestionBanner,
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
+import { PageHeader } from "@/components/page-header";
 
 /**
  * Ficha de contacto (F14).
@@ -181,15 +182,20 @@ export default async function ContactDetailPage({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-border px-8 py-6">
-        <Link
-          href="/dashboard/contacts"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Volver a contactos
-        </Link>
-
+      <PageHeader
+        route="/dashboard/contacts/[contactId]"
+        title={contact.display_name ?? "Sin nombre"}
+        backHref={
+          <Link
+            href="/dashboard/contacts"
+            aria-label="Volver a contactos"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        }
+      />
+      <header className="border-b border-border px-4 py-4 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">
@@ -206,7 +212,7 @@ export default async function ContactDetailPage({
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-bold">{contact.display_name ?? "Sin nombre"}</h1>
+                <h2 className="text-xl font-bold">{contact.display_name ?? "Sin nombre"}</h2>
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
               </div>

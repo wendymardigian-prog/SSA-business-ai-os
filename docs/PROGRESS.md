@@ -41,7 +41,7 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 ### FASE 1 — Integraciones, contenido y publicación
 
-- [ ] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081)
+- [x] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081 aplicada)
   - [x] Caracterización · webhook de Evolution (18 casos) y webhook de Zernio (22 casos), en verde
   - [x] F1 · Catálogo extendido con tipos de conexión (`connection`, `section`, `visible`, `secretFields`, `usage`, `providersBySection()`; entradas zernio, evolution, postproxy, google, linkedin, threads, meta oculta, resend_inbound oculta) + `lib/secret-names.ts` + `lib/vault-boundary.test.ts`
   - [x] F2 · Pantalla en grid con cards compactas (`integrationStatus()`, filtro "Requiere atención" en la barra superior)
@@ -49,7 +49,7 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F4 · Evolution en Vault con fallback (`lib/evolution-config.ts`, 8 llamadores, webhook por workspace, test que prohíbe leer `process.env.EVOLUTION_` en otro lado)
   - [x] F5 · Secreto del webhook de Zernio en Vault con fallback (Vault → workspace → canal) + "Migrar a Vault" (construido, no apretado)
   - [x] F6 · Cards de las integraciones existentes y barra de uso (`buildUsage`, Zernio 2 cuentas gratis; Zernio sigue guardándose por `test-key`)
-  - [ ] F7 · Barra superior en todas las pantallas
+  - [x] F7 · Barra superior en todas las pantallas (una sola barra también en el celular; `lib/nav/page-actions.ts` con título, explicación y acciones por rol; 22 pantallas migradas; `MobileTopBar` eliminada)
 - [ ] **Bloque 2 — Conexiones de redes** (migración 00082)
   - [ ] F8 · Tablas de conexiones y cuentas sociales
   - [ ] F9 · Flujo OAuth genérico con `state` firmado

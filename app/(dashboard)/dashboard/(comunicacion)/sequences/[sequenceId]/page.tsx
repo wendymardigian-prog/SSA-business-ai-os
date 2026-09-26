@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -8,6 +10,7 @@ import { CollisionAlert, type CollisionRow } from "@/components/sequences/collis
 import { EnrollButton } from "@/components/sequences/enroll-button";
 import { listOpenCollisions } from "@/lib/sequences/collisions";
 import type { SequenceEnrollmentStatus, SequenceStep } from "@/lib/types/database";
+import { PageHeader } from "@/components/page-header";
 
 export default async function SequenceDetailPage({
   params,
@@ -65,6 +68,19 @@ export default async function SequenceDetailPage({
 
   return (
     <div className="flex h-full flex-col">
+      <PageHeader
+        route="/dashboard/sequences/[sequenceId]"
+        title={sequence.name}
+        backHref={
+          <Link
+            href="/dashboard/sequences"
+            aria-label="Volver a Secuencias"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Link>
+        }
+      />
       <SequenceEditor
         sequence={{
           id: sequence.id,
