@@ -27,3 +27,17 @@ Lo que quedó sin cerrar durante la corrida autónoma, para retomar con Wendy. F
 - **Qué quedó:** no se recorrieron las pantallas nuevas (editor de reglas, dashboard) a ojo.
 - **Por qué:** la app pide login y no se ingresan credenciales en la corrida autónoma.
 - **Qué se decidió en su lugar:** la lógica va en funciones puras con tests y en scripts `verify-*`; la recorrida a 1440 y 390 px queda para hacerla con Wendy (lista en §19 del plano).
+
+## Bloque 4 (Patrones) — empezado, sin aplicar ni commitear
+- **Qué quedó:** el archivo `supabase/migrations/00079_message_patterns.sql` está escrito (tablas `message_categories`/`message_texts`, `messages.text_norm`, trigger, categorías fallback, siembra de los 12 botones y backfill), pero **NO está aplicado a la base** (la base sigue en 00078) ni commiteado. Falta todo el código de app del bloque: clasificador (F20), correcciones (F21) y la sección Patrones del dashboard (F22), con sus tests.
+- **Por qué:** se alcanzó el límite de uso a mitad del Bloque 4.
+- **Qué se decidió en su lugar:** no aplicar una migración sin verificarla contra un `verify-dashboards` extendido, para no dejar la base adelantada respecto del código. Al retomar: revisar la 00079, aplicarla, y construir F20-F22 + F23-F26 (Bloque 5).
+
+## Bloque 5 (Tareas en segundo plano, calidad, intención) — no empezado
+- **Qué quedó:** F23-F26 completos sin construir (migración 00080, jobs de despacho/recolección, calidad, versiones del clasificador, herramienta `declarar_intencion` + graduación).
+- **Por qué:** límite de uso.
+
+## F22 "Qué le responden" (§11.7) y drilldown de correcciones en la UI
+- **Qué quedó:** la sección Patrones muestra "lo que más se recibe" (categorías, variantes, confianza). Falta "qué le responden" (§11.7, entrante que sigue a un saliente de una categoría dentro de 24 h) y los controles de corrección (Mover a…/Renombrar/Unir) enganchados en la UI (las Server Actions ya existen en `lib/actions/patterns.ts`).
+- **Por qué:** el volumen del bloque; la lógica y las acciones están, falta el cableado visual y una función SQL extra.
+- **Qué se decidió en su lugar:** se dejó la sección de lectura y las acciones probadas; el drilldown y "qué le responden" se completan en la pasada de pantallas con Wendy.

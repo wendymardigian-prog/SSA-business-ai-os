@@ -37,11 +37,11 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
   - [x] F16 · Números con comparación + tendencias (1 serie; 4 pestañas en PENDIENTE)
   - [x] F17 · Sección del agente (3 %, tres estados) — se oculta al filtrar por persona
   - [x] F18 · Tabla "Quién responde" (umbrales de color, filtro por clic, scope por rol)
-- [ ] **Bloque 4 — Patrones de mensajes**
-  - [ ] F19 · Textos y categorías
-  - [ ] F20 · Clasificador
-  - [ ] F21 · Corrección desde el dashboard
-  - [ ] F22 · Sección Patrones
+- [x] **Bloque 4 — Patrones de mensajes** — 00079 aplicada
+  - [x] F19 · `message_categories`/`message_texts`, `messages.text_norm`, trigger, categorías fallback, siembra de 12 botones, backfill (533 textos) — verify-dashboards cubre variantes/emoji
+  - [x] F20 · Clasificador (`lib/patterns/classifier.ts`): selección de pendientes, ≤3 categorías nuevas, no toca human/rule, JSON inválido — tests con modelo mockeado
+  - [x] F21 · Correcciones (`lib/patterns/corrections.ts` + Server Actions): mover, nueva categoría, renombrar, unir; "Otro" protegida — tests
+  - [x] F22 · Sección Patrones en el dashboard (`chat_dashboard_patterns`, variantes con confianza ámbar <70%) — "qué le responden" (§11.7) en PENDIENTE
 - [ ] **Bloque 5 — Tareas en segundo plano, calidad e intención**
   - [ ] F23 · Configuración de tareas en segundo plano
   - [ ] F24 · Jobs de despacho y recolección
@@ -57,3 +57,4 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 | 00076 | `agent_runs.status` +`already_answered`; `source` +clasificador; `normalize_for_grouping()` | ✅ |
 | 00077 | `agents.response_rules`/`response_rules_default`/`external_reply_cooldown_minutes`; `agent_runs.routing`; RPC `claim_agent_reply`; trigger momento 3; cron `ssa-cron-drafts-refresh` | ✅ |
 | 00078 | Funciones SQL del dashboard: `chat_episodes`, `chat_dashboard_numbers/agent/team/trends`, `chat_waiting_now`, `chat_author_match` | ✅ |
+| 00079 | Patrones: `message_categories`, `message_texts`, `messages.text_norm`, triggers (upsert texto, seed de categorías por workspace), `chat_dashboard_patterns` | ✅ |

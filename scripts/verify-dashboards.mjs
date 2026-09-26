@@ -186,6 +186,26 @@ try {
     }
   }
 
+  console.log("\n— Patrones: trigger, variantes y emoji (F19) —");
+  {
+    // Tres variantes del mismo texto → una sola fila en message_texts.
+    await svc.from("messages").insert([
+      msg(cv(1), "inbound", null, 11, 16, 0, 0, { text: "Sí!!" }),
+      msg(cv(1), "inbound", null, 11, 16, 0, 1, { text: "siii" }),
+      msg(cv(1), "inbound", null, 11, 16, 0, 2, { text: "SI" }),
+      msg(cv(1), "inbound", null, 11, 16, 0, 3, { text: "❤" }),
+    ]);
+    const { data: si } = await svc.from("message_texts").select("id").eq("workspace_id", ws.id).eq("direction", "inbound").eq("normalized_text", "si");
+    eq(si?.length, 1, "las tres variantes (Sí!!/siii/SI) son una sola fila 'si'");
+    const { data: emoji } = await svc.from("message_texts")
+      .select("category_id, source").eq("workspace_id", ws.id).eq("normalized_text", "").maybeSingle();
+    check(emoji?.source === "rule", "el emoji quedó con source rule");
+    const { data: emojiCat } = await svc.from("message_categories").select("name").eq("id", emoji?.category_id).maybeSingle();
+    check(emojiCat?.name === "Solo emoji o adjunto", "el emoji fue a 'Solo emoji o adjunto'");
+    // (Los 12 textos de botón se siembran en la migración sobre el workspace real;
+    // verificado por SQL aparte. Un workspace de prueba nuevo no los recibe.)
+  }
+
   console.log("\n— normalize_for_grouping (paridad con la app) —");
   {
     const cases = [["Sí!!", "si"], ["siii", "si"], ["Siii quiero a clase", "si quiero a clase"], ["❤", ""]];

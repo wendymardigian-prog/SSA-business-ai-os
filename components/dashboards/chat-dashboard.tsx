@@ -146,10 +146,8 @@ export function ChatDashboard({
           onPick={(author) => setFilter({ author: filters.author === author ? null : author })}
         />
 
-        {/* Patrones: Bloque 4 */}
-        <div className="mt-6 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-          Patrones de mensajes: se activa con la clasificación (Bloque 4).
-        </div>
+        {/* Patrones de mensajes (Bloque 4) */}
+        <PatternsSection patterns={data.patterns} isAdmin={isAdmin} />
       </div>
     </div>
   );
@@ -290,6 +288,53 @@ function Trends({ trends }: { trends: ChatDashboardData["trends"] }) {
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+function PatternsSection({ patterns, isAdmin }: { patterns: ChatDashboardData["patterns"]; isAdmin: boolean }) {
+  const withVolume = patterns.filter((p) => p.messageCount > 0 || p.textCount > 0);
+  if (withVolume.length === 0) {
+    return (
+      <div className="mt-6 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+        Todavía no hay patrones clasificados. La clasificación agrupa los mensajes por lo que significan (corre de noche).
+      </div>
+    );
+  }
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 text-sm font-semibold">Lo que más se recibe</h2>
+      <div className="space-y-2">
+        {withVolume.map((p) => (
+          <details key={p.categoryId} className="rounded-xl border border-border">
+            <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm">
+              <span className="font-medium">{p.name}{p.isFallback ? " (sin clasificar)" : ""}</span>
+              <span className="tabular-nums text-muted-foreground">{p.messageCount} mensajes · {p.textCount} textos</span>
+            </summary>
+            <ul className="divide-y divide-border border-t border-border">
+              {p.topVariants.map((v, i) => (
+                <li key={i} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                  <span className="truncate">
+                    {v.is_button && <span className="mr-1 rounded bg-accent px-1 text-[10px]">botón</span>}
+                    {v.text}
+                  </span>
+                  <span className="ml-2 shrink-0 tabular-nums text-muted-foreground">
+                    {v.count}
+                    {v.confidence != null && (
+                      <span className={v.confidence < 0.7 ? "ml-2 text-amber-700" : "ml-2"}>{Math.round(v.confidence * 100)}%</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </div>
+      {isAdmin && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Corregí las categorías moviendo textos desde acá (Owner/Admin). La calidad se ajusta en Settings → Tareas en segundo plano.
+        </p>
+      )}
     </section>
   );
 }

@@ -52,7 +52,10 @@ export type AuditEntityType =
   /** Configuracion de un agente de IA (Fase 3). */
   | "agent"
   /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
-  | "tag";
+  | "tag"
+  /** Patrones de mensajes (Bloque 4): categorías y textos. */
+  | "message_category"
+  | "message_text";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -267,6 +270,99 @@ export interface SequenceStep {
 export interface Database {
   public: {
     Tables: {
+      message_categories: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          name: string;
+          description: string | null;
+          examples: string[];
+          is_fallback: boolean;
+          created_by: "model" | "user" | "system";
+          created_by_user_id: string | null;
+          merged_into_id: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          name: string;
+          description?: string | null;
+          examples?: string[];
+          is_fallback?: boolean;
+          created_by: "model" | "user" | "system";
+          created_by_user_id?: string | null;
+          merged_into_id?: string | null;
+          archived_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          examples?: string[];
+          merged_into_id?: string | null;
+          archived_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      message_texts: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          normalized_text: string;
+          sample_text: string;
+          category_id: string | null;
+          confidence: number | null;
+          source: "rule" | "model" | "human" | null;
+          prompt_version: number | null;
+          run_id: string | null;
+          is_button: boolean;
+          classified_at: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          review_result: "ok" | "corrected" | null;
+          first_seen_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          direction: "inbound" | "outbound";
+          normalized_text: string;
+          sample_text: string;
+          category_id?: string | null;
+          confidence?: number | null;
+          source?: "rule" | "model" | "human" | null;
+          prompt_version?: number | null;
+          run_id?: string | null;
+          is_button?: boolean;
+          classified_at?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          review_result?: "ok" | "corrected" | null;
+          first_seen_at?: string;
+        };
+        Update: {
+          category_id?: string | null;
+          confidence?: number | null;
+          source?: "rule" | "model" | "human" | null;
+          prompt_version?: number | null;
+          run_id?: string | null;
+          is_button?: boolean;
+          classified_at?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          review_result?: "ok" | "corrected" | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       workspaces: {
         Row: {
           id: string;
@@ -2557,6 +2653,10 @@ export interface Database {
       chat_episodes: {
         Args: { p_workspace_id: string; p_channel?: string | null };
         Returns: { conversation_id: string; contact_id: string; channel_id: string; episode_no: number; episode_start: string; first_inbound_at: string | null; first_outbound_at: string | null; first_outbound_origin: string | null }[];
+      };
+      chat_dashboard_patterns: {
+        Args: { p_workspace_id: string; p_direction: string; p_from: string | null; p_to: string | null };
+        Returns: { category_id: string; category_name: string; is_fallback: boolean; message_count: number; text_count: number; top_variants: Json }[];
       };
       /**
        * Reclama un envio automatizado en la ventana horaria del canal

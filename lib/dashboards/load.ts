@@ -20,6 +20,7 @@ export interface ChatDashboardData {
   agent: { newConversations: number; acted: number; tookFirst: number; escalated: number };
   team: Array<{ author: string; messagesOut: number; firstResponseMedianSeconds: number | null; replyMedianSeconds: number | null; repliesUnder1hPct: number | null }>;
   trends: Array<{ day: string; messagesIn: number; messagesOut: number; newConversations: number }>;
+  patterns: Array<{ categoryId: string; name: string; isFallback: boolean; messageCount: number; textCount: number; topVariants: Array<{ text: string; count: number; confidence: number | null; is_button: boolean }> }>;
 }
 
 function num(row: Record<string, unknown> | undefined): DashboardNumbers {
@@ -49,13 +50,14 @@ export async function loadChatDashboard(
   const author = args.filters.author;
 
   const common = { p_workspace_id: args.workspaceId, p_channel: channel, p_from: range.from, p_to: range.to };
-  const [numbersRes, prevRes, waitingRes, agentRes, teamRes, trendsRes] = await Promise.all([
+  const [numbersRes, prevRes, waitingRes, agentRes, teamRes, trendsRes, patternsRes] = await Promise.all([
     client.rpc("chat_dashboard_numbers", { ...common, p_author: author }),
     prev.from ? client.rpc("chat_dashboard_numbers", { p_workspace_id: args.workspaceId, p_channel: channel, p_from: prev.from, p_to: prev.to, p_author: author }) : Promise.resolve({ data: null }),
     client.rpc("chat_waiting_now", { p_workspace_id: args.workspaceId, p_channel: channel }),
     client.rpc("chat_dashboard_agent", common),
     client.rpc("chat_dashboard_team", common),
     client.rpc("chat_dashboard_trends", { ...common, p_author: author, p_tz: args.timezone }),
+    client.rpc("chat_dashboard_patterns", { p_workspace_id: args.workspaceId, p_direction: "inbound", p_from: range.from, p_to: range.to }),
   ]);
 
   const agentRow = (agentRes.data as Record<string, unknown>[] | null)?.[0];
@@ -82,6 +84,14 @@ export async function loadChatDashboard(
       messagesIn: Number(r.messages_in ?? 0),
       messagesOut: Number(r.messages_out ?? 0),
       newConversations: Number(r.new_conversations ?? 0),
+    })),
+    patterns: ((patternsRes.data as Record<string, unknown>[] | null) ?? []).map((r) => ({
+      categoryId: String(r.category_id),
+      name: String(r.category_name),
+      isFallback: Boolean(r.is_fallback),
+      messageCount: Number(r.message_count ?? 0),
+      textCount: Number(r.text_count ?? 0),
+      topVariants: Array.isArray(r.top_variants) ? (r.top_variants as Array<{ text: string; count: number; confidence: number | null; is_button: boolean }>) : [],
     })),
   };
 }
