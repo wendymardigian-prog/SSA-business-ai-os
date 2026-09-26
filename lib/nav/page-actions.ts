@@ -83,6 +83,15 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Nueva pieza",
     tooltip: "Una idea o una pieza nueva. Lo minimo para no perderla; el resto se completa despues.",
   },
+  "/dashboard/content/[postId]/edit": {
+    title: "Editar pieza",
+    tooltip:
+      "El guion, el caption, la media y cuando sale en cada red. Se guarda solo cada 10 segundos.",
+  },
+  "/dashboard/content/[postId]": {
+    title: "Pieza",
+    tooltip: "Como quedo en cada red, que se puede reintentar y que metricas tuvo.",
+  },
   "/dashboard/contacts": {
     title: "Contactos",
     tooltip: "El CRM: cada persona con su historial, sus etiquetas y quien la atiende.",

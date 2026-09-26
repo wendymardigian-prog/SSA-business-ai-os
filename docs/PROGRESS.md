@@ -69,13 +69,13 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F21 · Calendario y lista (una tarjeta por pieza por día, Piezas/Publicaciones, filtros en la URL)
   - [x] F22 · Historial de versiones (el autoguardado no crea versión; comparar y restaurar sin perder nada)
   - [x] F23 · Limpieza de media (cron diario; cuenta desde la última red publicada)
-- [ ] **Bloque 4a — Editor e IA** (migración 00084)
-  - [ ] F24 · Editor del post en una sola página
-  - [ ] F25 · Fecha por red: tentativa y programado
-  - [ ] F26 · Validación por red
-  - [ ] F27 · Palabras clave y automatizaciones
-  - [ ] F28 · Variantes, duplicar y redistribución
-  - [ ] F29 · Generar guion y caption con IA
+- [x] **Bloque 4a — Editor e IA** (migración 00085 aplicada; la 00084 fue la de aprobar ideas)
+  - [x] F24 · Editor del post en una sola página (secciones, autoguardado de 10 s, aviso de edición cruzada)
+  - [x] F25 · Fecha por red: tentativa y programado (fila + job juntos; sin job la fila no miente)
+  - [x] F26 · Validación por red (límites en un solo lugar; una red con error no frena a las demás)
+  - [x] F27 · Palabras clave y automatizaciones (una automatización inactiva no cuenta; link con todo precargado)
+  - [x] F28 · Variantes, duplicar y redistribución (lógica pura; el botón del detalle llega en B4b)
+  - [x] F29 · Generar guion y caption con IA (salida validada con Zod, tope de gasto ANTES de llamar, versión con autor IA)
 - [ ] **Bloque 4b — Publicadores y dispatcher**
   - [ ] F30 · Interfaz común de publicadores y registro de jobs
   - [ ] F31 · Publicador Zernio (Instagram y TikTok)
@@ -145,6 +145,7 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 | 00082 | `oauth_connections`, `social_accounts`, cron `social-token-refresh` + lista blanca | ✅ aplicada y verificada (RLS, únicos y CHECK probados con dos workspaces) |
 | 00083 | Pipeline de contenido: 4 tablas, bucket `content-media` con policies por workspace, cron de limpieza | ✅ aplicada y verificada |
 | 00084 | `approve_content_idea()`: crea la pieza y aprueba la idea en una transacción | ✅ aplicada y verificada |
+| 00085 | `agent_runs.source` suma `content_copy` y `ads_analysis`; `workspaces.content_copy_settings` (voz de marca) | ✅ aplicada |
 
 ## Deuda que deja el Bloque 1
 

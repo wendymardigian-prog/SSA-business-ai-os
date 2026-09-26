@@ -1,0 +1,171 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { getWorkspace } from "@/lib/workspace";
+import { isAdminRole } from "@/lib/auth/roles";
+import { PageHeader } from "@/components/page-header";
+import { PostEditor, type EditorPost } from "@/components/content/post-editor";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { STATUS_LABELS } from "@/lib/content/status";
+import type { AutomationRule } from "@/lib/content/keywords";
+import type { NetworkEntry } from "@/lib/content/redistribution";
+import type { MediaEntry } from "@/lib/content/media";
+import type { StoredVersion } from "@/lib/content/versions";
+
+/**
+ * El editor de una pieza (F24 a F29).
+ *
+ * Todo lo que el editor necesita se lee aca de una vez: la pieza, sus
+ * publicaciones, las redes conectadas, las automatizaciones por palabra clave
+ * y el historial. Asi la pantalla no hace diez idas y vueltas.
+ */
+export default async function EditPostPage({
+  params,
+}: {
+  params: Promise<{ postId: string }>;
+}) {
+  const { postId } = await params;
+  const { workspace, user, role, supabase } = await getWorkspace();
+  const isAdmin = isAdminRole(role);
+
+  const { data: post } = await supabase
+    .from("content_posts")
+    .select(
+      "id, title, format, copy, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at",
+    )
+    .eq("id", postId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!post) notFound();
+
+  const [publicationsRes, accountsRes, channelsRes, triggersRes, versionsRes, aiProviders, members] =
+    await Promise.all([
+      supabase
+        .from("social_posts")
+        .select("platform, status, scheduled_at")
+        .eq("content_post_id", postId),
+      supabase
+        .from("social_accounts")
+        .select("platform, channel_id")
+        .eq("workspace_id", workspace.id)
+        .eq("is_active", true),
+      supabase
+        .from("channels")
+        .select("id, platform")
+        .eq("workspace_id", workspace.id)
+        .eq("is_active", true),
+      // Las automatizaciones por palabra clave, para decir si el CTA tiene
+      // quien lo conteste (F27).
+      supabase
+        .from("triggers")
+        .select("id, type, config, is_active, channel_id, flows(id, name)")
+        .eq("workspace_id", workspace.id)
+        .in("type", ["keyword", "comment_keyword"]),
+      supabase
+        .from("content_post_versions")
+        .select("id, version_no, snapshot, author_kind, author_id, reason, created_at")
+        .eq("post_id", postId)
+        .order("version_no", { ascending: false })
+        .limit(50),
+      isAdmin ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+      getWorkspaceMembers(workspace.id),
+    ]);
+
+  // Las plataformas de `channels` y las de `social_accounts` no son el mismo
+  // conjunto (una tiene whatsapp, la otra youtube), asi que el mapa es por
+  // texto y no por tipo.
+  const channelByPlatform = new Map<string, string>(
+    (channelsRes.data ?? []).map((c) => [c.platform as string, c.id]),
+  );
+
+  const automations: AutomationRule[] = (triggersRes.data ?? []).map((row) => {
+    const config = (row.config ?? {}) as {
+      keywords?: Array<string | { value: string; matchType?: string }>;
+      matchType?: string;
+      postIds?: string[];
+    };
+    const flow = row.flows as { id: string; name: string } | null;
+
+    return {
+      triggerId: row.id,
+      flowId: flow?.id ?? "",
+      flowName: flow?.name ?? "Automatizacion",
+      type: row.type,
+      isActive: row.is_active,
+      channelIds: row.channel_id ? [row.channel_id] : [],
+      keywords: (config.keywords ?? []).map((kw) =>
+        typeof kw === "string"
+          ? { value: kw, matchType: config.matchType }
+          : { value: kw.value, matchType: kw.matchType ?? config.matchType },
+      ),
+      postIds: config.postIds ?? [],
+    };
+  });
+
+  const editorPost: EditorPost = {
+    id: post.id,
+    title: post.title,
+    format: post.format,
+    copy: (post.copy ?? {}) as EditorPost["copy"],
+    caption: post.caption,
+    networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
+    media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
+    status: post.status,
+    materialStatus: post.material_status,
+    aiUnreviewed: post.ai_unreviewed,
+    updatedAt: post.updated_at,
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader
+        route="/dashboard/content/[postId]/edit"
+        title={post.title}
+        left={
+          <span className="hidden rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:inline">
+            {STATUS_LABELS[post.status]}
+          </span>
+        }
+        backHref={
+          <Link
+            href="/dashboard/content"
+            aria-label="Volver a Contenido"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+          </Link>
+        }
+      />
+
+      <PostEditor
+        post={editorPost}
+        perms={{
+          create: true,
+          approve: isAdmin,
+          publish: isAdmin,
+          ai: isAdmin,
+          isAuthor: post.created_by === user.id,
+        }}
+        publications={(publicationsRes.data ?? []).map((p) => ({
+          platform: p.platform,
+          status: p.status,
+          scheduledAt: p.scheduled_at,
+        }))}
+        connected={(accountsRes.data ?? []).map((a) => a.platform)}
+        automations={automations}
+        channelIdByPlatform={Object.fromEntries(
+          (accountsRes.data ?? []).map((a) => [
+            a.platform,
+            a.channel_id ?? channelByPlatform.get(a.platform) ?? null,
+          ]),
+        )}
+        versions={(versionsRes.data ?? []) as unknown as StoredVersion[]}
+        authorNames={Object.fromEntries(memberLabels(members))}
+        aiAvailable={aiProviders.length > 0}
+        timeZone={workspace.timezone || "America/Costa_Rica"}
+      />
+    </div>
+  );
+}

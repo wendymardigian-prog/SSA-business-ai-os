@@ -166,7 +166,10 @@ export type AgentRunSource =
   | "conversation_summary"
   /** Corridas del clasificador de patrones y su evaluacion (00076, Bloques 4-5). */
   | "message_classification"
-  | "message_classification_eval";
+  | "message_classification_eval"
+  /** Etapa 2 (00085): generar guion y caption, y analizar anuncios con IA. */
+  | "content_copy"
+  | "ads_analysis";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -425,6 +428,8 @@ export interface Database {
           persist_zernio_inbound: boolean;
           /** Dias que se conserva la media publicada. 0 = nunca se borra (00083). */
           content_media_retention_days: number;
+          /** Voz de marca para generar copy (00085). */
+          content_copy_settings: Json;
           /** Zona horaria IANA del negocio (migracion 00075). */
           timezone: string;
           ai_background_settings: Json;
@@ -448,6 +453,7 @@ export interface Database {
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
+          content_copy_settings?: Json;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
@@ -469,6 +475,7 @@ export interface Database {
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
+          content_copy_settings?: Json;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
