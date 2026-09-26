@@ -76,18 +76,26 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F27 · Palabras clave y automatizaciones (una automatización inactiva no cuenta; link con todo precargado)
   - [x] F28 · Variantes, duplicar y redistribución (lógica pura; el botón del detalle llega en B4b)
   - [x] F29 · Generar guion y caption con IA (salida validada con Zod, tope de gasto ANTES de llamar, versión con autor IA)
-- [ ] **Bloque 4b — Publicadores y dispatcher**
-  - [ ] F30 · Interfaz común de publicadores y registro de jobs
-  - [ ] F31 · Publicador Zernio (Instagram y TikTok)
-  - [ ] F32 · Publicador Postproxy (YouTube)
-  - [ ] F33 · Publicador YouTube API oficial
-  - [ ] F34 · Publicadores LinkedIn y Threads
-  - [ ] F35 · Dispatcher, reintentos y webhooks de estado
-  - [ ] F36 · Detalle del post
-  - [ ] F37 · Aprobación
-  - [ ] F38 · Prueba de publicación directa de YouTube
-  - [x] F39 · Menú de Contenido (adelantado desde B4b: la pantalla ya existe y sin el ítem no se llega)
-- [ ] **Fase 1 lista:** suite completa en 0
+- [x] **Bloque 4b — Publicadores y dispatcher** (sin migración: los tipos de job son texto libre)
+  - [x] F30 · Interfaz común de publicadores y registro de jobs (caracterización primero: `lib/jobs/dispatch.ts`, 13 tests que fijan el comportamiento de hoy; después `lib/jobs/registry.ts`, donde un tipo desconocido pasa a **fallido** en vez de completado, y `bg_task` conserva su no-op con handler explícito)
+  - [x] F31 · Publicador Zernio (Instagram y TikTok) — una red por post, `platformSpecificData` verificado contra el SDK instalado
+  - [x] F32 · Publicador Postproxy (YouTube)
+  - [x] F33 · Publicador YouTube API oficial — subida reanudable por partes, sin cargar el video en memoria
+  - [x] F34 · Publicadores LinkedIn y Threads (LinkedIn solo texto por ahora; con media falla con un mensaje claro en vez de publicar a medias)
+  - [x] F35 · Dispatcher, reintentos (1/5/15 min) y avisos de estado — guarda contra publicar dos veces con `UPDATE ... WHERE status='scheduled' RETURNING`, revisión periódica para las que quedan en proceso, `post.platform.*` de Zernio y receptor de Postproxy
+  - [x] F36 · Detalle del post (una fila por red, reintentar solo lo que falló)
+  - [x] F37 · Aprobación (mandar a revisión, aprobar, devolver con comentario obligatorio, con avisos)
+  - [x] F38 · Prueba de publicación directa de YouTube (sube un video de 1 s "no listado", mira cómo quedó y lo borra; **construida, no ejecutada**: escribe en la cuenta real)
+  - [x] F39 · Menú de Contenido + completar `triggers.config.postIds` al publicar
+- [x] **Fase 1 lista:** suite completa en 0 (26/9/2026)
+
+  | Comando | Resultado al cerrar la Fase 1 |
+  |---|---|
+  | `npx vitest run` | 159 archivos, 1885 tests, todo en verde |
+  | `npm run build` | Compila |
+  | `npm run lint` | 0 errores, 44 warnings (la línea base) |
+  | `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
+  | `node scripts/verify-content.mjs` | Todo verde, limpieza OK |
 
 ### FASE 2 — Métricas, Social y anuncios
 

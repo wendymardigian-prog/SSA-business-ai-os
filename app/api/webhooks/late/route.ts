@@ -34,6 +34,7 @@ import {
   handleMessageSentEcho,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
+import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inbound";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
@@ -135,6 +136,12 @@ async function handleWebhook(request: NextRequest) {
   }
 
   const eventId = parsed.id || headerEventId;
+
+  // Resultado de una publicacion nuestra (F35). Es el camino rapido: la
+  // revision periodica cubre el caso de que el aviso no llegue.
+  if (parsed.event?.startsWith("post.platform.")) {
+    return handlePostPlatformWebhook(parsed, body, signature, eventId);
+  }
 
   if (parsed.event === "comment.received") {
     return handleCommentWebhook(parsed as CommentWebhookPayload, body, signature, eventId);
@@ -507,4 +514,62 @@ async function handleCommentWebhook(
   });
 
   return NextResponse.json({ ok: true, queued: true });
+}
+
+
+/**
+ * Una red termino de publicar (F35).
+ *
+ * La cuenta se busca en `social_accounts` y no en `channels`: se publica en
+ * redes que no conversan (YouTube, LinkedIn), y esas no tienen canal.
+ *
+ * Sin canal no hay `channels.webhook_secret`, asi que la firma se valida
+ * contra el secreto del workspace de la cuenta.
+ */
+async function handlePostPlatformWebhook(
+  parsed: { event?: string; id?: string },
+  rawBody: string,
+  signature: string | null,
+  eventId: string | null | undefined,
+) {
+  const event = fromZernioPlatformEvent(parsed);
+  if (!event) {
+    return NextResponse.json({ ok: true, skipped: parsed.event ?? "sin evento" });
+  }
+
+  const supabase = await createServiceClient();
+
+  const { data: publication } = await supabase
+    .from("social_posts")
+    .select("workspace_id")
+    .eq("publisher_ref", event.ref)
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!publication) {
+    // Un post de Zernio que no salio de acá: se reconoce y se ignora.
+    return NextResponse.json({ ok: true, skipped: "publicacion desconocida" });
+  }
+
+  const secret = await resolveWebhookSecret(supabase, {
+    workspace_id: publication.workspace_id,
+    webhook_secret: null,
+  });
+  if (!secret) {
+    console.error(
+      `[webhook] el workspace ${publication.workspace_id} no tiene secreto; no puedo validar la firma`,
+    );
+    return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
+  }
+  if (!verifyWebhookSignature(secret, rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  if (!(await claimWebhookEvent(supabase, eventId))) {
+    return NextResponse.json({ ok: true, skipped: "evento repetido" });
+  }
+
+  const settled = await settlePublication(supabase, event);
+  return NextResponse.json({ ok: true, settled });
 }

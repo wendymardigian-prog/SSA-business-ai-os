@@ -20,6 +20,9 @@ export const NOTIFICATION_TYPES = [
   "draft_window",
   "refresh_health",
   "integration_attention",
+  "content_review_requested",
+  "content_returned",
+  "content_publish_failed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -31,7 +34,8 @@ export type NotificationEntity =
   | "sequence_enrollment"
   | "contact"
   | "draft_queue"
-  | "integration";
+  | "integration"
+  | "content_post";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -120,6 +124,32 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "integration",
   },
+  /** Alguien pidio revision de una pieza (F37). Va a quien pueda aprobar. */
+  content_review_requested: {
+    type: "content_review_requested",
+    label: "Una pieza espera revision",
+    tone: "info",
+    entity: "content_post",
+  },
+  /** La pieza volvio a produccion con un comentario (F37). Va a quien la escribio. */
+  content_returned: {
+    type: "content_returned",
+    label: "Te devolvieron una pieza",
+    tone: "warning",
+    entity: "content_post",
+  },
+  /**
+   * Una publicacion no salio (F35).
+   *
+   * Es el aviso mas importante de todo el modulo: sin el, una pieza que
+   * fallo a las 3 de la mañana se descubre al otro dia mirando el kanban.
+   */
+  content_publish_failed: {
+    type: "content_publish_failed",
+    label: "Una publicacion no salio",
+    tone: "warning",
+    entity: "content_post",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -167,6 +197,9 @@ export function linkFor(
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:
       // desde ahi se reconecta, que es lo unico que se puede hacer.
       return "/dashboard/settings/integrations";
+
+    case "content_post":
+      return entityId ? `/dashboard/content/${entityId}` : "/dashboard/content";
 
     case "draft_queue":
       // Avisos de ventana: a la cola, filtrada por los que estan por vencer.

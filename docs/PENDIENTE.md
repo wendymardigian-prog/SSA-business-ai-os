@@ -127,3 +127,27 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 - **Por qué:** son zonas declaradas intocables por §4.2 del plano de la Etapa 2.
 - **Qué se decidió en su lugar:** quedan anotados. (a) y (c) son arreglos chicos y acotados; (b) es una línea de
   configuración, pero cambiarla toca el límite de todas las Server Actions.
+
+### La prueba de subida directa a YouTube no se corrió (F38)
+
+**Qué quedó.** `probeYouTubeUpload` está construida y probada con el proveedor simulado, con su botón en la card de Google. Nunca se apretó.
+
+**Por qué.** Sube un video a la cuenta real de YouTube del negocio. La regla 2 de la corrida dice que no se publica nada, y la 3, que no se toca configuración real.
+
+**Qué se decidió en su lugar.** El publicador `youtube_api` queda en `unverified`, que es el estado que ya traía: YouTube publica por Postproxy hasta que alguien apriete el botón. La prueba va en la verificación en vivo (§18 del plano), junto con conectar las cuentas.
+
+### El receptor de Postproxy está construido sobre un formato supuesto
+
+**Qué quedó.** `app/api/webhooks/postproxy/route.ts` existe y valida un secreto, pero la documentación pública de Postproxy no documenta webhooks.
+
+**Por qué.** El plano los daba por hechos; la documentación manda. El formato que interpreta `fromPostproxyEvent` es una suposición razonable (`post_id`, `status`, `url`).
+
+**Qué se decidió en su lugar.** El camino real para saber cómo quedó una publicación por Postproxy es el job de revisión `content_publish_check`, que pregunta por el estado a los 2, 10 y 30 minutos. Si Postproxy suma avisos, alcanza con pegar la URL, guardar el secreto y ajustar esa función.
+
+### LinkedIn publica solo texto
+
+**Qué quedó.** `linkedinPublisher` publica un post de texto. Con media, falla con un mensaje claro.
+
+**Por qué.** Las Images, Videos y Documents API de LinkedIn son tres flujos de subida distintos, cada uno con su registro previo. Construirlos a ciegas, sin una cuenta conectada contra la que probar, es escribir código que no se puede verificar.
+
+**Qué se decidió en su lugar.** Fallar con "LinkedIn solo publica texto por ahora" antes de intentarlo. Publicar el texto sin la imagen y no decir nada sería peor: se vería como que salió bien.

@@ -12,6 +12,7 @@ import { integrationStatus } from "@/lib/integrations/status";
 import { buildUsage } from "@/lib/integrations/usage";
 import { countIntegrationUsage } from "@/lib/integrations/usage-counts";
 import { channelWebhookUrl } from "@/lib/webhook-url";
+import { parsePublishers } from "@/lib/social/accounts-schema";
 
 /**
  * Integraciones: todo lo que el sistema conecta con afuera, en una pantalla.
@@ -26,43 +27,75 @@ import { channelWebhookUrl } from "@/lib/webhook-url";
 export default async function IntegrationsPage() {
   const { workspace, supabase } = await requireWorkspaceAdmin();
 
-  const [{ data: configs }, { data: channels }, secretNames, usageCounts] = await Promise.all([
+  const [
+    { data: configs },
+    { data: channels },
+    { data: youtubeAccount },
+    secretNames,
+    usageCounts,
+  ] = await Promise.all([
     supabase
       .from("integration_configs")
-      .select("type, provider, config, is_active, connected_at, last_error, updated_at")
+      .select(
+        "type, provider, config, is_active, connected_at, last_error, updated_at",
+      )
       .eq("workspace_id", workspace.id),
     supabase
       .from("channels")
       .select("id, platform, username, display_name, is_active, provider")
       .eq("workspace_id", workspace.id),
+    // Cuando se probo por ultima vez la subida directa a YouTube (F38).
+    supabase
+      .from("social_accounts")
+      .select("publishers")
+      .eq("workspace_id", workspace.id)
+      .eq("platform", "youtube")
+      .maybeSingle(),
     // Solo los nombres: el valor de un secret nunca sale del servidor.
     listSecretNames(supabase, workspace.id),
     countIntegrationUsage(supabase, workspace.id),
   ]);
 
   const storedSecrets = new Set(secretNames);
+
+  const youtubePublishers = parsePublishers(youtubeAccount?.publishers ?? []);
+  const youtubeVerifiedAt = youtubePublishers.ok
+    ? (youtubePublishers.publishers.find((p) => p.publisher === "youtube_api")
+        ?.verified_at ?? null)
+    : null;
   const activeChannels = (channels ?? []).filter((c) => c.is_active);
 
   /** Que cuenta se muestra en la card. */
-  function accountOf(provider: ProviderDefinition, config: Record<string, string>): string | null {
+  function accountOf(
+    provider: ProviderDefinition,
+    config: Record<string, string>,
+  ): string | null {
     if (provider.id === "zernio") {
       const names = activeChannels
         .filter((c) => c.provider === "zernio")
-        .map((c) => (c.username ? `@${c.username}` : c.display_name || c.platform));
+        .map((c) =>
+          c.username ? `@${c.username}` : c.display_name || c.platform,
+        );
       return names.length > 0 ? names.join(", ") : null;
     }
     if (provider.id === "evolution") {
       const wa = activeChannels.find((c) => c.provider === "evolution");
       return wa ? wa.display_name || wa.username || "WhatsApp conectado" : null;
     }
-    return config.from_email || config.inbound_address || config.default_model || null;
+    return (
+      config.from_email ||
+      config.inbound_address ||
+      config.default_model ||
+      null
+    );
   }
 
   const integrations: Record<string, IntegrationCardData> = {};
 
   for (const provider of PROVIDERS) {
     const row = (configs ?? []).find(
-      (c) => c.type === provider.type && c.provider === configProviderOf(provider),
+      (c) =>
+        c.type === provider.type && c.provider === configProviderOf(provider),
     );
     const config = (row?.config ?? {}) as Record<string, string>;
 
@@ -81,7 +114,11 @@ export default async function IntegrationsPage() {
 
     const { status, reasons } = integrationStatus({
       config: isActive
-        ? { is_active: true, last_error: row?.last_error ?? null, updated_at: row?.updated_at ?? null }
+        ? {
+            is_active: true,
+            last_error: row?.last_error ?? null,
+            updated_at: row?.updated_at ?? null,
+          }
         : null,
       usage,
     });
@@ -91,7 +128,10 @@ export default async function IntegrationsPage() {
       status,
       reasons:
         zernioLegacyKey && !storedSecrets.has(SECRET_NAMES.zernioApiKey)
-          ? [...reasons, "La clave todavia no esta en Vault. Reemplazala aca para moverla."]
+          ? [
+              ...reasons,
+              "La clave todavia no esta en Vault. Reemplazala aca para moverla.",
+            ]
           : reasons,
       account: accountOf(provider, config),
       usage,
@@ -104,8 +144,10 @@ export default async function IntegrationsPage() {
     <IntegrationsGrid
       integrations={integrations}
       webhookUrls={webhookUrls()}
+      youtubeVerifiedAt={youtubeVerifiedAt}
       zernioLegacySecrets={
-        Boolean(workspace.late_api_key_encrypted) && !storedSecrets.has(SECRET_NAMES.zernioApiKey)
+        Boolean(workspace.late_api_key_encrypted) &&
+        !storedSecrets.has(SECRET_NAMES.zernioApiKey)
       }
       channelsSummary={activeChannels
         .filter((c) => c.provider === "zernio")

@@ -9,6 +9,7 @@ import { providersBySection, getProvider } from "@/lib/integrations/providers";
 import { needsAttention } from "@/lib/integrations/status";
 import { IntegrationCard } from "./integration-card";
 import { IntegrationModal } from "./integration-modal";
+import { YouTubeProbeFooter } from "./youtube-probe-footer";
 import type { IntegrationCardData } from "./types";
 
 /**
@@ -24,6 +25,7 @@ export function IntegrationsGrid({
   webhookUrls,
   channelsSummary,
   zernioLegacySecrets = false,
+  youtubeVerifiedAt = null,
 }: {
   integrations: Record<string, IntegrationCardData>;
   /** Direcciones que hay que pegar en cada proveedor, por id. */
@@ -32,6 +34,8 @@ export function IntegrationsGrid({
   channelsSummary: Array<{ id: string; label: string; platform: string }>;
   /** Hay secretos de Zernio todavia en las columnas viejas (F5). */
   zernioLegacySecrets?: boolean;
+  /** Cuando se probo por ultima vez la subida directa a YouTube (F38). */
+  youtubeVerifiedAt?: string | null;
 }) {
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -111,6 +115,8 @@ export function IntegrationsGrid({
           extraFooter={
             openProvider.id === "zernio" ? (
               <ZernioFooter channels={channelsSummary} legacySecrets={zernioLegacySecrets} />
+            ) : openProvider.id === "google" ? (
+              <YouTubeProbeFooter verifiedAt={youtubeVerifiedAt} />
             ) : openProvider.connection === "qr" ? (
               <Link href="/dashboard/channels" className="text-sm underline">
                 Abrir WhatsApp (QR)

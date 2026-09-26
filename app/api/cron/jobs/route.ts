@@ -13,6 +13,13 @@ import {
   type IndexDocumentPayload,
 } from "@/lib/knowledge/index-document";
 import { outboundMessageRow } from "@/lib/messages/outbound";
+import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
+import { registerPublishing } from "@/lib/publishing/bootstrap";
+
+// Enchufa los publicadores y los handlers de contenido (F30, F35). Al
+// importar el modulo, no dentro de la corrida: registrarlos por job seria
+// hacerlo veinte veces por minuto.
+registerPublishing();
 
 // Signals the handler to skip retry/backoff and route straight to the
 // failed + settle branch (which performs/re-attempts the session cancel).
@@ -177,7 +184,14 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
 
-      if (err instanceof SessionRecheckError) {
+      if (err instanceof UnknownJobTypeError) {
+        // Reintentar tres veces un tipo que nadie sabe ejecutar no lo va a
+        // hacer aparecer: falla ya y se ve en la lista de jobs.
+        await supabase
+          .from("scheduled_jobs")
+          .update({ status: "failed", last_error: errorMessage })
+          .eq("id", job.id);
+      } else if (err instanceof SessionRecheckError) {
         // Requeue past the recency window and undo the claim's attempts bump:
         // a recheck is not a failure, and letting rechecks exhaust attempts
         // would route a possibly-live session into the terminal cancel below.
@@ -503,7 +517,7 @@ async function purgeDeletedKnowledgeDocuments(
 
 async function processJob(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  job: { id: string; type: string; payload: Json }
+  job: { id: string; type: string; payload: Json; attempts?: number }
 ) {
   switch (job.type) {
     // Indexado de un documento de la base de conocimiento (F16).
@@ -817,8 +831,21 @@ async function processJob(
       break;
     }
 
-    default:
-      console.warn(`Unknown job type: ${job.type}`);
+    // Los tipos que suma la etapa 2 (contenido, metricas, anuncios) viven en
+    // el registro (lib/jobs/registry.ts): cada uno trae su handler y no hace
+    // falta tocar este archivo para sumar uno.
+    //
+    // Un tipo que nadie registro FALLA. Antes quedaba completado con un
+    // warn, que es peor: un tipo mal escrito pasaba por hecho y nadie se
+    // enteraba hasta que faltaba la publicacion.
+    default: {
+      const handler = getJobHandler(job.type);
+      if (!handler) throw new UnknownJobTypeError(job.type);
+      await handler({
+        supabase,
+        job: { id: job.id, type: job.type, payload: job.payload, attempts: job.attempts ?? 0 },
+      });
+    }
   }
 }
 
