@@ -41,8 +41,14 @@ import { evaluateGuardrails, isWithinBusinessHours } from "./guardrails";
 import { validateOutput } from "./output";
 import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
 import { defaultSend, sendAgentParts, type SendFn } from "./send";
+import { defaultRefresh, type RefreshFn } from "./refresh";
+import { alreadyAnsweredSince, claimAgentReply, lastExternalOutboundAt, withinExternalCooldown } from "./reply-check";
+import { evaluateRules, type RuleEvalResult } from "./rules/evaluate";
+import { buildPreRuleContext, fillResponseContext } from "./rules/context";
+import type { RuleAction } from "./rules/fields";
 import { buildToolSet } from "./tools/build";
 import { newNonce } from "./untrusted";
+import type { AgentChannelMode } from "@/lib/types/database";
 
 /**
  * Un turno del agente conversacional (F22): toma la rafaga de mensajes del
@@ -96,6 +102,8 @@ export interface TurnDeps {
   runModel: ModelRunner;
   send: SendFn;
   checkSpend: typeof checkSpendLimits;
+  /** Refresco contra Zernio antes de verificar (F5). Inyectable en los tests. */
+  refresh: RefreshFn;
 }
 
 export const defaultTurnDeps: TurnDeps = {
@@ -105,6 +113,7 @@ export const defaultTurnDeps: TurnDeps = {
   runModel: toolLoopRunner,
   send: defaultSend,
   checkSpend: checkSpendLimits,
+  refresh: defaultRefresh,
 };
 
 export type TurnOutcome =
@@ -237,6 +246,49 @@ export async function runAgentTurn(
     return { kind: "run", status: "skipped_automation", detail: "flow_session", runId };
   }
 
+  // 3. Verificación antes de responder (F5, momento 1). Zernio no avisa por
+  // webhook lo que se manda desde ManyChat o la app de Instagram, así que
+  // primero se refresca el historial y recién después se mira si ya hubo una
+  // respuesta. Un saliente posterior al inbound (venga de donde venga) retira
+  // el turno sin llamar al modelo.
+  const refresh1 = await deps.refresh(supabase, {
+    conversationId: fresh.id,
+    workspaceId: fresh.workspace_id,
+    channelId: fresh.channel_id,
+    lateConversationId: fresh.late_conversation_id,
+    sinceIso: burst[0].created_at,
+    runId: null,
+  });
+  if (refresh1.inserted > 0) {
+    messages = await loadRecentMessages(supabase, fresh.id);
+  }
+  if (await alreadyAnsweredSince(supabase, { conversationId: fresh.id, inboundAt: lastInbound.created_at })) {
+    const runId = await recordRunOutcome(supabase, {
+      ...runBase,
+      status: "already_answered",
+      routing: { check: "already_answered", moment: 1, refresh: refresh1.ok ? "ok" : "failed" },
+    });
+    return { kind: "run", status: "already_answered", detail: "moment_1", runId };
+  }
+
+  // 4. Espera tras respuesta externa (F7). Si otra herramienta (ManyChat)
+  // respondió hace menos de N minutos, el agente no se mete.
+  if (
+    withinExternalCooldown({
+      lastInboundAt: lastInbound.created_at,
+      lastExternalAt: await lastExternalOutboundAt(supabase, fresh.id),
+      cooldownMinutes: agent.externalReplyCooldownMinutes,
+    })
+  ) {
+    const runId = await recordRunOutcome(supabase, {
+      ...runBase,
+      status: "skipped",
+      statusDetail: "external_cooldown",
+      routing: { check: "external_cooldown" },
+    });
+    return { kind: "run", status: "skipped", detail: "external_cooldown", runId };
+  }
+
   // Una regeneracion siempre deja borrador, aunque el canal haya vuelto a
   // envio directo en el medio: nadie pidio que salga sin revisar.
   const mode = previousDraft ? "draft" : channelMode(agent, fresh.channel_id);
@@ -296,7 +348,7 @@ async function continueTurn(
     windowEnd: number;
     run: AiRunHandle;
     startedAt: number;
-    mode: "send" | "draft";
+    mode: AgentChannelMode;
     revision: TurnRevision | null;
     payload: AgentBurstPayload;
     readOnlyTools: boolean;
@@ -304,12 +356,25 @@ async function continueTurn(
 ): Promise<TurnOutcome> {
   const { deps, agent, conversation, messages, burst, run } = args;
   const runId = run.runId;
-  const draftMode = args.mode === "draft";
+  const rulesMode = args.mode === "rules";
+  // En modo "rules" el turno decide al final entre enviar y dejar borrador; hasta
+  // entonces no es "draft" (genera igual). draftMode es sólo el modo borrador puro.
+  let draftMode = args.mode === "draft";
   const close = async (status: Parameters<AiRunHandle["close"]>[0]["status"], detail: string | null, error?: string) => {
     await run.close({ status, statusDetail: detail, error: error ?? null });
     return { kind: "run" as const, status, detail, runId };
   };
   const joinDetails = (...parts: Array<string | null | undefined | false>) => parts.filter(Boolean).join(",") || null;
+  const routingFor = (mode: string, r: RuleEvalResult, stage: "before" | "after", refresh?: string) => ({
+    mode,
+    rule_id: r.ruleId,
+    rule_index: r.ruleIndex,
+    action: r.action,
+    matched: r.matched,
+    stage,
+    evaluated_at: deps.now().toISOString(),
+    ...(refresh ? { refresh } : {}),
+  });
 
   // En modo borrador el horario de atencion no aplica: si hay una persona para
   // aprobar, no esta fuera de horario. Queda anotado en el run.
@@ -368,7 +433,7 @@ async function continueTurn(
 
   if (block) {
     await run.step({ kind: "guardrail", name: block.kind, output: { accion: block.action, detalle: block.detail } });
-    if (draftMode) {
+    if (draftMode || rulesMode) {
       // En modo borrador el guardarrail no apaga el agente: deja una fila sin
       // texto en la cola, con el motivo, para que responda una persona.
       return leaveDraft(
@@ -433,7 +498,7 @@ async function continueTurn(
     }
     await disableForSpend(supabase, agent, spend.blocking.scope);
     await run.step({ kind: "guardrail", name: "spend_limit", output: spend.blocking });
-    if (draftMode) {
+    if (draftMode || rulesMode) {
       return leaveDraft(
         {
           body: null,
@@ -460,10 +525,48 @@ async function continueTurn(
     return close("blocked_guardrail", `spend:${spend.blocking.scope}`);
   }
 
+  // Contacto (etiquetas, temperatura): lo usan el prompt y las reglas.
+  const contact = await loadContactContext(supabase, conversation.contact_id);
+
+  // 6a. Reglas: evaluación previa (F9). Si una regla previa dice "No responder",
+  // el turno termina sin llamar al modelo. Si decide send/draft, se recuerda y
+  // se sigue generando; si devuelve "pending", se decide después de generar.
+  let ruleDecision: RuleEvalResult | null = null;
+  let ruleStage: "before" | "after" | null = null;
+  let preRuleCtx: ReturnType<typeof buildPreRuleContext> | null = null;
+  if (rulesMode) {
+    const hasPriorMessages = messages.some((m) => ms(m.created_at) < ms(burst[0].created_at));
+    const hasPriorOutbound = messages.some(
+      (m) => m.direction === "outbound" && ms(m.created_at) < ms(burst[0].created_at),
+    );
+    preRuleCtx = buildPreRuleContext({
+      burstText: burst.map((m) => m.text ?? "").join("\n"),
+      burstCount: burst.length,
+      lastInboundText: burst[burst.length - 1].text ?? null,
+      temperature: contact.leadTemperature,
+      tags: contact.tags,
+      hasPriorOutbound,
+      hasPriorMessages,
+      assigned: conversation.assigned_to != null,
+      channel: conversation.channel_id,
+      inBusinessHours: isWithinBusinessHours(agent.guardrails, deps.now()),
+    });
+    const pre = evaluateRules(agent.responseRules, preRuleCtx, "before_generation", agent.responseRulesDefault);
+    if (pre.action === "skip") {
+      run.setRouting(routingFor("rules", pre, "before"));
+      return close("skipped", pre.ruleId ? `rule:${pre.ruleId}` : "rule:default");
+    }
+    if (pre.action !== "pending") {
+      // Una regla previa ya decidió enviar o dejar borrador: se genera igual y
+      // se aplica al final. No hace falta la evaluación final.
+      ruleDecision = pre;
+      ruleStage = "before";
+    }
+  }
+
   // 5. El modelo.
   const nonce = newNonce();
-  const [contact, toolSet] = await Promise.all([
-    loadContactContext(supabase, conversation.contact_id),
+  const [toolSet] = await Promise.all([
     buildToolSet({
       supabase,
       agent,
@@ -473,7 +576,9 @@ async function continueTurn(
       channelId: conversation.channel_id,
       run,
       nonce,
-      mode: args.mode,
+      // En modo reglas las herramientas se difieren como en borrador: la
+      // decisión de enviar o no se toma después de generar.
+      mode: args.mode === "rules" ? "draft" : args.mode,
       readOnly: args.readOnlyTools,
     }),
   ]);
@@ -530,7 +635,7 @@ async function continueTurn(
 
   if (!generation.ok) {
     const kind: AgentErrorKind = generation.reason === "model_timeout" ? "model_timeout" : "provider_unavailable";
-    if (draftMode) {
+    if (draftMode || rulesMode) {
       // La fila en la cola es la unica senal: sin marca de error ni aviso de
       // "se derivo a una persona", que en modo borrador no seria cierto.
       return leaveDraft(
@@ -573,7 +678,7 @@ async function continueTurn(
 
   // 6. Formato, en codigo.
   const output = validateOutput(generation.output.text, agent.outputFormat);
-  if (!output.ok && draftMode) {
+  if (!output.ok && (draftMode || rulesMode)) {
     const suggestedEscalate = suggestions.some((s) => s.type === "escalate");
     // El agente decidio derivar y no hay nada que redactar: igual queda la
     // fila en la cola, con el motivo y sin texto, para responder a mano.
@@ -611,6 +716,31 @@ async function continueTurn(
     return close("escalated", `output:${output.reason}`);
   }
 
+  // 6b. Reglas: evaluación final (F9). Si una regla previa ya decidió, se usa;
+  // si no, se evalúa la lista completa con la respuesta ya generada.
+  if (rulesMode) {
+    if (!ruleDecision) {
+      const finalCtx = fillResponseContext(preRuleCtx!, {
+        responseText: output.parts.join("\n\n"),
+        parts: output.parts.length,
+        wantsEscalate: toolSet.state.escalated || suggestions.some((s) => s.type === "escalate"),
+        kbMiss: false,
+        usedTools: applied.map((a) => a.label),
+        intent: null,
+      });
+      ruleDecision = evaluateRules(agent.responseRules, finalCtx, "after_generation", agent.responseRulesDefault);
+      ruleStage = "after";
+    }
+    if (ruleDecision.action === "skip") {
+      // No se envía ni se guarda. Las herramientas de clasificación que el
+      // agente ejecutó ya quedaron aplicadas, y el run muestra los tokens.
+      run.setRouting(routingFor("rules", ruleDecision, ruleStage ?? "after"));
+      return close("skipped", ruleDecision.ruleId ? `rule:${ruleDecision.ruleId}` : "rule:default");
+    }
+    // La regla decide enviar directo o dejar borrador.
+    draftMode = ruleDecision.action === "draft";
+  }
+
   // 7. Espera hasta el objetivo. En modo borrador no hay demora deliberada: el
   // borrador se guarda apenas esta listo.
   const target = args.windowEnd + agent.responseDelaySeconds * 1000;
@@ -631,7 +761,36 @@ async function continueTurn(
   });
   if (waiting) return close("skipped_automation", "flow_session_during_generation");
 
-  if (draftMode) {
+  // 9. Momento 2 (F5): refrescar contra Zernio y verificar de nuevo, junto con
+  // el envío/guardado. El chequeo va bajo advisory lock por conversación
+  // (claim_agent_reply). Si ya hubo una respuesta después del inbound, no se
+  // envía ni se guarda nada.
+  const inboundAt = burst[burst.length - 1].created_at;
+  const refresh2 = await deps.refresh(supabase, {
+    conversationId: conversation.id,
+    workspaceId: conversation.workspace_id,
+    channelId: conversation.channel_id,
+    lateConversationId: conversation.late_conversation_id,
+    sinceIso: burst[0].created_at,
+    runId,
+  });
+  if (await claimAgentReply(supabase, { conversationId: conversation.id, inboundAt, runId })) {
+    run.setRouting({ check: "already_answered", moment: 2, refresh: refresh2.ok ? "ok" : "failed" });
+    return close("already_answered", "after_generation");
+  }
+
+  // Si el refresco falló en modo directo, la verificación quedó ciega:
+  // "Enviar directo" se degrada a borrador (routing.refresh = 'failed').
+  const degradeToDraft = !draftMode && !refresh2.ok;
+  const routingRefresh = refresh2.ok ? "ok" : "failed";
+  // El routing en modo reglas lleva qué regla decidió; en directo/borrador, sólo el modo.
+  const routingNow = (effectiveMode: string) =>
+    rulesMode && ruleDecision
+      ? routingFor("rules", ruleDecision, ruleStage ?? "after", routingRefresh)
+      : { mode: effectiveMode, refresh: routingRefresh };
+
+  if (draftMode || degradeToDraft) {
+    run.setRouting(routingNow("draft"));
     return leaveDraft(
       {
         body: output.parts.join("\n\n"),
@@ -640,10 +799,11 @@ async function continueTurn(
         suggestedActions: suggestions,
         appliedActions: applied,
       },
-      joinDetails(modelDetail, output.truncated && "output_truncated"),
+      joinDetails(modelDetail, output.truncated && "output_truncated", degradeToDraft && "refresh_failed"),
     );
   }
 
+  run.setRouting(routingNow("send"));
   const sent = await sendAgentParts(supabase, sendCtx(latest, agent, runId), output.parts, deps.send);
   if (sent.sent === 0) {
     await markAgentError(supabase, {

@@ -21,15 +21,15 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
   - [x] F2 · Columna `messages.origin` (builder único + 11 caminos + backfill + `message.sent`) — 1580 external, 838 inbound null
   - [x] F3 · Zona horaria del workspace (`workspaces.timezone`, selector en Settings)
   - [x] F4 · `already_answered` + fuentes del clasificador + `normalize_for_grouping` (paridad SQL/TS en 20 casos)
-- [ ] **Bloque 2 — Verificación y reglas de respuesta**
-  - [ ] F5 · Verificación antes de responder (3 momentos + refresco Zernio)
-  - [ ] F6 · Borrador respondido por otro medio
-  - [ ] F7 · Espera tras respuesta externa
-  - [ ] F8 · Evaluador de reglas
-  - [ ] F9 · Integración de reglas en el turno
-  - [ ] F10 · Editor de reglas, plantilla y modo del canal
-  - [ ] F11 · Simulación
-  - [ ] F12 · Visibilidad de la decisión
+- [x] **Bloque 2 — Verificación y reglas de respuesta** — 00077 aplicada, agente sigue apagado
+  - [x] F5 · Verificación antes de responder (momentos 1/2 + refresco Zernio, `lib/agent/refresh.ts`, `reply-check.ts`)
+  - [x] F6 · Borrador respondido por otro medio (refresco en `approveDraft` + trigger momento 3 + cron `drafts-refresh` + aviso en la cola)
+  - [x] F7 · Espera tras respuesta externa (`external_reply_cooldown_minutes`, campo en config)
+  - [x] F8 · Evaluador de reglas (`lib/agent/rules/`: fields, evaluate, schema, template, known-buttons)
+  - [x] F9 · Integración de reglas en el turno (modo `rules`, evaluación previa/final, `routing`)
+  - [x] F10 · Editor de reglas + plantilla + modo del canal (`rules-editor.tsx`, acciones de servidor, unreachable)
+  - [x] F11 · Simulación (`simulate.ts` + loader best-effort desde borradores)
+  - [x] F12 · Visibilidad (oración de decisión en Runs, etiqueta de regla en la cola, salud del refresco + notificación)
 - [ ] **Bloque 3 — Navegación y dashboard de Chat**
   - [ ] F13 · Navegación global (barra 56 px)
   - [ ] F14 · Filtros y período
@@ -55,3 +55,4 @@ Base: última migración aplicada `00073_tag_effects`. La `00072` **no está apl
 | 00074 | `messages.origin` + CHECK + backfill + trigger `messages_fill_origin` + índice | ✅ |
 | 00075 | `workspaces.timezone` (default America/Costa_Rica) | ✅ |
 | 00076 | `agent_runs.status` +`already_answered`; `source` +clasificador; `normalize_for_grouping()` | ✅ |
+| 00077 | `agents.response_rules`/`response_rules_default`/`external_reply_cooldown_minutes`; `agent_runs.routing`; RPC `claim_agent_reply`; trigger momento 3; cron `ssa-cron-drafts-refresh` | ✅ |

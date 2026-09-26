@@ -14,6 +14,7 @@ const valid = {
   bundleWindowSeconds: 60,
   responseDelaySeconds: 20,
   maxWaitSeconds: 300,
+  externalReplyCooldownMinutes: 10,
   maxRepliesPerConversation: 12,
   burstMaxAgeHours: 6,
   closeAfterInactiveHours: 12,

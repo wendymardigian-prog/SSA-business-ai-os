@@ -10,6 +10,7 @@ import { discardDraftAction, regenerateDraftAction, sendDraftAction } from "@/li
 import type { DraftActionResult } from "@/lib/agent/drafts/actions";
 import type { DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { noReplyReasonLabel, type AppliedAction, type SuggestedAction } from "@/lib/agent/drafts/types";
+import { routingSentence } from "@/lib/agent/routing-sentence";
 import type { Platform } from "@/lib/platforms";
 import { WindowBadge } from "./window-badge";
 
@@ -206,8 +207,15 @@ function ProposedReply({ draft, decision }: { draft: DraftQueueRow; decision: De
         </p>
       ))}
       {draft.bodyParts.length > 1 && <p className="text-[11px] text-muted-foreground">Sale en {draft.bodyParts.length} mensajes.</p>}
+      <RuleTag routing={draft.routing} />
     </div>
   );
+}
+
+/** "Regla N: …" cuando el borrador lo dejó una regla de respuesta (F12). */
+function RuleTag({ routing }: { routing: Record<string, unknown> | null }) {
+  if (!routing || routing.mode !== "rules") return null;
+  return <p className="text-[11px] text-muted-foreground">{routingSentence(routing as Parameters<typeof routingSentence>[0])}</p>;
 }
 
 function AgentActions({ draft }: { draft: DraftQueueRow }) {

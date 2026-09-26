@@ -141,6 +141,7 @@ export async function updateAgentConfig(agentId: string, input: unknown): Promis
     bundle_window_seconds: v.bundleWindowSeconds,
     response_delay_seconds: v.responseDelaySeconds,
     max_wait_seconds: v.maxWaitSeconds,
+    external_reply_cooldown_minutes: v.externalReplyCooldownMinutes,
     max_replies_per_conversation: v.maxRepliesPerConversation,
     burst_max_age_hours: v.burstMaxAgeHours,
     close_after_inactive_hours: v.closeAfterInactiveHours,
@@ -179,6 +180,7 @@ export async function updateAgentConfig(agentId: string, input: unknown): Promis
         bundle_window_seconds: agent.bundleWindowSeconds,
         response_delay_seconds: agent.responseDelaySeconds,
         max_wait_seconds: agent.maxWaitSeconds,
+        external_reply_cooldown_minutes: agent.externalReplyCooldownMinutes,
         max_replies_per_conversation: agent.maxRepliesPerConversation,
         burst_max_age_hours: agent.burstMaxAgeHours,
         close_after_inactive_hours: agent.closeAfterInactiveHours,
@@ -490,12 +492,12 @@ export async function setAgentChannel(agentId: string, channelId: string, enable
 export async function setAgentChannelMode(
   agentId: string,
   channelId: string,
-  mode: "send" | "draft",
+  mode: "send" | "draft" | "rules",
 ): Promise<AgentActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
-  if (typeof channelId !== "string" || (mode !== "send" && mode !== "draft")) {
+  if (typeof channelId !== "string" || (mode !== "send" && mode !== "draft" && mode !== "rules")) {
     return { ok: false, error: "Pedido invalido." };
   }
 
@@ -505,12 +507,14 @@ export async function setAgentChannelMode(
     return { ok: false, error: "Primero encendé el agente en ese canal." };
   }
 
-  const previous = agent.channelModes[channelId] === "draft" ? "draft" : "send";
+  const stored = agent.channelModes[channelId];
+  const previous = stored === "draft" || stored === "rules" ? stored : "send";
   if (previous === mode) return { ok: true, agentId: agent.id };
 
-  const modes: Record<string, "send" | "draft"> = { ...agent.channelModes };
-  if (mode === "draft") modes[channelId] = "draft";
-  else delete modes[channelId];
+  // "send" es la ausencia de entrada; "draft"/"rules" se guardan como clave.
+  const modes: Record<string, "draft" | "rules"> = { ...agent.channelModes } as Record<string, "draft" | "rules">;
+  if (mode === "send") delete modes[channelId];
+  else modes[channelId] = mode;
 
   const { error } = await supabase.from("agents").update({ channel_modes: modes as Json }).eq("id", agent.id);
   if (error) {
@@ -682,4 +686,89 @@ export async function addModelPrice(input: {
 
   revalidate();
   return { ok: true };
+}
+
+/**
+ * Guarda las reglas de respuesta del agente (F10). Owner/Admin. La lógica y la
+ * validación viven en lib/agent/rules/save.ts para poder testearlas sin sesión.
+ */
+export async function saveResponseRulesAction(agentId: string, rules: unknown): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase, user } = ctx;
+
+  const agent = await loadOwnAgent(workspace.id, agentId);
+  if (!agent) return { ok: false, error: "El agente no existe." };
+
+  const { saveResponseRules } = await import("@/lib/agent/rules/save");
+  const result = await saveResponseRules({
+    supabase,
+    workspaceId: workspace.id,
+    agentId: agent.id,
+    userId: user.id,
+    isAdmin: true,
+    rules,
+    previousRules: agent.responseRules,
+  });
+  if (!result.ok) return { ok: false, error: result.error ?? "No pude guardar las reglas." };
+
+  revalidate(agent.id);
+  return { ok: true, agentId: agent.id };
+}
+
+/** Guarda la acción por defecto de las reglas (F10). Owner/Admin. */
+export async function setResponseRulesDefaultAction(agentId: string, action: unknown): Promise<AgentActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase, user } = ctx;
+
+  const agent = await loadOwnAgent(workspace.id, agentId);
+  if (!agent) return { ok: false, error: "El agente no existe." };
+
+  const { saveResponseRulesDefault } = await import("@/lib/agent/rules/save");
+  const result = await saveResponseRulesDefault({
+    supabase,
+    workspaceId: workspace.id,
+    agentId: agent.id,
+    userId: user.id,
+    isAdmin: true,
+    action,
+    previous: agent.responseRulesDefault,
+  });
+  if (!result.ok) return { ok: false, error: result.error ?? "No pude guardar." };
+
+  revalidate(agent.id);
+  return { ok: true, agentId: agent.id };
+}
+
+/**
+ * Simula las reglas sobre los turnos de los últimos 30 días (F11). Sólo lectura:
+ * no llama a ningún modelo ni escribe nada. Owner/Admin.
+ */
+export async function simulateResponseRulesAction(
+  agentId: string,
+  rules: unknown,
+  defaultAction: unknown,
+): Promise<
+  | { ok: true; result: import("@/lib/agent/rules/simulate").SimulationResult; sampled: number }
+  | { ok: false; error: string }
+> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: NOT_ADMIN };
+  const { workspace, supabase } = ctx;
+
+  const agent = await loadOwnAgent(workspace.id, agentId);
+  if (!agent) return { ok: false, error: "El agente no existe." };
+
+  const { validateRules, rulesDefaultSchema } = await import("@/lib/agent/rules/schema");
+  const validated = validateRules(rules);
+  if (!validated.ok) return { ok: false, error: validated.error ?? "Reglas inválidas" };
+  const def = rulesDefaultSchema.safeParse(defaultAction);
+  if (!def.success) return { ok: false, error: "Acción por defecto inválida" };
+
+  const { loadSimulationCases } = await import("@/lib/agent/rules/simulate-load");
+  const { simulateRules } = await import("@/lib/agent/rules/simulate");
+  const cases = await loadSimulationCases(supabase, workspace.id);
+  const result = simulateRules(cases, validated.rules ?? [], def.data);
+  return { ok: true, result, sampled: cases.length };
 }

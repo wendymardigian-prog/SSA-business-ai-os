@@ -62,6 +62,8 @@ export interface OpenRunInput {
   model?: string | null;
   /** Ultimo entrante de la rafaga que responde el turno (00070). */
   inboundAt?: string | null;
+  /** Que decidio el turno (00077, F9/F12): mode, rule_id, action, check, moment, refresh. */
+  routing?: Json | null;
 }
 
 /** Lo que importa del LanguageModelUsage del AI SDK, tolerante a campos que faltan. */
@@ -104,6 +106,8 @@ export interface AiRunHandle {
   setFinalUsage(usage: UsageLike | undefined): void;
   addEmbeddingUsage(args: { provider: string; model: string; tokens: number }): void;
   step(input: StepInput): Promise<string | null>;
+  /** Deja el routing del turno (F9/F12); se escribe al cerrar. */
+  setRouting(routing: Json | null): void;
   close(input: CloseRunInput): Promise<CloseRunResult>;
 }
 
@@ -179,6 +183,7 @@ export async function openAiRun(
         provider: input.provider ?? null,
         model: input.model ?? null,
         inbound_at: input.inboundAt ?? null,
+        routing: input.routing ?? null,
         status: "running",
         created_at: openedAt.toISOString(),
       })
@@ -196,6 +201,7 @@ export async function openAiRun(
 
   let provider = input.provider ?? null;
   let model = input.model ?? null;
+  let routing: Json | null = input.routing ?? null;
   const stepBucket = emptyBucket();
   let finalBucket: Bucket | null = null;
   const embeddings = new Map<string, { provider: string; model: string; tokens: number }>();
@@ -212,6 +218,10 @@ export async function openAiRun(
     setModel(p, m) {
       provider = p;
       model = m;
+    },
+
+    setRouting(r) {
+      routing = r;
     },
 
     addStepUsage(usage) {
@@ -334,6 +344,7 @@ export async function openAiRun(
             pricing_id: pricingId,
             latency_ms: Math.max(0, at.getTime() - openedAt.getTime()),
             step_count: stepCount,
+            routing,
             completed_at: at.toISOString(),
           })
           .eq("id", runId);

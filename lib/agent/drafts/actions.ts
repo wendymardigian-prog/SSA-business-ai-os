@@ -7,6 +7,7 @@ import { clearAgentError } from "../errors";
 import { escalateToHuman } from "../escalate";
 import { cutAtBoundary } from "../output";
 import { defaultSend, sendAgentParts, type SendFn } from "../send";
+import { defaultRefresh, type RefreshFn } from "../refresh";
 import { pauseAgentInConversation } from "../tools/effects";
 import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, parseSuggestedActions, type SuggestedAction } from "./types";
 
@@ -117,6 +118,8 @@ export async function approveDraft(args: {
   body?: string | null;
   confirmedDoNotContact?: boolean;
   send?: SendFn;
+  /** Refresco contra Zernio antes del chequeo (F6). Inyectable en los tests. */
+  refresh?: RefreshFn;
   now?: Date;
 }): Promise<DraftActionResult> {
   const now = args.now ?? new Date();
@@ -129,23 +132,38 @@ export async function approveDraft(args: {
   if (!text) return fail("no_body", "Este borrador no tiene texto propuesto: respondé a mano desde la conversación.");
   if (!draft.agent_id) return fail("agent_missing", "El agente que lo redacto ya no existe. Respondé a mano desde la conversación.");
 
-  const [{ data: channel }, { data: conversation }, { data: contact }, { data: later }] = await Promise.all([
+  const [{ data: channel }, { data: conversation }, { data: contact }] = await Promise.all([
     args.service.from("channels").select("platform, messaging_window_hours").eq("id", draft.channel_id).maybeSingle(),
     args.service.from("conversations").select("late_conversation_id").eq("id", draft.conversation_id).maybeSingle(),
     args.service.from("contacts").select("do_not_contact").eq("id", draft.contact_id).maybeSingle(),
-    draft.burst_last_inbound_at
-      ? args.service
-          .from("messages")
-          .select("id, direction, status, created_at")
-          .eq("conversation_id", draft.conversation_id)
-          .gt("created_at", draft.burst_last_inbound_at)
-          // Un envio que fallo (por ejemplo, el primer intento de este mismo
-          // borrador) no es una respuesta: el lead nunca lo recibio.
-          .neq("status", "failed")
-          .order("created_at", { ascending: true })
-          .limit(20)
-      : Promise.resolve({ data: [] as Array<{ direction: string; status: string }> }),
   ]);
+
+  // F6: refrescar contra Zernio ANTES del chequeo. Sin esto, una respuesta
+  // dada desde la app de Instagram no está en la base cuando se aprueba, y el
+  // borrador saldría encima. El refresco trae los salientes externos como
+  // `external`; el chequeo de abajo los ve.
+  const refresh = args.refresh ?? defaultRefresh;
+  await refresh(args.service, {
+    conversationId: draft.conversation_id,
+    workspaceId: draft.workspace_id,
+    channelId: draft.channel_id,
+    lateConversationId: (conversation as { late_conversation_id?: string | null } | null)?.late_conversation_id ?? null,
+    sinceIso: draft.burst_last_inbound_at ?? now.toISOString(),
+    runId: draft.run_id,
+  });
+
+  const { data: later } = draft.burst_last_inbound_at
+    ? await args.service
+        .from("messages")
+        .select("id, direction, status, created_at")
+        .eq("conversation_id", draft.conversation_id)
+        .gt("created_at", draft.burst_last_inbound_at)
+        // Un envio que fallo (por ejemplo, el primer intento de este mismo
+        // borrador) no es una respuesta: el lead nunca lo recibio.
+        .neq("status", "failed")
+        .order("created_at", { ascending: true })
+        .limit(20)
+    : { data: [] as Array<{ direction: string; status: string }> };
 
   // Lo que paso en la conversacion despues de la rafaga que responde.
   const after = (later ?? []) as Array<{ direction: string }>;

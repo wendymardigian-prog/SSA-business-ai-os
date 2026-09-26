@@ -18,6 +18,7 @@ const runHandle = vi.hoisted(() => ({
   setFinalUsage: vi.fn(),
   addEmbeddingUsage: vi.fn(),
   step: vi.fn().mockResolvedValue("step-1"),
+  setRouting: vi.fn(),
   close: vi.fn().mockResolvedValue({ costUsd: 0, pricingMissing: [] }),
 }));
 vi.mock("./run", () => ({ openAiRun: vi.fn().mockResolvedValue(runHandle) }));

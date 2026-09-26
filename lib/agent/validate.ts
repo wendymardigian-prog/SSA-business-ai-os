@@ -29,6 +29,8 @@ export const agentConfigInputSchema = z
     bundleWindowSeconds: z.number().int().min(15, "La ventana minima es 15 s.").max(3600, "La ventana maxima es 1 hora."),
     responseDelaySeconds: z.number().int().min(0).max(180, "La demora maxima es 180 s."),
     maxWaitSeconds: z.number().int().min(15).max(7200).nullable(),
+    // Espera tras un saliente externo (F7). 0 = desactivada.
+    externalReplyCooldownMinutes: z.number().int().min(0, "Mínimo 0.").max(120, "Máximo 120 minutos."),
     // Vacio = sin tope (00070). El freno contra un agente en loop son los topes
     // de gasto y la regla de escalamiento.
     maxRepliesPerConversation: z.number().int().min(1, "Minimo 1 respuesta, o dejalo vacio para no tener tope.").max(500, "Maximo 500 respuestas.").nullable(),

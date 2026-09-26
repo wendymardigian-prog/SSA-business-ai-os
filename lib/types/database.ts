@@ -119,7 +119,10 @@ export type AgentRunSource =
   | "flow_ai_node"
   | "sequence_ai_step"
   | "kb_indexing"
-  | "conversation_summary";
+  | "conversation_summary"
+  /** Corridas del clasificador de patrones y su evaluacion (00076, Bloques 4-5). */
+  | "message_classification"
+  | "message_classification_eval";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -142,7 +145,9 @@ export type AgentRunStatus =
   | "completed"
   | "error"
   /** El turno dejo un borrador en vez de enviar (modo borrador, migracion 00070). */
-  | "drafted";
+  | "drafted"
+  /** El turno se retiro porque ya hubo una respuesta (verificacion, 00076/00077). */
+  | "already_answered";
 /** Estado de un borrador del agente (migracion 00070). */
 export type AgentDraftStatus =
   | "pending"
@@ -153,7 +158,10 @@ export type AgentDraftStatus =
   | "superseded"
   | "regenerated";
 /** Modo de entrega del agente en un canal (agents.channel_modes, migracion 00070). */
-export type AgentChannelMode = "send" | "draft";
+/** Modo de entrega del agente en un canal: envía directo, deja borrador, o decide por reglas (F9). */
+export type AgentChannelMode = "send" | "draft" | "rules";
+/** Acción por defecto de las reglas de respuesta (agents.response_rules_default, 00077). */
+export type ResponseRuleAction = "send" | "draft" | "skip";
 export type AgentRunStepKind = "model_call" | "kb_search" | "tool_call" | "guardrail";
 export type KnowledgeFallback = "escalate" | "general";
 export type CostLimitAction = "notify" | "disable";
@@ -2067,8 +2075,13 @@ export interface Database {
           monthly_cost_limit_usd: number | null;
           monthly_cost_limit_action: CostLimitAction;
           enabled_channel_ids: string[];
-          /** { channel_id: "send" | "draft" }; sin entrada = send (00070). */
+          /** { channel_id: "send" | "draft" | "rules" }; sin entrada = send (00070/00077). */
           channel_modes: Json;
+          /** Reglas de respuesta condición→acción (00077). */
+          response_rules: Json;
+          response_rules_default: ResponseRuleAction;
+          /** Espera tras un saliente externo, en minutos (00077, F7). */
+          external_reply_cooldown_minutes: number;
           config: Json;
           created_by: string | null;
           created_at: string;
@@ -2111,6 +2124,9 @@ export interface Database {
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
           channel_modes?: Json;
+          response_rules?: Json;
+          response_rules_default?: ResponseRuleAction;
+          external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
           created_at?: string;
@@ -2151,6 +2167,9 @@ export interface Database {
           monthly_cost_limit_action?: CostLimitAction;
           enabled_channel_ids?: string[];
           channel_modes?: Json;
+          response_rules?: Json;
+          response_rules_default?: ResponseRuleAction;
+          external_reply_cooldown_minutes?: number;
           config?: Json;
           created_by?: string | null;
           updated_at?: string;
@@ -2203,6 +2222,8 @@ export interface Database {
           trigger: AgentRunTrigger;
           status: AgentRunStatus;
           status_detail: string | null;
+          /** Que decidio el turno (00077, F9/F12). */
+          routing: Json | null;
           provider: string | null;
           model: string | null;
           input_tokens: number | null;
@@ -2233,6 +2254,7 @@ export interface Database {
           channel_id?: string | null;
           trigger: AgentRunTrigger;
           status?: AgentRunStatus;
+          routing?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;
@@ -2257,6 +2279,7 @@ export interface Database {
           contact_id?: string | null;
           channel_id?: string | null;
           status?: AgentRunStatus;
+          routing?: Json | null;
           status_detail?: string | null;
           provider?: string | null;
           model?: string | null;
@@ -2491,6 +2514,24 @@ export interface Database {
           p_phrase: string | null;
         };
         Returns: boolean;
+      };
+      /**
+       * Momento 2 de la verificación (migración 00077): bajo advisory lock por
+       * conversación, true si ya hubo un saliente posterior al inbound del turno
+       * que no es el propio run. Solo service_role.
+       */
+      claim_agent_reply: {
+        Args: {
+          p_conversation_id: string;
+          p_inbound_at: string;
+          p_run_id: string | null;
+        };
+        Returns: boolean;
+      };
+      /** Normaliza un texto para agrupar mensajes (migración 00076). */
+      normalize_for_grouping: {
+        Args: { p_raw: string | null };
+        Returns: string;
       };
       /**
        * Reclama un envio automatizado en la ventana horaria del canal

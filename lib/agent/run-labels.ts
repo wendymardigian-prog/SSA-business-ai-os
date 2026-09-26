@@ -12,6 +12,8 @@ export const RUN_STATUS_LABELS: Record<string, string> = {
   blocked_guardrail: "Lo freno un guardarrail",
   completed: "Completado",
   error: "Error",
+  drafted: "Dejo un borrador",
+  already_answered: "Ya habia una respuesta",
 };
 
 export const RUN_SOURCE_LABELS: Record<string, string> = {
@@ -29,6 +31,9 @@ const DETAIL_LABELS: Record<string, string> = {
   paused: "un flow pauso el agente",
   flow: "un flow respondio el mensaje",
   flow_session: "un flow estaba esperando esta respuesta",
+  external_cooldown: "otra herramienta (ManyChat) respondio hace poco",
+  moment_1: "ya habia una respuesta antes de generar",
+  after_generation: "ya habia una respuesta mientras se generaba",
   flow_error: "un flow arranco y fallo",
   global_keyword: "era una palabra clave global",
   job_expired: "el turno se descarto por demora",
@@ -62,6 +67,7 @@ export function describeRunDetail(detail: string | null): string[] {
       if (DETAIL_LABELS[part]) return DETAIL_LABELS[part];
       if (part.startsWith("guardrail:")) return `guardarrail: ${part.slice(10).replace(/_/g, " ")}`;
       if (part.startsWith("spend:")) return `tope de gasto alcanzado (${part.slice(6).replace(/_/g, " ")})`;
+      if (part.startsWith("rule:")) return `lo decidió una regla de respuesta`;
       if (part.startsWith("output:")) return `la respuesta no paso la validacion (${part.slice(7)})`;
       if (part.startsWith("pricing_missing:")) return `falta cargar el precio de ${part.slice(16)}: el costo quedo sin calcular`;
       if (part.startsWith("partial_send:")) return `se enviaron ${part.slice(13)} partes`;

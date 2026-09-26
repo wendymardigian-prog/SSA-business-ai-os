@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Activity, AlertTriangle, ChevronDown } from "lucide-react";
 import type { AgentScreenData, RunRow, RunStepRow } from "@/lib/agent/screen";
 import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, STEP_KIND_LABELS, describeRunDetail } from "@/lib/agent/run-labels";
+import { routingSentence } from "@/lib/agent/routing-sentence";
 import { countActiveRunFilters, AGENT_FILTER_ALL, AGENT_FILTER_NONE } from "@/lib/agent/runs-query";
 import { formatDateTime } from "@/components/contacts/ui";
 import { cn } from "@/lib/utils";
@@ -34,7 +35,7 @@ export function RunsTab({ data }: { data: AgentScreenData }) {
   const runs = data.runs;
   const { pending, setParam, setPage, clearAll, get } = useUrlFilters();
   if (!runs) return null;
-  const { filters, rows, total, pageSize, options, showCost, anyRuns } = runs;
+  const { filters, rows, total, pageSize, options, showCost, anyRuns, refreshHealth } = runs;
   const activeCount = countActiveRunFilters(filters, data.agent.id);
 
   return (
@@ -87,6 +88,12 @@ export function RunsTab({ data }: { data: AgentScreenData }) {
         )}
       </FilterBar>
 
+      {refreshHealth.total >= 20 && (
+        <p className={cn("text-xs", refreshHealth.failedPct > 5 ? "text-amber-700" : "text-muted-foreground")}>
+          Refresco contra Zernio (7 días): {refreshHealth.failedPct}% falló sobre {refreshHealth.total} turnos.
+          {refreshHealth.failedPct > 5 ? " Sin refresco, la verificación antes de responder queda ciega." : ""}
+        </p>
+      )}
       {rows.length === 0 ? (
         <EmptyState
           icon={<Activity className="h-10 w-10" />}
@@ -147,6 +154,9 @@ function RunItem({ run, showCost }: { run: RunRow; showCost: boolean }) {
         </summary>
 
         <div className="space-y-3 border-t border-border bg-muted/30 px-4 py-3 pl-11 text-sm">
+          {run.routing && (
+            <p className="text-xs text-foreground">{routingSentence(run.routing as Parameters<typeof routingSentence>[0])}</p>
+          )}
           {(details.length > 0 || run.error) && (
             <div>
               <p className="text-xs font-semibold">Por qué terminó así</p>

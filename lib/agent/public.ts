@@ -15,7 +15,7 @@ export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel
 
 /** Columnas de agent_runs sin tokens ni costo (00060). */
 export const AGENT_RUN_PUBLIC_COLUMNS =
-  "id, workspace_id, source, agent_id, prompt_version, conversation_id, thread_id, contact_id, channel_id, trigger, status, status_detail, provider, model, latency_ms, step_count, error, created_at, completed_at" as const;
+  "id, workspace_id, source, agent_id, prompt_version, conversation_id, thread_id, contact_id, channel_id, trigger, status, status_detail, routing, provider, model, latency_ms, step_count, error, created_at, completed_at" as const;
 
 /** Las columnas que NUNCA pueden aparecer en una consulta del cliente de un usuario. */
 export const AGENT_RUN_COST_COLUMNS = [
