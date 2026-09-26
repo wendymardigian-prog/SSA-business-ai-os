@@ -13,6 +13,7 @@ import { buildUsage } from "@/lib/integrations/usage";
 import { countIntegrationUsage } from "@/lib/integrations/usage-counts";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import { parsePublishers } from "@/lib/social/accounts-schema";
+import { parseMetaConfig } from "@/lib/meta/accounts";
 
 /**
  * Integraciones: todo lo que el sistema conecta con afuera, en una pantalla.
@@ -57,6 +58,10 @@ export default async function IntegrationsPage() {
   ]);
 
   const storedSecrets = new Set(secretNames);
+
+  const metaConfig = parseMetaConfig(
+    (configs ?? []).find((c) => c.type === "meta" && c.provider === "meta")?.config,
+  );
 
   const youtubePublishers = parsePublishers(youtubeAccount?.publishers ?? []);
   const youtubeVerifiedAt = youtubePublishers.ok
@@ -145,6 +150,8 @@ export default async function IntegrationsPage() {
       integrations={integrations}
       webhookUrls={webhookUrls()}
       youtubeVerifiedAt={youtubeVerifiedAt}
+      metaAccounts={metaConfig.ad_accounts}
+      metaIgUsername={metaConfig.ig_username}
       zernioLegacySecrets={
         Boolean(workspace.late_api_key_encrypted) &&
         !storedSecrets.has(SECRET_NAMES.zernioApiKey)

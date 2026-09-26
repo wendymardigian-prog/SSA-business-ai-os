@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PUBLISHER_IDS } from "@/lib/social/accounts-schema";
 import { CONTENT_PUBLISH_JOB, CONTENT_PUBLISH_CHECK_JOB } from "@/lib/content/jobs";
+import { METRICS_SYNC_JOB } from "@/lib/jobs/handlers/metrics-sync";
 import { getJobHandler, resetJobHandlers } from "@/lib/jobs/registry";
 import { hasPublisher, publishersFor, resetPublishers } from "./registry";
 import { registerPublishing, resetPublishingBootstrap, signedUrlReader } from "./bootstrap";
@@ -46,6 +47,12 @@ describe("registro de publicadores (F30)", () => {
 
     expect(getJobHandler(CONTENT_PUBLISH_JOB)).toBeTypeOf("function");
     expect(getJobHandler(CONTENT_PUBLISH_CHECK_JOB)).toBeTypeOf("function");
+  });
+
+  it("la recoleccion de metricas tiene quien la ejecute", () => {
+    registerPublishing();
+
+    expect(getJobHandler(METRICS_SYNC_JOB)).toBeTypeOf("function");
   });
 
   it("bg_task sigue sin hacer nada, pero con handler propio", async () => {

@@ -200,10 +200,35 @@ export async function countScheduledUses(providerId: string): Promise<number> {
   if (!ctx) return 0;
   if (!getVisibleProvider(providerId)) return 0;
 
-  // TODO(bloque 3): contar social_posts con status 'scheduled' cuyo publicador
-  // sea de esta integracion.
-  return 0;
+  // Que publicadores dependen de esta integracion. Zernio publica Instagram
+  // y TikTok; Google es la subida directa a YouTube; los demas, uno cada uno.
+  const publishers = PUBLISHERS_BY_PROVIDER[providerId];
+  if (!publishers) return 0;
+
+  const { count } = await ctx.supabase
+    .from("social_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("status", "scheduled")
+    .is("deleted_at", null)
+    .in("publisher", publishers);
+
+  return count ?? 0;
 }
+
+/**
+ * Por donde publica cada integracion.
+ *
+ * Las que no publican nada (las de IA, Meta, el email) no estan: desconectar
+ * Anthropic no deja ninguna publicacion colgada.
+ */
+const PUBLISHERS_BY_PROVIDER: Record<string, string[]> = {
+  zernio: ["zernio"],
+  postproxy: ["postproxy"],
+  google: ["youtube_api"],
+  linkedin: ["linkedin_api"],
+  threads: ["threads_api"],
+};
 
 /** Borra los secretos de Vault y deja la integracion desconectada. */
 export async function disconnectIntegration(

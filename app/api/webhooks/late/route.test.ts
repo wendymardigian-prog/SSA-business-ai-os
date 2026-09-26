@@ -75,9 +75,20 @@ function channelRow(extra: Record<string, unknown> = {}) {
   };
 }
 
-function db(options: { channels?: Array<Record<string, unknown>>; workspaceSecret?: string | null } = {}) {
+function db(
+  options: {
+    channels?: Array<Record<string, unknown>>;
+    workspaceSecret?: string | null;
+    /** Cuentas de publicacion y metricas (F46): TikTok solo vive aca. */
+    social_accounts?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const memory = memoryDb({
     channels: options.channels ?? [channelRow()],
+    social_accounts: options.social_accounts ?? [],
+    social_posts: [],
+    social_post_comments: [],
+    contacts: [],
     // Ojo con `??`: workspaceSecret null es "el workspace NO tiene secreto", y
     // tiene que llegar null a la base, no convertirse en el secreto bueno.
     workspaces: [{ id: WS, webhook_secret: "workspaceSecret" in options ? options.workspaceSecret : SECRET }],
@@ -354,12 +365,38 @@ describe("webhook de Zernio: comentarios", () => {
   });
 
   it("un comentario propio no dispara automatizaciones", async () => {
+    // CAMBIO DOCUMENTADO (F46): antes se cortaba antes de validar la firma y
+    // se contestaba "comentario propio". Ahora se GUARDA —el hilo tiene que
+    // leerse completo, con la respuesta del negocio adentro— y lo que no
+    // pasa, que es lo que este caso protege, es que dispare el flow: un bot
+    // contestandose solo.
     db();
     const res = await callRoute(post(comment({ comment: { author: { id: "a", username: "minegocio" } } })));
 
-    expect(await res.json()).toEqual({ ok: true, skipped: "comentario propio" });
+    expect(res.status).toBe(200);
     await runAfter();
     expect(processComment).not.toHaveBeenCalled();
+  });
+
+  it("una cuenta de TikTok, que no tiene canal, ya no rebota", async () => {
+    // Antes de F46 la cuenta se buscaba SOLO en channels y no puede existir
+    // un canal de TikTok: el comentario se perdia con un 404.
+    db({
+      channels: [channelRow({ late_account_id: "otra-cuenta" })],
+      social_accounts: [
+        {
+          id: "sa-1",
+          workspace_id: "ws-1",
+          platform: "tiktok",
+          username: "minegocio",
+          external_id: "late-account-1",
+        },
+      ],
+    });
+
+    const res = await callRoute(post(comment()));
+
+    expect(res.status).toBe(200);
   });
 
   it("un comentario con firma invalida se rechaza con 401", async () => {

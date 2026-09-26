@@ -151,3 +151,34 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 **Por qué.** Las Images, Videos y Documents API de LinkedIn son tres flujos de subida distintos, cada uno con su registro previo. Construirlos a ciegas, sin una cuenta conectada contra la que probar, es escribir código que no se puede verificar.
 
 **Qué se decidió en su lugar.** Fallar con "LinkedIn solo publica texto por ahora" antes de intentarlo. Publicar el texto sin la imagen y no decir nada sería peor: se vería como que salió bien.
+
+### Zernio no tiene `/v1/analytics/delta` ni cursor
+
+**Qué quedó.** El lector de Zernio pide una ventana de fechas con `getAnalytics`, no un delta incremental, y no se guarda ningún `analytics_cursor`.
+
+**Por qué.** El plano daba por hecho un endpoint `delta` con cursor y un evento `analytics.synced`. Revisado el SDK instalado (`@zernio/node` 0.2.x), no existen: lo que hay es `getAnalytics` con `fromDate`, `toDate`, `page` y `source`. Gana la documentación.
+
+**Qué se decidió en su lugar.** Se piden los últimos 30 días, que es exactamente la ventana que la regla de frecuencia (F45) dice que todavía cambia. Para una recolección nocturna da el mismo resultado con una pieza menos que mantener. Si Zernio suma el delta, se cambia dentro de `readZernioMetrics` y nada más se entera.
+
+### Historial inicial: qué permitió cada red
+
+**Qué quedó.** La serie de seguidores empieza el día que se conecta la cuenta, salvo en Instagram.
+
+**Por qué.** Es lo que da cada API:
+
+| Red | Historial al conectar |
+|---|---|
+| Instagram | 30 días de `follower_count` por la Graph de Meta |
+| YouTube | La Analytics API da series por día desde el inicio del canal, pero solo con la cuenta conectada por OAuth |
+| Zernio (Instagram, TikTok) | Ninguno: da un solo número de seguidores, sin fecha |
+| Threads | Ninguno: `followers_count` es un total |
+
+**Qué se decidió en su lugar.** El gráfico dice "Datos desde el …" cuando la serie no llega al principio del período, en vez de dibujar una línea que arranca de la nada.
+
+### LinkedIn no da métricas de publicaciones ni comentarios
+
+**Qué quedó.** El lector de LinkedIn devuelve vacío con un aviso, y sus comentarios no se leen.
+
+**Por qué.** Las dos cosas necesitan el programa de partners de LinkedIn. Con los permisos que da una app común, los endpoints existen pero devuelven vacío o 403.
+
+**Qué se decidió en su lugar.** Decirlo en pantalla: "LinkedIn no deja leer los comentarios desde afuera. Se contestan desde LinkedIn." Es información, no un error que alguien pueda arreglar reconectando.

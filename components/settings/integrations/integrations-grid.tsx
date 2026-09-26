@@ -10,7 +10,9 @@ import { needsAttention } from "@/lib/integrations/status";
 import { IntegrationCard } from "./integration-card";
 import { IntegrationModal } from "./integration-modal";
 import { YouTubeProbeFooter } from "./youtube-probe-footer";
+import { MetaAccountsFooter } from "./meta-accounts-footer";
 import type { IntegrationCardData } from "./types";
+import type { AdAccount } from "@/lib/meta/accounts";
 
 /**
  * La pantalla de integraciones (F2).
@@ -26,6 +28,8 @@ export function IntegrationsGrid({
   channelsSummary,
   zernioLegacySecrets = false,
   youtubeVerifiedAt = null,
+  metaAccounts = [],
+  metaIgUsername = null,
 }: {
   integrations: Record<string, IntegrationCardData>;
   /** Direcciones que hay que pegar en cada proveedor, por id. */
@@ -36,6 +40,9 @@ export function IntegrationsGrid({
   zernioLegacySecrets?: boolean;
   /** Cuando se probo por ultima vez la subida directa a YouTube (F38). */
   youtubeVerifiedAt?: string | null;
+  /** Las cuentas publicitarias de Meta ya descubiertas (F40). */
+  metaAccounts?: AdAccount[];
+  metaIgUsername?: string | null;
 }) {
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -115,6 +122,8 @@ export function IntegrationsGrid({
           extraFooter={
             openProvider.id === "zernio" ? (
               <ZernioFooter channels={channelsSummary} legacySecrets={zernioLegacySecrets} />
+            ) : openProvider.id === "meta" ? (
+              <MetaAccountsFooter accounts={metaAccounts} igUsername={metaIgUsername} />
             ) : openProvider.id === "google" ? (
               <YouTubeProbeFooter verifiedAt={youtubeVerifiedAt} />
             ) : openProvider.connection === "qr" ? (

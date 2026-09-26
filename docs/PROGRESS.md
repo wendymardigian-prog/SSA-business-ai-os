@@ -99,15 +99,15 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 ### FASE 2 — Métricas, Social y anuncios
 
-- [ ] **Bloque 5 — Recolección de métricas y comentarios** (migración 00085)
-  - [ ] F40 · Card de Meta y cuentas publicitarias
-  - [ ] F41 · Tablas de métricas
-  - [ ] F42 · Lector de Zernio (Instagram y TikTok)
-  - [ ] F43 · Lector de Instagram Graph
-  - [ ] F44 · Lectores de YouTube y Threads
-  - [ ] F45 · Reglas de recolección y engagement a 7 días
-  - [ ] F46 · Comentarios
-  - [ ] F47 · Cron de métricas y actualización manual
+- [x] **Bloque 5 — Recolección de métricas y comentarios** (migración **00086**, aplicada)
+  - [x] F40 · Card de Meta y cuentas publicitarias (la card se prendió; las cuentas se descubren con el token y se tildan, sin escribir ids a mano)
+  - [x] F41 · Tablas de métricas (`social_post_metrics_daily`, `social_account_metrics_daily`, `social_post_comments`, `meta_ads_insights_daily`, con RLS y 20 chequeos nuevos en `verify-rls`)
+  - [x] F42 · Lector de Zernio (Instagram y TikTok) — **no existe `/v1/analytics/delta`**: el SDK expone `getAnalytics` con ventana de fechas, y eso es lo que se usa
+  - [x] F43 · Lector de Instagram Graph (alcance por tipo de seguidor, audiencia, historias en vivo, perfil)
+  - [x] F44 · Lectores de YouTube y Threads (Data API + Analytics API en una sola llamada por canal; Shorts detectados por `creatorContentType` o por vertical ≤ 3 min)
+  - [x] F45 · Reglas de recolección y engagement a 7 días (diario hasta 30, semanal hasta 90, nunca después; nunca un cero inventado)
+  - [x] F46 · Comentarios (el receptor ahora encuentra cuentas de TikTok, guarda también los propios sin disparar flows, y crea la publicación externa si no existe)
+  - [x] F47 · Cron de métricas y actualización manual (cada hora, encola a quien son las 3 en su zona; "Actualizar ahora" con tope de 15 minutos)
 - [ ] **Bloque 6a — Dashboard orgánico**
   - [ ] F48 · Dashboard de contenido orgánico
   - [ ] F49 · Explorador de tendencias (doble eje por red)

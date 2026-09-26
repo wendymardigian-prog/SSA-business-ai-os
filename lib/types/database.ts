@@ -71,6 +71,11 @@ export type SocialPostMediaType =
 export type VersionReason =
   | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore";
 
+/** De donde salio un comentario guardado (00086). */
+export type CommentSource = "webhook" | "sync";
+/** Nivel de un insight de Meta Ads (00086). */
+export type AdsLevel = "account" | "campaign" | "adset" | "ad";
+
 /** Redes sociales en las que el sistema publica o lee metricas (00082). */
 export type SocialPlatform = "instagram" | "tiktok" | "youtube" | "linkedin" | "threads";
 
@@ -2914,6 +2919,286 @@ export interface Database {
           views_d7?: number | null;
           d7_computed_at?: string | null;
           deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      // ── Metricas, comentarios y anuncios (00086, bloque 5) ────────────────
+      //
+      // Las cuatro las escribe solo el servidor. `Insert` y `Update` existen
+      // igual porque las escribe el service role, que usa el mismo cliente
+      // tipado.
+
+      social_post_metrics_daily: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          social_post_id: string;
+          /** En la zona del workspace, no en UTC. */
+          date: string;
+          views: number | null;
+          impressions: number | null;
+          reach: number | null;
+          likes: number | null;
+          comments: number | null;
+          shares: number | null;
+          saves: number | null;
+          watch_time_seconds: number | null;
+          avg_view_duration_seconds: number | null;
+          engagement_rate: number | null;
+          /** Lo propio de cada red: reach_followers, reach_non_followers... */
+          extra: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          social_post_id: string;
+          date: string;
+          views?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          likes?: number | null;
+          comments?: number | null;
+          shares?: number | null;
+          saves?: number | null;
+          watch_time_seconds?: number | null;
+          avg_view_duration_seconds?: number | null;
+          engagement_rate?: number | null;
+          extra?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          views?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          likes?: number | null;
+          comments?: number | null;
+          shares?: number | null;
+          saves?: number | null;
+          watch_time_seconds?: number | null;
+          avg_view_duration_seconds?: number | null;
+          engagement_rate?: number | null;
+          extra?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      social_account_metrics_daily: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          social_account_id: string;
+          date: string;
+          followers: number | null;
+          followers_gained: number | null;
+          followers_lost: number | null;
+          impressions: number | null;
+          reach: number | null;
+          profile_views: number | null;
+          extra: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          social_account_id: string;
+          date: string;
+          followers?: number | null;
+          followers_gained?: number | null;
+          followers_lost?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          profile_views?: number | null;
+          extra?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          followers?: number | null;
+          followers_gained?: number | null;
+          followers_lost?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          profile_views?: number | null;
+          extra?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      social_post_comments: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          /** Nullable: puede llegar antes que su publicacion. */
+          social_post_id: string | null;
+          platform: SocialPlatform;
+          external_comment_id: string;
+          parent_external_comment_id: string | null;
+          author_external_id: string | null;
+          author_username: string | null;
+          author_name: string | null;
+          author_avatar_url: string | null;
+          /** Un comentario nuestro. Se guarda; nunca dispara automatizaciones. */
+          is_own: boolean;
+          text: string | null;
+          commented_at: string | null;
+          like_count: number | null;
+          hidden: boolean;
+          contact_id: string | null;
+          source: CommentSource;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          social_post_id?: string | null;
+          platform: SocialPlatform;
+          external_comment_id: string;
+          parent_external_comment_id?: string | null;
+          author_external_id?: string | null;
+          author_username?: string | null;
+          author_name?: string | null;
+          author_avatar_url?: string | null;
+          is_own?: boolean;
+          text?: string | null;
+          commented_at?: string | null;
+          like_count?: number | null;
+          hidden?: boolean;
+          contact_id?: string | null;
+          source?: CommentSource;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          social_post_id?: string | null;
+          text?: string | null;
+          like_count?: number | null;
+          hidden?: boolean;
+          contact_id?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      meta_ads_insights_daily: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          level: AdsLevel;
+          object_id: string;
+          object_name: string | null;
+          parent_name: string | null;
+          campaign_id: string | null;
+          adset_id: string | null;
+          date: string;
+          spend: number | null;
+          impressions: number | null;
+          reach: number | null;
+          clicks: number | null;
+          outbound_clicks: number | null;
+          link_clicks: number | null;
+          ctr: number | null;
+          cpc: number | null;
+          cpm: number | null;
+          leads: number | null;
+          purchases: number | null;
+          purchase_value: number | null;
+          video_p25: number | null;
+          video_p50: number | null;
+          video_p75: number | null;
+          video_p95: number | null;
+          video_p100: number | null;
+          thruplays: number | null;
+          video_avg_time_seconds: number | null;
+          quality_ranking: string | null;
+          engagement_ranking: string | null;
+          conversion_ranking: string | null;
+          status: string | null;
+          effective_status: string | null;
+          /** Las acciones crudas de Meta: sus nombres cambian por objetivo. */
+          actions: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          level: AdsLevel;
+          object_id: string;
+          object_name?: string | null;
+          parent_name?: string | null;
+          campaign_id?: string | null;
+          adset_id?: string | null;
+          date: string;
+          spend?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          clicks?: number | null;
+          outbound_clicks?: number | null;
+          link_clicks?: number | null;
+          ctr?: number | null;
+          cpc?: number | null;
+          cpm?: number | null;
+          leads?: number | null;
+          purchases?: number | null;
+          purchase_value?: number | null;
+          video_p25?: number | null;
+          video_p50?: number | null;
+          video_p75?: number | null;
+          video_p95?: number | null;
+          video_p100?: number | null;
+          thruplays?: number | null;
+          video_avg_time_seconds?: number | null;
+          quality_ranking?: string | null;
+          engagement_ranking?: string | null;
+          conversion_ranking?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          actions?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          object_name?: string | null;
+          parent_name?: string | null;
+          spend?: number | null;
+          impressions?: number | null;
+          reach?: number | null;
+          clicks?: number | null;
+          outbound_clicks?: number | null;
+          link_clicks?: number | null;
+          ctr?: number | null;
+          cpc?: number | null;
+          cpm?: number | null;
+          leads?: number | null;
+          purchases?: number | null;
+          purchase_value?: number | null;
+          video_p25?: number | null;
+          video_p50?: number | null;
+          video_p75?: number | null;
+          video_p95?: number | null;
+          video_p100?: number | null;
+          thruplays?: number | null;
+          video_avg_time_seconds?: number | null;
+          quality_ranking?: string | null;
+          engagement_ranking?: string | null;
+          conversion_ranking?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          actions?: Json;
           updated_at?: string;
         };
         Relationships: [];

@@ -16,6 +16,7 @@ import { linkedinPublisher } from "./linkedin";
 import { threadsPublisher } from "./threads";
 import { createYouTubePublisher, CHUNK_BYTES } from "./youtube";
 import { registerContentPublishHandlers } from "@/lib/jobs/handlers/content-publish";
+import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerJobHandler } from "@/lib/jobs/registry";
 
 /**
@@ -65,6 +66,7 @@ export function registerPublishing(): void {
   );
 
   registerContentPublishHandlers();
+  registerMetricsHandlers();
 
   // `bg_task` no hace nada, y sigue sin hacerlo. Un handler explicito, en vez
   // del default: asi el runner puede fallar los tipos que no conoce sin

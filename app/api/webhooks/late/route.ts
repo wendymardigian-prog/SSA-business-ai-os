@@ -35,6 +35,8 @@ import {
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inbound";
+import { isOwnComment, linkCommentToContact, storeComment } from "@/lib/comments/store";
+import type { SocialPlatform } from "@/lib/types/database";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 
 // ── Zernio API webhook payload ───────────────────────────────────────────────
@@ -462,23 +464,46 @@ async function handleCommentWebhook(
     .eq("is_active", true)
     .single();
 
-  if (!channel) {
+  // La cuenta tambien puede ser una que NO conversa: TikTok no tiene API de
+  // mensajes, asi que no tiene canal, y hasta F46 sus comentarios rebotaban
+  // con un 404. Ahora se busca ademas en social_accounts, que es donde
+  // viven las cuentas de publicacion y metricas.
+  const { data: socialAccount } = channel
+    ? await supabase
+        .from("social_accounts")
+        .select("id, workspace_id, platform, username, external_id")
+        .eq("workspace_id", channel.workspace_id)
+        .eq("platform", payload.account.platform as SocialPlatform)
+        .maybeSingle()
+    : await supabase
+        .from("social_accounts")
+        .select("id, workspace_id, platform, username, external_id")
+        .eq("external_id", payload.account.id)
+        .maybeSingle();
+
+  if (!channel && !socialAccount) {
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
   }
 
-  // Prevent loops: our own comments (e.g. the configured public reply) also
-  // arrive as comment.received and must never re-trigger a flow.
-  if (
-    payload.comment.author?.username &&
-    payload.comment.author.username === channel.username
-  ) {
-    return NextResponse.json({ ok: true, skipped: "comentario propio" });
-  }
+  const workspaceId = channel?.workspace_id ?? socialAccount!.workspace_id;
 
-  const secret = await resolveWebhookSecret(supabase, channel);
+  // Un comentario nuestro (la respuesta publica del flow, o una a mano) SI se
+  // guarda: el hilo tiene que leerse completo. Lo que no hace es disparar
+  // automatizaciones, que seria un bot contestandose solo.
+  const own = isOwnComment(payload.comment.author, {
+    username: channel?.username ?? socialAccount?.username ?? null,
+    externalId: socialAccount?.external_id ?? payload.account.id,
+  });
+
+  // El secreto es del workspace: sin canal (TikTok) se busca igual, con la
+  // columna del canal en null.
+  const secret = await resolveWebhookSecret(
+    supabase,
+    channel ?? { workspace_id: workspaceId, webhook_secret: null },
+  );
   if (!secret) {
     console.error(
-      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+      `[webhook] el workspace ${workspaceId} no tiene webhook_secret; no puedo validar la firma`
     );
     return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
   }
@@ -494,6 +519,43 @@ async function handleCommentWebhook(
   // additionally dedupes on (channel_id, platform_comment_id) so cross-event
   // redeliveries of the same comment stay one-shot.
   after(async () => {
+    // Guardar va primero y nunca puede tumbar la automatizacion: perder un
+    // comentario de la tabla es malo; no contestarle al lead es peor.
+    try {
+      const result = await storeComment(supabase, {
+        workspaceId,
+        socialAccountId: socialAccount?.id ?? null,
+        comment: {
+          platform: payload.account.platform,
+          externalCommentId: payload.comment.id,
+          parentExternalCommentId: payload.comment.parentCommentId,
+          externalPostId: payload.comment.platformPostId,
+          authorExternalId: payload.comment.author?.id ?? null,
+          authorUsername: payload.comment.author?.username ?? null,
+          authorName: payload.comment.author?.name ?? null,
+          authorAvatarUrl: payload.comment.author?.picture ?? null,
+          isOwn: own,
+          text: payload.comment.text,
+          commentedAt: payload.comment.createdAt,
+          source: "webhook",
+        },
+      });
+      if (result.stored && !own) {
+        await linkCommentToContact(supabase, {
+          workspaceId,
+          commentId: payload.comment.id,
+          platform: payload.account.platform,
+          authorUsername: payload.comment.author?.username ?? null,
+        });
+      }
+    } catch (err) {
+      console.error("[webhook] no pude guardar el comentario:", err);
+    }
+
+    // Un comentario propio no dispara nada, y sin canal no hay flow que
+    // correr (TikTok no tiene bandeja).
+    if (own || !channel) return;
+
     try {
       await processComment({
         supabase,

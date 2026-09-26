@@ -415,8 +415,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     type: "meta",
     connection: "system_token",
     section: "meta",
-    // Se prende en el bloque 5, con los dashboards de anuncios.
-    visible: false,
+    visible: true,
     label: "Meta (anuncios e Instagram)",
     description:
       "Lee el rendimiento de tus anuncios y los datos de audiencia de Instagram. No crea ni edita anuncios.",

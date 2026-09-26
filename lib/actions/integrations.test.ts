@@ -79,13 +79,13 @@ describe("guardar una integracion", () => {
   });
 
   it("una integracion que todavia no se muestra no se puede guardar", async () => {
-    // Meta se prende en el bloque 5. Que no este en la pantalla no alcanza:
-    // el pedido se puede armar a mano.
+    // El email entrante se prende en el bloque 8. Que no este en la pantalla
+    // no alcanza: el pedido se puede armar a mano.
     admin();
 
     const result = await saveIntegration({
-      providerId: "meta",
-      secrets: { system_user_token: "x".repeat(60) },
+      providerId: "resend_inbound",
+      secrets: { webhook_secret: "x".repeat(60) },
     });
 
     expect(result).toEqual({ ok: false, error: "Integracion desconocida" });

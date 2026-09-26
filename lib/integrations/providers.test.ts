@@ -149,12 +149,10 @@ describe("catalogo extendido (F1)", () => {
       "messaging",
       "publishing",
       "google",
+      "meta",
       "email",
       "ai",
     ]);
-    // Meta existe en el catalogo pero se prende en el bloque 5: su seccion no
-    // aparece todavia.
-    expect(groups.some((g) => g.section === "meta")).toBe(false);
     for (const group of groups) {
       expect(group.providers.every((p) => p.visible)).toBe(true);
       expect(group.label.length).toBeGreaterThan(0);
@@ -174,10 +172,12 @@ describe("catalogo extendido (F1)", () => {
   });
 
   it("una integracion todavia no visible no se puede usar desde una accion", () => {
-    // El criterio de F1: lo oculto se excluye de la pantalla Y de las acciones.
-    expect(getProvider("meta")?.visible).toBe(false);
-    expect(getVisibleProvider("meta")).toBeUndefined();
+    // El criterio de F1: lo oculto se excluye de la pantalla Y de las
+    // acciones. Meta se prendio en el bloque 5; el email entrante sigue
+    // oculto hasta el bloque 8.
+    expect(getProvider("resend_inbound")?.visible).toBe(false);
     expect(getVisibleProvider("resend_inbound")).toBeUndefined();
+    expect(getVisibleProvider("meta")?.id).toBe("meta");
     expect(getVisibleProvider("zernio")?.id).toBe("zernio");
     expect(getVisibleProvider("no-existe")).toBeUndefined();
   });

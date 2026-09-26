@@ -16,6 +16,8 @@
 
 import type { FetchLike } from "@/lib/oauth/types";
 import { testApiKey as testPostproxyKey } from "@/lib/social/postproxy";
+import { validateMetaToken } from "@/lib/meta/token";
+import { fetchAdAccounts } from "@/lib/meta/accounts";
 
 export type ConnectionTest = { ok: true; detail?: string } | { ok: false; error: string };
 
@@ -44,6 +46,28 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
           youtube.length > 0
             ? `Conectado. Hay ${youtube.length} cuenta(s) de YouTube en Postproxy.`
             : "Conectado, pero todavia no hay ninguna cuenta de YouTube en Postproxy.",
+      };
+    }
+
+    case "meta": {
+      const token = (input.secrets.system_user_token ?? "").trim();
+      if (!token) return { ok: true };
+
+      // Dos pasos, y los dos importan: `/me` dice si el token sirve, y
+      // `/me/adaccounts` dice si tiene el permiso `ads_read`. Un token
+      // valido sin ese permiso pasaria el primero y no traeria nada.
+      const identity = await validateMetaToken(token, input.fetchImpl as typeof fetch);
+      if (!identity.ok) return identity;
+
+      const accounts = await fetchAdAccounts(token, input.fetchImpl as typeof fetch);
+      if (!accounts.ok) return { ok: false, error: accounts.error };
+
+      return {
+        ok: true,
+        detail:
+          accounts.accounts.length > 0
+            ? `Conectado. El token alcanza ${accounts.accounts.length} cuenta(s) publicitaria(s): elegí cuáles sincronizar.`
+            : "Conectado, pero el token no alcanza ninguna cuenta publicitaria. Revisá los permisos en el Business Manager.",
       };
     }
 

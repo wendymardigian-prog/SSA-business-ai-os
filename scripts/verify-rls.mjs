@@ -1021,6 +1021,78 @@ try {
       check(!!error, "publishers tiene que ser una lista, no un objeto suelto"); }
   }
 
+  console.log("\n— Etapa 2: metricas, comentarios y anuncios (00086) —");
+  { // Las cuatro tablas las escribe solo el servidor y las lee solo
+    // Owner/Admin. Un Member no ve metricas hasta el bloque 9.
+    const otro = await makeUser("otro-metricas");
+    const { data: wsOtro } = await svc.from("workspaces")
+      .insert({ name: "zz-test-metricas-ws", slug: `zz-test-metricas-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtro.id, user_id: otro.id, role: "owner" });
+
+    const { data: cuenta } = await svc.from("social_accounts")
+      .insert({ workspace_id: ws.id, platform: "threads", username: "zz-test-threads" })
+      .select("id").single();
+    const { data: pub } = await svc.from("social_posts").insert({
+      workspace_id: ws.id, social_account_id: cuenta.id, platform: "threads",
+      origin: "external", external_post_id: "zz-test-th-1",
+    }).select("id").single();
+
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    const { data: mPost } = await svc.from("social_post_metrics_daily").insert({
+      workspace_id: ws.id, social_post_id: pub.id, date: hoy, views: 10, likes: 2,
+    }).select("id").single();
+    const { data: mCuenta } = await svc.from("social_account_metrics_daily").insert({
+      workspace_id: ws.id, social_account_id: cuenta.id, date: hoy, followers: 100,
+    }).select("id").single();
+    const { data: comentario } = await svc.from("social_post_comments").insert({
+      workspace_id: ws.id, social_post_id: pub.id, platform: "threads",
+      external_comment_id: "zz-test-c-1", text: "Buenisimo", source: "webhook",
+    }).select("id").single();
+    const { data: ads } = await svc.from("meta_ads_insights_daily").insert({
+      workspace_id: ws.id, ad_account_id: "act_zz", level: "campaign",
+      object_id: "zz-camp-1", date: hoy, spend: 12.5,
+    }).select("id").single();
+
+    const tablas = [
+      ["social_post_metrics_daily", mPost.id, "las metricas de un post"],
+      ["social_account_metrics_daily", mCuenta.id, "las metricas de una cuenta"],
+      ["social_post_comments", comentario.id, "un comentario"],
+      ["meta_ads_insights_daily", ads.id, "un insight de anuncios"],
+    ];
+
+    for (const [tabla, id, que] of tablas) {
+      check((await sees(admin, tabla, id)).seen, `un Admin ve ${que}`);
+      check(!(await sees(member, tabla, id)).seen, `un Member NO ve ${que}`);
+      check(!(await sees(otro, tabla, id)).seen, `otro workspace NO ve ${que}`);
+
+      // Escribir es solo del servidor: ni el Admin del propio workspace.
+      const { error } = await admin.client.from(tabla).insert({
+        workspace_id: ws.id,
+        ...(tabla === "social_post_metrics_daily" ? { social_post_id: pub.id, date: "2020-01-01" } : {}),
+        ...(tabla === "social_account_metrics_daily" ? { social_account_id: cuenta.id, date: "2020-01-01" } : {}),
+        ...(tabla === "social_post_comments"
+          ? { platform: "threads", external_comment_id: "zz-test-falso" } : {}),
+        ...(tabla === "meta_ads_insights_daily"
+          ? { ad_account_id: "act_zz", level: "ad", object_id: "zz-falso", date: "2020-01-01" } : {}),
+      });
+      check(!!error, `ni un Admin escribe en ${tabla}: eso es del servidor`);
+    }
+
+    // El unico de comentarios: el webhook y la relectura no lo duplican.
+    { const { error } = await svc.from("social_post_comments").insert({
+        workspace_id: ws.id, social_post_id: pub.id, platform: "threads",
+        external_comment_id: "zz-test-c-1", text: "el mismo", source: "sync",
+      });
+      check(!!error, "el mismo comentario no se guarda dos veces"); }
+
+    // Un dia repetido corrige la fila, no crea otra.
+    { const { error } = await svc.from("social_post_metrics_daily").insert({
+        workspace_id: ws.id, social_post_id: pub.id, date: hoy, views: 99,
+      });
+      check(!!error, "no hay dos filas de metricas del mismo post y dia"); }
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente
