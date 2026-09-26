@@ -12,6 +12,7 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
+import { humanSize, parseAttachments } from "@/lib/email/attachments";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
 import { PendingDraft } from "@/components/inbox/pending-draft";
@@ -87,13 +88,13 @@ function MessageBubble({ message }: { message: Message }) {
               No se pudo enviar
             </div>
           )}
-          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
-          {message.attachments && (
-            <div className="mt-1">
-              <Paperclip className="inline h-3 w-3" />
-              <span className="ml-1 text-xs opacity-70">Attachment</span>
-            </div>
+          {/* El asunto va arriba del cuerpo, como en cualquier cliente de
+              correo: sin el, una respuesta larga empieza sin contexto. */}
+          {message.email_subject && (
+            <p className="mb-1 text-xs font-semibold opacity-80">{message.email_subject}</p>
           )}
+          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          <MessageAttachments message={message} />
         </div>
         <div
           className={cn(
@@ -341,6 +342,15 @@ export function MessageThread({
       status: "pending",
       created_at: new Date().toISOString(),
       workspace_id: conversation.workspace_id,
+      // Las cabeceras del correo las pone el servidor al enviar (F65): el
+      // mensaje optimista todavia no las tiene.
+      email_subject: null,
+      email_message_id: null,
+      email_in_reply_to: null,
+      email_references: null,
+      email_from: null,
+      email_to: null,
+      email_cc: null,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
 
@@ -655,5 +665,51 @@ export function MessageThread({
         onCancel={() => setConfirmingDoNotContact(false)}
       />
     </div>
+  );
+}
+
+/**
+ * Los adjuntos de un mensaje (F64).
+ *
+ * Los de email tienen nombre y tamaño y se bajan con un link firmado que se
+ * pide al hacer clic: firmarlos al pintar el hilo seria firmar veinte links
+ * que nadie va a abrir, y los links vencen.
+ *
+ * Los de los otros canales siguen como estaban: un clip y la palabra
+ * "Adjunto", porque de Instagram y WhatsApp llega el payload crudo del
+ * proveedor y no un archivo nuestro.
+ */
+function MessageAttachments({ message }: { message: Message }) {
+  const files = parseAttachments(message.attachments);
+
+  if (files.length === 0) {
+    if (!message.attachments) return null;
+    return (
+      <div className="mt-1">
+        <Paperclip className="inline h-3 w-3" />
+        <span className="ml-1 text-xs opacity-70">Adjunto</span>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="mt-1.5 space-y-1">
+      {files.map((file) => (
+        <li key={file.storagePath}>
+          <a
+            href={`/api/v1/email-attachments?path=${encodeURIComponent(file.storagePath)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded border border-current/20 px-2 py-1 text-xs hover:bg-current/10"
+          >
+            <Paperclip className="h-3 w-3" aria-hidden />
+            <span className="max-w-[220px] truncate">{file.filename}</span>
+            {humanSize(file.sizeBytes) && (
+              <span className="opacity-70">{humanSize(file.sizeBytes)}</span>
+            )}
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }

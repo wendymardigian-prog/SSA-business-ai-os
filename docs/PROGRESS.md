@@ -141,13 +141,13 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 
 ### FASE 3 — Email entrante y roles
 
-- [ ] **Bloque 8 — Email como canal** (migración 00086)
-  - [ ] F62 · Canal Email y cambios de esquema
-  - [ ] F63 · Recepción de email
-  - [ ] F64 · Email en la bandeja
-  - [ ] F65 · Responder email
-  - [ ] F66 · Cuota de Resend
-  - [ ] F67 · Trigger "email recibido" en flows (nice-to-have)
+- [x] **Bloque 8 — Email como canal** (migración **00087**, aplicada; la 00086 quedó para las métricas del bloque 5)
+  - [x] F62 · Canal Email y cambios de esquema (uno por workspace con índice único parcial; `late_account_id = email:<dirección>` y su NOT NULL intacto)
+  - [x] F63 · Recepción de email (firma Svix sobre `id.timestamp.body`, varias firmas por rotación, tolerancia de 5 minutos, idempotencia por `svix-id`, adjuntos copiados antes de que venzan sus links, correos automáticos guardados sin crear contacto, y **el agente no se agenda nunca**, con espía que lo prueba)
+  - [x] F64 · Email en la bandeja (ícono de sobre, asunto arriba del cuerpo, adjuntos con link firmado al hacer clic; el filtro por red no necesitó nada propio)
+  - [x] F65 · Responder email con `In-Reply-To` y `References`, en los dos caminos de envío, con rama explícita por proveedor
+  - [x] F66 · Cuota de Resend (barra en la card contando entrada y salida, aviso al 90% una vez por día)
+  - [x] F67 · Trigger "email recibido" con filtro por asunto, registrado y ofrecido en el editor
 - [ ] **Bloque 9 — Roles personalizados** (migraciones 00087, 00088 y 00089 sin aplicar)
   - [ ] F68 · Catálogo de permisos (con la caracterización del Member ANTES)
   - [ ] F69 · Tablas y funciones de roles

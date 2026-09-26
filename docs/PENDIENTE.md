@@ -214,3 +214,19 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 **Por qué.** Guardarlos necesita una tabla con su RLS, y el plano lo pedía como nice-to-have dentro del último bloque de la fase.
 
 **Qué se decidió en su lugar.** El análisis se puede copiar del panel. Si resulta que se relee, la tabla es una migración chica y el panel ya tiene dónde listarlos.
+
+### La migración del email quedó en 00087, no en 00086
+
+**Qué quedó.** La numeración planificada daba 00086 al email. Quedó 00086 para las tablas de métricas (bloque 5) y 00087 para el email.
+
+**Por qué.** El bloque 5 llegó antes en el orden real de ejecución, y saltear un número o reordenarlos después de aplicar el primero habría dejado el repositorio y la base en desacuerdo.
+
+**Qué se decidió en su lugar.** Se siguió el orden de ejecución. La tabla de migraciones de PROGRESS tiene la numeración real.
+
+### Un segundo módulo que no puede llegar al navegador
+
+**Qué quedó.** `lib/email/buckets.ts` existe solo para tener el nombre del bucket sin dependencias, y `lib/vault-boundary.test.ts` ahora vigila también `lib/supabase/server.ts`.
+
+**Por qué.** La bandeja es un Client Component y necesitaba el nombre del bucket. Importarlo de `lib/email/inbound.ts` arrastró todo el procesamiento del correo y con él `next/headers`, y el build falló señalando un archivo que nadie había tocado.
+
+**Qué se decidió en su lugar.** El mismo patrón que `lib/secret-names.ts`: un archivo hoja con la constante. Y el test de frontera ahora cubre los dos módulos, así el próximo caso sale nombrando la cadena de imports en vez de un error de Turbopack.

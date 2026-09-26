@@ -28,6 +28,12 @@ export interface ResendMessage {
   to: string;
   subject: string;
   html: string;
+  /**
+   * Cabeceras extra. Las usa la respuesta de la bandeja (F65) para
+   * `In-Reply-To` y `References`: sin ellas, la respuesta llega como un
+   * correo suelto y el cliente de la otra persona la muestra fuera del hilo.
+   */
+  headers?: Record<string, string>;
 }
 
 export type ResendResult =

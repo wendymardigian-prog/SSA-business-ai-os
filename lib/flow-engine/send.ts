@@ -79,6 +79,8 @@ interface ChannelRow {
   late_account_id: string | null;
   evolution_instance: string | null;
   workspace_id: string;
+  email_address: string | null;
+  is_active: boolean;
 }
 
 /**
@@ -113,6 +115,11 @@ export async function sendChannelMessage(
   if (channel.provider === "evolution") {
     return sendViaEvolution(supabase, context, channel, message);
   }
+  // Rama explicita y no un `else`: un canal nuevo que caiga por default en
+  // Zernio manda un mensaje al lugar equivocado sin avisar.
+  if (channel.provider === "resend") {
+    return sendViaResendChannel(supabase, context, channel, message);
+  }
   return sendViaZernio(supabase, context, channel, message);
 }
 
@@ -122,7 +129,7 @@ async function loadChannel(
 ): Promise<ChannelRow | null> {
   const { data } = await supabase
     .from("channels")
-    .select("id, provider, platform, late_account_id, evolution_instance, workspace_id")
+    .select("id, provider, platform, late_account_id, evolution_instance, workspace_id, email_address, is_active")
     .eq("id", channelId)
     .single();
   return (data as ChannelRow | null) ?? null;
@@ -152,6 +159,69 @@ async function claimSend(
     return true;
   }
   return data !== false;
+}
+
+/**
+ * Responde por email (F65).
+ *
+ * Un flow que manda un mensaje sobre una conversacion de email responde el
+ * hilo. La alternativa —rechazarlo— obligaria a armar un flow distinto por
+ * canal para hacer lo mismo.
+ */
+async function sendViaResendChannel(
+  supabase: SupabaseClient<Database>,
+  context: SendContext,
+  channel: ChannelRow,
+  message: OutboundMessage
+): Promise<SendOutcome> {
+  const { sendEmailReply } = await import("@/lib/email/send-reply");
+
+  const text = message.text?.trim();
+  if (!text) {
+    return {
+      ok: false,
+      failure: {
+        kind: "unknown",
+        message: "Un email no puede ir vacio.",
+        retryable: false,
+      },
+    };
+  }
+
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("email, do_not_contact")
+    .eq("id", context.contactId)
+    .maybeSingle();
+
+  const result = await sendEmailReply(supabase, {
+    workspaceId: context.workspaceId,
+    conversationId: context.conversationId,
+    channel: {
+      platform: channel.platform,
+      is_active: channel.is_active,
+      email_address: channel.email_address,
+    },
+    toAddress: contact?.email ?? null,
+    text,
+    contactOptedOut: contact?.do_not_contact === true,
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      failure: {
+        // `rate_limited` es lo mas cercano que hay en la union para "el
+        // proveedor no contesto, proba de nuevo": lo que importa para el
+        // motor es `retryable`, no la etiqueta.
+        kind: result.retryable ? "rate_limited" : "unknown",
+        message: result.error ?? "No pude mandar el email.",
+        retryable: result.retryable === true,
+      },
+    };
+  }
+
+  return { ok: true, platformMessageId: result.messageId };
 }
 
 async function sendViaZernio(

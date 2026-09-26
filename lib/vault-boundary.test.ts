@@ -95,6 +95,23 @@ function pathTo(entry: string, target: string): string[] | null {
 
 const pathToVault = (entry: string) => pathTo(entry, VAULT);
 
+/**
+ * Los modulos que NUNCA pueden llegar al navegador.
+ *
+ * Vault es el original. `lib/supabase/server.ts` se sumo despues de tropezar
+ * con lo mismo por otro lado: la bandeja importo una constante de
+ * `lib/email/inbound.ts`, ese modulo importa el procesamiento del correo, y
+ * con el se vino `next/headers`. El build fallo, que esta bien, pero falla
+ * con un error de Turbopack sobre un archivo que no se toco — y eso cuesta
+ * media hora de entender.
+ *
+ * Con este test el mismo error sale nombrando la cadena entera.
+ */
+const SERVER_ONLY = [
+  { label: "lib/vault.ts", file: VAULT },
+  { label: "lib/supabase/server.ts", file: join(ROOT, "lib/supabase/server.ts") },
+];
+
 describe("limite del servidor: lib/vault.ts", () => {
   const clientFiles = files.filter((f) => directiveOf(sources.get(f) ?? "") === "use client");
 
@@ -117,6 +134,26 @@ describe("limite del servidor: lib/vault.ts", () => {
     const screen = join(ROOT, "components/settings/integrations/integrations-grid.tsx");
     const catalog = join(ROOT, "lib/integrations/providers.ts");
     expect(pathTo(screen, catalog)).not.toBeNull();
+  });
+
+  it("ningun Client Component llega al cliente de servidor de Supabase", () => {
+    // Ese modulo importa `next/headers`, que no existe en el navegador. El
+    // build lo detecta, pero senalando un archivo que nadie toco; esto lo
+    // detecta nombrando la cadena.
+    const server = join(ROOT, "lib/supabase/server.ts");
+
+    const offenders = clientFiles
+      .map((f) => ({ file: f, chain: pathTo(f, server) }))
+      .filter((r) => r.chain)
+      .map((r) => r.chain!.map((f) => relative(ROOT, f)).join(" -> "));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("la lista de modulos prohibidos existe y apunta a archivos reales", () => {
+    for (const entry of SERVER_ONLY) {
+      expect(existsSync(entry.file), entry.label).toBe(true);
+    }
   });
 
   it("el catalogo de integraciones no depende del modulo de Vault", () => {

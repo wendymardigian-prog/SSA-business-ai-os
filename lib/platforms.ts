@@ -11,6 +11,9 @@ export const PLATFORMS = [
   "telegram",
   "bluesky",
   "reddit",
+  // Etapa 2: el email es un canal mas, con su bandeja adentro de la misma
+  // bandeja. Una pantalla aparte seria una segunda bandeja que revisar.
+  "email",
 ] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
@@ -23,6 +26,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   telegram: "Telegram",
   bluesky: "Bluesky",
   reddit: "Reddit",
+  email: "Email",
 };
 
 export function isSupportedPlatform(value: unknown): value is Platform {

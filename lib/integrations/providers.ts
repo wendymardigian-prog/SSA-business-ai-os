@@ -441,8 +441,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     type: "email_provider",
     connection: "api_key",
     section: "email",
-    // Se prende en el bloque 8, con el canal de email.
-    visible: false,
+    visible: true,
     label: "Resend (email entrante)",
     description: "Recibe los emails de una direccion tuya como conversaciones de la bandeja.",
     secretName: SECRET_NAMES.resendInboundWebhookSecret,
@@ -457,6 +456,12 @@ export const PROVIDERS: ProviderDefinition[] = [
         minLength: 16,
       },
     ],
+    usage: {
+      label: "emails hoy",
+      limit: 100,
+      atLimitHint:
+        "Es el tope del plan gratis de Resend. Pasado eso, los emails no salen hasta mañana.",
+    },
     configFields: [
       {
         key: "inbound_address",

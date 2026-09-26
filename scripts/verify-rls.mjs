@@ -1093,6 +1093,59 @@ try {
       check(!!error, "no hay dos filas de metricas del mismo post y dia"); }
   }
 
+  console.log("\n— Etapa 2: canal de email y adjuntos (00087) —");
+  { // El email es un canal como cualquier otro: lo que se prueba es que su
+    // bandeja respete las mismas reglas, y que los adjuntos no crucen
+    // workspaces.
+    const otro = await makeUser("otro-email");
+    const { data: wsOtro } = await svc.from("workspaces")
+      .insert({ name: "zz-test-email-ws", slug: `zz-test-email-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtro.id, user_id: otro.id, role: "owner" });
+
+    const { data: chEmail, error: eEmail } = await svc.from("channels").insert({
+      workspace_id: ws.id, platform: "email", provider: "resend",
+      email_address: "zz-test@negocio.com", late_account_id: "email:zz-test@negocio.com",
+      display_name: "zz-test@negocio.com", is_active: true,
+    }).select("id").single();
+    check(!eEmail && !!chEmail, "se puede crear un canal de email", eEmail?.message);
+
+    // Uno solo por workspace: dos serian dos bandejas para la misma direccion.
+    { const { error } = await svc.from("channels").insert({
+        workspace_id: ws.id, platform: "email", provider: "resend",
+        email_address: "otra@negocio.com", late_account_id: "email:otra@negocio.com",
+      });
+      check(!!error, "no se pueden tener dos canales de email en un workspace"); }
+
+    { const { error } = await svc.from("channels").insert({
+        workspace_id: wsOtro.id, platform: "email", provider: "resend",
+        email_address: "zz-test@otro.com", late_account_id: "email:zz-test@otro.com",
+      });
+      check(!error, "pero otro workspace si puede tener el suyo", error?.message); }
+
+    check((await sees(admin, "channels", chEmail.id)).seen, "un Admin ve el canal de email");
+    check(!(await sees(otro, "channels", chEmail.id)).seen, "otro workspace NO ve el canal de email");
+
+    // Los adjuntos: el primer segmento del path es el workspace.
+    const archivo = new Blob([new Uint8Array([1, 2, 3])], { type: "application/pdf" });
+    const rutaPropia = `${ws.id}/zz-test-email/guia.pdf`;
+
+    await svc.storage.from("email-attachments").upload(rutaPropia, archivo, { upsert: true });
+
+    { const { data, error } = await admin.client.storage.from("email-attachments").download(rutaPropia);
+      check(!!data && !error, "un miembro del workspace descarga el adjunto", error?.message); }
+
+    { const { data, error } = await otro.client.storage.from("email-attachments").download(rutaPropia);
+      check(!data || !!error, "otro workspace NO puede descargar el adjunto"); }
+
+    // Escribir es del servidor: no hay policy de INSERT para usuarios.
+    { const { error } = await admin.client.storage.from("email-attachments")
+        .upload(`${ws.id}/zz-test-email/falso.pdf`, archivo, { upsert: true });
+      check(!!error, "ni un Admin sube un adjunto a mano: eso lo hace el receptor"); }
+
+    await svc.storage.from("email-attachments").remove([rutaPropia]);
+    await svc.from("channels").delete().eq("id", chEmail.id);
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

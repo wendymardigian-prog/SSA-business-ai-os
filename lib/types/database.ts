@@ -23,7 +23,7 @@ export type MessageOrigin =
   | "broadcast"
   | "external";
 /** De donde sale la conexion del canal (migracion 00019). */
-export type ChannelProvider = "zernio" | "evolution";
+export type ChannelProvider = "zernio" | "evolution" | "resend";
 export type ChannelConnectionStatus =
   | "connected"
   | "disconnected"
@@ -227,7 +227,9 @@ export type TriggerType =
   // Los tres que suma la Fase 2 (CHECK de la migracion 00038).
   | "new_contact"
   | "crm_event"
-  | "inactivity";
+  | "inactivity"
+  // Etapa 2: el email como canal (CHECK de la migracion 00087).
+  | "email_received";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -537,6 +539,8 @@ export interface Database {
           disconnected_notified_at: string | null;
           /** Ventana de mensajeria en horas; NULL = default por plataforma (00070). */
           messaging_window_hours: number | null;
+          /** La direccion que recibe y desde la que se responde (00087). */
+          email_address: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1220,6 +1224,15 @@ export interface Database {
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */
           workspace_id: string;
+          // ── Canal de email (00087). Null en los otros canales. ──────────
+          email_subject: string | null;
+          /** El Message-ID del correo: con eso arma el hilo el otro cliente. */
+          email_message_id: string | null;
+          email_in_reply_to: string | null;
+          email_references: string | null;
+          email_from: string | null;
+          email_to: Json | null;
+          email_cc: Json | null;
         };
         Insert: {
           id?: string;
@@ -1247,10 +1260,18 @@ export interface Database {
            * Por eso los inserts que ya existian siguen compilando sin tocarlos.
            */
           workspace_id?: string;
+          email_subject?: string | null;
+          email_message_id?: string | null;
+          email_in_reply_to?: string | null;
+          email_references?: string | null;
+          email_from?: string | null;
+          email_to?: Json | null;
+          email_cc?: Json | null;
         };
         Update: {
           status?: MessageStatus;
           platform_message_id?: string | null;
+          email_message_id?: string | null;
         };
         Relationships: [
           {

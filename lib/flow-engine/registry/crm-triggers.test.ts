@@ -138,7 +138,19 @@ describe("los tres tipos nuevos estan registrados", () => {
   });
 
   it("los de evento y los agendados estan separados", () => {
-    expect(listTriggers("event").map((t) => t.type).sort()).toEqual(["crm_event", "new_contact"]);
+    // `email_received` (etapa 2) es de evento: lo dispara el receptor de
+    // Resend, no el matcher de la bandeja ni un cron.
+    expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
+      "crm_event",
+      "email_received",
+      "new_contact",
+    ]);
     expect(listTriggers("scheduled").map((t) => t.type)).toEqual(["inactivity"]);
+  });
+
+  it("el de email tampoco se evalua contra mensajes entrantes", () => {
+    // Un correo no pasa por el matcher de la bandeja: si estuviera ahi,
+    // cualquier DM con la palabra del asunto arrancaria el flow de email.
+    expect(listTriggers("message").map((t) => t.type)).not.toContain("email_received");
   });
 });

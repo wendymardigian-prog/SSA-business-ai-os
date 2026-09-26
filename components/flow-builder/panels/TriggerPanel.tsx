@@ -46,6 +46,7 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "new_contact", label: "Contacto nuevo", description: "Cuando se crea un contacto, venga de donde venga (mensaje, import o alta manual)" },
   { value: "crm_event", label: "Evento del CRM", description: "Cuando cambia algo del contacto: un tag, un campo, el setter o el vendedor" },
   { value: "inactivity", label: "Inactividad", description: "Cuando pasan X horas sin que el lead conteste" },
+  { value: "email_received", label: "Email recibido", description: "Cuando entra un correo a la direccion del negocio" },
 ];
 
 /** Los eventos del CRM que pueden disparar un flow (F4). */

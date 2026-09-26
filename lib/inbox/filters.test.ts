@@ -117,6 +117,19 @@ describe("matchesInboxRow", () => {
     const f = filtros({ status: "open", platforms: ["whatsapp"] });
     expect(matchesInboxRow(fila({ platform: "instagram" }), f, SIN_RANGO)).toBe(false);
   });
+
+  it("el email filtra como cualquier otro canal (F64)", () => {
+    // El email entra por las mismas tablas: no necesita un filtro propio,
+    // y tenerlo seria una segunda bandeja adentro de la bandeja.
+    const soloEmail = filtros({ platforms: ["email"] });
+
+    expect(matchesInboxRow(fila({ platform: "email" }), soloEmail, SIN_RANGO)).toBe(true);
+    expect(matchesInboxRow(fila({ platform: "instagram" }), soloEmail, SIN_RANGO)).toBe(false);
+  });
+
+  it("sin filtro de red, las conversaciones de email aparecen con las demas", () => {
+    expect(matchesInboxRow(fila({ platform: "email" }), filtros({}), SIN_RANGO)).toBe(true);
+  });
 });
 
 describe("statusForQuery", () => {

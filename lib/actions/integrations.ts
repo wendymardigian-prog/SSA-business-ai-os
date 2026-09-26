@@ -157,6 +157,26 @@ export async function saveIntegration(
     };
   }
 
+  // El email entrante crea (o mueve) su canal: sin canal no hay bandeja
+  // donde poner los correos, y pedirle a alguien que lo cree aparte en
+  // Canales seria un paso mas para la misma decision.
+  if (provider.id === "resend_inbound") {
+    const address = config.inbound_address?.trim();
+    if (address) {
+      const { ensureEmailChannel } = await import("@/lib/email/channel");
+      const channel = await ensureEmailChannel(supabase, {
+        workspaceId: workspace.id,
+        address,
+      });
+      if (!channel.ok) {
+        return {
+          ok: false,
+          error: `Los datos se guardaron pero no pude crear el canal de email: ${channel.error}`,
+        };
+      }
+    }
+  }
+
   // Conectar una integracion es de las cosas que despues nadie se acuerda quien
   // hizo. La entidad es el workspace porque integration_configs se hace upsert
   // y no tiene una fila estable a la que apuntar. Nunca un valor de secreto:

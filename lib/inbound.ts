@@ -184,6 +184,7 @@ export async function insertMessage({
   callbackData = null,
   platformNativeMessageId = null,
   origin = null,
+  email = null,
 }: {
   supabase: Db;
   conversationId: string;
@@ -204,6 +205,22 @@ export async function insertMessage({
    * (`fromMe`) entra por acá como `external`.
    */
   origin?: MessageOrigin | null;
+  /**
+   * Las cabeceras del correo (00087). Solo en el canal de email.
+   *
+   * Van por aca y no por un insert aparte para que `messages` siga
+   * teniendo un solo lugar que la escribe: dos caminos serian dos lugares
+   * donde olvidarse del `workspace_id` o del CHECK de `origin`.
+   */
+  email?: {
+    subject?: string | null;
+    messageId?: string | null;
+    inReplyTo?: string | null;
+    references?: string | null;
+    from?: string | null;
+    to?: string[] | null;
+    cc?: string[] | null;
+  } | null;
 }): Promise<boolean> {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
@@ -220,6 +237,17 @@ export async function insertMessage({
     origin: direction === "outbound" ? origin : null,
     created_at: createdAt,
     ...(workspaceId ? { workspace_id: workspaceId } : {}),
+    ...(email
+      ? {
+          email_subject: email.subject ?? null,
+          email_message_id: email.messageId ?? null,
+          email_in_reply_to: email.inReplyTo ?? null,
+          email_references: email.references ?? null,
+          email_from: email.from ?? null,
+          email_to: (email.to ?? null) as never,
+          email_cc: (email.cc ?? null) as never,
+        }
+      : {}),
   });
 
   if (!error) return true;

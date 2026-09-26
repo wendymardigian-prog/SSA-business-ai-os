@@ -78,14 +78,15 @@ describe("guardar una integracion", () => {
     expect(storeSecret).not.toHaveBeenCalled();
   });
 
-  it("una integracion que todavia no se muestra no se puede guardar", async () => {
-    // El email entrante se prende en el bloque 8. Que no este en la pantalla
-    // no alcanza: el pedido se puede armar a mano.
+  it("una integracion que no existe en el catalogo no se puede guardar", async () => {
+    // El pedido se puede armar a mano: que la pantalla no lo ofrezca no
+    // alcanza. El mismo camino cubre a las integraciones ocultas, que se
+    // filtran con `getVisibleProvider` (ver providers.test.ts).
     admin();
 
     const result = await saveIntegration({
-      providerId: "resend_inbound",
-      secrets: { webhook_secret: "x".repeat(60) },
+      providerId: "telepatia",
+      secrets: { api_key: "x".repeat(60) },
     });
 
     expect(result).toEqual({ ok: false, error: "Integracion desconocida" });

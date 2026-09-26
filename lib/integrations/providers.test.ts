@@ -28,7 +28,13 @@ describe("catalogo de proveedores", () => {
   // Agrupa solo lo visible: desde la etapa 2 el catalogo tiene tambien Resend
   // entrante (email) y Meta, que se prenden en los bloques 8 y 5.
   it("agrupa por tipo: un email provider y cuatro de IA", () => {
-    expect(providersByType("email_provider").map((p) => p.id)).toEqual(["resend"]);
+    // Dos entradas de email: Resend saliente (avisos, invitaciones) y
+    // Resend entrante (el canal de la bandeja). Son dos conexiones
+    // distintas con dos secretos distintos, aunque el proveedor sea el mismo.
+    expect(providersByType("email_provider").map((p) => p.id)).toEqual([
+      "resend_inbound",
+      "resend",
+    ]);
     expect(providersByType("ai_provider").map((p) => p.id)).toEqual([
       "openai",
       "anthropic",
@@ -167,18 +173,20 @@ describe("catalogo extendido (F1)", () => {
     expect(bySection.messaging).toEqual(["zernio", "evolution"]);
     expect(bySection.publishing).toEqual(["postproxy", "linkedin", "threads"]);
     expect(bySection.google).toEqual(["google"]);
-    expect(bySection.email).toEqual(["resend"]);
+    expect(bySection.email).toEqual(["resend_inbound", "resend"]);
     expect(bySection.ai).toEqual(["openai", "anthropic", "google_ai", "voyage"]);
   });
 
-  it("una integracion todavia no visible no se puede usar desde una accion", () => {
-    // El criterio de F1: lo oculto se excluye de la pantalla Y de las
-    // acciones. Meta se prendio en el bloque 5; el email entrante sigue
-    // oculto hasta el bloque 8.
-    expect(getProvider("resend_inbound")?.visible).toBe(false);
-    expect(getVisibleProvider("resend_inbound")).toBeUndefined();
-    expect(getVisibleProvider("meta")?.id).toBe("meta");
-    expect(getVisibleProvider("zernio")?.id).toBe("zernio");
+  it("lo oculto se excluye de la pantalla Y de las acciones", () => {
+    // El criterio de F1. Hoy todas las integraciones estan visibles (la
+    // ultima en prenderse fue el email entrante, en el bloque 8), asi que
+    // en vez de nombrar una oculta se afirma la REGLA: `getVisibleProvider`
+    // devuelve algo exactamente cuando `visible` es true. Asi el dia que se
+    // agregue una oculta, queda cubierta sin tocar este test.
+    for (const provider of PROVIDERS) {
+      expect(Boolean(getVisibleProvider(provider.id)), provider.id).toBe(provider.visible);
+    }
+
     expect(getVisibleProvider("no-existe")).toBeUndefined();
   });
 

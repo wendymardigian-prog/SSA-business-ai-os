@@ -39,6 +39,38 @@ export async function countZernioAccounts(
 }
 
 /**
+ * Emails de hoy, entrada mas salida (F66).
+ *
+ * El plan de Resend cuenta las dos cosas, asi que la barra tambien: contar
+ * solo los salientes diria que queda cuota cuando no queda, y las
+ * respuestas de la tarde no saldrian sin aviso.
+ *
+ * El dia arranca en UTC. Es una aproximacion: el corte de Resend tampoco es
+ * en la zona del negocio, y errar por unas horas en una barra informativa
+ * es mejor que una consulta por workspace con su zona.
+ */
+export async function countEmailsToday(
+  supabase: SupabaseClient<Database>,
+  workspaceId: string,
+): Promise<number> {
+  const since = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
+
+  const { count, error } = await supabase
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", workspaceId)
+    .gte("created_at", since)
+    .not("email_message_id", "is", null);
+
+  if (error) {
+    console.error("[integrations] no pude contar los emails de hoy:", error.message);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+/**
  * Los numeros de uso de todas las integraciones del workspace, por id del
  * catalogo. Lo que no se cuenta todavia no aparece en el mapa, y la card se
  * dibuja sin barra.
@@ -47,5 +79,10 @@ export async function countIntegrationUsage(
   supabase: SupabaseClient<Database>,
   workspaceId: string,
 ): Promise<Record<string, number>> {
-  return { zernio: await countZernioAccounts(supabase, workspaceId) };
+  const [zernio, emails] = await Promise.all([
+    countZernioAccounts(supabase, workspaceId),
+    countEmailsToday(supabase, workspaceId),
+  ]);
+
+  return { zernio, resend_inbound: emails, resend: emails };
 }

@@ -17,6 +17,21 @@ import { MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // LinkedIn removed from Simple Icons (trademark). Google Business uses SiGoogle.
+/**
+ * El sobre del canal de email (F64).
+ *
+ * A mano y no de simple-icons: el email no es una marca, es un medio, y
+ * ninguna de las marcas de correo (Gmail, Outlook) representa al canal.
+ */
+function EmailIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="m2 7 10 6 10-6" />
+    </svg>
+  );
+}
+
 // Keep hand-coded SVG for LinkedIn only.
 function LinkedInIcon({ className }: { className?: string }) {
   return (
@@ -41,6 +56,7 @@ const platformIcons: Record<string, React.ComponentType<{ className?: string; si
   snapchat: SiSnapchat,
   googlebusiness: SiGoogle,
   whatsapp: SiWhatsapp,
+  email: EmailIcon as unknown as typeof SiFacebook,
 };
 
 // Brand colors for platforms. Platforms not listed here use text-foreground.

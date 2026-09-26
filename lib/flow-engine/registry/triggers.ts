@@ -130,6 +130,17 @@ registerTrigger({
   priority: 40,
 });
 
+// El email entrante (F67). Sin `matches`: lo dispara el receptor de Resend
+// despues de guardar el correo, con su propio filtro por asunto
+// (lib/email/triggers.ts). El matcher de la bandeja no lo evalua porque un
+// correo no pasa por ahi.
+registerTrigger({
+  type: "email_received",
+  label: "Email recibido",
+  scope: "event",
+  priority: 55,
+});
+
 /**
  * Decide si un evento del CRM le corresponde a un trigger.
  *
