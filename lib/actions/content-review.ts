@@ -220,3 +220,59 @@ export async function retryFailedNetworks(input: { postId: string }): Promise<Re
   revalidatePath(CONTENT_PATH);
   return { ok: true, retried };
 }
+
+/**
+ * Archiva una pieza (C5, C16).
+ *
+ * Faltaba. El detalle mandaba al editor y el editor contestaba "eso se hace
+ * desde el detalle": un circulo del que no se salia, y por eso archivar era
+ * imposible desde la pantalla.
+ *
+ * No borra nada: `archived_at` la saca del tablero y sigue en el historial.
+ * Una pieza con publicaciones programadas no se archiva: quedaria fuera de la
+ * vista y saliendo igual.
+ */
+export async function archivePost(input: { postId: string }): Promise<ReviewActionResult> {
+  const loaded = await loadPost(input.postId);
+  if (!loaded) return { ok: false, error: "No encontre esa pieza" };
+
+  const { workspace, user, supabase, post, perms } = loaded;
+
+  if (!perms.publish && !perms.approve) {
+    return { ok: false, error: "Archivar es de quien aprueba o publica." };
+  }
+
+  const { data: vivas } = await supabase
+    .from("social_posts")
+    .select("platform")
+    .eq("content_post_id", post.id)
+    .in("status", ["uploading", "scheduled", "publishing"])
+    .is("deleted_at", null);
+
+  if ((vivas ?? []).length > 0) {
+    return {
+      ok: false,
+      error: "Tiene publicaciones programadas. Desprogramalas antes de archivar.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("content_posts")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", post.id);
+
+  if (error) {
+    console.error("[content] no pude archivar:", error.message);
+    return { ok: false, error: "No pude archivarla" };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: "update",
+    metadata: { kind: "content_archived", post_id: post.id },
+    performedBy: user.id,
+  });
+
+  revalidatePath(CONTENT_PATH);
+  return { ok: true, status: post.status };
+}

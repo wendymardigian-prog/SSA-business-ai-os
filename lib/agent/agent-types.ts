@@ -18,7 +18,9 @@ export type AgentConfigSection =
   | "guardrails"
   | "closing"
   | "knowledge"
-  | "channels";
+  | "channels"
+  /** La voz, los limites y los topes del copywriter (E3). */
+  | "copywriter";
 
 export interface AgentTypeDefinition {
   type: string;
@@ -53,6 +55,30 @@ export const AGENT_TYPES: Record<string, AgentTypeDefinition> = {
       { key: "tags", label: "Etiquetas", available: true, adminOnly: true },
     ],
     conversational: true,
+  },
+
+  /**
+   * El copywriter (grupo E).
+   *
+   * Escribe el guion y los captions de cada pieza. NO conversa, no publica y
+   * no cambia estados: lo unico que toca es el borrador, y siempre deja una
+   * version con su firma para que se pueda volver atras.
+   *
+   * Reemplaza la generacion simple de F29, que no tenia configuracion propia
+   * ni dejaba rastro de cuanto costaba.
+   */
+  copywriter: {
+    type: "copywriter",
+    label: "Copywriter de contenido",
+    description: "Escribe el guion y los captions de cada pieza con la voz de tu marca.",
+    configSections: ["identity", "prompt", "model", "copywriter"],
+    tabs: [
+      { key: "config", label: "Configuracion", available: true, adminOnly: true },
+      { key: "knowledge", label: "Conocimiento", available: true, adminOnly: true },
+      { key: "runs", label: "Runs", available: true, adminOnly: false },
+      { key: "costs", label: "Costos", available: true, adminOnly: true },
+    ],
+    conversational: false,
   },
 };
 

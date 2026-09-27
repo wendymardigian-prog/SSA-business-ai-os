@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { SocialPostStatus } from "@/lib/types/database";
 import {
   buildCalendar,
   cardCount,
@@ -7,6 +8,8 @@ import {
   summarize,
   zonedToUtc,
   type CalendarPiece,
+  toneOf,
+  timeIn,
 } from "./calendar";
 
 const TZ = "America/Costa_Rica"; // UTC-6 todo el año: sin horario de verano
@@ -249,5 +252,61 @@ describe("pasar una hora local a UTC", () => {
 
   it("un texto que no es una fecha devuelve null", () => {
     expect(zonedToUtc("mañana", TZ)).toBeNull();
+  });
+});
+
+// ── C14 · el color y la hora de cada tarjeta ──────────────────────────────
+
+describe("C14 · de que color va cada tarjeta", () => {
+  const net = (status: SocialPostStatus | null) => ({
+    platform: "instagram",
+    at: "2026-10-01T18:00:00.000Z",
+    status,
+  });
+
+  it("sin nada agendado es tentativa", () => {
+    expect(toneOf([net(null), net(null)])).toBe("tentative");
+  });
+
+  it("todo agendado es programada", () => {
+    expect(toneOf([net("scheduled"), net("uploading")])).toBe("scheduled");
+  });
+
+  it("todo publicado es publicada", () => {
+    expect(toneOf([net("published")])).toBe("published");
+  });
+
+  it("un fallo gana sobre todo: es lo unico que pide hacer algo hoy", () => {
+    expect(toneOf([net("published"), net("failed"), net("scheduled")])).toBe("failed");
+  });
+
+  it("mezclado es mezclado", () => {
+    expect(toneOf([net("published"), net("scheduled")])).toBe("mixed");
+  });
+});
+
+describe("C14 · la hora de la tarjeta", () => {
+  it("sale en la zona del workspace", () => {
+    // Las 18:00 UTC son las 12:00 en Costa Rica.
+    expect(timeIn("2026-10-01T18:00:00.000Z", "America/Costa_Rica")).toBe("12:00");
+  });
+
+  it("la tarjeta lleva la primera salida del dia", () => {
+    const [card] = buildCalendar(
+      [
+        {
+          id: "p1",
+          title: "Una pieza",
+          format: null,
+          networks: [
+            { platform: "instagram", at: "2026-10-01T21:00:00.000Z", status: null },
+            { platform: "tiktok", at: "2026-10-01T18:00:00.000Z", status: null },
+          ],
+        },
+      ],
+      "America/Costa_Rica",
+    );
+
+    expect(card.time).toBe("12:00");
   });
 });

@@ -15,6 +15,10 @@ import {
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
+import { sweepStuckPublications } from "@/lib/publishing/sweep";
+import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
+import { reconcileProviderSchedules } from "@/lib/publishing/reconcile";
+import { credentialsForPublisher } from "@/lib/publishing/credentials";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -79,6 +83,31 @@ export async function GET(request: NextRequest) {
     console.error("[cron/jobs] fallo el barrido de inactividad:", err instanceof Error ? err.message : String(err));
   }
 
+  // Publicaciones que se quedaron colgadas en "publicando" (A14). Sin esto
+  // una corrida que muere despues de tomar la fila la deja asi para siempre:
+  // no hay job pendiente ni revision agendada que la rescate.
+  try {
+    const stuck = await sweepStuckPublications(supabase);
+    if (stuck.recovered > 0) console.log(`[cron/jobs] publicaciones destrabadas: ${stuck.recovered}`);
+  } catch (err) {
+    console.error("[cron/jobs] fallo el barrido de publicaciones:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Lo que Zernio publico y cuyo aviso no llego (D6). Sin esto una fila se
+  // queda diciendo "programado" para siempre aunque el post ya este en
+  // Instagram.
+  try {
+    const conciliadas = await reconcileProviderSchedules(supabase, {
+      credentialsFor: ({ publisherId, workspaceId }) =>
+        credentialsForPublisher(supabase, { publisherId, workspaceId }),
+    });
+    if (conciliadas.updated > 0) {
+      console.log(`[cron/jobs] publicaciones conciliadas: ${conciliadas.updated}`);
+    }
+  } catch (err) {
+    console.error("[cron/jobs] fallo la conciliacion:", err instanceof Error ? err.message : String(err));
+  }
+
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is
   // stale: if the claim UPDATE commits but the response is lost, nothing else
   // ever re-reads that status and the job would be stranded forever. Five
@@ -99,6 +128,9 @@ export async function GET(request: NextRequest) {
     // cada 15 s, sin reintentos). Si este runner los tomara, caerian en el
     // default de processJob y se marcarian completados sin responder.
     .neq("type", AGENT_BURST_JOB)
+    // Las subidas largas corren en /api/cron/content-upload, de a una y con
+    // su propio limite de tiempo: aca le sacarian el turno al resto (A17).
+    .neq("type", CONTENT_UPLOAD_JOB)
     .order("run_at", { ascending: true })
     .limit(20);
 

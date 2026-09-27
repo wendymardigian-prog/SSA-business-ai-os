@@ -75,11 +75,20 @@ describe("el post que sale de aprobar", () => {
 describe("los botones de una tarjeta de idea", () => {
   const conIa = { approve: true, ai: true, aiAvailable: true };
 
-  it("quien aprueba ve aprobar, aprobar y producir, y descartar", () => {
-    expect(ideaActions("nueva", conIa).map((a) => a.action)).toEqual([
+  it("en el DETALLE, quien aprueba ve aprobar, aprobar y producir, y descartar", () => {
+    expect(ideaActions("nueva", conIa, { withDiscard: true }).map((a) => a.action)).toEqual([
       "approve",
       "approve_and_generate",
       "discard",
+    ]);
+  });
+
+  it("en la TARJETA no hay descartar: es la unica destructiva de las tres (C3)", () => {
+    // Al lado de "Aprobar", en una tarjeta chica, es pedir que alguien la
+    // toque sin querer.
+    expect(ideaActions("nueva", conIa).map((a) => a.action)).toEqual([
+      "approve",
+      "approve_and_generate",
     ]);
   });
 
@@ -88,10 +97,11 @@ describe("los botones de una tarjeta de idea", () => {
   });
 
   it("sin permiso de IA, no aparece el de producir copy", () => {
-    expect(ideaActions("nueva", { approve: true, ai: false, aiAvailable: true }).map((a) => a.action)).toEqual([
-      "approve",
-      "discard",
-    ]);
+    expect(
+      ideaActions("nueva", { approve: true, ai: false, aiAvailable: true }, { withDiscard: true }).map(
+        (a) => a.action,
+      ),
+    ).toEqual(["approve", "discard"]);
   });
 
   it("sin proveedor de IA conectado aparece deshabilitado y dice como arreglarlo", () => {

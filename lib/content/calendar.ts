@@ -45,6 +45,15 @@ export interface CalendarCard {
   redistribution: boolean;
   /** Ninguna de sus redes esta agendada todavia. */
   tentative: boolean;
+  /**
+   * Como se ve la tarjeta (C14). Antes solo se distinguia "tentativa" de "el
+   * resto": una que fallo se veia igual que una publicada, asi que el
+   * calendario no servia para lo que uno va a buscar ahi, que es si algo
+   * salio.
+   */
+  tone: "tentative" | "scheduled" | "published" | "failed" | "mixed";
+  /** La hora de la primera salida del dia, en la zona del workspace. */
+  time: string;
 }
 
 /** El dia de una fecha, en la zona que se le pase. */
@@ -94,11 +103,43 @@ export function buildCalendar(pieces: CalendarPiece[], timeZone: string): Calend
         // Toda fecha posterior a la primera de la pieza es redistribucion.
         redistribution: index > 0,
         tentative: networks.every((n) => n.status === null),
+        tone: toneOf(networks),
+        time: timeIn(
+          networks.map((n) => n.at).sort()[0],
+          timeZone,
+        ),
       });
     }
   }
 
   return cards.sort((a, b) => a.day.localeCompare(b.day) || a.title.localeCompare(b.title));
+}
+
+/**
+ * De que color va la tarjeta.
+ *
+ * Un fallo gana sobre todo lo demas: es lo unico que pide que alguien haga
+ * algo hoy.
+ */
+export function toneOf(networks: CalendarNetwork[]): CalendarCard["tone"] {
+  const estados = new Set(networks.map((n) => n.status));
+  if (estados.has("failed")) return "failed";
+  if ([...estados].every((s) => s === null)) return "tentative";
+  if ([...estados].every((s) => s === "published")) return "published";
+  if ([...estados].every((s) => s === "scheduled" || s === "uploading" || s === "publishing")) {
+    return "scheduled";
+  }
+  return "mixed";
+}
+
+/** La hora, en la zona del workspace: "15:00". */
+export function timeIn(iso: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
 }
 
 export type CountMode = "pieces" | "publications";

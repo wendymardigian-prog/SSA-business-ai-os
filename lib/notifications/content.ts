@@ -82,3 +82,39 @@ export async function notifyPublishFailure(
     withinMinutes: 60,
   });
 }
+
+// ── El copywriter (E6) ────────────────────────────────────────────────────
+
+export async function notifyCopyReady(
+  supabase: Db,
+  params: { workspaceId: string; contentPostId: string; warnings: string[] },
+): Promise<boolean> {
+  return createNotification({
+    supabase,
+    workspaceId: params.workspaceId,
+    type: "content_copy_ready",
+    title: "El copywriter termino",
+    body:
+      params.warnings.length > 0
+        ? `Escribio el guion y los captions, con ${params.warnings.length} aviso(s) para revisar.`
+        : "Escribio el guion y los captions. Revisalos antes de aprobar.",
+    entityType: "content_post",
+    entityId: params.contentPostId,
+    metadata: { warnings: params.warnings },
+  });
+}
+
+export async function notifyCopyFailed(
+  supabase: Db,
+  params: { workspaceId: string; contentPostId: string; reason: string },
+): Promise<boolean> {
+  return createNotification({
+    supabase,
+    workspaceId: params.workspaceId,
+    type: "content_copy_failed",
+    title: "El copywriter no pudo escribir",
+    body: params.reason,
+    entityType: "content_post",
+    entityId: params.contentPostId,
+  });
+}

@@ -19,7 +19,21 @@ import { testApiKey as testPostproxyKey } from "@/lib/social/postproxy";
 import { validateMetaToken } from "@/lib/meta/token";
 import { fetchAdAccounts } from "@/lib/meta/accounts";
 
-export type ConnectionTest = { ok: true; detail?: string } | { ok: false; error: string };
+export type ConnectionTest =
+  | {
+      ok: true;
+      detail?: string;
+      /**
+       * Lo que la prueba descubrio y conviene guardar (A11).
+       *
+       * Postproxy es el caso: el perfil de YouTube solo se sabe preguntandole
+       * a su API, y despues hace falta en cada publicacion. Pedirlo de nuevo
+       * cada vez seria una llamada de mas; guardarlo al probar la clave es el
+       * unico momento en que ya se tiene.
+       */
+      config?: Record<string, string>;
+    }
+  | { ok: false; error: string };
 
 export interface TestInput {
   providerId: string;
@@ -46,6 +60,7 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
           youtube.length > 0
             ? `Conectado. Hay ${youtube.length} cuenta(s) de YouTube en Postproxy.`
             : "Conectado, pero todavia no hay ninguna cuenta de YouTube en Postproxy.",
+        ...(youtube[0]?.id ? { config: { youtube_profile_id: youtube[0].id } } : {}),
       };
     }
 

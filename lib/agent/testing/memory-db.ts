@@ -185,6 +185,13 @@ export function memoryDb(
         return b;
       },
       in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), b),
+      // Una columna de array que comparte al menos un valor (`&&` en Postgres).
+      overlaps: (col: string, vals: unknown[]) =>
+        (filters.push((r) => {
+          const own = r[col];
+          return Array.isArray(own) && own.some((v) => vals.includes(v));
+        }),
+        b),
       gt: (col: string, val: unknown) => (filters.push((r) => r[col] != null && cmp(r[col], val) > 0), b),
       gte: (col: string, val: unknown) => (filters.push((r) => r[col] != null && cmp(r[col], val) >= 0), b),
       lt: (col: string, val: unknown) => (filters.push((r) => r[col] != null && cmp(r[col], val) < 0), b),

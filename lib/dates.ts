@@ -6,8 +6,10 @@
  * 21:30 recibe la ventana de manana y no ve ninguno de los mensajes del dia.
  * El corte de dia tiene que hacerse en la zona en la que la persona vive.
  *
- * Hoy la zona es una constante. No hay `workspaces.timezone` todavia; cuando
- * lo haya, esto recibe la zona por parametro y no cambia nada mas.
+ * Todas las funciones reciben la zona por parametro. `workspaces.timezone`
+ * existe desde la 00075 y es la que hay que pasarles cuando se sabe de que
+ * workspace se trata; las constantes de abajo son el respaldo para los usos
+ * que todavia no la tienen a mano.
  */
 
 export const APP_TIMEZONE = "America/Argentina/Buenos_Aires";
@@ -232,9 +234,10 @@ export function formatDateOnly(iso: string | null | undefined, timeZone: string 
  * La zona del negocio para los cortes del agente de IA: dia y mes de los topes
  * de gasto, y el horario de atencion. Es la que fija el documento de la Fase 3.
  *
- * OJO: no coincide con APP_TIMEZONE, que es la que usan desde antes los filtros
- * de fecha de la bandeja. Unificarlas es una decision pendiente (o, mejor, una
- * columna workspaces.timezone); mientras tanto cada uso declara la suya.
+ * OJO: no coincide con APP_TIMEZONE, que es la que usan desde antes los
+ * filtros de fecha de la bandeja. Las dos son respaldos: donde se conoce el
+ * workspace hay que pasar `workspaces.timezone`. Unificarlas es una decision
+ * pendiente, anotada en docs/PENDIENTE.md.
  */
 export const BUSINESS_TIMEZONE = "America/Costa_Rica";
 
@@ -269,4 +272,60 @@ export function zonedClock(
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
   const hour = Number(get("hour")) % 24;
   return { weekday, minutes: hour * 60 + Number(get("minute")) };
+}
+
+// ── Fecha y hora en la zona del workspace (A19) ────────────────────────────
+//
+// Un `<input type="datetime-local">` habla en la zona del NAVEGADOR. El
+// editor de contenido lo convertia con `new Date(value)`, asi que alguien que
+// viaja, o que tiene el sistema en otra zona, programaba a una hora distinta
+// de la que veia. La hora de una publicacion es la del negocio, no la de la
+// computadora desde la que se carga.
+
+const DATETIME_LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+
+/** El valor de un <input type="datetime-local"> leido en la zona indicada. */
+export function datetimeInputToIso(
+  value: string,
+  timeZone: string = APP_TIMEZONE,
+): string | null {
+  const match = DATETIME_LOCAL.exec(value);
+  if (!match) return null;
+
+  const [, y, mo, d, h, mi] = match;
+  const date = zonedWallClockToUtc(
+    Number(y), Number(mo), Number(d), Number(h), Number(mi), 0, 0, timeZone,
+  );
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/** El instante guardado, escrito para un <input type="datetime-local">. */
+export function isoToDatetimeInput(
+  iso: string | null | undefined,
+  timeZone: string = APP_TIMEZONE,
+): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  // `en-CA` con hour12:false devuelve "24" para la medianoche en algunos
+  // motores; el input solo acepta 00.
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}`;
+}
+
+/** El nombre corto de la zona, para mostrar al lado del campo (ej: GMT-3). */
+export function timeZoneLabel(timeZone: string, now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("es-AR", {
+    timeZone,
+    timeZoneName: "shortOffset",
+  }).formatToParts(now);
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? timeZone;
 }

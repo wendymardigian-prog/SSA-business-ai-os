@@ -98,3 +98,37 @@ describe("aplicar los filtros", () => {
     expect(activeFilterCount({ ...base, month: "2026-10", count: "publications" })).toBe(0);
   });
 });
+
+// ── C15 · el filtro de mes en la lista ────────────────────────────────────
+
+describe("C15 · filtrar por mes", () => {
+  const base = parseContentFilters(new URLSearchParams());
+  const post = (id: string, firstAt: string | null) => ({
+    id,
+    title: `Pieza ${id}`,
+    status: "draft" as const,
+    createdBy: "u1",
+    platforms: ["instagram"],
+    firstAt,
+  });
+
+  const posts = [
+    post("a", "2026-10-06T18:00:00.000Z"),
+    post("b", "2026-11-02T18:00:00.000Z"),
+    post("c", null),
+  ];
+
+  it("deja solo las de ese mes", () => {
+    const result = applyContentFilters(posts, { ...base, month: "2026-10" });
+    expect(result.map((p) => p.id)).toEqual(["a"]);
+  });
+
+  it("sin mes, estan todas", () => {
+    expect(applyContentFilters(posts, base)).toHaveLength(3);
+  });
+
+  it("una sin fecha no pertenece a ningun mes", () => {
+    const result = applyContentFilters(posts, { ...base, month: "2026-11" });
+    expect(result.map((p) => p.id)).toEqual(["b"]);
+  });
+});

@@ -255,3 +255,82 @@ Los dos se arreglaron, y valen como anotación porque el script es la única raz
 
 1. **El trigger que protege los roles de sistema frenaba el borrado en cascada de un workspace.** Faltaba distinguir "alguien borra un rol de sistema a mano" de "el workspace se va y sus roles con él". Se arregló mirando si el workspace todavía existe.
 2. **El primer intento de la 00089 copió la lógica de leads dentro de `can_see_conversation`** en vez de delegar en `can_see_contact`, deshaciendo lo que la 00028 había hecho a propósito, y perdiendo la exclusión de contactos borrados. El Member volvía a ver la conversación sin asignar de un lead que no puede ver. Se volvió a delegar, y el alcance `conversations: all` quedó como un camino más, antes de delegar: solo ensancha.
+
+## Correcciones de la Etapa 2 (rama `etapa2-correcciones`)
+
+### D9 · Postproxy se queda en el despachador
+
+**Qué quedó.** YouTube por Postproxy sigue publicando por nuestra cola, no
+programado del lado de ellos como Instagram y TikTok.
+
+**Por qué.** Leí su documentación (`postproxy.dev/getting-started/quickstart`).
+`POST /api/posts` **sí** acepta `scheduled_at` con una fecha ISO. Pero no
+documenta **ningún** endpoint para editar, borrar o reintentar un post, ni
+webhooks. Sin poder cancelar, desprogramar dejaría el post agendado allá y se
+publicaría igual: la persona apretó "desprogramar" y el video sale lo mismo.
+Eso es peor que lo que hay hoy.
+
+**Qué se decidió en su lugar.** Postproxy queda en el despachador, con los
+arreglos del grupo A (el perfil correcto, el id del video, el reintento). Si
+algún día documentan borrar y editar, implementa `ProviderScheduler` y se
+suma sin tocar a nadie: esa es justamente la forma de la interfaz.
+
+### D8 · "Agregar a la cola" de Zernio, sin hacer
+
+**Qué quedó.** La opción de programar en el próximo hueco libre de la cola de
+Zernio (`getNextQueueSlot`) no se construyó. Era nice-to-have.
+
+**Por qué.** Zernio avisa en su propio esquema que **no** hay que copiar el
+horario que devuelve `next-slot` a `scheduledFor`: eso saltea el bloqueo de la
+cola y dos posts pueden quedar en el mismo hueco. La forma correcta es mandar
+`queuedFromProfile` con el id del **perfil** de Zernio, que es un dato que el
+sistema hoy no guarda (guardamos el id de la cuenta, que es otra cosa).
+
+**Qué se decidió en su lugar.** Se anota acá. Sumarlo es guardar el perfil al
+conectar Zernio y agregar la opción en la fila de la red; no cambia nada de lo
+construido.
+
+### A15 / D7 · La ventana de idempotencia de Zernio son ~5 minutos
+
+**Qué quedó.** El id de pedido (`x-request-id`) protege de un corte de red,
+no de un reintento horas después.
+
+**Por qué.** Zernio replica la respuesta original sólo dentro de una ventana
+de unos 5 minutos. Después, el mismo id crea un post nuevo. Aparte tiene un
+segundo control, por huella del contenido, que rechaza con 409 durante 24
+horas un post igual a otro.
+
+**Qué se decidió en su lugar.** El id lleva el número de intento
+(`socialPostId:intento`), así un reintento inmediato reusa el original y uno
+deliberado más tarde crea uno nuevo a propósito. Y el 409 del control de
+contenido no se trata como fallo: se toma el id del post que ya existía.
+
+### El SDK de Zernio lanza, no devuelve el error
+
+**Qué encontré.** El README del SDK y su propio tipo sugieren
+`{ data, error }`, pero el cliente tiene un interceptor que convierte todo
+HTTP no-2xx en una excepción `ZernioApiError`. El bloque `if (error)` del
+publicador era **código muerto**, y encima leía `.status` cuando la clase
+expone `.statusCode`: todos los errores terminaban como permanentes y ningún
+429 ni 5xx se reintentaba.
+
+**Qué se decidió.** `lib/publishing/zernio-errors.ts` mira la forma del error
+(sin importar la clase del SDK, para no atarse a cómo la empaqueten) y
+clasifica por código. Se anota acá porque el README del SDK sigue
+desactualizado y la próxima persona se va a confundir igual.
+
+### C14 · La vista semanal del calendario, sin hacer
+
+**Qué quedó.** El calendario tiene la grilla del mes (en la computadora) y la
+agenda por día (en el celular). La vista de semana no se construyó.
+
+**Por qué.** Todo lo demás del punto sí está: contar piezas o publicaciones,
+la hora en cada tarjeta, las insignias de red, el color por estado, la
+leyenda, hoy resaltado y arrastrar para reprogramar. La semana es una cuarta
+forma de mirar lo mismo, y con un mes que hoy tiene una pieza no había forma
+de comprobar que sirviera para algo.
+
+**Qué se decidió en su lugar.** Se anota. Cuando haya varias publicaciones por
+semana va a ser evidente si hace falta, y para entonces `buildCalendar` ya
+devuelve las tarjetas con su día y su hora: la semana es elegir siete días en
+vez de treinta y cinco.

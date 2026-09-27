@@ -20,7 +20,12 @@ import type { Zernio } from "./zernio-client";
 export const WEBHOOK_NAME = "Zernflow";
 
 /** Events Zernflow needs delivered to its webhook. */
-export type WebhookEvent = "message.received" | "comment.received" | "message.sent";
+export type WebhookEvent =
+  | "message.received"
+  | "comment.received"
+  | "message.sent"
+  | "post.platform.published"
+  | "post.platform.failed";
 
 /**
  * Eventos que la app se suscribe. `message.sent` trae los ecos de lo que se
@@ -28,11 +33,20 @@ export type WebhookEvent = "message.received" | "comment.received" | "message.se
  * app"), que hoy no llegan por webhook. Se guarda como saliente `external`
  * (F2). El refresco contra Zernio (Bloque 2) cubre igual el caso por si el
  * proveedor no dispara el eco de ManyChat.
+ *
+ * Los dos de `post.platform.*` son como se entera el sistema de que una
+ * publicacion salio o fallo (A7). El receptor ya sabia leerlos
+ * (`lib/publishing/inbound.ts`) pero nunca llegaban, porque nadie los habia
+ * pedido: el estado solo aparecia si alguien preguntaba a los 2, 12 y 42
+ * minutos. Con Zernio programando de su lado (grupo D) esto pasa a ser el
+ * camino principal, no el atajo.
  */
 export const SUBSCRIBED_EVENTS: WebhookEvent[] = [
   "message.received",
   "comment.received",
   "message.sent",
+  "post.platform.published",
+  "post.platform.failed",
 ];
 
 export interface EnsureWebhookOptions {

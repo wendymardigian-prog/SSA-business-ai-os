@@ -166,8 +166,12 @@ export function aggregatePostStatus(
   if (all("failed")) return "failed";
   if (has("publishing")) return "publishing";
   if (has("published") && has("failed")) return "partially_published";
-  // Queda algo programado (con o sin una publicada al lado): sigue programada.
-  if (has("scheduled")) return has("published") ? "partially_published" : "scheduled";
+  // `uploading` es el paso previo a quedar agendado en el proveedor (D5):
+  // para la pieza cuenta como programada, porque eso es lo que la persona
+  // pidio y lo que va a pasar.
+  if (has("scheduled") || has("uploading")) {
+    return has("published") ? "partially_published" : "scheduled";
+  }
 
   return "scheduled";
 }

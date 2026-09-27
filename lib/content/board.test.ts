@@ -20,6 +20,13 @@ const idea = (over: Partial<BoardIdea> = {}): BoardIdea => ({
   status: "nueva",
   createdBy: "u1",
   position: 10,
+  hook: null,
+  angle: null,
+  pillar: null,
+  reference: null,
+  notes: null,
+  createdAt: null,
+  authorName: null,
   ...over,
 });
 
@@ -36,6 +43,9 @@ const post = (over: Partial<BoardPost> = {}): BoardPost => ({
   hasCaption: false,
   copyFromAi: false,
   materialStatus: "pendiente",
+  copyStatus: "idle",
+  createdAt: null,
+  authorName: null,
   ...over,
 });
 

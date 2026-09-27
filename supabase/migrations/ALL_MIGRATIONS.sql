@@ -12647,3 +12647,308 @@ END $$;
 ALTER TABLE public.workspaces DROP COLUMN IF EXISTS late_api_key_encrypted;
 ALTER TABLE public.workspaces DROP COLUMN IF EXISTS webhook_secret;
 ALTER TABLE public.channels   DROP COLUMN IF EXISTS webhook_secret;
+
+-- ============================================================
+-- MIGRATION 91: PUBLISH PROGRESS
+-- ============================================================
+-- 00091 · Que parte de una publicacion ya salio (A10, A14)
+--
+-- Algunas publicaciones tienen varios pasos contra el proveedor. Un hilo de
+-- Threads es el caso claro: se publica el post principal y despues cada
+-- respuesta. Si falla la segunda respuesta, el reintento volvia a empezar
+-- desde el principio y **duplicaba el post principal**, que ya estaba en la
+-- red.
+--
+-- Con esto el publicador deja anotado que paso ya salio, y el reintento
+-- arranca donde quedo. Es del publicador y de nadie mas: ninguna pantalla lo
+-- lee.
+--
+-- Aditiva. No borra ni modifica nada.
+
+ALTER TABLE public.social_posts
+  ADD COLUMN IF NOT EXISTS publish_progress jsonb;
+
+COMMENT ON COLUMN public.social_posts.publish_progress IS
+  'Que pasos de la publicacion ya salieron, para que un reintento no los repita (A10). Lo escribe solo el publicador.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'social_posts_publish_progress_object'
+  ) THEN
+    ALTER TABLE public.social_posts
+      ADD CONSTRAINT social_posts_publish_progress_object
+      CHECK (publish_progress IS NULL OR jsonb_typeof(publish_progress) = 'object');
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 92: CONTENT UPLOAD CRON
+-- ============================================================
+-- 00092 · La ruta de las subidas largas (A17)
+--
+-- Subir un video a YouTube por trozos puede tardar minutos. Corriendo dentro
+-- del cron general, esos minutos se los come la cola entera: los jobs que
+-- venian detras esperan. Y esa ruta no declara limite de tiempo, asi que la
+-- corrida se puede cortar a la mitad de la subida.
+--
+-- `/api/cron/content-upload` corre de a una subida, con cinco minutos de
+-- margen, cada dos minutos.
+--
+-- La lista blanca de `call_app_cron` se redefine entera (es el patron desde
+-- la 00036): la funcion no acumula rutas, se reescribe con la lista vigente.
+--
+-- Aditiva. No borra ni modifica datos.
+
+CREATE OR REPLACE FUNCTION private.call_app_cron(p_path text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE v_base text; v_secret text;
+BEGIN
+  IF p_path NOT IN (
+    'jobs', 'sequences', 'whatsapp-health', 'inactivity', 'automation-events',
+    'agent-bursts', 'drafts-refresh', 'bg-dispatch', 'bg-collect',
+    'social-token-refresh', 'content-media-cleanup', 'metrics-sync',
+    'content-upload'
+  ) THEN
+    RAISE EXCEPTION 'ruta de cron no permitida: %', p_path;
+  END IF;
+  SELECT value INTO v_base FROM private.system_config WHERE key = 'app_url';
+  SELECT value INTO v_secret FROM private.system_config WHERE key = 'cron_secret';
+  IF v_base IS NULL OR v_secret IS NULL THEN
+    RAISE WARNING 'private.system_config sin app_url o cron_secret: el cron "%" no se ejecuto', p_path;
+    RETURN NULL;
+  END IF;
+  RETURN net.http_get(
+    url => rtrim(v_base, '/') || '/api/cron/' || p_path,
+    headers => jsonb_build_object('Authorization', 'Bearer ' || v_secret, 'Content-Type', 'application/json'),
+    timeout_milliseconds => 60000
+  );
+END; $$;
+
+-- Cada dos minutos: una publicacion programada no puede esperar mucho mas
+-- que eso, y con una subida por corrida no se pisan entre si.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.unschedule('ssa-cron-content-upload')
+      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-upload');
+
+    PERFORM cron.schedule(
+      'ssa-cron-content-upload',
+      '*/2 * * * *',
+      $cron$SELECT private.call_app_cron('content-upload');$cron$
+    );
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 93: ZERNIO NATIVE SCHEDULING
+-- ============================================================
+-- 00093 · Instagram y TikTok se programan del lado de Zernio (grupo D)
+--
+-- Hasta ahora el sistema guardaba la fecha y, a esa hora, le pedia a Zernio
+-- "publica ahora". Eso ata la publicacion a que nuestro cron corra en el
+-- momento justo, y de ahi salen casi todos los problemas del grupo A: el job
+-- viejo que sobrevive al reprogramar, las filas trabadas, los reintentos
+-- propios.
+--
+-- Zernio sabe programar: se le pasa la fecha y la zona, y publica el. Eso es
+-- lo que hace LateWiz, su cliente de referencia.
+--
+-- Dos cosas hacen falta:
+--
+-- 1. Un estado nuevo, `uploading`. Para que Zernio publique un video dias
+--    despues, el archivo tiene que estar en Zernio, no detras de un link
+--    firmado nuestro que vence en 24 horas. La subida corre en un job y la
+--    fila espera ahi mientras tanto. No es `publishing`: nadie esta
+--    publicando todavia, y el barrido de publicaciones trabadas no tiene que
+--    tocarla.
+--
+-- 2. `provider_media`, que recuerda que archivo nuestro corresponde a que URL
+--    de Zernio. Sin esto, programar tres redes con el mismo video lo sube
+--    tres veces.
+--
+-- Aditiva. No borra ni modifica datos.
+
+-- ------------------------------------------------------------
+-- 1. El estado `uploading`
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+  ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_status_check;
+  ALTER TABLE public.social_posts
+    ADD CONSTRAINT social_posts_status_check
+    CHECK (
+      status IS NULL OR status IN (
+        'uploading', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'
+      )
+    );
+END $$;
+
+COMMENT ON COLUMN public.social_posts.status IS
+  'uploading = subiendo la media al proveedor; scheduled = agendado (nuestro o de Zernio); publishing = el proveedor la esta publicando.';
+
+-- ------------------------------------------------------------
+-- 2. La media que ya vive en el proveedor
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.provider_media (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  -- Que proveedor tiene la copia: 'zernio' hoy, otro manana.
+  publisher     text NOT NULL,
+  -- La ruta en nuestro bucket content-media.
+  storage_path  text NOT NULL,
+  -- Cuanto pesaba cuando se subio: si el archivo cambia, hay que volver a
+  -- subirlo, y el tamano es la senal mas barata de que cambio.
+  size_bytes    bigint,
+  -- La direccion publica que devolvio el proveedor.
+  provider_url  text NOT NULL,
+  uploaded_at   timestamptz NOT NULL DEFAULT now(),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS provider_media_unique
+  ON public.provider_media (workspace_id, publisher, storage_path);
+
+CREATE INDEX IF NOT EXISTS provider_media_workspace_idx
+  ON public.provider_media (workspace_id);
+
+COMMENT ON TABLE public.provider_media IS
+  'Que archivo de content-media corresponde a que URL del proveedor, para no subirlo dos veces (D5).';
+
+ALTER TABLE public.provider_media ENABLE ROW LEVEL SECURITY;
+
+-- Solo el servidor la escribe (la sube un job con service role). Los
+-- miembros del workspace pueden leerla: no hay nada sensible y sirve para
+-- diagnosticar por que una publicacion no encuentra su media.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'provider_media'
+      AND policyname = 'provider_media_select'
+  ) THEN
+    CREATE POLICY provider_media_select ON public.provider_media
+      FOR SELECT TO authenticated
+      USING (public.is_workspace_member(workspace_id));
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 94: COPYWRITER AGENT
+-- ============================================================
+-- 00094 · El agente copywriter de contenido (grupo E)
+--
+-- Tres cosas.
+--
+-- 1. **Un CHECK viejo que rechaza los runs de copy.** La Etapa 2 agrego
+--    `agent_runs_source_check` con `content_copy` y `ads_analysis`, pero dejo
+--    vivo `agent_runs_source_values` (de la 00076), que no los tiene. Los dos
+--    se aplican, asi que **hoy, contra la base real, registrar un run de
+--    generacion de copy falla**: la generacion funciona pero el costo no
+--    queda anotado en ningun lado, y por lo tanto no cuenta para los topes.
+--    Los tests no lo veian porque mockean la base.
+--
+-- 2. **El agente necesita poder firmar sus runs.**
+--    `agent_runs_agent_only_for_agent_sources` solo deja guardar `agent_id`
+--    cuando el origen es `agent` o `conversation_summary`. El copywriter
+--    tiene que poder decir cual de sus ejecuciones fue: sin eso no hay
+--    pestana Runs ni Costos que valga.
+--
+-- 3. **Que se vea que esta escribiendo.** `content_posts.copy_status` es lo
+--    que hace que el tablero y el editor muestren "el copywriter esta
+--    escribiendo" y se actualicen solos al terminar.
+--
+-- Y siembra un agente `copywriter` por workspace, existente y futuro.
+--
+-- Aditiva. No borra ni modifica datos: el unico DROP es el de un CHECK que
+-- contradice a otro mas nuevo.
+
+-- ------------------------------------------------------------
+-- 1. Los CHECK de agent_runs
+-- ------------------------------------------------------------
+
+ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_values;
+
+DO $$
+BEGIN
+  ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_agent_only_for_agent_sources;
+  ALTER TABLE public.agent_runs
+    ADD CONSTRAINT agent_runs_agent_only_for_agent_sources
+    CHECK (
+      agent_id IS NULL
+      OR source IN ('agent', 'conversation_summary', 'content_copy')
+    );
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. Que el copywriter esta escribiendo
+-- ------------------------------------------------------------
+
+ALTER TABLE public.content_posts
+  ADD COLUMN IF NOT EXISTS copy_status text NOT NULL DEFAULT 'idle';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_posts_copy_status_check') THEN
+    ALTER TABLE public.content_posts
+      ADD CONSTRAINT content_posts_copy_status_check
+      CHECK (copy_status IN ('idle', 'generating', 'failed'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.content_posts.copy_status IS
+  'Si el copywriter esta escribiendo esta pieza. Lo lee el kanban y el editor para mostrarlo y refrescarse solos (E6).';
+
+-- ------------------------------------------------------------
+-- 3. Un copywriter por workspace
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.seed_copywriter_agent()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  -- Apagado y sin prompt propio: la voz de marca se carga desde la pantalla.
+  -- Nace pudiendo correr a mano; producir el copy solo al aprobar una idea es
+  -- un interruptor aparte, que arranca apagado.
+  INSERT INTO public.agents (workspace_id, name, type, is_enabled, system_prompt)
+  VALUES (
+    NEW.id,
+    'Copywriter de contenido',
+    'copywriter',
+    true,
+    ''
+  )
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS seed_copywriter_on_workspace ON public.workspaces;
+CREATE TRIGGER seed_copywriter_on_workspace
+  AFTER INSERT ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.seed_copywriter_agent();
+
+-- Los que ya existen.
+INSERT INTO public.agents (workspace_id, name, type, is_enabled, system_prompt)
+SELECT w.id, 'Copywriter de contenido', 'copywriter', true, ''
+FROM public.workspaces w
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.agents a
+  WHERE a.workspace_id = w.id AND a.type = 'copywriter' AND a.deleted_at IS NULL
+);
+
+-- Un solo copywriter por workspace: dos serian dos voces distintas para la
+-- misma marca, y nadie sabria cual escribio que.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agents_copywriter_por_workspace
+  ON public.agents (workspace_id)
+  WHERE type = 'copywriter' AND deleted_at IS NULL;

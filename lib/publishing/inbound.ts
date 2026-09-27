@@ -12,7 +12,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { rowFromResult, completePostIfDone } from "./dispatcher";
+import { rowFromResult } from "./dispatcher";
+import { onPublicationSettled } from "./settled";
 import type { PublishResult } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -115,9 +116,14 @@ export function fromPostproxyEvent(payload: unknown): InboundPublishEvent | null
 /**
  * Aplica el aviso a la fila que estaba esperando.
  *
- * Solo toca filas en "publicando": si la revision ya la resolvio, el aviso
- * llega tarde y no tiene nada que corregir. Devuelve si cambio algo, para que
- * el receptor pueda contestar sin mentir.
+ * Toca las filas que todavia esperan un resultado: `scheduled`, `uploading`
+ * o `publishing`. Una ya resuelta no se pisa: el aviso llego tarde y no
+ * tiene nada que corregir. Devuelve si cambio algo, para que el receptor
+ * pueda contestar sin mentir.
+ *
+ * Que `scheduled` entre es lo que hace funcionar la programacion del lado de
+ * Zernio (D6): ahi la fila queda agendada, nadie la pone en "publicando", y
+ * el aviso de que salio es lo primero que se sabe. Antes se descartaba.
  */
 export async function settlePublication(supabase: Db, event: InboundPublishEvent): Promise<boolean> {
   const { data: row } = await supabase
@@ -128,7 +134,8 @@ export async function settlePublication(supabase: Db, event: InboundPublishEvent
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (!row || row.status !== "publishing") return false;
+  const esperando = ["scheduled", "uploading", "publishing"];
+  if (!row || !row.status || !esperando.includes(row.status)) return false;
 
   const { error } = await supabase
     .from("social_posts")
@@ -136,15 +143,15 @@ export async function settlePublication(supabase: Db, event: InboundPublishEvent
     .eq("id", row.id)
     // La misma guarda que al publicar: si otra cosa la resolvio en el medio,
     // este update no pisa nada.
-    .eq("status", "publishing");
+    .eq("status", row.status);
 
   if (error) {
     console.error("[publishing] no pude aplicar el aviso:", error.message);
     return false;
   }
 
-  if (event.result.status === "published") {
-    await completePostIfDone(supabase, row.content_post_id);
-  }
+  // El mismo cierre que los otros dos caminos: completa el postId de la
+  // automatizacion, recalcula la pieza y avisa si fallo (A6, A13).
+  await onPublicationSettled(supabase, row.id);
   return true;
 }

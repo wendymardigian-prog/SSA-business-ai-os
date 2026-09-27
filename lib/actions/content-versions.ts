@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
+import { writeVersion } from "@/lib/content/save-version";
 import {
   nextVersionNumber,
   versionReasonFor,
@@ -36,63 +37,24 @@ export async function saveVersion(input: {
   context: SaveContext;
   authorKind?: "human" | "ai" | "system";
 }): Promise<VersionResult<{ saved: boolean; versionNo?: number }>> {
-  const reason = versionReasonFor(input.context);
-  if (!reason) return { ok: true, data: { saved: false } };
-
-  const { workspace, user, supabase } = await getWorkspace();
-
-  const { data: post } = await supabase
-    .from("content_posts")
-    .select("id, title, format, copy, caption, networks, media, current_version")
-    .eq("id", input.postId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  if (!post) return { ok: false, error: "No encontre esa pieza" };
-
-  const snapshot: PostSnapshot = {
-    title: post.title,
-    format: post.format,
-    copy: (post.copy ?? {}) as Record<string, unknown>,
-    caption: post.caption,
-    networks: (Array.isArray(post.networks) ? post.networks : []) as unknown[],
-    media: (Array.isArray(post.media) ? post.media : []) as unknown[],
-  };
-
-  const versionNo = nextVersionNumber(post.current_version ?? 0);
+  const { workspace, user } = await getWorkspace();
   const service = await createServiceClient();
 
-  const { error } = await service.from("content_post_versions").insert({
-    workspace_id: workspace.id,
-    post_id: post.id,
-    version_no: versionNo,
-    snapshot: snapshot as never,
-    author_kind: input.authorKind ?? "human",
-    author_id: input.authorKind === "ai" ? null : user.id,
-    reason,
+  const result = await writeVersion(service, {
+    postId: input.postId,
+    workspaceId: workspace.id,
+    context: input.context,
+    authorKind: input.authorKind,
+    authorId: user.id,
   });
 
-  if (error) {
-    console.error("[content] no pude guardar la version:", error.message);
-    return { ok: false, error: "No pude guardar la version" };
-  }
-
-  await service.from("content_posts").update({ current_version: versionNo }).eq("id", post.id);
-
-  // El recorte va despues de guardar: perder la version nueva por limpiar
-  // seria al reves de lo que se quiere.
-  const { data: all } = await service
-    .from("content_post_versions")
-    .select("id, version_no")
-    .eq("post_id", post.id);
-
-  const extra = versionsToPrune(all ?? []);
-  if (extra.length > 0) {
-    await service.from("content_post_versions").delete().in("id", extra);
-  }
+  if (!result.ok) return result;
 
   revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { saved: true, versionNo } };
+  return {
+    ok: true,
+    data: result.saved ? { saved: true, versionNo: result.versionNo } : { saved: false },
+  };
 }
 
 /**

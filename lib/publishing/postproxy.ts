@@ -29,6 +29,24 @@ function bodyFor(input: PublishInput): string {
   return input.text.trim() ? `${title}\n\n${input.text}` : title;
 }
 
+/**
+ * El perfil de Postproxy con el que se publica.
+ *
+ * Sale del `account_ref` del publicador `postproxy`, que se guarda al probar
+ * la clave. Sin el no se publica: mandar cualquier otra cosa hace que
+ * Postproxy acepte el pedido y no publique en ningun lado.
+ */
+function requireProfile(input: PublishInput): string {
+  const ref = input.accountRef?.trim();
+  if (!ref) {
+    throw new PublishError(
+      "Falta el perfil de YouTube en Postproxy. Volve a guardar la clave en Ajustes -> Integraciones.",
+      "permanent",
+    );
+  }
+  return ref;
+}
+
 function toPublishError(error: unknown): PublishError {
   if (error instanceof PostproxyError) {
     return new PublishError(error.message, error.temporary ? "temporary" : "permanent", error.status);
@@ -43,7 +61,17 @@ function toResult(post: { id: string; platforms?: unknown }, platform: string): 
   const outcome = platformOutcome(post as never, platform);
 
   if (outcome.status === "published") {
-    return { status: "published", ref: post.id, externalId: post.id };
+    // `post.id` es el pedido en Postproxy, no el video: sirve para preguntar
+    // el estado (`ref`), no como id externo (A11).
+    return {
+      status: "published",
+      ref: post.id,
+      externalId: outcome.externalId,
+      externalUrl: outcome.externalUrl,
+      ...(outcome.externalId
+        ? {}
+        : { warning: "Postproxy no informo el id del video: el link queda vacio." }),
+    };
   }
   if (outcome.status === "failed") {
     return { status: "failed", ref: post.id, error: outcome.error, errorKind: "permanent" };
@@ -64,8 +92,9 @@ export const postproxyPublisher: Publisher = {
       const post = await createPost({
         apiKey: credentials.token,
         body: bodyFor(input),
-        // El perfil de Postproxy, o el nombre de la plataforma si no hay uno.
-        profiles: [input.accountRef ?? "youtube"],
+        // El perfil DE POSTPROXY. Antes llegaba el id del canal de YouTube
+        // (el `external_id` de la cuenta) y Postproxy no lo reconocia (A11).
+        profiles: [requireProfile(input)],
         media: input.mediaUrls,
         fetchImpl,
       });

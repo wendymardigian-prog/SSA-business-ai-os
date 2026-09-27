@@ -15,6 +15,7 @@ const context = (over: Partial<ScheduleContext> = {}): ScheduleContext => ({
   postStatus: "approved",
   perms: { publish: true },
   connected: ["instagram", "tiktok", "youtube"],
+  defaultPublishers: { instagram: "zernio", tiktok: "zernio", youtube: "youtube_api" },
   existing: [],
   now: NOW,
   ...over,
@@ -30,7 +31,7 @@ describe("programar una red (F25)", () => {
     expect(canScheduleNetwork(network("instagram"), context())).toEqual({
       ok: true,
       at: inMinutes(60),
-      publisher: null,
+      publisher: "zernio",
     });
   });
 
@@ -44,6 +45,53 @@ describe("programar una red (F25)", () => {
     const result = canScheduleNetwork(network("instagram"), context({ postStatus: "draft" }));
 
     expect(result).toEqual({ ok: false, error: expect.stringContaining("aprobada") });
+  });
+
+  it("la red manda su publicador por encima del de la cuenta", () => {
+    const result = canScheduleNetwork(
+      { ...network("youtube"), publisher: "postproxy" },
+      context(),
+    );
+
+    expect(result).toEqual({ ok: true, at: inMinutes(60), publisher: "postproxy" });
+  });
+
+  it("sin publicador en la red ni en la cuenta, no se programa (A1)", () => {
+    // Sin esto la fila llega al despachador con el publicador vacio y queda
+    // fallida para siempre, sin que nadie se entere.
+    const result = canScheduleNetwork(
+      network("instagram"),
+      context({ defaultPublishers: { instagram: null } }),
+    );
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("Integraciones") });
+  });
+
+  it("en modo now sale en este momento, sin pedir anticipacion (A3)", () => {
+    // "Publicar ahora" ponia la hora actual y despues la rechazaba por
+    // "falta muy poco": era inalcanzable.
+    const result = canScheduleNetwork(
+      network("instagram", null),
+      context({ mode: "now" }),
+    );
+
+    expect(result).toEqual({ ok: true, at: NOW.toISOString(), publisher: "zernio" });
+  });
+
+  it("en modo now una fecha vieja tampoco frena nada", () => {
+    const result = canScheduleNetwork(
+      network("instagram", inMinutes(-600)),
+      context({ mode: "now" }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("en modo now igual se piden permiso, aprobacion y cuenta", () => {
+    expect(canScheduleNetwork(network("linkedin"), context({ mode: "now" })).ok).toBe(false);
+    expect(
+      canScheduleNetwork(network("instagram"), context({ mode: "now", perms: { publish: false } })).ok,
+    ).toBe(false);
   });
 
   it("una red sin cuenta conectada dice donde conectarla", () => {

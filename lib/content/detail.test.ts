@@ -79,9 +79,8 @@ describe("una fila por red (F36)", () => {
 describe("los botones del detalle (F36)", () => {
   const labels = (actions: ReturnType<typeof detailActions>) => actions.map((a) => a.action);
 
-  it("el autor de una en produccion puede editar y mandar a revision", () => {
+  it("el autor de una en produccion la puede mandar a revision (editar vive en la barra, C16)", () => {
     expect(labels(detailActions({ perms: perms(), status: "in_production", publications: [] }))).toEqual([
-      "edit",
       "request_review",
     ]);
   });

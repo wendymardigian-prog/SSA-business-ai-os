@@ -19,14 +19,14 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, SocialPostStatus } from "@/lib/types/database";
+import type { Database, Json, SocialPostStatus } from "@/lib/types/database";
 import { PublishError, classifyPublishError, humanizePublishError } from "@/lib/jobs/errors";
-import { CONTENT_PUBLISH_CHECK_JOB, CONTENT_PUBLISH_JOB } from "@/lib/content/jobs";
+import { CONTENT_PUBLISH_CHECK_JOB, jobTypeForPublisher } from "@/lib/content/jobs";
 import { aggregatePostStatus } from "@/lib/content/status";
 import { notifyPublishFailure } from "@/lib/notifications/content";
 import { liveMedia, type MediaEntry } from "@/lib/content/media";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
-import { completePostIds } from "./post-ids";
+import { onPublicationSettled, refreshPostStatus } from "./settled";
 import { scheduleJob } from "@/lib/scheduler";
 import { getPublisher, UnknownPublisherError } from "./registry";
 import type { PublishInput, PublishResult, PublishCredentials } from "./types";
@@ -78,6 +78,7 @@ export interface PublicationRow {
   last_error_kind: "temporary" | "permanent" | null;
   actual_visibility: string | null;
   warning: string | null;
+  publish_progress: Json | null;
 }
 
 /**
@@ -102,6 +103,8 @@ export function rowFromResult(
       last_error_kind: null,
       actual_visibility: result.actualVisibility ?? null,
       warning: result.warning ?? null,
+      // Publicada: lo que ya salio dejo de importar.
+      publish_progress: null,
     };
   }
 
@@ -111,6 +114,7 @@ export function rowFromResult(
       publisher_ref: result.ref ?? null,
       last_error: null,
       last_error_kind: null,
+      ...(result.progress ? { publish_progress: result.progress as Json } : {}),
     };
   }
 
@@ -118,6 +122,8 @@ export function rowFromResult(
     status: "failed",
     last_error: result.error ?? "La red rechazo la publicacion",
     last_error_kind: result.errorKind ?? "permanent",
+    // Lo que ya salio se conserva: el reintento tiene que saberlo.
+    ...(result.progress ? { publish_progress: result.progress as Json } : {}),
   };
 }
 
@@ -204,7 +210,7 @@ export async function runPublication(
   const { data: row } = await supabase
     .from("social_posts")
     .select(
-      "id, workspace_id, content_post_id, platform, publisher, attempts, requested_visibility, social_account_id",
+      "id, workspace_id, content_post_id, platform, publisher, attempts, requested_visibility, social_account_id, publish_progress",
     )
     .eq("id", socialPostId)
     .maybeSingle();
@@ -215,7 +221,7 @@ export async function runPublication(
 
   // La cuenta, aparte: el id externo es con que cuenta se publica, y sin el
   // ningun publicador sabe a donde mandar el post.
-  const accountRef = await accountRefOf(supabase, row.social_account_id);
+  const accountRef = await accountRefOf(supabase, row.social_account_id, row.publisher ?? "");
 
   const attempts = (row.attempts ?? 0) + 1;
   await supabase.from("social_posts").update({ attempts }).eq("id", socialPostId);
@@ -239,25 +245,20 @@ export async function runPublication(
       // El webhook puede no llegar nunca (Postproxy no documenta ninguno).
       // La revision es la red de seguridad, no el camino principal.
       await scheduleRecheck(supabase, socialPostId, row.workspace_id, 0);
+      // El estado de la pieza tambien cambia cuando una red arranca: sin
+      // esto el tablero sigue diciendo "programado" (A13).
+      await onPublicationSettled(supabase, socialPostId);
       return { kind: "processing" };
     }
+
+    // Publicada o fallida, el cierre es el mismo para los tres caminos:
+    // completar la automatizacion, recalcular la pieza y avisar (A6, A13).
+    await onPublicationSettled(supabase, socialPostId);
 
     if (result.status === "failed") {
       return { kind: "failed", detail: result.error ?? undefined };
     }
 
-    // Le completa el id a la automatizacion que lo esperaba (F39). Va
-    // despues de dar por publicada la fila: que falle no puede deshacer una
-    // publicacion que ya salio.
-    await completePostIds(supabase, {
-      workspaceId: row.workspace_id,
-      platform: row.platform,
-      channelId: await channelIdFor(supabase, row.social_account_id),
-      cta: input.options.cta as never,
-      externalPostId: result.externalId ?? null,
-    });
-
-    await completePostIfDone(supabase, row.content_post_id);
     return { kind: "published", detail: result.warning ?? undefined };
   } catch (err) {
     const error =
@@ -272,35 +273,47 @@ export async function runPublication(
       .eq("id", socialPostId);
 
     if (decision.action === "retry") {
-      await schedulePublish(supabase, socialPostId, row.workspace_id, decision.delayMs);
+      await schedulePublish(supabase, socialPostId, row.workspace_id, decision.delayMs, row.publisher);
       return { kind: "retry", detail: `en ${Math.round(decision.delayMs / 60_000)} min` };
     }
 
     await notifyPublishFailed(supabase, row, error);
+    await refreshPostStatus(supabase, row.content_post_id);
     return { kind: "failed", detail: error.message };
   }
 }
 
-/** El canal de la bandeja de esa cuenta, si conversa. */
-async function channelIdFor(supabase: Db, socialAccountId: string | null): Promise<string | null> {
+/**
+ * Con que cuenta publica ESTE publicador (A11).
+ *
+ * Cada camino tiene su propia identidad para la misma red: en YouTube, la
+ * API oficial usa el id del canal y Postproxy usa su propio perfil. Antes se
+ * mandaba el mismo `external_id` a los dos, asi que Postproxy recibia el id
+ * del canal de YouTube y no publicaba en ningun lado.
+ */
+async function accountRefOf(
+  supabase: Db,
+  socialAccountId: string | null,
+  publisherId: string,
+): Promise<string | null> {
   if (!socialAccountId) return null;
   const { data } = await supabase
     .from("social_accounts")
-    .select("channel_id")
+    .select("external_id, publishers")
     .eq("id", socialAccountId)
     .maybeSingle();
-  return data?.channel_id ?? null;
-}
 
-/** El id de la cuenta en la red. */
-async function accountRefOf(supabase: Db, socialAccountId: string | null): Promise<string | null> {
-  if (!socialAccountId) return null;
-  const { data } = await supabase
-    .from("social_accounts")
-    .select("external_id")
-    .eq("id", socialAccountId)
-    .maybeSingle();
-  return data?.external_id ?? null;
+  if (!data) return null;
+
+  const publishers = (Array.isArray(data.publishers) ? data.publishers : []) as Array<{
+    publisher?: string;
+    account_ref?: string | null;
+  }>;
+  const own = publishers.find((p) => p.publisher === publisherId)?.account_ref ?? null;
+
+  // El `external_id` es el respaldo: para las redes de un solo camino es
+  // exactamente lo mismo.
+  return own ?? data.external_id ?? null;
 }
 
 /**
@@ -311,13 +324,14 @@ async function accountRefOf(supabase: Db, socialAccountId: string | null): Promi
  * y si no, lo base. Que el editor muestre una cosa y se publique otra seria
  * el peor error posible de este modulo.
  */
-async function buildInput(
+export async function buildInput(
   supabase: Db,
   row: {
     content_post_id: string | null;
     platform: string;
     requested_visibility: string | null;
     accountRef: string | null;
+    publish_progress?: unknown;
   },
   deps: PublishDeps,
 ): Promise<PublishInput> {
@@ -350,6 +364,10 @@ async function buildInput(
     title: network.youtube_title ?? post?.title ?? null,
     media: live,
     mediaUrls: urls,
+    progress:
+      row.publish_progress && typeof row.publish_progress === "object"
+        ? (row.publish_progress as Record<string, unknown>)
+        : undefined,
     options: {
       ...(network.options ?? {}),
       ...(row.requested_visibility ? { visibility: row.requested_visibility } : {}),
@@ -362,11 +380,19 @@ async function buildInput(
   };
 }
 
-async function schedulePublish(supabase: Db, socialPostId: string, workspaceId: string, delayMs: number) {
+export async function schedulePublish(
+  supabase: Db,
+  socialPostId: string,
+  workspaceId: string,
+  delayMs: number,
+  publisher?: string | null,
+) {
   try {
     await scheduleJob(
       supabase,
-      CONTENT_PUBLISH_JOB,
+      // Una subida larga va a su propia ruta, con su propio limite de
+      // tiempo, para no frenar el resto de la cola (A17).
+      jobTypeForPublisher(publisher),
       { socialPostId, workspaceId },
       new Date(Date.now() + delayMs),
     );
@@ -451,6 +477,7 @@ export async function runPublicationCheck(
             last_error_kind: "permanent",
           })
           .eq("id", row.id);
+        await onPublicationSettled(supabase, row.id);
         return { kind: "failed", detail: "sin confirmacion" };
       }
       await scheduleRecheck(supabase, row.id, row.workspace_id, params.checks);
@@ -458,10 +485,9 @@ export async function runPublicationCheck(
     }
 
     await supabase.from("social_posts").update(rowFromResult(result, new Date())).eq("id", row.id);
-    if (result.status === "published") {
-      await completePostIfDone(supabase, row.content_post_id);
-      return { kind: "published" };
-    }
+    await onPublicationSettled(supabase, row.id);
+
+    if (result.status === "published") return { kind: "published" };
     return { kind: "failed", detail: result.error ?? undefined };
   } catch (err) {
     const error = classifyPublishError(err);
@@ -474,26 +500,6 @@ export async function runPublicationCheck(
     }
     return { kind: "failed", detail: error.message };
   }
-}
-
-/**
- * Marca la pieza como publicada si ya salieron todas sus redes.
- *
- * Tambien completa `triggers.config.postIds` de las automatizaciones por
- * comentario, que es lo que hace que un flow escuche el post recien salido
- * sin que nadie tenga que pegar el id a mano (F39).
- */
-export async function completePostIfDone(supabase: Db, contentPostId: string | null) {
-  if (!contentPostId) return;
-
-  const { data: rows } = await supabase
-    .from("social_posts")
-    .select("status")
-    .eq("content_post_id", contentPostId)
-    .is("deleted_at", null);
-
-  const status = aggregatePostStatus(rows ?? []);
-  await supabase.from("content_posts").update({ status }).eq("id", contentPostId);
 }
 
 /** Aviso de que una publicacion no salio (F37). */

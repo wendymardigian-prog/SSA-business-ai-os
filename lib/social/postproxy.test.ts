@@ -139,6 +139,31 @@ describe("como quedo cada red", () => {
     expect(platformOutcome(post([{ platform: "youtube", status: "published" }]), "youtube")).toEqual({
       status: "published",
       error: null,
+      externalId: null,
+      externalUrl: null,
+    });
+  });
+
+  it("A11 · el id y el link salen del VIDEO, no del pedido de Postproxy", () => {
+    // `post.id` es el pedido dentro de Postproxy: guardarlo como id externo
+    // dejaba el link roto y la automatizacion escuchando algo que no existe.
+    expect(
+      platformOutcome(
+        post([
+          {
+            platform: "youtube",
+            status: "published",
+            platform_post_id: "yt-abc",
+            platform_post_url: "https://youtu.be/yt-abc",
+          },
+        ]),
+        "youtube",
+      ),
+    ).toEqual({
+      status: "published",
+      error: null,
+      externalId: "yt-abc",
+      externalUrl: "https://youtu.be/yt-abc",
     });
   });
 
@@ -148,7 +173,12 @@ describe("como quedo cada red", () => {
         post([{ platform: "youtube", status: "error", error: "El video supera la duracion" }]),
         "youtube",
       ),
-    ).toEqual({ status: "failed", error: "El video supera la duracion" });
+    ).toEqual({
+      status: "failed",
+      error: "El video supera la duracion",
+      externalId: null,
+      externalUrl: null,
+    });
   });
 
   it("todavia sin resultado es 'en curso', no 'fallo'", () => {

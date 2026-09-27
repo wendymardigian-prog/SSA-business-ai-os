@@ -23,6 +23,8 @@ export const NOTIFICATION_TYPES = [
   "content_review_requested",
   "content_returned",
   "content_publish_failed",
+  "content_copy_ready",
+  "content_copy_failed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -147,6 +149,23 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   content_publish_failed: {
     type: "content_publish_failed",
     label: "Una publicacion no salio",
+    tone: "warning",
+    entity: "content_post",
+  },
+
+  /**
+   * El copywriter escribe en segundo plano (E6): quien lo pidio puede haberse
+   * ido a otra pantalla, asi que el aviso es como se entera de que ya esta.
+   */
+  content_copy_ready: {
+    type: "content_copy_ready",
+    label: "El copywriter termino",
+    tone: "info",
+    entity: "content_post",
+  },
+  content_copy_failed: {
+    type: "content_copy_failed",
+    label: "El copywriter no pudo escribir",
     tone: "warning",
     entity: "content_post",
   },

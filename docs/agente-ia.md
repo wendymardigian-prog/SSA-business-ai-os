@@ -589,3 +589,75 @@ teléfono (o Chrome device toolbar a 390 px):
 - **El backlog de 578 conversaciones inactivas** sigue abierto a propósito.
   Cerrarlas a mano las resume una por una (una llamada al modelo cada una):
   conviene hacerlo de a pocas o con un script puntual.
+
+## El copywriter de contenido (27/9/2026)
+
+Un **segundo agente**, uno por workspace, que escribe el guion y los captions
+de cada pieza. No conversa, no publica y no cambia estados: lo único que toca
+es el borrador, y siempre deja una versión firmada.
+
+Reemplaza la generación de copy de la Etapa 2, que era una llamada anónima:
+sin configuración propia, sin voz guardada y sin rastro de cuánto costaba.
+
+### Dónde se configura
+
+Agentes → Copywriter de contenido. Tiene su propio formulario, aparte del
+agente de conversación: nada de lo que necesita —la voz, los ejemplos, las
+frases prohibidas, las etiquetas de conocimiento— significa algo para un
+agente que atiende leads.
+
+| Sección | Qué hay |
+|---|---|
+| Voz de la marca | Cómo escribís, para quién, ejemplos de posts que funcionaron. Los ejemplos son lo que más mueve el resultado. |
+| Límites | Frases prohibidas, promesas que no se pueden hacer, largo máximo del caption. Si el copy los pasa por alto, **se guarda igual con el aviso al lado**: tirarlo costaría otra llamada por una frase. |
+| Qué sabe del negocio | Las etiquetas de la base de conocimiento que puede leer. |
+| Cuándo escribe | El interruptor "producir el copy al aprobar una idea", **apagado por defecto**. |
+| Topes propios | Por día y por mes, además de los del negocio. Se respeta el más bajo. |
+
+La voz que estaba en `workspaces.content_copy_settings` se sigue leyendo como
+respaldo y no se borra: quien ya la había cargado no tiene que reescribirla.
+
+### Cómo trabaja
+
+Primero junta el contexto **de forma determinista**, y cada lectura queda como
+un paso del run:
+
+1. La idea de la que salió la pieza.
+2. Los 5 posts con mejor engagement a 7 días de **esa red y ese formato**, de
+   los últimos 90 días. A 7 días y no el total: uno de hace tres meses tuvo
+   tres meses para juntar likes.
+3. Las palabras clave que disparan una automatización activa. Sin esa lista,
+   el modelo inventa un "escribime SISTEMA" que no responde nadie y el lead se
+   queda esperando.
+4. Los fragmentos de conocimiento de sus etiquetas.
+5. Las indicaciones de la persona, si regeneró con alguna.
+
+Después hace **una** llamada con salida estructurada, con el mismo esquema y
+la misma validación de F29.
+
+### Cuándo corre
+
+- "✦ Aprobar y producir copy" en la idea.
+- Aprobar una idea con el interruptor prendido.
+- "Generar guion y caption con IA al crear" en el modal de nuevo post.
+- "✦ Generar guion y caption" o regenerar desde el editor, con o sin
+  indicaciones.
+
+Siempre en un job: el botón contesta al instante y la pieza queda diciendo
+"el copywriter está escribiendo" (`content_posts.copy_status`) hasta que
+termina. Al terminar o fallar, avisa.
+
+### Costos
+
+Cada ejecución es un `agent_run` firmado por el agente, con su costo, visible
+en sus pestañas Runs y Costos y sumado al gasto del negocio. Los topes del
+agente **y** los del workspace se chequean antes de llamar.
+
+> Ojo con esto al mirar números viejos: hasta la migración 00094, `agent_runs`
+> tenía dos CHECK sobre `source` y el viejo rechazaba `content_copy`. Los runs
+> de generación de copy **no se registraban** contra la base real, así que su
+> costo nunca contó para ningún tope.
+
+### Permisos
+
+`content.ai` para correrlo, `agents.edit` para configurarlo.

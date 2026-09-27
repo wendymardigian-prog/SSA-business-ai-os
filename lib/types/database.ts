@@ -63,7 +63,18 @@ export type MaterialStatus = "pendiente" | "grabado" | "editado" | "listo";
 /** Quien escribio el copy (00083). */
 export type CopySource = "manual" | "ai" | "mixed";
 /** Estado de una publicacion en una red (00083). Null en las externas. */
-export type SocialPostStatus = "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+/**
+ * `uploading`: la media se esta subiendo al proveedor y todavia no hay nada
+ * agendado alla (D5). No es `publishing`: nadie esta publicando, y el
+ * barrido de publicaciones trabadas no tiene que tocarla.
+ */
+export type SocialPostStatus =
+  | "uploading"
+  | "scheduled"
+  | "publishing"
+  | "published"
+  | "failed"
+  | "cancelled";
 /** Tipo de media de una publicacion (00083). */
 export type SocialPostMediaType =
   | "image" | "carousel" | "reel" | "story" | "video" | "short" | "text" | "document";
@@ -2808,6 +2819,8 @@ export interface Database {
           media: Json;
           material_status: MaterialStatus;
           copy_source: CopySource;
+          /** Si el copywriter esta escribiendo esta pieza (E6). */
+          copy_status: "idle" | "generating" | "failed";
           ai_unreviewed: boolean;
           status: ContentPostStatus;
           current_version: number;
@@ -2834,6 +2847,7 @@ export interface Database {
           media?: Json;
           material_status?: MaterialStatus;
           copy_source?: CopySource;
+          copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
           status?: ContentPostStatus;
           position?: number;
@@ -2850,6 +2864,7 @@ export interface Database {
           media?: Json;
           material_status?: MaterialStatus;
           copy_source?: CopySource;
+          copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
           status?: ContentPostStatus;
           current_version?: number;
@@ -2900,6 +2915,7 @@ export interface Database {
           platform: SocialPlatform;
           publisher: string | null;
           publisher_ref: string | null;
+          publish_progress: Json | null;
           origin: "system" | "external";
           status: SocialPostStatus | null;
           scheduled_at: string | null;
@@ -2934,6 +2950,7 @@ export interface Database {
           platform: SocialPlatform;
           publisher?: string | null;
           publisher_ref?: string | null;
+          publish_progress?: Json | null;
           origin?: "system" | "external";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
@@ -2949,6 +2966,7 @@ export interface Database {
         Update: {
           publisher?: string | null;
           publisher_ref?: string | null;
+          publish_progress?: Json | null;
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;
@@ -3256,6 +3274,39 @@ export interface Database {
         Relationships: [];
       };
 
+      provider_media: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          publisher: string;
+          storage_path: string;
+          size_bytes: number | null;
+          provider_url: string;
+          uploaded_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          publisher: string;
+          storage_path: string;
+          size_bytes?: number | null;
+          provider_url: string;
+          uploaded_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          publisher?: string;
+          storage_path?: string;
+          size_bytes?: number | null;
+          provider_url?: string;
+          uploaded_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       social_accounts: {
         Row: {
           id: string;

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
+import type { DashboardOption } from "@/lib/dashboards/available";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { dashboardFiltersToParams, activeFilterChips, type DashboardFilters } from "@/lib/dashboards/url-state";
 import { compare, firstResponseTone, formatDuration } from "@/lib/dashboards/cards";
@@ -25,6 +26,7 @@ export function ChatDashboard({
   members,
   isAdmin,
   timezone,
+  dashboards,
 }: {
   data: ChatDashboardData;
   filters: DashboardFilters;
@@ -32,6 +34,8 @@ export function ChatDashboard({
   members: Array<{ id: string; label: string; role: string }>;
   isAdmin: boolean;
   timezone: string;
+  /** Los dashboards que puede abrir quien esta mirando (B3). */
+  dashboards: DashboardOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -62,7 +66,7 @@ export function ChatDashboard({
       <PageHeader
         title="Dashboards"
         tooltip={TOOLTIP}
-        left={<DashboardSwitcher />}
+        left={<DashboardSwitcher options={dashboards} />}
         right={
           <div className="flex items-center gap-2">
             <select

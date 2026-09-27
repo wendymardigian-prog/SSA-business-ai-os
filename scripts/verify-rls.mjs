@@ -1093,6 +1093,41 @@ try {
       check(!!error, "no hay dos filas de metricas del mismo post y dia"); }
   }
 
+  console.log("\n— Correcciones: la media que ya vive en el proveedor (00093) —");
+  { // `provider_media` recuerda que archivo nuestro corresponde a que URL de
+    // Zernio. No hay nada secreto adentro, pero una fila de otro workspace
+    // apuntaria a media que no es suya.
+    const otro = await makeUser("otro-provider-media");
+    const { data: wsOtro } = await svc.from("workspaces")
+      .insert({ name: "zz-test-provider-media-ws", slug: `zz-test-pm-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtro.id, user_id: otro.id, role: "owner" });
+
+    const { data: fila } = await svc.from("provider_media").insert({
+      workspace_id: ws.id,
+      publisher: "zernio",
+      storage_path: `${ws.id}/zz-test/video.mp4`,
+      size_bytes: 1024,
+      provider_url: "https://cdn.zernio.test/zz-test.mp4",
+    }).select("id").single();
+
+    check((await sees(admin, "provider_media", fila.id)).seen, "un Admin ve la media subida de su workspace");
+    check((await sees(member, "provider_media", fila.id)).seen, "un Member tambien: no hay nada secreto y ayuda a diagnosticar");
+    check(!(await sees(otro, "provider_media", fila.id)).seen, "otro workspace NO la ve");
+
+    { const { error } = await admin.client.from("provider_media").insert({
+        workspace_id: ws.id, publisher: "zernio",
+        storage_path: "zz-test/a-mano.mp4", provider_url: "https://cdn.zernio.test/a-mano.mp4",
+      });
+      check(!!error, "ni un Admin la escribe a mano: la sube el job"); }
+
+    { const { error } = await svc.from("provider_media").insert({
+        workspace_id: ws.id, publisher: "zernio",
+        storage_path: `${ws.id}/zz-test/video.mp4`,
+        provider_url: "https://cdn.zernio.test/otra.mp4",
+      });
+      check(!!error, "el mismo archivo no se anota dos veces para el mismo proveedor"); }
+  }
+
   console.log("\n— Etapa 2: canal de email y adjuntos (00087) —");
   { // El email es un canal como cualquier otro: lo que se prueba es que su
     // bandeja respete las mismas reglas, y que los adjuntos no crucen

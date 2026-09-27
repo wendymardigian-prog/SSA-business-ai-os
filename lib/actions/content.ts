@@ -1,11 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { validateIdea, draftFromIdea, type IdeaInput } from "@/lib/content/ideas";
 import { evaluateDrop } from "@/lib/content/board";
+import { plannedDateChanges } from "@/lib/content/reschedule";
+import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
+import { defaultOptionsFor } from "@/lib/content/network-options";
+import { enqueueCopy } from "@/lib/content/copy-queue";
+import { readCopywriterConfig } from "@/lib/content/copywriter";
+import { createServiceClient } from "@/lib/supabase/server";
+import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -29,18 +35,24 @@ export type ContentActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
   | { ok: false; error: string };
 
-/** Lo que puede hacer quien esta llamando. En el bloque 9 pasa a permisos. */
+/**
+ * Lo que puede hacer quien esta llamando.
+ *
+ * Por permiso y no por cargo (A20): un rol personalizado con
+ * `content.publish` programa aunque sea Member, y un admin al que se lo
+ * sacaron, no.
+ */
 async function contentContext() {
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const admin = isAdminRole(role);
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const admin = can("content.approve") || can("content.publish");
   return {
     workspace,
     user,
     supabase,
     perms: (isAuthor: boolean): ContentPermissions => ({
       create: true,
-      approve: admin,
-      publish: admin,
+      approve: can("content.approve"),
+      publish: can("content.publish"),
       isAuthor,
     }),
     isAdmin: admin,
@@ -86,9 +98,17 @@ export async function createIdea(input: IdeaInput): Promise<ContentActionResult<
   return { ok: true, data: { id: data.id } };
 }
 
+/**
+ * Aprueba una idea y crea el post en borrador.
+ *
+ * `produceCopy` es el boton "✦ Aprobar y producir copy": ademas le pide al
+ * copywriter que escriba. Antes los dos botones hacian exactamente lo mismo
+ * y el ✦ era solo un icono (C1).
+ */
 export async function approveIdea(
   ideaId: string,
-): Promise<ContentActionResult<{ postId: string }>> {
+  options: { produceCopy?: boolean } = {},
+): Promise<ContentActionResult<{ postId: string; copyQueued: boolean; copyError?: string }>> {
   const { workspace, user, supabase, isAdmin } = await contentContext();
   if (!isAdmin) return { ok: false, error: "Aprobar ideas es de Owner y Admin" };
 
@@ -128,8 +148,94 @@ export async function approveIdea(
     performedBy: user.id,
   });
 
+  // El copy lo pide el boton, o el interruptor "producir al aprobar" que se
+  // configura en el agente (E7). Que no se pueda escribir no deshace la
+  // aprobacion: la idea ya paso a ser un post.
+  let copyQueued = false;
+  let copyError: string | undefined;
+
+  const service = await createServiceClient();
+  const wantsCopy = options.produceCopy === true || (await autoCopyOnApprove(supabase, workspace.id));
+
+  if (wantsCopy) {
+    const queued = await enqueueCopy(service, {
+      workspaceId: workspace.id,
+      postId: postId as string,
+    });
+    copyQueued = queued.ok;
+    if (!queued.ok) copyError = queued.error;
+  }
+
   revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { postId: postId as string } };
+  return {
+    ok: true,
+    data: { postId: postId as string, copyQueued, ...(copyError ? { copyError } : {}) },
+  };
+}
+
+/** Si el copywriter tiene prendido "producir el copy al aprobar una idea". */
+async function autoCopyOnApprove(
+  supabase: Awaited<ReturnType<typeof contentContext>>["supabase"],
+  workspaceId: string,
+): Promise<boolean> {
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("system_prompt, config, knowledge_tags")
+    .eq("workspace_id", workspaceId)
+    .eq("type", "copywriter")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  return readCopywriterConfig(agent, null).autoOnApprove;
+}
+
+/**
+ * Edita una idea que todavia esta en la columna Ideas (C3).
+ *
+ * Solo mientras es `nueva`: una vez aprobada, lo que hay que editar es el
+ * post, y cambiar la idea de atras seria reescribir de donde salio algo que
+ * ya existe.
+ */
+export async function updateIdea(
+  ideaId: string,
+  input: IdeaInput,
+): Promise<ContentActionResult> {
+  const checked = validateIdea(input);
+  if (!checked.ok) return checked;
+
+  const { workspace, user, supabase } = await contentContext();
+
+  const { data: idea } = await supabase
+    .from("content_ideas")
+    .select("id, status, created_by")
+    .eq("id", ideaId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!idea) return { ok: false, error: "No encontre esa idea" };
+  if (idea.status !== "nueva") {
+    return { ok: false, error: "Esa idea ya se decidio: lo que se edita ahora es el post." };
+  }
+
+  const { error } = await supabase
+    .from("content_ideas")
+    .update(checked.idea)
+    .eq("id", ideaId);
+
+  if (error) {
+    console.error("[content] no pude editar la idea:", error.message);
+    return { ok: false, error: "No pude guardar los cambios" };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: "update",
+    metadata: { kind: "content_idea_updated", idea_id: ideaId },
+    performedBy: user.id,
+  });
+
+  revalidatePath(CONTENT_PATH);
+  return { ok: true };
 }
 
 export async function discardIdea(
@@ -357,145 +463,61 @@ export async function columnForStatus(status: ContentPostStatus): Promise<BoardC
   return columnFor(status);
 }
 
-// ── Generar el copy con IA (F29) ─────────────────────────────────────────
-
-export interface GenerateCopyOutcome {
-  warnings: string[];
-  costUsd: number | null;
-}
-
 /**
- * Escribe el guion y los captions con IA.
+ * Mueve las publicaciones de las redes que ya estaban programadas y cambiaron
+ * de fecha en el editor (A5).
  *
- * Antes de llamar al modelo: permiso, pieza editable y —si ya hay algo
- * escrito— confirmacion explicita. Pisar el guion de alguien sin preguntar es
- * la clase de cosa que hace que una funcion util deje de usarse.
- *
- * Despues de generar: se guarda una version con autor IA, para que lo
- * anterior siempre se pueda recuperar.
+ * Devuelve los avisos de las que no se pudieron mover, para mostrarlos sin
+ * frenar el guardado: perder el texto que alguien acaba de escribir porque
+ * una fecha quedo muy cerca seria peor.
  */
-export async function generatePostCopy(input: {
-  postId: string;
-  /** La persona ya confirmo que quiere pisar lo escrito. */
-  confirmed?: boolean;
-}): Promise<ContentActionResult<GenerateCopyOutcome>> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) {
-    return { ok: false, error: "Generar con IA es de Owner y Admin" };
-  }
+async function applyPlannedDateChanges(
+  workspaceId: string,
+  postId: string,
+  networks: unknown[],
+): Promise<string[]> {
+  const plans = (networks as Array<{ platform?: string; planned_at?: string | null }>).map((n) => ({
+    platform: String(n.platform ?? ""),
+    plannedAt: n.planned_at ?? null,
+  }));
 
-  const { data: post } = await supabase
-    .from("content_posts")
-    .select("id, title, format, copy, caption, networks, copy_source, status, idea_id")
-    .eq("id", input.postId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  if (!post) return { ok: false, error: "No encontre esa pieza" };
-
-  if (["published", "publishing", "partially_published"].includes(post.status)) {
-    return { ok: false, error: "Esa pieza ya se publico: no tiene sentido reescribir el guion." };
-  }
-
-  const { needsConfirmation, applyGeneratedCopy } = await import("@/lib/content/ai-copy");
-  const currentCopy = (post.copy ?? {}) as { hook?: string; body?: string; cta?: string };
-
-  if (needsConfirmation(currentCopy) && !input.confirmed) {
-    return {
-      ok: false,
-      error: "Ya hay un guion escrito. Confirma que queres reemplazarlo.",
-    };
-  }
-
-  const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
-    platform?: string;
-    caption?: string | null;
-    youtube_title?: string | null;
-  }>;
-  const platforms = networks.map((n) => String(n.platform ?? "")).filter(Boolean);
-
-  // La idea de origen y la voz de marca son lo que hace que el guion suene al
-  // negocio y no a un modelo generico.
-  const [{ data: idea }, { data: ws }] = await Promise.all([
-    post.idea_id
-      ? supabase
-          .from("content_ideas")
-          .select("title, hook, angle, pillar, reference")
-          .eq("id", post.idea_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    supabase
-      .from("workspaces")
-      .select("content_copy_settings")
-      .eq("id", workspace.id)
-      .maybeSingle(),
-  ]);
-
-  const { createServiceClient } = await import("@/lib/supabase/server");
-  const { generateCopy } = await import("@/lib/ai/generate-copy");
   const service = await createServiceClient();
 
-  const result = await generateCopy(service, {
-    workspaceId: workspace.id,
-    userId: user.id,
-    postId: post.id,
-    request: {
-      idea,
-      title: post.title,
-      format: post.format,
-      platforms,
-      brand: (ws?.content_copy_settings ?? {}) as Record<string, never>,
-      existingCopy: currentCopy,
-    },
-  });
+  const { data: publications } = await service
+    .from("social_posts")
+    .select("id, platform, status, scheduled_at")
+    .eq("content_post_id", postId)
+    .is("deleted_at", null);
 
-  if (!result.ok) return { ok: false, error: result.error };
-
-  const applied = applyGeneratedCopy({
-    output: result.output,
-    platforms,
-    previousCopySource: post.copy_source,
-    hadManualCopy: Boolean(currentCopy.body?.trim()),
-    networks: networks.map((n) => ({
-      platform: String(n.platform ?? ""),
-      caption: n.caption ?? null,
-      youtube_title: n.youtube_title ?? null,
+  const decisions = plannedDateChanges(
+    plans,
+    (publications ?? []).map((p) => ({
+      platform: p.platform,
+      status: p.status,
+      scheduledAt: p.scheduled_at,
     })),
-  });
+  );
 
-  const { error } = await supabase
-    .from("content_posts")
-    .update({
-      copy: applied.copy as never,
-      caption: applied.caption,
-      networks: applied.networks as never,
-      copy_source: applied.copy_source,
-      ai_unreviewed: true,
-    })
-    .eq("id", post.id);
+  const warnings: string[] = [];
 
-  if (error) {
-    console.error("[content] genere el copy pero no pude guardarlo:", error.message);
-    return { ok: false, error: "Se genero el guion pero no pude guardarlo. Proba de nuevo." };
+  for (const decision of decisions) {
+    if (decision.kind === "skip") {
+      warnings.push(`${decision.platform}: ${decision.reason}`);
+      continue;
+    }
+
+    const row = (publications ?? []).find((p) => p.platform === decision.platform);
+    if (!row) continue;
+
+    const moved = await reschedulePublication(service, {
+      socialPostId: row.id,
+      workspaceId,
+      at: decision.at,
+    });
+    if (!moved) warnings.push(`${decision.platform}: no pude mover la publicacion.`);
   }
 
-  // La version va DESPUES de escribir: guarda lo que quedo, con autor IA.
-  const { saveVersion } = await import("@/lib/actions/content-versions");
-  await saveVersion({
-    postId: post.id,
-    context: { trigger: "ai_generation" },
-    authorKind: "ai",
-  });
-
-  await logAudit({
-    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
-    action: "update",
-    metadata: { kind: "content_copy_generated", post_id: post.id, cost_usd: result.costUsd },
-    performedBy: user.id,
-  });
-
-  revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { warnings: result.warnings, costUsd: result.costUsd } };
+  return warnings;
 }
 
 /** Guarda los campos del editor. El autoguardado llama a esto. */
@@ -508,7 +530,9 @@ export async function savePostDraft(input: {
   networks?: unknown[];
   /** Para detectar que alguien mas lo edito mientras tanto. */
   knownUpdatedAt?: string;
-}): Promise<ContentActionResult<{ updatedAt: string; staleWarning: boolean }>> {
+}): Promise<
+  ContentActionResult<{ updatedAt: string; staleWarning: boolean; rescheduleWarnings: string[] }>
+> {
   const { workspace, supabase } = await contentContext();
 
   const { data: post } = await supabase
@@ -536,7 +560,7 @@ export async function savePostDraft(input: {
   if (input.copy !== undefined) patch.ai_unreviewed = false;
 
   if (Object.keys(patch).length === 0) {
-    return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale } };
+    return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale, rescheduleWarnings: [] } };
   }
 
   const { data: updated, error } = await supabase
@@ -550,6 +574,161 @@ export async function savePostDraft(input: {
     return { ok: false, error: "No pude guardar los cambios" };
   }
 
+  // Cambiar la fecha de una red YA programada tiene que mover la publicacion
+  // de verdad (A5). Antes solo se guardaba el campo y la publicacion salia a
+  // la hora vieja: la pantalla decia una cosa y el sistema hacia otra.
+  const rescheduleWarnings = input.networks
+    ? await applyPlannedDateChanges(workspace.id, input.postId, input.networks)
+    : [];
+
   revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { updatedAt: updated.updated_at, staleWarning: stale } };
+  return {
+    ok: true,
+    data: { updatedAt: updated.updated_at, staleWarning: stale, rescheduleWarnings },
+  };
+}
+
+// ── Redistribucion y variantes (A18) ─────────────────────────────────────
+
+/**
+ * Agrega una red a una pieza que ya salio (F28).
+ *
+ * `canRedistribute` existia desde el bloque 4 y no la llamaba nadie: la
+ * pantalla no tenia por donde. Lo que decide esta ahi; aca se lee el estado,
+ * se aplica y, si el copy cambio despues de aprobar, esa red vuelve a
+ * revision en vez de salir con algo que nadie aprobo.
+ */
+export async function redistributeToNetwork(input: {
+  postId: string;
+  platform: string;
+}): Promise<ContentActionResult<{ needsReview: boolean; reason?: string }>> {
+  const { workspace, supabase } = await contentContext();
+
+  const { data: post } = await supabase
+    .from("content_posts")
+    .select("id, status, networks, approved_at, updated_at")
+    .eq("id", input.postId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!post) return { ok: false, error: "No encontre esa pieza" };
+
+  const [{ data: publications }, { data: accounts }] = await Promise.all([
+    supabase.from("social_posts").select("platform").eq("content_post_id", post.id).is("deleted_at", null),
+    supabase
+      .from("social_accounts")
+      .select("platform")
+      .eq("workspace_id", workspace.id)
+      .eq("is_active", true),
+  ]);
+
+  const decision = canRedistribute(input.platform, {
+    postStatus: post.status as ContentPostStatus,
+    publishedPlatforms: (publications ?? []).map((p) => p.platform),
+    connected: (accounts ?? []).map((a) => a.platform),
+    baseChangedSinceApproval: Boolean(
+      post.approved_at && post.updated_at && post.updated_at > post.approved_at,
+    ),
+  });
+
+  if (!decision.ok) return { ok: false, error: decision.error };
+
+  const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
+    platform?: string;
+  }>;
+  if (networks.some((n) => n.platform === input.platform)) {
+    return { ok: false, error: `Esa pieza ya tiene ${input.platform}.` };
+  }
+
+  const { error } = await supabase
+    .from("content_posts")
+    .update({
+      networks: [
+        ...networks,
+        {
+          platform: input.platform,
+          planned_at: null,
+          options: defaultOptionsFor(input.platform),
+          // Vuelve a revision: lo que saldria no es lo que se aprobo.
+          needs_review: decision.needsReview,
+        },
+      ] as never,
+      ...(decision.needsReview ? { status: "in_review" } : {}),
+    })
+    .eq("id", post.id);
+
+  if (error) return { ok: false, error: "No pude agregar la red" };
+
+  revalidatePath(CONTENT_PATH);
+  return {
+    ok: true,
+    data: {
+      needsReview: decision.needsReview,
+      ...(decision.needsReview ? { reason: decision.reason } : {}),
+    },
+  };
+}
+
+/**
+ * Copia una pieza como variante para otra red (F28).
+ *
+ * `duplicateAsVariant` tampoco la llamaba nadie. Nace en borrador y sin
+ * fechas: heredarlas programaria dos piezas para el mismo momento sin que
+ * nadie lo haya pedido.
+ */
+export async function duplicatePostAsVariant(input: {
+  postId: string;
+}): Promise<ContentActionResult<{ id: string }>> {
+  const { workspace, user, supabase } = await contentContext();
+
+  const { data: source } = await supabase
+    .from("content_posts")
+    .select("id, idea_id, title, format, copy, caption, networks, media")
+    .eq("id", input.postId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!source) return { ok: false, error: "No encontre esa pieza" };
+
+  const variant = duplicateAsVariant({
+    id: source.id,
+    idea_id: source.idea_id,
+    title: source.title,
+    format: source.format,
+    copy: (source.copy ?? {}) as Record<string, unknown>,
+    caption: source.caption,
+    networks: (Array.isArray(source.networks) ? source.networks : []) as never,
+    media: Array.isArray(source.media) ? source.media : [],
+  });
+
+  const { data: created, error } = await supabase
+    .from("content_posts")
+    .insert({
+      workspace_id: workspace.id,
+      created_by: user.id,
+      ...variant,
+      networks: variant.networks as never,
+      media: variant.media as never,
+      copy: variant.copy as never,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error || !created) {
+    console.error("[content] no pude duplicar la pieza:", error?.message);
+    return { ok: false, error: "No pude duplicar la pieza" };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "channel",
+    entityId: workspace.id,
+    action: "create",
+    metadata: { kind: "content_duplicated", from: source.id, to: created.id },
+    performedBy: user.id,
+  });
+
+  revalidatePath(CONTENT_PATH);
+  return { ok: true, data: { id: created.id } };
 }

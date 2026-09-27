@@ -1,4 +1,5 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { availableDashboards } from "@/lib/dashboards/available";
 import { UnifiedDashboard } from "@/components/dashboards/unified-dashboard";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
@@ -23,6 +24,7 @@ export default async function UnifiedDashboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspace, supabase } = await requireWorkspaceAdmin();
+  const dashboards = availableDashboards((await getPermissionContext()).can);
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -110,6 +112,7 @@ export default async function UnifiedDashboardPage({
 
   return (
     <UnifiedDashboard
+      dashboards={dashboards}
       view={view}
       period={period}
       currency={adAccounts[0]?.currency ?? null}

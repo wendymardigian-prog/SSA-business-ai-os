@@ -139,7 +139,9 @@ export async function saveIntegration(
     provider: configProviderOf(provider),
     display_name: provider.label,
     vault_secret_name: provider.secretName,
-    config: cleanConfigOf(provider, config),
+    // Lo que descubrio la prueba (el perfil de Postproxy) viaja con la
+    // config: es de donde sale el `account_ref` del publicador (A11).
+    config: { ...cleanConfigOf(provider, config), ...(tested.config ?? {}) },
     is_active: true,
     connected_at: existing?.is_active ? undefined : new Date().toISOString(),
     last_error: null,

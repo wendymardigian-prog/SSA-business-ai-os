@@ -1,4 +1,5 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { availableDashboards } from "@/lib/dashboards/available";
 import { AdsDashboard } from "@/components/dashboards/ads-dashboard";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
@@ -22,6 +23,7 @@ export default async function AdsDashboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspace, supabase } = await requireWorkspaceAdmin();
+  const dashboards = availableDashboards((await getPermissionContext()).can);
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -45,6 +47,7 @@ export default async function AdsDashboardPage({
   if (!resolved.ok) {
     return (
       <AdsDashboard
+      dashboards={dashboards}
         rows={[]}
         previousRows={[]}
         accounts={[]}
@@ -82,6 +85,7 @@ export default async function AdsDashboardPage({
 
   return (
     <AdsDashboard
+      dashboards={dashboards}
       rows={rows}
       previousRows={previousRows}
       accounts={accounts.map((a) => ({ id: a.ad_account_id, name: a.name, currency: a.currency }))}

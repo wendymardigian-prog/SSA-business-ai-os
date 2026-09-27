@@ -51,6 +51,8 @@ export interface ExistingAccount {
 export interface AccountSources {
   zernioChannels: ZernioChannelSource[];
   postproxyConnected: boolean;
+  /** El perfil de YouTube dentro de Postproxy, si la prueba lo encontro (A11). */
+  postproxyProfileId?: string | null;
   google: ConnectionSource | null;
   linkedin: ConnectionSource | null;
   threads: ConnectionSource | null;
@@ -154,7 +156,18 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
 
   // ── YouTube: puede tener dos caminos a la vez ────────────────────────────
   const youtube: PublisherEntry[] = [];
-  if (sources.postproxyConnected) youtube.push(entry("postproxy", "available"));
+  if (sources.postproxyConnected) {
+    // Sin perfil no se puede publicar: Postproxy acepta el pedido y no lo
+    // manda a ningun lado (A11).
+    youtube.push(
+      sources.postproxyProfileId
+        ? entry("postproxy", "available", { account_ref: sources.postproxyProfileId })
+        : entry("postproxy", "unavailable", {
+            status_reason:
+              "Postproxy no tiene ninguna cuenta de YouTube conectada. Conectala ahi y volve a guardar la clave.",
+          }),
+    );
+  }
 
   if (sources.google) {
     const upload = canUploadToYouTube(sources.google.granted_scopes);
@@ -241,7 +254,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       .is("user_id", null),
     supabase
       .from("integration_configs")
-      .select("provider, is_active")
+      .select("provider, is_active, config")
       .eq("workspace_id", workspaceId)
       .eq("type", "publishing_service"),
     supabase
@@ -266,6 +279,11 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     postproxyConnected: (integrations.data ?? []).some(
       (i) => i.provider === "postproxy" && i.is_active,
     ),
+    postproxyProfileId:
+      ((integrations.data ?? []).find((i) => i.provider === "postproxy" && i.is_active)?.config as
+        | { youtube_profile_id?: string }
+        | null
+        | undefined)?.youtube_profile_id ?? null,
     google: connectionOf("google"),
     linkedin: connectionOf("linkedin"),
     threads: connectionOf("threads"),

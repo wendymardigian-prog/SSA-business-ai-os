@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
+import type { DashboardOption } from "@/lib/dashboards/available";
 import { DualAxisChart, type ChartSeries } from "./charts";
 import { AdsAiPanel } from "./ads-ai-panel";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
@@ -44,6 +45,8 @@ export interface AdsDashboardProps {
   /** El alcance unico del periodo, de la consulta en vivo (F58). */
   uniqueReach: number | null;
   liveError: string | null;
+  /** Los dashboards que puede abrir quien esta mirando (B3). */
+  dashboards: DashboardOption[];
 }
 
 type Tab = "campaign" | "adset" | "ad";
@@ -96,7 +99,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
   if (props.accounts.length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <PageHeader route="/dashboard/dashboards/ads" left={<DashboardSwitcher available={["chat", "content", "ads"]} />} />
+        <PageHeader route="/dashboard/dashboards/ads" left={<DashboardSwitcher options={props.dashboards} />} />
         <div className="flex flex-1 items-center justify-center p-6">
           <p className="max-w-sm text-center text-sm text-muted-foreground">
             Todavia no hay ninguna cuenta publicitaria sincronizando.{" "}
@@ -149,7 +152,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/dashboards/ads"
-        left={<DashboardSwitcher available={["chat", "content", "ads"]} />}
+        left={<DashboardSwitcher options={props.dashboards} />}
         right={
           <div className="flex items-center gap-2">
             {props.accounts.length > 1 && (

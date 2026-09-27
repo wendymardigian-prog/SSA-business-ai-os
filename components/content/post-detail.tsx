@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, XCircle } from "lucide-react";
 import {
   approvePost,
+  archivePost,
   requestReview,
   retryFailedNetworks,
   returnPost,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/content/detail";
 import type { ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { NetworkBadge } from "./network-badge";
 
 /**
  * El detalle de una pieza (F36, F37).
@@ -108,7 +110,16 @@ export function PostDetail({
         run(() => retryFailedNetworks({ postId }), "Reintentando.");
         return;
       case "archive":
-        router.push(`/dashboard/content/${postId}/edit`);
+        // Antes mandaba al editor y el editor contestaba "eso se hace desde
+        // el detalle": un circulo del que no se salia (C5, C16).
+        if (!window.confirm("¿Archivar esta pieza? Sale del tablero y queda en el historial.")) {
+          return;
+        }
+        run(async () => {
+          const result = await archivePost({ postId });
+          if (result.ok) router.push("/dashboard/content");
+          return result;
+        }, "Archivada.");
         return;
     }
   }
@@ -158,7 +169,7 @@ export function PostDetail({
                 <li key={row.platform} className="flex items-start gap-3 p-3">
                   <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${TONE_CLASS[row.tone]}`} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{platformLabel(row.platform)}</p>
+                    <NetworkBadge platform={row.platform} />
                     <p className="text-xs text-muted-foreground">{row.state}</p>
                     {row.note && <p className="mt-1 text-xs text-destructive">{row.note}</p>}
                   </div>
@@ -241,12 +252,6 @@ export function PostDetail({
             {action.label}
           </button>
         ))}
-        <Link
-          href="/dashboard/content"
-          className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          Volver al tablero
-        </Link>
       </div>
     </div>
   );
