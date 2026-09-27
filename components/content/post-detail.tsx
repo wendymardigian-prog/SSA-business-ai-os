@@ -21,6 +21,7 @@ import {
 } from "@/lib/content/detail";
 import type { ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { NetworkBadge } from "./network-badge";
 
 /**
  * El detalle de una pieza (F36, F37).
@@ -158,7 +159,7 @@ export function PostDetail({
                 <li key={row.platform} className="flex items-start gap-3 p-3">
                   <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${TONE_CLASS[row.tone]}`} aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{platformLabel(row.platform)}</p>
+                    <NetworkBadge platform={row.platform} />
                     <p className="text-xs text-muted-foreground">{row.state}</p>
                     {row.note && <p className="mt-1 text-xs text-destructive">{row.note}</p>}
                   </div>

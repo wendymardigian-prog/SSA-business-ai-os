@@ -25,6 +25,14 @@ export interface BoardIdea {
   status: ContentIdeaStatus;
   createdBy: string | null;
   position: number;
+  /** Lo que hace util la tarjeta: el gancho es de lo que se acuerda uno (C13). */
+  hook: string | null;
+  angle: string | null;
+  pillar: string | null;
+  reference: string | null;
+  notes: string | null;
+  createdAt: string | null;
+  authorName: string | null;
 }
 
 export interface BoardNetwork {
@@ -49,6 +57,10 @@ export interface BoardPost {
   hasCaption: boolean;
   copyFromAi: boolean;
   materialStatus: string;
+  /** Si el copywriter esta escribiendo esta pieza ahora (E6). */
+  copyStatus: "idle" | "generating" | "failed";
+  createdAt: string | null;
+  authorName: string | null;
 }
 
 export type BoardCard = BoardIdea | BoardPost;

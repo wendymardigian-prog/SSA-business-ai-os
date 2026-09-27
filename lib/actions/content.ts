@@ -189,6 +189,55 @@ async function autoCopyOnApprove(
   return readCopywriterConfig(agent, null).autoOnApprove;
 }
 
+/**
+ * Edita una idea que todavia esta en la columna Ideas (C3).
+ *
+ * Solo mientras es `nueva`: una vez aprobada, lo que hay que editar es el
+ * post, y cambiar la idea de atras seria reescribir de donde salio algo que
+ * ya existe.
+ */
+export async function updateIdea(
+  ideaId: string,
+  input: IdeaInput,
+): Promise<ContentActionResult> {
+  const checked = validateIdea(input);
+  if (!checked.ok) return checked;
+
+  const { workspace, user, supabase } = await contentContext();
+
+  const { data: idea } = await supabase
+    .from("content_ideas")
+    .select("id, status, created_by")
+    .eq("id", ideaId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!idea) return { ok: false, error: "No encontre esa idea" };
+  if (idea.status !== "nueva") {
+    return { ok: false, error: "Esa idea ya se decidio: lo que se edita ahora es el post." };
+  }
+
+  const { error } = await supabase
+    .from("content_ideas")
+    .update(checked.idea)
+    .eq("id", ideaId);
+
+  if (error) {
+    console.error("[content] no pude editar la idea:", error.message);
+    return { ok: false, error: "No pude guardar los cambios" };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
+    action: "update",
+    metadata: { kind: "content_idea_updated", idea_id: ideaId },
+    performedBy: user.id,
+  });
+
+  revalidatePath(CONTENT_PATH);
+  return { ok: true };
+}
+
 export async function discardIdea(
   ideaId: string,
   reason?: string,

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buildCalendar, summarize, type CalendarPiece } from "@/lib/content/calendar";
+import { NetworkBadges } from "./network-badge";
 
 /**
  * El calendario de contenido (F21).
@@ -152,8 +153,8 @@ function DayCard({ card }: { card: ReturnType<typeof buildCalendar>[number] }) {
         {card.redistribution && "↻ "}
         {card.title}
       </span>
-      <span className="mt-0.5 block truncate opacity-70">
-        {card.networks.map((n) => n.platform).join(" · ")}
+      <span className="mt-0.5 flex items-center gap-1 opacity-90">
+        <NetworkBadges platforms={card.networks.map((n) => n.platform)} />
       </span>
     </Link>
   );

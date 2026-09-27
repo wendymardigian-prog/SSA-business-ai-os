@@ -18,6 +18,7 @@ import type { MediaEntry } from "@/lib/content/media";
 import type { StoredVersion } from "@/lib/content/versions";
 import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { NetworkBadge } from "./network-badge";
 
 /**
  * El editor de la pieza, en una sola pagina (F24).
@@ -312,7 +313,7 @@ export function PostEditor({
                       className="flex w-full items-center justify-between gap-2 p-3 text-left"
                     >
                       <span className="min-w-0">
-                        <span className="text-sm font-medium">{network.platform}</span>
+                        <NetworkBadge platform={network.platform} />
                         <span className="ml-2 text-xs text-muted-foreground">{summary.state}</span>
                         <span className="block truncate text-[11px] text-muted-foreground">
                           {summary.uses}

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { NetworkBadges } from "./network-badge";
 
 /**
  * La vista lista (F21): la misma informacion que el tablero, pero ordenable y
@@ -109,7 +110,7 @@ export function ContentList({
                     )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
-                    {row.platforms.join(", ") || "—"}
+                    <NetworkBadges platforms={row.platforms} />
                   </td>
                   <td className="py-2 pr-3 text-xs">{STATUS_LABELS[row.status]}</td>
                   <td className="hidden py-2 pr-3 text-xs text-muted-foreground sm:table-cell">

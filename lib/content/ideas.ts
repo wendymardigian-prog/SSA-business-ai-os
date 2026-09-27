@@ -119,9 +119,16 @@ export interface AvailableAction {
  * desaparecer: que un boton exista y explique por que no se puede usar enseña
  * que la funcion existe; que no aparezca, no.
  */
+/**
+ * Las acciones de una idea.
+ *
+ * `withDiscard` es para el detalle, que es el unico lugar donde se puede
+ * descartar: ahi hay espacio para el motivo y para pensarlo.
+ */
 export function ideaActions(
   status: ContentIdeaStatus,
   perms: IdeaActionPermissions,
+  options: { withDiscard?: boolean } = {},
 ): AvailableAction[] {
   if (status !== "nueva" || !perms.approve) return [];
 
@@ -137,7 +144,11 @@ export function ideaActions(
     });
   }
 
-  actions.push({ action: "discard", label: "Descartar" });
+  if (options.withDiscard) actions.push({ action: "discard", label: "Descartar" });
+
+  // "Descartar" NO va en la tarjeta (C3): es la unica accion destructiva de
+  // las tres, y tenerla al lado de "Aprobar" en una tarjeta chica es pedir
+  // que alguien la toque sin querer. Vive en el detalle, con su motivo.
   return actions;
 }
 
@@ -146,3 +157,21 @@ export function ideaWaitingLabel(status: ContentIdeaStatus, canApprove: boolean)
   if (status !== "nueva") return null;
   return canApprove ? null : "Esperando aprobacion";
 }
+
+/**
+ * Los formatos que se usan, para ofrecerlos en vez de hacerlos escribir (C2).
+ *
+ * Es una sugerencia y no una lista cerrada: el campo sigue siendo texto
+ * libre, porque manana aparece un formato que hoy no existe y nadie quiere
+ * pedir un deploy para poder escribirlo.
+ */
+export const FORMAT_SUGGESTIONS = [
+  "Reel",
+  "Carrusel",
+  "Video",
+  "Imagen",
+  "Historia",
+  "Short",
+  "Texto",
+  "Documento",
+] as const;

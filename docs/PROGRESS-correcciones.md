@@ -110,10 +110,10 @@ Regla: **primero el test que reproduce el error, en rojo.**
 
 | # | Que | Estado |
 |---|---|---|
-| C1 | "✦ Aprobar y producir copy" genera de verdad | ⬜ |
-| C2 | Nueva idea y Nuevo post como modales; "Crear y abrir" | ⬜ |
-| C3 | Detalle de la idea como modal; idea editable mientras es nueva | ⬜ |
-| C4 | "+ Idea" y "+ Post" al pie de las columnas | ⬜ |
+| ✅ C1 | "✦ Aprobar y producir copy" genera de verdad y abre el editor | listo |
+| ✅ C2 | Nueva idea y Nuevo post como modales; "Crear y abrir"; interruptor de IA | listo |
+| ✅ C3 | Detalle de la idea como modal, con "qué pasa al aprobar"; editable mientras es nueva; Descartar sale de la tarjeta | listo |
+| ✅ C4 | "+ Idea" y "+ Post" al pie de las columnas | listo |
 | C5 | Los botones del editor hacen lo que dicen | ⬜ |
 | C6 | Pie fijo con contadores y "Guardado hace X s" | ⬜ |
 | C7 | Estado del material como control segmentado | ⬜ |
@@ -122,11 +122,11 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | C10 | Vista previa de la red abierta | ⬜ |
 | C11 | Palabras clave detectadas bajo el CTA | ⬜ |
 | C12 | Encabezado y barra superior del editor | ⬜ |
-| C13 | Tarjetas del kanban como el prototipo | ⬜ |
+| ✅ C13 | Tarjetas como el prototipo; Borrador y En produccion abren el editor | listo |
 | C14 | Calendario: contar, hora, colores, estados, leyenda, arrastrar, semana | ⬜ |
 | C15 | Lista: ideas, columna Copy, filtro de fecha, fila clickeable | ⬜ |
 | C16 | Detalle: barra superior con Editar y Archivar | ⬜ |
-| C17 | `NetworkBadge` en todas las pantallas | ⬜ |
+| ✅ C17 | `NetworkBadge` en kanban, editor, calendario, lista y detalle | listo |
 
 ## Definicion de listo
 
