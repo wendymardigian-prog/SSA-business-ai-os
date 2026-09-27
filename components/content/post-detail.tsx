@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock, ExternalLink, XCircle } from "lucide-react";
 import {
   approvePost,
+  archivePost,
   requestReview,
   retryFailedNetworks,
   returnPost,
@@ -109,7 +110,16 @@ export function PostDetail({
         run(() => retryFailedNetworks({ postId }), "Reintentando.");
         return;
       case "archive":
-        router.push(`/dashboard/content/${postId}/edit`);
+        // Antes mandaba al editor y el editor contestaba "eso se hace desde
+        // el detalle": un circulo del que no se salia (C5, C16).
+        if (!window.confirm("¿Archivar esta pieza? Sale del tablero y queda en el historial.")) {
+          return;
+        }
+        run(async () => {
+          const result = await archivePost({ postId });
+          if (result.ok) router.push("/dashboard/content");
+          return result;
+        }, "Archivada.");
         return;
     }
   }
@@ -242,12 +252,6 @@ export function PostDetail({
             {action.label}
           </button>
         ))}
-        <Link
-          href="/dashboard/content"
-          className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          Volver al tablero
-        </Link>
       </div>
     </div>
   );

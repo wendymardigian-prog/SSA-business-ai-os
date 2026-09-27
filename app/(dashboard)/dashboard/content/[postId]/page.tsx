@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { PageHeader } from "@/components/page-header";
+import { PostDetailBar } from "@/components/content/post-detail-bar";
 import { PostDetail } from "@/components/content/post-detail";
 import { STATUS_LABELS } from "@/lib/content/status";
 import type { PublicationSummary } from "@/lib/content/detail";
@@ -65,13 +66,16 @@ export default async function PostDetailPage({
             {STATUS_LABELS[post.status]}
           </span>
         }
+        right={<PostDetailBar postId={post.id} canArchive={isAdmin} />}
         backHref={
+          // "‹ Contenido" con el nombre, y no solo una flecha: a dónde vuelve
+          // tiene que decirlo el botón, no adivinarse (C16).
           <Link
             href="/dashboard/content"
-            aria-label="Volver a Contenido"
-            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="-ml-1 flex h-10 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">Contenido</span>
           </Link>
         }
       />

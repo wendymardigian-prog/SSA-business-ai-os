@@ -318,3 +318,19 @@ expone `.statusCode`: todos los errores terminaban como permanentes y ningún
 (sin importar la clase del SDK, para no atarse a cómo la empaqueten) y
 clasifica por código. Se anota acá porque el README del SDK sigue
 desactualizado y la próxima persona se va a confundir igual.
+
+### C14 · La vista semanal del calendario, sin hacer
+
+**Qué quedó.** El calendario tiene la grilla del mes (en la computadora) y la
+agenda por día (en el celular). La vista de semana no se construyó.
+
+**Por qué.** Todo lo demás del punto sí está: contar piezas o publicaciones,
+la hora en cada tarjeta, las insignias de red, el color por estado, la
+leyenda, hoy resaltado y arrastrar para reprogramar. La semana es una cuarta
+forma de mirar lo mismo, y con un mes que hoy tiene una pieza no había forma
+de comprobar que sirviera para algo.
+
+**Qué se decidió en su lugar.** Se anota. Cuando haya varias publicaciones por
+semana va a ser evidente si hace falta, y para entonces `buildCalendar` ya
+devuelve las tarjetas con su día y su hora: la semana es elegir siete días en
+vez de treinta y cinco.

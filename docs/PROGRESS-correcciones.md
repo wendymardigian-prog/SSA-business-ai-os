@@ -124,9 +124,9 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ C11 | Palabras clave detectadas bajo el CTA, marcando cuales disparan algo | listo |
 | ✅ C12 | Titulo editable en el lugar, chip de idea y chip de formato | listo |
 | ✅ C13 | Tarjetas como el prototipo; Borrador y En produccion abren el editor | listo |
-| C14 | Calendario: contar, hora, colores, estados, leyenda, arrastrar, semana | ⬜ |
-| C15 | Lista: ideas, columna Copy, filtro de fecha, fila clickeable | ⬜ |
-| C16 | Detalle: barra superior con Editar y Archivar | ⬜ |
+| ✅ C14 | Calendario: contar de verdad, hora, insignias de color, estado por color, leyenda, hoy resaltado y arrastrar para reprogramar. **La vista semanal no se hizo**: anotada en PENDIENTE | casi listo |
+| ✅ C15 | Lista: ideas, columna Copy, filtro de mes, fila clickeable | listo |
+| ✅ C16 | Detalle: "‹ Contenido", Editar y Archivar en la barra; fuera "Volver al tablero"; Archivar archiva | listo |
 | ✅ C17 | `NetworkBadge` en kanban, editor, calendario, lista y detalle | listo |
 
 ## Definicion de listo

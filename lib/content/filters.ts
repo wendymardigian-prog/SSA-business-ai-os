@@ -78,6 +78,8 @@ export interface FilterablePost {
   status: ContentPostStatus;
   createdBy: string | null;
   platforms: string[];
+  /** La fecha más temprana de sus redes, para el filtro de mes (C15). */
+  firstAt?: string | null;
 }
 
 /** Aplica los filtros a una lista de piezas. */
@@ -92,11 +94,26 @@ export function applyContentFilters<T extends FilterablePost>(
     if (filters.author && post.createdBy !== filters.author) return false;
     if (filters.platform && !post.platforms.includes(filters.platform)) return false;
     if (needle && !post.title.toLowerCase().includes(needle)) return false;
+
+    // El mes filtra por la primera fecha de la pieza (C15). Una sin fecha no
+    // pertenece a ningún mes: no se esconde por eso, se esconde porque no
+    // sale todavía, y eso ya lo dice el estado.
+    if (filters.month) {
+      if (!post.firstAt) return false;
+      if (!post.firstAt.startsWith(filters.month)) return false;
+    }
+
     return true;
   });
 }
 
-/** Cuantos filtros hay puestos, para el contador del boton. */
+/**
+ * Cuantos filtros hay puestos, para el contador del boton.
+ *
+ * El mes no cuenta: en el calendario es donde estas parado, no un filtro, y
+ * decir "1 filtro" por estar en octubre no ayuda a nadie. En la lista si
+ * filtra, pero ahi se ve su selector con el valor puesto.
+ */
 export function activeFilterCount(filters: ContentFilters): number {
   return [filters.platform, filters.status, filters.author, filters.q].filter(Boolean).length;
 }

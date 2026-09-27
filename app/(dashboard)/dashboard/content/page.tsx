@@ -167,6 +167,38 @@ export default async function ContentPage({
     canApprove: isAdmin,
   };
 
+  // La lista muestra TODO lo que hay, ideas incluidas (C15): si una idea no
+  // aparece, buscarla obliga a volver al tablero.
+  const listRows: ListRow[] = [
+    ...ideas.map<ListRow>((idea) => ({
+      id: idea.id,
+      title: idea.title,
+      status: "draft",
+      createdBy: idea.createdBy,
+      platforms: [],
+      format: idea.format,
+      authorName: idea.authorName,
+      firstAt: null,
+      hasCopy: false,
+      isIdea: true,
+    })),
+    ...posts.map<ListRow>((post) => ({
+      id: post.id,
+      title: post.title,
+      status: post.status,
+      createdBy: post.createdBy,
+      platforms: post.networks.map((n) => n.platform),
+      format: post.format,
+      authorName: post.authorName,
+      firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
+      hasCopy: post.hasCopy,
+    })),
+  ];
+
+  const listMonths = [
+    ...new Set(listRows.map((r) => r.firstAt?.slice(0, 7)).filter(Boolean) as string[]),
+  ].sort();
+
   const timeZone = workspace.timezone || "America/Costa_Rica";
   const month =
     filters.month ??
@@ -208,24 +240,17 @@ export default async function ContentPage({
           timeZone={timeZone}
           month={month}
           countMode={filters.count}
+          canPublish={isAdmin}
         />
       )}
 
       {filters.view === "list" && (
         <ContentList
-          rows={posts.map<ListRow>((post) => ({
-            id: post.id,
-            title: post.title,
-            status: post.status,
-            createdBy: post.createdBy,
-            platforms: post.networks.map((n) => n.platform),
-            format: post.format,
-            authorName: authorNames.get(post.createdBy ?? "") ?? null,
-            firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
-          }))}
+          rows={listRows}
           filters={filters}
           authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
           platforms={[...new Set(posts.flatMap((p) => p.networks.map((n) => n.platform)))]}
+          months={listMonths}
         />
       )}
     </div>

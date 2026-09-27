@@ -120,9 +120,9 @@ export function detailActions(params: {
   const hasScheduled = params.publications.some((p) => p.status === "scheduled");
   const hasFailed = params.publications.some((p) => p.status === "failed");
 
-  if (canEditContent({ perms: params.perms, status: params.status, hasScheduledNetworks: hasScheduled }).ok) {
-    actions.push({ action: "edit", label: "Editar" });
-  }
+  // Editar y Archivar viven en la barra superior (C16): son las dos cosas
+  // que se hacen desde acá y estaban al final del cuerpo, después de todo lo
+  // demás.
   if (canRequestReview(params.perms, params.status).ok) {
     actions.push({ action: "request_review", label: "Mandar a revision", tone: "primary" });
   }
@@ -136,10 +136,6 @@ export function detailActions(params: {
   if (params.perms.publish && hasFailed) {
     actions.push({ action: "retry_all", label: "Reintentar las que fallaron", tone: "primary" });
   }
-  if (params.perms.publish && params.status !== "publishing") {
-    actions.push({ action: "archive", label: "Archivar", tone: "danger" });
-  }
-
   return actions;
 }
 
