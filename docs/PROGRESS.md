@@ -52,7 +52,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F14 · "Eventos con este horario" (`eventsForSchedule`, `decideToggleEventSchedule` con el tooltip del caso "ya usa el por defecto"); se llena cuando exista `event_types` (B3)
   - [ ] F15 · Vista previa del horario (nice-to-have): no entró; el núcleo deja `freeWindows`
   - Verificación: vitest 256 archivos / 2982 tests, tsc 0, lint 0 errores, build OK, `verify-scheduling` (+21 chequeos: un solo por defecto, RPC en una transacción, RLS entre personas y workspaces, CHECKs de tiempo fuera, purga) en verde. Pantallas recorridas con sesión a 1440 y 390 px, claro y oscuro: horario, editor, copiar a otros días, excepción y tiempo fuera (con un horario `zz-test` creado y borrado por SQL)
-- [ ] **Bloque 3 — Categorías y tipos de evento** (migraciones 00097 y 00098)
+- [ ] **Bloque 3 — Categorías y tipos de evento** (migraciones 00097 y 00098) — **EN CURSO (27/9/2026, cortado por el límite de uso):** están escritas y en verde las funciones puras `lib/scheduling/categories.ts` (resolver, snapshot, filtro por área, nombres, archivo, árbol, reorden), `assignment.ts` (F22) y `resolve-calendars.ts` (F19), con sus tests. **Falta:** migraciones 00097/00098 (todavía no escritas ni aplicadas), capa de datos, Server Actions, pantallas Categorías, Eventos y editor, form builder, verify. Retomar desde acá.
   - [ ] F50 · Categorías de agenda
   - [ ] F51 · Categoría en eventos y agendas
   - [ ] F16 · Tablas de eventos
