@@ -122,3 +122,50 @@ leerían al revés.
 Una pieza tiene que estar aprobada para programarse, y **una vez programada
 no se edita** sin desprogramar primero. Si se pudiera, se editaría un caption
 que ya está en la cola y saldría algo distinto de lo que se aprobó.
+
+## Correcciones de la Etapa 2 (27/9/2026)
+
+### Instagram y TikTok se programan del lado de Zernio
+
+Antes el sistema guardaba la fecha y a esa hora le pedía a Zernio "publicá
+ahora". Eso ataba la publicación a que nuestro cron corriera en el momento
+justo, y de ahí salían el job huérfano al reprogramar, las filas trabadas y
+los reintentos que podían duplicar.
+
+Ahora se le pasa la fecha y la zona y publica Zernio:
+
+| Acción | Qué hace |
+|---|---|
+| Programar | `createPost` con `scheduledFor` + `timezone`. Un post de Zernio **por red**. El id queda en `publisher_ref` y **no hay job de publicación**. |
+| Publicar ahora | `createPost` con `publishNow`. |
+| Reprogramar o editar | `updatePost` (siempre con `isDraft: false`: mandar solo la fecha devuelve 200 y el post sigue siendo borrador). |
+| Desprogramar | `deletePost` **antes** de cancelar de este lado. Si quedara agendado allá, Zernio lo publicaría igual. |
+| Reintentar | `retryPost`. |
+
+**La media vive en Zernio.** Un link firmado nuestro vence en 24 horas y un
+post agendado para la semana que viene lo encontraría muerto. Al programar, un
+job sube el archivo y la fila espera en `uploading`; `provider_media` recuerda
+qué archivo es cuál, así tres redes con el mismo video lo suben una vez.
+
+**El estado llega por webhook** (`post.platform.published` / `.failed`). Como
+red de seguridad, una conciliación pregunta con `getPost` por las que
+deberían haber salido hace más de 15 minutos.
+
+**Postproxy y las APIs directas** (YouTube, LinkedIn, Threads) siguen por el
+despachador propio. Postproxy acepta `scheduled_at` pero no documenta borrar
+ni editar: desprogramar dejaría el post saliendo igual. Está anotado en
+[docs/PENDIENTE.md](PENDIENTE.md).
+
+### El SDK de Zernio lanza, no devuelve el error
+
+Su README y sus tipos sugieren `{ data, error }`, pero el cliente convierte
+todo HTTP no-2xx en una excepción `ZernioApiError`, que expone `.statusCode` y
+no `.status`. El bloque que clasificaba reintentos era código muerto: **ningún
+429 ni 5xx se reintentaba**. Ahora `lib/publishing/zernio-errors.ts` mira la
+forma del error y clasifica por código.
+
+### La subida a YouTube tiene su propia ruta
+
+Subir un video por trozos puede tardar minutos, y dentro del cron general esos
+minutos se los comía la cola entera. `/api/cron/content-upload` corre de a una
+subida, cada dos minutos, con cinco de margen.

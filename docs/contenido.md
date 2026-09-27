@@ -137,3 +137,53 @@ Hay una guarda contra publicar dos veces: la base decide qué corrida se lleva
 la publicación. Publicar dos veces no se puede deshacer.
 
 Ver [publicacion.md](publicacion.md) para el detalle de cada red.
+
+## Correcciones de la Etapa 2 (27/9/2026)
+
+Lo que cambió en contenido después de la revisión, con el detalle en
+[docs/correcciones-etapa2.md](correcciones-etapa2.md) y el avance en
+[docs/PROGRESS-correcciones.md](PROGRESS-correcciones.md).
+
+### Crear
+
+Anotar una idea y crear un post son **modales sobre el tablero**, no páginas
+aparte. "Crear y abrir" lleva al editor, que es a donde se iba a ir igual.
+"+ Idea" y "+ Post" están también al pie de sus columnas, donde termina lo
+que ya hay.
+
+La idea tiene **detalle**: hook, ángulo, formato, pilar, referencia, quién la
+propuso, y una caja que explica qué pasa al aprobar. Los dos botones se veían
+iguales y nadie sabía en qué se diferenciaban. Se puede editar mientras está
+en la columna Ideas. Descartar vive ahí, con su motivo, y no en la tarjeta.
+
+### El editor
+
+- **Enviar a revisión, aprobar, devolver y archivar** funcionan. Antes
+  contestaban "eso se hace desde el detalle" y el detalle mandaba al editor.
+- **Pie fijo** con "X de N redes con fecha", "Guardado hace X s" y los
+  botones. Antes estaban arriba y en una pieza larga quedaban fuera de
+  pantalla.
+- **Estado del material** (Sin grabar, Grabado, Editado, Listo). Sin esto una
+  pieza nunca pasaba a "En producción".
+- **La fila de cada red** tiene ahora CTA y palabra clave, el chip de la
+  automatización con "Ver flow" o "Crear automatización", media propia
+  (variante), "Publicar por", y las opciones que cada red exige: el tipo en
+  Instagram, la privacidad y las dos confirmaciones en TikTok, la visibilidad
+  en YouTube. Sin esas opciones TikTok no publicaba y YouTube salía privado.
+- **Vista previa** de la red abierta, con el caption recortado donde lo
+  recorta la red.
+- **Palabras clave detectadas** bajo el CTA, marcando cuáles disparan una
+  automatización de verdad.
+
+### Las fechas son de la zona del negocio
+
+El editor convertía con la zona del navegador: alguien que viaja programaba a
+una hora distinta de la que veía. Ahora usa `workspaces.timezone` y la muestra
+al lado del campo.
+
+### El copy lo escribe un agente
+
+La generación simple se reemplazó por el **copywriter** (ver
+[docs/agente-ia.md](agente-ia.md)). Corre en segundo plano: el botón contesta
+al instante y la pieza dice "el copywriter está escribiendo" hasta que
+termina.

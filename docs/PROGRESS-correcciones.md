@@ -129,6 +129,43 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ C16 | Detalle: "‹ Contenido", Editar y Archivar en la barra; fuera "Volver al tablero"; Archivar archiva | listo |
 | ✅ C17 | `NetworkBadge` en kanban, editor, calendario, lista y detalle | listo |
 
+## Cierre (27/9/2026)
+
+Los cinco grupos estan. Diez commits en `etapa2-correcciones`, sin tocar
+`main`.
+
+| Comando | Al empezar | Al cerrar |
+|---|---|---|
+| `npx vitest run` | 2408 | **2596** |
+| `npm run build` | 0 | 0 |
+| `npm run lint` | 0 errores, 44 warnings | igual |
+
+Migraciones nuevas, todas aditivas y aplicadas dos veces sin error:
+
+| # | Que | Grupo |
+|---|---|---|
+| 00091 | `publish_progress`: que paso de la publicacion ya salio | A |
+| 00092 | `content_upload_cron`: la ruta propia de las subidas largas | A |
+| 00093 | `zernio_native_scheduling`: estado `uploading` y `provider_media` | D |
+| 00094 | `copywriter_agent`: el CHECK viejo, `copy_status` y la siembra | E |
+
+### Lo que la lista no decia y aparecio igual
+
+1. **El `upsert` de `social_posts` no podia funcionar nunca.** El indice unico
+   es parcial y PostgREST no le puede apuntar un `on_conflict`: ninguna fila
+   de publicacion se creaba jamas. Lo encontro `verify-publishing.mjs`.
+2. **Programar devolvia `ok: true` sin haber programado nada.**
+3. **`agent_runs` tenia dos CHECK sobre `source`** y el viejo rechazaba
+   `content_copy`: los runs de copy no se registraban contra la base real, asi
+   que su costo no contaba para ningun tope.
+4. **Un `export type { ... }` en un archivo `"use server"` rompe la app
+   entera** en tiempo de ejecucion, y ni el typecheck ni el build lo ven. Dejo
+   el editor y el tablero en blanco. Lo encontro la recorrida en el navegador;
+   hay un test que lo reproduce.
+5. **El SDK de Zernio LANZA en vez de devolver `{ error }`**, y expone
+   `.statusCode` y no `.status`: la clasificacion de reintentos era codigo
+   muerto y ningun 429 ni 5xx se reintentaba.
+
 ## Definicion de listo
 
 Todos los puntos marcados o anotados en `docs/PENDIENTE.md` con la decision tomada; `npx vitest run`,
