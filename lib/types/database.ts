@@ -2819,6 +2819,8 @@ export interface Database {
           media: Json;
           material_status: MaterialStatus;
           copy_source: CopySource;
+          /** Si el copywriter esta escribiendo esta pieza (E6). */
+          copy_status: "idle" | "generating" | "failed";
           ai_unreviewed: boolean;
           status: ContentPostStatus;
           current_version: number;
@@ -2845,6 +2847,7 @@ export interface Database {
           media?: Json;
           material_status?: MaterialStatus;
           copy_source?: CopySource;
+          copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
           status?: ContentPostStatus;
           position?: number;
@@ -2861,6 +2864,7 @@ export interface Database {
           media?: Json;
           material_status?: MaterialStatus;
           copy_source?: CopySource;
+          copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
           status?: ContentPostStatus;
           current_version?: number;

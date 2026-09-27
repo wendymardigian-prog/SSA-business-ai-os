@@ -102,7 +102,9 @@ export function AgentDetailView({
               </span>
               <Switch checked={agent.isEnabled} disabled={pending} onChange={toggleEnabled} label="Encendido global del agente" />
             </div>
-            {agent.isEnabled && agent.enabledChannelIds.length === 0 && (
+            {/* Solo tiene sentido para un agente que atiende conversaciones:
+                el copywriter no atiende a nadie (E1). */}
+            {typeDef.conversational && agent.isEnabled && agent.enabledChannelIds.length === 0 && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400">Encendido, pero no atiende ningún canal todavía.</p>
             )}
             {error && (
@@ -129,10 +131,12 @@ export function AgentDetailView({
               <dd className="inline font-medium text-foreground">{formatUsd(data.kpis.monthCostUsd)}</dd>
               <span> (estimado)</span>
             </div>
-            <div>
-              <dt className="inline">Derivaciones: </dt>
-              <dd className="inline font-medium text-foreground">{data.kpis.escalationRatePct === null ? "—" : `${data.kpis.escalationRatePct}%`}</dd>
-            </div>
+            {typeDef.conversational && (
+              <div>
+                <dt className="inline">Derivaciones: </dt>
+                <dd className="inline font-medium text-foreground">{data.kpis.escalationRatePct === null ? "—" : `${data.kpis.escalationRatePct}%`}</dd>
+              </div>
+            )}
             {data.kpis.missingPricing > 0 && (
               <div className="text-amber-700 dark:text-amber-400">
                 {data.kpis.missingPricing} run{data.kpis.missingPricing === 1 ? "" : "s"} sin precio cargado

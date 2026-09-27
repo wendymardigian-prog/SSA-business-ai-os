@@ -7,6 +7,7 @@ import { validateAgentConfig, expectedResponseSeconds, type AgentConfigInput } f
 import type { AgentConfigSection, AgentTypeDefinition } from "@/lib/agent/agent-types";
 import type { AgentScreenData } from "@/lib/agent/screen";
 import { PromptSection } from "./prompt-section";
+import { CopywriterSection } from "./copywriter-section";
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
 
 /**
@@ -15,7 +16,12 @@ import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList 
  */
 
 type Form = AgentConfigInput;
-type SectionProps = { form: Form; set: (patch: Partial<Form>) => void; data: AgentScreenData };
+type SectionProps = {
+  form: Form;
+  set: (patch: Partial<Form>) => void;
+  data: AgentScreenData;
+  typeDef: AgentTypeDefinition;
+};
 
 const DAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -141,9 +147,16 @@ function ModelPicker({
   );
 }
 
-function ModelSection({ form, set, data }: SectionProps) {
+function ModelSection({ form, set, data, typeDef }: SectionProps) {
+  // Lo de "la conversacion pasa a una persona" solo tiene sentido para un
+  // agente que atiende conversaciones. El copywriter escribe un borrador: si
+  // no puede, no hay lead esperando del otro lado.
+  const description = typeDef.conversational
+    ? "Solo aparecen los proveedores con la API key cargada. Si el principal falla, se reintenta, después se usa el respaldo y, si tampoco responde, la conversación pasa a una persona sin que el lead vea ningún error."
+    : "Solo aparecen los proveedores con la API key cargada. Si el principal falla, se reintenta y después se usa el respaldo. Sin ninguno elegido, usa el del negocio.";
+
   return (
-    <Section title="Modelo" description="Solo aparecen los proveedores con la API key cargada. Si el principal falla, se reintenta, después se usa el respaldo y, si tampoco responde, la conversación pasa a una persona sin que el lead vea ningún error.">
+    <Section title="Modelo" description={description}>
       {data.providers.length === 0 && (
         <Notice tone="warning">No hay ningún proveedor de IA conectado. Se conecta en Integraciones.</Notice>
       )}
@@ -409,6 +422,8 @@ const SECTIONS: Record<AgentConfigSection, ((props: SectionProps) => React.React
   closing: (p) => <ClosingSection {...p} />,
   knowledge: null,
   channels: null,
+  // Tiene su propio formulario y su propio boton: ver copywriter-section.
+  copywriter: null,
 };
 
 export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: AgentTypeDefinition }) {
@@ -440,8 +455,23 @@ export function ConfigTab({ data, typeDef }: { data: AgentScreenData; typeDef: A
       {typeDef.configSections.includes("prompt") && <PromptSection data={data} />}
       {typeDef.configSections.map((key) => {
         const render = SECTIONS[key];
-        return render ? <div key={key}>{render({ form, set, data })}</div> : null;
+        return render ? <div key={key}>{render({ form, set, data, typeDef })}</div> : null;
       })}
+      {typeDef.configSections.includes("copywriter") && data.copywriter && (
+        <CopywriterSection
+          agentId={data.agent.id}
+          agent={{
+            system_prompt: data.agent.systemPrompt,
+            config: data.copywriter.config,
+            knowledge_tags: data.agent.knowledgeTags,
+            daily_cost_limit_usd: data.agent.dailyCostLimitUsd,
+            monthly_cost_limit_usd: data.agent.monthlyCostLimitUsd,
+          }}
+          workspaceSettings={data.copywriter.workspaceSettings}
+          availableTags={data.copywriter.availableTags}
+        />
+      )}
+
       <div className="sticky bottom-0 -mx-2 flex items-center gap-3 border-t border-border bg-background/95 px-2 py-3 backdrop-blur">
         <button
           type="button"

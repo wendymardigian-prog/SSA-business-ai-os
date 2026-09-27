@@ -220,6 +220,20 @@ export interface AgentScreenData {
   runs?: RunsTabData;
   /** Solo cuando la pestana activa es Acciones. */
   actions?: ActionsTabData;
+  /**
+   * Lo propio del copywriter (E3). Solo viene cuando el agente es de ese
+   * tipo: su configuracion no encaja en la del agente de conversacion y
+   * mezclarlas obligaria a que cada campo nuevo pasara por el esquema del
+   * otro.
+   */
+  copywriter?: {
+    /** El jsonb crudo: voz, limites y el interruptor. */
+    config: unknown;
+    /** El respaldo de antes de que existiera el agente. */
+    workspaceSettings: unknown;
+    /** Las etiquetas que existen en la base de conocimiento. */
+    availableTags: string[];
+  };
   agent: {
     id: string;
     name: string;

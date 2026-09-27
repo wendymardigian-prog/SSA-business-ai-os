@@ -16,6 +16,7 @@ import { linkedinPublisher } from "./linkedin";
 import { threadsPublisher } from "./threads";
 import { createYouTubePublisher, CHUNK_BYTES } from "./youtube";
 import { registerContentPublishHandlers } from "@/lib/jobs/handlers/content-publish";
+import { registerContentCopyHandler } from "@/lib/jobs/handlers/content-copy";
 import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerJobHandler } from "@/lib/jobs/registry";
@@ -67,6 +68,7 @@ export function registerPublishing(): void {
   );
 
   registerContentPublishHandlers();
+  registerContentCopyHandler();
   registerMetricsHandlers();
   registerMetaAdsHandlers();
 

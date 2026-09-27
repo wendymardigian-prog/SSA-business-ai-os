@@ -28,7 +28,7 @@ Nada programado que romper.
 | 00091 | `publish_progress` (que paso de la publicacion ya salio) | A | ✅ aplicada, idempotente |
 | 00092 | `content_upload_cron` (ruta propia de las subidas largas) | A | ✅ aplicada |
 | 00093 | `zernio_native_scheduling` (estado `uploading` + `provider_media`) | D | ✅ aplicada, idempotente |
-| 00094 | `copywriter_agent` | E | ⬜ sin escribir |
+| 00094 | `copywriter_agent` (CHECK viejo, `copy_status`, siembra) | E | ✅ aplicada, idempotente |
 
 ## A · Publicacion automatica (20 puntos)
 
@@ -80,7 +80,7 @@ Regla: **primero el test que reproduce el error, en rojo.**
 |---|---|
 | **El `upsert` de `social_posts` no podia funcionar NUNCA**: el indice unico es parcial y PostgREST no le puede apuntar un `on_conflict`. Ninguna fila de publicacion se creaba jamas. Lo encontro `verify-publishing.mjs`; los tests no lo veian porque la base en memoria no tiene indices. | ✅ arreglado (buscar-y-escribir) |
 | **Programar devolvia `ok: true` sin haber programado nada.** | ✅ arreglado |
-| `agent_runs` tiene dos CHECK sobre `source` y el viejo rechaza `content_copy` | ⬜ se arregla en E |
+| `agent_runs` tenia dos CHECK sobre `source` y el viejo rechazaba `content_copy`: los runs de copy no se registraban contra la base real | ✅ arreglado en 00094 |
 
 ## B · Selector de dashboards (3 puntos)
 
@@ -94,17 +94,17 @@ Regla: **primero el test que reproduce el error, en rojo.**
 
 | # | Que | Estado |
 |---|---|---|
-| E1 | Tipo `copywriter` en `AGENT_TYPES` | ⬜ |
-| E2 | Una fila por workspace (migracion + trigger de alta) | ⬜ |
-| E3 | Configuracion: voz, ejemplos, modelo, conocimiento, limites, topes, interruptor | ⬜ |
-| E4 | `lib/agent/copywriter.ts`: contexto determinista + una llamada | ⬜ |
-| E5 | Version nueva con autor del agente | ⬜ |
-| E6 | Job `content_copy` y `content_posts.copy_status` | ⬜ |
-| E7 | Los cinco disparadores, con indicaciones | ⬜ |
-| E8 | Runs y costos, con topes de agente y de workspace | ⬜ |
-| E9 | Permisos `content.ai` y `agents.edit` | ⬜ |
-| E10 | Firma lista para la Etapa 3 | ⬜ |
-| E11 | Tests con proveedor simulado y dos workspaces | ⬜ |
+| ✅ E1 | Tipo `copywriter` en `AGENT_TYPES`, con sus cuatro pestanas | listo |
+| ✅ E2 | Una fila por workspace (migracion + trigger de alta + indice unico) | listo |
+| ✅ E3 | Configuracion: voz, ejemplos, modelo, conocimiento, limites, topes, interruptor | listo |
+| ✅ E4 | `lib/agent/copywriter.ts`: contexto determinista + una llamada | listo |
+| ✅ E5 | Version nueva con autor del agente | listo |
+| ✅ E6 | Job `content_copy` y `content_posts.copy_status` (el cartel en pantalla va en C) | listo |
+| ✅ E7 | Aprobar con boton, interruptor, editor y regenerar con indicaciones ("al crear" va en C2) | listo |
+| ✅ E8 | Runs y costos, con topes de agente y de workspace | listo |
+| ✅ E9 | Permisos `content.ai` y `agents.edit` | listo |
+| ✅ E10 | Firma `{ agentId, postId, instructions?, threadId? }` | listo |
+| ✅ E11 | Tests con proveedor simulado y dos workspaces con voces distintas | listo |
 
 ## C · Pantallas de contenido (17 puntos)
 

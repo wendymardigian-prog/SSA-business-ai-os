@@ -66,11 +66,19 @@ export default async function AgentsPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {getAgentType(agent.type)?.label ?? agent.type}
                       {" · "}
-                      {agent.model ? `${getProvider(agent.provider ?? "")?.label ?? agent.provider} / ${agent.model}` : "Sin modelo"}
-                      {" · "}
-                      {agent.enabledChannelIds.length === 0
-                        ? "Sin canales"
-                        : `${agent.enabledChannelIds.length} canal${agent.enabledChannelIds.length === 1 ? "" : "es"}`}
+                      {agent.model
+                        ? `${getProvider(agent.provider ?? "")?.label ?? agent.provider} / ${agent.model}`
+                        : "Usa el modelo del negocio"}
+                      {/* Los canales solo dicen algo de un agente que conversa:
+                          el copywriter no atiende a nadie (E1). */}
+                      {getAgentType(agent.type)?.conversational && (
+                        <>
+                          {" · "}
+                          {agent.enabledChannelIds.length === 0
+                            ? "Sin canales"
+                            : `${agent.enabledChannelIds.length} canal${agent.enabledChannelIds.length === 1 ? "" : "es"}`}
+                        </>
+                      )}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />

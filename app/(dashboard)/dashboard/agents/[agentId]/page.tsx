@@ -232,8 +232,36 @@ export default async function AgentDetailPage({
     ]);
   }
 
+  // Lo propio del copywriter: su configuracion no encaja en la del agente de
+  // conversacion, asi que viaja aparte (E3).
+  const copywriter =
+    agent.type === "copywriter"
+      ? await (async () => {
+          const [{ data: raw }, { data: ws }] = await Promise.all([
+            supabase.from("agents").select("config").eq("id", agent.id).maybeSingle(),
+            supabase
+              .from("workspaces")
+              .select("content_copy_settings")
+              .eq("id", workspace.id)
+              .maybeSingle(),
+          ]);
+
+          const tags = new Set<string>();
+          for (const doc of (docsRes.data ?? []) as Array<{ tags?: string[] | null }>) {
+            for (const tag of doc.tags ?? []) tags.add(tag);
+          }
+
+          return {
+            config: raw?.config ?? {},
+            workspaceSettings: ws?.content_copy_settings ?? null,
+            availableTags: [...tags].sort(),
+          };
+        })()
+      : undefined;
+
   const data: AgentScreenData = {
     viewer: { isAdmin },
+    copywriter,
     kpis,
     costs,
     runs,

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, Loader2, Sparkles } from "lucide-react";
-import { generatePostCopy, savePostDraft } from "@/lib/actions/content";
+import { savePostDraft } from "@/lib/actions/content";
+import { requestCopy } from "@/lib/actions/copywriter";
 import { scheduleNetworks, unscheduleNetwork } from "@/lib/actions/content-schedule";
 import { saveVersion } from "@/lib/actions/content-versions";
 import { MediaUploader } from "@/components/content/media-uploader";
@@ -500,17 +501,17 @@ export function PostEditor({
 
       case "generate_copy":
         run(async () => {
-          const first = await generatePostCopy({ postId: post.id });
-          if (!first.ok && first.error.includes("Confirma")) {
+          // El copywriter escribe en segundo plano: esto encola y vuelve. La
+          // pieza queda diciendo que esta escribiendo y se refresca sola.
+          const first = await requestCopy({ postId: post.id });
+          if (!first.ok && first.needsConfirmation) {
             // Pisar el guion de alguien sin preguntar es lo que hace que una
             // funcion util deje de usarse.
-            if (!window.confirm("Ya hay un guion escrito. ¿Lo reemplazo con uno nuevo?")) {
-              return { ok: true };
-            }
-            return generatePostCopy({ postId: post.id, confirmed: true });
+            if (!window.confirm(`${first.error} ¿Sigo?`)) return { ok: true };
+            return requestCopy({ postId: post.id, confirmed: true });
           }
           return first;
-        }, "Listo: revisa el guion antes de aprobar.");
+        }, "El copywriter esta escribiendo. Te aviso cuando termine.");
         break;
 
       case "schedule":

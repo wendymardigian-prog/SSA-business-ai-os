@@ -8,6 +8,9 @@ import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
 import { defaultOptionsFor } from "@/lib/content/network-options";
+import { enqueueCopy } from "@/lib/content/copy-queue";
+import { readCopywriterConfig } from "@/lib/content/copywriter";
+import { createServiceClient } from "@/lib/supabase/server";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
@@ -95,9 +98,17 @@ export async function createIdea(input: IdeaInput): Promise<ContentActionResult<
   return { ok: true, data: { id: data.id } };
 }
 
+/**
+ * Aprueba una idea y crea el post en borrador.
+ *
+ * `produceCopy` es el boton "✦ Aprobar y producir copy": ademas le pide al
+ * copywriter que escriba. Antes los dos botones hacian exactamente lo mismo
+ * y el ✦ era solo un icono (C1).
+ */
 export async function approveIdea(
   ideaId: string,
-): Promise<ContentActionResult<{ postId: string }>> {
+  options: { produceCopy?: boolean } = {},
+): Promise<ContentActionResult<{ postId: string; copyQueued: boolean; copyError?: string }>> {
   const { workspace, user, supabase, isAdmin } = await contentContext();
   if (!isAdmin) return { ok: false, error: "Aprobar ideas es de Owner y Admin" };
 
@@ -137,8 +148,45 @@ export async function approveIdea(
     performedBy: user.id,
   });
 
+  // El copy lo pide el boton, o el interruptor "producir al aprobar" que se
+  // configura en el agente (E7). Que no se pueda escribir no deshace la
+  // aprobacion: la idea ya paso a ser un post.
+  let copyQueued = false;
+  let copyError: string | undefined;
+
+  const service = await createServiceClient();
+  const wantsCopy = options.produceCopy === true || (await autoCopyOnApprove(supabase, workspace.id));
+
+  if (wantsCopy) {
+    const queued = await enqueueCopy(service, {
+      workspaceId: workspace.id,
+      postId: postId as string,
+    });
+    copyQueued = queued.ok;
+    if (!queued.ok) copyError = queued.error;
+  }
+
   revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { postId: postId as string } };
+  return {
+    ok: true,
+    data: { postId: postId as string, copyQueued, ...(copyError ? { copyError } : {}) },
+  };
+}
+
+/** Si el copywriter tiene prendido "producir el copy al aprobar una idea". */
+async function autoCopyOnApprove(
+  supabase: Awaited<ReturnType<typeof contentContext>>["supabase"],
+  workspaceId: string,
+): Promise<boolean> {
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("system_prompt, config, knowledge_tags")
+    .eq("workspace_id", workspaceId)
+    .eq("type", "copywriter")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  return readCopywriterConfig(agent, null).autoOnApprove;
 }
 
 export async function discardIdea(
@@ -366,147 +414,6 @@ export async function columnForStatus(status: ContentPostStatus): Promise<BoardC
   return columnFor(status);
 }
 
-// ── Generar el copy con IA (F29) ─────────────────────────────────────────
-
-export interface GenerateCopyOutcome {
-  warnings: string[];
-  costUsd: number | null;
-}
-
-/**
- * Escribe el guion y los captions con IA.
- *
- * Antes de llamar al modelo: permiso, pieza editable y —si ya hay algo
- * escrito— confirmacion explicita. Pisar el guion de alguien sin preguntar es
- * la clase de cosa que hace que una funcion util deje de usarse.
- *
- * Despues de generar: se guarda una version con autor IA, para que lo
- * anterior siempre se pueda recuperar.
- */
-export async function generatePostCopy(input: {
-  postId: string;
-  /** La persona ya confirmo que quiere pisar lo escrito. */
-  confirmed?: boolean;
-}): Promise<ContentActionResult<GenerateCopyOutcome>> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) {
-    return { ok: false, error: "Generar con IA es de Owner y Admin" };
-  }
-
-  const { data: post } = await supabase
-    .from("content_posts")
-    .select("id, title, format, copy, caption, networks, copy_source, status, idea_id")
-    .eq("id", input.postId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  if (!post) return { ok: false, error: "No encontre esa pieza" };
-
-  if (["published", "publishing", "partially_published"].includes(post.status)) {
-    return { ok: false, error: "Esa pieza ya se publico: no tiene sentido reescribir el guion." };
-  }
-
-  const { needsConfirmation, applyGeneratedCopy } = await import("@/lib/content/ai-copy");
-  const currentCopy = (post.copy ?? {}) as { hook?: string; body?: string; cta?: string };
-
-  if (needsConfirmation(currentCopy) && !input.confirmed) {
-    return {
-      ok: false,
-      error: "Ya hay un guion escrito. Confirma que queres reemplazarlo.",
-    };
-  }
-
-  const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
-    platform?: string;
-    caption?: string | null;
-    youtube_title?: string | null;
-  }>;
-  const platforms = networks.map((n) => String(n.platform ?? "")).filter(Boolean);
-
-  // La idea de origen y la voz de marca son lo que hace que el guion suene al
-  // negocio y no a un modelo generico.
-  const [{ data: idea }, { data: ws }] = await Promise.all([
-    post.idea_id
-      ? supabase
-          .from("content_ideas")
-          .select("title, hook, angle, pillar, reference")
-          .eq("id", post.idea_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    supabase
-      .from("workspaces")
-      .select("content_copy_settings")
-      .eq("id", workspace.id)
-      .maybeSingle(),
-  ]);
-
-  const { createServiceClient } = await import("@/lib/supabase/server");
-  const { generateCopy } = await import("@/lib/ai/generate-copy");
-  const service = await createServiceClient();
-
-  const result = await generateCopy(service, {
-    workspaceId: workspace.id,
-    userId: user.id,
-    postId: post.id,
-    request: {
-      idea,
-      title: post.title,
-      format: post.format,
-      platforms,
-      brand: (ws?.content_copy_settings ?? {}) as Record<string, never>,
-      existingCopy: currentCopy,
-    },
-  });
-
-  if (!result.ok) return { ok: false, error: result.error };
-
-  const applied = applyGeneratedCopy({
-    output: result.output,
-    platforms,
-    previousCopySource: post.copy_source,
-    hadManualCopy: Boolean(currentCopy.body?.trim()),
-    networks: networks.map((n) => ({
-      platform: String(n.platform ?? ""),
-      caption: n.caption ?? null,
-      youtube_title: n.youtube_title ?? null,
-    })),
-  });
-
-  const { error } = await supabase
-    .from("content_posts")
-    .update({
-      copy: applied.copy as never,
-      caption: applied.caption,
-      networks: applied.networks as never,
-      copy_source: applied.copy_source,
-      ai_unreviewed: true,
-    })
-    .eq("id", post.id);
-
-  if (error) {
-    console.error("[content] genere el copy pero no pude guardarlo:", error.message);
-    return { ok: false, error: "Se genero el guion pero no pude guardarlo. Proba de nuevo." };
-  }
-
-  // La version va DESPUES de escribir: guarda lo que quedo, con autor IA.
-  const { saveVersion } = await import("@/lib/actions/content-versions");
-  await saveVersion({
-    postId: post.id,
-    context: { trigger: "ai_generation" },
-    authorKind: "ai",
-  });
-
-  await logAudit({
-    supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
-    action: "update",
-    metadata: { kind: "content_copy_generated", post_id: post.id, cost_usd: result.costUsd },
-    performedBy: user.id,
-  });
-
-  revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { warnings: result.warnings, costUsd: result.costUsd } };
-}
-
 /**
  * Mueve las publicaciones de las redes que ya estaban programadas y cambiaron
  * de fecha en el editor (A5).
@@ -525,7 +432,6 @@ async function applyPlannedDateChanges(
     plannedAt: n.planned_at ?? null,
   }));
 
-  const { createServiceClient } = await import("@/lib/supabase/server");
   const service = await createServiceClient();
 
   const { data: publications } = await service
