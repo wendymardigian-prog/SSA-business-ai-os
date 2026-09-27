@@ -231,17 +231,21 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 
 **Qué se decidió en su lugar.** El mismo patrón que `lib/secret-names.ts`: un archivo hoja con la constante. Y el test de frontera ahora cubre los dos módulos, así el próximo caso sale nombrando la cadena de imports en vez de un error de Turbopack.
 
-### Bloque 9: falta el script de verificación y el cierre de la etapa
+### La migración 00090 está escrita y NO aplicada
 
-**Qué quedó.** F68 a F72 están construidos, probados y en `main` remoto de la rama `etapa2`. Falta:
+**Qué quedó.** `00090_drop_legacy_secret_columns.sql` borra `workspaces.late_api_key_encrypted`, `workspaces.webhook_secret` y `channels.webhook_secret`. Está escrita y no se aplicó.
 
-- `scripts/verify-roles.mjs`: el script con usuarios reales que prueba que un rol personalizado con alcance `all` ve todos los contactos, y que uno con `own` no. Las dos migraciones están aplicadas y `verify-rls.mjs` pasa con ellas, así que la parte de "no rompí nada" está cubierta; lo que falta es la prueba positiva del alcance `all` contra la base.
-- La migración `drop_legacy_secret_columns`, que se escribe y no se aplica.
-- El cierre de la Etapa 2: la documentación (`.env.example`, `CLAUDE.md`, `docs/integraciones.md`, `docs/publicacion.md`, `docs/contenido.md`, `docs/dashboards.md`, la bitácora), borrar `docs/referencia/`, y el merge de `etapa2` a `main`.
+**Por qué.** La API key de Zernio de este negocio **todavía vive en `late_api_key_encrypted`**. Es de donde la lee el respaldo de `getZernioApiKey`, o sea de donde la lee el sistema cada vez que manda un mensaje por Instagram. Aplicarla hoy deja la bandeja sin poder responder, en el momento.
 
-**Por qué.** Se terminó el límite de uso de la sesión.
+**Qué se decidió en su lugar.** El archivo tiene el orden para hacerlo bien, en cinco pasos: apretar "Migrar a Vault" en la tarjeta de Zernio, comprobar que desaparece el aviso, mandar un mensaje de prueba, aplicar la migración, mandar otro. Además la migración se niega a correr si queda algún secreto en las columnas: aplicarla con una clave adentro sería perderla.
 
-**Qué se decidió en su lugar.** Dejar todo compilando y con la suite en verde, y commitear. No se mergeó a `main`: la regla 13 pide los nueve comandos en 0 y `verify-roles.mjs` todavía no existe.
+### `has_permission` no conoce los permisos del rol Member de sistema
+
+**Qué quedó.** La función de la base devuelve `true` para Owner y Admin, y para un rol personalizado consulta su jsonb. Para el rol Member de sistema devuelve `false` en todo, porque su fila tiene los permisos vacíos.
+
+**Por qué.** La fuente de los permisos de los tres roles de sistema es `lib/auth/permissions.ts`. Copiarlos a SQL daría dos listas que se separan, y mandaría la que alguien mire primero.
+
+**Qué se decidió en su lugar.** Hoy ninguna policy usa `has_permission`: el alcance de leads lo resuelve `permission_scope`, que sí contempla los tres casos. Queda documentado en el cuerpo de la función y en `docs/roles.md`. Si algún día una policy necesita preguntar por un permiso que un Member tiene, hay que sincronizar la lista o hacer que la función lea la tabla de TypeScript por otra vía.
 
 ### Dos errores que encontró `verify-rls.mjs` en el bloque 9
 

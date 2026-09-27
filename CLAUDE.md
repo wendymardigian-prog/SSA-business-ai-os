@@ -123,9 +123,69 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 
 # Migraciones
 
-ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform` (junto con instagram, facebook, twitter, telegram, bluesky, reddit).
-Las migraciones nuevas continuan desde 00017. En Etapa 1 NO hace falta tocar el CHECK constraint de `channels` (instagram y whatsapp ya estan). 'tiktok'/'youtube'/'linkedin'/'email' se agregan recien en Etapa 2.
-Cada fase define sus migraciones en su documento de requerimientos. Seguir esa numeracion y no saltear numeros.
+ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform`.
+La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
+
+**Dos migraciones NO estan aplicadas y no hay que aplicarlas sin leer antes por que**:
+- `00072_draft_window_alerts` (heredada de la Fase 3).
+- `00090_drop_legacy_secret_columns`: borra las columnas donde todavia vive la API key de Zernio. Aplicarla hoy deja la bandeja sin poder responder. El archivo explica el orden para hacerlo bien.
+
+Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`: hay otra sesion trabajando la Etapa 4 sobre la misma base, que toma la banda desde 00121.
+
+# Etapa 2 (construida)
+
+Lo que se sumo, y donde esta lo importante de cada cosa. El detalle en `docs/`.
+
+## Integraciones y secretos
+Todos los secretos viven en **Supabase Vault**, nunca en el `.env` ni en el codigo. De un secreto guardado la pantalla solo sabe que EXISTE: el valor no vuelve del servidor.
+- El catalogo de proveedores esta en `lib/integrations/providers.ts`; los nombres de los secretos, en `lib/secret-names.ts`, que **no importa nada** a proposito.
+- `lib/vault-boundary.test.ts` recorre los imports reales desde cada Client Component y falla si alguno llega a `lib/vault.ts` o a `lib/supabase/server.ts`. Ya atajo dos fugas; si aparece un modulo nuevo que no puede ir al navegador, sumarlo ahi.
+- "Probar y guardar" usa la clave contra el proveedor ANTES de escribirla. Una clave revocada guardada deja la card en verde.
+- Doc: `docs/integraciones.md`.
+
+## Contenido y publicacion
+Ideas -> piezas -> publicaciones por red. Una pieza puede tener variante por red (otro caption, otra media, otro CTA) y **una fecha por red**.
+- Las reglas puras estan en `lib/content/*.ts`, cada una con su test. La UI no decide nada.
+- Publicar pasa por `lib/publishing/dispatcher.ts`, el unico lugar donde una fila de `social_posts` pasa a publicada. La guarda contra publicar dos veces es `UPDATE ... WHERE status='scheduled' RETURNING`: publicar dos veces no se deshace.
+- Los reintentos los agenda el despachador (1, 5 y 15 minutos), NO la cola. Si lanzara, la cola reintentaria a los 10 segundos encima del reintento propio.
+- Cinco publicadores detras de una interfaz comun (`lib/publishing/types.ts`). Sumar una red es un archivo y un registro.
+- Docs: `docs/contenido.md`, `docs/publicacion.md`.
+
+## Metricas
+Cuatro tablas de solo lectura para la app; las escribe el servidor.
+- **Un metric que la red no dio queda en `null` y no se escribe.** Un cero se lee despues como "ese dia no paso nada", que es una afirmacion distinta y falsa. Vale en todo el modulo.
+- Los seguidores no se suman: son un total acumulado, y la semana es el ULTIMO dia.
+- Frecuencia de recoleccion por antiguedad del post: diaria hasta 30 dias, semanal hasta 90, nunca despues.
+- El alcance unico de un periodo NO es la suma de los diarios: se pide en vivo con cache de 15 minutos (`lib/meta/live.ts`).
+- Doc: `docs/dashboards.md`.
+
+## Email como canal
+El email **no es un modulo aparte**: entra por `channels`, `conversations` y `messages`, con la bandeja adentro de la misma bandeja.
+- `channels.late_account_id` sigue siendo NOT NULL: el canal de email guarda ahi `email:<direccion>`. Aflojarlo obligaria a revisar los 40+ lugares que lo leen.
+- El receptor **no agenda turnos del agente**, y hay un test con espia que lo prueba. El agente esta hecho para chat.
+- Responder arma el hilo con `In-Reply-To` y `References`. Sin eso la respuesta llega como un correo suelto.
+- La rama por proveedor en los dos caminos de envio es **explicita**, nunca un `else`: un canal nuevo que caiga por default en Zernio manda el mensaje al lugar equivocado sin avisar.
+
+## Roles personalizados
+- El catalogo de claves esta en `lib/auth/permissions.ts`, y es **la fuente**: los permisos de Owner, Admin y Member salen de ahi, no de la base. La fila de un rol de sistema tiene los permisos vacios a proposito.
+- `workspace_members.role` NO cambio: sigue siendo owner/admin/member y es lo que leen las policies que ya existian. Un rol personalizado es siempre un `member` con `role_id`.
+- `requireWorkspaceAdmin` y `getAdminContext` conservan su comportamiento. Lo nuevo es `requirePermission` y `getPermissionAction`.
+- `lib/auth/member-baseline.test.ts` fija lo que puede un Member recorriendo el codigo real. Si se cambia un guard sin querer, ese test lo dice.
+- Doc: `docs/roles.md`.
+
+## Scripts de verificacion
+Corren contra la base real con usuarios de verdad, crean y limpian sus datos (prefijo `zz-test-`). Una limpieza que falla es una prueba que falla.
+
+```
+node scripts/verify-rls.mjs        # policies, scope de leads, Vault
+node scripts/verify-roles.mjs      # roles personalizados y alcances
+node scripts/verify-content.mjs    # pipeline de contenido y bucket
+node scripts/verify-crm.mjs
+node scripts/verify-inbox-filters.mjs
+node scripts/verify-dashboards.mjs
+```
+
+No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpieza.
 
 # Seguridad
 

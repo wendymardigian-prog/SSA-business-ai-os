@@ -148,13 +148,30 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
   - [x] F65 · Responder email con `In-Reply-To` y `References`, en los dos caminos de envío, con rama explícita por proveedor
   - [x] F66 · Cuota de Resend (barra en la card contando entrada y salida, aviso al 90% una vez por día)
   - [x] F67 · Trigger "email recibido" con filtro por asunto, registrado y ofrecido en el editor
-- [~] **Bloque 9 — Roles personalizados** (migraciones **00088** y **00089**, aplicadas; falta `verify-roles.mjs` y el cierre de la etapa)
+- [x] **Bloque 9 — Roles personalizados** (migraciones **00088** y **00089**, aplicadas)
   - [x] F68 · Catálogo de permisos — la caracterización del Member va primero (15 chequeos sobre el código real); 35 claves con etiqueta en castellano y `SYSTEM_ROLE_PERMISSIONS.member` derivado de esa caracterización
   - [x] F69 · Tablas y funciones de roles — `workspace_roles` con los tres de sistema por workspace, `role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema, y `can_see_*` con el alcance del rol
   - [x] F70 · Guards y menú por permiso — `requirePermission`, `getPermissionContext` y `getPermissionAction`, con `requireWorkspaceAdmin` y `getAdminContext` intactos para Owner/Admin
   - [x] F71 · Pantalla de roles: crear, editar, borrar exigiendo reasignar primero, y permisos por módulo con un botón de todos
   - [x] F72 · Asignar rol a una persona: `role_id` cambia y `role` sigue en `member`; no se puede quitar al último Owner
-- [ ] **Fase 3 lista y cierre:** suite completa en 0, documentación al día, `docs/referencia/` borrada, merge a `main`
+  - [x] `scripts/verify-roles.mjs`: 22 chequeos contra la base real, incluida la prueba positiva de que un rol con alcance `all` ve todos los leads
+- [x] **Fase 3 lista y cierre de la Etapa 2** (26/9/2026)
+
+  | Comando | Resultado |
+  |---|---|
+  | `npx vitest run` | 2413 tests, todo en verde |
+  | `npm run build` | Compila |
+  | `npm run lint` | 0 errores, 44 warnings (la línea base del punto de partida) |
+  | `node scripts/verify-rls.mjs` | Todo verde |
+  | `node scripts/verify-roles.mjs` | Todo verde |
+  | `node scripts/verify-content.mjs` | Todo verde |
+  | `node scripts/verify-crm.mjs` | Todo verde |
+  | `node scripts/verify-inbox-filters.mjs` | Todo verde |
+  | `node scripts/verify-dashboards.mjs` | Todo verde |
+
+  Documentación al día: `.env.example`, `CLAUDE.md`, `BITACORA.md`,
+  `docs/integraciones.md`, `docs/contenido.md`, `docs/publicacion.md`,
+  `docs/roles.md` y `docs/dashboards.md`. `docs/referencia/` borrada.
 
 ## Migraciones creadas
 
@@ -165,11 +182,16 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 | 00083 | Pipeline de contenido: 4 tablas, bucket `content-media` con policies por workspace, cron de limpieza | ✅ aplicada y verificada |
 | 00084 | `approve_content_idea()`: crea la pieza y aprueba la idea en una transacción | ✅ aplicada y verificada |
 | 00085 | `agent_runs.source` suma `content_copy` y `ads_analysis`; `workspaces.content_copy_settings` (voz de marca) | ✅ aplicada |
+| 00086 | Métricas y anuncios: `social_post_metrics_daily`, `social_account_metrics_daily`, `social_post_comments`, `meta_ads_insights_daily`, cron `metrics-sync` + lista blanca | ✅ aplicada y verificada (20 chequeos nuevos en `verify-rls`) |
+| 00087 | Canal de email: `channels.platform` suma `email`, `provider` suma `resend`, `email_address`, siete columnas de cabeceras en `messages`, bucket `email-attachments`, trigger `email_received` | ✅ aplicada y verificada (8 chequeos nuevos en `verify-rls`) |
+| 00088 | Roles: `workspace_roles` con los tres de sistema por workspace, `workspace_members.role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema | ✅ aplicada y verificada |
+| 00089 | `can_see_contact` y `can_see_conversation` consultan el alcance del rol | ✅ aplicada y verificada (`verify-rls` corrido antes y después) |
+| 00090 | `drop_legacy_secret_columns` | ⛔ **escrita y NO aplicada, a propósito** (ver PENDIENTE: la clave de Zernio todavía vive en la columna vieja) |
 
 ## Deuda que deja el Bloque 1
 
-- `countScheduledUses` (aviso antes de desconectar) devuelve 0 hasta el Bloque 3: la tabla `social_posts`
-  todavía no existe. Al crearla en B3a hay que completar el cuerpo; la pantalla ya pregunta.
+- ~~`countScheduledUses` devuelve 0 hasta el Bloque 3~~ — resuelto en el 4b: cuenta las publicaciones
+  programadas de cada integración sobre `social_posts`.
 
 **Aviso de coordinación:** hay otra sesión trabajando la Etapa 4 en paralelo sobre la misma base
 (`.claude/worktrees/etapa4-agendamiento-tanda-a-85d668`). Confirmó que toma la banda desde `00121`

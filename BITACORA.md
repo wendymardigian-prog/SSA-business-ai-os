@@ -796,3 +796,133 @@ Las dos categorías que importaban quedaron en cero: ninguna función
 - **Tres sistemas siguen recibiendo los mismos DMs de @wenmardigian** (este OS,
   WenOS y Agente Chat). Sigue sin resolverse y sigue siendo lo primero a
   resolver antes de dejar automatizaciones encendidas en serio.
+
+---
+
+# Etapa 2 — Publicación, métricas, email y roles (26 de septiembre de 2026)
+
+Nueve bloques, 72 funcionalidades, nueve migraciones aplicadas (00081 a 00089)
+y una escrita sin aplicar (00090). De 1258 tests a **2413**.
+
+Se hizo en una corrida autónoma sobre la rama `etapa2`, con commit y push por
+bloque. El plan está en `docs/requerimientos-etapa2.md`; el estado final, en
+`docs/PROGRESS.md`; lo que quedó afuera, en `docs/PENDIENTE.md`.
+
+## Lo que se construyó
+
+**Integraciones rediseñadas.** Una pantalla con el estado de cada conexión y
+todos los secretos en Vault. Doce proveedores, cada uno con su tarjeta, su
+prueba antes de guardar y su barra de uso.
+
+**Contenido.** Ideas, piezas, tablero, calendario, lista, editor con generación
+por IA, versiones, y publicación en cinco redes con reintentos.
+
+**Métricas.** Cuatro tablas, cinco lectores, y tres dashboards nuevos: contenido
+orgánico, anuncios de Meta y unificado. Más la página Social y el análisis
+histórico de cada post.
+
+**Email como canal.** Los correos entran a la misma bandeja que los DMs y se
+responden desde ahí, con el hilo bien armado del otro lado.
+
+**Roles personalizados.** Treinta y cinco permisos, dos alcances, y una pantalla
+para armar roles sin tocar código.
+
+## Las decisiones que más costaron, y por qué son así
+
+**Un metric que la red no dio queda en `null`, no en cero.** Es la regla que
+atraviesa todo el módulo de métricas. Un cero escrito en la tabla se lee
+después, en un gráfico, como "ese día no pasó nada" — y eso es una afirmación
+distinta y falsa. El costo es que medio código tiene que manejar `null`; el
+beneficio es que ningún número del dashboard es inventado.
+
+**El alcance único de un período no es la suma de los diarios.** La misma
+persona alcanzada el lunes y el martes cuenta una vez. Se pide en vivo a Meta
+con caché de quince minutos, en vez de sumar lo guardado. Sin esto, el alcance
+del mes daría un número inflado que después nadie entiende por qué no cierra
+con lo que muestra Meta.
+
+**El email no es un módulo aparte.** Entra por `channels`, `conversations` y
+`messages`. Una bandeja aparte para el email sería una segunda bandeja que
+revisar, y el punto del sistema es que haya una sola.
+
+**El agente de IA no contesta emails.** Está hecho para chat: responde corto y
+en el momento. Un email contestado así se lee mal, y además nadie lo pidió. Hay
+un test con espía que lo verifica, porque es exactamente la clase de cosa que
+alguien agrega "por consistencia" con los otros dos receptores.
+
+**Los permisos de Member son los de antes, no los que parecerían razonables.**
+Antes de tocar un solo guard se escribió `member-baseline.test.ts`, que recorre
+las páginas y las acciones del código real y mira qué guard usa cada una. La
+tabla de permisos se deriva de eso. Así lo que un Member puede después es
+exactamente lo que podía antes, y cualquier diferencia es una decisión explícita
+y no un descuido.
+
+**`workspace_members.role` no se tocó.** Sigue siendo owner/admin/member y sigue
+siendo lo que leen las cuarenta policies que ya existían. Un rol personalizado
+es siempre un `member` con `role_id`. Esa fue la condición para que el cambio
+más delicado del sistema no rompiera nada.
+
+## Tres errores que encontraron los scripts de verificación
+
+Los tres se arreglaron. Valen anotarse porque los tests unitarios no los
+habrían visto: viven en la base.
+
+1. **El trigger que protege los roles de sistema frenaba el borrado en cascada
+   de un workspace.** Faltaba distinguir "alguien borra un rol a mano" de "el
+   workspace se va y sus roles con él". Se descubrió porque la limpieza de
+   `verify-rls` dejó de poder borrar sus datos.
+2. **La primera versión de la 00089 copió la lógica de leads dentro de
+   `can_see_conversation`** en vez de delegar en `can_see_contact`, deshaciendo
+   lo que la 00028 había hecho a propósito y perdiendo la exclusión de contactos
+   borrados. Un Member volvía a ver la conversación sin asignar de un lead que
+   no puede ver.
+3. **`has_permission` devolvía `NULL` en vez de `false`** para un rol sin la
+   clave `keys`. En una policy Postgres trata `NULL` como falso, así que no era
+   un agujero, pero una función booleana que devuelve `NULL` es una trampa para
+   quien la llame desde la app.
+
+## Dos fugas al bundle del navegador
+
+Las dos del mismo tipo: un Client Component importó una constante de un módulo
+que también hacía trabajo de servidor, y se trajo el servidor con ella.
+
+La primera fue el catálogo de proveedores importando los nombres de los
+secretos de `lib/vault.ts`. La segunda, la bandeja importando el nombre del
+bucket de `lib/email/inbound.ts`, que arrastró `next/headers` y rompió el build
+señalando un archivo que nadie había tocado.
+
+La solución fue la misma las dos veces: un archivo hoja con la constante y nada
+más (`lib/secret-names.ts`, `lib/email/buckets.ts`). Y `vault-boundary.test.ts`
+ahora vigila los dos módulos, así el próximo caso sale nombrando la cadena de
+imports en vez de un error de Turbopack.
+
+## Lo que cambió respecto del plan, y por qué
+
+**Zernio no tiene endpoint de delta ni cursor.** El plano lo daba por hecho;
+revisado el SDK instalado, no existe. Se usa `getAnalytics` con ventana de
+fechas, que para una recolección nocturna da lo mismo con una pieza menos.
+
+**Postproxy no documenta webhooks.** El receptor quedó escrito y validado con
+un secreto, pero el camino real es el trabajo de revisión que pregunta por el
+estado.
+
+**LinkedIn no da métricas ni comentarios** sin el programa de partners. Se dice
+en pantalla; no es un error que alguien pueda arreglar reconectando.
+
+En los tres casos ganó la documentación del proveedor sobre el plan, y quedó
+anotado en `docs/PENDIENTE.md`.
+
+## Lo que queda
+
+Está todo en `docs/PENDIENTE.md`, con el formato *qué quedó / por qué / qué se
+decidió en su lugar*. Lo principal:
+
+- **La prueba de subida directa a YouTube está construida y no se ejecutó**:
+  sube un video a la cuenta real. Se aprieta en la verificación en vivo.
+- **La migración 00090 no se aplicó**: borra las columnas donde todavía vive la
+  API key de Zernio. El archivo explica el orden correcto para hacerlo.
+- **Las pantallas no se revisaron visualmente**: la app pide login y no se
+  ingresan credenciales.
+- Las tarjetas de desglose del detalle de anuncios y las historias en vivo de
+  Instagram quedaron para cuando haya cuentas conectadas contra las cuales
+  medir el costo en cuota.

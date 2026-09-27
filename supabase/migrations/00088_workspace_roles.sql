@@ -215,7 +215,15 @@ BEGIN
     RETURN true;
   END IF;
 
-  RETURN v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]);
+  -- OJO: los permisos del rol de sistema "Member" NO estan en el jsonb (su
+  -- fila los tiene vacios a proposito: la fuente es lib/auth/permissions.ts).
+  -- Esta funcion responde por los roles PERSONALIZADOS y por owner/admin.
+  -- Ninguna policy la usa hoy; el alcance de leads lo resuelve
+  -- permission_scope, que si contempla los tres casos.
+  --
+  -- El COALESCE importa: sin el, un rol sin la clave `keys` devuelve NULL en
+  -- vez de false, y una funcion booleana que devuelve NULL es una trampa.
+  RETURN COALESCE(v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]), false);
 END;
 $$;
 
