@@ -11,6 +11,8 @@ import type { Database } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { readSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
+import { getOAuthAdapter } from "@/lib/oauth/registry";
+import { needsFreshToken, refreshConnection } from "@/lib/social/refresh-connection";
 import { readZernioMetrics } from "@/lib/metrics/zernio";
 import { readThreadsMetrics } from "@/lib/metrics/threads";
 import { readYouTubeMetrics } from "@/lib/metrics/youtube";
@@ -38,17 +40,41 @@ export interface MetricsSyncPayload {
   socialAccountId?: string;
 }
 
-/** El token OAuth de una conexion del workspace. */
+/**
+ * El token OAuth de una conexion del workspace, renovado si esta por vencer.
+ *
+ * Lo mismo que hace `credentialsForPublisher` al publicar (A2): el token de
+ * Google dura una hora, asi que leer metricas de YouTube sin renovar falla
+ * con 401 casi siempre. Si el refresco no sale, se devuelve null y la cuenta
+ * se saltea con aviso, que es como el job trata a una cuenta sin token.
+ */
 async function oauthToken(supabase: Db, workspaceId: string, provider: string): Promise<string | null> {
   const { data } = await supabase
     .from("oauth_connections")
-    .select("vault_secret_prefix")
+    .select("id, vault_secret_prefix, token_expires_at")
     .eq("workspace_id", workspaceId)
     .eq("provider", provider as never)
     .is("user_id", null)
     .maybeSingle();
 
   if (!data) return null;
+
+  if (needsFreshToken(data.token_expires_at)) {
+    const adapter = getOAuthAdapter(provider);
+    if (adapter?.refresh) {
+      try {
+        return await refreshConnection(supabase, {
+          id: data.id,
+          workspace_id: workspaceId,
+          vault_secret_prefix: data.vault_secret_prefix,
+        }, adapter);
+      } catch (err) {
+        console.error(`[metrics-sync] no pude renovar ${provider}:`, err instanceof Error ? err.message : err);
+        return null;
+      }
+    }
+  }
+
   return readSecret(supabase, workspaceId, oauthSecretName(data.vault_secret_prefix, "access_token"));
 }
 

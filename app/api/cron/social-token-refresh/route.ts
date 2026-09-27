@@ -10,9 +10,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { readSecret, storeSecret, oauthSecretName } from "@/lib/vault";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { planRefresh, warnMessage, type ConnectionToCheck } from "@/lib/social/token-refresh";
+import { refreshConnection } from "@/lib/social/refresh-connection";
 import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
 
 export async function GET(request: NextRequest) {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      await refreshOne(supabase, row, adapter, now);
+      await refreshConnection(supabase, row, adapter, now);
       refreshed++;
     } catch (err) {
       failed++;
@@ -94,66 +94,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, checked: connections?.length ?? 0, refreshed, warned, failed });
-}
-
-/** Renueva una conexion y guarda el token nuevo en Vault. */
-async function refreshOne(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  row: { id: string; workspace_id: string; vault_secret_prefix: string },
-  adapter: NonNullable<ReturnType<typeof getOAuthAdapter>>,
-  now: Date,
-) {
-  const prefix = row.vault_secret_prefix;
-
-  // Threads renueva con el propio token largo; Google, con el refresh token.
-  // Por eso se intenta el refresh y, si no hay, se usa el de acceso.
-  const [refreshToken, accessToken] = await Promise.all([
-    readSecret(supabase, row.workspace_id, oauthSecretName(prefix, "refresh_token")).catch(() => null),
-    readSecret(supabase, row.workspace_id, oauthSecretName(prefix, "access_token")).catch(() => null),
-  ]);
-
-  const credential = refreshToken || accessToken;
-  if (!credential) throw new Error("no hay token guardado en Vault");
-
-  const [clientId, clientSecret] = await Promise.all([
-    readSecret(supabase, row.workspace_id, adapter.clientIdSecretName).catch(() => null),
-    readSecret(supabase, row.workspace_id, adapter.clientSecretSecretName).catch(() => null),
-  ]);
-  if (!clientId || !clientSecret) throw new Error("faltan el Client ID o el Secret");
-
-  const tokens = await adapter.refresh!({
-    refreshToken: credential,
-    clientId,
-    clientSecret,
-  });
-
-  const stored = await storeSecret(
-    supabase,
-    row.workspace_id,
-    oauthSecretName(prefix, "access_token"),
-    tokens.accessToken,
-  );
-  if (!stored.ok) throw new Error(stored.error);
-
-  // Google no devuelve un refresh nuevo: el que habia sigue valiendo.
-  if (tokens.refreshToken) {
-    await storeSecret(
-      supabase,
-      row.workspace_id,
-      oauthSecretName(prefix, "refresh_token"),
-      tokens.refreshToken,
-    );
-  }
-
-  await supabase
-    .from("oauth_connections")
-    .update({
-      status: "active",
-      last_error: null,
-      last_refreshed_at: now.toISOString(),
-      token_expires_at: tokens.expiresInSeconds
-        ? new Date(now.getTime() + tokens.expiresInSeconds * 1000).toISOString()
-        : null,
-    })
-    .eq("id", row.id);
 }

@@ -41,10 +41,26 @@ export interface SchedulePermissions {
 export interface ScheduleContext {
   postStatus: string;
   perms: SchedulePermissions;
-  /** Las redes que el workspace tiene conectadas. */
+  /** Las redes que el workspace tiene conectadas, con cuenta activa. */
   connected: string[];
+  /**
+   * Por donde publica la cuenta activa de cada red
+   * (`social_accounts.default_publisher`).
+   *
+   * Es el respaldo de `networks[].publisher`, que la pantalla casi nunca
+   * escribe. Sin ninguno de los dos no se programa: una fila sin publicador
+   * llega al despachador, que no sabe con que publicarla y la da por perdida
+   * para siempre.
+   */
+  defaultPublishers?: Record<string, string | null>;
   existing: ExistingPublication[];
   now?: Date;
+  /**
+   * `now` es "Publicar ahora": sale en este momento, asi que no tiene sentido
+   * exigirle anticipacion. Con el modo normal la fecha tiene que estar en el
+   * futuro y con margen.
+   */
+  mode?: "scheduled" | "now";
 }
 
 export type ScheduleDecision =
@@ -82,6 +98,15 @@ export function canScheduleNetwork(
     };
   }
 
+  const publisher =
+    network.publisher ?? context.defaultPublishers?.[network.platform] ?? null;
+  if (!publisher) {
+    return {
+      ok: false,
+      error: `Elegi por donde se publica ${network.platform} en Integraciones.`,
+    };
+  }
+
   const already = context.existing.find((p) => p.platform === network.platform);
   if (already && (already.status === "publishing" || already.status === "published")) {
     return {
@@ -91,6 +116,11 @@ export function canScheduleNetwork(
           ? `Esa pieza ya se publico en ${network.platform}.`
           : `Esa pieza se esta publicando en ${network.platform} en este momento.`,
     };
+  }
+
+  // Publicar ahora sale ya: no hay fecha que elegir ni margen que respetar.
+  if (context.mode === "now") {
+    return { ok: true, at: now.toISOString(), publisher };
   }
 
   if (!network.plannedAt) {
@@ -115,7 +145,7 @@ export function canScheduleNetwork(
     };
   }
 
-  return { ok: true, at: at.toISOString(), publisher: network.publisher ?? null };
+  return { ok: true, at: at.toISOString(), publisher };
 }
 
 export interface SchedulePlan {
@@ -140,8 +170,9 @@ export function planSchedule(
 
   for (const network of networks) {
     // Una red sin fecha no es un error que haya que mostrar al programar
-    // todas: simplemente todavia no entra.
-    if (!network.plannedAt) continue;
+    // todas: simplemente todavia no entra. Salvo en "Publicar ahora", donde
+    // la fecha es este momento y la red sin fecha tambien sale.
+    if (!network.plannedAt && context.mode !== "now") continue;
 
     const decision = canScheduleNetwork(network, context);
     if (decision.ok) {

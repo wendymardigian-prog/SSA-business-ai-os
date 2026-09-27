@@ -34,10 +34,10 @@ Regla: **primero el test que reproduce el error, en rojo.**
 
 | # | Que | Estado |
 |---|---|---|
-| A1 | `publisher` sale de `social_accounts.default_publisher` | ⬜ |
-| A2 | Refrescar el access token de Google en memoria si vence en < 5 min | ⬜ |
-| A3 | Modo `now` que saltea la validacion de anticipacion | ⬜ |
-| A4 | Reprogramar borra el job pendiente viejo | ⬜ |
+| ✅ A1 | `publisher` sale de `social_accounts.default_publisher` | listo |
+| ✅ A2 | Refrescar el access token de Google si vence en < 5 min (tambien en metricas) | listo |
+| ✅ A3 | Modo `now` que saltea la validacion de anticipacion | listo |
+| ✅ A4 | Reprogramar borra el job pendiente viejo | listo |
 | A5 | Cambiar la fecha en el editor reprograma | ⬜ |
 | A6 | Un unico "al publicarse" que usan los tres caminos | ⬜ |
 | A7 | `SUBSCRIBED_EVENTS` suma `post.platform.published` / `.failed` | ⬜ |
@@ -49,11 +49,11 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | A13 | Recalcular el estado y avisar en todo final | ⬜ |
 | A14 | Barrido de filas trabadas en `publishing` | ⬜ |
 | A15 | Idempotencia con Zernio (`x-request-id`) | ⬜ |
-| A16 | El mapa de cuentas filtra `is_active` | ⬜ |
+| ✅ A16 | El mapa de cuentas filtra `is_active` | listo |
 | A17 | YouTube: visibilidad elegible y subida en su propia ruta | ⬜ |
 | A18 | Conectar `canRedistribute` y `duplicateAsVariant` | ⬜ |
 | A19 | Fechas en la zona del workspace | ⬜ |
-| A20 | Programar pide el permiso `content.publish` | ⬜ |
+| ✅ A20 | Programar pide el permiso `content.publish` | listo |
 | — | `scripts/verify-publishing.mjs` de punta a punta | ⬜ |
 
 ## D · Zernio programa del lado del proveedor (11 puntos)

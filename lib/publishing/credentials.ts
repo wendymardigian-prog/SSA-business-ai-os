@@ -7,10 +7,15 @@
  * - **Cuentas conectadas por OAuth** (YouTube, LinkedIn, Threads): un access
  *   token por conexion, guardado con el prefijo de `oauth_connections`.
  *
- * Que el token este vencido NO se arregla aca: si vencio, publicar falla con
- * un error permanente y la pantalla de integraciones lo muestra. Refrescarlo
- * en medio de una publicacion escondería una conexión rota hasta que el
- * refresh también falle, que es peor.
+ * **El token por vencer SI se renueva aca** (A2). El access token de Google
+ * dura una hora, asi que el cron semanal nunca llega a tiempo: sin esto,
+ * subir un video a YouTube falla con 401 casi siempre. No esconde una
+ * conexion rota: si el refresh falla, el error sale igual y con el motivo, y
+ * la conexion queda marcada.
+ *
+ * Solo se renueva lo que esta por vencer. Los tokens largos (LinkedIn,
+ * Threads, 60 dias) siguen pasando por el cron semanal: renovarlos en cada
+ * publicacion seria gastar una llamada de mas cada vez.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,6 +23,8 @@ import type { Database, OAuthProvider } from "@/lib/types/database";
 import { readSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { PublishError } from "@/lib/jobs/errors";
+import { getOAuthAdapter } from "@/lib/oauth/registry";
+import { needsFreshToken, refreshConnection } from "@/lib/social/refresh-connection";
 import type { PublishCredentials } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -64,7 +71,7 @@ export async function credentialsForPublisher(
 
   const { data: connection } = await supabase
     .from("oauth_connections")
-    .select("vault_secret_prefix, status, token_expires_at")
+    .select("id, vault_secret_prefix, status, token_expires_at")
     .eq("workspace_id", workspaceId)
     .eq("provider", provider)
     .is("user_id", null)
@@ -81,6 +88,38 @@ export async function credentialsForPublisher(
       `La conexion con ${provider} se revoco. Volve a conectarla.`,
       "permanent",
     );
+  }
+
+  if (needsFreshToken(connection.token_expires_at)) {
+    const adapter = getOAuthAdapter(provider);
+    if (!adapter?.refresh) {
+      throw new PublishError(
+        `El token de ${provider} vencio y no se puede renovar solo. Volve a conectar la cuenta.`,
+        "permanent",
+      );
+    }
+    try {
+      const fresh = await refreshConnection(
+        supabase,
+        {
+          id: connection.id,
+          workspace_id: workspaceId,
+          vault_secret_prefix: connection.vault_secret_prefix,
+        },
+        adapter,
+      );
+      return { token: fresh };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      await supabase
+        .from("oauth_connections")
+        .update({ status: "attention", last_error: detail })
+        .eq("id", connection.id);
+      throw new PublishError(
+        `No pude renovar el token de ${provider}: ${detail}. Volve a conectar la cuenta.`,
+        "permanent",
+      );
+    }
   }
 
   const token = await readSecret(

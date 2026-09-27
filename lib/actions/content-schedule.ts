@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { scheduleJob } from "@/lib/scheduler";
@@ -11,7 +11,6 @@ import {
   canScheduleNetwork,
   canUnschedule,
   planSchedule,
-  publishNowAt,
   type NetworkPlan,
 } from "@/lib/content/schedule";
 import { aggregatePostStatus } from "@/lib/content/status";
@@ -84,17 +83,56 @@ async function loadPost(
   };
 }
 
-/** Las redes con cuenta conectada en el workspace. */
-async function connectedPlatforms(
+interface ActiveAccount {
+  id: string;
+  platform: string;
+  defaultPublisher: string | null;
+}
+
+/**
+ * Las cuentas ACTIVAS del workspace, una por red.
+ *
+ * Trae el publicador por defecto porque `networks[].publisher` casi nunca
+ * viene escrito: la pantalla no lo pide. Sin este respaldo la fila se crea
+ * sin publicador y el despachador no sabe con que publicarla (A1).
+ *
+ * Y filtra `is_active` porque enganchar la publicacion a una cuenta
+ * desconectada es programar algo que no va a salir (A16).
+ */
+async function activeAccounts(
   supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"],
   workspaceId: string,
-): Promise<string[]> {
+): Promise<ActiveAccount[]> {
   const { data } = await supabase
     .from("social_accounts")
-    .select("platform")
+    .select("id, platform, default_publisher")
     .eq("workspace_id", workspaceId)
     .eq("is_active", true);
-  return (data ?? []).map((a) => a.platform);
+
+  return (data ?? []).map((a) => ({
+    id: a.id as string,
+    platform: a.platform as string,
+    defaultPublisher: (a.default_publisher as string | null) ?? null,
+  }));
+}
+
+/**
+ * Borra los jobs de publicacion que todavia no salieron para esa fila.
+ *
+ * Reprogramar hacia un upsert de la fila y encolaba un job nuevo sin tocar el
+ * viejo: a la hora vieja salia igual (A4). Un solo lugar para las dos veces
+ * que hace falta, reprogramar y desprogramar.
+ */
+async function deletePendingPublishJobs(
+  service: Awaited<ReturnType<typeof createServiceClient>>,
+  socialPostId: string,
+) {
+  await service
+    .from("scheduled_jobs")
+    .delete()
+    .eq("type", CONTENT_PUBLISH_JOB)
+    .eq("status", "pending")
+    .contains("payload", { socialPostId });
 }
 
 /** Recalcula el estado de la pieza a partir de sus publicaciones. */
@@ -130,18 +168,23 @@ export async function scheduleNetworks(input: {
   /** Publicar ya, en vez de esperar la fecha. */
   now?: boolean;
 }): Promise<ScheduleActionResult<ScheduleOutcome>> {
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const perms = { publish: isAdminRole(role) };
+  // Programar es `content.publish`, no "ser admin" (A20): un rol
+  // personalizado con ese permiso tiene que poder, y un admin al que se lo
+  // sacaron, no.
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const perms = { publish: can("content.publish") };
 
   const post = await loadPost(supabase, workspace.id, input.postId);
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
-  const connected = await connectedPlatforms(supabase, workspace.id);
+  const accounts = await activeAccounts(supabase, workspace.id);
   const context = {
     postStatus: post.status,
     perms,
-    connected,
+    connected: accounts.map((a) => a.platform),
+    defaultPublishers: Object.fromEntries(accounts.map((a) => [a.platform, a.defaultPublisher])),
     existing: post.publications,
+    mode: input.now ? ("now" as const) : ("scheduled" as const),
   };
 
   const targets = input.platform
@@ -153,24 +196,23 @@ export async function scheduleNetworks(input: {
   }
 
   // "Publicar ahora" es la misma operacion con la hora de este momento: un
-  // solo camino de publicacion para todo (§10).
-  const withDates = input.now
-    ? targets.map((n) => ({ ...n, plannedAt: publishNowAt() }))
-    : targets;
-
+  // solo camino de publicacion para todo (§10). La hora la pone
+  // `canScheduleNetwork` en modo `now`, que ademas saltea la anticipacion:
+  // ponerla antes y validarla despues la rechazaba siempre por "falta muy
+  // poco" (A3).
   const plan = input.platform
     ? (() => {
-        const decision = canScheduleNetwork(withDates[0], context);
+        const decision = canScheduleNetwork(targets[0], context);
         return decision.ok
           ? {
               schedule: [
-                { platform: withDates[0].platform, at: decision.at, publisher: decision.publisher },
+                { platform: targets[0].platform, at: decision.at, publisher: decision.publisher },
               ],
               skipped: [],
             }
-          : { schedule: [], skipped: [{ platform: withDates[0].platform, reason: decision.error }] };
+          : { schedule: [], skipped: [{ platform: targets[0].platform, reason: decision.error }] };
       })()
-    : planSchedule(withDates, context);
+    : planSchedule(targets, context);
 
   if (plan.schedule.length === 0) {
     return {
@@ -183,11 +225,7 @@ export async function scheduleNetworks(input: {
   // ningun usuario (00083).
   const service = await createServiceClient();
 
-  const { data: accounts } = await service
-    .from("social_accounts")
-    .select("id, platform")
-    .eq("workspace_id", workspace.id);
-  const accountByPlatform = new Map<string, string>((accounts ?? []).map((a) => [a.platform as string, a.id]));
+  const accountByPlatform = new Map<string, string>(accounts.map((a) => [a.platform, a.id]));
 
   const scheduled: string[] = [];
 
@@ -216,6 +254,9 @@ export async function scheduleNetworks(input: {
       plan.skipped.push({ platform: entry.platform, reason: "No pude crear la publicacion" });
       continue;
     }
+
+    // Reprogramar: el job de la hora vieja se va antes de encolar el nuevo.
+    await deletePendingPublishJobs(service, row.id);
 
     // scheduleJob lanza si el insert falla, no devuelve null.
     let job: { id: string } | null = null;
@@ -270,8 +311,8 @@ export async function unscheduleNetwork(input: {
   postId: string;
   platform: string;
 }): Promise<ScheduleActionResult<{ postStatus: string }>> {
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const perms = { publish: isAdminRole(role) };
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const perms = { publish: can("content.publish") };
 
   const post = await loadPost(supabase, workspace.id, input.postId);
   if (!post) return { ok: false, error: "No encontre esa pieza" };
@@ -295,14 +336,7 @@ export async function unscheduleNetwork(input: {
 
   // El job se cancela borrandolo: si quedara, publicaria algo que se
   // desprogramo.
-  if (row) {
-    await service
-      .from("scheduled_jobs")
-      .delete()
-      .eq("type", CONTENT_PUBLISH_JOB)
-      .eq("status", "pending")
-      .contains("payload", { socialPostId: row.id });
-  }
+  if (row) await deletePendingPublishJobs(service, row.id);
 
   const postStatus = await refreshPostStatus(service, post.id);
 
