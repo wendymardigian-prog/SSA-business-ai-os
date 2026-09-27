@@ -15,6 +15,7 @@ import {
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
+import { sweepStuckPublications } from "@/lib/publishing/sweep";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -77,6 +78,16 @@ export async function GET(request: NextRequest) {
     if (sweep.closed > 0) console.log(`[cron/jobs] cerradas por inactividad: ${sweep.closed}`);
   } catch (err) {
     console.error("[cron/jobs] fallo el barrido de inactividad:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Publicaciones que se quedaron colgadas en "publicando" (A14). Sin esto
+  // una corrida que muere despues de tomar la fila la deja asi para siempre:
+  // no hay job pendiente ni revision agendada que la rescate.
+  try {
+    const stuck = await sweepStuckPublications(supabase);
+    if (stuck.recovered > 0) console.log(`[cron/jobs] publicaciones destrabadas: ${stuck.recovered}`);
+  } catch (err) {
+    console.error("[cron/jobs] fallo el barrido de publicaciones:", err instanceof Error ? err.message : String(err));
   }
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is

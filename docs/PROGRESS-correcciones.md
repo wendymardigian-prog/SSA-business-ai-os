@@ -25,8 +25,9 @@ Nada programado que romper.
 
 | # | Nombre | Grupo | Estado |
 |---|---|---|---|
-| 00091 | `zernio_native_scheduling` | D | ⬜ sin escribir |
-| 00092 | `copywriter_agent` | E | ⬜ sin escribir |
+| 00091 | `publish_progress` (que paso de la publicacion ya salio) | A | ✅ aplicada, idempotente |
+| 00092 | `zernio_native_scheduling` | D | ⬜ sin escribir |
+| 00093 | `copywriter_agent` | E | ⬜ sin escribir |
 
 ## A · Publicacion automatica (20 puntos)
 
@@ -38,16 +39,16 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ A2 | Refrescar el access token de Google si vence en < 5 min (tambien en metricas) | listo |
 | ✅ A3 | Modo `now` que saltea la validacion de anticipacion | listo |
 | ✅ A4 | Reprogramar borra el job pendiente viejo | listo |
-| A5 | Cambiar la fecha en el editor reprograma | ⬜ |
-| A6 | Un unico "al publicarse" que usan los tres caminos | ⬜ |
+| ✅ A5 | Cambiar la fecha en el editor reprograma | listo |
+| ✅ A6 | Un unico "al publicarse" que usan los tres caminos | listo |
 | A7 | `SUBSCRIBED_EVENTS` suma `post.platform.published` / `.failed` | ⬜ |
 | A8 | TikTok manda `privacyLevel` y las dos confirmaciones | ⬜ |
 | A9 | Instagram: tipo (Feed, Carrusel, Reel, Story) | ⬜ |
-| A10 | Threads: hijos del carrusel, esperar el contenedor, no duplicar el hilo | ⬜ |
-| A11 | Postproxy: `account_ref` propio; id y link del video del estado | ⬜ |
+| ✅ A10 | Threads: hijos del carrusel, esperar el contenedor, no duplicar el hilo | listo |
+| ✅ A11 | Postproxy: `account_ref` propio; id y link del video del estado | listo |
 | A12 | Errores de Zernio: `response.status` y `errorMessage` | ⬜ |
-| A13 | Recalcular el estado y avisar en todo final | ⬜ |
-| A14 | Barrido de filas trabadas en `publishing` | ⬜ |
+| ✅ A13 | Recalcular el estado y avisar en todo final | listo |
+| ✅ A14 | Barrido de filas trabadas en `publishing` | listo |
 | A15 | Idempotencia con Zernio (`x-request-id`) | ⬜ |
 | ✅ A16 | El mapa de cuentas filtra `is_active` | listo |
 | A17 | YouTube: visibilidad elegible y subida en su propia ruta | ⬜ |

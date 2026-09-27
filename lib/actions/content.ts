@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { validateIdea, draftFromIdea, type IdeaInput } from "@/lib/content/ideas";
 import { evaluateDrop } from "@/lib/content/board";
+import { plannedDateChanges } from "@/lib/content/reschedule";
+import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -29,18 +30,24 @@ export type ContentActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
   | { ok: false; error: string };
 
-/** Lo que puede hacer quien esta llamando. En el bloque 9 pasa a permisos. */
+/**
+ * Lo que puede hacer quien esta llamando.
+ *
+ * Por permiso y no por cargo (A20): un rol personalizado con
+ * `content.publish` programa aunque sea Member, y un admin al que se lo
+ * sacaron, no.
+ */
 async function contentContext() {
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const admin = isAdminRole(role);
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const admin = can("content.approve") || can("content.publish");
   return {
     workspace,
     user,
     supabase,
     perms: (isAuthor: boolean): ContentPermissions => ({
       create: true,
-      approve: admin,
-      publish: admin,
+      approve: can("content.approve"),
+      publish: can("content.publish"),
       isAuthor,
     }),
     isAdmin: admin,
@@ -498,6 +505,64 @@ export async function generatePostCopy(input: {
   return { ok: true, data: { warnings: result.warnings, costUsd: result.costUsd } };
 }
 
+/**
+ * Mueve las publicaciones de las redes que ya estaban programadas y cambiaron
+ * de fecha en el editor (A5).
+ *
+ * Devuelve los avisos de las que no se pudieron mover, para mostrarlos sin
+ * frenar el guardado: perder el texto que alguien acaba de escribir porque
+ * una fecha quedo muy cerca seria peor.
+ */
+async function applyPlannedDateChanges(
+  workspaceId: string,
+  postId: string,
+  networks: unknown[],
+): Promise<string[]> {
+  const plans = (networks as Array<{ platform?: string; planned_at?: string | null }>).map((n) => ({
+    platform: String(n.platform ?? ""),
+    plannedAt: n.planned_at ?? null,
+  }));
+
+  const { createServiceClient } = await import("@/lib/supabase/server");
+  const service = await createServiceClient();
+
+  const { data: publications } = await service
+    .from("social_posts")
+    .select("id, platform, status, scheduled_at")
+    .eq("content_post_id", postId)
+    .is("deleted_at", null);
+
+  const decisions = plannedDateChanges(
+    plans,
+    (publications ?? []).map((p) => ({
+      platform: p.platform,
+      status: p.status,
+      scheduledAt: p.scheduled_at,
+    })),
+  );
+
+  const warnings: string[] = [];
+
+  for (const decision of decisions) {
+    if (decision.kind === "skip") {
+      warnings.push(`${decision.platform}: ${decision.reason}`);
+      continue;
+    }
+
+    const row = (publications ?? []).find((p) => p.platform === decision.platform);
+    if (!row) continue;
+
+    const moved = await reschedulePublication(service, {
+      socialPostId: row.id,
+      workspaceId,
+      at: decision.at,
+    });
+    if (!moved) warnings.push(`${decision.platform}: no pude mover la publicacion.`);
+  }
+
+  return warnings;
+}
+
 /** Guarda los campos del editor. El autoguardado llama a esto. */
 export async function savePostDraft(input: {
   postId: string;
@@ -508,7 +573,9 @@ export async function savePostDraft(input: {
   networks?: unknown[];
   /** Para detectar que alguien mas lo edito mientras tanto. */
   knownUpdatedAt?: string;
-}): Promise<ContentActionResult<{ updatedAt: string; staleWarning: boolean }>> {
+}): Promise<
+  ContentActionResult<{ updatedAt: string; staleWarning: boolean; rescheduleWarnings: string[] }>
+> {
   const { workspace, supabase } = await contentContext();
 
   const { data: post } = await supabase
@@ -536,7 +603,7 @@ export async function savePostDraft(input: {
   if (input.copy !== undefined) patch.ai_unreviewed = false;
 
   if (Object.keys(patch).length === 0) {
-    return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale } };
+    return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale, rescheduleWarnings: [] } };
   }
 
   const { data: updated, error } = await supabase
@@ -550,6 +617,16 @@ export async function savePostDraft(input: {
     return { ok: false, error: "No pude guardar los cambios" };
   }
 
+  // Cambiar la fecha de una red YA programada tiene que mover la publicacion
+  // de verdad (A5). Antes solo se guardaba el campo y la publicacion salia a
+  // la hora vieja: la pantalla decia una cosa y el sistema hacia otra.
+  const rescheduleWarnings = input.networks
+    ? await applyPlannedDateChanges(workspace.id, input.postId, input.networks)
+    : [];
+
   revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { updatedAt: updated.updated_at, staleWarning: stale } };
+  return {
+    ok: true,
+    data: { updatedAt: updated.updated_at, staleWarning: stale, rescheduleWarnings },
+  };
 }

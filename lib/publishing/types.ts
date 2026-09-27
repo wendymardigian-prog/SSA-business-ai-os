@@ -29,6 +29,15 @@ export interface PublishInput {
   options: Record<string, unknown>;
   /** Con que cuenta se publica. */
   accountRef: string | null;
+  /**
+   * Que pasos de esta publicacion ya salieron (A10).
+   *
+   * Una publicacion con varios pasos contra el proveedor —un hilo de
+   * Threads, un carrusel— no puede empezar de cero al reintentar: el post
+   * principal ya esta en la red y se duplicaria. El publicador lo lee para
+   * saltear lo hecho y lo devuelve actualizado.
+   */
+  progress?: Record<string, unknown>;
 }
 
 export interface PublishCredentials {
@@ -51,6 +60,8 @@ export interface PublishResult {
   actualVisibility?: string | null;
   /** Algo que salio distinto de lo pedido pero no es un fallo. */
   warning?: string | null;
+  /** Que pasos ya salieron, para que el reintento no los repita (A10). */
+  progress?: Record<string, unknown>;
 }
 
 export interface Publisher {

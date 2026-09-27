@@ -150,6 +150,20 @@ export interface PostproxyPlatformResult {
   status: string;
   error?: string | null;
   attempted_at?: string | null;
+  /**
+   * El id y el link DEL VIDEO en YouTube (A11).
+   *
+   * No es lo mismo que `PostproxyPost.id`, que es el id del pedido dentro de
+   * Postproxy: guardar ese como id externo dejaba el link roto y hacia que
+   * la automatizacion escuchara un post que no existe. La API los nombra
+   * distinto segun el endpoint, asi que se aceptan las variantes conocidas y,
+   * si no viene ninguna, se deja vacio: mejor sin id que con uno equivocado.
+   */
+  platform_post_id?: string | null;
+  post_id?: string | null;
+  platform_post_url?: string | null;
+  url?: string | null;
+  permalink?: string | null;
 }
 
 export interface PostproxyPost {
@@ -195,19 +209,32 @@ export async function getPost(
   return request<PostproxyPost>({ apiKey, path: `/posts/${postId}`, fetchImpl });
 }
 
+export interface PlatformOutcome {
+  status: "published" | "processing" | "failed";
+  error: string | null;
+  /** El id del video en la red, cuando Postproxy lo informa (A11). */
+  externalId: string | null;
+  externalUrl: string | null;
+}
+
 /** Como quedo una red dentro de una publicacion. */
-export function platformOutcome(
-  post: PostproxyPost,
-  platform: string,
-): { status: "published" | "processing" | "failed"; error: string | null } {
+export function platformOutcome(post: PostproxyPost, platform: string): PlatformOutcome {
   const entry = post.platforms?.find((p) => p.platform === platform);
+  const empty = { externalId: null, externalUrl: null };
+
   if (!entry) {
     // Todavia no hay resultado para esa red: sigue en curso.
-    return { status: "processing", error: null };
+    return { status: "processing", error: null, ...empty };
   }
-  if (entry.status === "published") return { status: "published", error: null };
+
+  const externalId = entry.platform_post_id ?? entry.post_id ?? null;
+  const externalUrl = entry.platform_post_url ?? entry.url ?? entry.permalink ?? null;
+
+  if (entry.status === "published") {
+    return { status: "published", error: null, externalId, externalUrl };
+  }
   if (entry.status === "error") {
-    return { status: "failed", error: entry.error || "Postproxy no pudo publicar" };
+    return { status: "failed", error: entry.error || "Postproxy no pudo publicar", ...empty };
   }
-  return { status: "processing", error: null };
+  return { status: "processing", error: null, ...empty };
 }

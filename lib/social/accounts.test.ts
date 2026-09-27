@@ -64,7 +64,7 @@ describe("que cuentas y publicadores salen de lo conectado (F13)", () => {
   it("Postproxy y Google conectados: YouTube tiene los dos caminos y usa Postproxy", () => {
     // El criterio de F13: youtube_api queda sin verificar hasta que se pruebe
     // una publicacion directa, asi que el que se usa es Postproxy.
-    const result = computeAccounts(sources({ postproxyConnected: true, google: google(TODOS) }));
+    const result = computeAccounts(sources({ postproxyConnected: true, postproxyProfileId: "pp-yt-1", google: google(TODOS) }));
 
     const yt = find(result, "youtube")!;
     expect(yt.publishers.map((p) => [p.publisher, p.status])).toEqual([
@@ -117,7 +117,7 @@ describe("que cuentas y publicadores salen de lo conectado (F13)", () => {
   });
 
   it("la primera vez no avisa nada: no habia nada elegido", () => {
-    const result = computeAccounts(sources({ postproxyConnected: true }));
+    const result = computeAccounts(sources({ postproxyConnected: true, postproxyProfileId: "pp-yt-1" }));
 
     expect(find(result, "youtube")!.defaultChanged).toBe(true);
     expect(result.warnings).toEqual([]);
@@ -127,6 +127,7 @@ describe("que cuentas y publicadores salen de lo conectado (F13)", () => {
     const result = computeAccounts(
       sources({
         postproxyConnected: true,
+        postproxyProfileId: "pp-yt-1",
         google: google(TODOS),
         existing: [
           {
@@ -173,8 +174,20 @@ describe("que cuentas y publicadores salen de lo conectado (F13)", () => {
     expect(threads.defaultPublisher).toBeNull();
   });
 
+  it("A11 · sin perfil de YouTube en Postproxy, ese camino queda no disponible", () => {
+    // Publicar con un perfil que no existe hace que Postproxy acepte el
+    // pedido y no lo mande a ningun lado: peor que no ofrecerlo.
+    const result = computeAccounts(sources({ postproxyConnected: true, postproxyProfileId: null }));
+    const youtube = result.accounts.find((a) => a.platform === "youtube");
+
+    expect(youtube?.publishers[0]).toMatchObject({
+      publisher: "postproxy",
+      status: "unavailable",
+    });
+  });
+
   it("sincronizar dos veces con lo mismo da lo mismo", () => {
-    const base = sources({ postproxyConnected: true, google: google(TODOS) });
+    const base = sources({ postproxyConnected: true, postproxyProfileId: "pp-yt-1", google: google(TODOS) });
     const primera = computeAccounts(base);
     const segunda = computeAccounts({
       ...base,

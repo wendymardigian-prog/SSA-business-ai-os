@@ -12,7 +12,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { rowFromResult, completePostIfDone } from "./dispatcher";
+import { rowFromResult } from "./dispatcher";
+import { onPublicationSettled } from "./settled";
 import type { PublishResult } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -143,8 +144,8 @@ export async function settlePublication(supabase: Db, event: InboundPublishEvent
     return false;
   }
 
-  if (event.result.status === "published") {
-    await completePostIfDone(supabase, row.content_post_id);
-  }
+  // El mismo cierre que los otros dos caminos: completa el postId de la
+  // automatizacion, recalcula la pieza y avisa si fallo (A6, A13).
+  await onPublicationSettled(supabase, row.id);
   return true;
 }

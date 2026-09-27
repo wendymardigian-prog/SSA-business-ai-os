@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 import { zernioPublisher } from "./zernio";
 import { postproxyPublisher } from "./postproxy";
 import { linkedinPublisher } from "./linkedin";
-import { threadsPublisher } from "./threads";
+import { threadsPublisher, createThreadsPublisher, CONTAINER_POLLS } from "./threads";
 import {
   chunkRanges,
   classifyYouTubeError,
@@ -278,7 +278,11 @@ describe("publicador de Threads (F34)", () => {
   });
 
   it("un video usa el tipo de contenedor que corresponde", async () => {
-    const f = fakeFetch({ body: { id: "c" } }, { body: { id: "p" } });
+    const f = fakeFetch(
+      { body: { id: "c" } },
+      { body: { status: "FINISHED" } },
+      { body: { id: "p" } },
+    );
 
     await threadsPublisher.publish({
       input: input({ platform: "threads", accountRef: "9" }),
@@ -287,6 +291,96 @@ describe("publicador de Threads (F34)", () => {
     });
 
     expect(f.calls[0].url).toContain("media_type=VIDEO");
+  });
+
+  // ── A10 ────────────────────────────────────────────────────────────────
+
+  it("A10 · el carrusel manda contenedores hijos y sus ids en children", async () => {
+    // Sin `children` Meta rechaza el carrusel con 400 y no se publica nada.
+    const f = fakeFetch(
+      { body: { id: "hijo-1" } },
+      { body: { id: "hijo-2" } },
+      { body: { id: "cont" } },
+      { body: { id: "th-1" } },
+    );
+
+    const result = await threadsPublisher.publish({
+      input: input({
+        platform: "threads",
+        accountRef: "9",
+        mediaUrls: ["https://s.test/1.jpg", "https://s.test/2.jpg"],
+        media: [
+          { storage_path: "a/1.jpg", mime_type: "image/jpeg", kind: "image", size_bytes: 1 },
+          { storage_path: "a/2.jpg", mime_type: "image/jpeg", kind: "image", size_bytes: 1 },
+        ],
+      }),
+      credentials: { token: "k" },
+      fetchImpl: f.impl,
+    });
+
+    expect(f.calls[0].url).toContain("is_carousel_item=true");
+    expect(f.calls[1].url).toContain("is_carousel_item=true");
+    expect(f.calls[2].url).toContain("media_type=CAROUSEL");
+    expect(decodeURIComponent(f.calls[2].url)).toContain("children=hijo-1,hijo-2");
+    expect(result.status).toBe("published");
+  });
+
+  it("A10 · un video que sigue procesando queda en proceso, no se publica a medias", async () => {
+    const slow = createThreadsPublisher({ sleep: async () => {} });
+    const f = fakeFetch(
+      { body: { id: "cont-v" } },
+      ...Array.from({ length: CONTAINER_POLLS }, () => ({ body: { status: "IN_PROGRESS" } })),
+    );
+
+    const result = await slow.publish({
+      input: input({ platform: "threads", accountRef: "9" }),
+      credentials: { token: "k" },
+      fetchImpl: f.impl,
+    });
+
+    expect(result.status).toBe("processing");
+    expect(result.ref).toBe("cont-v");
+    // El contenedor queda anotado: el reintento no vuelve a subir el video.
+    expect(result.progress).toMatchObject({ containerId: "cont-v" });
+  });
+
+  it("A10 · un video que falla al procesarse es un fallo permanente", async () => {
+    const slow = createThreadsPublisher({ sleep: async () => {} });
+    const f = fakeFetch(
+      { body: { id: "cont-v" } },
+      { body: { status: "ERROR", error_message: "El video dura mas de 5 minutos" } },
+    );
+
+    await expect(
+      slow.publish({
+        input: input({ platform: "threads", accountRef: "9" }),
+        credentials: { token: "k" },
+        fetchImpl: f.impl,
+      }),
+    ).rejects.toThrow("El video dura mas de 5 minutos");
+  });
+
+  it("A10 · un hilo que fallo a la mitad NO republica el post principal", async () => {
+    // Antes el reintento empezaba de cero y el principal quedaba dos veces.
+    const f = fakeFetch({ body: { id: "c2" } }, { body: { id: "p2" } });
+
+    const result = await threadsPublisher.publish({
+      input: input({
+        platform: "threads",
+        accountRef: "9",
+        mediaUrls: [],
+        media: [],
+        options: { threadItems: ["segunda", "tercera"] },
+        progress: { rootId: "p0", lastId: "p1", parts: 1 },
+      }),
+      credentials: { token: "k" },
+      fetchImpl: f.impl,
+    });
+
+    // Solo sale la tercera parte: dos llamadas, no seis.
+    expect(f.calls).toHaveLength(2);
+    expect(f.calls[0].url).toContain("reply_to_id=p1");
+    expect(result.externalId).toBe("p0");
   });
 });
 

@@ -2900,6 +2900,7 @@ export interface Database {
           platform: SocialPlatform;
           publisher: string | null;
           publisher_ref: string | null;
+          publish_progress: Json | null;
           origin: "system" | "external";
           status: SocialPostStatus | null;
           scheduled_at: string | null;
@@ -2934,6 +2935,7 @@ export interface Database {
           platform: SocialPlatform;
           publisher?: string | null;
           publisher_ref?: string | null;
+          publish_progress?: Json | null;
           origin?: "system" | "external";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
@@ -2949,6 +2951,7 @@ export interface Database {
         Update: {
           publisher?: string | null;
           publisher_ref?: string | null;
+          publish_progress?: Json | null;
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;
