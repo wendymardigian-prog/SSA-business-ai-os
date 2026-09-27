@@ -149,9 +149,20 @@ const siWhatsApp = async (titulo, fn) => {
 try {
   const SECRET = "secreto-de-prueba-para-hmac";
   const { data: ws } = await svc.from("workspaces")
-    .insert({ name: "zz-test-webhook", slug: `zz-test-webhook-${stamp}`, webhook_secret: SECRET })
+    .insert({ name: "zz-test-webhook", slug: `zz-test-webhook-${stamp}` })
     .select("id").single();
   cleanup.workspaces.push(ws.id);
+
+  // El secreto va a Vault: la columna `workspaces.webhook_secret` se borro
+  // con la migracion 00090. Es el mismo camino que usa el receptor.
+  {
+    const { error } = await svc.rpc("store_secret", {
+      secret_name: "zernio_webhook_secret",
+      secret_value: SECRET,
+      workspace_id: ws.id,
+    });
+    if (error) throw new Error(`no pude guardar el secreto en Vault: ${error.message}`);
+  }
 
   const INSTANCE = `zz-test-instance-${stamp}`;
   const { data: waChannel } = await svc.from("channels").insert({
@@ -390,9 +401,21 @@ try {
     check(conv?.late_conversation_id === `IGC-${stamp}`,
       "guardando el id de conversacion de Zernio, que es como la app pide el hilo");
 
-    const { data: msgs } = await svc.from("messages").select("id").eq("conversation_id", conv.id);
-    check(msgs?.length === 0,
-      "el mensaje NO se guarda local: para Instagram la fuente de verdad es Zernio");
+    // CAMBIO DOCUMENTADO (Fase 3): antes el mensaje de Instagram NO se
+    // guardaba y la unica fuente era Zernio. Desde el dual-write SI se
+    // guarda —el agente lee el historial de la base y los dashboards se
+    // arman sobre la tabla local— y la bandeja sigue pidiendole el hilo a
+    // Zernio. Se apaga con `workspaces.persist_zernio_inbound`.
+    const msgs = await waitFor(
+      async () => {
+        const { data } = await svc.from("messages").select("id").eq("conversation_id", conv.id);
+        return data;
+      },
+      (d) => (d?.length ?? 0) > 0,
+    );
+    check((msgs?.length ?? 0) === 1,
+      "el mensaje tambien se guarda local (dual-write): el agente lee de la base",
+      JSON.stringify(msgs));
   }
 
   console.log("\n— Instagram: firma invalida —");
@@ -546,9 +569,27 @@ try {
         author: { id: "a2", username: "mi_cuenta", name: "Yo" } },
       account: { id: IG_ACCOUNT },
     };
+    cleanup.events.push(payload.id);
+    const antes = await svc.from("comment_logs").select("id").eq("channel_id", igChannel.id);
     const r = await zernio(payload, SECRET);
-    check(r.body?.skipped === "comentario propio",
-      "nuestra propia respuesta no vuelve a entrar", JSON.stringify(r.body));
+    check(r.status === 200, "se acepta", JSON.stringify(r.body));
+
+    // CAMBIO DOCUMENTADO (F46): antes se cortaba antes de validar la firma y
+    // contestaba "comentario propio". Ahora se GUARDA —el hilo tiene que
+    // leerse completo, con la respuesta del negocio adentro— y lo que sigue
+    // sin pasar, que es lo que importa, es que dispare el flow: un bot
+    // contestandose solo.
+    await new Promise((r) => setTimeout(r, 1500));
+    const { data: despues } = await svc.from("comment_logs")
+      .select("id").eq("channel_id", igChannel.id);
+    check((despues?.length ?? 0) === (antes.data?.length ?? 0),
+      "nuestra propia respuesta no dispara la automatizacion",
+      `antes ${antes.data?.length}, despues ${despues?.length}`);
+
+    const { data: guardado } = await svc.from("social_post_comments")
+      .select("is_own").eq("workspace_id", ws.id).eq("external_comment_id", "c2").maybeSingle();
+    check(guardado?.is_own === true,
+      "pero si queda guardada, marcada como propia", JSON.stringify(guardado));
   }
 } catch (err) {
   fail(`error inesperado: ${err.message}`);

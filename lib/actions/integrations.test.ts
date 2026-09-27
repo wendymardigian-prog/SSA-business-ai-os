@@ -313,58 +313,25 @@ describe("desconectar una integracion", () => {
   });
 });
 
-describe("migrar los secretos viejos de Zernio a Vault (F5)", () => {
-  const conColumnas = (row: Record<string, unknown>) =>
-    admin({ workspaces: [{ id: WS, ...row }] });
+describe("migrar los secretos viejos de Zernio a Vault (F5, 00090)", () => {
+  it("ya no hay nada que migrar: las columnas viejas se borraron", async () => {
+    // La accion se conserva en vez de borrarse porque una pestaña vieja que
+    // quedo abierta la puede llamar, y "no hay nada que migrar" es mas claro
+    // que un error de columna inexistente.
+    admin();
 
-  it("mueve el secreto del webhook y la API key", async () => {
-    conColumnas({ webhook_secret: "secreto-viejo", late_api_key_encrypted: "key-vieja" });
-
-    const result = await migrateZernioSecretsToVault();
-
-    expect(result).toMatchObject({ ok: true });
-    expect(storeSecret.mock.calls.map((c) => [c[2], c[3]])).toEqual([
-      ["zernio_webhook_secret", "secreto-viejo"],
-      ["zernio_api_key", "key-vieja"],
-    ]);
-  });
-
-  it("no pisa lo que ya esta en Vault", async () => {
-    listSecretNames.mockResolvedValue(["zernio_webhook_secret"]);
-    conColumnas({ webhook_secret: "secreto-viejo", late_api_key_encrypted: "key-vieja" });
-
-    await migrateZernioSecretsToVault();
-
-    expect(storeSecret.mock.calls.map((c) => c[2])).toEqual(["zernio_api_key"]);
-  });
-
-  it("correrlo dos veces no hace nada la segunda", async () => {
-    listSecretNames.mockResolvedValue(["zernio_webhook_secret", "zernio_api_key"]);
-    conColumnas({ webhook_secret: "secreto-viejo", late_api_key_encrypted: "key-vieja" });
-
-    const result = await migrateZernioSecretsToVault();
-
-    expect(result).toEqual({ ok: true, migrated: [] });
+    expect(await migrateZernioSecretsToVault()).toEqual({ ok: true, migrated: [] });
     expect(storeSecret).not.toHaveBeenCalled();
   });
 
-  it("sin nada que mover no falla", async () => {
-    conColumnas({ webhook_secret: null, late_api_key_encrypted: null });
-
-    expect(await migrateZernioSecretsToVault()).toEqual({ ok: true, migrated: [] });
-  });
-
-  it("el audit deja que se movio, nunca el valor", async () => {
-    conColumnas({ webhook_secret: "secreto-viejo", late_api_key_encrypted: "key-vieja" });
+  it("no consulta ninguna tabla", async () => {
+    // Consultar `workspaces.late_api_key_encrypted` hoy seria un error de
+    // columna inexistente.
+    admin();
 
     await migrateZernioSecretsToVault();
 
-    const [call] = logAudit.mock.calls;
-    expect(call[0].metadata).toMatchObject({
-      migrated_to_vault: ["zernio_webhook_secret", "zernio_api_key"],
-    });
-    expect(JSON.stringify(call[0])).not.toContain("secreto-viejo");
-    expect(JSON.stringify(call[0])).not.toContain("key-vieja");
+    expect(listSecretNames).not.toHaveBeenCalled();
   });
 
   it("un Member no puede", async () => {

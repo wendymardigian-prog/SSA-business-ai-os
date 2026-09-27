@@ -231,13 +231,15 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 
 **Qué se decidió en su lugar.** El mismo patrón que `lib/secret-names.ts`: un archivo hoja con la constante. Y el test de frontera ahora cubre los dos módulos, así el próximo caso sale nombrando la cadena de imports en vez de un error de Turbopack.
 
-### La migración 00090 está escrita y NO aplicada
+### ~~La migración 00090 está escrita y NO aplicada~~ — RESUELTO el 26/9/2026
 
-**Qué quedó.** `00090_drop_legacy_secret_columns.sql` borra `workspaces.late_api_key_encrypted`, `workspaces.webhook_secret` y `channels.webhook_secret`. Está escrita y no se aplicó.
+Los secretos de Zernio se movieron a Vault y la migración se aplicó. El orden que se siguió:
 
-**Por qué.** La API key de Zernio de este negocio **todavía vive en `late_api_key_encrypted`**. Es de donde la lee el respaldo de `getZernioApiKey`, o sea de donde la lee el sistema cada vez que manda un mensaje por Instagram. Aplicarla hoy deja la bandeja sin poder responder, en el momento.
-
-**Qué se decidió en su lugar.** El archivo tiene el orden para hacerlo bien, en cinco pasos: apretar "Migrar a Vault" en la tarjeta de Zernio, comprobar que desaparece el aviso, mandar un mensaje de prueba, aplicar la migración, mandar otro. Además la migración se niega a correr si queda algún secreto en las columnas: aplicarla con una clave adentro sería perderla.
+1. Se verificó que Vault tuviera los dos secretos, comparando **huellas sha256** contra las columnas. Coincidían exactamente: era una copia idéntica, no un valor distinto.
+2. Se vaciaron las columnas (paso reversible: Vault tenía la copia).
+3. Se comprobó que el sistema seguía leyendo las dos claves por su camino real, ya sin la columna de respaldo.
+4. Se aplicó la migración, que además se niega a correr si queda algún secreto adentro.
+5. Se sacaron del código los tres respaldos que leían esas columnas, y `verify-webhook.mjs` confirmó de punta a punta que Instagram sigue entrando.
 
 ### `has_permission` no conoce los permisos del rol Member de sistema
 

@@ -197,7 +197,8 @@ export async function linkCommentToContact(
   supabase: Db,
   params: {
     workspaceId: string;
-    commentId: string;
+    /** El id del comentario EN LA RED, no el de nuestra fila. */
+    externalCommentId: string;
     platform: string;
     authorUsername: string | null;
   },
@@ -217,10 +218,16 @@ export async function linkCommentToContact(
 
   if (!contact) return false;
 
+  // Se busca por el unico de la tabla —workspace, red e id externo— y no
+  // por el id de la fila: quien llama tiene el id de la red, que es el que
+  // vino en el webhook. Pasarle ese id a una columna uuid no encontraba
+  // nada y el contacto nunca se vinculaba.
   const { error } = await supabase
     .from("social_post_comments")
     .update({ contact_id: contact.id })
-    .eq("id", params.commentId);
+    .eq("workspace_id", params.workspaceId)
+    .eq("platform", params.platform as SocialPlatform)
+    .eq("external_comment_id", params.externalCommentId);
 
   return !error;
 }

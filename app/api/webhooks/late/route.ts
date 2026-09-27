@@ -208,7 +208,7 @@ async function handleWebhook(request: NextRequest) {
   const secret = await resolveWebhookSecret(supabase, channel);
   if (!secret) {
     console.error(
-      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
     );
     return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
   }
@@ -410,7 +410,7 @@ async function handleMessageSentWebhook(
 
   const { data: channel } = await supabase
     .from("channels")
-    .select("id, workspace_id, webhook_secret")
+    .select("id, workspace_id")
     .eq("late_account_id", payload.account.id)
     .eq("is_active", true)
     .single();
@@ -422,7 +422,7 @@ async function handleMessageSentWebhook(
   const secret = await resolveWebhookSecret(supabase, channel);
   if (!secret) {
     console.error(
-      `[webhook] el workspace ${channel.workspace_id} no tiene webhook_secret; no puedo validar la firma`
+      `[webhook] el workspace ${channel.workspace_id} no tiene el secreto en Vault; no puedo validar la firma`
     );
     return NextResponse.json({ error: "Webhook sin secreto configurado" }, { status: 401 });
   }
@@ -464,16 +464,24 @@ async function handleCommentWebhook(
     .eq("is_active", true)
     .single();
 
+  // De que red es el comentario. Zernio lo manda en `account.platform`,
+  // pero si faltara, el canal lo sabe: sin esto el comentario se pierde
+  // entero, porque `social_post_comments.platform` es NOT NULL. Lo encontro
+  // scripts/verify-webhook.mjs.
+  const platform = (payload.account.platform ??
+    payload.comment.platform ??
+    channel?.platform) as SocialPlatform | undefined;
+
   // La cuenta tambien puede ser una que NO conversa: TikTok no tiene API de
   // mensajes, asi que no tiene canal, y hasta F46 sus comentarios rebotaban
   // con un 404. Ahora se busca ademas en social_accounts, que es donde
   // viven las cuentas de publicacion y metricas.
-  const { data: socialAccount } = channel
+  const { data: socialAccount } = channel && platform
     ? await supabase
         .from("social_accounts")
         .select("id, workspace_id, platform, username, external_id")
         .eq("workspace_id", channel.workspace_id)
-        .eq("platform", payload.account.platform as SocialPlatform)
+        .eq("platform", platform)
         .maybeSingle()
     : await supabase
         .from("social_accounts")
@@ -526,7 +534,7 @@ async function handleCommentWebhook(
         workspaceId,
         socialAccountId: socialAccount?.id ?? null,
         comment: {
-          platform: payload.account.platform,
+          platform: platform ?? socialAccount?.platform ?? "instagram",
           externalCommentId: payload.comment.id,
           parentExternalCommentId: payload.comment.parentCommentId,
           externalPostId: payload.comment.platformPostId,
@@ -543,8 +551,8 @@ async function handleCommentWebhook(
       if (result.stored && !own) {
         await linkCommentToContact(supabase, {
           workspaceId,
-          commentId: payload.comment.id,
-          platform: payload.account.platform,
+          externalCommentId: payload.comment.id,
+          platform: platform ?? "instagram",
           authorUsername: payload.comment.author?.username ?? null,
         });
       }

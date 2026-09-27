@@ -186,7 +186,7 @@ Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
 | 00087 | Canal de email: `channels.platform` suma `email`, `provider` suma `resend`, `email_address`, siete columnas de cabeceras en `messages`, bucket `email-attachments`, trigger `email_received` | ✅ aplicada y verificada (8 chequeos nuevos en `verify-rls`) |
 | 00088 | Roles: `workspace_roles` con los tres de sistema por workspace, `workspace_members.role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema | ✅ aplicada y verificada |
 | 00089 | `can_see_contact` y `can_see_conversation` consultan el alcance del rol | ✅ aplicada y verificada (`verify-rls` corrido antes y después) |
-| 00090 | `drop_legacy_secret_columns` | ⛔ **escrita y NO aplicada, a propósito** (ver PENDIENTE: la clave de Zernio todavía vive en la columna vieja) |
+| 00090 | `drop_legacy_secret_columns`: borra `workspaces.late_api_key_encrypted`, `workspaces.webhook_secret` y `channels.webhook_secret` | ✅ **aplicada** (26/9/2026, después de mover los secretos a Vault y verificar por huella que la copia era idéntica) |
 
 ## Deuda que deja el Bloque 1
 

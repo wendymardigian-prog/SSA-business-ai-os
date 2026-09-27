@@ -15,29 +15,31 @@ interface CapturedUpdate {
   patch: Record<string, unknown>;
 }
 
-function makeFakeSupabase(seed: { webhook_secret?: string | null }) {
+/**
+ * Un cliente que responde las RPC de Vault.
+ *
+ * Desde la 00090 el secreto vive SOLO ahi: `workspaces.webhook_secret` y
+ * `channels.webhook_secret` se borraron. `from` lanza para probar que ya no
+ * se consulta ninguna tabla.
+ */
+function makeFakeSupabase(seed: { vault?: string | null; storeFalla?: string }) {
   const updates: CapturedUpdate[] = [];
   const client = {
+    rpc(name: string, args: Record<string, unknown>) {
+      if (name === "read_secret") {
+        return Promise.resolve({ data: seed.vault ?? null, error: null });
+      }
+      if (name === "store_secret") {
+        if (seed.storeFalla) {
+          return Promise.resolve({ data: null, error: { message: seed.storeFalla } });
+        }
+        updates.push({ table: "vault", patch: { name: args.secret_name } });
+        return Promise.resolve({ data: null, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
     from(table: string) {
-      return {
-        select() {
-          return this;
-        },
-        eq() {
-          return this;
-        },
-        single() {
-          return Promise.resolve({ data: { webhook_secret: seed.webhook_secret ?? null }, error: null });
-        },
-        update(patch: Record<string, unknown>) {
-          return {
-            eq() {
-              updates.push({ table, patch });
-              return Promise.resolve({ data: null, error: null });
-            },
-          };
-        },
-      };
+      throw new Error(`no deberia consultar ${table}: el secreto esta en Vault`);
     },
   };
   return { client: client as unknown as SupabaseClient, updates };
@@ -264,24 +266,34 @@ describe("generateWebhookSecret", () => {
 });
 
 describe("getOrCreateWorkspaceWebhookSecret", () => {
-  it("returns the existing secret without writing (AC5)", async () => {
-    const fake = makeFakeSupabase({ webhook_secret: "existing-secret" });
+  it("devuelve el secreto que ya esta en Vault, sin escribir (AC5)", async () => {
+    const fake = makeFakeSupabase({ vault: "existing-secret" });
     const secret = await getOrCreateWorkspaceWebhookSecret(fake.client, "ws-1");
 
     expect(secret).toBe("existing-secret");
     expect(fake.updates).toHaveLength(0);
   });
 
-  it("generates, persists and returns a new secret when missing (AC1, AC5)", async () => {
-    const fake = makeFakeSupabase({ webhook_secret: null });
+  it("genera uno nuevo y lo guarda EN VAULT cuando no hay (AC1, AC5)", async () => {
+    const fake = makeFakeSupabase({ vault: null });
     const secret = await getOrCreateWorkspaceWebhookSecret(fake.client, "ws-1");
 
     expect(secret).toMatch(/^[0-9a-f]{64}$/);
     expect(fake.updates).toHaveLength(1);
     expect(fake.updates[0]).toMatchObject({
-      table: "workspaces",
-      patch: { webhook_secret: secret },
+      table: "vault",
+      patch: { name: "zernio_webhook_secret" },
     });
+  });
+
+  it("si no se puede guardar, LANZA en vez de devolver el secreto", async () => {
+    // Registrar en Zernio un secreto que no quedo guardado deja todos los
+    // webhooks entrantes rechazados con 401, y sin nada que lo explique.
+    const fake = makeFakeSupabase({ vault: null, storeFalla: "sin permiso" });
+
+    await expect(getOrCreateWorkspaceWebhookSecret(fake.client, "ws-1")).rejects.toThrow(
+      /no pude guardar el secreto/i,
+    );
   });
 });
 
@@ -307,46 +319,13 @@ describe("verifyWebhookSignature (AC4)", () => {
   });
 });
 
-describe("resolveWebhookSecret (AC4)", () => {
-  it("prefers the workspace secret over the channel secret", async () => {
-    const fake = makeFakeSupabase({ webhook_secret: "ws-secret" });
-    const secret = await resolveWebhookSecret(fake.client, {
-      workspace_id: "ws-1",
-      webhook_secret: "legacy-channel-secret",
-    });
-    expect(secret).toBe("ws-secret");
-  });
-
-  it("falls back to the legacy channel secret when workspace has none", async () => {
-    const fake = makeFakeSupabase({ webhook_secret: null });
-    const secret = await resolveWebhookSecret(fake.client, {
-      workspace_id: "ws-1",
-      webhook_secret: "legacy-channel-secret",
-    });
-    expect(secret).toBe("legacy-channel-secret");
-  });
-
-  it("returns null when neither secret is set", async () => {
-    const fake = makeFakeSupabase({ webhook_secret: null });
-    const secret = await resolveWebhookSecret(fake.client, {
-      workspace_id: "ws-1",
-      webhook_secret: null,
-    });
-    expect(secret).toBeNull();
-  });
-});
-
 // ── Etapa 2, F5: el secreto se muda a Vault ────────────────────────────────
 
 /**
  * Un cliente que ademas responde la RPC de Vault. Los tres casos que importan
  * son: lo hay en Vault, no lo hay, y Vault se cayo.
  */
-function supabaseConVault(options: {
-  vault?: string | null;
-  vaultFalla?: boolean;
-  workspaceSecret?: string | null;
-}) {
+function supabaseConVault(options: { vault?: string | null; vaultFalla?: boolean }) {
   const consultas: string[] = [];
   const client = {
     rpc(name: string) {
@@ -358,28 +337,15 @@ function supabaseConVault(options: {
     },
     from(table: string) {
       consultas.push(`from:${table}`);
-      return {
-        select() {
-          return this;
-        },
-        eq() {
-          return this;
-        },
-        single() {
-          return Promise.resolve({
-            data: { webhook_secret: options.workspaceSecret ?? null },
-            error: null,
-          });
-        },
-      };
+      throw new Error(`no deberia consultar ${table}`);
     },
   };
   return { client: client as unknown as SupabaseClient, consultas };
 }
 
-describe("resolveWebhookSecret con Vault (F5)", () => {
-  it("si el secreto esta en Vault, se usa ese y no se miran las columnas", async () => {
-    const fake = supabaseConVault({ vault: "secreto-de-vault", workspaceSecret: "secreto-viejo" });
+describe("resolveWebhookSecret: solo Vault (F5, 00090)", () => {
+  it("el secreto sale de Vault y no se consulta ninguna tabla", async () => {
+    const fake = supabaseConVault({ vault: "secreto-de-vault" });
 
     const secret = await resolveWebhookSecret(fake.client, {
       workspace_id: "ws-1",
@@ -390,26 +356,32 @@ describe("resolveWebhookSecret con Vault (F5)", () => {
     expect(fake.consultas).toEqual(["rpc:read_secret"]);
   });
 
-  it("sin nada en Vault sigue valiendo el secreto del workspace", async () => {
-    // Es el estado de hoy: hasta que alguien toque "Migrar a Vault", Instagram
-    // tiene que entrar exactamente igual.
-    const fake = supabaseConVault({ vault: null, workspaceSecret: "secreto-viejo" });
+  it("el secreto viejo del canal YA NO vale", async () => {
+    // CAMBIO DOCUMENTADO (00090). Habia dos respaldos en columnas para que
+    // Instagram siguiera entrando mientras el secreto no estuviera en Vault.
+    // El secreto se movio y las columnas se borraron.
+    const fake = supabaseConVault({ vault: null });
+
+    expect(
+      await resolveWebhookSecret(fake.client, {
+        workspace_id: "ws-1",
+        webhook_secret: "secreto-del-canal",
+      }),
+    ).toBeNull();
+  });
+
+  it("si Vault se cae, se rechaza el webhook en vez de aceptarlo a ciegas", async () => {
+    // Ya no hay a donde caer. Esta URL es publica: aceptar sin verificar
+    // seria peor que dejar de recibir un rato.
+    const fake = supabaseConVault({ vaultFalla: true });
 
     expect(
       await resolveWebhookSecret(fake.client, { workspace_id: "ws-1", webhook_secret: null }),
-    ).toBe("secreto-viejo");
+    ).toBeNull();
   });
 
-  it("si Vault se cae, no se deja de recibir: se usa la columna", async () => {
-    const fake = supabaseConVault({ vaultFalla: true, workspaceSecret: "secreto-viejo" });
-
-    expect(
-      await resolveWebhookSecret(fake.client, { workspace_id: "ws-1", webhook_secret: null }),
-    ).toBe("secreto-viejo");
-  });
-
-  it("sin secreto en ningun lado devuelve null y el receptor rechaza", async () => {
-    const fake = supabaseConVault({ vault: null, workspaceSecret: null });
+  it("sin secreto devuelve null y el receptor rechaza", async () => {
+    const fake = supabaseConVault({ vault: null });
 
     expect(
       await resolveWebhookSecret(fake.client, { workspace_id: "ws-1", webhook_secret: null }),

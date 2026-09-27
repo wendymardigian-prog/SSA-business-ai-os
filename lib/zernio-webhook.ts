@@ -4,7 +4,7 @@
  * El sistema registra en Zernio la URL a la que quiere recibir los eventos
  * (DMs, comentarios). Zernio expone un solo webhook por perfil/API key, asi que
  * esto es idempotente y trabaja a nivel workspace (el secreto vive en
- * `workspaces.webhook_secret`).
+ * Vault, `zernio_webhook_secret`).
  *
  * Que URL se registra lo decide quien llama (lib/webhook-url.ts): el receptor
  * de la app, `${NEXT_PUBLIC_APP_URL}/api/webhooks/late`. Es el unico receptor
@@ -13,7 +13,7 @@
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readSecret, SECRET_NAMES } from "@/lib/vault";
+import { readSecret, storeSecret, SECRET_NAMES } from "@/lib/vault";
 import type { Zernio } from "./zernio-client";
 
 /** Name used to identify Zernflow's webhook among a profile's webhooks. */
@@ -137,25 +137,30 @@ export function generateWebhookSecret(): string {
 }
 
 /**
- * Returns the workspace's webhook secret, generating and persisting one the first
- * time it is needed. The same secret is used both to register the webhook in Zernio
- * and to verify inbound signatures, so it must be stable per workspace.
+ * El secreto del webhook del workspace, generandolo la primera vez.
+ *
+ * Vive en **Vault** (migracion 00090: las columnas viejas se borraron). Con
+ * el mismo secreto se registra el webhook en Zernio y se verifica la firma
+ * de lo que entra, asi que tiene que ser estable por workspace.
+ *
+ * Si no se puede guardar en Vault se lanza, y no se devuelve uno igual:
+ * registrar en Zernio un secreto que no quedo guardado deja todos los
+ * webhooks entrantes rechazados con 401, y sin nada que lo explique.
  */
 export async function getOrCreateWorkspaceWebhookSecret(
   supabase: SupabaseClient,
   workspaceId: string,
 ): Promise<string> {
-  const { data } = await supabase
-    .from("workspaces")
-    .select("webhook_secret")
-    .eq("id", workspaceId)
-    .single();
-
-  const existing = (data as { webhook_secret?: string | null } | null)?.webhook_secret;
+  const existing = await readSecret(supabase, workspaceId, SECRET_NAMES.zernioWebhookSecret);
   if (existing) return existing;
 
   const secret = generateWebhookSecret();
-  await supabase.from("workspaces").update({ webhook_secret: secret }).eq("id", workspaceId);
+  const stored = await storeSecret(supabase, workspaceId, SECRET_NAMES.zernioWebhookSecret, secret);
+
+  if (!stored.ok) {
+    throw new Error(`No pude guardar el secreto del webhook: ${stored.error}`);
+  }
+
   return secret;
 }
 
@@ -176,7 +181,13 @@ export function verifyWebhookSignature(
   return timingSafeEqual(sigBuf, expBuf);
 }
 
-/** Minimal channel shape needed to resolve the webhook secret. */
+/**
+ * Lo minimo que hace falta del canal para resolver el secreto.
+ *
+ * `webhook_secret` ya no esta: era la columna mas vieja de las tres y la
+ * borro la 00090. Se conserva el campo opcional en el tipo para no obligar a
+ * tocar los llamadores, pero no se lee.
+ */
 export interface ChannelSecretRef {
   workspace_id: string;
   webhook_secret?: string | null;
@@ -185,41 +196,27 @@ export interface ChannelSecretRef {
 /**
  * Con que secreto se verifica la firma de un webhook entrante.
  *
- * Tres lugares, en este orden (F5):
+ * **Solo Vault** (`zernio_webhook_secret`). Hasta la 00090 habia dos
+ * respaldos —`workspaces.webhook_secret` y `channels.webhook_secret`— que
+ * existian para que Instagram siguiera entrando mientras el secreto no se
+ * hubiera movido. El secreto se movio, las columnas se borraron, y los
+ * respaldos con ellas.
  *
- *   1. **Vault** (`zernio_webhook_secret`), que es donde va a vivir.
- *   2. `workspaces.webhook_secret`, donde vive hoy.
- *   3. `channels.webhook_secret`, el mas viejo de todos.
- *
- * El orden importa y el fallback no es decorativo: mientras el secreto no se
- * haya movido a Vault, Instagram tiene que seguir entrando igual. Las dos
- * columnas se borran recien despues de la verificacion en vivo, con la
- * migracion `drop_legacy_secret_columns`, que se escribe y no se aplica.
- *
- * Devuelve null si no hay secreto en ningun lado, y entonces el receptor
- * rechaza con 401: esta URL es publica y aceptar sin verificar seria peor.
+ * Devuelve null si no hay secreto, y entonces el receptor rechaza con 401:
+ * esta URL es publica y aceptar sin verificar seria peor que no recibir.
  */
 export async function resolveWebhookSecret(
   supabase: SupabaseClient,
   channel: ChannelSecretRef,
 ): Promise<string | null> {
   try {
-    const fromVault = await readSecret(
-      supabase,
-      channel.workspace_id,
-      SECRET_NAMES.zernioWebhookSecret,
+    return await readSecret(supabase, channel.workspace_id, SECRET_NAMES.zernioWebhookSecret);
+  } catch (err) {
+    // Vault caido: se rechaza el webhook en vez de aceptarlo sin verificar.
+    console.error(
+      "[webhook] no pude leer el secreto de Vault:",
+      err instanceof Error ? err.message : String(err),
     );
-    if (fromVault) return fromVault;
-  } catch {
-    // Vault caido no puede dejar sin recibir: se sigue con las columnas.
+    return null;
   }
-
-  const { data } = await supabase
-    .from("workspaces")
-    .select("webhook_secret")
-    .eq("id", channel.workspace_id)
-    .single();
-
-  const workspaceSecret = (data as { webhook_secret?: string | null } | null)?.webhook_secret;
-  return workspaceSecret || channel.webhook_secret || null;
 }

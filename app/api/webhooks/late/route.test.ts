@@ -78,21 +78,34 @@ function channelRow(extra: Record<string, unknown> = {}) {
 function db(
   options: {
     channels?: Array<Record<string, unknown>>;
+    /** El secreto que devuelve Vault. null = no hay secreto guardado. */
     workspaceSecret?: string | null;
     /** Cuentas de publicacion y metricas (F46): TikTok solo vive aca. */
     social_accounts?: Array<Record<string, unknown>>;
   } = {},
 ) {
-  const memory = memoryDb({
-    channels: options.channels ?? [channelRow()],
-    social_accounts: options.social_accounts ?? [],
-    social_posts: [],
-    social_post_comments: [],
-    contacts: [],
-    // Ojo con `??`: workspaceSecret null es "el workspace NO tiene secreto", y
-    // tiene que llegar null a la base, no convertirse en el secreto bueno.
-    workspaces: [{ id: WS, webhook_secret: "workspaceSecret" in options ? options.workspaceSecret : SECRET }],
-  });
+  // Ojo con `??`: workspaceSecret null es "Vault NO tiene secreto", y tiene
+  // que llegar null, no convertirse en el secreto bueno.
+  const vaultSecret = "workspaceSecret" in options ? options.workspaceSecret : SECRET;
+
+  const memory = memoryDb(
+    {
+      channels: options.channels ?? [channelRow()],
+      social_accounts: options.social_accounts ?? [],
+      social_posts: [],
+      social_post_comments: [],
+      contacts: [],
+      workspaces: [{ id: WS }],
+    },
+    {
+      // Desde la 00090 el secreto sale SOLO de Vault: las columnas viejas se
+      // borraron y el respaldo con ellas.
+      rpc: {
+        read_secret: (args) =>
+          args.secret_name === "zernio_webhook_secret" ? vaultSecret : null,
+      },
+    },
+  );
   createServiceClient.mockResolvedValue(memory.client);
   return memory;
 }
@@ -208,12 +221,16 @@ describe("webhook de Zernio: la firma", () => {
     expect(res.status).toBe(401);
   });
 
-  it("si el workspace no tiene secreto, vale el viejo secreto del canal", async () => {
-    // El fallback que F5 tiene que conservar (Vault -> workspace -> canal).
+  it("el secreto viejo del canal YA NO vale: solo Vault", async () => {
+    // CAMBIO DOCUMENTADO (00090). Habia dos respaldos —la columna del
+    // workspace y la del canal— para que Instagram siguiera entrando
+    // mientras el secreto no estuviera en Vault. El secreto se movio, las
+    // columnas se borraron, y aceptar una firma hecha con el secreto viejo
+    // seria aceptar una que ya no se puede rotar.
     db({ workspaceSecret: null, channels: [channelRow({ webhook_secret: "secreto-viejo-del-canal" })] });
     const res = await callRoute(post(dm(), { secret: "secreto-viejo-del-canal" }));
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 
   it("el cuerpo firmado es el crudo: reordenar el JSON invalida la firma", async () => {

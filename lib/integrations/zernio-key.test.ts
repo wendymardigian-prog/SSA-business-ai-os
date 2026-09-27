@@ -4,65 +4,68 @@ import { getZernioApiKey } from "./zernio-key";
 
 const WS = "11111111-1111-1111-1111-111111111111";
 
-function fakeClient(opts: {
-  vaultValue?: string | null;
-  vaultError?: string;
-  column?: string | null;
-}) {
+/**
+ * Desde la 00090 la key vive SOLO en Vault: la columna
+ * `workspaces.late_api_key_encrypted` se borro. `from` sigue espiado para
+ * probar que ya no se consulta ninguna tabla.
+ */
+function fakeClient(opts: { vaultValue?: string | null; vaultError?: string }) {
   const rpc = vi.fn().mockResolvedValue(
     opts.vaultError
       ? { data: null, error: { message: opts.vaultError } }
       : { data: opts.vaultValue ?? null, error: null },
   );
 
-  const chain = {
-    select: () => chain,
-    eq: () => chain,
-    maybeSingle: () =>
-      Promise.resolve({
-        data: opts.column === undefined ? null : { late_api_key_encrypted: opts.column },
-        error: null,
-      }),
-  };
+  const from = vi.fn(() => {
+    throw new Error("no deberia consultar ninguna tabla: la key esta en Vault");
+  });
 
-  const from = vi.fn(() => chain);
   return { client: { rpc, from } as unknown as SupabaseClient, rpc, from };
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("getZernioApiKey", () => {
-  it("usa la key de Vault cuando existe, sin tocar el campo viejo", async () => {
-    const { client, from } = fakeClient({ vaultValue: "sk-de-vault", column: "sk-vieja" });
+  it("usa la key de Vault", async () => {
+    const { client, rpc } = fakeClient({ vaultValue: "sk-de-vault" });
 
     await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBe("sk-de-vault");
-    expect(from).not.toHaveBeenCalled();
-  });
-
-  it("cae al campo viejo cuando Vault no tiene nada", async () => {
-    const { client, rpc } = fakeClient({ vaultValue: null, column: "sk-vieja" });
-
-    await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBe("sk-vieja");
     expect(rpc).toHaveBeenCalledWith("read_secret", {
       secret_name: "zernio_api_key",
       workspace_id: WS,
     });
   });
 
-  it("un error leyendo Vault no impide usar el campo viejo", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    const { client } = fakeClient({ vaultError: "forbidden", column: "sk-vieja" });
+  it("no consulta ninguna tabla: el campo viejo ya no existe", async () => {
+    // CAMBIO DOCUMENTADO (00090). Antes caia a
+    // `workspaces.late_api_key_encrypted` cuando Vault estaba vacio. Esa
+    // columna se borro despues de mover la key, asi que consultarla ahora
+    // seria un error de columna inexistente.
+    const { client, from } = fakeClient({ vaultValue: "sk-de-vault" });
 
-    await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBe("sk-vieja");
+    await getZernioApiKey(WS, { supabase: client });
+
+    expect(from).not.toHaveBeenCalled();
   });
 
-  it("devuelve null cuando no hay key en ningun lado", async () => {
-    const { client } = fakeClient({ vaultValue: null, column: null });
+  it("sin key en Vault, devuelve null", async () => {
+    const { client } = fakeClient({ vaultValue: null });
+
     await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBeNull();
   });
 
-  it("trata un campo viejo vacio como si no hubiera key", async () => {
-    const { client } = fakeClient({ vaultValue: null, column: "   " });
+  it("una key de puros espacios cuenta como no tener key", async () => {
+    const { client } = fakeClient({ vaultValue: "   " });
+
+    await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBeNull();
+  });
+
+  it("un error leyendo Vault devuelve null, no rompe", async () => {
+    // Quien llama muestra "conectala en Integraciones", que es lo unico que
+    // se puede hacer. Inventar una key no ayuda a nadie.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient({ vaultError: "forbidden" });
+
     await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBeNull();
   });
 });

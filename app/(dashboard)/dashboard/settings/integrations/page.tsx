@@ -108,13 +108,14 @@ export default async function IntegrationsPage() {
       .filter((field) => storedSecrets.has(field.secretName))
       .map((field) => field.key);
 
-    // Zernio cuenta como conectada tambien si la clave sigue en la columna
-    // vieja del workspace: es de donde la lee el fallback de getZernioApiKey,
-    // asi que el sistema la esta usando aunque Vault este vacio.
-    const zernioLegacyKey =
-      provider.id === "zernio" && Boolean(workspace.late_api_key_encrypted);
+    // Zernio cuenta como conectada si su clave esta en Vault, aunque no
+    // tenga fila en integration_configs: la fila la crea recien el dia que
+    // alguien guarda la clave desde esta pantalla, y la conexion puede venir
+    // de antes.
+    const zernioConnected =
+      provider.id === "zernio" && storedSecrets.has(SECRET_NAMES.zernioApiKey);
 
-    const isActive = row?.is_active === true || zernioLegacyKey;
+    const isActive = row?.is_active === true || zernioConnected;
     const usage = buildUsage(provider, usageCounts[provider.id] ?? 0);
 
     const { status, reasons } = integrationStatus({
@@ -131,13 +132,9 @@ export default async function IntegrationsPage() {
     integrations[provider.id] = {
       providerId: provider.id,
       status,
-      reasons:
-        zernioLegacyKey && !storedSecrets.has(SECRET_NAMES.zernioApiKey)
-          ? [
-              ...reasons,
-              "La clave todavia no esta en Vault. Reemplazala aca para moverla.",
-            ]
-          : reasons,
+      // El aviso de "la clave todavia no esta en Vault" se fue con la 00090:
+      // ya no hay otro lugar donde pueda estar.
+      reasons,
       account: accountOf(provider, config),
       usage,
       storedSecretKeys: storedKeys,
@@ -152,10 +149,8 @@ export default async function IntegrationsPage() {
       youtubeVerifiedAt={youtubeVerifiedAt}
       metaAccounts={metaConfig.ad_accounts}
       metaIgUsername={metaConfig.ig_username}
-      zernioLegacySecrets={
-        Boolean(workspace.late_api_key_encrypted) &&
-        !storedSecrets.has(SECRET_NAMES.zernioApiKey)
-      }
+      // Ya no hay secretos en columnas viejas: la 00090 las borro.
+      zernioLegacySecrets={false}
       channelsSummary={activeChannels
         .filter((c) => c.provider === "zernio")
         .map((c) => ({

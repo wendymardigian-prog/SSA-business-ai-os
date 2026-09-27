@@ -169,13 +169,22 @@ describe("guardar (F46)", () => {
 describe("vincular con un contacto (F46)", () => {
   it("si el autor ya es un contacto, queda vinculado", async () => {
     const memory = db({
-      social_post_comments: [{ id: "c-row", workspace_id: WS, contact_id: null }],
+      social_post_comments: [
+        {
+          id: "c-row",
+          workspace_id: WS,
+          platform: "instagram",
+          external_comment_id: "c-1",
+          contact_id: null,
+        },
+      ],
       contacts: [{ id: "ct-1", workspace_id: WS, instagram_username: "unlead", deleted_at: null }],
     });
 
     const linked = await linkCommentToContact(memory.client, {
       workspaceId: WS,
-      commentId: "c-row",
+      // El id de la RED, que es el que trae el webhook.
+      externalCommentId: "c-1",
       platform: "instagram",
       authorUsername: "unlead",
     });
@@ -187,13 +196,21 @@ describe("vincular con un contacto (F46)", () => {
   it("el nombre se busca en la columna de SU red", async () => {
     // El mismo nombre en Instagram y en TikTok puede ser otra persona.
     const memory = db({
-      social_post_comments: [{ id: "c-row", workspace_id: WS, contact_id: null }],
+      social_post_comments: [
+        {
+          id: "c-row",
+          workspace_id: WS,
+          platform: "tiktok",
+          external_comment_id: "c-1",
+          contact_id: null,
+        },
+      ],
       contacts: [{ id: "ct-1", workspace_id: WS, instagram_username: "unlead", deleted_at: null }],
     });
 
     const linked = await linkCommentToContact(memory.client, {
       workspaceId: WS,
-      commentId: "c-row",
+      externalCommentId: "c-1",
       platform: "tiktok",
       authorUsername: "unlead",
     });
@@ -202,12 +219,16 @@ describe("vincular con un contacto (F46)", () => {
   });
 
   it("si no es contacto, no pasa nada", async () => {
-    const memory = db({ social_post_comments: [{ id: "c-row", workspace_id: WS }] });
+    const memory = db({
+      social_post_comments: [
+        { id: "c-row", workspace_id: WS, platform: "instagram", external_comment_id: "c-1" },
+      ],
+    });
 
     expect(
       await linkCommentToContact(memory.client, {
         workspaceId: WS,
-        commentId: "c-row",
+        externalCommentId: "c-1",
         platform: "instagram",
         authorUsername: "desconocido",
       }),
