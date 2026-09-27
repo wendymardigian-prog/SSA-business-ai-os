@@ -140,6 +140,17 @@ Los cinco grupos estan. Diez commits en `etapa2-correcciones`, sin tocar
 | `npm run build` | 0 | 0 |
 | `npm run lint` | 0 errores, 44 warnings | igual |
 
+Los cinco scripts de verificacion, contra la base real, todos en 0 y
+limpiando lo que crean:
+
+| Script | Resultado |
+|---|---|
+| `verify-rls.mjs` | Todo verde (incluye `provider_media`) |
+| `verify-content.mjs` | Todo verde |
+| `verify-crm.mjs` | Todo verde |
+| `verify-inbox-filters.mjs` | Todo verde |
+| `verify-publishing.mjs` (nuevo) | Todo verde: los dos caminos de punta a punta |
+
 Migraciones nuevas, todas aditivas y aplicadas dos veces sin error:
 
 | # | Que | Grupo |
