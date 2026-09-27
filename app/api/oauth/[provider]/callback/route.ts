@@ -10,13 +10,14 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getAdminContext, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { completeOAuth } from "@/lib/oauth/flow";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth/state";
 import { oauthCallbackUrl } from "@/lib/webhook-url";
 import { syncSocialAccounts } from "@/lib/social/accounts";
+import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { appUrl } from "@/lib/app-url";
 
 const FALLBACK = "/dashboard/settings/integrations";
@@ -31,10 +32,16 @@ export async function GET(
     return NextResponse.json({ error: "Proveedor desconocido" }, { status: 404 });
   }
 
-  const ctx = await getAdminContext();
+  const ctx = adapter.perUser
+    ? await getPermissionAction(adapter.requiredPermission ?? "scheduling.use")
+    : await getAdminContext();
   if (!ctx) {
     return NextResponse.json(
-      { error: "Solo Owner y Admin pueden conectar cuentas" },
+      {
+        error: adapter.perUser
+          ? "No tenes permiso para conectar tu calendario"
+          : "Solo Owner y Admin pueden conectar cuentas",
+      },
       { status: 403 },
     );
   }
@@ -55,17 +62,25 @@ export async function GET(
   });
 
   // Conectar cambia por donde se puede publicar: se recalcula ahora, para que
-  // la pantalla a la que se vuelve ya muestre la cuenta nueva.
+  // la pantalla a la que se vuelve ya muestre la cuenta nueva. Una cuenta de
+  // Google Calendar, en cambio, trae sus calendarios (F5).
   if (result.ok) {
     try {
-      await syncSocialAccounts(service, ctx.workspace.id);
+      if (adapter.perUser) {
+        await syncCalendars({ supabase: service }, result.connectionId);
+      } else {
+        await syncSocialAccounts(service, ctx.workspace.id);
+      }
     } catch (err) {
-      console.error("[oauth] no pude sincronizar las cuentas sociales:", err);
+      console.error(`[oauth] ${adapter.provider}: no pude sincronizar despues de conectar:`, err);
     }
   }
 
-  const destination = new URL(result.redirectTo, appUrl() || url.origin);
-  if (result.ok) destination.searchParams.set("connected", adapter.provider);
+  const destination = new URL(
+    result.ok && adapter.perUser ? "/dashboard/agenda/configuracion/calendarios" : result.redirectTo,
+    appUrl() || url.origin,
+  );
+  if (result.ok) destination.searchParams.set("connected", adapter.perUser ? "1" : adapter.provider);
   else destination.searchParams.set("error", result.error);
 
   const response = NextResponse.redirect(destination);

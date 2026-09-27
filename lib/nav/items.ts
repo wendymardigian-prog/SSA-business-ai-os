@@ -13,6 +13,12 @@ export interface NavItemMeta {
   href: string;
   icon: string;
   adminOnly: boolean;
+  /**
+   * Visible si la persona tiene ALGUNO de estos permisos (Etapa 4). Owner y
+   * Admin los tienen todos, asi que para ellos no cambia nada. Sin esta lista,
+   * el item se muestra a cualquier miembro (o solo a admins, si adminOnly).
+   */
+  permissions?: string[];
 }
 
 export const NAV_ITEMS: NavItemMeta[] = [
@@ -25,8 +31,31 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: true },
   { name: "Inbox", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false },
   { name: "Contacts", href: "/dashboard/contacts", icon: "Users", adminOnly: false },
+  // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va
+  // detras del engranaje de esa pantalla, no del menu.
+  { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", adminOnly: false, permissions: ["scheduling.use", "bookings.view"] },
   { name: "Channels", href: "/dashboard/channels", icon: "Plug", adminOnly: true },
   { name: "Agentes", href: "/dashboard/agents", icon: "Bot", adminOnly: false },
   { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", adminOnly: true },
   { name: "Settings", href: "/dashboard/settings", icon: "Settings", adminOnly: true },
 ];
+
+/**
+ * Los items que ve una persona con estos permisos (F8).
+ *
+ * Es la regla del menu en un solo lugar, sin React: `adminOnly` sigue
+ * valiendo por rol (es lo que fija member-baseline), y `permissions` se
+ * evalua sobre las claves del rol resuelto.
+ */
+export function visibleNavItems<T extends Pick<NavItemMeta, "adminOnly" | "permissions">>(
+  items: T[],
+  viewer: { isAdmin: boolean; permissionKeys: string[] },
+): T[] {
+  return items.filter((item) => {
+    if (item.adminOnly && !viewer.isAdmin) return false;
+    if (item.permissions && !viewer.isAdmin) {
+      return item.permissions.some((key) => viewer.permissionKeys.includes(key));
+    }
+    return true;
+  });
+}

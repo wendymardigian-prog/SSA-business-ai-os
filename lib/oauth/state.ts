@@ -151,6 +151,8 @@ const REDIRECT_ALLOWLIST = [
   "/dashboard/channels",
   "/dashboard/social",
   "/dashboard/content",
+  // Etapa 4: cada persona conecta su Google Calendar desde la configuracion de agenda.
+  "/dashboard/agenda/configuracion/calendarios",
 ];
 
 /**

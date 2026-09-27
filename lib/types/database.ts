@@ -42,9 +42,13 @@ export type IntegrationType =
   | "meta";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
-export type OAuthProvider = "google" | "linkedin" | "threads";
+export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar";
 /** En que estado esta una conexion OAuth (00082). */
 export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
+
+// ── Agenda (Etapa 4) ────────────────────────────────────────────────────────
+export type TimeFormat = "12h" | "24h";
+export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
@@ -112,7 +116,16 @@ export type AuditEntityType =
   | "tag"
   /** Patrones de mensajes (Bloque 4): categorías y textos. */
   | "message_category"
-  | "message_text";
+  | "message_text"
+  /** Agenda (Etapa 4). */
+  | "scheduling_profile"
+  | "oauth_connection"
+  | "calendar"
+  | "availability_schedule"
+  | "out_of_office"
+  | "booking_category"
+  | "event_type"
+  | "booking";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -131,6 +144,7 @@ export type AuditAction =
   | "collision_detected"
   /** Un admin decidio que hacer con una colision (F13). */
   | "collision_resolved"
+  /** Se frenaron secuencias del contacto (F11: respondio
   /** Se frenaron secuencias del contacto (F11: respondio; o decision de un admin). */
   | "sequence_paused"
   /** Se reanudo una inscripcion pausada. */
@@ -164,7 +178,31 @@ export type AuditAction =
    * Una etiqueta con efecto apago el agente y/o asigno el contacto, o se
    * libero al sacarla (Bloque 2d-A, 00073). Lo escriben los triggers.
    */
-  | "tag_effect";
+  | "tag_effect"
+  /** Agenda (Etapa 4). */
+  | "scheduling_profile.created"
+  | "scheduling_profile.updated"
+  | "google_calendar.connected"
+  | "google_calendar.disconnected"
+  | "schedule.created"
+  | "schedule.updated"
+  | "schedule.deleted"
+  | "out_of_office.created"
+  | "out_of_office.updated"
+  | "out_of_office.deleted"
+  | "category.created"
+  | "category.updated"
+  | "category.archived"
+  | "event_type.created"
+  | "event_type.updated"
+  | "event_type.deleted"
+  | "booking.created"
+  | "booking.rescheduled"
+  | "booking.cancelled"
+  | "booking.updated"
+  | "booking.status_changed"
+  | "booking.sync_ok"
+  | "booking.sync_failed";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -672,6 +710,8 @@ export interface Database {
           do_not_contact: boolean;
           do_not_contact_reason: string | null;
           do_not_contact_at: string | null;
+          /** Zona IANA del contacto (Etapa 4, 00095). La aprende la agenda y la confirma el agente. */
+          timezone: string | null;
           ai_conversation_summary: string | null;
           /** Cuando se actualizo la memoria del agente (00070). */
           ai_summary_updated_at: string | null;
@@ -714,6 +754,7 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
@@ -746,6 +787,7 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
@@ -3370,6 +3412,107 @@ export interface Database {
           publishers?: Json;
           is_active?: boolean;
           profile_synced_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      scheduling_profiles: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          /** Va en los links: /calendario/<username>/<evento>. */
+          username: string;
+          display_name: string;
+          avatar_url: string | null;
+          timezone: string;
+          time_format: TimeFormat;
+          welcome_message: string | null;
+          default_schedule_id: string | null;
+          default_destination_calendar_id: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          username: string;
+          display_name: string;
+          avatar_url?: string | null;
+          timezone: string;
+          time_format?: TimeFormat;
+          welcome_message?: string | null;
+          default_schedule_id?: string | null;
+          default_destination_calendar_id?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          username?: string;
+          display_name?: string;
+          avatar_url?: string | null;
+          timezone?: string;
+          time_format?: TimeFormat;
+          welcome_message?: string | null;
+          default_schedule_id?: string | null;
+          default_destination_calendar_id?: string | null;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      calendars: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          connection_id: string;
+          user_id: string;
+          external_calendar_id: string;
+          name: string;
+          color: string | null;
+          access_role: CalendarAccessRole;
+          is_primary: boolean;
+          /** Se leen sus horarios ocupados al calcular disponibilidad. */
+          check_conflicts: boolean;
+          /** false = ya no viene en la cuenta (o la cuenta se desconecto). */
+          is_active: boolean;
+          push_channel_id: string | null;
+          push_channel_expires_at: string | null;
+          sync_token: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          connection_id: string;
+          user_id: string;
+          external_calendar_id: string;
+          name: string;
+          color?: string | null;
+          access_role: CalendarAccessRole;
+          is_primary?: boolean;
+          check_conflicts?: boolean;
+          is_active?: boolean;
+          push_channel_id?: string | null;
+          push_channel_expires_at?: string | null;
+          sync_token?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          access_role?: CalendarAccessRole;
+          is_primary?: boolean;
+          check_conflicts?: boolean;
+          is_active?: boolean;
+          push_channel_id?: string | null;
+          push_channel_expires_at?: string | null;
+          sync_token?: string | null;
           updated_at?: string;
         };
         Relationships: [];

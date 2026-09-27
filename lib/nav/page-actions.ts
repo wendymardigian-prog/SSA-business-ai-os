@@ -173,6 +173,39 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Equipo",
     tooltip: "Quienes tienen acceso y con que permisos.",
   },
+  // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
+  "/dashboard/agenda": {
+    title: "Agenda",
+    tooltip: "Las llamadas agendadas por tus leads y clientes: en lista, kanban o calendario. La configuracion esta en el engranaje.",
+  },
+  "/dashboard/agenda/configuracion/eventos": {
+    title: "Eventos",
+    tooltip: "Los tipos de llamada que se pueden agendar, con su link y su embed.",
+  },
+  "/dashboard/agenda/configuracion/eventos/[id]": {
+    title: "Evento",
+    tooltip: "Todo lo que define este evento: detalles, disponibilidad, formulario, limites, mensajes y flujos.",
+  },
+  "/dashboard/agenda/configuracion/eventos/[id]/flujos/[flowId]": {
+    title: "Flujo del evento",
+    tooltip: "Un flujo lineal: cuando se dispara, condiciones y los mensajes que envia. Se guarda como un flow mas y se puede abrir en el canvas.",
+  },
+  "/dashboard/agenda/configuracion/disponibilidad": {
+    title: "Disponibilidad",
+    tooltip: "Tus horarios, sus excepciones por fecha y tu tiempo fuera.",
+  },
+  "/dashboard/agenda/configuracion/calendarios": {
+    title: "Calendarios de Google",
+    tooltip: "Tus cuentas de Google conectadas: en cuales se revisan conflictos y en cual se crean las agendas.",
+  },
+  "/dashboard/agenda/configuracion/categorias": {
+    title: "Categorias",
+    tooltip: "Areas y tipos con los que se clasifican los eventos y las agendas.",
+  },
+  "/dashboard/agenda/configuracion/ajustes": {
+    title: "Ajustes",
+    tooltip: "Tu usuario (va en los links), nombre, foto, zona horaria y formato de hora.",
+  },
   "/dashboard/settings/integrations": {
     title: "Integraciones",
     tooltip:
@@ -194,6 +227,8 @@ export const PAGE_META: Record<string, PageMeta> = {
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */
 export const PAGES_WITHOUT_HEADER: Record<string, string> = {
+  "/dashboard/agenda/configuracion":
+    "Solo redirige a la seccion por defecto (Eventos); nunca se dibuja.",
   "/dashboard":
     "Redirige al dashboard de chat: no llega a dibujarse.",
   "/dashboard/flows/[flowId]":

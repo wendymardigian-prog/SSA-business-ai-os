@@ -140,6 +140,38 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 });
 
+describe("agenda: los permisos de la Etapa 4 (F2)", () => {
+  const member = SYSTEM_ROLE_PERMISSIONS.member;
+
+  it("el Member tiene agenda propia y ve y gestiona solo las suyas", () => {
+    expect(canAll(member, ["scheduling.use", "bookings.view", "bookings.manage"])).toBe(true);
+    expect(scopeFor(member, "bookings")).toBe("own");
+    expect(canAny(member, ["scheduling.manage_others", "scheduling.manage_categories", "scheduling.team_events"])).toBe(false);
+  });
+
+  it("Owner y Admin tienen las seis claves con alcance a todas las agendas", () => {
+    for (const role of [SYSTEM_ROLE_PERMISSIONS.owner, SYSTEM_ROLE_PERMISSIONS.admin]) {
+      expect(
+        canAll(role, [
+          "scheduling.use",
+          "scheduling.manage_others",
+          "scheduling.team_events",
+          "scheduling.manage_categories",
+          "bookings.view",
+          "bookings.manage",
+        ]),
+      ).toBe(true);
+      expect(scopeFor(role, "bookings")).toBe("all");
+    }
+  });
+
+  it("un rol guardado sin el alcance de agendas queda en own", () => {
+    const parsed = parsePermissions({ keys: ["bookings.view"], scopes: { leads: "all" } });
+    expect(parsed.scopes.bookings).toBe("own");
+    expect(parsePermissions({ keys: [], scopes: { bookings: "all" } }).scopes.bookings).toBe("all");
+  });
+});
+
 describe("preguntar por un permiso (F68)", () => {
   const role = SYSTEM_ROLE_PERMISSIONS.member;
 
@@ -147,7 +179,7 @@ describe("preguntar por un permiso (F68)", () => {
     // Un permiso mal escrito no puede abrir una puerta, y renombrar una
     // clave cierra el acceso en vez de abrirlo.
     expect(can(role, "telepatia.usar")).toBe(false);
-    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all" } }, "telepatia.usar")).toBe(false);
+    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all" } }, "telepatia.usar")).toBe(false);
   });
 
   it("sin rol, nada", () => {

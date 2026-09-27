@@ -39,6 +39,7 @@ export interface RoleFormInput {
   keys: string[];
   leadsScope?: PermissionScope;
   conversationsScope?: PermissionScope;
+  bookingsScope?: PermissionScope;
 }
 
 export async function createRole(
@@ -51,7 +52,7 @@ export async function createRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope },
+    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope },
   });
   if (!checked.ok) return checked;
 
@@ -113,7 +114,7 @@ export async function updateRole(
     name: input.name,
     description: input.description,
     keys: input.keys,
-    scopes: { leads: input.leadsScope, conversations: input.conversationsScope },
+    scopes: { leads: input.leadsScope, conversations: input.conversationsScope, bookings: input.bookingsScope },
   });
   if (!checked.ok) return checked;
 

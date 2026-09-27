@@ -21,7 +21,7 @@ const role = (over: Partial<RoleRow> = {}): RoleRow => ({
   name: "Setter senior",
   description: null,
   systemRole: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } },
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own" } },
   members: 0,
   ...over,
 });
@@ -88,7 +88,7 @@ describe("validar un rol (F71)", () => {
   it("sin alcance elegido, el mas restrictivo", () => {
     const result = validateRole({ name: "Setter", keys: ["contacts.view"], scopes: {} });
 
-    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own" });
+    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own" });
   });
 });
 
@@ -176,7 +176,7 @@ describe("como se muestran (F71)", () => {
     expect(
       describeRole(
         role({
-          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own" } },
+          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own" } },
         }),
       ),
     ).toBe("2 permisos · todos los leads");
@@ -189,7 +189,7 @@ describe("como se muestran (F71)", () => {
 
   it("uno vacio lo dice", () => {
     expect(
-      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own" } } })),
+      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own" } } })),
     ).toBe("Sin permisos.");
   });
 });

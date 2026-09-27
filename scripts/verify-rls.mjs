@@ -1181,6 +1181,34 @@ try {
     await svc.from("channels").delete().eq("id", chEmail.id);
   }
 
+  console.log("\n— Agenda (Etapa 4, 00095): perfiles y calendarios —");
+  { // Lectura cruzada entre dos workspaces y entre un Member y otra persona.
+    const otroWs = await makeUser("otro-agenda");
+    const { data: wsB } = await svc.from("workspaces")
+      .insert({ name: "zz-test-agenda-ws", slug: `zz-test-agenda-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsB.id, user_id: otroWs.id, role: "owner" });
+
+    const { data: perfil } = await svc.from("scheduling_profiles").insert({
+      workspace_id: ws.id, user_id: member.id, username: "zz-member", display_name: "Member", timezone: "America/Costa_Rica",
+    }).select("id").single();
+    const { data: connCal } = await svc.from("oauth_connections").insert({
+      workspace_id: ws.id, provider: "google_calendar", user_id: member.id, external_account_id: "zz-sub",
+      vault_secret_prefix: "oauth_google_calendar_zz", granted_scopes: [], account_label: "zz@example.test",
+    }).select("id").single();
+    const { data: cal } = await svc.from("calendars").insert({
+      workspace_id: ws.id, connection_id: connCal.id, user_id: member.id, external_calendar_id: "primary", name: "Principal", access_role: "owner",
+    }).select("id").single();
+
+    check((await sees(member, "scheduling_profiles", perfil.id)).seen, "el Member ve su perfil de agenda");
+    check((await sees(admin, "scheduling_profiles", perfil.id)).seen, "el Admin ve los perfiles del workspace");
+    check(!(await sees(otroWs, "scheduling_profiles", perfil.id)).seen, "otro workspace no ve el perfil");
+    check((await sees(member, "calendars", cal.id)).seen, "el Member ve su calendario");
+    check((await sees(admin, "calendars", cal.id)).seen, "el Admin (manage_others) ve el calendario");
+    check(!(await sees(otroWs, "calendars", cal.id)).seen, "otro workspace no ve el calendario");
+    check((await sees(member, "oauth_connections", connCal.id)).seen, "el Member ve su propia conexion de Google Calendar");
+    check(!(await sees(otroWs, "oauth_connections", connCal.id)).seen, "otro workspace no ve esa conexion");
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

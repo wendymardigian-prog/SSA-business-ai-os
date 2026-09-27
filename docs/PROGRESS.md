@@ -33,15 +33,16 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 
 ### FASE 1 — Calendarios, disponibilidad y eventos
 
-- [ ] **Bloque 1 — Perfil y calendarios** (migración 00095)
-  - [ ] F1 · Tablas de perfil y calendarios (+ `oauth_connections` provider `google_calendar` e índices parciales, `contacts.timezone`, bucket `avatars`)
-  - [ ] F2 · Permisos del módulo (`can_see_booking` queda para la 00099, con `bookings`)
-  - [ ] F3 · Perfil de agenda (Ajustes)
-  - [ ] F4 · Conectar Google Calendar
-  - [ ] F5 · Calendarios de cada cuenta
-  - [ ] F6 · Cliente de Google Calendar
-  - [ ] F7 · Estado de las conexiones
-  - [ ] F8 · Menú "Agenda" y zona horaria de la interfaz — **hecho en el núcleo:** `formatInTz`, `rangeForFilter` (`lib/scheduling/time/tz.ts`). Falta: ítem del menú, engranaje, configuración con 5 secciones, `getViewerTimezone`
+- [x] **Bloque 1 — Perfil y calendarios** (migración **00095 aplicada** el 27/9/2026)
+  - [x] F1 · Tablas de perfil y calendarios: `scheduling_profiles`, `calendars`, `scheduling_can_manage`, `oauth_connections` con provider `google_calendar`, dos índices parciales (workspace / persona+cuenta) y lectura propia, `contacts.timezone`, bucket `avatars`; tipos a mano en `database.ts`; `verify-scheduling.mjs` (30 chequeos) y `verify-rls` (+8) en verde
+  - [x] F2 · Permisos: módulo `scheduling` con las 6 claves, alcance `bookings` en `SCOPED_MODULES`/`parsePermissions`/pantalla de roles; el Member de sistema suma `scheduling.use`, `bookings.view` y `bookings.manage` con `own`. **`can_see_booking` va en la 00099** (necesita `bookings`, B4a)
+  - [x] F3 · Perfil de agenda (Ajustes): usuario con reservadas y sugerencia, confirmación al romper links (`lib/scheduling/profile.ts`), foto al bucket `avatars`, selector de persona con `manage_others`. **El "Horario normal" inicial se crea en B2** (la tabla llega en la 00096)
+  - [x] F4 · Conectar Google Calendar: adaptador `google_calendar` (por persona, `openid email` + userinfo, `login_hint`), guard por adaptador en start/callback (Member 403 en google/linkedin/threads), `saveConnection` sin `upsert` (buscar → actualizar o insertar), tokens en Vault con el id de la conexión; 4 casos de F4 + 4 del guard
+  - [x] F5 · Calendarios: `planCalendarSync` puro (sistema fuera, primario revisa conflictos, inactivos), `syncCalendars`, pantalla con tarjeta por cuenta, switch de conflictos, destino por defecto (solo owner/writer), Reconectar / Actualizar / Desconectar con aviso
+  - [x] F6 · Cliente `lib/google-calendar/{errors,auth,client}.ts`: freebusy en tramos de 90 días, Meet con `conferenceDataVersion=1` + `sendUpdates=all`, `deleteEvent` 404/410 = ok, `getAccessToken` con caché a 1 min, `invalid_grant` → `revoked` + aviso a la persona; clasificación según la documentación (403 de cuota = temporal). 20 tests
+  - [x] F7 · Estado de las conexiones: `calendarConnectionStatus`, `isUserBookable` (`calendar_disconnected` solo si un calendario de la cuenta caída está en uso), aviso fijo "Reconectá tu Google Calendar" en Agenda; el cron semanal de tokens excluye `google_calendar`
+  - [x] F8 · Menú "Agenda" (después de Contacts, visible con `scheduling.use` o `bookings.view`; el sidebar filtra por permiso), engranaje ⚙ con `canOpenConfig`, Configuración con 5 secciones y "‹ Agendas" (`ConfigShell`), `getViewerTimezone`; encabezados de seguridad (`lib/security-headers.ts` + `next.config`). **Hecho en el núcleo:** `formatInTz`, `rangeForFilter`
+  - Verificación: vitest 254 archivos / 2974 tests, tsc 0, lint 0 errores / 44 warnings, build OK, `verify-scheduling` y `verify-rls` en verde. Pantallas: sin sesión en el navegador → anotado en PENDIENTE; los encabezados se comprobaron con curl contra el dev server
 - [ ] **Bloque 2 — Disponibilidades** (migración 00096)
   - [ ] F9 · Tablas de disponibilidad — **hecho en el núcleo:** esquemas Zod y validación (`availability-schema.ts`). Falta: migración, RLS, acciones
   - [ ] F10 · Lista de horarios — **hecho en el núcleo:** `summarizeSchedule`. Falta: pantalla, marcar por defecto (RPC), duplicar, borrar con reemplazo, casos con base del test
@@ -109,7 +110,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 
 | # | Qué crea | Aplicada |
 |---|---|---|
-| 00095 | (B1) perfiles, calendarios, `oauth_connections`, `contacts.timezone`, bucket `avatars` | — |
+| 00095 | (B1) perfiles, calendarios, `scheduling_can_manage`, `oauth_connections` (provider + índices parciales + policy propia), `contacts.timezone`, bucket `avatars` | ✅ aplicada y verificada (27/9/2026) |
 | 00096 | (B2) `availability_schedules`, `out_of_office` | — |
 | 00097 | (B3) `booking_categories` + precarga | — |
 | 00098 | (B3) `event_types`, `flows.*`, `workspaces.*` | — |

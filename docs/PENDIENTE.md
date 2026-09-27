@@ -20,14 +20,24 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Por qué:** gana la documentación.
 - **Qué se decidió en su lugar:** (1) un 403 con `reason` `rateLimitExceeded` o `userRateLimitExceeded` es `temporary` (backoff), no `permanent`; los otros 403 (`insufficientPermissions`, `forbiddenForNonOrganizer`) sí son `permanent`. (2) `invalid_grant` es del endpoint de token de OAuth, no de Calendar: se trata como `permanent` y marca la conexión `revoked`. Confirmado: `calendar.events.freebusy` alcanza para `freeBusy.query`, `calendar.calendarlist.readonly` para `calendarList.list` (pagina con `nextPageToken`, hasta 250 por página) y `calendar.events` para insertar, modificar y borrar con `conferenceDataVersion=1` y `sendUpdates=all`. La identidad (`sub`, email) sale de `openid email` + `userinfo`.
 
+### Las pantallas internas no se recorrieron a ojo
+- **Qué quedó:** Agenda, Configuración de agenda (Ajustes, Calendarios de Google y las secciones provisorias) no se vieron en el navegador ni a 1440 ni a 390 px.
+- **Por qué:** la app pide login; el navegador integrado no tiene sesión y la regla de la corrida prohíbe escribir credenciales. `/dashboard/agenda` redirige a `/login`.
+- **Qué se decidió en su lugar:** la lógica de cada pantalla va en funciones puras con tests (`config-sections`, `profile`, `calendars`, `bookable`, `viewer-timezone`), los guards y la RLS se prueban con `verify-scheduling` y `verify-rls`, y los encabezados de seguridad se comprobaron con `curl` contra el dev server. La recorrida visual queda para la verificación en vivo (§18). Las públicas (booker, embed) se revisan siempre (B4b, B6).
+
+### El "Horario normal" inicial del perfil se crea en el Bloque 2
+- **Qué quedó:** F3 pide que al crear el perfil exista un horario por defecto. En B1 el perfil se crea sin horario.
+- **Por qué:** `availability_schedules` llega con la migración 00096 (B2); crear la fila en B1 sería referenciar una tabla que no existe.
+- **Qué se decidió en su lugar:** en B2 la acción de crear/guardar el perfil crea "Horario normal" si la persona no tiene ninguno, y un backfill de la 00096 lo hace para los perfiles que ya existan.
+
 ## Hallazgos de la exploración (previos a esta etapa)
 
-### El guardado de conexiones OAuth de la Etapa 2 fallaba contra la base real
+### ~~El guardado de conexiones OAuth de la Etapa 2 fallaba contra la base real~~ — RESUELTO en B1
 - **Qué quedó:** `saveConnection` hacía `upsert(onConflict: "workspace_id,provider,user_id")`, pero el índice único era de expresión (`coalesce(user_id, …)`). Verificado con `EXPLAIN` contra la base: Postgres responde 42P10. Conectar YouTube, LinkedIn o Threads de verdad habría terminado en `save_failed`. Nunca se vio porque `oauth_connections` estaba vacía y el test usa un mock.
 - **Por qué:** un `ON CONFLICT (columnas)` solo encuentra índices de columnas, no de expresiones.
 - **Qué se decidió en su lugar:** (decisión de Wendy, 27/9) se reescribe como buscar → actualizar o insertar, para todos los proveedores, y los índices pasan a ser dos parciales sin expresiones (una conexión de workspace por proveedor; varias cuentas por persona). Queda en B1.
 
-### Hoy la app no manda ningún encabezado de seguridad
+### ~~Hoy la app no manda ningún encabezado de seguridad~~ — RESUELTO en B1
 - **Qué quedó:** el plano (§15) suponía `X-Frame-Options: DENY` "como hoy". No existe: `next.config.ts` no define `headers()` y el middleware solo refresca la sesión.
 - **Qué se decidió en su lugar:** (decisión de Wendy, 27/9) se agrega `securityHeadersFor(path)`: `frame-ancestors *` en `/calendario/*` y `/embed/*`, `frame-ancestors 'none'` + `X-Frame-Options: DENY` en el resto. Queda en B1.
 

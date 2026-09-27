@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getAdminContext, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { startOAuth } from "@/lib/oauth/flow";
@@ -25,10 +25,19 @@ export async function GET(
     return NextResponse.json({ error: "Proveedor desconocido" }, { status: 404 });
   }
 
-  const ctx = await getAdminContext();
+  // Las conexiones del workspace (YouTube, LinkedIn, Threads) son de Owner y
+  // Admin. Una conexion por persona (Google Calendar, Etapa 4) la hace
+  // cualquiera con el permiso del adaptador, siempre a su propio nombre.
+  const ctx = adapter.perUser
+    ? await getPermissionAction(adapter.requiredPermission ?? "scheduling.use")
+    : await getAdminContext();
   if (!ctx) {
     return NextResponse.json(
-      { error: "Solo Owner y Admin pueden conectar cuentas" },
+      {
+        error: adapter.perUser
+          ? "No tenes permiso para conectar tu calendario"
+          : "Solo Owner y Admin pueden conectar cuentas",
+      },
       { status: 403 },
     );
   }
@@ -54,6 +63,7 @@ export async function GET(
     workspaceId: ctx.workspace.id,
     userId: ctx.user.id,
     redirectTo: request.nextUrl.searchParams.get("redirect_to"),
+    loginHint: adapter.perUser ? request.nextUrl.searchParams.get("login_hint") : null,
     callbackUrl,
   });
 

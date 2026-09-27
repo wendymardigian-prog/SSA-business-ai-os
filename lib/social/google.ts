@@ -47,6 +47,7 @@ export function googleAuthorizeUrl(params: {
   redirectUri: string;
   state: string;
   scopes?: string[];
+  loginHint?: string | null;
 }): string {
   const url = new URL(AUTHORIZE);
   url.searchParams.set("client_id", params.clientId);
@@ -56,6 +57,7 @@ export function googleAuthorizeUrl(params: {
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("include_granted_scopes", "true");
+  if (params.loginHint) url.searchParams.set("login_hint", params.loginHint);
   url.searchParams.set("state", params.state);
   return url.toString();
 }
