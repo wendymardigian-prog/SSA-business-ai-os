@@ -12,7 +12,13 @@ import type { AgentDraftStatus } from "@/lib/types/database";
  */
 export type SuggestedAction =
   | { type: "escalate"; reason: string; summary: string | null; reopen: boolean }
-  | { type: "pause"; minutes: number; reason: string; maxMinutes: number; autoResume: boolean };
+  | { type: "pause"; minutes: number; reason: string; maxMinutes: number; autoResume: boolean }
+  /**
+   * El guardarrail de salida marco este borrador: el texto propuesto tiene un
+   * link, palabra, escasez o cifra que no pasa. No se aplica nada (applySuggestions
+   * lo ignora); marca la fila para que Wendy lo edite antes de enviar.
+   */
+  | { type: "guardrail_review"; hits: Array<{ rule: string; text: string }> };
 
 /** Una accion que el agente YA aplico en el turno (etiquetar, temperatura...). */
 export interface AppliedAction {
@@ -48,8 +54,13 @@ export function parseSuggestedActions(raw: unknown): SuggestedAction[] {
   return raw.filter((a): a is SuggestedAction => {
     if (!a || typeof a !== "object") return false;
     const type = (a as { type?: unknown }).type;
-    return type === "escalate" || type === "pause";
+    return type === "escalate" || type === "pause" || type === "guardrail_review";
   });
+}
+
+/** ¿El borrador tiene una marca de guardarrail de salida sin resolver? */
+export function hasGuardrailReview(actions: SuggestedAction[]): boolean {
+  return actions.some((a) => a.type === "guardrail_review");
 }
 
 /** Lectura tolerante del jsonb de acciones aplicadas. */

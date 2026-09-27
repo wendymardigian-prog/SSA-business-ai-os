@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES = [
   "sequence_collision",
   "agent_error",
   "agent_spend_limit",
+  "agent_output_blocked",
   "draft_window",
   "refresh_health",
 ] as const;
@@ -82,6 +83,13 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     type: "agent_spend_limit",
     label: "Tope de gasto de IA",
     tone: "warning",
+  },
+  /** El guardarrail de salida freno un mensaje en envio directo (el lead no lo vio). */
+  agent_output_blocked: {
+    type: "agent_output_blocked",
+    label: "Mensaje bloqueado por guardarrail",
+    tone: "warning",
+    entity: "conversation",
   },
   /**
    * Borradores por vencer (Bloque 2c, 00072): agregado por persona y corte de

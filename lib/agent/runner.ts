@@ -39,6 +39,9 @@ import { createDraft, type CreateDraftInput } from "./drafts/create";
 import { parseAppliedActions, type AppliedAction, type SuggestedAction } from "./drafts/types";
 import { evaluateGuardrails, isWithinBusinessHours } from "./guardrails";
 import { validateOutput } from "./output";
+import { checkOutputGuardrails, outputRuleLabel } from "./output-guardrails";
+import { applyWhatsappMarker, recordWhatsappHandoff } from "./whatsapp-handoff";
+import { WHATSAPP_MEMO_KEY, type WhatsappLinkMemo } from "./tools/whatsapp-link";
 import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
 import { defaultSend, sendAgentParts, type SendFn } from "./send";
 import { defaultRefresh, type RefreshFn } from "./refresh";
@@ -567,6 +570,10 @@ async function continueTurn(
 
   // 5. El modelo.
   const nonce = newNonce();
+  // Memoria del turno: la comparten las herramientas y el runner. La usa
+  // generar_link_whatsapp para dejar el link generado, que el runner lee al
+  // sustituir el marcador {{LINK_WHATSAPP}}.
+  const turnMemo = new Map<string, unknown>();
   const [toolSet] = await Promise.all([
     buildToolSet({
       supabase,
@@ -577,6 +584,7 @@ async function continueTurn(
       channelId: conversation.channel_id,
       run,
       nonce,
+      turn: { memo: turnMemo },
       // En modo reglas las herramientas se difieren como en borrador: la
       // decisión de enviar o no se toma después de generar.
       mode: args.mode === "rules" ? "draft" : args.mode,
@@ -755,6 +763,27 @@ async function continueTurn(
     draftMode = ruleDecision.action === "draft";
   }
 
+  // 6c. Marcador de WhatsApp: reemplazar {{LINK_WHATSAPP}} por el link real que
+  // genero la herramienta este turno. Va sobre las burbujas (despues de partir),
+  // nunca antes: un link no tiene espacios y cutAtBoundary podria partirlo en
+  // dos. La burbuja con el link puede pasarse del largo configurado (queda
+  // anotado); no partir un link vale mas que respetar el tope al caracter.
+  const whatsappMemo = (turnMemo.get(WHATSAPP_MEMO_KEY) as WhatsappLinkMemo | undefined) ?? null;
+  const marker = applyWhatsappMarker(output.parts, whatsappMemo?.link ?? null);
+  output.parts = marker.parts;
+  if (marker.note) {
+    await run.step({ kind: "guardrail", name: "whatsapp_marker", output: { caso: marker.note } });
+  }
+  const linkOverLength = whatsappMemo ? output.parts.some((p) => p.length > agent.outputFormat.maxLength) : false;
+
+  // 6d. Guardarrailes de salida: links fuera de la lista, palabras prohibidas,
+  // escasez inventada, cifras con $. Sobre el texto final (ya sustituido). El
+  // link que genero la herramienta este turno pasa como permitido implicito. El
+  // enganche esta mas abajo (necesita routingNow y el modo efectivo).
+  const outputCheck = checkOutputGuardrails(output.parts.join("\n\n"), agent.guardrails, {
+    allowedLinks: whatsappMemo ? [whatsappMemo.link] : [],
+  });
+
   // 7. Espera hasta el objetivo. En modo borrador no hay demora deliberada: el
   // borrador se guarda apenas esta listo.
   const target = args.windowEnd + agent.responseDelaySeconds * 1000;
@@ -803,6 +832,42 @@ async function continueTurn(
       ? routingFor("rules", ruleDecision, ruleStage ?? "after", routingRefresh)
       : { mode: effectiveMode, refresh: routingRefresh };
 
+  // 6d (enganche). Guardarrail de salida bloqueado. En borrador se guarda igual,
+  // marcado, para que Wendy vea que quiso mandar; en envio directo no sale nada
+  // y se avisa. Va aca, con routingNow ya definido, para no perder que regla
+  // decidio en modo reglas.
+  if (!outputCheck.ok) {
+    const firstRule = outputCheck.hits[0].rule;
+    await run.step({ kind: "guardrail", name: `output_${firstRule}`, output: { reglas: outputCheck.hits, texto: output.parts } });
+    const detail = `guardrail:output_${firstRule}`;
+    if (draftMode || degradeToDraft) {
+      run.setRouting(routingNow("draft"));
+      return leaveDraft(
+        {
+          body: output.parts.join("\n\n"),
+          bodyParts: output.parts,
+          noReplyReason: null,
+          suggestedActions: [...suggestions, { type: "guardrail_review", hits: outputCheck.hits }],
+          appliedActions: applied,
+        },
+        detail,
+      );
+    }
+    run.setRouting(routingNow("send"));
+    await createNotificationOnce({
+      supabase,
+      workspaceId: conversation.workspace_id,
+      type: "agent_output_blocked",
+      title: "El agente quiso mandar algo que no pasa el guardarrail",
+      body: `Se bloqueo por ${outputRuleLabel(firstRule)}: «${outputCheck.hits[0].text}». El lead no recibio nada.`,
+      entityType: "conversation",
+      entityId: conversation.id,
+      metadata: { agent_id: agent.id, run_id: runId, rule: firstRule },
+      withinMinutes: 60,
+    });
+    return close("blocked_guardrail", detail);
+  }
+
   if (draftMode || degradeToDraft) {
     run.setRouting(routingNow("draft"));
     return leaveDraft(
@@ -813,7 +878,7 @@ async function continueTurn(
         suggestedActions: suggestions,
         appliedActions: applied,
       },
-      joinDetails(modelDetail, output.truncated && "output_truncated", degradeToDraft && "refresh_failed"),
+      joinDetails(modelDetail, output.truncated && "output_truncated", degradeToDraft && "refresh_failed", linkOverLength && "link_over_length"),
     );
   }
 
@@ -832,9 +897,30 @@ async function continueTurn(
   }
 
   await clearAgentError(supabase, conversation.id);
+
+  // 9. El pase a WhatsApp: si el mensaje salio con el link, queda en audit_log.
+  // El criterio es el texto enviado, no lo que el modelo quiso.
+  if (whatsappMemo) {
+    const linkPart = sent.messageIds.findIndex((_, i) => (output.parts[i] ?? "").includes(whatsappMemo.link));
+    await recordWhatsappHandoff(supabase, {
+      workspaceId: conversation.workspace_id,
+      agentId: agent.id,
+      contactId: conversation.contact_id,
+      conversationId: conversation.id,
+      channelId: conversation.channel_id,
+      runId,
+      link: whatsappMemo.link,
+      textoPreescrito: whatsappMemo.textoPreescrito,
+      sentTexts: output.parts.slice(0, sent.sent),
+      messageId: linkPart >= 0 ? sent.messageIds[linkPart] : null,
+      origin: "tool",
+    });
+  }
+
   const details = [
     modelDetail,
     output.truncated ? "output_truncated" : null,
+    linkOverLength ? "link_over_length" : null,
     sent.failure ? `partial_send:${sent.sent}/${output.parts.length}` : null,
     interrupted ? "sent_early_new_message" : null,
   ].filter(Boolean);

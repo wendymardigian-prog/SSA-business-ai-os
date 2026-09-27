@@ -145,7 +145,34 @@ function describeApplied(action: AppliedAction): string {
 
 function describeSuggestion(s: SuggestedAction): string {
   if (s.type === "escalate") return `Sugiere derivar a una persona: ${s.reason}`;
+  if (s.type === "guardrail_review") return "Bloqueado por un guardarrail de salida";
   return `Sugiere pausarse ${s.minutes >= 60 ? `${Math.round(s.minutes / 60)} h` : `${s.minutes} min`}: ${s.reason}`;
+}
+
+const RULE_LABELS: Record<string, string> = {
+  link: "un link fuera de la lista permitida",
+  palabra_prohibida: "una palabra prohibida",
+  escasez: "escasez inventada",
+  cifra: "una cifra de dinero",
+};
+
+/** Banner ámbar cuando el guardarrail de salida marcó el borrador (editar antes de enviar). */
+function GuardrailBanner({ draft }: { draft: DraftQueueRow }) {
+  const review = draft.suggestedActions.find((s) => s.type === "guardrail_review");
+  if (!review || review.type !== "guardrail_review") return null;
+  return (
+    <div className="rounded-lg border border-amber-400 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/60 dark:bg-amber-950/20 dark:text-amber-200">
+      <p className="font-semibold">Bloqueado por el guardarrail de salida</p>
+      <ul className="mt-1 list-disc pl-4">
+        {review.hits.map((h, i) => (
+          <li key={i}>
+            {RULE_LABELS[h.rule] ?? h.rule}: «{h.text}»
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1">Editá el mensaje para sacarlo antes de enviarlo.</p>
+    </div>
+  );
 }
 
 function BurstQuote({ draft }: { draft: DraftQueueRow }) {
@@ -219,7 +246,9 @@ function RuleTag({ routing }: { routing: Record<string, unknown> | null }) {
 }
 
 function AgentActions({ draft }: { draft: DraftQueueRow }) {
-  if (draft.appliedActions.length === 0 && draft.suggestedActions.length === 0) {
+  // El guardarrail de salida tiene su propio banner, no un chip.
+  const suggestions = draft.suggestedActions.filter((s) => s.type !== "guardrail_review");
+  if (draft.appliedActions.length === 0 && suggestions.length === 0) {
     return <p className="text-xs text-muted-foreground">No tocó el CRM.</p>;
   }
   return (
@@ -230,7 +259,7 @@ function AgentActions({ draft }: { draft: DraftQueueRow }) {
           {describeApplied(a)}
         </li>
       ))}
-      {draft.suggestedActions.map((s, i) => (
+      {suggestions.map((s, i) => (
         <li
           key={`s-${i}`}
           className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-200"
@@ -510,6 +539,7 @@ export function DraftQueueItem({
       <div className="min-w-0">
         <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground queue:hidden">Respuesta propuesta</p>
         {decided ? <DecidedSummary draft={draft} /> : <ProposedReply draft={draft} decision={decision} />}
+        {!decided && <div className="mt-2"><GuardrailBanner draft={draft} /></div>}
       </div>
 
       <div className="min-w-0">
@@ -583,6 +613,7 @@ export function ThreadDraft({ draft, onDone }: { draft: DraftQueueRow; onDone: (
         <WindowBadge info={draft.window} />
       </div>
       <ProposedReply draft={draft} decision={decision} />
+      <GuardrailBanner draft={draft} />
       <AgentActions draft={draft} />
       <Decisions draft={draft} decision={decision} inboxHref={null} />
       {!decision.canSend && draft.status !== "sending" && (

@@ -53,9 +53,12 @@ export async function sendAgentParts(
   ctx: AgentSendContext,
   parts: string[],
   send: SendFn = defaultSend,
-): Promise<{ sent: number; failure: SendOutcome["failure"] | null; firstMessageId: string | null }> {
+): Promise<{ sent: number; failure: SendOutcome["failure"] | null; firstMessageId: string | null; messageIds: Array<string | null> }> {
   let sent = 0;
   let firstMessageId: string | null = null;
+  // Un id (o null) por parte enviada, en orden. Lo usa el registro del pase a
+  // WhatsApp para saber que mensaje lleva el link.
+  const messageIds: Array<string | null> = [];
   for (const part of parts) {
     const outcome = await send(supabase, ctx, part);
     const { data: stored, error } = await supabase.from("messages").insert(
@@ -73,7 +76,8 @@ export async function sendAgentParts(
     if (error) console.error("[agent-send] no pude guardar el mensaje enviado:", error.message);
     if (outcome.ok && !firstMessageId) firstMessageId = stored?.id ?? null;
 
-    if (!outcome.ok) return { sent, failure: outcome.failure ?? null, firstMessageId };
+    if (!outcome.ok) return { sent, failure: outcome.failure ?? null, firstMessageId, messageIds };
+    messageIds.push(stored?.id ?? null);
     sent++;
 
     // La respuesta salio de verdad: queda el instante en el run (00070). Se
@@ -93,5 +97,5 @@ export async function sendAgentParts(
       .update({ last_message_at: new Date().toISOString(), last_message_preview: messagePreview(part) })
       .eq("id", ctx.conversationId);
   }
-  return { sent, failure: null, firstMessageId };
+  return { sent, failure: null, firstMessageId, messageIds };
 }

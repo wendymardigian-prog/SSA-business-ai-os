@@ -16,6 +16,7 @@ import { assignConversationTool } from "./assign-conversation";
 import { crmLookupTool } from "./crm-lookup";
 import { pauseSelfTool } from "./pause-self";
 import { declareIntentTool } from "./declare-intent";
+import { whatsappLinkTool } from "./whatsapp-link";
 
 registerAgentTool(escalateTool);
 registerAgentTool(searchKnowledgeTool);
@@ -26,6 +27,7 @@ registerAgentTool(assignConversationTool);
 registerAgentTool(crmLookupTool);
 registerAgentTool(pauseSelfTool);
 registerAgentTool(declareIntentTool);
+registerAgentTool(whatsappLinkTool);
 
 export * from "./registry";
 export type * from "./types";

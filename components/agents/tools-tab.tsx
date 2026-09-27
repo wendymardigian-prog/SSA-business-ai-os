@@ -62,7 +62,7 @@ export function ToolsTab({ data }: { data: AgentScreenData }) {
       >
         <ul className="divide-y divide-border rounded-lg border border-border">
           {tools.map((tool) => {
-            const blocked = blockingField(tool.configFields, toolOptionSources);
+            const blocked = blockingField(tool.configFields, toolOptionSources, config[tool.name] ?? tool.defaults);
             const on = tool.required || allowed.includes(tool.name);
             const managedElsewhere = tool.managedFrom !== null;
             return (
@@ -84,7 +84,9 @@ export function ToolsTab({ data }: { data: AgentScreenData }) {
                     )}
                     {blocked && !tool.required && (
                       <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-                        {(blocked.kind === "multiselect" && blocked.emptySourceMessage) || "Falta configurar una lista para poder habilitarla."}
+                        {(blocked.kind === "multiselect" && blocked.emptySourceMessage) ||
+                          (blocked.kind === "text" && blocked.emptyMessage) ||
+                          "Falta configurar un dato para poder habilitarla."}
                       </p>
                     )}
                   </div>
@@ -99,7 +101,7 @@ export function ToolsTab({ data }: { data: AgentScreenData }) {
                 </div>
 
                 {tool.configFields.length > 0 && (
-                  <details className="mt-2 group" open={on && !blocked}>
+                  <details className="mt-2 group" open={(on && !blocked) || blocked !== null}>
                     <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground hover:text-foreground">
                       Parámetros
                     </summary>
