@@ -1,5 +1,6 @@
 import { getPermissionContext } from "@/lib/auth/guards";
-import { getProfileForUser, listMembersWithProfiles, takenUsernames } from "@/lib/scheduling/data/profiles";
+import { getProfileForUser, takenUsernames } from "@/lib/scheduling/data/profiles";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { suggestUsername } from "@/lib/scheduling/profile";
 import { ProfileSettingsView } from "@/components/scheduling/profile-settings-view";
 
@@ -19,7 +20,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
   const [profile, taken, members] = await Promise.all([
     getProfileForUser(ctx.supabase, ctx.workspace.id, targetUserId),
     takenUsernames(ctx.supabase, ctx.workspace.id, targetUserId),
-    canManageOthers ? listMembersWithProfiles(ctx.supabase, ctx.workspace.id) : Promise.resolve([]),
+    canManageOthers ? getWorkspaceMembers(ctx.workspace.id) : Promise.resolve([]),
   ]);
 
   const meta = (ctx.user.user_metadata ?? {}) as { full_name?: string; name?: string };
@@ -33,7 +34,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
       isSelf={isSelf}
       canManageOthers={canManageOthers}
       canManageSettings={ctx.can("settings.manage")}
-      members={members.map((m) => ({ userId: m.userId, label: m.profile?.display_name ?? m.userId.slice(0, 8), username: m.profile?.username ?? null }))}
+      members={members.map((m) => ({ userId: m.userId, label: m.name || m.email, username: null }))}
       initial={
         profile
           ? { username: profile.username, displayName: profile.display_name, timezone: profile.timezone, timeFormat: profile.time_format, welcomeMessage: profile.welcome_message ?? "", avatarUrl: profile.avatar_url }

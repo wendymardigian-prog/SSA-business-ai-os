@@ -83,9 +83,10 @@ export function CalendarsView({
             href={hasProfile ? connectHref : undefined}
             aria-disabled={!hasProfile}
             title={hasProfile ? undefined : "Primero completá tu perfil en Ajustes"}
-            className={`inline-flex h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
+            className={`inline-flex h-9 items-center whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground ${hasProfile ? "" : "pointer-events-none opacity-50"}`}
           >
-            + Conectar cuenta de Google
+            <span className="sm:hidden">+ Conectar</span>
+            <span className="hidden sm:inline">+ Conectar cuenta de Google</span>
           </a>
         ) : undefined
       }

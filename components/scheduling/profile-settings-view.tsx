@@ -109,10 +109,11 @@ export function ProfileSettingsView({
           type="button"
           onClick={() => save()}
           disabled={pending || !usernameCheck.ok || form.displayName.trim().length < 2}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          Guardar cambios
+          <span className="sm:hidden">Guardar</span>
+          <span className="hidden sm:inline">Guardar cambios</span>
         </button>
       }
       filters={
