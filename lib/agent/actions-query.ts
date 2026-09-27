@@ -28,6 +28,7 @@ export const AGENT_ACTION_LABELS: Record<string, string> = {
   human_takeover: "Derivó a una persona",
   agent_paused: "Se pausó",
   summary: "Guardó el resumen",
+  whatsapp_handoff: "Pasó el lead a WhatsApp",
   update: "Se apagó por tope de gasto",
 };
 

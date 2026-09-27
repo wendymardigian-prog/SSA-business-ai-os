@@ -19,10 +19,26 @@ export function fieldOptions(field: ToolConfigField, sources: OptionSources): To
   return field.optionSource ? sources[field.optionSource] ?? [] : [];
 }
 
-/** Un multiselect obligatorio sin opciones en su fuente: la herramienta no se puede habilitar. */
-export function blockingField(fields: ToolConfigField[], sources: OptionSources): ToolConfigField | null {
+/**
+ * Un campo obligatorio que todavia no se puede cumplir: un multiselect sin
+ * opciones en su fuente, o un campo de texto requerido que quedo vacio. Con
+ * uno de estos, la herramienta no se puede habilitar y la pantalla muestra su
+ * mensaje. Recibe los valores para poder mirar un texto requerido.
+ */
+export function blockingField(
+  fields: ToolConfigField[],
+  sources: OptionSources,
+  values: Record<string, unknown> = {},
+): ToolConfigField | null {
   return (
-    fields.find((f) => f.kind === "multiselect" && f.requiredForTool && fieldOptions(f, sources).length === 0) ?? null
+    fields.find((f) => {
+      if (f.kind === "multiselect" && f.requiredForTool) return fieldOptions(f, sources).length === 0;
+      if (f.kind === "text" && f.requiredForTool) {
+        const v = values[f.key];
+        return typeof v !== "string" || v.trim() === "";
+      }
+      return false;
+    }) ?? null
   );
 }
 
@@ -75,6 +91,28 @@ function ConfigField({
           {field.hint && <span className="mt-0.5 block text-xs text-muted-foreground">{field.hint}</span>}
         </span>
       </label>
+    );
+  }
+
+  if (field.kind === "text") {
+    return (
+      <div>
+        <label htmlFor={id} className="block text-xs font-semibold">{field.label}</label>
+        <div className="mt-1 max-w-sm">
+          <input
+            id={id}
+            type="text"
+            inputMode={field.inputMode}
+            value={typeof value === "string" ? value : ""}
+            maxLength={field.maxLength}
+            placeholder={field.placeholder}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+        {field.hint && <p className="mt-1 text-[11px] text-muted-foreground">{field.hint}</p>}
+      </div>
     );
   }
 

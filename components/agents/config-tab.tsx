@@ -356,6 +356,67 @@ function GuardrailsSection({ form, set }: SectionProps) {
       </div>
 
       <div className="space-y-3 rounded-lg border border-border p-4">
+        <p className="text-sm font-medium">Guardarrailes de salida</p>
+        <p className="text-xs text-muted-foreground">
+          Se revisan sobre el mensaje ya generado, antes de enviarlo o de guardar el borrador. En envío directo, si algo no
+          pasa no se manda nada al lead y te avisamos; en modo borrador queda marcado para que lo edites.
+        </p>
+        <Field
+          label="Links permitidos (uno por línea)"
+          hint="Se compara por dominio y camino, sin protocolo ni parámetros. Vacío: no se revisan links. Ej: wa.me/50670814873, wendymardigian.com/academia"
+        >
+          {(id) => (
+            <textarea
+              id={id}
+              rows={3}
+              value={g.linksPermitidos.join("\n")}
+              onChange={(e) => patch({ linksPermitidos: linesToList(e.target.value) })}
+              className={`${inputClass} text-xs`}
+            />
+          )}
+        </Field>
+        <Checkbox
+          checked={g.palabrasProhibidas.enabled}
+          onChange={(enabled) => patch({ palabrasProhibidas: { ...g.palabrasProhibidas, enabled } })}
+          label="Palabras prohibidas"
+          description="Si el mensaje del agente contiene alguna de estas palabras, se bloquea."
+        />
+        {g.palabrasProhibidas.enabled && (
+          <Field label="Palabras (una por línea)">
+            {(id) => (
+              <textarea id={id} rows={2} value={g.palabrasProhibidas.phrases.join("\n")} onChange={(e) => patch({ palabrasProhibidas: { ...g.palabrasProhibidas, phrases: linesToList(e.target.value) } })} className={`${inputClass} text-xs`} />
+            )}
+          </Field>
+        )}
+        <Checkbox
+          checked={g.escasezInventada.enabled}
+          onChange={(enabled) => patch({ escasezInventada: { ...g.escasezInventada, enabled } })}
+          label="Escasez inventada"
+          description="Frena frases de urgencia falsa. Usá N para «un número cualquiera» (ej: «quedan N»)."
+        />
+        {g.escasezInventada.enabled && (
+          <Field label="Frases (una por línea)">
+            {(id) => (
+              <textarea id={id} rows={3} value={g.escasezInventada.phrases.join("\n")} onChange={(e) => patch({ escasezInventada: { ...g.escasezInventada, phrases: linesToList(e.target.value) } })} className={`${inputClass} text-xs`} />
+            )}
+          </Field>
+        )}
+        <Checkbox
+          checked={g.cifras.enabled}
+          onChange={(enabled) => patch({ cifras: { ...g.cifras, enabled } })}
+          label="Cifras con $"
+          description="El agente no da precios: una cifra con signo de peso o dólar se bloquea, salvo las de la lista."
+        />
+        {g.cifras.enabled && (
+          <Field label="Cifras permitidas (una por línea, solo el número)">
+            {(id) => (
+              <textarea id={id} rows={2} value={g.cifras.permitidas.join("\n")} onChange={(e) => patch({ cifras: { ...g.cifras, permitidas: linesToList(e.target.value) } })} className={`${inputClass} text-xs`} />
+            )}
+          </Field>
+        )}
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border p-4">
         <p className="text-sm font-medium">Topes de gasto (USD, estimado según los precios cargados)</p>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Diario" hint="Vacío: sin tope.">

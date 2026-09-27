@@ -9,7 +9,9 @@ import { cutAtBoundary } from "../output";
 import { defaultSend, sendAgentParts, type SendFn } from "../send";
 import { defaultRefresh, type RefreshFn } from "../refresh";
 import { pauseAgentInConversation } from "../tools/effects";
-import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, parseSuggestedActions, type SuggestedAction } from "./types";
+import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, hasGuardrailReview, parseSuggestedActions, type SuggestedAction } from "./types";
+import { findWhatsappLinkForRun } from "../tools/whatsapp-link";
+import { recordWhatsappHandoff } from "../whatsapp-handoff";
 
 /**
  * Las decisiones sobre un borrador (Bloque 2c): enviar (tal cual o editado),
@@ -44,6 +46,7 @@ export type DraftErrorCode =
   | "too_long"
   | "turn_pending"
   | "send_failed"
+  | "needs_edit"
   | "unknown";
 
 export type DraftActionResult =
@@ -131,6 +134,13 @@ export async function approveDraft(args: {
   const text = edited ? (args.body as string).trim() : draft.body;
   if (!text) return fail("no_body", "Este borrador no tiene texto propuesto: respondé a mano desde la conversación.");
   if (!draft.agent_id) return fail("agent_missing", "El agente que lo redacto ya no existe. Respondé a mano desde la conversación.");
+
+  // El guardarrail de salida marco el texto propuesto (un link, palabra, escasez
+  // o cifra que no pasa). No se puede enviar tal cual: hay que editarlo. Enviar
+  // editado ya es decision de una persona.
+  if (!edited && hasGuardrailReview(parseSuggestedActions(draft.suggested_actions))) {
+    return fail("needs_edit", "Este borrador tiene algo que no pasa el guardarrail (un link, una palabra o una cifra): editalo antes de enviarlo.");
+  }
 
   const [{ data: channel }, { data: conversation }, { data: contact }] = await Promise.all([
     args.service.from("channels").select("platform, messaging_window_hours").eq("id", draft.channel_id).maybeSingle(),
@@ -261,6 +271,27 @@ export async function approveDraft(args: {
 
   await applySuggestions(args.service, draft, args.userId, now);
   await clearAgentError(args.service, draft.conversation_id);
+
+  // El pase a WhatsApp: si el texto que salio (el enviado, editado o no) lleva
+  // el link que genero el run, queda en audit_log. Si Wendy lo edito y saco el
+  // link, no se registra nada: el criterio es lo que salio.
+  const handoffLink = await findWhatsappLinkForRun(args.service, draft.run_id);
+  if (handoffLink) {
+    await recordWhatsappHandoff(args.service, {
+      workspaceId: draft.workspace_id,
+      agentId: draft.agent_id,
+      contactId: draft.contact_id,
+      conversationId: draft.conversation_id,
+      channelId: draft.channel_id,
+      runId: draft.run_id,
+      link: handoffLink.link,
+      textoPreescrito: handoffLink.textoPreescrito,
+      sentTexts: parts,
+      messageId: result.firstMessageId,
+      origin: "draft_approval",
+      extraMeta: { approved_by: args.userId, draft_id: draft.id },
+    });
+  }
 
   return partial
     ? { ok: true, notice: `Salieron ${result.sent} de ${parts.length} mensajes. El resto falló: ${result.failure?.message ?? "error del canal"}.` }

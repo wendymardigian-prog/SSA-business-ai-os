@@ -31,6 +31,14 @@ export interface AgentToolContext {
   /** Codigo del turno para delimitar contenido no confiable (lib/agent/untrusted.ts). */
   nonce: string;
   /**
+   * Memoria del turno, compartida entre herramientas y con el runner. La usa
+   * generar_link_whatsapp para no rearmar el link si se la llama dos veces y
+   * para que el runner sepa el link generado al sustituir el marcador. Opcional
+   * para no obligar a cada test de herramienta a construirla; el runner siempre
+   * la pasa.
+   */
+  turn?: { memo: Map<string, unknown> };
+  /**
    * Como entrega el turno (Bloque 2c). En "draft" las herramientas que cambian
    * el control de la conversacion no se ejecutan: quedan como sugerencia en el
    * borrador. Default "send".
@@ -99,6 +107,19 @@ export type ToolConfigField = {
 } & (
   | { kind: "boolean" }
   | { kind: "number"; min?: number; max?: number; step?: number }
+  | {
+      /**
+       * Un campo de texto libre. Con requiredForTool, si queda vacio la
+       * herramienta no se puede habilitar (mismo patron que el multiselect sin
+       * opciones): la pantalla muestra emptyMessage en vez de un control suelto.
+       */
+      kind: "text";
+      placeholder?: string;
+      maxLength?: number;
+      inputMode?: "tel" | "text";
+      requiredForTool?: boolean;
+      emptyMessage?: string;
+    }
   | { kind: "select"; options?: ToolConfigOption[]; optionSource?: ToolOptionSource }
   | {
       kind: "multiselect";

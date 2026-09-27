@@ -155,6 +155,12 @@ export type AuditAction =
   /** Una persona revirtio una accion del agente. metadata.reverted_audit_id. */
   | "revert"
   /**
+   * El agente paso un lead calificado al WhatsApp de Wendy: el mensaje salio con
+   * el link. entity contact, performed_by_agent_id, metadata.reason = texto
+   * preescrito. No se revierte (un mensaje enviado no se deshace).
+   */
+  | "whatsapp_handoff"
+  /**
    * Una etiqueta con efecto apago el agente y/o asigno el contacto, o se
    * libero al sacarla (Bloque 2d-A, 00073). Lo escriben los triggers.
    */

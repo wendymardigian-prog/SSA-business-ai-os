@@ -72,6 +72,11 @@ export const DEFAULT_FRUSTRATION_PHRASES = [
 
 export const DEFAULT_URGENCY_PHRASES = ["urgente", "emergencia", "ya mismo", "inmediatamente"];
 
+/** Palabra que el agente nunca puede nombrar en su salida (F: guardarrail de salida). */
+export const DEFAULT_BANNED_WORDS = ["ScaleOS"];
+/** Frases de escasez inventada. "N" adentro de una frase = un numero cualquiera. */
+export const DEFAULT_SCARCITY_PHRASES = ["cupos", "lugares", "quedan N", "ultimos", "se llena"];
+
 const businessHoursSlotSchema = z
   .object({
     /** 0 = domingo ... 6 = sabado. */
@@ -130,8 +135,34 @@ export const guardrailsSchema = z.object({
       urgency: true,
       urgencyPhrases: DEFAULT_URGENCY_PHRASES,
     }),
+  /**
+   * Lista blanca de links que el agente puede mandar. VACIA = el guardarrail de
+   * links no corre (no rompe los workspaces que no lo configuran). Se compara
+   * por host y camino, ignorando protocolo, www. y parametros.
+   */
+  linksPermitidos: z.array(z.string().trim().min(3).max(200)).max(100).default([]),
+  palabrasProhibidas: z
+    .object({
+      enabled: z.boolean().default(true),
+      phrases: z.array(z.string().min(2).max(80)).max(100).default(DEFAULT_BANNED_WORDS),
+    })
+    .default({ enabled: true, phrases: DEFAULT_BANNED_WORDS }),
+  escasezInventada: z
+    .object({
+      enabled: z.boolean().default(true),
+      phrases: z.array(z.string().min(2).max(80)).max(100).default(DEFAULT_SCARCITY_PHRASES),
+    })
+    .default({ enabled: true, phrases: DEFAULT_SCARCITY_PHRASES }),
+  cifras: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Cifras con $ que SI puede decir (solo digitos y separadores). */
+      permitidas: z.array(z.string().min(1).max(40)).max(100).default([]),
+    })
+    .default({ enabled: true, permitidas: [] }),
 });
 export type Guardrails = z.infer<typeof guardrailsSchema>;
+export type OutputGuardrails = Guardrails;
 
 /** Lee un jsonb con defaults; si esta roto, devuelve los defaults enteros. */
 export function parseWithDefaults<T>(schema: z.ZodType<T>, value: unknown): T {

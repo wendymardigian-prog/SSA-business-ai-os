@@ -247,3 +247,63 @@ describe("partir un texto editado", () => {
     expect(splitEdited("a ".repeat(4000), 100)).toBeNull();
   });
 });
+
+const NOOP_REFRESH = async () => ({ ok: true, inserted: 0, error: null });
+const WA_LINK = "https://wa.me/50670814873?text=Hola%20Wendy%2C%20soy%20Ana.";
+
+describe("borrador con link de WhatsApp: registro del pase", () => {
+  function withLinkStep(draftOver: Record<string, unknown> = {}) {
+    const w = world({
+      body: `Dale, escribime por acá: ${WA_LINK}`,
+      body_parts: [`Dale, escribime por acá: ${WA_LINK}`],
+      ...draftOver,
+    });
+    w.db.rows("agent_run_steps").push({
+      id: "step-1", run_id: "run-1", kind: "tool_call", name: "generar_link_whatsapp",
+      error: null, created_at: hoursAgo(2), output: { link: WA_LINK, texto_preescrito: "Hola Wendy, soy Ana." },
+    });
+    return w;
+  }
+
+  it("aprobado con el link: una entrada whatsapp_handoff", async () => {
+    const w = withLinkStep();
+    const result = await approve(w, { refresh: NOOP_REFRESH });
+    expect(result.ok).toBe(true);
+    const handoff = w.db.rows("audit_log").filter((a) => a.action === "whatsapp_handoff");
+    expect(handoff).toHaveLength(1);
+    expect(handoff[0]).toMatchObject({ entity_type: "contact", entity_id: "c-1", performed_by_agent_id: "agent-1" });
+    expect((handoff[0].metadata as { origin?: string }).origin).toBe("draft_approval");
+  });
+
+  it("editado sacando el link: ninguna entrada", async () => {
+    const w = withLinkStep();
+    await approve(w, { refresh: NOOP_REFRESH, body: "Mejor seguimos por acá, contame." });
+    expect(w.db.rows("audit_log").filter((a) => a.action === "whatsapp_handoff")).toHaveLength(0);
+  });
+
+  it("descartado: ninguna entrada", async () => {
+    const w = withLinkStep();
+    await discardDraft({ user: w.db.client, userId: "u-1", draftId: "d-1", now: NOW });
+    expect(w.db.rows("audit_log").filter((a) => a.action === "whatsapp_handoff")).toHaveLength(0);
+  });
+});
+
+describe("borrador marcado por el guardarrail de salida", () => {
+  it("no se puede enviar sin editar (needs_edit)", async () => {
+    const w = world({
+      suggested_actions: [{ type: "guardrail_review", hits: [{ rule: "link", text: "wa.me/999" }] }],
+    });
+    const result = await approve(w, { refresh: NOOP_REFRESH });
+    expect(result).toMatchObject({ ok: false, code: "needs_edit" });
+    expect(w.sent).toHaveLength(0);
+  });
+
+  it("editado, sale (lo decide una persona)", async () => {
+    const w = world({
+      suggested_actions: [{ type: "guardrail_review", hits: [{ rule: "link", text: "wa.me/999" }] }],
+    });
+    const result = await approve(w, { refresh: NOOP_REFRESH, body: "Mejor te llamo, dejame tu horario." });
+    expect(result.ok).toBe(true);
+    expect(w.sent).toEqual(["Mejor te llamo, dejame tu horario."]);
+  });
+});

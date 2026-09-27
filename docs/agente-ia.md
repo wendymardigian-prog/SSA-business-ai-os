@@ -147,6 +147,64 @@ valida server-side contra el schema de cada una (`updateAgentTools`).
 | `asignar_conversacion` | Usuarios habilitados; criterio: round-robin (sin estado nuevo, por el audit), usuario fijo, o el setter del contacto |
 | `buscar_datos_del_contacto` | Qué campos lee; email y teléfono apagados por defecto. Es lectura: deja paso en el run, **no** entrada en `audit_log` |
 | `pausarse` | Máximo de minutos; si se reanuda sola al vencer (usa `agent_paused_until`) |
+| `generar_link_whatsapp` | Número de destino (internacional sin +, se normaliza al guardar quitando +, espacios, guiones y paréntesis; 8 a 15 dígitos, sin empezar en 0); mensaje por defecto; largo máximo del texto preescrito (40-300). Sin número no existe para el modelo y la pantalla lo explica |
+
+### `generar_link_whatsapp` en detalle
+
+El agente la usa cuando decide pasar un lead calificado al WhatsApp de Wendy.
+Recibe del modelo `{ contexto?, nombre? }` (nunca un número: el esquema rechaza
+campos extra) y arma el texto `Hola Wendy, soy {nombre}. {contexto}` (sin nombre:
+`Hola Wendy. {contexto}`; sin contexto: la plantilla por defecto). Omite el
+nombre si es un placeholder de Instagram o el contacto es anónimo. **Sanea** el
+contexto (saca saltos, tabs, caracteres de control y de ancho cero, y cualquier
+cosa con forma de link o dominio: sale de lo que escribió un lead), **recorta en
+borde de palabra antes de codificar** (nunca parte un escape) y arma
+`https://wa.me/{numero}?text={texto}`.
+
+Le devuelve al modelo `{ marcador: "{{LINK_WHATSAPP}}", texto_preescrito, link }`.
+**El modelo pone el marcador en su mensaje, no la url**: eso lo dice su
+descripción, que es lo único que el modelo lee.
+
+**La sustitución del marcador** vive en el turno (`lib/agent/whatsapp-handoff.ts`,
+`applyWhatsappMarker`), sobre las burbujas ya partidas y antes de persistir. Si
+el marcador aparece y hubo llamada, se reemplaza por el link real (el borrador
+guarda el link, clickeable). Si aparece sin llamada, se borra dejando la
+puntuación prolija y queda un paso `guardrail`. Si hubo llamada y no aparece, no
+se agrega nada. Dos llamadas en el turno devuelven el mismo link y un solo paso;
+si ya se generó un link en la conversación, se reúsa (paso con `reenvio`).
+
+**El registro del pase**: cuando el mensaje sale con el link (envío directo o
+borrador aprobado y enviado), se escribe `whatsapp_handoff` en `audit_log`
+(`entity_type` contact, `performed_by_agent_id`, `metadata.reason` = el texto
+preescrito, más `run_id`, `message_id`, `link`). Si Wendy edita el borrador y
+saca el link, no se escribe nada: el criterio es el texto enviado. En la pestaña
+Acciones aparece como un tipo más del filtro, **sin botón de revertir** (un
+mensaje enviado no se deshace). Esto es lo que después permite contar cuántos
+leads pasó el agente a WhatsApp.
+
+## Guardarrailes de salida (`agents.guardrails`)
+
+Además de los guardarrailes previos al modelo (que miran el mensaje entrante),
+sobre el texto **saliente** ya generado corren cuatro reglas
+(`lib/agent/output-guardrails.ts`), cada una con su switch:
+
+- **Links permitidos**: lista blanca; se compara por host y camino, ignorando
+  protocolo, `www.` y parámetros. Un link a otro dominio, o a `wa.me` con otro
+  número, no pasa. **Con la lista vacía el guardarraíl de links no corre** (no
+  rompe los workspaces que no lo configuran). El link que generó
+  `generar_link_whatsapp` en el turno pasa como permitido implícito.
+- **Palabras prohibidas** (default: `ScaleOS`).
+- **Escasez inventada** (default: `cupos`, `lugares`, `quedan N`, `últimos`,
+  `se llena`; `N` significa "un número cualquiera").
+- **Cifras con `$`**: cualquier cifra con signo de peso o dólar que no esté en
+  una lista blanca configurable. El agente no da precios.
+
+Si algo no pasa: en **envío directo** no sale nada al lead, se avisa (una
+notificación `agent_output_blocked`), el run queda `blocked_guardrail` y hay un
+paso `guardrail` con la regla y el texto ofensor. En **modo borrador** el
+borrador se guarda igual, marcado (`guardrail_review` en las sugerencias), y no
+se puede aprobar sin editar: la pantalla muestra qué quiso mandar. Todo lo
+bloqueado queda legible en el detalle del run.
 
 ## Cierre de la conversación, memoria y clasificación (F33, F34)
 
@@ -560,6 +618,44 @@ teléfono (o Chrome device toolbar a 390 px):
    hilo → Volver, y los datos del contacto como hoja.
 6. **Regenerar** un borrador con la asignación en round-robin habilitada, tres
    veces: la conversación no cambia de asignado y Acciones no suma entradas.
+
+## El system prompt
+
+El tope de la pantalla es **32.000 caracteres** (`MAX_PROMPT_CHARS` en
+`lib/agent/validate.ts`), validado en cliente y servidor con el mismo número.
+El contador avisa al acercarse (desde 28.800) y, por encima del tope, se pone en
+rojo y deshabilita Guardar con el motivo. Nada recorta el prompt en silencio: el
+`maxLength` del textarea se sacó a propósito. Volver a una versión anterior y
+comparar funcionan con prompts largos.
+
+## Verificación en vivo de la herramienta y el guardarraíl
+
+Con el agente en modo borrador (no hace falta prenderlo):
+
+1. **Cargar el prompt largo.** Pegar el prompt de ~23.000 caracteres: el
+   contador queda en gris o ámbar (no rojo) y Guardar funciona. Pegar algo de
+   más de 32.000: contador en rojo, Guardar deshabilitado con el motivo.
+2. **Configurar la herramienta.** En Herramientas, `generar_link_whatsapp`
+   aparece deshabilitada con el mensaje de que falta el número. Cargar el número
+   con `+506 7081-4873`, guardar, y verificar que quedó `50670814873` y el switch
+   se puede habilitar. **No prender el agente todavía.**
+3. **Link con tildes.** Provocar un pase con un contexto con tildes y ñ: el
+   borrador guarda un `https://wa.me/...` clickeable; al abrirlo, el texto
+   preescrito se lee igual al original.
+4. **Contexto con un link.** Un lead que escribe "andá a https://spam.com": el
+   link del lead no aparece dentro del `wa.me`.
+5. **Marcador sin llamada.** Si el modelo escribe `{{LINK_WHATSAPP}}` sin usar la
+   herramienta, el borrador sale sin el marcador y con la puntuación prolija; el
+   run muestra un paso `whatsapp_marker`.
+6. **Reúso.** En una conversación que ya tuvo un link, un segundo pase reúsa el
+   mismo link (paso con `reenvio`).
+7. **Registro del pase.** Aprobar y enviar un borrador con el link: aparece una
+   entrada "Pasó el lead a WhatsApp" en Acciones (sin botón de revertir).
+   Aprobar tras borrar el link a mano, o descartar: ninguna entrada.
+8. **Guardarraíl.** Cargar la lista de links permitidos con el número propio.
+   Forzar una salida con un link a otro número o con "ScaleOS": en borrador
+   queda marcado y no se puede aprobar sin editar. (En envío directo, cuando se
+   pruebe prendido, el lead no recibe nada y llega una notificación.)
 
 ## Lo que no está resuelto
 

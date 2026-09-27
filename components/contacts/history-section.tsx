@@ -44,6 +44,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   followup: "programó el próximo seguimiento",
   summary: "guardó el resumen del agente",
   revert: "revirtió una acción del agente",
+  whatsapp_handoff: "pasó el lead a WhatsApp",
   tag_effect: "aplicó el efecto de una etiqueta",
 };
 

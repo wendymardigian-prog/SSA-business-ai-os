@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAgentConfig, validateSystemPrompt } from "./validate";
+import { validateAgentConfig, validateSystemPrompt, promptLengthState } from "./validate";
 import { guardrailsSchema, outputFormatSchema } from "./schemas";
 
 const valid = {
@@ -73,5 +73,26 @@ describe("system prompt", () => {
       ok: true,
       value: "Sos el asistente del negocio.\nRespondé breve.",
     });
+  });
+
+  it("acepta hasta 32.000 caracteres y rechaza 32.001 con mensaje claro", () => {
+    expect(validateSystemPrompt("a".repeat(31_999)).ok).toBe(true);
+    expect(validateSystemPrompt("a".repeat(32_000)).ok).toBe(true);
+    const over = validateSystemPrompt("a".repeat(32_001));
+    expect(over.ok).toBe(false);
+    expect(over.ok === false && over.error).toContain("32000");
+  });
+});
+
+describe("promptLengthState", () => {
+  it("gris por debajo del aviso, ambar al acercarse, rojo por encima del tope", () => {
+    expect(promptLengthState(1_000).tone).toBe("ok");
+    expect(promptLengthState(1_000).message).toBeNull();
+    expect(promptLengthState(29_000).tone).toBe("warning");
+    expect(promptLengthState(29_000).message).toContain("caracteres");
+    expect(promptLengthState(32_000).tone).toBe("warning");
+    const over = promptLengthState(32_100);
+    expect(over.tone).toBe("over");
+    expect(over.message).toContain("100");
   });
 });

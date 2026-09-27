@@ -20,6 +20,7 @@ describe("registro de herramientas", () => {
         "declarar_intencion",
         "derivar_a_humano",
         "etiquetar_contacto",
+        "generar_link_whatsapp",
         "pausarse",
         "programar_seguimiento",
       ].sort(),

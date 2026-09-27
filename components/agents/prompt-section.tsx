@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { History, RotateCcw } from "lucide-react";
 import { saveSystemPrompt, restorePromptVersion } from "@/lib/actions/agents";
-import { MAX_PROMPT_CHARS } from "@/lib/agent/validate";
+import { MAX_PROMPT_CHARS, promptLengthState } from "@/lib/agent/validate";
 import { formatDateTime } from "@/components/contacts/ui";
 import type { AgentScreenData } from "@/lib/agent/screen";
 import { Field, Notice, Section, inputClass } from "./fields";
@@ -25,6 +25,8 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
 
   const dirty = prompt.trim() !== agent.systemPrompt.trim();
   const compared = versions.find((v) => v.version === comparing) ?? null;
+  const lengthState = promptLengthState(prompt.length);
+  const overLimit = lengthState.tone === "over";
 
   function save() {
     setMessage(null);
@@ -55,15 +57,31 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
       title="System prompt"
       description="Las instrucciones del agente. Cada vez que lo guardás queda una versión, y cada respuesta del agente registra con qué versión la dio."
     >
-      <Field label={`Prompt (versión activa: ${agent.promptVersion ?? "—"})`} hint={`${prompt.length} / ${MAX_PROMPT_CHARS} caracteres`}>
+      <Field
+        label={`Prompt (versión activa: ${agent.promptVersion ?? "—"})`}
+        hint={
+          <span
+            className={
+              lengthState.tone === "over"
+                ? "text-red-700 dark:text-red-400"
+                : lengthState.tone === "warning"
+                  ? "text-amber-700 dark:text-amber-400"
+                  : undefined
+            }
+          >
+            {prompt.length.toLocaleString("es")} / {MAX_PROMPT_CHARS.toLocaleString("es")} caracteres
+            {lengthState.message ? ` · ${lengthState.message}` : ""}
+          </span>
+        }
+      >
         {(id) => (
           <textarea
             id={id}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            rows={12}
-            maxLength={MAX_PROMPT_CHARS}
-            className={`${inputClass} font-mono text-xs leading-relaxed`}
+            spellCheck={false}
+            aria-invalid={overLimit}
+            className={`${inputClass} min-h-[24rem] max-h-[70vh] resize-y font-mono text-xs leading-relaxed`}
           />
         )}
       </Field>
@@ -76,12 +94,16 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
         <button
           type="button"
           onClick={save}
-          disabled={!dirty || pending}
+          disabled={!dirty || pending || overLimit}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
         >
           Guardar versión nueva
         </button>
-        {dirty && <span className="text-xs text-amber-700 dark:text-amber-400">Cambios sin guardar</span>}
+        {overLimit ? (
+          <span className="text-xs text-red-700 dark:text-red-400">{lengthState.message} Recortalo para poder guardar.</span>
+        ) : (
+          dirty && <span className="text-xs text-amber-700 dark:text-amber-400">Cambios sin guardar</span>
+        )}
       </div>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
 
@@ -106,6 +128,7 @@ export function PromptSection({ data }: { data: AgentScreenData }) {
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     {formatDateTime(v.createdAt)}
+                    {` · ${v.systemPrompt.length.toLocaleString("es")} caracteres`}
                     {v.authorLabel ? ` · ${v.authorLabel}` : ""}
                     {v.note ? ` · ${v.note}` : ""}
                   </p>

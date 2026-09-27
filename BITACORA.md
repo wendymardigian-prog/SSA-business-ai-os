@@ -4,6 +4,50 @@ Registro de qué se construyó, qué se decidió y por qué. Se actualiza al cer
 cada bloque.
 
 ---
+## Etapa 1 · Fase 3 · Bloque 2e-bis — Tope del prompt, link de WhatsApp y guardarraíl de salida
+
+**Fecha:** 27 de septiembre de 2026
+**Rama:** `claude/system-prompt-32k-limit-78ace7` (worktree). El agente sigue
+**apagado** y sin canales; la prueba en vivo la corre Wendy.
+
+**Qué se construyó:**
+- **Tope del system prompt a 32.000** (era 20.000; un prompt de 23.013 no
+  entraba). En `lib/agent/validate.ts` (`MAX_PROMPT_CHARS`, `promptLengthState`).
+  Se sacó el `maxLength` del textarea, que recortaba en silencio: ahora el
+  contador avisa (ámbar/rojo) y Guardar se deshabilita por encima del tope, con
+  el motivo. Tests del validador y de la Server Action `saveSystemPrompt` directa.
+- **Herramienta `generar_link_whatsapp`** (`lib/agent/tools/whatsapp-link.ts`):
+  arma el link de WhatsApp de Wendy con un mensaje preescrito para pasar un lead
+  calificado. Devuelve el marcador `{{LINK_WHATSAPP}}`; el runner
+  (`lib/agent/whatsapp-handoff.ts`, `applyWhatsappMarker`) lo reemplaza por el
+  link real sobre las burbujas, antes de persistir. Sanea el contexto del lead,
+  recorta en borde de palabra antes de codificar, reúsa el link previo de la
+  conversación y dedup en el turno. Campo de texto genérico nuevo en el
+  descriptor de config (sin condicionales por nombre).
+- **Registro del pase**: `whatsapp_handoff` en `audit_log` cuando el mensaje sale
+  con el link (envío directo y borrador aprobado), con `metadata.reason` = texto
+  preescrito. Sin botón de revertir. Es lo que permite contar los pases.
+- **Guardarraíl de salida** (`lib/agent/output-guardrails.ts`,
+  `agents.guardrails`): links fuera de la lista blanca (vacía = no corre),
+  palabras prohibidas (ScaleOS), escasez inventada y cifras con `$`. En envío
+  directo bloquea, avisa (`agent_output_blocked`) y el lead no ve nada; en
+  borrador lo guarda marcado (`guardrail_review`) y no deja aprobar sin editar.
+  Editor en la pestaña Configuración.
+
+**Decisiones:** el link generado en el turno pasa el guardarraíl aunque no esté
+en la lista (sale del número de Wendy, no del modelo); un borrador marcado no se
+envía sin editar; en envío directo bloqueado se avisa pero no se deriva; la
+sustitución va sobre las burbujas para no partir nunca una URL.
+
+**Sin migraciones** (`audit_log.action` es texto libre; los jsonb ya existen).
+
+**Estado:** `npx vitest run` 1311 en verde (se sumaron los nuevos), `npm run
+lint` 0 errores (44 warnings preexistentes), `npx tsc --noEmit` limpio, `npm run
+build` **compila y pasa TypeScript**; el prerender de `/register` falla solo por
+falta de credenciales de Supabase en este entorno (no hay `.env`), igual que en
+las otras ramas.
+
+---
 ## Etapa 1 · Fase 3 · Bloques 2e y 3 — Verificación, reglas, dashboards, patrones e intención
 
 **Fecha:** 26 de septiembre de 2026
