@@ -1,199 +1,119 @@
-# Progreso — Etapa 2 (Integraciones, Publicación, Contenido, Métricas, Email y Roles)
+# Progreso — Etapa 4 (Agendamiento), Tanda B
 
-Corrida autónoma en la rama `etapa2`. Plano: [docs/requerimientos-etapa2.md](requerimientos-etapa2.md) (v2.0).
-Este archivo es la memoria de la corrida: se actualiza por funcionalidad, no solo al cerrar cada bloque.
+Corrida autónoma en la rama `etapa4-agendamiento`. Plano: [docs/requerimientos-agendamiento.md](requerimientos-agendamiento.md) (v1.4). Alcance: [docs/alcance-v5-agendamiento.md](alcance-v5-agendamiento.md) (v5.1).
+Este archivo es la memoria de la corrida: se actualiza por funcionalidad, no solo al cerrar cada bloque. Si el contexto se compacta, se retoma desde acá.
 
-## Punto de partida (26/9/2026, `main` = `origin/main` = `3706c23`)
+El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/etapa4/nucleo.md](etapa4/nucleo.md) dice qué hay y cómo se usa; [docs/etapa4/PROGRESS-nucleo.md](etapa4/PROGRESS-nucleo.md) qué se hizo; [docs/etapa4/PENDIENTE-nucleo.md](etapa4/PENDIENTE-nucleo.md) lo que dejó para esta tanda (todo eso entra acá).
+
+## Punto de partida (27/9/2026, `main` = `origin/main` = `9c49c8c`)
 
 | Comando | Resultado de hoy |
 |---|---|
-| `npx vitest run` | 117 archivos, **1258 tests en verde** |
-| `npm run build` | OK (exit 0) |
+| `npx vitest run` | 241 archivos, **2886 tests en verde** (incluye los 29 archivos / 237 tests del núcleo) |
+| `npm run build` | OK ("Compiled successfully", 52 páginas) |
 | `npm run lint` | 0 errores, **44 warnings preexistentes** (directivas `eslint-disable` sin uso) |
-| `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
-| `node scripts/verify-crm.mjs` | Todo verde, limpieza OK |
-| `node scripts/verify-inbox-filters.mjs` | Todo verde, limpieza OK |
-| `node scripts/verify-dashboards.mjs` | Todo verde, limpieza OK |
+| `verify-rls`, `verify-roles`, `verify-content`, `verify-crm`, `verify-inbox-filters`, `verify-dashboards`, `verify-csv-import`, `verify-enrichment`, `verify-message-persistence`, `verify-optout`, `verify-publishing` | **11 de 11 "Todo verde"**, limpieza OK (en serie) |
+| `verify-knowledge` | No corrido: llama a Voyage real |
+| `verify-webhook` | No corrido: manda payloads a la app desplegada |
 
 "Sin errores nuevos de lint" = seguir en **0 errores**; los 44 warnings son la línea base.
 
-**Base** (`knrxjnmxnmjavivyuwew`): última migración aplicada `00080_background_tasks` (la base tiene además
-`00078_chat_dashboard_trends`, `00079b` y `00079c`, que en el repo viven dentro de 00078/00079).
-**La Etapa 2 empieza en `00081`.** La `00072_draft_window_alerts` **no está aplicada** (verificado: no existen
-`private.alert_draft_windows` ni su cron); sigue diferida.
+**Base** (`knrxjnmxnmjavivyuwew`): última migración aplicada `00094_copywriter_agent`. **La Etapa 4 empieza en `00095`** (la banda `00121` era para correr en paralelo con la Etapa 2, que ya está mergeada entera). `00072` sigue sin aplicar. `btree_gist` disponible, no instalada.
 
-**Datos al arrancar:** 1 workspace, 1 solo miembro (Owner, no hay ningún Member real), 1 canal
-(Instagram/Zernio, `connection_status = unknown`), sin canal de WhatsApp. Vault tiene solo `anthropic_api_key`
-y `voyage_api_key`: la API key de Zernio sigue en `workspaces.late_api_key_encrypted` y el secreto del webhook
-en `workspaces.webhook_secret`. `integration_configs`: 2 filas (Anthropic, Voyage), ninguna de Zernio.
-Un solo bucket (`knowledge`), 0 policies en `storage.objects`. `scheduled_jobs`: 9 `bg_task` y 1
-`index_document`, todos `completed`.
+**Datos al arrancar:** 1 workspace, 1 Owner (sin Members), `oauth_connections` vacía, `automation_events` solo `contact_created`, agentes `chat` y `copywriter` con `tools_config = {}`.
 
-**Diferencias con §3 del plano** encontradas en la exploración: 8 páginas con `requireWorkspaceAdmin` (no 7),
-51 acciones con `getAdminContext` (no ~40), lista blanca de `call_app_cron` redefinida en 00036/00063/00077/00080,
-`lib/vault.ts` no está protegido como server-only, el filtro de la bandeja no usa `PLATFORMS`, los dos scripts
-que leen la key vieja llaman `read_secret` con parámetros equivocados, y `bg_task` se reencola cada 15 minutos.
-Detalle completo en el plan de la corrida y en [PENDIENTE.md](PENDIENTE.md).
+**Referencias:** Cal.diy en `docs/referencia/cal-diy` (MIT, commit `54343aa` del 20/9/2026). Prototipo en `docs/referencia/prototipo/agenda.html` (el artifact "SSA BAIOS Prototipo", más nuevo que la copia local `dashboards-de-chat.html`). Se leen, nunca se importan; se borran al cerrar.
+
+**Diferencias con el plano** encontradas en la exploración (36, gana el código): en el plan de la corrida y, las que dejan deuda, en [PENDIENTE.md](PENDIENTE.md). Las que más pesan: el núcleo ya estaba en `main`; migraciones desde `00095`; el guardado de conexiones OAuth de la Etapa 2 fallaba contra la base real (42P10) y se arregla; hoy no hay encabezados de seguridad (se agregan); no hay bucket de avatares (se crea `avatars`); el menú filtra por rol, no por permiso; los triggers de evento del editor nunca se guardaban; un flow no arrancaba sin conversación; la pantalla de Herramientas borraba claves de `tools_config` que no fueran herramientas.
 
 ## Bloques
 
-- [x] **Bloque 0 — Arranque:** rama `etapa2`, plano en `docs/`, `docs/referencia/` ignorada (git, TypeScript, ESLint y Vitest), PROGRESS y PENDIENTE nuevos
+- [x] **Bloque 0 — Arranque:** rama `etapa4-agendamiento` desde `main` actualizado; merge de `origin/etapa4-nucleo` (ya estaba: "Already up to date"); `npm install`; suite en verde; alcance guardado; Cal.diy y prototipo en `docs/referencia/`; PROGRESS y PENDIENTE de la Etapa 2 movidos a `docs/etapa2/`
+  - [x] Tests de caracterización previos: cron de `automation_events` (7), arranque del motor sin canal (3), nodo `sendMessage` y `do_not_contact` (1), registro de jobs (2)
 
-### FASE 1 — Integraciones, contenido y publicación
+### FASE 1 — Calendarios, disponibilidad y eventos
 
-- [x] **Bloque 1 — Integraciones, Vault y barra superior** (migración 00081 aplicada)
-  - [x] Caracterización · webhook de Evolution (18 casos) y webhook de Zernio (22 casos), en verde
-  - [x] F1 · Catálogo extendido con tipos de conexión (`connection`, `section`, `visible`, `secretFields`, `usage`, `providersBySection()`; entradas zernio, evolution, postproxy, google, linkedin, threads, meta oculta, resend_inbound oculta) + `lib/secret-names.ts` + `lib/vault-boundary.test.ts`
-  - [x] F2 · Pantalla en grid con cards compactas (`integrationStatus()`, filtro "Requiere atención" en la barra superior)
-  - [x] F3 · Modal de configuración genérico (armado desde el catálogo, varios secretos, "Guardado ✓ · Reemplazar", desconectar con confirmación)
-  - [x] F4 · Evolution en Vault con fallback (`lib/evolution-config.ts`, 8 llamadores, webhook por workspace, test que prohíbe leer `process.env.EVOLUTION_` en otro lado)
-  - [x] F5 · Secreto del webhook de Zernio en Vault con fallback (Vault → workspace → canal) + "Migrar a Vault" (construido, no apretado)
-  - [x] F6 · Cards de las integraciones existentes y barra de uso (`buildUsage`, Zernio 2 cuentas gratis; Zernio sigue guardándose por `test-key`)
-  - [x] F7 · Barra superior en todas las pantallas (una sola barra también en el celular; `lib/nav/page-actions.ts` con título, explicación y acciones por rol; 22 pantallas migradas; `MobileTopBar` eliminada)
-- [x] **Bloque 2 — Conexiones de redes** (migración 00082 aplicada)
-  - [x] F8 · Tablas de conexiones y cuentas sociales (00082 aplicada, publishers validado con Zod, 13 casos nuevos en verify-rls)
-  - [x] F9 · Flujo OAuth genérico con `state` firmado (HMAC + nonce en cookie + vencimiento, rutas start/callback)
-  - [x] F10 · Conexión con Google (YouTube) (`access_type=offline`, detección de `invalid_grant`, canal por `channels.list`)
-  - [x] F11 · Conexión con LinkedIn (`LINKEDIN_API_VERSION`, sin refresh, URN de la persona)
-  - [x] F12 · Conexión con Threads (portado: token corto → largo, renovación a los 15 días)
-  - [x] F13 · Cuentas sociales y publicadores disponibles (`computeAccounts` puro; conserva lo elegido a mano y avisa al cambiar)
-  - [x] F14 · Conexión de Postproxy (cliente según su documentación real; "Probar y guardar" llama a `/profiles` antes de escribir)
-  - [x] F15 · Avisos de conexiones (`integration_attention` con ventana por causa y uuid derivado para no tapar un aviso con otro) + cron semanal de renovación
-- [x] **Bloque 3a — Modelo de contenido y kanban** (migraciones 00083 y 00084 aplicadas)
-  - [x] F16 · Tablas de contenido y bucket (`verify-content.mjs`: 29 casos con dos workspaces, incluido el bucket)
-  - [x] F17 · Estados del post (`canTransition` por rol y `aggregatePostStatus` derivado de las redes)
-  - [x] F19 · Ideas (aprobar es una sola transacción SQL; los botones dicen por qué están deshabilitados)
-  - [x] F20 · Kanban (7 columnas, arrastre validado antes de pedirlo, abre el editor cuando falta la fecha)
-- [x] **Bloque 3b — Media, calendario y versiones**
-  - [x] F18 · Subida de media (tipo real por magic bytes, TUS sobre 6 MB, `tus-js-client`)
-  - [x] F21 · Calendario y lista (una tarjeta por pieza por día, Piezas/Publicaciones, filtros en la URL)
-  - [x] F22 · Historial de versiones (el autoguardado no crea versión; comparar y restaurar sin perder nada)
-  - [x] F23 · Limpieza de media (cron diario; cuenta desde la última red publicada)
-- [x] **Bloque 4a — Editor e IA** (migración 00085 aplicada; la 00084 fue la de aprobar ideas)
-  - [x] F24 · Editor del post en una sola página (secciones, autoguardado de 10 s, aviso de edición cruzada)
-  - [x] F25 · Fecha por red: tentativa y programado (fila + job juntos; sin job la fila no miente)
-  - [x] F26 · Validación por red (límites en un solo lugar; una red con error no frena a las demás)
-  - [x] F27 · Palabras clave y automatizaciones (una automatización inactiva no cuenta; link con todo precargado)
-  - [x] F28 · Variantes, duplicar y redistribución (lógica pura; el botón del detalle llega en B4b)
-  - [x] F29 · Generar guion y caption con IA (salida validada con Zod, tope de gasto ANTES de llamar, versión con autor IA)
-- [x] **Bloque 4b — Publicadores y dispatcher** (sin migración: los tipos de job son texto libre)
-  - [x] F30 · Interfaz común de publicadores y registro de jobs (caracterización primero: `lib/jobs/dispatch.ts`, 13 tests que fijan el comportamiento de hoy; después `lib/jobs/registry.ts`, donde un tipo desconocido pasa a **fallido** en vez de completado, y `bg_task` conserva su no-op con handler explícito)
-  - [x] F31 · Publicador Zernio (Instagram y TikTok) — una red por post, `platformSpecificData` verificado contra el SDK instalado
-  - [x] F32 · Publicador Postproxy (YouTube)
-  - [x] F33 · Publicador YouTube API oficial — subida reanudable por partes, sin cargar el video en memoria
-  - [x] F34 · Publicadores LinkedIn y Threads (LinkedIn solo texto por ahora; con media falla con un mensaje claro en vez de publicar a medias)
-  - [x] F35 · Dispatcher, reintentos (1/5/15 min) y avisos de estado — guarda contra publicar dos veces con `UPDATE ... WHERE status='scheduled' RETURNING`, revisión periódica para las que quedan en proceso, `post.platform.*` de Zernio y receptor de Postproxy
-  - [x] F36 · Detalle del post (una fila por red, reintentar solo lo que falló)
-  - [x] F37 · Aprobación (mandar a revisión, aprobar, devolver con comentario obligatorio, con avisos)
-  - [x] F38 · Prueba de publicación directa de YouTube (sube un video de 1 s "no listado", mira cómo quedó y lo borra; **construida, no ejecutada**: escribe en la cuenta real)
-  - [x] F39 · Menú de Contenido + completar `triggers.config.postIds` al publicar
-- [x] **Fase 1 lista:** suite completa en 0 (26/9/2026)
+- [ ] **Bloque 1 — Perfil y calendarios** (migración 00095)
+  - [ ] F1 · Tablas de perfil y calendarios (+ `oauth_connections` provider `google_calendar` e índices parciales, `contacts.timezone`, bucket `avatars`)
+  - [ ] F2 · Permisos del módulo (`can_see_booking` queda para la 00099, con `bookings`)
+  - [ ] F3 · Perfil de agenda (Ajustes)
+  - [ ] F4 · Conectar Google Calendar
+  - [ ] F5 · Calendarios de cada cuenta
+  - [ ] F6 · Cliente de Google Calendar
+  - [ ] F7 · Estado de las conexiones
+  - [ ] F8 · Menú "Agenda" y zona horaria de la interfaz — **hecho en el núcleo:** `formatInTz`, `rangeForFilter` (`lib/scheduling/time/tz.ts`). Falta: ítem del menú, engranaje, configuración con 5 secciones, `getViewerTimezone`
+- [ ] **Bloque 2 — Disponibilidades** (migración 00096)
+  - [ ] F9 · Tablas de disponibilidad — **hecho en el núcleo:** esquemas Zod y validación (`availability-schema.ts`). Falta: migración, RLS, acciones
+  - [ ] F10 · Lista de horarios — **hecho en el núcleo:** `summarizeSchedule`. Falta: pantalla, marcar por defecto (RPC), duplicar, borrar con reemplazo, casos con base del test
+  - [ ] F11 · Editor semanal — **hecho en el núcleo:** validación compartida. Falta: editor portado
+  - [ ] F12 · Excepciones por fecha — **hecho en el núcleo:** `upsertOverrides`, `trimPastOverrides`, `upcomingOverrides`. Falta: modal multi-día, guardado, recorte a `audit_log`
+  - [ ] F13 · Tiempo fuera — **hecho en el núcleo:** `outOfOfficeToUtc`. Falta: tabla, modal, `conflictingBookings`
+  - [ ] F14 · Eventos que usan este horario
+  - [ ] F15 · Vista previa del horario (nice-to-have) — el núcleo deja `freeWindows`
+- [ ] **Bloque 3 — Categorías y tipos de evento** (migraciones 00097 y 00098)
+  - [ ] F50 · Categorías de agenda
+  - [ ] F51 · Categoría en eventos y agendas
+  - [ ] F16 · Tablas de eventos
+  - [ ] F17 · Lista de eventos — **hecho en el núcleo:** `slugify`, `nextCopySlug`, `suggestSlug`. Falta: pantalla, modal Nuevo evento, duplicar/borrar con base
+  - [ ] F18 · Editor, Detalles y ubicación — **hecho en el núcleo:** `validateEventDetails`, `activationChecklist`, `canActivate`, `meetRequiresWritableGoogleCalendar`, `slugChangeNeedsConfirmation`. Falta: editor
+  - [ ] F19 · Editor, Disponibilidad y calendarios
+  - [ ] F20 · Formulario de reserva — **hecho en el núcleo:** `buildBookingSchema`, `validateBookingFields`, `phone-countries`. Falta: constructor portado
+  - [ ] F21 · Límites y buffers — **hecho en el núcleo:** `lib/scheduling/limits/*`. Falta: sección del editor
+  - [ ] F22 · Asignación del contacto
+- [ ] **Bloque 4a — Motor en vivo, API pública y creación** (migración 00099)
+  - [ ] F23 · Motor de horarios libres — **hecho en el núcleo** completo (`lib/scheduling/slots/*`). Falta: armar `SlotsInput` desde la base y Google
+  - [ ] F24 · API pública de horarios
+  - [ ] F26 · Crear la agenda (RPC `create_booking`, exclusión, job `booking_google_sync`)
+  - [ ] F29 · Antispam y atribución
+- [ ] **Bloque 4b — Booker, confirmación, cambios del invitado y mensajes**
+  - [ ] F25 · Booker — **hecho en el núcleo:** `buildMonthView`, `formatSlotLabel`, `parseEmbedParams`. Falta: página y componentes portados
+  - [ ] F27 · Página de confirmación — **hecho en el núcleo:** `buildIcs`, links de Google y Outlook. Falta: página, endpoint `.ics`
+  - [ ] F28 · Cancelar y reagendar por el invitado
+  - [ ] F58 · Mensajes cuando no se puede agendar — **hecho en el núcleo:** `resolveUnavailableMessage`, `buildCtaHref`, `fallbackPayload`, respaldo del embed. Falta: sección del editor, estados del booker
+- [ ] **Fase 1 lista:** suite completa en 0
 
-  | Comando | Resultado al cerrar la Fase 1 |
-  |---|---|
-  | `npx vitest run` | 159 archivos, 1885 tests, todo en verde |
-  | `npm run build` | Compila |
-  | `npm run lint` | 0 errores, 44 warnings (la línea base) |
-  | `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
-  | `node scripts/verify-content.mjs` | Todo verde, limpieza OK |
+### FASE 2 — Reservas, embed, automatizaciones y agentes
 
-### FASE 2 — Métricas, Social y anuncios
-
-- [x] **Bloque 5 — Recolección de métricas y comentarios** (migración **00086**, aplicada)
-  - [x] F40 · Card de Meta y cuentas publicitarias (la card se prendió; las cuentas se descubren con el token y se tildan, sin escribir ids a mano)
-  - [x] F41 · Tablas de métricas (`social_post_metrics_daily`, `social_account_metrics_daily`, `social_post_comments`, `meta_ads_insights_daily`, con RLS y 20 chequeos nuevos en `verify-rls`)
-  - [x] F42 · Lector de Zernio (Instagram y TikTok) — **no existe `/v1/analytics/delta`**: el SDK expone `getAnalytics` con ventana de fechas, y eso es lo que se usa
-  - [x] F43 · Lector de Instagram Graph (alcance por tipo de seguidor, audiencia, historias en vivo, perfil)
-  - [x] F44 · Lectores de YouTube y Threads (Data API + Analytics API en una sola llamada por canal; Shorts detectados por `creatorContentType` o por vertical ≤ 3 min)
-  - [x] F45 · Reglas de recolección y engagement a 7 días (diario hasta 30, semanal hasta 90, nunca después; nunca un cero inventado)
-  - [x] F46 · Comentarios (el receptor ahora encuentra cuentas de TikTok, guarda también los propios sin disparar flows, y crea la publicación externa si no existe)
-  - [x] F47 · Cron de métricas y actualización manual (cada hora, encola a quien son las 3 en su zona; "Actualizar ahora" con tope de 15 minutos)
-- [x] **Bloque 6a — Dashboard orgánico** (sin migración)
-  - [x] F48 · Dashboard de contenido orgánico — selector de dashboards en la barra (el de Chat no cambió de ruta ni de datos), KPI con variación, crecimiento de seguidores, actividad, engagement en el tiempo y rendimiento por formato. **La tabla "Tus posts" va en el 6b**, porque su columna "Seguidores ±1 d" es F52 y cada fila abre el análisis, que es F51: escribirla ahora sería escribirla dos veces.
-  - [x] F49 · Explorador de tendencias (doble eje por red, atajos, redes por pastilla, configuración en la URL con ida y vuelta probada)
-  - [x] F50 · Engagement a 7 días por semana de publicación (la semana en curso se marca)
-  - [x] F53 · Datos al día por red, con el último dato bueno cuando la última lectura falló
-  - Gráficos en SVG a mano, sin librería nueva: un hueco se dibuja como hueco, nunca como cero.
-- [x] **Bloque 6b — Análisis por post y página Social** (sin migración)
-  - [x] F51 · Análisis histórico de un post (panel lateral desde la tabla y desde Social, con flechas y Esc; las fotos acumuladas se convierten en "lo nuevo de cada día", un día faltante se reparte y se marca, y un acumulado que baja suma cero en vez de un negativo)
-  - [x] F52 · Seguidores alrededor de la publicación — **señal, no atribución**, y el rótulo lo dice. Mediana de 28 días, casos parcial y cuenta chica, y los posts vecinos de esas 48 h.
-  - [x] F54 · Página Social (perfil con las cifras que usa cada red, grilla con la proporción de cada red, métricas al pasar el mouse, "A mano" en lo que no salió del sistema)
-  - [x] Tabla "Tus posts" del F48, que se difirió del 6a: ordenable por cualquier columna, los sin dato siempre al final, y cada fila abre el análisis.
-- [x] **Bloque 7a — Meta Ads (cuenta)** (sin migración: las tablas son de la 00086)
-  - [x] F55 · Sincronización de insights (los cuatro niveles, paginación completa hasta agotar el cursor, últimos 3 días por corrida y 90 al activar; códigos 17 y 80004 reintentables, token inválido no)
-  - [x] F56 · Dashboard de Meta Ads (8 KPI con variación, evolución de dos ejes, embudo, retención de video y desglose por campaña, conjunto y anuncio con total y colores de CTR y leads en cero)
-  - [x] F58 · Datos en vivo con caché de 15 minutos por cuenta, nivel, objeto y período; un error no se guarda en caché y una tarjeta que falla no vacía la pantalla
-- [x] **Bloque 7b — Detalles, unificado e IA** (sin migración)
-  - [x] F57 · Detalles de campaña, conjunto y anuncio (una plantilla para los tres; un detalle muestra SOLO lo suyo, con migas que llevan la cuenta y el período en cada link)
-  - [x] F59 · Dashboard unificado — sin columna "total": el alcance orgánico y el pago se superponen y Meta no dice cuánto, así que sumarlos daría un número que no existe
-  - [x] F60 · Leads por campaña, cruzando `contacts.attribution`. Los dos números casi nunca coinciden y la pantalla explica por qué: Meta cuenta eventos y el CRM cuenta personas.
-  - [x] F61 · Analizar con IA (contexto en texto con los números reales, tope de objetos por gasto, costo registrado y topes del workspace respetados antes de llamar)
-  - El chequeo de topes de IA se extrajo a `lib/ai/workspace-budget.ts`: lo comparten la generación de copy y el análisis de anuncios, para que "llegué al tope" no signifique dos cosas distintas según quién pregunte.
-- [x] **Fase 2 lista:** suite completa en 0 (26/9/2026)
-
-  | Comando | Resultado al cerrar la Fase 2 |
-  |---|---|
-  | `npx vitest run` | 2239 tests, todo en verde |
-  | `npm run build` | Compila |
-  | `npm run lint` | 0 errores, 44 warnings (la línea base) |
-  | `node scripts/verify-rls.mjs` | Todo verde, limpieza OK |
-- [ ] **Fase 2 lista:** suite completa en 0
-
-### FASE 3 — Email entrante y roles
-
-- [x] **Bloque 8 — Email como canal** (migración **00087**, aplicada; la 00086 quedó para las métricas del bloque 5)
-  - [x] F62 · Canal Email y cambios de esquema (uno por workspace con índice único parcial; `late_account_id = email:<dirección>` y su NOT NULL intacto)
-  - [x] F63 · Recepción de email (firma Svix sobre `id.timestamp.body`, varias firmas por rotación, tolerancia de 5 minutos, idempotencia por `svix-id`, adjuntos copiados antes de que venzan sus links, correos automáticos guardados sin crear contacto, y **el agente no se agenda nunca**, con espía que lo prueba)
-  - [x] F64 · Email en la bandeja (ícono de sobre, asunto arriba del cuerpo, adjuntos con link firmado al hacer clic; el filtro por red no necesitó nada propio)
-  - [x] F65 · Responder email con `In-Reply-To` y `References`, en los dos caminos de envío, con rama explícita por proveedor
-  - [x] F66 · Cuota de Resend (barra en la card contando entrada y salida, aviso al 90% una vez por día)
-  - [x] F67 · Trigger "email recibido" con filtro por asunto, registrado y ofrecido en el editor
-- [x] **Bloque 9 — Roles personalizados** (migraciones **00088** y **00089**, aplicadas)
-  - [x] F68 · Catálogo de permisos — la caracterización del Member va primero (15 chequeos sobre el código real); 35 claves con etiqueta en castellano y `SYSTEM_ROLE_PERMISSIONS.member` derivado de esa caracterización
-  - [x] F69 · Tablas y funciones de roles — `workspace_roles` con los tres de sistema por workspace, `role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema, y `can_see_*` con el alcance del rol
-  - [x] F70 · Guards y menú por permiso — `requirePermission`, `getPermissionContext` y `getPermissionAction`, con `requireWorkspaceAdmin` y `getAdminContext` intactos para Owner/Admin
-  - [x] F71 · Pantalla de roles: crear, editar, borrar exigiendo reasignar primero, y permisos por módulo con un botón de todos
-  - [x] F72 · Asignar rol a una persona: `role_id` cambia y `role` sigue en `member`; no se puede quitar al último Owner
-  - [x] `scripts/verify-roles.mjs`: 22 chequeos contra la base real, incluida la prueba positiva de que un rol con alcance `all` ve todos los leads
-- [x] **Fase 3 lista y cierre de la Etapa 2** (26/9/2026)
-
-  | Comando | Resultado |
-  |---|---|
-  | `npx vitest run` | 2413 tests, todo en verde |
-  | `npm run build` | Compila |
-  | `npm run lint` | 0 errores, 44 warnings (la línea base del punto de partida) |
-  | `node scripts/verify-rls.mjs` | Todo verde |
-  | `node scripts/verify-roles.mjs` | Todo verde |
-  | `node scripts/verify-content.mjs` | Todo verde |
-  | `node scripts/verify-crm.mjs` | Todo verde |
-  | `node scripts/verify-inbox-filters.mjs` | Todo verde |
-  | `node scripts/verify-dashboards.mjs` | Todo verde |
-
-  Documentación al día: `.env.example`, `CLAUDE.md`, `BITACORA.md`,
-  `docs/integraciones.md`, `docs/contenido.md`, `docs/publicacion.md`,
-  `docs/roles.md` y `docs/dashboards.md`. `docs/referencia/` borrada.
+- [ ] **Bloque 5 — Pantalla de agendas** (sin migración)
+  - [ ] F32 · Estados y lógica común — **hecho en el núcleo:** catálogo, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops`. Falta: `filterBookings`, test CHECK vs `BOOKING_STATUS_KEYS`
+  - [ ] F33 · Vista lista
+  - [ ] F34 · Vista kanban — **hecho en el núcleo:** reglas de arrastre (`kanban.ts`). Falta: componente
+  - [ ] F35 · Vista calendario — **hecho en el núcleo:** `placeInCalendar`. Falta: componente
+  - [ ] F36 · Detalle y acciones del anfitrión
+  - [ ] F37 · Agendar manualmente
+  - [ ] F38 · Agendas en la ficha del contacto y notificaciones
+- [ ] **Bloque 6 — Embed** (sin migración)
+  - [ ] F39 · Script de embed — **hecho en el núcleo:** runtime (`embed-source.ts`, `entry.ts`), `buildEmbedIframeUrl`. Falta: compilar a `public/embed/embed.js` en el build, lado iframe
+  - [ ] F40 · Generador de código — **hecho en el núcleo:** `generateEmbedCode`. Falta: modal y sección con vista previa
+  - [ ] F41 · Eventos hacia la página — **hecho en el núcleo:** `serializeEmbedEvent`, `embedMessage`, `isTrustedOrigin`. Falta: emitirlos desde el booker
+  - [ ] F42 · Dominio propio (nice-to-have)
+- [ ] **Bloque 7a — Motor de automatizaciones de agenda** (migración 00100)
+  - [ ] F43 · Eventos de agenda y triggers inmediatos
+  - [ ] F44 · Triggers relativos al tiempo
+  - [ ] F45 · Condiciones de agenda
+  - [ ] F46 · Acciones: `send_email` y acciones de agenda
+  - [ ] F47 · Variables de agenda — **hecho en el núcleo:** `bookingVariables`, `schedulingLinkVariables`. Falta: meterlas en el contexto del flow y en el selector
+- [ ] **Bloque 7b — Flujos por evento, plantillas y editor lineal**
+  - [ ] F48 · Sección "Flujos" en el evento
+  - [ ] F49 · Flujos precreados
+  - [ ] F57 · Editor de flujo del evento
+- [ ] **Bloque 8 — Habilidad de agendamiento para agentes** (sin migración)
+  - [ ] F52 · Habilidad `scheduling` en el tool registry
+  - [ ] F53 · Instrucciones para el modelo
+  - [ ] F54 · Herramientas de consulta
+  - [ ] F55 · Herramientas de acción
+  - [ ] F56 · Comportamiento de punta a punta
+- [ ] **Fase 2 lista y cierre de la etapa:** suite completa en 0, docs, PR
 
 ## Migraciones creadas
 
 | # | Qué crea | Aplicada |
 |---|---|---|
-| 00081 | `integration_configs.type` suma `social_network`, `publishing_service`, `google`, `meta` | ✅ aplicada y verificada (acepta los cuatro nuevos, rechaza uno inventado) |
-| 00082 | `oauth_connections`, `social_accounts`, cron `social-token-refresh` + lista blanca | ✅ aplicada y verificada (RLS, únicos y CHECK probados con dos workspaces) |
-| 00083 | Pipeline de contenido: 4 tablas, bucket `content-media` con policies por workspace, cron de limpieza | ✅ aplicada y verificada |
-| 00084 | `approve_content_idea()`: crea la pieza y aprueba la idea en una transacción | ✅ aplicada y verificada |
-| 00085 | `agent_runs.source` suma `content_copy` y `ads_analysis`; `workspaces.content_copy_settings` (voz de marca) | ✅ aplicada |
-| 00086 | Métricas y anuncios: `social_post_metrics_daily`, `social_account_metrics_daily`, `social_post_comments`, `meta_ads_insights_daily`, cron `metrics-sync` + lista blanca | ✅ aplicada y verificada (20 chequeos nuevos en `verify-rls`) |
-| 00087 | Canal de email: `channels.platform` suma `email`, `provider` suma `resend`, `email_address`, siete columnas de cabeceras en `messages`, bucket `email-attachments`, trigger `email_received` | ✅ aplicada y verificada (8 chequeos nuevos en `verify-rls`) |
-| 00088 | Roles: `workspace_roles` con los tres de sistema por workspace, `workspace_members.role_id` con backfill, `has_permission`, `permission_scope`, trigger que protege los de sistema | ✅ aplicada y verificada |
-| 00089 | `can_see_contact` y `can_see_conversation` consultan el alcance del rol | ✅ aplicada y verificada (`verify-rls` corrido antes y después) |
-| 00090 | `drop_legacy_secret_columns`: borra `workspaces.late_api_key_encrypted`, `workspaces.webhook_secret` y `channels.webhook_secret` | ✅ **aplicada** (26/9/2026, después de mover los secretos a Vault y verificar por huella que la copia era idéntica) |
+| 00095 | (B1) perfiles, calendarios, `oauth_connections`, `contacts.timezone`, bucket `avatars` | — |
+| 00096 | (B2) `availability_schedules`, `out_of_office` | — |
+| 00097 | (B3) `booking_categories` + precarga | — |
+| 00098 | (B3) `event_types`, `flows.*`, `workspaces.*` | — |
+| 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | — |
+| 00100 | (B7a) `triggers_type_check` + 9 tipos, `flow_sessions.channel_id` nullable | — |
 
-## Deuda que deja el Bloque 1
-
-- ~~`countScheduledUses` devuelve 0 hasta el Bloque 3~~ — resuelto en el 4b: cuenta las publicaciones
-  programadas de cada integración sobre `social_posts`.
-
-**Aviso de coordinación:** hay otra sesión trabajando la Etapa 4 en paralelo sobre la misma base
-(`.claude/worktrees/etapa4-agendamiento-tanda-a-85d668`). Confirmó que toma la banda desde `00121`
-y que no corre scripts `verify-*` en esta tanda. Igual conviene verificar `list_migrations` antes de aplicar.
-Verificar `list_migrations` justo antes de aplicar cualquier migración.
+Ninguna borra ni modifica datos existentes. `list_migrations` inmediatamente antes de aplicar cada una; `node scripts/build-all-migrations.mjs` después.

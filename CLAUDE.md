@@ -192,7 +192,7 @@ No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpi
 
 La Etapa 2 quedo con la estructura entera y **sin publicar nada**. Lo que se
 arreglo esta en `docs/correcciones-etapa2.md` y el avance en
-`docs/PROGRESS-correcciones.md`. Cuatro cosas que conviene tener presentes
+`docs/etapa2/PROGRESS-correcciones.md`. Cuatro cosas que conviene tener presentes
 porque no se ven mirando el codigo:
 
 - **Instagram y TikTok se programan del lado de Zernio**, no con nuestra cola:

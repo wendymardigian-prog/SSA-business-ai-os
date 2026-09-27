@@ -142,7 +142,7 @@ Ver [publicacion.md](publicacion.md) para el detalle de cada red.
 
 Lo que cambió en contenido después de la revisión, con el detalle en
 [docs/correcciones-etapa2.md](correcciones-etapa2.md) y el avance en
-[docs/PROGRESS-correcciones.md](PROGRESS-correcciones.md).
+[docs/etapa2/PROGRESS-correcciones.md](etapa2/PROGRESS-correcciones.md).
 
 ### Crear
 
