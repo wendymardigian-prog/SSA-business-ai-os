@@ -153,6 +153,65 @@ try {
     check(afterDel.default_destination_calendar_id === null && (calsLeft ?? []).length === 0, "borrar la conexion se lleva sus calendarios y vacia el destino del perfil (ON DELETE)");
   }
 
+  console.log("\n— Horarios y tiempo fuera (00096, F9, F10, F13) —");
+  {
+    // ensure_default_schedule: el perfil del Member ya existe, asi que crea "Horario normal".
+    const { data: hid, error: eh } = await member.client.rpc("ensure_default_schedule", { p_workspace_id: ws.id, p_user_id: member.id });
+    const { data: h1 } = await svc.from("availability_schedules").select("id, name, is_default, timezone, weekly_hours").eq("user_id", member.id).is("deleted_at", null);
+    check(!eh && (h1 ?? []).length === 1 && h1[0].name === "Horario normal" && h1[0].is_default === true && h1[0].timezone === "America/Costa_Rica" && Object.keys(h1[0].weekly_hours).length === 5,
+      "al crear el perfil existe exactamente un horario por defecto: Horario normal, lun a vie, en la zona del perfil", eh?.message);
+    const { data: hid2 } = await member.client.rpc("ensure_default_schedule", { p_workspace_id: ws.id, p_user_id: member.id });
+    check(hid2 === hid, "llamarla de nuevo no crea otro");
+    const { data: prof } = await svc.from("scheduling_profiles").select("default_schedule_id").eq("user_id", member.id).single();
+    check(prof.default_schedule_id === hid, "el perfil apunta a ese horario");
+
+    const { error: e2 } = await member.client.from("availability_schedules")
+      .insert({ workspace_id: ws.id, user_id: member.id, name: "Tardes", timezone: "America/Costa_Rica", is_default: true, weekly_hours: {}, date_overrides: [] });
+    check(e2?.code === "23505", "un segundo horario por defecto para la misma persona falla (unico parcial)", e2?.message);
+
+    const { data: tardes, error: e3 } = await member.client.from("availability_schedules")
+      .insert({ workspace_id: ws.id, user_id: member.id, name: "Tardes", timezone: "America/Costa_Rica", weekly_hours: { "2": [{ start: "14:00", end: "18:00" }] }, date_overrides: [] })
+      .select("id").single();
+    check(!e3, "un Member crea un segundo horario (no por defecto)", e3?.message);
+
+    const { error: e4 } = await member.client.rpc("set_default_schedule", { p_schedule_id: tardes.id });
+    const { data: after } = await svc.from("availability_schedules").select("id, is_default").eq("user_id", member.id).is("deleted_at", null);
+    const defaults = (after ?? []).filter((r) => r.is_default).map((r) => r.id);
+    check(!e4 && defaults.length === 1 && defaults[0] === tardes.id, "marcar otro por defecto apaga el anterior en la misma transaccion", e4?.message);
+
+    const { error: e5 } = await otro.client.rpc("set_default_schedule", { p_schedule_id: hid });
+    check(!!e5, "otro Member no puede marcar por defecto un horario ajeno");
+
+    const { data: ajenos } = await otro.client.from("availability_schedules").select("id").eq("workspace_id", ws.id);
+    check((ajenos ?? []).length === 0, "un Member no ve los horarios de otra persona");
+    const { data: deAdmin } = await owner.client.from("availability_schedules").select("id").eq("workspace_id", ws.id);
+    check((deAdmin ?? []).length === 2, "el Owner (manage_others) los ve");
+    const { data: cruz } = await ajeno.client.from("availability_schedules").select("id").eq("workspace_id", ws.id);
+    check((cruz ?? []).length === 0, "otro workspace no ve ninguno");
+    const { error: e6 } = await otro.client.from("availability_schedules").insert({ workspace_id: ws.id, user_id: member.id, name: "Colado", timezone: "UTC" });
+    check(!!e6, "un Member no crea horarios a nombre de otro");
+    const { error: e7 } = await member.client.from("availability_schedules").delete().eq("id", tardes.id);
+    const { data: still } = await svc.from("availability_schedules").select("id").eq("id", tardes.id);
+    check((still ?? []).length === 1, "no hay DELETE para usuarios: se borra con deleted_at", e7?.message);
+
+    const { error: o1 } = await member.client.from("out_of_office")
+      .insert({ workspace_id: ws.id, user_id: member.id, starts_at: "2026-12-20T06:00:00Z", ends_at: "2027-01-01T06:00:00Z", all_day: true, reason: "vacation", note: "zz" });
+    check(!o1, "un Member carga su tiempo fuera", o1?.message);
+    const { error: o2 } = await member.client.from("out_of_office")
+      .insert({ workspace_id: ws.id, user_id: member.id, starts_at: "2026-12-20T06:00:00Z", ends_at: "2026-12-19T06:00:00Z", reason: "travel" });
+    check(!!o2, "un fin anterior al inicio lo rechaza el CHECK");
+    const { error: o3 } = await member.client.from("out_of_office")
+      .insert({ workspace_id: ws.id, user_id: member.id, starts_at: "2026-12-20T06:00:00Z", ends_at: "2026-12-21T06:00:00Z", reason: "fiesta" });
+    check(!!o3, "un motivo fuera de la lista lo rechaza el CHECK");
+    const { data: oAjeno } = await otro.client.from("out_of_office").select("id").eq("workspace_id", ws.id);
+    check((oAjeno ?? []).length === 0, "otro Member no ve el tiempo fuera ajeno");
+    const { data: oCruz } = await ajeno.client.from("out_of_office").select("id").eq("workspace_id", ws.id);
+    check((oCruz ?? []).length === 0, "otro workspace tampoco");
+
+    const { data: purga, error: pe } = await svc.rpc("purge_soft_deleted", { p_retention_days: 30 });
+    check(!pe && purga && "availability_schedules" in purga && "out_of_office" in purga, "purge_soft_deleted conoce las dos tablas nuevas", pe?.message);
+  }
+
   console.log("\n— scheduling_can_manage —");
   {
     const { data: a } = await member.client.rpc("scheduling_can_manage", { p_workspace_id: ws.id, p_user_id: member.id });

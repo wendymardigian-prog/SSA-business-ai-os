@@ -129,6 +129,11 @@ export async function saveSchedulingProfile(input: ProfileFormInput): Promise<Pr
     return { ok: false, error: dup ? "Ese usuario ya lo usa otra persona del negocio" : `No pude crear el perfil: ${insertError?.message ?? ""}` };
   }
 
+  // F3: al crear el perfil existe exactamente un horario por defecto
+  // ("Horario normal", lun a vie 9 a 17, en la zona del perfil).
+  const { error: scheduleError } = await ctx.supabase.rpc("ensure_default_schedule", { p_workspace_id: ctx.workspace.id, p_user_id: targetId });
+  if (scheduleError) console.error("[agenda] no pude crear el horario inicial:", scheduleError.message);
+
   await logAudit({
     supabase: ctx.supabase,
     workspaceId: ctx.workspace.id,

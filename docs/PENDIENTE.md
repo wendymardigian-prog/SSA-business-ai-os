@@ -20,10 +20,10 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Por qué:** gana la documentación.
 - **Qué se decidió en su lugar:** (1) un 403 con `reason` `rateLimitExceeded` o `userRateLimitExceeded` es `temporary` (backoff), no `permanent`; los otros 403 (`insufficientPermissions`, `forbiddenForNonOrganizer`) sí son `permanent`. (2) `invalid_grant` es del endpoint de token de OAuth, no de Calendar: se trata como `permanent` y marca la conexión `revoked`. Confirmado: `calendar.events.freebusy` alcanza para `freeBusy.query`, `calendar.calendarlist.readonly` para `calendarList.list` (pagina con `nextPageToken`, hasta 250 por página) y `calendar.events` para insertar, modificar y borrar con `conferenceDataVersion=1` y `sendUpdates=all`. La identidad (`sub`, email) sale de `openid email` + `userinfo`.
 
-### El "Horario normal" inicial del perfil se crea en el Bloque 2
-- **Qué quedó:** F3 pide que al crear el perfil exista un horario por defecto. En B1 el perfil se crea sin horario.
-- **Por qué:** `availability_schedules` llega con la migración 00096 (B2); crear la fila en B1 sería referenciar una tabla que no existe.
-- **Qué se decidió en su lugar:** en B2 la acción de crear/guardar el perfil crea "Horario normal" si la persona no tiene ninguno, y un backfill de la 00096 lo hace para los perfiles que ya existan.
+### F15 · Vista previa del horario (nice-to-have)
+- **Qué quedó:** el calendario de las próximas 2 semanas con los horarios libres de un evento de 30 minutos, sin contar Google.
+- **Por qué:** es nice-to-have y el bloque ya cubrió todo lo must.
+- **Qué se decidió en su lugar:** el núcleo deja `freeWindows(input)` (pasos 1 a 4 del motor); la vista es armar ese input con `busy = []` y dibujarlo. Se puede sumar después sin tocar nada.
 
 ## Hallazgos de la exploración (previos a esta etapa)
 

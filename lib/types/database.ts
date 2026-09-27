@@ -49,6 +49,7 @@ export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error"
 // ── Agenda (Etapa 4) ────────────────────────────────────────────────────────
 export type TimeFormat = "12h" | "24h";
 export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
+export type OutOfOfficeReason = "vacation" | "travel" | "sick" | "other";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
@@ -3517,11 +3518,101 @@ export interface Database {
         };
         Relationships: [];
       };
+      availability_schedules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          name: string;
+          timezone: string;
+          is_default: boolean;
+          weekly_hours: Json;
+          date_overrides: Json;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          name: string;
+          timezone: string;
+          is_default?: boolean;
+          weekly_hours?: Json;
+          date_overrides?: Json;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          timezone?: string;
+          is_default?: boolean;
+          weekly_hours?: Json;
+          date_overrides?: Json;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      out_of_office: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          starts_at: string;
+          ends_at: string;
+          all_day: boolean;
+          reason: OutOfOfficeReason;
+          note: string | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          starts_at: string;
+          ends_at: string;
+          all_day?: boolean;
+          reason?: OutOfOfficeReason;
+          note?: string | null;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          starts_at?: string;
+          ends_at?: string;
+          all_day?: boolean;
+          reason?: OutOfOfficeReason;
+          note?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      /** Marca un horario por defecto en una transaccion (00096). */
+      set_default_schedule: {
+        Args: { p_schedule_id: string };
+        Returns: undefined;
+      };
+      /** Crea "Horario normal" si la persona no tiene ninguno (00096). */
+      ensure_default_schedule: {
+        Args: { p_workspace_id: string; p_user_id: string };
+        Returns: string;
+      };
+      scheduling_can_manage: {
+        Args: { p_workspace_id: string; p_user_id: string };
+        Returns: boolean;
+      };
       /** Deduplicacion cross-canal (migracion 00025). Unica fuente de verdad. */
       find_or_link_contact: {
         Args: {

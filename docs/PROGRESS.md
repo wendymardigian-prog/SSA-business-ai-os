@@ -43,14 +43,15 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F7 · Estado de las conexiones: `calendarConnectionStatus`, `isUserBookable` (`calendar_disconnected` solo si un calendario de la cuenta caída está en uso), aviso fijo "Reconectá tu Google Calendar" en Agenda; el cron semanal de tokens excluye `google_calendar`
   - [x] F8 · Menú "Agenda" (después de Contacts, visible con `scheduling.use` o `bookings.view`; el sidebar filtra por permiso), engranaje ⚙ con `canOpenConfig`, Configuración con 5 secciones y "‹ Agendas" (`ConfigShell`), `getViewerTimezone`; encabezados de seguridad (`lib/security-headers.ts` + `next.config`). **Hecho en el núcleo:** `formatInTz`, `rangeForFilter`
   - Verificación: vitest 254 archivos / 2974 tests, tsc 0, lint 0 errores / 44 warnings, build OK, `verify-scheduling` y `verify-rls` en verde. Pantallas: el navegador integrado tiene sesión, así que Agenda, Ajustes y Calendarios de Google se recorrieron a 1440 y 390 px en claro y oscuro (sin scroll horizontal; los botones de la barra se acortan en el celular); los encabezados se comprobaron con curl contra el dev server
-- [ ] **Bloque 2 — Disponibilidades** (migración 00096)
-  - [ ] F9 · Tablas de disponibilidad — **hecho en el núcleo:** esquemas Zod y validación (`availability-schema.ts`). Falta: migración, RLS, acciones
-  - [ ] F10 · Lista de horarios — **hecho en el núcleo:** `summarizeSchedule`. Falta: pantalla, marcar por defecto (RPC), duplicar, borrar con reemplazo, casos con base del test
-  - [ ] F11 · Editor semanal — **hecho en el núcleo:** validación compartida. Falta: editor portado
-  - [ ] F12 · Excepciones por fecha — **hecho en el núcleo:** `upsertOverrides`, `trimPastOverrides`, `upcomingOverrides`. Falta: modal multi-día, guardado, recorte a `audit_log`
-  - [ ] F13 · Tiempo fuera — **hecho en el núcleo:** `outOfOfficeToUtc`. Falta: tabla, modal, `conflictingBookings`
-  - [ ] F14 · Eventos que usan este horario
-  - [ ] F15 · Vista previa del horario (nice-to-have) — el núcleo deja `freeWindows`
+- [x] **Bloque 2 — Disponibilidades** (migración **00096 aplicada** el 27/9/2026)
+  - [x] F9 · Tablas `availability_schedules` (jsonb validado con Zod en cada Server Action) y `out_of_office`, único parcial de `is_default`, RLS dueña/`manage_others` sin DELETE, FK del perfil, purga a 30 días; RPC `set_default_schedule` (una transacción) y `ensure_default_schedule` ("Horario normal" al crear el perfil + backfill; test que compara el jsonb con `defaultWeeklyHours()`). **Hecho en el núcleo:** esquemas y validación
+  - [x] F10 · Tarjetas con resumen, zona, badge y "Lo usan"; `?horario=` en la URL; Nuevo horario, Marcar por defecto, Duplicar (`copyName`), Borrar con reemplazo obligatorio (`decideDeleteSchedule`); selector de persona con `manage_others`. **Hecho en el núcleo:** `summarizeSchedule`
+  - [x] F11 · Editor semanal portado de Cal.diy sin react-hook-form (switch por día, rangos cada 15 min, "+ Rango", "Copiar a…"), guardado explícito con aviso de cambios sin guardar; validación compartida marca el día con error
+  - [x] F12 · Modal "Nueva excepción" (calendario multi-día, no disponible / horario distinto, resumen en vivo), una entrada por día en una sola actualización (`upsertOverrides`), recorte a 90 días con lo recortado en `audit_log`; las pasadas se ocultan. **Hecho en el núcleo:** `upsertOverrides`, `trimPastOverrides`, `upcomingOverrides`
+  - [x] F13 · Tarjeta Tiempo fuera y modal (fechas, días completos o con hora, motivo en chips, nota), aviso de agendas en el período (`conflictingBookings`, vacío hasta B4a), CHECK `ends_at > starts_at`. **Hecho en el núcleo:** `outOfOfficeToUtc`
+  - [x] F14 · "Eventos con este horario" (`eventsForSchedule`, `decideToggleEventSchedule` con el tooltip del caso "ya usa el por defecto"); se llena cuando exista `event_types` (B3)
+  - [ ] F15 · Vista previa del horario (nice-to-have): no entró; el núcleo deja `freeWindows`
+  - Verificación: vitest 256 archivos / 2982 tests, tsc 0, lint 0 errores, build OK, `verify-scheduling` (+21 chequeos: un solo por defecto, RPC en una transacción, RLS entre personas y workspaces, CHECKs de tiempo fuera, purga) en verde. Pantallas recorridas con sesión a 1440 y 390 px, claro y oscuro: horario, editor, copiar a otros días, excepción y tiempo fuera (con un horario `zz-test` creado y borrado por SQL)
 - [ ] **Bloque 3 — Categorías y tipos de evento** (migraciones 00097 y 00098)
   - [ ] F50 · Categorías de agenda
   - [ ] F51 · Categoría en eventos y agendas
@@ -111,7 +112,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 | # | Qué crea | Aplicada |
 |---|---|---|
 | 00095 | (B1) perfiles, calendarios, `scheduling_can_manage`, `oauth_connections` (provider + índices parciales + policy propia), `contacts.timezone`, bucket `avatars` | ✅ aplicada y verificada (27/9/2026) |
-| 00096 | (B2) `availability_schedules`, `out_of_office` | — |
+| 00096 | (B2) `availability_schedules`, `out_of_office`, `set_default_schedule`, `ensure_default_schedule` + backfill, purga | ✅ aplicada y verificada (27/9/2026) |
 | 00097 | (B3) `booking_categories` + precarga | — |
 | 00098 | (B3) `event_types`, `flows.*`, `workspaces.*` | — |
 | 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | — |
