@@ -124,11 +124,11 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 # Migraciones
 
 ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform`.
-La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
+La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**, y las **correcciones de la Etapa 2 de la 00091 a la 00094**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
 
-**Dos migraciones NO estan aplicadas y no hay que aplicarlas sin leer antes por que**:
-- `00072_draft_window_alerts` (heredada de la Fase 3).
-- `00090_drop_legacy_secret_columns`: borra las columnas donde todavia vive la API key de Zernio. Aplicarla hoy deja la bandeja sin poder responder. El archivo explica el orden para hacerlo bien.
+**Una sola migracion NO esta aplicada**: `00072_draft_window_alerts`, heredada de la Fase 3. No aplicarla sin leer antes por que.
+
+La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e32`): los secretos de Zernio se movieron a Vault comprobando por huella sha256 que la copia era identica, se vaciaron las columnas, se comprobo que el sistema seguia leyendo, y recien ahi se borraron. Hoy **no queda ninguna clave en columnas de la base**.
 
 Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`: hay otra sesion trabajando la Etapa 4 sobre la misma base, que toma la banda desde 00121.
 
@@ -183,9 +183,35 @@ node scripts/verify-content.mjs    # pipeline de contenido y bucket
 node scripts/verify-crm.mjs
 node scripts/verify-inbox-filters.mjs
 node scripts/verify-dashboards.mjs
+node scripts/verify-publishing.mjs # publicar de punta a punta, proveedores simulados
 ```
 
 No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpieza.
+
+## Correcciones de la Etapa 2
+
+La Etapa 2 quedo con la estructura entera y **sin publicar nada**. Lo que se
+arreglo esta en `docs/correcciones-etapa2.md` y el avance en
+`docs/PROGRESS-correcciones.md`. Cuatro cosas que conviene tener presentes
+porque no se ven mirando el codigo:
+
+- **Instagram y TikTok se programan del lado de Zernio**, no con nuestra cola:
+  se le pasa `scheduledFor` + `timezone` y publica el. Un post de Zernio POR
+  RED. El despachador propio queda para YouTube, LinkedIn y Threads.
+  Desprogramar borra el post ALLA antes de cancelar aca: si quedara agendado,
+  Zernio lo publica igual.
+- **El SDK de Zernio LANZA en vez de devolver `{ error }`**, y su clase expone
+  `.statusCode`, no `.status`. Su README ademas esta desactualizado respecto de
+  sus propios tipos. Los errores se clasifican en `lib/publishing/zernio-errors.ts`.
+- **En un archivo `"use server"` todo lo exportado tiene que ser una funcion
+  asincronica.** Un `export type { ... }` rompe la app entera en tiempo de
+  ejecucion y ni el typecheck ni el build lo ven. Hay un test que lo atrapa en
+  `lib/vault-boundary.test.ts`.
+- **No usar `upsert` sobre `social_posts`**: su indice unico es parcial y
+  PostgREST no le puede apuntar un `on_conflict`. Es buscar-y-escribir.
+
+El **copywriter** es un agente propio (uno por workspace) que reemplaza la
+generacion simple de F29: ver `docs/agente-ia.md`.
 
 # Seguridad
 
