@@ -7,11 +7,13 @@ import { savePostDraft } from "@/lib/actions/content";
 import { requestCopy } from "@/lib/actions/copywriter";
 import { scheduleNetworks, unscheduleNetwork } from "@/lib/actions/content-schedule";
 import { saveVersion } from "@/lib/actions/content-versions";
+import { approvePost, archivePost, requestReview, returnPost } from "@/lib/actions/content-review";
+import { setMaterialStatus } from "@/lib/actions/content";
 import { MediaUploader } from "@/components/content/media-uploader";
 import { VersionHistory } from "@/components/content/version-history";
 import { editorActions, summarizeNetwork, type EditorPermissions } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
-import { checkCta, type AutomationRule } from "@/lib/content/keywords";
+import { findUppercaseWords, type AutomationRule } from "@/lib/content/keywords";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import type { ExistingPublication } from "@/lib/content/schedule";
 import type { MediaEntry } from "@/lib/content/media";
@@ -19,6 +21,10 @@ import type { StoredVersion } from "@/lib/content/versions";
 import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { NetworkBadge } from "./network-badge";
+import { NetworkRow } from "./editor/network-row";
+import { NetworkPreview } from "./editor/preview";
+import { defaultOptionsFor } from "@/lib/content/network-options";
+import { platformLabel } from "@/lib/platforms";
 
 /**
  * El editor de la pieza, en una sola pagina (F24).
@@ -36,6 +42,10 @@ export interface EditorPost {
   id: string;
   title: string;
   format: string | null;
+  /** De qué idea salió, para poder volver a mirarla (C12). */
+  idea: { id: string; title: string } | null;
+  /** Si el copywriter está escribiendo esta pieza ahora (E6). */
+  copyStatus: "idle" | "generating" | "failed";
   copy: { hook?: string; body?: string; cta?: string; recording_notes?: string };
   caption: string | null;
   networks: NetworkEntry[];
@@ -59,6 +69,8 @@ export function PostEditor({
   authorNames,
   aiAvailable,
   timeZone,
+  publishersByPlatform,
+  accountNames,
 }: {
   post: EditorPost;
   perms: EditorPermissions;
@@ -70,6 +82,10 @@ export function PostEditor({
   authorNames: Record<string, string>;
   aiAvailable: boolean;
   timeZone: string;
+  /** Los publicadores disponibles por red, para "Publicar por". */
+  publishersByPlatform: Record<string, string[]>;
+  /** Con qué nombre se ve la cuenta en cada red, para la vista previa. */
+  accountNames: Record<string, string | null>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -84,6 +100,16 @@ export function PostEditor({
   });
 
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [material, setMaterial] = useState(post.materialStatus);
+  const [showIdea, setShowIdea] = useState(false);
+
+  // Para que "Guardado hace X s" se mueva solo: sin esto diría "hace 0 s"
+  // para siempre y nadie sabría si se guardó de verdad.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(timer);
+  }, []);
   const dirty = useRef(false);
   const lastEdited = useRef<string | null>(null);
 
@@ -150,6 +176,33 @@ export function PostEditor({
     });
   }, [draft.networks, draft.caption, post.media]);
 
+  /**
+   * Las palabras en mayúscula del CTA, y si alguna automatización las
+   * contesta (C11).
+   */
+  const detectedKeywords = useMemo(() => {
+    const activas = new Set(
+      automations
+        .filter((rule) => rule.isActive)
+        .flatMap((rule) => rule.keywords.map((k) => k.value.trim().toUpperCase())),
+    );
+    return findUppercaseWords(draft.copy.cta ?? "").map((word) => ({
+      word,
+      live: activas.has(word.toUpperCase()),
+    }));
+  }, [draft.copy.cta, automations]);
+
+  /** Las redes conectadas que esta pieza todavía no tiene (C9). */
+  const missingNetworks = connected.filter(
+    (platform) => !draft.networks.some((n) => n.platform === platform),
+  );
+
+  const conFecha = draft.networks.filter((n) => n.planned_at).length;
+  const sinFecha = draft.networks.length - conFecha;
+
+  const previewNetwork =
+    draft.networks.find((n) => n.platform === openNetwork) ?? draft.networks[0] ?? null;
+
   const schedulable = validations.filter((v) => v.ok).length;
   const hasDates = draft.networks.some((n) => n.planned_at);
 
@@ -160,6 +213,18 @@ export function PostEditor({
     aiAvailable,
     schedulable,
   });
+
+  /** Lo escrito se guarda antes de cualquier acción que cambie el estado. */
+  async function saveActual() {
+    dirty.current = false;
+    await savePostDraft({
+      postId: post.id,
+      title: draft.title,
+      copy: draft.copy,
+      caption: draft.caption,
+      networks: draft.networks,
+    });
+  }
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, okText?: string) {
     startTransition(async () => {
@@ -199,58 +264,118 @@ export function PostEditor({
           </p>
         )}
 
-        {/* ── Barra de acciones ── */}
-        <div className="flex flex-wrap items-center gap-2">
-          {buttons.map((button) => (
-            <button
-              key={button.action}
-              type="button"
-              disabled={pending || Boolean(button.disabledReason)}
-              title={button.disabledReason}
-              onClick={() => onAction(button.action)}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${
-                button.tone === "primary"
-                  ? "bg-primary text-primary-foreground"
-                  : button.tone === "danger"
-                    ? "border border-border text-muted-foreground"
-                    : "border border-border"
-              }`}
-            >
-              {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-              {button.action === "generate_copy" && !pending && <Sparkles className="h-4 w-4" aria-hidden />}
-              {button.label}
-            </button>
-          ))}
-          {savedAt && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Check className="h-3 w-3" aria-hidden />
-              Guardado
-            </span>
-          )}
+        {/* ── Encabezado de la pieza (C12) ── */}
+        <div className="space-y-2">
+          <input
+            value={draft.title}
+            onChange={(e) => edit("title", e.target.value)}
+            disabled={!editable}
+            aria-label="Título de la pieza"
+            placeholder="Título interno"
+            className="w-full rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xl font-semibold hover:border-border focus:border-border focus:outline-none disabled:opacity-70"
+          />
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+            {post.idea && (
+              <button
+                type="button"
+                onClick={() => setShowIdea(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 hover:bg-accent"
+              >
+                💡 Idea: <span className="max-w-[16rem] truncate">{post.idea.title}</span>
+                <span className="text-muted-foreground">· ver</span>
+              </button>
+            )}
+            {post.format && (
+              <span className="rounded-full border border-border px-2 py-0.5">{post.format}</span>
+            )}
+          </div>
         </div>
 
         {/* ── Copy ── */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Copy (el guion para grabar)</h2>
-          <Field label="Titulo de la pieza">
-            <input
-              value={draft.title}
-              onChange={(e) => edit("title", e.target.value)}
-              disabled={!editable}
-              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-            />
-          </Field>
-          {(["hook", "body", "cta", "recording_notes"] as const).map((field) => (
-            <Field key={field} label={COPY_LABELS[field]}>
-              <textarea
-                rows={field === "body" ? 8 : 2}
-                value={draft.copy[field] ?? ""}
-                onChange={(e) => edit("copy", { ...draft.copy, [field]: e.target.value })}
-                disabled={!editable}
-                className="w-full rounded-lg border border-border bg-background p-3 text-sm"
-              />
-            </Field>
-          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">Copy · guion para grabar</h2>
+            {post.aiUnreviewed && (
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-300">
+                ✦ Generado por el copywriter · revisalo antes de aprobar
+              </span>
+            )}
+          </div>
+
+          {post.copyStatus === "generating" ? (
+            <p className="flex items-center gap-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              El copywriter está escribiendo el guion y los captions a partir de la idea…
+            </p>
+          ) : (
+            <>
+              {(["hook", "body", "cta", "recording_notes"] as const).map((field) => (
+                <Field key={field} label={COPY_LABELS[field]}>
+                  <textarea
+                    rows={field === "body" ? 8 : 2}
+                    value={draft.copy[field] ?? ""}
+                    onChange={(e) => edit("copy", { ...draft.copy, [field]: e.target.value })}
+                    disabled={!editable}
+                    className="w-full rounded-lg border border-border bg-background p-3 text-sm"
+                  />
+                  {/* Las palabras en mayúscula del CTA son las que el lead va
+                      a escribir: que se vean acá evita descubrir publicando
+                      que ninguna dispara nada (C11). */}
+                  {field === "cta" && detectedKeywords.length > 0 && (
+                    <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="text-muted-foreground">Palabras clave detectadas:</span>
+                      {detectedKeywords.map(({ word, live }) => (
+                        <span
+                          key={word}
+                          className={
+                            live
+                              ? "rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-400"
+                              : "rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300"
+                          }
+                          title={
+                            live
+                              ? "Dispara una automatización activa"
+                              : "Ninguna automatización responde a esta palabra"
+                          }
+                        >
+                          {live ? "⚡ " : "⚠ "}
+                          {word}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </Field>
+              ))}
+
+              {/* Sin esto una pieza nunca pasa a "En producción": el estado
+                  existía en la base y no había dónde tocarlo (C7). */}
+              <Field label="Estado del material">
+                <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5">
+                  {(Object.keys(MATERIAL_LABELS) as Array<keyof typeof MATERIAL_LABELS>).map(
+                    (value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={material === value}
+                        disabled={!editable || pending}
+                        onClick={() => {
+                          setMaterial(value);
+                          run(() => setMaterialStatus(post.id, value));
+                        }}
+                        className={`rounded-md px-2.5 py-1 text-xs disabled:opacity-50 ${
+                          material === value
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {MATERIAL_LABELS[value]}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </Field>
+            </>
+          )}
         </section>
 
         {/* ── Caption base ── */}
@@ -278,12 +403,18 @@ export function PostEditor({
 
         {/* ── Redes ── */}
         <section>
-          <h2 className="text-sm font-semibold">Redes y publicacion</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Redes y publicación</h2>
+            <p className="text-xs text-muted-foreground">
+              Fecha, caption, media, CTA y opciones de cada red
+            </p>
+          </div>
+
           {draft.networks.length === 0 ? (
             <p className="mt-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
               {connected.length === 0
-                ? "Todavia no hay ninguna red conectada. Conecta una en Integraciones para poder programar."
-                : "Esta pieza todavia no tiene redes. Agrega una para elegir cuando sale."}
+                ? "Todavía no hay ninguna red conectada. Conectá una en Integraciones para poder programar."
+                : "Esta pieza todavía no tiene redes. Agregá una acá abajo."}
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -297,173 +428,99 @@ export function PostEditor({
                   errors: validation.errors.length,
                   warnings: validation.warnings.length,
                 });
-                const open = openNetwork === network.platform;
-                const cta = checkCta(network.cta ?? { type: "none" }, {
-                  platform: network.platform,
-                  channelId: channelIdByPlatform[network.platform] ?? null,
-                  rules: automations,
-                });
 
                 return (
-                  <li key={network.platform} className="rounded-lg border border-border">
-                    <button
-                      type="button"
-                      onClick={() => setOpenNetwork(open ? null : network.platform)}
-                      aria-expanded={open}
-                      className="flex w-full items-center justify-between gap-2 p-3 text-left"
-                    >
-                      <span className="min-w-0">
-                        <NetworkBadge platform={network.platform} />
-                        <span className="ml-2 text-xs text-muted-foreground">{summary.state}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
-                          {summary.uses}
-                          {summary.cta && ` · ${summary.cta}`}
-                        </span>
-                      </span>
-                      {summary.hasIssues && (
-                        <AlertTriangle
-                          className="h-4 w-4 flex-shrink-0 text-amber-500"
-                          aria-label="Hay avisos"
-                        />
-                      )}
-                    </button>
-
-                    {open && (
-                      <div className="space-y-3 border-t border-border p-3">
-                        <Field
-                          label="Fecha y hora"
-                          hint={`Hora de ${timeZone} (${timeZoneLabel(timeZone)}).`}
-                        >
-                          <input
-                            type="datetime-local"
-                            value={isoToDatetimeInput(network.planned_at ?? null, timeZone)}
-                            onChange={(e) =>
-                              edit(
-                                "networks",
-                                draft.networks.map((n, i) =>
-                                  i === index
-                                    ? {
-                                        ...n,
-                                        planned_at: datetimeInputToIso(e.target.value, timeZone),
-                                      }
-                                    : n,
-                                ),
-                              )
-                            }
-                            disabled={!perms.publish && !editable}
-                            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                          />
-                        </Field>
-
-                        <Field label="Caption propio" hint="Vacio = usa el caption base.">
-                          <textarea
-                            rows={3}
-                            value={network.caption ?? ""}
-                            onChange={(e) =>
-                              edit(
-                                "networks",
-                                draft.networks.map((n, i) =>
-                                  i === index ? { ...n, caption: e.target.value || null } : n,
-                                ),
-                              )
-                            }
-                            disabled={!editable}
-                            className="w-full rounded-lg border border-border bg-background p-3 text-sm"
-                          />
-                        </Field>
-
-                        {network.platform === "youtube" && (
-                          <Field label="Titulo del video">
-                            <input
-                              value={network.youtube_title ?? ""}
-                              onChange={(e) =>
-                                edit(
-                                  "networks",
-                                  draft.networks.map((n, i) =>
-                                    i === index ? { ...n, youtube_title: e.target.value } : n,
-                                  ),
-                                )
-                              }
-                              disabled={!editable}
-                              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                            />
-                          </Field>
-                        )}
-
-                        {cta && (
-                          <p
-                            className={`rounded-lg p-2 text-xs ${
-                              cta.level === "ok"
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                : cta.level === "warning"
-                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                                  : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {cta.level === "ok" ? "✓ " : "⚠ "}
-                            {cta.message}
-                          </p>
-                        )}
-
-                        {validation.errors.map((e) => (
-                          <p key={e} className="text-xs text-red-600 dark:text-red-400">
-                            {e}
-                          </p>
-                        ))}
-                        {validation.warnings.map((w) => (
-                          <p key={w} className="text-xs text-amber-600 dark:text-amber-400">
-                            {w}
-                          </p>
-                        ))}
-
-                        {perms.publish && (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={pending || !validation.ok}
-                              onClick={() =>
-                                run(
-                                  () =>
-                                    scheduleNetworks({ postId: post.id, platform: network.platform }),
-                                  `${network.platform} programado.`,
-                                )
-                              }
-                              className="h-8 rounded-lg border border-border px-3 text-xs disabled:opacity-50"
-                            >
-                              Programar solo esta red
-                            </button>
-                            {summary.stateKind === "scheduled" && (
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() =>
-                                  run(
-                                    () =>
-                                      unscheduleNetwork({
-                                        postId: post.id,
-                                        platform: network.platform,
-                                      }),
-                                    "Desprogramada. La fecha queda guardada.",
-                                  )
-                                }
-                                className="h-8 rounded-lg px-3 text-xs text-muted-foreground hover:bg-accent"
-                              >
-                                Desprogramar
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </li>
+                  <NetworkRow
+                    key={network.platform}
+                    postId={post.id}
+                    network={network}
+                    summary={summary}
+                    validation={validation}
+                    publicationStatus={publication?.status ?? null}
+                    open={openNetwork === network.platform}
+                    editable={editable}
+                    canPublish={perms.publish}
+                    pending={pending}
+                    timeZone={timeZone}
+                    automations={automations}
+                    channelId={channelIdByPlatform[network.platform] ?? null}
+                    publishers={publishersByPlatform[network.platform] ?? []}
+                    onToggle={() =>
+                      setOpenNetwork(openNetwork === network.platform ? null : network.platform)
+                    }
+                    onChange={(patch) =>
+                      edit(
+                        "networks",
+                        draft.networks.map((n, i) => (i === index ? { ...n, ...patch } : n)),
+                      )
+                    }
+                    onRemove={() =>
+                      edit(
+                        "networks",
+                        draft.networks.filter((_, i) => i !== index),
+                      )
+                    }
+                    onSchedule={() =>
+                      run(
+                        () => scheduleNetworks({ postId: post.id, platform: network.platform }),
+                        `${network.platform} programado.`,
+                      )
+                    }
+                    onUnschedule={() =>
+                      run(
+                        () => unscheduleNetwork({ postId: post.id, platform: network.platform }),
+                        "Desprogramada. La fecha queda guardada.",
+                      )
+                    }
+                  />
                 );
               })}
             </ul>
+          )}
+
+          {/* Agregar una red conectada que la pieza todavía no tiene (C9). */}
+          {editable && missingNetworks.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {missingNetworks.map((platform) => (
+                <button
+                  key={platform}
+                  type="button"
+                  onClick={() => {
+                    edit("networks", [
+                      ...draft.networks,
+                      { platform, planned_at: null, options: defaultOptionsFor(platform) },
+                    ]);
+                    setOpenNetwork(platform);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  + <NetworkBadge platform={platform} variant="dot" size="sm" />
+                  {platformLabel(platform)}
+                </button>
+              ))}
+            </div>
           )}
         </section>
       </div>
 
       <aside className="space-y-6">
+        {/* Cómo va a quedar, en la red abierta (C10). Va arriba del
+            historial: es lo que se mira mientras se escribe. */}
+        {previewNetwork && (
+          <NetworkPreview
+            platform={previewNetwork.platform}
+            caption={previewNetwork.caption ?? draft.caption}
+            media={
+              previewNetwork.media !== null && previewNetwork.media !== undefined
+                ? (previewNetwork.media as MediaEntry[])
+                : post.media
+            }
+            title={previewNetwork.platform === "youtube" ? previewNetwork.youtube_title : null}
+            variant={previewNetwork.media !== null && previewNetwork.media !== undefined}
+            accountName={accountNames[previewNetwork.platform] ?? null}
+          />
+        )}
+
         <VersionHistory
           postId={post.id}
           versions={versions}
@@ -479,6 +536,49 @@ export function PostEditor({
           canEdit={editable}
         />
       </aside>
+
+      {/* El pie fijo: lo que falta y lo que se puede hacer, siempre a la
+          vista. Antes los botones estaban arriba del formulario y en una
+          pieza larga quedaban fuera de pantalla (C6). */}
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-border bg-background/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6 xl:col-span-2">
+        <span className="text-xs text-muted-foreground">
+          {conFecha} de {draft.networks.length} redes con fecha
+          {sinFecha > 0 && ` · ${sinFecha} sin fecha`}
+        </span>
+        {savedAt && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Check className="h-3 w-3" aria-hidden />
+            Guardado {haceCuanto(savedAt, now)}
+          </span>
+        )}
+        <span className="flex-1" />
+        {buttons.map((button) => (
+          <button
+            key={button.action}
+            type="button"
+            disabled={pending || Boolean(button.disabledReason)}
+            title={button.disabledReason}
+            onClick={() => onAction(button.action)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium disabled:opacity-50 ${
+              button.tone === "primary"
+                ? "bg-primary text-primary-foreground"
+                : button.tone === "danger"
+                  ? "border border-border text-muted-foreground"
+                  : "border border-border"
+            }`}
+          >
+            {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+            {button.action === "generate_copy" && !pending && (
+              <Sparkles className="h-4 w-4" aria-hidden />
+            )}
+            {button.label}
+          </button>
+        ))}
+      </div>
+
+      {showIdea && post.idea && (
+        <IdeaPeek ideaId={post.idea.id} onClose={() => setShowIdea(false)} />
+      )}
     </div>
   );
 
@@ -524,8 +624,40 @@ export function PostEditor({
         run(() => scheduleNetworks({ postId: post.id, now: true }), "Saliendo.");
         break;
 
+      // Las cuatro que antes contestaban "eso se hace desde el detalle" (C5).
+      // Un Member no tenía forma de mandar su pieza a revisión desde acá, que
+      // es donde la estaba escribiendo.
+      case "send_to_review":
+        run(async () => {
+          await saveActual();
+          return requestReview({ postId: post.id });
+        }, "La mandaste a revisión.");
+        break;
+
+      case "approve":
+        run(() => approvePost({ postId: post.id }), "Aprobada.");
+        break;
+
+      case "return_to_draft": {
+        const comment = window.prompt("¿Qué hay que cambiar? (se lo ve quien la escribió)");
+        if (comment === null) return;
+        run(() => returnPost({ postId: post.id, comment }), "Devuelta a producción.");
+        break;
+      }
+
+      case "archive":
+        if (!window.confirm("¿Archivar esta pieza? Sale del tablero y queda en el historial.")) {
+          return;
+        }
+        run(async () => {
+          const result = await archivePost({ postId: post.id });
+          if (result.ok) router.push("/dashboard/content");
+          return result;
+        }, "Archivada.");
+        break;
+
       default:
-        setMessage({ tone: "info", text: "Eso se hace desde el detalle de la pieza." });
+        setMessage({ tone: "info", text: "Esa acción todavía no está." });
     }
   }
 }
@@ -555,3 +687,55 @@ function Field({
   );
 }
 
+
+const MATERIAL_LABELS = {
+  pendiente: "Sin grabar",
+  grabado: "Grabado",
+  editado: "Editado",
+  listo: "Listo",
+} as const;
+
+/** "hace 8 s", "hace 3 min". Lo que dice si se guardó de verdad. */
+function haceCuanto(iso: string, now: number): string {
+  const segundos = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (segundos < 60) return `hace ${segundos} s`;
+  return `hace ${Math.round(segundos / 60)} min`;
+}
+
+/** El detalle de la idea, desde el editor (C12). */
+function IdeaPeek({ ideaId, onClose }: { ideaId: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Idea de origen"
+        className="w-full max-w-md rounded-2xl border border-border bg-background p-4"
+      >
+        <p className="text-sm">
+          Esta pieza salió de una idea. Podés verla completa en el tablero.
+        </p>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent"
+          >
+            Cerrar
+          </button>
+          <a
+            href={`/dashboard/content?idea=${ideaId}`}
+            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+          >
+            Ver en el tablero
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}

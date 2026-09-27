@@ -78,6 +78,7 @@ Regla: **primero el test que reproduce el error, en rojo.**
 
 | Que | Estado |
 |---|---|
+| **Un `export type { ... }` en un archivo `"use server"` rompe la app entera en tiempo de ejecucion** y ni el typecheck ni el build lo ven: dejo el editor y el tablero en blanco. Lo encontro la recorrida en el navegador. Hay un test nuevo en `lib/vault-boundary.test.ts` que lo reproduce. | ✅ arreglado |
 | **El `upsert` de `social_posts` no podia funcionar NUNCA**: el indice unico es parcial y PostgREST no le puede apuntar un `on_conflict`. Ninguna fila de publicacion se creaba jamas. Lo encontro `verify-publishing.mjs`; los tests no lo veian porque la base en memoria no tiene indices. | ✅ arreglado (buscar-y-escribir) |
 | **Programar devolvia `ok: true` sin haber programado nada.** | ✅ arreglado |
 | `agent_runs` tenia dos CHECK sobre `source` y el viejo rechazaba `content_copy`: los runs de copy no se registraban contra la base real | ✅ arreglado en 00094 |
@@ -114,14 +115,14 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ C2 | Nueva idea y Nuevo post como modales; "Crear y abrir"; interruptor de IA | listo |
 | ✅ C3 | Detalle de la idea como modal, con "qué pasa al aprobar"; editable mientras es nueva; Descartar sale de la tarjeta | listo |
 | ✅ C4 | "+ Idea" y "+ Post" al pie de las columnas | listo |
-| C5 | Los botones del editor hacen lo que dicen | ⬜ |
-| C6 | Pie fijo con contadores y "Guardado hace X s" | ⬜ |
-| C7 | Estado del material como control segmentado | ⬜ |
-| C8 | Fila de red completa | ⬜ |
-| C9 | Pastillas para agregar redes | ⬜ |
-| C10 | Vista previa de la red abierta | ⬜ |
-| C11 | Palabras clave detectadas bajo el CTA | ⬜ |
-| C12 | Encabezado y barra superior del editor | ⬜ |
+| ✅ C5 | Los botones del editor hacen lo que dicen (y `archivePost`, que no existia) | listo |
+| ✅ C6 | Pie fijo con contadores y "Guardado hace X s" | listo |
+| ✅ C7 | Estado del material como control segmentado (probado: la pieza pasa a En produccion) | listo |
+| ✅ C8 | Fila de red completa: CTA, palabra clave, chip de automatizacion, media variante, publicador, opciones de red, quitar | listo (sin recorrer en vivo: no hay ninguna red conectada) |
+| ✅ C9 | Pastillas para agregar redes conectadas que faltan | listo |
+| ✅ C10 | Vista previa de la red abierta, arriba del historial | listo |
+| ✅ C11 | Palabras clave detectadas bajo el CTA, marcando cuales disparan algo | listo |
+| ✅ C12 | Titulo editable en el lugar, chip de idea y chip de formato | listo |
 | ✅ C13 | Tarjetas como el prototipo; Borrador y En produccion abren el editor | listo |
 | C14 | Calendario: contar, hora, colores, estados, leyenda, arrastrar, semana | ⬜ |
 | C15 | Lista: ideas, columna Copy, filtro de fecha, fila clickeable | ⬜ |

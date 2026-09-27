@@ -165,3 +165,39 @@ describe("limite del servidor: lib/vault.ts", () => {
     );
   });
 });
+
+// ── Los archivos "use server" solo exportan funciones asincrónicas ─────────
+//
+// Es la regla de Next: cualquier otro export se vuelve, en tiempo de
+// ejecución, una referencia a algo que no existe. Un `export type` que el
+// empaquetador no borra rompe TODA pantalla que importe ese archivo, y ni el
+// typecheck ni el build lo ven: se descubre abriendo la app.
+//
+// Pasó de verdad: `export type { ScheduleActionResult }` en
+// lib/actions/content-schedule.ts dejó el editor y el tablero en blanco.
+
+describe("los archivos \"use server\" solo exportan funciones", () => {
+  const actionFiles = readdirSync("lib/actions")
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+    .map((f) => `lib/actions/${f}`);
+
+  it("hay archivos de acciones para revisar", () => {
+    expect(actionFiles.length).toBeGreaterThan(5);
+  });
+
+  for (const file of actionFiles) {
+    it(`${file} no re-exporta tipos ni constantes`, () => {
+      const source = readFileSync(file, "utf8");
+      if (!source.startsWith('"use server"')) return;
+
+      // `export type Foo = ...` está bien (se borra siempre). Lo que rompe es
+      // la forma de re-export: `export type { ... }` y `export { ... }`.
+      const reexports = source.match(/^export (type )?\{[^}]*\}/gm) ?? [];
+      expect(reexports, `re-export en ${file}: ${reexports.join(" | ")}`).toEqual([]);
+
+      // Una constante exportada tampoco: mismo problema.
+      const consts = source.match(/^export const /gm) ?? [];
+      expect(consts, `constante exportada en ${file}`).toEqual([]);
+    });
+  }
+});

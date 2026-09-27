@@ -24,7 +24,10 @@ import {
 
 const CONTENT_PATH = "/dashboard/content";
 
-export type { ScheduleActionResult, ScheduleOutcome };
+// Los tipos NO se re-exportan desde acá: en un archivo "use server" todo lo
+// exportado tiene que ser una función asincrónica, y un `export type` que el
+// empaquetador no borra se vuelve una referencia a algo que no existe en
+// tiempo de ejecución. Quien los necesite los importa de schedule-core.
 
 /** El contexto de quien esta llamando, con el permiso ya resuelto. */
 async function scheduleContext() {

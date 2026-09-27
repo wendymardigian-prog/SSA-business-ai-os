@@ -32,7 +32,7 @@ export default async function EditPostPage({
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, copy, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at",
+      "id, title, format, copy, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at, copy_status, idea_id",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -48,7 +48,7 @@ export default async function EditPostPage({
         .eq("content_post_id", postId),
       supabase
         .from("social_accounts")
-        .select("platform, channel_id")
+        .select("platform, channel_id, username, display_name, publishers, default_publisher")
         .eq("workspace_id", workspace.id)
         .eq("is_active", true),
       supabase
@@ -104,10 +104,34 @@ export default async function EditPostPage({
     };
   });
 
+  // Por dónde puede salir cada red y con qué nombre se ve: lo primero llena
+  // "Publicar por" (C8) y lo segundo la vista previa (C10).
+  const publishersByPlatform: Record<string, string[]> = {};
+  const accountNames: Record<string, string | null> = {};
+
+  for (const account of accountsRes.data ?? []) {
+    const platform = account.platform as string;
+    const entries = (Array.isArray(account.publishers) ? account.publishers : []) as Array<{
+      publisher?: string;
+      status?: string;
+    }>;
+    publishersByPlatform[platform] = entries
+      .filter((e) => e.publisher && e.status !== "unavailable")
+      .map((e) => e.publisher as string);
+    accountNames[platform] = account.username ?? account.display_name ?? null;
+  }
+
+  // La idea de la que salió, para el chip que la vuelve a abrir (C12).
+  const { data: idea } = post.idea_id
+    ? await supabase.from("content_ideas").select("id, title").eq("id", post.idea_id).maybeSingle()
+    : { data: null };
+
   const editorPost: EditorPost = {
     id: post.id,
     title: post.title,
     format: post.format,
+    idea: idea ? { id: idea.id, title: idea.title } : null,
+    copyStatus: post.copy_status,
     copy: (post.copy ?? {}) as EditorPost["copy"],
     caption: post.caption,
     networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
@@ -140,6 +164,8 @@ export default async function EditPostPage({
       />
 
       <PostEditor
+        publishersByPlatform={publishersByPlatform}
+        accountNames={accountNames}
         post={editorPost}
         perms={{
           create: true,

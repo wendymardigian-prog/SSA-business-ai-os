@@ -25,10 +25,13 @@ export function MediaUploader({
   postId,
   media,
   canEdit,
+  /** Con red, sube la media PROPIA de esa red (la variante, C8). */
+  platform,
 }: {
   postId: string;
   media: MediaEntry[];
   canEdit: boolean;
+  platform?: string | null;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +72,7 @@ export function MediaUploader({
         mime: ticket.data.mime,
         kind: kindOf(ticket.data.mime),
         sizeBytes: file.size,
+        platform,
       });
 
       if (!attached.ok) {
@@ -96,7 +100,7 @@ export function MediaUploader({
               <button
                 type="button"
                 onClick={async () => {
-                  const result = await removeMedia({ postId, path: item.storage_path });
+                  const result = await removeMedia({ postId, path: item.storage_path, platform });
                   if (!result.ok) setError(result.error);
                   else router.refresh();
                 }}

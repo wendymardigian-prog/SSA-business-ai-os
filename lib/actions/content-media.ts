@@ -111,6 +111,12 @@ export async function attachMedia(input: {
   sizeBytes: number;
   isCover?: boolean;
   altText?: string | null;
+  /**
+   * La media propia de una red (C8): va dentro de `networks[].media` en vez
+   * de la de la pieza. Sin esto, la variante solo se podia armar tocando el
+   * jsonb a mano.
+   */
+  platform?: string | null;
 }): Promise<MediaActionResult> {
   const { workspace, supabase } = await getWorkspace();
 
@@ -120,14 +126,13 @@ export async function attachMedia(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, media")
+    .select("id, media, networks")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
-  const media = (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[];
   const entry: MediaEntry = {
     storage_path: input.path,
     mime_type: input.mime,
@@ -137,15 +142,44 @@ export async function attachMedia(input: {
     alt_text: input.altText ?? null,
   };
 
-  const { error } = await supabase
-    .from("content_posts")
-    .update({ media: [...media, entry] as never })
-    .eq("id", input.postId);
+  const patch = input.platform
+    ? {
+        networks: patchNetworkMedia(post.networks, input.platform, (media) => [
+          ...media,
+          entry,
+        ]) as never,
+      }
+    : {
+        media: [
+          ...((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]),
+          entry,
+        ] as never,
+      };
+
+  const { error } = await supabase.from("content_posts").update(patch).eq("id", input.postId);
 
   if (error) return { ok: false, error: "No pude guardar la media en la pieza" };
 
   revalidatePath(CONTENT_PATH);
   return { ok: true };
+}
+
+/** Cambia la media de UNA red dentro del jsonb, sin tocar el resto. */
+function patchNetworkMedia(
+  networks: unknown,
+  platform: string,
+  change: (media: MediaEntry[]) => MediaEntry[],
+): unknown[] {
+  const list = (Array.isArray(networks) ? networks : []) as Array<{
+    platform?: string;
+    media?: unknown[] | null;
+  }>;
+
+  return list.map((n) =>
+    n.platform === platform
+      ? { ...n, media: change((Array.isArray(n.media) ? n.media : []) as MediaEntry[]) }
+      : n,
+  );
 }
 
 /**
@@ -159,21 +193,32 @@ export async function attachMedia(input: {
 export async function removeMedia(input: {
   postId: string;
   path: string;
+  /** La media propia de una red (C8). */
+  platform?: string | null;
 }): Promise<MediaActionResult> {
   const { workspace, supabase } = await getWorkspace();
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, media, status")
+    .select("id, media, networks, status")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
+  const current = input.platform
+    ? ((
+        (Array.isArray(post.networks) ? post.networks : []) as Array<{
+          platform?: string;
+          media?: unknown[] | null;
+        }>
+      ).find((n) => n.platform === input.platform)?.media ?? []) as unknown as MediaEntry[]
+    : ((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]);
+
   const published = ["published", "partially_published", "publishing"].includes(post.status);
   const plan = removalPlan({
-    media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
+    media: current,
     storagePath: input.path,
     postPublished: published,
   });
@@ -182,7 +227,17 @@ export async function removeMedia(input: {
 
   const { error } = await supabase
     .from("content_posts")
-    .update({ media: plan.media as never })
+    .update(
+      input.platform
+        ? {
+            networks: patchNetworkMedia(
+              post.networks,
+              input.platform,
+              () => plan.media as MediaEntry[],
+            ) as never,
+          }
+        : { media: plan.media as never },
+    )
     .eq("id", input.postId);
 
   if (error) return { ok: false, error: "No pude actualizar la pieza" };
