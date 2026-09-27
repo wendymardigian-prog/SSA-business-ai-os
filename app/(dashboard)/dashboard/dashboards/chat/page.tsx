@@ -2,6 +2,8 @@ import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { parseDashboardFilters } from "@/lib/dashboards/url-state";
 import { loadChatDashboard } from "@/lib/dashboards/load";
+import { getPermissionContext } from "@/lib/auth/guards";
+import { availableDashboards } from "@/lib/dashboards/available";
 import { ChatDashboard } from "@/components/dashboards/chat-dashboard";
 import { isAdminRole } from "@/lib/auth/roles";
 
@@ -25,6 +27,7 @@ export default async function ChatDashboardPage({
   const filters = parseDashboardFilters(params);
   const timezone = (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
   const isAdmin = isAdminRole(role);
+  const dashboards = availableDashboards((await getPermissionContext()).can);
 
   const [data, members, channelsRes] = await Promise.all([
     loadChatDashboard(supabase, { workspaceId: workspace.id, filters, timezone }),
@@ -37,6 +40,7 @@ export default async function ChatDashboardPage({
 
   return (
     <ChatDashboard
+      dashboards={dashboards}
       data={data}
       filters={filters}
       channels={channels}

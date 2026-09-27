@@ -1,4 +1,5 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { availableDashboards } from "@/lib/dashboards/available";
 import { ContentDashboard } from "@/components/dashboards/content-dashboard";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
@@ -22,6 +23,7 @@ export default async function ContentDashboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspace, supabase } = await requireWorkspaceAdmin();
+  const dashboards = availableDashboards((await getPermissionContext()).can);
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -46,6 +48,7 @@ export default async function ContentDashboardPage({
 
   return (
     <ContentDashboard
+      dashboards={dashboards}
       posts={current.posts}
       postDaily={current.postDaily}
       accountDaily={current.accountDaily}

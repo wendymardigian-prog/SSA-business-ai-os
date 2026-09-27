@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
+import type { DashboardOption } from "@/lib/dashboards/available";
 import { BarList, DualAxisChart, colorFor, type ChartSeries } from "./charts";
 import { TrendExplorer } from "./trend-explorer";
 import { PostsTable, toRows } from "./posts-table";
@@ -52,6 +53,8 @@ export interface ContentDashboardProps {
   period: PeriodPreset;
   platform: string | null;
   canRefresh: boolean;
+  /** Los dashboards que puede abrir quien esta mirando (B3). */
+  dashboards: DashboardOption[];
 }
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -203,7 +206,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/dashboards/content"
-        left={<DashboardSwitcher />}
+        left={<DashboardSwitcher options={props.dashboards} />}
         right={
           <div className="flex items-center gap-2">
             <select

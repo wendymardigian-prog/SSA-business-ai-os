@@ -86,9 +86,9 @@ Regla: **primero el test que reproduce el error, en rojo.**
 
 | # | Que | Estado |
 |---|---|---|
-| B3 | `lib/dashboards/available.ts`: una sola fuente de verdad, con test | ⬜ |
-| B2 | Menu desplegable como el prototipo, accesible con teclado | ⬜ |
-| B1 | Los cuatro dashboards dejan de pasar `available` a mano | ⬜ |
+| ✅ B3 | `lib/dashboards/available.ts`: una sola fuente de verdad, con test | listo |
+| ✅ B2 | Menu desplegable como el prototipo, accesible con teclado, revisado en 1440 y 390 | listo |
+| ✅ B1 | Los cuatro dashboards dejan de pasar `available` a mano | listo |
 
 ## E · Agente copywriter (11 puntos)
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
+import type { DashboardOption } from "@/lib/dashboards/available";
 import { DualAxisChart, type ChartSeries } from "./charts";
 import { count, money } from "@/lib/dashboards/ads";
 import { comparison, type UnifiedView } from "@/lib/dashboards/unified";
@@ -19,10 +20,13 @@ export function UnifiedDashboard({
   view,
   period,
   currency,
+  dashboards,
 }: {
   view: UnifiedView;
   period: PeriodPreset;
   currency: string | null;
+  /** Los dashboards que puede abrir quien esta mirando (B3). */
+  dashboards: DashboardOption[];
 }) {
   const rows = comparison(view);
 
@@ -54,7 +58,7 @@ export function UnifiedDashboard({
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/dashboards/unified"
-        left={<DashboardSwitcher available={["chat", "content", "ads", "unified"]} />}
+        left={<DashboardSwitcher options={dashboards} />}
         right={
           <select
             aria-label="Periodo"
