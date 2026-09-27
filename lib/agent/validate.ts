@@ -90,14 +90,35 @@ export function validateAgentConfig(input: unknown): ValidationResult<AgentConfi
   return parsed.success ? { ok: true, value: parsed.data } : { ok: false, error: firstIssue(parsed.error) };
 }
 
-export const MAX_PROMPT_CHARS = 20_000;
+export const MAX_PROMPT_CHARS = 32_000;
+/** Desde acá el contador avisa que se acerca al tope (90 %). */
+export const PROMPT_WARN_CHARS = Math.floor(MAX_PROMPT_CHARS * 0.9);
+export const MIN_PROMPT_CHARS = 20;
 
 export function validateSystemPrompt(raw: unknown): ValidationResult<string> {
   if (typeof raw !== "string") return { ok: false, error: "El prompt tiene que ser texto." };
   const value = raw.replace(/\r\n/g, "\n").trim();
-  if (value.length < 20) return { ok: false, error: "El prompt es demasiado corto: explicale al agente que hacer." };
+  if (value.length < MIN_PROMPT_CHARS) return { ok: false, error: "El prompt es demasiado corto: explicale al agente que hacer." };
   if (value.length > MAX_PROMPT_CHARS) return { ok: false, error: `El prompt no puede superar ${MAX_PROMPT_CHARS} caracteres.` };
   return { ok: true, value };
+}
+
+/**
+ * Estado del contador de caracteres del prompt. Pura, misma cuenta en cliente y
+ * servidor: la pantalla muestra el largo crudo (el peor caso), el servidor
+ * cuenta después de normalizar y solo puede achicar.
+ *
+ * `over` es lo que antes recortaba en silencio el `maxLength` del textarea: el
+ * botón Guardar se apaga con este motivo en vez de mandar medio prompt.
+ */
+export function promptLengthState(length: number): { tone: "ok" | "warning" | "over"; message: string | null } {
+  if (length > MAX_PROMPT_CHARS) {
+    return { tone: "over", message: `Te pasaste por ${length - MAX_PROMPT_CHARS} caracteres del tope de ${MAX_PROMPT_CHARS}.` };
+  }
+  if (length >= PROMPT_WARN_CHARS) {
+    return { tone: "warning", message: `Te quedan ${MAX_PROMPT_CHARS - length} caracteres.` };
+  }
+  return { tone: "ok", message: null };
 }
 
 /**
