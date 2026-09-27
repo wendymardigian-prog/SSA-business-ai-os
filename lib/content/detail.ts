@@ -38,6 +38,7 @@ export interface NetworkRow {
 }
 
 const PUBLICATION_LABELS: Record<SocialPostStatus, string> = {
+  uploading: "Preparando",
   scheduled: "Programado",
   publishing: "Publicando",
   published: "Publicado",

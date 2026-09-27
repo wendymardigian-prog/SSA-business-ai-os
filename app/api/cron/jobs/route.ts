@@ -17,6 +17,8 @@ import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { sweepStuckPublications } from "@/lib/publishing/sweep";
 import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
+import { reconcileProviderSchedules } from "@/lib/publishing/reconcile";
+import { credentialsForPublisher } from "@/lib/publishing/credentials";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -89,6 +91,21 @@ export async function GET(request: NextRequest) {
     if (stuck.recovered > 0) console.log(`[cron/jobs] publicaciones destrabadas: ${stuck.recovered}`);
   } catch (err) {
     console.error("[cron/jobs] fallo el barrido de publicaciones:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Lo que Zernio publico y cuyo aviso no llego (D6). Sin esto una fila se
+  // queda diciendo "programado" para siempre aunque el post ya este en
+  // Instagram.
+  try {
+    const conciliadas = await reconcileProviderSchedules(supabase, {
+      credentialsFor: ({ publisherId, workspaceId }) =>
+        credentialsForPublisher(supabase, { publisherId, workspaceId }),
+    });
+    if (conciliadas.updated > 0) {
+      console.log(`[cron/jobs] publicaciones conciliadas: ${conciliadas.updated}`);
+    }
+  } catch (err) {
+    console.error("[cron/jobs] fallo la conciliacion:", err instanceof Error ? err.message : String(err));
   }
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is

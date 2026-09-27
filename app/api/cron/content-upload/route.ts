@@ -1,5 +1,5 @@
 /**
- * Las publicaciones que suben el archivo desde aca (A17).
+ * Lo que tarda: subir el archivo y dejar el post agendado (A17, D5).
  *
  * Una sola razon para existir: subir un video a YouTube por trozos puede
  * tardar minutos. Dentro del cron general esos minutos se los come la cola
@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
+import { SLOW_JOB_TYPES } from "@/lib/content/jobs";
 import { getJobHandler } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   const { data: jobs, error } = await supabase
     .from("scheduled_jobs")
     .select("*")
-    .eq("type", CONTENT_UPLOAD_JOB)
+    .in("type", SLOW_JOB_TYPES as unknown as string[])
     .or(
       `status.eq.pending,and(status.eq.processing,or(claimed_at.lt.${staleCutoff},claimed_at.is.null))`,
     )
@@ -69,11 +69,11 @@ export async function GET(request: NextRequest) {
 
     if (!claimed) continue;
 
-    const handler = getJobHandler(CONTENT_UPLOAD_JOB);
+    const handler = getJobHandler(job.type);
     if (!handler) {
       await supabase
         .from("scheduled_jobs")
-        .update({ status: "failed", error: "sin handler de subida" })
+        .update({ status: "failed", error: `sin handler para "${job.type}"` })
         .eq("id", job.id);
       failed++;
       continue;

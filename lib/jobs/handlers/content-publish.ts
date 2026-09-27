@@ -8,7 +8,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { CONTENT_PUBLISH_JOB, CONTENT_PUBLISH_CHECK_JOB, CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
+import {
+  CONTENT_PROVIDER_SCHEDULE_JOB,
+  CONTENT_PUBLISH_CHECK_JOB,
+  CONTENT_PUBLISH_JOB,
+  CONTENT_UPLOAD_JOB,
+} from "@/lib/content/jobs";
+import { runProviderSchedule } from "@/lib/publishing/provider-dispatch";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
 import { runPublication, runPublicationCheck, type PublishDeps } from "@/lib/publishing/dispatcher";
@@ -94,10 +100,33 @@ async function handlePublishCheck({ supabase, job }: JobContext): Promise<void> 
   console.log(`[cron/jobs] revision ${payload.socialPostId}: ${outcome.kind}`);
 }
 
+/**
+ * Deja el post agendado en el proveedor (D1).
+ *
+ * Sube la media y crea el post con su fecha. No espera a la hora de salida:
+ * eso lo hace Zernio.
+ */
+async function handleProviderSchedule({ supabase, job }: JobContext): Promise<void> {
+  const payload = (job.payload ?? {}) as PublishPayload;
+  if (!payload.socialPostId || !payload.workspaceId) {
+    throw new Error(`job ${job.id} de agenda sin socialPostId o workspaceId`);
+  }
+
+  const outcome = await runProviderSchedule(
+    supabase,
+    payload.socialPostId,
+    publishDeps(supabase, payload.workspaceId),
+  );
+  console.log(
+    `[cron/content-upload] agenda ${payload.socialPostId}: ${outcome.kind}${outcome.detail ? ` (${outcome.detail})` : ""}`,
+  );
+}
+
 export function registerContentPublishHandlers(): void {
   registerJobHandler(CONTENT_PUBLISH_JOB, handlePublish);
   // El mismo trabajo, en su propia ruta: lo unico que cambia es quien lo
   // corre y con cuanto tiempo (A17).
   registerJobHandler(CONTENT_UPLOAD_JOB, handlePublish);
+  registerJobHandler(CONTENT_PROVIDER_SCHEDULE_JOB, handleProviderSchedule);
   registerJobHandler(CONTENT_PUBLISH_CHECK_JOB, handlePublishCheck);
 }

@@ -27,7 +27,7 @@ Nada programado que romper.
 |---|---|---|---|
 | 00091 | `publish_progress` (que paso de la publicacion ya salio) | A | ✅ aplicada, idempotente |
 | 00092 | `content_upload_cron` (ruta propia de las subidas largas) | A | ✅ aplicada |
-| 00093 | `zernio_native_scheduling` | D | ⬜ sin escribir |
+| 00093 | `zernio_native_scheduling` (estado `uploading` + `provider_media`) | D | ✅ aplicada, idempotente |
 | 00094 | `copywriter_agent` | E | ⬜ sin escribir |
 
 ## A · Publicacion automatica (20 puntos)
@@ -42,37 +42,45 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ A4 | Reprogramar borra el job pendiente viejo | listo |
 | ✅ A5 | Cambiar la fecha en el editor reprograma | listo |
 | ✅ A6 | Un unico "al publicarse" que usan los tres caminos | listo |
-| A7 | `SUBSCRIBED_EVENTS` suma `post.platform.published` / `.failed` | ⬜ |
+| ✅ A7 | `SUBSCRIBED_EVENTS` suma `post.platform.published` / `.failed` | listo |
 | ✅ A8 | TikTok manda `privacyLevel` y las dos confirmaciones (falta el control en C8) | listo (backend) |
 | ✅ A9 | Instagram: tipo (Feed, Carrusel, Reel, Story) (falta el control en C8) | listo (backend) |
 | ✅ A10 | Threads: hijos del carrusel, esperar el contenedor, no duplicar el hilo | listo |
 | ✅ A11 | Postproxy: `account_ref` propio; id y link del video del estado | listo |
-| A12 | Errores de Zernio: `response.status` y `errorMessage` | ⬜ |
+| ✅ A12 | Errores de Zernio (el SDK **lanza**: `.statusCode`, no `.status`) y `errorMessage` | listo |
 | ✅ A13 | Recalcular el estado y avisar en todo final | listo |
 | ✅ A14 | Barrido de filas trabadas en `publishing` | listo |
-| A15 | Idempotencia con Zernio (`x-request-id`) | ⬜ |
+| ✅ A15 | Idempotencia con Zernio (`x-request-id`; ventana de ~5 min anotada) | listo |
 | ✅ A16 | El mapa de cuentas filtra `is_active` | listo |
 | ✅ A17 | YouTube: subida en su propia ruta; visibilidad guardada (falta el control en C8) | listo (backend) |
 | ✅ A18 | `canRedistribute` y `duplicateAsVariant` conectados (falta el boton en C) | listo (backend) |
 | ✅ A19 | Fechas en la zona del workspace | listo |
 | ✅ A20 | Programar pide el permiso `content.publish` | listo |
-| — | `scripts/verify-publishing.mjs` de punta a punta | ⬜ |
+| ✅ — | `scripts/verify-publishing.mjs` de punta a punta: **Todo verde** | listo |
 
 ## D · Zernio programa del lado del proveedor (11 puntos)
 
 | # | Que | Estado |
 |---|---|---|
-| D1 | Programar = `createPost` con `scheduledFor` + `timezone`, un post por red | ⬜ |
-| D2 | Publicar ahora = `createPost` con `publishNow` | ⬜ |
-| D3 | Reprogramar o editar = `updatePost` | ⬜ |
-| D4 | Desprogramar = `deletePost`; reintentar = `retryPost` | ⬜ |
-| D5 | Media a Zernio en un job, con cache en `provider_media` | ⬜ |
-| D6 | Estado por webhook + conciliacion con `getPost` y `listPosts` | ⬜ |
-| D7 | Id de pedido estable | ⬜ |
-| D8 | Cola con `getNextQueueSlot` (nice-to-have) | ⬜ |
-| D9 | Postproxy: ver si acepta `scheduled_at` | ⬜ |
-| D10 | El despachador queda para YouTube, LinkedIn y Threads | ⬜ |
-| D11 | `verify-publishing.mjs` cubre los dos caminos | ⬜ |
+| ✅ D1 | Programar = `createPost` con `scheduledFor` + `timezone`, un post por red | listo |
+| ✅ D2 | Publicar ahora = `createPost` con `publishNow` | listo |
+| ✅ D3 | Reprogramar o editar = `updatePost` (con `isDraft: false`) | listo |
+| ✅ D4 | Desprogramar = `deletePost`; reintentar = `retryPost` | listo |
+| ✅ D5 | Media a Zernio en un job, con cache en `provider_media` | listo |
+| ✅ D6 | Estado por webhook + conciliacion con `getPost` (el barrido diario con `listPosts` no hizo falta: la conciliacion cubre el caso) | listo |
+| ✅ D7 | Id de pedido estable (`socialPostId:intento`) | listo |
+| ⏭️ D8 | Cola con `getNextQueueSlot` | **anotado en PENDIENTE** (hace falta el id de perfil de Zernio, que no se guarda) |
+| ⏭️ D9 | Postproxy: acepta `scheduled_at` pero **no documenta borrar ni editar** | **anotado en PENDIENTE**: queda en el despachador |
+| ✅ D10 | El despachador queda para YouTube, LinkedIn y Threads | listo |
+| ✅ D11 | `verify-publishing.mjs` cubre los dos caminos | listo |
+
+### Hallazgos fuera de la lista
+
+| Que | Estado |
+|---|---|
+| **El `upsert` de `social_posts` no podia funcionar NUNCA**: el indice unico es parcial y PostgREST no le puede apuntar un `on_conflict`. Ninguna fila de publicacion se creaba jamas. Lo encontro `verify-publishing.mjs`; los tests no lo veian porque la base en memoria no tiene indices. | ✅ arreglado (buscar-y-escribir) |
+| **Programar devolvia `ok: true` sin haber programado nada.** | ✅ arreglado |
+| `agent_runs` tiene dos CHECK sobre `source` y el viejo rechaza `content_copy` | ⬜ se arregla en E |
 
 ## B · Selector de dashboards (3 puntos)
 

@@ -20,6 +20,14 @@ export const CONTENT_PUBLISH_JOB = "content_publish";
  */
 export const CONTENT_UPLOAD_JOB = "content_upload";
 
+/**
+ * Agenda la publicacion del lado del proveedor (D1).
+ *
+ * Sube la media a Zernio y crea el post con su fecha. Corre en la ruta de
+ * las subidas largas porque puede tardar lo mismo: un video de 200 MB.
+ */
+export const CONTENT_PROVIDER_SCHEDULE_JOB = "content_provider_schedule";
+
 /** Vuelve a preguntar por una publicacion que quedo en proceso. */
 export const CONTENT_PUBLISH_CHECK_JOB = "content_publish_check";
 
@@ -40,9 +48,13 @@ export function jobTypeForPublisher(publisher: string | null | undefined): strin
     : CONTENT_PUBLISH_JOB;
 }
 
+/** Los que corren en /api/cron/content-upload, de a uno y con mas tiempo. */
+export const SLOW_JOB_TYPES = [CONTENT_UPLOAD_JOB, CONTENT_PROVIDER_SCHEDULE_JOB] as const;
+
 export const CONTENT_JOB_TYPES = [
   CONTENT_PUBLISH_JOB,
   CONTENT_UPLOAD_JOB,
+  CONTENT_PROVIDER_SCHEDULE_JOB,
   CONTENT_PUBLISH_CHECK_JOB,
   CONTENT_COPY_JOB,
 ] as const;

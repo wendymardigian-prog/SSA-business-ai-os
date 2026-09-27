@@ -93,7 +93,9 @@ describe("A3 · publicar ahora", () => {
     const result = await scheduleNetworks({ postId: POST, platform: "instagram", now: true });
 
     expect(result.ok).toBe(true);
-    expect(db.rows("social_posts")[0].status).toBe("scheduled");
+    // Instagram va por Zernio, que agenda de su lado: la fila arranca
+    // subiendo la media y pasa a programada cuando el post existe alla.
+    expect(db.rows("social_posts")[0].status).toBe("uploading");
   });
 
   it("tambien publica ahora una red cuya fecha ya paso", async () => {
@@ -116,15 +118,27 @@ function applyJobDefaults() {
 }
 
 describe("A4 · reprogramar no deja el job viejo", () => {
+  /** Con un publicador que NO agenda de su lado: ahi el job lleva la hora. */
+  function seedYoutube(at: string) {
+    seed({
+      networks: [{ platform: "youtube", planned_at: at, options: {} }],
+      accounts: [
+        { id: "acc-yt", workspace_id: WS, platform: "youtube", is_active: true, default_publisher: "youtube_api" },
+      ],
+    });
+  }
+
   it("borra el job pendiente antes de agendar el nuevo", async () => {
+    const enUnaHora = new Date(Date.now() + 60 * 60_000).toISOString();
+    seedYoutube(enUnaHora);
+
     await scheduleNetworks({ postId: POST });
     applyJobDefaults();
-    const first = db.rows("scheduled_jobs").filter((j) => j.status === "pending");
-    expect(first).toHaveLength(1);
+    expect(db.rows("scheduled_jobs").filter((j) => j.status === "pending")).toHaveLength(1);
 
     const enDosHoras = new Date(Date.now() + 120 * 60_000).toISOString();
     db.rows("content_posts")[0].networks = [
-      { platform: "instagram", planned_at: enDosHoras, options: {} },
+      { platform: "youtube", planned_at: enDosHoras, options: {} },
     ];
 
     await scheduleNetworks({ postId: POST });
@@ -134,6 +148,45 @@ describe("A4 · reprogramar no deja el job viejo", () => {
     const pending = db.rows("scheduled_jobs").filter((j) => j.status === "pending");
     expect(pending).toHaveLength(1);
     expect(new Date(String(pending[0].run_at)).toISOString()).toBe(enDosHoras);
+  });
+
+  it("tampoco deja dos con el camino de Zernio", async () => {
+    await scheduleNetworks({ postId: POST });
+    applyJobDefaults();
+    await scheduleNetworks({ postId: POST });
+    applyJobDefaults();
+
+    expect(db.rows("scheduled_jobs").filter((j) => j.status === "pending")).toHaveLength(1);
+  });
+});
+
+describe("D1 · quien agenda, segun el publicador", () => {
+  it("Zernio agenda de su lado: la fila espera subiendo y el job corre ya", async () => {
+    await scheduleNetworks({ postId: POST });
+
+    expect(db.rows("social_posts")[0].status).toBe("uploading");
+    const jobs = db.rows("scheduled_jobs");
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].type).toBe("content_provider_schedule");
+    // No espera a la hora de salida: eso lo hace Zernio.
+    expect(new Date(String(jobs[0].run_at)).getTime()).toBeLessThan(Date.now() + 60_000);
+  });
+
+  it("un publicador que NO agenda sigue por la cola, a su hora", async () => {
+    const enUnaHora = new Date(Date.now() + 60 * 60_000).toISOString();
+    seed({
+      networks: [{ platform: "youtube", planned_at: enUnaHora, options: {} }],
+      accounts: [
+        { id: "acc-yt", workspace_id: WS, platform: "youtube", is_active: true, default_publisher: "youtube_api" },
+      ],
+    });
+
+    await scheduleNetworks({ postId: POST });
+
+    expect(db.rows("social_posts")[0].status).toBe("scheduled");
+    const jobs = db.rows("scheduled_jobs");
+    expect(jobs[0].type).toBe("content_upload");
+    expect(new Date(String(jobs[0].run_at)).toISOString()).toBe(enUnaHora);
   });
 });
 

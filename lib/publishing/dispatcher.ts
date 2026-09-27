@@ -324,7 +324,7 @@ async function accountRefOf(
  * y si no, lo base. Que el editor muestre una cosa y se publique otra seria
  * el peor error posible de este modulo.
  */
-async function buildInput(
+export async function buildInput(
   supabase: Db,
   row: {
     content_post_id: string | null;

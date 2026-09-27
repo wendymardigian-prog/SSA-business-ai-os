@@ -137,3 +137,59 @@ describe("aplicar el aviso (F35)", () => {
     expect(memory.rows("social_posts")[0].status).toBe("publishing");
   });
 });
+
+// ── D6 · el aviso de un post agendado en Zernio ────────────────────────────
+
+describe("D6 · el webhook cierra una publicacion AGENDADA en el proveedor", () => {
+  const base = (status: string) =>
+    memoryDb({
+      social_posts: [
+        {
+          id: "sp-1",
+          workspace_id: "ws-1",
+          content_post_id: "post-1",
+          platform: "instagram",
+          publisher: "zernio",
+          publisher_ref: "zp-1",
+          status,
+          deleted_at: null,
+        },
+      ],
+      content_posts: [{ id: "post-1", workspace_id: "ws-1", status: "scheduled", networks: [] }],
+      social_accounts: [],
+      triggers: [],
+      notifications: [],
+    });
+
+  const evento = {
+    ref: "zp-1",
+    platform: "instagram",
+    result: { status: "published" as const, externalId: "ig-9", externalUrl: "https://ig/9" },
+  };
+
+  it("una fila `scheduled` se cierra: con Zernio agendando, nadie la pone en publicando", async () => {
+    const db = base("scheduled");
+
+    expect(await settlePublication(db.client, evento)).toBe(true);
+    expect(db.rows("social_posts")[0]).toMatchObject({
+      status: "published",
+      external_post_id: "ig-9",
+    });
+    expect(db.rows("content_posts")[0].status).toBe("published");
+  });
+
+  it("una que todavia sube la media tambien", async () => {
+    const db = base("uploading");
+    expect(await settlePublication(db.client, evento)).toBe(true);
+  });
+
+  it("una ya resuelta no se pisa: el aviso llego tarde", async () => {
+    const db = base("published");
+    expect(await settlePublication(db.client, evento)).toBe(false);
+  });
+
+  it("una cancelada tampoco", async () => {
+    const db = base("cancelled");
+    expect(await settlePublication(db.client, evento)).toBe(false);
+  });
+});

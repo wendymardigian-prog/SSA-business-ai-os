@@ -64,6 +64,56 @@ export interface PublishResult {
   progress?: Record<string, unknown>;
 }
 
+/**
+ * Programar del lado del proveedor (grupo D).
+ *
+ * Zernio sabe agendar: se le pasa la fecha y la zona, y publica el. Eso es
+ * mejor que guardar la fecha y pedirle "publica ahora" a esa hora, porque
+ * saca del medio a nuestro cron: no hay job que sobreviva a un reprogramado,
+ * ni fila que quede trabada, ni reintento propio que pueda duplicar.
+ *
+ * Es opcional: el publicador que no lo declara sigue por el despachador.
+ * Un solo lugar decide cual es cual, asi sumar un proveedor que programe de
+ * su lado no toca a quien llama.
+ */
+export interface ScheduleRequest {
+  input: PublishInput;
+  credentials: PublishCredentials;
+  /** Cuando sale, en ISO. Ignorado si `now`. */
+  at: string;
+  /** La zona del workspace: Zernio interpreta la fecha con ella. */
+  timezone: string;
+  /**
+   * Id de pedido estable.
+   *
+   * Si la red se corta despues de que el proveedor acepto, el reintento
+   * manda el mismo id y recibe el post original en vez de crear otro.
+   */
+  requestId: string;
+  /** Publicar ya, en vez de esperar la fecha. */
+  now?: boolean;
+  fetchImpl?: FetchLike;
+}
+
+export interface ProviderScheduler {
+  /** Crea el post agendado. Devuelve la referencia del proveedor. */
+  create(request: ScheduleRequest): Promise<{ ref: string }>;
+  /** Cambia fecha, texto, media u opciones de uno ya agendado. */
+  update(request: ScheduleRequest & { ref: string }): Promise<void>;
+  /** Lo saca de la agenda del proveedor. */
+  cancel(params: {
+    ref: string;
+    credentials: PublishCredentials;
+    fetchImpl?: FetchLike;
+  }): Promise<void>;
+  /** Vuelve a intentar uno que fallo, del lado del proveedor. */
+  retry(params: {
+    ref: string;
+    credentials: PublishCredentials;
+    fetchImpl?: FetchLike;
+  }): Promise<void>;
+}
+
 export interface Publisher {
   id: PublisherId;
   /** Las redes que sabe publicar. */
@@ -84,4 +134,16 @@ export interface Publisher {
     credentials: PublishCredentials;
     fetchImpl?: FetchLike;
   }): Promise<PublishResult>;
+  /**
+   * Si lo tiene, este publicador agenda del lado del proveedor y NO usa la
+   * cola de publicacion (D). Si no, sigue por el despachador.
+   */
+  scheduler?: ProviderScheduler;
+  /**
+   * Si la media tiene que vivir en el proveedor antes de agendar.
+   *
+   * Un link firmado nuestro vence en 24 horas; un post programado para la
+   * semana que viene lo encontraria muerto.
+   */
+  uploadsMedia?: boolean;
 }

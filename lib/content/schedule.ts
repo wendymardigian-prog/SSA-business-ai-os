@@ -208,7 +208,11 @@ export function canUnschedule(
   if (publication.status === "publishing") {
     return { ok: false, error: "Se esta publicando en este momento." };
   }
-  if (publication.status !== "scheduled" && publication.status !== "failed") {
+  // `uploading` tambien se puede: la media se esta subiendo al proveedor y
+  // todavia no hay nada agendado alla, asi que cancelarlo es mas facil, no
+  // menos (D5).
+  const cancelable = ["scheduled", "failed", "uploading"];
+  if (!publication.status || !cancelable.includes(publication.status)) {
     return { ok: false, error: "Esa red no esta programada." };
   }
 
