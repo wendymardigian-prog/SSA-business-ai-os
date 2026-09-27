@@ -29,7 +29,7 @@ function mediaItems(input: PublishInput) {
 }
 
 /** Las opciones de Instagram, tal como las nombra el SDK. */
-function instagramData(options: Record<string, unknown>) {
+export function instagramData(options: Record<string, unknown>) {
   const contentType = options.contentType;
   return {
     // El SDK solo declara 'story': feed y Reel los decide por la media.
@@ -38,19 +38,40 @@ function instagramData(options: Record<string, unknown>) {
     ...(Array.isArray(options.collaborators) && options.collaborators.length > 0
       ? { collaborators: options.collaborators as string[] }
       : {}),
+    ...(typeof options.coverOffsetMs === "number" ? { thumbOffset: options.coverOffsetMs } : {}),
   };
 }
 
-/** Las de TikTok. `mode: draft` va al Creator Inbox. */
-function tiktokData(options: Record<string, unknown>) {
+/**
+ * Las de TikTok. `mode: draft` va al Creator Inbox.
+ *
+ * `privacyLevel`, `contentPreviewConfirmed` y `expressConsentGiven` son
+ * OBLIGATORIOS para publicar (A8): sin ellos TikTok rechaza el post con un
+ * error que no explica nada. La validacion los pide antes de programar, asi
+ * que aca ya vienen; se mandan igual con lo que haya para no publicar algo
+ * distinto de lo que se eligio.
+ */
+export function tiktokData(options: Record<string, unknown>) {
+  const draft = options.mode === "draft";
   return {
-    ...(options.mode === "draft" ? { draft: true } : {}),
+    ...(draft ? { draft: true } : {}),
+    ...(typeof options.privacyLevel === "string" ? { privacyLevel: options.privacyLevel } : {}),
     ...(typeof options.allowComment === "boolean" ? { allowComment: options.allowComment } : {}),
     ...(typeof options.allowDuet === "boolean" ? { allowDuet: options.allowDuet } : {}),
     ...(typeof options.allowStitch === "boolean" ? { allowStitch: options.allowStitch } : {}),
     ...(typeof options.commercialContentType === "string"
       ? { commercialContentType: options.commercialContentType }
       : {}),
+    ...(typeof options.coverOffsetMs === "number"
+      ? { videoCoverTimestampMs: options.coverOffsetMs }
+      : {}),
+    // Un borrador no se publica: TikTok no pide las confirmaciones.
+    ...(draft
+      ? {}
+      : {
+          contentPreviewConfirmed: options.contentPreviewConfirmed === true,
+          expressConsentGiven: options.expressConsentGiven === true,
+        }),
   };
 }
 

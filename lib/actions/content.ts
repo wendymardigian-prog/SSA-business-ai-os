@@ -6,6 +6,8 @@ import { logAudit } from "@/lib/audit";
 import { validateIdea, draftFromIdea, type IdeaInput } from "@/lib/content/ideas";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
+import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
+import { defaultOptionsFor } from "@/lib/content/network-options";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
@@ -629,4 +631,149 @@ export async function savePostDraft(input: {
     ok: true,
     data: { updatedAt: updated.updated_at, staleWarning: stale, rescheduleWarnings },
   };
+}
+
+// ── Redistribucion y variantes (A18) ─────────────────────────────────────
+
+/**
+ * Agrega una red a una pieza que ya salio (F28).
+ *
+ * `canRedistribute` existia desde el bloque 4 y no la llamaba nadie: la
+ * pantalla no tenia por donde. Lo que decide esta ahi; aca se lee el estado,
+ * se aplica y, si el copy cambio despues de aprobar, esa red vuelve a
+ * revision en vez de salir con algo que nadie aprobo.
+ */
+export async function redistributeToNetwork(input: {
+  postId: string;
+  platform: string;
+}): Promise<ContentActionResult<{ needsReview: boolean; reason?: string }>> {
+  const { workspace, supabase } = await contentContext();
+
+  const { data: post } = await supabase
+    .from("content_posts")
+    .select("id, status, networks, approved_at, updated_at")
+    .eq("id", input.postId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!post) return { ok: false, error: "No encontre esa pieza" };
+
+  const [{ data: publications }, { data: accounts }] = await Promise.all([
+    supabase.from("social_posts").select("platform").eq("content_post_id", post.id).is("deleted_at", null),
+    supabase
+      .from("social_accounts")
+      .select("platform")
+      .eq("workspace_id", workspace.id)
+      .eq("is_active", true),
+  ]);
+
+  const decision = canRedistribute(input.platform, {
+    postStatus: post.status as ContentPostStatus,
+    publishedPlatforms: (publications ?? []).map((p) => p.platform),
+    connected: (accounts ?? []).map((a) => a.platform),
+    baseChangedSinceApproval: Boolean(
+      post.approved_at && post.updated_at && post.updated_at > post.approved_at,
+    ),
+  });
+
+  if (!decision.ok) return { ok: false, error: decision.error };
+
+  const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
+    platform?: string;
+  }>;
+  if (networks.some((n) => n.platform === input.platform)) {
+    return { ok: false, error: `Esa pieza ya tiene ${input.platform}.` };
+  }
+
+  const { error } = await supabase
+    .from("content_posts")
+    .update({
+      networks: [
+        ...networks,
+        {
+          platform: input.platform,
+          planned_at: null,
+          options: defaultOptionsFor(input.platform),
+          // Vuelve a revision: lo que saldria no es lo que se aprobo.
+          needs_review: decision.needsReview,
+        },
+      ] as never,
+      ...(decision.needsReview ? { status: "in_review" } : {}),
+    })
+    .eq("id", post.id);
+
+  if (error) return { ok: false, error: "No pude agregar la red" };
+
+  revalidatePath(CONTENT_PATH);
+  return {
+    ok: true,
+    data: {
+      needsReview: decision.needsReview,
+      ...(decision.needsReview ? { reason: decision.reason } : {}),
+    },
+  };
+}
+
+/**
+ * Copia una pieza como variante para otra red (F28).
+ *
+ * `duplicateAsVariant` tampoco la llamaba nadie. Nace en borrador y sin
+ * fechas: heredarlas programaria dos piezas para el mismo momento sin que
+ * nadie lo haya pedido.
+ */
+export async function duplicatePostAsVariant(input: {
+  postId: string;
+}): Promise<ContentActionResult<{ id: string }>> {
+  const { workspace, user, supabase } = await contentContext();
+
+  const { data: source } = await supabase
+    .from("content_posts")
+    .select("id, idea_id, title, format, copy, caption, networks, media")
+    .eq("id", input.postId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!source) return { ok: false, error: "No encontre esa pieza" };
+
+  const variant = duplicateAsVariant({
+    id: source.id,
+    idea_id: source.idea_id,
+    title: source.title,
+    format: source.format,
+    copy: (source.copy ?? {}) as Record<string, unknown>,
+    caption: source.caption,
+    networks: (Array.isArray(source.networks) ? source.networks : []) as never,
+    media: Array.isArray(source.media) ? source.media : [],
+  });
+
+  const { data: created, error } = await supabase
+    .from("content_posts")
+    .insert({
+      workspace_id: workspace.id,
+      created_by: user.id,
+      ...variant,
+      networks: variant.networks as never,
+      media: variant.media as never,
+      copy: variant.copy as never,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error || !created) {
+    console.error("[content] no pude duplicar la pieza:", error?.message);
+    return { ok: false, error: "No pude duplicar la pieza" };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "channel",
+    entityId: workspace.id,
+    action: "create",
+    metadata: { kind: "content_duplicated", from: source.id, to: created.id },
+    performedBy: user.id,
+  });
+
+  revalidatePath(CONTENT_PATH);
+  return { ok: true, data: { id: created.id } };
 }

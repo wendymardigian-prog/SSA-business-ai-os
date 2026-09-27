@@ -15,6 +15,7 @@ import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistri
 import type { ExistingPublication } from "@/lib/content/schedule";
 import type { MediaEntry } from "@/lib/content/media";
 import type { StoredVersion } from "@/lib/content/versions";
+import { datetimeInputToIso, isoToDatetimeInput, timeZoneLabel } from "@/lib/dates";
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -327,16 +328,22 @@ export function PostEditor({
 
                     {open && (
                       <div className="space-y-3 border-t border-border p-3">
-                        <Field label="Fecha y hora">
+                        <Field
+                          label="Fecha y hora"
+                          hint={`Hora de ${timeZone} (${timeZoneLabel(timeZone)}).`}
+                        >
                           <input
                             type="datetime-local"
-                            value={toLocalInput(network.planned_at ?? null)}
+                            value={isoToDatetimeInput(network.planned_at ?? null, timeZone)}
                             onChange={(e) =>
                               edit(
                                 "networks",
                                 draft.networks.map((n, i) =>
                                   i === index
-                                    ? { ...n, planned_at: fromLocalInput(e.target.value) }
+                                    ? {
+                                        ...n,
+                                        planned_at: datetimeInputToIso(e.target.value, timeZone),
+                                      }
                                     : n,
                                 ),
                               )
@@ -546,17 +553,3 @@ function Field({
   );
 }
 
-/** ISO a lo que espera un input datetime-local (hora del navegador). */
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function fromLocalInput(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}

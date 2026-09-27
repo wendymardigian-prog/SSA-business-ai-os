@@ -13,6 +13,7 @@
 
 import { formatBytes, formatSeconds, limitsFor, YOUTUBE_SHORT_MAX_SECONDS } from "./limits";
 import type { MediaEntry } from "./media";
+import { missingRequiredOptions } from "./network-options";
 
 export interface NetworkContent {
   platform: string;
@@ -162,6 +163,13 @@ export function validateNetwork(
       // el proveedor con un error que no explica nada.
       error("En TikTok solo se puede publicar en publico o dejarlo como borrador.");
     }
+  }
+
+  // Lo que la red EXIGE y todavia no esta elegido (A8). Va como error: sin
+  // esto el proveedor rechaza la publicacion con un mensaje que no explica
+  // nada, y eso se descubre recien a la hora de salir.
+  for (const message of missingRequiredOptions(content.platform, content.options)) {
+    error(message);
   }
 
   if (content.platform === "linkedin" && videos.length > 0 && images.length > 0) {

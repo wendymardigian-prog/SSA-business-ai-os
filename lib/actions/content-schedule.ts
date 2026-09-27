@@ -6,7 +6,7 @@ import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { scheduleJob } from "@/lib/scheduler";
-import { CONTENT_PUBLISH_JOB } from "@/lib/content/jobs";
+import { CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB, jobTypeForPublisher } from "@/lib/content/jobs";
 import {
   canScheduleNetwork,
   canUnschedule,
@@ -38,6 +38,8 @@ interface PostForSchedule {
   id: string;
   status: string;
   networks: NetworkPlan[];
+  /** Las opciones de cada red, para dejar anotado que se pidio (A17). */
+  options: Record<string, Record<string, unknown>>;
   publications: Array<{ platform: string; status: SocialPostStatus | null; scheduledAt: string | null }>;
 }
 
@@ -65,6 +67,7 @@ async function loadPost(
     platform?: string;
     planned_at?: string | null;
     publisher?: string | null;
+    options?: Record<string, unknown> | null;
   }>;
 
   return {
@@ -75,6 +78,9 @@ async function loadPost(
       plannedAt: n.planned_at ?? null,
       publisher: n.publisher ?? null,
     })),
+    options: Object.fromEntries(
+      networks.map((n) => [String(n.platform ?? ""), n.options ?? {}]),
+    ),
     publications: (publications ?? []).map((p) => ({
       platform: p.platform,
       status: p.status,
@@ -127,12 +133,16 @@ async function deletePendingPublishJobs(
   service: Awaited<ReturnType<typeof createServiceClient>>,
   socialPostId: string,
 ) {
-  await service
-    .from("scheduled_jobs")
-    .delete()
-    .eq("type", CONTENT_PUBLISH_JOB)
-    .eq("status", "pending")
-    .contains("payload", { socialPostId });
+  // Los dos tipos: una subida larga se encola como `content_upload` y el
+  // resto como `content_publish` (A17).
+  for (const type of [CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB]) {
+    await service
+      .from("scheduled_jobs")
+      .delete()
+      .eq("type", type)
+      .eq("status", "pending")
+      .contains("payload", { socialPostId });
+  }
 }
 
 /** Recalcula el estado de la pieza a partir de sus publicaciones. */
@@ -242,6 +252,10 @@ export async function scheduleNetworks(input: {
           origin: "system",
           status: "scheduled",
           scheduled_at: entry.at,
+          // Que visibilidad se pidio, para poder comparar con como quedo
+          // (YouTube puede dejarlo privado hasta que Google audite la app).
+          requested_visibility:
+            (post.options[entry.platform]?.visibility as string | undefined) ?? null,
           attempts: 0,
         },
         { onConflict: "content_post_id,platform" },
@@ -263,7 +277,7 @@ export async function scheduleNetworks(input: {
     try {
       job = await scheduleJob(
         service,
-        CONTENT_PUBLISH_JOB,
+        jobTypeForPublisher(entry.publisher),
         { socialPostId: row.id, workspaceId: workspace.id },
         new Date(entry.at),
       );

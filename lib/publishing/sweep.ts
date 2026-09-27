@@ -49,7 +49,7 @@ export async function sweepStuckPublications(
 
   const { data: rows, error } = await supabase
     .from("social_posts")
-    .select("id, workspace_id, publisher_ref, updated_at")
+    .select("id, workspace_id, publisher, publisher_ref, updated_at")
     .eq("status", "publishing")
     .lt("updated_at", cutoff)
     .is("deleted_at", null)
@@ -80,7 +80,7 @@ export async function sweepStuckPublications(
     }
 
     try {
-      await schedulePublish(supabase, row.id, row.workspace_id, 0);
+      await schedulePublish(supabase, row.id, row.workspace_id, 0, row.publisher);
       recovered++;
     } catch (err) {
       // Queda en `failed` con el motivo: se ve en la pantalla y se puede

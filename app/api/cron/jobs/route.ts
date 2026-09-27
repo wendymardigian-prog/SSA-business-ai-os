@@ -16,6 +16,7 @@ import { outboundMessageRow } from "@/lib/messages/outbound";
 import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { sweepStuckPublications } from "@/lib/publishing/sweep";
+import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -110,6 +111,9 @@ export async function GET(request: NextRequest) {
     // cada 15 s, sin reintentos). Si este runner los tomara, caerian en el
     // default de processJob y se marcarian completados sin responder.
     .neq("type", AGENT_BURST_JOB)
+    // Las subidas largas corren en /api/cron/content-upload, de a una y con
+    // su propio limite de tiempo: aca le sacarian el turno al resto (A17).
+    .neq("type", CONTENT_UPLOAD_JOB)
     .order("run_at", { ascending: true })
     .limit(20);
 

@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { CONTENT_PUBLISH_JOB, CONTENT_PUBLISH_CHECK_JOB } from "@/lib/content/jobs";
+import { CONTENT_PUBLISH_JOB, CONTENT_PUBLISH_CHECK_JOB, CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
 import { runPublication, runPublicationCheck, type PublishDeps } from "@/lib/publishing/dispatcher";
@@ -96,5 +96,8 @@ async function handlePublishCheck({ supabase, job }: JobContext): Promise<void> 
 
 export function registerContentPublishHandlers(): void {
   registerJobHandler(CONTENT_PUBLISH_JOB, handlePublish);
+  // El mismo trabajo, en su propia ruta: lo unico que cambia es quien lo
+  // corre y con cuanto tiempo (A17).
+  registerJobHandler(CONTENT_UPLOAD_JOB, handlePublish);
   registerJobHandler(CONTENT_PUBLISH_CHECK_JOB, handlePublishCheck);
 }

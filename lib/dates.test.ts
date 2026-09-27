@@ -6,6 +6,9 @@ import {
   isoToDateInput,
   formatDateOnly,
   APP_TIMEZONE,
+  datetimeInputToIso,
+  isoToDatetimeInput,
+  timeZoneLabel,
 } from "./dates";
 
 /**
@@ -144,5 +147,43 @@ describe("fechas sueltas (el proximo seguimiento)", () => {
     expect(isoToDateInput(null)).toBe("");
     expect(isoToDateInput("no es una fecha")).toBe("");
     expect(formatDateOnly(null)).toBe("");
+  });
+});
+
+// ── A19 · fecha y hora en la zona del workspace ────────────────────────────
+
+describe("datetime-local en la zona del workspace (A19)", () => {
+  it("las 15:00 en Costa Rica son las 21:00 UTC", () => {
+    expect(datetimeInputToIso("2026-10-01T15:00", "America/Costa_Rica")).toBe(
+      "2026-10-01T21:00:00.000Z",
+    );
+  });
+
+  it("las mismas 15:00 en Buenos Aires son las 18:00 UTC", () => {
+    // El mismo texto en el input significa otro instante segun la zona: por
+    // eso no puede salir de la del navegador.
+    expect(datetimeInputToIso("2026-10-01T15:00", "America/Argentina/Buenos_Aires")).toBe(
+      "2026-10-01T18:00:00.000Z",
+    );
+  });
+
+  it("ida y vuelta da lo mismo", () => {
+    const iso = datetimeInputToIso("2026-10-01T15:00", "America/Costa_Rica")!;
+    expect(isoToDatetimeInput(iso, "America/Costa_Rica")).toBe("2026-10-01T15:00");
+  });
+
+  it("la medianoche se escribe 00 y no 24", () => {
+    const iso = datetimeInputToIso("2026-10-01T00:00", "America/Costa_Rica")!;
+    expect(isoToDatetimeInput(iso, "America/Costa_Rica")).toBe("2026-10-01T00:00");
+  });
+
+  it("un valor que no se entiende no rompe", () => {
+    expect(datetimeInputToIso("", "America/Costa_Rica")).toBeNull();
+    expect(datetimeInputToIso("cualquier cosa", "America/Costa_Rica")).toBeNull();
+    expect(isoToDatetimeInput(null, "America/Costa_Rica")).toBe("");
+  });
+
+  it("la etiqueta de la zona sirve para mostrarla al lado del campo", () => {
+    expect(timeZoneLabel("America/Costa_Rica", new Date("2026-10-01T12:00:00Z"))).toContain("GMT");
   });
 });

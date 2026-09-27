@@ -26,8 +26,9 @@ Nada programado que romper.
 | # | Nombre | Grupo | Estado |
 |---|---|---|---|
 | 00091 | `publish_progress` (que paso de la publicacion ya salio) | A | ✅ aplicada, idempotente |
-| 00092 | `zernio_native_scheduling` | D | ⬜ sin escribir |
-| 00093 | `copywriter_agent` | E | ⬜ sin escribir |
+| 00092 | `content_upload_cron` (ruta propia de las subidas largas) | A | ✅ aplicada |
+| 00093 | `zernio_native_scheduling` | D | ⬜ sin escribir |
+| 00094 | `copywriter_agent` | E | ⬜ sin escribir |
 
 ## A · Publicacion automatica (20 puntos)
 
@@ -42,8 +43,8 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ A5 | Cambiar la fecha en el editor reprograma | listo |
 | ✅ A6 | Un unico "al publicarse" que usan los tres caminos | listo |
 | A7 | `SUBSCRIBED_EVENTS` suma `post.platform.published` / `.failed` | ⬜ |
-| A8 | TikTok manda `privacyLevel` y las dos confirmaciones | ⬜ |
-| A9 | Instagram: tipo (Feed, Carrusel, Reel, Story) | ⬜ |
+| ✅ A8 | TikTok manda `privacyLevel` y las dos confirmaciones (falta el control en C8) | listo (backend) |
+| ✅ A9 | Instagram: tipo (Feed, Carrusel, Reel, Story) (falta el control en C8) | listo (backend) |
 | ✅ A10 | Threads: hijos del carrusel, esperar el contenedor, no duplicar el hilo | listo |
 | ✅ A11 | Postproxy: `account_ref` propio; id y link del video del estado | listo |
 | A12 | Errores de Zernio: `response.status` y `errorMessage` | ⬜ |
@@ -51,9 +52,9 @@ Regla: **primero el test que reproduce el error, en rojo.**
 | ✅ A14 | Barrido de filas trabadas en `publishing` | listo |
 | A15 | Idempotencia con Zernio (`x-request-id`) | ⬜ |
 | ✅ A16 | El mapa de cuentas filtra `is_active` | listo |
-| A17 | YouTube: visibilidad elegible y subida en su propia ruta | ⬜ |
-| A18 | Conectar `canRedistribute` y `duplicateAsVariant` | ⬜ |
-| A19 | Fechas en la zona del workspace | ⬜ |
+| ✅ A17 | YouTube: subida en su propia ruta; visibilidad guardada (falta el control en C8) | listo (backend) |
+| ✅ A18 | `canRedistribute` y `duplicateAsVariant` conectados (falta el boton en C) | listo (backend) |
+| ✅ A19 | Fechas en la zona del workspace | listo |
 | ✅ A20 | Programar pide el permiso `content.publish` | listo |
 | — | `scripts/verify-publishing.mjs` de punta a punta | ⬜ |
 

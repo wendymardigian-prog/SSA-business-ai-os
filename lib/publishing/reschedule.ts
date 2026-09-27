@@ -13,7 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { scheduleJob } from "@/lib/scheduler";
-import { CONTENT_PUBLISH_JOB } from "@/lib/content/jobs";
+import { CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB, jobTypeForPublisher } from "@/lib/content/jobs";
 
 type Db = SupabaseClient<Database>;
 
@@ -22,6 +22,12 @@ export async function reschedulePublication(
   supabase: Db,
   params: { socialPostId: string; workspaceId: string; at: string },
 ): Promise<boolean> {
+  const { data: row } = await supabase
+    .from("social_posts")
+    .select("publisher")
+    .eq("id", params.socialPostId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("social_posts")
     .update({ scheduled_at: params.at, status: "scheduled", last_error: null, last_error_kind: null })
@@ -35,17 +41,19 @@ export async function reschedulePublication(
     return false;
   }
 
-  await supabase
-    .from("scheduled_jobs")
-    .delete()
-    .eq("type", CONTENT_PUBLISH_JOB)
-    .eq("status", "pending")
-    .contains("payload", { socialPostId: params.socialPostId });
+  for (const type of [CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB]) {
+    await supabase
+      .from("scheduled_jobs")
+      .delete()
+      .eq("type", type)
+      .eq("status", "pending")
+      .contains("payload", { socialPostId: params.socialPostId });
+  }
 
   try {
     await scheduleJob(
       supabase,
-      CONTENT_PUBLISH_JOB,
+      jobTypeForPublisher(row?.publisher),
       { socialPostId: params.socialPostId, workspaceId: params.workspaceId },
       new Date(params.at),
     );

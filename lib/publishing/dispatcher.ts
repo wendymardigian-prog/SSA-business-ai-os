@@ -21,7 +21,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json, SocialPostStatus } from "@/lib/types/database";
 import { PublishError, classifyPublishError, humanizePublishError } from "@/lib/jobs/errors";
-import { CONTENT_PUBLISH_CHECK_JOB, CONTENT_PUBLISH_JOB } from "@/lib/content/jobs";
+import { CONTENT_PUBLISH_CHECK_JOB, jobTypeForPublisher } from "@/lib/content/jobs";
 import { aggregatePostStatus } from "@/lib/content/status";
 import { notifyPublishFailure } from "@/lib/notifications/content";
 import { liveMedia, type MediaEntry } from "@/lib/content/media";
@@ -273,7 +273,7 @@ export async function runPublication(
       .eq("id", socialPostId);
 
     if (decision.action === "retry") {
-      await schedulePublish(supabase, socialPostId, row.workspace_id, decision.delayMs);
+      await schedulePublish(supabase, socialPostId, row.workspace_id, decision.delayMs, row.publisher);
       return { kind: "retry", detail: `en ${Math.round(decision.delayMs / 60_000)} min` };
     }
 
@@ -380,11 +380,19 @@ async function buildInput(
   };
 }
 
-export async function schedulePublish(supabase: Db, socialPostId: string, workspaceId: string, delayMs: number) {
+export async function schedulePublish(
+  supabase: Db,
+  socialPostId: string,
+  workspaceId: string,
+  delayMs: number,
+  publisher?: string | null,
+) {
   try {
     await scheduleJob(
       supabase,
-      CONTENT_PUBLISH_JOB,
+      // Una subida larga va a su propia ruta, con su propio limite de
+      // tiempo, para no frenar el resto de la cola (A17).
+      jobTypeForPublisher(publisher),
       { socialPostId, workspaceId },
       new Date(Date.now() + delayMs),
     );
