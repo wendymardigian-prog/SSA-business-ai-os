@@ -1068,3 +1068,70 @@ decidió en su lugar*. Lo principal:
 - Las tarjetas de desglose del detalle de anuncios y las historias en vivo de
   Instagram quedaron para cuando haya cuentas conectadas contra las cuales
   medir el costo en cuota.
+
+---
+
+# El clasificador de mensajes (28 de septiembre de 2026)
+
+Dos problemas encadenados, y el segundo hacía al primero inofensivo: el handler
+de `bg_task` era `async () => {}`, y el despacho lo re-encolaba cada 15 minutos.
+229 jobs para 23 ventanas, todos completados sin hacer nada. Mientras el handler
+estuvo vacío, eso fue gratis.
+
+## Lo que se construyó
+
+- **00101**: índice único sobre `dedupe_key` acotado a `bg_task`, más la
+  limpieza de los 229 jobs y los 20 huérfanos de workspaces borrados.
+- **`lib/background/enqueue.ts`**: el encolado sale del cron, donde el 23505 se
+  lee como "ya estaba" y donde se puede testear.
+- **`lib/patterns/prompt.ts`**: el pedido al modelo y el parseo tolerante.
+- **`lib/patterns/classify-run.ts`**: la corrida, con topes, run y encadenado.
+- **`lib/jobs/handlers/bg-task.ts`**: el despacho por tarea.
+
+## Las decisiones que más costaron
+
+| Decisión | Por qué |
+|---|---|
+| **Índice acotado a `bg_task`, no único total sobre `dedupe_key`** | Un único total rompe la ventana de `agent_burst` (la parcialidad de la 00061 **es** el diseño: un mensaje que llega mientras el agente genera necesita insertar una fila `pending` nueva con la misma clave) y el cancel+reinsert de `booking_relative_trigger` en `backfillRelativeJobs`. |
+| **El índice y no una consulta previa** | Dos corridas del cron pueden solaparse; un chequeo del lado de la app no es atómico. |
+| **Una ventana fallida no se reencola** | Es lo que se pidió. No se pierde trabajo: la selección no mira ventanas, así que la corrida de mañana toma los mismos pendientes. Solo se posterga. |
+| **Modo siembra (12 categorías nuevas mientras el catálogo esté vacío)** | Con el tope de 3 de F20, la primera corrida creaba 3 categorías y mandaba ~540 textos a "Otro" con `source='model'`. Ningún lote los vuelve a mirar: el backlog se quemaba de forma irreversible. |
+| **El sobrante del tope queda pendiente, no va a "Otro"** | Mismo motivo. F20 dice "Otro"; diferirlo no pierde nada. |
+| **`generateText` + parseo tolerante, no `generateObject`** | `generateObject` ante un truncado lanza y se lleva el lote entero. Se pidió rescatar lo válido. |
+| **Índices cortos en vez de UUID** | 200 UUID de salida son ~8.000 tokens solo en identificadores, y cada uno es una oportunidad de alucinar. El ahorro (~$0,05) es lo de menos. |
+| **Un texto viaja al modelo una sola vez por corrida** | Sin eso, los diferidos vuelven a entrar en la vuelta siguiente y se pagan dos veces por el mismo resultado. |
+
+## Cuatro cosas que el pedido daba por ciertas y no lo eran
+
+1. **`requerimientos-bloque3-dashboards.md` no existe**, y no hay ninguna §8.2
+   sobre el clasificador. La especificación es F19–F22 de
+   `requerimientos-fase3-bloques-2e-3.md`, y coincide con lo pedido.
+2. **`normalize_message_text` no es la función del clasificador**: es la del
+   opt-out (00027). La de agrupación es `normalize_for_grouping` (00076). El
+   clasificador no necesita llamar a ninguna: la normalización ya está hecha en
+   la fila, y los vacíos van a "Solo emoji o adjunto" desde el trigger.
+3. **`agent_runs` tenía 1 fila, no 0**, del agente de chat, con
+   `status_detail='provider_unavailable'`.
+4. **Son 543 textos, no 541**: 310 inbound y 233 outbound, o sea 4 lotes.
+
+Y una buena: el CHECK `agent_runs_source_check` ya admitía
+`message_classification`, así que el run no necesitó migración.
+
+## El costo, con los números reales
+
+543 textos, 51.142 caracteres normalizados, `claude-haiku-4-5` a US$ 1/Mtok de
+entrada y US$ 5/Mtok de salida: **≈ US$ 0,06** la primera corrida, con techo de
+US$ 0,15 si hay una segunda pasada.
+
+La especificación estimaba "menos de un centavo" y se equivocaba por ~7×: le
+faltaba contar la salida, que a US$ 5/Mtok es dos tercios del costo. Sigue
+siendo trivial. Los centavos nunca fueron el problema; las 96 corridas del mismo
+día, sí.
+
+## Lo que queda
+
+En `docs/PENDIENTE.md`. Lo principal: la API de lote real de Anthropic (a seis
+centavos el histórico, el 50% de descuento no paga el pipeline asincrónico),
+`bg-collect` sigue sin trabajo porque no hay lotes en vuelo, y la pantalla de
+calidad del clasificador es del Bloque 5 — por ahora los resultados se miran por
+SQL.

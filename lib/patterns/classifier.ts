@@ -43,16 +43,25 @@ export async function selectPending(client: Db, workspaceId: string, direction: 
 export interface ApplyResult {
   classified: number;
   newCategories: number;
+  /** Nombres de las categorías creadas en esta corrida, para poder mirarlas después. */
+  newCategoryNames: string[];
   invalid: number;
-  toFallback: number;
+  /** Se pasó del tope de categorías nuevas: el texto queda para la próxima. */
+  deferred: number;
 }
 
 /**
  * Aplica lo que devolvió el modelo (F20). Reglas:
- *  - máximo 3 categorías nuevas por corrida; las que sobren van a "Otro".
+ *  - tope de categorías nuevas por corrida (`maxNewCategories`).
  *  - nunca toca filas con source 'human' o 'rule' (no están entre los pendientes).
  *  - un ítem inválido (sin categoría ni nueva, o id inexistente) queda sin
  *    clasificar y se cuenta como inválido.
+ *
+ * Lo que se pasa del tope **no se escribe**: el texto sigue con `source NULL` y
+ * entra a la corrida siguiente, cuando el catálogo ya tenga las categorías que
+ * le faltaban. F20 dice mandarlo a "Otro", pero eso lo deja clasificado para
+ * siempre y ningún lote lo vuelve a mirar: el texto se quema por una categoría
+ * que todavía no existía. Diferirlo no pierde nada, solo lo posterga.
  */
 export async function applyClassification(
   client: Db,
@@ -62,18 +71,19 @@ export async function applyClassification(
     items: unknown;
     pendingIds: Set<string>;
     existingCategoryIds: Set<string>;
-    fallbackCategoryId: string;
     runId: string | null;
     promptVersion: number;
+    maxNewCategories?: number;
     createCategory: (name: string, description: string | null) => Promise<string | null>;
     now?: Date;
   },
 ): Promise<ApplyResult> {
   const parsed = classifierOutputSchema.safeParse(args.items);
-  const result: ApplyResult = { classified: 0, newCategories: 0, invalid: 0, toFallback: 0 };
+  const result: ApplyResult = { classified: 0, newCategories: 0, newCategoryNames: [], invalid: 0, deferred: 0 };
   if (!parsed.success) return { ...result, invalid: args.pendingIds.size };
 
   const now = (args.now ?? new Date()).toISOString();
+  const maxNew = args.maxNewCategories ?? MAX_NEW_CATEGORIES;
   let newCats = 0;
 
   for (const item of parsed.data.items) {
@@ -86,19 +96,20 @@ export async function applyClassification(
     if (item.category_id && args.existingCategoryIds.has(item.category_id)) {
       categoryId = item.category_id;
     } else if (item.new_category) {
-      if (newCats < MAX_NEW_CATEGORIES) {
+      if (newCats < maxNew) {
         const created = await args.createCategory(item.new_category.name, item.new_category.description ?? null);
         if (created) {
           categoryId = created;
           args.existingCategoryIds.add(created);
           newCats += 1;
           result.newCategories += 1;
+          result.newCategoryNames.push(item.new_category.name);
         }
       }
       if (!categoryId) {
-        // Se pasó del tope de 3 nuevas: va a "Otro".
-        categoryId = args.fallbackCategoryId;
-        result.toFallback += 1;
+        // Se pasó del tope: sin escribir nada, para que vuelva a entrar mañana.
+        result.deferred += 1;
+        continue;
       }
     } else {
       result.invalid += 1;

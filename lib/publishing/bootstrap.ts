@@ -19,9 +19,9 @@ import { registerContentPublishHandlers } from "@/lib/jobs/handlers/content-publ
 import { registerContentCopyHandler } from "@/lib/jobs/handlers/content-copy";
 import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
-import { registerJobHandler } from "@/lib/jobs/registry";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
+import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -78,10 +78,9 @@ export function registerPublishing(): void {
   // Los avisos relativos a la hora de la reunion (F44).
   registerBookingRelativeHandler();
 
-  // `bg_task` no hace nada, y sigue sin hacerlo. Un handler explicito, en vez
-  // del default: asi el runner puede fallar los tipos que no conoce sin
-  // fallar este, que se encola solo.
-  registerJobHandler("bg_task", async () => {});
+  // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
+  // tarea sin implementacion falla con el motivo, no completa en silencio.
+  registerBgTaskHandler();
 }
 
 /** Para los tests. */

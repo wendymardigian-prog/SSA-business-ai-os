@@ -30,7 +30,7 @@ describe("applyClassification (F20)", () => {
     workspaceId: "ws-1", direction: "inbound" as const,
     pendingIds: new Set(["a", "b", "c", "d"]),
     existingCategoryIds: new Set(["cat-precio"]),
-    fallbackCategoryId: "cat-otro", runId: "run-1", promptVersion: 1,
+    runId: "run-1", promptVersion: 1,
     createCategory: async (name: string) => `new-${name}`,
     now: new Date("2026-09-25T00:00:00Z"),
     ...over,
@@ -47,7 +47,7 @@ describe("applyClassification (F20)", () => {
     expect(m.rows("message_texts")[0].source).toBe("model");
   });
 
-  it("crea como máximo 3 categorías nuevas; el resto va a Otro", async () => {
+  it("respeta el tope de categorías nuevas; el sobrante queda sin clasificar", async () => {
     const m = db([pending("a"), pending("b"), pending("c"), pending("d")]);
     const created: string[] = [];
     const r = await applyClassification(m.client, baseArgs(m, {
@@ -60,9 +60,25 @@ describe("applyClassification (F20)", () => {
       createCategory: async (name: string) => { created.push(name); return `new-${name}`; },
     }));
     expect(r.newCategories).toBe(3);
-    expect(r.toFallback).toBe(1);
+    expect(r.newCategoryNames).toEqual(["N1", "N2", "N3"]);
+    expect(r.deferred).toBe(1);
     expect(created).toEqual(["N1", "N2", "N3"]);
-    expect(m.rows("message_texts").find((t) => t.id === "d")?.category_id).toBe("cat-otro");
+    // "d" NO se escribe: sigue pendiente y vuelve a entrar en la corrida
+    // siguiente, cuando el catálogo ya tenga la categoría que le faltaba.
+    const d = m.rows("message_texts").find((t) => t.id === "d");
+    expect(d?.category_id).toBeNull();
+    expect(d?.source).toBeNull();
+  });
+
+  it("el tope es parámetro: en modo siembra entran más categorías nuevas", async () => {
+    const m = db([pending("a"), pending("b"), pending("c"), pending("d")]);
+    const r = await applyClassification(m.client, baseArgs(m, {
+      maxNewCategories: 12,
+      items: { items: ["a", "b", "c", "d"].map((id) => ({ text_id: id, new_category: { name: `N-${id}` }, confidence: 0.8 })) },
+      createCategory: async (name: string) => `new-${name}`,
+    }));
+    expect(r.newCategories).toBe(4);
+    expect(r.deferred).toBe(0);
   });
 
   it("nunca toca filas source human/rule (update filtra por source null)", async () => {

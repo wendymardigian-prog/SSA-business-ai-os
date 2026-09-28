@@ -73,6 +73,61 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Qué quedó:** `normalizeToolsConfig` descartaba cualquier clave que no fuera un nombre de herramienta del registro. Una habilidad guardada como `tools_config.scheduling` desaparecía al primer guardado.
 - **Qué se decidió en su lugar:** en B8 se suma un registro de habilidades y `normalizeToolsConfig` conserva sus claves.
 
+## Clasificador de mensajes en segundo plano (28/9/2026)
+
+El handler de `bg_task` clasifica de verdad y el despacho dejó de re-encolar.
+El detalle está en [agente-ia.md](agente-ia.md). Lo que quedó pendiente a
+propósito:
+
+### La API de lote real de Anthropic
+
+- **Qué quedó:** el clasificador manda lotes de 200 por llamadas sincrónicas.
+  La API de lote de Anthropic cuesta la mitad y tolera pedidos grandes, pero es
+  asincrónica y necesita el recolector.
+- **Por qué:** el histórico entero (543 textos) sale ~US$ 0,06. El descuento del
+  50% sobre seis centavos no paga el pipeline asincrónico ni el estado en vuelo.
+- **Qué se decidió:** se retoma si el volumen diario crece un orden de magnitud.
+
+### `bg-collect` sigue sin hacer trabajo
+
+- **Qué quedó:** `app/api/cron/bg-collect/route.ts` es un `TODO(bloque 5)`.
+- **Por qué:** con llamadas sincrónicas no hay lotes en vuelo que recolectar. La
+  ruta existe y está autorizada; ya no promete algo que no pasa.
+
+### `conversation_summary` y `close_classification` por lote
+
+- **Qué quedó:** no tienen implementación por lote. Las dos están en modo
+  Inmediato por defecto, así que hoy nadie las encola.
+- **Qué se decidió:** el handler **falla con el motivo** si alguna se pone en
+  Económico, en vez de completar en silencio. El silencio es lo que dejó este
+  handler vacío durante semanas sin que nadie se enterara.
+
+### Los resultados se miran por SQL
+
+- **Qué quedó:** la pantalla de calidad del clasificador y la revisión rápida de
+  20 son del Bloque 5 y no se construyeron. Cuántos quedaron clasificados, qué
+  categorías nuevas se crearon y cuántos tienen confianza baja se consultan a
+  mano.
+
+### Dos desvíos de F20, conscientes
+
+- **Modo siembra:** mientras una dirección tenga menos de 8 categorías propias,
+  el tope de categorías nuevas por corrida es 12 y no 3. Las 5 categorías que
+  trae la 00079 son de sistema: con tope 3, la primera corrida dejaba ~540
+  textos en "Otro" y ningún lote los volvía a mirar.
+- **El sobrante del tope no se escribe:** queda pendiente para la corrida
+  siguiente en vez de ir a "Otro". F20 dice lo contrario, pero mandarlo a "Otro"
+  lo clasifica para siempre por una categoría que todavía no existía.
+
+### El documento de requerimientos dice `normalize_message_text`
+
+- **Qué quedó:** §12.1 y §12.2 de `requerimientos-fase3-bloques-2e-3.md` nombran
+  `normalize_message_text` donde el código usa `normalize_for_grouping`.
+- **Por qué:** la primera es la del opt-out (00027) y redefinirla movería la
+  detección de "no contactar". Ya registrado en `BITACORA.md`.
+- **Qué se decidió:** no se toca el documento de requerimientos, que es
+  histórico.
+
 ## Heredado de la Etapa 2
 
 No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDIENTE.md](etapa2/PENDIENTE.md) con su "qué quedó / por qué / qué se decidió". Ninguno bloquea la Etapa 4.
@@ -81,7 +136,7 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 - "Migrar a Vault" de Zernio construido y no apretado (la 00090 ya se aplicó el 26/9).
 - La documentación de Postproxy no coincide con el plano (sin webhooks; el estado se consulta con un job).
 - 20 vulnerabilidades de npm previas a la Etapa 2.
-- Heredado de la Fase 3: API por lote, handler de `bg_task` (se reencola cada 15 minutos), UI de calidad del clasificador, tendencias con 4 pestañas, "qué le responden", `declarar_intencion` opt-in, migración 00072 sin aplicar, deuda del agente (ver `agente-ia.md`), `generate-reply` sin topes de gasto, `serverActions.bodySizeLimit`, broadcasts solo por Zernio.
+- Heredado de la Fase 3: UI de calidad del clasificador, tendencias con 4 pestañas, "qué le responden", `declarar_intencion` opt-in, migración 00072 sin aplicar, deuda del agente (ver `agente-ia.md`), `generate-reply` sin topes de gasto, `serverActions.bodySizeLimit`, broadcasts solo por Zernio. (El **handler de `bg_task` y el re-encolado cada 15 minutos dejaron de estar pendientes** el 28/9: ver abajo.)
 - La prueba de subida directa a YouTube no se corrió; el receptor de Postproxy está sobre un formato supuesto; LinkedIn publica solo texto y no da métricas ni comentarios; Zernio sin `delta` ni cursor; historial inicial de seguidores por red; tres cifras vacías en Social; historias activas sin mostrar; tarjetas de desglose del detalle de anuncios; el análisis con IA no guarda los anteriores.
 - `has_permission` no conoce los permisos del Member de sistema (por eso `can_see_booking` cae al chequeo de anfitrión para ese rol).
 - Correcciones: Postproxy se queda en el despachador (D9), "Agregar a la cola" de Zernio sin hacer (D8), la ventana de idempotencia de Zernio son ~5 minutos (A15/D7), el SDK de Zernio lanza en vez de devolver el error, la vista semanal del calendario de contenido sin hacer (C14).
