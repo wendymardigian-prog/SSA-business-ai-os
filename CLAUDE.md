@@ -126,7 +126,12 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform`.
 La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**, y las **correcciones de la Etapa 2 de la 00091 a la 00094**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
 
-**Una sola migracion NO esta aplicada**: `00072_draft_window_alerts`, heredada de la Fase 3. No aplicarla sin leer antes por que.
+**Todas las migraciones estan aplicadas** (la ultima es la `00101_bg_task_dedupe`).
+La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
+aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
+borradores creados DESPUES de aplicarla, asi que enchufarla con la cola vacia
+—como estaba— es el momento mas seguro, no el mas riesgoso. El cron
+`ssa-cron-draft-window-alerts` corre cada 5 minutos.
 
 La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e32`): los secretos de Zernio se movieron a Vault comprobando por huella sha256 que la copia era identica, se vaciaron las columnas, se comprobo que el sistema seguia leyendo, y recien ahi se borraron. Hoy **no queda ninguna clave en columnas de la base**.
 
@@ -288,6 +293,7 @@ Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
 ## Validacion y datos sensibles
 - Validacion en cliente Y en servidor. Sanitizar inputs (XSS, SQL injection).
 - API keys de terceros en Supabase Vault (AES-256), nunca en env vars del frontend ni en codigo.
+- **Las keys de IA se prueban contra el proveedor ANTES de guardarlas** (`lib/integrations/ai-key-check.ts`): listar modelos es gratis y devuelve 401 con una key mala. Un 401/403 no se guarda; un 429/5xx si, porque no dice nada sobre la key. De paso se guarda en `integration_configs.config.models` la lista de modelos que ve esa cuenta, y el selector del agente la suma al catalogo.
 - Service Role Key solo en server-side.
 - Logs sin tokens, contrasenas, API keys ni PII.
 - .env nunca se commitea. Solo .env.example con placeholders.

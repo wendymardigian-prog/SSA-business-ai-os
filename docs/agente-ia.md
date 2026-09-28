@@ -864,3 +864,50 @@ select created_at, status, status_detail, model,
        input_tokens, output_tokens, cost_usd
 from agent_runs where source = 'message_classification' order by created_at desc;
 ```
+
+---
+
+## La key revocada que nadie vio (28/9/2026)
+
+El agente dejó de contestar y dejaba borradores vacíos. El run decía:
+
+```
+primary: AI_APICallError; fallback: AI_APICallError
+```
+
+Reproduciendo la llamada con la key guardada en Vault, Anthropic contestaba
+**HTTP 401, "API key is invalid."** La key tenía buena forma (108 caracteres,
+prefijo `sk-ant-`, sin espacios) y estaba guardada desde el 12/9. Estaba
+revocada. Como el principal y el respaldo eran los dos de Anthropic, los dos
+fallaban idéntico, en 117 y 90 milisegundos.
+
+Tres cosas del sistema hicieron que fuera invisible, y las tres se arreglaron:
+
+**1. Las keys de IA no se probaban.** `testConnection` sólo probaba Postproxy
+y Meta; las de IA caían en el `default` que devuelve `{ ok: true }`. El
+comentario decía que no había una llamada gratis para probarlas y **era
+falso**: listar modelos no cobra tokens. Ahora `lib/integrations/ai-key-check.ts`
+verifica la key contra el proveedor antes de escribirla. Un 401/403 no se
+guarda. Un 429/5xx sí, porque no dice nada sobre la key y una caída del
+proveedor no puede bloquear el trabajo.
+
+**2. El error real se descartaba.** Se guardaba `err.name`, que para cualquier
+fallo de HTTP es siempre el mismo string. Ahora `lib/agent/model-error.ts`
+guarda el código HTTP y el tipo que declara el proveedor, y `describeModelError`
+los traduce a qué hacer. **Nunca el `message`**: algunos proveedores repiten
+parte del pedido en el error, y el pedido lleva el texto del lead. Hay un test
+que lo verifica con datos sensibles adentro.
+
+**3. El respaldo le pegaba a la misma pared.** La key es del proveedor, no del
+modelo: si Anthropic la rechazó con Sonnet, la rechaza con Haiku. Ahora un
+401/403 saltea los candidatos del mismo proveedor y lo deja anotado. Uno de
+otro proveedor sí se intenta, que es para lo que está.
+
+Y cuando un proveedor rechaza la key va un aviso de integración (causa
+`revoked`), agrupado por proveedor y una vez por día: cien leads escribiendo
+con la key vencida dan un aviso, no cien. Es distinto de la marca por
+conversación, que sigue igual: una la arregla quien atiende, la otra quien
+administra.
+
+**Lo que hay que recordar:** si el agente deja de contestar, lo primero es
+mirar el run. Ahora dice qué pasó.

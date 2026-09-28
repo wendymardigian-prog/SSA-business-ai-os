@@ -96,12 +96,13 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
 - **Por qué:** marcarla `required` cambiaba el set por defecto y rompía los tests de caracterización del runner.
 - **Qué se decidió en su lugar:** queda opt-in; al prender el agente, activarla en Herramientas.
 
-### Migración 00072 (avisos de ventana) escrita y sin aplicar
-- **Qué quedó:** `00072_draft_window_alerts` está escrita y probada, y **no está aplicada**. Verificado contra la
-  base el 26/9/2026: no existen `private.alert_draft_windows` ni el cron `ssa-cron-draft-window-alerts`.
-  (La bitácora del Bloque 2c dice en un lugar que se aplicó: es un error, la base manda.)
-- **Por qué:** es lo único que notifica a una persona; conviene enchufarlo sabiendo el volumen de la cola.
-- **Qué se decidió en su lugar:** se aplica cuando la cola de borradores tenga un par de días.
+### ~~Migración 00072 (avisos de ventana) escrita y sin aplicar~~ — RESUELTO el 28/9/2026
+- **Qué pasó:** se aplicó. Existen `private.alert_draft_windows` y el cron `ssa-cron-draft-window-alerts`
+  (cada 5 minutos).
+- **Por qué ahora y no antes:** la razón para diferirla era no saber el volumen de avisos. La guarda
+  `draft_alerts_since` (que quedó en el momento de aplicarla) hace que solo avise por borradores creados
+  DESPUÉS, así que enchufarla con la cola casi vacía —2 borradores, los dos anteriores— es el momento de
+  menor riesgo, no el de más. Verificado: 0 notificaciones `draft_window` después de aplicar.
 
 ### Recorrida de pantallas en vivo
 - **Qué quedó:** las pantallas no se recorrieron a ojo en las corridas autónomas.
