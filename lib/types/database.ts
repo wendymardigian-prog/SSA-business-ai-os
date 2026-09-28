@@ -55,6 +55,15 @@ export type EventTypeStatus = "active" | "hidden" | "inactive";
 export type SchedulingType = "individual" | "round_robin" | "collective";
 export type PeriodType = "rolling_calendar" | "rolling_business" | "range" | "unlimited";
 export type ContactAssignmentMode = "none" | "setter_if_empty" | "vendedor_if_empty";
+export type BookingStatusKey =
+  | "scheduled" | "confirmed" | "rescheduled"
+  | "no_show"
+  | "followup_warm" | "followup_cold" | "sale" | "not_qualified"
+  | "cancelled_not_qualified" | "cancelled_no_response" | "cancelled_other";
+export type BookingStatusGroup = "active" | "no_show" | "outcome" | "cancelled";
+export type BookingOrigin = "public_page" | "embed" | "manual" | "agent" | "api";
+export type CancelledByType = "invitee" | "host" | "system";
+export type GoogleSyncStatus = "pending" | "synced" | "failed" | "not_applicable";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
@@ -3751,11 +3760,162 @@ export interface Database {
         };
         Relationships: [];
       };
+      bookings: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          /** Token publico de 22 caracteres. Nunca se le entrega al agente. */
+          uid: string;
+          event_type_id: string;
+          category_id: string | null;
+          category_snapshot: Json | null;
+          metadata: Json;
+          host_user_id: string;
+          contact_id: string;
+          title: string;
+          start_at: string;
+          end_at: string;
+          status: BookingStatusKey;
+          /** Calculada por la base desde `status`. */
+          status_group: BookingStatusGroup;
+          status_changed_at: string | null;
+          status_changed_by: string | null;
+          booker_name: string | null;
+          booker_email: string | null;
+          booker_phone: string | null;
+          booker_timezone: string | null;
+          host_timezone: string | null;
+          location_type: LocationType | null;
+          location_text: string | null;
+          meet_url: string | null;
+          responses: Json;
+          origin: BookingOrigin;
+          utm: Json;
+          referrer_url: string | null;
+          created_by: string | null;
+          reschedule_count: number;
+          cancelled_at: string | null;
+          cancelled_by_type: CancelledByType | null;
+          cancelled_by_user_id: string | null;
+          cancellation_reason: string | null;
+          internal_notes: string | null;
+          google_sync_status: GoogleSyncStatus;
+          google_sync_error: string | null;
+          google_connection_id: string | null;
+          google_calendar_id: string | null;
+          google_event_id: string | null;
+          ical_uid: string | null;
+          google_event_deleted_at: string | null;
+          is_do_not_contact_at_booking: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          uid: string;
+          event_type_id: string;
+          category_id?: string | null;
+          category_snapshot?: Json | null;
+          metadata?: Json;
+          host_user_id: string;
+          contact_id: string;
+          title: string;
+          start_at: string;
+          end_at: string;
+          status?: BookingStatusKey;
+          booker_name?: string | null;
+          booker_email?: string | null;
+          booker_phone?: string | null;
+          booker_timezone?: string | null;
+          host_timezone?: string | null;
+          location_type?: LocationType | null;
+          location_text?: string | null;
+          meet_url?: string | null;
+          responses?: Json;
+          origin?: BookingOrigin;
+          utm?: Json;
+          referrer_url?: string | null;
+          created_by?: string | null;
+          is_do_not_contact_at_booking?: boolean;
+          google_sync_status?: GoogleSyncStatus;
+        };
+        Update: {
+          title?: string;
+          start_at?: string;
+          end_at?: string;
+          status?: BookingStatusKey;
+          status_changed_at?: string | null;
+          status_changed_by?: string | null;
+          category_id?: string | null;
+          category_snapshot?: Json | null;
+          location_type?: LocationType | null;
+          location_text?: string | null;
+          meet_url?: string | null;
+          reschedule_count?: number;
+          cancelled_at?: string | null;
+          cancelled_by_type?: CancelledByType | null;
+          cancelled_by_user_id?: string | null;
+          cancellation_reason?: string | null;
+          internal_notes?: string | null;
+          google_sync_status?: GoogleSyncStatus;
+          google_sync_error?: string | null;
+          google_connection_id?: string | null;
+          google_calendar_id?: string | null;
+          google_event_id?: string | null;
+          ical_uid?: string | null;
+          google_event_deleted_at?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      rate_limits: {
+        Row: { id: string; key: string; window_start: string; count: number; created_at: string };
+        Insert: { id?: string; key: string; window_start: string; count?: number };
+        Update: { count?: number };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      /** Crea la agenda entera en una transaccion (00099, F26). */
+      create_booking: {
+        Args: {
+          p_workspace_id: string;
+          p_event_type_id: string;
+          p_host_user_id: string;
+          p_start_at: string;
+          p_end_at: string;
+          p_title: string;
+          p_name: string | null;
+          p_email: string | null;
+          p_phone: string | null;
+          p_timezone: string | null;
+          p_host_timezone: string | null;
+          p_location_type: string | null;
+          p_location_text: string | null;
+          p_responses: Json;
+          p_origin: string;
+          p_utm: Json;
+          p_referrer_url: string | null;
+          p_uid: string;
+          p_category_id: string | null;
+          p_category_snapshot: Json | null;
+          p_contact_assignment: string;
+          p_created_by?: string | null;
+          p_contact_id?: string | null;
+          p_metadata?: Json;
+        };
+        Returns: Json;
+      };
+      bump_rate_limit: {
+        Args: { p_key: string; p_window_start: string };
+        Returns: number;
+      };
+      purge_rate_limits: { Args: Record<string, never>; Returns: number };
       /** Marca un horario por defecto en una transaccion (00096). */
       set_default_schedule: {
         Args: { p_schedule_id: string };

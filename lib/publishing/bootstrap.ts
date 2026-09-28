@@ -20,6 +20,7 @@ import { registerContentCopyHandler } from "@/lib/jobs/handlers/content-copy";
 import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerJobHandler } from "@/lib/jobs/registry";
+import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -71,6 +72,8 @@ export function registerPublishing(): void {
   registerContentCopyHandler();
   registerMetricsHandlers();
   registerMetaAdsHandlers();
+  // Agenda (Etapa 4): crear/mover/borrar el evento en Google y el fin de agenda.
+  registerBookingJobHandlers();
 
   // `bg_task` no hace nada, y sigue sin hacerlo. Un handler explicito, en vez
   // del default: asi el runner puede fallar los tipos que no conoce sin

@@ -12,6 +12,8 @@ export interface CalendarForResolve {
   is_active: boolean;
   /** true si su conexión está revocada o con error. */
   connection_broken?: boolean;
+  /** La conexión a la que pertenece. Hace falta para decidir si bloquea (F7). */
+  connection_id?: string;
 }
 
 export interface ResolvedCalendars {

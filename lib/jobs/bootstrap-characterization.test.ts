@@ -15,8 +15,11 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
     resetJobHandlers();
     resetPublishingBootstrap();
     registerPublishing();
+    // La Etapa 4 suma los tres de agenda; los ocho de antes no cambian.
     expect(registeredJobTypes()).toEqual([
       "bg_task",
+      "booking_ended",
+      "booking_google_sync",
       "content_copy",
       "content_provider_schedule",
       "content_publish",

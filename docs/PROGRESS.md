@@ -65,11 +65,12 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F49 (adelantado) · Las 7 plantillas de flujo (`lib/scheduling/automation/templates.ts`) con sus textos en voseo; se crean apagadas con el evento y al duplicarlo
   - Verificación: vitest 260 archivos / 3002 tests, tsc 0, lint 0 errores, build OK, `verify-scheduling` (+23 chequeos de categorías y eventos) en verde. Pantallas recorridas con sesión: Categorías, Eventos, modal "Nuevo evento" (creó el evento con 7 flujos) y el editor en Detalles, Formulario y Límites
 
-- [ ] **Bloque 4a — Motor en vivo, API pública y creación** (migración 00099)
-  - [ ] F23 · Motor de horarios libres — **hecho en el núcleo** completo (`lib/scheduling/slots/*`). Falta: armar `SlotsInput` desde la base y Google
-  - [ ] F24 · API pública de horarios
-  - [ ] F26 · Crear la agenda (RPC `create_booking`, exclusión, job `booking_google_sync`)
-  - [ ] F29 · Antispam y atribución
+- [x] **Bloque 4a — Motor en vivo, API pública y creación** (migración **00099 aplicada** el 27/9/2026)
+  - [x] F23 · Motor de horarios libres — hecho en el núcleo; se sumó `buildSlotsInput` (horario efectivo, tiempo fuera, agendas del anfitrión con los buffers de SU evento, conteos del evento y ocupado de Google con caché de 60 s). Si Google falla o la persona no puede recibir agendas, no se ofrece ningún horario
+  - [x] F24 · API pública: `/api/public/scheduling/event`, `/slots` (rango máximo 45 días, zona validada) y `getPublicSlots`, la misma función que usará el agente. La respuesta no lleva ids internos, ni el email del calendario, ni los topes
+  - [x] F26 · `create_booking`: contacto (dedup teléfono → email), asignación solo si está vacía, agenda, historial, evento de automatización y los dos jobs en UNA transacción, con lock por anfitrión. Doble reserva imposible por la restricción de exclusión: `verify-booking-concurrency` la prueba con 10 llamadas a la vez
+  - [x] F26 · Jobs `booking_google_sync` (crear / mover / borrar, reintentos a 1, 5 y 15 minutos agendados por el handler, no por la cola) y `booking_ended`; al agotarse, la agenda queda fallida y la persona recibe un aviso
+  - [x] F29 · Antispam: campo trampa, tope por IP con hash y sal (`RATE_LIMIT_SALT`), UTM, referente y origen; el tope no aplica al equipo ni al agente
 - [ ] **Bloque 4b — Booker, confirmación, cambios del invitado y mensajes**
   - [ ] F25 · Booker — **hecho en el núcleo:** `buildMonthView`, `formatSlotLabel`, `parseEmbedParams`. Falta: página y componentes portados
   - [ ] F27 · Página de confirmación — **hecho en el núcleo:** `buildIcs`, links de Google y Outlook. Falta: página, endpoint `.ics`
@@ -80,7 +81,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 ### FASE 2 — Reservas, embed, automatizaciones y agentes
 
 - [ ] **Bloque 5 — Pantalla de agendas** (sin migración)
-  - [ ] F32 · Estados y lógica común — **hecho en el núcleo:** catálogo, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops`. Falta: `filterBookings`, test CHECK vs `BOOKING_STATUS_KEYS`
+  - [ ] F32 · Estados y lógica común — **hecho en el núcleo:** catálogo, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops`. El test que compara los once estados y sus grupos con el CHECK y la columna calculada de la 00099 ya está (B4a). Falta: `filterBookings`
   - [ ] F33 · Vista lista
   - [ ] F34 · Vista kanban — **hecho en el núcleo:** reglas de arrastre (`kanban.ts`). Falta: componente
   - [ ] F35 · Vista calendario — **hecho en el núcleo:** `placeInCalendar`. Falta: componente
@@ -118,7 +119,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 | 00096 | (B2) `availability_schedules`, `out_of_office`, `set_default_schedule`, `ensure_default_schedule` + backfill, purga | ✅ aplicada y verificada (27/9/2026) |
 | 00097 | (B3) `booking_categories`, trigger de dos niveles, precarga por workspace + backfill | ✅ aplicada y verificada (27/9/2026) |
 | 00098 | (B3) `event_types`, `flows.event_type_id`/`template_key`, `workspaces.scheduling_*`, purga que conserva los eventos con agendas | ✅ aplicada y verificada (27/9/2026) |
-| 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | — |
+| 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | ✅ aplicada y verificada (27/9/2026) |
 | 00100 | (B7a) `triggers_type_check` + 9 tipos, `flow_sessions.channel_id` nullable | — |
 
 Ninguna borra ni modifica datos existentes. `list_migrations` inmediatamente antes de aplicar cada una; `node scripts/build-all-migrations.mjs` después.

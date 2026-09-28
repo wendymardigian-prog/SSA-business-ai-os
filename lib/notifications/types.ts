@@ -26,6 +26,11 @@ export const NOTIFICATION_TYPES = [
   "content_publish_failed",
   "content_copy_ready",
   "content_copy_failed",
+  // Agenda (Etapa 4, F38).
+  "booking_created",
+  "booking_rescheduled",
+  "booking_cancelled",
+  "booking_sync_failed",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -38,7 +43,8 @@ export type NotificationEntity =
   | "contact"
   | "draft_queue"
   | "integration"
-  | "content_post";
+  | "content_post"
+  | "booking";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -177,6 +183,30 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "content_post",
   },
+  booking_created: {
+    type: "booking_created",
+    label: "Agenda nueva",
+    tone: "info",
+    entity: "booking",
+  },
+  booking_rescheduled: {
+    type: "booking_rescheduled",
+    label: "Agenda reagendada",
+    tone: "info",
+    entity: "booking",
+  },
+  booking_cancelled: {
+    type: "booking_cancelled",
+    label: "Agenda cancelada",
+    tone: "warning",
+    entity: "booking",
+  },
+  booking_sync_failed: {
+    type: "booking_sync_failed",
+    label: "Agenda sin sincronizar con Google",
+    tone: "warning",
+    entity: "booking",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -219,6 +249,10 @@ export function linkFor(
 
     case "contact":
       return entityId ? `/dashboard/contacts/${entityId}` : "/dashboard/contacts";
+
+    // Etapa 4: la agenda se abre en su panel de detalle.
+    case "booking":
+      return entityId ? `/dashboard/agenda?agenda=${entityId}` : "/dashboard/agenda";
 
     case "integration":
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:

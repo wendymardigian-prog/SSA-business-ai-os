@@ -37,6 +37,7 @@ export async function calendarsForResolve(supabase: Db, workspaceId: string, use
     check_conflicts: c.check_conflicts,
     is_active: c.is_active,
     connection_broken: broken.has(c.connection_id),
+    connection_id: c.connection_id,
   }));
 }
 

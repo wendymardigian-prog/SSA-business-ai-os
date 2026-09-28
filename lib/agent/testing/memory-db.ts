@@ -55,6 +55,12 @@ export function memoryDb(
     rows: (table) => (tables[table] ??= []),
   };
 
+  const likeMatch = (value: unknown, pattern: string, insensitive: boolean) => {
+    if (typeof value !== "string") return false;
+    const rx = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, insensitive ? "i" : "");
+    return rx.test(value);
+  };
+
   const cmp = (a: unknown, b: unknown) => {
     const na = typeof a === "string" && /^\d{4}-\d{2}-\d{2}T/.test(a) ? new Date(a).getTime() : a;
     const nb = typeof b === "string" && /^\d{4}-\d{2}-\d{2}T/.test(b) ? new Date(b).getTime() : b;
@@ -185,6 +191,10 @@ export function memoryDb(
         return b;
       },
       in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), b),
+      // `like`/`ilike` con el comodin `%` de PostgREST. `ilike` ignora
+      // mayusculas, que es como se busca un usuario de agenda.
+      like: (col: string, pattern: string) => (filters.push((r) => likeMatch(r[col], pattern, false)), b),
+      ilike: (col: string, pattern: string) => (filters.push((r) => likeMatch(r[col], pattern, true)), b),
       // Una columna de array que comparte al menos un valor (`&&` en Postgres).
       overlaps: (col: string, vals: unknown[]) =>
         (filters.push((r) => {

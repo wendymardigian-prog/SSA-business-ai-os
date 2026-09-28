@@ -319,6 +319,150 @@ try {
     check(!!upAjeno, "alguien de otro workspace no sube en esa carpeta");
     await svc.storage.from("avatars").remove([propio]);
   }
+  console.log("\n— Agendas: create_booking, exclusion y RLS (F26, F29, F32) —");
+  {
+    // Un evento del Member, para agendar sobre el.
+    const { data: catB } = await svc.from("booking_categories")
+      .select("id").eq("workspace_id", ws.id).not("parent_id", "is", null).limit(1).single();
+    const { data: evB } = await svc.from("event_types").insert({
+      workspace_id: ws.id, owner_user_id: member.id, category_id: catB.id, title: "zz-test-agendable", slug: "zz-test-agendable",
+      duration_minutes: 30, status: "active", location_type: "manual", location_text: "Zoom",
+      booking_fields: [
+        { id: "name", identifier: "name", type: "name", system: true, label: "Nombre", visibility: "required" },
+        { id: "email", identifier: "email", type: "email", system: true, label: "Email", visibility: "required" },
+      ],
+    }).select("id").single();
+
+    const args = (uid, startAt, endAt, extra = {}) => ({
+      p_workspace_id: ws.id,
+      p_event_type_id: evB.id,
+      p_host_user_id: member.id,
+      p_start_at: startAt,
+      p_end_at: endAt,
+      p_title: "zz-test-agendable",
+      p_name: "zz-test Juan",
+      p_email: "zz-test-juan@example.test",
+      p_phone: "+50688880000",
+      p_timezone: "America/Costa_Rica",
+      p_host_timezone: "America/Costa_Rica",
+      p_location_type: "manual",
+      p_location_text: "Zoom",
+      p_responses: { name: "zz-test Juan", email: "zz-test-juan@example.test" },
+      p_origin: "public_page",
+      p_utm: { utm_source: "instagram" },
+      p_referrer_url: "https://instagram.com/",
+      p_uid: uid,
+      p_category_id: catB.id,
+      p_category_snapshot: { area_id: null, area_name: "Ventas", type_id: catB.id, type_name: "Triaje" },
+      p_contact_assignment: "setter_if_empty",
+      ...extra,
+    });
+
+    const uid1 = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const { data: r1, error: eR1 } = await svc.rpc("create_booking", args(uid1, "2030-03-05T15:00:00Z", "2030-03-05T15:30:00Z"));
+    check(!eR1 && r1?.booking_id, "create_booking crea la agenda en una sola llamada", eR1?.message);
+
+    if (r1?.booking_id) {
+      const { data: bk } = await svc.from("bookings").select("*").eq("id", r1.booking_id).single();
+      check(bk.status === "scheduled" && bk.status_group === "active", "el estado inicial es agendada y su grupo es activa");
+      check(bk.uid === uid1 && bk.uid.length === 22, "el codigo publico queda guardado con 22 caracteres");
+      check(bk.utm?.utm_source === "instagram" && bk.referrer_url === "https://instagram.com/", "los UTM y el referente quedan en la agenda");
+
+      const { data: ct } = await svc.from("contacts").select("id, setter_id, timezone, attribution").eq("id", r1.contact_id).single();
+      check(r1.created_contact === true, "el contacto se creo solo");
+      check(ct.setter_id === member.id, "la asignacion vacia se completa con el anfitrion (F22)");
+      check(ct.timezone === "America/Costa_Rica", "la zona del invitado queda en el contacto");
+      check(ct.attribution?.source === "scheduling", "la atribucion dice que vino de agenda");
+
+      const { data: hist } = await svc.from("audit_log").select("action, entity_type").eq("entity_id", r1.booking_id);
+      check((hist ?? []).some((h) => h.entity_type === "booking" && h.action === "booking.created"), "el historial arranca con booking.created");
+
+      const { data: evs } = await svc.from("automation_events").select("event_type, payload").eq("workspace_id", ws.id).eq("event_type", "booking_created");
+      check((evs ?? []).some((e) => e.payload?.booking_id === r1.booking_id), "queda un evento booking_created para las automatizaciones");
+      const { data: asg } = await svc.from("automation_events").select("event_type").eq("workspace_id", ws.id).eq("event_type", "assignment_changed");
+      check((asg ?? []).length > 0, "el trigger de contactos emite assignment_changed sin que la RPC lo escriba");
+
+      const { data: jobs } = await svc.from("scheduled_jobs").select("type, payload, run_at").eq("payload->>booking_id", r1.booking_id);
+      const tipos = (jobs ?? []).map((j) => j.type).sort();
+      check(tipos.join(",") === "booking_ended,booking_google_sync", `quedan los dos jobs de la agenda (vinieron: ${tipos.join(",") || "ninguno"})`);
+      const ended = (jobs ?? []).find((j) => j.type === "booking_ended");
+      check(ended && new Date(ended.run_at).toISOString() === "2030-03-05T15:30:00.000Z", "el job de fin corre cuando termina la reunion");
+
+      // La exclusion: el mismo anfitrion, horario pisado.
+      const { error: eR2 } = await svc.rpc("create_booking", args(`zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`, "2030-03-05T15:15:00Z", "2030-03-05T15:45:00Z"));
+      check(eR2?.code === "23P01", "dos agendas pisadas del mismo anfitrion: la base rechaza la segunda", eR2?.message);
+
+      // Pegadas, sin pisarse: se permite.
+      const { error: eR3 } = await svc.rpc("create_booking", args(`zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`, "2030-03-05T15:30:00Z", "2030-03-05T16:00:00Z"));
+      check(!eR3, "dos agendas pegadas sin pisarse si se permiten", eR3?.message);
+
+      // Cancelar libera el horario.
+      await svc.from("bookings").update({ status: "cancelled_other", cancelled_at: new Date().toISOString(), cancelled_by_type: "host" }).eq("id", r1.booking_id);
+      const { data: bkC } = await svc.from("bookings").select("status_group").eq("id", r1.booking_id).single();
+      check(bkC.status_group === "cancelled", "cancelar mueve la agenda al grupo cancelled");
+      const { error: eR4 } = await svc.rpc("create_booking", args(`zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`, "2030-03-05T15:00:00Z", "2030-03-05T15:30:00Z"));
+      check(!eR4, "el horario de una agenda cancelada vuelve a estar libre", eR4?.message);
+
+      // Un estado fuera de la lista no entra.
+      const { error: eEst } = await svc.from("bookings").update({ status: "realizada" }).eq("id", r1.booking_id);
+      check(!!eEst, "un estado que no esta en los once lo rechaza el CHECK");
+    }
+
+    // RLS: el Member anfitrion ve la suya; el otro Member no; otro workspace no.
+    const { data: verHost } = await member.client.from("bookings").select("id").eq("workspace_id", ws.id);
+    check((verHost ?? []).length >= 1, "el Member anfitrion ve sus agendas");
+    const { data: verOtro } = await otro.client.from("bookings").select("id").eq("workspace_id", ws.id);
+    check((verOtro ?? []).length === 0, "un Member que no es el anfitrion no ve ninguna (alcance propio)");
+    const { data: verOwner } = await owner.client.from("bookings").select("id").eq("workspace_id", ws.id);
+    check((verOwner ?? []).length >= 1, "el Owner ve todas");
+    const { data: verAjeno } = await ajeno.client.from("bookings").select("id").eq("workspace_id", ws.id);
+    check((verAjeno ?? []).length === 0, "otro workspace no ve ninguna agenda");
+
+    // El historial sigue la misma regla.
+    const { data: histOtro } = await otro.client.from("audit_log").select("id").eq("entity_type", "booking");
+    check((histOtro ?? []).length === 0, "el historial de una agenda ajena no se ve");
+    const { data: histOwner } = await owner.client.from("audit_log").select("id").eq("entity_type", "booking");
+    check((histOwner ?? []).length >= 1, "el Owner ve el historial de las agendas");
+
+    // Nadie borra una agenda: cancelar es un estado.
+    const { data: unaFila } = await svc.from("bookings").select("id").eq("workspace_id", ws.id).limit(1).single();
+    const { error: eDel } = await owner.client.from("bookings").delete().eq("id", unaFila.id);
+    const { count: sigue } = await svc.from("bookings").select("id", { count: "exact", head: true }).eq("id", unaFila.id);
+    check(sigue === 1, "ni el Owner borra una agenda: se cancela", eDel?.message);
+
+    // La purga conserva los eventos que tienen agendas.
+    await svc.from("event_types").update({ deleted_at: "2020-01-01T00:00:00Z" }).eq("id", evB.id);
+    await svc.rpc("purge_soft_deleted", { p_retention_days: 30 });
+    const { count: vive } = await svc.from("event_types").select("id", { count: "exact", head: true }).eq("id", evB.id);
+    check(vive === 1, "la purga NO borra un evento que tiene agendas");
+    await svc.from("event_types").update({ deleted_at: null }).eq("id", evB.id);
+  }
+
+  console.log("\n— Tope por IP y jobs anulados (F29) —");
+  {
+    const key = `zz-test:create:${randomUUID()}`;
+    const win = "2030-03-05T15:00:00Z";
+    const { data: n1 } = await svc.rpc("bump_rate_limit", { p_key: key, p_window_start: win });
+    const { data: n2 } = await svc.rpc("bump_rate_limit", { p_key: key, p_window_start: win });
+    check(n1 === 1 && n2 === 2, "bump_rate_limit cuenta por clave y ventana", JSON.stringify({ n1, n2 }));
+
+    const { error: eAnon } = await member.client.rpc("bump_rate_limit", { p_key: key, p_window_start: win });
+    check(!!eAnon, "un usuario con sesion no puede tocar el tope (solo service role)");
+
+    const { data: leido } = await member.client.from("rate_limits").select("key");
+    check((leido ?? []).length === 0, "nadie lee la tabla del tope desde la app");
+
+    await svc.from("rate_limits").update({ window_start: "2020-01-01T00:00:00Z" }).eq("key", key);
+    const { data: purgados } = await svc.rpc("purge_rate_limits");
+    check(typeof purgados === "number", "purge_rate_limits devuelve cuantos borro");
+    const { count: quedan } = await svc.from("rate_limits").select("id", { count: "exact", head: true }).eq("key", key);
+    check(quedan === 0, "el tope viejo se purga");
+
+    const { error: eJob } = await svc.from("scheduled_jobs").insert({ type: "booking_relative_trigger", payload: { booking_id: null }, run_at: "2030-01-01T00:00:00Z", status: "cancelled" });
+    check(!eJob, "scheduled_jobs admite el estado cancelled (para anular avisos relativos)", eJob?.message);
+    if (!eJob) await svc.from("scheduled_jobs").delete().eq("type", "booking_relative_trigger");
+  }
+
 } catch (err) {
   fail(`error inesperado: ${err.message}`);
 } finally {
