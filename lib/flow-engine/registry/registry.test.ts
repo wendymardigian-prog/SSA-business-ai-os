@@ -31,12 +31,17 @@ const NODOS_DE_ACCION = [
   "enrollSequence",
   "pauseAgent",
   "resumeAgent",
+  // Etapa 4 (F46).
+  "send_email",
+  "cancel_booking",
+  "set_booking_status",
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 19 tipos ejecutables", () => {
-    // 17 de la Fase 2 + pausar y reanudar el agente de IA (Fase 3).
-    expect(listNodes()).toHaveLength(19);
+  it("tiene los 22 tipos ejecutables", () => {
+    // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
+    // + enviar email y las dos acciones de agenda (Etapa 4).
+    expect(listNodes()).toHaveLength(22);
   });
 
   it.each(NODOS_DE_ACCION)(

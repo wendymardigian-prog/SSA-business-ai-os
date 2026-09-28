@@ -10,7 +10,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
 import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData, type TagsTabData } from "@/lib/agent/screen";
 import { agentUsableTagIds } from "@/lib/tags/effects";
-import { serializeToolsForScreen } from "@/lib/agent/tools/config";
+import { serializeSkillsForScreen, serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
@@ -259,6 +259,22 @@ export default async function AgentDetailPage({
         })()
       : undefined;
 
+  // Los eventos activos u ocultos, con su categoria, para la habilidad de
+  // agendamiento. Un evento oculto igual sirve: se llega con el link directo.
+  const eventTypesForAgent = await (async () => {
+    const [{ data: events }, { data: cats }] = await Promise.all([
+      supabase.from("event_types").select("id, title, status, category_id, duration_minutes").eq("workspace_id", workspace.id).is("deleted_at", null).neq("status", "inactive").order("title"),
+      supabase.from("booking_categories").select("id, parent_id, name").eq("workspace_id", workspace.id),
+    ]);
+    const byId = new Map((cats ?? []).map((c) => [c.id, c]));
+    return (events ?? []).map((e) => {
+      const type = e.category_id ? byId.get(e.category_id) : undefined;
+      const area = type?.parent_id ? byId.get(type.parent_id) : type;
+      const label = area && type && area.id !== type.id ? `${area.name} · ${type.name}` : (area?.name ?? "");
+      return { value: e.id, label: e.title, hint: [label, `${e.duration_minutes} min`].filter(Boolean).join(" · ") };
+    });
+  })();
+
   const data: AgentScreenData = {
     viewer: { isAdmin },
     copywriter,
@@ -269,10 +285,14 @@ export default async function AgentDetailPage({
     tags,
     agent: screenAgent,
     tools: serializeToolsForScreen(),
+    skills: serializeSkillsForScreen(),
     toolOptionSources: {
       tags: allTags.filter((t) => usableTagIds.has(t.id)).map((t) => ({ value: t.id, label: t.name })),
       members: members.map((m) => ({ value: m.userId, label: m.name, hint: m.role })),
       contact_fields: [],
+      // Los eventos que el agente puede ofrecer (Etapa 4, F52). Los inactivos
+      // no entran: ofrecer un evento apagado da un link que no agenda.
+      event_types: eventTypesForAgent,
     },
     versions: ((versionsRes.data ?? []) as Array<{ version: number; system_prompt: string; note: string | null; created_at: string; created_by: string | null }>).map((v) => ({
       version: v.version,

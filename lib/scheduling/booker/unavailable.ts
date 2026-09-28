@@ -10,6 +10,12 @@ import { z } from "zod";
 import type { EventType, UnavailableCta, UnavailableKey, UnavailableMessage, UnavailableMessages } from "../types";
 import { normalizePhone } from "@/lib/phone";
 import { isSafeRedirectUrl } from "../event-validation";
+// Los textos por defecto y el tipo del respaldo viven solos: los necesita el
+// script de embed, que se compila aparte y no puede arrastrar Zod.
+import { DEFAULT_UNAVAILABLE_MESSAGES, type FallbackPayload } from "./unavailable-defaults";
+
+export { DEFAULT_UNAVAILABLE_MESSAGES };
+export type { FallbackPayload };
 
 export const UNAVAILABLE_KEYS: UnavailableKey[] = ["no_slots", "unavailable", "load_error"];
 
@@ -17,21 +23,6 @@ export const UNAVAILABLE_KEY_LABELS: Record<UnavailableKey, string> = {
   no_slots: "Sin horarios",
   unavailable: "No disponible",
   load_error: "No carga",
-};
-
-export const DEFAULT_UNAVAILABLE_MESSAGES: Record<UnavailableKey, UnavailableMessage> = {
-  no_slots: {
-    title: "No hay horarios disponibles por ahora",
-    body: "Todos los espacios de {{event_title}} están tomados. Escribinos y te buscamos un lugar.",
-  },
-  unavailable: {
-    title: "No podemos mostrar los horarios en este momento",
-    body: "Probá de nuevo en unos minutos o escribinos.",
-  },
-  load_error: {
-    title: "No pudimos cargar el calendario",
-    body: "Revisá tu conexión y probá de nuevo, o escribinos.",
-  },
 };
 
 /** Los casos que suman el botón "Reintentar" en el booker. */
@@ -166,13 +157,6 @@ export function buildCtaHref(cta: UnavailableCta, vars: MessageVars): string | n
     default:
       return null;
   }
-}
-
-/** Lo que viaja en `data-ssa-fallback` del snippet (F40/F58): el `load_error` ya resuelto, sin variables pendientes. */
-export interface FallbackPayload {
-  title: string;
-  body: string;
-  cta?: { label: string; href: string };
 }
 
 export function fallbackPayload(eventType: Pick<EventType, "unavailable_messages">, vars: MessageVars): FallbackPayload {

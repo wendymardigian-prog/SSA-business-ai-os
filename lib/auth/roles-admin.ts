@@ -88,6 +88,7 @@ export function validateRole(input: RoleInput): RoleValidation {
     scopes: {
       leads: input.scopes.leads ?? "own",
       conversations: input.scopes.conversations ?? "own",
+      bookings: input.scopes.bookings ?? "own",
     },
   });
 

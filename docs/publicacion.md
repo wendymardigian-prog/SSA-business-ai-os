@@ -154,7 +154,7 @@ deberían haber salido hace más de 15 minutos.
 **Postproxy y las APIs directas** (YouTube, LinkedIn, Threads) siguen por el
 despachador propio. Postproxy acepta `scheduled_at` pero no documenta borrar
 ni editar: desprogramar dejaría el post saliendo igual. Está anotado en
-[docs/PENDIENTE.md](PENDIENTE.md).
+[docs/etapa2/PENDIENTE.md](etapa2/PENDIENTE.md).
 
 ### El SDK de Zernio lanza, no devuelve el error
 

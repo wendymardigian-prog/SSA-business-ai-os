@@ -215,7 +215,10 @@ describe("caracterizacion: el menu (F68)", () => {
   it("las demas las ve un Member", () => {
     const visible = NAV_ITEMS.filter((item) => !item.adminOnly).map((item) => item.name).sort();
 
+    // "Agenda" (Etapa 4) no es adminOnly: se filtra por permiso (`permissions`),
+    // y el Member de sistema lo ve porque tiene scheduling.use y bookings.view.
     expect(visible).toEqual([
+      "Agenda",
       "Agentes",
       "Contacts",
       "Contenido",

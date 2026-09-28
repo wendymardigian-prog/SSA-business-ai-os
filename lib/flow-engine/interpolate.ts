@@ -31,12 +31,16 @@ export function resolveVariablePath(
  * Un token que no resuelve queda tal cual, a proposito: es preferible que el
  * operador vea `{{nombre}}` en la conversacion y entienda que falto configurar
  * algo, antes que mandarle al lead un mensaje con un hueco vacio.
+ *
+ * El token admite guiones porque el link de un evento los lleva:
+ * `{{scheduling.link.wendy.llamada-de-diagnostico}}`. Sin eso, el token se
+ * cortaba en el guion y el mensaje salia con media variable pegada al texto.
  */
 export function interpolateVariables(
   text: string,
   variables: Record<string, unknown>
 ): string {
-  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (token, path: string) => {
+  return text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)\}\}/g, (token, path: string) => {
     const value = resolveVariablePath(variables, path);
     if (value === null || value === undefined) return token;
     return typeof value === "object" ? JSON.stringify(value) : String(value);

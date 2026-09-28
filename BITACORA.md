@@ -4,6 +4,104 @@ Registro de qué se construyó, qué se decidió y por qué. Se actualiza al cer
 cada bloque.
 
 ---
+## Etapa 4 — Agendamiento (Tanda B: la etapa completa)
+
+**Fecha:** 27 de septiembre de 2026
+**Rama:** `etapa4-agendamiento`
+**Migraciones:** 00095 a 00100, todas aplicadas. Ninguna borra ni modifica
+datos: la etapa entera es aditiva.
+
+### Qué se construyó
+
+Ocho bloques, F1 a F58 (sin F30 ni F31, que la etapa no incluía):
+
+1. **Perfil y calendarios.** Cada persona tiene su usuario público, su zona y
+   su formato de hora. Google Calendar se conecta por persona, no por negocio.
+2. **Disponibilidades.** Horarios semanales, excepciones por fecha y tiempo
+   fuera, con un horario por defecto que se crea solo.
+3. **Categorías y eventos.** Dos niveles (área y tipo), precargados, y el
+   editor del evento con siete secciones.
+4. **Motor en vivo, API pública y el booker.** El lead elige un horario que
+   existe y la reunión queda creada en una transacción.
+5. **Pantalla de agendas.** Lista, kanban y calendario sobre los mismos datos,
+   con el detalle lateral y el agendar a mano.
+6. **Embed.** Un script de 13 KB, tres modos, y los eventos hacia la página.
+7. **Automatizaciones.** Nueve triggers, dos nodos nuevos, el email como
+   acción, y el editor lineal de los flujos del evento.
+8. **Habilidad del agente.** Siete herramientas que se prenden juntas.
+
+### Las decisiones que más costaron
+
+**La doble reserva la evita la base, no el código.** `bookings` tiene una
+restricción de exclusión por anfitrión y rango. Un `SELECT` antes de un
+`INSERT` deja una ventana; la restricción no. `verify-booking-concurrency`
+manda diez pedidos a la vez contra la base real y afirma que queda una
+reunión.
+
+**Los reintentos de Google los agenda el handler, no la cola.** La cola
+reintenta a los 10 segundos y lo haría encima del reintento propio de 1, 5 y
+15 minutos. Es la misma decisión que tomó el despachador de contenido.
+
+**El código público de una reunión nunca llega al modelo.** Con esos 22
+caracteres se cancela sin sesión. El agente trabaja sobre "la próxima reunión
+de este contacto", que resuelve la herramienta.
+
+**Cancelar es definitivo.** Sin vuelta a activa. El historial se lee sin
+ambigüedad y no hay que explicar qué significa una reunión que estuvo
+cancelada y volvió.
+
+**La categoría queda congelada en cada reunión.** Renombrar un área no cambia
+el significado de los informes viejos. La única forma de tocarla es a mano y
+queda registrada.
+
+### Cinco cosas que estaban rotas y no se sabía
+
+Ninguna la trajo el plano: aparecieron al construir sobre el código real.
+
+1. **Guardar una conexión OAuth fallaba contra la base.** `saveConnection` hacía
+   `upsert` con `onConflict` de columnas, pero el único era de expresión:
+   Postgres responde 42P10. Conectar YouTube, LinkedIn o Threads de verdad
+   habría terminado en error. Nunca se vio porque la tabla estaba vacía y el
+   test usaba un mock.
+2. **Un flujo no arrancaba si el contacto no tenía conversación.** El cron
+   mandaba el canal vacío y el insert de la sesión fallaba en silencio. Sin
+   esto, ningún flujo de agenda habría arrancado nunca.
+3. **Los triggers que no son de mensaje nunca se guardaban.** El editor
+   ofrecía "Contacto nuevo", "Evento del CRM", "Inactividad" y "Email
+   recibido", y al publicar no se escribía ninguna fila.
+4. **`tools_config.scheduling` desaparecía al primer guardado.** La pantalla de
+   Herramientas borraba toda clave que no fuera el nombre de una herramienta.
+5. **Las siete plantillas de flujo guardaban el email con un nombre que el
+   motor no conoce.** Se veían bien en el canvas y no mandaban nada.
+
+Cada una quedó con su test.
+
+### Dos arreglos de bundle
+
+El script de embed pesaba **488 KB**: un import arrastraba Zod y dayjs enteros
+a un archivo que se carga en la página de cualquiera. Tres módulos chicos sin
+dependencias lo dejaron en **13,6 KB**, y un test no lo deja volver a crecer.
+
+El tema forzado del booker (`?theme=`) no llegaba: Tailwind declara los
+`--color-*` en la raíz, y una variable se sustituye donde se DECLARA, no donde
+se usa. Redefinir solo `--background` abajo no cambiaba nada.
+
+### Lo que queda
+
+En `docs/PENDIENTE.md`, con el formato *qué quedó / por qué / qué se decidió*.
+Lo principal:
+
+- **La redirect URI de Google Calendar no está en Google Cloud.** Sin eso,
+  conectar una cuenta falla. Es el primer paso de la verificación en vivo.
+- **F42 (dominio propio) y F15 (vista previa del horario)** son nice-to-have y
+  no entraron. El código ya respeta la columna del dominio.
+- **El e2e del agente no pasa por el modelo:** los cinco guiones llaman a las
+  herramientas en orden, contra una base en memoria.
+- **Las pantallas internas se revisaron con la sesión abierta**; las públicas
+  (booker, confirmación, reagendar, cancelar y el embed) a 1440 y 390 px, en
+  claro y en oscuro.
+
+---
 ## Etapa 1 · Fase 3 · Bloque 2e-bis — Tope del prompt, link de WhatsApp y guardarraíl de salida
 
 **Fecha:** 27 de septiembre de 2026

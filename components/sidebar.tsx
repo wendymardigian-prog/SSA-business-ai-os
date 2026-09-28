@@ -14,10 +14,11 @@ import {
   BookOpen,
   Bot,
   Settings,
+  CalendarDays,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -51,12 +52,13 @@ interface WorkspaceItem {
 // Integraciones, que ahora se llega desde Settings.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Plug, Bot, BookOpen, Settings,
-  Clapperboard, Grid3x3,
+  Clapperboard, Grid3x3, CalendarDays,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
   name: item.name,
   href: item.href,
+  permissions: item.permissions,
   icon: ICONS[item.icon] ?? LayoutGrid,
   adminOnly: item.adminOnly,
 }));
@@ -65,6 +67,7 @@ export function Sidebar({
   workspace,
   user,
   role,
+  permissionKeys = [],
   workspaces,
   unreadNotifications = 0,
   draftCounts,
@@ -72,6 +75,8 @@ export function Sidebar({
   workspace: Workspace;
   user: ProfileUser;
   role: string;
+  /** Claves del rol resuelto (Etapa 4): el menu filtra por permiso. */
+  permissionKeys?: string[];
   workspaces: WorkspaceItem[];
   /** Conteo del servidor: evita que el numerito de la campana parpadee. */
   unreadNotifications?: number;
@@ -133,7 +138,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-1 p-3 collapsed:px-2">
-        <NavLinks role={role} drafts={drafts} collapsed={collapsed} />
+        <NavLinks role={role} permissionKeys={permissionKeys} drafts={drafts} collapsed={collapsed} />
       </nav>
 
       <div className="space-y-1 border-t border-sidebar-border p-3 collapsed:px-2">
@@ -160,11 +165,14 @@ export function Sidebar({
  */
 export function NavLinks({
   role,
+  permissionKeys = [],
   drafts,
   onNavigate,
   collapsed = false,
 }: {
   role: string;
+  /** Las claves del rol resuelto (Etapa 4): filtran los items con `permissions`. */
+  permissionKeys?: string[];
   drafts: PendingDraftCounts | undefined;
   /** El panel del telefono se cierra al elegir. */
   onNavigate?: () => void;
@@ -177,7 +185,7 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = navigation.filter((item) => !item.adminOnly || isAdminRole(role));
+  const navItems = visibleNavItems(navigation, { isAdmin: isAdminRole(role), permissionKeys });
   return (
     <>
       {navItems.map((item) => {

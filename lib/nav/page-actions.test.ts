@@ -125,9 +125,16 @@ describe("cada pantalla dibuja la barra de verdad", () => {
       return tries.find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
     };
 
-    /** ¿Este archivo, o alguno de los que importa, renderiza <PageHeader? */
+    /**
+     * ¿Este archivo, o alguno de los que importa, renderiza <PageHeader?
+     *
+     * El tope es para no recorrer el proyecto entero desde una pantalla que
+     * importa medio sistema. Subio de 60 a 200 cuando la pantalla de Agentes
+     * sumo las habilidades: la barra estaba, pero el recorrido se quedaba sin
+     * presupuesto antes de llegar y el test avisaba de algo que no pasaba.
+     */
     const rendersHeader = (entry: string, seen = new Set<string>()): boolean => {
-      if (seen.has(entry) || seen.size > 60) return false;
+      if (seen.has(entry) || seen.size > 200) return false;
       seen.add(entry);
       const source = readFileSync(entry, "utf8");
       if (source.includes("<PageHeader")) return true;

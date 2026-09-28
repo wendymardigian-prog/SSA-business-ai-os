@@ -79,7 +79,7 @@ function interpolate(
   text: string,
   variables: Record<string, string>
 ): string {
-  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (token, path: string) => {
+  return text.replace(/\{\{([\w-]+(?:\.[\w-]+)*)\}\}/g, (token, path: string) => {
     const value = resolvePath(variables, path);
     if (value === null || value === undefined) return token;
     return typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -441,6 +441,41 @@ export function simulateFlow(
           nodeType: "enrollSequence",
           nodeLabel: label,
           result: { type: "enroll_sequence", sequenceId },
+        });
+        break;
+      }
+
+      // Etapa 4 (F46): el email y las dos acciones de agenda. En la
+      // simulación no sale ningún email ni se toca ninguna reunión: se
+      // muestra qué haría.
+      case "send_email": {
+        const to = (data.to as string) || "contact";
+        const subject = interpolate((data.subject as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "send_email",
+          nodeLabel: label,
+          result: { type: "action", actionType: "send_email", detail: `a ${to}: ${subject || "(sin asunto)"}` },
+        });
+        break;
+      }
+
+      case "cancel_booking": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "cancel_booking",
+          nodeLabel: label,
+          result: { type: "action", actionType: "cancel_booking", detail: (data.status as string) || "cancelled_other" },
+        });
+        break;
+      }
+
+      case "set_booking_status": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "set_booking_status",
+          nodeLabel: label,
+          result: { type: "action", actionType: "set_booking_status", detail: (data.status as string) || "" },
         });
         break;
       }

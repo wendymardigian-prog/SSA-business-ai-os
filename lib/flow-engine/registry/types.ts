@@ -120,6 +120,30 @@ export interface TriggerGuardArgs {
   conversationId: string;
 }
 
+/** Un evento de la cola de `automation_events`, ya leído. */
+export interface AutomationEventRow {
+  id: string;
+  workspace_id: string;
+  event_type: string;
+  contact_id: string;
+  payload: Record<string, unknown>;
+}
+
+export interface TriggerEventArgs {
+  supabase: SupabaseClient<Database>;
+  event: AutomationEventRow;
+  config: Record<string, unknown>;
+  trigger: TriggerRow;
+  /**
+   * La agenda del evento, ya leída, cuando el payload trae `booking_id`.
+   *
+   * La carga el cron UNA vez por evento y se la pasa a todos los triggers: si
+   * cada uno la consultara, un evento con diez flujos haría diez consultas
+   * iguales.
+   */
+  booking?: Record<string, unknown> | null;
+}
+
 export interface TriggerDefinition {
   type: string;
   label: string;
@@ -133,6 +157,24 @@ export interface TriggerDefinition {
   priority: number;
   /** Decide si este trigger le corresponde al mensaje. Solo para scope "message"/"comment". */
   matches?(args: TriggerMatchArgs): boolean;
+  /**
+   * Qué tipos de evento de `automation_events` puede atender este trigger.
+   *
+   * Antes el cron mapeaba a mano: `contact_created` a `new_contact` y todo lo
+   * demás a `crm_event`. Con esto, sumar un tipo es declararlo acá y el cron
+   * no se toca. `["*"]` = cualquier evento (es lo que hace `crm_event`).
+   */
+  eventTypes?: string[];
+  /** Filtro propio del tipo sobre el evento. Sin él, con el tipo alcanza. */
+  eventMatches?(args: TriggerEventArgs): boolean | Promise<boolean>;
+  /**
+   * La clave de idempotencia del disparo. Por defecto es `event:<id del
+   * evento>`: una vez por evento. `new_contact` usa el contacto (una vez en
+   * la vida) y los de agenda usan la agenda.
+   */
+  dedupeKeyFor?(args: TriggerEventArgs): string;
+  /** Variables que este trigger le suma al contexto del flow. */
+  variablesFor?(args: TriggerEventArgs): Promise<Record<string, unknown>> | Record<string, unknown>;
   /**
    * Puerta de entrada extra de ESTE tipo, evaluada despues del match y antes
    * de disparar. Las puertas que valen para cualquier tipo y se prenden desde

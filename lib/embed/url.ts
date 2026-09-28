@@ -8,7 +8,7 @@
  * cliente) y el generador de código (en la app).
  */
 import { normalizeHexColor, UTM_KEYS, CLICK_ID_KEYS, type BookerTheme, BOOKER_THEMES } from "@/lib/scheduling/booker/embed-params";
-import { IDENTIFIER_RE } from "@/lib/scheduling/booking-fields";
+import { IDENTIFIER_RE } from "@/lib/scheduling/identifier";
 
 export const CAL_LINK_RE = /^[a-z0-9-]+\/[a-z0-9-]+$/;
 

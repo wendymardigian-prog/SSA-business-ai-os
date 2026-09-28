@@ -22,10 +22,14 @@ export async function GET(request: NextRequest) {
   const supabase = await createServiceClient();
   const now = new Date();
 
+  // Google Calendar (Etapa 4) no entra: su token se renueva a demanda al
+  // usarlo (lib/google-calendar/auth.ts) y sus avisos van a la persona, no a
+  // los admins. Un `warn` de aca pisaria el de YouTube con la misma causa.
   const { data: connections, error } = await supabase
     .from("oauth_connections")
     .select("id, workspace_id, provider, status, token_expires_at, vault_secret_prefix")
-    .in("status", ["active", "attention"]);
+    .in("status", ["active", "attention"])
+    .neq("provider", "google_calendar");
 
   if (error) {
     console.error("[social-token-refresh] no pude leer las conexiones:", error.message);

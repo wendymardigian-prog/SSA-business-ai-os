@@ -16,7 +16,7 @@
  * el cliente de Supabase), asi el flujo se prueba entero sin llamar a nadie.
  */
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, OAuthProvider } from "@/lib/types/database";
 import { readSecret, storeSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
@@ -32,9 +32,16 @@ import type { FetchLike, OAuthAdapter } from "./types";
 
 type Db = SupabaseClient<Database>;
 
-/** El prefijo con el que se guardan los tokens de una conexion en Vault. */
-export function vaultPrefixFor(provider: OAuthProvider, userId: string | null): string {
-  return userId ? `oauth_${provider}_${userId}` : `oauth_${provider}`;
+/**
+ * El prefijo con el que se guardan los tokens de una conexion en Vault.
+ *
+ * Del workspace: uno por proveedor. De una persona: uno por CONEXION (una
+ * persona puede tener varias cuentas del mismo proveedor, Etapa 4), y el id
+ * de la conexion es lo unico que las distingue. Vault admite nombres de hasta
+ * 100 caracteres: `oauth_google_calendar_<uuid>_refresh_token` mide 72.
+ */
+export function vaultPrefixFor(provider: OAuthProvider, connectionId: string | null): string {
+  return connectionId ? `oauth_${provider}_${connectionId}` : `oauth_${provider}`;
 }
 
 /**
@@ -65,6 +72,8 @@ export interface StartInput {
   workspaceId: string;
   userId: string;
   redirectTo?: string | null;
+  /** Con que cuenta entrar (reconectar una cuenta puntual). */
+  loginHint?: string | null;
   /** La direccion de retorno registrada en el proveedor. */
   callbackUrl: string;
   now?: number;
@@ -118,6 +127,7 @@ export async function startOAuth(input: StartInput): Promise<StartResult> {
       clientId,
       redirectUri: input.callbackUrl,
       state,
+      loginHint: input.loginHint ?? null,
     }),
   };
 }
@@ -235,6 +245,9 @@ export async function completeOAuth(input: CompleteInput): Promise<CompleteResul
     workspaceId,
     tokens,
     identity,
+    // Una conexion por persona se guarda a nombre de quien atendio el
+    // retorno: el state ya probo que es la misma persona que la empezo.
+    userId: adapter.perUser ? userId : null,
     now: input.now,
   });
 
@@ -256,7 +269,22 @@ function logStateFailure(provider: string, reason: StateFailure) {
   console.warn(`[oauth] ${provider}: state rechazado (${reason})`);
 }
 
-/** Guarda los tokens en Vault y la conexion en la base. En ese orden. */
+/**
+ * Guarda los tokens en Vault y la conexion en la base. En ese orden.
+ *
+ * Busca la fila que corresponde y la actualiza, o inserta una nueva. No usa
+ * `upsert`: los unicos de `oauth_connections` son dos indices PARCIALES
+ * (00095) y `ON CONFLICT (columnas)` no los encuentra (la version anterior,
+ * contra el indice de expresion de la 00082, fallaba con 42P10 contra la base
+ * real: nunca se vio porque la tabla estaba vacia y el test usa un mock).
+ *
+ * Que fila es "la que corresponde":
+ *   - del workspace (`user_id` NULL): la del proveedor, sea cual sea la cuenta
+ *     externa. Reconectar con otra cuenta de Google reemplaza la conexion, no
+ *     suma una segunda (los lectores hacen `.is("user_id", null).maybeSingle()`).
+ *   - de una persona: la de esa persona Y esa cuenta externa. Otra cuenta es
+ *     otra fila (Etapa 4: varias cuentas de Google por persona).
+ */
 export async function saveConnection(params: {
   supabase: Db;
   adapter: OAuthAdapter;
@@ -269,7 +297,25 @@ export async function saveConnection(params: {
   const { supabase, adapter, workspaceId, tokens, identity } = params;
   const now = params.now ?? Date.now();
   const ownerId = params.userId ?? null;
-  const prefix = vaultPrefixFor(adapter.provider, ownerId);
+
+  let existingQuery = supabase
+    .from("oauth_connections")
+    .select("id, vault_secret_prefix")
+    .eq("workspace_id", workspaceId)
+    .eq("provider", adapter.provider);
+  existingQuery = ownerId
+    ? existingQuery.eq("user_id", ownerId).eq("external_account_id", identity.externalAccountId)
+    : existingQuery.is("user_id", null);
+  const { data: existing, error: lookupError } = await existingQuery.maybeSingle();
+  if (lookupError) {
+    console.error(`[oauth] ${adapter.provider}: no pude buscar la conexion`, lookupError.message);
+    return { ok: false };
+  }
+
+  // El id se decide ANTES de guardar los tokens: el prefijo de Vault de una
+  // conexion por persona lo lleva adentro.
+  const connectionId = existing?.id ?? randomUUID();
+  const prefix = existing?.vault_secret_prefix ?? vaultPrefixFor(adapter.provider, ownerId ? connectionId : null);
 
   const stored = await storeSecret(
     supabase,
@@ -320,14 +366,10 @@ export async function saveConnection(params: {
     vault_secret_prefix: prefix,
   };
 
-  // Reconectar actualiza la fila que ya existe: el unico es (workspace,
-  // proveedor, persona), asi que dos conexiones del mismo proveedor no pueden
-  // convivir ni por accidente.
-  const { data, error } = await supabase
-    .from("oauth_connections")
-    .upsert(row, { onConflict: "workspace_id,provider,user_id" })
-    .select("id")
-    .maybeSingle();
+  const write = existing
+    ? supabase.from("oauth_connections").update(row).eq("id", existing.id).select("id").maybeSingle()
+    : supabase.from("oauth_connections").insert({ ...row, id: connectionId }).select("id").maybeSingle();
+  const { data, error } = await write;
 
   if (error || !data) {
     console.error(`[oauth] ${adapter.provider}: no pude guardar la conexion`, error?.message);

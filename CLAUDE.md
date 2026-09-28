@@ -130,7 +130,7 @@ La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**, y 
 
 La `00090_drop_legacy_secret_columns` **si se aplico** (26/9/2026, commit `d988e32`): los secretos de Zernio se movieron a Vault comprobando por huella sha256 que la copia era identica, se vaciaron las columnas, se comprobo que el sistema seguia leyendo, y recien ahi se borraron. Hoy **no queda ninguna clave en columnas de la base**.
 
-Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`: hay otra sesion trabajando la Etapa 4 sobre la misma base, que toma la banda desde 00121.
+Despues de cada migracion: `node scripts/build-all-migrations.mjs`. Antes de aplicar cualquiera, `list_migrations`.
 
 # Etapa 2 (construida)
 
@@ -192,7 +192,7 @@ No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpi
 
 La Etapa 2 quedo con la estructura entera y **sin publicar nada**. Lo que se
 arreglo esta en `docs/correcciones-etapa2.md` y el avance en
-`docs/PROGRESS-correcciones.md`. Cuatro cosas que conviene tener presentes
+`docs/etapa2/PROGRESS-correcciones.md`. Cuatro cosas que conviene tener presentes
 porque no se ven mirando el codigo:
 
 - **Instagram y TikTok se programan del lado de Zernio**, no con nuestra cola:
@@ -212,6 +212,67 @@ porque no se ven mirando el codigo:
 
 El **copywriter** es un agente propio (uno por workspace) que reemplaza la
 generacion simple de F29: ver `docs/agente-ia.md`.
+
+# Etapa 4 (construida)
+
+Agendamiento completo: del link publico a la reunion en Google Calendar, con
+sus automatizaciones y la habilidad del agente. El detalle en
+[docs/agendamiento.md](docs/agendamiento.md).
+
+## Lo que no se puede romper
+
+- **Los horarios salen de una sola funcion** (`getPublicSlots`). La pagina
+  publica, el agendar a mano y el agente la llaman. Si alguno usara otra,
+  podria ofrecer un horario que los demas no muestran.
+- **El servidor nunca confia en el horario del cliente**: antes de crear, se
+  vuelve a preguntar con Google sin cache.
+- **La doble reserva la evita la base**, con una restriccion de exclusion por
+  anfitrion y rango. `scripts/verify-booking-concurrency.mjs` lo prueba con
+  diez pedidos a la vez.
+- **UTC en la base; las reglas de disponibilidad son hora de pared + zona
+  IANA.** "Martes de 9 a 17 en Costa Rica" sigue siendo de 9 a 17 cuando
+  cambia el horario de verano.
+- **Cancelar es definitivo.** No hay vuelta a activa.
+- **La categoria queda congelada** en cada reunion (`category_snapshot`):
+  renombrar un area no cambia el significado de los informes viejos.
+- **El codigo publico de una reunion (22 caracteres) es una credencial**: con
+  el se cancela sin sesion. Nunca se le pasa al agente ni se muestra de mas.
+
+## Google Calendar
+
+La conexion es **por persona**, no por negocio, y por eso `oauth_connections`
+tiene dos unicos parciales. El token se renueva a demanda (no con el cron
+semanal de la Etapa 2) y un `invalid_grant` avisa a la PERSONA. La invitacion
+la manda Google (`sendUpdates=all`). Los reintentos de sincronizacion los
+agenda el handler (1, 5 y 15 minutos), NO la cola.
+
+## Automatizaciones
+
+Nueve tipos de trigger, seis por evento y tres relativos a la hora de la
+reunion. Los relativos se AGENDAN (`syncRelativeJobs`) y su clave lleva el
+numero de reagendas, asi mover una reunion vuelve a habilitar el recordatorio.
+El cron de `automation_events` enruta por el registro: sumar un tipo es
+declararlo con sus `eventTypes` y una migracion, sin tocar el cron.
+
+`flow_sessions.channel_id` admite null desde la 00100: un lead que agenda
+desde la pagina publica no tiene conversacion.
+
+## El embed
+
+`public/embed/embed.js` **se commitea**: en Railway el build corre sin
+dependencias de desarrollo y esbuild no esta. `npm run build` lo regenera
+cuando puede. Un test cuida que este y que no pase de 60 KB (un import mal
+puesto lo habia dejado en 488).
+
+## Scripts de verificacion
+
+```
+node scripts/verify-scheduling.mjs            # RLS, unicos, la RPC y la purga
+node scripts/verify-booking-concurrency.mjs   # diez pedidos a la vez, una reunion
+```
+
+Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
+(prefijo `zz-test-`), y no se corren dos en simultaneo.
 
 # Seguridad
 

@@ -105,3 +105,45 @@ describe("buildDesiredTriggers", () => {
     expect(rows[0]).toMatchObject({ type: "postback", priority: 5, config: { payload: "GET_STARTED" } });
   });
 });
+
+describe("los tipos que no son de mensaje (arreglo colateral de la Etapa 4)", () => {
+  it("un trigger de contacto nuevo ahora SÍ se guarda", () => {
+    // Antes la lista de tipos guardables estaba escrita a mano con los seis de
+    // mensaje: el editor ofrecía "Contacto nuevo" y al publicar no se escribía
+    // ninguna fila, así que el flow no arrancaba nunca.
+    const rows = buildDesiredTriggers([{ type: "trigger", data: { triggerType: "new_contact" } }], "flow-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe("new_contact");
+  });
+
+  it("un evento del CRM guarda su evento y su valor", () => {
+    const rows = buildDesiredTriggers(
+      [{ type: "trigger", data: { triggerType: "crm_event", event: "tag_added", value: "interesado" } }],
+      "flow-1",
+    );
+    expect(rows[0].config).toMatchObject({ event: "tag_added", value: "interesado" });
+  });
+
+  it("un trigger de agenda guarda sus filtros y su desfase", () => {
+    const rows = buildDesiredTriggers(
+      [{ type: "trigger", data: { triggerType: "booking_before_start", offset_minutes: 1440, origins: ["public_page"], label: "Recordatorio" } }],
+      "flow-1",
+    );
+    expect(rows[0].type).toBe("booking_before_start");
+    expect(rows[0].config).toMatchObject({ offset_minutes: 1440, origins: ["public_page"] });
+    // La etiqueta es del canvas, no del trigger.
+    expect(rows[0].config).not.toHaveProperty("label");
+  });
+
+  it("un filtro vacío no se guarda: vacío quiere decir 'cualquiera'", () => {
+    const rows = buildDesiredTriggers(
+      [{ type: "trigger", data: { triggerType: "booking_created", origins: [], host_user_ids: [] } }],
+      "flow-1",
+    );
+    expect(rows[0].config).toEqual({});
+  });
+
+  it("un tipo que el registro no conoce se sigue descartando", () => {
+    expect(buildDesiredTriggers([{ type: "trigger", data: { triggerType: "inventado" } }], "flow-1")).toEqual([]);
+  });
+});

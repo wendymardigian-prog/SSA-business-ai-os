@@ -28,6 +28,8 @@ export interface DashboardChrome {
   user: ProfileUser;
   workspaces: Array<{ id: string; name: string; slug: string; role: string }>;
   role: string;
+  /** Claves del rol resuelto (Etapa 4): el menu filtra por permiso. */
+  permissionKeys?: string[];
   unreadNotifications: number;
   draftCounts?: PendingDraftCounts;
 }
@@ -113,7 +115,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
               </button>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              <NavLinks role={chrome.role} drafts={drafts} onNavigate={() => setOpen(false)} />
+              <NavLinks role={chrome.role} permissionKeys={chrome.permissionKeys} drafts={drafts} onNavigate={() => setOpen(false)} />
             </nav>
             <div className="border-t border-sidebar-border p-3">
               <ProfileMenu user={chrome.user} />

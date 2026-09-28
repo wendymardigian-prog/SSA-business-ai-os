@@ -46,6 +46,31 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   revert: "revirtió una acción del agente",
   whatsapp_handoff: "pasó el lead a WhatsApp",
   tag_effect: "aplicó el efecto de una etiqueta",
+  // Agenda (Etapa 4). Las de agenda con entity_type = 'booking' se muestran
+  // en el detalle de la agenda; aca quedan por si alguna cae en el contacto.
+  "scheduling_profile.created": "creó su perfil de agenda",
+  "scheduling_profile.updated": "editó su perfil de agenda",
+  "google_calendar.connected": "conectó una cuenta de Google Calendar",
+  "google_calendar.disconnected": "desconectó una cuenta de Google Calendar",
+  "schedule.created": "creó un horario",
+  "schedule.updated": "editó un horario",
+  "schedule.deleted": "borró un horario",
+  "out_of_office.created": "cargó un tiempo fuera",
+  "out_of_office.updated": "editó un tiempo fuera",
+  "out_of_office.deleted": "borró un tiempo fuera",
+  "category.created": "creó una categoría de agenda",
+  "category.updated": "editó una categoría de agenda",
+  "category.archived": "archivó una categoría de agenda",
+  "event_type.created": "creó un evento de agenda",
+  "event_type.updated": "editó un evento de agenda",
+  "event_type.deleted": "borró un evento de agenda",
+  "booking.created": "agendó una llamada",
+  "booking.rescheduled": "reagendó una llamada",
+  "booking.cancelled": "canceló una llamada",
+  "booking.updated": "editó una agenda",
+  "booking.status_changed": "cambió el estado de una agenda",
+  "booking.sync_ok": "sincronizó la agenda con Google",
+  "booking.sync_failed": "no pudo sincronizar la agenda con Google",
 };
 
 const FIELD_LABELS: Record<string, string> = {

@@ -36,6 +36,7 @@ const MODULE_LABELS: Record<PermissionModule, string> = {
   agents: "Agente de IA",
   knowledge: "Base de conocimiento",
   content: "Contenido",
+  scheduling: "Agenda",
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuracion",
@@ -48,6 +49,7 @@ interface Draft {
   keys: string[];
   leadsScope: PermissionScope;
   conversationsScope: PermissionScope;
+  bookingsScope: PermissionScope;
 }
 
 const emptyDraft = (): Draft => ({
@@ -57,6 +59,7 @@ const emptyDraft = (): Draft => ({
   keys: [],
   leadsScope: "own",
   conversationsScope: "own",
+  bookingsScope: "own",
 });
 
 export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
@@ -81,6 +84,7 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
       keys: [...role.permissions.keys],
       leadsScope: role.permissions.scopes.leads,
       conversationsScope: role.permissions.scopes.conversations,
+      bookingsScope: role.permissions.scopes.bookings,
     });
     setError(null);
     setWarnings([]);
@@ -97,6 +101,7 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
         keys: draft.keys,
         leadsScope: draft.leadsScope,
         conversationsScope: draft.conversationsScope,
+        bookingsScope: draft.bookingsScope,
       };
 
       const result = draft.id ? await updateRole(draft.id, input) : await createRole(input);
@@ -258,7 +263,7 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
               </label>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <ScopeField
                 label="Que leads ve"
                 value={draft.leadsScope}
@@ -268,6 +273,11 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
                 label="Que conversaciones ve"
                 value={draft.conversationsScope}
                 onChange={(conversationsScope) => setDraft({ ...draft, conversationsScope })}
+              />
+              <ScopeField
+                label="Que agendas ve"
+                value={draft.bookingsScope}
+                onChange={(bookingsScope) => setDraft({ ...draft, bookingsScope })}
               />
             </div>
 

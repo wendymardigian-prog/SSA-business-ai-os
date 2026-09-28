@@ -1,4 +1,4 @@
-# Pendientes
+# Pendientes — Etapa 4 (Agendamiento)
 
 Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
@@ -8,329 +8,80 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
 ---
 
-## Etapa 2
-
-### Las pantallas del Bloque 1 no se recorrieron a ojo
-- **Qué quedó:** la pantalla de integraciones nueva (grilla, modal, filtro "Requiere atención") y la barra
-  superior en las 22 pantallas no se vieron en el navegador, ni en 1440 ni en 390 px.
-- **Por qué:** la app pide login y en la corrida autónoma no se ingresan credenciales. Se levantó el servidor
-  y toda ruta del dashboard redirige a `/login`.
-- **Qué se decidió en su lugar:** la lógica va en funciones puras con tests (`status`, `usage`, `page-actions`)
-  y hay dos tests que recorren los archivos: uno verifica que toda pantalla con título dibuje la barra siguiendo
-  sus imports, y otro que ningún componente de navegador llegue al módulo de Vault. La recorrida visual queda
-  para hacerla con Wendy.
-
-### Migración destructiva escrita y sin aplicar (§9.10)
-- **Qué quedó:** `drop_legacy_secret_columns` (`workspaces.late_api_key_encrypted`, `workspaces.webhook_secret`,
-  `channels.webhook_secret`) se escribe como archivo y **no se aplica**.
-- **Por qué:** borra columnas que hoy tienen los secretos en uso. Aplicarla antes de que todo lea de Vault
-  dejaría a Instagram sin API key y al webhook sin secreto.
-- **Qué se decidió en su lugar:** se aplica en la verificación en vivo (§18 del plano), después de confirmar con
-  cuentas reales que Vault responde, y junto con el borrado de las variables `EVOLUTION_*` de Railway.
-
-### "Migrar a Vault" se construye pero no se aprieta
-- **Qué quedó:** el botón de la card de Zernio (F5) queda funcionando, pero durante la corrida no se usa.
-- **Por qué:** copiar un secreto es cambiar configuración real, y la regla de la corrida (§0) lo prohíbe.
-- **Qué se decidió en su lugar:** mientras Vault esté vacío, `resolveWebhookSecret` y `getZernioApiKey` siguen
-  leyendo las columnas de hoy, así que nada cambia de comportamiento. El botón se usa en §18.
-
----
-
-### La documentación de Postproxy no coincide con el plano
-- **Qué quedó:** el plano (F32) suponía campos propios de YouTube (título, privacidad, Short, miniatura) y un
-  webhook de estado con firma. La documentación real (postproxy.dev, consultada el 26/9/2026) expone
-  `POST /posts` con `{ post: { body, draft, scheduled_at }, profiles, media }`, sin campos por red
-  documentados, y su guía de inicio **no documenta webhooks**.
-- **Por qué:** gana la documentación (§19 del plano).
-- **Qué se decidió en su lugar:** el cliente implementa lo que la API tiene de verdad, y el estado final se
-  consulta con `GET /posts/:id` en vez de esperar un webhook. El publicador de F32 agenda ese chequeo. Si
-  Postproxy documenta webhooks más adelante, se cambia el camino sin tocar la interfaz común. Al conectar la
-  cuenta real hay que confirmar cómo se manda el título del video: puede ir en `platforms[].params`.
-
-### 20 vulnerabilidades de npm, previas a esta etapa
-- **Qué quedó:** `npm audit` reporta 20 vulnerabilidades (1 crítica, 10 altas), entre ellas `ws` y otras
-  dependencias transitivas.
-- **Por qué:** ya estaban antes de la Etapa 2. Se verificó: el conteo es idéntico con y sin `tus-js-client`,
-  la única dependencia que suma esta etapa. Arreglarlas implica `npm audit fix --force`, que trae cambios
-  incompatibles y no es algo para hacer en medio de una corrida autónoma.
-- **Qué se decidió en su lugar:** anotarlo. Conviene revisarlo aparte, con la suite en verde antes y después.
-
-## Heredado de la Fase 3
-
-Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resuelve en F7.
-
-### API por lote (Bloque 5 de la Fase 3, §21.2)
-- **Qué quedó:** el proveedor de IA se llama con pedidos agrupados, no con la API por lote (batch) real.
-- **Por qué:** el AI SDK v6 no expone modo batch para ningún proveedor, y los SDK crudos no están instalados.
-- **Qué se decidió en su lugar:** interfaz `BatchProvider` lista para sumar el lote real por `fetch`.
-
-### Handler de `bg_task` y recolección (F24/F25 de la Fase 3)
-- **Qué quedó:** falta el handler de `scheduled_jobs` tipo `bg_task` que ejecuta el clasificador, y la
-  recolección de resultados en `bg-collect` (hoy la ruta es un stub con un TODO).
-- **Por qué:** el lote real no existe en el SDK y el pipeline completo era grande.
-- **Qué se decidió en su lugar:** quedaron la lógica de ventanas (`planDispatch`), las rutas cron y el
-  clasificador. **Hallazgo nuevo de esta corrida:** como el dedupe de `scheduled_jobs` solo cubre las filas
-  `pending`, cada `bg_task` que el runner completa se vuelve a encolar 15 minutos después. Al 26/9/2026 hay 9 así,
-  y crecen ~96 por día. No se rompe nada (el job no hace nada), pero conviene cerrarlo al construir el handler.
-  El registro de jobs del Bloque 4b le deja un handler explícito que conserva ese comportamiento.
-
-### UI de calidad, revisión rápida y versiones del clasificador (F25 de la Fase 3)
-- **Qué quedó:** las fórmulas de calidad (`lib/patterns/quality.ts`) están testeadas, falta la pantalla: 4
-  indicadores, calibración, revisión rápida de 20 y versiones del clasificador con "volver a esta".
-- **Por qué:** volumen del bloque.
-- **Qué se decidió en su lugar:** la lógica quedó testeada; la pantalla se hace con Wendy mirando.
-
-### Detalle de tendencias con 4 pestañas (F16 de la Fase 3)
-- **Qué quedó:** el dashboard de Chat muestra una serie; la función SQL ya devuelve las tres.
-- **Por qué:** las 4 pestañas con leyenda y paso a semanal son presentación; el dato está.
-- **Qué se decidió en su lugar:** se completan en la pasada de pantallas con Wendy.
-
-### "Qué le responden" (§11.7) y drilldown de correcciones (F22 de la Fase 3)
-- **Qué quedó:** falta la sección "qué le responden" y los controles de corrección enganchados en la UI (las
-  Server Actions ya existen en `lib/actions/patterns.ts`).
-- **Por qué:** volumen del bloque.
-- **Qué se decidió en su lugar:** se completa en la pasada de pantallas con Wendy.
-
-### `declarar_intencion` es opt-in (F26 de la Fase 3)
-- **Qué quedó:** la herramienta existe pero no es `required`: se habilita por agente.
-- **Por qué:** marcarla `required` cambiaba el set por defecto y rompía los tests de caracterización del runner.
-- **Qué se decidió en su lugar:** queda opt-in; al prender el agente, activarla en Herramientas.
-
-### Migración 00072 (avisos de ventana) escrita y sin aplicar
-- **Qué quedó:** `00072_draft_window_alerts` está escrita y probada, y **no está aplicada**. Verificado contra la
-  base el 26/9/2026: no existen `private.alert_draft_windows` ni el cron `ssa-cron-draft-window-alerts`.
-  (La bitácora del Bloque 2c dice en un lugar que se aplicó: es un error, la base manda.)
-- **Por qué:** es lo único que notifica a una persona; conviene enchufarlo sabiendo el volumen de la cola.
-- **Qué se decidió en su lugar:** se aplica cuando la cola de borradores tenga un par de días.
-
-### Recorrida de pantallas en vivo
-- **Qué quedó:** las pantallas no se recorrieron a ojo en las corridas autónomas.
-- **Por qué:** la app pide login y no se ingresan credenciales.
-- **Qué se decidió en su lugar:** la lógica va en funciones puras con tests y en scripts `verify-*`; la recorrida
-  a 1440 y 390 px se hace con Wendy.
-
-### Deuda del agente que sigue abierta
-- **Qué quedó:** `approveDraft` no mira `agent_enabled`; un Member no ve en Acciones los `tag_effect` del agente;
-  las respuestas desde la app de Instagram no llegan por webhook; el eco `fromMe` de WhatsApp no apaga el agente;
-  la zona horaria está partida entre la de la app y la del negocio; el backlog de 578 conversaciones sigue abierto;
-  la regla de pertenencia de un borrador (setter → vendedor → sin asignar) espera confirmación de Wendy;
-  falta la segunda pasada del backfill de Zernio (semana del 1/10/2026); y el Bloque 2d-B completo.
-- **Por qué:** son decisiones de producto o necesitan al agente corriendo con datos reales.
-- **Qué se decidió en su lugar:** todo documentado en [agente-ia.md](agente-ia.md); no se toca en la Etapa 2.
-
-### Hallazgos de la exploración de la Etapa 2 que no son de su alcance
-- **Qué quedó:** (a) `lib/ai/generate-reply.ts` (nodo AI Response y pasos de secuencia) **no chequea los topes de
-  gasto**: solo el runner del agente llama a `checkSpendLimits`. (b) `next.config.ts` no configura
-  `serverActions.bodySizeLimit`, así que la subida de documentos de la base de conocimiento (que pasa por una
-  Server Action) topea en 1 MB por defecto, muy por debajo del límite de 25 MB del bucket. (c) Los broadcasts
-  envían solo por Zernio: un destinatario de WhatsApp se saltea en silencio.
-- **Por qué:** son zonas declaradas intocables por §4.2 del plano de la Etapa 2.
-- **Qué se decidió en su lugar:** quedan anotados. (a) y (c) son arreglos chicos y acotados; (b) es una línea de
-  configuración, pero cambiarla toca el límite de todas las Server Actions.
-
-### La prueba de subida directa a YouTube no se corrió (F38)
-
-**Qué quedó.** `probeYouTubeUpload` está construida y probada con el proveedor simulado, con su botón en la card de Google. Nunca se apretó.
-
-**Por qué.** Sube un video a la cuenta real de YouTube del negocio. La regla 2 de la corrida dice que no se publica nada, y la 3, que no se toca configuración real.
-
-**Qué se decidió en su lugar.** El publicador `youtube_api` queda en `unverified`, que es el estado que ya traía: YouTube publica por Postproxy hasta que alguien apriete el botón. La prueba va en la verificación en vivo (§18 del plano), junto con conectar las cuentas.
-
-### El receptor de Postproxy está construido sobre un formato supuesto
-
-**Qué quedó.** `app/api/webhooks/postproxy/route.ts` existe y valida un secreto, pero la documentación pública de Postproxy no documenta webhooks.
-
-**Por qué.** El plano los daba por hechos; la documentación manda. El formato que interpreta `fromPostproxyEvent` es una suposición razonable (`post_id`, `status`, `url`).
-
-**Qué se decidió en su lugar.** El camino real para saber cómo quedó una publicación por Postproxy es el job de revisión `content_publish_check`, que pregunta por el estado a los 2, 10 y 30 minutos. Si Postproxy suma avisos, alcanza con pegar la URL, guardar el secreto y ajustar esa función.
-
-### LinkedIn publica solo texto
-
-**Qué quedó.** `linkedinPublisher` publica un post de texto. Con media, falla con un mensaje claro.
-
-**Por qué.** Las Images, Videos y Documents API de LinkedIn son tres flujos de subida distintos, cada uno con su registro previo. Construirlos a ciegas, sin una cuenta conectada contra la que probar, es escribir código que no se puede verificar.
-
-**Qué se decidió en su lugar.** Fallar con "LinkedIn solo publica texto por ahora" antes de intentarlo. Publicar el texto sin la imagen y no decir nada sería peor: se vería como que salió bien.
-
-### Zernio no tiene `/v1/analytics/delta` ni cursor
-
-**Qué quedó.** El lector de Zernio pide una ventana de fechas con `getAnalytics`, no un delta incremental, y no se guarda ningún `analytics_cursor`.
-
-**Por qué.** El plano daba por hecho un endpoint `delta` con cursor y un evento `analytics.synced`. Revisado el SDK instalado (`@zernio/node` 0.2.x), no existen: lo que hay es `getAnalytics` con `fromDate`, `toDate`, `page` y `source`. Gana la documentación.
-
-**Qué se decidió en su lugar.** Se piden los últimos 30 días, que es exactamente la ventana que la regla de frecuencia (F45) dice que todavía cambia. Para una recolección nocturna da el mismo resultado con una pieza menos que mantener. Si Zernio suma el delta, se cambia dentro de `readZernioMetrics` y nada más se entera.
-
-### Historial inicial: qué permitió cada red
-
-**Qué quedó.** La serie de seguidores empieza el día que se conecta la cuenta, salvo en Instagram.
-
-**Por qué.** Es lo que da cada API:
-
-| Red | Historial al conectar |
-|---|---|
-| Instagram | 30 días de `follower_count` por la Graph de Meta |
-| YouTube | La Analytics API da series por día desde el inicio del canal, pero solo con la cuenta conectada por OAuth |
-| Zernio (Instagram, TikTok) | Ninguno: da un solo número de seguidores, sin fecha |
-| Threads | Ninguno: `followers_count` es un total |
-
-**Qué se decidió en su lugar.** El gráfico dice "Datos desde el …" cuando la serie no llega al principio del período, en vez de dibujar una línea que arranca de la nada.
-
-### LinkedIn no da métricas de publicaciones ni comentarios
-
-**Qué quedó.** El lector de LinkedIn devuelve vacío con un aviso, y sus comentarios no se leen.
-
-**Por qué.** Las dos cosas necesitan el programa de partners de LinkedIn. Con los permisos que da una app común, los endpoints existen pero devuelven vacío o 403.
-
-**Qué se decidió en su lugar.** Decirlo en pantalla: "LinkedIn no deja leer los comentarios desde afuera. Se contestan desde LinkedIn." Es información, no un error que alguien pueda arreglar reconectando.
-
-### La página Social muestra tres cifras vacías
-
-**Qué quedó.** En el perfil, "Seguidos" (Instagram), "Me gusta" (TikTok) y "Vistas" (YouTube) aparecen con una raya.
-
-**Por qué.** Ninguna recolección los trae: el lector de Zernio da seguidores y nada más, y la Data API de YouTube da el total de vistas del canal, que hoy no se guarda en ninguna columna.
-
-**Qué se decidió en su lugar.** Mostrar una raya y no un cero. Un cero diría que la cuenta no sigue a nadie y que el canal no tuvo vistas nunca. Cuando se sumen esas columnas a `social_account_metrics_daily.extra`, la pantalla las toma sin cambios.
-
-### Las historias activas no se muestran todavía
-
-**Qué quedó.** `readActiveStories` existe y está probada, pero la página Social no la llama.
-
-**Por qué.** Necesita una ruta con caché de 15 minutos por workspace, y el bloque 6 ya era el más grande de la fase.
-
-**Qué se decidió en su lugar.** La grilla muestra las publicaciones guardadas, que es lo que contesta la pregunta principal. Las historias van con el bloque 7, donde ya hay una caché en memoria para Meta y se comparte el patrón.
-
-### El detalle de anuncios no muestra las tarjetas de desglose
-
-**Qué quedó.** Las pantallas de campaña, conjunto y anuncio muestran las cifras, la evolución, el embudo, la retención de video, los rankings y el creativo. No muestran las tarjetas de placement, dispositivo, audiencia ni rendimiento por hora.
-
-**Por qué.** Las cuatro salen de consultas en vivo a Meta (`fetchBreakdown`, ya construida y probada), y cada una es una llamada más por pantalla abierta. Con la cuenta real todavía sin conectar, no había forma de ver si el volumen de llamadas es razonable en el nivel Development.
-
-**Qué se decidió en su lugar.** `fetchBreakdown` queda lista con su caché de 15 minutos. Agregar las tarjetas es consumirla desde la pantalla, sin tocar nada más. Se hace en la verificación en vivo, cuando se pueda medir cuánta cuota cuesta abrir un detalle.
-
-### El análisis con IA no guarda los análisis anteriores
-
-**Qué quedó.** Cada análisis se muestra y se pierde al cerrar el panel. El costo sí queda registrado en `agent_runs`.
-
-**Por qué.** Guardarlos necesita una tabla con su RLS, y el plano lo pedía como nice-to-have dentro del último bloque de la fase.
-
-**Qué se decidió en su lugar.** El análisis se puede copiar del panel. Si resulta que se relee, la tabla es una migración chica y el panel ya tiene dónde listarlos.
-
-### La migración del email quedó en 00087, no en 00086
-
-**Qué quedó.** La numeración planificada daba 00086 al email. Quedó 00086 para las tablas de métricas (bloque 5) y 00087 para el email.
-
-**Por qué.** El bloque 5 llegó antes en el orden real de ejecución, y saltear un número o reordenarlos después de aplicar el primero habría dejado el repositorio y la base en desacuerdo.
-
-**Qué se decidió en su lugar.** Se siguió el orden de ejecución. La tabla de migraciones de PROGRESS tiene la numeración real.
-
-### Un segundo módulo que no puede llegar al navegador
-
-**Qué quedó.** `lib/email/buckets.ts` existe solo para tener el nombre del bucket sin dependencias, y `lib/vault-boundary.test.ts` ahora vigila también `lib/supabase/server.ts`.
-
-**Por qué.** La bandeja es un Client Component y necesitaba el nombre del bucket. Importarlo de `lib/email/inbound.ts` arrastró todo el procesamiento del correo y con él `next/headers`, y el build falló señalando un archivo que nadie había tocado.
-
-**Qué se decidió en su lugar.** El mismo patrón que `lib/secret-names.ts`: un archivo hoja con la constante. Y el test de frontera ahora cubre los dos módulos, así el próximo caso sale nombrando la cadena de imports en vez de un error de Turbopack.
-
-### ~~La migración 00090 está escrita y NO aplicada~~ — RESUELTO el 26/9/2026
-
-Los secretos de Zernio se movieron a Vault y la migración se aplicó. El orden que se siguió:
-
-1. Se verificó que Vault tuviera los dos secretos, comparando **huellas sha256** contra las columnas. Coincidían exactamente: era una copia idéntica, no un valor distinto.
-2. Se vaciaron las columnas (paso reversible: Vault tenía la copia).
-3. Se comprobó que el sistema seguía leyendo las dos claves por su camino real, ya sin la columna de respaldo.
-4. Se aplicó la migración, que además se niega a correr si queda algún secreto adentro.
-5. Se sacaron del código los tres respaldos que leían esas columnas, y `verify-webhook.mjs` confirmó de punta a punta que Instagram sigue entrando.
-
-### `has_permission` no conoce los permisos del rol Member de sistema
-
-**Qué quedó.** La función de la base devuelve `true` para Owner y Admin, y para un rol personalizado consulta su jsonb. Para el rol Member de sistema devuelve `false` en todo, porque su fila tiene los permisos vacíos.
-
-**Por qué.** La fuente de los permisos de los tres roles de sistema es `lib/auth/permissions.ts`. Copiarlos a SQL daría dos listas que se separan, y mandaría la que alguien mire primero.
-
-**Qué se decidió en su lugar.** Hoy ninguna policy usa `has_permission`: el alcance de leads lo resuelve `permission_scope`, que sí contempla los tres casos. Queda documentado en el cuerpo de la función y en `docs/roles.md`. Si algún día una policy necesita preguntar por un permiso que un Member tiene, hay que sincronizar la lista o hacer que la función lea la tabla de TypeScript por otra vía.
-
-### Dos errores que encontró `verify-rls.mjs` en el bloque 9
-
-Los dos se arreglaron, y valen como anotación porque el script es la única razón por la que se encontraron:
-
-1. **El trigger que protege los roles de sistema frenaba el borrado en cascada de un workspace.** Faltaba distinguir "alguien borra un rol de sistema a mano" de "el workspace se va y sus roles con él". Se arregló mirando si el workspace todavía existe.
-2. **El primer intento de la 00089 copió la lógica de leads dentro de `can_see_conversation`** en vez de delegar en `can_see_contact`, deshaciendo lo que la 00028 había hecho a propósito, y perdiendo la exclusión de contactos borrados. El Member volvía a ver la conversación sin asignar de un lead que no puede ver. Se volvió a delegar, y el alcance `conversations: all` quedó como un camino más, antes de delegar: solo ensancha.
-
-## Correcciones de la Etapa 2 (rama `etapa2-correcciones`)
-
-### D9 · Postproxy se queda en el despachador
-
-**Qué quedó.** YouTube por Postproxy sigue publicando por nuestra cola, no
-programado del lado de ellos como Instagram y TikTok.
-
-**Por qué.** Leí su documentación (`postproxy.dev/getting-started/quickstart`).
-`POST /api/posts` **sí** acepta `scheduled_at` con una fecha ISO. Pero no
-documenta **ningún** endpoint para editar, borrar o reintentar un post, ni
-webhooks. Sin poder cancelar, desprogramar dejaría el post agendado allá y se
-publicaría igual: la persona apretó "desprogramar" y el video sale lo mismo.
-Eso es peor que lo que hay hoy.
-
-**Qué se decidió en su lugar.** Postproxy queda en el despachador, con los
-arreglos del grupo A (el perfil correcto, el id del video, el reintento). Si
-algún día documentan borrar y editar, implementa `ProviderScheduler` y se
-suma sin tocar a nadie: esa es justamente la forma de la interfaz.
-
-### D8 · "Agregar a la cola" de Zernio, sin hacer
-
-**Qué quedó.** La opción de programar en el próximo hueco libre de la cola de
-Zernio (`getNextQueueSlot`) no se construyó. Era nice-to-have.
-
-**Por qué.** Zernio avisa en su propio esquema que **no** hay que copiar el
-horario que devuelve `next-slot` a `scheduledFor`: eso saltea el bloqueo de la
-cola y dos posts pueden quedar en el mismo hueco. La forma correcta es mandar
-`queuedFromProfile` con el id del **perfil** de Zernio, que es un dato que el
-sistema hoy no guarda (guardamos el id de la cuenta, que es otra cosa).
-
-**Qué se decidió en su lugar.** Se anota acá. Sumarlo es guardar el perfil al
-conectar Zernio y agregar la opción en la fila de la red; no cambia nada de lo
-construido.
-
-### A15 / D7 · La ventana de idempotencia de Zernio son ~5 minutos
-
-**Qué quedó.** El id de pedido (`x-request-id`) protege de un corte de red,
-no de un reintento horas después.
-
-**Por qué.** Zernio replica la respuesta original sólo dentro de una ventana
-de unos 5 minutos. Después, el mismo id crea un post nuevo. Aparte tiene un
-segundo control, por huella del contenido, que rechaza con 409 durante 24
-horas un post igual a otro.
-
-**Qué se decidió en su lugar.** El id lleva el número de intento
-(`socialPostId:intento`), así un reintento inmediato reusa el original y uno
-deliberado más tarde crea uno nuevo a propósito. Y el 409 del control de
-contenido no se trata como fallo: se toma el id del post que ya existía.
-
-### El SDK de Zernio lanza, no devuelve el error
-
-**Qué encontré.** El README del SDK y su propio tipo sugieren
-`{ data, error }`, pero el cliente tiene un interceptor que convierte todo
-HTTP no-2xx en una excepción `ZernioApiError`. El bloque `if (error)` del
-publicador era **código muerto**, y encima leía `.status` cuando la clase
-expone `.statusCode`: todos los errores terminaban como permanentes y ningún
-429 ni 5xx se reintentaba.
-
-**Qué se decidió.** `lib/publishing/zernio-errors.ts` mira la forma del error
-(sin importar la clase del SDK, para no atarse a cómo la empaqueten) y
-clasifica por código. Se anota acá porque el README del SDK sigue
-desactualizado y la próxima persona se va a confundir igual.
-
-### C14 · La vista semanal del calendario, sin hacer
-
-**Qué quedó.** El calendario tiene la grilla del mes (en la computadora) y la
-agenda por día (en el celular). La vista de semana no se construyó.
-
-**Por qué.** Todo lo demás del punto sí está: contar piezas o publicaciones,
-la hora en cada tarjeta, las insignias de red, el color por estado, la
-leyenda, hoy resaltado y arrastrar para reprogramar. La semana es una cuarta
-forma de mirar lo mismo, y con un mes que hoy tiene una pieza no había forma
-de comprobar que sirviera para algo.
-
-**Qué se decidió en su lugar.** Se anota. Cuando haya varias publicaciones por
-semana va a ser evidente si hace falta, y para entonces `buildCalendar` ya
-devuelve las tarjetas con su día y su hora: la semana es elegir siete días en
-vez de treinta y cinco.
+## Etapa 4
+
+### Redirect URI nueva en Google Cloud (F4)
+- **Qué quedó:** el adaptador `google_calendar` vuelve por `/api/oauth/google_calendar/callback`, una dirección que el cliente OAuth de Google Cloud todavía no tiene autorizada.
+- **Por qué:** el adaptador `google` de la Etapa 2 exige un canal de YouTube para identificar la cuenta, así que Calendar no puede compartir su callback. La regla de la corrida prohíbe tocar Google Cloud.
+- **Qué se decidió en su lugar:** proveedor propio. En la verificación en vivo (§18 del plano) se agrega la redirect URI y se habilita la Calendar API, junto con los permisos de Calendar en la pantalla de consentimiento.
+
+### Google Calendar: lo que dice la documentación (consultada el 27/9/2026)
+- **Qué quedó:** dos precisiones sobre el plano, mantenida la interfaz de `lib/google-calendar/*`.
+- **Por qué:** gana la documentación.
+- **Qué se decidió en su lugar:** (1) un 403 con `reason` `rateLimitExceeded` o `userRateLimitExceeded` es `temporary` (backoff), no `permanent`; los otros 403 (`insufficientPermissions`, `forbiddenForNonOrganizer`) sí son `permanent`. (2) `invalid_grant` es del endpoint de token de OAuth, no de Calendar: se trata como `permanent` y marca la conexión `revoked`. Confirmado: `calendar.events.freebusy` alcanza para `freeBusy.query`, `calendar.calendarlist.readonly` para `calendarList.list` (pagina con `nextPageToken`, hasta 250 por página) y `calendar.events` para insertar, modificar y borrar con `conferenceDataVersion=1` y `sendUpdates=all`. La identidad (`sub`, email) sale de `openid email` + `userinfo`.
+
+### F56 · El e2e del agente no pasa por el modelo
+- **Qué quedó:** los cinco guiones de F56 llaman a las herramientas en el orden en que el modelo las llamaría, contra una base en memoria, pero no hay un test que haga que un modelo simulado emita las llamadas a herramienta y recorra el bucle del runner.
+- **Por qué:** el repo no tiene ningún test que simule llamadas a herramienta desde el modelo, así que habría que construir esa plomería primero, y eso es trabajo del runner y no de esta etapa.
+- **Qué se decidió en su lugar:** los guiones prueban lo que el modelo no puede arreglar (que el horario exista, que no se agende dos veces, que sin permiso la herramienta no esté, que el código público no llegue al modelo). Lo que falta es que el modelo elija bien, que se verifica con el agente prendido.
+
+### F42 · Dominio propio para los links públicos (nice-to-have)
+- **Qué quedó:** `workspaces.scheduling_public_base_url` existe y `publicBaseUrl` ya la prefiere, pero no hay pantalla para cargarla ni resolución por host en el middleware.
+- **Por qué:** es nice-to-have y hacerlo bien pide tocar DNS y certificados, que esta corrida no toca.
+- **Qué se decidió en su lugar:** los links salen de `NEXT_PUBLIC_APP_URL`. El día que se quiera un dominio propio, alcanza con escribir esa columna y sumar la resolución por host: el resto del código ya la respeta.
+
+### F15 · Vista previa del horario (nice-to-have)
+- **Qué quedó:** el calendario de las próximas 2 semanas con los horarios libres de un evento de 30 minutos, sin contar Google.
+- **Por qué:** es nice-to-have y el bloque ya cubrió todo lo must.
+- **Qué se decidió en su lugar:** el núcleo deja `freeWindows(input)` (pasos 1 a 4 del motor); la vista es armar ese input con `busy = []` y dibujarlo. Se puede sumar después sin tocar nada.
+
+## Hallazgos de la exploración (previos a esta etapa)
+
+### ~~El guardado de conexiones OAuth de la Etapa 2 fallaba contra la base real~~ — RESUELTO en B1
+- **Qué quedó:** `saveConnection` hacía `upsert(onConflict: "workspace_id,provider,user_id")`, pero el índice único era de expresión (`coalesce(user_id, …)`). Verificado con `EXPLAIN` contra la base: Postgres responde 42P10. Conectar YouTube, LinkedIn o Threads de verdad habría terminado en `save_failed`. Nunca se vio porque `oauth_connections` estaba vacía y el test usa un mock.
+- **Por qué:** un `ON CONFLICT (columnas)` solo encuentra índices de columnas, no de expresiones.
+- **Qué se decidió en su lugar:** (decisión de Wendy, 27/9) se reescribe como buscar → actualizar o insertar, para todos los proveedores, y los índices pasan a ser dos parciales sin expresiones (una conexión de workspace por proveedor; varias cuentas por persona). Queda en B1.
+
+### ~~Hoy la app no manda ningún encabezado de seguridad~~ — RESUELTO en B1
+- **Qué quedó:** el plano (§15) suponía `X-Frame-Options: DENY` "como hoy". No existe: `next.config.ts` no define `headers()` y el middleware solo refresca la sesión.
+- **Qué se decidió en su lugar:** (decisión de Wendy, 27/9) se agrega `securityHeadersFor(path)`: `frame-ancestors *` en `/calendario/*` y `/embed/*`, `frame-ancestors 'none'` + `X-Frame-Options: DENY` en el resto. Queda en B1.
+
+### Los triggers de evento del editor nunca se guardaban
+- **Qué quedó:** al publicar un flow, `buildDesiredTriggers` descartaba todo tipo que no fuera de mensaje o comentario. `new_contact`, `crm_event`, `inactivity` y `email_received` elegidos en el canvas no se escribían en `triggers`.
+- **Por qué:** `BUILDER_TRIGGER_TYPES` se escribió cuando esos cuatro no existían y nadie lo amplió.
+- **Qué se decidió en su lugar:** en B7a la persistencia pasa a ser genérica (todo tipo registrado con scope `event` o `scheduled`), que es lo que el editor promete. De paso empiezan a guardarse los cuatro viejos. Si Wendy prefiere que no cambie, es un filtro de una línea.
+
+### Un flow no arrancaba si el contacto no tenía conversación
+- **Qué quedó:** el cron de `automation_events` manda `channelId: ""` y `flow_sessions.channel_id` es NOT NULL: el insert de la sesión fallaba en silencio y el flow no corría. Un lead que agenda desde la página pública no tiene conversación.
+- **Qué se decidió en su lugar:** en B7a `flow_sessions.channel_id` pasa a admitir null (migración aditiva) y el motor tolera un flow sin canal: los nodos de envío por canal se saltean con motivo; `send_email` no necesita canal.
+
+### `sendMessage` por WhatsApp e Instagram no mira `do_not_contact`
+- **Qué quedó:** el plano dice que "los demás nodos de envío respetan `do_not_contact`". Solo lo hacen el canal de email, `enroll_sequence`, las secuencias y el cron de inactividad. El nodo `sendMessage` por Zernio o Evolution manda igual.
+- **Por qué:** es comportamiento de la Etapa 1, fuera del alcance de esta etapa.
+- **Qué se decidió en su lugar:** `send_email` (nuevo) sí lo respeta, salvo cuando el flow arrancó por un trigger de agenda. El nodo viejo queda como está y se anota acá.
+
+### El test de paridad interpolador/simulador no existía
+- **Qué quedó:** el comentario de `lib/flow-engine/interpolate.ts` afirma que hay un test que compara su regex con la copia de `simulator.ts`. No lo había.
+- **Qué se decidió en su lugar:** se escribe en B7a, junto con la extensión del regex para admitir guiones dentro de `{{…}}` (para `scheduling.link.<usuario>.<slug>`).
+
+### Tailwind: `dark:` no sigue a la clase `.dark`
+- **Qué quedó:** `app/globals.css` no declara `@custom-variant dark`, así que en Tailwind 4 las utilidades `dark:*` siguen a `prefers-color-scheme` y no al conmutador de tema del perfil; los tokens (`bg-background`, etc.) sí siguen a la clase.
+- **Por qué:** viene de la Etapa 1.
+- **Qué se decidió en su lugar:** el booker público usa `data-theme` y tokens propios, sin `dark:`, así el tema forzado por `?theme=` funciona. El resto no se toca; se anota para revisarlo aparte.
+
+### La pantalla de Herramientas borraba las claves de `tools_config` que no fueran herramientas
+- **Qué quedó:** `normalizeToolsConfig` descartaba cualquier clave que no fuera un nombre de herramienta del registro. Una habilidad guardada como `tools_config.scheduling` desaparecía al primer guardado.
+- **Qué se decidió en su lugar:** en B8 se suma un registro de habilidades y `normalizeToolsConfig` conserva sus claves.
+
+## Heredado de la Etapa 2
+
+No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDIENTE.md](etapa2/PENDIENTE.md) con su "qué quedó / por qué / qué se decidió". Ninguno bloquea la Etapa 4.
+
+- Las pantallas del Bloque 1 de la Etapa 2 (y en general las internas) no se recorrieron a ojo: la app pide login.
+- "Migrar a Vault" de Zernio construido y no apretado (la 00090 ya se aplicó el 26/9).
+- La documentación de Postproxy no coincide con el plano (sin webhooks; el estado se consulta con un job).
+- 20 vulnerabilidades de npm previas a la Etapa 2.
+- Heredado de la Fase 3: API por lote, handler de `bg_task` (se reencola cada 15 minutos), UI de calidad del clasificador, tendencias con 4 pestañas, "qué le responden", `declarar_intencion` opt-in, migración 00072 sin aplicar, deuda del agente (ver `agente-ia.md`), `generate-reply` sin topes de gasto, `serverActions.bodySizeLimit`, broadcasts solo por Zernio.
+- La prueba de subida directa a YouTube no se corrió; el receptor de Postproxy está sobre un formato supuesto; LinkedIn publica solo texto y no da métricas ni comentarios; Zernio sin `delta` ni cursor; historial inicial de seguidores por red; tres cifras vacías en Social; historias activas sin mostrar; tarjetas de desglose del detalle de anuncios; el análisis con IA no guarda los anteriores.
+- `has_permission` no conoce los permisos del Member de sistema (por eso `can_see_booking` cae al chequeo de anfitrión para ese rol).
+- Correcciones: Postproxy se queda en el despachador (D9), "Agregar a la cola" de Zernio sin hacer (D8), la ventana de idempotencia de Zernio son ~5 minutos (A15/D7), el SDK de Zernio lanza en vez de devolver el error, la vista semanal del calendario de contenido sin hacer (C14).

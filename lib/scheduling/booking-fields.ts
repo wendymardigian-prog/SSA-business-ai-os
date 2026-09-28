@@ -12,6 +12,7 @@
 import { z } from "zod";
 import type { BookingField, BookingFieldType, BookingFieldVisibility } from "./types";
 import { slugify } from "./slug";
+import { IDENTIFIER_RE } from "./identifier";
 import { normalizePhoneWithCountry, DEFAULT_PHONE_COUNTRY, type PhoneInput } from "./phone-countries";
 
 export const BOOKING_FIELD_TYPES: BookingFieldType[] = [
@@ -41,7 +42,9 @@ export const VISIBILITIES: BookingFieldVisibility[] = ["required", "optional", "
 /** Los campos del sistema, en su orden fijo. Su `identifier` es fijo. */
 export const SYSTEM_FIELD_IDS = ["name", "email", "phone"] as const;
 
-export const IDENTIFIER_RE = /^[a-z][a-z0-9_]{0,39}$/;
+// Vive en su propio archivo: lo usa también el script de embed, que no puede
+// arrastrar Zod. Se reexporta para no cambiarle el import a quien ya lo usa.
+export { IDENTIFIER_RE } from "./identifier";
 
 export const MAX_OPTIONS = 50;
 export const MIN_OPTIONS = 2;

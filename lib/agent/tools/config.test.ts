@@ -65,3 +65,43 @@ describe("serializeToolsForScreen", () => {
     expect(JSON.parse(JSON.stringify(tools))).toEqual(tools); // serializable tal cual
   });
 });
+
+describe("las habilidades sobreviven al guardado (Etapa 4)", () => {
+  it("la configuracion de una habilidad no se borra", () => {
+    // Antes `normalizeToolsConfig` descartaba toda clave que no fuera el
+    // nombre de una herramienta: `tools_config.scheduling` desaparecia al
+    // primer guardado y la habilidad se apagaba sola.
+    const result = normalizeToolsConfig(
+      {
+        allowedTools: [],
+        toolsConfig: {
+          scheduling: { habilitada: true, event_type_ids: ["3f1a0b2c-4d5e-4f70-8192-a3b4c5d6e7f8"], puede_cancelar: true },
+        },
+      },
+      { existingTagIds: [], memberIds: [] },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.toolsConfig.scheduling).toMatchObject({ habilitada: true, puede_cancelar: true });
+  });
+
+  it("una configuracion invalida de la habilidad se rechaza con su nombre", () => {
+    const result = normalizeToolsConfig(
+      { allowedTools: [], toolsConfig: { scheduling: { habilitada: true, dias_a_mirar: 900 } } },
+      { existingTagIds: [], memberIds: [] },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("Agendamiento");
+  });
+
+  it("una clave que no es ni herramienta ni habilidad se sigue descartando", () => {
+    const result = normalizeToolsConfig(
+      { allowedTools: [], toolsConfig: { inventada: { x: 1 } } },
+      { existingTagIds: [], memberIds: [] },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.toolsConfig).not.toHaveProperty("inventada");
+  });
+});

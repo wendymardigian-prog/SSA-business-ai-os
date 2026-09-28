@@ -42,9 +42,28 @@ export type IntegrationType =
   | "meta";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
-export type OAuthProvider = "google" | "linkedin" | "threads";
+export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar";
 /** En que estado esta una conexion OAuth (00082). */
 export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
+
+// ── Agenda (Etapa 4) ────────────────────────────────────────────────────────
+export type TimeFormat = "12h" | "24h";
+export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
+export type OutOfOfficeReason = "vacation" | "travel" | "sick" | "other";
+export type LocationType = "google_meet" | "manual";
+export type EventTypeStatus = "active" | "hidden" | "inactive";
+export type SchedulingType = "individual" | "round_robin" | "collective";
+export type PeriodType = "rolling_calendar" | "rolling_business" | "range" | "unlimited";
+export type ContactAssignmentMode = "none" | "setter_if_empty" | "vendedor_if_empty";
+export type BookingStatusKey =
+  | "scheduled" | "confirmed" | "rescheduled"
+  | "no_show"
+  | "followup_warm" | "followup_cold" | "sale" | "not_qualified"
+  | "cancelled_not_qualified" | "cancelled_no_response" | "cancelled_other";
+export type BookingStatusGroup = "active" | "no_show" | "outcome" | "cancelled";
+export type BookingOrigin = "public_page" | "embed" | "manual" | "agent" | "api";
+export type CancelledByType = "invitee" | "host" | "system";
+export type GoogleSyncStatus = "pending" | "synced" | "failed" | "not_applicable";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
@@ -112,7 +131,16 @@ export type AuditEntityType =
   | "tag"
   /** Patrones de mensajes (Bloque 4): categorías y textos. */
   | "message_category"
-  | "message_text";
+  | "message_text"
+  /** Agenda (Etapa 4). */
+  | "scheduling_profile"
+  | "oauth_connection"
+  | "calendar"
+  | "availability_schedule"
+  | "out_of_office"
+  | "booking_category"
+  | "event_type"
+  | "booking";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -131,6 +159,7 @@ export type AuditAction =
   | "collision_detected"
   /** Un admin decidio que hacer con una colision (F13). */
   | "collision_resolved"
+  /** Se frenaron secuencias del contacto (F11: respondio
   /** Se frenaron secuencias del contacto (F11: respondio; o decision de un admin). */
   | "sequence_paused"
   /** Se reanudo una inscripcion pausada. */
@@ -164,7 +193,31 @@ export type AuditAction =
    * Una etiqueta con efecto apago el agente y/o asigno el contacto, o se
    * libero al sacarla (Bloque 2d-A, 00073). Lo escriben los triggers.
    */
-  | "tag_effect";
+  | "tag_effect"
+  /** Agenda (Etapa 4). */
+  | "scheduling_profile.created"
+  | "scheduling_profile.updated"
+  | "google_calendar.connected"
+  | "google_calendar.disconnected"
+  | "schedule.created"
+  | "schedule.updated"
+  | "schedule.deleted"
+  | "out_of_office.created"
+  | "out_of_office.updated"
+  | "out_of_office.deleted"
+  | "category.created"
+  | "category.updated"
+  | "category.archived"
+  | "event_type.created"
+  | "event_type.updated"
+  | "event_type.deleted"
+  | "booking.created"
+  | "booking.rescheduled"
+  | "booking.cancelled"
+  | "booking.updated"
+  | "booking.status_changed"
+  | "booking.sync_ok"
+  | "booking.sync_failed";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -177,7 +230,11 @@ export type BroadcastStatus =
   | "sending"
   | "completed"
   | "cancelled";
-export type JobStatus = "pending" | "processing" | "completed" | "failed";
+/**
+ * `cancelled` lo suma la 00099: un aviso relativo que ya no corresponde se
+ * anula en vez de borrarse, y el runner solo toma `pending`.
+ */
+export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
 /** Que origino una llamada a IA (migracion 00059). */
 export type AgentRunSource =
@@ -246,7 +303,18 @@ export type TriggerType =
   | "crm_event"
   | "inactivity"
   // Etapa 2: el email como canal (CHECK de la migracion 00087).
-  | "email_received";
+  | "email_received"
+  // Etapa 4: agenda (CHECK de la migracion 00100). Los tres ultimos se
+  // calculan contra la hora de la reunion y los agenda un job.
+  | "booking_created"
+  | "booking_rescheduled"
+  | "booking_cancelled"
+  | "booking_updated"
+  | "booking_ended"
+  | "booking_status_changed"
+  | "booking_before_start"
+  | "booking_after_end"
+  | "booking_after_created";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -433,6 +501,9 @@ export interface Database {
       };
       workspaces: {
         Row: {
+          /** Crear los 7 flujos sugeridos al crear un evento (Etapa 4, F49). */
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           id: string;
           name: string;
           slug: string;
@@ -474,6 +545,8 @@ export interface Database {
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
@@ -494,6 +567,8 @@ export interface Database {
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
@@ -672,6 +747,8 @@ export interface Database {
           do_not_contact: boolean;
           do_not_contact_reason: string | null;
           do_not_contact_at: string | null;
+          /** Zona IANA del contacto (Etapa 4, 00095). La aprende la agenda y la confirma el agente. */
+          timezone: string | null;
           ai_conversation_summary: string | null;
           /** Cuando se actualizo la memoria del agente (00070). */
           ai_summary_updated_at: string | null;
@@ -714,6 +791,7 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
@@ -746,6 +824,7 @@ export interface Database {
           do_not_contact?: boolean;
           do_not_contact_reason?: string | null;
           do_not_contact_at?: string | null;
+          timezone?: string | null;
           ai_conversation_summary?: string | null;
           ai_summary_updated_at?: string | null;
           lead_temperature?: LeadTemperature | null;
@@ -979,6 +1058,9 @@ export interface Database {
       };
       flows: {
         Row: {
+          /** El evento de agenda al que pertenece este flujo (Etapa 4). */
+          event_type_id?: string | null;
+          template_key?: string | null;
           id: string;
           workspace_id: string;
           name: string;
@@ -1083,7 +1165,7 @@ export interface Database {
           id: string;
           contact_id: string;
           flow_id: string;
-          channel_id: string;
+          channel_id: string | null;
           status: FlowSessionStatus;
           current_node_id: string | null;
           variables: Json;
@@ -1098,7 +1180,7 @@ export interface Database {
           id?: string;
           contact_id: string;
           flow_id: string;
-          channel_id: string;
+          channel_id: string | null;
           status?: FlowSessionStatus;
           current_node_id?: string | null;
           variables?: Json;
@@ -3374,11 +3456,499 @@ export interface Database {
         };
         Relationships: [];
       };
+      scheduling_profiles: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          /** Va en los links: /calendario/<username>/<evento>. */
+          username: string;
+          display_name: string;
+          avatar_url: string | null;
+          timezone: string;
+          time_format: TimeFormat;
+          welcome_message: string | null;
+          default_schedule_id: string | null;
+          default_destination_calendar_id: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          username: string;
+          display_name: string;
+          avatar_url?: string | null;
+          timezone: string;
+          time_format?: TimeFormat;
+          welcome_message?: string | null;
+          default_schedule_id?: string | null;
+          default_destination_calendar_id?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          username?: string;
+          display_name?: string;
+          avatar_url?: string | null;
+          timezone?: string;
+          time_format?: TimeFormat;
+          welcome_message?: string | null;
+          default_schedule_id?: string | null;
+          default_destination_calendar_id?: string | null;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      calendars: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          connection_id: string;
+          user_id: string;
+          external_calendar_id: string;
+          name: string;
+          color: string | null;
+          access_role: CalendarAccessRole;
+          is_primary: boolean;
+          /** Se leen sus horarios ocupados al calcular disponibilidad. */
+          check_conflicts: boolean;
+          /** false = ya no viene en la cuenta (o la cuenta se desconecto). */
+          is_active: boolean;
+          push_channel_id: string | null;
+          push_channel_expires_at: string | null;
+          sync_token: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          connection_id: string;
+          user_id: string;
+          external_calendar_id: string;
+          name: string;
+          color?: string | null;
+          access_role: CalendarAccessRole;
+          is_primary?: boolean;
+          check_conflicts?: boolean;
+          is_active?: boolean;
+          push_channel_id?: string | null;
+          push_channel_expires_at?: string | null;
+          sync_token?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          access_role?: CalendarAccessRole;
+          is_primary?: boolean;
+          check_conflicts?: boolean;
+          is_active?: boolean;
+          push_channel_id?: string | null;
+          push_channel_expires_at?: string | null;
+          sync_token?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      availability_schedules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          name: string;
+          timezone: string;
+          is_default: boolean;
+          weekly_hours: Json;
+          date_overrides: Json;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          name: string;
+          timezone: string;
+          is_default?: boolean;
+          weekly_hours?: Json;
+          date_overrides?: Json;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          timezone?: string;
+          is_default?: boolean;
+          weekly_hours?: Json;
+          date_overrides?: Json;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      out_of_office: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          starts_at: string;
+          ends_at: string;
+          all_day: boolean;
+          reason: OutOfOfficeReason;
+          note: string | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          starts_at: string;
+          ends_at: string;
+          all_day?: boolean;
+          reason?: OutOfOfficeReason;
+          note?: string | null;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          starts_at?: string;
+          ends_at?: string;
+          all_day?: boolean;
+          reason?: OutOfOfficeReason;
+          note?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      booking_categories: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          /** null = area; con valor = tipo dentro de esa area. */
+          parent_id: string | null;
+          name: string;
+          color: string | null;
+          position: number;
+          is_system: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          parent_id?: string | null;
+          name: string;
+          color?: string | null;
+          position?: number;
+          is_system?: boolean;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          position?: number;
+          archived_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      event_types: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          category_id: string;
+          owner_user_id: string;
+          title: string;
+          slug: string;
+          description_md: string | null;
+          duration_minutes: number;
+          color: string | null;
+          location_type: LocationType;
+          location_text: string | null;
+          hide_location_until_booked: boolean;
+          status: EventTypeStatus;
+          scheduling_type: SchedulingType;
+          schedule_id: string | null;
+          destination_calendar_id: string | null;
+          conflict_calendar_ids: string[];
+          before_buffer_minutes: number;
+          after_buffer_minutes: number;
+          minimum_notice_minutes: number;
+          slot_interval_minutes: number | null;
+          max_per_day: number | null;
+          max_per_week: number | null;
+          period_type: PeriodType;
+          period_days: number | null;
+          period_start_date: string | null;
+          period_end_date: string | null;
+          contact_assignment: ContactAssignmentMode;
+          success_redirect_url: string | null;
+          redirect_with_params: boolean;
+          change_min_notice_minutes: number | null;
+          booking_fields: Json;
+          unavailable_messages: Json | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          category_id: string;
+          owner_user_id: string;
+          title: string;
+          slug: string;
+          description_md?: string | null;
+          duration_minutes?: number;
+          color?: string | null;
+          location_type?: LocationType;
+          location_text?: string | null;
+          hide_location_until_booked?: boolean;
+          status?: EventTypeStatus;
+          scheduling_type?: SchedulingType;
+          schedule_id?: string | null;
+          destination_calendar_id?: string | null;
+          conflict_calendar_ids?: string[];
+          before_buffer_minutes?: number;
+          after_buffer_minutes?: number;
+          minimum_notice_minutes?: number;
+          slot_interval_minutes?: number | null;
+          max_per_day?: number | null;
+          max_per_week?: number | null;
+          period_type?: PeriodType;
+          period_days?: number | null;
+          period_start_date?: string | null;
+          period_end_date?: string | null;
+          contact_assignment?: ContactAssignmentMode;
+          success_redirect_url?: string | null;
+          redirect_with_params?: boolean;
+          change_min_notice_minutes?: number | null;
+          booking_fields?: Json;
+          unavailable_messages?: Json | null;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          category_id?: string;
+          title?: string;
+          slug?: string;
+          description_md?: string | null;
+          duration_minutes?: number;
+          color?: string | null;
+          location_type?: LocationType;
+          location_text?: string | null;
+          hide_location_until_booked?: boolean;
+          status?: EventTypeStatus;
+          schedule_id?: string | null;
+          destination_calendar_id?: string | null;
+          conflict_calendar_ids?: string[];
+          before_buffer_minutes?: number;
+          after_buffer_minutes?: number;
+          minimum_notice_minutes?: number;
+          slot_interval_minutes?: number | null;
+          max_per_day?: number | null;
+          max_per_week?: number | null;
+          period_type?: PeriodType;
+          period_days?: number | null;
+          period_start_date?: string | null;
+          period_end_date?: string | null;
+          contact_assignment?: ContactAssignmentMode;
+          success_redirect_url?: string | null;
+          redirect_with_params?: boolean;
+          booking_fields?: Json;
+          unavailable_messages?: Json | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      bookings: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          /** Token publico de 22 caracteres. Nunca se le entrega al agente. */
+          uid: string;
+          event_type_id: string;
+          category_id: string | null;
+          category_snapshot: Json | null;
+          metadata: Json;
+          host_user_id: string;
+          contact_id: string;
+          title: string;
+          start_at: string;
+          end_at: string;
+          status: BookingStatusKey;
+          /** Calculada por la base desde `status`. */
+          status_group: BookingStatusGroup;
+          status_changed_at: string | null;
+          status_changed_by: string | null;
+          booker_name: string | null;
+          booker_email: string | null;
+          booker_phone: string | null;
+          booker_timezone: string | null;
+          host_timezone: string | null;
+          location_type: LocationType | null;
+          location_text: string | null;
+          meet_url: string | null;
+          responses: Json;
+          origin: BookingOrigin;
+          utm: Json;
+          referrer_url: string | null;
+          created_by: string | null;
+          reschedule_count: number;
+          cancelled_at: string | null;
+          cancelled_by_type: CancelledByType | null;
+          cancelled_by_user_id: string | null;
+          cancellation_reason: string | null;
+          internal_notes: string | null;
+          google_sync_status: GoogleSyncStatus;
+          google_sync_error: string | null;
+          google_connection_id: string | null;
+          google_calendar_id: string | null;
+          google_event_id: string | null;
+          ical_uid: string | null;
+          google_event_deleted_at: string | null;
+          is_do_not_contact_at_booking: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          uid: string;
+          event_type_id: string;
+          category_id?: string | null;
+          category_snapshot?: Json | null;
+          metadata?: Json;
+          host_user_id: string;
+          contact_id: string;
+          title: string;
+          start_at: string;
+          end_at: string;
+          status?: BookingStatusKey;
+          booker_name?: string | null;
+          booker_email?: string | null;
+          booker_phone?: string | null;
+          booker_timezone?: string | null;
+          host_timezone?: string | null;
+          location_type?: LocationType | null;
+          location_text?: string | null;
+          meet_url?: string | null;
+          responses?: Json;
+          origin?: BookingOrigin;
+          utm?: Json;
+          referrer_url?: string | null;
+          created_by?: string | null;
+          is_do_not_contact_at_booking?: boolean;
+          google_sync_status?: GoogleSyncStatus;
+        };
+        Update: {
+          title?: string;
+          start_at?: string;
+          end_at?: string;
+          status?: BookingStatusKey;
+          status_changed_at?: string | null;
+          status_changed_by?: string | null;
+          category_id?: string | null;
+          category_snapshot?: Json | null;
+          location_type?: LocationType | null;
+          location_text?: string | null;
+          meet_url?: string | null;
+          reschedule_count?: number;
+          cancelled_at?: string | null;
+          cancelled_by_type?: CancelledByType | null;
+          cancelled_by_user_id?: string | null;
+          cancellation_reason?: string | null;
+          internal_notes?: string | null;
+          google_sync_status?: GoogleSyncStatus;
+          google_sync_error?: string | null;
+          google_connection_id?: string | null;
+          google_calendar_id?: string | null;
+          google_event_id?: string | null;
+          ical_uid?: string | null;
+          google_event_deleted_at?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      rate_limits: {
+        Row: { id: string; key: string; window_start: string; count: number; created_at: string };
+        Insert: { id?: string; key: string; window_start: string; count?: number };
+        Update: { count?: number };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      /** Crea la agenda entera en una transaccion (00099, F26). */
+      create_booking: {
+        Args: {
+          p_workspace_id: string;
+          p_event_type_id: string;
+          p_host_user_id: string;
+          p_start_at: string;
+          p_end_at: string;
+          p_title: string;
+          p_name: string | null;
+          p_email: string | null;
+          p_phone: string | null;
+          p_timezone: string | null;
+          p_host_timezone: string | null;
+          p_location_type: string | null;
+          p_location_text: string | null;
+          p_responses: Json;
+          p_origin: string;
+          p_utm: Json;
+          p_referrer_url: string | null;
+          p_uid: string;
+          p_category_id: string | null;
+          p_category_snapshot: Json | null;
+          p_contact_assignment: string;
+          p_created_by?: string | null;
+          p_contact_id?: string | null;
+          p_metadata?: Json;
+        };
+        Returns: Json;
+      };
+      bump_rate_limit: {
+        Args: { p_key: string; p_window_start: string };
+        Returns: number;
+      };
+      purge_rate_limits: { Args: Record<string, never>; Returns: number };
+      /** Marca un horario por defecto en una transaccion (00096). */
+      set_default_schedule: {
+        Args: { p_schedule_id: string };
+        Returns: undefined;
+      };
+      /** Crea "Horario normal" si la persona no tiene ninguno (00096). */
+      ensure_default_schedule: {
+        Args: { p_workspace_id: string; p_user_id: string };
+        Returns: string;
+      };
+      scheduling_can_manage: {
+        Args: { p_workspace_id: string; p_user_id: string };
+        Returns: boolean;
+      };
       /** Deduplicacion cross-canal (migracion 00025). Unica fuente de verdad. */
       find_or_link_contact: {
         Args: {

@@ -20,6 +20,8 @@ import { commentReplyNode, privateReplyNode } from "../nodes/comment-reply";
 import { aiResponseNode } from "../nodes/ai-response";
 import { enrollSequenceNode } from "../nodes/enroll-sequence";
 import { pauseAgentNode, resumeAgentNode } from "../nodes/agent-toggle";
+import { sendEmailNode } from "../nodes/send-email";
+import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
 
 registerNode(sendMessageNode);
 registerNode(aiResponseNode);
@@ -40,3 +42,8 @@ registerNode(privateReplyNode);
 registerNode(enrollSequenceNode);
 registerNode(pauseAgentNode);
 registerNode(resumeAgentNode);
+
+// Etapa 4: el email como accion de flow y las dos acciones de agenda (F46).
+registerNode(sendEmailNode);
+registerNode(cancelBookingNode);
+registerNode(setBookingStatusNode);

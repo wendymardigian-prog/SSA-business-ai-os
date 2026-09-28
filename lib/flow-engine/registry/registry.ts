@@ -138,6 +138,23 @@ export function listTriggers(scope?: TriggerDefinition["scope"]): TriggerDefinit
     .sort((a, b) => b.priority - a.priority);
 }
 
+/**
+ * Qué tipos de trigger atienden un evento de `automation_events`.
+ *
+ * Un tipo que nombra el evento gana sobre el comodín: `contact_created` lo
+ * atiende `new_contact` y NO `crm_event`, que declara `"*"`. Es la regla que
+ * el cron tenía escrita a mano con un `if`.
+ *
+ * Un tipo sin `eventTypes` no lo dispara el cron: lo dispara otra cosa (el
+ * receptor de email, el cron de inactividad) o no se dispara nunca.
+ */
+export function triggerTypesForEvent(eventType: string): string[] {
+  const all = [...triggers.values()].filter((t) => t.eventTypes && t.eventTypes.length > 0);
+  const specific = all.filter((t) => t.eventTypes!.includes(eventType));
+  if (specific.length > 0) return specific.map((t) => t.type);
+  return all.filter((t) => t.eventTypes!.includes("*")).map((t) => t.type);
+}
+
 export function getConditionOperator(operator: string): ConditionOperator | undefined {
   return operators.get(operator);
 }

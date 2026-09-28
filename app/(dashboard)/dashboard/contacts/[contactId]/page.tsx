@@ -34,6 +34,7 @@ import {
   LinkSuggestionBanner,
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
+import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { PageHeader } from "@/components/page-header";
 
 /**
@@ -67,6 +68,7 @@ export default async function ContactDetailPage({
     auditRes,
     enrollmentsRes,
     activeSequencesRes,
+    bookingsRes,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -119,6 +121,15 @@ export default async function ContactDetailPage({
         .eq("workspace_id", workspace.id)
         .eq("status", "active")
         .order("name"),
+      // Las reuniones del contacto (F38). Lo que se ve acá lo decide
+      // `can_see_booking`, la misma regla que la pantalla de Agendas.
+      supabase
+        .from("bookings")
+        .select("id, title, start_at, status, host_user_id")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("start_at", { ascending: false })
+        .limit(20),
     ]);
 
   const contact = contactRes.data;
@@ -133,6 +144,21 @@ export default async function ContactDetailPage({
     assignsTo: t.assigns_to,
   }));
   const labels = memberLabels(members);
+  const contactBookings = (bookingsRes.data ?? []).map((b) => ({
+    id: b.id,
+    title: b.title,
+    startAt: b.start_at,
+    status: b.status,
+    hostName: labels.get(b.host_user_id) ?? null,
+  }));
+  const { data: schedulingProfile } = await supabase
+    .from("scheduling_profiles")
+    .select("timezone, time_format")
+    .eq("workspace_id", workspace.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const bookingTimezone = schedulingProfile?.timezone ?? (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  const bookingTimeFormat = schedulingProfile?.time_format ?? "24h";
 
   const assignedTagIds = (contact.contact_tags ?? []).map(
     (ct: { tag_id: string }) => ct.tag_id,
@@ -336,6 +362,8 @@ export default async function ContactDetailPage({
               }}
               sequences={activeSequencesRes.data ?? []}
             />
+
+            <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
 
             <NotesSection contactId={contact.id} notes={contact.notes} />
 

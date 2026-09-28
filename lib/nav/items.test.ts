@@ -56,3 +56,35 @@ describe("Contenido en el menu (F39)", () => {
     expect(nombres.indexOf("Contenido")).toBe(nombres.indexOf("Flows") + 1);
   });
 });
+
+// ── Etapa 4 ────────────────────────────────────────────────────────────────
+
+import { visibleNavItems } from "./items";
+
+describe("Agenda en el menu (F8)", () => {
+  const agenda = NAV_ITEMS.find((i) => i.name === "Agenda");
+
+  it("esta, va despues de Contacts y abre directo las agendas (sin sub-menu)", () => {
+    expect(agenda).toBeDefined();
+    expect(agenda?.href).toBe("/dashboard/agenda");
+    expect(agenda?.adminOnly).toBe(false);
+    const nombres = NAV_ITEMS.map((i) => i.name);
+    expect(nombres.indexOf("Agenda")).toBe(nombres.indexOf("Contacts") + 1);
+  });
+
+  it("se muestra con scheduling.use o bookings.view, y a nadie mas", () => {
+    expect(agenda?.permissions).toEqual(["scheduling.use", "bookings.view"]);
+    const names = (keys: string[]) =>
+      visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+    expect(names(["scheduling.use"])).toContain("Agenda");
+    expect(names(["bookings.view"])).toContain("Agenda");
+    expect(names(["contacts.view"])).not.toContain("Agenda");
+    // Un admin lo ve siempre, y sigue sin ver nada que no sea suyo por rol.
+    expect(visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [] }).map((i) => i.name)).toContain("Agenda");
+  });
+
+  it("los items sin `permissions` siguen dependiendo solo de adminOnly", () => {
+    const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] }).map((i) => i.name);
+    expect(member).toEqual(["Dashboards", "Flows", "Contenido", "Inbox", "Contacts", "Agentes"]);
+  });
+});

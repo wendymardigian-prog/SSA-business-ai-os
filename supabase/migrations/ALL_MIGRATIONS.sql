@@ -12952,3 +12952,1623 @@ WHERE NOT EXISTS (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_agents_copywriter_por_workspace
   ON public.agents (workspace_id)
   WHERE type = 'copywriter' AND deleted_at IS NULL;
+
+-- ============================================================
+-- MIGRATION 95: SCHEDULING PROFILES CALENDARS
+-- ============================================================
+-- ============================================================================
+-- 00095 — Perfil de agenda y calendarios (Etapa 4, Bloque 1, F1)
+-- ============================================================================
+-- Lo que suma:
+--
+--  1. scheduling_profiles: una por persona y workspace. El "usuario" que va en
+--     los links de sus eventos, su zona horaria y su formato de hora.
+--  2. calendars: los calendarios de cada cuenta de Google conectada por una
+--     persona. Cuales revisan conflictos y cual es el destino por defecto.
+--  3. oauth_connections: el proveedor `google_calendar` (por persona, varias
+--     cuentas), y el unico pasa a dos indices parciales sin expresiones:
+--       - una conexion de WORKSPACE por proveedor (user_id NULL), como hoy;
+--       - por PERSONA, una por cuenta externa (user_id + external_account_id).
+--     El indice viejo (con coalesce) se borra en esta misma migracion. No toca
+--     datos: la tabla esta vacia y, aunque no lo estuviera, las filas de hoy
+--     cumplen los dos indices nuevos.
+--     Ademas, cada persona puede LEER sus propias conexiones (antes solo los
+--     admins leian la tabla).
+--  4. contacts.timezone: la zona IANA del contacto, que la agenda aprende del
+--     invitado y el agente de chat confirma.
+--  5. Bucket `avatars` para la foto del perfil de agenda: publico para leer
+--     (se muestra en la pagina publica de reserva, sin sesion), escritura
+--     solo de miembros del workspace en su carpeta.
+--  6. scheduling_can_manage(ws, user): la regla de "es la persona dueña o
+--     tiene scheduling.manage_others", que usan las policies de este modulo.
+--
+-- Idempotente.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 0. La regla de "puede administrar la agenda de esta persona"
+-- ------------------------------------------------------------
+-- Admin, o la propia persona, o alguien con `scheduling.manage_others`.
+-- `has_permission` devuelve false para el rol Member de sistema (sus permisos
+-- viven en TypeScript, no en la fila), y eso es lo que corresponde: un Member
+-- de sistema no tiene manage_others.
+
+CREATE OR REPLACE FUNCTION public.scheduling_can_manage(p_workspace_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.is_workspace_member(p_workspace_id)
+     AND (
+       auth.uid() = p_user_id
+       OR public.is_workspace_admin(p_workspace_id)
+       OR public.has_permission(p_workspace_id, 'scheduling.manage_others')
+     );
+$$;
+
+REVOKE ALL ON FUNCTION public.scheduling_can_manage(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.scheduling_can_manage(uuid, uuid) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 1. oauth_connections: proveedor google_calendar y unicos por persona
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'oauth_connections_provider_check') THEN
+    ALTER TABLE public.oauth_connections DROP CONSTRAINT oauth_connections_provider_check;
+  END IF;
+  ALTER TABLE public.oauth_connections ADD CONSTRAINT oauth_connections_provider_check
+    CHECK (provider IN ('google', 'linkedin', 'threads', 'google_calendar'));
+END $$;
+
+-- Una conexion de workspace por proveedor (las de YouTube, LinkedIn, Threads).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_oauth_connections_workspace_provider
+  ON public.oauth_connections (workspace_id, provider)
+  WHERE user_id IS NULL;
+
+-- Por persona: una fila por cuenta externa. Reconectar la misma cuenta
+-- actualiza; una cuenta distinta suma una fila.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_oauth_connections_user_account
+  ON public.oauth_connections (workspace_id, provider, user_id, external_account_id)
+  WHERE user_id IS NOT NULL;
+
+DROP INDEX IF EXISTS public.uq_oauth_connections_ws_provider_user;
+
+CREATE INDEX IF NOT EXISTS idx_oauth_connections_user
+  ON public.oauth_connections (workspace_id, user_id, provider)
+  WHERE user_id IS NOT NULL;
+
+COMMENT ON COLUMN public.oauth_connections.user_id IS
+  'NULL = la conexion es del workspace (una por proveedor). Con valor = de esa persona (google_calendar): una fila por cuenta externa.';
+
+-- Cada persona ve sus propias conexiones (sus cuentas de Google Calendar).
+-- Los admins siguen viendo todas por la policy de la 00082.
+DROP POLICY IF EXISTS "oauth_connections_select_own" ON public.oauth_connections;
+CREATE POLICY "oauth_connections_select_own" ON public.oauth_connections
+  FOR SELECT USING (user_id = auth.uid() AND public.is_workspace_member(workspace_id));
+
+-- ------------------------------------------------------------
+-- 2. scheduling_profiles
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.scheduling_profiles (
+  id                              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id                    uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id                         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- Va en los links: /calendario/<username>/<evento>. Minusculas, numeros y guiones.
+  username                        text NOT NULL,
+  display_name                    text NOT NULL,
+  avatar_url                      text,
+  timezone                        text NOT NULL,
+  time_format                     text NOT NULL DEFAULT '24h',
+  welcome_message                 text,
+  -- FK a availability_schedules se agrega en la 00096 (la tabla no existe todavia).
+  default_schedule_id             uuid,
+  default_destination_calendar_id uuid,
+  is_active                       boolean NOT NULL DEFAULT true,
+  created_at                      timestamptz NOT NULL DEFAULT now(),
+  updated_at                      timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.scheduling_profiles IS
+  'El perfil de agenda de cada persona: usuario de los links, zona horaria, formato de hora, horario y calendario destino por defecto.';
+COMMENT ON COLUMN public.scheduling_profiles.username IS
+  'Slug de 3 a 40 caracteres, unico en el workspace sin distinguir mayusculas. Palabras reservadas: agenda, embed, api, equipo, admin.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scheduling_profiles_username_check') THEN
+    ALTER TABLE public.scheduling_profiles ADD CONSTRAINT scheduling_profiles_username_check
+      CHECK (username ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scheduling_profiles_time_format_check') THEN
+    ALTER TABLE public.scheduling_profiles ADD CONSTRAINT scheduling_profiles_time_format_check
+      CHECK (time_format IN ('12h', '24h'));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduling_profiles_ws_user
+  ON public.scheduling_profiles (workspace_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduling_profiles_ws_username
+  ON public.scheduling_profiles (workspace_id, lower(username));
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.scheduling_profiles;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.scheduling_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.scheduling_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Lo leen todos los miembros: hace falta para elegir anfitriones y para
+-- mostrar de quien es cada agenda.
+DROP POLICY IF EXISTS "scheduling_profiles_select" ON public.scheduling_profiles;
+CREATE POLICY "scheduling_profiles_select" ON public.scheduling_profiles
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+-- Escribe la persona dueña o quien administra agendas ajenas. Sin DELETE: se
+-- desactiva.
+DROP POLICY IF EXISTS "scheduling_profiles_insert" ON public.scheduling_profiles;
+CREATE POLICY "scheduling_profiles_insert" ON public.scheduling_profiles
+  FOR INSERT WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+DROP POLICY IF EXISTS "scheduling_profiles_update" ON public.scheduling_profiles;
+CREATE POLICY "scheduling_profiles_update" ON public.scheduling_profiles
+  FOR UPDATE USING (public.scheduling_can_manage(workspace_id, user_id))
+  WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+-- ------------------------------------------------------------
+-- 3. calendars
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.calendars (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id            uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  connection_id           uuid NOT NULL REFERENCES public.oauth_connections(id) ON DELETE CASCADE,
+  user_id                 uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  external_calendar_id    text NOT NULL,
+  name                    text NOT NULL,
+  color                   text,
+  access_role             text NOT NULL,
+  is_primary              boolean NOT NULL DEFAULT false,
+  check_conflicts         boolean NOT NULL DEFAULT false,
+  is_active               boolean NOT NULL DEFAULT true,
+  -- Reservadas para la sincronizacion push (fase futura). Sin uso hoy.
+  push_channel_id         text,
+  push_channel_expires_at timestamptz,
+  sync_token              text,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.calendars IS
+  'Los calendarios de cada cuenta de Google conectada por una persona. check_conflicts = se leen sus horarios ocupados; is_active = sigue existiendo en la cuenta.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'calendars_access_role_check') THEN
+    ALTER TABLE public.calendars ADD CONSTRAINT calendars_access_role_check
+      CHECK (access_role IN ('owner', 'writer', 'reader', 'freeBusyReader'));
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calendars_connection_external
+  ON public.calendars (connection_id, external_calendar_id);
+CREATE INDEX IF NOT EXISTS idx_calendars_ws_user
+  ON public.calendars (workspace_id, user_id, is_active);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.calendars;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.calendars
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
+
+-- Los ve la persona dueña (o quien administra agendas ajenas). Los titulos de
+-- los eventos de Google nunca estan aca: solo el nombre del calendario.
+DROP POLICY IF EXISTS "calendars_select" ON public.calendars;
+CREATE POLICY "calendars_select" ON public.calendars
+  FOR SELECT USING (public.scheduling_can_manage(workspace_id, user_id));
+
+-- Insertar y borrar es del servidor (la sincronizacion con Google). La persona
+-- solo cambia sus switches (check_conflicts).
+DROP POLICY IF EXISTS "calendars_update_own" ON public.calendars;
+CREATE POLICY "calendars_update_own" ON public.calendars
+  FOR UPDATE USING (user_id = auth.uid() AND public.is_workspace_member(workspace_id))
+  WITH CHECK (user_id = auth.uid() AND public.is_workspace_member(workspace_id));
+
+-- El destino por defecto del perfil apunta a un calendario (recien ahora que
+-- la tabla existe).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scheduling_profiles_default_destination_fk') THEN
+    ALTER TABLE public.scheduling_profiles
+      ADD CONSTRAINT scheduling_profiles_default_destination_fk
+      FOREIGN KEY (default_destination_calendar_id) REFERENCES public.calendars(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 4. contacts.timezone
+-- ------------------------------------------------------------
+
+ALTER TABLE public.contacts ADD COLUMN IF NOT EXISTS timezone text;
+COMMENT ON COLUMN public.contacts.timezone IS
+  'Zona IANA del contacto (ej. America/Mexico_City). La aprende la agenda del invitado; el agente de chat la confirma antes de proponer horarios.';
+
+-- ------------------------------------------------------------
+-- 5. Bucket avatars
+-- ------------------------------------------------------------
+-- Publico para leer: la foto se muestra en la pagina publica de reserva, que
+-- no tiene sesion. Escribir es de miembros del workspace, en su carpeta
+-- (<workspace_id>/<user_id>/<archivo>).
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'avatars',
+  'avatars',
+  true,
+  2097152,  -- 2 MB
+  ARRAY['image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE storage.buckets
+SET public = true,
+    file_size_limit = 2097152,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']
+WHERE id = 'avatars';
+
+DROP POLICY IF EXISTS "avatars_select" ON storage.objects;
+CREATE POLICY "avatars_select" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatars_insert" ON storage.objects;
+CREATE POLICY "avatars_insert" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'avatars'
+    AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+  );
+
+DROP POLICY IF EXISTS "avatars_update" ON storage.objects;
+CREATE POLICY "avatars_update" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'avatars'
+    AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+  );
+
+DROP POLICY IF EXISTS "avatars_delete" ON storage.objects;
+CREATE POLICY "avatars_delete" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'avatars'
+    AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+  );
+
+-- ============================================================
+-- MIGRATION 96: AVAILABILITY
+-- ============================================================
+-- ============================================================================
+-- 00096 — Disponibilidad: horarios y tiempo fuera (Etapa 4, Bloque 2, F9)
+-- ============================================================================
+--  1. availability_schedules: los horarios de cada persona, con las reglas
+--     semanales (`weekly_hours`) y las excepciones por fecha (`date_overrides`)
+--     como jsonb (§9.0: pocas filas que siempre se leen con su horario). Un
+--     solo horario por defecto por persona, garantizado con un unico parcial.
+--  2. out_of_office: los periodos bloqueados de la persona, en UTC. Aplican a
+--     todos sus horarios y eventos.
+--  3. set_default_schedule(): marcar por defecto en UNA transaccion (el
+--     anterior deja de serlo y el nuevo pasa a serlo, sin ventana en la que
+--     haya dos o ninguno).
+--  4. ensure_default_schedule(): crea "Horario normal" (lun a vie, 9 a 17, en
+--     la zona del perfil) si la persona no tiene ningun horario. Backfill para
+--     los perfiles que ya existen (F3: "al crear el perfil se crea Horario
+--     normal"; el perfil llego en la 00095 y la tabla recien ahora).
+--  5. purge_soft_deleted() suma las dos tablas (retencion de 30 dias).
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. availability_schedules
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.availability_schedules (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id   uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name           text NOT NULL,
+  -- Zona IANA en la que estan escritas las reglas ("09:00" es 09:00 ACA).
+  timezone       text NOT NULL,
+  is_default     boolean NOT NULL DEFAULT false,
+  -- { "1": [{"start":"09:00","end":"13:00"}], ... } clave = dia (0 = domingo).
+  weekly_hours   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- [{ "date": "2026-10-12", "ranges": [] }, ...] ranges vacio = no disponible.
+  date_overrides jsonb NOT NULL DEFAULT '[]'::jsonb,
+  deleted_at     timestamptz,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.availability_schedules IS
+  'Horarios de disponibilidad de cada persona. Las reglas van en hora local + la zona del horario; el motor las convierte a UTC.';
+COMMENT ON COLUMN public.availability_schedules.weekly_hours IS
+  'Rangos por dia de la semana (clave 0=domingo..6=sabado). Dia ausente o vacio = no trabaja. Validado con Zod en la Server Action.';
+COMMENT ON COLUMN public.availability_schedules.date_overrides IS
+  'Excepciones por fecha: reemplazan la regla semanal de ese dia. ranges vacio = no disponible todo el dia.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'availability_schedules_name_check') THEN
+    ALTER TABLE public.availability_schedules ADD CONSTRAINT availability_schedules_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 60);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'availability_schedules_weekly_hours_object') THEN
+    ALTER TABLE public.availability_schedules ADD CONSTRAINT availability_schedules_weekly_hours_object
+      CHECK (jsonb_typeof(weekly_hours) = 'object');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'availability_schedules_date_overrides_array') THEN
+    ALTER TABLE public.availability_schedules ADD CONSTRAINT availability_schedules_date_overrides_array
+      CHECK (jsonb_typeof(date_overrides) = 'array');
+  END IF;
+END $$;
+
+-- Exactamente un horario por defecto por persona, entre los no borrados.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_availability_schedules_default
+  ON public.availability_schedules (user_id)
+  WHERE is_default AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_availability_schedules_ws_user
+  ON public.availability_schedules (workspace_id, user_id)
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.availability_schedules;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.availability_schedules
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.availability_schedules ENABLE ROW LEVEL SECURITY;
+
+-- La persona dueña o quien tiene scheduling.manage_others (F9). Sin DELETE:
+-- se marca deleted_at.
+DROP POLICY IF EXISTS "availability_schedules_select" ON public.availability_schedules;
+CREATE POLICY "availability_schedules_select" ON public.availability_schedules
+  FOR SELECT USING (public.scheduling_can_manage(workspace_id, user_id));
+
+DROP POLICY IF EXISTS "availability_schedules_insert" ON public.availability_schedules;
+CREATE POLICY "availability_schedules_insert" ON public.availability_schedules
+  FOR INSERT WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+DROP POLICY IF EXISTS "availability_schedules_update" ON public.availability_schedules;
+CREATE POLICY "availability_schedules_update" ON public.availability_schedules
+  FOR UPDATE USING (public.scheduling_can_manage(workspace_id, user_id))
+  WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+-- El horario por defecto del perfil (la columna existe desde la 00095).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scheduling_profiles_default_schedule_fk') THEN
+    ALTER TABLE public.scheduling_profiles
+      ADD CONSTRAINT scheduling_profiles_default_schedule_fk
+      FOREIGN KEY (default_schedule_id) REFERENCES public.availability_schedules(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. out_of_office
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.out_of_office (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id      uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  starts_at    timestamptz NOT NULL,
+  ends_at      timestamptz NOT NULL,
+  all_day      boolean NOT NULL DEFAULT true,
+  reason       text NOT NULL DEFAULT 'other',
+  note         text,
+  deleted_at   timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.out_of_office IS
+  'Tiempo fuera de una persona (vacaciones, viajes). Bloquea todos sus horarios y eventos. Instantes en UTC.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'out_of_office_range_check') THEN
+    ALTER TABLE public.out_of_office ADD CONSTRAINT out_of_office_range_check CHECK (ends_at > starts_at);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'out_of_office_reason_check') THEN
+    ALTER TABLE public.out_of_office ADD CONSTRAINT out_of_office_reason_check
+      CHECK (reason IN ('vacation', 'travel', 'sick', 'other'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_out_of_office_user_range
+  ON public.out_of_office (user_id, starts_at, ends_at)
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.out_of_office;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.out_of_office
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.out_of_office ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "out_of_office_select" ON public.out_of_office;
+CREATE POLICY "out_of_office_select" ON public.out_of_office
+  FOR SELECT USING (public.scheduling_can_manage(workspace_id, user_id));
+
+DROP POLICY IF EXISTS "out_of_office_insert" ON public.out_of_office;
+CREATE POLICY "out_of_office_insert" ON public.out_of_office
+  FOR INSERT WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+DROP POLICY IF EXISTS "out_of_office_update" ON public.out_of_office;
+CREATE POLICY "out_of_office_update" ON public.out_of_office
+  FOR UPDATE USING (public.scheduling_can_manage(workspace_id, user_id))
+  WITH CHECK (public.scheduling_can_manage(workspace_id, user_id));
+
+-- ------------------------------------------------------------
+-- 3. Marcar por defecto, en una sola transaccion
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.set_default_schedule(p_schedule_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws   uuid;
+  v_user uuid;
+BEGIN
+  SELECT workspace_id, user_id INTO v_ws, v_user
+  FROM public.availability_schedules
+  WHERE id = p_schedule_id AND deleted_at IS NULL;
+
+  IF v_ws IS NULL THEN
+    RAISE EXCEPTION 'schedule_not_found';
+  END IF;
+  IF NOT public.scheduling_can_manage(v_ws, v_user) THEN
+    RAISE EXCEPTION 'not_allowed';
+  END IF;
+
+  -- Primero se apaga el anterior: el unico parcial no admite dos a la vez.
+  UPDATE public.availability_schedules
+  SET is_default = false
+  WHERE user_id = v_user AND deleted_at IS NULL AND is_default AND id <> p_schedule_id;
+
+  UPDATE public.availability_schedules
+  SET is_default = true
+  WHERE id = p_schedule_id;
+
+  UPDATE public.scheduling_profiles
+  SET default_schedule_id = p_schedule_id
+  WHERE workspace_id = v_ws AND user_id = v_user;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_default_schedule(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_default_schedule(uuid) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 4. "Horario normal" si la persona no tiene ninguno (F3)
+-- ------------------------------------------------------------
+-- Lun a vie, 9 a 17, en la zona del perfil. Es el mismo valor que
+-- defaultWeeklyHours() en lib/scheduling/availability-schema.ts (hay un test
+-- que compara los dos).
+
+CREATE OR REPLACE FUNCTION public.ensure_default_schedule(p_workspace_id uuid, p_user_id uuid)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_existing uuid;
+  v_tz       text;
+  v_id       uuid;
+BEGIN
+  IF NOT public.scheduling_can_manage(p_workspace_id, p_user_id) AND auth.uid() IS NOT NULL THEN
+    RAISE EXCEPTION 'not_allowed';
+  END IF;
+
+  SELECT id INTO v_existing
+  FROM public.availability_schedules
+  WHERE workspace_id = p_workspace_id AND user_id = p_user_id AND deleted_at IS NULL
+  ORDER BY is_default DESC, created_at ASC
+  LIMIT 1;
+
+  IF v_existing IS NOT NULL THEN
+    -- Hay horarios pero ninguno por defecto: el mas viejo pasa a serlo.
+    IF NOT EXISTS (
+      SELECT 1 FROM public.availability_schedules
+      WHERE user_id = p_user_id AND deleted_at IS NULL AND is_default
+    ) THEN
+      UPDATE public.availability_schedules SET is_default = true WHERE id = v_existing;
+      UPDATE public.scheduling_profiles SET default_schedule_id = v_existing
+      WHERE workspace_id = p_workspace_id AND user_id = p_user_id;
+    END IF;
+    RETURN v_existing;
+  END IF;
+
+  SELECT timezone INTO v_tz FROM public.scheduling_profiles
+  WHERE workspace_id = p_workspace_id AND user_id = p_user_id;
+  IF v_tz IS NULL THEN
+    SELECT timezone INTO v_tz FROM public.workspaces WHERE id = p_workspace_id;
+  END IF;
+
+  INSERT INTO public.availability_schedules (workspace_id, user_id, name, timezone, is_default, weekly_hours, date_overrides)
+  VALUES (
+    p_workspace_id, p_user_id, 'Horario normal', COALESCE(v_tz, 'America/Costa_Rica'), true,
+    '{"1":[{"start":"09:00","end":"17:00"}],"2":[{"start":"09:00","end":"17:00"}],"3":[{"start":"09:00","end":"17:00"}],"4":[{"start":"09:00","end":"17:00"}],"5":[{"start":"09:00","end":"17:00"}]}'::jsonb,
+    '[]'::jsonb
+  )
+  RETURNING id INTO v_id;
+
+  UPDATE public.scheduling_profiles SET default_schedule_id = v_id
+  WHERE workspace_id = p_workspace_id AND user_id = p_user_id;
+
+  RETURN v_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.ensure_default_schedule(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ensure_default_schedule(uuid, uuid) TO authenticated, service_role;
+
+-- Backfill: los perfiles creados con la 00095 todavia no tienen horario.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT workspace_id, user_id FROM public.scheduling_profiles LOOP
+    PERFORM public.ensure_default_schedule(r.workspace_id, r.user_id);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- 5. Purga de borrados logicos (30 dias)
+-- ------------------------------------------------------------
+-- Copia de la definicion vigente mas las dos tablas nuevas. El resultado
+-- conserva las claves de siempre y suma las nuevas.
+
+CREATE OR REPLACE FUNCTION public.purge_soft_deleted(p_retention_days integer DEFAULT 30)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cutoff     timestamptz := now() - make_interval(days => GREATEST(p_retention_days, 0));
+  v_contacts   integer := 0;
+  v_notes      integer := 0;
+  v_convs      integer := 0;
+  v_templates  integer := 0;
+  v_schedules  integer := 0;
+  v_ooo        integer := 0;
+BEGIN
+  DELETE FROM public.contacts WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_contacts = ROW_COUNT;
+
+  DELETE FROM public.conversations WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_convs = ROW_COUNT;
+
+  DELETE FROM public.contact_notes WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_notes = ROW_COUNT;
+
+  DELETE FROM public.response_templates WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_templates = ROW_COUNT;
+
+  DELETE FROM public.availability_schedules WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_schedules = ROW_COUNT;
+
+  DELETE FROM public.out_of_office WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_ooo = ROW_COUNT;
+
+  RETURN jsonb_build_object(
+    'cutoff', v_cutoff,
+    'contacts', v_contacts,
+    'conversations', v_convs,
+    'contact_notes', v_notes,
+    'response_templates', v_templates,
+    'availability_schedules', v_schedules,
+    'out_of_office', v_ooo
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.purge_soft_deleted(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_soft_deleted(integer) TO service_role;
+
+-- ============================================================
+-- MIGRATION 97: BOOKING CATEGORIES
+-- ============================================================
+-- ============================================================================
+-- 00097 — Categorias de agenda (Etapa 4, Bloque 3, F50)
+-- ============================================================================
+-- Una sola tabla con dos niveles: `parent_id` null = AREA; con `parent_id` =
+-- TIPO dentro de esa area. Un trigger impide el tercer nivel.
+--
+-- Precarga por workspace (trigger + backfill): areas Ventas y Servicio
+-- (`is_system`: se renombran, no se archivan) con sus tipos.
+--
+-- No hay borrado: se archiva (`archived_at`). La policy de DELETE no existe.
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.booking_categories (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  -- null = area; con valor = tipo dentro de esa area.
+  parent_id    uuid REFERENCES public.booking_categories(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  -- Solo las areas tienen color.
+  color        text,
+  position     integer NOT NULL DEFAULT 0,
+  -- Ventas y Servicio: se renombran, no se archivan.
+  is_system    boolean NOT NULL DEFAULT false,
+  archived_at  timestamptz,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.booking_categories IS
+  'Areas (parent_id null) y tipos (con parent_id) con los que se clasifican eventos y agendas. Maximo dos niveles.';
+COMMENT ON COLUMN public.booking_categories.is_system IS
+  'Ventas y Servicio vienen precargadas: se renombran pero no se archivan.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'booking_categories_name_check') THEN
+    ALTER TABLE public.booking_categories ADD CONSTRAINT booking_categories_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 40);
+  END IF;
+END $$;
+
+-- Unico por nivel, sin distinguir mayusculas, entre los NO archivados. El
+-- coalesce evita areas duplicadas: en Postgres dos NULL no chocan entre si.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_booking_categories_name
+  ON public.booking_categories (
+    workspace_id,
+    coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    lower(name)
+  )
+  WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_booking_categories_ws
+  ON public.booking_categories (workspace_id, parent_id, position);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.booking_categories;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.booking_categories
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- Maximo dos niveles: el padre tiene que ser un area
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.booking_categories_two_levels()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE v_grandparent uuid; v_parent_ws uuid;
+BEGIN
+  IF NEW.parent_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT parent_id, workspace_id INTO v_grandparent, v_parent_ws
+  FROM public.booking_categories WHERE id = NEW.parent_id;
+
+  IF v_parent_ws IS NULL THEN
+    RAISE EXCEPTION 'la categoria padre no existe';
+  END IF;
+  IF v_parent_ws <> NEW.workspace_id THEN
+    RAISE EXCEPTION 'la categoria padre es de otro negocio';
+  END IF;
+  IF v_grandparent IS NOT NULL THEN
+    RAISE EXCEPTION 'solo hay dos niveles: un tipo no puede tener tipos adentro';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS booking_categories_two_levels ON public.booking_categories;
+CREATE TRIGGER booking_categories_two_levels
+  BEFORE INSERT OR UPDATE OF parent_id ON public.booking_categories
+  FOR EACH ROW EXECUTE FUNCTION public.booking_categories_two_levels();
+
+-- ------------------------------------------------------------
+-- Precarga por workspace
+-- ------------------------------------------------------------
+-- Las mismas areas y tipos que SYSTEM_AREAS en lib/scheduling/categories.ts
+-- (hay un test que compara las dos listas).
+
+CREATE OR REPLACE FUNCTION public.seed_booking_categories()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE v_ventas uuid; v_servicio uuid;
+BEGIN
+  INSERT INTO public.booking_categories (workspace_id, name, color, position, is_system)
+  VALUES (NEW.id, 'Ventas', '#2563eb', 0, true)
+  ON CONFLICT DO NOTHING
+  RETURNING id INTO v_ventas;
+
+  INSERT INTO public.booking_categories (workspace_id, name, color, position, is_system)
+  VALUES (NEW.id, 'Servicio', '#0d9488', 1, true)
+  ON CONFLICT DO NOTHING
+  RETURNING id INTO v_servicio;
+
+  IF v_ventas IS NOT NULL THEN
+    INSERT INTO public.booking_categories (workspace_id, parent_id, name, position, is_system)
+    VALUES (NEW.id, v_ventas, 'Triaje', 0, true),
+           (NEW.id, v_ventas, 'Cierre', 1, true),
+           (NEW.id, v_ventas, 'Seguimiento', 2, true)
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  IF v_servicio IS NOT NULL THEN
+    INSERT INTO public.booking_categories (workspace_id, parent_id, name, position, is_system)
+    VALUES (NEW.id, v_servicio, 'Onboarding', 0, true),
+           (NEW.id, v_servicio, 'Uno a uno', 1, true)
+    ON CONFLICT DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS seed_booking_categories ON public.workspaces;
+CREATE TRIGGER seed_booking_categories AFTER INSERT ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.seed_booking_categories();
+
+-- Backfill para los workspaces que ya existen.
+DO $$
+DECLARE r record; v_ventas uuid; v_servicio uuid;
+BEGIN
+  FOR r IN SELECT id FROM public.workspaces LOOP
+    IF EXISTS (SELECT 1 FROM public.booking_categories WHERE workspace_id = r.id) THEN
+      CONTINUE;
+    END IF;
+
+    INSERT INTO public.booking_categories (workspace_id, name, color, position, is_system)
+    VALUES (r.id, 'Ventas', '#2563eb', 0, true) RETURNING id INTO v_ventas;
+    INSERT INTO public.booking_categories (workspace_id, name, color, position, is_system)
+    VALUES (r.id, 'Servicio', '#0d9488', 1, true) RETURNING id INTO v_servicio;
+
+    INSERT INTO public.booking_categories (workspace_id, parent_id, name, position, is_system)
+    VALUES (r.id, v_ventas, 'Triaje', 0, true),
+           (r.id, v_ventas, 'Cierre', 1, true),
+           (r.id, v_ventas, 'Seguimiento', 2, true),
+           (r.id, v_servicio, 'Onboarding', 0, true),
+           (r.id, v_servicio, 'Uno a uno', 1, true);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- RLS
+-- ------------------------------------------------------------
+-- Lectura: todos los miembros (hace falta para elegir y para filtrar).
+-- Escritura: `scheduling.manage_categories`, o admin (has_permission devuelve
+-- false para el rol Member de sistema, que efectivamente no lo tiene).
+-- DELETE: nadie. Se archiva.
+
+ALTER TABLE public.booking_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "booking_categories_select" ON public.booking_categories;
+CREATE POLICY "booking_categories_select" ON public.booking_categories
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "booking_categories_insert" ON public.booking_categories;
+CREATE POLICY "booking_categories_insert" ON public.booking_categories
+  FOR INSERT WITH CHECK (
+    public.is_workspace_admin(workspace_id)
+    OR public.has_permission(workspace_id, 'scheduling.manage_categories')
+  );
+
+DROP POLICY IF EXISTS "booking_categories_update" ON public.booking_categories;
+CREATE POLICY "booking_categories_update" ON public.booking_categories
+  FOR UPDATE USING (
+    public.is_workspace_admin(workspace_id)
+    OR public.has_permission(workspace_id, 'scheduling.manage_categories')
+  )
+  WITH CHECK (
+    public.is_workspace_admin(workspace_id)
+    OR public.has_permission(workspace_id, 'scheduling.manage_categories')
+  );
+
+-- ============================================================
+-- MIGRATION 98: EVENT TYPES
+-- ============================================================
+-- ============================================================================
+-- 00098 — Tipos de evento (Etapa 4, Bloque 3, F16)
+-- ============================================================================
+--  1. event_types (§9.3 completa): el anfitrion es `owner_user_id` (no se crea
+--     `event_type_hosts` en esta etapa), los calendarios de conflicto son una
+--     lista de ids, el formulario y los mensajes de "no se puede agendar" van
+--     en jsonb.
+--  2. flows.event_type_id y flows.template_key (para los flujos por evento, B7).
+--  3. workspaces.scheduling_auto_create_flows y scheduling_public_base_url.
+--  4. Los eventos entran en la purga de borrados logicos, SALVO los que tienen
+--     agendas (§16: "los eventos con agendas se conservan"). Como `bookings`
+--     llega en la 00099, la condicion se escribe con to_regclass para que la
+--     funcion valga antes y despues.
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.event_types (
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id                uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  category_id                 uuid NOT NULL REFERENCES public.booking_categories(id),
+  owner_user_id               uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title                       text NOT NULL,
+  slug                        text NOT NULL,
+  description_md              text,
+  duration_minutes            integer NOT NULL DEFAULT 30,
+  color                       text,
+  location_type               text NOT NULL DEFAULT 'google_meet',
+  location_text               text,
+  hide_location_until_booked  boolean NOT NULL DEFAULT false,
+  status                      text NOT NULL DEFAULT 'inactive',
+  -- Hoy siempre 'individual'. La fase de equipos suma round_robin y collective.
+  scheduling_type             text NOT NULL DEFAULT 'individual',
+  -- null = usa el horario por defecto de la persona.
+  schedule_id                 uuid REFERENCES public.availability_schedules(id) ON DELETE SET NULL,
+  -- null = usa el calendario destino del perfil.
+  destination_calendar_id     uuid REFERENCES public.calendars(id) ON DELETE SET NULL,
+  -- vacio = usa los calendarios de conflicto del perfil.
+  conflict_calendar_ids       uuid[] NOT NULL DEFAULT '{}',
+  before_buffer_minutes       integer NOT NULL DEFAULT 0,
+  after_buffer_minutes        integer NOT NULL DEFAULT 0,
+  minimum_notice_minutes      integer NOT NULL DEFAULT 120,
+  -- null = igual a la duracion.
+  slot_interval_minutes       integer,
+  max_per_day                 integer,
+  max_per_week                integer,
+  period_type                 text NOT NULL DEFAULT 'rolling_calendar',
+  period_days                 integer DEFAULT 60,
+  period_start_date           date,
+  period_end_date             date,
+  contact_assignment          text NOT NULL DEFAULT 'none',
+  success_redirect_url        text,
+  redirect_with_params        boolean NOT NULL DEFAULT false,
+  -- Reservada: sin limites para cancelar ni reagendar en esta etapa (F30 se elimino).
+  change_min_notice_minutes   integer,
+  booking_fields              jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- null = los textos por defecto (F58).
+  unavailable_messages        jsonb,
+  deleted_at                  timestamptz,
+  created_at                  timestamptz NOT NULL DEFAULT now(),
+  updated_at                  timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.event_types IS
+  'Los tipos de llamada que se pueden agendar. El anfitrion es owner_user_id; los eventos de equipo llegan en la fase futura.';
+COMMENT ON COLUMN public.event_types.conflict_calendar_ids IS
+  'Calendarios de conflicto propios del evento. Vacio = los del perfil. Los ids inactivos se ignoran al leer.';
+COMMENT ON COLUMN public.event_types.booking_fields IS
+  'Formulario de reserva (F20), validado con Zod: [{id, type, system, label, visibility, options?, identifier, ...}].';
+COMMENT ON COLUMN public.event_types.unavailable_messages IS
+  'Que ve el invitado cuando no puede agendar (F58). null = textos por defecto.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_status_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_status_check
+      CHECK (status IN ('active', 'hidden', 'inactive'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_location_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_location_check
+      CHECK (location_type IN ('google_meet', 'manual'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_scheduling_type_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_scheduling_type_check
+      CHECK (scheduling_type IN ('individual', 'round_robin', 'collective'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_period_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_period_check
+      CHECK (period_type IN ('rolling_calendar', 'rolling_business', 'range', 'unlimited'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_assignment_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_assignment_check
+      CHECK (contact_assignment IN ('none', 'setter_if_empty', 'vendedor_if_empty'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_duration_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_duration_check
+      CHECK (duration_minutes BETWEEN 5 AND 480);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_slug_check') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_slug_check
+      CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 60);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_types_booking_fields_array') THEN
+    ALTER TABLE public.event_types ADD CONSTRAINT event_types_booking_fields_array
+      CHECK (jsonb_typeof(booking_fields) = 'array');
+  END IF;
+END $$;
+
+-- El slug es unico por PERSONA (no por workspace): dos personas pueden tener
+-- "llamada" y sus links no chocan porque llevan el usuario adelante.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_types_owner_slug
+  ON public.event_types (owner_user_id, slug)
+  WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_event_types_ws_status
+  ON public.event_types (workspace_id, status)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_event_types_owner
+  ON public.event_types (owner_user_id)
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_event_types_category
+  ON public.event_types (workspace_id, category_id)
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.event_types;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.event_types
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.event_types ENABLE ROW LEVEL SECURITY;
+
+-- Lectura: todos los miembros (hace falta para elegir eventos en los flows y
+-- en el agendar manual). La lectura PUBLICA no pasa por aca: la hace el
+-- servidor con service role y campos filtrados (§15: no hay policy para anon).
+DROP POLICY IF EXISTS "event_types_select" ON public.event_types;
+CREATE POLICY "event_types_select" ON public.event_types
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "event_types_insert" ON public.event_types;
+CREATE POLICY "event_types_insert" ON public.event_types
+  FOR INSERT WITH CHECK (public.scheduling_can_manage(workspace_id, owner_user_id));
+
+DROP POLICY IF EXISTS "event_types_update" ON public.event_types;
+CREATE POLICY "event_types_update" ON public.event_types
+  FOR UPDATE USING (public.scheduling_can_manage(workspace_id, owner_user_id))
+  WITH CHECK (public.scheduling_can_manage(workspace_id, owner_user_id));
+
+-- ------------------------------------------------------------
+-- flows y workspaces
+-- ------------------------------------------------------------
+
+ALTER TABLE public.flows ADD COLUMN IF NOT EXISTS event_type_id uuid REFERENCES public.event_types(id) ON DELETE SET NULL;
+ALTER TABLE public.flows ADD COLUMN IF NOT EXISTS template_key text;
+
+COMMENT ON COLUMN public.flows.event_type_id IS
+  'El evento de agenda al que pertenece este flujo (F48, F49). null = flujo general.';
+COMMENT ON COLUMN public.flows.template_key IS
+  'Cual de las 7 plantillas precreadas es (F49): confirmation, reminder_24h, ...';
+
+CREATE INDEX IF NOT EXISTS idx_flows_event_type ON public.flows (event_type_id) WHERE event_type_id IS NOT NULL;
+
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS scheduling_auto_create_flows boolean NOT NULL DEFAULT true;
+ALTER TABLE public.workspaces ADD COLUMN IF NOT EXISTS scheduling_public_base_url text;
+
+COMMENT ON COLUMN public.workspaces.scheduling_auto_create_flows IS
+  'Crear los 7 flujos sugeridos (apagados) al crear un evento (F49).';
+COMMENT ON COLUMN public.workspaces.scheduling_public_base_url IS
+  'Dominio propio de las paginas publicas de agenda (F42). null = NEXT_PUBLIC_APP_URL.';
+
+-- ------------------------------------------------------------
+-- Purga: los eventos borrados, salvo los que tienen agendas
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.purge_soft_deleted(p_retention_days integer DEFAULT 30)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_cutoff     timestamptz := now() - make_interval(days => GREATEST(p_retention_days, 0));
+  v_contacts   integer := 0;
+  v_notes      integer := 0;
+  v_convs      integer := 0;
+  v_templates  integer := 0;
+  v_schedules  integer := 0;
+  v_ooo        integer := 0;
+  v_events     integer := 0;
+BEGIN
+  DELETE FROM public.contacts WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_contacts = ROW_COUNT;
+
+  DELETE FROM public.conversations WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_convs = ROW_COUNT;
+
+  DELETE FROM public.contact_notes WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_notes = ROW_COUNT;
+
+  DELETE FROM public.response_templates WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_templates = ROW_COUNT;
+
+  DELETE FROM public.availability_schedules WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_schedules = ROW_COUNT;
+
+  DELETE FROM public.out_of_office WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_ooo = ROW_COUNT;
+
+  -- Un evento con agendas NO se purga: la agenda guarda su historia y apunta
+  -- al evento. (bookings llega en la 00099; antes de eso la condicion de
+  -- existencia da falso y se purgan todos los borrados.)
+  IF to_regclass('public.bookings') IS NULL THEN
+    DELETE FROM public.event_types WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  ELSE
+    EXECUTE '
+      DELETE FROM public.event_types e
+      WHERE e.deleted_at IS NOT NULL AND e.deleted_at < $1
+        AND NOT EXISTS (SELECT 1 FROM public.bookings b WHERE b.event_type_id = e.id)
+    ' USING v_cutoff;
+  END IF;
+  GET DIAGNOSTICS v_events = ROW_COUNT;
+
+  RETURN jsonb_build_object(
+    'cutoff', v_cutoff,
+    'contacts', v_contacts,
+    'conversations', v_convs,
+    'contact_notes', v_notes,
+    'response_templates', v_templates,
+    'availability_schedules', v_schedules,
+    'out_of_office', v_ooo,
+    'event_types', v_events
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.purge_soft_deleted(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_soft_deleted(integer) TO service_role;
+
+-- ============================================================
+-- MIGRATION 99: BOOKINGS
+-- ============================================================
+-- ============================================================================
+-- 00099 — Agendas (Etapa 4, Bloque 4a, F26)
+-- ============================================================================
+--  1. `bookings` (§9.4): una fila por reunion. `status_group` es una columna
+--     CALCULADA (el CASE sale de groupOf() en booking-status.ts; hay un test
+--     que compara las dos listas). La proteccion contra doble reserva es una
+--     restriccion de EXCLUSION sobre los estados activos, que es lo unico que
+--     funciona de verdad con dos pedidos simultaneos.
+--  2. `rate_limits`: generica, para cualquier endpoint publico. Sin
+--     workspace_id, sin policies: solo service role.
+--  3. `can_see_booking(id)`: la regla de quien ve una agenda.
+--  4. Una rama nueva en `audit_log_select`: el historial de la agenda es el
+--     audit_log con `entity_type = 'booking'`, visible para quien ve la agenda.
+--  5. `scheduled_jobs.status` suma `cancelled` (anular los jobs relativos) y
+--     un indice de expresion por `payload->>'booking_id'`.
+--  6. `create_booking(...)`: crea el contacto (o lo encuentra), aplica la
+--     asignacion, inserta la agenda, el historial, el evento de automatizacion
+--     y los jobs. Todo en UNA transaccion, con advisory lock por anfitrion.
+--
+-- Idempotente y aditiva.
+-- ============================================================================
+
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+
+-- ------------------------------------------------------------
+-- 1. bookings
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.bookings (
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id                uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  -- 22 caracteres URL-safe: es el token secreto de cancelar y reagendar.
+  uid                         text NOT NULL,
+  event_type_id               uuid NOT NULL REFERENCES public.event_types(id),
+  category_id                 uuid REFERENCES public.booking_categories(id),
+  category_snapshot           jsonb,
+  metadata                    jsonb NOT NULL DEFAULT '{}'::jsonb,
+  host_user_id                uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  contact_id                  uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  title                       text NOT NULL,
+  start_at                    timestamptz NOT NULL,
+  end_at                      timestamptz NOT NULL,
+  status                      text NOT NULL DEFAULT 'scheduled',
+  status_changed_at           timestamptz,
+  status_changed_by           uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  booker_name                 text,
+  booker_email                text,
+  booker_phone                text,
+  booker_timezone             text,
+  host_timezone               text,
+  location_type               text,
+  location_text               text,
+  meet_url                    text,
+  responses                   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  origin                      text NOT NULL DEFAULT 'public_page',
+  utm                         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  referrer_url                text,
+  created_by                  uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  reschedule_count            integer NOT NULL DEFAULT 0,
+  cancelled_at                timestamptz,
+  cancelled_by_type           text,
+  cancelled_by_user_id        uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  cancellation_reason         text,
+  internal_notes              text,
+  google_sync_status          text NOT NULL DEFAULT 'pending',
+  google_sync_error           text,
+  google_connection_id        uuid REFERENCES public.oauth_connections(id) ON DELETE SET NULL,
+  google_calendar_id          uuid REFERENCES public.calendars(id) ON DELETE SET NULL,
+  google_event_id             text,
+  ical_uid                    text,
+  google_event_deleted_at     timestamptz,
+  is_do_not_contact_at_booking boolean NOT NULL DEFAULT false,
+  created_at                  timestamptz NOT NULL DEFAULT now(),
+  updated_at                  timestamptz NOT NULL DEFAULT now(),
+  -- Calculada: el CASE es groupOf() de lib/scheduling/booking-status.ts.
+  status_group                text GENERATED ALWAYS AS (
+    CASE
+      WHEN status IN ('scheduled', 'confirmed', 'rescheduled') THEN 'active'
+      WHEN status = 'no_show' THEN 'no_show'
+      WHEN status IN ('followup_warm', 'followup_cold', 'sale', 'not_qualified') THEN 'outcome'
+      ELSE 'cancelled'
+    END
+  ) STORED
+);
+
+COMMENT ON TABLE public.bookings IS
+  'Una fila por reunion agendada. No se borran: cancelar es un estado. El historial vive en audit_log con entity_type = booking.';
+COMMENT ON COLUMN public.bookings.uid IS
+  'Token publico de 22 caracteres (unos 131 bits): con el se cancela y se reagenda sin sesion. Nunca se le entrega al agente de IA.';
+COMMENT ON COLUMN public.bookings.status_group IS
+  'Calculada desde status. active / no_show / outcome / cancelled. Solo las active ocupan el horario.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_status_check') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_status_check CHECK (status IN (
+      'scheduled', 'confirmed', 'rescheduled',
+      'no_show',
+      'followup_warm', 'followup_cold', 'sale', 'not_qualified',
+      'cancelled_not_qualified', 'cancelled_no_response', 'cancelled_other'
+    ));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_origin_check') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_origin_check
+      CHECK (origin IN ('public_page', 'embed', 'manual', 'agent', 'api'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_cancelled_by_check') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_cancelled_by_check
+      CHECK (cancelled_by_type IS NULL OR cancelled_by_type IN ('invitee', 'host', 'system'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_sync_status_check') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_sync_status_check
+      CHECK (google_sync_status IN ('pending', 'synced', 'failed', 'not_applicable'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_range_check') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_range_check CHECK (end_at > start_at);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_uid ON public.bookings (uid);
+CREATE INDEX IF NOT EXISTS idx_bookings_ws_start ON public.bookings (workspace_id, start_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_ws_category_start ON public.bookings (workspace_id, category_id, start_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_host_start ON public.bookings (host_user_id, start_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_contact_start ON public.bookings (contact_id, start_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_ws_status_start ON public.bookings (workspace_id, status, start_at);
+CREATE INDEX IF NOT EXISTS idx_bookings_event_start ON public.bookings (event_type_id, start_at);
+
+-- La proteccion de verdad contra la doble reserva: dos agendas ACTIVAS del
+-- mismo anfitrion no pueden superponerse. El advisory lock de create_booking
+-- evita el reintento perdido; esto evita la carrera.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_no_overlap') THEN
+    ALTER TABLE public.bookings ADD CONSTRAINT bookings_no_overlap
+      EXCLUDE USING gist (
+        host_user_id WITH =,
+        tstzrange(start_at, end_at) WITH &&
+      ) WHERE (status IN ('scheduled', 'confirmed', 'rescheduled'));
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.bookings;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.bookings
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- 2. can_see_booking
+-- ------------------------------------------------------------
+-- Owner o Admin; o `bookings.view` con alcance `all`; o es el anfitrion.
+-- Para el rol Member de sistema, has_permission da false (sus permisos viven
+-- en TypeScript) y cae al tercer caso, que es justo su alcance `own`.
+
+CREATE OR REPLACE FUNCTION public.can_see_booking(b public.bookings)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.is_workspace_member(b.workspace_id)
+     AND (
+       public.is_workspace_admin(b.workspace_id)
+       OR b.host_user_id = auth.uid()
+       OR (
+         public.has_permission(b.workspace_id, 'bookings.view')
+         AND public.permission_scope(b.workspace_id, 'bookings') = 'all'
+       )
+     );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_booking(public.bookings) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_booking(public.bookings) TO authenticated, service_role;
+
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+
+-- Solo lectura para los usuarios: escribir es del servidor (las acciones ya
+-- verifican el permiso). Sin DELETE: las agendas no se borran.
+DROP POLICY IF EXISTS "bookings_select" ON public.bookings;
+CREATE POLICY "bookings_select" ON public.bookings
+  FOR SELECT USING (public.can_see_booking(bookings));
+
+-- ------------------------------------------------------------
+-- 3. audit_log: el historial de la agenda
+-- ------------------------------------------------------------
+-- Se copia la politica vigente (00068) y se suma una rama: las filas de
+-- entity_type = 'booking' las ve quien ve la agenda.
+
+DROP POLICY IF EXISTS "audit_log_select" ON public.audit_log;
+CREATE POLICY "audit_log_select" ON public.audit_log
+  FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_admin(workspace_id)
+    OR (public.is_workspace_member(workspace_id) AND performed_by = auth.uid())
+    OR (
+      public.is_workspace_member(workspace_id)
+      AND performed_by_agent_id IS NOT NULL
+      AND (
+        (entity_type = 'contact' AND EXISTS (SELECT 1 FROM public.contacts c WHERE c.id = audit_log.entity_id))
+        OR (entity_type = 'conversation' AND EXISTS (SELECT 1 FROM public.conversations cv WHERE cv.id = audit_log.entity_id))
+      )
+    )
+    -- Etapa 4: el historial de una agenda lo ve quien ve la agenda.
+    OR (
+      public.is_workspace_member(workspace_id)
+      AND entity_type = 'booking'
+      AND EXISTS (SELECT 1 FROM public.bookings b WHERE b.id = audit_log.entity_id)
+    )
+  );
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON public.audit_log (entity_type, entity_id, performed_at DESC);
+
+-- ------------------------------------------------------------
+-- 4. rate_limits
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- prefijo del modulo + accion + hash de IP: "scheduling:create:<sha256>".
+  key          text NOT NULL,
+  window_start timestamptz NOT NULL,
+  count        integer NOT NULL DEFAULT 1,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.rate_limits IS
+  'Tope por IP de los endpoints publicos. La IP va como hash con sal, nunca en texto. Se purga a las 24 h.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_rate_limits_key_window ON public.rate_limits (key, window_start);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON public.rate_limits (window_start);
+
+-- Sin policies: solo el service role entra.
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+
+/** Suma uno y devuelve cuantos van en la ventana. Solo service role. */
+CREATE OR REPLACE FUNCTION public.bump_rate_limit(p_key text, p_window_start timestamptz)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE v_count integer;
+BEGIN
+  INSERT INTO public.rate_limits (key, window_start, count)
+  VALUES (p_key, p_window_start, 1)
+  ON CONFLICT (key, window_start) DO UPDATE SET count = public.rate_limits.count + 1
+  RETURNING count INTO v_count;
+  RETURN v_count;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bump_rate_limit(text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.bump_rate_limit(text, timestamptz) TO service_role;
+
+/** Purga lo que ya no sirve (24 h). La llama el cron diario. */
+CREATE OR REPLACE FUNCTION public.purge_rate_limits()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE v integer;
+BEGIN
+  DELETE FROM public.rate_limits WHERE window_start < now() - interval '24 hours';
+  GET DIAGNOSTICS v = ROW_COUNT;
+  RETURN v;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.purge_rate_limits() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_rate_limits() TO service_role;
+
+-- ------------------------------------------------------------
+-- 5. scheduled_jobs: estado `cancelled` e indice por agenda
+-- ------------------------------------------------------------
+-- Aditivo: se suma un valor al CHECK. El runner solo toma `pending`, asi que
+-- un job `cancelled` queda fuera sin tocar nada mas.
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scheduled_jobs_status_check') THEN
+    ALTER TABLE public.scheduled_jobs DROP CONSTRAINT scheduled_jobs_status_check;
+  END IF;
+  ALTER TABLE public.scheduled_jobs ADD CONSTRAINT scheduled_jobs_status_check
+    CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled'));
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_booking
+  ON public.scheduled_jobs ((payload->>'booking_id'))
+  WHERE payload ? 'booking_id';
+
+-- ------------------------------------------------------------
+-- 6. create_booking
+-- ------------------------------------------------------------
+-- Una sola transaccion: contacto, asignacion, agenda, historial, evento de
+-- automatizacion y jobs. El advisory lock serializa los pedidos del mismo
+-- anfitrion; la exclusion es la garantia final.
+--
+-- La deduplicacion reproduce la prioridad de find_or_link_contact (telefono,
+-- despues email) sin exigir un canal: una reserva publica no viene de uno.
+
+CREATE OR REPLACE FUNCTION public.create_booking(
+  p_workspace_id   uuid,
+  p_event_type_id  uuid,
+  p_host_user_id   uuid,
+  p_start_at       timestamptz,
+  p_end_at         timestamptz,
+  p_title          text,
+  p_name           text,
+  p_email          text,
+  p_phone          text,
+  p_timezone       text,
+  p_host_timezone  text,
+  p_location_type  text,
+  p_location_text  text,
+  p_responses      jsonb,
+  p_origin         text,
+  p_utm            jsonb,
+  p_referrer_url   text,
+  p_uid            text,
+  p_category_id    uuid,
+  p_category_snapshot jsonb,
+  p_contact_assignment text,
+  p_created_by     uuid DEFAULT NULL,
+  p_contact_id     uuid DEFAULT NULL,
+  p_metadata       jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact_id   uuid := p_contact_id;
+  v_created      boolean := false;
+  v_booking_id   uuid;
+  v_email        text := nullif(btrim(lower(p_email)), '');
+  v_phone        text := nullif(btrim(p_phone), '');
+  v_dnc          boolean := false;
+  v_setter       uuid;
+  v_vendedor     uuid;
+  v_assigned     boolean := false;
+BEGIN
+  -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+
+  -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual.
+  IF v_contact_id IS NULL THEN
+    IF v_phone IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (phone = v_phone OR whatsapp_phone = v_phone)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL AND v_email IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (lower(email) = v_email OR lower(secondary_email) = v_email)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL THEN
+      INSERT INTO public.contacts (workspace_id, display_name, email, phone, timezone, attribution, last_interaction_at)
+      VALUES (
+        p_workspace_id,
+        nullif(btrim(p_name), ''),
+        v_email,
+        v_phone,
+        nullif(p_timezone, ''),
+        coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+        now()
+      )
+      RETURNING id INTO v_contact_id;
+      v_created := true;
+    END IF;
+  END IF;
+
+  -- Completa SOLO los campos vacios: nunca pisa lo que ya hay.
+  IF NOT v_created THEN
+    UPDATE public.contacts
+    SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+        email        = coalesce(email, v_email),
+        phone        = coalesce(phone, v_phone),
+        timezone     = coalesce(timezone, nullif(p_timezone, '')),
+        last_interaction_at = now()
+    WHERE id = v_contact_id;
+  END IF;
+
+  SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+  FROM public.contacts WHERE id = v_contact_id;
+
+  -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+  -- trigger de la 00039, que emite assignment_changed en automation_events.
+  IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+    UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+    UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  END IF;
+
+  -- c. La agenda.
+  INSERT INTO public.bookings (
+    workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+    host_user_id, contact_id, title, start_at, end_at, status,
+    booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+    location_type, location_text, responses, origin, utm, referrer_url,
+    created_by, is_do_not_contact_at_booking, google_sync_status
+  ) VALUES (
+    p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+    p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+    nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+    p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+    coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+    p_created_by, coalesce(v_dnc, false), 'pending'
+  )
+  RETURNING id INTO v_booking_id;
+
+  -- d. El historial.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    p_workspace_id, 'booking', v_booking_id, 'booking.created',
+    jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+    jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+    p_created_by
+  );
+
+  -- e. El evento de automatizacion.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (
+    p_workspace_id, 'booking_created', v_contact_id,
+    jsonb_build_object(
+      'booking_id', v_booking_id,
+      'event_type_id', p_event_type_id,
+      'host_user_id', p_host_user_id,
+      'origin', p_origin
+    )
+  );
+
+  -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+  VALUES (
+    'booking_google_sync',
+    jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+    now(), 'pending'
+  );
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+  VALUES (
+    'booking_ended',
+    jsonb_build_object('booking_id', v_booking_id),
+    p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+  );
+
+  RETURN jsonb_build_object(
+    'booking_id', v_booking_id,
+    'contact_id', v_contact_id,
+    'created_contact', v_created,
+    'assignment_changed', v_assigned,
+    'do_not_contact', coalesce(v_dnc, false)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamptz, timestamptz, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamptz, timestamptz, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 100: BOOKING TRIGGERS
+-- ============================================================
+-- ============================================================================
+-- 00100 — Triggers de agenda (Etapa 4, Bloque 7a, F43 a F46)
+-- ============================================================================
+-- 1. `triggers_type_check` suma los nueve tipos de agenda. Postgres no deja
+--    extender un CHECK: se tira y se rehace con la lista completa, como hizo
+--    la 00087 con `email_received`.
+--
+-- 2. `flow_sessions.channel_id` pasa a admitir null.
+--    Hasta hoy era NOT NULL y el cron de `automation_events` mandaba el canal
+--    vacio cuando el contacto no tenia conversacion: el insert de la sesion
+--    fallaba en silencio y el flow no corria. Un lead que agenda desde la
+--    pagina publica no tiene conversacion, asi que sin esto NINGUN flujo de
+--    agenda arrancaria. El motor tolera la sesion sin canal: los nodos que
+--    mandan por un canal se saltean con motivo y `send_email` no lo necesita.
+--
+-- 3. Un indice para buscar los disparos por clave de idempotencia.
+--
+-- Idempotente y aditiva. No toca datos.
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. Los nueve tipos de agenda
+-- ------------------------------------------------------------
+
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (
+  type IN (
+    -- Etapa 1
+    'keyword',
+    'postback',
+    'quick_reply',
+    'welcome',
+    'default',
+    'comment_keyword',
+    'new_contact',
+    'crm_event',
+    'inactivity',
+    -- Etapa 2
+    'email_received',
+    -- Etapa 4: agenda. Los seis primeros nacen de un evento; los tres
+    -- ultimos los agenda un job relativo a la hora de la reunion.
+    'booking_created',
+    'booking_rescheduled',
+    'booking_cancelled',
+    'booking_updated',
+    'booking_ended',
+    'booking_status_changed',
+    'booking_before_start',
+    'booking_after_end',
+    'booking_after_created'
+  )
+);
+
+COMMENT ON CONSTRAINT triggers_type_check ON public.triggers IS
+  'La lista viene del registro de TypeScript (lib/flow-engine/registry). Hay un test que compara las dos.';
+
+-- ------------------------------------------------------------
+-- 2. Una sesion de flow puede no tener canal
+-- ------------------------------------------------------------
+
+ALTER TABLE public.flow_sessions ALTER COLUMN channel_id DROP NOT NULL;
+
+COMMENT ON COLUMN public.flow_sessions.channel_id IS
+  'Null cuando el flow no arranco por un canal (agenda, evento de CRM sin conversacion). Los nodos que envian por canal se saltean con motivo.';
+
+-- El indice parcial de sesiones activas seguia sirviendo, pero con canal null
+-- dos sesiones del mismo contacto no chocaban entre si de todos modos: no era
+-- un unico, es un indice de busqueda. Se rehace incluyendo las de canal null.
+DROP INDEX IF EXISTS public.idx_flow_sessions_contact_active;
+CREATE INDEX IF NOT EXISTS idx_flow_sessions_contact_active
+  ON public.flow_sessions (contact_id, channel_id)
+  WHERE status = 'active';
+
+-- ------------------------------------------------------------
+-- 3. Buscar disparos por clave
+-- ------------------------------------------------------------
+
+CREATE INDEX IF NOT EXISTS idx_trigger_fires_dedupe
+  ON public.trigger_fires (workspace_id, dedupe_key);

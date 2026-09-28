@@ -1,7 +1,7 @@
 import { tool, type ToolSet } from "ai";
 import type { AgentToolContext, AgentToolDefinition } from "./types";
 import type { AppliedAction, SuggestedAction } from "../drafts/types";
-import { toolsForAgent } from "./index";
+import { toolsForTurn } from "./index";
 
 /**
  * Arma la caja de herramientas de un turno para el AI SDK.
@@ -46,7 +46,9 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
   const draft = ctx.mode === "draft";
   const tools: ToolSet = {};
 
-  for (const definition of toolsForAgent(ctx.agent)) {
+  // `toolsForTurn` saca las que no pueden correr en borrador: su efecto sale
+  // del sistema y no se deshace descartando el borrador.
+  for (const definition of toolsForTurn(ctx.agent, { mode: ctx.mode })) {
     // Solo lectura: nada que escriba en el CRM. Las diferidas en borrador se
     // quedan: solo dejan una sugerencia.
     if (ctx.readOnly && definition.auditAction && !(draft && definition.deferInDraft)) {

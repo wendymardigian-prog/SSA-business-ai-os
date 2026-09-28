@@ -12,7 +12,9 @@
 
 import "./nodes";
 import "./conditions";
+import "./booking-conditions";
 import "./triggers";
+import "./booking-triggers";
 import "./guards";
 
 export * from "./registry";

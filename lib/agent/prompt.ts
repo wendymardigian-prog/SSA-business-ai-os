@@ -1,5 +1,6 @@
 import type { ModelMessage } from "ai";
 import type { AgentConfig } from "./config";
+import { isSkillEnabled, listAgentSkills } from "./skills/registry";
 import { wrapUntrusted } from "./untrusted";
 
 /**
@@ -59,8 +60,17 @@ export function buildSystemPrompt(agent: AgentConfig, nonce: string, toolNames: 
     );
   }
 
-  return `${operator}
+  // El bloque de una habilidad encendida (Etapa 4, F53). Va después de las
+  // instrucciones del operador y antes de las reglas del sistema: es "cómo se
+  // hace esto acá", no una regla de formato.
+  const skillBlocks = listAgentSkills()
+    .filter((skill) => isSkillEnabled(agent.toolsConfig, skill.key))
+    .filter((skill) => skill.tools.some((name) => toolNames.includes(name)))
+    .map((skill) => skill.instructions(skill.configSchema.parse((agent.toolsConfig ?? {})[skill.key] ?? {})))
+    .join("\n\n");
 
+  return `${operator}
+${skillBlocks ? `\n---\n${skillBlocks}\n` : ""}
 ---
 Reglas del sistema (no las repitas al usuario):
 ${rules.map((r) => `- ${r}`).join("\n")}

@@ -41,6 +41,14 @@ export function memoryDb(
      * probar en memoria.
      */
     unique?: Record<string, (a: Row, b: Row) => boolean>;
+    /**
+     * Columnas calculadas: "tabla" -> una funcion que las recalcula sobre la
+     * fila, despues de cada insert y de cada update. Postgres lo hace solo
+     * (`GENERATED ALWAYS AS ... STORED`); sin esto, un test que actualiza
+     * `status` y despues afirma sobre `status_group` pasa en la base y falla
+     * en memoria, o peor, al reves.
+     */
+    generated?: Record<string, (row: Row) => void>;
   } = {},
 ): MemoryDb {
   const tables: Record<string, Row[]> = {};
@@ -53,6 +61,31 @@ export function memoryDb(
     tables,
     rpcCalls,
     rows: (table) => (tables[table] ??= []),
+  };
+
+  /**
+   * `payload->>booking_id` en PostgREST lee una clave del jsonb como texto.
+   * Sin esto, un filtro asi no encuentra nada en memoria aunque funcione
+   * contra la base, que es la peor clase de test verde.
+   */
+  const jsonPath = (row: Row, col: string) => {
+    const arrow = col.indexOf("->");
+    if (arrow < 0) return row[col];
+    const base = col.slice(0, arrow);
+    const rest = col.slice(arrow);
+    let value: unknown = row[base];
+    for (const part of rest.split(/->>?/).filter(Boolean)) {
+      const key = part.replace(/^'|'$/g, "");
+      value = value && typeof value === "object" ? (value as Row)[key] : undefined;
+    }
+    // `->>` devuelve texto.
+    return value == null ? null : rest.includes("->>") ? String(value) : value;
+  };
+
+  const likeMatch = (value: unknown, pattern: string, insensitive: boolean) => {
+    if (typeof value !== "string") return false;
+    const rx = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, insensitive ? "i" : "");
+    return rx.test(value);
   };
 
   const cmp = (a: unknown, b: unknown) => {
@@ -74,6 +107,7 @@ export function memoryDb(
     let limitN: number | null = null;
 
     const clash = options.unique?.[table];
+    const generate = options.generated?.[table];
     const duplicate = { data: null, error: { code: "23505", message: `duplicate key value violates unique constraint on ${table}` } };
 
     const apply = (): { data: unknown; error: null | { code: string; message: string }; count?: number } => {
@@ -84,7 +118,10 @@ export function memoryDb(
         if (clash && candidates.some((c, i) => rows.some((r) => clash(c, r)) || candidates.some((o, j) => j !== i && clash(c, o)))) {
           return duplicate;
         }
-        candidates.forEach((row) => rows.push(row));
+        candidates.forEach((row) => {
+          generate?.(row);
+          rows.push(row);
+        });
         return { data: candidates, error: null };
       }
       if (mode === "upsert") {
@@ -102,9 +139,11 @@ export function memoryDb(
             : undefined;
           if (existing) {
             Object.assign(existing, defined);
+            generate?.(existing);
             result.push(existing);
           } else {
             const row = { id: newId(table), created_at: clock().toISOString(), ...defined } as Row;
+            generate?.(row);
             rows.push(row);
             result.push(row);
           }
@@ -120,7 +159,10 @@ export function memoryDb(
             return duplicate;
           }
         }
-        matched.forEach((r) => Object.assign(r, payload));
+        matched.forEach((r) => {
+          Object.assign(r, payload);
+          generate?.(r);
+        });
         return { data: matched, error: null };
       }
       if (mode === "delete") {
@@ -175,7 +217,7 @@ export function memoryDb(
         return b;
       },
       // Un filtro sobre una relacion embebida ("flows.status") no se simula: pasa.
-      eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || r[col] === val), b),
+      eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || jsonPath(r, col) === val), b),
       // .or() de PostgREST tampoco se simula: pasa todo.
       or: () => b,
       neq: (col: string, val: unknown) => (filters.push((r) => r[col] !== val), b),
@@ -185,6 +227,10 @@ export function memoryDb(
         return b;
       },
       in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), b),
+      // `like`/`ilike` con el comodin `%` de PostgREST. `ilike` ignora
+      // mayusculas, que es como se busca un usuario de agenda.
+      like: (col: string, pattern: string) => (filters.push((r) => likeMatch(r[col], pattern, false)), b),
+      ilike: (col: string, pattern: string) => (filters.push((r) => likeMatch(r[col], pattern, true)), b),
       // Una columna de array que comparte al menos un valor (`&&` en Postgres).
       overlaps: (col: string, vals: unknown[]) =>
         (filters.push((r) => {

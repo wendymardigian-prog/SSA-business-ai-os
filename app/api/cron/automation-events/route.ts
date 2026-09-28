@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeFlow } from "@/lib/flow-engine/engine";
-import { crmEventMatches } from "@/lib/flow-engine/registry/triggers";
+import { getTrigger, triggerTypesForEvent } from "@/lib/flow-engine/registry";
+import { bookingContextVariables } from "@/lib/scheduling/automation/context";
 import { logAudit } from "@/lib/audit";
+import type { TriggerType } from "@/lib/types/database";
 
 /**
  * GET /api/cron/automation-events
@@ -89,22 +91,27 @@ async function processEvent(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
   event: AutomationEvent
 ): Promise<number> {
-  // "contacto nuevo" tiene su propio tipo de trigger; el resto son crm_event.
-  const triggerType = event.event_type === "contact_created" ? "new_contact" : "crm_event";
+  // Que tipos de trigger atienden este evento lo dice el registro, no un `if`
+  // aca: sumar un tipo es declararlo con sus `eventTypes` y este archivo no se
+  // toca. Un tipo que nombra el evento le gana al comodin `crm_event`.
+  const types = triggerTypesForEvent(event.event_type) as TriggerType[];
+  if (types.length === 0) return 0;
 
   const { data: triggers } = await supabase
     .from("triggers")
-    .select("id, flow_id, config, flows!inner(status)")
+    .select("id, flow_id, channel_id, type, config, priority, is_active, flows!inner(status)")
     .eq("workspace_id", event.workspace_id)
-    .eq("type", triggerType)
+    .in("type", types)
     .eq("is_active", true)
     .eq("flows.status", "published");
 
   if (!triggers || triggers.length === 0) return 0;
 
   // La conversacion mas reciente del contacto es por donde va a responder el
-  // flow. Un contacto importado por CSV puede no tener ninguna: en ese caso el
-  // flow igual corre (puede poner tags o campos), pero no va a poder enviar.
+  // flow. Un contacto importado por CSV o que agendo desde la pagina publica
+  // puede no tener ninguna: en ese caso el flow igual corre (puede poner tags,
+  // mandar un email o cambiar el estado de la agenda), pero no va a poder
+  // enviar por un canal.
   const { data: conversation } = await supabase
     .from("conversations")
     .select("id, channel_id")
@@ -114,19 +121,40 @@ async function processEvent(
     .limit(1)
     .maybeSingle();
 
+  // La agenda del evento, una sola vez para todos los triggers: si cada uno la
+  // consultara, un evento con diez flujos haria diez consultas iguales.
+  const bookingId = typeof event.payload?.booking_id === "string" ? event.payload.booking_id : null;
+  const booking = bookingId ? await loadBooking(supabase, bookingId) : null;
+  const bookingVars = booking ? await bookingContextVariables(supabase, booking) : {};
+
   let fired = 0;
 
   for (const trigger of triggers) {
     const config = (trigger.config ?? {}) as Record<string, unknown>;
+    const definition = getTrigger(trigger.type);
+    if (!definition) continue;
 
-    if (triggerType === "crm_event" && !crmEventMatches(config, event)) continue;
+    const args = {
+      supabase,
+      event,
+      config,
+      trigger: {
+        id: trigger.id,
+        flow_id: trigger.flow_id,
+        channel_id: trigger.channel_id,
+        type: trigger.type,
+        config: trigger.config,
+        priority: trigger.priority,
+        is_active: trigger.is_active,
+      },
+      booking,
+    };
+
+    if (definition.eventMatches && !(await definition.eventMatches(args))) continue;
 
     // Idempotencia: el indice unico de trigger_fires es lo que decide. Si otra
     // corrida del cron ya lo disparo, el insert choca y no se ejecuta nada.
-    // Para "contacto nuevo" la clave es el contacto, asi que dispara una sola
-    // vez en la vida del contacto aunque el evento se repita.
-    const dedupeKey =
-      triggerType === "new_contact" ? `contact:${event.contact_id}` : `event:${event.id}`;
+    const dedupeKey = definition.dedupeKeyFor ? definition.dedupeKeyFor(args) : `event:${event.id}`;
 
     const { error: claimError } = await supabase.from("trigger_fires").insert({
       trigger_id: trigger.id,
@@ -145,9 +173,11 @@ async function processEvent(
 
     if (!conversation) {
       console.warn(
-        `[cron/automation-events] el contacto ${event.contact_id} no tiene conversacion: el flow ${trigger.flow_id} no va a poder enviar`
+        `[cron/automation-events] el contacto ${event.contact_id} no tiene conversacion: el flow ${trigger.flow_id} no va a poder enviar por un canal`
       );
     }
+
+    const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
 
     await executeFlow(supabase, {
       triggerId: trigger.id,
@@ -164,6 +194,8 @@ async function processEvent(
         ...Object.fromEntries(
           Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])
         ),
+        ...bookingVars,
+        ...extraVars,
       },
     });
 
@@ -185,4 +217,13 @@ async function processEvent(
   }
 
   return fired;
+}
+
+/** La agenda del evento, si el payload la nombra. */
+async function loadBooking(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  bookingId: string
+): Promise<Record<string, unknown> | null> {
+  const { data } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
+  return (data as Record<string, unknown> | null) ?? null;
 }

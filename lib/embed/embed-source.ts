@@ -15,7 +15,7 @@
 import { buildEmbedIframeUrl, parentUtmFromSearch, type EmbedConfig, type ParentUtm } from "./url";
 import { parseEmbedMessage, isTrustedOrigin, isEmbedEventName, embedMessage, type EmbedEventName } from "./events";
 import { createLoadWatchdog, parseFallbackAttr, renderFallback, LOAD_TIMEOUT_MS, type FallbackElement } from "./fallback";
-import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable";
+import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable-defaults";
 
 export type Instruction = [string, ...unknown[]];
 export type Queue = Instruction[];

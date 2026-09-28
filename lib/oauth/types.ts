@@ -45,6 +45,8 @@ export interface AuthorizeParams {
   clientId: string;
   redirectUri: string;
   state: string;
+  /** Sugerirle al proveedor con que cuenta entrar (reconectar). Opcional. */
+  loginHint?: string | null;
 }
 
 export interface ExchangeParams {
@@ -65,6 +67,15 @@ export interface RefreshParams {
 export interface OAuthAdapter {
   provider: OAuthProvider;
   label: string;
+  /**
+   * La conexion es de una PERSONA, no del workspace (Google Calendar, Etapa
+   * 4). Cambia tres cosas: quien puede iniciarla (alcanza con el permiso
+   * `scheduling.use`), como se guarda (`user_id` = quien la hizo, una fila por
+   * cuenta externa) y donde viven sus tokens (un prefijo por conexion).
+   */
+  perUser?: boolean;
+  /** El permiso que exige iniciarla cuando es por persona. */
+  requiredPermission?: string;
   /** Los permisos que se piden. */
   scopes: string[];
   /**

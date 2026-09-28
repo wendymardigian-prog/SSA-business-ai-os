@@ -32,6 +32,7 @@ export const PERMISSION_MODULES = [
   "agents",
   "knowledge",
   "content",
+  "scheduling",
   "integrations",
   "team",
   "settings",
@@ -98,6 +99,14 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "content.publish", module: "content", label: "Programar y publicar", description: "Lo que sale a las redes de verdad." },
   { key: "content.ai", module: "content", label: "Generar copy con IA", description: "Gasta del presupuesto de IA del negocio." },
 
+  // ── Agenda (Etapa 4, §5) ────────────────────────────────────────────────
+  { key: "scheduling.use", module: "scheduling", label: "Tener agenda propia", description: "Perfil, sus cuentas de Google Calendar, horarios, excepciones, tiempo fuera y eventos." },
+  { key: "scheduling.manage_others", module: "scheduling", label: "Configurar agendas ajenas", description: "Perfil (salvo cuentas de Google), horarios y eventos de otras personas." },
+  { key: "scheduling.team_events", module: "scheduling", label: "Crear eventos de equipo", description: "Reservado para la fase de equipos. Sin uso todavia." },
+  { key: "scheduling.manage_categories", module: "scheduling", label: "Administrar areas y tipos de agenda", description: "Crear, renombrar, reordenar y archivar categorias." },
+  { key: "bookings.view", module: "scheduling", label: "Ver agendas", description: "El alcance decide si ve todas o solo las que es anfitrion." },
+  { key: "bookings.manage", module: "scheduling", label: "Gestionar agendas", description: "Cancelar, reagendar, marcar, editar y agendar a mano. Mismo alcance que ver." },
+
   // ── Configuracion ───────────────────────────────────────────────────────
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas y guardar claves." },
   { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Invitar personas y cambiarles el rol." },
@@ -119,7 +128,7 @@ export function permissionLabel(key: string): string {
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations"] as const;
+export const SCOPED_MODULES = ["leads", "conversations", "bookings"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /** `own` = solo donde esta asignado. `all` = todo el workspace. */
@@ -152,6 +161,9 @@ export interface RolePermissions {
  *  - En contenido: crea y edita sus piezas y las manda a revision. NO
  *    aprueba, NO programa, NO usa la IA.
  *  - NO ve Social, ni Canales, ni Conocimiento, ni nada de Ajustes.
+ *  - Agenda (Etapa 4, §5 del plano): tiene agenda propia y ve y gestiona
+ *    las agendas donde es anfitrion (alcance `own`). NO configura agendas
+ *    ajenas ni las categorias.
  */
 const MEMBER_KEYS = [
   "dashboards.chat.view",
@@ -170,21 +182,24 @@ const MEMBER_KEYS = [
   "agents.view",
   "content.view",
   "content.create",
+  "scheduling.use",
+  "bookings.view",
+  "bookings.manage",
 ] as const;
 
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all" },
   },
   admin: {
     // Todo salvo transferir la propiedad: eso es irreversible y es del Owner.
     keys: ALL_PERMISSION_KEYS.filter((key) => key !== "workspace.transfer"),
-    scopes: { leads: "all", conversations: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all" },
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own" },
   },
 };
 
@@ -247,7 +262,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations") },
+    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings") },
   };
 }
 

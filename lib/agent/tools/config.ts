@@ -1,5 +1,6 @@
 import type { Json } from "@/lib/types/database";
 import { listAgentTools } from "./index";
+import { listAgentSkills } from "../skills/registry";
 import type { ToolConfigField } from "./types";
 
 /**
@@ -11,6 +12,28 @@ import type { ToolConfigField } from "./types";
  * vuelve de la pantalla se normaliza aca, contra el configSchema de cada
  * herramienta, antes de tocar la base.
  */
+
+/** Una habilidad para la pantalla, igual de plana que una herramienta. */
+export interface ScreenSkill {
+  key: string;
+  label: string;
+  description: string;
+  configFields: ToolConfigField[];
+  defaults: Record<string, unknown>;
+  /** Los nombres de las herramientas que se prenden con ella. */
+  tools: string[];
+}
+
+export function serializeSkillsForScreen(): ScreenSkill[] {
+  return listAgentSkills().map((skill) => ({
+    key: skill.key,
+    label: skill.label,
+    description: skill.description,
+    configFields: skill.configFields,
+    defaults: skill.configSchema.parse({}) as Record<string, unknown>,
+    tools: skill.tools,
+  }));
+}
 
 export interface ScreenTool {
   name: string;
@@ -63,7 +86,22 @@ export function normalizeToolsConfig(
   });
 
   const toolsConfig: Record<string, Json> = {};
+  const skills = new Map(listAgentSkills().map((s) => [s.key, s]));
+
   for (const [name, raw] of Object.entries(input.toolsConfig as Record<string, unknown>)) {
+    // Una habilidad no es una herramienta, pero su configuración vive en la
+    // misma columna. Antes se descartaba por no estar en el registro de
+    // herramientas: `tools_config.scheduling` desaparecía al primer guardado.
+    const skill = skills.get(name);
+    if (skill) {
+      const parsed = skill.configSchema.safeParse(raw ?? {});
+      if (!parsed.success) {
+        return { ok: false, error: `${skill.label}: ${parsed.error.issues[0]?.message ?? "configuracion invalida"}` };
+      }
+      toolsConfig[name] = parsed.data as Json;
+      continue;
+    }
+
     const tool = tools.get(name);
     if (!tool) continue; // una herramienta que ya no existe no se guarda
     const parsed = tool.configSchema.safeParse(raw ?? {});

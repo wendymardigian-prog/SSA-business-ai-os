@@ -26,6 +26,13 @@ export const NOTIFICATION_TYPES = [
   "content_publish_failed",
   "content_copy_ready",
   "content_copy_failed",
+  // Agenda (Etapa 4, F38).
+  "booking_created",
+  "booking_rescheduled",
+  "booking_cancelled",
+  "booking_sync_failed",
+  /** La cuota diaria de emails se agotó y un flujo no pudo mandar (F46). */
+  "email_quota_reached",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -38,7 +45,9 @@ export type NotificationEntity =
   | "contact"
   | "draft_queue"
   | "integration"
-  | "content_post";
+  | "content_post"
+  | "booking"
+  | "flow";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -134,6 +143,18 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "integration",
   },
+  /**
+   * Se agoto la cuota diaria de emails y un flujo no pudo mandar (F46).
+   *
+   * Es un aviso y no un error silencioso a proposito: el email que no salio no
+   * se recupera solo, y quien lo configuro tiene que enterarse el mismo dia.
+   */
+  email_quota_reached: {
+    type: "email_quota_reached",
+    label: "Se agoto la cuota de emails",
+    tone: "warning",
+    entity: "flow",
+  },
   /** Alguien pidio revision de una pieza (F37). Va a quien pueda aprobar. */
   content_review_requested: {
     type: "content_review_requested",
@@ -177,6 +198,30 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "content_post",
   },
+  booking_created: {
+    type: "booking_created",
+    label: "Agenda nueva",
+    tone: "info",
+    entity: "booking",
+  },
+  booking_rescheduled: {
+    type: "booking_rescheduled",
+    label: "Agenda reagendada",
+    tone: "info",
+    entity: "booking",
+  },
+  booking_cancelled: {
+    type: "booking_cancelled",
+    label: "Agenda cancelada",
+    tone: "warning",
+    entity: "booking",
+  },
+  booking_sync_failed: {
+    type: "booking_sync_failed",
+    label: "Agenda sin sincronizar con Google",
+    tone: "warning",
+    entity: "booking",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -219,6 +264,14 @@ export function linkFor(
 
     case "contact":
       return entityId ? `/dashboard/contacts/${entityId}` : "/dashboard/contacts";
+
+    // Etapa 4: la agenda se abre en su panel de detalle.
+    case "booking":
+      return entityId ? `/dashboard/agenda?agenda=${entityId}` : "/dashboard/agenda";
+
+    // El flujo que no pudo mandar: se abre en el editor.
+    case "flow":
+      return entityId ? `/dashboard/flows/${entityId}` : "/dashboard/flows";
 
     case "integration":
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:
