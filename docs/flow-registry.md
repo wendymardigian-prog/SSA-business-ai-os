@@ -119,3 +119,28 @@ conversación", apoyado en `conversations.is_automation_paused`.
 Del mismo modo, las acciones "pausar agente" y "reanudar agente" entran como dos
 nodos más sobre esa misma columna. Nada de eso requiere tocar el motor ni
 cambiar estos contratos.
+
+## Etapa 4: los triggers y nodos de agenda
+
+Nueve tipos de trigger (`lib/flow-engine/registry/booking-triggers.ts`) y tres
+nodos (`send_email`, `cancel_booking`, `set_booking_status`). Tres cosas que
+conviene saber antes de sumar algo:
+
+- **El enrutado lo decide el registro.** Un trigger declara qué eventos de
+  `automation_events` atiende (`eventTypes`), cómo se filtra (`eventMatches`) y
+  cuál es su clave de idempotencia (`dedupeKeyFor`). El cron
+  (`app/api/cron/automation-events`) ya no mapea a mano: sumar un tipo es
+  declararlo y agregarlo al CHECK con una migración. Un tipo que nombra el
+  evento le gana al comodín `crm_event`, que declara `"*"`.
+
+- **Los triggers que no son de mensaje ahora SÍ se guardan.** Hasta la Etapa 4,
+  `buildDesiredTriggers` descartaba todo lo que no fuera palabra clave o botón:
+  `new_contact`, `crm_event`, `inactivity` y `email_received` se podían elegir
+  en el canvas y al publicar no se escribía ninguna fila. Ahora la lista sale
+  del registro (todo lo que tenga alcance `event` o `scheduled`).
+
+- **Un flow puede correr sin canal.** `flow_sessions.channel_id` admite null
+  desde la migración 00100. Un lead que agenda desde la página pública no tiene
+  conversación: antes el insert de la sesión fallaba en silencio y el flujo no
+  arrancaba. Los nodos que envían por un canal se saltean con motivo;
+  `send_email` no lo necesita.

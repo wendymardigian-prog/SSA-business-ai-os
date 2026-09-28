@@ -126,6 +126,22 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 
 Revisión visual de las pantallas públicas a 1440 y 390 px, en claro y en oscuro: booker, formulario, página de la agenda, reagendar y cancelar. El tema forzado con `?theme=` funciona dentro de un navegador con el tema contrario.
 
+## Cierre de la etapa (27/9/2026)
+
+| Comando | Resultado |
+|---|---|
+| `npx vitest run` | 277 archivos, **3233 tests, todo verde** (partimos de 2886) |
+| `npm run build` | OK; el script de embed se compila antes que Next |
+| `npm run lint` | **0 errores, 43 warnings** (partimos de 44) |
+| `node scripts/verify-scheduling.mjs` | Todo verde |
+| `node scripts/verify-booking-concurrency.mjs` | Todo verde |
+| `node scripts/verify-rls.mjs` | Todo verde |
+| Los otros 10 `verify-*` de la Etapa 2 | Todo verde |
+
+`verify-knowledge` no se corrió (llama a un proveedor de IA real) y
+`verify-webhook` tampoco (manda payloads a la app desplegada). Las dos
+exclusiones venían de las reglas de la corrida.
+
 ## Migraciones creadas
 
 | # | Qué crea | Aplicada |
