@@ -7,6 +7,7 @@ import { withinWorkspaceBudget } from "@/lib/ai/workspace-budget";
 import { newNonce } from "@/lib/agent/untrusted";
 import { enqueueBgTask, continuationDedupeKey, type BgTaskPayload } from "@/lib/background/enqueue";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
+import { getProvider, isTextProvider } from "@/lib/integrations/providers";
 import { selectPending, applyClassification, CLASSIFIER_BATCH, MAX_NEW_CATEGORIES, type PendingText } from "./classifier";
 import { buildSystemPrompt, buildBatchPrompt, parseClassifierOutput, MAX_CORRECTIONS, type CategoryForPrompt, type CorrectionForPrompt } from "./prompt";
 
@@ -126,7 +127,13 @@ export async function runMessageClassification(
   //    backoff, que es lo correcto para una caída pasajera.
   const settings = resolveBackgroundSettings(args.backgroundSettings);
   const wanted = settings.message_classification.model;
-  const resolved = await resolveModel(args.workspaceId, wanted ? { modelId: wanted } : {});
+  // F20: el modelo por defecto es EL MAS BARATO del proveedor configurado, no
+  // el default del catalogo. Clasificar 543 textos cortos no necesita el
+  // modelo grande, y la diferencia es el doble de precio por token.
+  const preference = wanted
+    ? { modelId: wanted }
+    : ((await cheapestConfiguredModel(supabase, args.workspaceId)) ?? {});
+  const resolved = await resolveModel(args.workspaceId, preference);
   if (!resolved.ok || !resolved.model) {
     throw new Error(`[clasificador] no hay proveedor de IA disponible: ${resolved.problem ?? "desconocido"}`);
   }
@@ -345,6 +352,56 @@ interface CategoryRow {
   examples: string[];
   isFallback: boolean;
   isSystem: boolean;
+}
+
+/**
+ * El modelo de texto más barato entre los proveedores conectados, según
+ * `model_pricing`.
+ *
+ * `getWorkspaceModel` sin preferencia cae al `default_model` del catálogo de
+ * proveedores, que para Anthropic es Sonnet: el doble de precio por token que
+ * Haiku, para decidir a cuál de cinco cajones va un "dale, mandámelo". El
+ * criterio es la suma de entrada y salida, que es lo que se paga.
+ *
+ * Si no hay precios cargados devuelve null y se usa el default de siempre: un
+ * catálogo de precios incompleto no puede dejar al clasificador sin modelo.
+ */
+async function cheapestConfiguredModel(
+  supabase: Db,
+  workspaceId: string,
+): Promise<{ preferredProvider: string; modelId: string } | null> {
+  const { data: configs } = await supabase
+    .from("integration_configs")
+    .select("provider")
+    .eq("workspace_id", workspaceId)
+    .eq("type", "ai_provider")
+    .eq("is_active", true);
+
+  const textProviders = (configs ?? [])
+    .map((c) => c.provider as string)
+    .filter((id) => {
+      const definition = getProvider(id);
+      return definition ? isTextProvider(definition) : false;
+    });
+  if (textProviders.length === 0) return null;
+
+  const { data: prices, error } = await supabase
+    .from("model_pricing")
+    .select("provider, model, input_per_mtok, output_per_mtok")
+    .eq("workspace_id", workspaceId)
+    .in("provider", textProviders)
+    .lte("valid_from", new Date().toISOString());
+  if (error || !prices || prices.length === 0) return null;
+
+  let best: { preferredProvider: string; modelId: string; cost: number } | null = null;
+  for (const row of prices) {
+    const cost = Number(row.input_per_mtok ?? 0) + Number(row.output_per_mtok ?? 0);
+    if (!Number.isFinite(cost) || cost <= 0) continue;
+    if (!best || cost < best.cost) {
+      best = { preferredProvider: row.provider as string, modelId: row.model as string, cost };
+    }
+  }
+  return best ? { preferredProvider: best.preferredProvider, modelId: best.modelId } : null;
 }
 
 async function loadCategories(supabase: Db, workspaceId: string, direction: Direction): Promise<CategoryRow[]> {

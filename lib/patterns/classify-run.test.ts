@@ -196,6 +196,69 @@ describe("el run", () => {
   });
 });
 
+describe("elección del modelo", () => {
+  it("elige el más barato del proveedor conectado, no el default del catálogo", async () => {
+    // Lo que pasó en producción el 28/9: sin preferencia, getWorkspaceModel
+    // caía en el default de Anthropic (Sonnet), el doble de precio por token
+    // que Haiku para decidir a cuál de cinco cajones va un "dale".
+    const d = world({
+      integration_configs: [{ id: "ic-1", workspace_id: WS, type: "ai_provider", provider: "anthropic", is_active: true }],
+      model_pricing: [
+        { id: "p-sonnet", workspace_id: WS, provider: "anthropic", model: "claude-sonnet-5", input_per_mtok: 2, output_per_mtok: 10, cached_input_per_mtok: 0.2, valid_from: "2026-09-13T00:00:00Z" },
+        { id: "p-haiku", workspace_id: WS, provider: "anthropic", model: "claude-haiku-4-5", input_per_mtok: 1, output_per_mtok: 5, cached_input_per_mtok: 0.1, valid_from: "2026-09-13T00:00:00Z" },
+      ],
+    });
+    const pedido: Array<Record<string, unknown>> = [];
+    const h = deps(d, '{"items":[{"i":1,"c":1,"f":0.9},{"i":2,"c":1,"f":0.9}]}', {
+      resolveModel: async (_ws: string, opts: Record<string, unknown>) => {
+        pedido.push(opts);
+        return { ok: true, model: MODEL, provider: "anthropic", modelId: String(opts.modelId ?? "default") };
+      },
+    });
+
+    await runMessageClassification(h.db, h.args, h.opts);
+
+    expect(pedido[0]).toEqual({ preferredProvider: "anthropic", modelId: "claude-haiku-4-5" });
+  });
+
+  it("el modelo configurado a mano gana sobre el más barato", async () => {
+    const d = world({
+      integration_configs: [{ id: "ic-1", workspace_id: WS, type: "ai_provider", provider: "anthropic", is_active: true }],
+    });
+    const pedido: Array<Record<string, unknown>> = [];
+    const h = deps(d, '{"items":[{"i":1,"c":1,"f":0.9},{"i":2,"c":1,"f":0.9}]}', {
+      resolveModel: async (_ws: string, opts: Record<string, unknown>) => {
+        pedido.push(opts);
+        return { ok: true, model: MODEL, provider: "anthropic", modelId: "elegido" };
+      },
+    });
+
+    await runMessageClassification(
+      h.db,
+      { ...h.args, backgroundSettings: { message_classification: { mode: "batch", frequency: "daily", model: "claude-opus-5" } } },
+      h.opts,
+    );
+
+    expect(pedido[0]).toEqual({ modelId: "claude-opus-5" });
+  });
+
+  it("sin precios cargados cae al default y no se queda sin modelo", async () => {
+    const d = world({}, { pricing: false });
+    const pedido: Array<Record<string, unknown>> = [];
+    const h = deps(d, '{"items":[{"i":1,"c":1,"f":0.9},{"i":2,"c":1,"f":0.9}]}', {
+      resolveModel: async (_ws: string, opts: Record<string, unknown>) => {
+        pedido.push(opts);
+        return { ok: true, model: MODEL, provider: "anthropic", modelId: "default" };
+      },
+    });
+
+    const r = await runMessageClassification(h.db, h.args, h.opts);
+
+    expect(pedido[0]).toEqual({});
+    expect(r.classified).toBe(2);
+  });
+});
+
 describe("qué entra en el lote", () => {
   it("un texto con source rule o human nunca viaja al modelo", async () => {
     const d = world({
