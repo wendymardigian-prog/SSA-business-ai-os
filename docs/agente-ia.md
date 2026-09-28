@@ -842,3 +842,25 @@ presupuesto es lo que evita un timeout silencioso a mitad de un lote.
 tarea sin implementación **lanza** y el job queda fallido con el motivo. El
 silencio es lo que dejó este handler vacío durante semanas mientras el cron
 encolaba jobs que no hacían nada.
+
+## Cómo mirar el resultado (no hay pantalla hasta el Bloque 5)
+
+```sql
+-- Cuántos quedaron clasificados y por qué vía
+select direction, coalesce(source, 'sin clasificar') as origen, count(*)
+from message_texts group by 1, 2 order by 1, 2;
+
+-- Qué categorías creó el modelo, y con qué nombre
+select direction, name, description, created_at
+from message_categories where created_by = 'model' order by created_at;
+
+-- Cuántos quedaron con confianza por debajo de 70%
+select count(*) filter (where confidence < 0.70) as dudosos,
+       count(*) filter (where confidence >= 0.70) as confiables
+from message_texts where source = 'model';
+
+-- La corrida: tokens, costo y el resumen
+select created_at, status, status_detail, model,
+       input_tokens, output_tokens, cost_usd
+from agent_runs where source = 'message_classification' order by created_at desc;
+```
