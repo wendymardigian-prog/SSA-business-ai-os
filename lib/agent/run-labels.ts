@@ -38,6 +38,7 @@ const DETAIL_LABELS: Record<string, string> = {
   global_keyword: "era una palabra clave global",
   job_expired: "el turno se descarto por demora",
   provider_unavailable: "fallaron el modelo principal y el de respaldo",
+  skipped_same_provider_auth: "no se intento el respaldo: mismo proveedor, y la key ya habia sido rechazada",
   model_timeout: "el modelo no respondio a tiempo",
   send_failed: "no se pudo enviar la respuesta",
   turn_exception: "error inesperado en el turno",
@@ -81,3 +82,81 @@ export const STEP_KIND_LABELS: Record<string, string> = {
   tool_call: "Herramienta",
   guardrail: "Guardarrail",
 };
+
+
+/**
+ * Los nombres de los proveedores, para los mensajes de error.
+ *
+ * A mano y no importados de lib/integrations/providers.ts: ese modulo trae
+ * SECRET_NAMES, y este archivo lo lee el navegador. lib/vault-boundary.test.ts
+ * falla si se cruza esa linea.
+ */
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google_ai: "Google",
+};
+
+/**
+ * Traduce el error tecnico de un run a algo accionable.
+ *
+ * El texto guardado tiene la forma "primary anthropic/claude-sonnet-5:
+ * api_401:authentication_error; fallback anthropic/claude-haiku-4-5:
+ * skipped_same_provider_auth". Legible para quien escribio el codigo, inutil
+ * para quien tiene que arreglarlo.
+ *
+ * Lo que importa de ese texto es UNA cosa: que hay que hacer ahora. Por eso el
+ * resultado es el diagnostico primero, y el detalle tecnico despues.
+ */
+export function describeModelError(error: string | null): string {
+  if (!error) return "";
+
+  const parts = error.split(";").map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return error;
+
+  // El primer intento es el que explica el turno; los siguientes suelen ser
+  // consecuencia (el respaldo salteado, el mismo proveedor fallando igual).
+  const hint = parts.map(hintFor).find(Boolean);
+  return hint ? `${hint} · ${error}` : error;
+}
+
+/** El aviso accionable de un intento, o null si no hay nada mejor que decir. */
+function hintFor(attempt: string): string | null {
+  const provider = attempt.match(/\b(anthropic|openai|google_ai)\//)?.[1];
+  const label = provider ? (PROVIDER_LABELS[provider] ?? provider) : "el proveedor";
+  const model = attempt.match(/\/([\w.\-:]+):/)?.[1] ?? null;
+
+  const status = attempt.match(/api_(\d{3})/)?.[1];
+  if (status) {
+    const code = Number(status);
+    if (code === 401 || code === 403) {
+      return `La API key de ${label} no es valida o fue revocada. Cambiala en Ajustes > Integraciones`;
+    }
+    if (code === 404) {
+      return model
+        ? `El modelo ${model} no existe para esta cuenta de ${label}. Elegi otro en la configuracion del agente`
+        : `${label} no encontro el modelo. Elegi otro en la configuracion del agente`;
+    }
+    if (code === 429) {
+      return `Se alcanzo el limite de uso de ${label}. Suele resolverse solo; si sigue, revisa el plan de la cuenta`;
+    }
+    if (code === 400) {
+      return `${label} rechazo el pedido. Suele ser un modelo mal escrito o una opcion que ese modelo no acepta`;
+    }
+    if (code >= 500) {
+      return `${label} esta caido o sobrecargado. No hay nada que arreglar de este lado`;
+    }
+    return `${label} respondio con un error HTTP ${code}`;
+  }
+
+  if (attempt.includes("timeout")) {
+    return "El modelo no respondio a tiempo. Se puede subir el timeout en la configuracion del agente";
+  }
+  if (attempt.includes("provider_unavailable")) {
+    return `${label} no esta conectado. Se conecta en Ajustes > Integraciones`;
+  }
+  if (attempt.includes("no_key")) {
+    return `Falta la API key de ${label}. Se carga en Ajustes > Integraciones`;
+  }
+  return null;
+}

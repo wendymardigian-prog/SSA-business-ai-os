@@ -239,6 +239,53 @@ describe("Voyage no se usa nunca para generar texto", () => {
   });
 });
 
+/**
+ * La lista de modelos que ve el selector del agente. Una lista escrita a mano
+ * envejece con cada modelo nuevo; por eso se le suma lo que el proveedor
+ * reporto al verificar la key (config.models).
+ */
+describe("listConnectedAiProviders — modelos ofrecidos", () => {
+  it("suma los modelos que reporto el proveedor, sin duplicar los del catalogo", async () => {
+    const { client } = fakeClient([
+      {
+        ...ANTHROPIC_ROW,
+        config: {
+          default_model: "claude-sonnet-5",
+          // claude-sonnet-5 ya esta en el catalogo: no puede aparecer dos veces.
+          models: ["claude-sonnet-5", "claude-modelo-nuevo-9"],
+        },
+      },
+    ]);
+
+    const [anthropic] = await listConnectedAiProviders("ws-1", client);
+
+    expect(anthropic.models).toContain("claude-modelo-nuevo-9");
+    expect(anthropic.models.filter((m) => m === "claude-sonnet-5")).toHaveLength(1);
+    // Las sugerencias curadas van primero.
+    expect(anthropic.models[0]).toBe("claude-sonnet-5");
+  });
+
+  it("sin config.models ofrece solo el catalogo", async () => {
+    const { client } = fakeClient([ANTHROPIC_ROW]);
+
+    const [anthropic] = await listConnectedAiProviders("ws-1", client);
+
+    expect(anthropic.models.length).toBeGreaterThan(0);
+    expect(anthropic.defaultModel).toBe("claude-sonnet-5");
+  });
+
+  it("un config.models con basura no rompe el selector", async () => {
+    const { client } = fakeClient([
+      { ...ANTHROPIC_ROW, config: { default_model: "claude-sonnet-5", models: "no soy un array" } },
+    ]);
+
+    const [anthropic] = await listConnectedAiProviders("ws-1", client);
+
+    expect(Array.isArray(anthropic.models)).toBe(true);
+    expect(anthropic.models).toContain("claude-sonnet-5");
+  });
+});
+
 describe("resolvedor estricto del agente (getExactWorkspaceModel)", () => {
   function singleRowClient(row: unknown | null) {
     const eq = vi.fn();

@@ -163,7 +163,10 @@ function ModelSection({ form, set, data, typeDef }: SectionProps) {
       <ModelPicker label="Principal" provider={form.provider} model={form.model} data={data} onChange={(provider, model) => set({ provider, model })} />
       <ModelPicker label="Respaldo" optional provider={form.fallbackProvider} model={form.fallbackModel} data={data} onChange={(fallbackProvider, fallbackModel) => set({ fallbackProvider, fallbackModel })} />
       <div className="grid gap-3 md:grid-cols-3">
-        <Field label="Temperatura (0 a 2)" hint="Más baja, más predecible.">
+        <Field
+          label="Temperatura (0 a 2)"
+          hint="Más baja, más predecible. Los Claude 5 y los Opus 4.7 en adelante la ignoran: piensan solos cuánto pensar."
+        >
           {(id) => <NumberInput id={id} value={form.temperature} min={0} max={2} step={0.1} allowEmpty onChange={(temperature) => set({ temperature })} />}
         </Field>
         <Field label="Máximo de tokens por respuesta">

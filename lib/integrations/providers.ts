@@ -517,6 +517,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     keyPrefix: "sk-",
     minKeyLength: 20,
     configFields: [MODEL_FIELD(["gpt-5", "gpt-5-mini", "gpt-4.1", "gpt-4o"], "gpt-5")],
+    // La lista de arriba es una sugerencia corta. La de verdad la trae el
+    // proveedor al verificar la key (ai-key-check.ts) y se guarda en
+    // config.models: es lo que evita que esto envejezca.
     docsUrl: "https://platform.openai.com/api-keys",
   },
   {
@@ -532,7 +535,21 @@ export const PROVIDERS: ProviderDefinition[] = [
     minKeyLength: 20,
     configFields: [
       MODEL_FIELD(
-        ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"],
+        [
+          // Los mas usados primero: el de todos los dias, el barato y el potente.
+          "claude-sonnet-5",
+          "claude-haiku-4-5",
+          "claude-opus-5",
+          // Los de razonamiento largo. Caros: ver el precio antes de ponerlos
+          // en un agente que contesta a cada mensaje.
+          "claude-fable-5-1",
+          "claude-fable-5",
+          // Generacion anterior, por si hace falta volver.
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "claude-opus-4-6",
+          "claude-sonnet-4-6",
+        ],
         "claude-sonnet-5",
       ),
     ],
@@ -550,7 +567,9 @@ export const PROVIDERS: ProviderDefinition[] = [
     // Google no garantiza un prefijo estable, asi que solo se valida longitud.
     minKeyLength: 20,
     configFields: [
-      MODEL_FIELD(["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"], "gemini-2.5-flash"),
+      // gemini-2.0-flash salio: Google ya no publica su precio, y un modelo sin
+      // precio deja los runs con el costo sin calcular.
+      MODEL_FIELD(["gemini-2.5-pro", "gemini-2.5-flash"], "gemini-2.5-flash"),
     ],
     docsUrl: "https://aistudio.google.com/app/apikey",
   },

@@ -56,6 +56,37 @@ CROSS JOIN (VALUES
 ) AS p(provider, model, input_per_mtok, output_per_mtok, cached_input_per_mtok)
 ON CONFLICT (workspace_id, provider, model, valid_from) DO NOTHING;
 
+-- ============================================================================
+-- Modelos Anthropic que faltaban — verificado el 2026-09-28
+-- ============================================================================
+-- El catalogo de la app tenia tres modelos de Anthropic y quedo viejo. Estos
+-- son los que se sumaron. Fila nueva con `valid_from` nuevo, no se pisa la
+-- anterior: los runs viejos conservan el costo con el que se congelaron.
+--
+-- Las lecturas de cache son 0,1x la entrada en toda la linea, salvo Fable 5.1,
+-- que Anthropic cobra a 0,25 por millon.
+--
+-- OJO CON EL PRECIO DE FABLE: 10 de entrada y 50 de salida es cinco veces un
+-- Opus y veinticinco veces un Haiku. Sirve para razonamiento largo, no para
+-- contestar cada mensaje de Instagram.
+-- ============================================================================
+
+INSERT INTO public.model_pricing
+  (workspace_id, provider, model, input_per_mtok, output_per_mtok, cached_input_per_mtok, valid_from, note)
+SELECT w.id, p.provider, p.model, p.input_per_mtok, p.output_per_mtok, p.cached_input_per_mtok,
+       '2026-09-28T00:00:00Z'::timestamptz, 'Modelos Anthropic que faltaban, verificado 2026-09-28'
+FROM public.workspaces w
+CROSS JOIN (VALUES
+  -- proveedor,  modelo,                       entrada, salida, cache
+  ('anthropic', 'claude-fable-5-1',           10.00,    50.00,  0.25),
+  ('anthropic', 'claude-fable-5',             10.00,    50.00,  1.00),
+  ('anthropic', 'claude-opus-4-8',             5.00,    25.00,  0.50),
+  ('anthropic', 'claude-opus-4-7',             5.00,    25.00,  0.50),
+  ('anthropic', 'claude-opus-4-6',             5.00,    25.00,  0.50),
+  ('anthropic', 'claude-sonnet-4-6',           3.00,    15.00,  0.30)
+) AS p(provider, model, input_per_mtok, output_per_mtok, cached_input_per_mtok)
+ON CONFLICT (workspace_id, provider, model, valid_from) DO NOTHING;
+
 -- Verificacion:
 --   SELECT provider, model, input_per_mtok, output_per_mtok, cached_input_per_mtok, valid_from
 --   FROM public.model_pricing ORDER BY provider, model;

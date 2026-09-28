@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { createNotificationOnce } from "@/lib/notifications/create";
+import { notifyIntegrationAttention } from "@/lib/notifications/integration-alerts";
+import { getProvider } from "@/lib/integrations/providers";
+import type { ProviderAuthFailure } from "./fallback";
 
 /**
  * Visibilidad de los turnos que el agente no pudo completar.
@@ -82,4 +85,40 @@ export async function clearAgentError(supabase: Db, conversationId: string): Pro
     .eq("id", conversationId)
     .not("last_agent_error_at", "is", null);
   if (error) console.error("[agent-error] no pude borrar la marca:", error.message);
+}
+
+/**
+ * El proveedor rechazo la API key: aviso de integracion, no de conversacion.
+ *
+ * `markAgentError` deja la marca en la conversacion, que es lo que necesita
+ * quien la atiende. Pero una key revocada no se arregla desde la bandeja: se
+ * arregla en Ajustes > Integraciones, y hasta que alguien la cambie TODAS las
+ * conversaciones van a fallar igual.
+ *
+ * Por eso va como aviso de integracion, con la causa `revoked`, que ya
+ * existia: se agrupa por proveedor, no por conversacion, y se repite como
+ * mucho una vez por dia. Cien leads escribiendo con la key vencida dan un
+ * aviso, no cien.
+ */
+export async function notifyProviderAuthFailure(
+  supabase: Db,
+  args: { workspaceId: string; failures: ProviderAuthFailure[] },
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const failure of args.failures) {
+    if (seen.has(failure.provider)) continue;
+    seen.add(failure.provider);
+
+    const label = getProvider(failure.provider)?.label ?? failure.provider;
+    await notifyIntegrationAttention({
+      supabase,
+      workspaceId: args.workspaceId,
+      providerId: failure.provider,
+      providerLabel: label,
+      cause: "revoked",
+      detail:
+        `${label} rechazo la API key (HTTP ${failure.status}). El agente no puede responder hasta que la reemplaces en ` +
+        "Ajustes > Integraciones. Las conversaciones se estan derivando a una persona.",
+    });
+  }
 }
