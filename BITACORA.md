@@ -1135,3 +1135,28 @@ centavos el histórico, el 50% de descuento no paga el pipeline asincrónico),
 `bg-collect` sigue sin trabajo porque no hay lotes en vuelo, y la pantalla de
 calidad del clasificador es del Bloque 5 — por ahora los resultados se miran por
 SQL.
+
+## La primera corrida real (28/9/2026, 18:00 UTC)
+
+Migración aplicada, main mergeado, Railway desplegado a las 17:56:53 — cuatro
+minutos antes del tick del cron. Lo que pasó:
+
+- **El cron encoló UN job**, no 96. La idempotencia funciona contra la base real.
+- El runner lo tomó, abrió el run con `source='message_classification'` y llamó
+  al proveedor.
+- **`API key is invalid.`** Tres intentos, job en `failed`, tres runs con el
+  error registrado y `cost_usd` en 0. Los 543 textos siguen sin clasificar.
+
+La clave de Anthropic guardada en Vault no sirve. No es del clasificador: el run
+del agente de chat de las 17:08 del mismo día falló igual. La card de la
+integración está en verde, que es el riesgo que el CLAUDE.md ya nombraba.
+
+La corrida también destapó un incumplimiento propio: eligió `claude-sonnet-5`
+porque `getWorkspaceModel` sin preferencia cae al `default_model` del catálogo,
+y F20 pide **el más barato** del proveedor configurado. Corregido: ahora se
+consulta `model_pricing` y gana el menor por entrada + salida. Era el doble de
+precio por token para decidir a cuál de cinco cajones va un "dale, mandámelo".
+
+Que el pipeline entero corriera hasta el proveedor, registrara el run, guardara
+el error y frenara sin ensuciar nada es, en sí, la verificación de punta a punta
+que faltaba.

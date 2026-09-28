@@ -75,6 +75,30 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 
 ## Clasificador de mensajes en segundo plano (28/9/2026)
 
+### La API key de Anthropic en Vault es invalida — BLOQUEA la primera corrida
+
+- **Qué quedó:** la migración 00101 está aplicada y el código desplegado. El
+  cron de las 18:00 UTC encoló **un** job (la idempotencia funciona en
+  producción), el runner lo tomó, abrió el run y el proveedor respondió
+  `API key is invalid.`. Tres intentos, job en `failed`, **543 textos siguen sin
+  clasificar**.
+- **Por qué importa más allá de esto:** el run del agente de chat de las 17:08
+  del mismo día falló igual (`provider_unavailable`, `AI_APICallError`). No es
+  del clasificador: es la clave. Y `integration_configs` muestra la card en
+  verde (`is_active = true`, sin `last_error`) — exactamente el escenario que
+  advierte el CLAUDE.md: *"una clave revocada guardada deja la card en verde"*.
+- **Qué hay que hacer:** cargar una key válida en Ajustes → Integraciones, y
+  después **borrar el job `bg_task` en `failed`** para liberar la ventana de
+  hoy:
+  ```sql
+  delete from scheduled_jobs where type='bg_task' and status='failed';
+  ```
+  Sin eso, el índice único de la 00101 impide reencolar esa ventana y el
+  backlog espera al cron de mañana a las 03:00. Es el comportamiento buscado
+  (una ventana se despacha una sola vez), no un defecto.
+
+
+
 El handler de `bg_task` clasifica de verdad y el despacho dejó de re-encolar.
 El detalle está en [agente-ia.md](agente-ia.md). Lo que quedó pendiente a
 propósito:
