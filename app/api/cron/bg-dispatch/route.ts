@@ -3,6 +3,7 @@ import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
 import { planDispatch } from "@/lib/background/plan";
+import { enqueuePlanned } from "@/lib/background/enqueue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -10,9 +11,12 @@ export const maxDuration = 120;
 /**
  * Despacho de tareas de IA en segundo plano (F24). Cada 15 min: por cada
  * workspace, mira qué tareas en modo Económico tienen una ventana vencida y
- * deja una corrida por ventana (idempotente por dedupe_key). La ejecución real
- * del clasificador por lote/agrupado se completa en la recolección (ver
- * docs/PENDIENTE.md: el pipeline de lote real está pendiente).
+ * deja una corrida por ventana.
+ *
+ * La idempotencia la sostiene `uq_scheduled_jobs_bg_task_dedupe` (00101), que
+ * es único sobre TODA la vida del job. El índice de la 00061 no alcanzaba: era
+ * único solo entre los `pending`, así que en cuanto el job se completaba la
+ * misma ventana se volvía a encolar a los 15 minutos, para siempre.
  */
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -25,10 +29,7 @@ export async function GET(request: NextRequest) {
       for (const w of (workspaces ?? []) as Array<{ id: string; timezone: string | null; ai_background_settings: unknown }>) {
         const settings = resolveBackgroundSettings(w.ai_background_settings);
         const planned = planDispatch(w.id, settings, new Date(), w.timezone ?? "America/Costa_Rica");
-        for (const p of planned) {
-          // Un scheduled_job por ventana; el índice único de dedupe_key descarta el duplicado.
-          await supabase.from("scheduled_jobs").insert({ type: "bg_task", dedupe_key: p.dedupeKey, payload: { workspaceId: w.id, task: p.task, window: p.window }, run_at: new Date().toISOString(), status: "pending" });
-        }
+        await enqueuePlanned(supabase, w.id, planned);
       }
     } catch (err) {
       console.error("[bg-dispatch] error:", err instanceof Error ? err.message : "desconocido");
