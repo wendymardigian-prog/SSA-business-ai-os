@@ -9,6 +9,7 @@ import { resolveEventCalendars } from "@/lib/scheduling/resolve-calendars";
 import { activationChecklist, canActivate, type EditorSection } from "@/lib/scheduling/event-validation";
 import { validateBookingFields } from "@/lib/scheduling/booking-fields";
 import { eventPublicUrl, publicBaseUrl } from "@/lib/scheduling/public-url";
+import { fallbackPayload } from "@/lib/scheduling/booker/unavailable";
 import { EventEditorView } from "@/components/scheduling/event-editor/event-editor-view";
 import { isEditorSection } from "@/lib/scheduling/editor-sections";
 
@@ -96,6 +97,9 @@ export default async function AgendaEventoPage({
       publicPrefix={`${base}/calendario/${username}/`}
       flowsCreated={query.creado !== undefined ? Number(query.creado) || 0 : null}
       hostName={profile?.display_name ?? "El equipo"}
+      calLink={username ? `${username}/${row.slug}` : null}
+      publicBase={base}
+      embedFallback={fallbackPayload(event, { event_title: event.title, host_name: profile?.display_name ?? "El equipo" })}
     />
   );
 }

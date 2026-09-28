@@ -88,11 +88,11 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F36 · Detalle lateral: cambiar estado con los motivos deshabilitados y explicados, cancelar con motivo, corregir categoría, ubicación y notas internas, reintentar la sincronización, historial en palabras
   - [x] F37 · Agendar a mano en cinco pasos, por la MISMA función que la página pública (contacto, asignación, historial, automatizaciones y jobs)
   - [x] F38 · Sección "Reuniones" en la ficha del contacto y los cuatro avisos al anfitrión (nunca a quien hizo la acción)
-- [ ] **Bloque 6 — Embed** (sin migración)
-  - [ ] F39 · Script de embed — **hecho en el núcleo:** runtime (`embed-source.ts`, `entry.ts`), `buildEmbedIframeUrl`. Falta: compilar a `public/embed/embed.js` en el build, lado iframe
-  - [ ] F40 · Generador de código — **hecho en el núcleo:** `generateEmbedCode`. Falta: modal y sección con vista previa
-  - [ ] F41 · Eventos hacia la página — **hecho en el núcleo:** `serializeEmbedEvent`, `embedMessage`, `isTrustedOrigin`. Falta: emitirlos desde el booker
-  - [ ] F42 · Dominio propio (nice-to-have)
+- [x] **Bloque 6 — Embed** (sin migración)
+  - [x] F39 · `scripts/build-embed.mjs` compila `lib/embed/entry.ts` a `public/embed/embed.js` (IIFE, es2017, 13,6 KB) y corre antes del build. El archivo se commitea: en Railway el build va sin dependencias de desarrollo y esbuild no está
+  - [x] F40 · Generador de código en la sección "Compartir y embed": tres modos, tema, color, ocultar detalles, HTML y React, con vista previa en el mismo iframe que verá el visitante
+  - [x] F41 · `lib/embed/iframe-side.ts` con el lado de adentro: avisa que cargó, manda la altura con `ResizeObserver` y emite los cinco eventos. Sin origen declarado no manda nada, y un `ssa:ui` de otro origen se ignora
+  - [ ] F42 · Dominio propio (nice-to-have, no entró)
 - [ ] **Bloque 7a — Motor de automatizaciones de agenda** (migración 00100)
   - [ ] F43 · Eventos de agenda y triggers inmediatos
   - [ ] F44 · Triggers relativos al tiempo

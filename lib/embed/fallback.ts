@@ -8,8 +8,8 @@
  * renderizado recibe un `document` mínimo. Todo el texto va por
  * `textContent`, nunca por `innerHTML`.
  */
-import { DEFAULT_UNAVAILABLE_MESSAGES } from "@/lib/scheduling/booker/unavailable";
-import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable";
+import { DEFAULT_UNAVAILABLE_MESSAGES } from "@/lib/scheduling/booker/unavailable-defaults";
+import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable-defaults";
 
 export const LOAD_TIMEOUT_MS = 10_000;
 export const OPEN_IN_TAB_LABEL = "Abrir el calendario en otra pestaña";

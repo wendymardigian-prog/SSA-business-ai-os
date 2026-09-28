@@ -20,6 +20,11 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Por qué:** gana la documentación.
 - **Qué se decidió en su lugar:** (1) un 403 con `reason` `rateLimitExceeded` o `userRateLimitExceeded` es `temporary` (backoff), no `permanent`; los otros 403 (`insufficientPermissions`, `forbiddenForNonOrganizer`) sí son `permanent`. (2) `invalid_grant` es del endpoint de token de OAuth, no de Calendar: se trata como `permanent` y marca la conexión `revoked`. Confirmado: `calendar.events.freebusy` alcanza para `freeBusy.query`, `calendar.calendarlist.readonly` para `calendarList.list` (pagina con `nextPageToken`, hasta 250 por página) y `calendar.events` para insertar, modificar y borrar con `conferenceDataVersion=1` y `sendUpdates=all`. La identidad (`sub`, email) sale de `openid email` + `userinfo`.
 
+### F42 · Dominio propio para los links públicos (nice-to-have)
+- **Qué quedó:** `workspaces.scheduling_public_base_url` existe y `publicBaseUrl` ya la prefiere, pero no hay pantalla para cargarla ni resolución por host en el middleware.
+- **Por qué:** es nice-to-have y hacerlo bien pide tocar DNS y certificados, que esta corrida no toca.
+- **Qué se decidió en su lugar:** los links salen de `NEXT_PUBLIC_APP_URL`. El día que se quiera un dominio propio, alcanza con escribir esa columna y sumar la resolución por host: el resto del código ya la respeta.
+
 ### F15 · Vista previa del horario (nice-to-have)
 - **Qué quedó:** el calendario de las próximas 2 semanas con los horarios libres de un evento de 30 minutos, sin contar Google.
 - **Por qué:** es nice-to-have y el bloque ya cubrió todo lo must.

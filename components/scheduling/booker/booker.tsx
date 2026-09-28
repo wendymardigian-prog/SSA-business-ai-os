@@ -14,7 +14,7 @@
  * horario propio no cuenta como ocupado (eso lo resuelve el servidor).
  */
 
-import { useCallback, useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Slot, SlotsByDate, UnavailableKey } from "@/lib/scheduling/types";
 import type { EmbedParams } from "@/lib/scheduling/booker/embed-params";
@@ -28,6 +28,7 @@ import { DatePicker } from "./date-picker";
 import { AvailableTimeSlots } from "./available-time-slots";
 import { BookForm, type BookFormValues } from "./book-form";
 import { UnavailableState } from "./states";
+import { useEmbedBridge } from "./use-embed-bridge";
 
 type Step = "pick" | "form";
 
@@ -128,6 +129,10 @@ export function Booker({
   rescheduleUid?: string;
 }) {
   const router = useRouter();
+  const [forcedUi, setForcedUi] = useState<{ theme?: string; brandColor?: string }>({});
+  // Solo hace algo dentro de un iframe: avisa que cargó, manda la altura y
+  // emite los eventos que la página del cliente puede escuchar.
+  const bridge = useEmbedBridge(embed.embed, setForcedUi);
   const [state, dispatch] = useReducer(reducer, {
     timezone: initialTimezone,
     month: embed.month ?? (embed.date ? monthOf(embed.date) : initialMonth),
@@ -227,6 +232,14 @@ export function Booker({
         return;
       }
 
+      bridge.emit(rescheduleUid ? "ssa:rescheduleSuccessful" : "ssa:bookingSuccessful", {
+        // Nunca datos del formulario: solo el código público y el rango.
+        uid: body.uid ?? rescheduleUid,
+        startTime: state.selectedSlot.startUtc,
+        endTime: new Date(new Date(state.selectedSlot.startUtc).getTime() + event.durationMinutes * 60_000).toISOString(),
+        eventSlug: slug,
+      });
+
       if (body.redirectUrl) {
         window.location.href = body.redirectUrl;
         return;
@@ -237,7 +250,10 @@ export function Booker({
     }
   }
 
-  const themeAttr = embed.theme === "auto" ? undefined : embed.theme;
+  // El padre puede cambiar el tema y el color en vivo con `SSA("ui", …)`.
+  const theme = (forcedUi.theme as typeof embed.theme | undefined) ?? embed.theme;
+  const themeAttr = theme === "auto" ? undefined : theme;
+  const brandColor = forcedUi.brandColor ?? embed.color;
   const shell = embed.embed ? "p-0" : "mx-auto w-full max-w-5xl px-4 py-6 md:py-10";
 
   return (
@@ -250,7 +266,7 @@ export function Booker({
     <div
       data-theme={themeAttr}
       className={`min-h-dvh bg-background text-foreground ${shell}`}
-      style={embed.color ? ({ "--primary": embed.color, "--color-primary": embed.color } as React.CSSProperties) : undefined}
+      style={brandColor ? ({ "--primary": brandColor, "--color-primary": brandColor } as React.CSSProperties) : undefined}
     >
       <div className="overflow-hidden rounded-2xl border border-border bg-card md:grid md:grid-cols-[280px_minmax(0,1fr)_240px]">
         <EventMeta
@@ -319,7 +335,10 @@ export function Booker({
               slots={daySlots}
               timezone={state.timezone}
               timeFormat={event.timeFormat}
-              onPick={(slot) => dispatch({ type: "pickSlot", slot })}
+              onPick={(slot) => {
+                bridge.emit("ssa:slotSelected", { startTime: slot.startUtc, endTime: slot.endUtc, eventSlug: slug });
+                dispatch({ type: "pickSlot", slot });
+              }}
               loading={state.loading}
             />
           </>

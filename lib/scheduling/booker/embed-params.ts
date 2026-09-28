@@ -7,8 +7,8 @@
  * Todo lo que llega por la URL es entrada no confiable: valores fuera de
  * lista se ignoran y los textos se recortan.
  */
-import { IDENTIFIER_RE } from "../booking-fields";
-import { isValidDateString } from "../time/tz";
+import { IDENTIFIER_RE } from "../identifier";
+import { isValidDateString } from "../time/date-string";
 import { isValidTimeZone } from "@/lib/timezone";
 
 export type BookerTheme = "light" | "dark" | "auto";

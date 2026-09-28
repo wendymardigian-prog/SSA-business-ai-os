@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { EditorShell } from "./editor-shell";
 import { FormBuilder } from "../form-builder/form-builder";
 import { UnavailableEditor } from "./unavailable-editor";
+import { EmbedGenerator } from "../embed/embed-generator";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
@@ -60,6 +61,9 @@ export function EventEditorView({
   publicPrefix,
   flowsCreated,
   hostName,
+  calLink,
+  publicBase,
+  embedFallback,
 }: {
   event: EventType & { workspace_id: string };
   section: EditorSection;
@@ -74,6 +78,11 @@ export function EventEditorView({
   flowsCreated: number | null;
   /** El nombre visible del anfitrión: la vista previa de F58 lo interpola. */
   hostName: string;
+  /** `usuario/slug`, o null si la persona todavía no eligió su usuario. */
+  calLink: string | null;
+  publicBase: string;
+  /** El mensaje de respaldo del embed, ya resuelto (F58). */
+  embedFallback: { title: string; body: string; cta?: { label: string; href: string } };
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -457,10 +466,37 @@ export function EventEditorView({
         <UnavailableEditor eventId={event.id} eventTitle={event.title} hostName={hostName} messages={event.unavailable_messages ?? null} />
       )}
 
-      {(section === "flows" || section === "share") && (
+      {section === "share" && (
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <span className="text-sm font-medium">Link del evento</span>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-2 text-sm">
+              <span className="min-w-0 truncate text-muted-foreground">{previewUrl}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(previewUrl);
+                  setToast("Link copiado");
+                }}
+                className="ml-auto rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted"
+              >
+                Copiar
+              </button>
+            </div>
+          </div>
+          {calLink ? (
+            <EmbedGenerator calLink={calLink} baseUrl={publicBase} fallback={embedFallback} eventTitle={event.title} />
+          ) : (
+            <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              Para compartir este evento falta el usuario de tu agenda. Cargalo en Ajustes.
+            </p>
+          )}
+        </section>
+      )}
+
+      {section === "flows" && (
         <section className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          {section === "flows" && "Los flujos del evento se configuran en el Bloque 7."}
-          {section === "share" && "El generador de embed llega en el Bloque 6."}
+          Los flujos del evento se configuran en el Bloque 7.
         </section>
       )}
 

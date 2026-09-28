@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prueba del embed de agenda</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; padding: 24px; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 900px; margin-inline: auto; }
+      h1 { font-size: 22px; }
+      h2 { font-size: 17px; margin-top: 32px; }
+      p { color: #555; }
+      @media (prefers-color-scheme: dark) { body { background: #111; color: #eee; } p { color: #aaa; } }
+      .caja { border: 1px solid currentColor; border-radius: 12px; padding: 12px; opacity: .9; }
+      #registro { font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; border: 1px solid currentColor; border-radius: 12px; padding: 12px; min-height: 80px; }
+      button { font: inherit; padding: 8px 14px; border-radius: 10px; border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Prueba del embed de agenda</h1>
+    <p>
+      Esta página NO se publica: es para probar el script a mano. Abrila con el servidor de desarrollo corriendo
+      (<code>npm run dev</code>) y cambiá <code>CAL_LINK</code> abajo por tu <code>usuario/evento</code>.
+      Los tres modos usan el mismo <code>/embed/embed.js</code> que se sirve en producción.
+    </p>
+
+    <h2>1. En la página</h2>
+    <p>El calendario va adentro de un contenedor y crece con su contenido.</p>
+    <div id="agenda-inline" class="caja" style="min-height: 640px" data-ssa-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'></div>
+
+    <h2>2. Ventana</h2>
+    <p>Un botón abre el calendario encima de la página.</p>
+    <!-- El botón se marca con data-ssa-link; el script lo engancha solo, igual que el código que genera la pantalla. -->
+    <button type="button" id="agenda-popup" data-ssa-link="" data-ssa-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'>
+      Agendar una llamada
+    </button>
+
+    <h2>3. Botón flotante</h2>
+    <p>El script agrega un botón fijo abajo a la derecha.</p>
+
+    <h2>Eventos</h2>
+    <p>Todo lo que el calendario le avisa a esta página. No debería aparecer ningún dato del formulario.</p>
+    <div id="registro">Esperando…</div>
+
+    <script>
+      // Cambiá esto por tu usuario y el slug de un evento activo.
+      var CAL_LINK = "wendy/llamada-de-diagnostico";
+      var ORIGEN = "http://localhost:3000";
+    </script>
+    <script>
+      (function (w, d, s, o) {
+        var f = d.getElementsByTagName(s)[0], j = d.createElement(s);
+        w.SSA = w.SSA || function () { (w.SSA.q = w.SSA.q || []).push(arguments); };
+        j.async = 1; j.src = o; f.parentNode.insertBefore(j, f);
+      })(window, document, "script", ORIGEN + "/embed/embed.js");
+
+      // El botón de ventana se marca en el HTML; acá solo se completa el link
+      // antes del init, que es quien engancha los botones.
+      document.getElementById("agenda-popup").setAttribute("data-ssa-link", CAL_LINK);
+
+      SSA("init", { origin: ORIGEN });
+
+      SSA("inline", { elementOrSelector: "#agenda-inline", calLink: CAL_LINK });
+
+      SSA("floatingButton", { calLink: CAL_LINK, buttonText: "Agendá conmigo", buttonPosition: "bottom-right" });
+
+      var registro = document.getElementById("registro");
+      var primero = true;
+      function anotar(nombre, datos) {
+        if (primero) { registro.textContent = ""; primero = false; }
+        registro.textContent += nombre + " " + JSON.stringify(datos) + "\n";
+      }
+      ["ssa:bookerReady", "ssa:slotSelected", "ssa:bookingSuccessful", "ssa:rescheduleSuccessful", "ssa:bookingCancelled"].forEach(function (nombre) {
+        SSA("on", { action: nombre, callback: function (e) { anotar(nombre, e && e.detail ? e.detail : e); } });
+      });
+    </script>
+  </body>
+</html>

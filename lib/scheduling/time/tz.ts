@@ -10,6 +10,11 @@
  */
 import dayjs from "./dayjs";
 import type { DateString, WallTime } from "../types";
+// Vive en su propio archivo (sin dayjs) porque la usa el script de embed. Se
+// reexporta para no cambiarle el import a quien ya la usaba desde acá.
+import { isValidDateString } from "./date-string";
+
+export { isValidDateString };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-4]):([0-5]\d)$/;
@@ -46,12 +51,6 @@ export function addDays(date: DateString, days: number): DateString {
 }
 
 /** Verdadero si es una fecha `YYYY-MM-DD` que existe en el calendario. */
-export function isValidDateString(value: unknown): value is DateString {
-  if (typeof value !== "string" || !DATE_RE.test(value)) return false;
-  const d = dayjs.utc(value);
-  return d.isValid() && d.format("YYYY-MM-DD") === value;
-}
-
 /** Verdadero si es una hora `HH:mm` entre `00:00` y `24:00`. */
 export function isValidWallTime(value: unknown): value is WallTime {
   if (typeof value !== "string") return false;
