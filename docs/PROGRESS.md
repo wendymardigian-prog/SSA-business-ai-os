@@ -52,16 +52,19 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F14 · "Eventos con este horario" (`eventsForSchedule`, `decideToggleEventSchedule` con el tooltip del caso "ya usa el por defecto"); se llena cuando exista `event_types` (B3)
   - [ ] F15 · Vista previa del horario (nice-to-have): no entró; el núcleo deja `freeWindows`
   - Verificación: vitest 256 archivos / 2982 tests, tsc 0, lint 0 errores, build OK, `verify-scheduling` (+21 chequeos: un solo por defecto, RPC en una transacción, RLS entre personas y workspaces, CHECKs de tiempo fuera, purga) en verde. Pantallas recorridas con sesión a 1440 y 390 px, claro y oscuro: horario, editor, copiar a otros días, excepción y tiempo fuera (con un horario `zz-test` creado y borrado por SQL)
-- [ ] **Bloque 3 — Categorías y tipos de evento** (migraciones 00097 y 00098) — **EN CURSO (27/9/2026, cortado por el límite de uso):** están escritas y en verde las funciones puras `lib/scheduling/categories.ts` (resolver, snapshot, filtro por área, nombres, archivo, árbol, reorden), `assignment.ts` (F22) y `resolve-calendars.ts` (F19), con sus tests. **Falta:** migraciones 00097/00098 (todavía no escritas ni aplicadas), capa de datos, Server Actions, pantallas Categorías, Eventos y editor, form builder, verify. Retomar desde acá.
-  - [ ] F50 · Categorías de agenda
-  - [ ] F51 · Categoría en eventos y agendas
-  - [ ] F16 · Tablas de eventos
-  - [ ] F17 · Lista de eventos — **hecho en el núcleo:** `slugify`, `nextCopySlug`, `suggestSlug`. Falta: pantalla, modal Nuevo evento, duplicar/borrar con base
-  - [ ] F18 · Editor, Detalles y ubicación — **hecho en el núcleo:** `validateEventDetails`, `activationChecklist`, `canActivate`, `meetRequiresWritableGoogleCalendar`, `slugChangeNeedsConfirmation`. Falta: editor
-  - [ ] F19 · Editor, Disponibilidad y calendarios
-  - [ ] F20 · Formulario de reserva — **hecho en el núcleo:** `buildBookingSchema`, `validateBookingFields`, `phone-countries`. Falta: constructor portado
-  - [ ] F21 · Límites y buffers — **hecho en el núcleo:** `lib/scheduling/limits/*`. Falta: sección del editor
-  - [ ] F22 · Asignación del contacto
+- [x] **Bloque 3 — Categorías y tipos de evento** (migraciones **00097 y 00098 aplicadas** el 27/9/2026)
+  - [x] F50 · `booking_categories` con dos niveles (trigger que impide el tercero), único por nivel sin distinguir mayúsculas entre las activas, precarga por workspace (trigger + backfill: 2 áreas y 5 tipos) y RLS (leen todos, escriben `scheduling.manage_categories` o admin, DELETE nadie). Pantalla con áreas, tipos, renombrar, reordenar, archivar y restaurar
+  - [x] F51 · `event_types.category_id` obligatorio; `resolveCategory`, `categorySnapshot`, `categoryLabel`, `expandCategoryFilter` (filtrar por área incluye sus tipos); selector de área y tipo en el editor y en el modal
+  - [x] F16 · `event_types` completa (§9.3), slug único por persona, `flows.event_type_id` y `template_key`, `workspaces.scheduling_auto_create_flows` y `scheduling_public_base_url`, purga que conserva los eventos con agendas
+  - [x] F17 · Lista por área con link, copiar, vista previa, switch Activo/Inactivo, duplicar y borrar con confirmación; modal "+ Nuevo evento" que crea inactivo con el horario por defecto, los calendarios del perfil, el formulario base, la asignación por área y los 7 flujos sugeridos apagados
+  - [x] F18 · Editor con navegación de 7 secciones, tarjeta "Listo para activar" (los tres obligatorios bloquean; formulario y flujos no), "Vista previa", guardado por sección y confirmación al cambiar el link
+  - [x] F19 · Horario del evento, calendario destino (solo owner/writer) y conflictos propios o del perfil (`resolveEventCalendars`, con aviso si los elegidos quedaron inactivos)
+  - [x] F20 · Constructor de formulario portado de Cal.diy: los tres del sistema arriba, preguntas propias de 4 tipos con identificador, ayuda, visibilidad y opciones; la regla "email o teléfono obligatorio" la valida el núcleo
+  - [x] F21 · Buffers, aviso mínimo, intervalo, topes por día y semana, ventana futura con sus cuatro modos
+  - [x] F22 · Asignación del contacto con el default por área (`defaultAssignmentForArea`: Ventas → vendedor si está vacío)
+  - [x] F49 (adelantado) · Las 7 plantillas de flujo (`lib/scheduling/automation/templates.ts`) con sus textos en voseo; se crean apagadas con el evento y al duplicarlo
+  - Verificación: vitest 260 archivos / 3002 tests, tsc 0, lint 0 errores, build OK, `verify-scheduling` (+23 chequeos de categorías y eventos) en verde. Pantallas recorridas con sesión: Categorías, Eventos, modal "Nuevo evento" (creó el evento con 7 flujos) y el editor en Detalles, Formulario y Límites
+
 - [ ] **Bloque 4a — Motor en vivo, API pública y creación** (migración 00099)
   - [ ] F23 · Motor de horarios libres — **hecho en el núcleo** completo (`lib/scheduling/slots/*`). Falta: armar `SlotsInput` desde la base y Google
   - [ ] F24 · API pública de horarios
@@ -113,8 +116,8 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 |---|---|---|
 | 00095 | (B1) perfiles, calendarios, `scheduling_can_manage`, `oauth_connections` (provider + índices parciales + policy propia), `contacts.timezone`, bucket `avatars` | ✅ aplicada y verificada (27/9/2026) |
 | 00096 | (B2) `availability_schedules`, `out_of_office`, `set_default_schedule`, `ensure_default_schedule` + backfill, purga | ✅ aplicada y verificada (27/9/2026) |
-| 00097 | (B3) `booking_categories` + precarga | — |
-| 00098 | (B3) `event_types`, `flows.*`, `workspaces.*` | — |
+| 00097 | (B3) `booking_categories`, trigger de dos niveles, precarga por workspace + backfill | ✅ aplicada y verificada (27/9/2026) |
+| 00098 | (B3) `event_types`, `flows.event_type_id`/`template_key`, `workspaces.scheduling_*`, purga que conserva los eventos con agendas | ✅ aplicada y verificada (27/9/2026) |
 | 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | — |
 | 00100 | (B7a) `triggers_type_check` + 9 tipos, `flow_sessions.channel_id` nullable | — |
 

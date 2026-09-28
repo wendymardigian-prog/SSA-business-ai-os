@@ -50,6 +50,11 @@ export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error"
 export type TimeFormat = "12h" | "24h";
 export type CalendarAccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
 export type OutOfOfficeReason = "vacation" | "travel" | "sick" | "other";
+export type LocationType = "google_meet" | "manual";
+export type EventTypeStatus = "active" | "hidden" | "inactive";
+export type SchedulingType = "individual" | "round_robin" | "collective";
+export type PeriodType = "rolling_calendar" | "rolling_business" | "range" | "unlimited";
+export type ContactAssignmentMode = "none" | "setter_if_empty" | "vendedor_if_empty";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
@@ -472,6 +477,9 @@ export interface Database {
       };
       workspaces: {
         Row: {
+          /** Crear los 7 flujos sugeridos al crear un evento (Etapa 4, F49). */
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           id: string;
           name: string;
           slug: string;
@@ -1022,6 +1030,9 @@ export interface Database {
       };
       flows: {
         Row: {
+          /** El evento de agenda al que pertenece este flujo (Etapa 4). */
+          event_type_id?: string | null;
+          template_key?: string | null;
           id: string;
           workspace_id: string;
           name: string;
@@ -3589,6 +3600,152 @@ export interface Database {
           all_day?: boolean;
           reason?: OutOfOfficeReason;
           note?: string | null;
+          deleted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      booking_categories: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          /** null = area; con valor = tipo dentro de esa area. */
+          parent_id: string | null;
+          name: string;
+          color: string | null;
+          position: number;
+          is_system: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          parent_id?: string | null;
+          name: string;
+          color?: string | null;
+          position?: number;
+          is_system?: boolean;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          position?: number;
+          archived_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      event_types: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          category_id: string;
+          owner_user_id: string;
+          title: string;
+          slug: string;
+          description_md: string | null;
+          duration_minutes: number;
+          color: string | null;
+          location_type: LocationType;
+          location_text: string | null;
+          hide_location_until_booked: boolean;
+          status: EventTypeStatus;
+          scheduling_type: SchedulingType;
+          schedule_id: string | null;
+          destination_calendar_id: string | null;
+          conflict_calendar_ids: string[];
+          before_buffer_minutes: number;
+          after_buffer_minutes: number;
+          minimum_notice_minutes: number;
+          slot_interval_minutes: number | null;
+          max_per_day: number | null;
+          max_per_week: number | null;
+          period_type: PeriodType;
+          period_days: number | null;
+          period_start_date: string | null;
+          period_end_date: string | null;
+          contact_assignment: ContactAssignmentMode;
+          success_redirect_url: string | null;
+          redirect_with_params: boolean;
+          change_min_notice_minutes: number | null;
+          booking_fields: Json;
+          unavailable_messages: Json | null;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          category_id: string;
+          owner_user_id: string;
+          title: string;
+          slug: string;
+          description_md?: string | null;
+          duration_minutes?: number;
+          color?: string | null;
+          location_type?: LocationType;
+          location_text?: string | null;
+          hide_location_until_booked?: boolean;
+          status?: EventTypeStatus;
+          scheduling_type?: SchedulingType;
+          schedule_id?: string | null;
+          destination_calendar_id?: string | null;
+          conflict_calendar_ids?: string[];
+          before_buffer_minutes?: number;
+          after_buffer_minutes?: number;
+          minimum_notice_minutes?: number;
+          slot_interval_minutes?: number | null;
+          max_per_day?: number | null;
+          max_per_week?: number | null;
+          period_type?: PeriodType;
+          period_days?: number | null;
+          period_start_date?: string | null;
+          period_end_date?: string | null;
+          contact_assignment?: ContactAssignmentMode;
+          success_redirect_url?: string | null;
+          redirect_with_params?: boolean;
+          change_min_notice_minutes?: number | null;
+          booking_fields?: Json;
+          unavailable_messages?: Json | null;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          category_id?: string;
+          title?: string;
+          slug?: string;
+          description_md?: string | null;
+          duration_minutes?: number;
+          color?: string | null;
+          location_type?: LocationType;
+          location_text?: string | null;
+          hide_location_until_booked?: boolean;
+          status?: EventTypeStatus;
+          schedule_id?: string | null;
+          destination_calendar_id?: string | null;
+          conflict_calendar_ids?: string[];
+          before_buffer_minutes?: number;
+          after_buffer_minutes?: number;
+          minimum_notice_minutes?: number;
+          slot_interval_minutes?: number | null;
+          max_per_day?: number | null;
+          max_per_week?: number | null;
+          period_type?: PeriodType;
+          period_days?: number | null;
+          period_start_date?: string | null;
+          period_end_date?: string | null;
+          contact_assignment?: ContactAssignmentMode;
+          success_redirect_url?: string | null;
+          redirect_with_params?: boolean;
+          booking_fields?: Json;
+          unavailable_messages?: Json | null;
           deleted_at?: string | null;
           updated_at?: string;
         };

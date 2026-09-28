@@ -212,6 +212,86 @@ try {
     check(!pe && purga && "availability_schedules" in purga && "out_of_office" in purga, "purge_soft_deleted conoce las dos tablas nuevas", pe?.message);
   }
 
+  console.log("\n— Categorias (00097, F50) —");
+  {
+    const { data: cats } = await svc.from("booking_categories").select("id, name, parent_id, is_system").eq("workspace_id", ws.id);
+    const areas = (cats ?? []).filter((c) => !c.parent_id);
+    const tipos = (cats ?? []).filter((c) => c.parent_id);
+    check(areas.length === 2 && tipos.length === 5, `al crear un workspace hay exactamente 2 areas y 5 tipos (hay ${areas.length} y ${tipos.length})`);
+    check(areas.every((a) => a.is_system) && areas.map((a) => a.name).sort().join(",") === "Servicio,Ventas", "las areas son Ventas y Servicio, de sistema");
+
+    const ventas = areas.find((a) => a.name === "Ventas");
+    const triaje = tipos.find((t) => t.name === "Triaje");
+    const { error: e3 } = await svc.from("booking_categories").insert({ workspace_id: ws.id, parent_id: triaje.id, name: "Tercer nivel" });
+    check(!!e3 && /dos niveles/.test(e3.message), "un tipo cuyo padre es otro tipo lo rechaza el trigger", e3?.message);
+
+    const { error: eDup } = await svc.from("booking_categories").insert({ workspace_id: ws.id, name: "ventas" });
+    check(eDup?.code === "23505", "un area con el nombre de otra activa (sin importar mayusculas) choca", eDup?.message);
+
+    const { error: eCruz } = await svc.from("booking_categories").insert({ workspace_id: ws2.id, parent_id: ventas.id, name: "Colado" });
+    check(!!eCruz, "un tipo cuyo padre es de otro workspace se rechaza");
+
+    // Un Member sin el permiso no escribe; el Owner si.
+    const { error: eMember } = await member.client.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-member" });
+    check(!!eMember, "un Member sin scheduling.manage_categories no crea categorias");
+    const { data: verMember } = await member.client.from("booking_categories").select("id").eq("workspace_id", ws.id);
+    check((verMember ?? []).length === 7, "pero SI las ve (hacen falta para elegir y filtrar)");
+    const { data: nueva, error: eOwner } = await owner.client.from("booking_categories").insert({ workspace_id: ws.id, name: "zz-comunidad", color: "#16a34a" }).select("id").single();
+    check(!eOwner, "el Owner si crea un area", eOwner?.message);
+    const { error: eDel } = await owner.client.from("booking_categories").delete().eq("id", nueva.id);
+    const { data: sigue } = await svc.from("booking_categories").select("id").eq("id", nueva.id);
+    check((sigue ?? []).length === 1, "no hay DELETE para nadie: se archiva", eDel?.message);
+    const { error: eArch } = await owner.client.from("booking_categories").update({ archived_at: new Date().toISOString() }).eq("id", nueva.id);
+    check(!eArch, "archivar es un update normal", eArch?.message);
+    const { data: cruzados } = await ajeno.client.from("booking_categories").select("id").eq("workspace_id", ws.id);
+    check((cruzados ?? []).length === 0, "otro workspace no ve estas categorias");
+  }
+
+  console.log("\n— Eventos (00098, F16) —");
+  {
+    const { data: cats } = await svc.from("booking_categories").select("id, name").eq("workspace_id", ws.id).is("parent_id", null);
+    const ventas = cats.find((c) => c.name === "Ventas");
+    const base = { workspace_id: ws.id, category_id: ventas.id, title: "zz-test-evento", duration_minutes: 30 };
+
+    const { data: ev1, error: e1 } = await member.client.from("event_types").insert({ ...base, owner_user_id: member.id, slug: "zz-llamada" }).select("id").single();
+    check(!e1, "un Member crea su propio evento", e1?.message);
+
+    const { error: e2 } = await member.client.from("event_types").insert({ ...base, owner_user_id: member.id, slug: "zz-llamada" });
+    check(e2?.code === "23505", "el mismo slug para la misma persona choca", e2?.message);
+
+    const { error: e3 } = await svc.from("event_types").insert({ ...base, owner_user_id: otro.id, slug: "zz-llamada" });
+    check(!e3, "otra persona SI puede usar el mismo slug (el link lleva su usuario adelante)", e3?.message);
+
+    const { error: e4 } = await member.client.from("event_types").insert({ ...base, owner_user_id: otro.id, slug: "zz-ajeno" });
+    check(!!e4, "un Member no crea eventos a nombre de otra persona");
+
+    const { error: e5 } = await otro.client.from("event_types").update({ title: "Hackeado" }).eq("id", ev1.id);
+    const { data: intacto } = await svc.from("event_types").select("title").eq("id", ev1.id).single();
+    check(intacto.title === "zz-test-evento", "un Member no edita un evento ajeno (RLS)", e5?.message);
+
+    const { data: verMember } = await member.client.from("event_types").select("id").eq("workspace_id", ws.id);
+    check((verMember ?? []).length === 2, "los eventos los ven todos los miembros (para elegirlos en flows y al agendar)");
+    const { data: cruz } = await ajeno.client.from("event_types").select("id").eq("workspace_id", ws.id);
+    check((cruz ?? []).length === 0, "otro workspace no ve ningun evento");
+
+    const { error: e6 } = await svc.from("event_types").insert({ ...base, owner_user_id: member.id, slug: "Con Mayusculas" });
+    check(!!e6, "un slug con mayusculas o espacios lo rechaza el CHECK");
+    const { error: e7 } = await svc.from("event_types").insert({ ...base, owner_user_id: member.id, slug: "zz-corto", duration_minutes: 3 });
+    check(!!e7, "una duracion menor a 5 minutos la rechaza el CHECK");
+    const { error: e8 } = await svc.from("event_types").insert({ ...base, owner_user_id: member.id, slug: "zz-estado", status: "inventado" });
+    check(!!e8, "un estado fuera de la lista lo rechaza el CHECK");
+
+    // flows.event_type_id y workspaces.scheduling_auto_create_flows
+    const { data: flow, error: eF } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test-flujo", status: "draft", event_type_id: ev1.id, template_key: "confirmation" }).select("id, event_type_id, template_key").single();
+    check(!eF && flow.event_type_id === ev1.id && flow.template_key === "confirmation", "un flow puede pertenecer a un evento", eF?.message);
+    const { data: wsRow } = await svc.from("workspaces").select("scheduling_auto_create_flows, scheduling_public_base_url").eq("id", ws.id).single();
+    check(wsRow.scheduling_auto_create_flows === true && wsRow.scheduling_public_base_url === null, "el workspace trae la opcion de flujos sugeridos encendida y sin dominio propio");
+
+    // La purga conoce los eventos.
+    const { data: purga } = await svc.rpc("purge_soft_deleted", { p_retention_days: 30 });
+    check(purga && "event_types" in purga, "purge_soft_deleted conoce event_types");
+  }
+
   console.log("\n— scheduling_can_manage —");
   {
     const { data: a } = await member.client.rpc("scheduling_can_manage", { p_workspace_id: ws.id, p_user_id: member.id });
