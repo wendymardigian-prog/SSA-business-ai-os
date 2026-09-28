@@ -55,14 +55,28 @@ describe("registro de publicadores (F30)", () => {
     expect(getJobHandler(METRICS_SYNC_JOB)).toBeTypeOf("function");
   });
 
-  it("bg_task sigue sin hacer nada, pero con handler propio", async () => {
-    // Sin handler explicito caeria en "tipo desconocido" y pasaria a fallido,
-    // y se encola solo: la lista de jobs se llenaria de rojo por nada.
+  it("bg_task tiene handler y rechaza un payload sin tarea", async () => {
+    // Dejo de no hacer nada: ahora despacha por `payload.task`. Un payload
+    // incompleto LANZA, asi el job queda fallido con el motivo en last_error.
+    // Completar en silencio es lo que dejo este handler vacio durante semanas.
     registerPublishing();
     const handler = getJobHandler("bg_task");
 
     expect(handler).toBeTypeOf("function");
-    await expect(handler!({} as never)).resolves.toBeUndefined();
+    await expect(handler!({ job: { payload: {} } } as never)).rejects.toThrow(/payload incompleto/);
+  });
+
+  it("bg_task falla con un motivo claro si la tarea no tiene implementacion", async () => {
+    registerPublishing();
+    const handler = getJobHandler("bg_task")!;
+    const supabase = {
+      from: () => ({
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "ws-1" }, error: null }) }) }),
+      }),
+    };
+    const job = { payload: { workspaceId: "ws-1", task: "conversation_summary", window: "2026-09-28" } };
+
+    await expect(handler({ supabase, job } as never)).rejects.toThrow(/todavia no tiene implementacion|todavía no tiene implementación/);
   });
 
   it("registrar dos veces no duplica nada", () => {
