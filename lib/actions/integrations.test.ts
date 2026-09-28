@@ -62,6 +62,10 @@ function admin(seed: Record<string, Array<Record<string, unknown>>> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", fetchMock);
+  // Por defecto el proveedor contesta que si. Cada prueba que le importe la
+  // respuesta la pisa. Sin esto, los proveedores de IA —que desde la Etapa 2
+  // verifican la key contra el proveedor— se quedaban sin respuesta.
+  fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ data: [] }) });
   storeSecret.mockResolvedValue({ ok: true });
   deleteSecret.mockResolvedValue({ ok: true });
   listSecretNames.mockResolvedValue([]);
@@ -384,5 +388,44 @@ describe("probar antes de guardar (F3)", () => {
     await updateIntegrationConfig("postproxy", {});
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("una API key de IA revocada tampoco se guarda", async () => {
+    // El caso real: la key de Anthropic del workspace estaba revocada y se
+    // habia guardado igual, porque las de IA no se probaban.
+    const db = admin();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { type: "authentication_error" } }),
+    });
+
+    const result = await saveIntegration({
+      providerId: "anthropic",
+      secrets: { api_key: KEY },
+      config: { default_model: "claude-sonnet-5" },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(storeSecret).not.toHaveBeenCalled();
+    expect(db.rows("integration_configs")).toHaveLength(0);
+  });
+
+  it("una key de IA buena guarda los modelos que reporto el proveedor", async () => {
+    const db = admin();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: "claude-sonnet-5" }, { id: "claude-fable-5-1" }] }),
+    });
+
+    await saveIntegration({
+      providerId: "anthropic",
+      secrets: { api_key: KEY },
+      config: { default_model: "claude-sonnet-5" },
+    });
+
+    const row = db.rows("integration_configs")[0] as { config: Record<string, unknown> };
+    expect(row.config.models).toEqual(["claude-sonnet-5", "claude-fable-5-1"]);
   });
 });

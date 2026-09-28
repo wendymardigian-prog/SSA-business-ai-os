@@ -5,7 +5,8 @@ import { getExactWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun, type AiRunHandle } from "@/lib/ai/run";
 import { logAudit } from "@/lib/audit";
 import { agentForChannel, loadWorkspaceAgents, type AgentConfig } from "./config";
-import { generateWithFallback, toolLoopRunner, type ModelResolver, type ModelRunner } from "./fallback";
+import { describeAttempts, generateWithFallback, toolLoopRunner, type ModelResolver, type ModelRunner } from "./fallback";
+import { notifyProviderAuthFailure } from "./errors";
 import { applyTags, setFollowup, setTemperature, type EffectContext } from "./tools/effects";
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
@@ -223,7 +224,13 @@ export async function summarizeConversationOnClose(
 
     const generation = await generate(userContent);
     if (!generation.ok) {
-      await run.close({ status: "error", statusDetail: generation.reason, error: generation.attempts.map((a) => `${a.role}: ${a.problem}`).join("; ") });
+      if (generation.authFailures.length > 0) {
+        await notifyProviderAuthFailure(supabase, {
+          workspaceId: conversation.workspace_id,
+          failures: generation.authFailures,
+        });
+      }
+      await run.close({ status: "error", statusDetail: generation.reason, error: describeAttempts(generation.attempts) });
       return { kind: "run", status: "error", detail: generation.reason, runId: run.runId };
     }
     run.setModel(generation.provider, generation.model);

@@ -104,7 +104,7 @@ export async function checkAiProviderKey(input: {
       return { ok: true, models: [] };
   }
 
-  let response: Response;
+  let response: Response | undefined;
   try {
     response = await doFetch(url, {
       method: "GET",
@@ -114,6 +114,12 @@ export async function checkAiProviderKey(input: {
   } catch {
     // Sin red, DNS caido o se acabo el tiempo. No dice nada sobre la key.
     return { ok: true, models: [], detail: softFailNote(label, "no se pudo contactar al proveedor") };
+  }
+
+  // Un fetch que no devuelve una respuesta usable (un proxy raro, un doble de
+  // prueba mal armado). No es motivo para rechazar una key: se deja guardar.
+  if (!response || typeof response.status !== "number") {
+    return { ok: true, models: [], detail: softFailNote(label, "devolvio una respuesta vacia") };
   }
 
   if (response.status === 401 || response.status === 403) {

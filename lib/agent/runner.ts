@@ -27,9 +27,10 @@ import {
   type StoredMessage,
   type TurnConversation,
 } from "./context";
-import { clearAgentError, markAgentError, type AgentErrorKind } from "./errors";
+import { clearAgentError, markAgentError, notifyProviderAuthFailure, type AgentErrorKind } from "./errors";
 import { escalateToHuman } from "./escalate";
 import {
+  describeAttempts,
   generateWithFallback,
   toolLoopRunner,
   type ModelResolver,
@@ -644,6 +645,15 @@ async function continueTurn(
 
   if (!generation.ok) {
     const kind: AgentErrorKind = generation.reason === "model_timeout" ? "model_timeout" : "provider_unavailable";
+    // La key vencida no se arregla desde la bandeja: aviso de integracion,
+    // agrupado por proveedor y una vez por dia. Va antes de la bifurcacion
+    // por modo, porque en borrador tambien hay que enterarse.
+    if (generation.authFailures.length > 0) {
+      await notifyProviderAuthFailure(supabase, {
+        workspaceId: conversation.workspace_id,
+        failures: generation.authFailures,
+      });
+    }
     if (draftMode || rulesMode) {
       // La fila en la cola es la unica senal: sin marca de error ni aviso de
       // "se derivo a una persona", que en modo borrador no seria cierto.
@@ -656,7 +666,7 @@ async function continueTurn(
           appliedActions: applied,
         },
         kind,
-        generation.attempts.map((a) => `${a.role}: ${a.problem}`).join("; "),
+        describeAttempts(generation.attempts),
       );
     }
     await escalateToHuman(supabase, {
@@ -678,7 +688,7 @@ async function continueTurn(
       assignedTo: conversation.assigned_to,
       now: deps.now(),
     });
-    return close("escalated", kind, generation.attempts.map((a) => `${a.role}: ${a.problem}`).join("; "));
+    return close("escalated", kind, describeAttempts(generation.attempts));
   }
 
   run.setFinalUsage(generation.output.totalUsage);

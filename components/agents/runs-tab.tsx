@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Activity, AlertTriangle, ChevronDown } from "lucide-react";
 import type { AgentScreenData, RunRow, RunStepRow } from "@/lib/agent/screen";
-import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, STEP_KIND_LABELS, describeRunDetail } from "@/lib/agent/run-labels";
+import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, STEP_KIND_LABELS, describeModelError, describeRunDetail } from "@/lib/agent/run-labels";
 import { routingSentence } from "@/lib/agent/routing-sentence";
 import { countActiveRunFilters, AGENT_FILTER_ALL, AGENT_FILTER_NONE } from "@/lib/agent/runs-query";
 import { formatDateTime } from "@/components/contacts/ui";
@@ -168,7 +168,7 @@ function RunItem({ run, showCost }: { run: RunRow; showCost: boolean }) {
               {run.error && (
                 <p className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                  {run.error}
+                  {describeModelError(run.error)}
                 </p>
               )}
             </div>
@@ -239,7 +239,9 @@ function StepItem({ step }: { step: RunStepRow }) {
       {step.output !== null && (
         <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted p-1.5 text-[10px] text-muted-foreground">{JSON.stringify(step.output, null, 1)}</pre>
       )}
-      {step.error && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{step.error}</p>}
+      {step.error && (
+        <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{describeModelError(step.error)}</p>
+      )}
     </li>
   );
 }
