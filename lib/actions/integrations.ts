@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { validateSecretValue } from "@/lib/integrations/secret-validation";
+import type { Json } from "@/lib/types/database";
 import { testConnection } from "@/lib/integrations/test-connection";
 import {
   configProviderOf,
@@ -51,6 +52,25 @@ function cleanConfigOf(
   return clean;
 }
 
+/**
+ * Lo que la PRUEBA descubrio la vez anterior y hay que conservar.
+ *
+ * No son campos que la persona escriba: los trae el proveedor cuando se
+ * verifica la key. Como el upsert reemplaza la fila entera, sin esto un
+ * guardado que no re-escribe la key los borra.
+ */
+const DISCOVERED_CONFIG_KEYS = ["youtube_profile_id", "models", "models_checked_at"] as const;
+
+function discoveredConfigOf(previous: unknown): Record<string, Json> {
+  if (!previous || typeof previous !== "object" || Array.isArray(previous)) return {};
+  const source = previous as Record<string, Json>;
+  const kept: Record<string, Json> = {};
+  for (const key of DISCOVERED_CONFIG_KEYS) {
+    if (source[key] !== undefined && source[key] !== null) kept[key] = source[key];
+  }
+  return kept;
+}
+
 export interface SaveIntegrationInput {
   providerId: string;
   /** Los secretos nuevos, por la clave del campo. Lo que no venga, no se toca. */
@@ -88,7 +108,7 @@ export async function saveIntegration(
   const [{ data: existing }, storedNames] = await Promise.all([
     supabase
       .from("integration_configs")
-      .select("id, is_active")
+      .select("id, is_active, config")
       .eq("workspace_id", workspace.id)
       .eq("type", provider.type)
       .eq("provider", configProviderOf(provider))
@@ -139,9 +159,19 @@ export async function saveIntegration(
     provider: configProviderOf(provider),
     display_name: provider.label,
     vault_secret_name: provider.secretName,
-    // Lo que descubrio la prueba (el perfil de Postproxy) viaja con la
-    // config: es de donde sale el `account_ref` del publicador (A11).
-    config: { ...cleanConfigOf(provider, config), ...(tested.config ?? {}) },
+    // Lo que descubrio la prueba (el perfil de Postproxy, la lista de modelos
+    // del proveedor de IA) viaja con la config: es de donde sale el
+    // `account_ref` del publicador (A11) y lo que llena el selector del agente.
+    //
+    // Lo descubierto ANTES se conserva. El upsert pisa la fila entera, asi que
+    // sin esto, volver a guardar la integracion para cambiar el modelo por
+    // defecto —sin re-escribir la key, con lo cual no hay prueba y no hay
+    // `tested.config`— borraba lo que se habia descubierto la vez anterior.
+    config: {
+      ...cleanConfigOf(provider, config),
+      ...discoveredConfigOf(existing?.config),
+      ...(tested.config ?? {}),
+    },
     is_active: true,
     connected_at: existing?.is_active ? undefined : new Date().toISOString(),
     last_error: null,

@@ -7,9 +7,10 @@
  * publicar.
  *
  * No todas las integraciones se pueden probar asi: las de OAuth se prueban
- * conectando (ahi esta la prueba de verdad), y las de IA no tienen una llamada
- * gratis y sin efectos. Para esas, esto no hace nada y la validacion de
- * formato es lo que hay.
+ * conectando (ahi esta la prueba de verdad). Las de IA SI se prueban: listar
+ * los modelos no cobra tokens y devuelve 401 con una key mala (ver
+ * ai-key-check.ts). La que queda sin prueba es Voyage, que no publica un
+ * endpoint gratis; para esa, la validacion de formato es lo que hay.
  *
  * Solo servidor: usa las claves.
  */
@@ -18,6 +19,7 @@ import type { FetchLike } from "@/lib/oauth/types";
 import { testApiKey as testPostproxyKey } from "@/lib/social/postproxy";
 import { validateMetaToken } from "@/lib/meta/token";
 import { fetchAdAccounts } from "@/lib/meta/accounts";
+import { checkAiProviderKey } from "./ai-key-check";
 
 export type ConnectionTest =
   | {
@@ -31,7 +33,7 @@ export type ConnectionTest =
        * cada vez seria una llamada de mas; guardarlo al probar la clave es el
        * unico momento en que ya se tiene.
        */
-      config?: Record<string, string>;
+      config?: Record<string, string | string[]>;
     }
   | { ok: false; error: string };
 
@@ -86,8 +88,34 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
       };
     }
 
+    case "openai":
+    case "anthropic":
+    case "google_ai": {
+      const apiKey = (input.secrets.api_key ?? "").trim();
+      // Sin clave nueva no hay nada que probar: se esta editando el modelo por
+      // defecto y la key que ya estaba guardada sigue siendo la buena.
+      if (!apiKey) return { ok: true };
+
+      const result = await checkAiProviderKey({
+        providerId: input.providerId,
+        apiKey,
+        fetchImpl: input.fetchImpl,
+      });
+      if (!result.ok) return result;
+
+      return {
+        ok: true,
+        detail: result.detail,
+        // La lista viva de modelos viaja con la config: es lo que hace que el
+        // selector del agente no dependa de una lista escrita a mano.
+        ...(result.models.length > 0
+          ? { config: { models: result.models, models_checked_at: new Date().toISOString() } }
+          : {}),
+      };
+    }
+
     default:
-      // Las demas no tienen una prueba barata y sin efectos.
+      // Voyage y las de OAuth: no tienen una prueba barata y sin efectos.
       return { ok: true };
   }
 }

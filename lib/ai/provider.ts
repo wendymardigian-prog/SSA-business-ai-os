@@ -258,6 +258,15 @@ function defaultModelFor(provider: string): string {
  * Los proveedores conectados, para que la UI pueda ofrecerlos.
  *
  * Devuelve solo id y modelo por defecto: ni la key ni nada que se le parezca.
+ *
+ * La lista de modelos es la union de dos cosas:
+ *
+ *   1. Las sugerencias del catalogo (lib/integrations/providers.ts). Van
+ *      primero porque son las curadas: las que tienen precio cargado y las que
+ *      conviene usar.
+ *   2. Lo que el PROVEEDOR dijo que ve esta cuenta, guardado en
+ *      config.models al verificar la key. Una lista escrita a mano envejece con
+ *      cada modelo nuevo; esta no.
  */
 export async function listConnectedAiProviders(
   workspaceId: string,
@@ -278,6 +287,7 @@ export async function listConnectedAiProviders(
     // Que Voyage no aparezca en el selector de proveedor del nodo AI Response.
     if (!isTextProvider(definition)) return [];
     const field = definition.configFields?.find((f) => f.key === "default_model");
+    const suggested = (field?.options as string[] | undefined) ?? [];
     return [
       {
         provider: row.provider,
@@ -286,8 +296,15 @@ export async function listConnectedAiProviders(
           (row.config?.default_model as string | undefined) ??
           (field?.defaultValue as string | undefined) ??
           "",
-        models: (field?.options as string[] | undefined) ?? [],
+        models: [...new Set([...suggested, ...liveModelsOf(row.config)])],
       },
     ];
   });
+}
+
+/** Los modelos que el proveedor reporto al verificar la key. Tolerante a basura. */
+function liveModelsOf(config: Record<string, unknown> | null): string[] {
+  const raw = config?.models;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((m): m is string => typeof m === "string" && m.trim().length > 0);
 }
