@@ -114,6 +114,10 @@ registerTrigger({
   label: "Contacto nuevo",
   scope: "event",
   priority: 60,
+  eventTypes: ["contact_created"],
+  // La clave es el contacto: dispara una sola vez en su vida, aunque el
+  // evento se repita.
+  dedupeKeyFor: ({ event }) => `contact:${event.contact_id}`,
 });
 
 registerTrigger({
@@ -121,6 +125,10 @@ registerTrigger({
   label: "Evento del CRM",
   scope: "event",
   priority: 50,
+  // El comodín: atiende cualquier evento que ningún tipo más específico
+  // reclame. `contact_created` lo reclama `new_contact`, así que no llega acá.
+  eventTypes: ["*"],
+  eventMatches: ({ config, event }) => crmEventMatches(config, event),
 });
 
 registerTrigger({

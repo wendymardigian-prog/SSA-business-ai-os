@@ -303,7 +303,18 @@ export type TriggerType =
   | "crm_event"
   | "inactivity"
   // Etapa 2: el email como canal (CHECK de la migracion 00087).
-  | "email_received";
+  | "email_received"
+  // Etapa 4: agenda (CHECK de la migracion 00100). Los tres ultimos se
+  // calculan contra la hora de la reunion y los agenda un job.
+  | "booking_created"
+  | "booking_rescheduled"
+  | "booking_cancelled"
+  | "booking_updated"
+  | "booking_ended"
+  | "booking_status_changed"
+  | "booking_before_start"
+  | "booking_after_end"
+  | "booking_after_created";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1150,7 +1161,7 @@ export interface Database {
           id: string;
           contact_id: string;
           flow_id: string;
-          channel_id: string;
+          channel_id: string | null;
           status: FlowSessionStatus;
           current_node_id: string | null;
           variables: Json;
@@ -1165,7 +1176,7 @@ export interface Database {
           id?: string;
           contact_id: string;
           flow_id: string;
-          channel_id: string;
+          channel_id: string | null;
           status?: FlowSessionStatus;
           current_node_id?: string | null;
           variables?: Json;

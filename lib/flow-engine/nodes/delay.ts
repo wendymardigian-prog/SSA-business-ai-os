@@ -1,5 +1,6 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { DelayNodeData } from "../types";
+import type { Json } from "@/lib/types/database";
 
 const MULTIPLIERS: Record<string, number> = {
   seconds: 1000,
@@ -34,8 +35,8 @@ export const delayNode: NodeDefinition<DelayNodeData> = {
         workspaceId: context.workspaceId,
         lateConversationId: context.lateConversationId || null,
         lateAccountId: context.lateAccountId || null,
-        variables: context.variables || {},
-      },
+        variables: context.variables ?? {},
+      } as unknown as Json,
       run_at: runAt,
     });
 

@@ -19,6 +19,14 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
   type: "sendMessage",
   label: "Enviar mensaje",
   async execute({ supabase, data, context, node }: NodeExecutionArgs<SendMessageNodeData>) {
+    // Un flow puede correr sin canal (agenda, o un evento del CRM sobre un
+    // contacto sin conversacion). Enviar por canal no tiene a donde ir: se
+    // saltea con motivo y el flow sigue, en vez de romperse a la mitad.
+    if (!context.channelId) {
+      console.warn(`[flow-engine] el flow ${context.flowId} no tiene canal: se saltea el envio del nodo ${node.id}`);
+      return;
+    }
+
     // La plataforma hace falta para adaptar el formato del mensaje. Si no vino
     // en el contexto, se resuelve una vez y se reusa para todos los mensajes.
     if (!context.platform) {

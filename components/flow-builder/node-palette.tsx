@@ -17,6 +17,9 @@ import {
   ListOrdered,
   PauseCircle,
   PlayCircle,
+  Mail,
+  CalendarX,
+  CalendarCheck,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -157,6 +160,29 @@ const categories: PaletteCategory[] = [
         label: "Reanudar agente IA",
         icon: PlayCircle,
         actionType: "resumeAgent",
+      },
+      // Etapa 4 (F46). El email es lo que hace posibles los flujos de agenda:
+      // quien agenda desde la pagina publica no tiene conversacion.
+      {
+        type: "action",
+        nodeType: "send_email",
+        label: "Enviar email",
+        icon: Mail,
+        actionType: "send_email",
+      },
+      {
+        type: "action",
+        nodeType: "cancel_booking",
+        label: "Cancelar la reunion",
+        icon: CalendarX,
+        actionType: "cancel_booking",
+      },
+      {
+        type: "action",
+        nodeType: "set_booking_status",
+        label: "Cambiar estado de la reunion",
+        icon: CalendarCheck,
+        actionType: "set_booking_status",
       },
     ],
   },

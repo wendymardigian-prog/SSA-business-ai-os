@@ -93,12 +93,13 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F40 · Generador de código en la sección "Compartir y embed": tres modos, tema, color, ocultar detalles, HTML y React, con vista previa en el mismo iframe que verá el visitante
   - [x] F41 · `lib/embed/iframe-side.ts` con el lado de adentro: avisa que cargó, manda la altura con `ResizeObserver` y emite los cinco eventos. Sin origen declarado no manda nada, y un `ssa:ui` de otro origen se ignora
   - [ ] F42 · Dominio propio (nice-to-have, no entró)
-- [ ] **Bloque 7a — Motor de automatizaciones de agenda** (migración 00100)
-  - [ ] F43 · Eventos de agenda y triggers inmediatos
-  - [ ] F44 · Triggers relativos al tiempo
-  - [ ] F45 · Condiciones de agenda
-  - [ ] F46 · Acciones: `send_email` y acciones de agenda
-  - [ ] F47 · Variables de agenda — **hecho en el núcleo:** `bookingVariables`, `schedulingLinkVariables`. Falta: meterlas en el contexto del flow y en el selector
+- [x] **Bloque 7a — Motor de automatizaciones de agenda** (migración **00100 aplicada** el 27/9/2026)
+  - [x] F43 · Los nueve triggers en el registro, con sus filtros (área, evento, anfitrión, origen, quién lo hizo, estado). El cron enruta por el registro: sumar un tipo ya no pide tocarlo
+  - [x] F44 · Triggers relativos: `planRelativeJobs` (puro) y `syncRelativeJobs`, que anula los avisos viejos y agenda los nuevos. Reagendar cambia la clave, así el recordatorio se vuelve a mandar para la fecha nueva
+  - [x] F45 · Cuatro condiciones de agenda. "Resultado de la última reunión" devuelve vacío mientras nadie lo cargó: decir "Agendada" haría que una comparación con "venta" diga que no sin haber preguntado
+  - [x] F46 · Nodo `send_email` (respeta "no contactar" salvo en flujos de agenda, y no manda con la cuota agotada) y los nodos de cancelar y cambiar el estado de la reunión
+  - [x] F47 · Las variables `booking.*` entran por `variables` de la sesión, que es lo único que sobrevive a un Delay. El interpolador admite guiones y ahora sí tiene el test de paridad con el simulador que su comentario prometía
+  - [x] Arreglo colateral: los triggers que no son de mensaje (`new_contact`, `crm_event`, `inactivity`, `email_received`) ahora SÍ se guardan al publicar. Antes el editor los ofrecía y no se escribía ninguna fila
 - [ ] **Bloque 7b — Flujos por evento, plantillas y editor lineal**
   - [ ] F48 · Sección "Flujos" en el evento
   - [ ] F49 · Flujos precreados
@@ -133,6 +134,6 @@ Revisión visual de las pantallas públicas a 1440 y 390 px, en claro y en oscur
 | 00097 | (B3) `booking_categories`, trigger de dos niveles, precarga por workspace + backfill | ✅ aplicada y verificada (27/9/2026) |
 | 00098 | (B3) `event_types`, `flows.event_type_id`/`template_key`, `workspaces.scheduling_*`, purga que conserva los eventos con agendas | ✅ aplicada y verificada (27/9/2026) |
 | 00099 | (B4a) `btree_gist`, `bookings`, `rate_limits`, `can_see_booking`, `audit_log`, `scheduled_jobs`, RPC `create_booking` | ✅ aplicada y verificada (27/9/2026) |
-| 00100 | (B7a) `triggers_type_check` + 9 tipos, `flow_sessions.channel_id` nullable | — |
+| 00100 | (B7a) `triggers_type_check` + 9 tipos, `flow_sessions.channel_id` nullable, índice de `trigger_fires` | ✅ aplicada y verificada (27/9/2026) |
 
 Ninguna borra ni modifica datos existentes. `list_migrations` inmediatamente antes de aplicar cada una; `node scripts/build-all-migrations.mjs` después.

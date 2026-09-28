@@ -1,7 +1,10 @@
 import type { Json, TriggerType } from "@/lib/types/database";
+import { getTrigger } from "@/lib/flow-engine/registry";
 
-/** The trigger types the flow builder owns. Growth-tab rows are channel-scoped
- *  and are never produced (or reconciled) from a node graph. */
+/**
+ * Los tipos que el editor sabe configurar con campos propios (palabras clave,
+ * payload). Los demás guardan su config tal cual viene del panel.
+ */
 export const BUILDER_TRIGGER_TYPES = [
   "keyword",
   "postback",
@@ -15,6 +18,24 @@ type BuilderTriggerType = (typeof BUILDER_TRIGGER_TYPES)[number];
 
 const isBuilderTriggerType = (t: string): t is BuilderTriggerType =>
   (BUILDER_TRIGGER_TYPES as readonly string[]).includes(t);
+
+/** Las claves del nodo que NO son configuración del trigger. */
+const NODE_ONLY_KEYS = new Set(["triggerType", "config", "keywords", "payload", "label", "description", "postIds", "replyText", "matchType", "alsoMatchInDms", "onlyIfAgentOff", "priority"]);
+
+/**
+ * Los tipos que el editor puede guardar: los seis de mensaje más cualquiera
+ * registrado con alcance `event` o `scheduled`.
+ *
+ * Antes la lista estaba escrita a mano con los seis de mensaje, así que
+ * `new_contact`, `crm_event`, `inactivity` y `email_received` elegidos en el
+ * canvas NUNCA se guardaban: el editor los ofrecía y no pasaba nada. Ahora la
+ * decide el registro, que es la única lista de tipos del sistema.
+ */
+function isPersistableTriggerType(type: string): boolean {
+  if (isBuilderTriggerType(type)) return true;
+  const definition = getTrigger(type);
+  return definition?.scope === "event" || definition?.scope === "scheduled";
+}
 
 export interface DesiredTrigger {
   flow_id: string;
@@ -43,7 +64,7 @@ export function buildDesiredTriggers(
       const data = (n.data ?? {}) as Record<string, any>;
       const nodeConfig = (data.config ?? {}) as Record<string, any>;
       const type = (data.triggerType ?? "keyword") as string;
-      if (!isBuilderTriggerType(type)) return [];
+      if (!isPersistableTriggerType(type)) return [];
 
       // The trigger panel stores keywords as data.keywords ([{ value, matchType }]);
       // template-seeded nodes store data.config.keywords ([string]). The matcher
@@ -59,6 +80,19 @@ export function buildDesiredTriggers(
       } else if (type === "postback" || type === "quick_reply") {
         const payload = data.payload ?? nodeConfig.payload;
         if (payload !== undefined) config.payload = payload;
+      } else {
+        // Los tipos que no son de mensaje guardan lo que el panel escribió en
+        // el nodo, menos lo que es del canvas (la etiqueta, el tipo elegido).
+        // Así sumar un filtro nuevo al panel no pide tocar este archivo.
+        for (const [key, value] of Object.entries(data)) {
+          if (NODE_ONLY_KEYS.has(key) || value === undefined || value === null) continue;
+          if (Array.isArray(value) && value.length === 0) continue;
+          config[key] = value;
+        }
+        for (const [key, value] of Object.entries(nodeConfig)) {
+          if (NODE_ONLY_KEYS.has(key) || value === undefined || value === null) continue;
+          config[key] = value;
+        }
       }
 
       // Fase 3: puerta "solo si el agente de IA esta apagado" (registry/guards.ts).

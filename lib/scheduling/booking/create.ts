@@ -20,6 +20,7 @@ import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types
 import { buildSlotsInput, findPublicEvent } from "@/lib/scheduling/data/slots-input";
 import { checkRateLimit, newBookingUid, HONEYPOT_FIELD } from "@/lib/scheduling/antispam";
 import { minutesToWallTime } from "@/lib/scheduling/time/tz";
+import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 // Se reexporta: vive en phone-countries porque tambien la usa el formulario
 // publico, que corre en el navegador (ver lib/vault-boundary.test.ts).
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
@@ -164,6 +165,29 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
   }
 
   const result = data as unknown as { booking_id: string; contact_id: string };
+
+  // Los avisos relativos (F44): "24 h antes" hay que agendarlo, no se puede
+  // evaluar cuando llega el momento. Si falla, la agenda ya está creada: se
+  // loguea y se sigue, porque perder un recordatorio no justifica perder la
+  // reunión.
+  try {
+    await syncRelativeJobs(service, {
+      id: result.booking_id,
+      workspace_id: event.workspace_id,
+      event_type_id: event.id,
+      host_user_id: event.owner_user_id,
+      origin: input.origin,
+      status: "scheduled",
+      category_snapshot: categorySnapshot(event.category_id, categories),
+      start_at: input.startUtc,
+      end_at: endUtc,
+      created_at: now.toISOString(),
+      reschedule_count: 0,
+    }, now);
+  } catch (err) {
+    console.error("[agenda] no pude agendar los avisos:", err instanceof Error ? err.message : err);
+  }
+
   return {
     ok: true,
     uid,

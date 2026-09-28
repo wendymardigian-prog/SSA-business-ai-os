@@ -164,6 +164,11 @@ export interface EnrollSequenceNodeData {
 export interface FlowExecutionContext {
   triggerId: string;
   flowId: string;
+  /**
+   * Vacío cuando el flow no arrancó por un canal: un evento de agenda o del
+   * CRM sobre un contacto sin conversación. Los nodos que envían por un canal
+   * se saltean con motivo; `send_email` no lo necesita.
+   */
   channelId: string;
   contactId: string;
   conversationId: string;
@@ -173,7 +178,12 @@ export interface FlowExecutionContext {
   /** The Zernio API account ID (from channels.late_account_id) */
   lateAccountId?: string;
   incomingMessage: IncomingMessage;
-  variables?: Record<string, string>;
+  /**
+   * Lo único que sobrevive a un Delay: la sesión las guarda en jsonb. Por eso
+   * las variables de agenda y la marca `trigger_scope` viajan acá y no en un
+   * campo aparte del contexto, que al retomar llega vacío.
+   */
+  variables?: Record<string, unknown>;
   platform?: Platform;
 }
 

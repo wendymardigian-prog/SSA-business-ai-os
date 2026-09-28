@@ -43,7 +43,7 @@ function world(channelId: string) {
   return { db, context };
 }
 
-describe("executeFlow (caracterizacion previa a la etapa 4)", () => {
+describe("executeFlow (canal opcional desde la 00100)", () => {
   it("con canal, crea la sesion y registra flow_started", async () => {
     const { db, context } = world("ch-1");
     await executeFlow(db.client, context);
@@ -52,18 +52,21 @@ describe("executeFlow (caracterizacion previa a la etapa 4)", () => {
     expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started"]);
   });
 
-  it("sin canal (el caso del contacto sin conversacion), intenta insertar la sesion con channel_id vacio", async () => {
+  it("sin canal (contacto sin conversacion), la sesion se crea con channel_id null", async () => {
     const { db, context } = world("");
     await executeFlow(db.client, context);
-    // En memoria el insert pasa. En Postgres, NOT NULL + FK lo rechazan y el
-    // motor devuelve sin correr ningun nodo: ese es el comportamiento de hoy.
-    expect(db.rows("flow_sessions")[0]).toMatchObject({ channel_id: "" });
+    // ANTES de la 00100 el motor mandaba "" y Postgres lo rechazaba por NOT
+    // NULL y por la clave foranea: el flow no corria y nadie se enteraba. Un
+    // lead que agenda desde la pagina publica no tiene conversacion, asi que
+    // sin esto ningun flujo de agenda arrancaria.
+    expect(db.rows("flow_sessions")[0]).toMatchObject({ channel_id: null, status: "active" });
+    expect(db.rows("analytics_events").map((e) => e.event_type)).toEqual(["flow_started"]);
   });
 
   it("si el insert de la sesion falla, no registra flow_started ni recorre nodos", async () => {
     const { db, context } = world("");
     // Simula el rechazo de la base con un unico que choca contra si mismo.
-    const failing = memoryDb({ ...db.tables, flow_sessions: [{ contact_id: "c-1", flow_id: "flow-1", channel_id: "" }] }, { unique: { flow_sessions: (a, b) => a.channel_id === b.channel_id && a.contact_id === b.contact_id } });
+    const failing = memoryDb({ ...db.tables, flow_sessions: [{ contact_id: "c-1", flow_id: "flow-1", channel_id: null }] }, { unique: { flow_sessions: (a, b) => a.channel_id === b.channel_id && a.contact_id === b.contact_id } });
     await executeFlow(failing.client, context);
     expect(failing.rows("analytics_events")).toHaveLength(0);
   });

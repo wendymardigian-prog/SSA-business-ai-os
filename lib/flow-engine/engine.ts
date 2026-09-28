@@ -35,6 +35,10 @@ export async function findWaitingSession(
   supabase: SupabaseClient<Database>,
   { contactId, channelId }: { contactId: string; channelId: string }
 ): Promise<FlowSessionRow | null> {
+  // Sin canal no hay sesión que retomar: un mensaje entrante siempre llega por
+  // uno, y una sesión sin canal (agenda) no espera respuesta del contacto.
+  if (!channelId) return null;
+
   const { data, error } = await supabase
     .from("flow_sessions")
     .select("*")
@@ -123,9 +127,12 @@ export async function executeFlow(
     .insert({
       contact_id: context.contactId,
       flow_id: context.flowId,
-      channel_id: context.channelId,
+      // Null y no cadena vacía: `channel_id` es una referencia a `channels`.
+      // Antes el cron mandaba "" y el insert fallaba en silencio, así que un
+      // contacto sin conversación no disparaba NINGÚN flow (migración 00100).
+      channel_id: context.channelId || null,
       status: "active",
-      variables: context.variables || {},
+      variables: (context.variables ?? {}) as Json,
     })
     .select("id")
     .single();

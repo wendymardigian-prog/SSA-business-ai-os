@@ -15,6 +15,7 @@ import { buildSlotsInput } from "@/lib/scheduling/data/slots-input";
 import { inviteeActions, LATE_ACTION_MESSAGE } from "@/lib/scheduling/booking-page";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { cancelPendingJobs } from "./cancel";
+import { syncRelativeJobs } from "@/lib/scheduling/automation/relative";
 import { BOOKING_ENDED_JOB, BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
 
 type Db = SupabaseClient<Database>;
@@ -140,6 +141,30 @@ export async function rescheduleBooking(service: Db, input: RescheduleInput): Pr
       status: "pending",
     },
   ]);
+
+  // Los avisos relativos se recalculan contra la fecha nueva: los de la vieja
+  // ya quedaron anulados adentro de syncRelativeJobs.
+  try {
+    await syncRelativeJobs(
+      service,
+      {
+        id: booking.id,
+        workspace_id: booking.workspace_id,
+        event_type_id: booking.event_type_id,
+        host_user_id: booking.host_user_id,
+        origin: booking.origin,
+        status: "rescheduled",
+        category_snapshot: booking.category_snapshot as never,
+        start_at: startUtc,
+        end_at: endUtc,
+        created_at: booking.created_at,
+        reschedule_count: (booking.reschedule_count ?? 0) + 1,
+      },
+      now,
+    );
+  } catch (err) {
+    console.error("[agenda] no pude reprogramar los avisos:", err instanceof Error ? err.message : err);
+  }
 
   await notifyBooking(service, booking.id, "booking_rescheduled", {
     actorUserId: input.by === "host" ? input.actorUserId : null,

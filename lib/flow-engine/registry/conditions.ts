@@ -82,7 +82,13 @@ registerConditionField({
 registerConditionField({
   prefix: "variable:",
   label: "Variable del flow",
-  resolve: ({ context, argument }) => context.variables?.[argument],
+  // Las variables pasaron a admitir objetos (las de agenda son anidadas): una
+  // condición compara texto, así que lo que no es texto se vuelve texto.
+  resolve: ({ context, argument }) => {
+    const value = context.variables?.[argument];
+    if (value === undefined || value === null) return undefined;
+    return typeof value === "string" ? value : String(value);
+  },
 });
 
 /**
