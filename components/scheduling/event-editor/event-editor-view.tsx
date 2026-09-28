@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { EditorShell } from "./editor-shell";
 import { FormBuilder } from "../form-builder/form-builder";
+import { UnavailableEditor } from "./unavailable-editor";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
@@ -58,6 +59,7 @@ export function EventEditorView({
   previewUrl,
   publicPrefix,
   flowsCreated,
+  hostName,
 }: {
   event: EventType & { workspace_id: string };
   section: EditorSection;
@@ -70,6 +72,8 @@ export function EventEditorView({
   previewUrl: string;
   publicPrefix: string;
   flowsCreated: number | null;
+  /** El nombre visible del anfitrión: la vista previa de F58 lo interpola. */
+  hostName: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -449,9 +453,12 @@ export function EventEditorView({
         </section>
       )}
 
-      {(section === "unavailable" || section === "flows" || section === "share") && (
+      {section === "unavailable" && (
+        <UnavailableEditor eventId={event.id} eventTitle={event.title} hostName={hostName} messages={event.unavailable_messages ?? null} />
+      )}
+
+      {(section === "flows" || section === "share") && (
         <section className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          {section === "unavailable" && "Los mensajes de \"si no se puede agendar\" se configuran en el Bloque 4."}
           {section === "flows" && "Los flujos del evento se configuran en el Bloque 7."}
           {section === "share" && "El generador de embed llega en el Bloque 6."}
         </section>

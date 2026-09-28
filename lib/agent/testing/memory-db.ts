@@ -55,6 +55,25 @@ export function memoryDb(
     rows: (table) => (tables[table] ??= []),
   };
 
+  /**
+   * `payload->>booking_id` en PostgREST lee una clave del jsonb como texto.
+   * Sin esto, un filtro asi no encuentra nada en memoria aunque funcione
+   * contra la base, que es la peor clase de test verde.
+   */
+  const jsonPath = (row: Row, col: string) => {
+    const arrow = col.indexOf("->");
+    if (arrow < 0) return row[col];
+    const base = col.slice(0, arrow);
+    const rest = col.slice(arrow);
+    let value: unknown = row[base];
+    for (const part of rest.split(/->>?/).filter(Boolean)) {
+      const key = part.replace(/^'|'$/g, "");
+      value = value && typeof value === "object" ? (value as Row)[key] : undefined;
+    }
+    // `->>` devuelve texto.
+    return value == null ? null : rest.includes("->>") ? String(value) : value;
+  };
+
   const likeMatch = (value: unknown, pattern: string, insensitive: boolean) => {
     if (typeof value !== "string") return false;
     const rx = new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`, insensitive ? "i" : "");
@@ -181,7 +200,7 @@ export function memoryDb(
         return b;
       },
       // Un filtro sobre una relacion embebida ("flows.status") no se simula: pasa.
-      eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || r[col] === val), b),
+      eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || jsonPath(r, col) === val), b),
       // .or() de PostgREST tampoco se simula: pasa todo.
       or: () => b,
       neq: (col: string, val: unknown) => (filters.push((r) => r[col] !== val), b),

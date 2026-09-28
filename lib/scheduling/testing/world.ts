@@ -201,7 +201,7 @@ export function schedulingWorld(over: WorldOverrides = {}): MemoryDb {
             title: args.p_title,
             start_at: start,
             end_at: args.p_end_at,
-            timezone: args.p_timezone,
+            booker_timezone: args.p_timezone,
             host_timezone: args.p_host_timezone,
             status,
             status_group: groupOf(status),

@@ -230,7 +230,11 @@ export type BroadcastStatus =
   | "sending"
   | "completed"
   | "cancelled";
-export type JobStatus = "pending" | "processing" | "completed" | "failed";
+/**
+ * `cancelled` lo suma la 00099: un aviso relativo que ya no corresponde se
+ * anula en vez de borrarse, y el runner solo toma `pending`.
+ */
+export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
 
 /** Que origino una llamada a IA (migracion 00059). */
 export type AgentRunSource =

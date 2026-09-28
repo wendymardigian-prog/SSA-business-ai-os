@@ -95,6 +95,7 @@ export default async function AgendaEventoPage({
       previewUrl={eventPublicUrl(base, username, row.slug)}
       publicPrefix={`${base}/calendario/${username}/`}
       flowsCreated={query.creado !== undefined ? Number(query.creado) || 0 : null}
+      hostName={profile?.display_name ?? "El equipo"}
     />
   );
 }

@@ -94,3 +94,24 @@ export function normalizePhoneWithCountry(
 export function isE164(value: unknown): value is string {
   return typeof value === "string" && /^\+\d{8,15}$/.test(value);
 }
+
+/**
+ * El pais por defecto del selector de telefono, desde una zona horaria.
+ *
+ * Vive aca y no junto a la creacion de agendas porque lo usa el formulario
+ * publico, que corre en el navegador: importarlo desde un modulo de servidor
+ * arrastraba Vault al bundle (lo atajo lib/vault-boundary.test.ts).
+ */
+const TIMEZONE_COUNTRY: Record<string, string> = {
+  "America/Costa_Rica": "CR",
+  "America/Mexico_City": "MX",
+  "America/Argentina/Buenos_Aires": "AR",
+  "America/Bogota": "CO",
+  "America/Lima": "PE",
+  "America/Santiago": "CL",
+  "Europe/Madrid": "ES",
+};
+
+export function countryFromTimezone(timezone: string | null | undefined): string | undefined {
+  return timezone ? TIMEZONE_COUNTRY[timezone] : undefined;
+}

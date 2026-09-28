@@ -91,6 +91,115 @@
   --sidebar-border: oklch(0.35 0 0);
 }
 
+/*
+ * El booker público (Etapa 4, F25).
+ *
+ * El invitado no tiene sesión ni preferencia guardada: el tema lo decide
+ * `?theme=light|dark` cuando la página va dentro de un embed. Se hace con
+ * `data-theme` en el envoltorio de la página pública y NO con la clase `.dark`
+ * del panel, porque la clase la pone un script leyendo el localStorage del
+ * NEGOCIO, que en la máquina del invitado no existe.
+ *
+ * Van después de `.dark` a propósito: tienen la misma especificidad, así que
+ * el que está más abajo gana y un `data-theme="light"` dentro de una página
+ * oscura la vuelve clara de verdad.
+ */
+[data-theme="dark"] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.585 0.217 275);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.35 0 0);
+  --input: oklch(0.35 0 0);
+  --ring: oklch(0.585 0.217 275);
+  /*
+   * También los `--color-*` de Tailwind: `@theme` los declara en `:root`
+   * como `var(--background)`, y una variable se sustituye donde se
+   * DECLARA, no donde se usa. Redefinir solo `--background` acá abajo
+   * no llegaba a `bg-background`: el valor ya venía resuelto de la raíz.
+   */
+  --color-background: oklch(0.145 0 0);
+  --color-foreground: oklch(0.985 0 0);
+  --color-card: oklch(0.205 0 0);
+  --color-card-foreground: oklch(0.985 0 0);
+  --color-popover: oklch(0.205 0 0);
+  --color-popover-foreground: oklch(0.985 0 0);
+  --color-primary: oklch(0.585 0.217 275);
+  --color-primary-foreground: oklch(0.985 0 0);
+  --color-secondary: oklch(0.269 0 0);
+  --color-secondary-foreground: oklch(0.985 0 0);
+  --color-muted: oklch(0.269 0 0);
+  --color-muted-foreground: oklch(0.708 0 0);
+  --color-accent: oklch(0.269 0 0);
+  --color-accent-foreground: oklch(0.985 0 0);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.35 0 0);
+  --color-input: oklch(0.35 0 0);
+  --color-ring: oklch(0.585 0.217 275);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.511 0.217 275);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.511 0.217 275);
+  /*
+   * También los `--color-*` de Tailwind: `@theme` los declara en `:root`
+   * como `var(--background)`, y una variable se sustituye donde se
+   * DECLARA, no donde se usa. Redefinir solo `--background` acá abajo
+   * no llegaba a `bg-background`: el valor ya venía resuelto de la raíz.
+   */
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.145 0 0);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.145 0 0);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.145 0 0);
+  --color-primary: oklch(0.511 0.217 275);
+  --color-primary-foreground: oklch(0.985 0 0);
+  --color-secondary: oklch(0.97 0 0);
+  --color-secondary-foreground: oklch(0.205 0 0);
+  --color-muted: oklch(0.97 0 0);
+  --color-muted-foreground: oklch(0.556 0 0);
+  --color-accent: oklch(0.97 0 0);
+  --color-accent-foreground: oklch(0.205 0 0);
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-destructive-foreground: oklch(0.577 0.245 27.325);
+  --color-border: oklch(0.922 0 0);
+  --color-input: oklch(0.922 0 0);
+  --color-ring: oklch(0.511 0.217 275);
+  color-scheme: light;
+}
+
 @layer base {
   * {
     @apply border-border;

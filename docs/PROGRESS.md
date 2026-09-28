@@ -71,12 +71,12 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F26 · `create_booking`: contacto (dedup teléfono → email), asignación solo si está vacía, agenda, historial, evento de automatización y los dos jobs en UNA transacción, con lock por anfitrión. Doble reserva imposible por la restricción de exclusión: `verify-booking-concurrency` la prueba con 10 llamadas a la vez
   - [x] F26 · Jobs `booking_google_sync` (crear / mover / borrar, reintentos a 1, 5 y 15 minutos agendados por el handler, no por la cola) y `booking_ended`; al agotarse, la agenda queda fallida y la persona recibe un aviso
   - [x] F29 · Antispam: campo trampa, tope por IP con hash y sal (`RATE_LIMIT_SALT`), UTM, referente y origen; el tope no aplica al equipo ni al agente
-- [ ] **Bloque 4b — Booker, confirmación, cambios del invitado y mensajes**
-  - [ ] F25 · Booker — **hecho en el núcleo:** `buildMonthView`, `formatSlotLabel`, `parseEmbedParams`. Falta: página y componentes portados
-  - [ ] F27 · Página de confirmación — **hecho en el núcleo:** `buildIcs`, links de Google y Outlook. Falta: página, endpoint `.ics`
-  - [ ] F28 · Cancelar y reagendar por el invitado
-  - [ ] F58 · Mensajes cuando no se puede agendar — **hecho en el núcleo:** `resolveUnavailableMessage`, `buildCtaHref`, `fallbackPayload`, respaldo del embed. Falta: sección del editor, estados del booker
-- [ ] **Fase 1 lista:** suite completa en 0
+- [x] **Bloque 4b — Booker, confirmación, cambios del invitado y mensajes**
+  - [x] F25 · Booker en `/calendario/<usuario>/<evento>`: tres columnas en escritorio, una apilada en el celular, zona horaria del navegador, formulario con el MISMO esquema que el servidor y campo trampa. `/calendario/<usuario>` sin evento es 404 a propósito
+  - [x] F27 · Página de la agenda con lo que quedó, botones de Google, Outlook y `.ics`, y espera de hasta 8 segundos por el link de Meet
+  - [x] F28 · Cancelar y reagendar por el invitado, con el código de 22 caracteres como credencial. Reagendar mueve la misma fila (sube `reschedule_count`) y no vuelve a pedir el formulario; cancelar es definitivo
+  - [x] F58 · Sección "Si no se puede agendar" en el editor, con vista previa en claro y oscuro que usa la misma función que el booker
+- [x] **Fase 1 lista:** suite completa en 0 (ver la tabla de abajo)
 
 ### FASE 2 — Reservas, embed, automatizaciones y agentes
 
@@ -110,6 +110,19 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [ ] F55 · Herramientas de acción
   - [ ] F56 · Comportamiento de punta a punta
 - [ ] **Fase 2 lista y cierre de la etapa:** suite completa en 0, docs, PR
+
+## Cierre de la Fase 1 (27/9/2026)
+
+| Comando | Resultado |
+|---|---|
+| `npx vitest run` | 267 archivos, **3088 tests, todo verde** (partimos de 2886) |
+| `npm run build` | OK, "Compiled successfully"; las 4 páginas públicas y las 7 rutas de la API quedaron en el listado |
+| `npm run lint` | **0 errores**, 44 warnings (la misma línea de partida) |
+| `node scripts/verify-scheduling.mjs` | Todo verde (94 chequeos, limpieza OK) |
+| `node scripts/verify-booking-concurrency.mjs` | Todo verde: 5 carreras, 10 llamadas a la vez y una sola gana |
+| `node scripts/verify-rls.mjs` | Todo verde con la sección nueva de agenda |
+
+Revisión visual de las pantallas públicas a 1440 y 390 px, en claro y en oscuro: booker, formulario, página de la agenda, reagendar y cancelar. El tema forzado con `?theme=` funciona dentro de un navegador con el tema contrario.
 
 ## Migraciones creadas
 

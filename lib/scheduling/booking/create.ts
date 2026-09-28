@@ -20,6 +20,11 @@ import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types
 import { buildSlotsInput, findPublicEvent } from "@/lib/scheduling/data/slots-input";
 import { checkRateLimit, newBookingUid, HONEYPOT_FIELD } from "@/lib/scheduling/antispam";
 import { minutesToWallTime } from "@/lib/scheduling/time/tz";
+// Se reexporta: vive en phone-countries porque tambien la usa el formulario
+// publico, que corre en el navegador (ver lib/vault-boundary.test.ts).
+import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
+
+export { countryFromTimezone };
 
 type Db = SupabaseClient<Database>;
 
@@ -168,20 +173,6 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     endUtc,
     redirectUrl: event.success_redirect_url,
   };
-}
-
-/** El pais por defecto del selector de telefono, desde la zona del negocio. */
-export function countryFromTimezone(timezone: string | null): string | undefined {
-  const map: Record<string, string> = {
-    "America/Costa_Rica": "CR",
-    "America/Mexico_City": "MX",
-    "America/Argentina/Buenos_Aires": "AR",
-    "America/Bogota": "CO",
-    "America/Lima": "PE",
-    "America/Santiago": "CL",
-    "Europe/Madrid": "ES",
-  };
-  return timezone ? map[timezone] : undefined;
 }
 
 /** La hora de pared del inicio, en la zona que se pida. Para los mensajes. */
