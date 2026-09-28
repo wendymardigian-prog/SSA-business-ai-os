@@ -186,3 +186,21 @@ async function countActiveEvents(supabase: Parameters<typeof getProfileForUser>[
   if (error) return 0;
   return count ?? 0;
 }
+
+/**
+ * Los flujos sugeridos al crear un evento (F49). Del workspace, no de la
+ * persona: por eso pide `settings.manage`.
+ */
+export async function setAutoCreateFlows(enabled: boolean): Promise<ProfileActionResult> {
+  const ctx = await getPermissionAction("settings.manage");
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar esto." };
+
+  const { error } = await ctx.supabase
+    .from("workspaces")
+    .update({ scheduling_auto_create_flows: enabled })
+    .eq("id", ctx.workspace.id);
+  if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+
+  revalidatePath("/dashboard/agenda/configuracion/ajustes");
+  return { ok: true };
+}

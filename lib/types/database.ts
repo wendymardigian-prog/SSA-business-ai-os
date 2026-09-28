@@ -545,6 +545,8 @@ export interface Database {
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
@@ -565,6 +567,8 @@ export interface Database {
           persist_zernio_inbound?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
+          scheduling_auto_create_flows?: boolean;
+          scheduling_public_base_url?: string | null;
           timezone?: string;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;

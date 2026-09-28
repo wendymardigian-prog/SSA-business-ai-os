@@ -39,7 +39,7 @@ describe("plantillas de flujo del evento (F49)", () => {
     const g = templateGraph(FLOW_TEMPLATES[0], "ev-1");
     expect(g.nodes[0].type).toBe("trigger");
     expect(g.nodes[0].data).toMatchObject({ triggerType: "booking_created", event_type_ids: ["ev-1"] });
-    expect(g.nodes.at(-1)?.data).toMatchObject({ actionType: "sendEmail", recipient: "contact" });
+    expect(g.nodes.at(-1)?.data).toMatchObject({ actionType: "send_email", to: "contact" });
     expect(g.edges).toEqual([{ id: "trigger-email", source: "trigger", target: "email" }]);
   });
 
@@ -53,5 +53,27 @@ describe("plantillas de flujo del evento (F49)", () => {
 
   it("el nombre lleva el titulo del evento adelante", () => {
     expect(flowNameFor("Llamada de triaje", FLOW_TEMPLATES[0])).toBe("Llamada de triaje · Confirmación con tu marca");
+  });
+});
+
+describe("las plantillas usan tipos que el motor conoce", () => {
+  it("cada nodo de cada plantilla resuelve en el registro", async () => {
+    // Una plantilla con un actionType mal escrito se guarda igual, se ve bien
+    // en el canvas y no hace nada al correr. Esto lo ataja.
+    const { resolveNodeType } = await import("@/lib/flow-engine/registry");
+    for (const template of FLOW_TEMPLATES) {
+      const { nodes } = templateGraph(template, "ev-1");
+      for (const node of nodes) {
+        if (node.type === "trigger") continue;
+        expect(resolveNodeType(node as never), `${template.key}: el nodo ${node.id} no existe en el registro`).toBeTruthy();
+      }
+    }
+  });
+
+  it("cada plantilla usa un trigger registrado", async () => {
+    const { getTrigger } = await import("@/lib/flow-engine/registry");
+    for (const template of FLOW_TEMPLATES) {
+      expect(getTrigger(template.trigger.type), `${template.key}: el trigger ${template.trigger.type} no existe`).toBeDefined();
+    }
   });
 });

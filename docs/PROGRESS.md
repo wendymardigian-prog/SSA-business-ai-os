@@ -100,10 +100,10 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F46 · Nodo `send_email` (respeta "no contactar" salvo en flujos de agenda, y no manda con la cuota agotada) y los nodos de cancelar y cambiar el estado de la reunión
   - [x] F47 · Las variables `booking.*` entran por `variables` de la sesión, que es lo único que sobrevive a un Delay. El interpolador admite guiones y ahora sí tiene el test de paridad con el simulador que su comentario prometía
   - [x] Arreglo colateral: los triggers que no son de mensaje (`new_contact`, `crm_event`, `inactivity`, `email_received`) ahora SÍ se guardan al publicar. Antes el editor los ofrecía y no se escribía ninguna fila
-- [ ] **Bloque 7b — Flujos por evento, plantillas y editor lineal**
-  - [ ] F48 · Sección "Flujos" en el evento
-  - [ ] F49 · Flujos precreados
-  - [ ] F57 · Editor de flujo del evento
+- [x] **Bloque 7b — Flujos por evento, plantillas y editor lineal**
+  - [x] F48 · Sección "Flujos" en el evento: una fila por flujo con lo que hace en palabras y un interruptor. Prender un recordatorio relativo reprograma los avisos de las reuniones que ya están agendadas
+  - [x] F49 · Los siete flujos sugeridos se crean con el evento, apagados. El interruptor del workspace está en Ajustes. Un test compara cada nodo de cada plantilla con el registro: una plantilla con el tipo mal escrito se guardaba igual y no hacía nada
+  - [x] F57 · Editor lineal "Cuándo / Si / Entonces", con las variables a la vista, "Hoy alcanzaría a N" calculado con la misma función que agenda los avisos, "Enviarme una prueba" (solo a tu email, con datos de ejemplo) y "Abrir en el canvas". Un flujo con ramas queda en solo lectura: guardar desde una vista simplificada borraría la rama que no se ve
 - [ ] **Bloque 8 — Habilidad de agendamiento para agentes** (sin migración)
   - [ ] F52 · Habilidad `scheduling` en el tool registry
   - [ ] F53 · Instrucciones para el modelo

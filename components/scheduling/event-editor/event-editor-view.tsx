@@ -7,6 +7,8 @@ import { EditorShell } from "./editor-shell";
 import { FormBuilder } from "../form-builder/form-builder";
 import { UnavailableEditor } from "./unavailable-editor";
 import { EmbedGenerator } from "../embed/embed-generator";
+import { FlowsSection } from "./flows-section";
+import type { EventFlowRow } from "@/lib/scheduling/data/event-flows";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
@@ -64,6 +66,7 @@ export function EventEditorView({
   calLink,
   publicBase,
   embedFallback,
+  flows,
 }: {
   event: EventType & { workspace_id: string };
   section: EditorSection;
@@ -83,6 +86,8 @@ export function EventEditorView({
   publicBase: string;
   /** El mensaje de respaldo del embed, ya resuelto (F58). */
   embedFallback: { title: string; body: string; cta?: { label: string; href: string } };
+  /** Los flujos del evento (F48). */
+  flows: EventFlowRow[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -494,11 +499,7 @@ export function EventEditorView({
         </section>
       )}
 
-      {section === "flows" && (
-        <section className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          Los flujos del evento se configuran en el Bloque 7.
-        </section>
-      )}
+      {section === "flows" && <FlowsSection eventId={event.id} flows={flows} />}
 
       <ConfirmDialog
         open={confirmSlug !== null}

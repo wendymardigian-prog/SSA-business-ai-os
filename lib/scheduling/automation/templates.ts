@@ -201,8 +201,11 @@ export function templateGraph(template: FlowTemplate, eventTypeId: string): { no
     type: "action",
     position: { x: 0, y },
     data: {
-      actionType: "sendEmail",
-      recipient: "contact",
+      // El alias exacto del registro (lib/flow-engine/nodes/send-email.ts).
+      // Con otro nombre el motor no resuelve el nodo y el email no sale, sin
+      // que nada avise: hay un test que compara esto con el registro.
+      actionType: "send_email",
+      to: "contact",
       subject: template.subject ?? "",
       body: template.body,
     },

@@ -7,7 +7,8 @@ import { ConfigShell } from "./config-shell";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Notice, inputClass } from "@/components/agents/fields";
 import { listTimeZones } from "@/lib/timezone";
-import { saveSchedulingProfile, uploadSchedulingAvatar } from "@/lib/actions/scheduling/profile";
+import { saveSchedulingProfile, setAutoCreateFlows, uploadSchedulingAvatar } from "@/lib/actions/scheduling/profile";
+import { Switch } from "@/components/ui/switch";
 import { validateUsername, TIME_FORMATS, type TimeFormatOption } from "@/lib/scheduling/profile";
 
 interface ProfileForm {
@@ -29,6 +30,7 @@ export function ProfileSettingsView({
   isSelf,
   canManageOthers,
   canManageSettings,
+  autoCreateFlows,
   members,
   initial,
   exists,
@@ -38,6 +40,8 @@ export function ProfileSettingsView({
   isSelf: boolean;
   canManageOthers: boolean;
   canManageSettings: boolean;
+  /** Si el workspace crea los siete flujos al crear un evento (F49). */
+  autoCreateFlows: boolean;
   members: Array<{ userId: string; label: string; username: string | null }>;
   initial: ProfileForm;
   exists: boolean;
@@ -45,6 +49,8 @@ export function ProfileSettingsView({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<ProfileForm>(initial);
+  const [autoFlows, setAutoFlows] = useState(autoCreateFlows);
+  const [savingAutoFlows, startAutoFlows] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [confirmLinks, setConfirmLinks] = useState<string | null>(null);
@@ -243,7 +249,34 @@ export function ProfileSettingsView({
       {canManageSettings && (
         <section className="rounded-xl border border-border bg-card p-5">
           <h2 className="text-sm font-semibold">Del workspace</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Solo Owner y Admin. Las opciones de flujos sugeridos y dominio propio se suman con los Bloques 7 y 6.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Solo Owner y Admin. Vale para todo el negocio, no solo para tu agenda.</p>
+
+          <label className="mt-3 flex items-start justify-between gap-4">
+            <span>
+              <span className="text-sm font-medium">Crear los flujos sugeridos con cada evento</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Al crear un evento se arman siete flujos (confirmación, recordatorios, seguimiento), <strong>apagados</strong>. Se leen, se editan y recién
+                después se prenden.
+              </span>
+            </span>
+            <Switch
+              checked={autoFlows}
+              disabled={savingAutoFlows}
+              label="Crear los flujos sugeridos con cada evento"
+              onChange={(value: boolean) => {
+                setAutoFlows(value);
+                startAutoFlows(async () => {
+                  const result = await setAutoCreateFlows(value);
+                  // Si el guardado falla, el interruptor vuelve: dejarlo donde
+                  // lo puso la persona diría que se guardó algo que no.
+                  if (!result.ok) {
+                    setAutoFlows(!value);
+                    setError(result.error);
+                  }
+                });
+              }}
+            />
+          </label>
         </section>
       )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
@@ -119,7 +119,10 @@ const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: str
 export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
   const data = rawData as TriggerPanelData;
   const triggerType = data.triggerType || "keyword";
-  const keywords = data.keywords || [];
+  // Con `data.keywords || []` el array es nuevo en cada render, asi que los
+  // useCallback que dependen de el se rehacian siempre (tres warnings del
+  // linter). El useMemo lo estabiliza mientras la lista no cambie.
+  const keywords = useMemo(() => data.keywords ?? [], [data.keywords]);
   const [newKeyword, setNewKeyword] = useState("");
   const [newMatchType, setNewMatchType] = useState<"exact" | "contains" | "startsWith">("contains");
 

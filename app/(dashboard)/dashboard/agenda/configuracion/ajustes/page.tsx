@@ -34,6 +34,7 @@ export default async function AgendaAjustesPage({ searchParams }: { searchParams
       isSelf={isSelf}
       canManageOthers={canManageOthers}
       canManageSettings={ctx.can("settings.manage")}
+      autoCreateFlows={(ctx.workspace as { scheduling_auto_create_flows?: boolean }).scheduling_auto_create_flows !== false}
       members={members.map((m) => ({ userId: m.userId, label: m.name || m.email, username: null }))}
       initial={
         profile

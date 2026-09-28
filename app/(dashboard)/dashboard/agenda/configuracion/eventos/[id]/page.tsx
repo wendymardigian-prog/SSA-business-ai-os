@@ -10,6 +10,7 @@ import { activationChecklist, canActivate, type EditorSection } from "@/lib/sche
 import { validateBookingFields } from "@/lib/scheduling/booking-fields";
 import { eventPublicUrl, publicBaseUrl } from "@/lib/scheduling/public-url";
 import { fallbackPayload } from "@/lib/scheduling/booker/unavailable";
+import { flowsForEventType } from "@/lib/scheduling/data/event-flows";
 import { EventEditorView } from "@/components/scheduling/event-editor/event-editor-view";
 import { isEditorSection } from "@/lib/scheduling/editor-sections";
 
@@ -39,6 +40,8 @@ export default async function AgendaEventoPage({
     listCalendarConnections(ctx.supabase, ctx.workspace.id, row.owner_user_id),
     ctx.supabase.from("flows").select("id").eq("event_type_id", row.id).eq("status", "published"),
   ]);
+
+  const eventFlows = await flowsForEventType(ctx.supabase, row.id);
 
   const profileResolved = resolveEventCalendars({}, profile ? { default_destination_calendar_id: profile.default_destination_calendar_id } : null, calendars);
   const eventResolved = resolveEventCalendars(
@@ -100,6 +103,7 @@ export default async function AgendaEventoPage({
       calLink={username ? `${username}/${row.slug}` : null}
       publicBase={base}
       embedFallback={fallbackPayload(event, { event_title: event.title, host_name: profile?.display_name ?? "El equipo" })}
+      flows={eventFlows}
     />
   );
 }
