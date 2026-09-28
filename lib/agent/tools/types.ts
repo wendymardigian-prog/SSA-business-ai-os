@@ -83,7 +83,12 @@ export interface AgentToolResult {
  * base. La pagina las carga una vez y las pasa por nombre: la pestana no sabe
  * que herramienta pide "tags", solo que hay una fuente que se llama asi.
  */
-export type ToolOptionSource = "tags" | "members" | "contact_fields";
+export type ToolOptionSource =
+  | "tags"
+  | "members"
+  | "contact_fields"
+  /** Etapa 4: los eventos activos u ocultos, con su categoria. */
+  | "event_types";
 
 export interface ToolConfigOption {
   value: string;
@@ -177,4 +182,13 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   };
   /** Descripcion para el modelo en modo borrador, si cambia (derivar ya no termina el turno). */
   descriptionInDraft?: string;
+  /**
+   * No se ofrece cuando el turno redacta en vez de enviar (borrador o reglas).
+   *
+   * Es para las herramientas cuyo efecto sale del sistema y no se puede
+   * deshacer aprobando o descartando: agendar una reunion le manda una
+   * invitacion a alguien. Distinto de `deferInDraft`, que sirve cuando el
+   * efecto SI se puede posponer hasta la aprobacion.
+   */
+  hideInDraft?: boolean;
 }

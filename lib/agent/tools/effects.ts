@@ -419,3 +419,32 @@ export async function pauseAgentInConversation(
     detail: { until, minutes },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Agenda (Etapa 4, F55)
+// ---------------------------------------------------------------------------
+
+/**
+ * Los efectos del agente sobre una agenda.
+ *
+ * No repiten la lógica de agendar, cancelar y reagendar: llaman a las MISMAS
+ * funciones que la página pública y la pantalla del equipo. Lo que agregan es
+ * el rastro: `performed_by_agent_id` en `audit_log`, que es lo que permite
+ * ver en la pestaña Acciones qué hizo el agente y revertirlo.
+ */
+
+export async function logBookingEffect(
+  ctx: EffectContext,
+  input: { bookingId: string; action: "booking.created" | "booking.rescheduled" | "booking.cancelled"; detail?: Record<string, Json> },
+): Promise<string | null> {
+  return logAudit({
+    supabase: ctx.supabase,
+    workspaceId: ctx.workspaceId,
+    entityType: "booking",
+    entityId: input.bookingId,
+    action: input.action,
+    metadata: auditMeta(ctx, { by: "agent", ...(input.detail ?? {}) }),
+    performedBy: null,
+    performedByAgentId: ctx.agentId,
+  });
+}

@@ -2,7 +2,7 @@ import type { AgentConfig } from "./config";
 import type { Guardrails, OutputFormat } from "./schemas";
 import type { Json } from "@/lib/types/database";
 import type { DatePreset } from "@/lib/dates";
-import type { ScreenTool } from "./tools/config";
+import type { ScreenSkill, ScreenTool } from "./tools/config";
 import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
 
 /**
@@ -277,6 +277,8 @@ export interface AgentScreenData {
   };
   /** Las herramientas del registro, ya planas para la pestana Herramientas. */
   tools: ScreenTool[];
+  /** Las habilidades: grupos de herramientas que se prenden juntas (Etapa 4). */
+  skills: ScreenSkill[];
   /** Opciones que dependen de la base, por nombre de fuente (tags, miembros). */
   toolOptionSources: Record<ToolOptionSource, ToolConfigOption[]>;
   versions: Array<{ version: number; systemPrompt: string; note: string | null; createdAt: string; authorLabel: string | null }>;

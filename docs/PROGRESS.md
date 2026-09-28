@@ -104,12 +104,13 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
   - [x] F48 · Sección "Flujos" en el evento: una fila por flujo con lo que hace en palabras y un interruptor. Prender un recordatorio relativo reprograma los avisos de las reuniones que ya están agendadas
   - [x] F49 · Los siete flujos sugeridos se crean con el evento, apagados. El interruptor del workspace está en Ajustes. Un test compara cada nodo de cada plantilla con el registro: una plantilla con el tipo mal escrito se guardaba igual y no hacía nada
   - [x] F57 · Editor lineal "Cuándo / Si / Entonces", con las variables a la vista, "Hoy alcanzaría a N" calculado con la misma función que agenda los avisos, "Enviarme una prueba" (solo a tu email, con datos de ejemplo) y "Abrir en el canvas". Un flujo con ramas queda en solo lectura: guardar desde una vista simplificada borraría la rama que no se ve
-- [ ] **Bloque 8 — Habilidad de agendamiento para agentes** (sin migración)
-  - [ ] F52 · Habilidad `scheduling` en el tool registry
-  - [ ] F53 · Instrucciones para el modelo
-  - [ ] F54 · Herramientas de consulta
-  - [ ] F55 · Herramientas de acción
-  - [ ] F56 · Comportamiento de punta a punta
+- [x] **Bloque 8 — Habilidad de agendamiento para agentes** (sin migración)
+  - [x] F52 · Registro de habilidades: un grupo de herramientas que se prenden juntas con una configuración compartida. Con la habilidad apagada, el agente ve exactamente las mismas herramientas que antes (hay un test)
+  - [x] F53 · El bloque de instrucciones cambia con la configuración: con permiso de agendar le dice que agende, sin permiso que pase el link. Siempre prohíbe inventar un horario
+  - [x] F54 · Tres herramientas de consulta. `scheduling_get_slots` llama a la MISMA función que la página pública: si usara otra, el agente podría ofrecer un horario que el link no muestra
+  - [x] F55 · Cuatro de acción, por las mismas funciones que la pantalla del equipo, con `performed_by_agent_id` en el historial. En borrador no se ofrecen: su efecto sale del sistema y no se deshace descartando el borrador
+  - [x] F56 · Cinco guiones de punta a punta con la base en memoria: agendar, el horario que se ocupó, cambiar y cancelar, solo pasar el link, y que el código público de la reunión nunca llegue al modelo
+  - [x] Arreglo: `normalizeToolsConfig` borraba toda clave que no fuera una herramienta. `tools_config.scheduling` desaparecía al primer guardado y la habilidad se apagaba sola
 - [ ] **Fase 2 lista y cierre de la etapa:** suite completa en 0, docs, PR
 
 ## Cierre de la Fase 1 (27/9/2026)

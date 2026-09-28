@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { listAgentTools, toolsForAgent } from "./index";
+import { listAgentTools, toolsForAgent, toolsForTurn } from "./index";
 import { toAgentConfig } from "../config";
 import { agentRow } from "../testing/fixtures";
 
@@ -10,7 +10,7 @@ import { agentRow } from "../testing/fixtures";
  */
 
 describe("registro de herramientas", () => {
-  it("tiene las herramientas de la Etapa 1", () => {
+  it("tiene las herramientas de la Etapa 1 mas las siete de agendamiento", () => {
     expect(listAgentTools().map((t) => t.name).sort()).toEqual(
       [
         "asignar_conversacion",
@@ -23,8 +23,59 @@ describe("registro de herramientas", () => {
         "generar_link_whatsapp",
         "pausarse",
         "programar_seguimiento",
+        // Etapa 4: la habilidad de agendamiento. Estan registradas siempre,
+        // pero con la habilidad apagada ninguna se OFRECE (isAvailable).
+        "scheduling_book",
+        "scheduling_cancel",
+        "scheduling_get_booking",
+        "scheduling_get_slots",
+        "scheduling_list_events",
+        "scheduling_reschedule",
+        "scheduling_send_link",
       ].sort(),
     );
+  });
+
+  it("con la habilidad de agendamiento apagada, el agente ve exactamente lo de antes", () => {
+    // Es la garantia de que sumar la habilidad no cambio nada para los agentes
+    // que ya existian.
+    // `scheduling_book` en la lista no alcanza: la habilidad esta apagada, asi
+    // que ninguna de las siete se ofrece.
+    const agente = toAgentConfig(agentRow({ allowed_tools: ["scheduling_book", "scheduling_get_slots"], tools_config: {} }));
+    expect(toolsForAgent(agente).map((t) => t.name).filter((n) => n.startsWith("scheduling_"))).toEqual([]);
+  });
+
+  it("encendida y con un evento elegido, las siete aparecen", () => {
+    const agente = toAgentConfig(
+      agentRow({
+        allowed_tools: [],
+        tools_config: { scheduling: { habilitada: true, event_type_ids: ["3f1a0b2c-4d5e-4f70-8192-a3b4c5d6e7f8"], puede_agendar: true, puede_cancelar: true } },
+      }),
+    );
+    const nombres = toolsForAgent(agente).map((t) => t.name);
+    expect(nombres).toContain("scheduling_get_slots");
+    expect(nombres).toContain("scheduling_book");
+    expect(nombres).toContain("scheduling_cancel");
+  });
+
+  it("sin eventos elegidos no se ofrece ninguna, aunque este encendida", () => {
+    const agente = toAgentConfig(agentRow({ allowed_tools: [], tools_config: { scheduling: { habilitada: true, event_type_ids: [] } } }));
+    expect(toolsForAgent(agente).map((t) => t.name)).toEqual(["derivar_a_humano"]);
+  });
+
+  it("en borrador, las que agendan no se ofrecen y las que leen si", () => {
+    const agente = toAgentConfig(
+      agentRow({
+        allowed_tools: [],
+        tools_config: { scheduling: { habilitada: true, event_type_ids: ["3f1a0b2c-4d5e-4f70-8192-a3b4c5d6e7f8"], puede_agendar: true, puede_cancelar: true } },
+      }),
+    );
+    const enBorrador = toolsForTurn(agente, { mode: "draft" }).map((t) => t.name);
+    expect(enBorrador).toContain("scheduling_get_slots");
+    expect(enBorrador).not.toContain("scheduling_book");
+    expect(enBorrador).not.toContain("scheduling_cancel");
+    // Al enviar, todas.
+    expect(toolsForTurn(agente, { mode: "send" }).map((t) => t.name)).toContain("scheduling_book");
   });
 
   it("cada campo de pantalla corresponde a una clave del configSchema, y los defaults validan", () => {
