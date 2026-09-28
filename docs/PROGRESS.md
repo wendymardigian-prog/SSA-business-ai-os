@@ -80,14 +80,14 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 
 ### FASE 2 — Reservas, embed, automatizaciones y agentes
 
-- [ ] **Bloque 5 — Pantalla de agendas** (sin migración)
-  - [ ] F32 · Estados y lógica común — **hecho en el núcleo:** catálogo, `canTransition`, `needsOutcome`, `groupForKanban`, `allowedDrops`. El test que compara los once estados y sus grupos con el CHECK y la columna calculada de la 00099 ya está (B4a). Falta: `filterBookings`
-  - [ ] F33 · Vista lista
-  - [ ] F34 · Vista kanban — **hecho en el núcleo:** reglas de arrastre (`kanban.ts`). Falta: componente
-  - [ ] F35 · Vista calendario — **hecho en el núcleo:** `placeInCalendar`. Falta: componente
-  - [ ] F36 · Detalle y acciones del anfitrión
-  - [ ] F37 · Agendar manualmente
-  - [ ] F38 · Agendas en la ficha del contacto y notificaciones
+- [x] **Bloque 5 — Pantalla de agendas** (sin migración)
+  - [x] F32 · Los once estados, con `filterBookings` (incluye el alcance propio) y el test que compara la lista con el CHECK y la columna calculada de la 00099
+  - [x] F33 · Lista con pastillas y contadores, filtros de área, anfitrión y búsqueda en la URL, paginada de a 50. En el celular pasa a tarjetas
+  - [x] F34 · Kanban con las once columnas, arrastre nativo validado ANTES de pedirlo al servidor, columnas contraíbles (las de cancelación empiezan contraídas)
+  - [x] F35 · Calendario de día, semana y mes; las canceladas no se muestran. El rango vive en `lib/scheduling/calendar-range.ts` (puro) porque lo usa también la página
+  - [x] F36 · Detalle lateral: cambiar estado con los motivos deshabilitados y explicados, cancelar con motivo, corregir categoría, ubicación y notas internas, reintentar la sincronización, historial en palabras
+  - [x] F37 · Agendar a mano en cinco pasos, por la MISMA función que la página pública (contacto, asignación, historial, automatizaciones y jobs)
+  - [x] F38 · Sección "Reuniones" en la ficha del contacto y los cuatro avisos al anfitrión (nunca a quien hizo la acción)
 - [ ] **Bloque 6 — Embed** (sin migración)
   - [ ] F39 · Script de embed — **hecho en el núcleo:** runtime (`embed-source.ts`, `entry.ts`), `buildEmbedIframeUrl`. Falta: compilar a `public/embed/embed.js` en el build, lado iframe
   - [ ] F40 · Generador de código — **hecho en el núcleo:** `generateEmbedCode`. Falta: modal y sección con vista previa
@@ -118,7 +118,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 | `npx vitest run` | 267 archivos, **3088 tests, todo verde** (partimos de 2886) |
 | `npm run build` | OK, "Compiled successfully"; las 4 páginas públicas y las 7 rutas de la API quedaron en el listado |
 | `npm run lint` | **0 errores**, 44 warnings (la misma línea de partida) |
-| `node scripts/verify-scheduling.mjs` | Todo verde (94 chequeos, limpieza OK) |
+| `node scripts/verify-scheduling.mjs` | Todo verde (103 chequeos, limpieza OK) |
 | `node scripts/verify-booking-concurrency.mjs` | Todo verde: 5 carreras, 10 llamadas a la vez y una sola gana |
 | `node scripts/verify-rls.mjs` | Todo verde con la sección nueva de agenda |
 

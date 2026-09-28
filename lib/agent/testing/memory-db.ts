@@ -41,6 +41,14 @@ export function memoryDb(
      * probar en memoria.
      */
     unique?: Record<string, (a: Row, b: Row) => boolean>;
+    /**
+     * Columnas calculadas: "tabla" -> una funcion que las recalcula sobre la
+     * fila, despues de cada insert y de cada update. Postgres lo hace solo
+     * (`GENERATED ALWAYS AS ... STORED`); sin esto, un test que actualiza
+     * `status` y despues afirma sobre `status_group` pasa en la base y falla
+     * en memoria, o peor, al reves.
+     */
+    generated?: Record<string, (row: Row) => void>;
   } = {},
 ): MemoryDb {
   const tables: Record<string, Row[]> = {};
@@ -99,6 +107,7 @@ export function memoryDb(
     let limitN: number | null = null;
 
     const clash = options.unique?.[table];
+    const generate = options.generated?.[table];
     const duplicate = { data: null, error: { code: "23505", message: `duplicate key value violates unique constraint on ${table}` } };
 
     const apply = (): { data: unknown; error: null | { code: string; message: string }; count?: number } => {
@@ -109,7 +118,10 @@ export function memoryDb(
         if (clash && candidates.some((c, i) => rows.some((r) => clash(c, r)) || candidates.some((o, j) => j !== i && clash(c, o)))) {
           return duplicate;
         }
-        candidates.forEach((row) => rows.push(row));
+        candidates.forEach((row) => {
+          generate?.(row);
+          rows.push(row);
+        });
         return { data: candidates, error: null };
       }
       if (mode === "upsert") {
@@ -127,9 +139,11 @@ export function memoryDb(
             : undefined;
           if (existing) {
             Object.assign(existing, defined);
+            generate?.(existing);
             result.push(existing);
           } else {
             const row = { id: newId(table), created_at: clock().toISOString(), ...defined } as Row;
+            generate?.(row);
             rows.push(row);
             result.push(row);
           }
@@ -145,7 +159,10 @@ export function memoryDb(
             return duplicate;
           }
         }
-        matched.forEach((r) => Object.assign(r, payload));
+        matched.forEach((r) => {
+          Object.assign(r, payload);
+          generate?.(r);
+        });
         return { data: matched, error: null };
       }
       if (mode === "delete") {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { needsOutcome, quickFilterOf, applyQuickFilter, quickFilterCounts, groupForKanban, allowedDrops } from "./bookings-view";
+import { needsOutcome, quickFilterOf, applyQuickFilter, quickFilterCounts, groupForKanban, allowedDrops, filterBookings } from "./bookings-view";
 import type { BookingStatus } from "./types";
 
 const now = new Date("2026-10-06T16:00:00.000Z");
@@ -56,5 +56,71 @@ describe("groupForKanban / allowedDrops", () => {
     expect(allowedDrops(b("scheduled", "2026-10-08T15:00:00.000Z"), now)).not.toContain("sale");
     expect(allowedDrops(b("scheduled", "2026-10-06T14:00:00.000Z"), now)).toContain("sale");
     expect(allowedDrops(b("cancelled_other", "2026-10-06T14:00:00.000Z"), now)).toEqual([]);
+  });
+});
+
+describe("filterBookings", () => {
+  const now = new Date("2026-10-01T12:00:00.000Z");
+  const row = (over: Partial<Parameters<typeof filterBookings>[0][number]> = {}) => ({
+    status: "scheduled" as const,
+    start_at: "2026-10-02T15:00:00.000Z",
+    end_at: "2026-10-02T15:30:00.000Z",
+    host_user_id: "u1",
+    event_type_id: "ev1",
+    category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-triaje", type_name: "Triaje" },
+    booker_name: "Noelia Mereles",
+    booker_email: "noe@estudio.test",
+    booker_phone: "+50687123344",
+    ...over,
+  });
+
+  it("sin filtros devuelve todo, con las próximas primero", () => {
+    const a = row({ start_at: "2026-10-03T15:00:00.000Z", end_at: "2026-10-03T15:30:00.000Z" });
+    const b = row();
+    expect(filterBookings([a, b], { quick: "upcoming" }, now).map((r) => r.start_at)).toEqual([b.start_at, a.start_at]);
+  });
+
+  it("el alcance propio esconde las de otra persona", () => {
+    const mias = row();
+    const ajenas = row({ host_user_id: "u2" });
+    expect(filterBookings([mias, ajenas], {}, now, { scope: "own", userId: "u1" })).toEqual([mias]);
+    expect(filterBookings([mias, ajenas], {}, now, { scope: "all", userId: "u1" })).toHaveLength(2);
+  });
+
+  it("filtra por área usando el snapshot, no la categoría actual", () => {
+    const ventas = row();
+    const servicio = row({ category_snapshot: { area_id: "area-servicio", area_name: "Servicio", type_id: "tipo-onb", type_name: "Onboarding" } });
+    expect(filterBookings([ventas, servicio], { categoryIds: ["area-ventas"] }, now)).toEqual([ventas]);
+    expect(filterBookings([ventas, servicio], { categoryIds: ["tipo-onb"] }, now)).toEqual([servicio]);
+  });
+
+  it("una agenda sin categoría no entra en un filtro por categoría", () => {
+    const sin = row({ category_snapshot: null });
+    expect(filterBookings([sin], { categoryIds: ["area-ventas"] }, now)).toEqual([]);
+    expect(filterBookings([sin], {}, now)).toEqual([sin]);
+  });
+
+  it("busca por nombre, email o teléfono, sin distinguir mayúsculas", () => {
+    const uno = row();
+    const otro = row({ booker_name: "Juan", booker_email: "juan@otro.test", booker_phone: "+5215555" });
+    expect(filterBookings([uno, otro], { search: "NOELIA" }, now)).toEqual([uno]);
+    expect(filterBookings([uno, otro], { search: "juan@otro" }, now)).toEqual([otro]);
+    expect(filterBookings([uno, otro], { search: "8712" }, now)).toEqual([uno]);
+    expect(filterBookings([uno, otro], { search: "nadie" }, now)).toEqual([]);
+  });
+
+  it("el rango compara contra el inicio, con el final abierto", () => {
+    const uno = row();
+    expect(filterBookings([uno], { from: "2026-10-02T00:00:00.000Z", to: "2026-10-03T00:00:00.000Z" }, now)).toEqual([uno]);
+    expect(filterBookings([uno], { from: "2026-10-03T00:00:00.000Z" }, now)).toEqual([]);
+    // El "hasta" no incluye su propio instante.
+    expect(filterBookings([uno], { to: "2026-10-02T15:00:00.000Z" }, now)).toEqual([]);
+  });
+
+  it("combina estado y anfitrión", () => {
+    const mia = row();
+    const cancelada = row({ status: "cancelled_other" });
+    const ajena = row({ host_user_id: "u2" });
+    expect(filterBookings([mia, cancelada, ajena], { statuses: ["scheduled"], hostUserIds: ["u1"] }, now)).toEqual([mia]);
   });
 });

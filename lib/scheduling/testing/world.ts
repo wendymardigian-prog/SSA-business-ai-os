@@ -143,6 +143,14 @@ export function schedulingWorld(over: WorldOverrides = {}): MemoryDb {
       rate_limits: [],
     },
     {
+      generated: {
+        // `bookings.status_group` es calculada en la base (00099): se
+        // recalcula igual acá, si no un cambio de estado en un test deja el
+        // grupo viejo y las consultas por grupo mienten.
+        bookings: (row) => {
+          if (typeof row.status === "string") row.status_group = groupOf(row.status as never);
+        },
+      },
       joins: {
         "bookings.event_types": (row, d) => d.rows("event_types").find((e) => e.id === row.event_type_id) ?? null,
       },
