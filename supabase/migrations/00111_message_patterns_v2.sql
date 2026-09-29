@@ -21,7 +21,20 @@
 -- ------------------------------------------------------------
 -- 1. Lo que mas se envia / lo que mas responden
 -- ------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.chat_dashboard_patterns(uuid, text, timestamptz, timestamptz);
+-- Se borra por NOMBRE y no por firma, y ademas se borran TODAS las sobrecargas:
+-- dos versiones que solo difieren en parametros con default dejan a PostgREST
+-- sin poder elegir ("Could not choose the best candidate function").
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'chat_dashboard_patterns'
+  LOOP
+    EXECUTE 'DROP FUNCTION ' || r.sig;
+  END LOOP;
+END $$;
 
 CREATE FUNCTION public.chat_dashboard_patterns(
   p_workspace_id uuid,

@@ -505,7 +505,21 @@ COMMENT ON FUNCTION public.chat_dashboard_drafts(uuid, timestamptz, timestamptz,
 -- ------------------------------------------------------------
 -- 10. Tabla "Quien responde"
 -- ------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.chat_dashboard_team(uuid, timestamptz, timestamptz, text);
+-- Se borra por NOMBRE y no por firma: si la que esta aplicada tuviera un
+-- parametro distinto del que dice el archivo (paso: la 00078 se aplico en dos
+-- pedazos), un DROP con la firma exacta no encontraria nada y el CREATE fallaria
+-- con "cannot change return type". Verificado el 28/9: hoy hay una sola.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'chat_dashboard_team'
+  LOOP
+    EXECUTE 'DROP FUNCTION ' || r.sig;
+  END LOOP;
+END $$;
 
 CREATE FUNCTION public.chat_dashboard_team(
   p_workspace_id uuid,
@@ -742,7 +756,18 @@ $$;
 -- ------------------------------------------------------------
 -- 12. Tendencias: serie densa, por autor y con la mediana diaria
 -- ------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.chat_dashboard_trends(uuid, timestamptz, timestamptz, text, text, text);
+-- Igual que arriba: por nombre, no por firma.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'chat_dashboard_trends'
+  LOOP
+    EXECUTE 'DROP FUNCTION ' || r.sig;
+  END LOOP;
+END $$;
 
 CREATE FUNCTION public.chat_dashboard_trends(
   p_workspace_id uuid,
