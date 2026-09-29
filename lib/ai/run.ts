@@ -8,6 +8,7 @@ import type {
   Json,
 } from "@/lib/types/database";
 import {
+  computeAudioCostUsd,
   computeChatCostUsd,
   computeEmbeddingCostUsd,
   resolvePricing,
@@ -107,6 +108,12 @@ export interface AiRunHandle {
   addStepUsage(usage: UsageLike | undefined): void;
   setFinalUsage(usage: UsageLike | undefined): void;
   addEmbeddingUsage(args: { provider: string; model: string; tokens: number }): void;
+  /**
+   * Segundos de audio transcriptos (F6). Van en su propio cubo porque los
+   * proveedores de transcripcion cobran por DURACION y no por tokens: meterlos
+   * en el cubo de entrada daria un costo que no tiene nada que ver.
+   */
+  addAudioUsage(args: { provider: string; model: string; seconds: number }): void;
   step(input: StepInput): Promise<string | null>;
   /** Deja el routing del turno (F9/F12); se escribe al cerrar. */
   setRouting(routing: Json | null): void;
@@ -211,6 +218,7 @@ export async function openAiRun(
   const stepBucket = emptyBucket();
   let finalBucket: Bucket | null = null;
   const embeddings = new Map<string, { provider: string; model: string; tokens: number }>();
+  const audio = new Map<string, { provider: string; model: string; seconds: number }>();
   let stepCount = 0;
   let closed: CloseRunResult | null = null;
   // Los pasos se escriben en serie: step_index es unico por run.
@@ -253,6 +261,13 @@ export async function openAiRun(
       embeddings.set(key, { provider: p, model: m, tokens: (prev?.tokens ?? 0) + safeTokens(tokens) });
     },
 
+    addAudioUsage({ provider: p, model: m, seconds }) {
+      const key = `${p}/${m}`;
+      const prev = audio.get(key);
+      const safe = typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+      audio.set(key, { provider: p, model: m, seconds: (prev?.seconds ?? 0) + safe });
+    },
+
     step(stepInput) {
       const index = stepCount++;
       const write = stepChain.then(async () => {
@@ -290,6 +305,7 @@ export async function openAiRun(
 
       const chat: Bucket = finalBucket ?? stepBucket;
       const embeddingTokens = [...embeddings.values()].reduce((sum, e) => sum + e.tokens, 0);
+      const audioSeconds = [...audio.values()].reduce((sum, a) => sum + a.seconds, 0);
       const pricingMissing: string[] = [];
       let costUsd: number | null = 0;
       let pricingId: string | null = null;
@@ -306,6 +322,26 @@ export async function openAiRun(
           pricingId = price.id;
         } else {
           pricingMissing.push(`${provider ?? "?"}/${model ?? "?"}`);
+        }
+      }
+
+      for (const a of audio.values()) {
+        if (a.seconds === 0) continue;
+        const price = await resolvePricing(supabase, {
+          workspaceId: input.workspaceId,
+          provider: a.provider,
+          model: a.model,
+          at,
+        });
+        const audioCost = price ? computeAudioCostUsd(price, a.seconds) : null;
+        if (audioCost === null) {
+          // Sin fila de precio, o con una fila que no tiene precio de audio (el
+          // seed de transcripcion no se corrio): el costo total pasa a ser
+          // desconocido, no cero.
+          pricingMissing.push(`${a.provider}/${a.model}`);
+        } else {
+          costUsd = (costUsd ?? 0) + audioCost;
+          pricingId = pricingId ?? price!.id;
         }
       }
 
@@ -350,6 +386,7 @@ export async function openAiRun(
             output_tokens: usedChat ? chat.output : null,
             cached_tokens: usedChat ? chat.cachedRead : null,
             embedding_tokens: embeddingTokens > 0 ? embeddingTokens : null,
+            audio_seconds: audioSeconds > 0 ? Math.round(audioSeconds * 1000) / 1000 : null,
             cost_usd: costUsd,
             pricing_id: pricingId,
             latency_ms: Math.max(0, at.getTime() - openedAt.getTime()),

@@ -20,6 +20,12 @@ export interface ModelPrice {
   input_per_mtok: number;
   output_per_mtok: number;
   cached_input_per_mtok: number;
+  /**
+   * USD por HORA de audio (00103). Solo lo tienen los modelos de
+   * transcripcion, que se cobran por duracion y no por tokens. Null en los de
+   * chat y de embeddings.
+   */
+  audio_per_hour: number | null;
 }
 
 /** Tokens de una llamada al modelo de chat. */
@@ -40,12 +46,18 @@ export async function resolvePricing(
   supabase: Db,
   args: { workspaceId: string; provider: string; model: string; at: Date },
 ): Promise<ModelPrice | null> {
-  let data: { id: string; input_per_mtok: number; output_per_mtok: number; cached_input_per_mtok: number } | null = null;
+  let data: {
+    id: string;
+    input_per_mtok: number;
+    output_per_mtok: number;
+    cached_input_per_mtok: number;
+    audio_per_hour: number | null;
+  } | null = null;
   let error: { message: string } | null = null;
   try {
     const result = await supabase
       .from("model_pricing")
-      .select("id, input_per_mtok, output_per_mtok, cached_input_per_mtok")
+      .select("id, input_per_mtok, output_per_mtok, cached_input_per_mtok, audio_per_hour")
       .eq("workspace_id", args.workspaceId)
       .eq("provider", args.provider)
       .eq("model", args.model)
@@ -71,6 +83,10 @@ export async function resolvePricing(
     input_per_mtok: Number(data.input_per_mtok),
     output_per_mtok: Number(data.output_per_mtok),
     cached_input_per_mtok: Number(data.cached_input_per_mtok),
+    // `== null` a proposito: cubre null y undefined. Si la columna no volvio
+    // (una base sin la 00103 aplicada), Number(undefined) seria NaN y el costo
+    // terminaria en NaN en vez de quedar desconocido.
+    audio_per_hour: data.audio_per_hour == null ? null : Number(data.audio_per_hour),
   };
 }
 
@@ -111,4 +127,18 @@ export function computeChatCostUsd(price: ModelPrice, tokens: ChatTokens): numbe
 /** Costo de embeddings: solo entrada. */
 export function computeEmbeddingCostUsd(price: ModelPrice, tokens: number): number {
   return roundUsd((safeTokens(tokens) * price.input_per_mtok) / PER_MILLION);
+}
+
+const SECONDS_PER_HOUR = 3_600;
+
+/**
+ * Costo de una transcripcion: segundos de audio por el precio de la hora.
+ *
+ * Devuelve null si el modelo no tiene precio de audio cargado, que es distinto
+ * de cero: cero diria "salio gratis" y el informe mostraria un total falso.
+ */
+export function computeAudioCostUsd(price: ModelPrice, seconds: number): number | null {
+  if (price.audio_per_hour === null) return null;
+  const safe = typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  return roundUsd((safe / SECONDS_PER_HOUR) * price.audio_per_hour);
 }

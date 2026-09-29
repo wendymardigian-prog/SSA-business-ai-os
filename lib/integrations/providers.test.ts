@@ -7,6 +7,7 @@ import {
   validateConfig,
   isTextProvider,
   isEmbeddingProvider,
+  isTranscriptionProvider,
   providersBySection,
   getVisibleProvider,
   secretFieldsOf,
@@ -40,6 +41,7 @@ describe("catalogo de proveedores", () => {
       "anthropic",
       "google_ai",
       "voyage",
+      "groq",
     ]);
   });
 
@@ -55,12 +57,29 @@ describe("catalogo de proveedores", () => {
 
   it("los proveedores de texto no se quedan sin capacidad por olvido", () => {
     for (const provider of providersByType("ai_provider")) {
-      const isText = isTextProvider(provider);
-      const isEmbedding = isEmbeddingProvider(provider);
-      // Exactamente una de las dos. Un proveedor que no sea ninguna de las dos
-      // no lo usaria nadie; uno que fuera las dos rompe el filtro del selector.
-      expect(isText !== isEmbedding, provider.id).toBe(true);
+      const capabilities = [isTextProvider(provider), isEmbeddingProvider(provider), isTranscriptionProvider(provider)];
+      // Exactamente UNA. Un proveedor sin ninguna no lo usaria nadie; uno con
+      // dos rompe el filtro del selector (el nodo AI Response podria elegir a
+      // Voyage, que no genera texto, y dejar de contestar).
+      expect(capabilities.filter(Boolean).length, provider.id).toBe(1);
     }
+  });
+
+  it("CARACTERIZACION: sumar Groq no cambio la capacidad de ninguno de los que ya estaban (F6)", () => {
+    // isTextProvider es lo que filtra el selector de modelos del agente y el
+    // nodo AI Response: si cambiara para uno de estos cuatro, el agente se
+    // quedaria sin proveedor o elegiria uno que no genera texto.
+    const capability = (id: string) => {
+      const p = getProvider(id)!;
+      return { text: isTextProvider(p), embeddings: isEmbeddingProvider(p), transcription: isTranscriptionProvider(p) };
+    };
+
+    expect(capability("openai")).toEqual({ text: true, embeddings: false, transcription: false });
+    expect(capability("anthropic")).toEqual({ text: true, embeddings: false, transcription: false });
+    expect(capability("google_ai")).toEqual({ text: true, embeddings: false, transcription: false });
+    expect(capability("voyage")).toEqual({ text: false, embeddings: true, transcription: false });
+    // Y Groq NO es de texto: el agente no puede elegirlo para conversar.
+    expect(capability("groq")).toEqual({ text: false, embeddings: false, transcription: true });
   });
 
   it("cada proveedor de texto tiene un modelo por defecto sugerido", () => {
@@ -174,7 +193,7 @@ describe("catalogo extendido (F1)", () => {
     expect(bySection.publishing).toEqual(["postproxy", "linkedin", "threads"]);
     expect(bySection.google).toEqual(["google"]);
     expect(bySection.email).toEqual(["resend_inbound", "resend"]);
-    expect(bySection.ai).toEqual(["openai", "anthropic", "google_ai", "voyage"]);
+    expect(bySection.ai).toEqual(["openai", "anthropic", "google_ai", "voyage", "groq"]);
   });
 
   it("lo oculto se excluye de la pantalla Y de las acciones", () => {

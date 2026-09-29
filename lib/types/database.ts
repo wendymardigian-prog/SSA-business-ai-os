@@ -265,7 +265,11 @@ export type AgentRunSource =
   | "message_classification_eval"
   /** Etapa 2 (00085): generar guion y caption, y analizar anuncios con IA. */
   | "content_copy"
-  | "ads_analysis";
+  | "ads_analysis"
+  // Mejoras de Chat (00103). Los dos van SIN agent_id: no los pide un agente,
+  // los pide el sistema al recibir un mensaje.
+  | "audio_transcription"
+  | "media_description";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -1294,6 +1298,13 @@ export interface Database {
            * solo los triggers: nunca se actualiza desde la app.
            */
           agent_disabled_by_tag_id: string | null;
+          /**
+           * El agente no pudo interpretar lo que llego y escalo (00103). Se
+           * limpia cuando una persona responde o marca "Ya lo vi".
+           */
+          needs_human: boolean;
+          needs_human_reason: string | null;
+          needs_human_at: string | null;
           deleted_at: string | null;
           created_at: string;
           updated_at: string;
@@ -1317,6 +1328,9 @@ export interface Database {
           last_agent_error_run_id?: string | null;
           closed_at?: string | null;
           summarized_at?: string | null;
+          needs_human?: boolean;
+          needs_human_reason?: string | null;
+          needs_human_at?: string | null;
           deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1324,6 +1338,9 @@ export interface Database {
         Update: {
           /** Se reasigna al unir un contacto duplicado con el principal. */
           contact_id?: string;
+          needs_human?: boolean;
+          needs_human_reason?: string | null;
+          needs_human_at?: string | null;
           late_conversation_id?: string | null;
           status?: ConversationStatus;
           assigned_to?: string | null;
@@ -2611,6 +2628,8 @@ export interface Database {
           output_tokens: number | null;
           cached_tokens: number | null;
           embedding_tokens: number | null;
+          /** Segundos de audio transcriptos (00103). Se cobran por duracion, no por tokens. */
+          audio_seconds: number | null;
           cost_usd: number | null;
           pricing_id: string | null;
           latency_ms: number | null;
@@ -2644,6 +2663,7 @@ export interface Database {
           output_tokens?: number | null;
           cached_tokens?: number | null;
           embedding_tokens?: number | null;
+          audio_seconds?: number | null;
           cost_usd?: number | null;
           pricing_id?: string | null;
           latency_ms?: number | null;
@@ -2670,6 +2690,7 @@ export interface Database {
           output_tokens?: number | null;
           cached_tokens?: number | null;
           embedding_tokens?: number | null;
+          audio_seconds?: number | null;
           cost_usd?: number | null;
           pricing_id?: string | null;
           latency_ms?: number | null;
@@ -2815,6 +2836,8 @@ export interface Database {
           input_per_mtok: number;
           output_per_mtok: number;
           cached_input_per_mtok: number;
+          /** USD por hora de audio (00103). Solo los modelos de transcripcion. */
+          audio_per_hour: number | null;
           currency: string;
           valid_from: string;
           note: string | null;
@@ -2829,6 +2852,7 @@ export interface Database {
           input_per_mtok: number;
           output_per_mtok: number;
           cached_input_per_mtok: number;
+          audio_per_hour?: number | null;
           currency?: string;
           valid_from?: string;
           note?: string | null;

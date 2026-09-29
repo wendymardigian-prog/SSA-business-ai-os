@@ -47,13 +47,19 @@ const TIMEOUT_MS = 10_000;
  * proposito: no publica un endpoint gratis para listar modelos.
  */
 export function isCheckableAiProvider(providerId: string): boolean {
-  return providerId === "anthropic" || providerId === "openai" || providerId === "google_ai";
+  return (
+    providerId === "anthropic" ||
+    providerId === "openai" ||
+    providerId === "google_ai" ||
+    providerId === "groq"
+  );
 }
 
 const LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   google_ai: "Google",
+  groq: "Groq",
 };
 
 /**
@@ -98,6 +104,12 @@ export async function checkAiProviderKey(input: {
       // termina en los logs del proxy y en el historial del navegador.
       url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
       headers = { "x-goog-api-key": apiKey };
+      break;
+    case "groq":
+      // La API de Groq es compatible con la de OpenAI, misma forma y mismo
+      // header. Listar modelos es gratis y una key mala devuelve 401.
+      url = "https://api.groq.com/openai/v1/models";
+      headers = { authorization: `Bearer ${apiKey}` };
       break;
     default:
       // Voyage y cualquier otro: no hay prueba, no hay veredicto.
@@ -150,13 +162,16 @@ export async function checkAiProviderKey(input: {
   }
 
   const models = extractModels(providerId, body);
+  // Groq no es un proveedor de texto: decirle "modelos de texto" a quien acaba
+  // de conectar la transcripcion seria decirle algo falso.
+  const kind = providerId === "groq" ? "transcripción" : "texto";
   return {
     ok: true,
     models,
     detail:
       models.length > 0
-        ? `Key verificada contra ${label}: la cuenta ve ${models.length} modelo(s) de texto.`
-        : `Key verificada contra ${label}, pero no devolvio ningun modelo de texto.`,
+        ? `Key verificada contra ${label}: la cuenta ve ${models.length} modelo(s) de ${kind}.`
+        : `Key verificada contra ${label}, pero no devolvio ningun modelo de ${kind}.`,
   };
 }
 
@@ -189,6 +204,21 @@ function extractModels(providerId: string, body: unknown): string[] {
         // Solo los de chat: gpt-*, o1/o3/o4 y sucesores numerados.
         .filter((id) => /^(gpt-|o\d)/.test(id))
         .filter((id) => !OPENAI_NOT_CHAT.test(id)),
+    );
+  }
+
+  if (providerId === "groq") {
+    const data = asObject(body).data;
+    if (!Array.isArray(data)) return [];
+    return dedupe(
+      data
+        .map((m) => asObject(m).id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+        // Solo los que transcriben. Groq tambien sirve modelos de texto y de
+        // vision, pero esta integracion es la de transcripcion: ofrecer un
+        // llama en el selector de modelos de transcripcion seria ofrecer algo
+        // que falla al usarlo.
+        .filter((id) => /whisper|transcribe/i.test(id)),
     );
   }
 

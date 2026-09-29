@@ -37,6 +37,9 @@ export const SECRET_NAMES = {
   googleAiApiKey: "google_ai_api_key",
   voyageApiKey: "voyage_api_key",
 
+  /** Groq: transcripcion de audio. Se cobra por hora de audio (F6). */
+  groqApiKey: "groq_api_key",
+
   // ── OAuth: la app propia de cada proveedor ───────────────────────────────
   /** Clave con la que se firma el `state` del OAuth. Se genera la primera vez (F9). */
   oauthStateSecret: "oauth_state_secret",

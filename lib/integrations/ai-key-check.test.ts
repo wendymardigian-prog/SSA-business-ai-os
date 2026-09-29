@@ -26,10 +26,11 @@ function fakeFetch(response: { status: number; body?: unknown } | Error) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("isCheckableAiProvider", () => {
-  it("los tres de texto se pueden probar; Voyage no", () => {
+  it("los tres de texto y Groq se pueden probar; Voyage no", () => {
     expect(isCheckableAiProvider("anthropic")).toBe(true);
     expect(isCheckableAiProvider("openai")).toBe(true);
     expect(isCheckableAiProvider("google_ai")).toBe(true);
+    expect(isCheckableAiProvider("groq")).toBe(true);
     // Voyage no publica un endpoint gratis para listar modelos.
     expect(isCheckableAiProvider("voyage")).toBe(false);
   });
@@ -195,5 +196,52 @@ describe("checkAiProviderKey — proveedor sin prueba", () => {
 
     expect(result).toMatchObject({ ok: true, models: [] });
     expect(doFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("Groq (F6)", () => {
+  it("se puede verificar, como los otros tres", () => {
+    expect(isCheckableAiProvider("groq")).toBe(true);
+  });
+
+  it("lista los modelos de transcripcion y descarta los de texto", async () => {
+    const result = await checkAiProviderKey({
+      providerId: "groq",
+      apiKey: "gsk_x",
+      fetchImpl: fakeFetch({ status: 200, body: ({
+        data: [
+          { id: "whisper-large-v3-turbo" },
+          { id: "whisper-large-v3" },
+          // Groq tambien sirve modelos de texto: no van en el selector de
+          // transcripcion, porque fallarian al usarlos.
+          { id: "llama-3.3-70b-versatile" },
+          { id: "openai/gpt-oss-120b" },
+        ],
+      }) }),
+    });
+
+    expect(result).toMatchObject({ ok: true, models: ["whisper-large-v3-turbo", "whisper-large-v3"] });
+    // Y el aviso no le dice "modelos de texto" a quien conecto la transcripcion.
+    expect((result as { detail?: string }).detail).toContain("transcripción");
+  });
+
+  it("una key rechazada no se guarda", async () => {
+    const result = await checkAiProviderKey({
+      providerId: "groq",
+      apiKey: "gsk_mala",
+      fetchImpl: fakeFetch({ status: 401, body: { error: { message: "Invalid API Key" } } }),
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("si Groq esta caido se guarda igual: el 503 no dice nada sobre la key", async () => {
+    const result = await checkAiProviderKey({
+      providerId: "groq",
+      apiKey: "gsk_x",
+      fetchImpl: fakeFetch({ status: 503 }),
+    });
+
+    expect(result).toMatchObject({ ok: true, models: [] });
   });
 });

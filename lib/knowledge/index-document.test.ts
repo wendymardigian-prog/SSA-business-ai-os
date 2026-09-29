@@ -11,6 +11,7 @@ const runHandle = vi.hoisted(() => ({
   addStepUsage: vi.fn(),
   setFinalUsage: vi.fn(),
   addEmbeddingUsage: vi.fn(),
+  addAudioUsage: vi.fn(),
   step: vi.fn().mockResolvedValue(null),
   close: vi.fn().mockResolvedValue({ costUsd: 0, pricingMissing: [] }),
 }));

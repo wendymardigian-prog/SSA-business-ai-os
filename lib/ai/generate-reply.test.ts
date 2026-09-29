@@ -17,6 +17,7 @@ const runHandle = vi.hoisted(() => ({
   addStepUsage: vi.fn(),
   setFinalUsage: vi.fn(),
   addEmbeddingUsage: vi.fn(),
+  addAudioUsage: vi.fn(),
   step: vi.fn().mockResolvedValue("step-1"),
   setRouting: vi.fn(),
   setIntent: vi.fn(),

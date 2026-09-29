@@ -11,6 +11,7 @@ interface PriceRow {
   input_per_mtok: number;
   output_per_mtok: number;
   cached_input_per_mtok: number;
+  audio_per_hour?: number | null;
   valid_from: string;
 }
 
@@ -280,5 +281,88 @@ describe("runs colgados", () => {
 
     expect(closed).toEqual([{ id: "stale-1", source: "agent", workspace_id: "ws-1", conversation_id: "cv-1" }]);
     expect(updates[0]).toMatchObject({ status: "error", status_detail: "stale_running" });
+  });
+});
+
+const GROQ_TURBO: PriceRow = {
+  id: "price-groq-turbo",
+  workspace_id: "ws-1",
+  provider: "groq",
+  model: "whisper-large-v3-turbo",
+  input_per_mtok: 0,
+  output_per_mtok: 0,
+  cached_input_per_mtok: 0,
+  audio_per_hour: 0.04,
+  valid_from: "2026-09-13T00:00:00.000Z",
+};
+
+describe("el consumo de la transcripcion (F6)", () => {
+  const TRANSCRIPTION = { workspaceId: "ws-1", source: "audio_transcription" as const, trigger: "job" as const };
+
+  it("los segundos de audio se guardan y se cobran por duracion, no por tokens", async () => {
+    const { client, updates } = fakeDb([GROQ_TURBO]);
+    const run = await openAiRun(client, TRANSCRIPTION, clock);
+
+    run.setModel("groq", "whisper-large-v3-turbo");
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: 40 });
+    const result = await run.close({ status: "responded" });
+
+    // 40 segundos a USD 0,04 la hora.
+    expect(result.costUsd).toBe(0.000444);
+    expect(updates[0]).toMatchObject({ audio_seconds: 40, cost_usd: 0.000444, pricing_id: "price-groq-turbo" });
+    // Y NO se reporta como tokens: eso daria un costo que no tiene nada que ver.
+    expect(updates[0].input_tokens).toBeNull();
+    expect(updates[0].output_tokens).toBeNull();
+  });
+
+  it("sin el seed de precios el costo queda desconocido, no en cero", async () => {
+    const { client } = fakeDb([]);
+    const run = await openAiRun(client, TRANSCRIPTION, clock);
+
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: 40 });
+    const result = await run.close({ status: "responded" });
+
+    expect(result.costUsd).toBeNull();
+    expect(result.pricingMissing).toContain("groq/whisper-large-v3-turbo");
+  });
+
+  it("una fila de precio SIN hora de audio tambien deja el costo desconocido", async () => {
+    // Pasa si se aplico la 00103 pero no se corrio el seed de transcripcion.
+    const { client } = fakeDb([{ ...GROQ_TURBO, audio_per_hour: null }]);
+    const run = await openAiRun(client, TRANSCRIPTION, clock);
+
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: 40 });
+
+    await expect(run.close({ status: "responded" })).resolves.toMatchObject({ costUsd: null });
+  });
+
+  it("se suman los segundos de dos llamadas al mismo modelo", async () => {
+    const { client, updates } = fakeDb([GROQ_TURBO]);
+    const run = await openAiRun(client, TRANSCRIPTION, clock);
+
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: 20 });
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: 20 });
+    await run.close({ status: "responded" });
+
+    expect(updates[0].audio_seconds).toBe(40);
+  });
+
+  it("segundos raros del proveedor no ensucian la fila", async () => {
+    const { client, updates } = fakeDb([GROQ_TURBO]);
+    const run = await openAiRun(client, TRANSCRIPTION, clock);
+
+    run.addAudioUsage({ provider: "groq", model: "whisper-large-v3-turbo", seconds: Number.NaN });
+    await run.close({ status: "responded" });
+
+    expect(updates[0].audio_seconds).toBeNull();
+  });
+
+  it("un run sin audio no escribe la columna", async () => {
+    const { client, updates } = fakeDb([SONNET_2026]);
+    const run = await openAiRun(client, BASE, clock);
+
+    await run.close({ status: "responded" });
+
+    expect(updates[0].audio_seconds).toBeNull();
   });
 });

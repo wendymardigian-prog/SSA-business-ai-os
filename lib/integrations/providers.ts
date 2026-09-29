@@ -40,7 +40,7 @@ export interface ConfigField {
  * el nodo AI Response podria elegir a Voyage —que no genera texto— y dejar de
  * contestar. Lo usa getWorkspaceModel() para filtrar. Ver lib/ai/provider.ts.
  */
-export type ProviderCapability = "text" | "embeddings";
+export type ProviderCapability = "text" | "embeddings" | "transcription";
 
 /**
  * Como se conecta una integracion. Decide que muestra el modal, no como se
@@ -599,6 +599,31 @@ export const PROVIDERS: ProviderDefinition[] = [
     ],
     docsUrl: "https://dashboard.voyageai.com/api-keys",
   },
+  {
+    id: "groq",
+    type: "ai_provider",
+    capability: "transcription",
+    connection: "api_key",
+    section: "ai",
+    visible: true,
+    label: "Groq (transcripción de audio)",
+    description:
+      "Convierte a texto las notas de voz que llegan por Instagram y WhatsApp, para que el asistente sepa qué le dijeron y pueda contestar. Sin esto, una nota de voz queda sin interpretar y la conversación se deriva a una persona. Se cobra por hora de audio, no por mensaje.",
+    secretName: SECRET_NAMES.groqApiKey,
+    keyPrefix: "gsk_",
+    minKeyLength: 20,
+    configFields: [
+      {
+        key: "transcription_model",
+        label: "Modelo de transcripción",
+        hint: "whisper-large-v3-turbo es el más barato y alcanza para notas de voz. whisper-large-v3 es más preciso y cuesta casi tres veces más.",
+        required: true,
+        options: ["whisper-large-v3-turbo", "whisper-large-v3"],
+        defaultValue: "whisper-large-v3-turbo",
+      },
+    ],
+    docsUrl: "https://console.groq.com/keys",
+  },
 ];
 
 /** Los proveedores de IA que generan texto (los que puede usar el nodo AI Response). */
@@ -609,6 +634,11 @@ export function isTextProvider(definition: ProviderDefinition): boolean {
 /** Los proveedores de IA que generan embeddings (los que indexan la base de conocimiento). */
 export function isEmbeddingProvider(definition: ProviderDefinition): boolean {
   return definition.type === "ai_provider" && definition.capability === "embeddings";
+}
+
+/** Los proveedores de IA que transcriben audio (F6). */
+export function isTranscriptionProvider(definition: ProviderDefinition): boolean {
+  return definition.type === "ai_provider" && definition.capability === "transcription";
 }
 
 export function getProvider(id: string): ProviderDefinition | undefined {

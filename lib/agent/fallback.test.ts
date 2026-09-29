@@ -23,6 +23,7 @@ function fakeRun() {
     addStepUsage: vi.fn(),
     setFinalUsage: vi.fn(),
     addEmbeddingUsage: vi.fn(),
+  addAudioUsage: vi.fn(),
     setRouting: vi.fn(),
     setIntent: vi.fn(),
     step: vi.fn(async (input: { name?: string | null; error?: string | null }) => {
