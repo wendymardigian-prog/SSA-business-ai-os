@@ -126,7 +126,10 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform`.
 La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**, y las **correcciones de la Etapa 2 de la 00091 a la 00094**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
 
-**Todas las migraciones estan aplicadas** (la ultima es la `00101_bg_task_dedupe`).
+**Todas las migraciones estan aplicadas.** Las ultimas son la `00110_chat_dashboard_v2`
+y la `00111_message_patterns_v2` (28/9/2026, dashboard de Chat y patrones). Los
+numeros `00102`-`00109` quedan como hueco a proposito: eran la banda de la sesion
+de multimedia, que corria en paralelo.
 La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
 aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
 borradores creados DESPUES de aplicarla, asi que enchufarla con la cola vacia

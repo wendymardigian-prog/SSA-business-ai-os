@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
 import {
   PERMISSION_MODULES,
@@ -147,6 +148,7 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
           </button>
         }
       />
+      <SettingsTabs />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         {error && (

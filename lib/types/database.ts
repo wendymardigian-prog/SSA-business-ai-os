@@ -4038,21 +4038,138 @@ export interface Database {
         Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
         Returns: { new_conversations: number; agent_acted: number; agent_took_first: number; agent_escalated: number }[];
       };
+      /** Segunda vuelta (migracion 00110): una fila por autor, con Automatizaciones junta. */
       chat_dashboard_team: {
         Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
-        Returns: { author: string; messages_out: number; first_response_median_seconds: number | null; reply_median_seconds: number | null; replies_under_1h_pct: number | null }[];
+        Returns: {
+          author: string;
+          conversations: number;
+          messages_out: number;
+          first_response_median_seconds: number | null;
+          reply_median_seconds: number | null;
+          replies_under_1h_pct: number | null;
+          escalations_received: number | null;
+          drafts_approved: number | null;
+          drafts_approved_unedited_pct: number | null;
+        }[];
       };
+      /** Serie densa por dia, por grupo de autor y con la mediana diaria (00110). */
       chat_dashboard_trends: {
         Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_author?: string | null; p_tz?: string };
-        Returns: { day: string; messages_in: number; messages_out: number; new_conversations: number }[];
+        Returns: {
+          day: string;
+          messages_in: number;
+          messages_out: number;
+          new_conversations: number;
+          sent_agent: number;
+          sent_team: number;
+          sent_automations: number;
+          sent_external: number;
+          first_response_median_seconds: number | null;
+        }[];
+      };
+      chat_dashboard_agent_weekly: {
+        Args: { p_workspace_id: string; p_channel?: string | null; p_tz?: string; p_weeks?: number };
+        Returns: { week_start: string; new_conversations: number; acted: number; took_first: number; escalated: number }[];
+      };
+      chat_dashboard_first_responder: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { responder: string; episodes: number }[];
+      };
+      chat_dashboard_escalation_reasons: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_limit?: number };
+        Returns: { reason_key: string; reason_label: string; origin: string | null; escalations: number; pct: number | null; is_other: boolean }[];
+      };
+      chat_dashboard_agent_actions: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { action: string; actions: number; reverted: number }[];
+      };
+      chat_dashboard_rule_results: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: { rule_id: string | null; rule_index: number | null; action: string; runs: number; degraded_to_draft: number; is_default: boolean }[];
+      };
+      chat_dashboard_drafts: {
+        Args: { p_workspace_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null; p_tz?: string };
+        Returns: {
+          approved_unchanged: number;
+          corrected: number;
+          answered_manually: number;
+          discarded: number;
+          window_missed: number;
+          agent_median_s: number | null;
+          approval_median_s: number | null;
+          pending_now: number;
+          pending_under_6h: number;
+          missed_last_7d: number;
+          unedited_weekly: Json;
+        }[];
       };
       chat_episodes: {
         Args: { p_workspace_id: string; p_channel?: string | null };
         Returns: { conversation_id: string; contact_id: string; channel_id: string; episode_no: number; episode_start: string; first_inbound_at: string | null; first_outbound_at: string | null; first_outbound_origin: string | null }[];
       };
+      /** Patrones con text_id, autor principal y % que obtuvo respuesta (migracion 00111). */
       chat_dashboard_patterns: {
-        Args: { p_workspace_id: string; p_direction: string; p_from: string | null; p_to: string | null };
-        Returns: { category_id: string; category_name: string; is_fallback: boolean; message_count: number; text_count: number; top_variants: Json }[];
+        Args: {
+          p_workspace_id: string;
+          p_direction: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_channel?: string | null;
+          p_author?: string | null;
+        };
+        Returns: {
+          category_id: string;
+          category_name: string;
+          description: string | null;
+          is_fallback: boolean;
+          message_count: number;
+          text_count: number;
+          top_author: string | null;
+          reply_rate: number | null;
+          rank: number;
+          top_variants: Json;
+        }[];
+      };
+      chat_dashboard_replies: {
+        Args: { p_workspace_id: string; p_category_id: string; p_from: string | null; p_to: string | null; p_channel?: string | null };
+        Returns: {
+          reply_category_id: string | null;
+          reply_category_name: string;
+          reply_is_fallback: boolean;
+          replies: number;
+          pct_of_replies: number | null;
+          outbound_total: number;
+          outbound_with_reply: number;
+        }[];
+      };
+      message_text_volumes: {
+        Args: { p_workspace_id: string; p_direction?: string | null; p_from?: string | null; p_to?: string | null };
+        Returns: {
+          text_id: string;
+          direction: string;
+          category_id: string | null;
+          source: string | null;
+          confidence: number | null;
+          review_result: string | null;
+          is_button: boolean;
+          prompt_version: number | null;
+          classified_at: string | null;
+          reviewed_at: string | null;
+          sample_text: string | null;
+          message_count: number;
+        }[];
+      };
+      message_classification_status: {
+        Args: { p_workspace_id: string; p_tz?: string };
+        Returns: {
+          last_run_at: string | null;
+          last_run_status: string | null;
+          last_run_detail: string | null;
+          texts_classified_today: number;
+          unclassified_pending: number;
+          active_prompt_version: number | null;
+        }[];
       };
       /**
        * Reclama un envio automatizado en la ventana horaria del canal

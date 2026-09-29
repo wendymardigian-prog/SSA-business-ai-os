@@ -21,7 +21,14 @@ import { activeDashboard, type DashboardOption } from "@/lib/dashboards/availabl
  * van a los extremos, Esc cierra y devuelve el foco al boton.
  */
 
-export function DashboardSwitcher({ options }: { options: DashboardOption[] }) {
+export function DashboardSwitcher({
+  options,
+  comingSoon = [],
+}: {
+  options: DashboardOption[];
+  /** Los que se anuncian apagados (`comingSoonDashboards`). */
+  comingSoon?: DashboardOption[];
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(0);
@@ -103,7 +110,9 @@ export function DashboardSwitcher({ options }: { options: DashboardOption[] }) {
   };
 
   return (
-    <div className="relative ml-2">
+    <div className="relative ml-2 flex items-center gap-2">
+      {/* Separa el titulo de la pagina de los controles del dashboard. */}
+      <span className="hidden h-5 w-px bg-border sm:block" aria-hidden />
       <button
         ref={buttonRef}
         type="button"
@@ -111,8 +120,9 @@ export function DashboardSwitcher({ options }: { options: DashboardOption[] }) {
         aria-expanded={open}
         onClick={() => (open ? close(false) : openAt(Math.max(0, options.findIndex((o) => o.key === current?.key))))}
         onKeyDown={onButtonKeyDown}
-        className="flex max-w-[45vw] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium hover:bg-accent/60 sm:max-w-none"
+        className="flex h-8 max-w-[45vw] items-center gap-2 rounded-lg border border-input bg-background px-3 text-[13px] font-medium transition-colors hover:border-muted-foreground/60 sm:max-w-none"
       >
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: current?.color ?? "var(--primary)" }} aria-hidden />
         <span className="truncate">{label}</span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
       </button>
@@ -154,6 +164,26 @@ export function DashboardSwitcher({ options }: { options: DashboardOption[] }) {
               </Link>
             );
           })}
+
+          {/* Lo que viene: se anuncia, apagado. Un dashboard que no se ve es un
+              dashboard que nadie sabe que va a existir. */}
+          {comingSoon.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              disabled
+              aria-disabled
+              className="flex w-full cursor-not-allowed items-start gap-2 rounded-lg px-2.5 py-2 text-left opacity-55"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium">{option.label}</span>
+                <span className="block text-xs text-muted-foreground">{option.description}</span>
+              </span>
+              <span className="shrink-0 rounded-full border border-border bg-muted px-[7px] py-0.5 text-[11px] font-medium text-muted-foreground">
+                Próximamente
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>

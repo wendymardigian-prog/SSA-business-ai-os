@@ -29,6 +29,7 @@ import { setMemberRole } from "@/lib/actions/team";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 interface MemberDetail {
   userId: string;
@@ -247,6 +248,7 @@ export function TeamView({
           </Link>
         }
       />
+      <SettingsTabs />
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl space-y-8 px-8 py-8">

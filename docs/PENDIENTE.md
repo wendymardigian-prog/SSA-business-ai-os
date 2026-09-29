@@ -64,10 +64,9 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Qué quedó:** el comentario de `lib/flow-engine/interpolate.ts` afirma que hay un test que compara su regex con la copia de `simulator.ts`. No lo había.
 - **Qué se decidió en su lugar:** se escribe en B7a, junto con la extensión del regex para admitir guiones dentro de `{{…}}` (para `scheduling.link.<usuario>.<slug>`).
 
-### Tailwind: `dark:` no sigue a la clase `.dark`
-- **Qué quedó:** `app/globals.css` no declara `@custom-variant dark`, así que en Tailwind 4 las utilidades `dark:*` siguen a `prefers-color-scheme` y no al conmutador de tema del perfil; los tokens (`bg-background`, etc.) sí siguen a la clase.
-- **Por qué:** viene de la Etapa 1.
-- **Qué se decidió en su lugar:** el booker público usa `data-theme` y tokens propios, sin `dark:`, así el tema forzado por `?theme=` funciona. El resto no se toca; se anota para revisarlo aparte.
+### ~~Tailwind: `dark:` no sigue a la clase `.dark`~~ — RESUELTO el 28/9/2026
+- **Qué quedó:** `app/globals.css` no declaraba `@custom-variant dark`, así que en Tailwind 4 las utilidades `dark:*` seguían a `prefers-color-scheme` y no al conmutador de tema del perfil; los tokens (`bg-background`, etc.) sí seguían a la clase. Alguien con el sistema en claro y la app en oscuro veía texto oscuro sobre fondo oscuro en todo lo escrito con `dark:`.
+- **Qué se hizo:** `@custom-variant dark (&:where(.dark, .dark *));` al final de `globals.css`. En el CSS de producción ya no queda ninguna aparición de `prefers-color-scheme`. El booker público no se tocó: usa `data-theme` y tokens propios, sin `dark:`.
 
 ### La pantalla de Herramientas borraba las claves de `tools_config` que no fueran herramientas
 - **Qué quedó:** `normalizeToolsConfig` descartaba cualquier clave que no fuera un nombre de herramienta del registro. Una habilidad guardada como `tools_config.scheduling` desaparecía al primer guardado.
@@ -126,12 +125,14 @@ propósito:
   Económico, en vez de completar en silencio. El silencio es lo que dejó este
   handler vacío durante semanas sin que nadie se enterara.
 
-### Los resultados se miran por SQL
+### ~~Los resultados se miran por SQL~~ — RESUELTO el 28/9/2026
 
 - **Qué quedó:** la pantalla de calidad del clasificador y la revisión rápida de
-  20 son del Bloque 5 y no se construyeron. Cuántos quedaron clasificados, qué
-  categorías nuevas se crearon y cuántos tienen confianza baja se consultan a
-  mano.
+  20 eran del Bloque 5 y no se habían construido.
+- **Qué se hizo:** Settings → Tareas en segundo plano tiene los cuatro
+  indicadores, la precisión por semana, las categorías más corregidas, la
+  calibración de la confianza y la revisión rápida. Lo único que sigue pendiente
+  de F25 son las versiones del clasificador (ver más abajo).
 
 ### Dos desvíos de F20, conscientes
 
@@ -151,6 +152,137 @@ propósito:
   detección de "no contactar". Ya registrado en `BITACORA.md`.
 - **Qué se decidió:** no se toca el documento de requerimientos, que es
   histórico.
+
+## Pantalla de Chat completada (28/9/2026, rama `feature/chat-completar`)
+
+### ~~Dos migraciones escritas y sin aplicar~~ — APLICADAS el 28/9/2026
+
+- **Qué se hizo:** se aplicaron la **00110** y después la **00111** (en ese orden:
+  la 00111 usa `chat_origin_group`, que crea la 00110). Las 19 funciones existen,
+  con **una sola sobrecarga cada una** (dos dejarían a PostgREST sin poder
+  elegir), todas `SECURITY INVOKER`, con `EXECUTE` para `authenticated` y sin
+  acceso para `anon`. Se llamaron las 19 contra los datos reales y responden.
+- **No se renumeran al mergear.** Ya están aplicadas: el número es parte del
+  registro. Quedan los huecos 00102–00109, que la sesión de multimedia usa en
+  parte; es a propósito, era la banda reservada para correr en paralelo.
+- `node scripts/verify-dashboards.mjs` y `node scripts/verify-rls.mjs` salen
+  **Todo verde** (se corrieron de a uno, sin nada de la otra sesión en curso, y
+  la base quedó sin datos `zz-test-`).
+
+### El set fijo de `verify-dashboards.mjs` creció a 7 conversaciones
+
+- **Qué pasó:** se le sumó una conversación con los tres orígenes de
+  automatización (flow, sequence, broadcast). Es la que fija que sean **una** fila
+  en "Quién responde" y no tres, que era el bug que dejaba el dashboard en blanco.
+- **Qué hay que saber:** §11.8 del plano describe el set de 6 y sus valores
+  esperados. Los del script son los del set real, que es el que vale. Cinco
+  expectativas escritas a mano cambiaron con la conversación nueva (7
+  conversaciones, 7 recibidos, 8 enviados, mediana 45 s) y están recalculadas con
+  el motivo al lado.
+- **Tres cosas que el script dejó claras y conviene no olvidar:** el segundo
+  episodio de una conversación aparece solo cuando pasan más de 12 h sin
+  mensajes (y si nadie lo contesta cuenta como "sin respuesta"); los días de las
+  tendencias se cortan en la zona del negocio, así que un rango que arranca a las
+  00:00 UTC empieza el día anterior; y un Member ve los episodios de sus
+  conversaciones, no las conversaciones.
+
+### `knownButtonExtra` no está conectado en el runner
+
+- **Qué quedó:** `buttonTextsFromRows` (`lib/agent/rules/button-texts.ts`) está
+  escrita y probada, pero nadie la llama: la condición `inbound.is_known_button`
+  sigue usando solo los 12 textos de la constante.
+- **Por qué:** conectarla es una línea en `lib/agent/runner.ts`, y ese archivo lo
+  estaba tocando la sesión de multimedia en paralelo.
+- **Qué hay que hacer después de mergear multimedia:** en `runner.ts`, leer los
+  textos de botón (`BUTTON_TEXTS_QUERY` dice qué consultar) y pasarlos como
+  `knownButtonExtra` a `buildPreRuleContext`. Los 12 de la constante siguen
+  valiendo: las dos fuentes se suman.
+
+### Versiones del clasificador: solo lectura
+
+- **Qué quedó:** la pantalla de Tareas muestra la versión activa y el tamaño del
+  set de control, pero no se puede crear una versión, activarla, volver a la
+  anterior ni "reclasificar los dudosos" (F25).
+- **Por qué:** la versión vive en una constante del código
+  (`PROMPT_VERSION` en `lib/patterns/classify-run.ts`) y no en la base, así que no
+  hay nada que activar; y evaluar una versión contra el set de control necesita
+  llamar al proveedor de IA, que esta corrida no podía hacer.
+- **Qué se decidió:** la pantalla lo dice con esas palabras, en vez de mostrar
+  botones que no hacen nada.
+
+### `close_classification` no tiene corridas propias
+
+- **Qué quedó:** la columna "Última corrida" de esa tarea dice "Sin corridas
+  propias todavía".
+- **Por qué:** no deja un run con `source` propio en `agent_runs`, así que no hay
+  de dónde leer la fecha.
+- **Qué se decidió:** decirlo. Mostrar la fecha de otra tarea sería peor que no
+  mostrar nada.
+
+### "Por qué derivó" agrupa texto libre
+
+- **Qué quedó:** el motivo de una derivación por herramienta lo escribe el modelo
+  en una frase libre. Se agrupa por el texto normalizado y se muestra la última
+  redacción, con top 6 + "Otros motivos".
+- **Por qué:** dos frases que dicen lo mismo con otras palabras cuentan como dos
+  motivos distintos. Los de guardarraíl sí tienen clave estable y se traducen.
+- **Qué conviene después:** que `escalateToHuman` guarde también un código de
+  motivo además de la frase.
+
+### ~~Los `verify-*.mjs` no se corrieron~~ — RESUELTO el 28/9/2026
+
+- **Qué se hizo:** `verify-dashboards.mjs` se extendió con las funciones nuevas
+  (el grupo de autor, la fila única de automatizaciones, las dos medianas que
+  antes eran la misma, quién respondió primero, la aprobación de respuestas, las
+  tendencias densas, los patrones con su `text_id`, el estado de la clasificación
+  y el scope de un Member en todo eso) y sale **Todo verde**, igual que
+  `verify-rls.mjs`. Se corrieron de a uno.
+
+### Las 15 funciones se probaron contra la base real, sin aplicar nada
+
+- **Qué se hizo:** el cuerpo de cada función nueva se corrió como un `SELECT` de
+  solo lectura contra la base real (workspace de Wendy, 2.471 mensajes),
+  sustituyendo los parámetros por literales y las funciones que todavía no
+  existen por su definición en línea. Es lo que valida la **semántica** —nombres
+  de columnas, joins, agregados, rutas de jsonb—, que el parser no puede ver.
+  Las 15 corren.
+- **Lo que encontró:** en `chat_dashboard_patterns`, "También: …" venía con un
+  `null` y una cadena vacía adentro (un mensaje sin texto comparte el normalizado
+  vacío con otros). Corregido en la migración.
+- **Lo que hay que saber antes de abrir la pantalla:** hoy **los 1.597 mensajes
+  salientes de la base tienen `origin = 'external'`** y los entrantes no tienen
+  origen (es correcto: sólo los salientes lo llevan). Así que "Quién responde" va
+  a mostrar **una sola fila, Fuera del sistema**, y la sección del agente va a
+  decir que todavía no respondió ninguna conversación. No está roto: es que el
+  agente estuvo apagado y todo se respondió desde ManyChat o la app de Instagram.
+  El resto: 237 episodios, 3 borradores pendientes, mediana del agente 64 s, 558
+  textos sin clasificar y la última corrida del clasificador en `error` (la API
+  key revocada).
+
+### ~~La revisión visual con la app~~ — HECHA el 28/9/2026, con Wendy logueada
+
+- **Qué se hizo:** Wendy inició sesión en `localhost:3001` y se recorrió
+  Dashboards › Chat (con datos reales, filtrando por "Fuera del sistema", tocando
+  una categoría de Patrones), Settings › Tareas y la cola de borradores, a 1440 y
+  a 390 px.
+- **Lo que se probó de punta a punta, con clics reales (no solo mirado):**
+  - Filtrar la tabla "Quién responde" por una fila cambia la URL a `?author=…` y
+    oculta la sección del agente con el aviso, exactamente igual con "Fuera del
+    sistema" que con Automatizaciones (F17).
+  - Tocar una categoría de Patrones pide "Qué le responden" a la Server Action
+    nueva, que llama a `chat_dashboard_replies` y muestra el "% no respondió".
+  - El acceso a Borradores desde el sidebar y desde la barra ya llevan a
+    `?quien=todos`, y la cola vacía en "míos" dice "Hay 5 de otras personas" con
+    el botón "Ver todos (5)", que al tocarlo trae los 5 borradores reales.
+  - A 390 px los filtros bajan a su franja propia y las tarjetas quedan en 2
+    columnas, como el prototipo.
+- **Ningún bug encontrado.** Lo único fuera de lo común son los datos: el agente
+  actuó en 3 % de 187 conversaciones y "Quién responde" trae una sola fila
+  ("Fuera del sistema", 62 %), porque el agente estuvo apagado — es el
+  comportamiento correcto, no un error.
+- **Un detalle cosmético, no un bug:** a 390 px el título "Conversaciones nuevas"
+  se trunca a "Conversaciones …" en la tarjeta. El prototipo también trunca
+  textos largos en mobile; no hace falta tocarlo.
 
 ## Heredado de la Etapa 2
 

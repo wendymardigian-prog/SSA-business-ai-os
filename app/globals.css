@@ -34,6 +34,29 @@
    * columnas no se comprime, pasa a tarjetas apiladas. Variante `queue:`.
    */
   --breakpoint-queue: 980px;
+  /*
+   * El dashboard de Chat (Bloque 3): abajo de 860 px los filtros no entran al
+   * lado del titulo y bajan a una franja propia, como en el prototipo.
+   */
+  --breakpoint-topbar: 860px;
+
+  /*
+   * Colores de serie del dashboard de Chat. Son estables por autor: el agente
+   * es SIEMPRE el mismo color en las barras, en la tabla y en la leyenda, asi
+   * un color se puede aprender una vez. Validados en claro y en oscuro.
+   */
+  --color-c-agent: var(--c-agent);
+  --color-c-team: var(--c-team);
+  --color-c-auto: var(--c-auto);
+  --color-c-ext: var(--c-ext);
+  --color-recv: var(--recv);
+  --color-sent: var(--sent);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --color-ig: var(--ig);
+  --color-wa: var(--wa);
+  --color-grid: var(--grid);
 }
 
 :root {
@@ -62,6 +85,20 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
+
+  /* Series del dashboard de Chat (valores del prototipo, modo claro). */
+  --c-agent: #4f46e5;
+  --c-team: #0d9488;
+  --c-auto: #d97706;
+  --c-ext: #a1a1aa;
+  --recv: #a8a8b3;
+  --sent: #4f46e5;
+  --good: #16a34a;
+  --bad: #dc2626;
+  --warn: #c2410c;
+  --ig: #db2777;
+  --wa: #16a34a;
+  --grid: #ececf0;
 }
 
 .dark {
@@ -89,6 +126,20 @@
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.35 0 0);
+
+  /* Series del dashboard de Chat (valores del prototipo, modo oscuro). */
+  --c-agent: #7c83f2;
+  --c-team: #11a595;
+  --c-auto: #d17f08;
+  --c-ext: #6b6b75;
+  --recv: #8b8b96;
+  --sent: #7c83f2;
+  --good: #4ade80;
+  --bad: #f87171;
+  --warn: #fb923c;
+  --ig: #ec4899;
+  --wa: #22c55e;
+  --grid: #26262b;
 }
 
 /*
@@ -222,3 +273,53 @@
  * nunca se colapsa, asi que la variante no lo puede tocar.
  */
 @custom-variant collapsed (html.sidebar-collapsed &:where([data-sidebar="desktop"], [data-sidebar="desktop"] *));
+
+/*
+ * `dark:` sigue a la clase `.dark`, que es la que pone el conmutador del perfil.
+ *
+ * Sin esto, en Tailwind 4 las utilidades `dark:*` miran `prefers-color-scheme`
+ * (el tema del sistema operativo) mientras los tokens (`bg-background`) siguen
+ * a la clase: alguien con el sistema en claro y la app en oscuro veia texto
+ * oscuro sobre fondo oscuro en los pedazos escritos con `dark:`. Venia de la
+ * Etapa 1 y estaba anotado en docs/PENDIENTE.md.
+ *
+ * El booker público no se toca: usa `data-theme` y tokens propios, sin `dark:`.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Las grillas del dashboard de Chat (prototipo).
+ *
+ * Como clases y no como utilidades repetidas en diez componentes: las tres
+ * aparecen muchas veces y el ancho de cada columna es una decision de diseño,
+ * no de cada tarjeta. `.row2` es 3fr/2fr: el panel de la izquierda lleva el
+ * grafico y el de la derecha una lista, que necesita menos lugar.
+ */
+@layer components {
+  .g3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .row2 {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+  }
+  .split {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  @media (max-width: 1180px) {
+    .row2 {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 980px) {
+    .g3,
+    .split {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

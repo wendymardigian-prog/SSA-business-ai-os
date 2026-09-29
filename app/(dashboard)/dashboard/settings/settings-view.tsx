@@ -22,6 +22,7 @@ import { MessagePersistenceSettings } from "@/components/settings/message-persis
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 interface WorkspaceSettings {
   id: string;
@@ -88,6 +89,7 @@ export function SettingsView({
   return (
     <div className="flex h-full flex-col">
       <PageHeader route="/dashboard/settings" />
+      <SettingsTabs />
 
       {/* Settings form */}
       <div className="flex-1 overflow-auto">

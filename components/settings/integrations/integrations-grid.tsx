@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { migrateZernioSecretsToVault } from "@/lib/actions/integrations";
 import { providersBySection, getProvider } from "@/lib/integrations/providers";
 import { needsAttention } from "@/lib/integrations/status";
@@ -83,6 +84,7 @@ export function IntegrationsGrid({
           </button>
         }
       />
+      <SettingsTabs />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {sections.length === 0 ? (

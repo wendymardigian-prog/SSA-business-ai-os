@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
-import { moveText, createCategoryAndMove, renameCategory, mergeCategory } from "@/lib/patterns/corrections";
+import { moveText, createCategoryAndMove, renameCategory, mergeCategory, confirmText, addButtonText, removeButtonText } from "@/lib/patterns/corrections";
+import { normalizeForGrouping } from "@/lib/text/normalize";
 
 const NOT_ADMIN = "Solo Owner y Admin pueden corregir categorías";
 
@@ -39,5 +40,37 @@ export async function mergeCategoryAction(sourceId: string, targetId: string) {
   if (!ctx) return { ok: false as const, error: NOT_ADMIN };
   const r = await mergeCategory(ctx.supabase, { workspaceId: ctx.workspace.id, sourceId, targetId, userId: ctx.user.id });
   revalidatePath("/dashboard/dashboards/chat");
+  return r;
+}
+
+/** F25: "Está bien" de la revisión rápida. No cambia `source`: sigue siendo del modelo. */
+export async function confirmTextAction(textId: string) {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false as const, error: NOT_ADMIN };
+  const r = await confirmText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, userId: ctx.user.id });
+  revalidatePath("/dashboard/settings/background");
+  return r;
+}
+
+/** F19: sumar un texto a la lista de botones conocidos. */
+export async function addButtonTextAction(text: string) {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false as const, error: NOT_ADMIN };
+  const r = await addButtonText(ctx.supabase, {
+    workspaceId: ctx.workspace.id,
+    text,
+    userId: ctx.user.id,
+    normalize: normalizeForGrouping,
+  });
+  revalidatePath("/dashboard/settings/background");
+  return r;
+}
+
+/** F19: sacar un texto de la lista de botones. */
+export async function removeButtonTextAction(textId: string) {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false as const, error: NOT_ADMIN };
+  const r = await removeButtonText(ctx.supabase, { workspaceId: ctx.workspace.id, textId, userId: ctx.user.id });
+  revalidatePath("/dashboard/settings/background");
   return r;
 }

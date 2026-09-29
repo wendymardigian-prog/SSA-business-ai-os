@@ -5,6 +5,7 @@ import { firstParam, pickEnum, pickPage, sanitizeSearch, type SearchParams } fro
 import { AGENT_RUN_PUBLIC_COLUMNS } from "./public";
 import { RUN_STATUS_LABELS } from "./run-labels";
 import type { RunFilters, RunRow, RunStepRow } from "./screen";
+import { countNewRunFilters, isRunDetailFilter, pickRuleFilter, runDetailQuery } from "./runs-filters";
 
 /**
  * La pestana Runs (F28): filtros que viven en la URL y la consulta que los
@@ -29,7 +30,16 @@ const STATUS_VALUES = Object.keys(RUN_STATUS_LABELS);
 
 export function parseRunFilters(
   params: SearchParams,
-  known: { currentAgentId: string; agentIds: string[]; channelIds: string[]; toolNames: string[]; models: string[]; allowCost: boolean },
+  known: {
+    currentAgentId: string;
+    agentIds: string[];
+    channelIds: string[];
+    toolNames: string[];
+    models: string[];
+    allowCost: boolean;
+    /** Los ids de las reglas que existen hoy, para validar el filtro (§15.4). */
+    ruleIds?: string[];
+  },
 ): RunFilters {
   const agenteRaw = firstParam(params.agente);
   const agente =
@@ -57,6 +67,8 @@ export function parseRunFilters(
     resultado: pickEnum(params.resultado, STATUS_VALUES),
     modelo: pickEnum(params.modelo, known.models),
     accion: pickEnum(params.accion, known.toolNames),
+    regla: pickRuleFilter(firstParam(params.regla), known.ruleIds ?? []),
+    detalle: isRunDetailFilter(firstParam(params.detalle)) ? firstParam(params.detalle) : "",
     costoMin: known.allowCost ? num(firstParam(params.costo_min)) : null,
     costoMax: known.allowCost ? num(firstParam(params.costo_max)) : null,
   };
@@ -71,6 +83,7 @@ export function countActiveRunFilters(f: RunFilters, currentAgentId: string): nu
   if (f.resultado) n++;
   if (f.modelo) n++;
   if (f.accion) n++;
+  n += countNewRunFilters(f.detalle, f.regla);
   if (f.costoMin !== null || f.costoMax !== null) n++;
   return n;
 }
@@ -134,6 +147,14 @@ export async function loadRuns(
   if (f.resultado) query = query.eq("status", f.resultado as AgentRunStatus);
   if (f.modelo) query = query.eq("model", f.modelo);
   if (f.accion) query = query.eq("agent_run_steps.kind", "tool_call").eq("agent_run_steps.name", f.accion);
+
+  // Regla y detalle (§15.4). El detalle se busca con `like`: `status_detail`
+  // lleva varias notas separadas por coma ("rule:r3, outside_hours") y un `eq`
+  // no encontraria nada en cuanto el turno tenga dos.
+  const detail = runDetailQuery(f.detalle, f.regla);
+  if (detail.statusDetailLike) query = query.like("status_detail", detail.statusDetailLike);
+  if (detail.routingRuleId) query = query.eq("routing->>rule_id", detail.routingRuleId);
+  if (detail.routingRuleIsNull) query = query.eq("routing->>mode", "rules").is("routing->>rule_id", null);
   if (args.includeCost && f.costoMin !== null) query = query.gte("cost_usd", f.costoMin);
   if (args.includeCost && f.costoMax !== null) query = query.lte("cost_usd", f.costoMax);
 

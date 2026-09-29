@@ -65,19 +65,27 @@ export function PageHeader({
         {shownTooltip && <InfoTooltip text={shownTooltip} />}
         {left}
         <div className="flex-1" />
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-2 topbar:flex">
           {filters}
           {right}
         </div>
         {/* En el celular a la derecha solo entran la campana y los borradores. */}
-        <div className="flex items-center gap-1 md:hidden">
+        <div className="flex items-center gap-1 topbar:hidden">
           {right}
           {chrome && <MobileChromeActions chrome={chrome} />}
         </div>
       </header>
 
+      {/*
+        La franja de filtros, de 48 px, abajo de 860 px (F13).
+        El corte es `topbar:` y no `md:`: entre 768 y 860 px los filtros del
+        dashboard (canal, respondido por y periodo, con sus menus) no entran al
+        lado del titulo y lo empujaban fuera de la barra. Vale para todas las
+        pantallas que pasan filtros, asi el lugar donde aparecen es el mismo
+        siempre.
+      */}
       {filters && (
-        <div className="flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 py-2 md:hidden">
+        <div className="flex h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 topbar:hidden">
           {filters}
         </div>
       )}

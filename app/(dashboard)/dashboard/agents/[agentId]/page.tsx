@@ -12,6 +12,7 @@ import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTab
 import { agentUsableTagIds } from "@/lib/tags/effects";
 import { serializeSkillsForScreen, serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
+import { ruleFilterOptions } from "@/lib/agent/runs-filters";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
@@ -112,6 +113,9 @@ export default async function AgentDetailPage({
   if (tab === "runs") {
     const tools = serializeToolsForScreen().map((t) => ({ name: t.name, label: t.label }));
     const models = [...new Set([agent.model, agent.fallbackModel, ...pricedModels.map((p) => p.split("/")[1])].filter((m): m is string => Boolean(m)))].sort();
+    // Las reglas del agente, para el filtro por regla (§15.4). Se valida contra
+    // las que existen: un id inventado en la URL no llega a la consulta.
+    const ruleList = screenAgent.responseRules.map((r) => ({ id: r.id, name: r.name ?? null }));
     const filters = parseRunFilters(query, {
       currentAgentId: agent.id,
       agentIds: agents.map((a) => a.id),
@@ -119,6 +123,7 @@ export default async function AgentDetailPage({
       toolNames: tools.map((t) => t.name),
       models,
       allowCost: isAdmin,
+      ruleIds: ruleList.map((r) => r.id),
     });
     const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
     // Admin: service role, con costos. Member: su cliente, RLS = scope, sin costos.
@@ -149,6 +154,7 @@ export default async function AgentDetailPage({
         channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })),
         models,
         tools,
+        rules: ruleFilterOptions(ruleList),
       },
       showCost: isAdmin,
     };
