@@ -193,7 +193,7 @@ describe("insertMessage", () => {
         supabase: client, conversationId: "cv-1", direction: "inbound",
         text: "hola", platformMessageId: "WA-1", createdAt: "2026-09-08T10:00:00Z",
       })
-    ).resolves.toBe(true);
+    ).resolves.toMatchObject({ stored: true });
     expect(calls.inserts[0].values).toMatchObject({
       conversation_id: "cv-1", direction: "inbound", platform_message_id: "WA-1",
     });
@@ -206,7 +206,7 @@ describe("insertMessage", () => {
         supabase: client, conversationId: "cv-1", direction: "outbound",
         text: "hola", platformMessageId: "WA-1", createdAt: "2026-09-08T10:00:00Z",
       })
-    ).resolves.toBe(false);
+    ).resolves.toMatchObject({ stored: false });
   });
 });
 
@@ -225,9 +225,7 @@ describe("persistInboundMessage", () => {
       select: { workspaces: { persist_zernio_inbound: true } },
     });
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
-      true,
-    );
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: true });
     expect(calls.inserts).toHaveLength(1);
     expect(calls.inserts[0].values).toMatchObject({
       conversation_id: "cv-1",
@@ -242,9 +240,7 @@ describe("persistInboundMessage", () => {
       select: { workspaces: { persist_zernio_inbound: false } },
     });
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
-      false,
-    );
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
     expect(calls.inserts).toHaveLength(0);
   });
 
@@ -255,7 +251,7 @@ describe("persistInboundMessage", () => {
 
     await expect(
       persistInboundMessage({ supabase: client, channel: evolution, ...base }),
-    ).resolves.toBe(true);
+    ).resolves.toMatchObject({ stored: true });
     expect(calls.inserts).toHaveLength(1);
   });
 
@@ -265,9 +261,7 @@ describe("persistInboundMessage", () => {
       insertError: { code: "23505", message: "duplicate key" },
     });
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
-      false,
-    );
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
   });
 
   it("si el insert falla, no lanza: guardar no puede tumbar la recepcion", async () => {
@@ -277,9 +271,7 @@ describe("persistInboundMessage", () => {
       insertError: { code: "42501", message: "permission denied" },
     });
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
-      false,
-    );
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
   });
 
   it("si la base explota al leer el interruptor tampoco lanza", async () => {
@@ -290,9 +282,7 @@ describe("persistInboundMessage", () => {
       },
     } as unknown as Parameters<typeof persistInboundMessage>[0]["supabase"];
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toBe(
-      false,
-    );
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
   });
 
   it("guarda los dos ids: el de Zernio deduplica, el nativo es el handle contra Meta", async () => {

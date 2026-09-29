@@ -259,7 +259,7 @@ export async function processInboundEmail(
     };
   }
 
-  const stored = await insertMessage({
+  const { stored } = await insertMessage({
     supabase,
     conversationId: conversation.id,
     direction: "inbound",

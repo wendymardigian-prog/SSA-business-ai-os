@@ -18,6 +18,7 @@ import type { Database, MessageOrigin } from "@/lib/types/database";
 import { executeFlow, findWaitingSession, resumeSession } from "@/lib/flow-engine/engine";
 import { matchTrigger } from "@/lib/flow-engine/trigger-matcher";
 import type { IncomingMessage } from "@/lib/flow-engine/types";
+import { fromZernioAttachments, toAttachmentsColumn, type ChatAttachment } from "@/lib/messages/attachments";
 
 type Db = SupabaseClient<Database>;
 
@@ -168,6 +169,19 @@ export async function upsertConversation({
  *   soporte contra Meta, y el backfill no lo devuelve: lo que no se guarde
  *   cuando entra el webhook no se recupera nunca.
  */
+/**
+ * El resultado de guardar un mensaje.
+ *
+ * `stored` es lo unico que mira la mayoria de los llamadores: false puede ser
+ * "ya estaba" (el eco de algo que mandamos) o "fallo", y para el receptor los
+ * dos significan lo mismo. `id` lo necesita la ingesta de media, que tiene que
+ * volver sobre la fila cuando el archivo termina de bajar.
+ */
+export interface InsertedMessage {
+  stored: boolean;
+  id: string | null;
+}
+
 export async function insertMessage({
   supabase,
   conversationId,
@@ -221,8 +235,10 @@ export async function insertMessage({
     to?: string[] | null;
     cc?: string[] | null;
   } | null;
-}): Promise<boolean> {
-  const { error } = await supabase.from("messages").insert({
+}): Promise<InsertedMessage> {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
     conversation_id: conversationId,
     direction,
     text,
@@ -248,14 +264,20 @@ export async function insertMessage({
           email_cc: (email.cc ?? null) as never,
         }
       : {}),
-  });
+    })
+    // El id hace falta para la media (F3): el mensaje se guarda con el adjunto
+    // en `pending`, se baja el archivo y recien despues se actualiza la fila.
+    // Sin el id habria que volver a buscar el mensaje por su
+    // platform_message_id, que es una consulta de mas en el camino mas caliente.
+    .select("id")
+    .single();
 
-  if (!error) return true;
-  if (error.code === "23505") return false;
+  if (!error) return { stored: true, id: data?.id ?? null };
+  if (error.code === "23505") return { stored: false, id: null };
 
   // Sin el texto del mensaje: el error de Postgres puede traer la fila entera.
   console.error("[inbound] no pude guardar el mensaje:", error.message);
-  return false;
+  return { stored: false, id: null };
 }
 
 /**
@@ -316,7 +338,7 @@ export async function persistInboundMessage({
   postbackPayload?: string | null;
   callbackData?: string | null;
   platformNativeMessageId?: string | null;
-}): Promise<boolean> {
+}): Promise<InsertedMessage> {
   try {
     if (channel.provider === "zernio") {
       const { data: workspace, error } = await supabase
@@ -327,9 +349,9 @@ export async function persistInboundMessage({
 
       if (error) {
         console.error("[inbound] no pude leer el interruptor de guardado:", error.message);
-        return false;
+        return { stored: false, id: null };
       }
-      if (!workspace?.persist_zernio_inbound) return false;
+      if (!workspace?.persist_zernio_inbound) return { stored: false, id: null };
     }
 
     return await insertMessage({
@@ -352,7 +374,7 @@ export async function persistInboundMessage({
       "[inbound] error inesperado guardando el mensaje entrante:",
       err instanceof Error ? err.message : "desconocido",
     );
-    return false;
+    return { stored: false, id: null };
   }
 }
 
@@ -649,7 +671,14 @@ export async function handleMessageSentEcho({
     attachments?: unknown[] | null;
     sentAt?: string | null;
   };
-}): Promise<{ stored: boolean; reason?: string }> {
+}): Promise<{
+  stored: boolean;
+  reason?: string;
+  messageId?: string | null;
+  conversationId?: string;
+  /** Los adjuntos normalizados, para que el receptor baje los archivos (F3). */
+  items?: ChatAttachment[];
+}> {
   // Solo ecos de salientes. Un `message.sent` con direction incoming no debería
   // pasar, pero si pasa no es un saliente y no se toca.
   if (message.direction && message.direction !== "outgoing") {
@@ -667,7 +696,12 @@ export async function handleMessageSentEcho({
 
   if (!conversation) return { stored: false, reason: "conversación no encontrada" };
 
-  const stored = await insertMessage({
+  // El saliente tambien se normaliza (F3): un audio que la operadora mando
+  // desde la app de Instagram tiene que poder escucharse en la bandeja, y su
+  // transcripcion le sirve al agente para no repetir lo que ya se dijo.
+  const items = fromZernioAttachments(message.attachments ?? null);
+
+  const { stored, id } = await insertMessage({
     supabase,
     conversationId: conversation.id,
     direction: "outbound",
@@ -676,11 +710,11 @@ export async function handleMessageSentEcho({
     // platform_message_id (deduplica), el nativo de Meta aparte.
     platformMessageId: message.id ?? null,
     platformNativeMessageId: message.platformMessageId ?? null,
-    attachments: message.attachments?.length ? message.attachments : null,
+    attachments: toAttachmentsColumn(items),
     createdAt: message.sentAt || new Date().toISOString(),
     workspaceId: channel.workspace_id,
     origin: "external",
   });
 
-  return { stored };
+  return { stored, messageId: id, conversationId: conversation.id, items };
 }

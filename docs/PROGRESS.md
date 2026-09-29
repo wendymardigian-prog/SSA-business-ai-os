@@ -17,6 +17,7 @@ Un lead manda una nota de voz por Instagram o WhatsApp. El mensaje entra con `te
 |---|---|
 | `npx vitest run` | 285 archivos, **3327 tests en verde** |
 | `npm run build` | OK (exit 0) |
+| `npm run lint` | **1 error y 41 warnings, los dos preexistentes** (ver PENDIENTE). El error está en `components/scheduling/booker/use-embed-bridge.ts:22`, que es de la Etapa 4 |
 | Última migración | `00101_bg_task_dedupe`, en archivos y **aplicada** en la base (`list_migrations`). Las nuevas: **00102 y 00103** |
 | Testing | Solo `vitest ^3.2.4`, `environment: node`, `include: **/*.test.ts`. **No se suman dependencias** |
 | Evolution API (Railway) | **v2.3.7** en `evolution-api-production-8691c.up.railway.app` |

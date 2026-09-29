@@ -57,6 +57,9 @@ vi.mock("@/lib/agent/dispatch", () => ({ maybeScheduleAgentTurn }));
 const supersedePendingDrafts = vi.fn();
 vi.mock("@/lib/agent/drafts/lifecycle", () => ({ supersedePendingDrafts }));
 
+const storeInboundMedia = vi.fn();
+vi.mock("@/lib/inbound-media", () => ({ storeInboundMedia }));
+
 const WS = "ws-1";
 const ACCOUNT = "late-account-1";
 const SECRET = "secreto-del-workspace";
@@ -179,10 +182,13 @@ beforeEach(() => {
   claimWebhookEvent.mockResolvedValue(true);
   upsertContactForSender.mockResolvedValue({ contactId: "contact-1", existed: true });
   upsertConversation.mockResolvedValue({ id: "conv-1", isAutomationPaused: false });
-  persistInboundMessage.mockResolvedValue(undefined);
+  // Desde F3 devuelve el id del mensaje: la ingesta de media lo necesita
+  // para volver sobre la fila cuando el archivo termina de bajar.
+  persistInboundMessage.mockResolvedValue({ stored: true, id: "msg-1" });
   applyOptOut.mockResolvedValue({ matched: false });
   runInboundAutomation.mockResolvedValue({ claimedBy: null });
-  handleMessageSentEcho.mockResolvedValue(undefined);
+  handleMessageSentEcho.mockResolvedValue({ stored: true, messageId: "msg-eco", conversationId: "conv-1" });
+  storeInboundMedia.mockResolvedValue({ items: [], stored: 0, failed: 0 });
 });
 
 afterEach(() => {
@@ -340,6 +346,74 @@ describe("webhook de Zernio: el camino del DM", () => {
       expect.anything(),
       expect.objectContaining({ workspaceId: WS, conversationId: "conv-1" }),
     );
+  });
+
+  it("una nota de voz entra con el adjunto en pending y se copia el archivo (F3)", async () => {
+    db();
+    await callRoute(
+      post(dm({ message: { text: null, attachments: [{ type: "audio", url: "https://cdn.meta/nota.m4a" }] } })),
+    );
+    await runAfter();
+
+    // Se inserta con la forma nueva y el adjunto todavia sin archivo.
+    const insert = persistInboundMessage.mock.calls[0][0];
+    expect(insert.attachments).toEqual({
+      v: 2,
+      items: [expect.objectContaining({ kind: "audio", sourceUrl: "https://cdn.meta/nota.m4a", status: "pending" })],
+    });
+
+    // Y despues se baja, en el mismo after(): la URL de Meta vence.
+    expect(storeInboundMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: WS, conversationId: "conv-1", messageId: "msg-1" }),
+    );
+  });
+
+  it("un DM sin texto deja una etiqueta en el preview, no una fila en blanco (F15)", async () => {
+    db();
+    await callRoute(post(dm({ message: { text: null, attachments: [{ type: "audio", url: "https://cdn/a.m4a" }] } })));
+    await runAfter();
+
+    expect(upsertConversation).toHaveBeenCalledWith(expect.objectContaining({ preview: "🎵 Audio" }));
+  });
+
+  it("la respuesta a una historia se guarda como adjunto: hoy se descartaba (F3)", async () => {
+    db();
+    await callRoute(
+      post(
+        dm({
+          message: { text: "me encanto" },
+          metadata: { storyReply: { storyId: "st-1", storyUrl: "https://cdn/story.jpg" } },
+        }),
+      ),
+    );
+    await runAfter();
+
+    const insert = persistInboundMessage.mock.calls[0][0];
+    expect(insert.attachments.items).toEqual([
+      expect.objectContaining({ kind: "story_reply", meta: { storyId: "st-1", storyUrl: "https://cdn/story.jpg" } }),
+    ]);
+  });
+
+  it("un reel compartido en el texto queda como tarjeta con link (F3)", async () => {
+    db();
+    await callRoute(post(dm({ message: { text: "mira https://www.instagram.com/reel/Cabc123/" } })));
+    await runAfter();
+
+    const insert = persistInboundMessage.mock.calls[0][0];
+    expect(insert.attachments.items).toEqual([
+      expect.objectContaining({ kind: "share", meta: { url: "https://www.instagram.com/reel/Cabc123" } }),
+    ]);
+    // El texto se conserva igual: el link no lo reemplaza.
+    expect(insert.text).toBe("mira https://www.instagram.com/reel/Cabc123/");
+  });
+
+  it("un DM de texto pelado no guarda adjuntos ni llama a la descarga", async () => {
+    db();
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(persistInboundMessage.mock.calls[0][0].attachments).toBeNull();
+    expect(storeInboundMedia).not.toHaveBeenCalled();
   });
 
   it("si el lead pidio que no le escriban, no se automatiza ni se agenda al agente", async () => {

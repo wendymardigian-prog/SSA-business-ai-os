@@ -46,6 +46,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { Zernio } from "@/lib/zernio-client";
+import { fromZernioAttachments, toAttachmentsColumn } from "@/lib/messages/attachments";
 // Relativo y no "@/": este modulo lo importa tambien scripts/backfill-zernio-messages.mjs,
 // que corre con el type-stripping de Node y no sabe resolver el alias. Los
 // imports de tipos de arriba se borran al ejecutar, asi que esos pueden quedar.
@@ -140,7 +141,19 @@ export function toMessageRow(
     workspace_id: workspaceId,
     direction: mapped.direction,
     text: mapped.text,
-    attachments: mapped.attachments as MessageInsert["attachments"],
+    // Los adjuntos se normalizan igual que en el webhook (F1), pero NO quedan
+    // en `pending`: el backfill trae historial, y las URLs del CDN de Meta de
+    // un mensaje de hace meses ya vencieron. Dejarlas pendientes seria un
+    // "Descargando adjunto…" girando para siempre en cada mensaje viejo.
+    //
+    // Quedan en `none`, que es lo que la burbuja lee como "Adjunto ya no
+    // disponible": la etiqueta del tipo se ve, y no se promete un archivo que
+    // no existe.
+    attachments: toAttachmentsColumn(
+      fromZernioAttachments(mapped.attachments).map((item) =>
+        item.status === "pending" ? { ...item, status: "none" as const } : item,
+      ),
+    ) as MessageInsert["attachments"],
     platform_message_id: mapped.platform_message_id,
     // El historial devuelve el id nativo de Meta en `id` (ver cabecera). Se
     // guarda tambien en su columna, salvo que tenga forma de id de Zernio.

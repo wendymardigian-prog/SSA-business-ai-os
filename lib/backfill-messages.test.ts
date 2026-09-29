@@ -423,3 +423,42 @@ describe("addStats", () => {
     });
   });
 });
+
+describe("los adjuntos del historial (F1, F3)", () => {
+  it("se normalizan a la forma nueva, pero SIN prometer un archivo que ya vencio", () => {
+    const row = toMessageRow(
+      {
+        id: "6ab5aaaaaaaaaaaaaaaaaaaa",
+        message: "",
+        direction: "incoming",
+        attachments: [{ type: "audio", url: "https://cdn.meta/vencida.m4a" }],
+        createdAt: "2026-03-01T10:00:00.000Z",
+      },
+      "cv-1",
+      "ws-1",
+    );
+
+    expect(row?.attachments).toEqual({
+      v: 2,
+      items: [
+        expect.objectContaining({
+          kind: "audio",
+          // "none" y no "pending": el backfill no baja nada, y un pendiente
+          // eterno seria un spinner girando para siempre.
+          status: "none",
+          sourceUrl: "https://cdn.meta/vencida.m4a",
+        }),
+      ],
+    });
+  });
+
+  it("un mensaje del historial sin adjuntos sigue guardando null", () => {
+    const row = toMessageRow(
+      { id: "6ab5aaaaaaaaaaaaaaaaaaaa", message: "hola", direction: "incoming", createdAt: "2026-03-01T10:00:00.000Z" },
+      "cv-1",
+      "ws-1",
+    );
+
+    expect(row?.attachments).toBeNull();
+  });
+});

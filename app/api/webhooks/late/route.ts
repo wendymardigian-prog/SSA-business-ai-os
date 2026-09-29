@@ -23,7 +23,14 @@ import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webho
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
-import { messagePreview } from "@/lib/message-preview";
+import { messagePreview, previewForMessage } from "@/lib/message-preview";
+import {
+  fromZernioAttachments,
+  sharedPostsInText,
+  storyReplyAttachment,
+  toAttachmentsColumn,
+} from "@/lib/messages/attachments";
+import { storeInboundMedia } from "@/lib/inbound-media";
 import {
   applyOptOut,
   pauseSequencesOnReply,
@@ -265,7 +272,20 @@ async function processMessageEvent(
 
   // ── Upsert conversation ──────────────────────────────────────────────────
 
-  const preview = messagePreview(msg.text);
+  // Los adjuntos, normalizados y todavia sin archivo (F1, F3). Se arman antes
+  // del preview porque el preview los usa: un DM que es solo una nota de voz
+  // dejaba la fila de la lista en blanco.
+  //
+  // Se suman dos cosas que hoy se descartan: la respuesta a una historia (que
+  // solo llegaba a las automatizaciones) y los links a posts de Instagram que
+  // vienen en el texto, que quedaban como una URL pelada.
+  const attachments = [
+    ...fromZernioAttachments(msg.attachments),
+    ...(storyReplyAttachment(metadata?.storyReply) ? [storyReplyAttachment(metadata?.storyReply)!] : []),
+    ...sharedPostsInText(msg.text),
+  ];
+
+  const preview = previewForMessage({ text: msg.text, attachments: toAttachmentsColumn(attachments) });
 
   const conversation = await upsertConversation({
     supabase,
@@ -294,20 +314,38 @@ async function processMessageEvent(
   //     borrado o un reclamo de soporte contra Meta, y el endpoint de historial
   //     no lo devuelve: si no se guarda ahora, se pierde para siempre.
   //
-  // attachments va tal cual: son links a la media, no el archivo.
-  await persistInboundMessage({
+  // Los adjuntos entran en `pending`: la burbuja muestra "Descargando
+  // adjunto…" y el archivo se copia a nuestro Storage unas lineas mas abajo.
+  const inserted = await persistInboundMessage({
     supabase,
     channel,
     conversationId: conversation.id,
     text: msg.text ?? null,
     platformMessageId: msg.id ?? null,
     platformNativeMessageId: msg.platformMessageId ?? null,
-    attachments: msg.attachments?.length ? msg.attachments : null,
+    attachments: toAttachmentsColumn(attachments),
     createdAt: msg.sentAt || new Date().toISOString(),
     quickReplyPayload: metadata?.quickReplyPayload ?? null,
     postbackPayload: metadata?.postbackPayload ?? null,
     callbackData: metadata?.callbackData ?? null,
   });
+
+  // ── La media, adentro (F3) ────────────────────────────────────────────────
+  // Va aca, dentro del after() que ya existe, y no en la cola: la URL del CDN
+  // de Meta VENCE. Si se esperara al cron del minuto, a veces se llega tarde y
+  // despues no hay nada que escuchar ni que transcribir.
+  //
+  // Nunca puede voltear el webhook: storeInboundMedia atrapa todo y deja el
+  // motivo en el adjunto.
+  if (inserted.id && attachments.length > 0) {
+    await storeInboundMedia({
+      supabase,
+      workspaceId: channel.workspace_id,
+      conversationId: conversation.id,
+      messageId: inserted.id,
+      items: attachments,
+    });
+  }
 
   // ── Modo borrador (Bloque 2c) ─────────────────────────────────────────────
   // El lead escribio antes de que alguien aprobara: el borrador pendiente quedo
@@ -436,11 +474,23 @@ async function handleMessageSentWebhook(
 
   after(async () => {
     try {
-      await handleMessageSentEcho({
+      const echo = await handleMessageSentEcho({
         supabase,
         channel: { id: channel.id, workspace_id: channel.workspace_id },
         message: payload.message,
       });
+
+      // El mismo helper que los entrantes (F3): un audio que la operadora mando
+      // desde la app de Instagram tambien se copia a nuestro Storage.
+      if (echo.stored && echo.messageId && echo.conversationId && echo.items?.length) {
+        await storeInboundMedia({
+          supabase,
+          workspaceId: channel.workspace_id,
+          conversationId: echo.conversationId,
+          messageId: echo.messageId,
+          items: echo.items,
+        });
+      }
     } catch (err) {
       console.error("Webhook message.sent processing error:", err);
     }

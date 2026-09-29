@@ -19,11 +19,19 @@ function fakeDb(config: { conversation?: unknown; insertError?: { code?: string 
       builder.single = async () => ({ data: config.conversation ?? null, error: null });
       builder.insert = (values: Record<string, unknown>) => {
         inserts.push(values);
-        return {
-          select: () => builder,
-          single: async () => ({ data: null, error: config.insertError ?? null }),
+        // .select() despues de .insert() sigue hablando del INSERT, no de la
+        // tabla: tiene que devolver la fila insertada (o su error), no la fila
+        // que servian las lecturas. Devolver el builder hacia que un duplicado
+        // (23505) se leyera como un insert exitoso.
+        const result: Record<string, unknown> = {
+          select: () => result,
+          single: async () => ({
+            data: config.insertError ? null : { id: "m-nuevo" },
+            error: config.insertError ?? null,
+          }),
           then: (cb: (r: unknown) => unknown) => cb({ error: config.insertError ?? null }),
         };
+        return result;
       };
       return builder;
     },
