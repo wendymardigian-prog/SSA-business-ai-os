@@ -8,6 +8,7 @@ import { outboundMessageRow } from "@/lib/messages/outbound";
 import { applyManualReply } from "@/lib/agent/manual-reply";
 import { EvolutionError, sendText } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
+import { mergeThreadWithLocal, platformIdsOf, type LocalMessageMedia } from "@/lib/zernio-message-merge";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -112,7 +113,26 @@ export async function GET(request: NextRequest) {
 
     // Toda la interpretacion de la respuesta vive en lib/zernio-message.ts,
     // que es donde se prueba con payloads reales.
-    return NextResponse.json(toInboxThread(res, conversationId));
+    const thread = toInboxThread(res, conversationId);
+
+    // ── La media guardada (F14) ──────────────────────────────────────────────
+    // El hilo lo sigue mandando Zernio: no se cambia de donde se lee. Pero
+    // Zernio no sabe nada de los archivos que copiamos ni de las
+    // transcripciones, y sus URLs del CDN de Meta ya vencieron. Asi que se cruza
+    // por platform_message_id y cada mensaje se enriquece con lo nuestro.
+    //
+    // Con el cliente del USUARIO: la RLS decide que filas se ven, igual que en
+    // el resto de la bandeja.
+    const platformIds = platformIdsOf(thread);
+    if (platformIds.length === 0) return NextResponse.json(thread);
+
+    const { data: local } = await supabase
+      .from("messages")
+      .select("id, platform_message_id, attachments, transcript, transcript_status, transcript_error, media_description")
+      .eq("conversation_id", conversationId)
+      .in("platform_message_id", platformIds);
+
+    return NextResponse.json(mergeThreadWithLocal(thread, (local ?? []) as LocalMessageMedia[]));
   } catch (error) {
     console.error("Failed to fetch messages from Zernio API:", error);
     return NextResponse.json(

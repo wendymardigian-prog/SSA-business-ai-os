@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -14,7 +14,9 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
-import { humanSize, parseAttachments } from "@/lib/email/attachments";
+import { parseAttachments } from "@/lib/messages/attachments";
+import { MediaAttachment } from "./media-attachment";
+import { TranscriptBlock } from "./transcript-block";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
 import { PendingDraft } from "@/components/inbox/pending-draft";
@@ -95,8 +97,10 @@ function MessageBubble({ message }: { message: Message }) {
           {message.email_subject && (
             <p className="mb-1 text-xs font-semibold opacity-80">{message.email_subject}</p>
           )}
-          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+          {/* El adjunto va ARRIBA del texto, como en WhatsApp: el texto suele
+              ser el pie de la foto, no lo principal. */}
           <MessageAttachments message={message} />
+          {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
         </div>
         <div
           className={cn(
@@ -706,37 +710,41 @@ export function MessageThread({
  * "Adjunto", porque de Instagram y WhatsApp llega el payload crudo del
  * proveedor y no un archivo nuestro.
  */
+/**
+ * Los adjuntos de un mensaje (F12, F13).
+ *
+ * Antes sólo entendía el formato de los correos: todo lo demás mostraba un clip
+ * y la palabra "Adjunto", así que una nota de voz de Instagram o WhatsApp no se
+ * podía escuchar. Ahora pasa por el parser único (F1) y cada tipo tiene su
+ * visor, su reproductor, su tarjeta o su etiqueta.
+ *
+ * El adjunto va ARRIBA del texto, como en WhatsApp, y la transcripción debajo
+ * del reproductor.
+ */
 function MessageAttachments({ message }: { message: Message }) {
-  const files = parseAttachments(message.attachments);
+  const items = parseAttachments(message.attachments);
+  const [retrying, setRetrying] = useState(false);
 
-  if (files.length === 0) {
-    if (!message.attachments) return null;
-    return (
-      <div className="mt-1">
-        <Paperclip className="inline h-3 w-3" />
-        <span className="ml-1 text-xs opacity-70">Adjunto</span>
-      </div>
-    );
+  async function retryDownload() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await fetch(`/api/v1/messages/${message.id}/media-retry`, { method: "POST" });
+    } catch {
+      // El motivo ya está en la burbuja; un toast acá sería ruido encima.
+    } finally {
+      setRetrying(false);
+    }
   }
 
+  if (items.length === 0) return null;
+
   return (
-    <ul className="mt-1.5 space-y-1">
-      {files.map((file) => (
-        <li key={file.storagePath}>
-          <a
-            href={`/api/v1/email-attachments?path=${encodeURIComponent(file.storagePath)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded border border-current/20 px-2 py-1 text-xs hover:bg-current/10"
-          >
-            <Paperclip className="h-3 w-3" aria-hidden />
-            <span className="max-w-[220px] truncate">{file.filename}</span>
-            {humanSize(file.sizeBytes) && (
-              <span className="opacity-70">{humanSize(file.sizeBytes)}</span>
-            )}
-          </a>
-        </li>
+    <div className="space-y-1">
+      {items.map((item, index) => (
+        <MediaAttachment key={`${message.id}-${index}`} item={item} onRetry={retryDownload} />
       ))}
-    </ul>
+      <TranscriptBlock messageId={message.id} message={message} />
+    </div>
   );
 }
