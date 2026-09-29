@@ -78,3 +78,20 @@ Este es el bloque urgente: es el que hace que el agente deje de contestar a cieg
 - [x] **Revisión visual**: la bandeja real pide login y esta sesión del navegador no lo tiene, así que **no se ingresaron credenciales** (ver PENDIENTE). Se midió el CSS real a 390 px sobre un banco de prueba con la estructura de la burbuja, y **encontró dos cosas que ya se arreglaron**: el reproductor desbordaba (`min-width` le gana a `max-width` en CSS) y los controles nativos se veían blancos sobre la burbuja oscura
 
 **Verificación del bloque:** `npx vitest run` **306 archivos / 3686 tests en verde**, `npm run build` compila, `tsc` sin errores, lint sin errores ni warnings nuevos.
+
+---
+
+## Cierre de la corrida
+
+| Comando | Al arrancar (28/9) | Al cerrar |
+|---|---|---|
+| `npx vitest run` | 285 archivos / 3327 tests | **306 archivos / 3686 tests, todo en verde** |
+| `npm run build` | OK | OK |
+| `npx tsc --noEmit` | limpio | limpio |
+| `npm run lint` | 1 error y 41 warnings | **los mismos** (se comprobó contra `main`: esta corrida no agregó ninguno) |
+
+**+21 archivos de test y +359 tests.** Ningún test previo quedó roto. Los cinco que cambiaron lo hicieron porque cambió a propósito lo que fijaban: el formato crudo del adjunto de WhatsApp, las etiquetas duplicadas, la lista de tipos de job, el resultado de `insertMessage` y las capacidades del catálogo de proveedores.
+
+**Lo que NO se hizo, y está anotado en [PENDIENTE.md](PENDIENTE.md):** aplicar las dos migraciones, correr `verify-rls` (necesita el bucket), el recorrido visual de la bandeja real (pide login), y cargar las claves de Groq y de visión.
+
+**Antes de desplegar:** aplicar la 00102 y la 00103. El código lee y escribe esas columnas, así que la app no funciona contra la base vieja.

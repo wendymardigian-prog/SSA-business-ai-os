@@ -46,6 +46,24 @@ Los pendientes de la Etapa 4 están en [docs/etapa4/PENDIENTE-agendamiento.md](e
 - **Por qué:** ya está en `main` antes de esta corrida (se comprobó corriendo el lint en las dos ramas), y es código del embed de agendamiento, fuera de los Bloques 1 a 3. La regla de la corrida es no tocar nada fuera de esos bloques, y mover ese `ref` a un `useEffect` cambia cuándo se actualiza el callback del embed: no es un cambio de una línea sin consecuencias.
 - **Qué se decidió en su lugar:** se deja como está y se anota. El arreglo correcto es `useEffect(() => { uiRef.current = onUi; })` sin lista de dependencias, en el mismo archivo, con una pasada por el embed para confirmar que el tema y el color de marca siguen llegando. **Esta corrida no agregó ningún error ni warning nuevo de lint**, que es lo que se controla en cada bloque.
 
+### Las claves de IA que faltan para que esto funcione en vivo
+- **Qué quedó:** el código está completo y probado, pero **en producción nada de esto va a transcribir ni a describir** hasta que se carguen dos claves.
+- **Por qué:** el workspace tiene hoy sólo Anthropic (y la bitácora del 28/9 dice que esa clave está **inválida**) y Voyage. No hay Groq, y tampoco hay OpenAI, así que el respaldo de transcripción que el plano daba por existente **hoy no existe**.
+- **Qué se decidió en su lugar:** construirlo igual, porque el comportamiento resultante es el correcto: sin clave, el audio se guarda y se reproduce, el mensaje queda como no interpretable, y **el agente escala a una persona en vez de responder a ciegas**. Que es exactamente lo que se quería arreglar.
+
+  Para que funcione en vivo hacen falta, en este orden:
+
+  1. **La clave de Groq** (console.groq.com → API Keys), en Ajustes → Integraciones. Sin esto no se transcribe ningún audio.
+  2. **Una clave de visión válida** (OpenAI, Google, o reemplazar la de Anthropic que está vencida). Sin esto no se describe ninguna imagen, y una captura sin texto escala.
+  3. **El seed de precios** `supabase/seeds/01_transcription_pricing.sql`, a mano en el editor SQL. Sin esto la transcripción funciona igual, pero los runs quedan con el costo en `null`.
+
+  Una clave de OpenAI además habilita el respaldo: si Groq se cae o devuelve 429, la transcripción sigue por ahí sola.
+
+### `sniffMime` todavía no conoce audio
+- **Qué quedó:** `lib/content/media.ts` valida por magic bytes pero sólo conoce imagen, video y PDF, y clasifica cualquier `ftyp` como `video/mp4` (así que un M4A se leería como video).
+- **Por qué:** la validación por magic bytes del audio es del **Bloque 5** (subir un audio grabado desde el navegador), que no entra en esta corrida. Para lo que sí se construyó no hace falta: la media entrante no pasa por `sniffMime`, y el bucket ya limita los MIME.
+- **Qué se decidió en su lugar:** se deja como está y se anota para el Bloque 5, donde hay que extenderlo con ogg, webm, m4a/mp4, mp3 y wav, y distinguir el `ftyp` de audio del de video.
+
 ### Bloques 4, 5 y 6 — fuera de esta corrida
 - **Qué quedó:** identidad visible (fotos de perfil estables y el @ de Instagram clickeable), grabar y enviar audios desde el composer, y la banca de audios reutilizables.
 - **Por qué:** el pedido de esta corrida fue explícitamente Bloques 1 a 3 (F1 a F15).
