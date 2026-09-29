@@ -163,7 +163,7 @@ export function MediaAttachment({
               autoPlay
               playsInline
               onError={() => setBroken(true)}
-              className="max-h-72 w-auto max-w-full rounded-lg [.dark_&]:[color-scheme:dark] dark:[color-scheme:dark]"
+              className="max-h-72 w-auto max-w-full rounded-lg dark:[color-scheme:dark]"
             />
           ) : (
             <PlayCard label={plan.label} detail={duration ?? size} onPlay={() => setPlaying(true)} />
@@ -181,7 +181,7 @@ export function MediaAttachment({
               controls
               autoPlay
               onError={() => setBroken(true)}
-              className="h-10 w-full min-w-[min(210px,100%)] max-w-full [.dark_&]:[color-scheme:dark] dark:[color-scheme:dark]"
+              className="h-10 w-full min-w-[min(210px,100%)] max-w-full dark:[color-scheme:dark]"
             />
           ) : (
             <PlayCard label={plan.label} detail={duration} onPlay={() => setPlaying(true)} />

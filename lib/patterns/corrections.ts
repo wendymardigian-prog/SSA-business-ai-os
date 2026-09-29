@@ -71,3 +71,141 @@ export async function mergeCategory(client: Db, args: { workspaceId: string; sou
   await logAudit({ supabase: client, workspaceId: args.workspaceId, entityType: "message_category", entityId: args.sourceId, action: "update", changes: { merged_into_id: { old: null, new: args.targetId } }, metadata: { section: "patterns", op: "merge" }, performedBy: args.userId });
   return { ok: true };
 }
+
+/**
+ * "Está bien" de la revisión rápida (F25).
+ *
+ * Confirma la categoría que puso el modelo: marca `review_result = 'ok'` y quién
+ * lo revisó, **sin tocar `source`**. Esa es la diferencia con "Mover a…": el
+ * texto lo sigue habiendo clasificado el modelo, y por eso cuenta como acierto
+ * en la precisión estimada. Si además cambiara `source` a `human`, el mismo
+ * texto quedaría fuera del cálculo que acaba de alimentar.
+ *
+ * Confirmar dos veces no hace nada nuevo: el `UPDATE` es idempotente.
+ */
+export async function confirmText(
+  client: Db,
+  args: { workspaceId: string; textId: string; userId: string; now?: Date },
+): Promise<CorrectionResult> {
+  const now = (args.now ?? new Date()).toISOString();
+  const { data, error } = await client
+    .from("message_texts")
+    .update({ review_result: "ok", reviewed_by: args.userId, reviewed_at: now })
+    .eq("id", args.textId)
+    .eq("workspace_id", args.workspaceId)
+    .select("id, category_id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "No encontré ese texto" };
+  await logAudit({
+    supabase: client,
+    workspaceId: args.workspaceId,
+    entityType: "message_text",
+    entityId: args.textId,
+    action: "update",
+    changes: { review_result: { old: null, new: "ok" } },
+    metadata: { section: "patterns", op: "confirm" },
+    performedBy: args.userId,
+  });
+  return { ok: true, categoryId: (data as { category_id: string | null }).category_id ?? undefined };
+}
+
+/**
+ * La lista de textos de botón (F19).
+ *
+ * `message_texts.is_button` es la fuente: la 00079 la sembró con los 12 textos
+ * reales y desde acá se agregan o se quitan los que aparezcan después. Un texto
+ * de botón lleva `source = 'rule'` para que **el modelo nunca lo reclasifique**:
+ * que un clic en un botón es un clic en un botón no es una interpretación.
+ */
+export async function addButtonText(
+  client: Db,
+  args: { workspaceId: string; text: string; userId: string; normalize: (raw: string) => string },
+): Promise<CorrectionResult> {
+  const normalized = args.normalize(args.text);
+  if (!normalized) return { ok: false, error: "El texto no puede estar vacío" };
+
+  // La categoría "Respuesta a botón" la crea la 00079 por workspace.
+  const { data: category } = await client
+    .from("message_categories")
+    .select("id")
+    .eq("workspace_id", args.workspaceId)
+    .eq("direction", "inbound")
+    .eq("name", "Respuesta a botón")
+    .maybeSingle();
+
+  const patch = {
+    is_button: true,
+    source: "rule" as const,
+    ...(category ? { category_id: (category as { id: string }).id } : {}),
+  };
+
+  const { data: existing } = await client
+    .from("message_texts")
+    .select("id")
+    .eq("workspace_id", args.workspaceId)
+    .eq("direction", "inbound")
+    .eq("normalized_text", normalized)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await client.from("message_texts").update(patch).eq("id", (existing as { id: string }).id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    // Todavía nadie lo escribió: se crea la fila para que cuando llegue ya esté
+    // marcada. No se usa upsert porque el índice único es compuesto y PostgREST
+    // no le puede apuntar un on_conflict sin ambigüedad.
+    const { error } = await client.from("message_texts").insert({
+      workspace_id: args.workspaceId,
+      direction: "inbound",
+      normalized_text: normalized,
+      sample_text: args.text.trim(),
+      first_seen_at: new Date().toISOString(),
+      ...patch,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  await logAudit({
+    supabase: client,
+    workspaceId: args.workspaceId,
+    entityType: "message_text",
+    entityId: args.workspaceId,
+    action: "update",
+    changes: { is_button: { old: false, new: true } },
+    metadata: { section: "button_texts", op: "add", normalized_text: normalized },
+    performedBy: args.userId,
+  });
+  return { ok: true };
+}
+
+/**
+ * Saca un texto de la lista de botones.
+ *
+ * Deja `source` en null para que el clasificador lo vuelva a mirar: si no era un
+ * botón, alguna categoría le corresponde, y con `source = 'rule'` ningún lote lo
+ * tocaría nunca más.
+ */
+export async function removeButtonText(
+  client: Db,
+  args: { workspaceId: string; textId: string; userId: string },
+): Promise<CorrectionResult> {
+  const { error } = await client
+    .from("message_texts")
+    .update({ is_button: false, source: null, category_id: null })
+    .eq("id", args.textId)
+    .eq("workspace_id", args.workspaceId)
+    .eq("is_button", true);
+  if (error) return { ok: false, error: error.message };
+  await logAudit({
+    supabase: client,
+    workspaceId: args.workspaceId,
+    entityType: "message_text",
+    entityId: args.textId,
+    action: "update",
+    changes: { is_button: { old: true, new: false } },
+    metadata: { section: "button_texts", op: "remove" },
+    performedBy: args.userId,
+  });
+  return { ok: true };
+}

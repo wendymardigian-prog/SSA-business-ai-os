@@ -17,6 +17,7 @@ import {
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { cn } from "@/lib/utils";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
+import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 
 /**
@@ -156,7 +157,7 @@ export function InboxFiltersBar({
             del sistema. Con cero no aparece. */}
         {waitingDrafts > 0 && (
           <Link
-            href="/dashboard/drafts"
+            href={draftsQueueHref(drafts)}
             className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-dashed border-amber-400 px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30 md:min-h-0"
           >
             <FileText className="h-3 w-3" aria-hidden />

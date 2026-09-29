@@ -9,6 +9,7 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NavLinks } from "@/components/sidebar";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
+import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import type { Database } from "@/lib/types/database";
 
@@ -141,7 +142,7 @@ export function MobileChromeActions({ chrome }: { chrome: DashboardChrome }) {
     <div className="flex items-center gap-1 md:hidden">
       {waiting > 0 && (
         <Link
-          href="/dashboard/drafts"
+          href={draftsQueueHref(drafts)}
           aria-label={`${waiting} ${waiting === 1 ? "borrador esperando" : "borradores esperando"}. Ir a la cola`}
           className="flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-accent"
         >

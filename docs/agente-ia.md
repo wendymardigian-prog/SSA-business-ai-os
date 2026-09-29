@@ -413,6 +413,27 @@ llega por cuatro lados:
 
 La pantalla de la cola tiene **← Volver a Inbox** arriba de todo.
 
+**Los cuatro accesos llevan a la vista donde el número que muestran es cierto**
+(28/9/2026). El contador de un Owner/Admin es el TOTAL del workspace, pero la
+cola abre en "míos": una Owner sin contactos propios veía "Borradores (1)" y
+entraba a una pantalla que decía que no había ninguno. El número era cierto y la
+pantalla también; lo que estaba mal era el destino. Ahora `draftsQueueHref`
+(`lib/agent/drafts/destination.ts`, con test) manda a `?quien=todos` cuando no
+hay propios y sí hay de otras personas. El vacío de "míos" además dice cuántos
+hay de otros y ofrece "Ver todos (N)".
+
+El badge del menú pasó a ser un **link propio**: antes era un `<span>` adentro
+del link de Inbox, así que tocar el número llevaba a la bandeja (y anidar `<a>`
+es inválido).
+
+**Un borrador vacío porque falló el modelo se explica.** Antes se veía como una
+fila en blanco con "Fallaron el modelo principal y el de respaldo": cierto, pero
+no dice qué hacer. La cola ahora trae el `error` del run y muestra "El modelo no
+respondió — revisá la integración de IA", la pista accionable de
+`describeModelError` y un link a la integración, con el texto técnico en un
+detalle desplegable. Es lo que faltaba el día que una API key revocada dejó al
+agente sin contestar.
+
 **En el teléfono** (abajo de 980 px, variante `queue:` en `globals.css`) la
 tabla pasa a tarjetas: contacto y canal, **el estado de la ventana** (lo
 primero que decide si vale la pena leer el resto), lo que escribió, la
@@ -843,7 +864,13 @@ tarea sin implementación **lanza** y el job queda fallido con el motivo. El
 silencio es lo que dejó este handler vacío durante semanas mientras el cron
 encolaba jobs que no hacían nada.
 
-## Cómo mirar el resultado (no hay pantalla hasta el Bloque 5)
+## Cómo mirar el resultado
+
+Desde el 28/9/2026 hay pantalla: **Ajustes → Tareas en segundo plano** muestra la
+última corrida, el gasto del mes, los cuatro indicadores de calidad, la precisión
+por semana, las categorías más corregidas, la calibración de la confianza y la
+revisión rápida. Lo que sigue por SQL son las consultas de abajo, para mirar el
+detalle crudo.
 
 ```sql
 -- Cuántos quedaron clasificados y por qué vía

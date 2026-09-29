@@ -19,7 +19,12 @@ export interface EmbedBridge {
 export function useEmbedBridge(enabled: boolean, onUi?: (ui: { theme?: string; brandColor?: string }) => void): EmbedBridge {
   const side = useRef<IframeSide | null>(null);
   const uiRef = useRef(onUi);
-  uiRef.current = onUi;
+  // En un efecto y no durante el render: tocar un ref mientras se renderiza es
+  // un error para React 19 (y rompe `npm run lint`). El efecto corre despues de
+  // cada render, asi que la referencia sigue siendo la ultima que llego.
+  useEffect(() => {
+    uiRef.current = onUi;
+  }, [onUi]);
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
