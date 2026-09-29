@@ -139,8 +139,9 @@ caso del Member A, que ve solo las conversaciones 1 y 3). Limpia al terminar.
 Correr los scripts `verify-*` de a uno: comparten el prefijo `zz-test-` y la
 limpieza de uno colisiona con el arranque del otro si se encadenan.
 
-**Al 28/9/2026 el script todavía espera las funciones viejas**: hay que
-extenderlo con las de la 00110 y la 00111 después de aplicarlas.
+El script cubre también las funciones de la 00110 y la 00111, y el set fijo pasó
+a **7 conversaciones**: la séptima tiene los tres orígenes de automatización y es
+la que fija que sean una sola fila. Al 28/9/2026 sale Todo verde.
 
 ### Episodios vs. conversaciones
 

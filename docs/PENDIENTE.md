@@ -155,29 +155,36 @@ propósito:
 
 ## Pantalla de Chat completada (28/9/2026, rama `feature/chat-completar`)
 
-### Dos migraciones escritas y SIN aplicar — se aplican en este orden
+### ~~Dos migraciones escritas y sin aplicar~~ — APLICADAS el 28/9/2026
 
-- **Qué quedó:** `00110_chat_dashboard_v2.sql` y `00111_message_patterns_v2.sql`
-  están escritas, con la sintaxis validada contra el parser de PostgreSQL 17, y
-  **no se aplicaron**.
-- **Por qué:** la corrida se hizo en paralelo con la sesión de multimedia y
-  aplicar una migración a la base es una decisión de Wendy, no de la sesión.
-- **Qué hay que hacer:**
-  1. `list_migrations` para confirmar que la última aplicada sigue siendo la
-     `00101_bg_task_dedupe`.
-  2. Aplicar la **00110** y después la **00111** (la 00111 usa
-     `chat_origin_group`, que crea la 00110).
-  3. Al mergear, renumerarlas al siguiente número libre. No cuesta nada: no
-     están aplicadas.
-- **Hasta que se apliquen, la pantalla de Chat muestra casi todos los bloques con
-  "No pudimos mostrar …" y su botón Reintentar.** Es el comportamiento correcto:
-  las funciones nuevas todavía no existen. Los tres bloques que usan funciones
-  viejas (números, tendencias, quién responde) se ven, con las columnas nuevas en
-  cero hasta que se reemplacen las funciones.
-- **Las dos borran y recrean tres funciones** (`chat_dashboard_team`,
-  `chat_dashboard_trends`, `chat_dashboard_patterns`): cambia su tipo de retorno y
-  `CREATE OR REPLACE` no puede hacerlo (42P13). El `DROP` va antes en el mismo
-  archivo y los `GRANT` se vuelven a dar (mueren con la función).
+- **Qué se hizo:** se aplicaron la **00110** y después la **00111** (en ese orden:
+  la 00111 usa `chat_origin_group`, que crea la 00110). Las 19 funciones existen,
+  con **una sola sobrecarga cada una** (dos dejarían a PostgREST sin poder
+  elegir), todas `SECURITY INVOKER`, con `EXECUTE` para `authenticated` y sin
+  acceso para `anon`. Se llamaron las 19 contra los datos reales y responden.
+- **No se renumeran al mergear.** Ya están aplicadas: el número es parte del
+  registro. Quedan los huecos 00102–00109, que la sesión de multimedia usa en
+  parte; es a propósito, era la banda reservada para correr en paralelo.
+- `node scripts/verify-dashboards.mjs` y `node scripts/verify-rls.mjs` salen
+  **Todo verde** (se corrieron de a uno, sin nada de la otra sesión en curso, y
+  la base quedó sin datos `zz-test-`).
+
+### El set fijo de `verify-dashboards.mjs` creció a 7 conversaciones
+
+- **Qué pasó:** se le sumó una conversación con los tres orígenes de
+  automatización (flow, sequence, broadcast). Es la que fija que sean **una** fila
+  en "Quién responde" y no tres, que era el bug que dejaba el dashboard en blanco.
+- **Qué hay que saber:** §11.8 del plano describe el set de 6 y sus valores
+  esperados. Los del script son los del set real, que es el que vale. Cinco
+  expectativas escritas a mano cambiaron con la conversación nueva (7
+  conversaciones, 7 recibidos, 8 enviados, mediana 45 s) y están recalculadas con
+  el motivo al lado.
+- **Tres cosas que el script dejó claras y conviene no olvidar:** el segundo
+  episodio de una conversación aparece solo cuando pasan más de 12 h sin
+  mensajes (y si nadie lo contesta cuenta como "sin respuesta"); los días de las
+  tendencias se cortan en la zona del negocio, así que un rango que arranca a las
+  00:00 UTC empieza el día anterior; y un Member ve los episodios de sus
+  conversaciones, no las conversaciones.
 
 ### `knownButtonExtra` no está conectado en el runner
 
@@ -222,14 +229,14 @@ propósito:
 - **Qué conviene después:** que `escalateToHuman` guarde también un código de
   motivo además de la frase.
 
-### Los `verify-*.mjs` no se corrieron
+### ~~Los `verify-*.mjs` no se corrieron~~ — RESUELTO el 28/9/2026
 
-- **Qué quedó:** `verify-dashboards.mjs` y `verify-rls.mjs` no se corrieron en
-  esta sesión, y `verify-dashboards.mjs` **todavía espera las funciones viejas**.
-- **Por qué:** comparten el prefijo `zz-test-` con la sesión de multimedia, que
-  corría al mismo tiempo, y una limpieza pisada es una prueba que falla.
-- **Qué hay que hacer:** después de aplicar la 00110 y la 00111, correrlos de a
-  uno y extender `verify-dashboards.mjs` con las funciones nuevas.
+- **Qué se hizo:** `verify-dashboards.mjs` se extendió con las funciones nuevas
+  (el grupo de autor, la fila única de automatizaciones, las dos medianas que
+  antes eran la misma, quién respondió primero, la aprobación de respuestas, las
+  tendencias densas, los patrones con su `text_id`, el estado de la clasificación
+  y el scope de un Member en todo eso) y sale **Todo verde**, igual que
+  `verify-rls.mjs`. Se corrieron de a uno.
 
 ### Las 15 funciones se probaron contra la base real, sin aplicar nada
 
@@ -264,7 +271,8 @@ propósito:
   CSS de producción).
 - **Qué hay que hacer:** `npm run dev -- --port 3001`, iniciar sesión, y recorrer
   Dashboards › Chat, Settings › Tareas y la cola de borradores en las dos
-  medidas.
+  medidas. Las migraciones ya están aplicadas, así que la pantalla trae datos
+  reales: no hay nada que preparar antes.
 
 ## Heredado de la Etapa 2
 

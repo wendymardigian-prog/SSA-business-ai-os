@@ -1247,10 +1247,33 @@ tienen `origin = 'external'`, así que "Quién responde" muestra **una sola fila
 y la sección del agente dice que todavía no respondió nada. Es cierto: el agente
 estuvo apagado y todo se contestó desde ManyChat o la app de Instagram.
 
+## Las migraciones aplicadas, y lo que eso dejó ver
+
+Se aplicaron la **00110** y después la **00111** (en ese orden: la segunda usa una
+función de la primera). Las 19 funciones quedaron con una sola sobrecarga cada
+una, `SECURITY INVOKER`, ejecutables por `authenticated` y cerradas para `anon`.
+Como ya están aplicadas, **no se renumeran al mergear**: el número es parte del
+registro, y los huecos 00102–00109 son la banda que se reservó para la sesión de
+multimedia.
+
+`verify-dashboards.mjs` se extendió con todo lo nuevo y salió **Todo verde**,
+igual que `verify-rls.mjs`. Correrlo fue lo más útil de la tanda: encontró ocho
+expectativas escritas a mano que ya no eran ciertas, **ninguna por un error de las
+funciones**. Cinco eran del set fijo, que creció a siete conversaciones para poder
+fijar la fila única de automatizaciones. Las otras tres eran mías, y las tres
+enseñaron algo que conviene no volver a olvidar:
+
+- **Un segundo episodio aparece solo**, en cuanto pasan más de 12 h sin mensajes.
+  El bloque de patrones le suma entrantes a la conversación 1 seis días después, y
+  eso es un episodio nuevo que nadie contestó: "sin respuesta" son dos, no una.
+- **Los días de las tendencias se cortan en la zona del negocio.** Un rango que
+  arranca a las 00:00 UTC empieza el día anterior en Costa Rica, así que del 5 al
+  12 son nueve días y no ocho.
+- **Un Member ve los episodios de sus conversaciones, no sus conversaciones.**
+  Dos conversaciones pueden dar tres episodios.
+
 ## Lo que queda
 
-En `docs/PENDIENTE.md`. Lo principal: **las dos migraciones no se aplicaron**
-(00110 y después 00111), la revisión visual con la app necesita una sesión
-iniciada, `knownButtonExtra` se conecta en `runner.ts` después de mergear
-multimedia, y `verify-dashboards.mjs` hay que extenderlo con las funciones nuevas
-y correrlo cuando no haya otra sesión trabajando.
+En `docs/PENDIENTE.md`. Lo principal: la revisión visual con la app necesita una
+sesión iniciada, `knownButtonExtra` se conecta en `runner.ts` después de mergear
+multimedia, y las versiones del clasificador siguen en solo lectura.
