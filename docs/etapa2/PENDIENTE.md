@@ -74,22 +74,26 @@ Sigue pendiente todo esto, salvo la barra superior de 56 px, que esta etapa resu
   y crecen ~96 por día. No se rompe nada (el job no hace nada), pero conviene cerrarlo al construir el handler.
   El registro de jobs del Bloque 4b le deja un handler explícito que conserva ese comportamiento.
 
-### UI de calidad, revisión rápida y versiones del clasificador (F25 de la Fase 3)
-- **Qué quedó:** las fórmulas de calidad (`lib/patterns/quality.ts`) están testeadas, falta la pantalla: 4
-  indicadores, calibración, revisión rápida de 20 y versiones del clasificador con "volver a esta".
-- **Por qué:** volumen del bloque.
-- **Qué se decidió en su lugar:** la lógica quedó testeada; la pantalla se hace con Wendy mirando.
+### ~~UI de calidad y revisión rápida (F25 de la Fase 3)~~ — RESUELTO el 28/9/2026
+- **Qué se hizo:** Settings → Tareas en segundo plano tiene los 4 indicadores, la precisión por semana con
+  referencia en 90 %, las categorías más corregidas, la calibración de la confianza y la revisión rápida de a uno
+  (primero los dudosos y las categorías nuevas). Las fórmulas son las de `lib/patterns/quality.ts`, que ya estaban
+  testeadas.
+- **Qué sigue abierto:** las **versiones del clasificador** con "volver a esta" y "reclasificar los dudosos". La
+  versión vive en una constante del código (`PROMPT_VERSION`) y evaluarla necesita llamar al proveedor. Detalle en
+  [docs/PENDIENTE.md](../PENDIENTE.md).
 
-### Detalle de tendencias con 4 pestañas (F16 de la Fase 3)
-- **Qué quedó:** el dashboard de Chat muestra una serie; la función SQL ya devuelve las tres.
-- **Por qué:** las 4 pestañas con leyenda y paso a semanal son presentación; el dato está.
-- **Qué se decidió en su lugar:** se completan en la pasada de pantallas con Wendy.
+### ~~Detalle de tendencias con 4 pestañas (F16 de la Fase 3)~~ — RESUELTO el 28/9/2026
+- **Qué se hizo:** las cuatro pestañas (conversaciones, recibidos y enviados, enviados por autor apilados, y la
+  mediana de primera respuesta con referencia punteada en 1 hora), con ejes, totales, leyenda, tooltip por columna y
+  paso a semanal arriba de 62 días. La función SQL se amplió (00110) para devolver los enviados por grupo de autor y
+  la mediana diaria, que antes no estaban.
 
-### "Qué le responden" (§11.7) y drilldown de correcciones (F22 de la Fase 3)
-- **Qué quedó:** falta la sección "qué le responden" y los controles de corrección enganchados en la UI (las
-  Server Actions ya existen en `lib/actions/patterns.ts`).
-- **Por qué:** volumen del bloque.
-- **Qué se decidió en su lugar:** se completa en la pasada de pantallas con Wendy.
+### ~~"Qué le responden" (§11.7) y drilldown de correcciones (F22 de la Fase 3)~~ — RESUELTO el 28/9/2026
+- **Qué se hizo:** la sección "Qué le responden" sale de una función nueva (00111) y se pide cuando se toca una
+  categoría. Los controles de corrección ("Mover a…", Renombrar, Editar descripción, Unir con) quedaron enganchados
+  a las Server Actions que ya existían sin pantalla. La función de patrones ahora devuelve el `text_id` de cada
+  variante, que es lo que faltaba para poder moverlas.
 
 ### `declarar_intencion` es opt-in (F26 de la Fase 3)
 - **Qué quedó:** la herramienta existe pero no es `required`: se habilita por agente.

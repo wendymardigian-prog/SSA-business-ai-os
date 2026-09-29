@@ -64,10 +64,9 @@ Lo que quedó sin cerrar, para retomar con Wendy. Formato de cada entrada:
 - **Qué quedó:** el comentario de `lib/flow-engine/interpolate.ts` afirma que hay un test que compara su regex con la copia de `simulator.ts`. No lo había.
 - **Qué se decidió en su lugar:** se escribe en B7a, junto con la extensión del regex para admitir guiones dentro de `{{…}}` (para `scheduling.link.<usuario>.<slug>`).
 
-### Tailwind: `dark:` no sigue a la clase `.dark`
-- **Qué quedó:** `app/globals.css` no declara `@custom-variant dark`, así que en Tailwind 4 las utilidades `dark:*` siguen a `prefers-color-scheme` y no al conmutador de tema del perfil; los tokens (`bg-background`, etc.) sí siguen a la clase.
-- **Por qué:** viene de la Etapa 1.
-- **Qué se decidió en su lugar:** el booker público usa `data-theme` y tokens propios, sin `dark:`, así el tema forzado por `?theme=` funciona. El resto no se toca; se anota para revisarlo aparte.
+### ~~Tailwind: `dark:` no sigue a la clase `.dark`~~ — RESUELTO el 28/9/2026
+- **Qué quedó:** `app/globals.css` no declaraba `@custom-variant dark`, así que en Tailwind 4 las utilidades `dark:*` seguían a `prefers-color-scheme` y no al conmutador de tema del perfil; los tokens (`bg-background`, etc.) sí seguían a la clase. Alguien con el sistema en claro y la app en oscuro veía texto oscuro sobre fondo oscuro en todo lo escrito con `dark:`.
+- **Qué se hizo:** `@custom-variant dark (&:where(.dark, .dark *));` al final de `globals.css`. En el CSS de producción ya no queda ninguna aparición de `prefers-color-scheme`. El booker público no se tocó: usa `data-theme` y tokens propios, sin `dark:`.
 
 ### La pantalla de Herramientas borraba las claves de `tools_config` que no fueran herramientas
 - **Qué quedó:** `normalizeToolsConfig` descartaba cualquier clave que no fuera un nombre de herramienta del registro. Una habilidad guardada como `tools_config.scheduling` desaparecía al primer guardado.
@@ -126,12 +125,14 @@ propósito:
   Económico, en vez de completar en silencio. El silencio es lo que dejó este
   handler vacío durante semanas sin que nadie se enterara.
 
-### Los resultados se miran por SQL
+### ~~Los resultados se miran por SQL~~ — RESUELTO el 28/9/2026
 
 - **Qué quedó:** la pantalla de calidad del clasificador y la revisión rápida de
-  20 son del Bloque 5 y no se construyeron. Cuántos quedaron clasificados, qué
-  categorías nuevas se crearon y cuántos tienen confianza baja se consultan a
-  mano.
+  20 eran del Bloque 5 y no se habían construido.
+- **Qué se hizo:** Settings → Tareas en segundo plano tiene los cuatro
+  indicadores, la precisión por semana, las categorías más corregidas, la
+  calibración de la confianza y la revisión rápida. Lo único que sigue pendiente
+  de F25 son las versiones del clasificador (ver más abajo).
 
 ### Dos desvíos de F20, conscientes
 
@@ -151,6 +152,98 @@ propósito:
   detección de "no contactar". Ya registrado en `BITACORA.md`.
 - **Qué se decidió:** no se toca el documento de requerimientos, que es
   histórico.
+
+## Pantalla de Chat completada (28/9/2026, rama `feature/chat-completar`)
+
+### Dos migraciones escritas y SIN aplicar — se aplican en este orden
+
+- **Qué quedó:** `00110_chat_dashboard_v2.sql` y `00111_message_patterns_v2.sql`
+  están escritas, con la sintaxis validada contra el parser de PostgreSQL 17, y
+  **no se aplicaron**.
+- **Por qué:** la corrida se hizo en paralelo con la sesión de multimedia y
+  aplicar una migración a la base es una decisión de Wendy, no de la sesión.
+- **Qué hay que hacer:**
+  1. `list_migrations` para confirmar que la última aplicada sigue siendo la
+     `00101_bg_task_dedupe`.
+  2. Aplicar la **00110** y después la **00111** (la 00111 usa
+     `chat_origin_group`, que crea la 00110).
+  3. Al mergear, renumerarlas al siguiente número libre. No cuesta nada: no
+     están aplicadas.
+- **Hasta que se apliquen, la pantalla de Chat muestra casi todos los bloques con
+  "No pudimos mostrar …" y su botón Reintentar.** Es el comportamiento correcto:
+  las funciones nuevas todavía no existen. Los tres bloques que usan funciones
+  viejas (números, tendencias, quién responde) se ven, con las columnas nuevas en
+  cero hasta que se reemplacen las funciones.
+- **Las dos borran y recrean tres funciones** (`chat_dashboard_team`,
+  `chat_dashboard_trends`, `chat_dashboard_patterns`): cambia su tipo de retorno y
+  `CREATE OR REPLACE` no puede hacerlo (42P13). El `DROP` va antes en el mismo
+  archivo y los `GRANT` se vuelven a dar (mueren con la función).
+
+### `knownButtonExtra` no está conectado en el runner
+
+- **Qué quedó:** `buttonTextsFromRows` (`lib/agent/rules/button-texts.ts`) está
+  escrita y probada, pero nadie la llama: la condición `inbound.is_known_button`
+  sigue usando solo los 12 textos de la constante.
+- **Por qué:** conectarla es una línea en `lib/agent/runner.ts`, y ese archivo lo
+  estaba tocando la sesión de multimedia en paralelo.
+- **Qué hay que hacer después de mergear multimedia:** en `runner.ts`, leer los
+  textos de botón (`BUTTON_TEXTS_QUERY` dice qué consultar) y pasarlos como
+  `knownButtonExtra` a `buildPreRuleContext`. Los 12 de la constante siguen
+  valiendo: las dos fuentes se suman.
+
+### Versiones del clasificador: solo lectura
+
+- **Qué quedó:** la pantalla de Tareas muestra la versión activa y el tamaño del
+  set de control, pero no se puede crear una versión, activarla, volver a la
+  anterior ni "reclasificar los dudosos" (F25).
+- **Por qué:** la versión vive en una constante del código
+  (`PROMPT_VERSION` en `lib/patterns/classify-run.ts`) y no en la base, así que no
+  hay nada que activar; y evaluar una versión contra el set de control necesita
+  llamar al proveedor de IA, que esta corrida no podía hacer.
+- **Qué se decidió:** la pantalla lo dice con esas palabras, en vez de mostrar
+  botones que no hacen nada.
+
+### `close_classification` no tiene corridas propias
+
+- **Qué quedó:** la columna "Última corrida" de esa tarea dice "Sin corridas
+  propias todavía".
+- **Por qué:** no deja un run con `source` propio en `agent_runs`, así que no hay
+  de dónde leer la fecha.
+- **Qué se decidió:** decirlo. Mostrar la fecha de otra tarea sería peor que no
+  mostrar nada.
+
+### "Por qué derivó" agrupa texto libre
+
+- **Qué quedó:** el motivo de una derivación por herramienta lo escribe el modelo
+  en una frase libre. Se agrupa por el texto normalizado y se muestra la última
+  redacción, con top 6 + "Otros motivos".
+- **Por qué:** dos frases que dicen lo mismo con otras palabras cuentan como dos
+  motivos distintos. Los de guardarraíl sí tienen clave estable y se traducen.
+- **Qué conviene después:** que `escalateToHuman` guarde también un código de
+  motivo además de la frase.
+
+### Los `verify-*.mjs` no se corrieron
+
+- **Qué quedó:** `verify-dashboards.mjs` y `verify-rls.mjs` no se corrieron en
+  esta sesión, y `verify-dashboards.mjs` **todavía espera las funciones viejas**.
+- **Por qué:** comparten el prefijo `zz-test-` con la sesión de multimedia, que
+  corría al mismo tiempo, y una limpieza pisada es una prueba que falla.
+- **Qué hay que hacer:** después de aplicar la 00110 y la 00111, correrlos de a
+  uno y extender `verify-dashboards.mjs` con las funciones nuevas.
+
+### La revisión visual con la app quedó pendiente
+
+- **Qué quedó:** la comparación lado a lado con el prototipo a 1440 y 390 px no
+  se hizo: la app pide login y esta sesión no carga credenciales.
+- **Qué sí se verificó:** que los tokens de color (`--c-agent` y compañía) salen
+  compilados en claro y en oscuro, que las utilidades nuevas
+  (`bg-c-agent`, `text-warn`, `bg-recv`, …) existen en el CSS, que el corte de
+  860 px está, que las grillas `.g3`/`.row2`/`.split` se generan, y que
+  **ningún `dark:` quedó atado a `prefers-color-scheme`** (0 apariciones en el
+  CSS de producción).
+- **Qué hay que hacer:** `npm run dev -- --port 3001`, iniciar sesión, y recorrer
+  Dashboards › Chat, Settings › Tareas y la cola de borradores en las dos
+  medidas.
 
 ## Heredado de la Etapa 2
 

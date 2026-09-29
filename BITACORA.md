@@ -1160,3 +1160,76 @@ precio por token para decidir a cuál de cinco cajones va un "dale, mandámelo".
 Que el pipeline entero corriera hasta el proveedor, registrara el run, guardara
 el error y frenara sin ensuciar nada es, en sí, la verificación de punta a punta
 que faltaba.
+
+---
+
+# La pantalla de Chat, completada (28 de septiembre de 2026)
+
+El bloque 2e + 3 había quedado con la estructura y lejos del prototipo aprobado.
+Esta corrida replica el diseño decidido, completa lo que faltaba del plano y
+arregla seis cosas que estaban mal. Rama `feature/chat-completar`, en paralelo
+con la sesión de multimedia, sin tocar sus archivos.
+
+## Lo que estaba mal, y por qué importaba
+
+| Qué pasaba | Por qué era grave |
+|---|---|
+| "Borradores (1)" abría una cola que decía "No hay borradores esperando" | El contador de Owner/Admin es el total del workspace; la cola abre en "míos". El número era cierto y la pantalla también: estaba mal el destino. Una Owner sin contactos propios no podía llegar a sus borradores desde ningún acceso |
+| Las columnas "Primera respuesta" y "Respuesta" mostraban el mismo número | Salían de la **misma consulta** (00078:217-218). Dos columnas distintas con el mismo dato no se puede notar mirando: parece que la persona contesta igual de rápido siempre |
+| Filtrar por Automatizaciones dejaba el dashboard en blanco | Flows, secuencias y broadcasts salían como tres filas y al tocarlas se filtraba por `author=flow`, que `chat_author_match` no reconoce. Devolvía false para todo |
+| Una función caída se veía como un período sin actividad | `lib/dashboards/load.ts` no miraba el `error` de ninguna consulta. Todo en cero, que es una afirmación ("no pasó nada") y era falsa |
+| Un día sin mensajes faltaba en el gráfico | La serie traía solo los días con actividad, así que el gráfico mentía la forma de la semana |
+| Un borrador vacío por falla del modelo era una fila en blanco | Decía "Fallaron el modelo principal y el de respaldo": cierto, y no dice qué hacer. Es exactamente lo que faltó el día que una API key revocada dejó al agente sin contestar |
+| `dark:` seguía al sistema operativo y no al conmutador del perfil | Con el sistema en claro y la app en oscuro, todo lo escrito con `dark:` quedaba texto oscuro sobre fondo oscuro. Venía de la Etapa 1 |
+
+## Lo que se construyó
+
+- **Dos migraciones sin aplicar** (00110 y 00111): arreglan lo de arriba y suman
+  las funciones que la pantalla necesitaba y no existían (quién respondió
+  primero, por qué derivó, acciones del agente, resultados por regla, aprobación
+  de respuestas, las tasas por semana, "qué le responden", el volumen por texto y
+  el estado de la clasificación).
+- **La pantalla de Chat de nuevo**, con carga por bloque: una promesa por bloque,
+  su skeleton, y un error con Reintentar que no arrastra a los demás.
+- **Los filtros del prototipo**: canal con punto de color y estado, "Respondido
+  por" en tres grupos con avatares, y período con los 11 atajos y calendario de
+  dos meses.
+- **Settings con pestañas** y la pantalla de Tareas en segundo plano entera:
+  tabla con botones segmentados, calidad, revisión rápida y textos de botón.
+- **Filtros de runs por regla y por qué pasó**, que eran los que faltaban para
+  poder contestar "¿qué hizo la regla 3?".
+
+## Las decisiones que más costaron
+
+| Decisión | Por qué |
+|---|---|
+| **Una promesa por bloque, y ningún loader que lance** | Si un loader rechaza, `use()` tira la pantalla abajo y Node loguea una promesa sin manejar. Devolviendo `{ ok: false }` siempre, un bloque roto es un bloque roto y nada más. Con tope de 15 s: una consulta colgada dejaría la respuesta HTTP abierta |
+| **Los flags del agente salen de UNA función SQL** | Los tres números grandes y la mini línea de 8 semanas miden lo mismo. Calculado dos veces, un día uno dice 86 % y el otro 84 % y nadie sabe cuál creer |
+| **DROP + CREATE en tres funciones** | Cambia el tipo de retorno y `CREATE OR REPLACE` no puede (42P13). Los GRANT mueren con la función y se vuelven a dar en el mismo archivo |
+| **Mismo nombre para `chat_dashboard_patterns`, no una sobrecarga** | Dos versiones que solo difieren en parámetros con default dejan a PostgREST sin poder elegir: "Could not choose the best candidate function" |
+| **Confirmar en la revisión rápida NO cambia `source`** | El texto lo sigue habiendo clasificado el modelo, y por eso cuenta como acierto en la precisión. Si pasara a `human`, el mismo texto quedaría afuera del cálculo que acaba de alimentar |
+| **Ninguna función nueva toca `cost_usd`** | `authenticated` no puede leer esa columna (GRANT por columna de la 00060). Una función `SECURITY INVOKER` que la mirara fallaría con "permission denied" para cualquier persona real. El gasto se lee en Settings, en el servidor, detrás de `requireWorkspaceAdmin` |
+| **El banner de ahorro no promete un descuento** | El lote real del proveedor todavía no está en uso: el modo económico agrupa pedidos. Decir "ahorrás el 50 %" sería mentir sobre la factura |
+| **Versiones del clasificador en solo lectura** | La versión vive en una constante del código y evaluarla necesita llamar al proveedor. Mostrar botones que no hacen nada es peor que explicar por qué no están |
+| **El arreglo de `dark:` es global, y se preguntó antes** | Cambia el comportamiento de todos los `dark:` de la app. Es lo correcto y lo que la gente espera, pero no es un cambio que una sesión deba hacer sola |
+
+## Cuatro cosas que el pedido daba por ciertas y no lo eran
+
+1. **La semilla de textos de botón tiene 12 textos, no 5.** La 00079 sembró los
+   doce de §10.6; el prompt hablaba de cinco.
+2. **`components/settings/settings-view.tsx` no existe.** El archivo vive en
+   `app/(dashboard)/dashboard/settings/`, así que no era uno de los archivos de la
+   otra sesión y no hubo que negociar nada.
+3. **`response_rules` ya está concedida a `authenticated`** (00077), así que los
+   nombres de las reglas se pueden leer con el cliente del usuario.
+4. **El lint venía rojo en `main`** por un ref escrito durante el render en el
+   booker (`use-embed-bridge.ts`), que no tiene nada que ver con esta corrida.
+   Se arregló: si no, "lint sale 0" no se podía cumplir nunca.
+
+## Lo que queda
+
+En `docs/PENDIENTE.md`. Lo principal: **las dos migraciones no se aplicaron**
+(00110 y después 00111), la revisión visual con la app necesita una sesión
+iniciada, `knownButtonExtra` se conecta en `runner.ts` después de mergear
+multimedia, y `verify-dashboards.mjs` hay que extenderlo con las funciones nuevas
+y correrlo cuando no haya otra sesión trabajando.

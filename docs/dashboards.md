@@ -25,29 +25,112 @@ JavaScript por cuatro tarjetas no se justifica.
 
 ---
 
-## Chat (Fase 3, Bloque 3)
+## Chat (Fase 3, Bloques 2e y 3)
 
 Métricas de la operación de chat. Todo se calcula con funciones SQL
-`SECURITY INVOKER` (migración 00078): se llaman con el cliente del usuario, así
-la RLS aplica el scope de leads sin lógica extra en la app. Un Member ve solo
-sus conversaciones; Owner y Admin, todo el workspace.
+`SECURITY INVOKER`: se llaman con el cliente del usuario, así la RLS aplica el
+scope de leads sin lógica extra en la app. Un Member ve solo sus conversaciones;
+Owner y Admin, todo el workspace.
+
+**Ninguna función toca `cost_usd` ni los tokens de `agent_runs`.**
+`authenticated` no puede leerlos (GRANT por columna de la 00060) y una función
+`SECURITY INVOKER` que los mirara fallaría con "permission denied" para
+cualquier persona real. El gasto se muestra en Settings → Tareas, en el servidor
+y detrás de `requireWorkspaceAdmin`.
+
+### Cada bloque se pide solo
+
+La página crea **una promesa por bloque** y no las espera: se las pasa al
+componente, que muestra cada pedazo cuando llega el suyo, con su skeleton.
+Antes la pantalla entera esperaba las siete consultas y la más lenta marcaba el
+tiempo de todas.
+
+Los loaders (`lib/dashboards/chat/loaders.ts`) **nunca lanzan**: devuelven
+`{ ok: false, error }`. Eso es lo que permite leerlos con `use()` en el navegador
+sin romper la hidratación, y es lo que arregla el problema de fondo que tenía la
+versión anterior: **no miraba el `error` de ninguna consulta**, así que una
+función caída se veía igual que un período sin actividad, todo en cero. Un cero
+es una afirmación ("ese día no pasó nada") y era falsa. Ahora el bloque que falla
+dice qué falló y ofrece Reintentar, y los demás siguen andando.
 
 ## Funciones
 
 | Función | Qué devuelve |
 |---|---|
-| `chat_episodes(ws, channel)` | Un episodio por (conversación, tramo). Un episodio arranca con un entrante que es el primero o viene tras una inactividad mayor que `close_after_inactive_hours`. Da `first_inbound_at`, `first_outbound_at`, `first_outbound_origin`. |
-| `chat_dashboard_numbers(ws, from, to, channel, author)` | Conversaciones nuevas, recibidos, enviados (filtrados por autor), mediana de primera respuesta. |
-| `chat_waiting_now(ws, channel)` | Conversaciones abiertas con último mensaje entrante de hace más de 1 h, sin `do_not_contact` ni etiqueta que apague al agente. |
-| `chat_dashboard_agent(ws, from, to, channel)` | Sobre las conversaciones nuevas: actuó, tomó desde el primer mensaje, derivó. |
-| `chat_dashboard_team(ws, from, to, channel)` | Una fila por autor (agente, external, cada persona): salientes, medianas de primera respuesta y de respuesta, % < 1 h. |
-| `chat_dashboard_trends(ws, from, to, channel, author, tz)` | Serie diaria: recibidos, enviados, conversaciones nuevas. La app agrupa a semanal si el período supera 62 días. |
-| `chat_author_match(author, origin, sent_by_user)` | Helper del filtro "respondido por". |
+| `chat_episodes(ws, channel)` | Un episodio por (conversación, tramo). Arranca con un entrante que es el primero o viene tras una inactividad mayor que `close_after_inactive_hours`. Da `first_inbound_at`, `first_outbound_at`, `first_outbound_origin`. |
+| `chat_origin_group(origin)` | El grupo de un saliente: `agent`, `team`, `automations` (flow + sequence + broadcast), `external`. Un `origin` desconocido devuelve NULL: no se inventa un grupo. |
+| `chat_author_match(author, origin, sent_by_user)` | Helper del filtro "respondido por". Acepta `all`, `agent`, `automations`, `external`, `user` o un uuid. |
+| `chat_dashboard_numbers(ws, from, to, channel, author)` | Conversaciones nuevas, recibidos, enviados y mediana de primera respuesta. Con filtro de autor, las conversaciones son **solo los episodios donde ese autor mandó algo** (§11.2). |
+| `chat_waiting_now(ws, channel)` | Conversaciones abiertas con último mensaje entrante de hace más de 1 h, sin `do_not_contact` ni etiqueta que apague al agente. No depende del período. |
+| `chat_agent_episode_flags(ws, channel)` | Por episodio: si el agente actuó, si tomó desde el primer mensaje y si derivó. **Fuente única** de los tres números y de la serie semanal. |
+| `chat_dashboard_agent(ws, from, to, channel)` | Los tres números del agente sobre las conversaciones nuevas. |
+| `chat_dashboard_agent_weekly(ws, channel, tz, weeks)` | Las tres tasas por semana ISO, para las mini líneas. |
+| `chat_dashboard_first_responder(ws, from, to, channel)` | Episodios por quién respondió primero, incluido "todavía sin respuesta". Siempre cinco filas. |
+| `chat_dashboard_escalation_reasons(ws, from, to, channel, limit)` | Derivaciones por motivo, top N + "Otros". |
+| `chat_dashboard_agent_actions(ws, from, to, channel)` | Lo que hizo el agente por tipo de acción, desde `audit_log.performed_by_agent_id`, con cuántas se revirtieron. |
+| `chat_dashboard_rule_results(ws, from, to, channel)` | Turnos por regla y acción. `rule_id` NULL = ninguna regla coincidió. |
+| `chat_dashboard_drafts(ws, from, to, channel, tz)` | Los cinco resultados de §11.6, las dos medianas, el estado de ahora (pendientes, con menos de 6 h, ventanas perdidas en 7 días) y ocho semanas de aprobados sin cambios. |
+| `chat_dashboard_team(ws, from, to, channel)` | Una fila por autor: el agente, **Automatizaciones (una sola)**, Fuera del sistema y cada persona. Con conversaciones, enviados, las dos medianas, % < 1 h, derivaciones recibidas y borradores aprobados. |
+| `chat_dashboard_trends(ws, from, to, channel, author, tz)` | Serie diaria **densa**: todos los días del período, con recibidos, enviados, conversaciones nuevas, enviados por grupo de autor y la mediana diaria de primera respuesta. |
+| `chat_dashboard_patterns(ws, direction, from, to, channel, author)` | Categorías con su volumen de MENSAJES, autor principal, % que obtuvo respuesta, y hasta 5 variantes con su `text_id`. |
+| `chat_dashboard_replies(ws, category_id, from, to, channel)` | "Qué le responden" a una categoría (§11.7), más los totales para el "% no respondió". |
+| `message_text_volumes(ws, direction, from, to)` | Cada texto distinto con su volumen de mensajes. Entrada de las fórmulas de calidad. |
+| `message_classification_status(ws, tz)` | Última corrida del clasificador, clasificados hoy y cuántos quedan sin clasificar. |
 
 El período anterior se calcula en la app (`lib/dashboards/period.ts`
 `previousPeriod`) y se pide como otro rango de igual duración.
 
-## Verificación
+### Tres cosas que estaban mal y se arreglaron (00110)
+
+1. **La primera respuesta de una persona se cuenta desde que la conversación le
+   fue asignada o derivada** (§11.4). Antes las columnas "Primera respuesta" y
+   "Respuesta" salían de la **misma consulta**, así que mostraban siempre el
+   mismo número. El momento de la asignación sale de `audit_log` (`assign` sobre
+   la conversación o el contacto, o `human_takeover`).
+2. **Automatizaciones es UNA fila.** Flows, secuencias y broadcasts salían como
+   tres, las tres con la misma etiqueta, y al tocar cualquiera se filtraba por
+   `author=flow`, un valor que `chat_author_match` no reconoce: el dashboard
+   quedaba en blanco. Ahora la función devuelve `automations`, que es el valor
+   que el filtro entiende. La tabla además **no deja clickear** una fila cuyo
+   autor no se pueda filtrar.
+3. **La serie de tendencias es densa.** Antes devolvía solo los días con
+   actividad: un día sin mensajes faltaba en vez de valer cero y el gráfico
+   mentía la forma de la semana.
+
+### Lo que hay que saber para leer estos números
+
+- **Una mediana no se promedia.** La mediana semanal de primera respuesta se
+  calcula sobre los días que tienen dato; una semana sin episodios queda en
+  `null` y se dibuja como hueco, no como cero.
+- **Un porcentaje siempre va con la cantidad detrás.** 86 % sobre cuatro
+  conversaciones no es lo mismo que sobre cuatrocientas, y sin el número no hay
+  forma de saber cuál de los dos es.
+- **Las tasas se comparan en puntos, no en porcentaje del porcentaje.** De 20 % a
+  17 % son 3 puntos menos; decir "bajó 15 %" es cierto y confuso.
+- **Bajar no siempre es malo.** En primera respuesta y en "Derivó a una persona",
+  bajar es lo bueno, y el color sale de la métrica y no del signo.
+- **"Por qué derivó" agrupa texto libre.** El motivo de una derivación por
+  herramienta lo escribe el modelo en una frase, así que se agrupa por el texto
+  normalizado y se muestra la última redacción. Los de guardarraíl sí tienen
+  clave estable y se traducen con el mismo diccionario que la pantalla de Runs.
+  `rule:r_3` no aparece nunca en pantalla: se lee "Regla 3 · menciona precio".
+- **Los cinco resultados de los borradores son excluyentes** y en ese orden, para
+  que la barra de 100 % sume exactamente el total. Se excluyen `superseded`,
+  `regenerated` y los descartes automáticos que no son una decisión.
+  "Respondida a mano" se detecta por `discard_reason = 'auto:manual_reply'`, que
+  es lo que escribe el trigger de la 00077: §11.6 lo describe como un descarte
+  no automático más un saliente de una persona, pero en la práctica ese caso
+  siempre llega marcado por el trigger.
+- **Descartar a propósito no es una ventana perdida.** Son dos resultados
+  distintos y mezclarlos haría ver mal un trabajo bien hecho.
+- **La referencia del 85 %** de aprobados sin cambios es una referencia visual,
+  no una regla: si se sostiene arriba, conviene evaluar pasar el canal a envío
+  directo. La decisión la toma una persona.
+- **Para un Member, las derivaciones recibidas pueden quedar cortas**: la RLS de
+  `audit_log` no le muestra las filas de otras personas. Los números de Owner y
+  Admin son completos.
+
+### Verificación
 
 `node scripts/verify-dashboards.mjs` crea un workspace con Owner, Member A,
 Member B, un agente, un canal y 6 conversaciones con fechas fijas, llama a las
@@ -56,20 +139,26 @@ caso del Member A, que ve solo las conversaciones 1 y 3). Limpia al terminar.
 Correr los scripts `verify-*` de a uno: comparten el prefijo `zz-test-` y la
 limpieza de uno colisiona con el arranque del otro si se encadenan.
 
-## Episodios vs. conversaciones
+**Al 28/9/2026 el script todavía espera las funciones viejas**: hay que
+extenderlo con las de la 00110 y la 00111 después de aplicarlas.
+
+### Episodios vs. conversaciones
 
 Al 26/9/2026 la base tiene 593 conversaciones. La cantidad de episodios reales
 (que es la base de "conversaciones nuevas") se mide con `chat_episodes` cuando
 el agente esté prendido y haya datos de operación; con el volumen actual la
 diferencia viene sobre todo de conversaciones reabiertas tras inactividad.
 
-## Rendimiento
+### Rendimiento
 
 Las funciones recorren `messages`/`conversations` con índices por
 `(workspace_id, created_at)` y `(conversation_id, created_at)`. Con el volumen
 actual (~2.400 mensajes) responden muy por debajo del objetivo de 1,5 s. Si al
 crecer no se cumpliera, se mide y se anota antes de construir agregados (§14);
 no se crean tablas de agregados todavía.
+
+Cada bloque además tiene un tope de 15 segundos: una consulta colgada deja de
+ser una respuesta HTTP abierta para siempre y pasa a ser un bloque con error.
 
 ---
 
