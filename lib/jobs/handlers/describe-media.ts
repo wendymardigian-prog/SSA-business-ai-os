@@ -1,0 +1,220 @@
+import { generateText } from "ai";
+import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
+import { getWorkspaceModel } from "@/lib/ai/provider";
+import { openAiRun } from "@/lib/ai/run";
+import { parseAttachments } from "@/lib/messages/attachments";
+import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+
+/**
+ * Describir una imagen para que el agente sepa que le mandaron (F8).
+ *
+ * Sin esto, una captura de pantalla sin texto es un mensaje vacio: el agente no
+ * la ve y la compuerta de interpretabilidad escala la conversacion. Con una
+ * descripcion de dos lineas, el agente puede contestar.
+ *
+ * No suma ningun proveedor: usa el modelo de vision que el workspace ya tiene
+ * conectado (OpenAI, Google o Anthropic; los tres ven imagenes). Si no hay
+ * ninguno, el mensaje queda como no interpretable y el agente escala, que es el
+ * comportamiento deseado.
+ *
+ * El prompt pide dos cosas y en ese orden: que se ve, y **el texto que aparezca
+ * en la imagen**. La mayoria de lo que mandan los leads son capturas de
+ * pantalla, y ahi el texto es el mensaje.
+ */
+export const DESCRIBE_MEDIA_JOB = "describe_media";
+
+export interface DescribeMediaPayload {
+  messageId: string;
+}
+
+export function describeDedupeKey(messageId: string): string {
+  return `describe:${messageId}`;
+}
+
+/** Los kinds que se describen. */
+const IMAGE_KINDS = ["image", "sticker"];
+
+/** El techo de la descripcion. Es contexto para el agente, no un informe. */
+const MAX_CHARS = 300;
+
+/**
+ * Los proveedores con vision, en orden de preferencia.
+ *
+ * OpenAI y Google primero porque son los mas baratos para una imagen chica.
+ * Anthropic sirve igual y queda como tercero.
+ */
+const VISION_PROVIDERS = ["openai", "google_ai", "anthropic"];
+
+const PROMPT = [
+  "Describí esta imagen en español, en una sola frase de máximo 300 caracteres.",
+  "Decí qué se ve y, si la imagen tiene texto (por ejemplo una captura de pantalla),",
+  "transcribí lo que dice el texto, que es lo más importante.",
+  "No interpretes ni opines: describí.",
+].join(" ");
+
+/**
+ * La descripcion de la imagen de un mensaje. Nunca lanza para lo permanente.
+ *
+ * Mismo criterio que la transcripcion: un fallo transitorio lanza para que la
+ * cola reintente; uno permanente deja el mensaje marcado y retorna normal.
+ */
+export async function describeMessageMedia(
+  context: JobContext,
+  messageId: string,
+): Promise<{ kind: "done" | "skipped" | "failed" | "retry"; reason?: string }> {
+  const { supabase } = context;
+
+  // El claim: `media_description` pasa de null a '' (en curso). Si otro camino
+  // ya la tomo, esta sentencia no devuelve fila.
+  const { data: claimed, error: claimError } = await supabase
+    .from("messages")
+    .update({ media_description: "" })
+    .eq("id", messageId)
+    .is("media_description", null)
+    .select("id, workspace_id, attachments, text")
+    .maybeSingle();
+
+  if (claimError) {
+    console.error("[describe_media] no pude reclamar el mensaje:", claimError.message);
+    return { kind: "retry", reason: "claim" };
+  }
+  if (!claimed) return { kind: "skipped", reason: "ya la tomo otro" };
+
+  const image = parseAttachments(claimed.attachments).find(
+    (item) => IMAGE_KINDS.includes(item.kind) && item.status === "ready" && item.storagePath,
+  );
+
+  if (!image?.storagePath) {
+    return await giveUp(context, messageId, "La imagen no está disponible");
+  }
+
+  const { data: file, error: downloadError } = await supabase.storage
+    .from(CHAT_MEDIA_BUCKET)
+    .download(image.storagePath);
+
+  if (downloadError || !file) {
+    await release(context, messageId);
+    return { kind: "retry", reason: "no pude bajar la imagen" };
+  }
+
+  // El modelo de vision del workspace. Se prueban los tres en orden; si no hay
+  // ninguno conectado, el mensaje queda no interpretable y el agente escala.
+  let resolved = null as Awaited<ReturnType<typeof getWorkspaceModel>> | null;
+  for (const provider of VISION_PROVIDERS) {
+    const attempt = await getWorkspaceModel(claimed.workspace_id, { preferredProvider: provider, supabase });
+    if (attempt.ok && attempt.provider === provider) {
+      resolved = attempt;
+      break;
+    }
+  }
+
+  if (!resolved?.ok || !resolved.model) {
+    return await giveUp(
+      context,
+      messageId,
+      "No hay ningún modelo con visión conectado para describir la imagen",
+    );
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const run = await openAiRun(supabase, {
+    workspaceId: claimed.workspace_id,
+    source: "media_description",
+    trigger: "job",
+    threadId: messageId,
+    provider: resolved.provider ?? null,
+    model: resolved.modelId ?? null,
+  });
+
+  let text: string;
+  try {
+    const result = await generateText({
+      model: resolved.model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: PROMPT },
+            { type: "image", image: bytes, mediaType: image.mime ?? "image/jpeg" },
+          ],
+        },
+      ],
+      maxOutputTokens: 300,
+    });
+    text = result.text.trim().slice(0, MAX_CHARS);
+    run.setFinalUsage(result.totalUsage);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "error desconocido";
+    await run.close({ status: "error", statusDetail: "vision_failed", error: message });
+    await release(context, messageId);
+    // Una caida del proveedor vale reintentar; el claim ya quedo liberado.
+    return { kind: "retry", reason: "el modelo de vision fallo" };
+  }
+
+  await run.close({ status: "responded" });
+
+  if (text.length === 0) {
+    return await giveUp(context, messageId, "El modelo no devolvió ninguna descripción");
+  }
+
+  const { error: saveError } = await supabase
+    .from("messages")
+    .update({
+      media_description: text,
+      // Si el mensaje ya tenia texto propio (un caption), el texto sigue
+      // mandando: la descripcion es contexto de mas, no el contenido.
+      interpretability: claimed.text ? "text" : "described",
+    })
+    .eq("id", messageId);
+
+  if (saveError) {
+    console.error("[describe_media] no pude guardar la descripcion:", saveError.message);
+    return { kind: "retry", reason: "no pude guardar" };
+  }
+
+  return { kind: "done" };
+}
+
+/** Permanente: el mensaje queda no interpretable y el agente va a escalar. */
+async function giveUp(
+  context: JobContext,
+  messageId: string,
+  reason: string,
+): Promise<{ kind: "failed"; reason: string }> {
+  const { error } = await context.supabase
+    .from("messages")
+    .update({ media_description: null, interpretability: "unreadable" })
+    .eq("id", messageId);
+  if (error) console.error("[describe_media] no pude marcar el mensaje:", error.message);
+  console.warn(`[describe_media] ${messageId}: ${reason}`);
+  return { kind: "failed", reason };
+}
+
+/** Transitorio: se libera el claim para que el reintento lo pueda tomar. */
+async function release(context: JobContext, messageId: string): Promise<void> {
+  const { error } = await context.supabase
+    .from("messages")
+    .update({ media_description: null })
+    .eq("id", messageId);
+  if (error) console.error("[describe_media] no pude liberar el mensaje:", error.message);
+}
+
+async function handleDescribeMedia(context: JobContext): Promise<void> {
+  const payload = context.job.payload as unknown as DescribeMediaPayload;
+  const messageId = payload?.messageId;
+
+  if (!messageId) {
+    console.error("[describe_media] el job llego sin messageId");
+    return;
+  }
+
+  const result = await describeMessageMedia(context, messageId);
+  if (result.kind === "retry") {
+    throw new Error(`no pude describir la imagen (${result.reason})`);
+  }
+}
+
+export function registerDescribeMediaHandler(): void {
+  registerJobHandler(DESCRIBE_MEDIA_JOB, handleDescribeMedia);
+}

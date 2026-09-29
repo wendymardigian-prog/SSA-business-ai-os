@@ -15,7 +15,12 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
     resetJobHandlers();
     resetPublishingBootstrap();
     registerPublishing();
-    // La Etapa 4 suma los tres de agenda; los ocho de antes no cambian.
+    // La Etapa 4 sumo los tres de agenda; Mejoras de Chat suma describe_media y
+    // transcribe_audio. Los ocho originales no cambian.
+    //
+    // El valor de esta lista es que un handler nuevo NO se registre por
+    // accidente: cada tipo que aparece aca tiene que ser uno que alguien quiso
+    // dar de alta, y el que se olvida de llamar a su register* lo ve faltar.
     expect(registeredJobTypes()).toEqual([
       "bg_task",
       "booking_ended",
@@ -26,8 +31,10 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "content_publish",
       "content_publish_check",
       "content_upload",
+      "describe_media",
       "meta_ads_sync",
       "metrics_sync",
+      "transcribe_audio",
     ]);
   });
 

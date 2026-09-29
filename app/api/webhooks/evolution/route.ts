@@ -27,6 +27,7 @@ import { upsertContactForSender } from "@/lib/inbox-sync";
 import { previewForMessage } from "@/lib/message-preview";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
+import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { jidToPhone } from "@/lib/phone";
 import {
@@ -304,7 +305,7 @@ async function processMessage(
   if (inserted.stored && inserted.id && hasDownloadableMedia(attachments)) {
     const config = await getEvolutionConfig(supabase, channel.workspace_id);
     if (config && channel.evolution_instance) {
-      await storeEvolutionMedia({
+      const media = await storeEvolutionMedia({
         supabase,
         config,
         instance: channel.evolution_instance,
@@ -314,6 +315,11 @@ async function processMessage(
         platformMessageId: messageId,
         items: attachments,
       });
+
+      // Con el archivo adentro: transcribir la nota de voz o encolar la
+      // descripcion de la imagen (F7, F8). Va ANTES de agendar el turno del
+      // agente: asi el turno arranca con la transcripcion ya hecha.
+      await afterMediaStored({ supabase, messageId: inserted.id, items: media.items });
     } else {
       console.error("[evolution] sin configuracion o sin instancia: no puedo traer la media");
     }

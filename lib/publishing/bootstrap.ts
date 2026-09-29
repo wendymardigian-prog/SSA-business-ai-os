@@ -22,6 +22,8 @@ import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
+import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
+import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -81,6 +83,13 @@ export function registerPublishing(): void {
   // Las tareas de IA en segundo plano (F24). Despacha por `payload.task`: una
   // tarea sin implementacion falla con el motivo, no completa en silencio.
   registerBgTaskHandler();
+
+  // Mejoras de Chat: pasar a texto las notas de voz, para que el agente sepa
+  // que le dijeron (F7).
+  registerTranscribeAudioHandler();
+
+  // Y describir las imagenes, para que una captura no sea un mensaje vacio (F8).
+  registerDescribeMediaHandler();
 }
 
 /** Para los tests. */

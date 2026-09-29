@@ -32,6 +32,7 @@ import {
   toAttachmentsColumn,
 } from "@/lib/messages/attachments";
 import { storeInboundMedia } from "@/lib/inbound-media";
+import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import {
   applyOptOut,
   pauseSequencesOnReply,
@@ -339,13 +340,19 @@ async function processMessageEvent(
   // Nunca puede voltear el webhook: storeInboundMedia atrapa todo y deja el
   // motivo en el adjunto.
   if (inserted.id && hasDownloadableMedia(attachments)) {
-    await storeInboundMedia({
+    const media = await storeInboundMedia({
       supabase,
       workspaceId: channel.workspace_id,
       conversationId: conversation.id,
       messageId: inserted.id,
       items: attachments,
     });
+
+    // Con el archivo adentro: transcribir el audio o encolar la descripcion de
+    // la imagen (F7, F8). Va ANTES de agendar el turno del agente, que esta mas
+    // abajo: asi el turno arranca con la transcripcion ya hecha y la compuerta
+    // de interpretabilidad no tiene que esperar.
+    await afterMediaStored({ supabase, messageId: inserted.id, items: media.items });
   }
 
   // ── Modo borrador (Bloque 2c) ─────────────────────────────────────────────

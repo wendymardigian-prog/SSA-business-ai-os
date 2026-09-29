@@ -13,6 +13,7 @@ import {
   type IndexDocumentPayload,
 } from "@/lib/knowledge/index-document";
 import { outboundMessageRow } from "@/lib/messages/outbound";
+import { reapStuckTranscriptions } from "@/lib/chat-media/transcribe-message";
 import { getJobHandler, UnknownJobTypeError } from "@/lib/jobs/registry";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { sweepStuckPublications } from "@/lib/publishing/sweep";
@@ -106,6 +107,22 @@ export async function GET(request: NextRequest) {
     }
   } catch (err) {
     console.error("[cron/jobs] fallo la conciliacion:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Higiene de las transcripciones colgadas (F7). Un `pending` de mas de diez
+  // minutos es uno que nadie va a terminar: el after() del webhook se corto o
+  // el proceso se murio a mitad. Sin esto la bandeja queda con
+  // "Transcribiendo…" girando para siempre Y el mensaje no se reintenta nunca,
+  // porque el claim ve `pending` y se saltea.
+  //
+  // Va aca y no solo en el handler: si no se encola ningun job de transcripcion
+  // (que es lo normal, porque el webhook transcribe en el momento), el handler
+  // nunca corre y nadie libera la fila. Es un UPDATE sobre un indice parcial que
+  // casi siempre esta vacio.
+  try {
+    await reapStuckTranscriptions(supabase);
+  } catch (err) {
+    console.error("[cron/jobs] fallo el reaper de transcripciones:", err instanceof Error ? err.message : String(err));
   }
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is
