@@ -27,6 +27,7 @@ import { useHtmlClass } from "@/components/use-html-class";
 import { isAdminRole } from "@/lib/auth/roles";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
+import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import type { Database } from "@/lib/types/database";
 
 type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
@@ -198,24 +199,30 @@ export function NavLinks({
             ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"].some((href) =>
               pathname.startsWith(href),
             ));
+        const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
         return (
-          <Link
-            key={item.name}
-            href={item.href}
-            onClick={onNavigate}
-            aria-current={isActive ? "page" : undefined}
-            title={collapsed ? item.name : undefined}
-            className={cn(
-              "relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
-              isActive
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            )}
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            <span className="collapsed:hidden">{item.name}</span>
-            {item.href === "/dashboard/inbox" && drafts && <DraftBadge counts={drafts} />}
-          </Link>
+          // El badge de borradores es un link propio y no puede vivir adentro
+          // del link de Inbox (anidar <a> es invalido y llevaria a la bandeja
+          // en vez de a la cola). Por eso la fila es un contenedor relativo.
+          <div key={item.name} className="relative">
+            <Link
+              href={item.href}
+              onClick={onNavigate}
+              aria-current={isActive ? "page" : undefined}
+              title={collapsed ? item.name : undefined}
+              className={cn(
+                "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
+                badge && "pr-14 collapsed:pr-0",
+                isActive
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="collapsed:hidden">{item.name}</span>
+            </Link>
+            {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+          </div>
         );
       })}
     </>
@@ -233,17 +240,21 @@ export function NavLinks({
  * asi que queda uno solo, chico, arriba a la derecha del icono. El texto
  * completo sigue en el title.
  */
-export function DraftBadge({ counts }: { counts: PendingDraftCounts }) {
+export function DraftBadge({ counts, onNavigate }: { counts: PendingDraftCounts; onNavigate?: () => void }) {
   const total = counts.total ?? null;
   if (counts.mine === 0 && !total) return null;
   const title =
     total !== null
-      ? `Borradores esperando: ${counts.mine} tuyos · ${total} en total${counts.unassigned ? ` (${counts.unassigned} sin asignar)` : ""}`
-      : `Borradores esperando: ${counts.mine}`;
+      ? `Borradores esperando: ${counts.mine} tuyos · ${total} en total${counts.unassigned ? ` (${counts.unassigned} sin asignar)` : ""}. Ir a la cola`
+      : `Borradores esperando: ${counts.mine}. Ir a la cola`;
   const corto = counts.mine > 0 ? counts.mine : (total ?? 0);
   return (
-    <span
-      className="ml-auto flex items-center gap-1 collapsed:absolute collapsed:right-1 collapsed:top-1 collapsed:ml-0"
+    <Link
+      href={draftsQueueHref(counts)}
+      onClick={onNavigate}
+      // Centrado sobre la fila de Inbox; con el menu colapsado, arriba a la
+      // derecha del icono, donde hay lugar para un solo numero.
+      className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full collapsed:right-1 collapsed:top-1 collapsed:translate-y-0"
       title={title}
       aria-label={title}
     >
@@ -260,6 +271,6 @@ export function DraftBadge({ counts }: { counts: PendingDraftCounts }) {
       <span className="hidden h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-none text-primary-foreground collapsed:flex">
         {corto > 9 ? "9+" : corto}
       </span>
-    </span>
+    </Link>
   );
 }

@@ -7,6 +7,7 @@ import { platformLabel } from "@/lib/platforms";
 import { AGENT_PUBLIC_COLUMNS, publicChannelMode, type PublicAgent } from "@/lib/agent/public";
 import { getAgentType } from "@/lib/agent/agent-types";
 import { loadDraftQueue, parseDraftFilters } from "@/lib/agent/drafts/queue-query";
+import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { DraftsView } from "@/components/drafts/drafts-view";
 import { MetricsStrip } from "@/components/drafts/metrics-strip";
 import { PageHeader } from "@/components/page-header";
@@ -26,11 +27,13 @@ export default async function DraftsPage({
   const { workspace, user, role, supabase } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
-  const [members, channelsRes, agentsRes] = await Promise.all([
+  const [members, channelsRes, agentsRes, counts] = await Promise.all([
     getWorkspaceMembers(workspace.id),
     supabase.from("channels").select("id, platform, username").eq("workspace_id", workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
+    // Para que el vacio de "mios" sepa cuantos hay de otras personas (A.2).
+    countPendingDrafts(),
   ]);
 
   const channels = (channelsRes.data ?? []).map((c) => ({
@@ -74,6 +77,7 @@ export default async function DraftsPage({
           members={members.map((m) => ({ userId: m.userId, label: m.userId === user.id ? `${m.name} (vos)` : m.name }))}
           channels={channels}
           isAdmin={isAdmin}
+          counts={counts}
           draftChannels={draftChannels}
           agentId={agents[0]?.id ?? null}
           metrics={

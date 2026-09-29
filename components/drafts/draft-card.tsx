@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -10,6 +10,7 @@ import { discardDraftAction, regenerateDraftAction, sendDraftAction } from "@/li
 import type { DraftActionResult } from "@/lib/agent/drafts/actions";
 import type { DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { noReplyReasonLabel, type AppliedAction, type SuggestedAction } from "@/lib/agent/drafts/types";
+import { modelFailureNotice } from "@/lib/agent/drafts/model-failure";
 import { routingSentence } from "@/lib/agent/routing-sentence";
 import type { Platform } from "@/lib/platforms";
 import { WindowBadge } from "./window-badge";
@@ -220,6 +221,31 @@ function ProposedReply({ draft, decision }: { draft: DraftQueueRow; decision: De
     );
   }
   if (!draft.body) {
+    // Un borrador vacio porque fallo el modelo no puede verse como una fila en
+    // blanco: dice que paso y donde se arregla (A.5).
+    const failure = modelFailureNotice(draft.noReplyReason, draft.runError);
+    if (failure) {
+      return (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+          <p className="flex items-start gap-1.5 font-medium text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            {failure.headline}
+          </p>
+          {failure.hint && <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">{failure.hint}</p>}
+          {failure.href && (
+            <Link href={failure.href} className="mt-1.5 inline-block text-xs font-medium text-primary underline underline-offset-2">
+              {failure.hrefLabel}
+            </Link>
+          )}
+          {failure.technical && (
+            <details className="mt-1.5">
+              <summary className="cursor-pointer text-[11px] text-muted-foreground">Detalle técnico</summary>
+              <p className="mt-1 break-words text-[11px] text-muted-foreground">{failure.technical}</p>
+            </details>
+          )}
+        </div>
+      );
+    }
     return (
       <p className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">Sin respuesta:</span> {noReplyReasonLabel(draft.noReplyReason)}

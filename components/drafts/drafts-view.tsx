@@ -7,6 +7,8 @@ import { FileText, Inbox } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { EmptyState, FilterBar, FilterSelect, Pagination, useUrlFilters } from "@/components/agents/filters";
 import { noticeForDraftChange } from "@/lib/agent/drafts/queue-notices";
+import { emptyQueueHint } from "@/lib/agent/drafts/destination";
+import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { DRAFTS_PAGE_SIZE, QUIEN_ALL, QUIEN_MINE, QUIEN_UNASSIGNED, type DraftFilters, type DraftQueue } from "@/lib/agent/drafts/queue-query";
 import { DraftQueueItem } from "./draft-card";
 import { WindowLegend } from "./window-badge";
@@ -30,6 +32,7 @@ export function DraftsView({
   isAdmin,
   draftChannels,
   agentId,
+  counts,
   metrics,
 }: {
   workspaceId: string;
@@ -41,6 +44,12 @@ export function DraftsView({
   /** Cuantos canales tiene el agente en modo borrador (para el empty state). */
   draftChannels: number;
   agentId: string | null;
+  /**
+   * Los borradores esperando en el workspace (`countPendingDrafts`). Sirve para
+   * que el vacio de "mios" pueda decir cuantos hay de otras personas en vez de
+   * dar a entender que no hay ninguno (A.2).
+   */
+  counts?: PendingDraftCounts;
   /** La franja de medicion (se arma en el servidor). */
   metrics?: ReactNode;
 }) {
@@ -187,20 +196,7 @@ export function DraftsView({
             onClear={() => clearAll([])}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
-            <p className="mt-3 text-sm font-medium">No hay borradores esperando</p>
-            <p className="mt-1 max-w-md text-xs text-muted-foreground">
-              Cuando el agente deje una respuesta para aprobar en una conversación tuya, aparece acá sola.
-            </p>
-            <button
-              type="button"
-              onClick={() => setParam("quien", QUIEN_ALL)}
-              className="mt-3 rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-            >
-              Ver los de todos
-            </button>
-          </div>
+          <MineEmpty counts={counts} onSeeAll={(quien) => setParam("quien", quien)} />
         )
       ) : (
         // Sin overflow-hidden en el telefono: cortaria la barra de botones
@@ -228,6 +224,31 @@ export function DraftsView({
       )}
 
       <Pagination page={filters.page} total={queue.total} pageSize={DRAFTS_PAGE_SIZE} onPage={setPage} />
+    </div>
+  );
+}
+
+/**
+ * El vacio de la vista por defecto ("mios").
+ *
+ * Con borradores de otras personas esperando, decir solo "no hay borradores"
+ * es enganoso: el numero del menu los cuenta. Por eso dice cuantos son y
+ * ofrece verlos (A.2).
+ */
+function MineEmpty({ counts, onSeeAll }: { counts?: PendingDraftCounts; onSeeAll: (quien: string) => void }) {
+  const hint = emptyQueueHint(counts);
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+      <Inbox className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+      <p className="mt-3 text-sm font-medium">No hay borradores esperando</p>
+      <p className="mt-1 max-w-md text-xs text-muted-foreground">{hint.text}</p>
+      <button
+        type="button"
+        onClick={() => onSeeAll(hint.action?.quien ?? QUIEN_ALL)}
+        className="mt-3 rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+      >
+        {hint.action?.label ?? "Ver los de todos"}
+      </button>
     </div>
   );
 }
