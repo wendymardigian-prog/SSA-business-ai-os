@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { describeAttachment, extractText, messageTimestamp } from "./evolution-message";
+import { attachmentLabel } from "@/lib/messages/attachments";
 
 afterEach(() => vi.useRealTimers());
 
@@ -45,11 +46,21 @@ describe("extractText", () => {
 describe("describeAttachment", () => {
   it("da una etiqueta para que el preview no quede vacio", () => {
     expect(describeAttachment("imageMessage")).toBe("📷 Imagen");
-    expect(describeAttachment("audioMessage")).toBe("🎤 Audio");
+    expect(describeAttachment("audioMessage")).toBe("🎵 Audio");
+  });
+
+  it("las etiquetas son las mismas que usa la bandeja (F1): una sola fuente", () => {
+    // Antes esto decia "🎥 Video" y la burbuja "🎬 Video".
+    expect(describeAttachment("videoMessage")).toBe(attachmentLabel("video"));
+    expect(describeAttachment("locationMessage")).toBe(attachmentLabel("location"));
+  });
+
+  it("una encuesta ahora tambien tiene etiqueta (antes quedaba sin preview)", () => {
+    expect(describeAttachment("pollCreationMessage")).toBe("📊 Encuesta");
   });
 
   it("devuelve null para un tipo que no conocemos", () => {
-    expect(describeAttachment("pollCreationMessage")).toBeNull();
+    expect(describeAttachment("loQueSea")).toBeNull();
     expect(describeAttachment(undefined)).toBeNull();
   });
 });

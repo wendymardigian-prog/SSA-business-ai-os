@@ -191,6 +191,69 @@ export async function updateMessagePersistence(
 }
 
 /**
+ * La media del chat: si se guarda y cuanto se conserva (F2, F5).
+ *
+ * Son dos columnas y una sola pantalla, asi que van en una sola accion: si
+ * fueran dos, cambiar las dos cosas seria dos escrituras y dos entradas en el
+ * audit para una sola decision de la persona.
+ *
+ * Mismo criterio que el guardado de mensajes: es configuracion del workspace,
+ * asi que es de Owner/Admin.
+ */
+export async function updateChatMediaSettings(input: {
+  enabled: boolean;
+  retentionDays: number;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return { ok: false, error: "Solo Owner y Admin pueden cambiar la configuración de la media del chat" };
+  }
+
+  // Se valida en el servidor y no solo en el select: la accion es una puerta
+  // publica, y el CHECK de la base devolveria un error crudo de Postgres.
+  if (!Number.isInteger(input.retentionDays) || input.retentionDays < 0 || input.retentionDays > 3650) {
+    return { ok: false, error: "La retención tiene que ser un número de días entre 0 y 3650" };
+  }
+
+  const { workspace, supabase, user } = ctx;
+
+  const { data: before } = await supabase
+    .from("workspaces")
+    .select("persist_chat_media, chat_media_retention_days")
+    .eq("id", workspace.id)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ persist_chat_media: input.enabled, chat_media_retention_days: input.retentionDays })
+    .eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar la media del chat:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: {
+      persist_chat_media: { old: before?.persist_chat_media ?? null, new: input.enabled },
+      chat_media_retention_days: {
+        old: before?.chat_media_retention_days ?? null,
+        new: input.retentionDays,
+      },
+    },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
  * Zona horaria del workspace (F3). Los dashboards del Bloque 3 cortan los días
  * en esta zona. Se valida en el servidor: una zona inválida se rechaza con un
  * mensaje claro, nunca se guarda.

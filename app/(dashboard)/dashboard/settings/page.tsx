@@ -18,6 +18,8 @@ export default async function SettingsPage() {
           workspace.unassigned_leads_visible_to_members,
         ),
         persistZernioInbound: Boolean(workspace.persist_zernio_inbound),
+        persistChatMedia: workspace.persist_chat_media ?? true,
+        chatMediaRetentionDays: workspace.chat_media_retention_days ?? 180,
         timezone: (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica",
       }}
     />

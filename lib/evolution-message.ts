@@ -7,15 +7,27 @@
  * de su propio objeto. Si no se miran todos, media conversacion entra vacia.
  */
 
-/** Tipos de mensaje de WhatsApp que no traen texto pero si algo que mostrar. */
-const ATTACHMENT_LABELS: Record<string, string> = {
-  imageMessage: "📷 Imagen",
-  videoMessage: "🎥 Video",
-  audioMessage: "🎤 Audio",
-  documentMessage: "📄 Documento",
-  stickerMessage: "Sticker",
-  locationMessage: "📍 Ubicacion",
-  contactMessage: "👤 Contacto",
+import { attachmentLabel, type AttachmentKind } from "@/lib/messages/attachments";
+
+/**
+ * Que tipo de adjunto es cada nodo de WhatsApp.
+ *
+ * Las etiquetas ya no viven aca: salen de `attachmentLabel` (F1), que es la
+ * unica fuente y la misma que usa la bandeja. Antes estaban duplicadas y
+ * decian otra cosa que la burbuja ("🎥 Video" contra "🎬 Video"), asi que el
+ * preview de la lista y el mensaje abierto no coincidian.
+ */
+const ATTACHMENT_KINDS: Record<string, AttachmentKind> = {
+  imageMessage: "image",
+  videoMessage: "video",
+  audioMessage: "audio",
+  documentMessage: "document",
+  stickerMessage: "sticker",
+  locationMessage: "location",
+  contactMessage: "contact",
+  pollCreationMessage: "poll",
+  pollCreationMessageV2: "poll",
+  pollCreationMessageV3: "poll",
 };
 
 /** Rutas donde WhatsApp puede dejar el texto, en orden de preferencia. */
@@ -53,7 +65,9 @@ export function extractText(message: Record<string, unknown> | undefined | null)
  * no quede en blanco. null si no sabemos que es.
  */
 export function describeAttachment(messageType: string | undefined | null): string | null {
-  return messageType ? (ATTACHMENT_LABELS[messageType] ?? null) : null;
+  if (!messageType) return null;
+  const kind = ATTACHMENT_KINDS[messageType];
+  return kind ? attachmentLabel(kind) : null;
 }
 
 /**

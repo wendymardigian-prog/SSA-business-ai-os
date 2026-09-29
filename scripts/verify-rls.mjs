@@ -1181,6 +1181,45 @@ try {
     await svc.from("channels").delete().eq("id", chEmail.id);
   }
 
+  console.log("\n— La media del chat (00102): el bucket chat-media —");
+  { // El bucket es privado y su policy mira el workspace del PRIMER segmento
+    // del path. Si estuviera abierta a cualquier autenticado (como en ScaleOS),
+    // un usuario de otro negocio escucharia las notas de voz de este.
+    //
+    // Los chequeos se saltean solos si la 00102 todavia no se aplico: el script
+    // tiene que poder correr antes de la migracion sin dar una falla falsa.
+    const { data: buckets } = await svc.storage.listBuckets();
+    const bucket = (buckets ?? []).find((b) => b.name === "chat-media");
+
+    if (!bucket) {
+      console.log("  ~ chat-media todavia no existe (falta aplicar la 00102): se saltea");
+    } else {
+      check(bucket.public === false, "el bucket chat-media es privado");
+
+      const archivo = new Blob([new Uint8Array([0x49, 0x44, 0x33])], { type: "audio/mpeg" });
+      const rutaPropia = `${ws.id}/zz-test-chat-media/nota.mp3`;
+
+      const { error: subida } = await svc.storage.from("chat-media").upload(rutaPropia, archivo, { upsert: true });
+      check(!subida, "el service role sube el archivo (es quien lo copia del proveedor)", subida?.message);
+
+      { const { data, error } = await admin.client.storage.from("chat-media").download(rutaPropia);
+        check(!!data && !error, "un miembro del workspace escucha el audio", error?.message); }
+
+      { const { data, error } = await otro.client.storage.from("chat-media").download(rutaPropia);
+        check(!data || !!error, "otro workspace NO puede escucharlo"); }
+
+      // Sin policies de escritura: subir y borrar son del servidor.
+      { const { error } = await admin.client.storage.from("chat-media")
+          .upload(`${ws.id}/zz-test-chat-media/falso.mp3`, archivo, { upsert: true });
+        check(!!error, "ni un Admin sube a mano a chat-media"); }
+
+      { const { error } = await admin.client.storage.from("chat-media").remove([rutaPropia]);
+        check(!!error, "ni un Admin borra de chat-media: eso lo hace el cron de retencion"); }
+
+      await svc.storage.from("chat-media").remove([rutaPropia, `${ws.id}/zz-test-chat-media/falso.mp3`]);
+    }
+  }
+
   console.log("\n— Agenda (Etapa 4, 00095): perfiles y calendarios —");
   { // Lectura cruzada entre dos workspaces y entre un Member y otra persona.
     const otroWs = await makeUser("otro-agenda");

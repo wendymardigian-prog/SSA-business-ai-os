@@ -351,6 +351,15 @@ export function MessageThread({
       email_from: null,
       email_to: null,
       email_cc: null,
+      // La media, la transcripcion y la interpretabilidad las completa el
+      // servidor: un mensaje que se acaba de escribir es texto y nada mas.
+      media_description: null,
+      interpretability: "text",
+      transcript: null,
+      transcript_status: "none",
+      transcript_error: null,
+      transcript_seconds: null,
+      transcript_started_at: null,
     };
     setMessages((prev) => [...prev, optimisticMessage]);
 

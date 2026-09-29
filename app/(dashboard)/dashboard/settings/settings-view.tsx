@@ -19,6 +19,7 @@ import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
+import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { PageHeader } from "@/components/page-header";
@@ -31,6 +32,8 @@ interface WorkspaceSettings {
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
   persistZernioInbound: boolean;
+  persistChatMedia: boolean;
+  chatMediaRetentionDays: number;
   timezone: string;
 }
 
@@ -125,6 +128,13 @@ export function SettingsView({
           <hr className="border-border" />
 
           <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
+
+          <hr className="border-border" />
+
+          <ChatMediaSettings
+            enabled={workspace.persistChatMedia}
+            retentionDays={workspace.chatMediaRetentionDays}
+          />
 
           <hr className="border-border" />
 

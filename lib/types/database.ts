@@ -23,6 +23,23 @@ export type MessageOrigin =
   | "broadcast"
   | "external";
 /** De donde sale la conexion del canal (migracion 00019). */
+/**
+ * Si el agente pudo entender un mensaje (migracion 00102).
+ *
+ * `unknown` es el default y es lo que tienen las filas anteriores a la
+ * migracion: nunca se evaluaron y no se reprocesan.
+ */
+export type MessageInterpretability =
+  | "text"
+  | "transcribed"
+  | "described"
+  | "label_only"
+  | "unreadable"
+  | "unknown";
+
+/** El estado de la transcripcion de un audio (migracion 00103). */
+export type TranscriptStatus = "none" | "pending" | "ready" | "failed";
+
 export type ChannelProvider = "zernio" | "evolution" | "resend";
 export type ChannelConnectionStatus =
   | "connected"
@@ -519,6 +536,20 @@ export interface Database {
            * (Instagram). Apagado, el receptor no inserta (migracion 00053).
            */
           persist_zernio_inbound: boolean;
+          /**
+           * Si se copia a nuestro Storage la media que llega por el chat
+           * (00102). Apagado, el mensaje queda solo con la URL del proveedor,
+           * que vence.
+           */
+          persist_chat_media: boolean;
+          /** Dias que se conserva el archivo de un adjunto del chat. 0 = nunca (00102). */
+          chat_media_retention_days: number;
+          /**
+           * Si el agente escala a una persona cuando no puede interpretar un
+           * mensaje de la rafaga (00103). Prendido es el comportamiento
+           * correcto; se puede apagar si genera demasiado escalado.
+           */
+          agent_escalate_on_unreadable: boolean;
           /** Dias que se conserva la media publicada. 0 = nunca se borra (00083). */
           content_media_retention_days: number;
           /** Voz de marca para generar copy (00085). */
@@ -543,6 +574,9 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          persist_chat_media?: boolean;
+          chat_media_retention_days?: number;
+          agent_escalate_on_unreadable?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
           scheduling_auto_create_flows?: boolean;
@@ -565,6 +599,9 @@ export interface Database {
           lead_scope_enabled?: boolean;
           unassigned_leads_visible_to_members?: boolean;
           persist_zernio_inbound?: boolean;
+          persist_chat_media?: boolean;
+          chat_media_retention_days?: number;
+          agent_escalate_on_unreadable?: boolean;
           content_media_retention_days?: number;
           content_copy_settings?: Json;
           scheduling_auto_create_flows?: boolean;
@@ -1363,6 +1400,20 @@ export interface Database {
           email_from: string | null;
           email_to: Json | null;
           email_cc: Json | null;
+          // ── Media del chat (00102 y 00103) ──────────────────────────────
+          /** Descripcion de la imagen hecha por el modelo de vision (F8). */
+          media_description: string | null;
+          /** Si el agente pudo entender el mensaje (00102). */
+          interpretability: MessageInterpretability;
+          /** La transcripcion del audio (F7). Nunca se borra por retencion. */
+          transcript: string | null;
+          transcript_status: TranscriptStatus;
+          /** Por que no se pudo transcribir, en castellano. */
+          transcript_error: string | null;
+          /** Segundos de audio que cobro el proveedor. */
+          transcript_seconds: number | null;
+          /** Cuando arranco: es lo que usa el reaper de los pending colgados. */
+          transcript_started_at: string | null;
         };
         Insert: {
           id?: string;
@@ -1397,11 +1448,33 @@ export interface Database {
           email_from?: string | null;
           email_to?: Json | null;
           email_cc?: Json | null;
+          media_description?: string | null;
+          interpretability?: MessageInterpretability;
+          transcript?: string | null;
+          transcript_status?: TranscriptStatus;
+          transcript_error?: string | null;
+          transcript_seconds?: number | null;
+          transcript_started_at?: string | null;
         };
+        /**
+         * Update era casi vacio a proposito: un mensaje no se edita. La media
+         * del chat obliga a abrirlo, porque el adjunto se guarda `pending` y
+         * pasa a `ready` cuando el archivo termina de bajar, y la transcripcion
+         * llega despues. Lo que sigue afuera es el texto: lo que dijo el lead
+         * no se reescribe.
+         */
         Update: {
           status?: MessageStatus;
           platform_message_id?: string | null;
           email_message_id?: string | null;
+          attachments?: Json | null;
+          media_description?: string | null;
+          interpretability?: MessageInterpretability;
+          transcript?: string | null;
+          transcript_status?: TranscriptStatus;
+          transcript_error?: string | null;
+          transcript_seconds?: number | null;
+          transcript_started_at?: string | null;
         };
         Relationships: [
           {
