@@ -29,6 +29,18 @@ Los pendientes de la Etapa 4 están en [docs/etapa4/PENDIENTE-agendamiento.md](e
 - **Por qué:** el bucket todavía no existe: la 00102 no está aplicada.
 - **Qué se decidió en su lugar:** correr `node scripts/verify-rls.mjs` después de aplicar la 00102. Los chequeos ya están escritos y se saltean solos con un aviso si el bucket no existe, así que el script no falla mientras tanto.
 
+### La revisión visual de la bandeja real, sin hacer (pide sesión)
+- **Qué quedó:** recorrer `/dashboard/inbox` con datos de verdad, a escritorio y a 390 px, para ver las burbujas nuevas dentro del hilo real.
+- **Por qué:** el navegador integrado de esta corrida no tiene sesión y la app redirige a `/login`. La regla de la corrida prohíbe ingresar credenciales.
+- **Qué se decidió en su lugar:** se verificó lo que no depende de la sesión, midiendo el CSS real que sirve el dev server a 390 px sobre un banco de prueba con la misma estructura que produce la burbuja. **Encontró dos cosas reales, que ya están arregladas:**
+
+  1. **El reproductor desbordaba la burbuja.** Tenía `min-w-[210px]`, y en CSS `min-width` le gana a `max-width`: medido, 210 px dentro de un contenedor de 200 px da 210 px. Pasó a `min-w-[min(210px,100%)]`.
+  2. **Los controles nativos se veían como una píldora blanca** sobre la burbuja oscura. Se les puso `color-scheme: dark`, con las dos variantes (`[.dark_&]:` y `dark:`), porque en este proyecto el tema lo maneja la clase `.dark` del `<html>` pero el `dark:` de Tailwind compila a `@media (prefers-color-scheme: dark)`: son dos señales distintas y no siempre coinciden.
+
+  Lo medido a 390 px, con el CSS de producción: la tarjeta del audio, la del documento y el bloque de transcripción quedan en 279 px de ancho (la burbuja da 279), una foto vertical se corta a 288 px de alto, una captura panorámica a 279 px de ancho, y la página no tiene scroll horizontal. Las dos variantes de `color-scheme` compilan en el CSS de producción.
+
+  **Lo que falta mirar con sesión**, que es lo que el banco de prueba no puede cubrir: que el badge y el filtro "Necesita humano" se vean en la lista real, que el hilo de Instagram muestre la media cruzada, y que el reproductor arranque al apretar ▶ contra un archivo de verdad.
+
 ### Un error de lint preexistente, en código de la Etapa 4
 - **Qué quedó:** `npm run lint` devuelve **1 error** en `components/scheduling/booker/use-embed-bridge.ts:22` ("Cannot access refs during render", por `uiRef.current = onUi` en el cuerpo del componente) y 41 warnings.
 - **Por qué:** ya está en `main` antes de esta corrida (se comprobó corriendo el lint en las dos ramas), y es código del embed de agendamiento, fuera de los Bloques 1 a 3. La regla de la corrida es no tocar nada fuera de esos bloques, y mover ese `ref` a un `useEffect` cambia cuándo se actualiza el callback del embed: no es un cambio de una línea sin consecuencias.

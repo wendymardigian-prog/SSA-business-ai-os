@@ -71,8 +71,10 @@ Este es el bloque urgente: es el que hace que el agente deje de contestar a cieg
 
 ### Bloque 3 — Ver y reproducir en la bandeja
 
-- [ ] F12 · Renderer de adjuntos por tipo
-- [ ] F13 · Transcripción visible y reintento manual
-- [ ] F14 · El hilo de Instagram muestra la media guardada
-- [ ] F15 · Preview de la conversación con etiqueta
-- [ ] Revisión visual con el navegador (escritorio y 390 px)
+- [x] **F12 · Renderer por tipo**: cada uno de los 14 tipos tiene visor, reproductor, tarjeta o etiqueta, y ninguno deja la burbuja vacía. El adjunto va arriba del texto. **La URL se firma al hacer clic o al reproducir, nunca al pintar el hilo**: por eso el audio y el video arrancan como una tarjeta con ▶. Un GIF de WhatsApp es un mp4, así que va como video. El archivo corrupto y el que no se puede recuperar no ofrecen reintento. 28 tests
+- [x] **F13 · Transcripción visible**: debajo del reproductor y no en su lugar, con sus cuatro estados y su botón, y el botón sólo aparece si el archivo está. La ruta de reintento lee con el cliente del usuario (decide la RLS) y responde 404 y no 403. 15 + 8 tests
+- [x] **F14 · El hilo de Instagram**: se sigue leyendo en vivo de Zernio (no se cambia de dónde se lee) y se cruza por `platform_message_id`. El id pasa a ser el local, que es el que entienden las rutas de reintento. 11 tests
+- [x] **F15 · Preview con etiqueta**: ya resuelto en F3, F4 y F7 con `previewForMessage`, que es la única fuente. Con transcripción muestra lo que se dijo. 7 tests
+- [x] **Revisión visual**: la bandeja real pide login y esta sesión del navegador no lo tiene, así que **no se ingresaron credenciales** (ver PENDIENTE). Se midió el CSS real a 390 px sobre un banco de prueba con la estructura de la burbuja, y **encontró dos cosas que ya se arreglaron**: el reproductor desbordaba (`min-width` le gana a `max-width` en CSS) y los controles nativos se veían blancos sobre la burbuja oscura
+
+**Verificación del bloque:** `npx vitest run` **306 archivos / 3686 tests en verde**, `npm run build` compila, `tsc` sin errores, lint sin errores ni warnings nuevos.

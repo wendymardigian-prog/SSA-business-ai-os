@@ -33,6 +33,10 @@ import { cn } from "@/lib/utils";
  * pide la cabecera al pintar, así que veinte mensajes serían veinte URLs
  * firmadas que nadie va a escuchar, y encima vencen. La imagen sí carga sola
  * (con `loading="lazy"`), porque verla es justamente para lo que está.
+ *
+ * El ancho mínimo del reproductor va como `min(210px, 100%)` y no como `210px`:
+ * en CSS `min-width` le gana a `max-width`, así que un mínimo fijo desborda una
+ * burbuja más angosta (se midió: 210px dentro de un contenedor de 200px da 210).
  */
 export function MediaAttachment({
   item,
@@ -159,7 +163,7 @@ export function MediaAttachment({
               autoPlay
               playsInline
               onError={() => setBroken(true)}
-              className="max-h-72 w-auto max-w-full rounded-lg"
+              className="max-h-72 w-auto max-w-full rounded-lg [.dark_&]:[color-scheme:dark] dark:[color-scheme:dark]"
             />
           ) : (
             <PlayCard label={plan.label} detail={duration ?? size} onPlay={() => setPlaying(true)} />
@@ -177,7 +181,7 @@ export function MediaAttachment({
               controls
               autoPlay
               onError={() => setBroken(true)}
-              className="h-10 w-full min-w-[210px] max-w-full"
+              className="h-10 w-full min-w-[min(210px,100%)] max-w-full [.dark_&]:[color-scheme:dark] dark:[color-scheme:dark]"
             />
           ) : (
             <PlayCard label={plan.label} detail={duration} onPlay={() => setPlaying(true)} />
@@ -241,7 +245,7 @@ function PlayCard({
     <button
       type="button"
       onClick={onPlay}
-      className="flex h-11 w-full min-w-[210px] max-w-full items-center gap-2.5 rounded-lg border border-current/20 px-3 text-left hover:bg-current/5"
+      className="flex h-11 w-full min-w-[min(210px,100%)] max-w-full items-center gap-2.5 rounded-lg border border-current/20 px-3 text-left hover:bg-current/5"
     >
       <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-current/10">
         <Play className="h-3.5 w-3.5" aria-hidden />
