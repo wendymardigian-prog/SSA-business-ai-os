@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { ContactContext, HistoryMessage } from "./prompt";
+import { effectiveMessageText } from "./effective-text";
 
 /**
  * Lo que el turno lee de la base: la conversacion, el historial, la rafaga, el
@@ -41,6 +42,14 @@ export interface StoredMessage {
   sent_by_flow_id: string | null;
   sent_by_agent_id: string | null;
   agent_run_id: string | null;
+  // ── Media del chat (F9) ────────────────────────────────────────────────
+  // Sin esto, una nota de voz no existia para el agente: entraba con el texto
+  // vacio y se filtraba del historial, pero el turno se agendaba igual.
+  transcript?: string | null;
+  transcript_status?: string | null;
+  media_description?: string | null;
+  attachments?: unknown;
+  interpretability?: string | null;
 }
 
 export async function loadTurnConversation(supabase: Db, conversationId: string): Promise<TurnConversation | null> {
@@ -66,7 +75,12 @@ export async function loadRecentMessages(
 ): Promise<StoredMessage[]> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, direction, text, created_at, sent_by_user_id, sent_by_flow_id, sent_by_agent_id, agent_run_id")
+    // Columnas explicitas, NUNCA select("*"): agent_runs y agents tienen
+    // columnas de costo sin privilegio de lectura, y la costumbre de nombrarlas
+    // es lo que evita el error el dia que esta consulta se copie a otra tabla.
+    // La lista va en UNA sola linea a proposito: PostgREST tipa la fila desde el
+    // literal, y una concatenacion con + lo vuelve `string` y se pierde el tipo.
+    .select("id, direction, text, created_at, sent_by_user_id, sent_by_flow_id, sent_by_agent_id, agent_run_id, transcript, transcript_status, media_description, attachments, interpretability")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -103,10 +117,19 @@ export function extractBurst(
   return pending.filter((m) => new Date(m.created_at).getTime() >= cutoff);
 }
 
+/**
+ * El historial para el modelo.
+ *
+ * Usa el TEXTO EFECTIVO (F9): un mensaje sin texto propio entra con su
+ * transcripcion o con la descripcion de su imagen, marcado. Los que no tienen
+ * nada interpretable siguen quedando afuera, igual que antes: meter un
+ * "[Nota de voz sin transcribir]" haria que el modelo conteste sobre un audio
+ * que nadie escucho.
+ */
 export function toHistory(messages: StoredMessage[]): HistoryMessage[] {
   return messages
-    .filter((m) => m.text)
-    .map((m) => ({ direction: m.direction, text: m.text as string }));
+    .map((m) => ({ direction: m.direction, text: effectiveMessageText(m) }))
+    .filter((m): m is HistoryMessage => m.text !== null);
 }
 
 /**

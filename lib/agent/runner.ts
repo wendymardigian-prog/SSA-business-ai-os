@@ -15,6 +15,9 @@ import {
   type AgentBurstPayload,
 } from "@/lib/scheduler";
 import { DEFAULT_BURST_MAX_AGE_HOURS, channelMode, loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
+import { assessInterpretability } from "./interpretability";
+import { effectiveMessageText } from "./effective-text";
+import { markNeedsHuman } from "./needs-human";
 import {
   countAgentReplies,
   exchangeStart,
@@ -417,8 +420,53 @@ async function continueTurn(
   };
   const escalateSuggestion = (reason: string): SuggestedAction => ({ type: "escalate", reason, summary: null, reopen: true });
 
+  // ── 3.b La compuerta de interpretabilidad (F10) ───────────────────────────
+  //
+  // ES EL ARREGLO URGENTE DE LA FASE, y va ACA por una razon: es el unico punto
+  // por el que pasan los tres modos (envio, borrador y reglas) antes de que se
+  // genere cualquier cosa. Antes de este bloque el agente respondia a una nota
+  // de voz sin haberla escuchado, porque el mensaje entraba con el texto vacio,
+  // el historial lo filtraba, y el turno se agendaba igual.
+  //
+  // Va antes de los guardarrailes a proposito: `burstText` los alimenta con
+  // `m.text ?? ""`, asi que una rafaga que es solo un audio les llega como texto
+  // vacio y ninguno la frena.
+  const gate = await checkInterpretability(supabase, {
+    conversation,
+    burst,
+    now: deps.now(),
+  });
+
+  if (gate.action === "wait") {
+    // La transcripcion tarda 2-5 segundos: vale esperarla. El turno se reagenda
+    // con el flag que hace que no se descarte por viejo.
+    await rescheduleForMedia(supabase, { deps, conversation, agent, burst });
+    await run.step({ kind: "guardrail", name: "interpretability", output: { accion: "esperar" } });
+    return close("skipped", "waiting_media");
+  }
+
+  if (gate.action === "escalate") {
+    await run.step({
+      kind: "guardrail",
+      name: "interpretability",
+      output: { accion: "necesita_humano", motivo: gate.reason },
+    });
+    await markNeedsHuman(supabase, {
+      workspaceId: conversation.workspace_id,
+      conversationId: conversation.id,
+      contactId: conversation.contact_id,
+      channelId: conversation.channel_id,
+      agentId: agent.id,
+      runId,
+      reason: gate.reason,
+    });
+    // NO se genera nada: ni respuesta ni borrador. Un borrador que ya existiera
+    // queda como esta, que es trabajo hecho que alguien puede aprobar.
+    return close("escalated", "unreadable_media");
+  }
+
   // 4. Guardarrailes, sin modelo.
-  const burstText = burst.map((m) => m.text ?? "").join("\n");
+  const burstText = burst.map((m) => effectiveMessageText(m) ?? "").join("\n");
   const humanAt = await lastHumanReplyAt(supabase, conversation.id);
   const repliesSinceHuman = await countAgentReplies(supabase, { conversationId: conversation.id, since: humanAt });
   const exchangeFrom = exchangeStart(messages, agent.guardrails.escalation.exchangeGapMinutes);
@@ -545,7 +593,7 @@ async function continueTurn(
       (m) => m.direction === "outbound" && ms(m.created_at) < ms(burst[0].created_at),
     );
     preRuleCtx = buildPreRuleContext({
-      burstText: burst.map((m) => m.text ?? "").join("\n"),
+      burstText: burst.map((m) => effectiveMessageText(m) ?? "").join("\n"),
       burstCount: burst.length,
       lastInboundText: burst[burst.length - 1].text ?? null,
       temperature: contact.leadTemperature,
@@ -1096,6 +1144,93 @@ async function loadPreviousDraft(supabase: Db, draftId: string, conversationId: 
  * libre. Como el borrador no cierra la rafaga, el reintento responde todo.
  */
 export const BLOCKED_RETRY_SECONDS = 60;
+
+/**
+ * Cuanto se espera antes de volver a mirar si la transcripcion llego (F10).
+ *
+ * Corto a proposito: la transcripcion tarda 2-5 segundos, asi que 20 es
+ * suficiente y deja margen para varios reintentos dentro de los 90 segundos de
+ * la compuerta.
+ */
+export const MEDIA_RETRY_SECONDS = 20;
+
+/**
+ * La compuerta, con su interruptor.
+ *
+ * El flag `agent_escalate_on_unreadable` arranca PRENDIDO: es el arreglo, no una
+ * opcion. Apagado, el agente vuelve a responder a ciegas, que es exactamente el
+ * problema; existe igual porque los primeros dias puede generar mas escalado del
+ * que el equipo puede atender, y apagarlo tiene que poder hacerse sin un deploy.
+ */
+async function checkInterpretability(
+  supabase: Db,
+  args: { conversation: TurnConversation; burst: StoredMessage[]; now: Date },
+): Promise<{ action: "continue" } | { action: "wait" } | { action: "escalate"; reason: string }> {
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("agent_escalate_on_unreadable")
+    .eq("id", args.conversation.workspace_id)
+    .maybeSingle();
+
+  // Ante la duda de si esta prendido, se asume que SI: es el comportamiento
+  // correcto, y el que quiera apagarlo lo apaga a mano.
+  if (workspace?.agent_escalate_on_unreadable === false) return { action: "continue" };
+
+  const verdict = assessInterpretability(
+    args.burst.map((m) => ({
+      created_at: m.created_at,
+      text: m.text,
+      transcript: m.transcript,
+      transcript_status: m.transcript_status,
+      media_description: m.media_description,
+      attachments: m.attachments,
+    })),
+    { now: args.now },
+  );
+
+  if (verdict.interpretable) return { action: "continue" };
+  if (verdict.waiting) return { action: "wait" };
+  return { action: "escalate", reason: verdict.reason ?? "El asistente no pudo interpretar el mensaje" };
+}
+
+/**
+ * Reagenda el turno para volver a mirar si la transcripcion llego (F10).
+ *
+ * Lleva `blocked_retry: true` por la misma razon que el turno bloqueado por un
+ * envio en vuelo: sin ese flag, un turno que se levanta despues de que la
+ * ventana cerro hace mas de tres minutos se descarta por viejo, y el lead se
+ * queda sin respuesta justamente por haber esperado.
+ */
+async function rescheduleForMedia(
+  supabase: Db,
+  args: { deps: TurnDeps; conversation: TurnConversation; agent: AgentConfig; burst: StoredMessage[] },
+): Promise<void> {
+  const payload: AgentBurstPayload = {
+    workspaceId: args.conversation.workspace_id,
+    conversationId: args.conversation.id,
+    channelId: args.conversation.channel_id,
+    contactId: args.conversation.contact_id,
+    agentId: args.agent.id,
+    last_message_at: args.burst[args.burst.length - 1].created_at,
+    blocked_retry: true,
+  };
+
+  try {
+    await pushDebouncedJob(supabase, {
+      type: AGENT_BURST_JOB,
+      dedupeKey: agentBurstKey(args.conversation.id),
+      payload: payload as unknown as Record<string, unknown>,
+      runAt: new Date(args.deps.now().getTime() + MEDIA_RETRY_SECONDS * 1000),
+      deadline: null,
+      volatileKeys: AGENT_BURST_VOLATILE_KEYS,
+    });
+  } catch (err) {
+    console.error(
+      "[agent-turn] no pude reprogramar el turno que espera la transcripcion:",
+      err instanceof Error ? err.message : "error desconocido",
+    );
+  }
+}
 
 async function rescheduleBlockedTurn(
   supabase: Db,

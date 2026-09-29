@@ -46,6 +46,9 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   revert: "revirtió una acción del agente",
   whatsapp_handoff: "pasó el lead a WhatsApp",
   tag_effect: "aplicó el efecto de una etiqueta",
+  // Mejoras de Chat: el asistente no pudo entender un mensaje (F10, F11).
+  needs_human: "derivó la conversación porque no pudo entender un mensaje",
+  needs_human_resolved: "marcó la conversación como vista",
   // Agenda (Etapa 4). Las de agenda con entity_type = 'booking' se muestran
   // en el detalle de la agenda; aca quedan por si alguna cae en el contacto.
   "scheduling_profile.created": "creó su perfil de agenda",

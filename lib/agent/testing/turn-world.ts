@@ -22,7 +22,11 @@ export interface World {
   modelCalls: ModelRunInput[];
   sent: Array<{ text: string; at: string }>;
   setModel(fn: (input: ModelRunInput) => Promise<ModelRunOutput>): void;
-  addInbound(text: string, atSeconds: number): void;
+  /**
+   * Suma un entrante. `media` existe para la compuerta de interpretabilidad
+   * (F10): una nota de voz entra sin texto y con su estado de transcripcion.
+   */
+  addInbound(text: string | null, atSeconds: number, media?: Record<string, unknown>): void;
   payload: Record<string, unknown>;
 }
 
@@ -38,13 +42,23 @@ export function turnWorld(
     /** Deja el canal ch-1 en modo borrador (agents.channel_modes, 00070). */
     draft?: boolean;
     channel?: Record<string, unknown>;
+    workspace?: Record<string, unknown>;
   } = {},
 ): World {
   const clock = { ms: T0 };
   const now = () => new Date(clock.ms);
   const db = memoryDb(
     {
-      workspaces: [{ id: "ws-1", ai_daily_cost_limit_usd: null, ai_monthly_cost_limit_usd: null }],
+      workspaces: [
+        {
+          id: "ws-1",
+          ai_daily_cost_limit_usd: null,
+          ai_monthly_cost_limit_usd: null,
+          // La compuerta de interpretabilidad arranca prendida (F10).
+          agent_escalate_on_unreadable: true,
+          ...opts.workspace,
+        },
+      ],
       agents: [agentRow({ ...(opts.draft ? { channel_modes: { "ch-1": "draft" } } : {}), ...opts.agent })],
       channels: [{ id: "ch-1", workspace_id: "ws-1", platform: "instagram", messaging_window_hours: null, ...opts.channel }],
       agent_drafts: [],
@@ -64,6 +78,10 @@ export function turnWorld(
           deleted_at: null,
           last_agent_error_at: null,
           last_agent_error_run_id: null,
+          // La base los tiene NOT NULL DEFAULT false (00103).
+          needs_human: false,
+          needs_human_reason: null,
+          needs_human_at: null,
           ...opts.conversation,
         },
       ],
@@ -156,10 +174,11 @@ export function turnWorld(
     setModel: (fn) => {
       model = fn;
     },
-    addInbound: (text, atSeconds) => {
+    addInbound: (text, atSeconds, media) => {
       db.rows("messages").push({
         id: `in-${db.rows("messages").length + 1}`,
         conversation_id: "cv-1",
+        workspace_id: "ws-1",
         direction: "inbound",
         text,
         created_at: at(atSeconds),
@@ -167,6 +186,12 @@ export function turnWorld(
         sent_by_flow_id: null,
         sent_by_agent_id: null,
         agent_run_id: null,
+        transcript: null,
+        transcript_status: "none",
+        media_description: null,
+        attachments: null,
+        interpretability: "unknown",
+        ...media,
       });
     },
     payload: {

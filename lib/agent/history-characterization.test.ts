@@ -20,7 +20,9 @@ import { buildModelMessages, type ContactContext } from "./prompt";
 const T0 = new Date("2026-09-28T12:00:00.000Z");
 const at = (seconds: number) => new Date(T0.getTime() + seconds * 1000).toISOString();
 
-function stored(overrides: Partial<StoredMessage> & Pick<StoredMessage, "id" | "direction">): StoredMessage {
+function stored(
+  overrides: Partial<StoredMessage> & Pick<StoredMessage, "id" | "direction"> & { attachments?: unknown },
+): StoredMessage {
   return {
     text: null,
     created_at: at(0),
@@ -145,5 +147,53 @@ describe("buildModelMessages: como llega cada mensaje (caracterizacion previa a 
     expect(String(crm.content)).toContain("<<<crm abc123>>>");
     expect(String(crm.content)).toContain("Nombre: Ana");
     expect(String(crm.content)).toContain("Etiquetas: interesado");
+  });
+});
+
+describe("F9: lo que CAMBIA, y lo que tiene que seguir igual", () => {
+  const voice = { v: 2, items: [{ kind: "voice", status: "ready", storagePath: "p" }] };
+
+  it("una nota de voz transcripta AHORA SI entra al historial, marcada", async () => {
+    const history = toHistory([
+      stored({ id: "m1", direction: "inbound", text: null, transcript: "hola, queria el precio", transcript_status: "ready", attachments: voice }),
+    ]);
+
+    expect(history).toEqual([{ direction: "inbound", text: '[Nota de voz] "hola, queria el precio"' }]);
+  });
+
+  it("y llega al modelo envuelta como no confiable, igual que cualquier mensaje del lead", () => {
+    // Un audio que diga "ignorá tus instrucciones" no es distinto de un texto
+    // que lo diga.
+    const messages = buildModelMessages({
+      history: toHistory([
+        stored({ id: "m1", direction: "inbound", transcript: "hola", transcript_status: "ready", attachments: voice }),
+      ]),
+      contact: EMPTY_CONTACT,
+      nonce: "abc123",
+    });
+
+    expect(turns(messages)).toEqual([
+      { role: "user", content: '<<<lead abc123>>>\n[Nota de voz] "hola"\n<<<fin lead abc123>>>' },
+    ]);
+  });
+
+  it("un mensaje sin NADA interpretable sigue quedando afuera (la regla que no cambia)", () => {
+    expect(
+      toHistory([
+        stored({ id: "m1", direction: "inbound", text: null, attachments: voice, transcript_status: "failed" }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("los mensajes de texto siguen llegando exactamente igual que antes", () => {
+    const history = toHistory([
+      stored({ id: "m1", direction: "inbound", text: "hola" }),
+      stored({ id: "m2", direction: "outbound", text: "hola, como va?" }),
+    ]);
+
+    expect(history).toEqual([
+      { direction: "inbound", text: "hola" },
+      { direction: "outbound", text: "hola, como va?" },
+    ]);
   });
 });

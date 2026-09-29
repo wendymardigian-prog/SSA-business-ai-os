@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { generateText } from "ai";
 import { getWorkspaceModel, type AiProviderProblem } from "./provider";
 import { openAiRun, type AiRunHandle, type OpenRunInput } from "./run";
+import { effectiveMessageText, type MessageWithMedia } from "@/lib/agent/effective-text";
 
 /**
  * Generar una respuesta con IA, sin saber nada de flows.
@@ -97,14 +98,17 @@ const DEFAULT_SYSTEM_PROMPT =
  * ultimas N) y mandarlas asi le da al modelo la conversacion al reves.
  */
 export function buildAiMessages(
-  rows: Array<{ direction: string; text: string | null }>
+  rows: Array<{ direction: string } & MessageWithMedia>
 ): Array<{ role: "user" | "assistant"; content: string }> {
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
   for (const row of [...rows].reverse()) {
-    if (!row.text) continue;
+    // Texto EFECTIVO (F9): una nota de voz transcripta entra marcada, en vez de
+    // desaparecer del contexto del nodo de IA y de los pasos de las secuencias.
+    const text = effectiveMessageText(row);
+    if (!text) continue;
     messages.push({
       role: row.direction === "inbound" ? "user" : "assistant",
-      content: row.text,
+      content: text,
     });
   }
   return messages;
@@ -140,7 +144,7 @@ export async function generateAiReply(
 
   const { data: recentMessages } = await supabase
     .from("messages")
-    .select("direction, text")
+    .select("direction, text, transcript, transcript_status, media_description, attachments")
     .eq("conversation_id", request.conversationId)
     .order("created_at", { ascending: false })
     .limit(request.contextMessages ?? 10);

@@ -10,6 +10,7 @@ import { notifyProviderAuthFailure } from "./errors";
 import { applyTags, setFollowup, setTemperature, type EffectContext } from "./tools/effects";
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
+import { effectiveMessageText } from "./effective-text";
 
 /**
  * Memoria acumulativa (F33) y clasificacion al cierre (F34).
@@ -133,13 +134,17 @@ export async function summarizeConversationOnClose(
 
   let query = supabase
     .from("messages")
-    .select("direction, text, created_at")
+    // Con la media (F9): un resumen que ignora las notas de voz cuenta una
+    // conversacion distinta de la que pasó.
+    .select("direction, text, created_at, transcript, transcript_status, media_description, attachments")
     .eq("conversation_id", conversation.id)
     .order("created_at", { ascending: true })
     .limit(SUMMARY_MAX_MESSAGES);
   if (conversation.summarized_at) query = query.gt("created_at", conversation.summarized_at);
   const { data: rows } = await query;
-  const messages = (rows ?? []).filter((m) => m.text);
+  const messages = (rows ?? [])
+    .map((m) => ({ ...m, text: effectiveMessageText(m) }))
+    .filter((m) => m.text);
   if (messages.length === 0) return { kind: "skipped", reason: "no_new_messages" };
 
   const { data: contact } = await supabase

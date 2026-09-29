@@ -211,6 +211,10 @@ export type AuditAction =
    * libero al sacarla (Bloque 2d-A, 00073). Lo escriben los triggers.
    */
   | "tag_effect"
+  // Mejoras de Chat: el agente no pudo interpretar un mensaje y escalo (F10),
+  // y alguien lo resolvio (F11).
+  | "needs_human"
+  | "needs_human_resolved"
   /** Agenda (Etapa 4). */
   | "scheduling_profile.created"
   | "scheduling_profile.updated"

@@ -33,6 +33,8 @@ export const NOTIFICATION_TYPES = [
   "booking_sync_failed",
   /** La cuota diaria de emails se agotó y un flujo no pudo mandar (F46). */
   "email_quota_reached",
+  /** El asistente no pudo interpretar un mensaje y derivó la conversación (F10). */
+  "needs_human",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -154,6 +156,16 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Se agoto la cuota de emails",
     tone: "warning",
     entity: "flow",
+  },
+  /**
+   * El asistente no pudo interpretar un mensaje y derivo la conversacion (F10).
+   * Es warning y no info: hay un lead esperando respuesta.
+   */
+  needs_human: {
+    type: "needs_human",
+    label: "Necesita una persona",
+    tone: "warning",
+    entity: "conversation",
   },
   /** Alguien pidio revision de una pieza (F37). Va a quien pueda aprobar. */
   content_review_requested: {
