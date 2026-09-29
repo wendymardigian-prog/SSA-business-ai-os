@@ -6,6 +6,7 @@ import type { AgentScreenData, RunRow, RunStepRow } from "@/lib/agent/screen";
 import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, STEP_KIND_LABELS, describeModelError, describeRunDetail } from "@/lib/agent/run-labels";
 import { routingSentence } from "@/lib/agent/routing-sentence";
 import { countActiveRunFilters, AGENT_FILTER_ALL, AGENT_FILTER_NONE } from "@/lib/agent/runs-query";
+import { RUN_DETAIL_FILTERS } from "@/lib/agent/runs-filters";
 import { formatDateTime } from "@/components/contacts/ui";
 import { cn } from "@/lib/utils";
 import { Notice } from "./fields";
@@ -65,6 +66,19 @@ export function RunsTab({ data }: { data: AgentScreenData }) {
         />
         <FilterSelect label="Modelo" value={filters.modelo} onChange={(v) => setParam("modelo", v)} options={options.models.map((m) => ({ value: m, label: m }))} />
         <FilterSelect label="Acción ejecutada" allLabel="cualquiera" value={filters.accion} onChange={(v) => setParam("accion", v)} options={options.tools.map((t) => ({ value: t.name, label: t.label }))} />
+        {/* Por regla y por detalle (§15.4). El selector de regla muestra
+            "Regla 3 · menciona precio" y manda el id por debajo: el id no se
+            muestra nunca. */}
+        {options.rules.length > 1 && (
+          <FilterSelect label="Regla" allLabel="cualquiera" value={filters.regla} onChange={(v) => setParam("regla", v)} options={options.rules} />
+        )}
+        <FilterSelect
+          label="Qué pasó"
+          allLabel="cualquier cosa"
+          value={filters.detalle}
+          onChange={(v) => setParam("detalle", v)}
+          options={RUN_DETAIL_FILTERS}
+        />
         <form
           onSubmit={(e) => {
             e.preventDefault();

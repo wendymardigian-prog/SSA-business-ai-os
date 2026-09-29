@@ -25,6 +25,10 @@ export interface RunFilters {
   resultado: string;
   modelo: string;
   accion: string;
+  /** Una regla de respuesta (su id), o "default" para la accion por defecto. */
+  regla: string;
+  /** `external_cooldown`, `already_answered`, `rule`, `provider_unavailable`. */
+  detalle: string;
   costoMin: number | null;
   costoMax: number | null;
 }
@@ -83,6 +87,8 @@ export interface RunsTabData {
     channels: Array<{ id: string; label: string }>;
     models: string[];
     tools: Array<{ name: string; label: string }>;
+    /** Las reglas de respuesta, ya con nombre legible (§15.4). */
+    rules: Array<{ value: string; label: string }>;
   };
   showCost: boolean;
 }
