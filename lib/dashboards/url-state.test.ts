@@ -31,3 +31,24 @@ describe("estado de la URL del dashboard (F14)", () => {
     expect(chips).toEqual([{ key: "channel", label: "Instagram" }, { key: "author", label: "Sofía" }]);
   });
 });
+
+describe("un rango a medida invalido no se acepta", () => {
+  it("con una sola punta, vuelve al atajo", () => {
+    const f = parseDashboardFilters(new URLSearchParams("from=2026-09-01T06:00:00.000Z"));
+    expect(f.from).toBeNull();
+    expect(f.to).toBeNull();
+    expect(f.period).toBe(DEFAULT_PERIOD);
+  });
+
+  it("con basura en las fechas, tampoco", () => {
+    const f = parseDashboardFilters(new URLSearchParams("from=ayer&to=hoy"));
+    expect(f.from).toBeNull();
+    expect(f.to).toBeNull();
+  });
+
+  it("con las dos puntas validas, se respeta", () => {
+    const f = parseDashboardFilters(new URLSearchParams("from=2026-09-01T06:00:00.000Z&to=2026-09-26T05:59:59.999Z"));
+    expect(f.from).toBe("2026-09-01T06:00:00.000Z");
+    expect(f.to).toBe("2026-09-26T05:59:59.999Z");
+  });
+});

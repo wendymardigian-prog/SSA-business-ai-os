@@ -23,6 +23,14 @@ export interface DashboardOption {
   href: string;
   /** El permiso que hace falta para verlo. */
   permission: string;
+  /** Un color propio, para el punto del selector. */
+  color?: string;
+  /**
+   * Todavia no existe: aparece en la lista, apagado y con su pastilla. Figura
+   * en el prototipo y en F14 porque saber que viene es parte de la respuesta a
+   * "¿cuanto me cuesta el agente?".
+   */
+  comingSoon?: boolean;
 }
 
 export const DASHBOARDS: DashboardOption[] = [
@@ -32,6 +40,7 @@ export const DASHBOARDS: DashboardOption[] = [
     description: "Conversaciones, agente y equipo",
     href: "/dashboard/dashboards/chat",
     permission: "dashboards.chat.view",
+    color: "var(--c-agent)",
   },
   {
     key: "content",
@@ -57,15 +66,38 @@ export const DASHBOARDS: DashboardOption[] = [
     // El unificado cruza organico y pagado: quien lo ve, ve los montos.
     permission: "dashboards.ads.view",
   },
+  {
+    key: "ai-spend",
+    label: "Gasto de IA",
+    description: "Costos del agente en el período",
+    href: "/dashboard/dashboards/chat",
+    permission: "dashboards.chat.view",
+    comingSoon: true,
+  },
 ];
 
-/** Los que puede abrir quien esta mirando. */
+/**
+ * Los que puede abrir quien esta mirando.
+ *
+ * Los que todavia no existen quedan afuera: se listan aparte, apagados, asi
+ * nadie hace clic en algo que no lleva a ningun lado.
+ */
 export function availableDashboards(can: (permission: string) => boolean): DashboardOption[] {
-  return DASHBOARDS.filter((dashboard) => can(dashboard.permission));
+  return DASHBOARDS.filter((dashboard) => !dashboard.comingSoon && can(dashboard.permission));
 }
 
-/** Cual esta abierto, a partir de la ruta. */
+/** Los que se anuncian como "Próximamente" para quien tiene su permiso. */
+export function comingSoonDashboards(can: (permission: string) => boolean): DashboardOption[] {
+  return DASHBOARDS.filter((dashboard) => dashboard.comingSoon && can(dashboard.permission));
+}
+
+/**
+ * Cual esta abierto, a partir de la ruta.
+ *
+ * Los que todavia no existen no se consideran: comparten la ruta de Chat y
+ * marcarian el selector con el nombre equivocado.
+ */
 export function activeDashboard(pathname: string | null | undefined): DashboardOption | null {
   if (!pathname) return null;
-  return DASHBOARDS.find((d) => pathname.startsWith(d.href)) ?? null;
+  return DASHBOARDS.find((d) => !d.comingSoon && pathname.startsWith(d.href)) ?? null;
 }

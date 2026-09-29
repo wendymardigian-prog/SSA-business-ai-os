@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { availableDashboards, activeDashboard, DASHBOARDS } from "./available";
+import { availableDashboards, activeDashboard, comingSoonDashboards, DASHBOARDS } from "./available";
 
 const todo = () => true;
 const nada = () => false;
@@ -55,5 +55,23 @@ describe("cual esta abierto", () => {
   it("fuera de los dashboards, ninguno", () => {
     expect(activeDashboard("/dashboard/inbox")).toBeNull();
     expect(activeDashboard(null)).toBeNull();
+  });
+});
+
+describe("lo que todavia no existe", () => {
+  it("Gasto de IA no se puede abrir", () => {
+    expect(availableDashboards(todo).map((d) => d.key)).not.toContain("ai-spend");
+  });
+
+  it("pero se anuncia como Proximamente", () => {
+    expect(comingSoonDashboards(todo).map((d) => d.key)).toEqual(["ai-spend"]);
+  });
+
+  it("sin el permiso de Chat, no se anuncia", () => {
+    expect(comingSoonDashboards(nada)).toEqual([]);
+  });
+
+  it("y no marca el selector aunque comparta la ruta de Chat", () => {
+    expect(activeDashboard("/dashboard/dashboards/chat")?.key).toBe("chat");
   });
 });
