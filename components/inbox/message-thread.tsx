@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound } from "lucide-react";
+import { Send, Paperclip, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch } from "lucide-react";
+import { needsHumanBadge } from "@/lib/inbox/needs-human";
+import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
 import { TemplatePicker } from "@/components/inbox/template-picker";
 import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search";
@@ -507,6 +509,17 @@ export function MessageThread({
               Modo borrador
             </span>
           )}
+          {/* F11: el aviso completo va en la barra de abajo; acá alcanza un
+              pill, para que se vea sin desplazar el hilo. */}
+          {needsHumanBadge(conversation).show && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+              title={needsHumanBadge(conversation).title}
+            >
+              <UserRoundSearch className="h-3 w-3" aria-hidden />
+              Necesita humano
+            </span>
+          )}
           <ConversationAgentToggle
             conversationId={conversation.id}
             mode={conversation.agent_enabled}
@@ -550,6 +563,11 @@ export function MessageThread({
           </div>
         </div>
       </div>
+
+      {/* F11: el aviso del escalado, con el motivo y el botón "Ya lo vi". Va
+          entre el encabezado y los mensajes: es lo primero que hay que leer al
+          entrar a una conversación derivada. */}
+      <NeedsHumanBanner conversationId={conversation.id} conversation={conversation} />
 
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-4">

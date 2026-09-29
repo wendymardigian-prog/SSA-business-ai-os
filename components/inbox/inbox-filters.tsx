@@ -14,6 +14,7 @@ import {
   countActiveFilters,
   type InboxFilters,
 } from "@/lib/inbox/filters";
+import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { cn } from "@/lib/utils";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
@@ -208,6 +209,15 @@ export function InboxFiltersBar({
               onClick={() => setParam("error-agente", filters.agentError ? "" : "1")}
             >
               Con error del agente
+            </Chip>
+            {/* F11: distinto del de arriba. Ahi el agente falló; acá decidió no
+                responder porque no pudo entender lo que llegó, y hay un lead
+                esperando a una persona. */}
+            <Chip
+              active={filters.needsHuman}
+              onClick={() => setParam(NEEDS_HUMAN_PARAM, filters.needsHuman ? "" : "1")}
+            >
+              Necesita humano
             </Chip>
           </FilterGroup>
 

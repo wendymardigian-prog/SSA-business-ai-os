@@ -54,14 +54,20 @@ Las cuatro que más pesan, el resto en el plan de la corrida:
 
 **Verificación del bloque:** `npx vitest run` **293 archivos / 3476 tests en verde**, `npm run build` compila, `npx tsc --noEmit` sin errores, lint sin errores ni warnings nuevos. `verify-rls.mjs` tiene los chequeos del bucket escritos y se saltean solos hasta que se aplique la 00102.
 
-### Bloque 2 — El agente entiende o se calla (migración 00103)
+### Bloque 2 — El agente entiende o se calla (migración **00103 escrita, sin aplicar**)
 
-- [ ] F6 · Proveedor de transcripción (Groq con respaldo en OpenAI)
-- [ ] F7 · Job de transcripción
-- [ ] F8 · Descripción de imágenes
-- [ ] F9 · El agente lee transcripciones y descripciones
-- [ ] F10 · Compuerta de interpretabilidad y escalado a humano
-- [ ] F11 · Aviso al humano
+Este es el bloque urgente: es el que hace que el agente deje de contestar a ciegas.
+
+- [x] **F6 · Proveedor de transcripción** (`lib/ai/transcribe.ts`): única puerta, con un `switch` hermano de `buildModel`. Groq principal, OpenAI de respaldo con la clave que el workspace ya tiene, y solo se cae al respaldo por algo transitorio. El nombre del archivo se reconstruye desde el mime (el 400 clásico). El consumo se registra en **segundos de audio**, que es como cobra el proveedor: `model_pricing.audio_per_hour` y `agent_runs.audio_seconds`, con su seed. Un test de frontera impide que "groq" aparezca fuera de cuatro archivos. 19 + 2 + 6 tests
+- [x] **F7 · Transcripción**: se intenta **en el momento** (en el `after()` del webhook) y la cola es el respaldo; el agente tiene 90 segundos y el cron corre cada minuto. El claim condicional evita transcribir y cobrar dos veces. El reaper corre también en el cron de jobs, porque si nadie encola un job el handler nunca corre y la fila quedaría colgada. 21 + 12 tests
+- [x] **F8 · Descripción de imágenes**: se encola (no hay apuro y cuesta una llamada al modelo de visión). Usa el modelo que el workspace ya tiene; sin ninguno, el mensaje queda no interpretable y el agente escala. El prompt pide el texto que aparece en la imagen: la mayoría son capturas. 16 tests
+- [x] **F9 · El agente lee lo que llegó**: `effectiveMessageText` (texto, o transcripción, o descripción), marcado y envuelto en `wrapUntrusted`. Con caption gana el caption. Lo que no tiene nada interpretable sigue afuera. También en el resumen al cerrar y en el nodo de IA de los flows. 15 tests
+- [x] **F10 · La compuerta**: `assessInterpretability` puro (18 tests) enganchado al inicio de `continueTurn`, el único punto por el que pasan los tres modos. Responde, reagenda o escala. Va antes de los guardarrailes, porque `burstText` los alimentaba con texto vacío y ninguno frenaba una ráfaga que era solo un audio. Apagable por workspace
+- [x] **F11 · Aviso al humano**: badge en la lista, pill y barra con "Ya lo vi" en el hilo, filtro nuevo en la bandeja, notificación al setter (una sola por escalado), y `applyManualReply` limpia la marca. 7 + 4 tests
+
+**El test que prueba el arreglo:** [lib/agent/runner-unreadable.test.ts](../lib/agent/runner-unreadable.test.ts), con el turno completo y el modelo espiado. Con un audio sin transcribir: no se llama al modelo, no se inserta ningún saliente, la conversación queda `needs_human` y el escalado queda en `audit_log` y en la campana.
+
+**Verificación del bloque:** `npx vitest run` **302 archivos / 3624 tests en verde**, `npm run build` compila, `tsc` sin errores, lint sin errores ni warnings nuevos.
 
 ### Bloque 3 — Ver y reproducir en la bandeja
 

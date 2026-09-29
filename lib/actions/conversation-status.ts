@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { enqueueConversationClose } from "@/lib/agent/closing";
 import { discardPendingDrafts } from "@/lib/agent/drafts/lifecycle";
 import { AUTO_DISCARD } from "@/lib/agent/drafts/types";
+import { clearNeedsHuman } from "@/lib/agent/needs-human";
 
 /**
  * Cerrar una conversacion desde la bandeja (F33/F34).
@@ -43,6 +44,64 @@ export async function closeConversation(conversationId: string): Promise<{ ok: t
 
   const service = await createServiceClient();
   await enqueueConversationClose(service, { workspaceId: updated[0].workspace_id, conversationId, trigger: "manual" });
+
+  revalidatePath("/dashboard/inbox");
+  return { ok: true };
+}
+
+/**
+ * "Ya lo vi": limpia la marca de "necesita humano" sin responder (F11).
+ *
+ * Existe porque no todo escalado necesita una respuesta: si el lead mando una
+ * ubicacion o un contacto, con verlo alcanza. Si hubiera que responder para
+ * limpiar la marca, la bandeja se llenaria de badges rojos que nadie puede
+ * sacar.
+ *
+ * NO prende el agente de vuelta: apagarlo en esa conversacion fue una decision
+ * del sistema, y volver a prenderlo es una decision de la persona, con el
+ * interruptor que ya existe en el encabezado del hilo.
+ *
+ * El update va con el cliente del USUARIO: la RLS aplica el scope de leads, asi
+ * que un Member solo puede resolver las conversaciones que le corresponden.
+ */
+export async function resolveNeedsHuman(
+  conversationId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (typeof conversationId !== "string" || !conversationId) return { ok: false, error: "Pedido invalido." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Tu sesion vencio. Volve a entrar." };
+
+  const { data: conversation, error: readError } = await supabase
+    .from("conversations")
+    .select("id, workspace_id, needs_human")
+    .eq("id", conversationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  // Sin fila puede ser que no exista o que la RLS no la deje ver: para quien
+  // pregunta es lo mismo, y no se confirma que exista.
+  if (readError || !conversation) {
+    return { ok: false, error: "No encontré esa conversación." };
+  }
+
+  if (!conversation.needs_human) {
+    // Alguien mas la resolvio mientras esta pantalla estaba abierta. No es un
+    // error: el resultado es el que se pedia.
+    revalidatePath("/dashboard/inbox");
+    return { ok: true };
+  }
+
+  const cleared = await clearNeedsHuman(supabase, {
+    workspaceId: conversation.workspace_id,
+    conversationId,
+    userId: user.id,
+  });
+
+  if (!cleared) return { ok: false, error: "No pude marcarla como vista. Probá de nuevo." };
 
   revalidatePath("/dashboard/inbox");
   return { ok: true };

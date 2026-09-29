@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { MessageSquare, Ban, ChevronLeft, ChevronRight, FileText, UserRoundSearch } from "lucide-react";
+import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -288,6 +289,18 @@ export function ConversationList({
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {conversation.last_message_preview ?? "Sin mensajes todavía"}
                   </p>
+                  {/* F11: el agente no pudo entender lo que llego y no
+                      respondio. Hay un lead esperando a una persona, asi que va
+                      en rojo y con el motivo al pasar el mouse. */}
+                  {needsHumanBadge(conversation).show && (
+                    <span
+                      className="ml-2 inline-flex flex-shrink-0 items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                      title={needsHumanBadge(conversation).title}
+                    >
+                      <UserRoundSearch className="h-3 w-3" aria-hidden />
+                      {needsHumanBadge(conversation).label}
+                    </span>
+                  )}
                   {/* Bloque 2d: el agente dejo una respuesta para aprobar. Un
                       borrador es una conversacion esperando respuesta: se
                       entra directo al hilo, donde esta arriba del composer. */}

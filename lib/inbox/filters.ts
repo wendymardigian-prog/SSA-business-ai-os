@@ -53,6 +53,11 @@ export interface InboxFilters {
   dateTo: string;
   /** Solo conversaciones donde el agente de IA fallo (Fase 3). */
   agentError: boolean;
+  /**
+   * Solo las que el agente derivo porque no pudo entender un mensaje (F11).
+   * Es distinto de agentError: ahi el agente fallo, aca decidio no responder.
+   */
+  needsHuman: boolean;
 }
 
 export const EMPTY_INBOX_FILTERS: InboxFilters = {
@@ -65,6 +70,7 @@ export const EMPTY_INBOX_FILTERS: InboxFilters = {
   dateFrom: "",
   dateTo: "",
   agentError: false,
+  needsHuman: false,
 };
 
 /**
@@ -84,6 +90,7 @@ export function countActiveFilters(filters: InboxFilters): number {
   if (filters.assignment) count++;
   if (filters.datePreset) count++;
   if (filters.agentError) count++;
+  if (filters.needsHuman) count++;
   return count;
 }
 
@@ -107,6 +114,7 @@ export interface FilterableRow {
   last_message_preview: string | null;
   contacts: { display_name: string | null } | null;
   last_agent_error_at?: string | null;
+  needs_human?: boolean | null;
 }
 
 /**
@@ -128,6 +136,8 @@ export function matchesInboxRow(
   if (filters.platforms.length > 0 && !filters.platforms.includes(row.platform)) return false;
 
   if (filters.agentError && !row.last_agent_error_at) return false;
+
+  if (filters.needsHuman && !row.needs_human) return false;
 
   const when = row.last_message_at ?? row.created_at;
   if (range.from && when < range.from) return false;

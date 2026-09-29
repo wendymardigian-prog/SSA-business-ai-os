@@ -3,6 +3,7 @@ import type { Database } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
 import { discardPendingDrafts } from "./drafts/lifecycle";
 import { AUTO_DISCARD } from "./drafts/types";
+import { clearNeedsHuman } from "./needs-human";
 
 /**
  * Una persona del equipo respondio a mano en una conversacion (F31).
@@ -35,6 +36,14 @@ export async function applyManualReply(
   // Va primero y aparte: aunque el agente ya estuviera apagado, un borrador
   // que quedo vivo no puede salir despues de una respuesta a mano.
   await discardPendingDrafts(supabase, args.conversationId, { reason: AUTO_DISCARD.manualReply, decidedBy: args.userId });
+
+  // Responder a mano es resolver el escalado (F11): la persona ya se hizo cargo,
+  // asi que el badge rojo se va sin que tenga que apretar "Ya lo vi" tambien.
+  await clearNeedsHuman(supabase, {
+    workspaceId: args.workspaceId,
+    conversationId: args.conversationId,
+    userId: args.userId,
+  });
 
   const { data: before } = await supabase
     .from("conversations")

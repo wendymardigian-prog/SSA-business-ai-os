@@ -14,6 +14,7 @@ import {
   type InboxFilters,
   type InboxStatus,
 } from "@/lib/inbox/filters";
+import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { InboxView } from "./inbox-view";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
@@ -91,6 +92,8 @@ export default async function InboxPage({
   const dateFrom = firstParam(params.desde);
   const dateTo = firstParam(params.hasta);
   const agentError = firstParam(params["error-agente"]) === "1";
+  // F11: las que el agente derivó porque no pudo entender lo que llegó.
+  const needsHuman = firstParam(params[NEEDS_HUMAN_PARAM]) === "1";
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
@@ -117,6 +120,8 @@ export default async function InboxPage({
   if (range.to) query = query.lte("last_message_at", range.to);
   // Fase 3: las conversaciones donde el agente fallo (indice parcial 00059).
   if (agentError) query = query.not("last_agent_error_at", "is", null);
+  // Índice parcial de la 00103.
+  if (needsHuman) query = query.eq("needs_human", true);
 
   if (search) {
     // La busqueda por nombre del contacto va sobre la tabla embebida; el
@@ -212,6 +217,7 @@ export default async function InboxPage({
     dateFrom,
     dateTo,
     agentError,
+    needsHuman,
   };
 
   return (

@@ -141,3 +141,32 @@ describe("statusForQuery", () => {
     expect(statusForQuery("snoozed")).toBe("snoozed");
   });
 });
+
+describe("el filtro 'Necesita humano' (F11)", () => {
+  it("cuenta como un filtro activo", () => {
+    expect(countActiveFilters({ ...EMPTY_INBOX_FILTERS, needsHuman: true })).toBe(1);
+  });
+
+  it("deja pasar solo las escaladas", () => {
+    const filters = { ...EMPTY_INBOX_FILTERS, needsHuman: true };
+    const range = { from: null, to: null };
+
+    expect(matchesInboxRow(fila({ needs_human: true }), filters, range)).toBe(true);
+    expect(matchesInboxRow(fila({ needs_human: false }), filters, range)).toBe(false);
+    expect(matchesInboxRow(fila(), filters, range)).toBe(false);
+  });
+
+  it("sin el filtro puesto, una escalada se sigue viendo como cualquier otra", () => {
+    expect(matchesInboxRow(fila({ needs_human: true }), EMPTY_INBOX_FILTERS, { from: null, to: null })).toBe(true);
+  });
+
+  it("es distinto del filtro de error del agente: ahi fallo, aca decidio no responder", () => {
+    const range = { from: null, to: null };
+    const soloEscaladas = { ...EMPTY_INBOX_FILTERS, needsHuman: true };
+    const soloErrores = { ...EMPTY_INBOX_FILTERS, agentError: true };
+
+    const escalada = fila({ needs_human: true, last_agent_error_at: null });
+    expect(matchesInboxRow(escalada, soloEscaladas, range)).toBe(true);
+    expect(matchesInboxRow(escalada, soloErrores, range)).toBe(false);
+  });
+});
