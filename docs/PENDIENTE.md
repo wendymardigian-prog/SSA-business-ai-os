@@ -231,6 +231,27 @@ propósito:
 - **Qué hay que hacer:** después de aplicar la 00110 y la 00111, correrlos de a
   uno y extender `verify-dashboards.mjs` con las funciones nuevas.
 
+### Las 15 funciones se probaron contra la base real, sin aplicar nada
+
+- **Qué se hizo:** el cuerpo de cada función nueva se corrió como un `SELECT` de
+  solo lectura contra la base real (workspace de Wendy, 2.471 mensajes),
+  sustituyendo los parámetros por literales y las funciones que todavía no
+  existen por su definición en línea. Es lo que valida la **semántica** —nombres
+  de columnas, joins, agregados, rutas de jsonb—, que el parser no puede ver.
+  Las 15 corren.
+- **Lo que encontró:** en `chat_dashboard_patterns`, "También: …" venía con un
+  `null` y una cadena vacía adentro (un mensaje sin texto comparte el normalizado
+  vacío con otros). Corregido en la migración.
+- **Lo que hay que saber antes de abrir la pantalla:** hoy **los 1.597 mensajes
+  salientes de la base tienen `origin = 'external'`** y los entrantes no tienen
+  origen (es correcto: sólo los salientes lo llevan). Así que "Quién responde" va
+  a mostrar **una sola fila, Fuera del sistema**, y la sección del agente va a
+  decir que todavía no respondió ninguna conversación. No está roto: es que el
+  agente estuvo apagado y todo se respondió desde ManyChat o la app de Instagram.
+  El resto: 237 episodios, 3 borradores pendientes, mediana del agente 64 s, 558
+  textos sin clasificar y la última corrida del clasificador en `error` (la API
+  key revocada).
+
 ### La revisión visual con la app quedó pendiente
 
 - **Qué quedó:** la comparación lado a lado con el prototipo a 1440 y 390 px no

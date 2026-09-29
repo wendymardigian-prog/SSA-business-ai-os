@@ -1226,6 +1226,27 @@ con la sesión de multimedia, sin tocar sus archivos.
    booker (`use-embed-bridge.ts`), que no tiene nada que ver con esta corrida.
    Se arregló: si no, "lint sale 0" no se podía cumplir nunca.
 
+## Cómo se probaron las funciones sin aplicarlas
+
+Dos pasadas, porque una sola no alcanza:
+
+1. **Sintaxis**, con el parser real de PostgreSQL 17 (`libpg-query`), y no solo
+   sobre el archivo: el cuerpo de una función vive entre `$$` y para el parser es
+   un string cualquiera. Se extrae cada cuerpo y se parsea aparte.
+2. **Semántica**, corriendo cada cuerpo como un `SELECT` de solo lectura contra
+   la base real, con los parámetros sustituidos por literales y las funciones que
+   todavía no existen puestas en línea. Es la única forma de ver un nombre de
+   columna mal escrito o una ruta de jsonb que no existe.
+
+Las 15 corren. La segunda pasada encontró una: "También: …" venía con un `null` y
+una cadena vacía adentro, porque un mensaje sin texto comparte el normalizado
+vacío con otros. Un detalle, y de los que se ven en pantalla.
+
+También dejó claro qué se va a ver al abrir: los 1.597 salientes de la base
+tienen `origin = 'external'`, así que "Quién responde" muestra **una sola fila**
+y la sección del agente dice que todavía no respondió nada. Es cierto: el agente
+estuvo apagado y todo se contestó desde ManyChat o la app de Instagram.
+
 ## Lo que queda
 
 En `docs/PENDIENTE.md`. Lo principal: **las dos migraciones no se aplicaron**

@@ -143,6 +143,11 @@ AS $$
                      FROM msgs m2
                      WHERE m2.text_norm = t2.normalized_text
                        AND m2.text IS DISTINCT FROM t2.sample_text
+                       -- Un mensaje sin texto (solo un adjunto) comparte el
+                       -- normalizado vacio con otros: sin esto, "También: …"
+                       -- salia con un null y una cadena vacia adentro.
+                       AND m2.text IS NOT NULL
+                       AND btrim(m2.text) <> ''
                      GROUP BY m2.text
                      ORDER BY COUNT(*) DESC
                      LIMIT 3
