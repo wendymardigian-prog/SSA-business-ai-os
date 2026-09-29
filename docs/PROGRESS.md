@@ -44,13 +44,15 @@ Las cuatro que más pesan, el resto en el plan de la corrida:
 - [x] **Bloque 0 — Arranque:** rama `oneshot-chat-media-a`; plano copiado a `docs/`; PROGRESS y PENDIENTE de la Etapa 4 movidos a `docs/etapa4/`
   - [x] Tests de caracterización previos: el parser de adjuntos de email (los 4 formatos que conviven) y el armado del historial del agente
 
-### Bloque 1 — Traer la media adentro (migración 00102)
+### Bloque 1 — Traer la media adentro (migración **00102 escrita, sin aplicar**)
 
-- [ ] F1 · Esquema normalizado de adjuntos (`lib/messages/attachments.ts`)
-- [ ] F2 · Bucket `chat-media` y ruta de descarga firmada
-- [ ] F3 · Ingesta de media de Instagram
-- [ ] F4 · Ingesta de media de WhatsApp + arreglo del bug del caption
-- [ ] F5 · Retención y limpieza de la media del chat
+- [x] **F1 · Esquema normalizado de adjuntos** (`lib/messages/attachments.ts`, puro): `{v:2, items}` y un parser que además lee los cuatro formatos viejos, sin backfill ni fecha de corte. Las etiquetas de tipo pasan a tener una sola fuente: estaban duplicadas en `lib/evolution-message.ts` y decían otra cosa que la burbuja ("🎥 Video" contra "🎬 Video"). 39 + 5 tests
+- [x] **F2 · Bucket `chat-media` y ruta firmada**: bucket privado con la policy de SELECT por workspace del primer segmento del path y **sin policies de escritura**; `/api/v1/chat-media` firma al hacer clic con el cliente del usuario y valida el path antes de tocar Storage; interruptor y retención en Ajustes. 16 + 6 tests
+- [x] **F3 · Ingesta de Instagram**: `lib/inbound-media.ts` baja y sube, nunca lanza, escribe la columna una sola vez y corta por tamaño antes de subir. Se suman tres cosas que se descartaban: la respuesta a una historia, los links a posts en el texto, y la etiqueta en el preview. El eco de `message.sent` pasa por el mismo helper. 22 + 5 tests nuevos en el webhook
+- [x] **F4 · Ingesta de WhatsApp + el bug del caption**: `getBase64FromMediaMessage` en el cliente de Evolution (verificado contra el servidor real, **v2.3.7**), y el arreglo de `attachments: text ? null : data.message`, que perdía la foto cuando venía con texto. 12 + 5 tests nuevos en el webhook
+- [x] **F5 · Retención**: `planChatMediaCleanup` puro (10 tests) colgado del cron diario `content-media-cleanup` que ya existe, así no hay que tocar la allowlist de `private.call_app_cron`. Si el borrado del bucket falla, la fila **no** se marca. La transcripción nunca se borra
+
+**Verificación del bloque:** `npx vitest run` **293 archivos / 3476 tests en verde**, `npm run build` compila, `npx tsc --noEmit` sin errores, lint sin errores ni warnings nuevos. `verify-rls.mjs` tiene los chequeos del bucket escritos y se saltean solos hasta que se aplique la 00102.
 
 ### Bloque 2 — El agente entiende o se calla (migración 00103)
 

@@ -1,8 +1,14 @@
 /**
- * Borra la media de las piezas ya publicadas, pasado el plazo (F23).
+ * Borra la media vencida, pasado el plazo de cada workspace.
  *
- * Diario. Recorre los workspaces con su propia retencion: 30 dias por defecto,
- * 0 = no borrar nunca.
+ * Diario. Dos cosas, que comparten el barrido porque comparten el momento:
+ *
+ *   - La media de las piezas ya publicadas (F23 de la Etapa 2), 30 dias por
+ *     defecto.
+ *   - La media del chat (F5 de Mejoras de Chat), 180 dias por defecto.
+ *
+ * En los dos casos, 0 = no borrar nunca. Y en los dos, si el borrado del bucket
+ * falla NO se marca la fila: al dia siguiente se vuelve a intentar.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,6 +16,7 @@ import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { planCleanup, type PostToClean } from "@/lib/content/cleanup";
 import type { MediaEntry } from "@/lib/content/media";
+import { cleanupChatMedia } from "@/lib/chat-media/cleanup-run";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -98,5 +105,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, cleanedPosts, deletedFiles });
+  // La media del chat (F5) se limpia en el mismo barrido: es diario, borra de
+  // Storage y ya esta en la allowlist de private.call_app_cron. Una ruta de
+  // cron nueva seria otro job para hacer lo mismo en el mismo momento del dia.
+  const chat = await cleanupChatMedia(supabase, now);
+
+  return NextResponse.json({
+    ok: true,
+    cleanedPosts,
+    deletedFiles,
+    chatMediaMessages: chat.cleanedMessages,
+    chatMediaFiles: chat.deletedFiles,
+  });
 }

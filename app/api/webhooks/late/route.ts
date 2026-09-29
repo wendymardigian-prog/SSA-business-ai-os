@@ -483,13 +483,14 @@ async function handleMessageSentWebhook(
 
       // El mismo helper que los entrantes (F3): un audio que la operadora mando
       // desde la app de Instagram tambien se copia a nuestro Storage.
-      if (echo.stored && echo.messageId && echo.conversationId && hasDownloadableMedia(echo.items ?? [])) {
+      const echoItems = echo.items ?? [];
+      if (echo.stored && echo.messageId && echo.conversationId && hasDownloadableMedia(echoItems)) {
         await storeInboundMedia({
           supabase,
           workspaceId: channel.workspace_id,
           conversationId: echo.conversationId,
           messageId: echo.messageId,
-          items: echo.items,
+          items: echoItems,
         });
       }
     } catch (err) {
