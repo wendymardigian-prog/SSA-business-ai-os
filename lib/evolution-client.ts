@@ -379,3 +379,71 @@ export async function sendText(
 
   return { id: raw?.key?.id ?? raw?.messageId ?? null };
 }
+
+// ── Media ────────────────────────────────────────────────────────────────────
+
+/** Lo que devuelve Evolution cuando se le pide el archivo de un mensaje. */
+export interface MediaPayload {
+  base64: string;
+  mimetype: string | null;
+  fileName: string | null;
+  size: number | null;
+}
+
+/**
+ * Pide el archivo de un mensaje de WhatsApp (F4).
+ *
+ * Hace falta porque la `url` que trae el nodo de Baileys es un `.enc` cifrado:
+ * sin la `mediaKey` no se puede abrir, y la `mediaKey` no se guarda. Evolution
+ * tiene la sesion de WhatsApp, asi que es el unico que puede descifrarlo, y lo
+ * devuelve en base64.
+ *
+ * `convertToMp4: false` a proposito: no queremos que convierta nada. Un audio
+ * convertido a mp4 pierde el `ptt` y deja de ser una nota de voz, y lo que
+ * necesitamos para transcribir es el archivo tal como llego.
+ *
+ * Lanza `EvolutionError` como el resto del cliente (con sus tres reintentos y
+ * su backoff). Devuelve null cuando Evolution contesta bien pero sin base64,
+ * que pasa cuando la media ya se borro del servidor de WhatsApp.
+ */
+export async function getBase64FromMediaMessage(
+  config: EvolutionConfig,
+  instanceName: string,
+  messageId: string,
+): Promise<MediaPayload | null> {
+  const major = await getMajorVersion(config);
+
+  // El contrato es el mismo en las dos versiones mayores; se consulta igual
+  // para que un cambio futuro tenga un solo lugar donde ramificar, como
+  // sendText.
+  const body =
+    major === 2
+      ? { message: { key: { id: messageId } }, convertToMp4: false }
+      : { message: { key: { id: messageId } }, convertToMp4: false };
+
+  const raw = await request<{
+    base64?: string;
+    mimetype?: string;
+    fileName?: string;
+    size?: number | { fileLength?: number | string };
+  }>(config, "POST", `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, body);
+
+  const base64 = typeof raw?.base64 === "string" ? raw.base64 : null;
+  if (!base64 || base64.length === 0) return null;
+
+  // `size` viene como numero en algunas versiones y como objeto en otras.
+  const rawSize = raw?.size;
+  const size =
+    typeof rawSize === "number"
+      ? rawSize
+      : typeof rawSize === "object" && rawSize !== null
+        ? Number(rawSize.fileLength ?? NaN)
+        : NaN;
+
+  return {
+    base64,
+    mimetype: typeof raw?.mimetype === "string" ? raw.mimetype : null,
+    fileName: typeof raw?.fileName === "string" ? raw.fileName : null,
+    size: Number.isFinite(size) ? size : null,
+  };
+}

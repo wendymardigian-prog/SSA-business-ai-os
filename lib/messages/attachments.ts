@@ -141,6 +141,17 @@ export function emptyAttachment(kind: AttachmentKind, overrides: Partial<ChatAtt
   };
 }
 
+/**
+ * Si hay algo que bajar.
+ *
+ * Los receptores lo consultan antes de llamar a la ingesta: una ubicacion, un
+ * contacto o un post compartido no tienen archivo, asi que pedir el archivo
+ * seria una consulta al proveedor y una escritura de mas por nada.
+ */
+export function hasDownloadableMedia(items: ChatAttachment[]): boolean {
+  return items.some((item) => item.status === "pending" && KINDS_WITH_FILE.includes(item.kind));
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

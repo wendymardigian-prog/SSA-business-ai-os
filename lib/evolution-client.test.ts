@@ -3,6 +3,7 @@ import {
   EvolutionError,
   createInstance,
   deleteInstance,
+  getBase64FromMediaMessage,
   getConnectionState,
   getMajorVersion,
   getQrCode,
@@ -209,5 +210,47 @@ describe("lecturas", () => {
       code: null,
       pairingCode: "ABCD-1234",
     });
+  });
+});
+
+describe("getBase64FromMediaMessage (F4)", () => {
+  it("pide el archivo por el id del mensaje y devuelve los bytes en base64", async () => {
+    const calls = mockFetch([v2, { body: { base64: "T2dnUw==", mimetype: "audio/ogg; codecs=opus", size: 4 } }]);
+
+    const media = await getBase64FromMediaMessage(config, "ssa-1", "WA-MSG-1");
+
+    expect(media).toEqual({ base64: "T2dnUw==", mimetype: "audio/ogg; codecs=opus", fileName: null, size: 4 });
+    // La segunda llamada es la del archivo (la primera es la version).
+    expect(calls[1].url).toContain("/chat/getBase64FromMediaMessage/ssa-1");
+    expect(calls[1].method).toBe("POST");
+    // convertToMp4 en false: un audio convertido pierde el ptt y deja de ser
+    // una nota de voz.
+    expect(calls[1].body).toEqual({ message: { key: { id: "WA-MSG-1" } }, convertToMp4: false });
+  });
+
+  it("si Evolution contesta bien pero sin base64 devuelve null: la media ya se borro de WhatsApp", async () => {
+    mockFetch([v2, { body: { mimetype: "image/jpeg" } }]);
+    await expect(getBase64FromMediaMessage(config, "ssa-1", "WA-MSG-1")).resolves.toBeNull();
+  });
+
+  it("un base64 vacio tambien es null", async () => {
+    mockFetch([v2, { body: { base64: "" } }]);
+    await expect(getBase64FromMediaMessage(config, "ssa-1", "WA-MSG-2")).resolves.toBeNull();
+  });
+
+  it("el size llega como objeto en algunas versiones", async () => {
+    mockFetch([v2, { body: { base64: "AAAA", size: { fileLength: "40213" } } }]);
+    await expect(getBase64FromMediaMessage(config, "ssa-1", "m")).resolves.toMatchObject({ size: 40213 });
+  });
+
+  it("un size que no es un numero no ensucia el metadato", async () => {
+    mockFetch([v2, { body: { base64: "AAAA", size: "no-es-un-numero" } }]);
+    await expect(getBase64FromMediaMessage(config, "ssa-1", "m")).resolves.toMatchObject({ size: null });
+  });
+
+  it("un error de Evolution lanza EvolutionError, como el resto del cliente", async () => {
+    mockFetch([v2, { status: 400, body: { message: "message not found" } }]);
+
+    await expect(getBase64FromMediaMessage(config, "ssa-1", "WA-MSG-1")).rejects.toThrow(EvolutionError);
   });
 });

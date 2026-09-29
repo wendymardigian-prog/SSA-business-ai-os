@@ -24,7 +24,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { upsertContactForSender } from "@/lib/inbox-sync";
-import { messagePreview } from "@/lib/message-preview";
+import { previewForMessage } from "@/lib/message-preview";
+import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
+import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
+import { getEvolutionConfig } from "@/lib/evolution-config";
 import { jidToPhone } from "@/lib/phone";
 import {
   describeAttachment,
@@ -221,7 +224,17 @@ async function processMessage(
   const fromMe = data?.key?.fromMe === true;
 
   const text = extractText(data?.message);
-  const preview = messagePreview(text) || describeAttachment(data?.messageType) || "";
+
+  // Los adjuntos, normalizados y todavia sin archivo (F1, F4). WhatsApp manda
+  // la media cifrada, asi que aca solo salen los metadatos: el archivo se le
+  // pide a Evolution mas abajo.
+  const attachments = describeWhatsappMessage(data?.message);
+  const attachmentsColumn = toAttachmentsColumn(attachments);
+
+  const preview =
+    previewForMessage({ text, attachments: attachmentsColumn }) ||
+    describeAttachment(data?.messageType) ||
+    "";
   const at = messageTimestamp(data?.messageTimestamp);
 
   const contact = await upsertContactForSender({
@@ -265,19 +278,46 @@ async function processMessage(
   // consulta el interruptor: este insert cubre las dos direcciones, y para
   // WhatsApp esta tabla es la unica fuente del hilo. Apagar el guardado aca no
   // seria "no guardar", seria vaciar la bandeja.
-  await insertMessage({
+  // El adjunto se guarda SIEMPRE que haya uno, con o sin caption (F4). Hasta
+  // ahora era `attachments: text ? null : data.message`, y como `extractText`
+  // devuelve el `caption` de una imagen, **una foto con texto se guardaba sin
+  // la foto**: la media se perdia sin que nada lo indicara.
+  const inserted = await insertMessage({
     supabase,
     conversationId: conversation.id,
     direction: fromMe ? "outbound" : "inbound",
     text,
     platformMessageId: messageId,
-    attachments: text ? null : (data?.message ?? null),
+    attachments: attachmentsColumn,
     createdAt: at,
     workspaceId: channel.workspace_id,
     // El eco de un envío desde el teléfono es un saliente externo (F2). Si el
     // insert propio ya guardó este id, el índice único lo descarta.
     origin: fromMe ? "external" : null,
   });
+
+  // ── La media, adentro (F4) ────────────────────────────────────────────────
+  // WhatsApp borra la media de su servidor pasado un tiempo, asi que se pide
+  // ahora y no en la cola. Va en el after() que ya respondio 200, y
+  // storeEvolutionMedia nunca lanza: un archivo que no se pudo traer queda con
+  // su motivo en la burbuja.
+  if (inserted.stored && inserted.id && hasDownloadableMedia(attachments)) {
+    const config = await getEvolutionConfig(supabase, channel.workspace_id);
+    if (config && channel.evolution_instance) {
+      await storeEvolutionMedia({
+        supabase,
+        config,
+        instance: channel.evolution_instance,
+        workspaceId: channel.workspace_id,
+        conversationId: conversation.id,
+        messageId: inserted.id,
+        platformMessageId: messageId,
+        items: attachments,
+      });
+    } else {
+      console.error("[evolution] sin configuracion o sin instancia: no puedo traer la media");
+    }
+  }
 
   // Modo borrador (Bloque 2c). Un mensaje del lead deja viejo al borrador
   // pendiente (se reemplaza); uno que la operadora mando desde el celular es

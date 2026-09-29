@@ -15,6 +15,7 @@ import {
   emptyAttachment,
   fromBaileysMessage,
   fromZernioAttachments,
+  hasDownloadableMedia,
   kindForMime,
   normalizeMime,
   parseAttachments,
@@ -293,5 +294,26 @@ describe("mime y etiquetas", () => {
   it("la etiqueta del conjunto es la del primero, y sin adjuntos no hay etiqueta", () => {
     expect(attachmentsLabel([emptyAttachment("voice"), emptyAttachment("image")])).toBe("🎤 Nota de voz");
     expect(attachmentsLabel([])).toBeNull();
+  });
+});
+
+describe("hasDownloadableMedia", () => {
+  it("es true cuando hay un archivo pendiente de bajar", () => {
+    expect(hasDownloadableMedia([emptyAttachment("voice", { status: "pending" })])).toBe(true);
+  });
+
+  it("es false para lo que no tiene archivo: no se le pide nada al proveedor", () => {
+    expect(hasDownloadableMedia([emptyAttachment("location"), emptyAttachment("contact")])).toBe(false);
+    expect(hasDownloadableMedia([emptyAttachment("share", { meta: { url: "x" } })])).toBe(false);
+    expect(hasDownloadableMedia([emptyAttachment("story_reply")])).toBe(false);
+  });
+
+  it("es false para uno que ya esta listo o que ya fallo", () => {
+    expect(hasDownloadableMedia([emptyAttachment("image", { status: "ready", storagePath: "p" })])).toBe(false);
+    expect(hasDownloadableMedia([emptyAttachment("image", { status: "failed" })])).toBe(false);
+  });
+
+  it("sin adjuntos es false", () => {
+    expect(hasDownloadableMedia([])).toBe(false);
   });
 });

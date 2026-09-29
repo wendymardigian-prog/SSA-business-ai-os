@@ -26,6 +26,7 @@ import type { Database } from "@/lib/types/database";
 import { messagePreview, previewForMessage } from "@/lib/message-preview";
 import {
   fromZernioAttachments,
+  hasDownloadableMedia,
   sharedPostsInText,
   storyReplyAttachment,
   toAttachmentsColumn,
@@ -337,7 +338,7 @@ async function processMessageEvent(
   //
   // Nunca puede voltear el webhook: storeInboundMedia atrapa todo y deja el
   // motivo en el adjunto.
-  if (inserted.id && attachments.length > 0) {
+  if (inserted.id && hasDownloadableMedia(attachments)) {
     await storeInboundMedia({
       supabase,
       workspaceId: channel.workspace_id,
@@ -482,7 +483,7 @@ async function handleMessageSentWebhook(
 
       // El mismo helper que los entrantes (F3): un audio que la operadora mando
       // desde la app de Instagram tambien se copia a nuestro Storage.
-      if (echo.stored && echo.messageId && echo.conversationId && echo.items?.length) {
+      if (echo.stored && echo.messageId && echo.conversationId && hasDownloadableMedia(echo.items ?? [])) {
         await storeInboundMedia({
           supabase,
           workspaceId: channel.workspace_id,

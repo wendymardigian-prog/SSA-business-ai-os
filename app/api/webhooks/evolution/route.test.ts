@@ -22,6 +22,21 @@ vi.mock("next/server", async (importOriginal) => {
   return { ...actual, after: (fn: () => Promise<void> | void) => void afterTasks.push(fn) };
 });
 
+const storeEvolutionMedia = vi.fn();
+const describeWhatsappMessage = vi.fn();
+vi.mock("@/lib/evolution-media", async (importOriginal) => {
+  // describeWhatsappMessage es puro (normaliza el nodo de Baileys) y se quiere
+  // el de verdad: es lo que fija que una foto con caption conserve la foto.
+  const actual = await importOriginal<typeof import("@/lib/evolution-media")>();
+  return { ...actual, storeEvolutionMedia };
+});
+
+const getEvolutionConfig = vi.fn();
+vi.mock("@/lib/evolution-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/evolution-config")>();
+  return { ...actual, getEvolutionConfig };
+});
+
 const createServiceClient = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient }));
 
@@ -116,7 +131,11 @@ beforeEach(() => {
   claimWebhookEvent.mockResolvedValue(true);
   upsertContactForSender.mockResolvedValue({ contactId: "contact-1", existed: true });
   upsertConversation.mockResolvedValue({ id: "conv-1", isAutomationPaused: false });
-  insertMessage.mockResolvedValue(undefined);
+  // Desde F4 devuelve el id: la ingesta de media vuelve sobre la fila cuando
+  // el archivo termina de bajar.
+  insertMessage.mockResolvedValue({ stored: true, id: "msg-1" });
+  storeEvolutionMedia.mockResolvedValue({ items: [], stored: 0, failed: 0 });
+  getEvolutionConfig.mockResolvedValue({ baseUrl: "https://evo.test", apiKey: "k", instancePrefix: "ssa" });
   applyOptOut.mockResolvedValue({ matched: false });
   runInboundAutomation.mockResolvedValue({ claimedBy: null });
 });
@@ -259,14 +278,105 @@ describe("webhook de Evolution: el camino del mensaje del lead", () => {
     expect(maybeScheduleAgentTurn).not.toHaveBeenCalled();
   });
 
-  it("un mensaje sin texto guarda el adjunto crudo", async () => {
+  it("un mensaje sin texto guarda el adjunto normalizado (F1, F4)", async () => {
     db();
-    await callRoute(post(message({ message: { imageMessage: { url: "x" } }, messageType: "imageMessage" })));
+    await callRoute(
+      post(message({ message: { imageMessage: { url: "x", mimetype: "image/jpeg" } }, messageType: "imageMessage" })),
+    );
     await runAfter();
 
+    // Antes se guardaba el nodo crudo de Baileys, que la burbuja no entiende.
     expect(insertMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ attachments: { imageMessage: { url: "x" } } }),
+      expect.objectContaining({
+        attachments: {
+          v: 2,
+          items: [expect.objectContaining({ kind: "image", mime: "image/jpeg", status: "pending" })],
+        },
+      }),
     );
+  });
+
+  it("EL ARREGLO (F4): una imagen CON caption guarda el texto Y el adjunto", async () => {
+    db();
+    await callRoute(
+      post(
+        message({
+          message: { imageMessage: { url: "x", mimetype: "image/jpeg", caption: "mira el presupuesto" } },
+          messageType: "imageMessage",
+        }),
+      ),
+    );
+    await runAfter();
+
+    const insert = insertMessage.mock.calls[0][0];
+    // Hasta ahora era `attachments: text ? null : data.message`: con caption,
+    // la media se perdia sin que nada lo indicara.
+    expect(insert.text).toBe("mira el presupuesto");
+    expect(insert.attachments.items).toEqual([expect.objectContaining({ kind: "image", status: "pending" })]);
+    expect(storeEvolutionMedia).toHaveBeenCalled();
+  });
+
+  it("una nota de voz guarda su duracion y su mime, y se le pide el archivo a Evolution (F4)", async () => {
+    db();
+    await callRoute(
+      post(
+        message({
+          message: { audioMessage: { mimetype: "audio/ogg; codecs=opus", seconds: 12, ptt: true } },
+          messageType: "audioMessage",
+        }),
+      ),
+    );
+    await runAfter();
+
+    expect(insertMessage.mock.calls[0][0].attachments.items).toEqual([
+      expect.objectContaining({ kind: "voice", durationSeconds: 12, mime: "audio/ogg", status: "pending" }),
+    ]);
+    expect(storeEvolutionMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "msg-1", platformMessageId: "msg-1", instance: INSTANCE }),
+    );
+    // Y el preview de la lista lo dice con palabras.
+    expect(upsertConversation).toHaveBeenCalledWith(expect.objectContaining({ preview: "🎤 Nota de voz" }));
+  });
+
+  it("una ubicacion se guarda como etiqueta y NO se le pide ningun archivo (F4)", async () => {
+    db();
+    await callRoute(
+      post(
+        message({
+          message: { locationMessage: { degreesLatitude: -34.6, degreesLongitude: -58.4 } },
+          messageType: "locationMessage",
+        }),
+      ),
+    );
+    await runAfter();
+
+    expect(insertMessage.mock.calls[0][0].attachments.items).toEqual([
+      expect.objectContaining({ kind: "location", status: "none" }),
+    ]);
+    // Si se intentara bajar, el spinner quedaria girando para siempre.
+    expect(storeEvolutionMedia).not.toHaveBeenCalled();
+  });
+
+  it("sin configuracion de Evolution no se rompe: el mensaje queda guardado (F4)", async () => {
+    db();
+    getEvolutionConfig.mockResolvedValue(null);
+
+    await callRoute(
+      post(message({ message: { audioMessage: { mimetype: "audio/ogg", ptt: true } }, messageType: "audioMessage" })),
+    );
+    await runAfter();
+
+    expect(insertMessage).toHaveBeenCalled();
+    expect(storeEvolutionMedia).not.toHaveBeenCalled();
+  });
+
+  it("un mensaje de texto pelado no pide ningun archivo", async () => {
+    db();
+    await callRoute(post(message()));
+    await runAfter();
+
+    expect(insertMessage.mock.calls[0][0].attachments).toBeNull();
+    expect(storeEvolutionMedia).not.toHaveBeenCalled();
   });
 });
 
