@@ -302,22 +302,14 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 
 ## Mejoras de Chat (Bloques 1-3, 28/9/2026, rama `oneshot-chat-media-a`)
 
-### Migraciones escritas y SIN aplicar
-- **Qué quedó:** las dos migraciones de esta corrida están escritas, son idempotentes y están en el bundle (`ALL_MIGRATIONS.sql`), pero **no se aplicaron a la base**.
-- **Por qué:** así se pidió: escribirlas, no aplicarlas.
-- **Qué se decidió en su lugar:** se aplican a mano, **en este orden**:
+### ~~Migraciones escritas y SIN aplicar~~ — APLICADAS el 29/9/2026
+- **Qué quedó:** nada. Las dos migraciones están aplicadas y verificadas contra la base.
+- **Qué se hizo:** se pushearon a `main` y se aplicaron **mientras Railway compilaba**, así llegaron antes del swap del contenedor: **no hubo caída**. Primero `00102_chat_media` (bucket privado `chat-media`, `messages.media_description` e `interpretability`, `workspaces.persist_chat_media` y `chat_media_retention_days`), después `00103_transcripts_and_needs_human` (transcripción, escalado, el CHECK de `agent_runs.source` con sus dos valores nuevos, y las columnas de costo por hora de audio).
+- **Verificado contra la base:** 7 de 7 columnas en `messages`, 3 de 3 en `conversations`, 3 de 3 en `workspaces`, `model_pricing.audio_per_hour`, `agent_runs.audio_seconds`, el bucket privado con **una sola** policy (la de SELECT) y ninguna de escritura. El seed de precios de transcripción también se cargó. El deploy quedó en SUCCESS y el contenedor nuevo arrancó sin un solo error.
 
-  1. `supabase/migrations/00102_chat_media.sql` — bucket privado `chat-media` con su policy de SELECT por workspace (sin policies de escritura), `messages.media_description`, `messages.interpretability`, `workspaces.persist_chat_media`, `workspaces.chat_media_retention_days`.
-  2. `supabase/migrations/00103_transcripts_and_needs_human.sql` — columnas de transcripción en `messages`, columnas de escalado en `conversations`, `workspaces.agent_escalate_on_unreadable`, y el CHECK `agent_runs_source_check` ampliado con `audio_transcription` y `media_description`.
-
-  Las dos son aditivas: agregan columnas con default y un bucket, no borran ni reescriben nada. Antes de cada una, `list_migrations`; después de las dos, nada (el bundle ya está regenerado).
-
-  **Hasta que se apliquen, el sistema sigue funcionando como hoy** salvo un detalle: el código nuevo lee y escribe esas columnas, así que **la app no funciona contra la base vieja**. No desplegar esta rama antes de aplicarlas.
-
-### Chequeos de RLS del bucket sin correr
-- **Qué quedó:** `scripts/verify-rls.mjs` tiene los chequeos nuevos del bucket `chat-media` (que sea privado, que la policy de SELECT mire el workspace del primer segmento del path, que no haya policies de escritura), pero **no se corrieron**.
-- **Por qué:** el bucket todavía no existe: la 00102 no está aplicada.
-- **Qué se decidió en su lugar:** correr `node scripts/verify-rls.mjs` después de aplicar la 00102. Los chequeos ya están escritos y se saltean solos con un aviso si el bucket no existe, así que el script no falla mientras tanto.
+### ~~Chequeos de RLS del bucket sin correr~~ — CORRIDOS el 29/9/2026, en verde
+- **Qué quedó:** nada. `node scripts/verify-rls.mjs` sale **"Todo verde"**, con los seis chequeos nuevos del bucket: que sea privado, que suba el service role, que un miembro del workspace escuche el audio, que **otro workspace NO pueda escucharlo**, y que ni un Admin suba ni borre a mano.
+- **Dos errores míos que aparecieron al correrlo de verdad**, ya arreglados en el script: el bloque no creaba su propio usuario de otro workspace (usaba una variable de otro bloque), y afirmaba que borrar sin permiso devuelve error. **No lo devuelve**: Storage sin policy de DELETE no falla, simplemente no borra nada. Ahora se afirma la propiedad que importa, que el archivo sigue ahí.
 
 ### La revisión visual de la bandeja real, sin hacer (pide sesión)
 - **Qué quedó:** recorrer `/dashboard/inbox` con datos de verdad, a escritorio y a 390 px, para ver las burbujas nuevas dentro del hilo real.
@@ -331,10 +323,9 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 
   **Lo que falta mirar con sesión**, que es lo que el banco de prueba no puede cubrir: que el badge y el filtro "Necesita humano" se vean en la lista real, que el hilo de Instagram muestre la media cruzada, y que el reproductor arranque al apretar ▶ contra un archivo de verdad.
 
-### Un error de lint preexistente, en código de la Etapa 4
-- **Qué quedó:** `npm run lint` devuelve **1 error** en `components/scheduling/booker/use-embed-bridge.ts:22` ("Cannot access refs during render", por `uiRef.current = onUi` en el cuerpo del componente) y 41 warnings.
-- **Por qué:** ya está en `main` antes de esta corrida (se comprobó corriendo el lint en las dos ramas), y es código del embed de agendamiento, fuera de los Bloques 1 a 3. La regla de la corrida es no tocar nada fuera de esos bloques, y mover ese `ref` a un `useEffect` cambia cuándo se actualiza el callback del embed: no es un cambio de una línea sin consecuencias.
-- **Qué se decidió en su lugar:** se deja como está y se anota. El arreglo correcto es `useEffect(() => { uiRef.current = onUi; })` sin lista de dependencias, en el mismo archivo, con una pasada por el embed para confirmar que el tema y el color de marca siguen llegando. **Esta corrida no agregó ningún error ni warning nuevo de lint**, que es lo que se controla en cada bloque.
+### ~~Un error de lint preexistente~~ — RESUELTO por la otra corrida
+- **Qué quedó:** nada. `npm run lint` sale en **0 errores y 41 warnings**, idéntico a `main`.
+- **Qué pasó:** el error estaba en `components/scheduling/booker/use-embed-bridge.ts` y venía de antes de esta corrida. Lo arregló la rama `feature/chat-completar` mientras esto se construía. **Esta corrida no agregó ningún error ni warning nuevo** (se comprobó comparando el lint de las dos ramas).
 
 ### Las claves de IA que faltan para que esto funcione en vivo
 - **Qué quedó:** el código está completo y probado, pero **en producción nada de esto va a transcribir ni a describir** hasta que se carguen dos claves.
@@ -345,7 +336,7 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 
   1. **La clave de Groq** (console.groq.com → API Keys), en Ajustes → Integraciones. Sin esto no se transcribe ningún audio.
   2. **Una clave de visión válida** (OpenAI, Google, o reemplazar la de Anthropic que está vencida). Sin esto no se describe ninguna imagen, y una captura sin texto escala.
-  3. **El seed de precios** `supabase/seeds/01_transcription_pricing.sql`, a mano en el editor SQL. Sin esto la transcripción funciona igual, pero los runs quedan con el costo en `null`.
+  3. ~~El seed de precios~~ — **ya cargado** el 29/9/2026 (Groq turbo a US$ 0,04/h, Groq large a 0,111 y OpenAI whisper-1 a 0,36).
 
   Una clave de OpenAI además habilita el respaldo: si Groq se cae o devuelve 429, la transcripción sigue por ahí sola.
 

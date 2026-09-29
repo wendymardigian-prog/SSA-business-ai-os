@@ -83,15 +83,28 @@ Este es el bloque urgente: es el que hace que el agente deje de contestar a cieg
 
 ## Cierre de la corrida
 
+Mergeado a `main` y **desplegado** el 29/9/2026 (commit `5fdc4fb`).
+
 | Comando | Al arrancar (28/9) | Al cerrar |
 |---|---|---|
-| `npx vitest run` | 285 archivos / 3327 tests | **306 archivos / 3686 tests, todo en verde** |
+| `npx vitest run` | 285 archivos / 3327 tests | **322 archivos / 3888 tests, todo en verde** (incluye lo que trajo `feature/chat-completar`) |
 | `npm run build` | OK | OK |
 | `npx tsc --noEmit` | limpio | limpio |
-| `npm run lint` | 1 error y 41 warnings | **los mismos** (se comprobó contra `main`: esta corrida no agregó ninguno) |
+| `npm run lint` | 1 error y 41 warnings | **0 errores y 41 warnings**, idéntico a `main` (el error lo arregló la otra corrida) |
+| `node scripts/verify-rls.mjs` | no se podía (faltaba el bucket) | **Todo verde**, con los seis chequeos nuevos del bucket |
 
-**+21 archivos de test y +359 tests.** Ningún test previo quedó roto. Los cinco que cambiaron lo hicieron porque cambió a propósito lo que fijaban: el formato crudo del adjunto de WhatsApp, las etiquetas duplicadas, la lista de tipos de job, el resultado de `insertMessage` y las capacidades del catálogo de proveedores.
+**Esta corrida sumó 21 archivos de test y 359 tests.** Ningún test previo quedó roto. Los cinco que cambiaron lo hicieron porque cambió a propósito lo que fijaban: el formato crudo del adjunto de WhatsApp, las etiquetas duplicadas, la lista de tipos de job, el resultado de `insertMessage` y las capacidades del catálogo de proveedores.
 
-**Lo que NO se hizo, y está anotado en [PENDIENTE.md](PENDIENTE.md):** aplicar las dos migraciones, correr `verify-rls` (necesita el bucket), el recorrido visual de la bandeja real (pide login), y cargar las claves de Groq y de visión.
+### El merge con la otra corrida
 
-**Antes de desplegar:** aplicar la 00102 y la 00103. El código lee y escribe esas columnas, así que la app no funciona contra la base vieja.
+`main` había avanzado con `feature/chat-completar` (pantalla de Chat, Settings con pestañas, migraciones **00110 y 00111**). Sin choque de números con las 00102 y 00103. Seis archivos se pisaban y sólo dos dieron conflicto, ninguno de código: el bundle de migraciones (se regenera) y `docs/PENDIENTE.md` (se juntaron las dos secciones).
+
+De paso, esa corrida **arregló la raíz** de algo que yo había esquivado: `globals.css` ahora declara `@custom-variant dark`, así que `dark:` sigue a la clase `.dark` y no a la preferencia del sistema. Se simplificó el arreglo del reproductor, que llevaba dos variantes por eso.
+
+### El deploy
+
+Railway despliega solo desde `main`, y el código lee columnas que no existían. Para que no hubiera caída: se pusheó primero y **las migraciones se aplicaron mientras el contenedor compilaba**, así llegaron antes del swap. El deploy quedó en SUCCESS, el contenedor nuevo arrancó en 380 ms y los crons siguen corriendo sin un solo error.
+
+### Lo que queda
+
+**Dos claves** para que esto funcione de verdad en vivo, y las dos las tiene que cargar Wendy: **Groq** (sin eso no se transcribe nada) y una de **visión** válida (sin eso no se describe ninguna imagen). Sin ellas el sistema no rompe: el agente escala a una persona, que es justo lo que se quería. El detalle está en [PENDIENTE.md](PENDIENTE.md).

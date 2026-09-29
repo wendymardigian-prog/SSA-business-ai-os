@@ -1194,6 +1194,10 @@ try {
     if (!bucket) {
       console.log("  ~ chat-media todavia no existe (falta aplicar la 00102): se saltea");
     } else {
+      // Cada bloque arma su propio "otro": un usuario de OTRO workspace, que es
+      // contra quien se prueba que la policy acote de verdad.
+      const otro = await makeUser("otro-chat-media");
+
       check(bucket.public === false, "el bucket chat-media es privado");
 
       const archivo = new Blob([new Uint8Array([0x49, 0x44, 0x33])], { type: "audio/mpeg" });
@@ -1213,8 +1217,12 @@ try {
           .upload(`${ws.id}/zz-test-chat-media/falso.mp3`, archivo, { upsert: true });
         check(!!error, "ni un Admin sube a mano a chat-media"); }
 
-      { const { error } = await admin.client.storage.from("chat-media").remove([rutaPropia]);
-        check(!!error, "ni un Admin borra de chat-media: eso lo hace el cron de retencion"); }
+      // Sin policy de DELETE, Storage NO devuelve error: simplemente no borra
+      // nada. Asi que se afirma la propiedad que importa, que el archivo sigue
+      // ahi, y no la forma en que Storage reporta el rechazo.
+      { await admin.client.storage.from("chat-media").remove([rutaPropia]);
+        const { data } = await svc.storage.from("chat-media").download(rutaPropia);
+        check(!!data, "ni un Admin borra de chat-media: eso lo hace el cron de retencion"); }
 
       await svc.storage.from("chat-media").remove([rutaPropia, `${ws.id}/zz-test-chat-media/falso.mp3`]);
     }
