@@ -279,6 +279,85 @@ node scripts/verify-booking-concurrency.mjs   # diez pedidos a la vez, una reuni
 Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
 (prefijo `zz-test-`), y no se corren dos en simultaneo.
 
+# Mejoras de Chat (Bloques 1-3, construidos)
+
+Lo que arregla, en una frase: hasta ahora un lead mandaba una nota de voz y el
+agente le contestaba igual, sin haberla escuchado.
+
+## Los adjuntos tienen UN solo contrato
+`messages.attachments` es jsonb libre y cada origen escribia una forma distinta.
+Ahora se guarda `{ v: 2, items: ChatAttachment[] }`, y `parseAttachments`
+(`lib/messages/attachments.ts`) entiende ademas los cuatro formatos viejos: el de
+email, el array de Zernio, el nodo de Baileys y el que registra un flow.
+**No hay backfill ni fecha de corte**, y las etiquetas de tipo ("🎤 Nota de voz")
+salen solo de ahi. Es un modulo PURO: lo importan los webhooks y la burbuja.
+
+## La media se copia a nuestro Storage
+Bucket privado `chat-media`, con la regla de siempre: el **primer segmento del
+path es el workspace** y es lo unico que lee la policy. **Sin policies de
+escritura**: sube el service role. La descarga (`/api/v1/chat-media`) firma al
+hacer clic con el cliente del USUARIO, nunca al pintar el hilo.
+
+- La descarga va en el `after()` del webhook y **no en la cola**: la URL de Meta
+  vence y WhatsApp borra la media de su servidor.
+- WhatsApp manda la media cifrada: hay que pedirsela a Evolution por el id del
+  mensaje (`getBase64FromMediaMessage`, con `convertToMp4: false`, o un audio
+  convertido pierde el `ptt`).
+- Lo que no tiene archivo (ubicacion, contacto, encuesta, link) **no se intenta
+  bajar**: si no, el spinner queda girando para siempre.
+- Retencion de 180 dias colgada del cron `content-media-cleanup`, que ya existe.
+  **La transcripcion nunca se borra.**
+
+## El agente entiende, o se calla
+- El historial usa `effectiveMessageText`: texto, o transcripcion, o descripcion
+  de la imagen, **marcado** y envuelto en `wrapUntrusted`. Con caption gana el
+  caption. Lo que no tiene nada interpretable sigue afuera.
+- **La compuerta vive en el runner** (`lib/agent/runner.ts`, al inicio de
+  `continueTurn`) y no en `dispatch.ts`: el dispatch corre en el webhook, cuando
+  la transcripcion ni empezo. Es el unico punto por el que pasan los tres modos.
+  Va **antes de los guardarrailes**, porque `burstText` los alimentaba con texto
+  vacio y ninguno frenaba una rafaga que era solo un audio.
+- Tres salidas: responde, reagenda (hasta 90 s), o `needs_human` con el motivo,
+  el agente apagado ahi, la entrada en `audit_log` y el aviso en la campana. **Ante
+  la duda, escala.** Apagable con `workspaces.agent_escalate_on_unreadable`.
+- `lib/agent/runner-unreadable.test.ts` es el test que prueba el arreglo.
+
+## La transcripcion
+- `lib/ai/transcribe.ts` es la **unica puerta**: nadie mas sabe quien transcribe,
+  y un test de frontera lo hace cumplir. Sumar un proveedor es un `case` y una
+  fila en el catalogo.
+- Se intenta **en el momento** (en el `after()`) y la cola es el respaldo: el
+  agente tiene 90 s y el cron corre cada minuto.
+- El **claim condicional** (`none|failed -> pending`) evita transcribir y cobrar
+  dos veces. Un fallo transitorio vuelve a `failed`, no queda en `pending`.
+- El **reaper** corre tambien en el cron de jobs: si nadie encola un job, el
+  handler nunca corre y la fila quedaria colgada.
+- El nombre del archivo se reconstruye **desde el mime**: WhatsApp manda nombres
+  inventados y el proveedor devuelve 400 si la extension no coincide.
+- Se cobra **por hora de audio**, no por tokens: `model_pricing.audio_per_hour` y
+  `agent_runs.audio_seconds`, con su seed (`supabase/seeds/01_transcription_pricing.sql`).
+
+## La bandeja
+Las decisiones de que pintar viven en `lib/inbox/media-render.ts` y
+`lib/inbox/transcript-state.ts`, puras y testeadas; los componentes solo las
+componen. El hilo de Instagram **se sigue leyendo en vivo de Zernio** y se cruza
+con nuestra tabla por `platform_message_id`.
+
+**Ojo con dos cosas de CSS** que se midieron y costaron un arreglo: `min-width`
+le gana a `max-width` (un minimo fijo desborda la burbuja), y el `dark:` de
+Tailwind en este proyecto compila a `prefers-color-scheme`, mientras que el tema
+lo maneja la clase `.dark` del `<html>`. Son dos señales distintas.
+
+## Migraciones
+`00102` (bucket y columnas de media) y `00103` (transcripcion, escalado, el CHECK
+de `agent_runs.source` y las columnas de costo por audio). **Escritas y SIN
+aplicar**: ver `docs/PENDIENTE.md` para el orden. La app no funciona contra la
+base vieja, asi que no se despliega esta rama antes de aplicarlas.
+
+Lo que NO entro: los Bloques 4 (identidad visible), 5 (grabar y enviar audios) y
+6 (banca de audios). El plano completo esta en
+[docs/requerimientos-chat-multimedia.md](docs/requerimientos-chat-multimedia.md).
+
 # Seguridad
 
 ## Autenticacion y sesiones

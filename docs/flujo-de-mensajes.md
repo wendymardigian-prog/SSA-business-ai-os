@@ -173,6 +173,60 @@ esperando. Test de regresión: `lib/flow-engine/resume-on-inbound.test.ts`.
 | `lib/backfill-messages.ts` | el backfill |
 | `scripts/verify-message-persistence.mjs` | la verificación contra la base real |
 
+## Los adjuntos (Mejoras de Chat)
+
+Hasta esta fase `messages.attachments` era una columna `jsonb` libre y cada
+origen escribía una forma distinta: el objeto de email, el array crudo de Zernio,
+el nodo crudo de Baileys y lo que registraba un flow al enviar. Cuatro formas
+quiere decir que la burbuja no podía decidir qué pintar.
+
+Ahora se guarda **una sola forma**:
+
+```ts
+{ v: 2, items: ChatAttachment[] }
+```
+
+Cada item dice qué es (`kind`), dónde está el archivo (`storagePath`), de dónde
+vino (`sourceUrl`, sólo como respaldo) y en qué estado está:
+
+| `status` | Qué significa |
+|---|---|
+| `pending` | Se está bajando del proveedor |
+| `ready` | Está en nuestro bucket, se puede reproducir |
+| `failed` | No se pudo bajar; `error` dice por qué, en castellano |
+| `none` | No hay archivo que bajar (una ubicación), o ya no está (media vieja, o purgada por retención) |
+
+**Los cuatro formatos viejos se siguen leyendo.** `parseAttachments`
+(`lib/messages/attachments.ts`) los adapta al vuelo: no hubo backfill y no hay
+fecha de corte. Lo único que no vuelve es el archivo de los mensajes anteriores,
+porque su URL ya venció: esos se ven como "ya no disponible".
+
+### Y el archivo, ¿dónde vive?
+
+En el bucket privado `chat-media`, en
+`<workspace_id>/<conversation_id>/<message_id>-<n>.<ext>`. El primer segmento es
+el workspace porque **es lo único que lee la policy**.
+
+Se copia dentro del `after()` del webhook y no en la cola, por una razón
+concreta: la URL que da Instagram es del CDN de Meta y vence, y WhatsApp borra la
+media de su servidor pasado un tiempo. Si se esperara al cron del minuto, a veces
+se llega tarde y después no hay nada que escuchar ni que transcribir.
+
+Los adjuntos de **email no se movieron**: siguen en su bucket
+`email-attachments`, con su ruta de descarga, y se ven igual que antes. El item
+lleva `meta.bucket` para que la burbuja firme donde corresponde.
+
+### Cuánto dura
+
+El **archivo** se borra a los 180 días (configurable por workspace; `0` es no
+borrar nunca), en el mismo cron diario que limpia la media publicada. El item
+conserva todos sus metadatos y queda en `none`.
+
+La **transcripción nunca se borra por retención**. Es texto, pesa nada, y es el
+contexto con el que el agente entiende la conversación: borrarla sería ahorrar
+bytes a cambio de que el agente se olvide de lo que le dijeron. Sigue la
+retención de 12 meses de los mensajes, que no cambió.
+
 ## Lo que no está resuelto
 
 **Tres sistemas reciben los mismos DMs de la misma cuenta de Instagram** (este
