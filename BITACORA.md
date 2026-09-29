@@ -1272,8 +1272,21 @@ enseñaron algo que conviene no volver a olvidar:
 - **Un Member ve los episodios de sus conversaciones, no sus conversaciones.**
   Dos conversaciones pueden dar tres episodios.
 
+## La revisión visual, con Wendy logueada
+
+Wendy inició sesión y se recorrió Dashboards › Chat, Settings › Tareas y la cola
+de borradores a 1440 y 390 px. Se probaron con clics reales, no solo mirados:
+filtrar "Quién responde" por una fila (cambia la URL, oculta la sección del
+agente con el aviso), tocar una categoría de Patrones (pide "Qué le responden" a
+la Server Action nueva), y los dos accesos a Borradores desde el menú (van a
+`?quien=todos` y el "Ver todos (5)" trae los cinco borradores reales).
+
+**Ningún bug.** Lo único fuera de lo común son los datos reales: el agente actuó
+en 3 % de 187 conversaciones, tal como se anticipó — estuvo apagado y ManyChat
+contestó casi todo.
+
 ## Lo que queda
 
-En `docs/PENDIENTE.md`. Lo principal: la revisión visual con la app necesita una
-sesión iniciada, `knownButtonExtra` se conecta en `runner.ts` después de mergear
-multimedia, y las versiones del clasificador siguen en solo lectura.
+En `docs/PENDIENTE.md`. Lo principal: `knownButtonExtra` se conecta en
+`runner.ts` después de mergear multimedia, y las versiones del clasificador
+siguen en solo lectura.

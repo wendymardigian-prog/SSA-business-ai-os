@@ -259,20 +259,30 @@ propósito:
   textos sin clasificar y la última corrida del clasificador en `error` (la API
   key revocada).
 
-### La revisión visual con la app quedó pendiente
+### ~~La revisión visual con la app~~ — HECHA el 28/9/2026, con Wendy logueada
 
-- **Qué quedó:** la comparación lado a lado con el prototipo a 1440 y 390 px no
-  se hizo: la app pide login y esta sesión no carga credenciales.
-- **Qué sí se verificó:** que los tokens de color (`--c-agent` y compañía) salen
-  compilados en claro y en oscuro, que las utilidades nuevas
-  (`bg-c-agent`, `text-warn`, `bg-recv`, …) existen en el CSS, que el corte de
-  860 px está, que las grillas `.g3`/`.row2`/`.split` se generan, y que
-  **ningún `dark:` quedó atado a `prefers-color-scheme`** (0 apariciones en el
-  CSS de producción).
-- **Qué hay que hacer:** `npm run dev -- --port 3001`, iniciar sesión, y recorrer
-  Dashboards › Chat, Settings › Tareas y la cola de borradores en las dos
-  medidas. Las migraciones ya están aplicadas, así que la pantalla trae datos
-  reales: no hay nada que preparar antes.
+- **Qué se hizo:** Wendy inició sesión en `localhost:3001` y se recorrió
+  Dashboards › Chat (con datos reales, filtrando por "Fuera del sistema", tocando
+  una categoría de Patrones), Settings › Tareas y la cola de borradores, a 1440 y
+  a 390 px.
+- **Lo que se probó de punta a punta, con clics reales (no solo mirado):**
+  - Filtrar la tabla "Quién responde" por una fila cambia la URL a `?author=…` y
+    oculta la sección del agente con el aviso, exactamente igual con "Fuera del
+    sistema" que con Automatizaciones (F17).
+  - Tocar una categoría de Patrones pide "Qué le responden" a la Server Action
+    nueva, que llama a `chat_dashboard_replies` y muestra el "% no respondió".
+  - El acceso a Borradores desde el sidebar y desde la barra ya llevan a
+    `?quien=todos`, y la cola vacía en "míos" dice "Hay 5 de otras personas" con
+    el botón "Ver todos (5)", que al tocarlo trae los 5 borradores reales.
+  - A 390 px los filtros bajan a su franja propia y las tarjetas quedan en 2
+    columnas, como el prototipo.
+- **Ningún bug encontrado.** Lo único fuera de lo común son los datos: el agente
+  actuó en 3 % de 187 conversaciones y "Quién responde" trae una sola fila
+  ("Fuera del sistema", 62 %), porque el agente estuvo apagado — es el
+  comportamiento correcto, no un error.
+- **Un detalle cosmético, no un bug:** a 390 px el título "Conversaciones nuevas"
+  se trunca a "Conversaciones …" en la tarjeta. El prototipo también trunca
+  textos largos en mobile; no hace falta tocarlo.
 
 ## Heredado de la Etapa 2
 
