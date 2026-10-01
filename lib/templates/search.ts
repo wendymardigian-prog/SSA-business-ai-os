@@ -42,12 +42,17 @@ export function filterTemplates<T extends SearchableTemplate>(
     const name = fold(template.name);
     // El atajo se guarda con barra; la busqueda llega sin ella.
     const shortcut = fold((template.shortcut ?? "").replace(/^\//, ""));
+    // El picker de audios (F21) busca tambien por la transcripcion, que viaja
+    // en este mismo campo: el texto es el que mas se escribe distinto de
+    // como suena, asi que va al final, nunca antes que nombre o atajo.
+    const content = fold(template.content);
 
     let score: number | null = null;
     if (shortcut && shortcut.startsWith(needle)) score = 0;
     else if (name.startsWith(needle)) score = 1;
     else if (shortcut && shortcut.includes(needle)) score = 2;
     else if (name.includes(needle)) score = 3;
+    else if (content && content.includes(needle)) score = 4;
 
     if (score !== null) scored.push({ template, score });
   }

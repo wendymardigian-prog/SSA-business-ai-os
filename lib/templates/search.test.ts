@@ -46,6 +46,20 @@ describe("filterTemplates", () => {
     expect(filterTemplates(templates, "zzz")).toEqual([]);
   });
 
+  it("si no matchea nombre ni atajo, busca en el contenido (lo usa el picker de audios, F21)", () => {
+    // "presu" esta en el nombre y el atajo del 4, asi que no prueba nada nuevo.
+    // "mande" solo esta en el contenido del 4.
+    expect(ids(filterTemplates(templates, "mande"))).toEqual(["4"]);
+  });
+
+  it("nombre o atajo le ganan al contenido", () => {
+    const lista = [
+      { id: "a", name: "Precio", content: "nada que ver", shortcut: null },
+      { id: "b", name: "Otro", content: "aca dice precio tambien", shortcut: null },
+    ];
+    expect(ids(filterTemplates(lista, "precio"))).toEqual(["a", "b"]);
+  });
+
   it("no rompe con la lista vacia", () => {
     expect(filterTemplates([], "hola")).toEqual([]);
   });
