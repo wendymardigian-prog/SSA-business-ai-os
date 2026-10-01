@@ -171,6 +171,10 @@ describe("updateAsset", () => {
     expect(result.ok).toBe(true);
     expect(row(db, "t-1")).toMatchObject({ name: "Nuevo", content: "c2" });
     expect(scheduleJob).not.toHaveBeenCalled();
+    // El audit log compara contra el valor de ANTES, no el ya actualizado.
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ changes: expect.objectContaining({ name: { old: "Viejo", new: "Nuevo" } }) }),
+    );
   });
 
   it("edita nombre y descripcion de un audio sin tocar el archivo", async () => {
@@ -188,7 +192,7 @@ describe("updateAsset", () => {
     expect(scheduleJob).not.toHaveBeenCalled();
   });
 
-  it("reemplazar el archivo de un audio descarta la transcripcion anterior y vuelve a encolar", async () => {
+  it("reemplazar el archivo de un audio descarta la transcripcion anterior, vuelve a encolar y borra el archivo VIEJO del bucket", async () => {
     const db = admin({
       response_assets: [{
         id: "a-1", workspace_id: WS, kind: "audio", name: "X", description: "d", shortcut: null,
@@ -196,6 +200,8 @@ describe("updateAsset", () => {
         agent_enabled: false, is_active: true,
       }],
     });
+    const remove = vi.fn(async () => ({ error: null }));
+    (db.client as unknown as { storage: unknown }).storage = { from: () => ({ remove }) };
 
     const result = await updateAsset("a-1", {
       name: "X", description: "d",
@@ -205,6 +211,23 @@ describe("updateAsset", () => {
     expect(result.ok).toBe(true);
     expect(row(db, "a-1")).toMatchObject({ storage_path: "new.m4a", transcript: null, transcript_status: "none" });
     expect(scheduleJob).toHaveBeenCalledWith(db.client, "transcribe_audio", { assetId: "a-1" }, expect.any(Date), "transcribe-asset:a-1");
+    // El archivo que se borra es el VIEJO, no el nuevo: nadie mas lo referencia.
+    expect(remove).toHaveBeenCalledWith(["old.m4a"]);
+  });
+
+  it("editar un audio sin reemplazar el archivo no borra nada del bucket", async () => {
+    const db = admin({
+      response_assets: [{
+        id: "a-1", workspace_id: WS, kind: "audio", name: "Viejo", description: "d", shortcut: null,
+        storage_path: "p.m4a", agent_enabled: false, is_active: true,
+      }],
+    });
+    const remove = vi.fn(async () => ({ error: null }));
+    (db.client as unknown as { storage: unknown }).storage = { from: () => ({ remove }) };
+
+    await updateAsset("a-1", { name: "Nuevo", description: "d" });
+
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it("habilitar para el agente es parte del update, en los dos tipos", async () => {
@@ -240,6 +263,31 @@ describe("deleteAsset", () => {
     getAdminContext.mockResolvedValue(null);
     expect(await deleteAsset("a-1")).toEqual({ ok: false, error: "Solo Owner y Admin pueden eliminar recursos" });
   });
+
+  it("borrar un audio borra su archivo del bucket en el momento", async () => {
+    const db = admin({
+      response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", name: "X", description: "d", shortcut: null, storage_path: "p.m4a", deleted_at: null }],
+    });
+    const remove = vi.fn(async () => ({ error: null }));
+    (db.client as unknown as { storage: unknown }).storage = { from: () => ({ remove }) };
+
+    const result = await deleteAsset("a-1");
+
+    expect(result.ok).toBe(true);
+    expect(remove).toHaveBeenCalledWith(["p.m4a"]);
+  });
+
+  it("borrar un texto no toca el bucket (no tiene archivo)", async () => {
+    const db = admin({
+      response_assets: [{ id: "t-1", workspace_id: WS, kind: "text", name: "X", content: "c", shortcut: null, deleted_at: null }],
+    });
+    const remove = vi.fn(async () => ({ error: null }));
+    (db.client as unknown as { storage: unknown }).storage = { from: () => ({ remove }) };
+
+    await deleteAsset("t-1");
+
+    expect(remove).not.toHaveBeenCalled();
+  });
 });
 
 describe("correctTranscript", () => {
@@ -252,6 +300,9 @@ describe("correctTranscript", () => {
 
     expect(result.ok).toBe(true);
     expect(row(db, "a-1")).toMatchObject({ transcript: "texto correcto", transcript_source: "manual", transcript_status: "ready" });
+    expect(logAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ changes: { transcript: { old: "mal transcripto", new: "texto correcto" } } }),
+    );
   });
 
   it("vacio se rechaza", async () => {

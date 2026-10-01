@@ -315,6 +315,11 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
   if (!before) return { ok: false, error: "No encontré ese recurso" };
 
   const kind = before.kind as AssetKind;
+  // Se saca una copia antes de armar el patch: el objeto de arriba viene tal
+  // cual lo devolvio la base, y diffFields (y el borrado del archivo viejo,
+  // mas abajo) necesitan el valor de ANTES de la edicion.
+  const beforeSnapshot = { ...before };
+  const oldStoragePath = before.storage_path;
 
   const name = validateName(input.name);
   if (!name.ok) return name;
@@ -361,7 +366,7 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
     return { ok: false, error: `No pude guardar el recurso: ${describeError(error.message)}` };
   }
 
-  const changes = diffFields(before, patch);
+  const changes = diffFields(beforeSnapshot, patch);
   if (changes) {
     await logAudit({
       supabase, workspaceId: workspace.id, entityType: "response_asset", entityId: assetId,
@@ -371,9 +376,20 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
 
   if (kind === "audio" && input.replacement) {
     const service = await createServiceClient();
-    // El archivo viejo no se borra aca: lo maneja el borrado/reemplazo mas
-    // abajo y la barrida de red de lib/response-assets/cleanup.ts.
     await enqueueTranscription(service, assetId);
+
+    // El archivo VIEJO ya no lo referencia nadie (la fila apunta al nuevo, y
+    // una conversacion que lo mando se quedo con su propia COPIA,
+    // lib/response-assets/send-copy.ts): se borra en el momento. El bucket
+    // no tiene policies de escritura, asi que esto es con el service client.
+    // Si falla, no se reintenta aca: lib/response-assets/cleanup.ts es la
+    // red de seguridad a los 28 dias.
+    if (oldStoragePath && oldStoragePath !== input.replacement.storagePath) {
+      const { error: storageError } = await service.storage.from(CHAT_MEDIA_BUCKET).remove([oldStoragePath]);
+      if (storageError) {
+        console.error("[response-assets] no pude borrar el archivo viejo del bucket:", storageError.message);
+      }
+    }
   }
 
   revalidatePath(LIST_PATH);
@@ -389,7 +405,7 @@ export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
 
   const { data: before } = await supabase
     .from("response_assets")
-    .select("id, name, kind")
+    .select("id, name, kind, storage_path")
     .eq("id", assetId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -406,6 +422,19 @@ export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
   if (error) {
     console.error("[response-assets] borrado fallido:", error.message);
     return { ok: false, error: `No pude eliminar el recurso: ${error.message}` };
+  }
+
+  // Nadie mas referencia el archivo de un audio (una conversacion que lo
+  // mando se quedo con su propia COPIA, lib/response-assets/send-copy.ts):
+  // se borra en el momento, con el service client porque el bucket no tiene
+  // policies de escritura. Si falla, no se reintenta aca:
+  // lib/response-assets/cleanup.ts es la red de seguridad a los 28 dias.
+  if (before.kind === "audio" && before.storage_path) {
+    const service = await createServiceClient();
+    const { error: storageError } = await service.storage.from(CHAT_MEDIA_BUCKET).remove([before.storage_path]);
+    if (storageError) {
+      console.error("[response-assets] no pude borrar el archivo del bucket:", storageError.message);
+    }
   }
 
   await logAudit({
@@ -436,6 +465,7 @@ export async function correctTranscript(assetId: string, text: string): Promise<
 
   if (!before) return { ok: false, error: "No encontré ese recurso" };
   if (before.kind !== "audio") return { ok: false, error: "Solo un audio tiene transcripción" };
+  const oldTranscript = before.transcript;
 
   const { error } = await supabase
     .from("response_assets")
@@ -450,7 +480,7 @@ export async function correctTranscript(assetId: string, text: string): Promise<
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "response_asset", entityId: assetId,
-    action: "update", changes: { transcript: { old: before.transcript, new: trimmed } }, performedBy: user.id,
+    action: "update", changes: { transcript: { old: oldTranscript, new: trimmed } }, performedBy: user.id,
   });
 
   revalidatePath(LIST_PATH);

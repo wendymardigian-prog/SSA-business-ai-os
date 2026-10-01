@@ -1,14 +1,18 @@
 /**
  * Borra la media vencida, pasado el plazo de cada workspace.
  *
- * Diario. Dos cosas, que comparten el barrido porque comparten el momento:
+ * Diario. Cuatro cosas, que comparten el barrido porque comparten el momento:
  *
  *   - La media de las piezas ya publicadas (F23 de la Etapa 2), 30 dias por
  *     defecto.
  *   - La media del chat (F5 de Mejoras de Chat), 180 dias por defecto.
+ *   - Las fotos de perfil copiadas a Storage (F16), 180 dias fijos.
+ *   - La red de seguridad de la banca de recursos: el archivo de un audio
+ *     dado de baja hace mas de 28 dias, por si el borrado inmediato
+ *     (lib/actions/response-assets.ts) fallo.
  *
- * En los dos casos, 0 = no borrar nunca. Y en los dos, si el borrado del bucket
- * falla NO se marca la fila: al dia siguiente se vuelve a intentar.
+ * En los primeros tres, 0 = no borrar nunca. Y en todos, si el borrado del
+ * bucket falla NO se marca nada: al dia siguiente se vuelve a intentar.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,6 +22,7 @@ import { planCleanup, type PostToClean } from "@/lib/content/cleanup";
 import type { MediaEntry } from "@/lib/content/media";
 import { cleanupChatMedia } from "@/lib/chat-media/cleanup-run";
 import { cleanupContactAvatars } from "@/lib/contacts/avatar-cleanup";
+import { cleanupOrphanedAssetFiles } from "@/lib/response-assets/cleanup";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -115,6 +120,10 @@ export async function GET(request: NextRequest) {
   // del mismo barrido diario en vez de sumar otro cron.
   const avatars = await cleanupContactAvatars(supabase, now);
 
+  // La red de seguridad de la banca de recursos (ver el docblock de este
+  // archivo): nunca deberia tener trabajo, porque el borrado ya es inmediato.
+  const assets = await cleanupOrphanedAssetFiles(supabase, now);
+
   return NextResponse.json({
     ok: true,
     cleanedPosts,
@@ -122,5 +131,7 @@ export async function GET(request: NextRequest) {
     chatMediaMessages: chat.cleanedMessages,
     chatMediaFiles: chat.deletedFiles,
     avatarsCleaned: avatars.cleanedContacts,
+    orphanedAssetFiles: assets.attempted,
+    orphanedAssetFilesFailed: assets.failed,
   });
 }
