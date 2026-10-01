@@ -32,14 +32,14 @@ El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](
 - [x] F16 — fotos de perfil estables (IG + WhatsApp + retención + fallback onError)
 - [x] F17 — el @ de Instagram clickeable (panel, detalle, Canales vinculados)
 
-### Bloque 5 — Grabar y enviar audios (F18-F19)
-- [ ] Test de no-regresión del envío de texto sin media
-- [ ] sendChannelMessage: un solo camino (Evolution media + Zernio media)
-- [ ] Contrato del POST /api/v1/messages con media
-- [ ] Subida directa (Server Action + signed upload URL)
-- [ ] sniffMime: formatos de audio
-- [ ] F18 — grabador en el composer
-- [ ] F19 — envío de audio y archivos por los dos canales
+### Bloque 5 — Grabar y enviar audios (F18-F19) — ✅ LISTO (1/10/2026)
+- [x] Test de no-regresión del envío de texto sin media (app/api/v1/messages/route.test.ts)
+- [x] sendChannelMessage: un solo camino (Evolution media + Zernio media). Arreglado el bug de mediaUrl descartado en Evolution.
+- [x] Contrato del POST /api/v1/messages con media (validación por magic bytes + pertenencia al workspace/conversación)
+- [x] Subida directa (Server Action + signed upload URL) — lib/actions/chat-upload.ts
+- [x] sniffMime: formatos de audio (OggS, mp3, WAVE, WebM/EBML, M4A)
+- [x] F18 — grabador en el composer (components/inbox/voice-recorder.tsx)
+- [x] F19 — envío de audio y archivos por los dos canales (clip + composer wiring)
 
 ### Bloque 6 — Banca de audios (F20-F22)
 - [ ] Migración 00105 (audio_assets)
