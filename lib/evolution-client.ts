@@ -405,21 +405,22 @@ export interface MediaPayload {
  * Lanza `EvolutionError` como el resto del cliente (con sus tres reintentos y
  * su backoff). Devuelve null cuando Evolution contesta bien pero sin base64,
  * que pasa cuando la media ya se borro del servidor de WhatsApp.
+ *
+ * **`message` va completo, no `{key:{id}}` solo (F4, verificado en el codigo
+ * fuente de la 2.3.7, §14c).** Con el objeto entero Evolution lo usa directo;
+ * con la clave sola hace una busqueda en su propia base, que depende de que
+ * Evolution haya persistido ese mensaje. Nuestro webhook ya recibe el objeto
+ * completo en `data.message`, asi que pasarlo entero es gratis y evita esa
+ * dependencia.
  */
 export async function getBase64FromMediaMessage(
   config: EvolutionConfig,
   instanceName: string,
-  messageId: string,
+  message: Record<string, unknown>,
 ): Promise<MediaPayload | null> {
-  const major = await getMajorVersion(config);
-
-  // El contrato es el mismo en las dos versiones mayores; se consulta igual
-  // para que un cambio futuro tenga un solo lugar donde ramificar, como
-  // sendText.
-  const body =
-    major === 2
-      ? { message: { key: { id: messageId } }, convertToMp4: false }
-      : { message: { key: { id: messageId } }, convertToMp4: false };
+  // El contrato es el mismo en las dos versiones mayores (verificado), asi
+  // que no hace falta ramificar por `getMajorVersion` como en `sendText`.
+  const body = { message, convertToMp4: false };
 
   const raw = await request<{
     base64?: string;

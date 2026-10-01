@@ -40,18 +40,19 @@ export function describeWhatsappMessage(message: Record<string, unknown> | null 
 export function evolutionMediaFetcher(args: {
   config: EvolutionConfig;
   instance: string;
-  platformMessageId: string | null;
+  /** El objeto `message` de Baileys completo, tal como llego en el webhook (F4). */
+  rawMessage: Record<string, unknown> | null;
 }): MediaFetcher {
   let cached: { base64: string; mime: string | null } | null = null;
 
   return async () => {
-    if (!args.platformMessageId) {
+    if (!args.rawMessage) {
       return { kind: "error", message: "El mensaje llegó sin identificador, así que no puedo pedir el archivo" };
     }
 
     try {
       if (!cached) {
-        const payload = await getBase64FromMediaMessage(args.config, args.instance, args.platformMessageId);
+        const payload = await getBase64FromMediaMessage(args.config, args.instance, args.rawMessage);
         if (!payload) {
           // Evolution contesto bien y no tiene el archivo: WhatsApp ya lo borro
           // de su servidor. No es reintentable.
@@ -91,7 +92,8 @@ export async function storeEvolutionMedia(args: {
   workspaceId: string;
   conversationId: string;
   messageId: string;
-  platformMessageId: string | null;
+  /** El objeto `message` de Baileys completo (F4): `data.message` del webhook. */
+  rawMessage: Record<string, unknown> | null;
   items: ChatAttachment[];
 }): Promise<StoreMediaResult> {
   return storeInboundMedia({
@@ -103,7 +105,7 @@ export async function storeEvolutionMedia(args: {
     fetcher: evolutionMediaFetcher({
       config: args.config,
       instance: args.instance,
-      platformMessageId: args.platformMessageId,
+      rawMessage: args.rawMessage,
     }),
   });
 }

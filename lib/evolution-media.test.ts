@@ -42,7 +42,9 @@ function db() {
   return { memory, uploads };
 }
 
-const store = (items: ChatAttachment[], platformMessageId: string | null = "WA-1") =>
+const RAW_MESSAGE = { key: { id: "WA-1" }, message: { audioMessage: {} } };
+
+const store = (items: ChatAttachment[], rawMessage: Record<string, unknown> | null = RAW_MESSAGE) =>
   storeEvolutionMedia({
     supabase: db().memory.client,
     config,
@@ -50,7 +52,7 @@ const store = (items: ChatAttachment[], platformMessageId: string | null = "WA-1
     workspaceId: WS,
     conversationId: CV,
     messageId: MSG,
-    platformMessageId,
+    rawMessage,
     items,
   });
 
@@ -117,11 +119,12 @@ describe("storeEvolutionMedia: el camino feliz (F4)", () => {
       workspaceId: WS,
       conversationId: CV,
       messageId: MSG,
-      platformMessageId: "WA-1",
+      rawMessage: RAW_MESSAGE,
       items: [emptyAttachment("voice", { status: "pending", durationSeconds: 12 })],
     });
 
-    expect(getBase64FromMediaMessage).toHaveBeenCalledWith(config, "ssa-1", "WA-1");
+    // El objeto completo, no solo el id (F4, §14c).
+    expect(getBase64FromMediaMessage).toHaveBeenCalledWith(config, "ssa-1", RAW_MESSAGE);
     expect(result.stored).toBe(1);
     expect(result.items[0]).toMatchObject({
       kind: "voice",
@@ -149,7 +152,7 @@ describe("storeEvolutionMedia: el camino feliz (F4)", () => {
       workspaceId: WS,
       conversationId: CV,
       messageId: MSG,
-      platformMessageId: "WA-1",
+      rawMessage: RAW_MESSAGE,
       items: [emptyAttachment("image", { status: "pending" }), emptyAttachment("image", { status: "pending" })],
     });
 
@@ -212,7 +215,7 @@ describe("el fetcher, aislado", () => {
       size: 4,
     });
 
-    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", platformMessageId: "WA-1" });
+    const fetcher = evolutionMediaFetcher({ config, instance: "ssa-1", rawMessage: RAW_MESSAGE });
     const source = await fetcher(emptyAttachment("voice", { status: "pending" }), 0);
 
     expect(source).toMatchObject({ kind: "bytes", mime: "audio/mp4" });

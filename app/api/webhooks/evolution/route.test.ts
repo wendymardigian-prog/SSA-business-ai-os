@@ -332,7 +332,12 @@ describe("webhook de Evolution: el camino del mensaje del lead", () => {
       expect.objectContaining({ kind: "voice", durationSeconds: 12, mime: "audio/ogg", status: "pending" }),
     ]);
     expect(storeEvolutionMedia).toHaveBeenCalledWith(
-      expect.objectContaining({ messageId: "msg-1", platformMessageId: "msg-1", instance: INSTANCE }),
+      // El objeto completo, no solo el id (F4, §14c).
+      expect.objectContaining({
+        messageId: "msg-1",
+        rawMessage: expect.objectContaining({ audioMessage: expect.anything() }),
+        instance: INSTANCE,
+      }),
     );
     // Y el preview de la lista lo dice con palabras.
     expect(upsertConversation).toHaveBeenCalledWith(expect.objectContaining({ preview: "🎤 Nota de voz" }));

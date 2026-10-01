@@ -312,7 +312,9 @@ async function processMessage(
         workspaceId: channel.workspace_id,
         conversationId: conversation.id,
         messageId: inserted.id,
-        platformMessageId: messageId,
+        // El objeto completo, no solo el id (F4, §14c): con el objeto entero
+        // Evolution lo usa directo; con la clave sola busca en su propia base.
+        rawMessage: data?.message ?? null,
         items: attachments,
       });
 
