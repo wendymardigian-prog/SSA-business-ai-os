@@ -6,6 +6,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Instagram,
   Loader2,
   MapPin,
   Play,
@@ -112,10 +113,18 @@ export function MediaAttachment({
           href={plan.externalUrl ?? undefined}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1.5 flex max-w-full items-center gap-2 rounded-lg border border-current/20 px-2.5 py-2 text-xs hover:bg-current/5"
+          className="mt-1.5 flex max-w-full flex-col gap-1 rounded-lg border border-current/20 px-2.5 py-2 text-xs hover:bg-current/5"
         >
-          <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{plan.label}</span>
+          <span className="flex items-center gap-1.5 font-medium">
+            {item.kind === "share" ? (
+              <Instagram className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            ) : (
+              <ExternalLink className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+            )}
+            <span className="min-w-0 flex-1 truncate">{plan.label}</span>
+          </span>
+          {plan.shareTitle && <span className="line-clamp-3 text-current/90">{plan.shareTitle}</span>}
+          {plan.shareUrlLabel && <span className="truncate text-current/50">{plan.shareUrlLabel}</span>}
         </a>
       );
 

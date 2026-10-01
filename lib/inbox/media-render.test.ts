@@ -114,6 +114,31 @@ describe("renderPlan: lo que NO tiene archivo (F12)", () => {
     // Y una URL que no es http no se usa: seria un link roto o algo peor.
     expect(renderPlan(emptyAttachment("share", { meta: { url: "javascript:alert(1)" } })).externalUrl).toBeNull();
   });
+
+  it("un reel compartido muestra su etiqueta especifica, el titulo y la URL corta (FA1)", () => {
+    const plan = renderPlan(
+      emptyAttachment("share", {
+        meta: { url: "https://www.instagram.com/reel/abc123/", title: "Mira este lugar", shareType: "reel" },
+      }),
+    );
+
+    expect(plan.label).toBe("Reel compartido");
+    expect(plan.shareTitle).toBe("Mira este lugar");
+    expect(plan.shareUrlLabel).toBe("instagram.com/reel/abc123/");
+  });
+
+  it("un post compartido sin titulo igual es una tarjeta clicable, sin spinner ni error", () => {
+    const plan = renderPlan(emptyAttachment("share", { meta: { url: "https://www.instagram.com/p/xyz/", shareType: "post" } }));
+
+    expect(plan.component).toBe("link-card");
+    expect(plan.label).toBe("Publicación compartida");
+    expect(plan.shareTitle).toBeNull();
+  });
+
+  it("sin shareType cae en la etiqueta generica", () => {
+    const plan = renderPlan(emptyAttachment("share", { meta: { url: "https://lookaside.fbsbx.com/x" } }));
+    expect(plan.label).toBe("🔗 Publicación compartida");
+  });
 });
 
 describe("renderPlan: los cuatro estados (F12)", () => {

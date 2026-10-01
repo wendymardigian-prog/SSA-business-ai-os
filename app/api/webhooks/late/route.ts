@@ -60,7 +60,7 @@ interface WebhookPayload {
     platformMessageId: string;
     direction: string;
     text: string | null;
-    attachments: Array<{ type: string; url: string; payload?: string }>;
+    attachments: Array<{ type: string; originalType?: string; url: string; payload?: unknown }>;
     sender: {
       id: string;
       name: string;
@@ -435,7 +435,7 @@ interface MessageSentPayload {
     platformMessageId: string;
     direction: string;
     text: string | null;
-    attachments?: Array<{ type: string; url: string; payload?: string }>;
+    attachments?: Array<{ type: string; originalType?: string; url: string; payload?: unknown }>;
     sentAt?: string;
   };
   account: { id: string };

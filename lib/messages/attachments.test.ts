@@ -47,26 +47,27 @@ describe("parseAttachments: los cuatro formatos viejos (F1)", () => {
     expect(parseAttachments({ files: [{ filename: "roto.pdf" }] })).toEqual([]);
   });
 
-  it("Zernio: una imagen queda con su URL de respaldo y sin path propio", () => {
+  it("Zernio: una imagen vieja queda con su URL de respaldo, pero 'ya no disponible' (FA3)", () => {
     const [item] = parseAttachments(LEGACY_ZERNIO);
 
     expect(item).toMatchObject({
       kind: "image",
       sourceUrl: "https://cdn.meta/x.jpg",
       storagePath: null,
-      // Hay algo que bajar: queda pendiente hasta que se baje.
-      status: "pending",
+      // Nadie la va a bajar: es formato viejo, sin trabajo en cola. "pending"
+      // dejaria el spinner girando para siempre.
+      status: "none",
     });
   });
 
-  it("Baileys: una nota de voz queda con su duracion y su mime sin parametros", () => {
+  it("Baileys: una nota de voz vieja queda con su duracion, pero 'ya no disponible' (FA3)", () => {
     const [item] = parseAttachments(LEGACY_BAILEYS);
 
     expect(item).toMatchObject({
       kind: "voice",
       durationSeconds: 12,
       mime: "audio/ogg",
-      status: "pending",
+      status: "none",
     });
   });
 
@@ -136,7 +137,8 @@ describe("Zernio", () => {
     const [item] = fromZernioAttachments([{ type: "share", url: "https://instagram.com/p/abc" }]);
 
     expect(item).toMatchObject({ kind: "share", status: "none", sourceUrl: null });
-    expect(item.meta).toEqual({ url: "https://instagram.com/p/abc" });
+    // Sin originalType, el shareType se adivina por la forma de la URL (/p/).
+    expect(item.meta).toEqual({ url: "https://instagram.com/p/abc", shareType: "post" });
   });
 
   it("un tipo desconocido con URL entra como unsupported, no se pierde", () => {
@@ -145,6 +147,84 @@ describe("Zernio", () => {
 
   it("un tipo desconocido sin URL no entra", () => {
     expect(fromZernioAttachments([{ type: "loquesea" }])).toEqual([]);
+  });
+});
+
+describe("Zernio: reels y posts compartidos (FA1)", () => {
+  it("un reel con originalType 'ig_reel' y type 'video' da share, no video: el mapeo existia pero nunca se alcanzaba", () => {
+    const [item] = fromZernioAttachments([
+      { type: "video", originalType: "ig_reel", url: "https://www.instagram.com/reel/abc123/" },
+    ]);
+
+    expect(item).toMatchObject({ kind: "share", status: "none" });
+    expect(item.meta).toMatchObject({ url: "https://www.instagram.com/reel/abc123/", shareType: "reel" });
+  });
+
+  it("el payload es un OBJETO: se guardan su url y su title, no se tiran a la basura", () => {
+    const [item] = fromZernioAttachments([
+      {
+        type: "video",
+        originalType: "ig_reel",
+        url: "https://www.instagram.com/reel/abc123/",
+        payload: { url: "https://www.instagram.com/reel/abc123/", title: "Mira este lugar en Bariloche", reel_video_id: "123" },
+      },
+    ]);
+
+    expect(item.meta).toEqual({
+      url: "https://www.instagram.com/reel/abc123/",
+      title: "Mira este lugar en Bariloche",
+      shareType: "reel",
+    });
+  });
+
+  it("una URL de instagram.com es share aunque no venga originalType: el cinturon ademas de los tirantes", () => {
+    const [item] = fromZernioAttachments([{ type: "video", url: "https://www.instagram.com/reel/xyz987/" }]);
+
+    expect(item).toMatchObject({ kind: "share", status: "none" });
+  });
+
+  it("un post (no reel) da shareType 'post'", () => {
+    const [item] = fromZernioAttachments([
+      { type: "share", originalType: "ig_post", url: "https://lookaside.fbsbx.com/x", payload: { url: "https://lookaside.fbsbx.com/x", title: "Un posteo" } },
+    ]);
+
+    expect(item.meta).toMatchObject({ shareType: "post", title: "Un posteo" });
+  });
+
+  it("sin pista de tipo ni de URL, no inventa un shareType", () => {
+    const [item] = fromZernioAttachments([{ type: "share", url: "https://lookaside.fbsbx.com/x" }]);
+
+    expect(item.meta).toEqual({ url: "https://lookaside.fbsbx.com/x" });
+  });
+
+  it("un archivo de verdad (imagen con URL de Meta) sigue siendo descargable: el cinturon no se dispara con cualquier cosa", () => {
+    const [item] = fromZernioAttachments([{ type: "image", url: "https://lookaside.fbsbx.com/ig_messaging_cdn/x.jpg" }]);
+
+    expect(item).toMatchObject({ kind: "image", status: "pending" });
+  });
+});
+
+describe("parseAttachments: adjuntos viejos pending -> none (FA3)", () => {
+  it("un reel viejo guardado como video+failed se arregla al pintarlo, sin tocar datos", () => {
+    // Asi quedaron guardados 5 reels reales por el bug: {type:"video", url:instagram.com/reel/...}
+    // sin originalType, porque el mensaje llego antes de aplicar FA1.
+    const [item] = parseAttachments([{ type: "video", url: "https://www.instagram.com/reel/Ddq3No_g8LH/" }]);
+
+    expect(item).toMatchObject({ kind: "share", status: "none" });
+  });
+
+  it("una imagen vieja de lookaside.fbsbx.com (vencida) no queda pending", () => {
+    const [item] = parseAttachments([{ type: "image", url: "https://lookaside.fbsbx.com/ig_messaging_cdn/x.jpg" }]);
+
+    expect(item.status).toBe("none");
+  });
+
+  it("un documento de email en formato viejo sigue 'ready': la democion es solo para Zernio y Baileys", () => {
+    const [item] = parseAttachments({
+      files: [{ filename: "guia.pdf", contentType: "application/pdf", storagePath: "ws-1/email-1/0-guia.pdf", sizeBytes: 2048 }],
+    });
+
+    expect(item.status).toBe("ready");
   });
 });
 

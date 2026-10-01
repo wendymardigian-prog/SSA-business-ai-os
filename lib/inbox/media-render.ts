@@ -52,6 +52,10 @@ export interface MediaRenderPlan {
   filename: string | null;
   /** La URL externa de un link o un post compartido. */
   externalUrl: string | null;
+  /** El titulo del post compartido (el caption del reel), recortado para la tarjeta (FA1). */
+  shareTitle: string | null;
+  /** La URL corta para mostrar debajo del titulo, sin protocolo ni query. */
+  shareUrlLabel: string | null;
 }
 
 /** Las familias de mime que le corresponden a cada kind. */
@@ -127,6 +131,32 @@ function externalUrlOf(item: ChatAttachment): string | null {
   return null;
 }
 
+/** La etiqueta por tipo de post compartido (FA1). Sin pista, la generica. */
+const SHARE_TYPE_LABELS: Record<string, string> = {
+  reel: "Reel compartido",
+  post: "Publicación compartida",
+  story: "Historia compartida",
+};
+
+function shareLabel(item: ChatAttachment): string {
+  const shareType = item.meta?.shareType;
+  if (typeof shareType === "string" && shareType in SHARE_TYPE_LABELS) {
+    return SHARE_TYPE_LABELS[shareType];
+  }
+  return attachmentLabel(item.kind);
+}
+
+/** El titulo de un post compartido (el caption del reel). Sin recorte: lo recorta el CSS. */
+function shareTitleOf(item: ChatAttachment): string | null {
+  const title = item.meta?.title;
+  return typeof title === "string" && title.trim().length > 0 ? title.trim() : null;
+}
+
+/** La URL sin protocolo ni query, para mostrar en gris debajo del titulo. */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\/(?:www\.)?/i, "").replace(/\?.*$/, "");
+}
+
 /** El nombre que se muestra y con el que se descarga. */
 export function displayFilename(item: ChatAttachment): string {
   if (item.filename) return item.filename;
@@ -141,12 +171,15 @@ export function displayFilename(item: ChatAttachment): string {
  */
 export function renderPlan(item: ChatAttachment): MediaRenderPlan {
   const { url, downloadUrl } = urlFor(item);
+  const externalUrl = externalUrlOf(item);
   const base = {
     canRetry: false,
     url,
     downloadUrl,
     filename: displayFilename(item),
-    externalUrl: externalUrlOf(item),
+    externalUrl,
+    shareTitle: null as string | null,
+    shareUrlLabel: externalUrl ? shortUrl(externalUrl) : null,
   };
 
   // Un link, una ubicacion o un contacto no tienen archivo: sus estados no
@@ -158,10 +191,14 @@ export function renderPlan(item: ChatAttachment): MediaRenderPlan {
 
   const isLink = ["share", "link", "story_reply"].includes(item.kind);
   if (isLink) {
+    // FA1: un post compartido se ve con su titulo y su URL corta, sin
+    // reproducir nada y sin spinner ni error cuando no trae titulo: un link
+    // siempre se puede abrir.
     return {
       ...base,
       component: base.externalUrl ? "link-card" : "label",
-      label: labelWithDetail(item),
+      label: item.kind === "share" ? shareLabel(item) : labelWithDetail(item),
+      shareTitle: item.kind === "share" ? shareTitleOf(item) : null,
     };
   }
 

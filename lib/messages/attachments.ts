@@ -214,23 +214,73 @@ const ZERNIO_KINDS: Record<string, AttachmentKind> = {
   share: "share",
   story_mention: "story_reply",
   ig_reel: "share",
+  ig_post: "share",
   reel: "share",
 };
 
+/** Si una URL es la pagina de un post/reel de Instagram, nunca un archivo. */
+function isInstagramPermalink(url: string | null): boolean {
+  return url !== null && /instagram\.com\/(?:p|reel|reels|tv)\//i.test(url);
+}
+
+/**
+ * Que clase de post compartido es, para la etiqueta de la tarjeta (FA1).
+ *
+ * `originalType` manda cuando esta: es lo que Zernio dice que es de verdad.
+ * Sin eso, se adivina por la forma de la URL. Sin ninguna pista, no se
+ * inventa: la tarjeta cae en la etiqueta generica "Publicación compartida".
+ */
+function shareTypeFor(originalType: string | null, url: string | null): "reel" | "post" | "story" | null {
+  const ot = originalType?.toLowerCase() ?? null;
+  if (ot === "ig_reel" || ot === "reel") return "reel";
+  if (ot === "ig_post") return "post";
+  if (ot === "ig_story" || ot === "story_mention") return "story";
+  if (url) {
+    if (/\/(?:reel|reels)\//i.test(url)) return "reel";
+    if (/\/p\//i.test(url)) return "post";
+  }
+  return null;
+}
+
+/**
+ * Un adjunto de Zernio: `{ type, url, originalType?, payload? }`.
+ *
+ * FA1: cuando un lead comparte un reel, Zernio manda `type:"video"` con
+ * `originalType:"ig_reel"` y una `url` que apunta a `instagram.com/reel/...`:
+ * una pagina, no un archivo. El mapeo de `ig_reel` ya existia pero nunca se
+ * alcanzaba, porque se leia `type` y no `originalType`. Aca se lee
+ * `originalType` primero, y como cinturon ademas de los tirantes, cualquier
+ * URL que sea un permalink de Instagram se trata como `share` aunque no venga
+ * `originalType`: una pagina de Instagram nunca es un archivo que se baje.
+ */
 export function fromZernioAttachment(raw: unknown): ChatAttachment | null {
   if (!isRecord(raw)) return null;
 
+  const originalType = asString(raw.originalType);
   const type = (asString(raw.type) ?? "").toLowerCase();
+  const mappedKind = (originalType && ZERNIO_KINDS[originalType.toLowerCase()]) || ZERNIO_KINDS[type];
   const url = asString(raw.url);
-  const kind = ZERNIO_KINDS[type] ?? (url ? "unsupported" : null);
+
+  const kind = isInstagramPermalink(url) ? "share" : (mappedKind ?? (url ? "unsupported" : null));
   if (!kind) return null;
 
   // Un share no tiene archivo: su URL es la del post, y va en meta para que la
   // burbuja pinte una tarjeta con link en vez de intentar descargar nada.
   if (kind === "share") {
+    // El payload es un OBJETO ({ url, title, reel_video_id }), no un string.
+    // Leerlo con asString() devuelve null y tira a la basura el caption
+    // completo del reel, que el agente podria leer perfectamente (FA2).
+    const payload = isRecord(raw.payload) ? raw.payload : null;
+    const shareUrl = (payload ? asString(payload.url) : null) ?? url;
+    const title = payload ? asString(payload.title) : null;
+    const shareType = shareTypeFor(originalType, shareUrl);
     return emptyAttachment("share", {
       status: "none",
-      meta: { url, ...(asString(raw.payload) ? { payload: asString(raw.payload) } : {}) },
+      meta: {
+        ...(shareUrl ? { url: shareUrl } : {}),
+        ...(title ? { title } : {}),
+        ...(shareType ? { shareType } : {}),
+      },
     });
   }
 
@@ -495,15 +545,28 @@ export function parseAttachments(value: unknown): ChatAttachment[] {
 
   // Zernio, y lo que registra un flow al enviar (misma forma: `[{type, url}]`).
   if (Array.isArray(value)) {
-    return fromZernioAttachments(value);
+    return fromZernioAttachments(value).map(demoteStaleLegacyPending);
   }
 
   // Baileys.
   if (isRecord(value)) {
-    return fromBaileysMessage(value);
+    return fromBaileysMessage(value).map(demoteStaleLegacyPending);
   }
 
   return [];
+}
+
+/**
+ * Un adjunto en formato viejo (array de Zernio, o nodo de Baileys) que quedo
+ * "pending" nunca se va a bajar: no hay ningun trabajo en cola para un mensaje
+ * que llego antes del Bloque 1 (FA3). Mostrarlo "pending" deja la burbuja con
+ * "Descargando adjunto..." girando para siempre; "none" dice la verdad: ya no
+ * esta disponible. Los mensajes NUEVOS no pasan por aca: el webhook arma el
+ * item directo con `fromZernioAttachment`/`fromBaileysMessage` y lo guarda en
+ * formato v2, que no se demota.
+ */
+function demoteStaleLegacyPending(item: ChatAttachment): ChatAttachment {
+  return item.status === "pending" ? { ...item, status: "none" } : item;
 }
 
 /** Envuelve los items para guardarlos. */
