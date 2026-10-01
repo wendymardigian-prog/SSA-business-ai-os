@@ -157,7 +157,9 @@ export type AuditEntityType =
   | "out_of_office"
   | "booking_category"
   | "event_type"
-  | "booking";
+  | "booking"
+  /** La banca de audios reutilizables (F20). */
+  | "audio_asset";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -238,7 +240,9 @@ export type AuditAction =
   | "booking.updated"
   | "booking.status_changed"
   | "booking.sync_ok"
-  | "booking.sync_failed";
+  | "booking.sync_failed"
+  /** El agente mando un audio de la banca (F22). performed_by_agent_id, entity audio_asset. */
+  | "agent_audio_sent";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -2271,6 +2275,83 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "response_templates_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      /** La banca de audios reutilizables (migracion 00105, F20). */
+      audio_assets: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          shortcut: string | null;
+          description: string;
+          storage_path: string;
+          mime_type: string;
+          duration_seconds: number | null;
+          size_bytes: number | null;
+          transcript: string | null;
+          transcript_status: "none" | "pending" | "ready" | "failed";
+          transcript_error: string | null;
+          transcript_source: "auto" | "manual";
+          transcript_started_at: string | null;
+          source: "recorded" | "uploaded" | "synthesized";
+          agent_enabled: boolean;
+          is_active: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          shortcut?: string | null;
+          description: string;
+          storage_path: string;
+          mime_type: string;
+          duration_seconds?: number | null;
+          size_bytes?: number | null;
+          transcript?: string | null;
+          transcript_status?: "none" | "pending" | "ready" | "failed";
+          transcript_error?: string | null;
+          transcript_source?: "auto" | "manual";
+          transcript_started_at?: string | null;
+          source?: "recorded" | "uploaded" | "synthesized";
+          agent_enabled?: boolean;
+          is_active?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          name?: string;
+          shortcut?: string | null;
+          description?: string;
+          storage_path?: string;
+          mime_type?: string;
+          duration_seconds?: number | null;
+          size_bytes?: number | null;
+          transcript?: string | null;
+          transcript_status?: "none" | "pending" | "ready" | "failed";
+          transcript_error?: string | null;
+          transcript_source?: "auto" | "manual";
+          transcript_started_at?: string | null;
+          source?: "recorded" | "uploaded" | "synthesized";
+          agent_enabled?: boolean;
+          is_active?: boolean;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "audio_assets_workspace_id_fkey";
             columns: ["workspace_id"];
             isOneToOne: false;
             referencedRelation: "workspaces";
@@ -4335,6 +4416,8 @@ export interface Database {
           conversations: number;
           contact_notes: number;
           response_templates: number;
+          /** Desde la 00105 (F20). */
+          audio_assets?: number;
         };
       };
       /**
