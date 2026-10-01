@@ -17,15 +17,15 @@ El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](
 
 ## Checklist
 
-### Bloque 0 — Arreglos (FA1-FA7)
-- [ ] FA1 — reels y posts compartidos de Instagram (originalType, payload objeto, tarjeta)
-- [ ] FA2 — el agente lee el reel compartido (effectiveMessageText)
-- [ ] FA3 — adjuntos viejos: pending → none
-- [ ] FA4 — 429 no escala si hay reintento en cola
-- [ ] FA5 — los 90s cuentan desde que arranca el turno
-- [ ] FA6 — flows y secuencias con la compuerta de interpretabilidad
-- [ ] FA7 — stickers/GIFs no escalan ni gastan vision
-- [ ] Alineación F4 — getBase64FromMediaMessage con el objeto completo
+### Bloque 0 — Arreglos (FA1-FA7) — ✅ LISTO (1/10/2026)
+- [x] FA1 — reels y posts compartidos de Instagram (originalType, payload objeto, tarjeta). Datos reales: 27 reels en formato viejo (10 sin originalType), 5 ya guardados mal por el bug (se arreglan solos al pintarlos). Decisión con Wendy: tarjeta con link siempre, aunque el link de un post/historia (lookaside.fbsbx.com) pueda vencer.
+- [x] FA2 — el agente lee el reel compartido (effectiveMessageText: `[Reel compartido] "título"`)
+- [x] FA3 — adjuntos viejos (formato Zernio/Baileys): pending → none
+- [x] FA4 — 429 no escala si hay un `transcribe_audio` pendiente/procesando en `scheduled_jobs`
+- [x] FA5 — los 90s cuentan desde `media_wait_started_at` (cuando el turno empieza a esperar), no desde `created_at` del mensaje
+- [x] FA6 — flows y secuencias con la compuerta de interpretabilidad (generateAiReply). Requirió describir imágenes EN EL MOMENTO (no solo encoladas), igual que el audio.
+- [x] FA7 — stickers/GIFs no escalan ni gastan visión (`label_only`, no `unreadable`)
+- [x] Alineación F4 — getBase64FromMediaMessage con el objeto `message` completo (§14c)
 
 ### Bloque 4 — Identidad visible (F16-F17)
 - [ ] Migración 00104 (avatar_source, avatar_updated_at, find_or_link_contact)

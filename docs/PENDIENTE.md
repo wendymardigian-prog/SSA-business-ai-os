@@ -349,3 +349,18 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 - **Qué quedó:** identidad visible (fotos de perfil estables y el @ de Instagram clickeable), grabar y enviar audios desde el composer, y la banca de audios reutilizables.
 - **Por qué:** el pedido de esta corrida fue explícitamente Bloques 1 a 3 (F1 a F15).
 - **Qué se decidió en su lugar:** nada de esos bloques se toca. El plano ya los tiene escritos y el B4 es independiente del resto, así que se puede correr en cualquier momento.
+
+---
+
+## Corrida B (1/10/2026) — Bloque 0, 4, 5 y 6
+
+### FA7 · Los corazones de Instagram no tienen mapeo verificado
+- **Qué quedó:** las reacciones de WhatsApp ya no generan adjunto (ya estaban en `BAILEYS_NOT_ATTACHMENTS`), pero no hay un mapeo para un corazón/reacción de Instagram en `ZERNIO_KINDS`.
+- **Por qué:** no encontré en la base real ni en la documentación del SDK de Zernio un ejemplo del payload que manda una reacción de Instagram. Inventar la forma (`{type: "reaction", ...}` o lo que sea) sin un dato real es el tipo de cosa que el plano pide no hacer.
+- **Qué se decidió en su lugar:** si en producción aparece una reacción de Instagram sin mapeo, hoy cae en `kind: "unsupported"` con `status: "pending"` (si trae URL) o se descarta (si no la trae) — no rompe nada, pero tampoco se etiqueta como `[Sticker]`. Cuando aparezca un ejemplo real, sumar su `type` a `ZERNIO_KINDS` (posiblemente apuntando a `sticker`, ya que `effectiveMessageText` ya trata stickers como no-escalables) es un cambio de una línea.
+
+### Migraciones escritas pero NO aplicadas (a pedido explícito)
+- **00104_contact_avatar_refresh.sql** (Bloque 4): agrega `contacts.avatar_source`/`avatar_updated_at` y reescribe `find_or_link_contact` (solo las tres líneas del avatar, copiando la 00031 letra por letra).
+- **00105_audio_assets.sql** (Bloque 6): tabla `audio_assets` + RLS + índice único del atajo + suma a `purge_soft_deleted`.
+- **Orden para aplicar:** primero la 00104 (corre `verify-crm.mjs` antes y después — protege la deduplicación, que es la regla de negocio central), después la 00105. Correr `node scripts/build-all-migrations.mjs` después de cada una.
+- **Por qué no se aplicaron:** instrucción explícita de Wendy en esta corrida ("Escribí las migraciones pero NO las apliques a la base").
