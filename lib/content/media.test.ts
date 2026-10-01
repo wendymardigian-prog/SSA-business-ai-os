@@ -51,9 +51,37 @@ describe("reconocer el tipo por el contenido (F18)", () => {
   });
 });
 
+describe("audio, para adjuntar del disco o grabar en el chat (F19)", () => {
+  it("OggS es un .ogg", () => {
+    expect(sniffMime(new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0, 2, 0, 0, 0, 0, 0, 0]))).toBe("audio/ogg");
+  });
+
+  it("ID3 (mp3 con metadatos) y el frame sync sin ID3 son mp3", () => {
+    expect(sniffMime(new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe("audio/mpeg");
+    expect(sniffMime(new Uint8Array([0xff, 0xfb, 0x90, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe("audio/mpeg");
+  });
+
+  it("RIFF....WAVE es un .wav, distinto de RIFF....WEBP", () => {
+    expect(sniffMime(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]))).toBe("audio/wav");
+  });
+
+  it("la cabecera EBML (Matroska/WebM) es audio/webm: Chrome graba audio/webm;codecs=opus", () => {
+    expect(sniffMime(new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe("audio/webm");
+  });
+
+  it("ftyp con marca M4A es audio/mp4, distinto de un MP4 de video", () => {
+    expect(sniffMime(new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]))).toBe("audio/mp4");
+  });
+});
+
 describe("validar un archivo antes de subirlo", () => {
   const candidate = (over: Partial<Parameters<typeof validateMedia>[0]> = {}) =>
     validateMedia({ fileName: "foto.png", sizeBytes: 1000, head: head("png"), ...over });
+
+  it("un audio NO regresion: el contenido publicado no admite audio, aunque sniffMime ya lo reconozca (F19)", () => {
+    const ogg = candidate({ sizeBytes: 1000, head: new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0, 2, 0, 0, 0, 0, 0, 0]) });
+    expect(ogg.ok).toBe(false);
+  });
 
   it("acepta lo permitido y dice de que tipo es", () => {
     expect(candidate()).toEqual({

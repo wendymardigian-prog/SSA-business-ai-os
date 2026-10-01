@@ -24,6 +24,17 @@ export const ALLOWED_MEDIA = {
 export type AllowedMime = keyof typeof ALLOWED_MEDIA;
 export type MediaKind = (typeof ALLOWED_MEDIA)[AllowedMime]["kind"];
 
+/**
+ * Los mimes de audio que `sniffMime` reconoce (F19), ademas de los de
+ * `ALLOWED_MEDIA`. Viven aparte porque el contenido publicado no admite
+ * audio -- `ALLOWED_MEDIA` no cambia -- pero el chat si (una nota de voz
+ * adjunta desde el disco, o la banca de audios).
+ */
+export const AUDIO_MIME = ["audio/ogg", "audio/webm", "audio/mpeg", "audio/wav", "audio/mp4"] as const;
+export type AudioMime = (typeof AUDIO_MIME)[number];
+
+export type SniffedMime = AllowedMime | AudioMime;
+
 /** 1 GB. Es el limite del bucket y el de la mayoria de las redes. */
 export const MAX_MEDIA_BYTES = 1024 * 1024 * 1024;
 
@@ -39,7 +50,7 @@ const startsWith = (bytes: Uint8Array, signature: number[], offset = 0): boolean
  * Devuelve null si no reconoce la firma, y eso se trata como "no permitido":
  * es preferible rechazar algo valido raro a aceptar cualquier cosa.
  */
-export function sniffMime(bytes: Uint8Array): AllowedMime | null {
+export function sniffMime(bytes: Uint8Array): SniffedMime | null {
   if (bytes.length < 12) return null;
 
   // JPEG: FF D8 FF
@@ -54,16 +65,34 @@ export function sniffMime(bytes: Uint8Array): AllowedMime | null {
   // PDF: %PDF-
   if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) return "application/pdf";
 
-  // RIFF....WEBP
-  if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) {
-    return "image/webp";
+  // OggS: un .ogg (y el ogg/opus que a veces graba un navegador)
+  if (startsWith(bytes, [0x4f, 0x67, 0x67, 0x53])) return "audio/ogg";
+
+  // ID3 (mp3 con metadatos) o el frame sync de un mp3 sin ID3 (FF Ex / FF Fx)
+  if (startsWith(bytes, [0x49, 0x44, 0x33]) || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) {
+    return "audio/mpeg";
   }
 
-  // MP4 y MOV comparten la caja "ftyp" en el byte 4; los distingue la marca
-  // que sigue. `qt  ` es QuickTime; el resto de las marcas conocidas, MP4.
+  // RIFF....WEBP o RIFF....WAVE: mismo contenedor, se distinguen por la marca.
+  if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46])) {
+    const brand = String.fromCharCode(...bytes.slice(8, 12));
+    if (brand === "WEBP") return "image/webp";
+    if (brand === "WAVE") return "audio/wav";
+  }
+
+  // EBML: la cabecera de Matroska/WebM (1A 45 DF A3). Un video o un audio
+  // grabado por el navegador (Chrome graba audio/webm;codecs=opus) comparten
+  // el mismo contenedor; sin leer mas adentro no se distinguen, asi que se
+  // asume audio, que es el unico caso de WebM que genera este sistema (los
+  // videos entran por WhatsApp/Instagram, nunca se suben del disco como webm).
+  if (startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3])) return "audio/webm";
+
+  // MP4, MOV y M4A comparten la caja "ftyp" en el byte 4; los distingue la
+  // marca que sigue. `qt  ` es QuickTime; `M4A ` es audio; el resto, MP4.
   if (startsWith(bytes, [0x66, 0x74, 0x79, 0x70], 4)) {
     const brand = String.fromCharCode(...bytes.slice(8, 12));
     if (brand === "qt  ") return "video/quicktime";
+    if (brand === "M4A " || brand === "M4B ") return "audio/mp4";
     return "video/mp4";
   }
 
@@ -93,7 +122,10 @@ export function validateMedia(candidate: MediaCandidate): MediaValidation {
   }
 
   const mime = sniffMime(candidate.head);
-  if (!mime) {
+  // El contenido publicado no admite audio (AUDIO_MIME es para el chat, F19):
+  // un mime de audio reconocido igual se rechaza aca, con el mismo mensaje
+  // que algo que no se reconoce.
+  if (!mime || !(mime in ALLOWED_MEDIA)) {
     return {
       ok: false,
       error: candidate.declaredMime
@@ -102,10 +134,11 @@ export function validateMedia(candidate: MediaCandidate): MediaValidation {
     };
   }
 
-  const definition = ALLOWED_MEDIA[mime];
+  const allowedMime = mime as AllowedMime;
+  const definition = ALLOWED_MEDIA[allowedMime];
   return {
     ok: true,
-    mime,
+    mime: allowedMime,
     kind: definition.kind,
     ext: definition.ext,
     resumable: candidate.sizeBytes > RESUMABLE_THRESHOLD_BYTES,

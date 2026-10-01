@@ -106,7 +106,7 @@ describe("texto sin media (no-regresion)", () => {
 
     expect(outcome.ok).toBe(true);
     expect(uploadMediaDirect).not.toHaveBeenCalled();
-    const body = sendInboxMessage.mock.calls[0][0].body as Record<string, unknown>;
+    const body = (sendInboxMessage.mock.calls[0] as unknown as [{ body: Record<string, unknown> }])[0].body;
     expect(body.attachmentUrl).toBeUndefined();
     expect(body.message).toBe("hola");
   });
@@ -165,7 +165,7 @@ describe("audio por Instagram (F19)", () => {
     expect(uploadMediaDirect).toHaveBeenCalledWith({
       body: { file: expect.any(Blob), contentType: "audio/mp4" },
     });
-    const body = sendInboxMessage.mock.calls[0][0].body as Record<string, unknown>;
+    const body = (sendInboxMessage.mock.calls[0] as unknown as [{ body: Record<string, unknown> }])[0].body;
     expect(body.attachmentUrl).toBe("https://cdn.zernio.test/u/audio.m4a");
     expect(body.attachmentType).toBe("audio");
   });
