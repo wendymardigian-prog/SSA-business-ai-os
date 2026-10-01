@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
@@ -13,15 +13,21 @@ import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ActionError } from "@/components/contacts/ui";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { MediaAttachment } from "./media-attachment";
 import { TranscriptBlock } from "./transcript-block";
+import { VoiceRecorder, recordingFilename } from "./voice-recorder";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
 import { ConversationAgentToggle } from "@/components/inbox/conversation-agent-toggle";
 import { PendingDraft } from "@/components/inbox/pending-draft";
 import { closeConversation } from "@/lib/actions/conversation-status";
+import { requestChatUpload } from "@/lib/actions/chat-upload";
+import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
+import { formatBytes } from "@/lib/inbox/media-render";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
@@ -197,9 +203,17 @@ export function MessageThread({
   const [pickerDismissed, setPickerDismissed] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState(0);
   const [confirmingDoNotContact, setConfirmingDoNotContact] = useState(false);
+  // F18/F19: grabar y adjuntar. recording y attachedFile son excluyentes
+  // entre si y con escribir texto (el mic solo se ve con el textarea vacio).
+  const [recording, setRecording] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** El envio de media que quedo esperando la confirmacion de "no contactar". */
+  const pendingMediaRef = useRef<{ file: File; filename: string; durationSeconds: number | null; isRecording: boolean } | null>(null);
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
   // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
@@ -312,9 +326,16 @@ export function MessageThread({
    * este dialogo es la comodidad, no la barrera.
    */
   function handleSendClick() {
-    if (!input.trim() || !conversation || sending) return;
+    if ((!input.trim() && !attachedFile) || !conversation || sending) return;
     if (conversation.contacts?.do_not_contact) {
+      pendingMediaRef.current = attachedFile
+        ? { file: attachedFile, filename: attachedFile.name, durationSeconds: null, isRecording: false }
+        : null;
       setConfirmingDoNotContact(true);
+      return;
+    }
+    if (attachedFile) {
+      sendMediaFile(attachedFile, attachedFile.name, null, false);
       return;
     }
     handleSend();
@@ -399,6 +420,99 @@ export function MessageThread({
           m.id === optimisticId ? { ...m, status: "failed" as const } : m
         )
       );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /** Los primeros bytes de un archivo, para que el servidor reconozca el tipo por su contenido. */
+  async function headBase64Of(file: Blob, n = 16): Promise<string> {
+    const buf = await file.slice(0, n).arrayBuffer();
+    let binary = "";
+    for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  /**
+   * Manda un audio grabado o un archivo adjuntado del disco (F18, F19).
+   *
+   * Tres pasos: pedir la ruta firmada (el servidor decide el tipo por los
+   * bytes), subir directo del navegador a Storage, y recien ahi mandar el
+   * mensaje con esa ruta. El caption (si hay texto escrito) viaja junto.
+   */
+  async function sendMediaFile(
+    file: Blob,
+    filename: string,
+    durationSeconds: number | null,
+    isRecording: boolean,
+    confirmedDoNotContact = false,
+  ) {
+    if (!conversation || sending) return;
+    setSending(true);
+    setMediaError(null);
+    const caption = input.trim();
+
+    try {
+      const ticket = await requestChatUpload({
+        conversationId: conversation.id,
+        sizeBytes: file.size,
+        headBase64: await headBase64Of(file),
+        declaredMime: file instanceof File ? file.type || undefined : undefined,
+        isRecording,
+      });
+
+      if (!ticket.ok) {
+        setMediaError(ticket.error);
+        return;
+      }
+
+      // Antes de subir nada: Instagram rechaza ogg/opus, webm y mp3. Mandarlo
+      // igual seria subir un archivo que el servidor va a terminar tirando.
+      if (
+        (ticket.kind === "audio" || ticket.kind === "voice") &&
+        conversation.platform === "instagram" &&
+        !instagramAcceptsAudio(ticket.mime)
+      ) {
+        setMediaError(INSTAGRAM_AUDIO_REJECTED_MESSAGE);
+        return;
+      }
+
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from(CHAT_MEDIA_BUCKET)
+        .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: ticket.mime });
+
+      if (uploadError) {
+        setMediaError("No se pudo subir el archivo. Probá de nuevo.");
+        return;
+      }
+
+      const res = await fetch("/api/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          text: caption || undefined,
+          media: { storagePath: ticket.path, kind: ticket.kind, mime: ticket.mime, filename, durationSeconds },
+          confirmedDoNotContact,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setMediaError(errorData.error || `No se pudo enviar (${res.status})`);
+        return;
+      }
+
+      const confirmedMessage: Message = await res.json();
+      setMessages((prev) => [...prev, confirmedMessage]);
+      setInput("");
+      setRecording(false);
+      setAttachedFile(null);
+      if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
+    } catch (err) {
+      console.error("Failed to send media:", err);
+      setMediaError("No se pudo enviar el archivo. Probá de nuevo.");
     } finally {
       setSending(false);
     }
@@ -594,78 +708,170 @@ export function MessageThread({
 
       {/* Composer */}
       <div className="border-t border-border p-3 md:p-4">
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
-          <div className="relative flex-1">
-            {pickerOpen && (
-              <TemplatePicker
-                matches={templateMatches}
-                activeIndex={activeTemplate}
-                onPick={insertTemplate}
-                onHover={setActiveTemplate}
-              />
-            )}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => {
-                const value = e.target.value;
-                setInput(value);
-                // Volver a escribir una barra desde cero reabre el selector que
-                // se habia cerrado con Escape.
-                if (!value.startsWith("/")) setPickerDismissed(false);
-                setActiveTemplate(0);
-                autoResize();
-              }}
-              onKeyDown={(e) => {
-                // Con el selector abierto, las flechas y el Enter son suyos:
-                // si no, Enter manda "/pre" como mensaje al lead.
-                if (pickerOpen) {
-                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                    e.preventDefault();
-                    if (templateMatches.length === 0) return;
-                    const step = e.key === "ArrowDown" ? 1 : -1;
-                    setActiveTemplate(
-                      (prev) =>
-                        (prev + step + templateMatches.length) % templateMatches.length,
-                    );
-                    return;
-                  }
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    const chosen = templateMatches[activeTemplate];
-                    if (chosen) insertTemplate(chosen);
-                    return;
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setPickerDismissed(true);
-                    return;
-                  }
+        <div className="mx-auto max-w-2xl">
+          <ActionError message={mediaError} />
+
+          {recording ? (
+            // Estado grabando (F18): reemplaza al composer entero.
+            <VoiceRecorder
+              onCancel={() => setRecording(false)}
+              onSend={(blob, mime, duration) => {
+                const filename = recordingFilename(mime);
+                const file = new File([blob], filename, { type: mime });
+                if (conversation.contacts?.do_not_contact) {
+                  pendingMediaRef.current = { file, filename, durationSeconds: duration, isRecording: true };
+                  setConfirmingDoNotContact(true);
+                  return;
                 }
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendClick();
-                }
+                sendMediaFile(file, filename, duration, true);
               }}
-              placeholder="Escribí un mensaje, o / para una respuesta rápida"
-              rows={1}
-              className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              style={{ maxHeight: 150 }}
             />
-          </div>
-          <button
-            onClick={handleSendClick}
-            disabled={!input.trim() || sending}
-            aria-label="Enviar mensaje"
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-lg transition-colors",
-              input.trim() && !sending
-                ? "bg-primary text-primary-foreground hover:opacity-90"
-                : "bg-muted text-muted-foreground"
-            )}
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          ) : (
+            <div className="flex items-end gap-2">
+              {attachedFile ? (
+                // Estado con adjunto elegido (F19): chip con nombre y peso,
+                // el textarea queda libre para el caption.
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5">
+                    <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate text-xs">{attachedFile.name}</span>
+                    <span className="flex-shrink-0 text-xs text-muted-foreground">{formatBytes(attachedFile.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachedFile(null)}
+                      aria-label="Quitar adjunto"
+                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendClick();
+                      }
+                    }}
+                    placeholder="Agregá un texto (opcional)"
+                    rows={1}
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              ) : (
+                <div className="relative flex-1">
+                  {pickerOpen && (
+                    <TemplatePicker
+                      matches={templateMatches}
+                      activeIndex={activeTemplate}
+                      onPick={insertTemplate}
+                      onHover={setActiveTemplate}
+                    />
+                  )}
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setInput(value);
+                      // Volver a escribir una barra desde cero reabre el selector que
+                      // se habia cerrado con Escape.
+                      if (!value.startsWith("/")) setPickerDismissed(false);
+                      setActiveTemplate(0);
+                      autoResize();
+                    }}
+                    onKeyDown={(e) => {
+                      // Con el selector abierto, las flechas y el Enter son suyos:
+                      // si no, Enter manda "/pre" como mensaje al lead.
+                      if (pickerOpen) {
+                        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (templateMatches.length === 0) return;
+                          const step = e.key === "ArrowDown" ? 1 : -1;
+                          setActiveTemplate(
+                            (prev) =>
+                              (prev + step + templateMatches.length) % templateMatches.length,
+                          );
+                          return;
+                        }
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          const chosen = templateMatches[activeTemplate];
+                          if (chosen) insertTemplate(chosen);
+                          return;
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setPickerDismissed(true);
+                          return;
+                        }
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendClick();
+                      }
+                    }}
+                    placeholder="Escribí un mensaje, o / para una respuesta rápida"
+                    rows={1}
+                    className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    style={{ maxHeight: 150 }}
+                  />
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  setMediaError(null);
+                  setAttachedFile(file);
+                }}
+              />
+              {!attachedFile && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Adjuntar archivo"
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              )}
+              {!attachedFile && !input.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMediaError(null);
+                    setRecording(true);
+                  }}
+                  aria-label="Grabar audio"
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                onClick={handleSendClick}
+                disabled={(!input.trim() && !attachedFile) || sending}
+                aria-label="Enviar mensaje"
+                className={cn(
+                  "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
+                  (input.trim() || attachedFile) && !sending
+                    ? "bg-primary text-primary-foreground hover:opacity-90"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -682,6 +888,12 @@ export function MessageThread({
         destructive
         onConfirm={() => {
           setConfirmingDoNotContact(false);
+          const pending = pendingMediaRef.current;
+          if (pending) {
+            pendingMediaRef.current = null;
+            sendMediaFile(pending.file, pending.filename, pending.durationSeconds, pending.isRecording, true);
+            return;
+          }
           handleSend(true);
         }}
         onCancel={() => setConfirmingDoNotContact(false)}
