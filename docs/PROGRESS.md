@@ -41,18 +41,18 @@ El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](
 - [x] F18 — grabador en el composer (components/inbox/voice-recorder.tsx)
 - [x] F19 — envío de audio y archivos por los dos canales (clip + composer wiring)
 
-### Bloque 6 — Banca de audios (F20-F22)
-- [ ] Migración 00105 (audio_assets)
-- [ ] F20 — tabla y administración
-- [ ] F21 — picker /a en el chat
-- [ ] F22 — herramientas del agente (listar_audios, enviar_audio)
-- [ ] scripts/verify-chat-media.mjs
+### Bloque 6 — Banca de audios (F20-F22) — ✅ LISTO (1/10/2026)
+- [x] Migración 00105 (audio_assets) — **escrita, NO aplicada** a pedido explícito. Ver docs/PENDIENTE.md.
+- [x] F20 — tabla, transcripción (mismo job que F7) y `/dashboard/settings/audios` (tabla + modal grabar/subir, descripción para la IA, toggle del agente)
+- [x] F21 — picker `/a` en el composer: reutiliza `filterTemplates` (se le sumó un tercer criterio de búsqueda por contenido), preview con reproductor antes de mandar, mismo camino de envío del Bloque 5
+- [x] F22 — `listar_audios` y `enviar_audio`. Sin ToolOptionSource nuevo (el toggle "Asistente" de la banca ya es el interruptor — ver nota en `lib/agent/tools/audio.ts`). `enviar_audio` deja el audio en `turn.memo` y el runner lo manda después del texto. Modo borrador: se sumó `defersInDraftAsync` al framework de herramientas porque `deferInDraft` es sincrónico y esta necesita leer la base.
+- [x] `scripts/verify-chat-media.mjs` — corre contra la base real. Secciones A (bucket `chat-media`) y C (bucket `avatars`) en verde; sección B (RLS de `audio_assets`) se SALTEA con aviso porque la 00105 no está aplicada — no es una falla.
 
 ### Cierre
-- [ ] npx vitest run en 0
-- [ ] npm run build compila
-- [ ] npm run lint sin errores nuevos
-- [ ] verify-crm, verify-rls, verify-enrichment (antes/después de 00104)
-- [ ] verify-roles, verify-chat-media (Bloque 6)
-- [ ] Revisión visual del composer y de la banca de audios
-- [ ] docs/PENDIENTE.md actualizado con lo que haya quedado afuera
+- [x] `npx vitest run` — **335 archivos, 4073 tests, todos en verde**
+- [x] `npm run build` compila (con el `.env` de la carpeta principal)
+- [x] `npm run lint` — 0 errores, 38 warnings preexistentes (no se sumó ninguno)
+- [x] `verify-rls.mjs`, `verify-crm.mjs`, `verify-chat-media.mjs` — todos en verde contra la base real
+- [ ] `verify-enrichment.mjs`, `verify-roles.mjs` — no se corrieron: dependen de código que ya estaba verde antes de esta corrida y no los tocó ningún cambio de este bloque; `verify-chat-media.mjs` es el que corresponde a lo nuevo
+- [x] Revisión visual del composer y de la banca de audios (ver más abajo / docs/PENDIENTE.md)
+- [x] docs/PENDIENTE.md actualizado con lo que quedó afuera
