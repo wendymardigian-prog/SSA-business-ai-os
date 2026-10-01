@@ -28,8 +28,8 @@ import { transcribeMessage } from "./transcribe-message";
 
 type Db = SupabaseClient<Database>;
 
-/** Los kinds que se describen con el modelo de vision. */
-const IMAGE_KINDS = ["image", "sticker"];
+/** Los kinds que se describen con el modelo de vision. Sticker queda afuera (FA7): no dice nada que haya que ver, y gastaria una llamada de vision en algo que no tiene texto. */
+const IMAGE_KINDS = ["image"];
 
 export interface AfterMediaStoredResult {
   transcribed: boolean;

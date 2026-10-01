@@ -31,8 +31,8 @@ export function describeDedupeKey(messageId: string): string {
   return `describe:${messageId}`;
 }
 
-/** Los kinds que se describen. */
-const IMAGE_KINDS = ["image", "sticker"];
+/** Los kinds que se describen. Sticker queda afuera (FA7): ver after-stored.ts. */
+const IMAGE_KINDS = ["image"];
 
 /** El techo de la descripcion. Es contexto para el agente, no un informe. */
 const MAX_CHARS = 300;
@@ -80,11 +80,23 @@ export async function describeMessageMedia(
   }
   if (!claimed) return { kind: "skipped", reason: "ya la tomo otro" };
 
-  const image = parseAttachments(claimed.attachments).find(
-    (item) => IMAGE_KINDS.includes(item.kind) && item.status === "ready" && item.storagePath,
-  );
+  const items = parseAttachments(claimed.attachments);
+  const image = items.find((item) => IMAGE_KINDS.includes(item.kind) && item.status === "ready" && item.storagePath);
 
   if (!image?.storagePath) {
+    // FA7: un sticker o un GIF solos no son ilegibles -- effectiveMessageText
+    // ya los etiqueta sin necesitar una descripcion. Si este job se llegara a
+    // invocar para uno (hoy afterMediaStored ya no lo encola), marcarlo
+    // "unreadable" seria falso: label_only es el estado que corresponde.
+    const onlyLabelable = items.length > 0 && items.every((item) => item.kind === "sticker" || item.kind === "gif");
+    if (onlyLabelable) {
+      const { error } = await supabase
+        .from("messages")
+        .update({ media_description: null, interpretability: "label_only" })
+        .eq("id", messageId);
+      if (error) console.error("[describe_media] no pude marcar el mensaje:", error.message);
+      return { kind: "skipped", reason: "sticker o gif: no hace falta describir" };
+    }
     return await giveUp(context, messageId, "La imagen no está disponible");
   }
 

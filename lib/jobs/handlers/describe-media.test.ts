@@ -144,7 +144,7 @@ describe("describeMessageMedia: el camino feliz (F8)", () => {
     });
   });
 
-  it("un sticker tambien se describe", async () => {
+  it("un sticker NO se describe (FA7): no gasta una llamada de vision, y queda label_only, no unreadable", async () => {
     const memory = db([
       messageRow({
         attachments: {
@@ -154,7 +154,9 @@ describe("describeMessageMedia: el camino feliz (F8)", () => {
       }),
     ]);
 
-    await expect(describeMessageMedia(context(memory), MSG)).resolves.toMatchObject({ kind: "done" });
+    await expect(describeMessageMedia(context(memory), MSG)).resolves.toMatchObject({ kind: "skipped" });
+    expect(generateText).not.toHaveBeenCalled();
+    expect(row(memory).interpretability).toBe("label_only");
   });
 });
 
