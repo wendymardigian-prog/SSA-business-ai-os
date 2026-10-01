@@ -263,7 +263,7 @@ type ChatAttachment = {
 **Descripción:** WhatsApp manda la media cifrada; hay que pedírsela a Evolution. Y hay que arreglar que hoy se pierda cuando el mensaje trae caption.
 
 **Criterios de aceptación:**
-- [ ] `lib/evolution-client.ts` suma `getBase64FromMediaMessage(config, instance, messageId)` que hace `POST /chat/getBase64FromMediaMessage/{instance}` con body `{ message: { key: { id } }, convertToMp4: false }`, con la misma ramificación v1/v2 de `getMajorVersion` y los mismos reintentos que `request`.
+- [ ] `lib/evolution-client.ts` suma `getBase64FromMediaMessage(config, instance, message)` que hace `POST /chat/getBase64FromMediaMessage/{instance}` con body `{ message, convertToMp4: false }`, con los mismos reintentos que `request`. **Se pasa el objeto `data.message` completo que ya trae el webhook, no sólo `{key:{id}}`**: con el objeto entero Evolution lo usa directo, con la clave sola hace una búsqueda en su propia base. Verificado en el código de la 2.3.7 (§14c).
 - [ ] CUANDO llega un `imageMessage` **con** caption, EL SISTEMA DEBE guardar el texto del caption Y el item de media. (Hoy `attachments: text ? null : data.message` lo pierde: este es el arreglo).
 - [ ] CUANDO llega un `audioMessage` con `ptt:true`, EL SISTEMA DEBE guardar `kind:"voice"` con `durationSeconds` sacado de `audioMessage.seconds` y `mime` de `audioMessage.mimetype`.
 - [ ] CUANDO llega un `locationMessage`, `contactMessage`, `pollCreationMessage` o un nodo de protocolo, EL SISTEMA DEBE guardar la etiqueta legible **sin** intentar descargar nada (si no, el spinner queda girando para siempre).
@@ -431,6 +431,80 @@ Este es el bloque urgente. Hoy el agente contesta a ciegas.
 
 ---
 
+### Bloque 0: Arreglos de lo construido (agregado el 1/10/2026)
+
+Encontrados mirando la bandeja real y los datos de producción después de desplegar los Bloques 1-3. Van **antes** que todo lo demás en la corrida B.
+
+#### FA1: Los reels compartidos de Instagram se tratan como archivo y fallan
+**Descripción.** Cuando un lead comparte un reel o un post, Zernio manda `type: "video"` pero con `originalType: "ig_reel"` y una `url` que apunta a `instagram.com/reel/...` — o sea, una página, no un archivo. El sistema intenta descargarla, falla, y el mensaje queda en rojo. Es el caso más frecuente de la bandeja real.
+
+El mapeo ya contempla `ig_reel`, pero **nunca lo alcanza**: `fromZernioAttachment` (`lib/messages/attachments.ts:~220`) lee `raw.type` y no `raw.originalType`.
+
+**Criterios de aceptación:**
+- [ ] CUANDO el adjunto trae `originalType`, EL SISTEMA DEBE usarlo para decidir el `kind`, y sólo caer a `type` si no viene. Un `{type:"video", originalType:"ig_reel"}` tiene que dar `kind: "share"` y `status: "none"`.
+- [ ] CUANDO la `url` del adjunto apunta a `instagram.com/p/`, `/reel/` o `/tv/`, EL SISTEMA DEBE tratarlo como `share` aunque no venga `originalType`. Es el cinturón además de los tirantes: una página de Instagram nunca es un archivo que se baje.
+- [ ] **El `payload` es un objeto, no un string.** Hoy se lee con `asString(raw.payload)`, que devuelve null y tira a la basura el contenido. Viene `{ url, title, reel_video_id }` y el `title` es el caption completo del reel. EL SISTEMA DEBE guardar `url` y `title` en `meta`.
+- [ ] **La tarjeta.** No se reproduce el video en el chat: se muestra una tarjeta clicable con (a) un ícono de Instagram y la etiqueta del tipo — "Reel compartido", "Publicación compartida", "Historia compartida" según corresponda; (b) el título recortado a dos o tres renglones con puntos suspensivos; (c) la URL corta debajo, en gris. Toda la tarjeta es el área clicable, con `target="_blank"` y `rel="noopener noreferrer"`, y abre el reel en Instagram en una pestaña nueva.
+- [ ] CUANDO el share no trae título, EL SISTEMA DEBE mostrar igual la tarjeta con la etiqueta y la URL. Nunca un spinner ni un mensaje de error: un link siempre se puede abrir.
+- [ ] **Sin miniatura.** El payload de Zernio trae `url`, `title` y `reel_video_id`, pero **no una imagen de portada**, así que la tarjeta no lleva preview. Traerla pediría una llamada extra a Instagram (oEmbed) y queda fuera de alcance; si más adelante se quiere, el lugar es `meta`.
+- [ ] Test con el payload real de un `ig_reel` (está en `docs/`): da `kind:"share"`, `status:"none"`, y `meta.title` con el caption.
+
+#### FA2: El agente puede entender un reel compartido, y hoy escala
+**Descripción.** El caption del reel llega como **texto** en `payload.title`. O sea que el agente tiene todo lo que necesita para saber qué le compartieron, y sin embargo hoy deriva a una persona. Es escalado innecesario, y es el que más se repite.
+
+**Criterios de aceptación:**
+- [ ] `effectiveMessageText` devuelve, para un `share` con título, `[Reel compartido] "<título recortado a 400 caracteres>"`.
+- [ ] CUANDO la ráfaga sólo tiene un reel compartido con título, EL SISTEMA DEBE considerarla interpretable y responder.
+- [ ] CUANDO el share no trae título, EL SISTEMA DEBE seguir escalando: un link sin contexto no se puede contestar.
+
+#### FA3: Los adjuntos viejos muestran un spinner para siempre
+**Descripción.** Los mensajes anteriores al despliegue tienen el formato viejo, con URLs del CDN de Meta **que ya vencieron**. El adaptador les pone `status: "pending"` porque tienen URL, y la burbuja muestra "Descargando adjunto…" eternamente: no hay ningún trabajo en cola que los vaya a bajar. Son 24 mensajes hoy.
+
+**Importante — la mitad de esos mensajes se recupera entera.** Mirando los datos reales hay dos clases bien distintas entre los viejos:
+
+- Los que tienen una URL de **`lookaside.fbsbx.com`** son archivos del CDN de Meta y **sí están perdidos**: esas URLs vencieron.
+- Los que tienen una URL de **`instagram.com/reel/...`** son reels compartidos, y **esos links no vencen nunca**. Con el arreglo de FA1 aplicado también al adaptador de formato viejo, esos mensajes pasan de un spinner eterno a una tarjeta que funciona, con su título y todo. No hace falta backfill: se arregla al pintarlos.
+
+**Criterios de aceptación:**
+- [ ] El adaptador del formato viejo pasa por la **misma** lógica de FA1: si es un share o la URL es de `instagram.com`, da `kind:"share"` con su tarjeta.
+- [ ] CUANDO un adjunto en formato viejo apunta a un archivo que ya no existe (`lookaside.fbsbx.com` y similares), EL SISTEMA DEBE darle `status: "none"`, no `"pending"`.
+- [ ] La burbuja muestra "Adjunto ya no disponible" **sólo** para esos, sin spinner y sin botón de reintentar.
+- [ ] Los adjuntos de email en formato viejo (`{files:[…]}`) **siguen descargándose igual**: ahí el archivo sí está en nuestro Storage. Test de no-regresión.
+
+#### FA4: Una falla transitoria de transcripción quema la conversación
+**Descripción.** Un 429 de Groq escribe `transcript_status = 'failed'` y encola un reintento. Pero la compuerta sólo espera cuando el estado es `pending`, `none` o `null` (`lib/agent/interpretability.ts:49-52`), así que ve `failed`, escala y **apaga el agente** — aunque la cola transcriba bien treinta segundos después. En el plan Free de Groq (20 requests por minuto) un 429 es perfectamente posible.
+
+**Criterios de aceptación:**
+- [ ] EL SISTEMA DEBE distinguir "falló definitivo" de "falló, con reintento en cola". Lo más simple: que la compuerta espere también cuando hay un job `transcribe_audio` pendiente para ese mensaje.
+- [ ] CUANDO el fallo es definitivo (sin proveedor, audio inválido, muy grande), EL SISTEMA DEBE escalar como hasta ahora.
+- [ ] Test: 429 con reintento encolado → espera; sin proveedor → escala.
+
+#### FA5: La ventana de espera real son 30 segundos, no 90
+**Descripción.** Los 90 segundos se cuentan desde que llegó el mensaje, pero el turno recién arranca al cerrar la ventana de silencio (~60 s). O sea que en la práctica se espera menos de la mitad de lo previsto, y eso hace que imágenes y audios normales escalen por carrera.
+
+**Criterios de aceptación:**
+- [ ] La espera se cuenta desde que **arranca el turno**, no desde `created_at` del mensaje.
+- [ ] Test con reloj fijo que lo demuestra.
+
+#### FA6: Los flows y las secuencias siguen contestando a ciegas
+**Descripción.** El nodo "Respuesta con IA" y los pasos de IA de secuencias pasan por `generateAiReply` (`lib/ai/generate-reply.ts:117`), que no tiene compuerta: descarta lo ilegible y responde igual. Es el mismo bug de producción por otra puerta.
+
+**Criterios de aceptación:**
+- [ ] `generateAiReply` evalúa la misma compuerta antes de generar.
+- [ ] CUANDO no es interpretable, EL SISTEMA DEBE no responder y marcar `needs_human`, igual que el agente.
+- [ ] Test con espía: el modelo no se llama.
+
+#### FA7: Los stickers y corazones de Instagram no deberían escalar
+**Descripción.** Un sticker o un corazón sin texto se trata como imagen: dispara una llamada al modelo de visión y, si no se describe, escala. Es ruido operativo sobre algo que no dice nada.
+
+**Criterios de aceptación:**
+- [ ] CUANDO la ráfaga sólo tiene stickers, GIFs o reacciones, EL SISTEMA DEBE tratarla como interpretable con una etiqueta (`[Sticker]`) y dejar que el agente decida, en vez de escalar.
+- [ ] No se gasta una llamada de visión en un sticker.
+
+> **Bloque 0 listo cuando:** FA1 a FA7 cumplen sus criterios, `npx vitest run` sale 0, `npm run build` compila, y ningún test previo se rompió.
+
+---
+
 ### Bloque 4: Identidad visible
 
 Independiente del resto. Se puede correr en cualquier momento.
@@ -443,6 +517,7 @@ Independiente del resto. Se puede correr en cualquier momento.
 - [ ] `lib/evolution-client.ts` suma `fetchProfilePictureUrl(config, instance, number)` (`POST /chat/fetchProfilePictureUrl/{instance}`). Se llama **sólo** cuando el contacto no tiene avatar o venció, nunca en cada mensaje.
 - [ ] CUANDO Evolution devuelve `null` (pasa en algunas versiones de Baileys), EL SISTEMA DEBE seguir sin error y dejar la inicial.
 - [ ] `lib/comment-processor.ts` deja de mandar `senderPicture: null`: el payload de comentarios **sí** trae `author.picture`.
+- [ ] **Retención de las fotos.** El cron de limpieza borra del bucket la foto de todo contacto **sin mensajes en los últimos 6 meses**, y deja `avatar_url` en null: la burbuja cae a la inicial, que es lo que se ve hoy. Si esa persona vuelve a escribir, el primer mensaje la trae de nuevo. Una foto `manual` nunca se borra. El motivo no es el espacio —una foto pesa unos 30 KB y mil contactos son 30 MB sobre 100 GB de plan— sino no guardar indefinidamente la cara de gente con la que ya no hablás.
 - [ ] Los cuatro `<img>` de avatar suman `onError` que cae a la inicial. Hoy una URL vencida deja un ícono de imagen rota.
 - [ ] `node scripts/verify-crm.mjs` y `node scripts/verify-rls.mjs` pasan (protegen el dedup).
 - [ ] Test `lib/contacts/avatar.test.ts` cubre: primera foto, refresco por vencimiento, no pisar una manual, Evolution devuelve null. Pasa.
@@ -481,8 +556,10 @@ Independiente del resto. Se puede correr en cualquier momento.
 - [ ] El audio se sube **directo del navegador a Storage** con `createSignedUploadUrl` (patrón de `content-media`), no como base64 dentro de un JSON. Después se manda sólo el `path`.
 - [ ] La validación del servidor es por **magic bytes**, no por extensión: `sniffMime` se extiende con ogg, webm, m4a/mp4, mp3 y wav.
 - [ ] `POST /api/v1/messages` acepta `{ conversationId, text?, media?: { storagePath, kind, mime, filename, durationSeconds } }`. `text` pasa a ser opcional **sólo si** viene `media`. **El envío de texto sin media sigue funcionando igual** (test existente en verde).
-- [ ] **WhatsApp:** `lib/evolution-client.ts` suma `sendWhatsAppAudio` (`POST /message/sendWhatsAppAudio/{instance}` con `{ number, audio, encoding: true }`) y `sendMedia` (`POST /message/sendMedia/{instance}`). Con `encoding: true` es Evolution quien convierte al formato nativo de WhatsApp: **no transcodificamos nosotros**.
-- [ ] **Instagram:** se usa `sendInboxMessage` con `attachmentUrl` (una URL firmada de larga duración) y `attachmentType: "audio"`. CUANDO el mime del audio es ogg/opus o mp3, EL SISTEMA DEBE rechazar el envío con un mensaje claro ("Instagram no acepta este formato de audio"), porque Instagram lo rechaza.
+- [ ] **WhatsApp:** `lib/evolution-client.ts` suma `sendWhatsAppAudio` (`POST /message/sendWhatsAppAudio/{instance}` con `{ number, audio, encoding: true }`) y `sendMedia` (`POST /message/sendMedia/{instance}`). `audio` puede ser una URL pública o base64. Con `encoding: true` es Evolution quien convierte a ogg/opus con su propio ffmpeg y lo manda como nota de voz: **no transcodificamos nosotros y no restringimos el formato de grabación**. (Verificado contra el código de la 2.3.7 — ver §14c.)
+- [ ] **Instagram:** el audio se sube primero a Zernio con `uploadMediaDirect` (máximo 25 MB, devuelve una URL pública que hospeda Zernio) y **esa** URL se pasa como `attachmentUrl`, con `attachmentType: "audio"`. No se usa una URL firmada de Supabase: Zernio exige una URL pública sin autenticación ni redirects, y hospedarlo en Zernio elimina la duda. Seguir el patrón de `lib/publishing/zernio-media.ts`, que ya hace esto para publicar contenido.
+- [ ] CUANDO el mime del audio es ogg/opus, webm o mp3 **y el canal es Instagram**, EL SISTEMA DEBE rechazar el envío antes de subir nada, con el mensaje "Instagram no acepta este formato de audio. Probá desde Safari o mandalo por WhatsApp." Por WhatsApp **no** se valida el formato: Evolution convierte cualquiera.
+- [ ] `sendWhatsAppAudio` NO usa el parámetro `voiceNote` de Zernio: ese es sólo para WhatsApp **vía Zernio**, y nuestro WhatsApp va por Evolution.
 - [ ] La lógica de envío vive en `sendChannelMessage` (`lib/flow-engine/send.ts`), **un solo lugar**, y la ruta de la bandeja la reutiliza. Hoy hay dos caminos duplicados y es lo que hizo que Evolution quedara sin media.
 - [ ] **Arreglo:** `sendViaEvolution` en `lib/flow-engine/send.ts` deja de descartar `mediaUrl`. Hoy un flow con media por WhatsApp registra en la base un adjunto que **nunca se envió**.
 - [ ] La rama por proveedor sigue siendo **explícita**, nunca un `else`.
@@ -738,7 +815,12 @@ WhatsApp (Evolution) ┘        │ 200 inmediato
 | `audio/ogg;codecs=opus` | — | sí, nativo | **no** |
 | `audio/mpeg` (mp3) | — | sí | **no** |
 
-**La decisión:** grabar en `audio/mp4` cuando el navegador lo soporte, y caer a webm si no. Para WhatsApp da igual (Evolution convierte). Para Instagram, si el audio quedó en webm u ogg, se rechaza el envío con un mensaje claro en vez de mandar algo que Instagram va a tirar. Es una limitación real y visible, no un bug escondido.
+**La decisión:** grabar en `audio/mp4` cuando el navegador lo soporte, y caer a webm si no.
+
+- **WhatsApp: da igual el formato.** Verificado en el código de Evolution 2.3.7: con `encoding: true` (el default) convierte con ffmpeg a ogg/opus y lo manda como nota de voz nativa. Mandamos lo que el navegador haya grabado.
+- **Instagram: sí importa.** Acepta AAC, M4A, WAV y MP4; rechaza ogg/opus y mp3. Si el audio quedó en webm, se rechaza el envío con un mensaje claro en vez de mandar algo que Instagram va a tirar. Es una limitación real y visible, no un bug escondido.
+
+En la práctica, Chrome reciente y Safari graban `audio/mp4`, así que el caso del rechazo es poco frecuente. El mensaje de error sugiere mandarlo por WhatsApp, que siempre funciona.
 
 Para **recibir** no hay problema: Groq acepta flac, mp3, m4a, mpeg, mpga, ogg, wav y webm.
 
@@ -958,10 +1040,31 @@ Fork de ZernFlow. Next.js 16 App Router + React 19 + TypeScript 5 + Tailwind v4 
 2. **El base64 dentro de un JSON para subir.** Acá va subida directa con URL firmada.
 3. **Sin reaper de los `pending` colgados.** Acá sí, con `transcript_started_at`.
 
-**Supuestos a confirmar en la primera exploración de Claude Code** (no pude verificarlos contra los servicios reales):
-- Que la versión de Evolution API desplegada en Railway expone `POST /chat/getBase64FromMediaMessage/{instance}` y `POST /chat/fetchProfilePictureUrl/{instance}` con el contrato esperado. En algunas versiones de Baileys `fetchProfile` devuelve `null`.
-- Que las URLs firmadas de Supabase Storage sirven como `attachmentUrl` para Zernio (requiere HTTPS pública, sin autenticación, sin redirects y con el `Content-Type` correcto). Si no, el plan B es `POST /v1/media/upload-direct` de Zernio, que hospeda el archivo 7 días.
-- Que `whisper-large-v3-turbo` en el plan de Groq contratado admite archivos de 25 MB (la doc menciona hasta 100 MB en tiers superiores).
+### Contratos externos — VERIFICADOS el 28/9/2026
+
+Estos eran supuestos. Se verificaron contra el despliegue real y contra el código fuente de la versión exacta que corre, así que el Bloque 5 ya no tiene incógnitas de API.
+
+**Evolution API: versión `2.3.7`** (imagen `evoapicloud/evolution-api:v2.3.7`, proyecto Railway "Evo-Api", dominio público `evolution-api-production-8691c.up.railway.app`, endpoint de red privada `evolution-api`). Verificado leyendo el código fuente del tag `2.3.7`:
+
+| Endpoint | Cuerpo | Notas verificadas |
+|---|---|---|
+| `POST /message/sendWhatsAppAudio/{instance}` | `{ number, audio, delay?, encoding? }` | `audio` acepta **URL pública, base64 o archivo multipart**. `encoding` es **`true` por defecto** |
+| `POST /message/sendMedia/{instance}` | multipart o URL | Existe, para imagen/video/documento |
+| `POST /chat/getBase64FromMediaMessage/{instance}` | `{ message, convertToMp4? }` | `message` puede ser el objeto completo **o** sólo `{ key: { id } }` |
+| `POST /chat/fetchProfilePictureUrl/{instance}` | `{ number }` | Devuelve `{ wuid, profilePictureUrl }` |
+
+**Dos hallazgos que simplifican el diseño:**
+
+1. **La conversión de audio la hace Evolution, con ffmpeg incluido en su imagen.** Con `encoding: true` (el default), `processAudio` convierte lo que le mandes a `audio/ogg; codecs=opus` y lo envía con `ptt: true`, o sea como nota de voz nativa. El `Dockerfile` de la 2.3.7 instala `ffmpeg` en las dos etapas, y el workspace no tiene `AUDIO_CONVERTER` configurado, así que usa ese ffmpeg local. **Conclusión: para WhatsApp da igual en qué formato grabe el navegador.** No hay que transcodificar de nuestro lado ni restringir el formato.
+2. **`getBase64FromMediaMessage` conviene llamarlo con el objeto `message` completo, no con `{key:{id}}`.** Con la clave sola hace una búsqueda en la base de Evolution; con el objeto entero la saltea. Nuestro webhook **ya recibe** ese objeto completo en `data.message`, así que pasarlo entero es gratis y evita depender de la persistencia de Evolution.
+
+**Zernio: se resuelve el hospedaje del archivo con su propio endpoint.** El SDK expone `uploadMediaDirect` (`file: Blob | File`, máximo 25 MB, `contentType` opcional) y devuelve una **URL pública** que Zernio hospeda. Eso elimina la incógnita de si una URL firmada de Supabase serviría como `attachmentUrl`: no hace falta averiguarlo.
+
+> **Decisión:** para Instagram, el audio se sube primero a Zernio con `uploadMediaDirect` y se pasa **esa** URL como `attachmentUrl`. Es el mismo patrón que ya usa `lib/publishing/zernio-media.ts` para publicar contenido, así que hay precedente en el repo.
+
+El contrato de `sendInboxMessage` quedó confirmado en los tipos del SDK: `attachmentUrl` (debe ser públicamente accesible), `attachmentType: 'image' | 'video' | 'audio' | 'file'`, `attachmentName` (sólo WhatsApp, documentos) y `voiceNote` (**sólo WhatsApp**, exige ogg/opus). Como WhatsApp va por Evolution y no por Zernio, `voiceNote` no se usa en este proyecto.
+
+**Lo único que queda sin verificar:** que `whisper-large-v3-turbo` en el plan de Groq contratado admita archivos de 25 MB (la doc menciona hasta 100 MB en tiers superiores). Es un límite, no un contrato: si resulta menor, el mensaje de error ya está contemplado en F6.
 
 ---
 
