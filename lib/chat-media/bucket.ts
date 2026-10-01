@@ -21,6 +21,9 @@ export const DOWNLOAD_URL_SECONDS = 5 * 60;
 /** El techo de un archivo, en los dos sentidos. Es el limite del bucket. */
 export const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
+/** El techo de lo que se sube DESDE el composer (F19): un adjunto del disco o una grabacion. */
+export const MAX_CHAT_UPLOAD_BYTES = 16 * 1024 * 1024;
+
 export const TOO_LARGE_MESSAGE = "El archivo supera el máximo de 25 MB";
 
 /**

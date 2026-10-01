@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { sniffMime } from "@/lib/content/media";
-import { CHAT_MEDIA_BUCKET, extensionForMime } from "@/lib/chat-media/bucket";
+import { CHAT_MEDIA_BUCKET, MAX_CHAT_UPLOAD_BYTES, extensionForMime } from "@/lib/chat-media/bucket";
 import type { AttachmentKind } from "@/lib/messages/attachments";
 
 /**
@@ -19,8 +19,6 @@ import type { AttachmentKind } from "@/lib/messages/attachments";
  * con el SERVICE ROLE; la conversacion se lee antes con el cliente del
  * USUARIO, para que sea la RLS la que decida si puede mandar ahi.
  */
-
-export const MAX_CHAT_UPLOAD_BYTES = 16 * 1024 * 1024;
 
 export type ChatUploadResult =
   | { ok: true; path: string; mime: string; kind: AttachmentKind; token: string }

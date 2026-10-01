@@ -16,7 +16,8 @@ const { createClient, createServiceClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 
-import { requestChatUpload, MAX_CHAT_UPLOAD_BYTES } from "./chat-upload";
+import { requestChatUpload } from "./chat-upload";
+import { MAX_CHAT_UPLOAD_BYTES } from "@/lib/chat-media/bucket";
 
 const JPEG_HEAD = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]).toString("base64");
 const M4A_HEAD = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20]).toString("base64");

@@ -6,9 +6,12 @@ import { toInboxThread } from "@/lib/zernio-message";
 import { messagePreview } from "@/lib/message-preview";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { applyManualReply } from "@/lib/agent/manual-reply";
-import { EvolutionError, sendText } from "@/lib/evolution-client";
-import { getEvolutionConfig } from "@/lib/evolution-config";
 import { mergeThreadWithLocal, platformIdsOf, type LocalMessageMedia } from "@/lib/zernio-message-merge";
+import { sendChannelMessage, type SendContext, type OutboundMedia } from "@/lib/flow-engine/send";
+import { CHAT_MEDIA_BUCKET, isSafeStoragePath } from "@/lib/chat-media/bucket";
+import { sniffMime } from "@/lib/content/media";
+import { attachmentLabel, emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
+import { afterMediaStored } from "@/lib/chat-media/after-stored";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -142,12 +145,87 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/** Los kinds que puede declarar un adjunto saliente (F19). */
+const OUTBOUND_MEDIA_KINDS = new Set<AttachmentKind>(["audio", "voice", "image", "video", "document"]);
+
+/**
+ * La familia de mime que le corresponde a cada kind, para el chequeo por
+ * magic bytes. Mismo criterio que `isCorruptMedia` en media-render.ts.
+ */
+const EXPECTED_MIME_FAMILY: Partial<Record<AttachmentKind, string>> = {
+  image: "image/",
+  video: "video/",
+  audio: "audio/",
+  voice: "audio/",
+};
+
+interface IncomingMedia {
+  storagePath?: string;
+  kind?: string;
+  mime?: string;
+  filename?: string | null;
+  durationSeconds?: number | null;
+}
+
+type MediaValidation =
+  | { ok: true; media: OutboundMedia }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Valida el adjunto que manda la bandeja ANTES de mandar nada (F19).
+ *
+ * No se confia en lo que declara el cliente (kind, mime): se vuelve a leer el
+ * archivo y se chequea por magic bytes, igual que en la subida. El path
+ * tiene que pertenecer a ESTE workspace y a ESTA conversacion -- si no,
+ * cualquiera podria mandar un archivo de otro lado solo adivinando una ruta.
+ */
+async function validateOutboundMedia(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  args: { workspaceId: string; conversationId: string; media: IncomingMedia },
+): Promise<MediaValidation> {
+  const { storagePath, kind, filename, durationSeconds } = args.media;
+
+  if (!isSafeStoragePath(storagePath)) {
+    return { ok: false, status: 400, error: "Ruta de archivo inválida." };
+  }
+  if (!storagePath.startsWith(`${args.workspaceId}/${args.conversationId}/`)) {
+    return { ok: false, status: 400, error: "El archivo no pertenece a esta conversación." };
+  }
+  if (!kind || !OUTBOUND_MEDIA_KINDS.has(kind as AttachmentKind)) {
+    return { ok: false, status: 400, error: "Tipo de adjunto inválido." };
+  }
+
+  const { data: file, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(storagePath);
+  if (error || !file) {
+    return { ok: false, status: 400, error: "No pude leer el archivo subido." };
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const sniffed = sniffMime(bytes);
+  const family = EXPECTED_MIME_FAMILY[kind as AttachmentKind];
+  if (!sniffed || (family && !sniffed.startsWith(family))) {
+    return { ok: false, status: 400, error: "El archivo no se pudo reconocer." };
+  }
+
+  return {
+    ok: true,
+    media: {
+      kind: kind as OutboundMedia["kind"],
+      storagePath,
+      mime: sniffed,
+      filename: filename ?? null,
+      durationSeconds: durationSeconds ?? null,
+    },
+  };
+}
+
 /**
  * POST /api/v1/messages
  *
- * Manda por el canal que corresponda. Zernio guarda el mensaje del lado de
- * ellos; para WhatsApp lo guardamos nosotros, con el id que devuelve Evolution
- * para que el eco del webhook no lo duplique.
+ * Manda por el canal que corresponda, siempre por `sendChannelMessage`
+ * (F19): es el mismo camino que usan los flows y las secuencias, asi que un
+ * arreglo (o un formato nuevo) vale para los dos. `text` es opcional SOLO si
+ * viene `media`.
  */
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -157,11 +235,16 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { conversationId, text, confirmedDoNotContact } = body;
+  const { conversationId, text, media: incomingMedia, confirmedDoNotContact } = body as {
+    conversationId?: string;
+    text?: string;
+    media?: IncomingMedia;
+    confirmedDoNotContact?: boolean;
+  };
 
-  if (!conversationId || !text) {
+  if (!conversationId || (!text && !incomingMedia)) {
     return NextResponse.json(
-      { error: "conversationId and text required" },
+      { error: "conversationId and text (or media) required" },
       { status: 400 }
     );
   }
@@ -180,7 +263,8 @@ export async function POST(request: NextRequest) {
   // F18: a un contacto marcado se le puede escribir igual (a veces hay que
   // cerrar la conversacion, o el operador sabe algo que el sistema no), pero
   // no por accidente. El chequeo esta aca y no solo en la UI porque la
-  // advertencia tiene que valer para cualquiera que use la API.
+  // advertencia tiene que valer para cualquiera que use la API. Vale con o
+  // sin media.
   const contact = conversation.contacts as {
     do_not_contact: boolean;
     do_not_contact_reason: string | null;
@@ -208,129 +292,140 @@ export async function POST(request: NextRequest) {
     is_active: boolean;
   } | null;
 
+  if (!outChannel) {
+    return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+  }
+
   // Rama explicita por proveedor y no un `else`: un canal nuevo que caiga
   // por default en Zernio manda el mensaje al lugar equivocado sin avisar.
-  if (outChannel?.provider === "resend") {
+  if (outChannel.provider === "resend") {
+    // El email no admite adjuntos en esta fase (F-futura-5).
+    if (incomingMedia) {
+      return NextResponse.json({ error: "El email no admite adjuntos todavía." }, { status: 400 });
+    }
     return sendViaResendChannel({
       supabase,
       conversationId,
       channel: outChannel,
       contact,
-      text,
+      text: text!,
       userId: user.id,
     });
   }
 
-  if (outChannel?.provider === "evolution") {
-    return sendViaEvolution({
-      supabase,
+  let media: OutboundMedia | null = null;
+  if (incomingMedia) {
+    const validated = await validateOutboundMedia(supabase, {
+      workspaceId: conversation.workspace_id,
       conversationId,
-      channel: outChannel,
-      contactId: conversation.contact_id,
-      text,
-      userId: user.id,
+      media: incomingMedia,
     });
+    if (!validated.ok) {
+      return NextResponse.json({ error: validated.error }, { status: validated.status });
+    }
+    media = validated.media;
   }
 
-  if (!conversation.late_conversation_id) {
-    return NextResponse.json(
-      { error: "No Zernio conversation ID linked to this conversation" },
-      { status: 400 }
-    );
-  }
+  // Sin `origin`: solo lo usa `recordSend`, que esta ruta no llama (guarda la
+  // fila ella misma, con origin:"user", unas lineas mas abajo).
+  const context: SendContext = {
+    workspaceId: conversation.workspace_id,
+    channelId: outChannel.id,
+    contactId: conversation.contact_id,
+    conversationId,
+    lateConversationId: conversation.late_conversation_id ?? undefined,
+    lateAccountId: outChannel.late_account_id ?? undefined,
+  };
 
-  const channel = conversation.channels as { late_account_id: string } | null;
-  if (!channel?.late_account_id) {
-    return NextResponse.json({ error: "Channel not found or missing Zernio account ID" }, { status: 404 });
-  }
+  const outcome = await sendChannelMessage(supabase, context, {
+    text: text ?? "",
+    media: media ?? undefined,
+  });
 
-  const apiKey = await getZernioApiKey(conversation.workspace_id);
+  const now = new Date().toISOString();
+  const attachmentsColumn = media
+    ? toAttachmentsColumn([
+        emptyAttachment(media.kind, {
+          storagePath: media.storagePath,
+          mime: media.mime,
+          filename: media.filename,
+          durationSeconds: media.durationSeconds,
+          status: "ready",
+        }),
+      ])
+    : null;
 
-  if (!apiKey) {
-    return NextResponse.json({ error: "API key not configured" }, { status: 400 });
-  }
-
-  // Send via Zernio SDK. Zernio guarda el mensaje de su lado, y desde la Fase 3
-  // tambien lo guardamos nosotros (abajo): el agente de IA lee el historial de
-  // la base, y sin esta fila no veria lo que contesto la persona ni sabria que
-  // una persona intervino.
-  try {
-    const zernio = createZernioClient(apiKey);
-    const res = await zernio.messages.sendInboxMessage({
-      path: { conversationId: conversation.late_conversation_id },
-      body: { accountId: channel.late_account_id, message: text },
-    });
-
-    const messageId = (res.data as any)?.data?.messageId ?? null;
-    const sentAt = new Date().toISOString();
-
-    // Guardar nunca puede hacer fallar un envio que ya salio: si el insert
-    // falla, se loguea y la respuesta sigue.
-    const { error: storeError } = await supabase.from("messages").insert(
+  // Guardar nunca puede hacer fallar un envio que ya salio: si el insert
+  // falla, se loguea y la respuesta sigue.
+  const { data: stored, error: storeError } = await supabase
+    .from("messages")
+    .insert(
       outboundMessageRow({
         conversationId,
         origin: "user",
-        text,
-        platformMessageId: messageId,
+        // Un envio rechazado guarda el motivo en vez del texto que no salio,
+        // igual que recordSend: es lo que va a leer el operador.
+        text: outcome.ok ? (text ?? "") : (outcome.failure?.message ?? text ?? ""),
+        attachments: attachmentsColumn,
+        platformMessageId: outcome.platformMessageId ?? null,
         sentByUserId: user.id,
-        status: "sent",
-        createdAt: sentAt,
+        status: outcome.ok ? "sent" : "failed",
+        createdAt: now,
       }),
-    );
-    if (storeError && storeError.code !== "23505") {
-      console.error("[messages] no pude guardar el envio manual:", storeError.message);
-    }
+    )
+    .select("*")
+    .single();
 
-    // Update conversation's last message info (ZernFlow-specific metadata)
-    await supabase
-      .from("conversations")
-      .update({
-        last_message_at: sentAt,
-        last_message_preview: messagePreview(text),
-      })
-      .eq("id", conversationId);
+  if (storeError && storeError.code !== "23505") {
+    console.error("[messages] no pude guardar el envio manual:", storeError.message);
+  }
 
-    // Una persona respondio: se apaga el agente en esta conversacion y se borra
-    // la marca de error (Fase 3, F31).
-    await applyManualReply(supabase, {
-      conversationId,
-      workspaceId: conversation.workspace_id,
-      userId: user.id,
-    });
-
-    // Return a message-shaped response for the UI's optimistic update
+  if (!outcome.ok) {
     return NextResponse.json(
-      {
-        id: messageId ?? `sent-${Date.now()}`,
-        conversation_id: conversationId,
-        direction: "outbound",
-        text,
-        attachments: null,
-        quick_reply_payload: null,
-        postback_payload: null,
-        callback_data: null,
-        platform_message_id: messageId,
-        sent_by_flow_id: null,
-        sent_by_node_id: null,
-        sent_by_user_id: user.id,
-        status: "sent",
-        created_at: new Date().toISOString(),
-      },
-      { status: 201 }
-    );
-  } catch (error) {
-    console.error("Failed to send message via Zernio API:", error);
-    return NextResponse.json(
-      { error: `Failed to send message: ${error}` },
-      { status: 500 }
+      { error: outcome.failure?.message ?? "No se pudo enviar el mensaje" },
+      { status: outcome.failure?.retryable ? 502 : 400 },
     );
   }
+
+  await supabase
+    .from("conversations")
+    .update({
+      last_message_at: now,
+      last_message_preview: text ? messagePreview(text) : attachmentLabel(media!.kind),
+    })
+    .eq("id", conversationId);
+
+  // Una persona respondio: se apaga el agente en esta conversacion y se borra
+  // la marca de error (Fase 3, F31).
+  await applyManualReply(supabase, {
+    conversationId,
+    workspaceId: conversation.workspace_id,
+    userId: user.id,
+  });
+
+  // El audio propio tambien se transcribe (F19): asi el agente sabe que dijo
+  // la persona si despues alguien lee el historial. Nunca hace fallar la
+  // respuesta: corre despues de que el 201 ya esta armado.
+  if (media && stored) {
+    await afterMediaStored({ supabase, messageId: stored.id, items: toAttachmentsColumn([attachmentsColumn!.items[0]])!.items });
+  }
+
+  return NextResponse.json(
+    stored ?? {
+      id: outcome.platformMessageId ?? `sent-${Date.now()}`,
+      conversation_id: conversationId,
+      direction: "outbound",
+      text: text ?? "",
+      attachments: attachmentsColumn,
+      platform_message_id: outcome.platformMessageId ?? null,
+      sent_by_user_id: user.id,
+      status: "sent",
+      created_at: now,
+    },
+    { status: 201 }
+  );
 }
 
-/**
- * Envio por WhatsApp. El numero sale de contact_channels.platform_sender_id,
- * que es donde el webhook guarda el telefono normalizado del lead.
- */
 /**
  * Responde un email desde la bandeja (F65).
  *
@@ -416,107 +511,3 @@ async function sendViaResendChannel({
   return NextResponse.json(stored, { status: 201 });
 }
 
-async function sendViaEvolution({
-  supabase,
-  conversationId,
-  channel,
-  contactId,
-  text,
-  userId,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  conversationId: string;
-  channel: { id: string; workspace_id: string; evolution_instance: string | null };
-  contactId: string;
-  text: string;
-  userId: string;
-}) {
-  const config = await getEvolutionConfig(supabase, channel.workspace_id);
-  if (!config || !channel.evolution_instance) {
-    return NextResponse.json(
-      { error: "WhatsApp no esta configurado en este entorno" },
-      { status: 400 }
-    );
-  }
-
-  const { data: link } = await supabase
-    .from("contact_channels")
-    .select("platform_sender_id")
-    .eq("channel_id", channel.id)
-    .eq("contact_id", contactId)
-    .maybeSingle();
-
-  if (!link?.platform_sender_id) {
-    return NextResponse.json(
-      { error: "Este contacto no tiene un numero de WhatsApp vinculado" },
-      { status: 400 }
-    );
-  }
-
-  let messageId: string | null = null;
-  try {
-    const sent = await sendText(
-      config,
-      channel.evolution_instance,
-      link.platform_sender_id,
-      text
-    );
-    messageId = sent.id;
-  } catch (error) {
-    const message = error instanceof EvolutionError ? error.message : String(error);
-    console.error("Failed to send WhatsApp message:", message);
-    return NextResponse.json(
-      { error: `No se pudo enviar el mensaje: ${message}` },
-      { status: 502 }
-    );
-  }
-
-  const now = new Date().toISOString();
-
-  // Evolution tambien manda el eco por webhook. Guardar aca con el mismo
-  // platform_message_id hace que el indice unico descarte el duplicado, sin
-  // importar cual de los dos llegue primero.
-  const { data: stored } = await supabase
-    .from("messages")
-    .insert(
-      outboundMessageRow({
-        conversationId,
-        origin: "user",
-        text,
-        platformMessageId: messageId,
-        sentByUserId: userId,
-        status: "sent",
-        createdAt: now,
-      }),
-    )
-    .select("*")
-    .single();
-
-  await supabase
-    .from("conversations")
-    .update({ last_message_at: now, last_message_preview: messagePreview(text) })
-    .eq("id", conversationId);
-
-  // Una persona respondio: se apaga el agente en esta conversacion (F31).
-  const { data: conv } = await supabase
-    .from("conversations")
-    .select("workspace_id")
-    .eq("id", conversationId)
-    .maybeSingle();
-  if (conv) await applyManualReply(supabase, { conversationId, workspaceId: conv.workspace_id, userId });
-
-  return NextResponse.json(
-    stored ?? {
-      id: messageId ?? `sent-${Date.now()}`,
-      conversation_id: conversationId,
-      direction: "outbound",
-      text,
-      attachments: null,
-      platform_message_id: messageId,
-      sent_by_user_id: userId,
-      status: "sent",
-      created_at: now,
-    },
-    { status: 201 }
-  );
-}
