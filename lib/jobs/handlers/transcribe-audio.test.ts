@@ -22,7 +22,7 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { emptyAttachment } from "@/lib/messages/attachments";
 import { registerJobHandler, getJobHandler, resetJobHandlers } from "@/lib/jobs/registry";
 import { reapStuckTranscriptions, transcribeMessage } from "@/lib/chat-media/transcribe-message";
-import { TRANSCRIBE_AUDIO_JOB, registerTranscribeAudioHandler, transcribeDedupeKey } from "./transcribe-audio";
+import { TRANSCRIBE_AUDIO_JOB, registerTranscribeAudioHandler, transcribeDedupeKey, transcribeAssetDedupeKey } from "./transcribe-audio";
 
 const WS = "ws-1";
 const CV = "cv-1";
@@ -318,5 +318,34 @@ describe("el handler del job (F7)", () => {
   it("la clave de dedupe es una por mensaje", () => {
     expect(transcribeDedupeKey("m-1")).toBe("transcribe:m-1");
     expect(transcribeDedupeKey("m-1")).not.toBe(transcribeDedupeKey("m-2"));
+  });
+
+  it("con audioAssetId en el payload, transcribe la banca y no un mensaje (F20)", async () => {
+    const memory = memoryDb({
+      audio_assets: [
+        {
+          id: "audio-1",
+          workspace_id: WS,
+          storage_path: `${WS}/library/audio-1.m4a`,
+          mime_type: "audio/mp4",
+          transcript_status: "none",
+          transcript_source: "auto",
+        },
+      ],
+    });
+    (memory.client as unknown as { storage: unknown }).storage = {
+      from: () => ({ download: async () => ({ data: new Blob([new Uint8Array([1, 2, 3, 4])]), error: null }) }),
+    };
+    const handler = getJobHandler(TRANSCRIBE_AUDIO_JOB)!;
+
+    await expect(
+      handler({ supabase: memory.client, job: { id: "j-1", type: TRANSCRIBE_AUDIO_JOB, payload: { audioAssetId: "audio-1" }, attempts: 0 } }),
+    ).resolves.toBeUndefined();
+
+    expect(memory.rows("audio_assets")[0]).toMatchObject({ transcript_status: "ready" });
+  });
+
+  it("la clave de dedupe de la banca es distinta de la de un mensaje", () => {
+    expect(transcribeAssetDedupeKey("audio-1")).toBe("transcribe-asset:audio-1");
   });
 });
