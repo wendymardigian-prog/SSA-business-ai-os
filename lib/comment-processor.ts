@@ -14,7 +14,7 @@ export interface IncomingComment {
   id: string;
   postId: string;
   text: string;
-  author: { id?: string; name?: string; username?: string };
+  author: { id?: string; name?: string; username?: string; picture?: string };
 }
 
 export type CommentForMatching = Pick<IncomingComment, "postId"> & { text: string };
@@ -137,7 +137,10 @@ export async function processComment({
       channel,
       senderId,
       senderName,
-      senderPicture: null,
+      // El payload de comentarios SI trae author.picture (F16): antes se
+      // mandaba null a mano, perdiendo la foto para todo contacto que
+      // entraba por un comentario en vez de por un DM.
+      senderPicture: comment.author.picture || null,
       senderUsername: comment.author.username || null,
       interactionAt: new Date().toISOString(),
     });

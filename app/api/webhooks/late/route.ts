@@ -43,6 +43,7 @@ import {
   handleMessageSentEcho,
 } from "@/lib/inbound";
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
+import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inbound";
 import { isOwnComment, linkCommentToContact, storeComment } from "@/lib/comments/store";
 import type { SocialPlatform } from "@/lib/types/database";
@@ -420,6 +421,16 @@ async function processMessageEvent(
     contactId: contactId,
     conversationId: conversation.id,
     automation,
+  });
+
+  // ── Foto de perfil (F16) ──────────────────────────────────────────────────
+  // Va AL FINAL, despues del turno del agente: es cosmetico, no algo de lo
+  // que el agente dependa, y no tiene que demorar la respuesta. Nunca lanza.
+  await maybeStoreContactAvatar({
+    supabase,
+    workspaceId: channel.workspace_id,
+    contactId,
+    resolveSourceUrl: () => msg.sender.picture || null,
   });
 }
 

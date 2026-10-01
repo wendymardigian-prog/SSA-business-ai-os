@@ -29,6 +29,8 @@ import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attach
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { getEvolutionConfig } from "@/lib/evolution-config";
+import { fetchProfilePictureUrl } from "@/lib/evolution-client";
+import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { jidToPhone } from "@/lib/phone";
 import {
   describeAttachment,
@@ -383,4 +385,21 @@ async function processMessage(
     conversationId: conversation.id,
     automation,
   });
+
+  // ── Foto de perfil (F16) ──────────────────────────────────────────────────
+  // Va AL FINAL, despues del turno del agente: es cosmetico, no algo de lo
+  // que el agente dependa. resolveSourceUrl solo pega contra Evolution si
+  // maybeStoreContactAvatar decide que hace falta -- nunca en cada mensaje.
+  if (channel.evolution_instance) {
+    const config = await getEvolutionConfig(supabase, channel.workspace_id);
+    if (config) {
+      const instance = channel.evolution_instance;
+      await maybeStoreContactAvatar({
+        supabase,
+        workspaceId: channel.workspace_id,
+        contactId: contact.contactId,
+        resolveSourceUrl: () => fetchProfilePictureUrl(config, instance, phone),
+      });
+    }
+  }
 }

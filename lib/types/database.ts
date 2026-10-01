@@ -243,6 +243,8 @@ export type AuditAction =
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
 export type LeadTemperature = "cold" | "warm" | "hot";
+/** De donde sale `contacts.avatar_url` (migracion 00104, F16). */
+export type AvatarSource = "external" | "storage" | "manual";
 /** Como termino un envio de email (migracion 00021). */
 export type EmailLogStatus = "sent" | "failed" | "skipped_not_configured";
 export type BroadcastStatus =
@@ -772,6 +774,10 @@ export interface Database {
           display_name: string | null;
           email: string | null;
           avatar_url: string | null;
+          /** De donde sale avatar_url (migracion 00104, F16). Default 'external'. */
+          avatar_source: AvatarSource;
+          /** Cuando se actualizo avatar_url por ultima vez (migracion 00104, F16). */
+          avatar_updated_at: string | null;
           is_subscribed: boolean;
           last_interaction_at: string | null;
           metadata: Json | null;
@@ -817,6 +823,8 @@ export interface Database {
           display_name?: string | null;
           email?: string | null;
           avatar_url?: string | null;
+          avatar_source?: AvatarSource;
+          avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
           metadata?: Json | null;
@@ -850,6 +858,8 @@ export interface Database {
           display_name?: string | null;
           email?: string | null;
           avatar_url?: string | null;
+          avatar_source?: AvatarSource;
+          avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
           metadata?: Json | null;

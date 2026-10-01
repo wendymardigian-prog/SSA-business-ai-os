@@ -17,6 +17,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { planCleanup, type PostToClean } from "@/lib/content/cleanup";
 import type { MediaEntry } from "@/lib/content/media";
 import { cleanupChatMedia } from "@/lib/chat-media/cleanup-run";
+import { cleanupContactAvatars } from "@/lib/contacts/avatar-cleanup";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -110,11 +111,16 @@ export async function GET(request: NextRequest) {
   // cron nueva seria otro job para hacer lo mismo en el mismo momento del dia.
   const chat = await cleanupChatMedia(supabase, now);
 
+  // Las fotos de perfil copiadas a Storage (F16), mismo criterio: se cuelgan
+  // del mismo barrido diario en vez de sumar otro cron.
+  const avatars = await cleanupContactAvatars(supabase, now);
+
   return NextResponse.json({
     ok: true,
     cleanedPosts,
     deletedFiles,
     chatMediaMessages: chat.cleanedMessages,
     chatMediaFiles: chat.deletedFiles,
+    avatarsCleaned: avatars.cleanedContacts,
   });
 }

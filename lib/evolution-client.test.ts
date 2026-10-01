@@ -3,6 +3,7 @@ import {
   EvolutionError,
   createInstance,
   deleteInstance,
+  fetchProfilePictureUrl,
   getBase64FromMediaMessage,
   getConnectionState,
   getMajorVersion,
@@ -257,5 +258,33 @@ describe("getBase64FromMediaMessage (F4)", () => {
     mockFetch([{ status: 400, body: { message: "message not found" } }]);
 
     await expect(getBase64FromMediaMessage(config, "ssa-1", fullMessage)).rejects.toThrow(EvolutionError);
+  });
+});
+
+describe("fetchProfilePictureUrl (F16)", () => {
+  it("pide la foto por el numero y devuelve la URL", async () => {
+    const calls = mockFetch([{ body: { wuid: "5491122334455@s.whatsapp.net", profilePictureUrl: "https://pps.whatsapp.net/x.jpg" } }]);
+
+    const url = await fetchProfilePictureUrl(config, "ssa-1", "+54 9 11 2233-4455");
+
+    expect(url).toBe("https://pps.whatsapp.net/x.jpg");
+    expect(calls[0].url).toContain("/chat/fetchProfilePictureUrl/ssa-1");
+    expect(calls[0].body).toEqual({ number: "5491122334455" });
+  });
+
+  it("sin profilePictureUrl devuelve null, sin error: pasa en algunas versiones de Baileys", async () => {
+    mockFetch([{ body: { wuid: "5491122334455@s.whatsapp.net" } }]);
+    await expect(fetchProfilePictureUrl(config, "ssa-1", "+5491122334455")).resolves.toBeNull();
+  });
+
+  it("un numero invalido no llama a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(fetchProfilePictureUrl(config, "ssa-1", "")).resolves.toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("un error de Evolution lanza, como el resto del cliente", async () => {
+    mockFetch([{ status: 500, body: {} }, { status: 500, body: {} }, { status: 500, body: {} }]);
+    await expect(fetchProfilePictureUrl(config, "ssa-1", "+5491122334455")).rejects.toThrow(EvolutionError);
   });
 });

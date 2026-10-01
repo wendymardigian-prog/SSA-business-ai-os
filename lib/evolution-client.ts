@@ -448,3 +448,38 @@ export async function getBase64FromMediaMessage(
     size: Number.isFinite(size) ? size : null,
   };
 }
+
+// ── Avatares ─────────────────────────────────────────────────────────────────
+
+/**
+ * La foto de perfil de un contacto de WhatsApp (F16).
+ *
+ * `POST /chat/fetchProfilePictureUrl/{instance}` con `{ number }`. Se llama
+ * SOLO cuando el contacto no tiene avatar o venció (shouldRefreshAvatar lo
+ * decide), nunca en cada mensaje: es una consulta de mas por contacto, no por
+ * mensaje.
+ *
+ * Devuelve null cuando Evolution contesta bien pero sin URL, que pasa en
+ * algunas versiones de Baileys (perfil privado, sin foto, o simplemente no la
+ * tiene cacheada todavia). No es un error: el contacto se queda con la
+ * inicial hasta el proximo intento.
+ */
+export async function fetchProfilePictureUrl(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+): Promise<string | null> {
+  const number = toEvolutionNumber(to);
+  if (!number) return null;
+
+  const raw = await request<{ profilePictureUrl?: string; wuid?: string }>(
+    config,
+    "POST",
+    `/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`,
+    { number },
+  );
+
+  return typeof raw?.profilePictureUrl === "string" && raw.profilePictureUrl.length > 0
+    ? raw.profilePictureUrl
+    : null;
+}
