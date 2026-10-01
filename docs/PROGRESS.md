@@ -53,6 +53,54 @@ El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](
 - [x] `npm run build` compila (con el `.env` de la carpeta principal)
 - [x] `npm run lint` — 0 errores, 38 warnings preexistentes (no se sumó ninguno)
 - [x] `verify-rls.mjs`, `verify-crm.mjs`, `verify-chat-media.mjs` — todos en verde contra la base real
-- [ ] `verify-enrichment.mjs`, `verify-roles.mjs` — no se corrieron: dependen de código que ya estaba verde antes de esta corrida y no los tocó ningún cambio de este bloque; `verify-chat-media.mjs` es el que corresponde a lo nuevo
+- [x] `verify-enrichment.mjs` — corrida después de aplicar la 00104 (ver abajo), en verde
+- [ ] `verify-roles.mjs` — no se corrió: no lo toca ningún cambio de esta corrida
 - [x] Revisión visual del composer y de la banca de audios (ver más abajo / docs/PENDIENTE.md)
 - [x] docs/PENDIENTE.md actualizado con lo que quedó afuera
+
+## Cierre de la corrida: merge a main y deploy (1/10/2026, tarde)
+
+Después del cierre de arriba, Wendy pidió llevar todo a producción. Resumen
+de lo que pasó, en orden:
+
+1. **Rama respaldada**: `git push -u origin oneshot-chat-media-b` — ya estaba
+   en GitHub antes de tocar nada más.
+2. **`main` sincronizado**: no había avanzado (seguía en `4fd0960`), así que
+   no hizo falta merge. Se re-corrió la suite completa + build + lint igual,
+   todo en verde.
+3. **Las dos migraciones, leídas y explicadas antes de aplicar**: el diff de
+   `find_or_link_contact` contra la 00031 se verificó línea por línea (solo
+   cambian las dos líneas del avatar) y el diff de `purge_soft_deleted`
+   contra la 00098 (solo suma el `DELETE` de `audio_assets`).
+4. **00104 aplicada** (fotos de perfil). `verify-crm.mjs`, `verify-rls.mjs` y
+   `verify-enrichment.mjs` corridos uno por uno después, los tres en verde.
+5. **00105 — NO aplicada, decisión de Wendy**: antes de aplicarla, pidió
+   pausarla: va a unificarse con `response_templates` en un solo banco de
+   assets (audios + plantillas) en una sesión nueva. Ver
+   `docs/PENDIENTE.md` y la sección "Bloque 6" de `CLAUDE.md`.
+6. **El bundle de migraciones ya estaba regenerado** (`ALL_MIGRATIONS.sql`
+   incluye la 00104 y la 00105 desde que se escribieron; `node
+   scripts/build-all-migrations.mjs` no encontró diferencias).
+7. **Merge a `main`**: Wendy decidió llevar igual el código completo del
+   Bloque 6 (sin su migración) — se verificó que no rompe nada porque toda
+   consulta a `audio_assets` maneja `{data, error}` sin tirar excepción.
+   `git push origin oneshot-chat-media-b:main` (fast-forward limpio,
+   `4fd0960..b8a0b2f`).
+8. **Deploy de Railway**: disparado automático por el push. **SUCCESS** en
+   ~2.5 minutos (`7a541a8c...`, contenedor arriba en 329ms). Logs del
+   contenedor nuevo revisados: sin ningún error de columna o tabla
+   inexistente, sin nada relacionado a `audio_assets` ni `avatar_source`.
+9. **Verificación en vivo**: `https://ssa-business-ai-os-production.up.railway.app/login`
+   responde 200. El resto (bandeja cargando, banca de audios con su empty
+   state, picker `/a` sin romper con la lista vacía) ya se había verificado
+   en vivo contra la MISMA base de datos antes del deploy (no hay base
+   "local" separada — el dev server de esta corrida apuntaba a la base de
+   producción real), así que no se repitió con un usuario de prueba nuevo
+   en el dominio de Railway.
+10. **Documentación actualizada**: `CLAUDE.md` (sección Migraciones y
+    "Mejoras de Chat", ahora con los Bloques 0-6 y el estado real de cada
+    migración), este archivo, y `docs/PENDIENTE.md`.
+
+**Estado final: `main` en producción con los Bloques 0, 4 y 5 completos (código
++ migración 00104 aplicada) y el Bloque 6 con el código desplegado pero la
+migración en pausa**, a la espera del diseño del banco de assets unificado.

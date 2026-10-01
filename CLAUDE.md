@@ -126,11 +126,29 @@ Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene A
 ZernFlow trae 16 archivos de migracion (00001 a 00016) con 23 tablas. La migracion 16 agrega 'whatsapp' al CHECK constraint de `channels.platform`.
 La Etapa 1 va de la 00017 a la 00080. La Etapa 2, de la **00081 a la 00090**, y las **correcciones de la Etapa 2 de la 00091 a la 00094**. Cada fase define sus migraciones en su documento de requerimientos: seguir esa numeracion y no saltear numeros.
 
-**Todas las migraciones estan aplicadas.** La banda `00102`-`00109` era de la
-sesion de multimedia, que corria en paralelo: ocupo la `00102_chat_media` y la
-`00103_transcripts_and_needs_human` (29/9/2026), y de la `00104` a la `00109`
-quedan libres. Despues van la `00110_chat_dashboard_v2` y la
+La banda `00102`-`00109` era de la sesion de multimedia, que corria en
+paralelo: ocupo la `00102_chat_media` y la `00103_transcripts_and_needs_human`
+(29/9/2026). Despues van la `00110_chat_dashboard_v2` y la
 `00111_message_patterns_v2` (28/9/2026, dashboard de Chat y patrones).
+
+La `00104_contact_avatar_refresh` (fotos de perfil que se refrescan, F16) **se
+aplico el 1/10/2026** y esta verificada (`verify-crm`, `verify-rls`,
+`verify-enrichment`, los tres en verde). Reescribe `find_or_link_contact`
+copiando la 00031 letra por letra, cambiando solo las dos lineas del
+`avatar_url`; la definicion vieja queda completa en el comentario de cabecera
+de la migracion por si hace falta volver atras.
+
+La `00105_audio_assets` (banca de audios, F20) **esta escrita pero
+deliberadamente SIN aplicar**: Wendy decidio unificarla con
+`response_templates` en un solo banco de assets (audios + plantillas de
+mensaje) antes de llevarla a produccion, asi que el esquema de esta version va
+a cambiar. El codigo de Bloque 6 (`lib/audio-library/`, `/dashboard/settings/audios`,
+el picker `/a`, las herramientas `listar_audios`/`enviar_audio`) **esta
+mergeado a `main` igual**: no rompe nada sin la tabla (todas las consultas
+manejan `{data, error}` de Supabase sin tirar excepcion, verificado en vivo),
+simplemente la banca queda vacia y sin uso hasta que se aplique el esquema
+nuevo. Antes de retomarlo: leer `docs/PENDIENTE.md` (seccion "Corrida B") y
+decidir si la 00105 se aplica tal cual o se reescribe para el banco unificado.
 La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
 aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
 borradores creados DESPUES de aplicarla, asi que enchufarla con la cola vacia
@@ -283,10 +301,19 @@ node scripts/verify-booking-concurrency.mjs   # diez pedidos a la vez, una reuni
 Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
 (prefijo `zz-test-`), y no se corren dos en simultaneo.
 
-# Mejoras de Chat (Bloques 1-3, construidos)
+# Mejoras de Chat (Bloques 1-6)
 
 Lo que arregla, en una frase: hasta ahora un lead mandaba una nota de voz y el
 agente le contestaba igual, sin haberla escuchado.
+
+Bloques 1-3 (adjuntos, transcripcion, que el agente entienda o se calle) en
+`main` desde el 29/9/2026. Bloques 0 (arreglos sobre produccion), 4 (fotos de
+perfil y el @ de Instagram clickeable) y 5 (grabar y mandar audio por el chat)
+en `main` desde el 1/10/2026, con sus migraciones aplicadas. El Bloque 6
+(banca de audios) tambien esta en `main` desde esa fecha, pero **su migracion
+no**: va a rediseñarse para compartir tabla con `response_templates` (un solo
+banco de assets). Ver la seccion "Migraciones" mas arriba y
+`docs/PENDIENTE.md` antes de tocarlo.
 
 ## Los adjuntos tienen UN solo contrato
 `messages.attachments` es jsonb libre y cada origen escribia una forma distinta.
@@ -352,7 +379,7 @@ le gana a `max-width` (un minimo fijo desborda la burbuja), y el `dark:` de
 Tailwind en este proyecto compila a `prefers-color-scheme`, mientras que el tema
 lo maneja la clase `.dark` del `<html>`. Son dos señales distintas.
 
-## Migraciones
+## Migraciones de los Bloques 1-3
 `00102` (bucket y columnas de media) y `00103` (transcripcion, escalado, el CHECK
 de `agent_runs.source` y las columnas de costo por audio). **Aplicadas y
 verificadas** el 29/9/2026, junto con el seed de precios de transcripcion
@@ -362,9 +389,82 @@ Ojo con el orden el dia que se clone el sistema: la app **no funciona contra una
 base sin estas dos**, porque el historial del agente lee `transcript` y la bandeja
 filtra por `needs_human`. Se aplican antes de desplegar.
 
-Lo que NO entro: los Bloques 4 (identidad visible), 5 (grabar y enviar audios) y
-6 (banca de audios). El plano completo esta en
+El plano completo esta en
 [docs/requerimientos-chat-multimedia.md](docs/requerimientos-chat-multimedia.md).
+
+## Bloque 0 — Arreglos sobre produccion (FA1-FA7)
+Siete bugs encontrados mirando la bandeja real, todos en modulos puros ya
+existentes, sin migracion propia:
+
+- **Reels y publicaciones compartidas de Instagram** se reconocen por
+  `originalType` (con la URL de `instagram.com` como cinturon de seguridad) y
+  se pintan como tarjeta con link, nunca como video roto.
+- **El agente lee el titulo de un reel compartido** (`[Reel compartido]
+  "titulo"`) en vez de escalar siempre por no poder interpretarlo.
+- **Adjuntos viejos que quedaban en `pending` para siempre** (formato Zernio o
+  Baileys sin mensaje nuevo) pasan a `none`: se corta el spinner eterno.
+- **Un 429 del proveedor de transcripcion ya no quema el turno**: si hay un
+  reintento en cola (`scheduled_jobs`), el agente espera en vez de escalar.
+- **Los 90 segundos de espera por una transcripcion cuentan desde que el turno
+  empieza a esperar** (`media_wait_started_at`), no desde que llego el
+  mensaje: un mensaje nuevo en la misma rafaga reinicia el reloj.
+- **Flows y secuencias usan la misma compuerta de interpretabilidad** que el
+  chat: no generan un mensaje de "no te entendi" por un audio o imagen sin
+  describir todavia.
+- **Stickers y GIFs no escalan ni gastan una llamada de vision**: se leen como
+  `[Sticker]`/`[GIF]`, no como "no pude entenderlo".
+
+## Bloque 4 — Identidad visible (F16-F17)
+- **La foto de perfil se refresca sola** cuando viene de Instagram/WhatsApp
+  (`avatar_source = 'external'`): la 00104 reescribe `find_or_link_contact`
+  para eso. Una foto subida a mano (`manual`) o ya copiada a nuestro Storage
+  (`storage`, se refresca cada 30 dias desde TypeScript) nunca se pisa. Ver
+  `lib/contacts/avatar.ts`.
+- **El @ de Instagram es un link clickeable** en el panel, el detalle del
+  contacto y "Canales vinculados" (`lib/contacts/links.ts`), en vez de un
+  telefono crudo.
+
+## Bloque 5 — Grabar y mandar audio por el chat (F18-F19)
+- **Un solo camino de envio con media**: `sendChannelMessage`
+  (`lib/flow-engine/send.ts`) ramifica por proveedor (Evolution/Zernio),
+  nunca un `else`. Arreglo de un bug real: Evolution descartaba `mediaUrl`
+  en silencio.
+- **Grabador en el composer** (`components/inbox/voice-recorder.tsx`) y clip
+  para adjuntar del disco, con validacion por magic bytes (nunca por
+  extension declarada) y el tope de 16 MB del bucket `chat-media`.
+- Instagram rechaza audio ogg/opus/webm/mp3 **antes de subir nada**
+  (`instagramAcceptsAudio`); WhatsApp/Evolution convierte cualquier formato.
+
+## Bloque 6 — Banca de audios (F20-F22) — codigo en `main`, migracion EN PAUSA
+Una biblioteca de audios reutilizables por workspace (nombre, atajo,
+descripcion para la IA, transcripcion) que se manda desde el chat con `/a` o
+que el agente usa con las herramientas `listar_audios`/`enviar_audio`.
+
+**La migracion `00105_audio_assets` no esta aplicada a proposito**: Wendy
+decidio (1/10/2026) unificarla con `response_templates` en un solo banco de
+assets antes de llevarla a produccion, en vez de tener dos tablas casi
+identicas (audios y plantillas de texto). El codigo de este bloque esta en
+`main` igual, porque se verifico que no rompe nada sin la tabla — toda
+consulta a `audio_assets` maneja `{data, error}` de Supabase sin tirar
+excepcion, asi que la banca simplemente queda vacia (empty state) hasta que
+se aplique el esquema nuevo.
+
+Lo que hay que decidir antes de retomarlo (la proxima sesion, con un diseno de
+banco unificado):
+- Si `audio_assets` se funde con `response_templates` (una tabla con un
+  `kind` que distinga texto de audio) o si quedan tablas separadas con una
+  vista/tipo comun para el picker y las herramientas del agente.
+- Que pasa con lo ya construido que asume una tabla propia: `lib/audio-library/*`,
+  `lib/agent/tools/audio.ts`, `/dashboard/settings/audios`, el picker `/a`
+  (`components/inbox/audio-picker.tsx`), y `defersInDraftAsync` (la pieza que
+  se sumo a `AgentToolDefinition` en `lib/agent/tools/types.ts` para que
+  `enviar_audio` pueda leer la base en modo borrador — revisar si el diseno
+  unificado todavia la necesita).
+- La migracion `00105` escrita hoy puede servir de referencia para RLS e
+  indices, aunque la tabla final sea otra.
+
+Detalle completo de lo construido y lo que quedo afuera en
+`docs/PENDIENTE.md` (seccion "Corrida B").
 
 # Seguridad
 
