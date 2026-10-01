@@ -27,33 +27,9 @@ import {
   platformLabel,
   type Platform,
 } from "@/lib/platforms";
+import { getDmLink } from "@/lib/contacts/links";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
-
-
-function getDmLink(platform: Platform, username: string | null): { url: string | null; label: string } {
-  const handle = username || "";
-  switch (platform) {
-    case "instagram":
-      return handle ? { url: `https://ig.me/m/${handle}`, label: `ig.me/m/${handle}` } : { url: null, label: "" };
-    case "facebook":
-      return handle ? { url: `https://m.me/${handle}`, label: `m.me/${handle}` } : { url: null, label: "" };
-    case "telegram":
-      return handle ? { url: `https://t.me/${handle}`, label: `t.me/${handle}` } : { url: null, label: "" };
-    case "twitter":
-      return handle ? { url: `https://x.com/${handle}`, label: `x.com/${handle}` } : { url: null, label: "" };
-    case "reddit":
-      return handle ? { url: `https://reddit.com/message/compose/?to=${handle}`, label: `reddit.com/.../to=${handle}` } : { url: null, label: "" };
-    case "whatsapp": {
-      // Zernio stores WhatsApp numbers display-formatted ("+34 902 80 82 90");
-      // wa.me rejects anything but digits.
-      const digits = handle.replace(/\D/g, "");
-      return digits ? { url: `https://wa.me/${digits}`, label: `wa.me/${digits}` } : { url: null, label: "" };
-    }
-    default:
-      return { url: null, label: "" };
-  }
-}
 
 export function ChannelsView({
   channels: initialChannels,

@@ -8,6 +8,8 @@ import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { readAttribution } from "@/lib/contacts/attribution";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ContactAvatar } from "@/components/contacts/contact-avatar";
+import { getDmLink, platformHandles } from "@/lib/contacts/links";
 
 import {
   DoNotContactBadge,
@@ -180,6 +182,15 @@ export default async function ContactDetailPage({
 
   const conversations = conversationsRes.data ?? [];
   const channels = channelsRes.data ?? [];
+  // F17: platformHandles solo mira el canal cuya platform es "instagram", no
+  // "el primer canal con username" (que para WhatsApp es el telefono).
+  const handles = platformHandles(
+    contact,
+    channels.map((cc) => ({
+      platform: (cc.channels as { platform?: string } | null)?.platform ?? "",
+      username: cc.platform_username,
+    })),
+  );
 
   const enrollments: ContactEnrollment[] = (enrollmentsRes.data ?? []).map((e) => {
     const sequence = e.sequences as unknown as { name: string } | null;
@@ -224,17 +235,8 @@ export default async function ContactDetailPage({
       <header className="border-b border-border px-4 py-4 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">
-              {contact.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={contact.avatar_url}
-                  alt=""
-                  className="h-12 w-12 rounded-full object-cover"
-                />
-              ) : (
-                (contact.display_name?.[0]?.toUpperCase() ?? "?")
-              )}
+            <div className="flex-shrink-0">
+              <ContactAvatar avatarUrl={contact.avatar_url} displayName={contact.display_name} className="h-12 w-12 text-lg" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -242,6 +244,17 @@ export default async function ContactDetailPage({
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
               </div>
+              {/* F17: antes el @ de Instagram solo se veia dentro del formulario de edicion. */}
+              {handles.instagramUsername && (
+                <a
+                  href={handles.instagramUrl ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 inline-block text-sm text-primary hover:underline"
+                >
+                  @{handles.instagramUsername}
+                </a>
+              )}
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 {contact.email && (
                   <span className="flex items-center gap-1">
@@ -435,21 +448,35 @@ export default async function ContactDetailPage({
                       display_name?: string;
                       username?: string;
                     } | null;
+                    const platform = ch?.platform ?? "";
+                    // El telefono de WhatsApp no es un @handle (Evolution
+                    // manda platform_username = telefono).
+                    const isHandle = platform !== "whatsapp";
+                    const raw = cc.platform_username || cc.platform_sender_id;
+                    const { url } = getDmLink(platform as never, cc.platform_username ?? cc.platform_sender_id);
+                    const label = raw ? (isHandle && cc.platform_username ? `@${raw}` : raw) : "";
                     return (
                       <li
                         key={cc.id}
                         className="flex items-center gap-3 rounded-lg border border-border p-3"
                       >
-                        <PlatformIcon platform={ch?.platform ?? ""} className="h-4 w-4" size={16} />
+                        <PlatformIcon platform={platform} className="h-4 w-4" size={16} />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
                             {ch?.display_name ?? ch?.username ?? "Canal"}
                           </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {cc.platform_username
-                              ? `@${cc.platform_username}`
-                              : cc.platform_sender_id}
-                          </p>
+                          {url && label ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="truncate text-xs text-primary hover:underline"
+                            >
+                              {label}
+                            </a>
+                          ) : (
+                            <p className="truncate text-xs text-muted-foreground">{label}</p>
+                          )}
                         </div>
                       </li>
                     );

@@ -11,6 +11,7 @@ import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search
 import { interpolateTemplate } from "@/lib/templates/interpolate";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { Database, ConversationStatus } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
@@ -433,17 +434,7 @@ export function MessageThread({
             </button>
           )}
           <div className="relative flex-shrink-0">
-            {conversation.contacts?.avatar_url ? (
-              <img
-                src={conversation.contacts.avatar_url}
-                alt=""
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
-                {conversation.contacts?.display_name?.[0]?.toUpperCase() ?? "?"}
-              </div>
-            )}
+            <ContactAvatar avatarUrl={conversation.contacts?.avatar_url} displayName={conversation.contacts?.display_name} size="sm" />
             <div className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-background bg-background">
               <PlatformIcon
                 platform={conversation.platform}

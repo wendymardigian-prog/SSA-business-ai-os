@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
+import { ContactAvatar } from "@/components/contacts/contact-avatar";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -16,6 +17,7 @@ import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
 import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
 import { readAttribution } from "@/lib/contacts/attribution";
+import { getDmLink, platformHandles } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
 
@@ -234,18 +236,24 @@ export function ContactPanel({
 
 function Identity({ details }: { details: ContactDetails }) {
   const c = details.contact;
-  const username = details.channels.find((ch) => ch.username)?.username ?? c.instagram_username;
+  // F17: contacts.instagram_username es la fuente, y si falta, SOLO el canal
+  // cuya platform es "instagram". Antes find(ch => ch.username) no filtraba
+  // por plataforma, asi que un contacto solo de WhatsApp mostraba "@<telefono>".
+  const { instagramUsername, instagramUrl } = platformHandles(c, details.channels);
   return (
     <div className="flex flex-col items-center border-b border-border p-5">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-semibold">
-        {c.avatar_url ? (
-          <img src={c.avatar_url} alt="" className="h-16 w-16 rounded-full object-cover" />
-        ) : (
-          c.display_name?.[0]?.toUpperCase() ?? "?"
-        )}
-      </div>
+      <ContactAvatar avatarUrl={c.avatar_url} displayName={c.display_name} size="lg" />
       <p className="mt-3 text-sm font-semibold">{c.display_name ?? "Sin nombre"}</p>
-      {username && <p className="mt-0.5 text-xs text-muted-foreground">@{username}</p>}
+      {instagramUsername && (
+        <a
+          href={instagramUrl ?? undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-0.5 text-xs text-primary hover:underline"
+        >
+          @{instagramUsername}
+        </a>
+      )}
       <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
         <TemperatureBadge value={c.lead_temperature} />
         <span
@@ -339,15 +347,28 @@ function Channels({ details }: { details: ContactDetails }) {
         <p className="text-xs text-muted-foreground">Sin canales vinculados.</p>
       ) : (
         <ul className="space-y-1.5 text-sm">
-          {details.channels.map((ch, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <PlatformIcon platform={ch.platform} className="h-3.5 w-3.5" size={14} />
-              <span className="text-muted-foreground">{platformLabel(ch.platform)}</span>
-              <span className="truncate">
-                {ch.username ? `@${ch.username}` : ch.platform === "whatsapp" && ch.senderId ? ch.senderId : ""}
-              </span>
-            </li>
-          ))}
+          {details.channels.map((ch, i) => {
+            // El telefono de WhatsApp no es un @handle: Evolution manda
+            // senderUsername=phone, asi que ch.username para WhatsApp es el
+            // numero, no un usuario.
+            const isHandle = ch.platform !== "whatsapp";
+            const raw = ch.username || (ch.platform === "whatsapp" ? ch.senderId : null);
+            const { url } = getDmLink(ch.platform, raw);
+            const label = raw ? (isHandle ? `@${raw}` : raw) : "";
+            return (
+              <li key={i} className="flex items-center gap-2">
+                <PlatformIcon platform={ch.platform} className="h-3.5 w-3.5" size={14} />
+                <span className="text-muted-foreground">{platformLabel(ch.platform)}</span>
+                {url && label ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="truncate text-primary hover:underline">
+                    {label}
+                  </a>
+                ) : (
+                  <span className="truncate">{label}</span>
+                )}
+              </li>
+            );
+          })}
           {extras.map((x) => (
             <li key={x.label} className="flex items-center gap-2">
               <span className="text-muted-foreground">{x.icon}</span>
