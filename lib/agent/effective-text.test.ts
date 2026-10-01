@@ -90,6 +90,57 @@ describe("effectiveMessageText: la precedencia (F9)", () => {
   });
 });
 
+describe("effectiveMessageText: un reel o post compartido (FA2)", () => {
+  const withShare = (meta: Record<string, unknown>) => ({
+    v: 2,
+    items: [emptyAttachment("share", { status: "none", meta })],
+  });
+
+  it("con titulo, un reel entra marcado y el agente lo lee sin escalar", () => {
+    expect(
+      effectiveMessageText({
+        attachments: withShare({ url: "https://instagram.com/reel/abc", title: "Mira este lugar", shareType: "reel" }),
+      }),
+    ).toBe('[Reel compartido] "Mira este lugar"');
+  });
+
+  it("un post compartido usa su propia etiqueta", () => {
+    expect(
+      effectiveMessageText({ attachments: withShare({ url: "https://x", title: "Un posteo", shareType: "post" }) }),
+    ).toBe('[Publicación compartida] "Un posteo"');
+  });
+
+  it("sin shareType cae en la etiqueta generica", () => {
+    expect(effectiveMessageText({ attachments: withShare({ url: "https://x", title: "Algo" }) })).toBe(
+      '[Publicación compartida] "Algo"',
+    );
+  });
+
+  it("el titulo se recorta a 400 caracteres", () => {
+    const title = "a".repeat(500);
+    const result = effectiveMessageText({ attachments: withShare({ url: "https://x", title, shareType: "reel" }) });
+    expect(result).toBe(`[Reel compartido] "${"a".repeat(400)}"`);
+  });
+
+  it("sin titulo no se inventa nada: un link solo no alcanza para responder", () => {
+    expect(effectiveMessageText({ attachments: withShare({ url: "https://x" }) })).toBeNull();
+  });
+});
+
+describe("effectiveMessageText: stickers y GIFs no escalan (FA7)", () => {
+  it("un sticker solo se lee marcado, sin gastar una descripcion de vision", () => {
+    expect(effectiveMessageText({ attachments: withItems("sticker") })).toBe("[Sticker]");
+  });
+
+  it("un GIF solo tambien", () => {
+    expect(effectiveMessageText({ attachments: withItems("gif") })).toBe("[GIF]");
+  });
+
+  it("un sticker junto con algo ilegible no se etiqueta: la rafaga sigue siendo ilegible", () => {
+    expect(effectiveMessageText({ attachments: withItems("sticker", "video") })).toBeNull();
+  });
+});
+
 describe("unreadableReason: el motivo en castellano (F10)", () => {
   it("un mensaje que SI se entiende no tiene motivo", () => {
     expect(unreadableReason({ text: "hola" })).toBeNull();
@@ -135,5 +186,17 @@ describe("unreadableReason: el motivo en castellano (F10)", () => {
 
   it("un mensaje sin texto y SIN adjuntos no es ilegible: no hay nada", () => {
     expect(unreadableReason({})).toBeNull();
+  });
+
+  it("un sticker solo no es ilegible (FA7): effectiveMessageText ya lo etiqueta", () => {
+    expect(unreadableReason({ attachments: withItems("sticker") })).toBeNull();
+  });
+
+  it("un reel compartido CON titulo no es ilegible (FA2)", () => {
+    expect(
+      unreadableReason({
+        attachments: { v: 2, items: [emptyAttachment("share", { status: "none", meta: { url: "https://x", title: "Hola", shareType: "reel" } })] },
+      }),
+    ).toBeNull();
   });
 });

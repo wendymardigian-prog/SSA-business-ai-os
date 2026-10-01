@@ -36,6 +36,16 @@ export interface MessageWithMedia {
   attachments?: unknown;
 }
 
+/** La etiqueta por tipo de share, para el marcador del historial (FA2). */
+const SHARE_EFFECTIVE_LABELS: Record<string, string> = {
+  reel: "Reel compartido",
+  post: "Publicación compartida",
+  story: "Historia compartida",
+};
+
+/** El titulo recortado a 400 caracteres: es el caption completo del reel. */
+const MAX_SHARE_TITLE_CHARS = 400;
+
 /**
  * Lo que el modelo lee de este mensaje, o null si no hay nada que leer.
  *
@@ -59,6 +69,27 @@ export function effectiveMessageText(message: MessageWithMedia): string | null {
 
   const described = message.media_description?.trim();
   if (described) return `[Imagen] ${described}`;
+
+  const items = parseAttachments(message.attachments);
+
+  // FA2: el caption de un reel o post compartido llega como TEXTO en
+  // meta.title. El agente tiene todo lo que necesita para responder sin
+  // escalar. Sin titulo, un link solo no alcanza: unreadableReason lo manda
+  // a escalar mas abajo.
+  const share = items.find((item) => item.kind === "share");
+  const shareTitle = typeof share?.meta?.title === "string" ? share.meta.title.trim() : "";
+  if (share && shareTitle) {
+    const shareType = typeof share.meta?.shareType === "string" ? share.meta.shareType : null;
+    const label = (shareType && SHARE_EFFECTIVE_LABELS[shareType]) ?? "Publicación compartida";
+    return `[${label}] "${shareTitle.slice(0, MAX_SHARE_TITLE_CHARS)}"`;
+  }
+
+  // FA7: un sticker o un GIF solos no dicen nada que haya que transcribir ni
+  // describir con vision — gastar esa llamada en un sticker es ruido. No son
+  // ilegibles: se le pasan al agente con su etiqueta y que el decida.
+  if (items.length > 0 && items.every((item) => item.kind === "sticker" || item.kind === "gif")) {
+    return items[0].kind === "sticker" ? "[Sticker]" : "[GIF]";
+  }
 
   return null;
 }
