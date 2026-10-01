@@ -11,7 +11,9 @@ import {
   instanceNameFor,
   listInstanceNames,
   resetVersionCache,
+  sendMedia,
   sendText,
+  sendWhatsAppAudio,
   type EvolutionConfig,
 } from "./evolution-client";
 
@@ -286,5 +288,58 @@ describe("fetchProfilePictureUrl (F16)", () => {
   it("un error de Evolution lanza, como el resto del cliente", async () => {
     mockFetch([{ status: 500, body: {} }, { status: 500, body: {} }, { status: 500, body: {} }]);
     await expect(fetchProfilePictureUrl(config, "ssa-1", "+5491122334455")).rejects.toThrow(EvolutionError);
+  });
+});
+
+describe("sendWhatsAppAudio (F19)", () => {
+  it("manda el audio con encoding:true, el default que hace que Evolution convierta", async () => {
+    const calls = mockFetch([{ body: { key: { id: "WA-OUT-1" } } }]);
+
+    const result = await sendWhatsAppAudio(config, "ssa-1", "+54 9 11 2233-4455", "https://signed.test/audio.webm");
+
+    expect(result).toEqual({ id: "WA-OUT-1" });
+    expect(calls[0].url).toContain("/message/sendWhatsAppAudio/ssa-1");
+    expect(calls[0].body).toEqual({ number: "5491122334455", audio: "https://signed.test/audio.webm", encoding: true });
+  });
+
+  it("un numero invalido no llama a Evolution", async () => {
+    const calls = mockFetch([]);
+    await expect(sendWhatsAppAudio(config, "ssa-1", "", "https://x")).rejects.toThrow(EvolutionError);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("sendMedia (F19)", () => {
+  it("manda la imagen con mediatype, mimetype y caption", async () => {
+    const calls = mockFetch([{ body: { key: { id: "WA-OUT-2" } } }]);
+
+    const result = await sendMedia(config, "ssa-1", "+5491122334455", {
+      media: "https://signed.test/foto.jpg",
+      mediatype: "image",
+      mimetype: "image/jpeg",
+      caption: "mirá esto",
+    });
+
+    expect(result).toEqual({ id: "WA-OUT-2" });
+    expect(calls[0].url).toContain("/message/sendMedia/ssa-1");
+    expect(calls[0].body).toEqual({
+      number: "5491122334455",
+      mediatype: "image",
+      media: "https://signed.test/foto.jpg",
+      mimetype: "image/jpeg",
+      caption: "mirá esto",
+    });
+  });
+
+  it("un documento suma el fileName", async () => {
+    const calls = mockFetch([{ body: { key: { id: "WA-OUT-3" } } }]);
+
+    await sendMedia(config, "ssa-1", "+5491122334455", {
+      media: "https://signed.test/doc.pdf",
+      mediatype: "document",
+      fileName: "contrato.pdf",
+    });
+
+    expect(calls[0].body).toMatchObject({ fileName: "contrato.pdf" });
   });
 });

@@ -8,6 +8,10 @@ import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
 import { outboundMessageRow } from "@/lib/messages/outbound";
+import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
+
+/** Los kinds que un flow puede declarar en mediaType; cualquier otra cosa cae en "image", como siempre. */
+const VALID_MEDIA_KINDS = new Set<AttachmentKind>(["image", "video", "audio", "voice", "document"]);
 /**
  * Manda uno o varios mensajes por el canal de la conversacion.
  *
@@ -68,6 +72,18 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         replyMarkup: adapted.replyMarkup,
       });
 
+      // El adjunto se guarda en formato v2 (F19), no el array legado
+      // `[{type,url}]`: asi la burbuja lo pinta con el mismo renderer que
+      // cualquier otro adjunto, en vez de "ya no disponible".
+      const attachments = mediaUrl
+        ? toAttachmentsColumn([
+            emptyAttachment(VALID_MEDIA_KINDS.has(mediaType as AttachmentKind) ? (mediaType as AttachmentKind) : "image", {
+              sourceUrl: mediaUrl,
+              status: "ready",
+            }),
+          ])
+        : null;
+
       await recordSend(
         supabase,
         { ...context, nodeId: node.id },
@@ -75,7 +91,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
         // es lo que va a leer el operador en la conversacion.
         outcome.ok ? text : outcome.failure?.message ?? text,
         outcome,
-        mediaUrl ? [{ type: mediaType || "image", url: mediaUrl }] : null
+        attachments
       );
 
       // Si el canal esta frenado por el tope de la hora, mandar los que siguen

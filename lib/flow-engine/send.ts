@@ -3,10 +3,12 @@ import type { Database } from "@/lib/types/database";
 
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
-import { sendText, EvolutionError } from "@/lib/evolution-client";
+import { sendText, sendWhatsAppAudio, sendMedia, EvolutionError, type EvolutionConfig } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { describeSendError, RATE_LIMIT_REACHED, type FriendlyError } from "@/lib/instagram-errors";
 import { outboundMessageRow } from "@/lib/messages/outbound";
+import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 /**
  * La unica puerta de salida del motor de flows.
  *
@@ -55,10 +57,23 @@ export interface SendContext {
   origin?: "flow" | "sequence";
 }
 
+/** Un archivo de nuestro bucket `chat-media`, listo para mandar (F19). */
+export interface OutboundMedia {
+  kind: "audio" | "voice" | "image" | "video" | "document";
+  /** Ruta en el bucket chat-media. */
+  storagePath: string;
+  mime: string;
+  filename?: string | null;
+  durationSeconds?: number | null;
+}
+
 export interface OutboundMessage {
   text: string;
+  /** Legado: una URL ya publica (el patron de send-message.ts). Convive con `media`. */
   mediaUrl?: string;
   mediaType?: string;
+  /** Un archivo de chat-media, el camino nuevo (F19): la bandeja y la banca de audios lo usan. */
+  media?: OutboundMedia;
   buttons?: unknown[];
   quickReplies?: unknown[];
   template?: unknown;
@@ -224,6 +239,43 @@ async function sendViaResendChannel(
   return { ok: true, platformMessageId: result.messageId };
 }
 
+/** El `attachmentType` que entiende `sendInboxMessage`: solo cuatro valores. */
+function zernioAttachmentType(kind: OutboundMedia["kind"]): "image" | "video" | "audio" | "file" {
+  if (kind === "voice") return "audio";
+  if (kind === "document") return "file";
+  return kind;
+}
+
+/**
+ * Sube un archivo de chat-media a Zernio y devuelve su URL publica (F19).
+ *
+ * Zernio exige una URL publica SIN autenticacion ni redirects como
+ * `attachmentUrl`: una URL firmada de Supabase no sirve (trae un token en la
+ * query, y no hay garantia de que Zernio la acepte asi). `uploadMediaDirect`
+ * resuelve esto subiendo el archivo y devolviendo una URL que Zernio mismo
+ * hospeda. Mismo patron que `lib/publishing/zernio-media.ts` para contenido.
+ */
+async function uploadToZernioDirect(
+  supabase: SupabaseClient<Database>,
+  zernio: ReturnType<typeof createZernioClient>,
+  media: OutboundMedia,
+): Promise<{ ok: true; url: string } | { ok: false; message: string }> {
+  const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).download(media.storagePath);
+  if (error || !data) {
+    return { ok: false, message: "No pude leer el archivo para subirlo a Instagram." };
+  }
+
+  try {
+    const blob = new Blob([await data.arrayBuffer()], { type: media.mime });
+    const result = await zernio.messages.uploadMediaDirect({ body: { file: blob, contentType: media.mime } });
+    const url = (result.data as { url?: string } | undefined)?.url;
+    if (!url) return { ok: false, message: "Instagram no me dio una URL para el archivo." };
+    return { ok: true, url };
+  } catch {
+    return { ok: false, message: "No se pudo subir el archivo a Instagram." };
+  }
+}
+
 async function sendViaZernio(
   supabase: SupabaseClient<Database>,
   context: SendContext,
@@ -258,18 +310,38 @@ async function sendViaZernio(
     };
   }
 
+  const zernio = createZernioClient(apiKey);
   const body: Record<string, unknown> = { accountId: lateAccountId, message: message.text };
-  if (message.mediaUrl) {
+
+  if (message.media) {
+    // Antes de subir nada: un ogg/webm/mp3 Instagram lo va a tirar igual.
+    if (
+      (message.media.kind === "audio" || message.media.kind === "voice") &&
+      !instagramAcceptsAudio(message.media.mime)
+    ) {
+      return {
+        ok: false,
+        failure: { kind: "unknown", message: INSTAGRAM_AUDIO_REJECTED_MESSAGE, retryable: false },
+      };
+    }
+
+    const uploaded = await uploadToZernioDirect(supabase, zernio, message.media);
+    if (!uploaded.ok) {
+      return { ok: false, failure: { kind: "unknown", message: uploaded.message, retryable: true } };
+    }
+    body.attachmentUrl = uploaded.url;
+    body.attachmentType = zernioAttachmentType(message.media.kind);
+  } else if (message.mediaUrl) {
     body.attachmentUrl = message.mediaUrl;
     body.attachmentType = message.mediaType || "image";
   }
+
   if (message.buttons?.length) body.buttons = message.buttons;
   if (message.quickReplies?.length) body.quickReplies = message.quickReplies;
   if (message.template) body.template = message.template;
   if (message.replyMarkup) body.replyMarkup = message.replyMarkup;
 
   try {
-    const zernio = createZernioClient(apiKey);
     const response = await zernio.messages.sendInboxMessage({
       path: { conversationId: lateConversationId },
       body: body as Parameters<typeof zernio.messages.sendInboxMessage>[0]["body"],
@@ -284,11 +356,48 @@ async function sendViaZernio(
   }
 }
 
+/** Cuanto vive la URL firmada que se le pasa a Evolution: le alcanza con pedirla una vez. */
+const EVOLUTION_MEDIA_URL_SECONDS = 10 * 60;
+
+async function chatMediaSignedUrl(
+  supabase: SupabaseClient<Database>,
+  storagePath: string,
+  expiresInSeconds: number,
+): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(CHAT_MEDIA_BUCKET).createSignedUrl(storagePath, expiresInSeconds);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}
+
+/** Nota de voz nativa si es audio/voice; sendMedia para el resto. Un solo lugar para los dos caminos (`media` y el `mediaUrl` legado). */
+async function sendEvolutionMediaMessage(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+  args: { url: string; kind: string; mime?: string | null; filename?: string | null; caption?: string },
+) {
+  if (args.kind === "audio" || args.kind === "voice") {
+    // Por WhatsApp no se valida el formato: Evolution convierte cualquiera
+    // con su propio ffmpeg (encoding:true, el default).
+    return sendWhatsAppAudio(config, instanceName, to, args.url);
+  }
+  const mediatype = args.kind === "document" ? "document" : args.kind === "video" ? "video" : "image";
+  return sendMedia(config, instanceName, to, {
+    media: args.url,
+    mediatype,
+    mimetype: args.mime,
+    fileName: args.filename,
+    caption: args.caption,
+  });
+}
+
 /**
  * Envio por WhatsApp.
  *
- * Escrito y listo, sin probar en vivo: todavia no hay ningun numero conectado.
- * Cuando se conecte, esto se prueba, no se reescribe.
+ * **El arreglo del bug (F19):** antes esta rama solo mandaba texto; un flow
+ * con `mediaUrl` registraba en la base un adjunto que NUNCA se enviaba. Ahora
+ * `message.media` (chat-media, F19) y `message.mediaUrl` (legado, el patron
+ * de send-message.ts) se mandan los dos.
  */
 async function sendViaEvolution(
   supabase: SupabaseClient<Database>,
@@ -328,6 +437,33 @@ async function sendViaEvolution(
   }
 
   try {
+    if (message.media) {
+      const signedUrl = await chatMediaSignedUrl(supabase, message.media.storagePath, EVOLUTION_MEDIA_URL_SECONDS);
+      if (!signedUrl) {
+        return {
+          ok: false,
+          failure: { kind: "unknown", message: "No pude preparar el archivo para enviarlo.", retryable: true },
+        };
+      }
+      const sent = await sendEvolutionMediaMessage(config, channel.evolution_instance, link.platform_sender_id, {
+        url: signedUrl,
+        kind: message.media.kind,
+        mime: message.media.mime,
+        filename: message.media.filename,
+        caption: message.text || undefined,
+      });
+      return { ok: true, platformMessageId: sent.id };
+    }
+
+    if (message.mediaUrl) {
+      const sent = await sendEvolutionMediaMessage(config, channel.evolution_instance, link.platform_sender_id, {
+        url: message.mediaUrl,
+        kind: message.mediaType || "image",
+        caption: message.text || undefined,
+      });
+      return { ok: true, platformMessageId: sent.id };
+    }
+
     const sent = await sendText(
       config,
       channel.evolution_instance,
@@ -375,7 +511,8 @@ export async function recordSend(
   context: SendContext,
   text: string,
   outcome: SendOutcome,
-  attachments?: unknown[] | null
+  /** El VALOR DE LA COLUMNA ya armado: `{v:2, items}` (toAttachmentsColumn) o, legado, el array `[{type,url}]`. */
+  attachments?: unknown | null
 ): Promise<void> {
   await supabase.from("messages").insert(
     outboundMessageRow({

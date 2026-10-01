@@ -449,6 +449,89 @@ export async function getBase64FromMediaMessage(
   };
 }
 
+// ── Envio de media (F19) ───────────────────────────────────────────────────
+
+/**
+ * Manda un audio como nota de voz nativa (F19, verificado en la 2.3.7, §14c).
+ *
+ * `audio` acepta una URL publica, base64 o un archivo multipart; mandamos una
+ * URL firmada de nuestro bucket. `encoding: true` (el default) es lo que hace
+ * que Evolution CONVIERTA lo que le mandemos a ogg/opus con su propio ffmpeg y
+ * lo mande con `ptt: true`: por eso no importa en que formato grabo el
+ * navegador, y no transcodificamos nada de nuestro lado.
+ */
+export async function sendWhatsAppAudio(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+  audio: string,
+): Promise<SentMessage> {
+  const number = toEvolutionNumber(to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
+  }
+
+  const raw = await request<{ key?: { id?: string }; messageId?: string }>(
+    config,
+    "POST",
+    `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`,
+    { number, audio, encoding: true },
+  );
+
+  return { id: raw?.key?.id ?? raw?.messageId ?? null };
+}
+
+export interface SendMediaArgs {
+  /** URL publica (o firmada) del archivo, o base64. */
+  media: string;
+  mediatype: "image" | "video" | "document";
+  mimetype?: string | null;
+  caption?: string | null;
+  /** Solo documentos: el nombre con el que WhatsApp lo muestra. */
+  fileName?: string | null;
+}
+
+/**
+ * Manda una imagen, video o documento (F19).
+ *
+ * El cuerpo exacto de `/message/sendMedia` no quedo verificado contra el
+ * codigo fuente de la 2.3.7 como el resto de los contratos de esta fase (el
+ * plano solo confirma "multipart o URL" para este endpoint, §14c): se usa el
+ * contrato publicado de Evolution API v2 (`number`, `mediatype`, `media`,
+ * ademas de `mimetype`/`caption`/`fileName` opcionales). Si en la verificacion
+ * en vivo algun campo no coincide, es un ajuste de nombres aca adentro, no un
+ * cambio de diseño.
+ */
+export async function sendMedia(
+  config: EvolutionConfig,
+  instanceName: string,
+  to: string,
+  args: SendMediaArgs,
+): Promise<SentMessage> {
+  const number = toEvolutionNumber(to);
+  if (!number) {
+    throw new EvolutionError(`Numero de WhatsApp invalido: "${to}"`);
+  }
+
+  const body: Record<string, unknown> = {
+    number,
+    mediatype: args.mediatype,
+    media: args.media,
+  };
+  if (args.mimetype) body.mimetype = args.mimetype;
+  if (args.caption) body.caption = args.caption;
+  if (args.fileName) body.fileName = args.fileName;
+
+  const raw = await request<{ key?: { id?: string }; messageId?: string }>(
+    config,
+    "POST",
+    `/message/sendMedia/${encodeURIComponent(instanceName)}`,
+    body,
+  );
+
+  return { id: raw?.key?.id ?? raw?.messageId ?? null };
+}
+
 // ── Avatares ─────────────────────────────────────────────────────────────────
 
 /**

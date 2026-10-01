@@ -34,7 +34,8 @@ export interface OutboundRowInput {
   origin: OutboundOrigin;
   text: string;
   status: MessageInsert["status"];
-  attachments?: unknown[] | null;
+  /** El valor de la columna ya armado: `{v:2, items}` o, legado, el array `[{type,url}]`. */
+  attachments?: unknown | null;
   platformMessageId?: string | null;
   platformNativeMessageId?: string | null;
   sentByUserId?: string | null;
