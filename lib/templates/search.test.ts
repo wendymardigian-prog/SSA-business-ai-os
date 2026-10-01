@@ -46,7 +46,7 @@ describe("filterTemplates", () => {
     expect(filterTemplates(templates, "zzz")).toEqual([]);
   });
 
-  it("si no matchea nombre ni atajo, busca en el contenido (lo usa el picker de audios, F21)", () => {
+  it("si no matchea nombre, atajo ni etiquetas, busca en el contenido (lo usa tambien la banca de audios, con la transcripcion)", () => {
     // "presu" esta en el nombre y el atajo del 4, asi que no prueba nada nuevo.
     // "mande" solo esta en el contenido del 4.
     expect(ids(filterTemplates(templates, "mande"))).toEqual(["4"]);
@@ -62,5 +62,31 @@ describe("filterTemplates", () => {
 
   it("no rompe con la lista vacia", () => {
     expect(filterTemplates([], "hola")).toEqual([]);
+  });
+
+  it("busca por etiquetas", () => {
+    const lista = [
+      { id: "a", name: "Saludo", content: "Hola", shortcut: null, tags: ["objeciones", "precio"] },
+      { id: "b", name: "Despedida", content: "Chau", shortcut: null, tags: ["cierre"] },
+    ];
+    expect(ids(filterTemplates(lista, "objec"))).toEqual(["a"]);
+  });
+
+  it("una etiqueta le gana al contenido pero pierde contra nombre y atajo", () => {
+    const lista = [
+      { id: "a", name: "Otro", content: "nada que ver", shortcut: null, tags: ["precio"] },
+      { id: "b", name: "Precio base", content: "nada que ver", shortcut: null, tags: [] },
+      { id: "c", name: "Algo", content: "aca dice precio tambien", shortcut: null, tags: [] },
+    ];
+    expect(ids(filterTemplates(lista, "precio"))).toEqual(["b", "a", "c"]);
+  });
+
+  it("ignora acentos y mayusculas en las etiquetas", () => {
+    const lista = [{ id: "a", name: "Saludo", content: "Hola", shortcut: null, tags: ["Atención"] }];
+    expect(ids(filterTemplates(lista, "atencion"))).toEqual(["a"]);
+  });
+
+  it("sin etiquetas no explota (el campo es opcional)", () => {
+    expect(ids(filterTemplates(templates, "mande"))).toEqual(["4"]);
   });
 });

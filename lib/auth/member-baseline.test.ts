@@ -74,7 +74,7 @@ const ADMIN_ACTION_FILES = [
   "lib/actions/patterns.ts",
   "lib/actions/sequences.ts",
   "lib/actions/tag-effects.ts",
-  "lib/actions/templates.ts",
+  "lib/actions/response-assets.ts",
   "lib/actions/workspace.ts",
 ] as const;
 

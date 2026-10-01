@@ -1,14 +1,18 @@
 /**
- * Transcribir un audio de la banca (F20).
+ * Transcribir un audio de la banca de recursos.
  *
  * Mismo patron que `lib/chat-media/transcribe-message.ts` (F7): claim
  * condicional, el mismo proveedor (`lib/ai/transcribe.ts`, que no sabe quien
  * transcribe), y nunca lanza -- el job decide si reintenta.
  *
- * La diferencia: el claim tambien excluye `transcript_source = 'manual'`. Si
- * alguien corrigio la transcripcion a mano, ningun reintento automatico la
- * puede pisar -- ni siquiera uno transitorio que la hubiera dejado en
- * `failed` antes de la correccion.
+ * Dos diferencias con F7:
+ *   - El claim tambien excluye `transcript_source = 'manual'`. Si alguien
+ *     corrigio la transcripcion a mano, ningun reintento automatico la puede
+ *     pisar -- ni siquiera uno transitorio que la hubiera dejado en `failed`
+ *     antes de la correccion.
+ *   - El claim filtra `kind = 'audio'`: un texto nunca tiene nada que
+ *     transcribir (su `transcript_status` queda forzado en 'none' por el
+ *     CHECK `response_assets_text_no_transcript`), asi que ni se intenta.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,46 +22,53 @@ import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 
 type Db = SupabaseClient<Database>;
 
-export type TranscribeAudioAssetResult =
+export type TranscribeAssetResult =
   | { kind: "done"; text: string }
   | { kind: "skipped"; reason: string }
   | { kind: "failed"; reason: string }
   | { kind: "retry"; reason: string };
 
-export interface TranscribeAudioAssetOptions {
+export interface TranscribeAssetOptions {
   fetchImpl?: typeof fetch;
   now?: () => Date;
 }
 
-export async function transcribeAudioAsset(
+export async function transcribeAsset(
   supabase: Db,
-  audioAssetId: string,
-  options: TranscribeAudioAssetOptions = {},
-): Promise<TranscribeAudioAssetResult> {
+  assetId: string,
+  options: TranscribeAssetOptions = {},
+): Promise<TranscribeAssetResult> {
   const now = options.now ?? (() => new Date());
 
   try {
     const { data: claimed, error: claimError } = await supabase
-      .from("audio_assets")
+      .from("response_assets")
       .update({ transcript_status: "pending", transcript_started_at: now().toISOString(), transcript_error: null })
-      .eq("id", audioAssetId)
+      .eq("id", assetId)
+      .eq("kind", "audio")
       .in("transcript_status", ["none", "failed"])
       .neq("transcript_source", "manual")
       .select("id, workspace_id, storage_path, mime_type")
       .maybeSingle();
 
     if (claimError) {
-      console.error("[audio-library] no pude reclamar el audio:", claimError.message);
+      console.error("[response-assets] no pude reclamar el audio:", claimError.message);
       return { kind: "retry", reason: "no pude reclamar el audio" };
     }
-    if (!claimed) return { kind: "skipped", reason: "ya lo tomo otro, o es una correccion manual" };
+    if (!claimed) return { kind: "skipped", reason: "ya lo tomo otro, es una correccion manual, o no es un audio" };
+    if (!claimed.storage_path || !claimed.mime_type) {
+      // No deberia pasar nunca (el CHECK de forma lo exige), pero sin archivo
+      // no hay nada que transcribir.
+      await fail(supabase, assetId, "El recurso no tiene archivo de audio");
+      return { kind: "failed", reason: "sin archivo" };
+    }
 
     const { data: file, error: downloadError } = await supabase.storage
       .from(CHAT_MEDIA_BUCKET)
       .download(claimed.storage_path);
 
     if (downloadError || !file) {
-      await revert(supabase, audioAssetId, "No pudimos abrir el archivo de audio");
+      await revert(supabase, assetId, "No pudimos abrir el archivo de audio");
       return { kind: "retry", reason: "no pude bajar el archivo" };
     }
 
@@ -68,82 +79,82 @@ export async function transcribeAudioAsset(
       workspaceId: claimed.workspace_id,
       bytes,
       mime: claimed.mime_type,
-      threadId: audioAssetId,
+      threadId: assetId,
       conversationId: null,
       fetchImpl: options.fetchImpl,
     });
 
     if (!result.ok) {
       if (result.retryable) {
-        await revert(supabase, audioAssetId, result.message);
+        await revert(supabase, assetId, result.message);
         return { kind: "retry", reason: result.code };
       }
-      await fail(supabase, audioAssetId, result.message);
+      await fail(supabase, assetId, result.message);
       return { kind: "failed", reason: result.code };
     }
 
     const { error: saveError } = await supabase
-      .from("audio_assets")
+      .from("response_assets")
       .update({
         transcript: result.text,
         transcript_status: "ready",
         transcript_error: null,
         transcript_source: "auto",
       })
-      .eq("id", audioAssetId);
+      .eq("id", assetId);
 
     if (saveError) {
-      console.error("[audio-library] no pude guardar la transcripcion:", saveError.message);
+      console.error("[response-assets] no pude guardar la transcripcion:", saveError.message);
       return { kind: "retry", reason: "no pude guardar la transcripcion" };
     }
 
     return { kind: "done", text: result.text };
   } catch (err) {
     console.error(
-      "[audio-library] error inesperado transcribiendo:",
+      "[response-assets] error inesperado transcribiendo:",
       err instanceof Error ? err.message : "error desconocido",
     );
     return { kind: "retry", reason: "error inesperado" };
   }
 }
 
-async function fail(supabase: Db, audioAssetId: string, message: string): Promise<void> {
+async function fail(supabase: Db, assetId: string, message: string): Promise<void> {
   const { error } = await supabase
-    .from("audio_assets")
+    .from("response_assets")
     .update({ transcript_status: "failed", transcript_error: message })
-    .eq("id", audioAssetId);
-  if (error) console.error("[audio-library] no pude marcar el fallo:", error.message);
+    .eq("id", assetId);
+  if (error) console.error("[response-assets] no pude marcar el fallo:", error.message);
 }
 
-async function revert(supabase: Db, audioAssetId: string, message: string): Promise<void> {
+async function revert(supabase: Db, assetId: string, message: string): Promise<void> {
   const { error } = await supabase
-    .from("audio_assets")
+    .from("response_assets")
     .update({ transcript_status: "failed", transcript_error: message })
-    .eq("id", audioAssetId);
-  if (error) console.error("[audio-library] no pude liberar el audio:", error.message);
+    .eq("id", assetId);
+  if (error) console.error("[response-assets] no pude liberar el audio:", error.message);
 }
 
-/** Mismo criterio que `reapStuckTranscriptions` (F7), para la banca de audios. */
+/** Mismo criterio que `reapStuckTranscriptions` (F7), para la banca de recursos. */
 const STUCK_TRANSCRIPT_MS = 10 * 60 * 1000;
 
-export async function reapStuckAudioAssetTranscriptions(supabase: Db, now: Date = new Date()): Promise<{ freed: number }> {
+export async function reapStuckAssetTranscriptions(supabase: Db, now: Date = new Date()): Promise<{ freed: number }> {
   const cutoff = new Date(now.getTime() - STUCK_TRANSCRIPT_MS).toISOString();
 
   try {
     const { data, error } = await supabase
-      .from("audio_assets")
+      .from("response_assets")
       .update({ transcript_status: "failed", transcript_error: "La transcripción no terminó. Probá con Reintentar." })
       .eq("transcript_status", "pending")
       .lt("transcript_started_at", cutoff)
       .select("id");
 
     if (error) {
-      console.error("[audio-library] no pude liberar las transcripciones colgadas:", error.message);
+      console.error("[response-assets] no pude liberar las transcripciones colgadas:", error.message);
       return { freed: 0 };
     }
     return { freed: data?.length ?? 0 };
   } catch (err) {
-    console.error("[audio-library] error inesperado en el reaper:", err instanceof Error ? err.message : "desconocido");
+    console.error("[response-assets] error inesperado en el reaper:", err instanceof Error ? err.message : "desconocido");
     return { freed: 0 };
   }
 }
