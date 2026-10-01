@@ -74,7 +74,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.status_changed": "cambió el estado de una agenda",
   "booking.sync_ok": "sincronizó la agenda con Google",
   "booking.sync_failed": "no pudo sincronizar la agenda con Google",
-  agent_audio_sent: "mandó un audio de la banca",
+  agent_asset_sent: "mandó un recurso de audio de la banca",
 };
 
 const FIELD_LABELS: Record<string, string> = {
