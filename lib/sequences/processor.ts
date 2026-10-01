@@ -179,6 +179,19 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
     return "paused";
   }
 
+  if (delivery === "unreadable") {
+    // FA6: no se reintenta -- reintentar no hace que el mensaje se vuelva
+    // legible. Se saltea el paso, igual que cuando se agotan los intentos, y
+    // queda anotado en el enrollment (el escalado de la conversacion ya lo
+    // dejo needs_human=true, esto es el motivo puntual de ESTE paso).
+    await supabase
+      .from("sequence_enrollments")
+      .update({ last_error: "El asistente no pudo leer el historial para generar este paso" })
+      .eq("id", enrollment.id);
+    await advance(supabase, enrollment.id, steps, index);
+    return "advanced";
+  }
+
   if (delivery === "retry") {
     // El tope horario no es culpa del paso: se reprograma sin gastar intento.
     await reschedule(supabase, enrollment.id, nextAttemptAt(1));
@@ -212,7 +225,7 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
   return "sent";
 }
 
-type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation";
+type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable";
 
 async function deliverStep(
   supabase: Db,
@@ -239,6 +252,7 @@ async function deliverStep(
       workspaceId,
       conversationId: context.conversationId,
       contactId: enrollment.contact_id,
+      channelId: context.channelId,
       provider: step.provider,
       modelId: step.model,
       systemPrompt:
@@ -255,6 +269,13 @@ async function deliverStep(
     });
 
     if (!reply.ok) {
+      if (reply.problem === "unreadable") {
+        // FA6: no es un fallo de configuracion, es lo mismo que haria el
+        // agente de chat -- generateAiReply ya dejo needs_human=true. No se
+        // manda nada y no se reintenta: reintentar no va a hacer que el
+        // mensaje se vuelva legible.
+        return "unreadable";
+      }
       // La key falta, es invalida o el proveedor fallo. El error ya quedo en
       // analytics_events; el paso se reintenta y, si no hay caso, se saltea.
       // La secuencia no muere por un problema de configuracion.

@@ -36,6 +36,7 @@ async function executeAiResponse(
     workspaceId: context.workspaceId,
     conversationId: context.conversationId,
     contactId: context.contactId,
+    channelId: context.channelId,
     provider: data.provider,
     modelId: data.model,
     systemPrompt: data.systemPrompt,
@@ -46,6 +47,14 @@ async function executeAiResponse(
   });
 
   if (!reply.ok) {
+    if (reply.problem === "unreadable") {
+      // FA6: la rafaga tiene algo que el modelo no puede leer (un audio sin
+      // transcribir, una imagen sin describir, un video). No es un error de
+      // configuracion: no se manda ningun mensaje rojo de fallo a la
+      // conversacion, porque no es un fallo, es lo mismo que haria el agente
+      // de chat. generateAiReply ya dejo needs_human=true. Se corta igual.
+      return cancelRun(supabase, sessionId);
+    }
     // Falta la key, es invalida o el proveedor fallo: no es un error del flow,
     // es configuracion. Se avisa en la conversacion para que el operador lo vea
     // sin mirar logs, y se corta sin romper nada mas.

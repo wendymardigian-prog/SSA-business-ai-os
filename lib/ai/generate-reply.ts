@@ -4,6 +4,8 @@ import { generateText } from "ai";
 import { getWorkspaceModel, type AiProviderProblem } from "./provider";
 import { openAiRun, type AiRunHandle, type OpenRunInput } from "./run";
 import { effectiveMessageText, type MessageWithMedia } from "@/lib/agent/effective-text";
+import { assessInterpretability } from "@/lib/agent/interpretability";
+import { markNeedsHuman } from "@/lib/agent/needs-human";
 
 /**
  * Generar una respuesta con IA, sin saber nada de flows.
@@ -29,7 +31,7 @@ import { effectiveMessageText, type MessageWithMedia } from "@/lib/agent/effecti
  * mas un runId opcional. La traza en analytics_events se queda como estaba.
  */
 
-export type AiReplyProblem = AiProviderProblem | "generation_failed";
+export type AiReplyProblem = AiProviderProblem | "generation_failed" | "unreadable";
 
 export interface AiReplyTrace {
   /** De donde nace la generacion. Queda en la metadata para poder separarlas. */
@@ -43,6 +45,8 @@ export interface AiReplyRequest {
   workspaceId: string;
   conversationId: string;
   contactId?: string | null;
+  /** Para dejarla en `conversations.needs_human` si la compuerta escala (FA6). */
+  channelId?: string | null;
   provider?: string;
   modelId?: string;
   systemPrompt?: string;
@@ -114,12 +118,96 @@ export function buildAiMessages(
   return messages;
 }
 
+/**
+ * Los mensajes entrantes sin responder (FA6): la rafaga que esta a punto de
+ * contestarse.
+ *
+ * `rows` viene en el mismo orden que la consulta (el mas nuevo primero); se
+ * recorre desde ahi hacia atras y se corta en el primer saliente, que ya
+ * cerro lo anterior. Si el mas nuevo ya es saliente (alguien respondio por
+ * otro lado entre que se encolo el paso y que corrio), la rafaga es vacia:
+ * no hay nada sin contestar, y una rafaga vacia es interpretable.
+ */
+export function inboundBurst<T extends { direction: string }>(rows: T[]): T[] {
+  const burst: T[] = [];
+  for (const row of rows) {
+    if (row.direction !== "inbound") break;
+    burst.push(row);
+  }
+  return burst.reverse();
+}
+
+/**
+ * La compuerta de interpretabilidad, version flows/secuencias (FA6).
+ *
+ * Mismo modulo puro que usa el agente de chat (lib/agent/interpretability.ts)
+ * y mismo interruptor por workspace. La diferencia: un flow no reagenda nada
+ * (corre una sola vez, sincronico), asi que "esperar" se trata igual que "no
+ * se puede leer": no hay a donde volver a mirar.
+ */
+async function checkFlowInterpretability(
+  supabase: SupabaseClient<Database>,
+  args: { workspaceId: string; burst: Array<{ id?: string; created_at: string } & MessageWithMedia> },
+): Promise<{ action: "continue" } | { action: "escalate"; reason: string }> {
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("agent_escalate_on_unreadable")
+    .eq("id", args.workspaceId)
+    .maybeSingle();
+
+  if (workspace?.agent_escalate_on_unreadable === false) return { action: "continue" };
+
+  const verdict = assessInterpretability(args.burst, { now: new Date() });
+
+  if (verdict.interpretable) return { action: "continue" };
+  return { action: "escalate", reason: verdict.reason ?? "El asistente no pudo interpretar el mensaje" };
+}
+
 export async function generateAiReply(
   supabase: SupabaseClient<Database>,
   request: AiReplyRequest
 ): Promise<AiReplyResult> {
   const ownsRun = !request.run;
   const run = request.run ?? (await openAiRun(supabase, runInputForTrace(request)));
+
+  // El historial se trae UNA sola vez: lo usa la compuerta (FA6) para mirar
+  // la rafaga sin responder, y despues buildAiMessages para armar el prompt.
+  const { data: recentMessages } = await supabase
+    .from("messages")
+    .select("id, created_at, direction, text, transcript, transcript_status, media_description, attachments")
+    .eq("conversation_id", request.conversationId)
+    .order("created_at", { ascending: false })
+    .limit(request.contextMessages ?? 10);
+
+  // ── La compuerta de interpretabilidad (FA6) ───────────────────────────────
+  //
+  // El nodo "Respuesta con IA" y los pasos de IA de las secuencias contestaban
+  // a ciegas: filtraban lo ilegible del historial pero generaban igual. Mismo
+  // bug que F10 arreglo para el agente, por otra puerta. Va ANTES de resolver
+  // el modelo: si no es interpretable, no hace falta ni mirar el BYOK.
+  const gate = await checkFlowInterpretability(supabase, {
+    workspaceId: request.workspaceId,
+    burst: inboundBurst(recentMessages ?? []),
+  });
+
+  if (gate.action === "escalate") {
+    await recordTrace(supabase, request, "ai_response_failed", {
+      reason: "unreadable",
+      message: gate.reason,
+    });
+    await markNeedsHuman(supabase, {
+      workspaceId: request.workspaceId,
+      conversationId: request.conversationId,
+      contactId: request.contactId ?? null,
+      channelId: request.channelId ?? null,
+      // Null: no hay un agente de chat involucrado, es un flow o una secuencia.
+      agentId: null,
+      runId: run.runId,
+      reason: gate.reason,
+    });
+    if (ownsRun) await run.close({ status: "escalated", statusDetail: "unreadable_media", error: gate.reason });
+    return { ok: false, problem: "unreadable", message: gate.reason, runId: run.runId };
+  }
 
   // La key sale de Vault via integration_configs. Nunca llega hasta aca: lo
   // que vuelve es un modelo ya instanciado.
@@ -141,13 +229,6 @@ export async function generateAiReply(
   }
 
   run.setModel(resolved.provider ?? "", resolved.modelId ?? "");
-
-  const { data: recentMessages } = await supabase
-    .from("messages")
-    .select("direction, text, transcript, transcript_status, media_description, attachments")
-    .eq("conversation_id", request.conversationId)
-    .order("created_at", { ascending: false })
-    .limit(request.contextMessages ?? 10);
 
   const aiMessages = buildAiMessages(recentMessages ?? []);
   if (request.userPrompt) {

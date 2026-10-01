@@ -331,6 +331,35 @@ describe("processSequenceSteps", () => {
     expect(patch.status).toBeUndefined();
   });
 
+  it("si la rafaga no se puede interpretar (FA6), el paso se SALTEA sin reintentar y sin mandar", async () => {
+    vi.mocked(generateAiReply).mockResolvedValue({
+      ok: false,
+      problem: "unreadable",
+      message: "Llegó un video, que el asistente no puede ver",
+    });
+    const { updates } = fakeClient({
+      sequence: {
+        id: "seq-1",
+        workspace_id: WS,
+        status: "active",
+        steps: [{ type: "aiMessage", prompt: "escribile" }],
+      },
+    });
+
+    const result = await processSequenceSteps();
+
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+    // Avanzo, no quedo reintentando: reintentar no hace que el mensaje se
+    // vuelva legible. needs_human ya quedo marcado por generateAiReply.
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0);
+    const patch = updates.at(-1)!.patch;
+    expect(patch.current_step_index).toBe(1);
+    expect(updates.some((u) => typeof u.patch.last_error === "string" && u.patch.last_error.includes("no pudo leer"))).toBe(
+      true,
+    );
+  });
+
   it("un paso de IA exitoso manda lo que genero el modelo", async () => {
     vi.mocked(generateAiReply).mockResolvedValue({
       ok: true,

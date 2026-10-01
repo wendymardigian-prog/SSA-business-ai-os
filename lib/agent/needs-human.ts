@@ -33,7 +33,11 @@ export interface NeedsHumanArgs {
   conversationId: string;
   contactId: string | null;
   channelId: string | null;
-  agentId: string;
+  /**
+   * Null cuando escala un flow o una secuencia (FA6): no hay agente de chat
+   * involucrado, y `logAudit` ya acepta `performedByAgentId: null`.
+   */
+  agentId: string | null;
   runId: string | null;
   /** Por que, en una linea y en castellano: es lo que lee quien la toma. */
   reason: string;

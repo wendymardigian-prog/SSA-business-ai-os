@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { buildAiMessages, generateAiReply } from "./generate-reply";
+import { buildAiMessages, generateAiReply, inboundBurst } from "./generate-reply";
+import { emptyAttachment } from "@/lib/messages/attachments";
 
 const WS = "11111111-1111-1111-1111-111111111111";
 const CONV = "22222222-2222-2222-2222-222222222222";
@@ -36,7 +37,10 @@ import { openAiRun } from "./run";
  * flow_sessions. Si lo hiciera, un paso de secuencia (que no tiene sesion)
  * estaria escribiendo sobre una fila que no le corresponde.
  */
-function fakeClient(messages: Array<{ direction: string; text: string | null }> = []) {
+function fakeClient(
+  messages: Array<{ direction: string; text: string | null }> = [],
+  options: { agentEscalateOnUnreadable?: boolean } = {},
+) {
   const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
   const touched: string[] = [];
 
@@ -44,15 +48,33 @@ function fakeClient(messages: Array<{ direction: string; text: string | null }> 
     from(table: string) {
       touched.push(table);
       return {
-        insert: async (row: Record<string, unknown>) => {
+        insert: (row: Record<string, unknown>) => {
           inserts.push({ table, row });
-          return { error: null };
+          const result = Promise.resolve({ error: null });
+          // logAudit encadena .select("id").single(); los demas inserts
+          // (analytics_events, outbound) se usan como promesa directa.
+          return Object.assign(result, {
+            select: () => ({ single: async () => ({ data: { id: "audit-1" }, error: null }) }),
+          });
         },
-        update: () => ({ eq: async () => ({ error: null }) }),
+        update: (row: Record<string, unknown>) => {
+          inserts.push({ table: `${table}:update`, row });
+          return { eq: async () => ({ error: null }) };
+        },
         select: () => ({
           eq: () => ({
             order: () => ({
               limit: async () => ({ data: messages, error: null }),
+            }),
+            // La compuerta de interpretabilidad (FA6) consulta `workspaces`
+            // por su flag. Ningun test viejo de este archivo prueba la
+            // compuerta: por default queda interpretable (el flag en true).
+            maybeSingle: async () => ({
+              data:
+                table === "workspaces"
+                  ? { agent_escalate_on_unreadable: options.agentEscalateOnUnreadable ?? true }
+                  : null,
+              error: null,
             }),
           }),
         }),
@@ -279,5 +301,102 @@ describe("generateAiReply", () => {
       role: "user",
       content: "escribile por la promo",
     });
+  });
+});
+
+describe("inboundBurst", () => {
+  it("se queda con los entrantes desde el ultimo saliente, en orden cronologico", () => {
+    const rows = [
+      { direction: "inbound", id: "3" }, // el mas nuevo
+      { direction: "inbound", id: "2" },
+      { direction: "outbound", id: "1" },
+    ];
+    expect(inboundBurst(rows).map((r) => r.id)).toEqual(["2", "3"]);
+  });
+
+  it("si el mas nuevo ya es saliente, la rafaga es vacia", () => {
+    expect(inboundBurst([{ direction: "outbound", id: "1" }])).toEqual([]);
+  });
+
+  it("sin mensajes, vacia", () => {
+    expect(inboundBurst([])).toEqual([]);
+  });
+});
+
+describe("generateAiReply: la compuerta de interpretabilidad (FA6)", () => {
+  it("un video sin interpretar: NO llama al modelo, deja needs_human y devuelve 'unreadable'", async () => {
+    const { client, inserts } = fakeClient([
+      {
+        id: "m-1",
+        created_at: "2026-10-01T12:00:00.000Z",
+        direction: "inbound",
+        text: null,
+        attachments: { v: 2, items: [emptyAttachment("video", { status: "ready", storagePath: "p" })] },
+      } as never,
+    ]);
+
+    const result = await generateAiReply(client, { workspaceId: WS, conversationId: CONV, trace: TRACE });
+
+    expect(result).toMatchObject({ ok: false, problem: "unreadable" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain("video");
+    expect(generateText).not.toHaveBeenCalled();
+    expect(getWorkspaceModel).not.toHaveBeenCalled();
+    // needs_human quedo marcado: markNeedsHuman hace un UPDATE sobre conversations.
+    expect(inserts.some((i) => i.table === "conversations:update")).toBe(true);
+  });
+
+  it("con el interruptor apagado, responde a ciegas igual (el comportamiento de siempre)", async () => {
+    vi.mocked(getWorkspaceModel).mockResolvedValue({
+      ok: true,
+      model: {} as never,
+      provider: "openai",
+      modelId: "gpt-x",
+    });
+    vi.mocked(generateText).mockResolvedValue({ text: "ok" } as never);
+    const { client } = fakeClient(
+      [
+        {
+          id: "m-1",
+          created_at: "2026-10-01T12:00:00.000Z",
+          direction: "inbound",
+          text: null,
+          attachments: { v: 2, items: [emptyAttachment("video", { status: "ready", storagePath: "p" })] },
+        } as never,
+      ],
+      { agentEscalateOnUnreadable: false },
+    );
+
+    const result = await generateAiReply(client, { workspaceId: WS, conversationId: CONV, trace: TRACE });
+
+    expect(result.ok).toBe(true);
+    expect(generateText).toHaveBeenCalled();
+  });
+
+  it("un reel compartido CON titulo (FA2) no escala: el modelo se llama igual", async () => {
+    vi.mocked(getWorkspaceModel).mockResolvedValue({
+      ok: true,
+      model: {} as never,
+      provider: "openai",
+      modelId: "gpt-x",
+    });
+    vi.mocked(generateText).mockResolvedValue({ text: "ok" } as never);
+    const { client } = fakeClient([
+      {
+        id: "m-1",
+        created_at: "2026-10-01T12:00:00.000Z",
+        direction: "inbound",
+        text: null,
+        attachments: {
+          v: 2,
+          items: [emptyAttachment("share", { status: "none", meta: { url: "https://x", title: "Un reel", shareType: "reel" } })],
+        },
+      } as never,
+    ]);
+
+    const result = await generateAiReply(client, { workspaceId: WS, conversationId: CONV, trace: TRACE });
+
+    expect(result.ok).toBe(true);
+    expect(generateText).toHaveBeenCalled();
   });
 });
