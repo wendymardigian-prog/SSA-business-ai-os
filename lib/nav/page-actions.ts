@@ -219,6 +219,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Respuestas rapidas",
     tooltip: "Textos guardados para contestar sin volver a escribirlos.",
   },
+  "/dashboard/settings/audios": {
+    title: "Banca de audios",
+    tooltip: "Notas de voz guardadas para reutilizar en la bandeja o que el agente las mande solo.",
+  },
   "/dashboard/settings/background": {
     title: "Tareas en segundo plano",
     tooltip: "Que trabajos de IA corren solos, cuando y con que modelo.",
@@ -301,6 +305,9 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
   ],
   "/dashboard/settings/templates": () => [
     { id: "new", label: "Nueva respuesta", kind: "primary", adminOnly: true },
+  ],
+  "/dashboard/settings/audios": () => [
+    { id: "new", label: "Nuevo audio", kind: "primary", adminOnly: true },
   ],
 };
 

@@ -35,6 +35,19 @@ export type AudioMime = (typeof AUDIO_MIME)[number];
 
 export type SniffedMime = AllowedMime | AudioMime;
 
+/**
+ * Los primeros bytes de un archivo en base64, para que el servidor reconozca
+ * el tipo por su contenido antes de subir nada (sniffMime corre del otro
+ * lado). La usan el composer (F18/F19) y la banca de audios (F20): ambos
+ * piden una URL firmada ANTES de subir, pasando esto en el pedido.
+ */
+export async function headBase64Of(file: Blob, n = 16): Promise<string> {
+  const buf = await file.slice(0, n).arrayBuffer();
+  let binary = "";
+  for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 /** 1 GB. Es el limite del bucket y el de la mayoria de las redes. */
 export const MAX_MEDIA_BYTES = 1024 * 1024 * 1024;
 

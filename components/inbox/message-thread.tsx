@@ -28,6 +28,7 @@ import { requestChatUpload } from "@/lib/actions/chat-upload";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 import { instagramAcceptsAudio, INSTAGRAM_AUDIO_REJECTED_MESSAGE } from "@/lib/audio/recording";
 import { formatBytes } from "@/lib/inbox/media-render";
+import { headBase64Of } from "@/lib/content/media";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
@@ -423,14 +424,6 @@ export function MessageThread({
     } finally {
       setSending(false);
     }
-  }
-
-  /** Los primeros bytes de un archivo, para que el servidor reconozca el tipo por su contenido. */
-  async function headBase64Of(file: Blob, n = 16): Promise<string> {
-    const buf = await file.slice(0, n).arrayBuffer();
-    let binary = "";
-    for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);
-    return btoa(binary);
   }
 
   /**

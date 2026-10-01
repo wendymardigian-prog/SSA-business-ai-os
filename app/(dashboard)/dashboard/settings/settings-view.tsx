@@ -14,6 +14,7 @@ import {
   ChevronRight,
   MessageSquareQuote,
   ListPlus,
+  Mic,
 } from "lucide-react";
 import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
@@ -337,6 +338,27 @@ export function SettingsView({
             >
               <MessageSquareQuote className="h-4 w-4" />
               Gestionar respuestas
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          </section>
+
+          <hr className="border-border" />
+
+          {/* Banca de audios (F20) */}
+          <section>
+            <div className="flex items-center gap-2">
+              <Mic className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Banca de audios</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Notas de voz guardadas para reutilizar en la bandeja o que el agente las mande solo.
+            </p>
+            <Link
+              href="/dashboard/settings/audios"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            >
+              <Mic className="h-4 w-4" />
+              Gestionar audios
               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
           </section>
