@@ -27,10 +27,10 @@ El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](
 - [x] FA7 — stickers/GIFs no escalan ni gastan visión (`label_only`, no `unreadable`)
 - [x] Alineación F4 — getBase64FromMediaMessage con el objeto `message` completo (§14c)
 
-### Bloque 4 — Identidad visible (F16-F17)
-- [ ] Migración 00104 (avatar_source, avatar_updated_at, find_or_link_contact)
-- [ ] F16 — fotos de perfil estables (IG + WhatsApp + retención)
-- [ ] F17 — el @ de Instagram clickeable
+### Bloque 4 — Identidad visible (F16-F17) — ✅ LISTO (1/10/2026)
+- [x] Migración 00104 (avatar_source, avatar_updated_at, find_or_link_contact) — **escrita, NO aplicada** a pedido explícito. Ver docs/PENDIENTE.md.
+- [x] F16 — fotos de perfil estables (IG + WhatsApp + retención + fallback onError)
+- [x] F17 — el @ de Instagram clickeable (panel, detalle, Canales vinculados)
 
 ### Bloque 5 — Grabar y enviar audios (F18-F19)
 - [ ] Test de no-regresión del envío de texto sin media
