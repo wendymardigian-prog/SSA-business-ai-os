@@ -7,9 +7,12 @@
  *     tiene 90 segundos antes de escalar, y el cron corre cada minuto, asi que
  *     esperar la cola dejaria la transcripcion siempre al filo. Si el intento
  *     falla por algo transitorio, ahi si se encola.
- *   - Una imagen se encola para describir. No corre el riesgo de que el agente
- *     escale por esperar: una imagen sin descripcion es igual de ilegible antes
- *     y despues, y describir cuesta una llamada al modelo de vision.
+ *   - Una imagen TAMBIEN se describe EN EL MOMENTO (FA6), con el mismo
+ *     criterio: un flow con el nodo "Respuesta con IA" corre apenas llega el
+ *     mensaje, antes de que la cola (que corre cada minuto) la hubiera
+ *     tocado. Sin esto, la compuerta de interpretabilidad escalaria TODA
+ *     imagen que le llega a un flow. Si el intento falla por algo transitorio
+ *     se encola, igual que el audio.
  *
  * Nunca lanza: corre dentro del `after()` que ya respondio 200.
  */
@@ -23,7 +26,7 @@ import {
   transcribeDedupeKey,
   type TranscribeAudioPayload,
 } from "@/lib/jobs/handlers/transcribe-audio";
-import { DESCRIBE_MEDIA_JOB, describeDedupeKey } from "@/lib/jobs/handlers/describe-media";
+import { DESCRIBE_MEDIA_JOB, describeDedupeKey, describeMessageMedia } from "@/lib/jobs/handlers/describe-media";
 import { transcribeMessage } from "./transcribe-message";
 
 type Db = SupabaseClient<Database>;
@@ -34,6 +37,7 @@ const IMAGE_KINDS = ["image"];
 export interface AfterMediaStoredResult {
   transcribed: boolean;
   transcriptionQueued: boolean;
+  described: boolean;
   descriptionQueued: boolean;
 }
 
@@ -47,6 +51,7 @@ export async function afterMediaStored(args: {
   const result: AfterMediaStoredResult = {
     transcribed: false,
     transcriptionQueued: false,
+    described: false,
     descriptionQueued: false,
   };
 
@@ -73,10 +78,21 @@ export async function afterMediaStored(args: {
   }
 
   if (hasImage) {
-    result.descriptionQueued = await enqueue(args.supabase, DESCRIBE_MEDIA_JOB, {
-      payload: { messageId: args.messageId },
-      dedupeKey: describeDedupeKey(args.messageId),
-    });
+    const outcome = await describeMessageMedia(args.supabase, args.messageId);
+
+    if (outcome.kind === "done") {
+      result.described = true;
+    } else if (outcome.kind === "retry") {
+      // Transitorio (sin modelo de vision resuelto por una falla momentanea,
+      // no se pudo bajar el archivo): que lo reintente la cola.
+      result.descriptionQueued = await enqueue(args.supabase, DESCRIBE_MEDIA_JOB, {
+        payload: { messageId: args.messageId },
+        dedupeKey: describeDedupeKey(args.messageId),
+      });
+    }
+    // skipped y failed no se encolan: el primero es que otro ya la tomo (o es
+    // un sticker/GIF, que queda label_only), el segundo ya dejo el motivo
+    // escrito y un reintento no lo mejora (sin modelo de vision conectado).
   }
 
   return result;

@@ -1,9 +1,13 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/types/database";
 import { generateText } from "ai";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun } from "@/lib/ai/run";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+
+type Db = SupabaseClient<Database>;
 
 /**
  * Describir una imagen para que el agente sepa que le mandaron (F8).
@@ -55,15 +59,20 @@ const PROMPT = [
 /**
  * La descripcion de la imagen de un mensaje. Nunca lanza para lo permanente.
  *
- * Mismo criterio que la transcripcion: un fallo transitorio lanza para que la
- * cola reintente; uno permanente deja el mensaje marcado y retorna normal.
+ * Mismo criterio y misma forma que `transcribeMessage` (lib/chat-media/
+ * transcribe-message.ts): toma `supabase` directo, no un `JobContext`, para
+ * que la use tanto el `after()` del webhook (FA6: la imagen se describe EN EL
+ * MOMENTO, no se espera a la cola) como el job `describe_media`, que queda de
+ * respaldo para el reintento transitorio y el manual.
+ *
+ * Mismo criterio de fallos que la transcripcion: un fallo transitorio
+ * devuelve "retry" para que quien llama decida (el job relanza; el `after()`
+ * encola); uno permanente deja el mensaje marcado y retorna normal.
  */
 export async function describeMessageMedia(
-  context: JobContext,
+  supabase: Db,
   messageId: string,
 ): Promise<{ kind: "done" | "skipped" | "failed" | "retry"; reason?: string }> {
-  const { supabase } = context;
-
   // El claim: `media_description` pasa de null a '' (en curso). Si otro camino
   // ya la tomo, esta sentencia no devuelve fila.
   const { data: claimed, error: claimError } = await supabase
@@ -97,7 +106,7 @@ export async function describeMessageMedia(
       if (error) console.error("[describe_media] no pude marcar el mensaje:", error.message);
       return { kind: "skipped", reason: "sticker o gif: no hace falta describir" };
     }
-    return await giveUp(context, messageId, "La imagen no está disponible");
+    return await giveUp(supabase, messageId, "La imagen no está disponible");
   }
 
   const { data: file, error: downloadError } = await supabase.storage
@@ -105,7 +114,7 @@ export async function describeMessageMedia(
     .download(image.storagePath);
 
   if (downloadError || !file) {
-    await release(context, messageId);
+    await release(supabase, messageId);
     return { kind: "retry", reason: "no pude bajar la imagen" };
   }
 
@@ -122,7 +131,7 @@ export async function describeMessageMedia(
 
   if (!resolved?.ok || !resolved.model) {
     return await giveUp(
-      context,
+      supabase,
       messageId,
       "No hay ningún modelo con visión conectado para describir la imagen",
     );
@@ -159,7 +168,7 @@ export async function describeMessageMedia(
   } catch (err) {
     const message = err instanceof Error ? err.message : "error desconocido";
     await run.close({ status: "error", statusDetail: "vision_failed", error: message });
-    await release(context, messageId);
+    await release(supabase, messageId);
     // Una caida del proveedor vale reintentar; el claim ya quedo liberado.
     return { kind: "retry", reason: "el modelo de vision fallo" };
   }
@@ -167,7 +176,7 @@ export async function describeMessageMedia(
   await run.close({ status: "responded" });
 
   if (text.length === 0) {
-    return await giveUp(context, messageId, "El modelo no devolvió ninguna descripción");
+    return await giveUp(supabase, messageId, "El modelo no devolvió ninguna descripción");
   }
 
   const { error: saveError } = await supabase
@@ -190,11 +199,11 @@ export async function describeMessageMedia(
 
 /** Permanente: el mensaje queda no interpretable y el agente va a escalar. */
 async function giveUp(
-  context: JobContext,
+  supabase: Db,
   messageId: string,
   reason: string,
 ): Promise<{ kind: "failed"; reason: string }> {
-  const { error } = await context.supabase
+  const { error } = await supabase
     .from("messages")
     .update({ media_description: null, interpretability: "unreadable" })
     .eq("id", messageId);
@@ -204,8 +213,8 @@ async function giveUp(
 }
 
 /** Transitorio: se libera el claim para que el reintento lo pueda tomar. */
-async function release(context: JobContext, messageId: string): Promise<void> {
-  const { error } = await context.supabase
+async function release(supabase: Db, messageId: string): Promise<void> {
+  const { error } = await supabase
     .from("messages")
     .update({ media_description: null })
     .eq("id", messageId);
@@ -221,7 +230,7 @@ async function handleDescribeMedia(context: JobContext): Promise<void> {
     return;
   }
 
-  const result = await describeMessageMedia(context, messageId);
+  const result = await describeMessageMedia(context.supabase, messageId);
   if (result.kind === "retry") {
     throw new Error(`no pude describir la imagen (${result.reason})`);
   }
