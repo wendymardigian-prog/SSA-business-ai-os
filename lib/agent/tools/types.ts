@@ -76,6 +76,14 @@ export interface AgentToolResult {
    * Derivar a una persona corta el turno: el agente ya no tiene que contestar.
    */
   endsTurn?: boolean;
+  /**
+   * Para una herramienta con `defersInDraftAsync` (enviar_audio, F22): en modo
+   * borrador, en vez de ejecutar el efecto de verdad, `execute` devuelve esto
+   * y buildToolSet lo suma a las sugerencias del borrador. Distinto de
+   * `deferInDraft` (sincronico): esta herramienta necesita leer la base antes
+   * de decidir, y `deferInDraft` no puede ser async.
+   */
+  suggestion?: SuggestedAction;
 }
 
 /**
@@ -182,6 +190,17 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   };
   /** Descripcion para el modelo en modo borrador, si cambia (derivar ya no termina el turno). */
   descriptionInDraft?: string;
+  /**
+   * Como `deferInDraft`, pero para una herramienta que necesita leer la base
+   * para decidir que sugerir (enviar_audio: hay que saber si el audio sigue
+   * habilitado y traer su archivo). `deferInDraft` es sincronico y no puede
+   * hacer esa consulta, asi que esta herramienta la hace DENTRO de `execute`
+   * (que es async) y devuelve `result.suggestion` en vez de mandar de verdad.
+   * Con esto en `true`, buildToolSet llama a `execute` igual en modo borrador
+   * (no a `deferInDraft`, que ni hace falta declarar) y trata el resultado
+   * como una sugerencia sin efecto de negocio, igual que las diferidas.
+   */
+  defersInDraftAsync?: boolean;
   /**
    * No se ofrece cuando el turno redacta en vez de enviar (borrador o reglas).
    *

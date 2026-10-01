@@ -50,8 +50,8 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
   // del sistema y no se deshace descartando el borrador.
   for (const definition of toolsForTurn(ctx.agent, { mode: ctx.mode })) {
     // Solo lectura: nada que escriba en el CRM. Las diferidas en borrador se
-    // quedan: solo dejan una sugerencia.
-    if (ctx.readOnly && definition.auditAction && !(draft && definition.deferInDraft)) {
+    // quedan (sincronicas o async): solo dejan una sugerencia.
+    if (ctx.readOnly && definition.auditAction && !(draft && (definition.deferInDraft || definition.defersInDraftAsync))) {
       await ctx.run.step({
         kind: "tool_call",
         name: definition.name,
@@ -94,6 +94,7 @@ export async function buildToolSet(ctx: AgentToolContext): Promise<BuiltToolSet>
             return deferred.forModel;
           }
           const result = await definition.execute({ input, config: resolved.config, ctx });
+          if (result.suggestion) state.suggestions.push(result.suggestion);
           if (definition.capturesIntent && result.ok) {
             const ii = input as { category_id?: string; confidence?: number };
             if (typeof ii.category_id === "string" && typeof ii.confidence === "number") {

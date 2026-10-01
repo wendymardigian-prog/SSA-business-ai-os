@@ -12,6 +12,7 @@ import { pauseAgentInConversation } from "../tools/effects";
 import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, hasGuardrailReview, parseSuggestedActions, type SuggestedAction } from "./types";
 import { findWhatsappLinkForRun } from "../tools/whatsapp-link";
 import { recordWhatsappHandoff } from "../whatsapp-handoff";
+import { sendAgentAudio } from "../send-audio";
 
 /**
  * Las decisiones sobre un borrador (Bloque 2c): enviar (tal cual o editado),
@@ -269,7 +270,7 @@ export async function approveDraft(args: {
     .eq("id", draft.id)
     .eq("status", "sending");
 
-  await applySuggestions(args.service, draft, args.userId, now);
+  await applySuggestions(args.service, draft, args.userId, now, conversation?.late_conversation_id ?? null);
   await clearAgentError(args.service, draft.conversation_id);
 
   // El pase a WhatsApp: si el texto que salio (el enviado, editado o no) lleva
@@ -303,7 +304,13 @@ export async function approveDraft(args: {
  * agente como actor y la persona en metadata.approved_by: aparecen en la
  * pestana Acciones y se pueden revertir.
  */
-async function applySuggestions(service: Db, draft: DraftRow, userId: string, now: Date): Promise<void> {
+async function applySuggestions(
+  service: Db,
+  draft: DraftRow,
+  userId: string,
+  now: Date,
+  lateConversationId: string | null,
+): Promise<void> {
   const suggestions: SuggestedAction[] = parseSuggestedActions(draft.suggested_actions);
   if (!draft.agent_id) return;
   const meta = { approved_by: userId, draft_id: draft.id };
@@ -339,6 +346,41 @@ async function applySuggestions(service: Db, draft: DraftRow, userId: string, no
           { maxMinutes: s.maxMinutes, autoResume: s.autoResume },
           { minutes: s.minutes, reason: s.reason, now },
         );
+      } else if (s.type === "send_audio") {
+        // Se relee el audio en vez de confiar en lo que dejo la sugerencia:
+        // entre que el agente lo eligio y que Wendy aprueba puede haberse
+        // dado de baja, apagado para el agente, o perdido la transcripcion.
+        const { data: asset } = await service
+          .from("audio_assets")
+          .select("id, name, storage_path, mime_type, duration_seconds, transcript, transcript_status, agent_enabled, is_active, deleted_at")
+          .eq("id", s.audioAssetId)
+          .eq("workspace_id", draft.workspace_id)
+          .maybeSingle();
+        if (asset && asset.is_active && !asset.deleted_at && asset.agent_enabled && asset.transcript_status === "ready" && asset.transcript) {
+          await sendAgentAudio(
+            service,
+            {
+              workspaceId: draft.workspace_id,
+              channelId: draft.channel_id,
+              contactId: draft.contact_id,
+              conversationId: draft.conversation_id,
+              lateConversationId,
+              agentId: draft.agent_id,
+              runId: draft.run_id,
+              sentByUserId: userId,
+            },
+            {
+              audioAssetId: asset.id,
+              name: asset.name,
+              storagePath: asset.storage_path,
+              mimeType: asset.mime_type,
+              durationSeconds: asset.duration_seconds,
+              transcript: asset.transcript,
+            },
+          );
+        } else {
+          console.error("[drafts] el audio sugerido ya no esta disponible para el agente:", s.audioAssetId);
+        }
       }
     } catch (err) {
       console.error("[drafts] no pude aplicar una sugerencia:", err instanceof Error ? err.message : "error desconocido");

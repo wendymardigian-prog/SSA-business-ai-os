@@ -10,7 +10,7 @@ import { agentRow } from "../testing/fixtures";
  */
 
 describe("registro de herramientas", () => {
-  it("tiene las herramientas de la Etapa 1 mas las siete de agendamiento", () => {
+  it("tiene las herramientas de la Etapa 1 mas las siete de agendamiento y las dos de la banca de audios", () => {
     expect(listAgentTools().map((t) => t.name).sort()).toEqual(
       [
         "asignar_conversacion",
@@ -19,8 +19,10 @@ describe("registro de herramientas", () => {
         "cambiar_temperatura",
         "declarar_intencion",
         "derivar_a_humano",
+        "enviar_audio",
         "etiquetar_contacto",
         "generar_link_whatsapp",
+        "listar_audios",
         "pausarse",
         "programar_seguimiento",
         // Etapa 4: la habilidad de agendamiento. Estan registradas siempre,

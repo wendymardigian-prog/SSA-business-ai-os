@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Ban, Bot, Check, Loader2, MessageSquareReply, MoreHorizontal, Mic, Pencil, RefreshCw, Send, Trash2, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -147,7 +147,26 @@ function describeApplied(action: AppliedAction): string {
 function describeSuggestion(s: SuggestedAction): string {
   if (s.type === "escalate") return `Sugiere derivar a una persona: ${s.reason}`;
   if (s.type === "guardrail_review") return "Bloqueado por un guardarrail de salida";
+  if (s.type === "send_audio") return `Sugiere mandar el audio "${s.name}"`;
   return `Sugiere pausarse ${s.minutes >= 60 ? `${Math.round(s.minutes / 60)} h` : `${s.minutes} min`}: ${s.reason}`;
+}
+
+/** El reproductor del audio que el agente sugirio mandar (F22), misma ruta firmada que la bandeja. */
+function AudioSuggestionPreview({ draft }: { draft: DraftQueueRow }) {
+  const suggestion = draft.suggestedActions.find((s) => s.type === "send_audio");
+  if (!suggestion || suggestion.type !== "send_audio") return null;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2">
+      <Mic className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{suggestion.name}</span>
+      <audio
+        controls
+        preload="none"
+        src={`/api/v1/chat-media?path=${encodeURIComponent(suggestion.storagePath)}`}
+        className="h-8 w-40 max-w-[50%] dark:[color-scheme:dark]"
+      />
+    </div>
+  );
 }
 
 const RULE_LABELS: Record<string, string> = {
@@ -291,7 +310,13 @@ function AgentActions({ draft }: { draft: DraftQueueRow }) {
           className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-200"
           title="No se ejecutó: se aplica si enviás este borrador"
         >
-          {s.type === "escalate" ? <UserRound className="h-3 w-3" aria-hidden /> : <Ban className="h-3 w-3" aria-hidden />}
+          {s.type === "escalate" ? (
+            <UserRound className="h-3 w-3" aria-hidden />
+          ) : s.type === "send_audio" ? (
+            <Mic className="h-3 w-3" aria-hidden />
+          ) : (
+            <Ban className="h-3 w-3" aria-hidden />
+          )}
           {describeSuggestion(s)}
         </li>
       ))}
@@ -571,6 +596,7 @@ export function DraftQueueItem({
       <div className="min-w-0">
         <p className="mb-1 text-[11px] font-medium uppercase text-muted-foreground queue:hidden">Lo que hizo el agente</p>
         <AgentActions draft={draft} />
+        {!decided && <div className="mt-2"><AudioSuggestionPreview draft={draft} /></div>}
       </div>
 
       <div className="min-w-0 space-y-2 pb-4 queue:pb-0">
@@ -641,6 +667,7 @@ export function ThreadDraft({ draft, onDone }: { draft: DraftQueueRow; onDone: (
       <ProposedReply draft={draft} decision={decision} />
       <GuardrailBanner draft={draft} />
       <AgentActions draft={draft} />
+      <AudioSuggestionPreview draft={draft} />
       <Decisions draft={draft} decision={decision} inboxHref={null} />
       {!decision.canSend && draft.status !== "sending" && (
         <p className="text-xs text-muted-foreground">

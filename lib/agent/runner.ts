@@ -47,6 +47,8 @@ import { validateOutput } from "./output";
 import { checkOutputGuardrails, outputRuleLabel } from "./output-guardrails";
 import { applyWhatsappMarker, recordWhatsappHandoff } from "./whatsapp-handoff";
 import { WHATSAPP_MEMO_KEY, type WhatsappLinkMemo } from "./tools/whatsapp-link";
+import { AUDIO_SEND_MEMO_KEY, type AudioSendMemo } from "./tools/audio";
+import { sendAgentAudio } from "./send-audio";
 import { buildModelMessages, buildSystemPrompt, type DraftRevision } from "./prompt";
 import { defaultSend, sendAgentParts, type SendFn } from "./send";
 import { defaultRefresh, type RefreshFn } from "./refresh";
@@ -975,6 +977,20 @@ async function continueTurn(
       messageId: linkPart >= 0 ? sent.messageIds[linkPart] : null,
       origin: "tool",
     });
+  }
+
+  // 10. enviar_audio (F22): si la herramienta dejo un audio en turn.memo, se
+  // manda DESPUES del texto, por el mismo sendChannelMessage. Un fallo al
+  // mandarlo no deshace el texto que ya salio: solo se loguea.
+  const audioMemo = (turnMemo.get(AUDIO_SEND_MEMO_KEY) as AudioSendMemo | undefined) ?? null;
+  if (audioMemo) {
+    const audioResult = await sendAgentAudio(supabase, sendCtx(latest, agent, runId), audioMemo);
+    if (!audioResult.ok) {
+      console.error(
+        `[agent-runner] no pude mandar el audio "${audioMemo.name}" del turno:`,
+        audioResult.failure?.message ?? "error desconocido",
+      );
+    }
   }
 
   const details = [
