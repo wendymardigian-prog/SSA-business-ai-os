@@ -214,15 +214,90 @@ describe("mientras la transcripcion esta en camino, el turno espera (F10)", () =
     expect((job?.payload as { blocked_retry?: boolean })?.blocked_retry).toBe(true);
   });
 
-  it("pasados los 90 segundos ya no espera: escala", async () => {
+  it("a los 95s desde que llego el mensaje TODAVIA espera (FA5): el reloj arranca cuando el turno mira, no cuando llego el mensaje", async () => {
+    // Antes esto escalaba directo: los 90s se contaban desde `created_at` del
+    // mensaje, y la ventana de silencio (60s) ya se habia comido mas de la
+    // mitad del presupuesto antes de la primera mirada. Ahora el turno tiene
+    // sus 90s completos desde que EL empieza a esperar.
     const w = turnWorld();
     w.addInbound(null, 0, voice({ transcript_status: "pending", transcript_error: null }));
     w.clock.ms = T0 + 95_000;
 
     await runAgentTurn(w.db.client, w.payload, w.deps);
 
+    expect(conversation(w).needs_human).toBe(false);
+
+    const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst");
+    expect((job?.payload as { media_wait_started_at?: string })?.media_wait_started_at).toBe(
+      new Date(T0 + 95_000).toISOString(),
+    );
+  });
+
+  it("a los 140s sigue esperando, y recien pasados los 90s desde la PRIMERA mirada escala", async () => {
+    // En produccion, el cron de /api/cron/jobs RECLAMA el job (lo pasa a
+    // "processing") antes de invocar el turno: por eso el reagendado del
+    // propio turno INSERTA una fila nueva en vez de fusionarse con la suya
+    // (push_debounced_job solo fusiona sobre jobs "pending"). El mock en
+    // memoria no reclama solo: se simula aca, o el segundo reagendado se
+    // fusionaria consigo mismo y perderia media_wait_started_at por ser
+    // volatil (pensado para cuando LLEGA un mensaje nuevo, no para esto).
+    const claim = () => {
+      const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst" && j.status === "pending");
+      if (job) job.status = "processing";
+      return job;
+    };
+
+    const w = turnWorld();
+    w.addInbound(null, 0, voice({ transcript_status: "pending", transcript_error: null }));
+    w.clock.ms = T0 + 95_000;
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    const firstWait = claim();
+    expect((firstWait?.payload as { media_wait_started_at?: string })?.media_wait_started_at).toBe(
+      new Date(T0 + 95_000).toISOString(),
+    );
+
+    // 45s mas tarde (T0+140s): 45s desde la primera mirada, todavia dentro de
+    // los 90s de esa espera.
+    w.clock.ms = T0 + 140_000;
+    await runAgentTurn(w.db.client, firstWait?.payload, w.deps);
+    expect(conversation(w).needs_human).toBe(false);
+
+    // Pasados los 90s desde la PRIMERA mirada (T0+95+91=T0+186s): recien ahi.
+    const secondWait = claim();
+    expect((secondWait?.payload as { media_wait_started_at?: string })?.media_wait_started_at).toBe(
+      new Date(T0 + 95_000).toISOString(),
+    );
+    w.clock.ms = T0 + 95_000 + 91_000;
+    await runAgentTurn(w.db.client, secondWait?.payload, w.deps);
+
     expect(conversation(w).needs_human).toBe(true);
     expect(conversation(w).needs_human_reason).toContain("no terminó a tiempo");
+  });
+
+  it("un mensaje NUEVO durante la espera reinicia el reloj (FA5): es una rafaga distinta", async () => {
+    const w = turnWorld();
+    w.addInbound(null, 0, voice({ transcript_status: "pending", transcript_error: null }));
+    w.clock.ms = T0 + 70_000;
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    const firstWait = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst");
+    expect((firstWait?.payload as { media_wait_started_at?: string })?.media_wait_started_at).toBeTruthy();
+
+    // Simula lo que hace el webhook al agendar un turno nuevo: push_debounced_job
+    // con las claves volatiles, que incluyen media_wait_started_at (FA5).
+    const { data: merged } = await w.db.client.rpc("push_debounced_job", {
+      p_type: "agent_burst",
+      p_dedupe_key: "agent_burst:cv-1",
+      p_payload: { last_message_at: new Date(T0 + 75_000).toISOString() },
+      p_run_at: new Date(T0 + 80_000).toISOString(),
+      p_deadline: null,
+      p_volatile_keys: ["regenerate_instruction", "media_wait_started_at"],
+    });
+    expect(merged).toBeTruthy();
+
+    const job = w.db.rows("scheduled_jobs").find((j) => j.type === "agent_burst");
+    expect((job?.payload as { media_wait_started_at?: string })?.media_wait_started_at).toBeUndefined();
   });
 });
 

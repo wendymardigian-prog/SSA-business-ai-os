@@ -33,6 +33,8 @@ export const WAIT_FOR_MEDIA_MS = 90_000;
 
 export interface InterpretabilityInput extends MessageWithMedia {
   created_at: string;
+  /** Para cruzar con un trabajo de transcripcion en cola (FA4). Opcional: los tests viejos no lo necesitan. */
+  id?: string;
 }
 
 export interface InterpretabilityVerdict {
@@ -44,16 +46,23 @@ export interface InterpretabilityVerdict {
   waiting: boolean;
 }
 
-/** Si un mensaje esta esperando algo que puede llegar. */
-function isWaiting(message: InterpretabilityInput, elapsedMs: number): boolean {
-  if (elapsedMs >= WAIT_FOR_MEDIA_MS) return false;
-
-  // Un audio en camino: o se esta transcribiendo, o todavia no arranco.
+/**
+ * Si un mensaje esta esperando algo que puede llegar.
+ *
+ * `retryQueued` es FA4: un 429 transitorio del proveedor de transcripción escribe `transcript_status
+ * = 'failed'` y encola un reintento en `scheduled_jobs`. Sin esto la compuerta
+ * veia "failed", lo trataba como ilegible DEFINITIVO, y escalaba (apagando el
+ * agente) aunque la cola fuera a transcribir bien 20-30 segundos despues.
+ */
+function isWaiting(message: InterpretabilityInput, retryQueued: boolean): boolean {
+  // Un audio en camino: o se esta transcribiendo, o todavia no arranco, o
+  // fallo por algo transitorio y ya hay un reintento en la cola.
   const status = message.transcript_status;
-  if (status === "pending" || status === "none" || status == null) {
+  const audioInFlight = status === "pending" || status === "none" || status == null || (status === "failed" && retryQueued);
+  if (audioInFlight) {
     const reason = unreadableReason(message);
-    // Solo si lo que lo hace ilegible es justamente el audio o la imagen: un
-    // video no mejora esperando.
+    // Solo si lo que lo hace ilegible es justamente el audio: un video no
+    // mejora esperando.
     if (reason?.includes("nota de voz") || reason?.includes("un audio")) return true;
   }
 
@@ -75,10 +84,25 @@ function isWaiting(message: InterpretabilityInput, elapsedMs: number): boolean {
  */
 export function assessInterpretability(
   messages: InterpretabilityInput[],
-  options: { now?: Date; waitMs?: number } = {},
+  options: {
+    now?: Date;
+    waitMs?: number;
+    /**
+     * FA5: desde cuando se cuentan los 90 segundos. Sin esto (los tests
+     * viejos y cualquier caller que no la pase), cada mensaje usa su propio
+     * `created_at`, como siempre. El runner SI la pasa, y ancla los 90
+     * segundos a cuando el TURNO empezo a esperar, no a cuando llego el
+     * mensaje: la ventana de silencio (60s tipico) ya se habia comido mas de
+     * la mitad del presupuesto antes de la primera mirada.
+     */
+    waitStartedAt?: Date;
+    /** FA4: los ids de mensaje con un `transcribe_audio` pendiente o corriendo. */
+    retryQueuedIds?: Set<string>;
+  } = {},
 ): InterpretabilityVerdict {
   const now = options.now ?? new Date();
   const waitMs = options.waitMs ?? WAIT_FOR_MEDIA_MS;
+  const retryQueuedIds = options.retryQueuedIds ?? new Set<string>();
 
   let waiting = false;
 
@@ -90,10 +114,12 @@ export function assessInterpretability(
     // Puede pasar con un mensaje de sistema o un payload raro.
     if (reason === null) continue;
 
-    const created = new Date(message.created_at).getTime();
-    const elapsedMs = Number.isFinite(created) ? now.getTime() - created : Number.POSITIVE_INFINITY;
+    const anchor = options.waitStartedAt ?? new Date(message.created_at);
+    const anchorMs = anchor.getTime();
+    const elapsedMs = Number.isFinite(anchorMs) ? now.getTime() - anchorMs : Number.POSITIVE_INFINITY;
+    const retryQueued = message.id ? retryQueuedIds.has(message.id) : false;
 
-    if (elapsedMs < waitMs && isWaiting(message, elapsedMs)) {
+    if (elapsedMs < waitMs && isWaiting(message, retryQueued)) {
       // Vale esperar, pero se sigue mirando el resto: si OTRO mensaje de la
       // rafaga es definitivamente ilegible (un video), esperar no sirve de nada
       // y hay que escalar ya.

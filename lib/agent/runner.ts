@@ -16,6 +16,7 @@ import {
 } from "@/lib/scheduler";
 import { DEFAULT_BURST_MAX_AGE_HOURS, channelMode, loadWorkspaceAgents, resolveAgentState, type AgentConfig } from "./config";
 import { assessInterpretability } from "./interpretability";
+import { TRANSCRIBE_AUDIO_JOB, transcribeDedupeKey } from "@/lib/jobs/handlers/transcribe-audio";
 import { effectiveMessageText } from "./effective-text";
 import { markNeedsHuman } from "./needs-human";
 import {
@@ -435,12 +436,13 @@ async function continueTurn(
     conversation,
     burst,
     now: deps.now(),
+    payload: args.payload,
   });
 
   if (gate.action === "wait") {
     // La transcripcion tarda 2-5 segundos: vale esperarla. El turno se reagenda
     // con el flag que hace que no se descarte por viejo.
-    await rescheduleForMedia(supabase, { deps, conversation, agent, burst });
+    await rescheduleForMedia(supabase, { deps, conversation, agent, burst, payload: args.payload });
     await run.step({ kind: "guardrail", name: "interpretability", output: { accion: "esperar" } });
     return close("skipped", "waiting_media");
   }
@@ -1164,7 +1166,7 @@ export const MEDIA_RETRY_SECONDS = 20;
  */
 async function checkInterpretability(
   supabase: Db,
-  args: { conversation: TurnConversation; burst: StoredMessage[]; now: Date },
+  args: { conversation: TurnConversation; burst: StoredMessage[]; now: Date; payload: AgentBurstPayload },
 ): Promise<{ action: "continue" } | { action: "wait" } | { action: "escalate"; reason: string }> {
   const { data: workspace } = await supabase
     .from("workspaces")
@@ -1176,8 +1178,21 @@ async function checkInterpretability(
   // correcto, y el que quiera apagarlo lo apaga a mano.
   if (workspace?.agent_escalate_on_unreadable === false) return { action: "continue" };
 
+  // FA4: un mensaje con transcript_status='failed' puede ser un fallo
+  // DEFINITIVO (sin clave, audio invalido) o uno TRANSITORIO (un 429 del proveedor)
+  // que ya tiene un reintento en la cola. Sin esto la compuerta no distingue
+  // y escala en los dos casos, apagando el agente por algo que la cola iba a
+  // resolver sola.
+  const retryQueuedIds = await pendingTranscribeJobIds(supabase, args.burst.map((m) => m.id));
+
+  // FA5: los 90 segundos se cuentan desde que el TURNO empezo a esperar, no
+  // desde que llego el mensaje. Si ya hay un valor guardado (una espera
+  // anterior de esta misma rafaga), se respeta; si no, arranca ahora.
+  const waitStartedAt = args.payload.media_wait_started_at ? new Date(args.payload.media_wait_started_at) : args.now;
+
   const verdict = assessInterpretability(
     args.burst.map((m) => ({
+      id: m.id,
       created_at: m.created_at,
       text: m.text,
       transcript: m.transcript,
@@ -1185,12 +1200,38 @@ async function checkInterpretability(
       media_description: m.media_description,
       attachments: m.attachments,
     })),
-    { now: args.now },
+    { now: args.now, waitStartedAt, retryQueuedIds },
   );
 
   if (verdict.interpretable) return { action: "continue" };
   if (verdict.waiting) return { action: "wait" };
   return { action: "escalate", reason: verdict.reason ?? "El asistente no pudo interpretar el mensaje" };
+}
+
+/**
+ * Los ids de mensaje de la rafaga que tienen un `transcribe_audio` pendiente
+ * o corriendo en este momento (FA4). Un fallo que falla la consulta se trata
+ * como "sin reintento en cola": la regla dura es escalar ante la duda.
+ */
+async function pendingTranscribeJobIds(supabase: Db, messageIds: string[]): Promise<Set<string>> {
+  if (messageIds.length === 0) return new Set();
+  const dedupeKeys = messageIds.map((id) => transcribeDedupeKey(id));
+  const { data, error } = await supabase
+    .from("scheduled_jobs")
+    .select("dedupe_key")
+    .eq("type", TRANSCRIBE_AUDIO_JOB)
+    .in("dedupe_key", dedupeKeys)
+    .in("status", ["pending", "processing"]);
+
+  if (error || !data) return new Set();
+
+  const prefix = "transcribe:";
+  const ids = new Set<string>();
+  for (const row of data) {
+    const key = row.dedupe_key;
+    if (key?.startsWith(prefix)) ids.add(key.slice(prefix.length));
+  }
+  return ids;
 }
 
 /**
@@ -1203,7 +1244,7 @@ async function checkInterpretability(
  */
 async function rescheduleForMedia(
   supabase: Db,
-  args: { deps: TurnDeps; conversation: TurnConversation; agent: AgentConfig; burst: StoredMessage[] },
+  args: { deps: TurnDeps; conversation: TurnConversation; agent: AgentConfig; burst: StoredMessage[]; payload: AgentBurstPayload },
 ): Promise<void> {
   const payload: AgentBurstPayload = {
     workspaceId: args.conversation.workspace_id,
@@ -1213,6 +1254,9 @@ async function rescheduleForMedia(
     agentId: args.agent.id,
     last_message_at: args.burst[args.burst.length - 1].created_at,
     blocked_retry: true,
+    // FA5: si esta rafaga ya venia esperando, se conserva el instante en que
+    // empezo. Si es la primera vez que se espera, arranca ahora.
+    media_wait_started_at: args.payload.media_wait_started_at ?? args.deps.now().toISOString(),
   };
 
   try {

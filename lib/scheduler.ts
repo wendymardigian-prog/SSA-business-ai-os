@@ -44,6 +44,14 @@ export interface AgentBurstPayload {
    * viejo: la ventana cerro hace rato a proposito.
    */
   blocked_retry?: boolean;
+  /**
+   * FA5: cuando el turno empezo a esperar una transcripcion/descripcion. Se
+   * escribe la PRIMERA vez que la compuerta decide esperar, y se arrastra sin
+   * tocar en cada reagenda de rescheduleForMedia: los 90 segundos de espera se
+   * cuentan desde aca, no desde que llego el mensaje (que ya se comio la
+   * ventana de silencio antes de la primera mirada).
+   */
+  media_wait_started_at?: string | null;
 }
 
 /**
@@ -52,8 +60,16 @@ export interface AgentBurstPayload {
  * lead mientras espera una regeneracion LIMPIA la instruccion ("no menciones
  * el precio" era sobre el borrador viejo, no sobre lo que acaba de escribir)
  * pero conserva regenerate_of, que no es volatil.
+ *
+ * `media_wait_started_at` tambien es volatil (FA5) por la misma logica: si un
+ * mensaje nuevo llega mientras el turno esperaba una transcripcion, es una
+ * rafaga distinta y el reloj de los 90 segundos tiene que arrancar de nuevo,
+ * no seguir corriendo desde la espera anterior. Un reagendado propio (sin
+ * mensaje nuevo de por medio) no pasa por esta fusion: el job anterior ya
+ * esta `processing` cuando rescheduleForMedia inserta el siguiente, asi que
+ * ahi el valor se arrastra entero.
  */
-export const AGENT_BURST_VOLATILE_KEYS = ["regenerate_instruction"] as const;
+export const AGENT_BURST_VOLATILE_KEYS = ["regenerate_instruction", "media_wait_started_at"] as const;
 
 /**
  * Cuando tiene que correr el turno del agente para una ventana de silencio.

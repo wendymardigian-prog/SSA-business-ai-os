@@ -11,6 +11,7 @@ import { assessInterpretability, WAIT_FOR_MEDIA_MS, type InterpretabilityInput }
 
 const NOW = new Date("2026-09-28T12:00:00.000Z");
 const secondsAgo = (s: number) => new Date(NOW.getTime() - s * 1000).toISOString();
+const secondsAgoDate = (s: number) => new Date(NOW.getTime() - s * 1000);
 
 const items = (...kinds: Parameters<typeof emptyAttachment>[0][]) => ({
   v: 2,
@@ -115,6 +116,78 @@ describe("assessInterpretability: cuando vale ESPERAR (F10)", () => {
       { now: NOW, waitMs: 5_000 },
     );
     expect(verdict.waiting).toBe(false);
+  });
+});
+
+describe("assessInterpretability: un 429 transitorio no quema la conversacion (FA4)", () => {
+  it("failed CON un reintento en cola se espera, no escala", () => {
+    const verdict = assessInterpretability(
+      [msg({ id: "m-1", transcript_status: "failed", attachments: items("voice"), created_at: secondsAgo(5) })],
+      { now: NOW, retryQueuedIds: new Set(["m-1"]) },
+    );
+
+    expect(verdict).toEqual({ interpretable: false, reason: null, waiting: true });
+  });
+
+  it("failed SIN reintento en cola escala como siempre (sin clave, archivo invalido, muy grande)", () => {
+    const verdict = assessInterpretability(
+      [msg({ id: "m-1", transcript_status: "failed", attachments: items("voice"), created_at: secondsAgo(5) })],
+      { now: NOW, retryQueuedIds: new Set() },
+    );
+
+    expect(verdict).toEqual({
+      interpretable: false,
+      reason: "Llegó una nota de voz que no se pudo transcribir",
+      waiting: false,
+    });
+  });
+
+  it("failed con reintento en cola, pero pasados los 90 s igual escala", () => {
+    const verdict = assessInterpretability(
+      [msg({ id: "m-1", transcript_status: "failed", attachments: items("voice"), created_at: secondsAgo(95) })],
+      { now: NOW, retryQueuedIds: new Set(["m-1"]) },
+    );
+
+    expect(verdict.waiting).toBe(false);
+    expect(verdict.interpretable).toBe(false);
+  });
+
+  it("sin id en el mensaje, nunca matchea retryQueuedIds: no revienta, escala como sin reintento", () => {
+    const verdict = assessInterpretability(
+      [msg({ transcript_status: "failed", attachments: items("voice") })],
+      { now: NOW, retryQueuedIds: new Set(["otro-id"]) },
+    );
+
+    expect(verdict.waiting).toBe(false);
+  });
+});
+
+describe("assessInterpretability: el reloj de espera arranca cuando el turno empieza (FA5)", () => {
+  it("sin waitStartedAt, se sigue usando el created_at de cada mensaje (compat hacia atras)", () => {
+    const verdict = assessInterpretability(
+      [msg({ transcript_status: "pending", attachments: items("voice"), created_at: secondsAgo(91) })],
+      { now: NOW },
+    );
+    expect(verdict.waiting).toBe(false);
+  });
+
+  it("con waitStartedAt reciente, un mensaje viejo igual espera: el reloj es del turno, no del mensaje", () => {
+    // El mensaje llego hace 91s (ya hubiera escalado con la regla vieja), pero
+    // el turno recien empezo a esperar: todavia tiene presupuesto.
+    const verdict = assessInterpretability(
+      [msg({ transcript_status: "pending", attachments: items("voice"), created_at: secondsAgo(91) })],
+      { now: NOW, waitStartedAt: secondsAgoDate(5) },
+    );
+    expect(verdict.waiting).toBe(true);
+  });
+
+  it("con waitStartedAt viejo (90s), escala aunque el mensaje sea reciente", () => {
+    const verdict = assessInterpretability(
+      [msg({ transcript_status: "pending", attachments: items("voice"), created_at: secondsAgo(5) })],
+      { now: NOW, waitStartedAt: secondsAgoDate(91) },
+    );
+    expect(verdict.waiting).toBe(false);
+    expect(verdict.interpretable).toBe(false);
   });
 });
 
