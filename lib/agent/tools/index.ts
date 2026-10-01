@@ -17,7 +17,7 @@ import { crmLookupTool } from "./crm-lookup";
 import { pauseSelfTool } from "./pause-self";
 import { declareIntentTool } from "./declare-intent";
 import { whatsappLinkTool } from "./whatsapp-link";
-import { listarAudiosTool, enviarAudioTool } from "./audio";
+import { listarRecursosTool, usarRecursoTool } from "./assets";
 import { registerSchedulingSkill } from "./scheduling";
 
 registerAgentTool(escalateTool);
@@ -30,8 +30,8 @@ registerAgentTool(crmLookupTool);
 registerAgentTool(pauseSelfTool);
 registerAgentTool(declareIntentTool);
 registerAgentTool(whatsappLinkTool);
-registerAgentTool(listarAudiosTool);
-registerAgentTool(enviarAudioTool);
+registerAgentTool(listarRecursosTool);
+registerAgentTool(usarRecursoTool);
 
 // La habilidad de agendamiento (Etapa 4): siete herramientas que se prenden
 // juntas. Apagada, ninguna se ofrece y el agente ve lo mismo que antes.

@@ -147,14 +147,14 @@ function describeApplied(action: AppliedAction): string {
 function describeSuggestion(s: SuggestedAction): string {
   if (s.type === "escalate") return `Sugiere derivar a una persona: ${s.reason}`;
   if (s.type === "guardrail_review") return "Bloqueado por un guardarrail de salida";
-  if (s.type === "send_audio") return `Sugiere mandar el audio "${s.name}"`;
+  if (s.type === "send_asset") return `Sugiere mandar el audio "${s.name}"`;
   return `Sugiere pausarse ${s.minutes >= 60 ? `${Math.round(s.minutes / 60)} h` : `${s.minutes} min`}: ${s.reason}`;
 }
 
-/** El reproductor del audio que el agente sugirio mandar (F22), misma ruta firmada que la bandeja. */
+/** El reproductor del audio que el agente sugirio mandar, misma ruta firmada que la bandeja. */
 function AudioSuggestionPreview({ draft }: { draft: DraftQueueRow }) {
-  const suggestion = draft.suggestedActions.find((s) => s.type === "send_audio");
-  if (!suggestion || suggestion.type !== "send_audio") return null;
+  const suggestion = draft.suggestedActions.find((s) => s.type === "send_asset");
+  if (!suggestion || suggestion.type !== "send_asset") return null;
   return (
     <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2">
       <Mic className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />
@@ -312,7 +312,7 @@ function AgentActions({ draft }: { draft: DraftQueueRow }) {
         >
           {s.type === "escalate" ? (
             <UserRound className="h-3 w-3" aria-hidden />
-          ) : s.type === "send_audio" ? (
+          ) : s.type === "send_asset" ? (
             <Mic className="h-3 w-3" aria-hidden />
           ) : (
             <Ban className="h-3 w-3" aria-hidden />
