@@ -4,13 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare, RefreshCw, User } from "lucide-react";
 import { ConversationList } from "@/components/inbox/conversation-list";
-import { MessageThread, type AudioLibraryItem } from "@/components/inbox/message-thread";
+import { MessageThread, type InboxAsset } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/lib/types/database";
 import type { ConversationRow } from "@/lib/inbox/types";
-import type { SearchableTemplate } from "@/lib/templates/search";
 import { countActiveFilters, type InboxFilters } from "@/lib/inbox/filters";
 import type { DateRange } from "@/lib/dates";
 import type { ChannelAgentInfo } from "@/lib/agent/public";
@@ -22,8 +21,7 @@ type Message = Database["public"]["Tables"]["messages"]["Row"];
 export function InboxView({
   conversations,
   workspaceId,
-  templates,
-  audios = [],
+  assets,
   workspaceName,
   selected,
   total,
@@ -35,6 +33,7 @@ export function InboxView({
   platforms,
   members,
   agentByChannel,
+  providerByChannel,
   currentUserId,
   isAdmin,
   draftCounts,
@@ -42,10 +41,8 @@ export function InboxView({
 }: {
   conversations: Conversation[];
   workspaceId: string;
-  /** Respuestas rapidas del workspace, para el selector "/" del composer (F17). */
-  templates: SearchableTemplate[];
-  /** La banca de audios del workspace, para el selector "/a" del composer (F21). */
-  audios?: AudioLibraryItem[];
+  /** La banca de recursos del workspace (textos y audios), para el selector "/" del composer. */
+  assets: InboxAsset[];
   workspaceName: string;
   /** La conversacion abierta, resuelta en el servidor desde ?c= (F16). */
   selected: Conversation | null;
@@ -59,6 +56,8 @@ export function InboxView({
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
   agentByChannel: Record<string, ChannelAgentInfo>;
+  /** Por canal: su `provider` (evolution/zernio/resend), para saber si el picker puede ofrecer audios. */
+  providerByChannel: Record<string, string>;
   /** Para el panel del contacto (Bloque 2c): editar setter y vendedor. */
   currentUserId: string;
   isAdmin: boolean;
@@ -246,10 +245,10 @@ export function InboxView({
             <MessageThread
               conversation={selected}
               messages={messages}
-              templates={templates}
-              audios={audios}
+              assets={assets}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
+              channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}
               onBack={selected ? handleBack : undefined}
               onOpenContact={selected?.contact_id ? () => setContactSheetOpen(true) : undefined}
             />

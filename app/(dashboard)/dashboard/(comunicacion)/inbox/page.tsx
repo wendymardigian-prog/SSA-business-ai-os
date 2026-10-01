@@ -16,6 +16,7 @@ import {
 } from "@/lib/inbox/filters";
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { InboxView } from "./inbox-view";
+import type { InboxAsset } from "@/components/inbox/message-thread";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
@@ -56,7 +57,7 @@ export default async function InboxPage({
   // un tag o un miembro inventado tiene que ignorarse, no llegar a la consulta.
   const [tagsRes, channelsRes, members, agentsRes] = await Promise.all([
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
-    supabase.from("channels").select("id, platform").eq("workspace_id", workspace.id).eq("is_active", true),
+    supabase.from("channels").select("id, platform, provider").eq("workspace_id", workspace.id).eq("is_active", true),
     getWorkspaceMembers(workspace.id),
     // Columnas explicitas: los topes de gasto no son legibles para el usuario (00060).
     supabase.from("agents").select(AGENT_PUBLIC_COLUMNS).eq("workspace_id", workspace.id).is("deleted_at", null),
@@ -66,6 +67,11 @@ export default async function InboxPage({
   const agents = (agentsRes.data ?? []) as PublicAgent[];
   const agentByChannel: Record<string, ChannelAgentInfo> = Object.fromEntries(
     (channelsRes.data ?? []).map((c) => [c.id, channelAgentInfo(agents, { id: c.id, label: platformLabel(c.platform) })]),
+  );
+  // Si el canal de la conversacion abierta acepta media (lib/channels/media.ts):
+  // el picker de la bandeja no le ofrece audios a un canal de email.
+  const providerByChannel: Record<string, string> = Object.fromEntries(
+    (channelsRes.data ?? []).map((c) => [c.id, c.provider]),
   );
 
   const tags = (tagsRes.data ?? []).map((t) => ({
@@ -151,22 +157,16 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, templatesRes, audiosRes, draftCounts] = await Promise.all([
+  const [conversationsRes, assetsRes, draftCounts] = await Promise.all([
     query
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1),
-    // Las respuestas rapidas del selector "/" (F17).
+    // La banca de recursos del selector "/" (textos y audios juntos).
+    // Cualquier miembro la lee.
     supabase
-      .from("response_templates")
-      .select("id, name, content, shortcut")
-      .eq("workspace_id", workspace.id)
-      .is("deleted_at", null)
-      .order("name"),
-    // La banca de audios del selector "/a" (F21). Cualquier miembro la lee.
-    supabase
-      .from("audio_assets")
-      .select("id, name, shortcut, transcript, storage_path, mime_type, duration_seconds")
+      .from("response_assets")
+      .select("id, kind, name, shortcut, content, transcript, tags, storage_path, mime_type, duration_seconds")
       .eq("workspace_id", workspace.id)
       .eq("is_active", true)
       .is("deleted_at", null)
@@ -179,15 +179,18 @@ export default async function InboxPage({
   if (conversationsRes.error) {
     console.error("[inbox] listado fallido:", conversationsRes.error.message);
   }
-  if (audiosRes.error) {
-    console.error("[inbox] banca de audios fallida:", audiosRes.error.message);
+  if (assetsRes.error) {
+    console.error("[inbox] banca de recursos fallida:", assetsRes.error.message);
   }
 
-  const audios = (audiosRes.data ?? []).map((a) => ({
+  const assets: InboxAsset[] = (assetsRes.data ?? []).map((a) => ({
     id: a.id,
+    kind: a.kind,
     name: a.name,
     shortcut: a.shortcut,
+    content: a.content,
     transcript: a.transcript,
+    tags: a.tags,
     storagePath: a.storage_path,
     mimeType: a.mime_type,
     durationSeconds: a.duration_seconds,
@@ -254,14 +257,14 @@ export default async function InboxPage({
       pageSize={PAGE_SIZE}
       workspaceId={workspace.id}
       workspaceName={workspace.name}
-      templates={templatesRes.data ?? []}
-      audios={audios}
+      assets={assets}
       filters={filters}
       dateRange={range}
       tags={tags}
       platforms={platformOptions.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
       agentByChannel={agentByChannel}
+      providerByChannel={providerByChannel}
       currentUserId={user.id}
       isAdmin={isAdminRole(role)}
       draftCounts={draftCounts}

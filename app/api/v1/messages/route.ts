@@ -12,6 +12,7 @@ import { CHAT_MEDIA_BUCKET, isSafeStoragePath } from "@/lib/chat-media/bucket";
 import { sniffMime } from "@/lib/content/media";
 import { attachmentLabel, emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
+import { channelAcceptsMedia } from "@/lib/channels/media";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -299,8 +300,10 @@ export async function POST(request: NextRequest) {
   // Rama explicita por proveedor y no un `else`: un canal nuevo que caiga
   // por default en Zernio manda el mensaje al lugar equivocado sin avisar.
   if (outChannel.provider === "resend") {
-    // El email no admite adjuntos en esta fase (F-futura-5).
-    if (incomingMedia) {
+    // El email no admite adjuntos. channelAcceptsMedia (lib/channels/media.ts)
+    // es el unico lugar que decide esto, para que el picker de la bandeja, el
+    // agente y esta ruta digan lo mismo.
+    if (incomingMedia && !channelAcceptsMedia(outChannel.provider)) {
       return NextResponse.json({ error: "El email no admite adjuntos todavía." }, { status: 400 });
     }
     return sendViaResendChannel({

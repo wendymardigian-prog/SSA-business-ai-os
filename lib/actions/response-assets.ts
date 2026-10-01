@@ -10,6 +10,7 @@ import { sniffMime } from "@/lib/content/media";
 import { CHAT_MEDIA_BUCKET, MAX_CHAT_UPLOAD_BYTES, extensionForMime } from "@/lib/chat-media/bucket";
 import { scheduleJob } from "@/lib/scheduler";
 import { TRANSCRIBE_AUDIO_JOB, transcribeAssetDedupeKey } from "@/lib/jobs/handlers/transcribe-audio";
+import { copyAssetToChat, type AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { usedVariables } from "@/lib/templates/interpolate";
 import type { AssetKind } from "@/lib/response-assets/kind";
 
@@ -475,4 +476,37 @@ export async function listAssets() {
   }
 
   return data ?? [];
+}
+
+/**
+ * Prepara el envio de un audio de la banca desde el picker "/" de la
+ * bandeja: copia el archivo a la conversacion (lib/response-assets/send-copy.ts)
+ * y devuelve lo que necesita `POST /api/v1/messages`, igual que si el
+ * archivo se acabara de subir desde el disco.
+ *
+ * Cualquier miembro puede mandar un mensaje, asi que esto usa getWorkspace()
+ * y no getAdminContext(): el cliente de usuario que devuelve respeta el
+ * scope de leads, asi que un Member sin acceso a esa conversacion no puede
+ * dispararle una copia.
+ */
+export async function prepareAssetSend(
+  conversationId: string,
+  assetId: string,
+): Promise<{ ok: true; copy: AssetChatCopy } | { ok: false; error: string }> {
+  const { workspace, supabase } = await getWorkspace();
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+
+  if (!conversation) return { ok: false, error: "No encontré esa conversación" };
+
+  const service = await createServiceClient();
+  const result = await copyAssetToChat(service, { workspaceId: workspace.id, conversationId, assetId });
+  if (!result.ok) return result;
+
+  return { ok: true, copy: result.copy };
 }

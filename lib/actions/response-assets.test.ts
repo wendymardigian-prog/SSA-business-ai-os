@@ -41,6 +41,7 @@ import {
   correctTranscript,
   listAssets,
   requestAssetUpload,
+  prepareAssetSend,
 } from "./response-assets";
 
 const WS = "ws-1";
@@ -311,5 +312,36 @@ describe("requestAssetUpload", () => {
     getAdminContext.mockResolvedValue(null);
     const result = await requestAssetUpload({ sizeBytes: 1000, headBase64: M4A_HEAD });
     expect(result).toEqual({ ok: false, error: "Solo Owner y Admin pueden administrar la banca de recursos" });
+  });
+});
+
+describe("prepareAssetSend", () => {
+  it("copia el audio a la conversacion y devuelve el path nuevo", async () => {
+    const db = memoryDb({
+      response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", name: "Precio", storage_path: `${WS}/library/a-1.m4a`, mime_type: "audio/mp4", duration_seconds: 8, deleted_at: null }],
+      conversations: [{ id: "c-1", workspace_id: WS }],
+    });
+    getWorkspace.mockResolvedValue({ workspace: { id: WS }, supabase: db.client });
+    createServiceClient.mockResolvedValue(db.client);
+    (db.client as unknown as { storage: unknown }).storage = {
+      from: () => ({ copy: async () => ({ data: { path: "copied" }, error: null }) }),
+    };
+
+    const result = await prepareAssetSend("c-1", "a-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.copy.storagePath).toMatch(new RegExp(`^${WS}/c-1/library-`));
+      expect(result.copy.filename).toBe("Precio.m4a");
+    }
+  });
+
+  it("una conversacion que no es del workspace (o fuera del scope de leads) se rechaza", async () => {
+    const db = memoryDb({ response_assets: [], conversations: [] });
+    getWorkspace.mockResolvedValue({ workspace: { id: WS }, supabase: db.client });
+
+    const result = await prepareAssetSend("c-inexistente", "a-1");
+
+    expect(result).toEqual({ ok: false, error: "No encontré esa conversación" });
   });
 });

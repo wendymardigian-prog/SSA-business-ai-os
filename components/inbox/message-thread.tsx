@@ -6,12 +6,12 @@ import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2,
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
-import { TemplatePicker } from "@/components/inbox/template-picker";
-import { filterTemplates, type SearchableTemplate } from "@/lib/templates/search";
+import { AssetPicker } from "@/components/inbox/asset-picker";
+import { filterAssets } from "@/lib/response-assets/search";
+import type { AssetKind } from "@/lib/response-assets/kind";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
-import { AudioPicker } from "@/components/inbox/audio-picker";
-import { filterAudioAssets } from "@/lib/audio-library/search";
-import { extensionForMime } from "@/lib/chat-media/bucket";
+import { channelAcceptsMedia } from "@/lib/channels/media";
+import { prepareAssetSend } from "@/lib/actions/response-assets";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -181,36 +181,55 @@ function StaleConversationNotice({ days }: { days: number }) {
   );
 }
 
-/** Un audio de la banca (F20), lo que necesita el picker "/a" (F21) para listarlo y mandarlo. */
-export interface AudioLibraryItem {
+/**
+ * Un recurso de la banca (texto o audio), lo que necesita el picker "/" para
+ * listarlo y mandarlo. Un texto trae `content`; un audio trae `transcript` y
+ * los campos de archivo. Nunca los dos (lo garantiza el CHECK de la tabla).
+ */
+export interface InboxAsset {
   id: string;
+  kind: AssetKind;
   name: string;
   shortcut: string | null;
+  content: string | null;
   transcript: string | null;
+  tags: string[];
+  storagePath: string | null;
+  mimeType: string | null;
+  durationSeconds: number | null;
+}
+
+/** Lo que devuelve prepareAssetSend: el archivo ya copiado a la conversacion. */
+interface PreparedAudioCopy {
   storagePath: string;
-  mimeType: string;
+  mime: string;
+  filename: string;
   durationSeconds: number | null;
 }
 
 export function MessageThread({
   conversation,
   messages: initialMessages,
-  templates = [],
-  audios = [],
+  assets = [],
   workspaceName = "",
   agentInfo = null,
+  channelProvider = null,
   onBack,
   onOpenContact,
 }: {
   conversation: Conversation | null;
   messages: Message[];
-  /** Respuestas rapidas del workspace, para el selector "/" (F17). */
-  templates?: SearchableTemplate[];
-  /** La banca de audios del workspace, para el selector "/a" (F21). */
-  audios?: AudioLibraryItem[];
+  /** La banca de recursos del workspace (textos y audios), para el selector "/". */
+  assets?: InboxAsset[];
   workspaceName?: string;
   /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
   agentInfo?: ChannelAgentInfo | null;
+  /**
+   * El `provider` del canal de esta conversacion (evolution/zernio/resend).
+   * Decide si el picker ofrece audios: un email no los puede mandar
+   * (lib/channels/media.ts).
+   */
+  channelProvider?: string | null;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
   onBack?: () => void;
   /** Telefono (Bloque 2d): abre los datos del contacto como hoja. */
@@ -224,23 +243,24 @@ export function MessageThread({
   // El selector se cierra con Escape aunque el texto siga arrancando con "/",
   // porque hay quien de verdad quiere escribir una barra.
   const [pickerDismissed, setPickerDismissed] = useState(false);
-  const [activeTemplate, setActiveTemplate] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [confirmingDoNotContact, setConfirmingDoNotContact] = useState(false);
   // F18/F19: grabar y adjuntar. recording y attachedFile son excluyentes
   // entre si y con escribir texto (el mic solo se ve con el textarea vacio).
   const [recording, setRecording] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
-  // F21: "/a" abre la banca en vez de las respuestas rapidas. El elegido
-  // queda en preview (reproductor + Enviar) antes de mandarse de verdad.
-  const [activeAudio, setActiveAudio] = useState(0);
-  const [audioPreview, setAudioPreview] = useState<AudioLibraryItem | null>(null);
+  // El elegido con "/" queda en preview (reproductor + Enviar) antes de
+  // mandarse de verdad. Solo aplica a un audio: un texto se inserta directo.
+  const [assetPreview, setAssetPreview] = useState<InboxAsset | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** El envio de media que quedo esperando la confirmacion de "no contactar". */
   const pendingMediaRef = useRef<{ file: File; filename: string; durationSeconds: number | null; isRecording: boolean } | null>(null);
+  /** Un audio de la banca ya copiado a la conversacion, esperando esa misma confirmacion. */
+  const pendingAssetCopyRef = useRef<PreparedAudioCopy | null>(null);
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
   // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
@@ -269,29 +289,32 @@ export function MessageThread({
     }
   }, [conversation, statusUpdating, router]);
 
-  // "/a" sola o seguida de un espacio abre la banca de audios en vez de las
-  // respuestas rapidas. "/ag..." (sin espacio) sigue siendo un atajo de
-  // template: hoy ningun atajo de template empieza con "/a", asi que no choca.
-  const isAudioTrigger = input === "/a" || input.startsWith("/a ");
-  const audioPickerOpen = !pickerDismissed && audios.length > 0 && isAudioTrigger;
-  const audioMatches = audioPickerOpen ? filterAudioAssets(audios, input.slice(3)) : [];
+  // Un email no puede mandar un audio (lib/channels/media.ts): el picker no
+  // se lo ofrece, en vez de dejarlo elegir algo que despues el servidor
+  // rechaza.
+  const visibleAssets = channelAcceptsMedia(channelProvider) ? assets : assets.filter((a) => a.kind === "text");
 
   // El selector se abre cuando el texto arranca con "/", que es exactamente lo
   // que queda al escribir la barra en un campo vacio. Pegar una URL no lo
   // abre: "https://..." no empieza con barra.
-  const pickerOpen = !pickerDismissed && !isAudioTrigger && templates.length > 0 && input.startsWith("/");
-  const templateMatches = pickerOpen ? filterTemplates(templates, input.slice(1)) : [];
+  const pickerOpen = !pickerDismissed && visibleAssets.length > 0 && input.startsWith("/");
+  const assetMatches = pickerOpen ? filterAssets(visibleAssets, input.slice(1)) : [];
 
-  function pickAudio(audio: AudioLibraryItem) {
-    setAudioPreview(audio);
-    setInput("");
-    setPickerDismissed(true);
-    setMediaError(null);
-  }
-
-  function insertTemplate(template: SearchableTemplate) {
+  /**
+   * Elegir un recurso del picker: un texto se inserta interpolado y editable
+   * (igual que antes); un audio abre un preview con reproductor y Enviar, y
+   * no manda nada todavia -- nadie manda un audio sin poder escucharlo antes.
+   */
+  function pickAsset(asset: InboxAsset) {
+    if (asset.kind === "audio") {
+      setAssetPreview(asset);
+      setInput("");
+      setPickerDismissed(true);
+      setMediaError(null);
+      return;
+    }
     setInput(
-      interpolateTemplate(template.content, {
+      interpolateTemplate(asset.content ?? "", {
         contact: conversation?.contacts ?? null,
         workspace: { name: workspaceName },
       }),
@@ -542,7 +565,7 @@ export function MessageThread({
       setInput("");
       setRecording(false);
       setAttachedFile(null);
-      setAudioPreview(null);
+      setAssetPreview(null);
       if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
     } catch (err) {
       console.error("Failed to send media:", err);
@@ -553,36 +576,84 @@ export function MessageThread({
   }
 
   /**
-   * Manda un audio de la banca elegido con "/a" (F21).
-   *
-   * Un solo camino: se baja el archivo (la misma ruta firmada que usa la
-   * burbuja del hilo) y se lo manda a sendMediaFile como si fuera un adjunto
-   * recien elegido. No hay un envio paralelo para "audio de biblioteca": es
-   * el mismo Bloque 5 de siempre.
+   * Manda un audio ya copiado a la conversacion (prepareAssetSend). Analogo
+   * a sendMediaFile, pero sin pasos de subida: la copia server-side
+   * (lib/response-assets/send-copy.ts) ya dejo el archivo en destino, asi
+   * que solo queda pedirle a sendChannelMessage que lo mande.
    */
-  async function sendLibraryAudio(audio: AudioLibraryItem, confirmedDoNotContact = false) {
-    if (!conversation || sending) return;
+  async function sendPreparedAudio(copy: PreparedAudioCopy, confirmedDoNotContact: boolean) {
+    if (!conversation) return;
+    setSending(true);
     setMediaError(null);
+    const caption = input.trim();
+
     try {
-      const res = await fetch(audioUrlFor(audio.storagePath));
+      const res = await fetch("/api/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conversation.id,
+          text: caption || undefined,
+          media: { storagePath: copy.storagePath, kind: "audio", mime: copy.mime, filename: copy.filename, durationSeconds: copy.durationSeconds },
+          confirmedDoNotContact,
+        }),
+      });
+
       if (!res.ok) {
-        setMediaError("No pude cargar ese audio. Probá de nuevo.");
+        const errorData = await res.json().catch(() => ({}));
+        setMediaError(errorData.error || `No se pudo enviar (${res.status})`);
         return;
       }
-      const blob = await res.blob();
-      const filename = `${audio.name}.${extensionForMime(audio.mimeType)}`;
-      const file = new File([blob], filename, { type: audio.mimeType });
+
+      const confirmedMessage: Message = await res.json();
+      setMessages((prev) => [...prev, confirmedMessage]);
+      setInput("");
+      setAssetPreview(null);
+      if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
+    } catch (err) {
+      console.error("Failed to send prepared audio:", err);
+      setMediaError("No se pudo enviar el archivo. Probá de nuevo.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /**
+   * Manda un audio de la banca elegido con "/": copia el archivo a la
+   * conversacion del lado del servidor (lib/actions/response-assets.ts,
+   * prepareAssetSend) y lo manda por sendPreparedAudio, por el mismo camino
+   * que cualquier adjunto (Bloque 5/F19). No hay un envio paralelo para "un
+   * audio de la biblioteca".
+   *
+   * El chequeo de Instagram va ANTES de copiar nada: subir un archivo que el
+   * servidor va a terminar rechazando es trabajo de mas.
+   */
+  async function sendLibraryAudio(asset: InboxAsset, confirmedDoNotContact = false) {
+    if (!conversation || sending || asset.kind !== "audio" || !asset.mimeType) return;
+    setMediaError(null);
+
+    if (conversation.platform === "instagram" && !instagramAcceptsAudio(asset.mimeType)) {
+      setMediaError(INSTAGRAM_AUDIO_REJECTED_MESSAGE);
+      return;
+    }
+
+    try {
+      const prepared = await prepareAssetSend(conversation.id, asset.id);
+      if (!prepared.ok) {
+        setMediaError(prepared.error);
+        return;
+      }
 
       if (conversation.contacts?.do_not_contact && !confirmedDoNotContact) {
-        pendingMediaRef.current = { file, filename, durationSeconds: audio.durationSeconds, isRecording: false };
+        pendingAssetCopyRef.current = prepared.copy;
         setConfirmingDoNotContact(true);
         return;
       }
 
-      await sendMediaFile(file, filename, audio.durationSeconds, false, confirmedDoNotContact);
+      await sendPreparedAudio(prepared.copy, confirmedDoNotContact);
     } catch (err) {
-      console.error("Failed to load library audio:", err);
-      setMediaError("No pude cargar ese audio. Probá de nuevo.");
+      console.error("Failed to prepare library audio:", err);
+      setMediaError("No pude preparar ese audio. Probá de nuevo.");
     }
   }
 
@@ -779,19 +850,19 @@ export function MessageThread({
         <div className="mx-auto max-w-2xl">
           <ActionError message={mediaError} />
 
-          {audioPreview ? (
-            // Preview de un audio de la banca elegido con "/a" (F21): reemplaza
-            // al composer entero, igual que grabar o un adjunto.
+          {assetPreview ? (
+            // Preview de un audio de la banca elegido con "/": reemplaza al
+            // composer entero, igual que grabar o un adjunto.
             <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
               <audio
                 controls
                 preload="none"
-                src={audioUrlFor(audioPreview.storagePath)}
+                src={audioUrlFor(assetPreview.storagePath ?? "")}
                 className="h-9 flex-1 dark:[color-scheme:dark]"
               />
               <button
                 type="button"
-                onClick={() => setAudioPreview(null)}
+                onClick={() => setAssetPreview(null)}
                 disabled={sending}
                 aria-label="Descartar"
                 className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-50"
@@ -800,7 +871,7 @@ export function MessageThread({
               </button>
               <button
                 type="button"
-                onClick={() => sendLibraryAudio(audioPreview)}
+                onClick={() => sendLibraryAudio(assetPreview)}
                 disabled={sending}
                 aria-label="Enviar"
                 className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
@@ -860,19 +931,11 @@ export function MessageThread({
               ) : (
                 <div className="relative flex-1">
                   {pickerOpen && (
-                    <TemplatePicker
-                      matches={templateMatches}
-                      activeIndex={activeTemplate}
-                      onPick={insertTemplate}
-                      onHover={setActiveTemplate}
-                    />
-                  )}
-                  {audioPickerOpen && (
-                    <AudioPicker
-                      matches={audioMatches}
-                      activeIndex={activeAudio}
-                      onPick={pickAudio}
-                      onHover={setActiveAudio}
+                    <AssetPicker
+                      matches={assetMatches}
+                      activeIndex={activeIndex}
+                      onPick={pickAsset}
+                      onHover={setActiveIndex}
                     />
                   )}
                   <textarea
@@ -884,52 +947,27 @@ export function MessageThread({
                       // Volver a escribir una barra desde cero reabre el selector que
                       // se habia cerrado con Escape.
                       if (!value.startsWith("/")) setPickerDismissed(false);
-                      setActiveTemplate(0);
-                      setActiveAudio(0);
+                      setActiveIndex(0);
                       autoResize();
                     }}
                     onKeyDown={(e) => {
-                      // Con el selector de audios abierto, las flechas y el Enter son
-                      // suyos primero: "/a" tambien empieza con "/" y entraria en la
-                      // rama de respuestas rapidas si no se la saca antes.
-                      if (audioPickerOpen) {
-                        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                          e.preventDefault();
-                          if (audioMatches.length === 0) return;
-                          const step = e.key === "ArrowDown" ? 1 : -1;
-                          setActiveAudio((prev) => (prev + step + audioMatches.length) % audioMatches.length);
-                          return;
-                        }
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          const chosen = audioMatches[activeAudio];
-                          if (chosen) pickAudio(chosen);
-                          return;
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          setPickerDismissed(true);
-                          return;
-                        }
-                        return;
-                      }
                       // Con el selector abierto, las flechas y el Enter son suyos:
                       // si no, Enter manda "/pre" como mensaje al lead.
                       if (pickerOpen) {
                         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                           e.preventDefault();
-                          if (templateMatches.length === 0) return;
+                          if (assetMatches.length === 0) return;
                           const step = e.key === "ArrowDown" ? 1 : -1;
-                          setActiveTemplate(
+                          setActiveIndex(
                             (prev) =>
-                              (prev + step + templateMatches.length) % templateMatches.length,
+                              (prev + step + assetMatches.length) % assetMatches.length,
                           );
                           return;
                         }
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
-                          const chosen = templateMatches[activeTemplate];
-                          if (chosen) insertTemplate(chosen);
+                          const chosen = assetMatches[activeIndex];
+                          if (chosen) pickAsset(chosen);
                           return;
                         }
                         if (e.key === "Escape") {
@@ -943,7 +981,7 @@ export function MessageThread({
                         handleSendClick();
                       }
                     }}
-                    placeholder="Escribí un mensaje, / para una respuesta rápida o /a para un audio"
+                    placeholder="Escribí un mensaje o / para un recurso guardado"
                     rows={1}
                     className="w-full resize-none rounded-lg border border-input bg-background px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     style={{ maxHeight: 150 }}
@@ -1018,6 +1056,12 @@ export function MessageThread({
         destructive
         onConfirm={() => {
           setConfirmingDoNotContact(false);
+          const pendingCopy = pendingAssetCopyRef.current;
+          if (pendingCopy) {
+            pendingAssetCopyRef.current = null;
+            sendPreparedAudio(pendingCopy, true);
+            return;
+          }
           const pending = pendingMediaRef.current;
           if (pending) {
             pendingMediaRef.current = null;
