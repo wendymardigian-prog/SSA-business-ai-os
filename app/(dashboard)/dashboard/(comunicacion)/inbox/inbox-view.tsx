@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare, RefreshCw, User } from "lucide-react";
 import { ConversationList } from "@/components/inbox/conversation-list";
-import { MessageThread } from "@/components/inbox/message-thread";
+import { MessageThread, type AudioLibraryItem } from "@/components/inbox/message-thread";
 import { ContactPanel } from "@/components/inbox/contact-panel";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ export function InboxView({
   conversations,
   workspaceId,
   templates,
+  audios = [],
   workspaceName,
   selected,
   total,
@@ -43,6 +44,8 @@ export function InboxView({
   workspaceId: string;
   /** Respuestas rapidas del workspace, para el selector "/" del composer (F17). */
   templates: SearchableTemplate[];
+  /** La banca de audios del workspace, para el selector "/a" del composer (F21). */
+  audios?: AudioLibraryItem[];
   workspaceName: string;
   /** La conversacion abierta, resuelta en el servidor desde ?c= (F16). */
   selected: Conversation | null;
@@ -244,6 +247,7 @@ export function InboxView({
               conversation={selected}
               messages={messages}
               templates={templates}
+              audios={audios}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               onBack={selected ? handleBack : undefined}

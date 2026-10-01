@@ -151,7 +151,7 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, templatesRes, draftCounts] = await Promise.all([
+  const [conversationsRes, templatesRes, audiosRes, draftCounts] = await Promise.all([
     query
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -163,6 +163,14 @@ export default async function InboxPage({
       .eq("workspace_id", workspace.id)
       .is("deleted_at", null)
       .order("name"),
+    // La banca de audios del selector "/a" (F21). Cualquier miembro la lee.
+    supabase
+      .from("audio_assets")
+      .select("id, name, shortcut, transcript, storage_path, mime_type, duration_seconds")
+      .eq("workspace_id", workspace.id)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("name"),
     // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
     // mantiene al dia Realtime (useDraftCounts).
     countPendingDrafts(),
@@ -171,6 +179,19 @@ export default async function InboxPage({
   if (conversationsRes.error) {
     console.error("[inbox] listado fallido:", conversationsRes.error.message);
   }
+  if (audiosRes.error) {
+    console.error("[inbox] banca de audios fallida:", audiosRes.error.message);
+  }
+
+  const audios = (audiosRes.data ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    shortcut: a.shortcut,
+    transcript: a.transcript,
+    storagePath: a.storage_path,
+    mimeType: a.mime_type,
+    durationSeconds: a.duration_seconds,
+  }));
 
   let conversations = toRows(conversationsRes.data);
 
@@ -234,6 +255,7 @@ export default async function InboxPage({
       workspaceId={workspace.id}
       workspaceName={workspace.name}
       templates={templatesRes.data ?? []}
+      audios={audios}
       filters={filters}
       dateRange={range}
       tags={tags}
