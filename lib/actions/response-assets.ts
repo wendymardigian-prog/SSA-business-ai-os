@@ -14,9 +14,9 @@ import { usedVariables } from "@/lib/templates/interpolate";
 import type { AssetKind } from "@/lib/response-assets/kind";
 
 /**
- * La banca de recursos: textos (ex response_templates, F17) y audios (ex
- * audio_assets, F20) en una sola tabla `response_assets`, distinguidos por
- * `kind`. Fusiona lib/actions/templates.ts y lib/actions/audio-library.ts.
+ * La banca de recursos: textos (F17) y audios (F20) en una sola tabla,
+ * distinguidos por `kind`. Fusiona lo que antes eran dos acciones separadas,
+ * una por plantillas de texto y otra por la biblioteca de audios.
  *
  * Permisos: los ve y los usa cualquier miembro (el selector "/" de la bandeja
  * los necesita), los gestionan Owner y Admin. La regla vive en la RLS
