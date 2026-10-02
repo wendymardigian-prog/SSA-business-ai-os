@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import {
   providersBySection,
   CHIP_ORDER,
@@ -115,11 +117,13 @@ export function IntegrationsGrid({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {sections.length === 0 ? (
-          <p className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
-            {onlyAttention
-              ? "Todo en orden: ninguna integracion necesita que hagas nada."
-              : "Todavia no hay integraciones para mostrar."}
-          </p>
+          onlyAttention ? (
+            <p className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+              Todo en orden: ninguna integración necesita que hagas nada.
+            </p>
+          ) : (
+            <SettingsEmptyState description={SETTINGS_EMPTY_STATES.integrations} />
+          )
         ) : (
           <div className="mx-auto max-w-6xl space-y-8">
             {sections.map((section) => (

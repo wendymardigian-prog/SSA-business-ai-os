@@ -167,7 +167,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings": {
     title: "Ajustes",
-    tooltip: "Configuracion del negocio: equipo, integraciones, campos y plantillas.",
+    tooltip: "Configuracion del negocio: equipo, integraciones, campos y recursos.",
   },
   "/dashboard/settings/team": {
     title: "Equipo",

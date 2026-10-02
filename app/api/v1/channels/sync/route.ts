@@ -197,7 +197,7 @@ export async function POST() {
   } catch (error) {
     console.error("Failed to sync channels:", error);
     return NextResponse.json(
-      { error: `Failed to sync channels: ${error instanceof Error ? error.message : String(error)}` },
+      { error: `No pude sincronizar los canales: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 }
     );
   }
