@@ -9,9 +9,16 @@ import { listOpenCollisions } from "@/lib/sequences/collisions";
 import { AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
+import { SectionSearch } from "@/components/comunicacion/section-search";
+import { NoSearchResults } from "@/components/comunicacion/no-search-results";
+import { matchesSearch } from "@/lib/comunicacion/search";
+import { firstParam, sanitizeSearch, type SearchParams } from "@/lib/url-params";
 
-export default async function SequencesPage() {
+export default async function SequencesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const { workspace, supabase, role } = await getWorkspace();
+  // Bloque I (I4): el buscador de la barra filtra por nombre la lista, que se
+  // carga entera (no pagina).
+  const query = sanitizeSearch(firstParam((await searchParams).q));
   const canEdit = isAdminRole(role);
 
   const { data: sequences, error } = await supabase
@@ -51,6 +58,7 @@ export default async function SequencesPage() {
       <PageHeader
         route="/dashboard/sequences"
         left={<SectionTabs />}
+        filters={<SectionSearch value={query} placeholder="Buscar una secuencia" label="Buscar secuencias" />}
         right={canEdit ? <CreateSequenceButton /> : null}
       />
 
@@ -70,9 +78,11 @@ export default async function SequencesPage() {
               </div>
             )}
           </div>
+        ) : !sequences.some((s) => matchesSearch(query, s.name)) ? (
+          <NoSearchResults query={query} none="Ninguna secuencia" />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {sequences.map((sequence) => {
+            {sequences.filter((s) => matchesSearch(query, s.name)).map((sequence) => {
               const status = sequenceStatusStyle(sequence.status);
               const stepCount = Array.isArray(sequence.steps) ? sequence.steps.length : 0;
               const active = enrolled[sequence.id] ?? 0;

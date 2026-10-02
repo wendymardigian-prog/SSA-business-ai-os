@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   MessageCircle,
   Pencil,
@@ -20,6 +21,9 @@ import type { Database, Json } from "@/lib/types/database";
 import { PLATFORM_LABELS } from "@/lib/platforms";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
+import { SectionSearch } from "@/components/comunicacion/section-search";
+import { NoSearchResults } from "@/components/comunicacion/no-search-results";
+import { matchesSearch } from "@/lib/comunicacion/search";
 
 type Channel = Database["public"]["Tables"]["channels"]["Row"];
 type CommentLog = Database["public"]["Tables"]["comment_logs"]["Row"];
@@ -65,6 +69,16 @@ export function GrowthView({
   recentLogs: CommentLog[];
 }) {
   const [triggers, setTriggers] = useState(initialTriggers);
+  // Bloque I (I4): el buscador de la barra filtra las reglas por el nombre del
+  // flow que disparan y por sus palabras clave.
+  const query = useSearchParams().get("q") ?? "";
+  const visibleTriggers = triggers.filter((t) =>
+    matchesSearch(
+      query,
+      t.flows?.name,
+      ...((t.config as unknown as TriggerConfig)?.keywords ?? []).map((k) => k.value),
+    ),
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -290,6 +304,7 @@ export function GrowthView({
       <PageHeader
         route="/dashboard/growth"
         left={<SectionTabs />}
+        filters={<SectionSearch value={query} placeholder="Buscar una herramienta" label="Buscar reglas de Growth" />}
         right={
           <button
             onClick={() => { setEditingId(null); setShowCreate(true); }}
@@ -550,8 +565,11 @@ export function GrowthView({
               the commenter.
             </p>
 
+            {visibleTriggers.length === 0 && (
+              <NoSearchResults query={query} none="Ninguna regla" />
+            )}
             <div className="mt-4 space-y-3">
-              {triggers.map((trigger) => {
+              {visibleTriggers.map((trigger) => {
                 const config = trigger.config as unknown as TriggerConfig;
                 const channel = channels.find(
                   (c) => c.id === trigger.channel_id

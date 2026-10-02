@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Radio,
   Plus,
@@ -26,6 +27,9 @@ import {
 import type { Database, BroadcastStatus, Json } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
+import { SectionSearch } from "@/components/comunicacion/section-search";
+import { NoSearchResults } from "@/components/comunicacion/no-search-results";
+import { matchesSearch } from "@/lib/comunicacion/search";
 
 type Broadcast = Database["public"]["Tables"]["broadcasts"]["Row"];
 
@@ -87,6 +91,9 @@ export function BroadcastsView({
   );
   const [showSegmentFilter, setShowSegmentFilter] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Bloque I (I4): el buscador de la barra filtra la lista que ya llego.
+  const query = useSearchParams().get("q") ?? "";
+  const visibleItems = items.filter((b) => matchesSearch(query, b.name));
 
   async function handleCreate() {
     if (!newName.trim() || creating) return;
@@ -146,6 +153,7 @@ export function BroadcastsView({
       <PageHeader
         route="/dashboard/broadcasts"
         left={<SectionTabs />}
+        filters={<SectionSearch value={query} placeholder="Buscar un broadcast" label="Buscar broadcasts" />}
         right={
           <button
             onClick={() => setShowCreate(true)}
@@ -242,9 +250,11 @@ export function BroadcastsView({
               Create your first broadcast to send messages to your contacts
             </p>
           </div>
+        ) : visibleItems.length === 0 ? (
+          <NoSearchResults query={query} none="Ningún broadcast" />
         ) : (
           <div className="divide-y divide-border">
-            {items.map((broadcast) => {
+            {visibleItems.map((broadcast) => {
               const status = statusConfig[broadcast.status];
               const StatusIcon = status.icon;
               const total = broadcast.total_recipients;
