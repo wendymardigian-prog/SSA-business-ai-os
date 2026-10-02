@@ -191,6 +191,48 @@ export async function updateMessagePersistence(
 }
 
 /**
+ * Si el agente escala a una persona cuando no puede interpretar un mensaje
+ * de la rafaga (00103, S2). Prendido es el comportamiento correcto; se
+ * puede apagar si genera demasiado escalado.
+ *
+ * Hasta el Bloque S esta columna no tenia ninguna accion que la escribiera:
+ * se editaba a mano en la base. Mismo patron que `updateMessagePersistence`.
+ */
+export async function updateAgentEscalation(
+  enabled: boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return { ok: false, error: "Solo Owner y Admin pueden cambiar el escalado del agente" };
+  }
+
+  const { workspace, supabase, user } = ctx;
+
+  const { error } = await supabase
+    .from("workspaces")
+    .update({ agent_escalate_on_unreadable: enabled })
+    .eq("id", workspace.id);
+
+  if (error) {
+    console.error("[workspace] no pude cambiar el escalado del agente:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "workspace",
+    entityId: workspace.id,
+    action: "update",
+    changes: { agent_escalate_on_unreadable: { old: !enabled, new: enabled } },
+    performedBy: user.id,
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+/**
  * La media del chat: si se guarda y cuanto se conserva (F2, F5).
  *
  * Son dos columnas y una sola pantalla, asi que van en una sola accion: si

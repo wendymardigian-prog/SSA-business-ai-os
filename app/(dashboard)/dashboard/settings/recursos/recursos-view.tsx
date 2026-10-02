@@ -24,6 +24,9 @@ import { formatRecordingDuration } from "@/lib/audio/recording";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError, EmptyHint } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 /**
  * Pantalla de la banca de recursos: una tabla para textos y audios juntos,
@@ -180,6 +183,10 @@ export function RecursosView({
           </div>
         }
       />
+      {/* Un Member entra a Recursos para usarlos, no para administrar
+          Ajustes: sin las pestañas no le ofrecemos links a pantallas de
+          admin que lo van a rebotar. */}
+      {canManage && <SettingsTabs />}
       {error && (
         <div className="px-4 pt-4 md:px-8">
           <ActionError message={error} />
@@ -188,14 +195,25 @@ export function RecursosView({
 
       <div className="flex-1">
         {assets.length === 0 ? (
-          <div className="px-8 py-12">
-            <EmptyHint>
-              Todavía no hay recursos.{" "}
-              {canManage
-                ? 'Guardá un texto o grabá un audio y tu equipo va a poder mandarlo con un clic.'
-                : "Cuando un Owner o Admin cree el primero, lo vas a poder usar desde la bandeja."}
-            </EmptyHint>
-          </div>
+          <SettingsEmptyState
+            description={
+              canManage ? SETTINGS_EMPTY_STATES.recursosAdmin : SETTINGS_EMPTY_STATES.recursosMember
+            }
+            action={
+              canManage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setEditing("new");
+                  }}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  Nuevo recurso
+                </button>
+              )
+            }
+          />
         ) : visible.length === 0 ? (
           <div className="px-8 py-12">
             <EmptyHint>Ningún recurso coincide con la búsqueda.</EmptyHint>

@@ -4,6 +4,9 @@ import { useState, useTransition } from "react";
 import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
 import {
   PERMISSION_MODULES,
@@ -63,7 +66,16 @@ const emptyDraft = (): Draft => ({
   bookingsScope: "own",
 });
 
-export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
+export function RolesView({
+  roles: initial,
+  canSeeMembers,
+}: {
+  roles: RoleRow[];
+  /** Si puede ver también Equipo: oculta "Miembros" del segmented para un
+   * rol personalizado con `roles.manage` que no es Owner/Admin (esa pantalla
+   * lo rebotaría). Default true: Owner/Admin es el caso normal. */
+  canSeeMembers?: boolean;
+}) {
   const [roles, setRoles] = useState(sortRoles(initial));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pending, start] = useTransition();
@@ -149,8 +161,14 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
         }
       />
       <SettingsTabs />
+      <TeamRolesSwitch canSeeMembers={canSeeMembers} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Los roles Owner, Admin y Member vienen con el sistema y no se editan. Para armar
+          el tuyo, usá Nuevo rol.
+        </p>
+
         {error && (
           <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
             {error}
@@ -167,6 +185,20 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
           </ul>
         )}
 
+        {roles.length === 0 ? (
+          <SettingsEmptyState
+            description={SETTINGS_EMPTY_STATES.roles}
+            action={
+              <button
+                type="button"
+                onClick={openNew}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                Nuevo rol
+              </button>
+            }
+          />
+        ) : (
         <ul className="space-y-2">
           {roles.map((role) => (
             <li key={role.id} className="rounded-xl border border-border p-3">
@@ -239,6 +271,7 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
             </li>
           ))}
         </ul>
+        )}
 
         {draft && (
           <section className="mt-6 rounded-xl border border-border p-4">
