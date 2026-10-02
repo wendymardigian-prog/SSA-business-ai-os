@@ -27,7 +27,7 @@ export async function inviteTeamMember(
   const { workspace, user, supabase } = await getWorkspace();
 
   if (workspace.id !== workspaceId) {
-    return { error: "Workspace mismatch" };
+    return { error: "El workspace no coincide" };
   }
 
   // Validate caller is owner or admin
@@ -44,7 +44,7 @@ export async function inviteTeamMember(
 
   const trimmedEmail = email.trim().toLowerCase();
   if (!trimmedEmail || !trimmedEmail.includes("@")) {
-    return { error: "A valid email address is required" };
+    return { error: "Hace falta un email válido" };
   }
 
   if (!ASSIGNABLE_ROLES.includes(role as WorkspaceRole)) {
@@ -69,7 +69,7 @@ export async function inviteTeamMember(
       .single();
 
     if (existingInvite) {
-      return { error: "An invite for this email is already pending" };
+      return { error: "Ya hay una invitación pendiente para ese email" };
     }
   }
 
@@ -132,7 +132,7 @@ export async function removeTeamMember(
   const { workspace, user, supabase } = await getWorkspace();
 
   if (workspace.id !== workspaceId) {
-    return { error: "Workspace mismatch" };
+    return { error: "El workspace no coincide" };
   }
 
   // Validate caller is owner
@@ -144,12 +144,12 @@ export async function removeTeamMember(
     .single();
 
   if (membership?.role !== "owner") {
-    return { error: "Only workspace owners can remove members" };
+    return { error: "Solo el Owner puede quitar miembros" };
   }
 
   // Can't remove yourself
   if (userId === user.id) {
-    return { error: "You cannot remove yourself from the workspace" };
+    return { error: "No podés quitarte a vos mismo del workspace" };
   }
 
   const { error: deleteError } = await supabase
@@ -178,7 +178,7 @@ export async function acceptInvite(inviteId: string) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { error: "Not authenticated" };
+  if (!user) return { error: "No autenticado" };
 
   // Use service client to bypass RLS (the user is not a workspace member yet)
   const serviceClient = await createServiceClient();
@@ -191,20 +191,20 @@ export async function acceptInvite(inviteId: string) {
     .single();
 
   if (fetchError || !invite) {
-    return { error: "Invite not found" };
+    return { error: "No encontré esa invitación" };
   }
 
   if (invite.status !== "pending") {
-    return { error: "This invite is no longer valid" };
+    return { error: "Esta invitación ya no es válida" };
   }
 
   if (new Date(invite.expires_at) < new Date()) {
-    return { error: "This invite has expired" };
+    return { error: "Esta invitación venció" };
   }
 
   // Verify the invite email matches the current user's email
   if (invite.email !== user.email) {
-    return { error: "This invite was sent to a different email address" };
+    return { error: "Esta invitación se mandó a otro email" };
   }
 
   // Check if user is already a member
@@ -258,7 +258,7 @@ export async function revokeInvite(inviteId: string) {
     .single();
 
   if (fetchError || !invite) {
-    return { error: "Invite not found" };
+    return { error: "No encontré esa invitación" };
   }
 
   // Validate caller is owner or admin
@@ -309,7 +309,7 @@ export async function changeMemberRole(
   const { workspace, user, supabase } = await getWorkspace();
 
   if (workspace.id !== workspaceId) {
-    return { error: "Workspace mismatch" };
+    return { error: "El workspace no coincide" };
   }
 
   if (!ASSIGNABLE_ROLES.includes(newRole as WorkspaceRole)) {

@@ -118,7 +118,7 @@ export function SettingsView({
                 </div>
                 <div className="mt-4">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Workspace Name
+                    Nombre del workspace
                   </label>
                   <input
                     type="text"
@@ -137,12 +137,12 @@ export function SettingsView({
                     {saving ? (
                       <>
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                        Saving...
+                        Guardando...
                       </>
                     ) : (
                       <>
                         <Save className="h-4 w-4" />
-                        Save Changes
+                        Guardar cambios
                       </>
                     )}
                   </button>
@@ -150,7 +150,7 @@ export function SettingsView({
                   {saved && (
                     <span className="flex items-center gap-1 text-sm text-green-600">
                       <Check className="h-4 w-4" />
-                      Settings saved
+                      Cambios guardados
                     </span>
                   )}
 
@@ -190,14 +190,14 @@ export function SettingsView({
 
               <hr className="border-border" />
 
-              {/* Global Keywords */}
+              {/* Palabras clave globales */}
               <section>
                 <div className="flex items-center gap-2">
                   <Hash className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold">Global Keywords</h2>
+                  <h2 className="text-sm font-semibold">Palabras clave globales</h2>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Keywords that trigger flows across all channels. Flow-specific triggers take priority over global keywords.
+                  Palabras que disparan flows en todos los canales. Un disparador propio de un flow tiene prioridad sobre las palabras clave globales.
                 </p>
 
                 <div className="mt-4 flex gap-2">
@@ -211,7 +211,7 @@ export function SettingsView({
                         addKeyword();
                       }
                     }}
-                    placeholder="Add a keyword..."
+                    placeholder="Agregar una palabra clave..."
                     className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <button
@@ -242,7 +242,7 @@ export function SettingsView({
                   </div>
                 ) : (
                   <p className="mt-3 text-xs text-muted-foreground/70">
-                    No global keywords configured
+                    Todavía no hay palabras clave configuradas
                   </p>
                 )}
 

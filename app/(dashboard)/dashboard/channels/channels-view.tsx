@@ -75,7 +75,7 @@ export function ChannelsView({
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        setSyncMessage(data.error || "Failed to connect");
+        setSyncMessage(data.error || "No pude conectar");
         setTimeout(() => setSyncMessage(null), 4000);
         return;
       }
@@ -84,7 +84,7 @@ export function ChannelsView({
         window.location.href = data.authUrl;
       }
     } catch {
-      setSyncMessage("Failed to start connection");
+      setSyncMessage("No pude iniciar la conexión");
       setTimeout(() => setSyncMessage(null), 4000);
     } finally {
       setConnecting(null);
@@ -139,7 +139,7 @@ export function ChannelsView({
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        setSyncMessage(data.error || "Sync failed");
+        setSyncMessage(data.error || "Falló la sincronización");
         return;
       }
 
@@ -170,24 +170,24 @@ export function ChannelsView({
       if (webhook?.error) {
         setSyncMessage(null);
       } else if (failed.length > 0) {
-        setSyncMessage(`Could not save some channels: ${failed.join("; ")}`);
+        setSyncMessage(`No pude guardar algunos canales: ${failed.join("; ")}`);
       } else if (nothingChanged && syncedChannels.length === 0 && skipped.length > 0) {
         setSyncMessage(
-          `Nothing to connect: ZernFlow does not support ${skipped.join(", ")}`
+          `Nada para conectar: el sistema no soporta ${skipped.join(", ")}`
         );
       } else if (nothingChanged) {
-        setSyncMessage("All channels up to date");
+        setSyncMessage("Todos los canales están al día");
       } else {
         const parts = [];
-        if (created > 0) parts.push(`${created} added`);
-        if (updated > 0) parts.push(`${updated} updated`);
-        if (deactivated > 0) parts.push(`${deactivated} deactivated`);
-        if (conversationsImported > 0) parts.push(`${conversationsImported} conversations imported`);
+        if (created > 0) parts.push(`${created} agregados`);
+        if (updated > 0) parts.push(`${updated} actualizados`);
+        if (deactivated > 0) parts.push(`${deactivated} desactivados`);
+        if (conversationsImported > 0) parts.push(`${conversationsImported} conversaciones importadas`);
         setSyncMessage(parts.join(", "));
       }
       setTimeout(() => setSyncMessage(null), failed.length > 0 ? 10000 : 4000);
     } catch {
-      setSyncMessage("Failed to sync. Check your connection.");
+      setSyncMessage("No pude sincronizar. Revisá tu conexión.");
     } finally {
       setSyncing(false);
     }
@@ -223,14 +223,14 @@ export function ChannelsView({
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        setSyncMessage(data.error || "Failed to delete channel");
+        setSyncMessage(data.error || "No pude eliminar el canal");
         setTimeout(() => setSyncMessage(null), 4000);
         return;
       }
 
       setChannels((prev) => prev.filter((c) => c.id !== id));
     } catch {
-      setSyncMessage("Failed to delete channel. Check your connection.");
+      setSyncMessage("No pude eliminar el canal. Revisá tu conexión.");
       setTimeout(() => setSyncMessage(null), 4000);
     } finally {
       setDeletingId(null);
@@ -257,7 +257,7 @@ export function ChannelsView({
               <RefreshCw
                 className={cn("h-4 w-4", syncing && "animate-spin")}
               />
-              {syncing ? "Syncing..." : "Sync"}
+              {syncing ? "Sincronizando..." : "Sincronizar"}
             </button>
             <div className="relative" ref={pickerRef}>
               <button
@@ -265,7 +265,7 @@ export function ChannelsView({
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
               >
                 <Plus className="h-4 w-4" />
-                Connect Channel
+                Conectar canal
               </button>
               {showPlatformPicker && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-card p-2 shadow-lg">
@@ -318,18 +318,18 @@ export function ChannelsView({
           <div className="flex flex-col items-center justify-center py-20">
             <Plug className="h-10 w-10 text-muted-foreground/40" />
             <p className="mt-3 text-sm font-medium text-muted-foreground">
-              No channels yet
+              Todavía no hay canales
             </p>
             <p className="mt-1 max-w-xs text-center text-xs text-muted-foreground/70">
-              Connect a social media account to start building flows and
-              automating conversations.
+              Conectá una cuenta de redes sociales para empezar a armar flows y
+              automatizar conversaciones.
             </p>
             <button
               onClick={() => setShowPlatformPicker(true)}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
             >
               <Plus className="h-4 w-4" />
-              Connect Channel
+              Conectar canal
             </button>
           </div>
         ) : (
@@ -400,8 +400,8 @@ export function ChannelsView({
                         )}
                         title={
                           channel.is_active
-                            ? "Channel is active. Click to deactivate."
-                            : "Channel is inactive. Click to activate."
+                            ? "El canal está activo. Click para desactivarlo."
+                            : "El canal está inactivo. Click para activarlo."
                         }
                       >
                         {channel.is_active ? (
@@ -414,7 +414,7 @@ export function ChannelsView({
                         onClick={() => setChannelToDelete(channel)}
                         disabled={deletingId === channel.id}
                         className="rounded-lg p-2 text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors"
-                        title="Delete channel"
+                        title="Eliminar canal"
                       >
                         {deletingId === channel.id ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -492,11 +492,11 @@ export function ChannelsView({
                             : "bg-muted-foreground"
                         )}
                       />
-                      {channel.is_active ? "Active" : "Inactive"}
+                      {channel.is_active ? "Activo" : "Inactivo"}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
-                      Connected{" "}
-                      {new Date(channel.created_at).toLocaleDateString([], {
+                      Conectado el{" "}
+                      {new Date(channel.created_at).toLocaleDateString("es-AR", {
                         month: "short",
                         day: "numeric",
                       })}
@@ -530,7 +530,7 @@ export function ChannelsView({
                               ? "border-green-200 bg-green-50 text-green-600"
                               : "border-border bg-card text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground"
                           )}
-                          title={copiedId === channel.id ? "Copied!" : "Copy DM link"}
+                          title={copiedId === channel.id ? "¡Copiado!" : "Copiar link de DM"}
                         >
                           {copiedId === channel.id ? (
                             <Check className="h-3 w-3" />
@@ -558,13 +558,14 @@ export function ChannelsView({
 
       <ConfirmDialog
         open={!!channelToDelete}
-        title="Delete channel?"
-        message={`This disconnects ${
+        title="¿Eliminar canal?"
+        message={`Esto desconecta a ${
           channelToDelete?.display_name ??
           channelToDelete?.username ??
-          (channelToDelete ? platformLabel(channelToDelete.platform) : "this channel")
-        } from Zernio and permanently deletes its conversations, contact links, and stats in Zernflow. This cannot be undone.`}
-        confirmLabel="Delete"
+          (channelToDelete ? platformLabel(channelToDelete.platform) : "este canal")
+        } del proveedor y borra para siempre sus conversaciones, vínculos de contacto y estadísticas en el sistema. No se puede deshacer.`}
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
         destructive
         onConfirm={handleDelete}
         onCancel={() => setChannelToDelete(null)}
