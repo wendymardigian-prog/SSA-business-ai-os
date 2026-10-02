@@ -1,5 +1,26 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { describeModelError, describeRunDetail } from "./run-labels";
+import { describeModelError, describeRunDetail, RUN_SOURCE_LABELS } from "./run-labels";
+
+/**
+ * Los valores del CHECK vigente de agent_runs.source, leidos de las
+ * migraciones (Bloque A4). Cada redefinicion (`ADD CONSTRAINT
+ * agent_runs_source_check`) reemplaza a la anterior; se lee en orden y se
+ * queda con la ultima, igual que hace la base de verdad.
+ */
+function sourceCheckValues(): string[] {
+  const dir = join(process.cwd(), "supabase/migrations");
+  let values: string[] | null = null;
+  for (const file of readdirSync(dir).filter((f) => /^\d+_.*\.sql$/.test(f)).sort()) {
+    const sql = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    for (const m of sql.matchAll(/ADD CONSTRAINT agent_runs_source_check\s+CHECK\s*\(\s*source\s+IN\s*\(([^)]+)\)/gi)) {
+      values = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    }
+  }
+  if (!values) throw new Error("no encontre agent_runs_source_check en las migraciones");
+  return values;
+}
 
 /**
  * Lo que lee una persona cuando el agente no pudo contestar.
@@ -59,5 +80,19 @@ describe("describeRunDetail", () => {
     expect(describeRunDetail("skipped_same_provider_auth")).toEqual([
       "no se intento el respaldo: mismo proveedor, y la key ya habia sido rechazada",
     ]);
+  });
+});
+
+describe("RUN_SOURCE_LABELS (A4)", () => {
+  it("las migraciones se leen bien (si esto falla, el parser quedo viejo)", () => {
+    expect(sourceCheckValues()).toContain("audio_transcription");
+  });
+
+  it("tiene etiqueta para los 11 valores del CHECK, ninguno de mas", () => {
+    expect(Object.keys(RUN_SOURCE_LABELS).sort()).toEqual([...sourceCheckValues()].sort());
+  });
+
+  it("ninguna etiqueta queda igual al valor crudo (la gracia es traducirlo)", () => {
+    for (const [source, label] of Object.entries(RUN_SOURCE_LABELS)) expect(label).not.toBe(source);
   });
 });

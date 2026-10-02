@@ -17,11 +17,18 @@ export const RUN_STATUS_LABELS: Record<string, string> = {
 };
 
 export const RUN_SOURCE_LABELS: Record<string, string> = {
-  agent: "Agente de conversacion",
-  flow_ai_node: "Nodo de IA de un flow",
-  sequence_ai_step: "Paso de IA de una secuencia",
-  kb_indexing: "Indexacion de la base de conocimiento",
-  conversation_summary: "Resumen de conversacion",
+  agent: "Agente",
+  flow_ai_node: "Automatizacion",
+  sequence_ai_step: "Secuencia",
+  kb_indexing: "Base de conocimiento",
+  conversation_summary: "Resumen de cierre",
+  message_classification: "Clasificador",
+  // Esta en el CHECK de agent_runs.source y no lo escribe nadie (docs/PENDIENTE.md).
+  message_classification_eval: "Clasificador (evaluacion)",
+  content_copy: "Copywriter",
+  ads_analysis: "Analisis de anuncios",
+  audio_transcription: "Transcripcion",
+  media_description: "Descripcion de imagen",
 };
 
 const DETAIL_LABELS: Record<string, string> = {

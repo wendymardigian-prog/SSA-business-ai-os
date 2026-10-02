@@ -52,7 +52,7 @@ describe("loadCostsTab", () => {
     });
     expect(data.report.totals).toMatchObject({ runs: 4, costUsd: 0.08, conversations: 2, escalations: 1, missingPricing: 1 });
     expect(data.averages).toEqual({ perRun: 0.02, perConversation: 0.04, perEscalation: 0.08, escalationRatePct: 25 });
-    expect(data.report.bySource[1]).toMatchObject({ label: "Resumen de conversacion", costUsd: 0.01 });
+    expect(data.report.bySource[1]).toMatchObject({ label: "Resumen de cierre", costUsd: 0.01 });
     expect(data.report.byAgent[0]).toMatchObject({ name: "Asistente" });
     expect(data.report.topConversations[0]).toMatchObject({ contactName: "Ana", costUsd: 0.07 });
     expect(data.pricing[0]).toMatchObject({ inputPerMtok: 3, outputPerMtok: 15, cachedInputPerMtok: 0.3 });
