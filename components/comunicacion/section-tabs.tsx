@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare, Radio, ListOrdered, Sprout, type LucideIcon } from "lucide-react";
@@ -75,10 +75,22 @@ export function SectionTabs() {
     }
   }, [onInbox, currentQuery]);
 
+  // A 390 px entran una o dos pestañas: la activa se trae a la vista, si no en
+  // Broadcasts se veria "Conversaciones" y la marcada quedaria escondida. Se
+  // mueve el scroll del control y no la pagina (scrollIntoView movería todo).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+  }, [pathname]);
+
   return (
     <nav
+      ref={navRef}
       aria-label="Secciones de comunicación"
-      className="flex min-w-0 shrink items-center overflow-x-auto rounded-lg border border-border p-0.5"
+      className="relative flex min-w-0 shrink items-center overflow-x-auto rounded-lg border border-border p-0.5"
     >
       {COMUNICACION_TABS.map((tab) => {
         // startsWith y no igualdad: el detalle de una secuencia
