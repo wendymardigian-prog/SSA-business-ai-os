@@ -508,3 +508,25 @@ de Vitest hubiera cubierto) lo siguen haciendo.
   ya enviado sigue reproduciéndose (apunta a la copia).
 - `node scripts/verify-chat-media.mjs` — la sección B corre de verdad (ya no
   se saltea) e incluye el chequeo del atajo cruzado entre tipos.
+
+## Bloque I — Bandeja (1/10/2026, rama `feat/bandeja-barra`)
+
+### I7 · Nueva conversación saliente
+- **Qué quedó:** no hay botón para empezar una conversación desde la Bandeja (no existía antes y no se agregó).
+- **Por qué:** escribirle primero a alguien depende de la ventana de mensajería de cada canal: 24 h desde el último mensaje del contacto en WhatsApp, reglas distintas en Instagram, ninguna en email. Qué hacer fuera de esa ventana (plantilla aprobada, bloquear el botón, avisar) es una decisión de producto que el documento v2.0 no cubre.
+- **Qué se decidió en su lugar:** nada en este bloque. Cuando se decida, el botón va en el `right` del `PageHeader` de la Bandeja, que quedó libre.
+
+### Un link del dashboard de Chat manda un estado inválido
+- **Qué quedó:** `components/dashboards/chat/kpi-cards.tsx:78` linkea a `/dashboard/inbox?estado=abiertas`. Los valores válidos son `all`, `open`, `closed`, `snoozed`.
+- **Por qué:** `pickEnum` cae al default (`open`), así que la lista se ve bien de casualidad, pero la URL queda con un valor que no existe y la línea de resumen y las pastillas muestran "Abiertas" por el default, no por el link.
+- **Qué se decidió en su lugar:** no se tocó: es del dashboard de Chat y no de la Bandeja. El arreglo es cambiar `abiertas` por `open`.
+
+### Comentario viejo en `scripts/verify-inbox-filters.mjs`
+- **Qué quedó:** el comentario de la línea 11 apunta a `app/(dashboard)/dashboard/inbox/page.tsx`; la página vive en `app/(dashboard)/dashboard/(comunicacion)/inbox/page.tsx` desde que existe el route group.
+- **Por qué:** solo un comentario; la consulta que el script copia no cambió en este bloque.
+- **Qué se decidió en su lugar:** se deja anotado.
+
+### La búsqueda de la Bandeja es solo por nombre
+- **Qué quedó:** el documento pedía el placeholder "Buscar por nombre, teléfono o texto del mensaje", pero el servidor busca solo por `contacts.display_name`.
+- **Por qué:** ampliar la búsqueda cambia su semántica, y este bloque no la cambia.
+- **Qué se decidió en su lugar (con Wendy):** el placeholder dice lo que hace, "Buscar por nombre". Buscar por teléfono o por texto del mensaje es una mejora aparte, que toca la consulta del servidor y `scripts/verify-inbox-filters.mjs`.

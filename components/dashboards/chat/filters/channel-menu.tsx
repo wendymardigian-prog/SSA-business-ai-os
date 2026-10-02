@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, ColorDot, FilterMenu, MenuGroupLabel, MenuOption } from "./filter-menu";
+import { Avatar, ColorDot, FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 
 /**
  * El filtro de canal.

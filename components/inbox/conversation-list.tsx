@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
-import { InboxFiltersBar } from "@/components/inbox/inbox-filters";
+import { InboxStatusBar } from "@/components/inbox/inbox-filters";
 import {
   matchesInboxRow,
   needsServerToFilter,
@@ -50,9 +50,6 @@ export function ConversationList({
   onSelect,
   filters,
   dateRange,
-  tags,
-  platforms,
-  members,
   total,
   page,
   pageSize,
@@ -66,9 +63,6 @@ export function ConversationList({
   onSelect: (conversation: Conversation) => void;
   filters: InboxFilters;
   dateRange: DateRange;
-  tags: { id: string; name: string; color: string | null }[];
-  platforms: { value: string; label: string }[];
-  members: { userId: string; label: string }[];
   total: number;
   page: number;
   pageSize: number;
@@ -184,14 +178,9 @@ export function ConversationList({
         </span>
       </div>
 
-      <InboxFiltersBar
-        filters={filters}
-        tags={tags}
-        platforms={platforms}
-        members={members}
-        workspaceId={workspaceId}
-        draftCounts={draftCounts}
-      />
+      {/* Bloque I: el buscador y el popover de filtros subieron a la barra
+          superior. Aca quedan las pastillas de estado y los borradores. */}
+      <InboxStatusBar filters={filters} workspaceId={workspaceId} draftCounts={draftCounts} />
 
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
