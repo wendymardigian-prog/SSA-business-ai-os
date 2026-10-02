@@ -149,8 +149,6 @@ export default async function IntegrationsPage() {
       youtubeVerifiedAt={youtubeVerifiedAt}
       metaAccounts={metaConfig.ad_accounts}
       metaIgUsername={metaConfig.ig_username}
-      // Ya no hay secretos en columnas viejas: la 00090 las borro.
-      zernioLegacySecrets={false}
       channelsSummary={activeChannels
         .filter((c) => c.provider === "zernio")
         .map((c) => ({

@@ -326,27 +326,6 @@ export async function disconnectIntegration(
 }
 
 /**
- * Movia a Vault los secretos de Zernio que vivian en columnas (F5).
- *
- * **Ya no hace nada, y eso es lo correcto.** Los dos secretos —la API key y
- * el secreto del webhook— se movieron a Vault y las columnas se borraron con
- * la migracion 00090. No queda de donde migrar.
- *
- * La funcion se conserva en vez de borrarse porque la pantalla de
- * integraciones todavia la puede llamar desde una pestaña vieja que quedo
- * abierta, y devolver "no hay nada que migrar" es mas claro que un error de
- * columna inexistente.
- */
-export async function migrateZernioSecretsToVault(): Promise<
-  IntegrationActionResult & { migrated?: string[] }
-> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
-
-  return { ok: true, migrated: [] };
-}
-
-/**
  * Los proveedores de IA conectados, para el selector del nodo AI Response.
  *
  * Solo lectura y sin nada sensible: id, etiqueta y modelos disponibles. La key
