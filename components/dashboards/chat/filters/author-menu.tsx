@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, FilterMenu, MenuGroupLabel, MenuOption } from "./filter-menu";
+import { Avatar, FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
 import { initialsOf } from "@/lib/dashboards/chat/team-rows";
 
 /**

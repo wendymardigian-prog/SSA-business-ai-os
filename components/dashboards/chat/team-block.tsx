@@ -4,7 +4,7 @@ import { Clock, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/tooltip";
 import { EmptyBlock, Panel } from "./block";
-import { Avatar } from "./filters/filter-menu";
+import { Avatar } from "@/components/ui/filter-menu";
 import { formatCount, formatDuration } from "@/lib/dashboards/chat/comparisons";
 import { filterValueFor, timeTone, type TeamRow } from "@/lib/dashboards/chat/team-rows";
 
