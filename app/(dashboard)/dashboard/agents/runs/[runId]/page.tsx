@@ -119,7 +119,7 @@ export default async function AgentRunPage({
       />
 
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
-        <RunDetail run={run} showCost={includeCost} agentHref={(agentId) => `/dashboard/agents/${agentId}?tab=actions`} />
+        <RunDetail run={run} showCost={includeCost} />
       </div>
     </div>
   );

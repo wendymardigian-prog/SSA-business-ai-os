@@ -57,12 +57,9 @@ export function RunStatusBadge({ status }: { status: string }) {
 export function RunDetail({
   run,
   showCost,
-  agentHref,
 }: {
   run: RunRow;
   showCost: boolean;
-  /** Para el link a Acciones, cuando un paso tiene audit_log_id. */
-  agentHref?: (agentId: string) => string;
 }) {
   const details = describeRunDetail(run.statusDetail);
   const tools = run.steps.filter((s) => s.kind === "tool_call" && s.name && !s.error).map((s) => s.name as string);
@@ -125,7 +122,7 @@ export function RunDetail({
         ) : (
           <ol className="mt-1 space-y-1.5">
             {run.steps.map((step) => (
-              <StepItem key={step.id} step={step} agentId={run.agentId} agentHref={agentHref} />
+              <StepItem key={step.id} step={step} agentId={run.agentId} />
             ))}
           </ol>
         )}
@@ -148,7 +145,7 @@ export function RunDetail({
   );
 }
 
-function StepItem({ step, agentId, agentHref }: { step: RunStepRow; agentId: string | null; agentHref?: (agentId: string) => string }) {
+function StepItem({ step, agentId }: { step: RunStepRow; agentId: string | null }) {
   const label = STEP_KIND_LABELS[step.kind] ?? step.kind;
   const purged = isPurged(step);
   return (
@@ -181,8 +178,8 @@ function StepItem({ step, agentId, agentHref }: { step: RunStepRow; agentId: str
         </>
       )}
       {step.error && <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">{describeModelError(step.error)}</p>}
-      {step.auditLogId && agentId && agentHref && (
-        <Link href={agentHref(agentId)} className="mt-1 inline-block text-[11px] underline underline-offset-2">
+      {step.auditLogId && agentId && (
+        <Link href={`/dashboard/agents/${agentId}?tab=actions`} className="mt-1 inline-block text-[11px] underline underline-offset-2">
           Ver en Acciones del agente
         </Link>
       )}

@@ -40,8 +40,6 @@ export function RunsScreen({
   const activeCount = countActiveRunFilters(filters, null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const agentHrefFor = (agentId: string) => `/dashboard/agents/${agentId}?tab=actions`;
-
   return (
     <div className="space-y-4">
       {!isAdmin && (
@@ -236,7 +234,7 @@ export function RunsScreen({
                       {open && (
                         <tr>
                           <td colSpan={showCost ? 12 : 10} className="bg-muted/20 px-4 py-4">
-                            <RunDetail run={run} showCost={showCost} agentHref={agentHrefFor} />
+                            <RunDetail run={run} showCost={showCost} />
                           </td>
                         </tr>
                       )}
