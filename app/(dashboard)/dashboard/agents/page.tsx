@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { Bot, ChevronRight } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { isAdminRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
@@ -8,6 +10,10 @@ import { getAgentType } from "@/lib/agent/agent-types";
 import { getProvider } from "@/lib/integrations/providers";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
 import { PageHeader } from "@/components/page-header";
+import { AiPeriodControl } from "@/components/agents/ai-dashboard/period-control";
+import { AiDashboardSkeleton } from "@/components/agents/ai-dashboard/dashboard-panel";
+import { AiDashboardSection } from "@/components/agents/ai-dashboard/section";
+import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
 
 /**
  * Agentes (F24): lista de agentes con su estado.
@@ -17,18 +23,43 @@ import { PageHeader } from "@/components/page-header";
  * topes de gasto que el rol authenticated no puede leer), pero de esa fila
  * solo se muestra nombre, estado, modelo y canales. Crear un agente sigue
  * siendo de Owner/Admin.
+ *
+ * Arriba de la lista, el mini dashboard de IA (Bloque A), solo para quien
+ * tiene `ai_costs.view` (D7): para el resto, esta pagina queda como siempre
+ * estuvo. El dashboard es un Server Component aparte, en su propio
+ * `<Suspense>`, para no demorar la lista de agentes (que no depende de el).
  */
-export default async function AgentsPage() {
+export default async function AgentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { workspace, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
   const service = await createServiceClient();
-  const agents = await loadWorkspaceAgents(service, workspace.id);
+  const [agents, permissions] = await Promise.all([loadWorkspaceAgents(service, workspace.id), getPermissionContext()]);
+  const canViewCosts = permissions.can("ai_costs.view");
+  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
+
+  let filter = null;
+  if (canViewCosts) {
+    const sp = await searchParams;
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (typeof v === "string") params.set(k, v);
+    filter = parsePeriodFilter(params);
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/agents" />
+      <PageHeader route="/dashboard/agents" filters={canViewCosts ? <AiPeriodControl timezone={timeZone} /> : undefined} />
 
       <div className="flex-1 overflow-auto px-8 py-6">
+        {canViewCosts && filter && (
+          <Suspense fallback={<AiDashboardSkeleton />}>
+            <AiDashboardSection workspaceId={workspace.id} timeZone={timeZone} filter={filter} firstAgentId={agents[0]?.id ?? null} />
+          </Suspense>
+        )}
+
         {agents.length === 0 ? (
           <div className="mx-auto max-w-lg rounded-xl border border-dashed border-border p-10 text-center">
             <Bot className="mx-auto h-10 w-10 text-muted-foreground/50" aria-hidden />

@@ -125,6 +125,23 @@ export async function loadAiDashboardData(
   };
 }
 
+/**
+ * Las dos únicas señales de A5 que no vienen de otro módulo ya resuelto:
+ * cuantas corridas hubo en las últimas 24 h y cuantas de esas fueron error.
+ * Dos `count` con `head: true` (no traen filas), aparte de las tres del
+ * resto del dashboard: la señal de integraciones la trae `loadIntegrations()`
+ * (G3), ya calculada.
+ */
+export async function loadRunCounts24h(service: Db, args: { workspaceId: string; now?: Date }): Promise<{ runs: number; errors: number }> {
+  const now = args.now ?? new Date();
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const [{ count: runs }, { count: errors }] = await Promise.all([
+    service.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", args.workspaceId).gte("created_at", since).neq("status", "running"),
+    service.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", args.workspaceId).gte("created_at", since).eq("status", "error"),
+  ]);
+  return { runs: runs ?? 0, errors: errors ?? 0 };
+}
+
 interface RawScatterRow {
   id: string;
   created_at: string;

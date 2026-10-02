@@ -19,6 +19,8 @@ export interface SpendByDayRow {
 export interface SpendSeriesResult {
   points: TrendPoint[];
   series: ChartSeries[];
+  /** Las claves 'YYYY-MM-DD' en el mismo orden que `points` (para el link de un dia a Corridas, A4). */
+  days: string[];
   /** Gasto total del dia, en el mismo orden que `points` (para "hoy"/"ayer", A3). */
   totalsByDay: Map<string, number>;
 }
@@ -68,5 +70,5 @@ export function buildSpendSeries(rows: SpendByDayRow[]): SpendSeriesResult {
     };
   });
 
-  return { points, series, totalsByDay };
+  return { points, series, days, totalsByDay };
 }
