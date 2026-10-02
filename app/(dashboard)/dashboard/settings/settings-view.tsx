@@ -1,20 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Settings,
-  Key,
-  Hash,
-  Save,
-  Plus,
-  X,
-  Check,
-  Plug,
-  Users,
-  ChevronRight,
-  Library,
-  ListPlus,
-} from "lucide-react";
+import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
@@ -22,8 +9,12 @@ import { MessagePersistenceSettings } from "@/components/settings/message-persis
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
+import { AiLimitsSettings } from "@/components/settings/ai-limits-settings";
+import { EscalationSettings } from "@/components/settings/escalation-settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { SectionNav } from "@/components/settings/section-nav";
+import { AI_RUNS_HREF } from "@/lib/settings/general-sections";
 
 interface WorkspaceSettings {
   id: string;
@@ -36,12 +27,31 @@ interface WorkspaceSettings {
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
+  aiDailyLimitUsd: number | null;
+  aiMonthlyLimitUsd: number | null;
+  escalateOnUnreadable: boolean;
 }
 
+/**
+ * General (S2): antes era una columna de 13 bloques apilados, con seis de
+ * ellos siendo tarjetas-link que repetían una pestaña o una ruta propia
+ * (API keys, Team, Roles, Campos personalizados, Tareas, Banca de
+ * recursos). Esas tarjetas se eliminaron: todo lo que linkeaban ya tiene su
+ * propia pestaña en `SettingsTabs`.
+ *
+ * Lo que queda se agrupó en cuatro secciones con navegación interna
+ * (`SectionNav`, mismo patrón que `components/scheduling/config-nav.tsx`,
+ * pero por anclas en vez de rutas): Workspace, Conversaciones, Archivos e
+ * IA. Cada ajuste conserva su forma de guardado actual — el botón de abajo
+ * sigue guardando solo nombre y palabras clave, el resto se guarda solo —
+ * y por eso quedan separados visualmente aunque compartan sección.
+ */
 export function SettingsView({
   workspace,
+  canViewAiCosts,
 }: {
   workspace: WorkspaceSettings;
+  canViewAiCosts: boolean;
 }) {
   const [name, setName] = useState(workspace.name);
   const [keywords, setKeywords] = useState<string[]>(workspace.globalKeywords);
@@ -94,287 +104,189 @@ export function SettingsView({
       <PageHeader route="/dashboard/settings" />
       <SettingsTabs />
 
-      {/* Settings form */}
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-2xl space-y-8 px-8 py-8">
-          {/* Workspace name */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">General</h2>
-            </div>
-            <div className="mt-4">
-              <label className="text-xs font-medium text-muted-foreground">
-                Workspace Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </section>
+        <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8 sm:px-8 md:flex-row md:items-start md:gap-10">
+          <SectionNav />
 
-          <hr className="border-border" />
-
-          <TimezoneSettings timezone={workspace.timezone} />
-
-          <hr className="border-border" />
-
-          <LeadScopeSettings
-            leadScopeEnabled={workspace.leadScopeEnabled}
-            unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
-          />
-
-          <hr className="border-border" />
-
-          <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
-
-          <hr className="border-border" />
-
-          <ChatMediaSettings
-            enabled={workspace.persistChatMedia}
-            retentionDays={workspace.chatMediaRetentionDays}
-          />
-
-          <hr className="border-border" />
-
-          {/* Las API keys se configuran en Integraciones: van a Vault, no a
-              columnas en texto plano. */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Key className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">API keys</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Instagram, email y proveedores de IA se conectan desde Integraciones. Las
-              keys se guardan encriptadas.
-            </p>
-            <Link
-              href="/dashboard/settings/integrations"
-              className="mt-4 flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/50"
-            >
-              <div className="flex items-center gap-3">
-                <Plug className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">Integraciones</p>
-                  <p className="text-xs text-muted-foreground">
-                    Instagram (Zernio), Resend, OpenAI, Anthropic y Google
-                  </p>
+          <div className="min-w-0 flex-1 space-y-10">
+            {/* Workspace */}
+            <section id="workspace" className="scroll-mt-20 space-y-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="text-sm font-semibold">General</h2>
                 </div>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </Link>
-          </section>
+                <div className="mt-4">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Workspace Name
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
 
-          <hr className="border-border" />
-
-          {/* Global Keywords */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Hash className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Global Keywords</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Keywords that trigger flows across all channels. Flow-specific triggers take priority over global keywords.
-            </p>
-
-            {/* Keyword input */}
-            <div className="mt-4 flex gap-2">
-              <input
-                type="text"
-                value={newKeyword}
-                onChange={(e) => setNewKeyword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addKeyword();
-                  }
-                }}
-                placeholder="Add a keyword..."
-                className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                onClick={addKeyword}
-                disabled={!newKeyword.trim()}
-                className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Keyword list */}
-            {keywords.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {keywords.map((kw) => (
-                  <span
-                    key={kw}
-                    className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium"
+                <div className="mt-4 flex items-center gap-3">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving || !name.trim()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
                   >
-                    {kw}
-                    <button
-                      onClick={() => removeKeyword(kw)}
-                      className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
+                    {saving ? (
+                      <>
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+
+                  {saved && (
+                    <span className="flex items-center gap-1 text-sm text-green-600">
+                      <Check className="h-4 w-4" />
+                      Settings saved
+                    </span>
+                  )}
+
+                  {error && <span className="text-sm text-red-600">{error}</span>}
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Este botón guarda el nombre de acá arriba y las palabras clave globales
+                  (sección Conversaciones, más abajo). Los demás ajustes de esta página se
+                  guardan solos.
+                </p>
               </div>
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground/70">
-                No global keywords configured
-              </p>
-            )}
-          </section>
 
-          <hr className="border-border" />
+              <hr className="border-border" />
 
-          {/* Team */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Team</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Manage workspace members and invitations.
-            </p>
-            <Link
-              href="/dashboard/settings/team"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <Users className="h-4 w-4" />
-              Manage Team
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </Link>
-          </section>
+              <TimezoneSettings timezone={workspace.timezone} />
+            </section>
 
-          <hr className="border-border" />
+            <hr className="border-border" />
 
-          {/* Roles (F71) */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Roles</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Que puede hacer cada persona del equipo, y que leads ve.
-            </p>
-            <Link
-              href="/dashboard/settings/roles"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <Users className="h-4 w-4" />
-              Administrar roles
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </Link>
-          </section>
+            {/* Conversaciones */}
+            <section id="conversaciones" className="scroll-mt-20 space-y-6">
+              <LeadScopeSettings
+                leadScopeEnabled={workspace.leadScopeEnabled}
+                unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
+              />
 
-          <hr className="border-border" />
+              <hr className="border-border" />
 
-          {/* Campos personalizados (F6) */}
-          <section>
-            <div className="flex items-center gap-2">
-              <ListPlus className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Campos personalizados</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Datos propios de tu negocio que se completan en cada contacto.
-            </p>
-            <Link
-              href="/dashboard/settings/custom-fields"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <ListPlus className="h-4 w-4" />
-              Gestionar campos
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </Link>
-          </section>
+              <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
 
-          <hr className="border-border" />
+              <hr className="border-border" />
 
-          {/* Tareas de IA en segundo plano (F23) */}
-          <section>
-            <div className="flex items-center gap-2">
-              <ListPlus className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Tareas en segundo plano</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Cómo corre cada tarea de IA que no es conversación en vivo: inmediato o económico por lote.
-            </p>
-            <Link
-              href="/dashboard/settings/background"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <ListPlus className="h-4 w-4" />
-              Configurar tareas
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </Link>
-          </section>
+              {/* Frases de "no contactar" (F18). Se guardan aparte del resto: son
+                  las unicas que cambian como reacciona el sistema a un mensaje
+                  entrante, y por eso llevan su propio registro en el audit log. */}
+              <OptOutSettings phrases={workspace.optOutPhrases} />
 
-          <hr className="border-border" />
+              <hr className="border-border" />
 
-          {/* Frases de "no contactar" (F18). Se guardan aparte del resto: son
-              las unicas que cambian como reacciona el sistema a un mensaje
-              entrante, y por eso llevan su propio registro en el audit log. */}
-          <OptOutSettings phrases={workspace.optOutPhrases} />
+              {/* Global Keywords */}
+              <section>
+                <div className="flex items-center gap-2">
+                  <Hash className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="text-sm font-semibold">Global Keywords</h2>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Keywords that trigger flows across all channels. Flow-specific triggers take priority over global keywords.
+                </p>
 
-          <hr className="border-border" />
+                <div className="mt-4 flex gap-2">
+                  <input
+                    type="text"
+                    value={newKeyword}
+                    onChange={(e) => setNewKeyword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addKeyword();
+                      }
+                    }}
+                    placeholder="Add a keyword..."
+                    className="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    onClick={addKeyword}
+                    disabled={!newKeyword.trim()}
+                    className="rounded-lg bg-secondary px-3 py-2 text-sm font-medium text-secondary-foreground hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
 
-          {/* Banca de recursos: textos y audios en una sola pantalla (unificacion de F17 y F20) */}
-          <section>
-            <div className="flex items-center gap-2">
-              <Library className="h-4 w-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Banca de recursos</h2>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Textos y audios que el equipo reutiliza en la bandeja con un clic, o que el agente usa solo.
-            </p>
-            <Link
-              href="/dashboard/settings/recursos"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <Library className="h-4 w-4" />
-              Gestionar recursos
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </Link>
-          </section>
+                {keywords.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {keywords.map((kw) => (
+                      <span
+                        key={kw}
+                        className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium"
+                      >
+                        {kw}
+                        <button
+                          onClick={() => removeKeyword(kw)}
+                          className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-background hover:text-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted-foreground/70">
+                    No global keywords configured
+                  </p>
+                )}
 
-          <hr className="border-border" />
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Se guarda con el botón de arriba, en Workspace.
+                </p>
+              </section>
+            </section>
 
-          {/* Save button */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={saving || !name.trim()}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {saving ? (
+            <hr className="border-border" />
+
+            {/* Archivos */}
+            <section id="archivos" className="scroll-mt-20">
+              <ChatMediaSettings
+                enabled={workspace.persistChatMedia}
+                retentionDays={workspace.chatMediaRetentionDays}
+              />
+            </section>
+
+            <hr className="border-border" />
+
+            {/* IA */}
+            <section id="ia" className="scroll-mt-20 space-y-6">
+              <AiLimitsSettings
+                dailyUsd={workspace.aiDailyLimitUsd}
+                monthlyUsd={workspace.aiMonthlyLimitUsd}
+              />
+
+              <hr className="border-border" />
+
+              <EscalationSettings enabled={workspace.escalateOnUnreadable} />
+
+              {canViewAiCosts && (
                 <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Save Changes
+                  <hr className="border-border" />
+                  <Link
+                    href={AI_RUNS_HREF}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline"
+                  >
+                    Ver corridas de IA →
+                  </Link>
                 </>
               )}
-            </button>
-
-            {saved && (
-              <span className="flex items-center gap-1 text-sm text-green-600">
-                <Check className="h-4 w-4" />
-                Settings saved
-              </span>
-            )}
-
-            {error && (
-              <span className="text-sm text-red-600">
-                {error}
-              </span>
-            )}
+            </section>
           </div>
         </div>
       </div>
