@@ -167,7 +167,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings": {
     title: "Ajustes",
-    tooltip: "Configuracion del negocio: equipo, integraciones, campos y plantillas.",
+    tooltip: "Configuracion del negocio: equipo, integraciones, campos y recursos.",
   },
   "/dashboard/settings/team": {
     title: "Equipo",
@@ -210,6 +210,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Integraciones",
     tooltip:
       "Todo lo que este sistema conecta con afuera: canales, redes, email e IA. Las claves se guardan encriptadas y nunca se muestran.",
+  },
+  "/dashboard/settings/integrations/[providerId]": {
+    title: "Integracion",
+    tooltip: "Credenciales, cuentas conectadas y actividad de esta integracion.",
   },
   "/dashboard/settings/custom-fields": {
     title: "Campos personalizados",

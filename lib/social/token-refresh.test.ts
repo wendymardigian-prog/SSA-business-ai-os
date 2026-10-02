@@ -4,7 +4,15 @@ import {
   warnMessage,
   type ConnectionToCheck,
   REFRESH_WHEN_DAYS_LEFT,
+  WARN_WHEN_DAYS_LEFT,
 } from "./token-refresh";
+import { EXPIRY_WARNING_DAYS } from "@/lib/integrations/status";
+
+describe("WARN_WHEN_DAYS_LEFT (G3)", () => {
+  it("es el mismo umbral que la card de Integraciones: uno solo en todo el sistema", () => {
+    expect(WARN_WHEN_DAYS_LEFT).toBe(EXPIRY_WARNING_DAYS);
+  });
+});
 
 const NOW = new Date("2026-09-26T12:00:00.000Z");
 const inDays = (d: number) => new Date(NOW.getTime() + d * 86_400_000).toISOString();

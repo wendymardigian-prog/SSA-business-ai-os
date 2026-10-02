@@ -36,12 +36,12 @@ export default async function TeamPage() {
         role: member.role,
         roleId: member.role_id,
         joinedAt: member.created_at,
-        email: memberUser?.email ?? "Unknown",
+        email: memberUser?.email ?? "Sin email",
         name:
           memberUser?.user_metadata?.full_name ??
           memberUser?.user_metadata?.name ??
           memberUser?.email?.split("@")[0] ??
-          "Unknown",
+          "Sin nombre",
       };
     })
   );

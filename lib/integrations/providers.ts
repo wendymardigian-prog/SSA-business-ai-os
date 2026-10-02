@@ -55,26 +55,59 @@ export type ProviderCapability = "text" | "embeddings" | "transcription";
  */
 export type ConnectionKind = "api_key" | "oauth_app" | "system_token" | "qr" | "via_zernio";
 
-/** Seccion de la pantalla de integraciones, en el orden en que se muestran. */
-export type ProviderSection = "messaging" | "publishing" | "google" | "meta" | "email" | "ai";
+/**
+ * Seccion de la pantalla de integraciones, en el orden en que se muestran.
+ *
+ * Hasta el Bloque G eran seis (mensajeria, publicacion, google, meta, email,
+ * ai). Seis encabezados para catorce cards era mas estructura que contenido:
+ * la division que importa es conexion externa vs. proveedor de modelo, que
+ * son dos decisiones de dos personas distintas. El agrupamiento fino que se
+ * pierde lo recuperan los chips de abajo.
+ */
+export type ProviderSection = "connections" | "ai";
 
 /** Titulos de las secciones, en orden. El orden de esta lista es el de la pantalla. */
-export const SECTION_ORDER: readonly ProviderSection[] = [
-  "messaging",
-  "publishing",
-  "google",
-  "meta",
-  "email",
-  "ai",
-];
+export const SECTION_ORDER: readonly ProviderSection[] = ["connections", "ai"];
 
 export const SECTION_LABELS: Record<ProviderSection, string> = {
-  messaging: "Mensajeria",
-  publishing: "Publicacion y redes",
-  google: "Google",
-  meta: "Meta",
+  connections: "Conexiones",
+  ai: "Inteligencia artificial",
+};
+
+/**
+ * El agrupamiento fino de "Conexiones", como chip y no como seccion: filtran
+ * sin partir la grilla, y un chip sin ninguna card se ve deshabilitado en vez
+ * de desaparecer (que un tipo exista y este vacio es informacion).
+ *
+ * Las de IA no llevan chip: ya viven en la otra seccion.
+ */
+export type IntegrationChip = "mensajeria" | "publicacion" | "anuncios" | "email";
+
+export const CHIP_ORDER: readonly IntegrationChip[] = ["mensajeria", "publicacion", "anuncios", "email"];
+
+export const CHIP_LABELS: Record<IntegrationChip, string> = {
+  mensajeria: "Mensajeria",
+  publicacion: "Publicacion",
+  anuncios: "Anuncios",
   email: "Email",
-  ai: "IA",
+};
+
+/**
+ * El chip que corresponde a cada `type`, cuando la card no declara los suyos
+ * propios con `types`.
+ *
+ * Meta es `type: 'meta'` pero NO lleva el chip "publicacion": su card dice
+ * que solo lee el rendimiento de los anuncios y la audiencia de Instagram, no
+ * publica nada. Ponerle "publicacion" haria creer que se puede publicar por
+ * ahi.
+ */
+const CHIP_BY_TYPE: Partial<Record<IntegrationType, IntegrationChip>> = {
+  channel: "mensajeria",
+  publishing_service: "publicacion",
+  social_network: "publicacion",
+  google: "publicacion",
+  meta: "anuncios",
+  email_provider: "email",
 };
 
 /**
@@ -126,6 +159,12 @@ export interface ProviderDefinition {
   connection: ConnectionKind;
   /** En que seccion de la pantalla aparece. */
   section: ProviderSection;
+  /**
+   * Los chips de tipo de esta card, cuando sirve para mas de una cosa (Zernio:
+   * mensajeria y publicacion). Ausente = se deriva de `type` (ver
+   * `CHIP_BY_TYPE`). Solo tiene sentido en la seccion `connections`.
+   */
+  types?: IntegrationChip[];
   /**
    * false = existe en el catalogo pero todavia no se muestra ni se puede
    * guardar. Meta se prende en el bloque 5 y el email entrante en el 8: tener
@@ -192,7 +231,10 @@ export const PROVIDERS: ProviderDefinition[] = [
     type: "channel",
     configProvider: "instagram_zernio",
     connection: "api_key",
-    section: "messaging",
+    section: "connections",
+    // Tambien publica en Instagram y TikTok (ver su descripcion): el chip por
+    // defecto de su `type` ("mensajeria") se quedaria corto.
+    types: ["mensajeria", "publicacion"],
     visible: true,
     label: "Zernio",
     description:
@@ -229,7 +271,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "evolution",
     type: "channel",
     connection: "qr",
-    section: "messaging",
+    section: "connections",
     visible: true,
     label: "Evolution API (WhatsApp)",
     description:
@@ -283,7 +325,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "postproxy",
     type: "publishing_service",
     connection: "api_key",
-    section: "publishing",
+    section: "connections",
     visible: true,
     label: "Postproxy",
     description: "Publica en YouTube sin pasar por la auditoria de Google.",
@@ -318,7 +360,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "linkedin",
     type: "social_network",
     connection: "oauth_app",
-    section: "publishing",
+    section: "connections",
     visible: true,
     label: "LinkedIn",
     description:
@@ -349,7 +391,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "threads",
     type: "social_network",
     connection: "oauth_app",
-    section: "publishing",
+    section: "connections",
     visible: true,
     label: "Threads",
     description: "Publica textos, imagenes, video, carruseles e hilos, y lee sus metricas.",
@@ -381,7 +423,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "google",
     type: "google",
     connection: "oauth_app",
-    section: "google",
+    section: "connections",
     visible: true,
     label: "Google (YouTube)",
     description:
@@ -414,7 +456,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "meta",
     type: "meta",
     connection: "system_token",
-    section: "meta",
+    section: "connections",
     visible: true,
     label: "Meta (anuncios e Instagram)",
     description:
@@ -440,7 +482,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "resend_inbound",
     type: "email_provider",
     connection: "api_key",
-    section: "email",
+    section: "connections",
     visible: true,
     label: "Resend (email entrante)",
     description: "Recibe los emails de una direccion tuya como conversaciones de la bandeja.",
@@ -479,7 +521,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     id: "resend",
     type: "email_provider",
     connection: "api_key",
-    section: "email",
+    section: "connections",
     visible: true,
     label: "Resend",
     description: "Envio de emails salientes: invitaciones al equipo y avisos del sistema.",
@@ -672,6 +714,17 @@ export function configProviderOf(provider: ProviderDefinition): string {
 /** La definicion que corresponde a una fila de `integration_configs`. */
 export function providerForConfigRow(type: IntegrationType, configProvider: string) {
   return PROVIDERS.find((p) => p.type === type && configProviderOf(p) === configProvider);
+}
+
+/**
+ * Los chips de tipo de una card (G1). Las de IA no llevan ninguno: ya viven
+ * en la seccion de al lado.
+ */
+export function chipsOf(provider: ProviderDefinition): IntegrationChip[] {
+  if (provider.section === "ai") return [];
+  if (provider.types) return provider.types;
+  const chip = CHIP_BY_TYPE[provider.type];
+  return chip ? [chip] : [];
 }
 
 /** Los secretos de una integracion, tenga uno o varios. */

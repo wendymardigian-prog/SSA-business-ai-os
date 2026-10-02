@@ -158,7 +158,9 @@ export type AuditEntityType =
   | "event_type"
   | "booking"
   /** La banca de recursos: textos y audios en una sola tabla (migracion 00105/00106). */
-  | "response_asset";
+  | "response_asset"
+  /** Cambiar el publicador por defecto de una cuenta social (Bloque G, G7). */
+  | "social_account";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"

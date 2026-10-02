@@ -122,6 +122,17 @@ export function resolveDefaultPublisher(
   return { publisher: next ?? null, changed: true };
 }
 
+/**
+ * Si se puede elegir este publicador como el de por defecto (G7).
+ *
+ * Mismo criterio que `usablePublishers`: usable ahora mismo (disponible, o
+ * habilitado a mano a pesar de la advertencia), y ademas tiene que existir
+ * como entrada de la cuenta.
+ */
+export function canChooseDefault(entries: PublisherEntry[], publisher: PublisherId): boolean {
+  return usablePublishers(entries).some((e) => e.publisher === publisher);
+}
+
 /** Valida lo que se va a guardar. Devuelve el error en palabras, sin stack. */
 export function parsePublishers(
   value: unknown,

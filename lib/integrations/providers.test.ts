@@ -14,6 +14,7 @@ import {
   configProviderOf,
   providerForConfigRow,
   SECTION_ORDER,
+  chipsOf,
 } from "./providers";
 import { ALL_SECRET_NAMES } from "@/lib/secret-names";
 
@@ -170,29 +171,31 @@ describe("catalogo extendido (F1)", () => {
   it("devuelve las secciones en el orden de la pantalla, solo con lo visible", () => {
     const groups = providersBySection();
 
-    expect(groups.map((g) => g.section)).toEqual([
-      "messaging",
-      "publishing",
-      "google",
-      "meta",
-      "email",
-      "ai",
-    ]);
+    // Bloque G: de seis secciones a dos. El agrupamiento fino de antes lo
+    // recuperan los chips (ver providers.ts, CHIP_BY_TYPE).
+    expect(groups.map((g) => g.section)).toEqual(["connections", "ai"]);
     for (const group of groups) {
       expect(group.providers.every((p) => p.visible)).toBe(true);
       expect(group.label.length).toBeGreaterThan(0);
     }
   });
 
-  it("mensajeria tiene Zernio y Evolution; publicacion, Postproxy, LinkedIn y Threads", () => {
+  it("Conexiones trae las nueve de afuera; IA, las cinco propias (Bloque G)", () => {
     const bySection = Object.fromEntries(
       providersBySection().map((g) => [g.section, g.providers.map((p) => p.id)]),
     );
 
-    expect(bySection.messaging).toEqual(["zernio", "evolution"]);
-    expect(bySection.publishing).toEqual(["postproxy", "linkedin", "threads"]);
-    expect(bySection.google).toEqual(["google"]);
-    expect(bySection.email).toEqual(["resend_inbound", "resend"]);
+    expect(bySection.connections).toEqual([
+      "zernio",
+      "evolution",
+      "postproxy",
+      "linkedin",
+      "threads",
+      "google",
+      "meta",
+      "resend_inbound",
+      "resend",
+    ]);
     expect(bySection.ai).toEqual(["openai", "anthropic", "google_ai", "voyage", "groq"]);
   });
 
@@ -277,6 +280,22 @@ describe("catalogo extendido (F1)", () => {
         ["api_key", "oauth_app", "system_token", "qr", "via_zernio"],
         provider.id,
       ).toContain(provider.connection);
+    }
+  });
+
+  it("chipsOf: cada tipo trae su chip, Zernio trae dos y IA ninguno (G1)", () => {
+    expect(chipsOf(getProvider("evolution")!)).toEqual(["mensajeria"]);
+    expect(chipsOf(getProvider("zernio")!)).toEqual(["mensajeria", "publicacion"]);
+    expect(chipsOf(getProvider("postproxy")!)).toEqual(["publicacion"]);
+    expect(chipsOf(getProvider("linkedin")!)).toEqual(["publicacion"]);
+    expect(chipsOf(getProvider("threads")!)).toEqual(["publicacion"]);
+    expect(chipsOf(getProvider("google")!)).toEqual(["publicacion"]);
+    // Meta solo lee anuncios y audiencia: no lleva "publicacion".
+    expect(chipsOf(getProvider("meta")!)).toEqual(["anuncios"]);
+    expect(chipsOf(getProvider("resend")!)).toEqual(["email"]);
+    expect(chipsOf(getProvider("resend_inbound")!)).toEqual(["email"]);
+    for (const id of ["openai", "anthropic", "google_ai", "voyage", "groq"]) {
+      expect(chipsOf(getProvider(id)!), id).toEqual([]);
     }
   });
 });

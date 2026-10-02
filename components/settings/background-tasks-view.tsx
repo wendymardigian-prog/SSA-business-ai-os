@@ -13,6 +13,7 @@ import { addButtonTextAction, confirmTextAction, moveTextAction, removeButtonTex
 import { BACKGROUND_TASKS, type BackgroundSettings, type BackgroundTask, type TaskFrequency, type TaskMode } from "@/lib/background/settings";
 import { FREQUENCY_LABELS, MODE_LABELS, estimatedSavings, formatSpend, lastRunLabel, taskRows } from "@/lib/background/screen";
 import type { BackgroundScreenData } from "@/lib/background/screen-data";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 /**
  * Settings › Tareas en segundo plano (F23, F25).
@@ -533,7 +534,9 @@ function RecentRunsPanel({ data }: { data: BackgroundScreenData }) {
         <p className="text-xs text-muted-foreground">De la clasificación de mensajes</p>
       </header>
       {data.recentRuns.length === 0 ? (
-        <p className="px-[18px] pb-4 pt-1 text-[13px] text-muted-foreground">Todavía no corrió ninguna vez.</p>
+        <p className="px-[18px] pb-4 pt-1 text-[13px] text-muted-foreground">
+          {SETTINGS_EMPTY_STATES.background}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-[13px]">
