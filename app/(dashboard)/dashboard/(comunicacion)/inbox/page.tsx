@@ -23,6 +23,8 @@ import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
 import { PageHeader } from "@/components/page-header";
 import { SectionTabs } from "@/components/comunicacion/section-tabs";
+import { SectionSearch } from "@/components/comunicacion/section-search";
+import { InboxFiltersMenu, InboxFilterSummary } from "@/components/inbox/inbox-filters";
 
 /**
  * Bandeja de conversaciones (F16).
@@ -244,9 +246,27 @@ export default async function InboxPage({
     needsHuman,
   };
 
+  const platformItems = platformOptions.map((p) => ({ value: p, label: platformLabel(p) }));
+  const memberItems = members.map((m) => ({ userId: m.userId, label: m.name }));
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/inbox" left={<SectionTabs />} />
+      {/* Bloque I: pestañas, buscador y filtros en la barra superior. El
+          popover de filtros es solo de Conversaciones (I5). */}
+      <PageHeader
+        route="/dashboard/inbox"
+        left={<SectionTabs />}
+        filters={
+          <>
+            <SectionSearch value={filters.search} placeholder="Buscar por nombre" label="Buscar conversaciones" />
+            <InboxFiltersMenu filters={filters} tags={tags} platforms={platformItems} members={memberItems} />
+          </>
+        }
+      />
+      <InboxFilterSummary
+        filters={filters}
+        catalog={{ platforms: platformItems, tags, members: memberItems }}
+      />
       <div className="min-h-0 flex-1">
         <InboxView
       conversations={conversations}
@@ -260,8 +280,7 @@ export default async function InboxPage({
       filters={filters}
       dateRange={range}
       tags={tags}
-      platforms={platformOptions.map((p) => ({ value: p, label: platformLabel(p) }))}
-      members={members.map((m) => ({ userId: m.userId, label: m.name }))}
+      members={memberItems}
       agentByChannel={agentByChannel}
       providerByChannel={providerByChannel}
       currentUserId={user.id}

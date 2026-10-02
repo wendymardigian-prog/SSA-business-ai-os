@@ -30,7 +30,6 @@ export function InboxView({
   filters,
   dateRange,
   tags,
-  platforms,
   members,
   agentByChannel,
   providerByChannel,
@@ -52,7 +51,6 @@ export function InboxView({
   filters: InboxFilters;
   dateRange: DateRange;
   tags: { id: string; name: string; color: string | null; disablesAgent?: boolean; assignsTo?: string | null }[];
-  platforms: { value: string; label: string }[];
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
   agentByChannel: Record<string, ChannelAgentInfo>;
@@ -184,9 +182,6 @@ export function InboxView({
           onSelect={handleSelect}
           filters={filters}
           dateRange={dateRange}
-          tags={tags}
-          platforms={platforms}
-          members={members}
           total={total}
           page={page}
           pageSize={pageSize}

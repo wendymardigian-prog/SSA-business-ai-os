@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessageSquare, Radio, ListOrdered, Sprout, type LucideIcon } from "lucide-react";
@@ -52,26 +52,27 @@ function readRememberedInboxQuery(): string | null {
   }
 }
 
+// sessionStorage no avisa cambios dentro de la misma pestaña, y no hace falta:
+// cada seccion es otra pagina, asi que las pestañas se montan de nuevo y leen.
+const noSubscription = () => () => {};
+
 export function SectionTabs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentQuery = searchParams.toString();
   const onInbox = isTabActive(INBOX_HREF, pathname);
 
-  // La query de la Bandeja se recuerda al mirarla y se lee despues de montar:
-  // leerla durante el render daria un href distinto en el servidor y en el
-  // cliente (error de hidratacion).
-  const [remembered, setRemembered] = useState<string | null>(null);
+  // La query de la Bandeja se recuerda al mirarla. Se lee con
+  // useSyncExternalStore: en el servidor no hay sessionStorage (null), y asi el
+  // primer render del cliente coincide y no hay error de hidratacion.
+  const remembered = useSyncExternalStore(noSubscription, readRememberedInboxQuery, () => null);
   useEffect(() => {
-    if (onInbox) {
-      try {
-        window.sessionStorage.setItem(INBOX_QUERY_STORAGE_KEY, currentQuery);
-      } catch {
-        // Sin almacenamiento, volver a Conversaciones la abre sin filtros. Nada mas.
-      }
-      return;
+    if (!onInbox) return;
+    try {
+      window.sessionStorage.setItem(INBOX_QUERY_STORAGE_KEY, currentQuery);
+    } catch {
+      // Sin almacenamiento, volver a Conversaciones la abre sin filtros. Nada mas.
     }
-    setRemembered(readRememberedInboxQuery());
   }, [onInbox, currentQuery]);
 
   return (
