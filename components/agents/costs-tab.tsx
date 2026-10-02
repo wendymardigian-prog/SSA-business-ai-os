@@ -117,7 +117,7 @@ export function CostsTab({ data }: { data: AgentScreenData }) {
                         {c.contactName ?? "Contacto sin nombre"}
                       </Link>
                       <span className="ml-2 text-xs text-muted-foreground">{c.runs} run{c.runs === 1 ? "" : "s"}</span>
-                      <Link href={`/dashboard/agents/${data.agent.id}?tab=runs&c=${c.conversationId}&agente=todos`} className="ml-2 text-xs text-muted-foreground underline underline-offset-2">
+                      <Link href={`/dashboard/agents/runs?c=${c.conversationId}`} className="ml-2 text-xs text-muted-foreground underline underline-offset-2">
                         ver runs
                       </Link>
                     </span>

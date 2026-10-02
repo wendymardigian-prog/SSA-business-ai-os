@@ -13,7 +13,6 @@ import { ConfigTab } from "./config-tab";
 import { KnowledgeTab } from "./knowledge-tab";
 import { ChannelsTab } from "./channels-tab";
 import { ToolsTab } from "./tools-tab";
-import { RunsTab } from "./runs-tab";
 import { ActionsTab } from "./actions-tab";
 import { CostsTab } from "./costs-tab";
 import { TagsTab } from "./tags-tab";
@@ -28,7 +27,6 @@ import { PageHeader } from "@/components/page-header";
 const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: AgentTypeDefinition }) => React.ReactNode> = {
   config: (p) => <ConfigTab {...p} />,
   tools: (p) => <ToolsTab {...p} />,
-  runs: (p) => <RunsTab {...p} />,
   actions: (p) => <ActionsTab {...p} />,
   costs: (p) => <CostsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
@@ -150,7 +148,9 @@ export function AgentDetailView({
             t.available ? (
               <Link
                 key={t.key}
-                href={`/dashboard/agents/${agent.id}?tab=${t.key}`}
+                // Runs (D8): ya no es una pestaña propia, es la pantalla
+                // global de Corridas con el filtro de este agente puesto.
+                href={t.key === "runs" ? `/dashboard/agents/runs?agente=${agent.id}` : `/dashboard/agents/${agent.id}?tab=${t.key}`}
                 aria-current={tab === t.key ? "page" : undefined}
                 className={cn(
                   "whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
