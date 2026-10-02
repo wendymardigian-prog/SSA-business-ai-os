@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { Activity, ChevronDown, Download, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -81,7 +81,7 @@ export function RunsScreen({
 
       {/* Filtros, en un solo popover (R2) */}
       <div className="flex flex-wrap items-center gap-2">
-        <FilterMenu label="Filtros" value={activeCount > 0 ? activeCount : "todos"} active={activeCount > 0} menuClassName="topbar:w-[360px] space-y-3 p-3">
+        <FilterMenu label="Filtros" value={activeCount > 0 ? activeCount : "todos"} active={activeCount > 0} align="left" menuClassName="topbar:w-[360px] space-y-3 p-3">
           <div className="space-y-3">
             <div>
               <MenuGroupLabel>Agente y canal</MenuGroupLabel>
@@ -194,8 +194,8 @@ export function RunsScreen({
                   const motivo = [...describeRunDetail(run.statusDetail), run.error ? describeModelError(run.error) : null].filter(Boolean)[0] ?? "—";
                   const totalTokens = run.cost ? (run.cost.inputTokens ?? 0) + (run.cost.outputTokens ?? 0) + (run.cost.cachedTokens ?? 0) + (run.cost.embeddingTokens ?? 0) : null;
                   return (
-                    <>
-                      <tr key={run.id} className="cursor-pointer hover:bg-accent/30" onClick={() => setExpanded(open ? null : run.id)}>
+                    <Fragment key={run.id}>
+                      <tr className="cursor-pointer hover:bg-accent/30" onClick={() => setExpanded(open ? null : run.id)}>
                         <td className="whitespace-nowrap px-3 py-2">
                           <span className="inline-flex items-center gap-1.5">
                             <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
@@ -234,13 +234,13 @@ export function RunsScreen({
                         )}
                       </tr>
                       {open && (
-                        <tr key={`${run.id}-detail`}>
+                        <tr>
                           <td colSpan={showCost ? 12 : 10} className="bg-muted/20 px-4 py-4">
                             <RunDetail run={run} showCost={showCost} agentHref={agentHrefFor} />
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
