@@ -206,10 +206,15 @@ describe("caracterizacion: lo que un Member hace en contenido (F68)", () => {
 });
 
 describe("caracterizacion: el menu (F68)", () => {
-  it("las cuatro entradas de Admin son las de hoy", () => {
+  // Bloque N (requerimientos v2.0, seccion 4, N2): Channels sale del menu (su
+  // pantalla se conserva, se llega desde Integraciones) e Integraciones entra
+  // con el mismo criterio adminOnly que sus vecinas de siempre. Settings e
+  // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
+  // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
+  it("las cuatro entradas de Admin son las de hoy, con Integraciones en vez de Channels", () => {
     const adminOnly = NAV_ITEMS.filter((item) => item.adminOnly).map((item) => item.name).sort();
 
-    expect(adminOnly).toEqual(["Channels", "Conocimiento", "Settings", "Social"]);
+    expect(adminOnly).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
   });
 
   it("las demas las ve un Member", () => {
@@ -220,11 +225,11 @@ describe("caracterizacion: el menu (F68)", () => {
     expect(visible).toEqual([
       "Agenda",
       "Agentes",
-      "Contacts",
+      "Automatizaciones",
+      "Bandeja",
+      "Contactos",
       "Contenido",
       "Dashboards",
-      "Flows",
-      "Inbox",
     ]);
   });
 });

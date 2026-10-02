@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { NAV_ITEMS } from "./items";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { NAV_ITEMS, NAV_GROUPS, navSections, navItemTooltip, visibleNavItems } from "./items";
 
 describe("orden del menú (F13)", () => {
   it("Dashboards es el primer ítem, con ícono de grilla", () => {
@@ -18,13 +20,14 @@ describe("orden del menú (F13)", () => {
 
 describe("lo que salio del menú", () => {
   // Broadcasts, Sequences y Growth se llegan por las sub-pestañas de Inbox;
-  // Integraciones, desde Settings. Las rutas siguen vivas: lo que se testea
-  // aca es que no vuelvan a aparecer como item del menu lateral.
+  // Channels (D3) se llega desde el detalle de Zernio/Evolution en
+  // Integraciones. Las rutas siguen vivas: lo que se testea aca es que no
+  // vuelvan a aparecer como item del menu lateral.
   const fuera = [
     { name: "Broadcasts", href: "/dashboard/broadcasts" },
     { name: "Sequences", href: "/dashboard/sequences" },
     { name: "Growth", href: "/dashboard/growth" },
-    { name: "Integraciones", href: "/dashboard/settings/integrations" },
+    { name: "Channels", href: "/dashboard/channels" },
   ];
 
   for (const item of fuera) {
@@ -34,8 +37,31 @@ describe("lo que salio del menú", () => {
     });
   }
 
-  it("Inbox si sigue estando: es el hub de comunicacion", () => {
+  it("Bandeja si sigue estando: es el hub de comunicacion (antes se llamaba Inbox)", () => {
     expect(NAV_ITEMS.some((i) => i.href === "/dashboard/inbox")).toBe(true);
+    expect(NAV_ITEMS.some((i) => i.name === "Inbox")).toBe(false);
+  });
+});
+
+describe("lo que entro al menú (bloque N, N1)", () => {
+  it("Integraciones esta: adminOnly, icono Blocks, en el bloque del fondo", () => {
+    const integraciones = NAV_ITEMS.find((i) => i.name === "Integraciones");
+
+    expect(integraciones).toBeDefined();
+    expect(integraciones?.href).toBe("/dashboard/settings/integrations");
+    expect(integraciones?.icon).toBe("Blocks");
+    expect(integraciones?.adminOnly).toBe(true);
+    expect(integraciones?.group).toBe("sistema");
+  });
+
+  it("Ajustes (antes Settings) tambien esta en el bloque del fondo", () => {
+    const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes");
+
+    expect(ajustes).toBeDefined();
+    expect(ajustes?.href).toBe("/dashboard/settings");
+    expect(ajustes?.adminOnly).toBe(true);
+    expect(ajustes?.group).toBe("sistema");
+    expect(NAV_ITEMS.some((i) => i.name === "Settings")).toBe(false);
   });
 });
 
@@ -51,25 +77,27 @@ describe("Contenido en el menu (F39)", () => {
     expect(contenido?.adminOnly).toBe(false);
   });
 
-  it("va despues de Flows", () => {
-    const nombres = NAV_ITEMS.map((i) => i.name);
-    expect(nombres.indexOf("Contenido")).toBe(nombres.indexOf("Flows") + 1);
+  it("es el primer item del grupo Adquisición (bloque N: antes iba justo despues de Flows)", () => {
+    const contenido = NAV_ITEMS.find((i) => i.name === "Contenido");
+    expect(contenido?.group).toBe("adquisicion");
+
+    const deAdquisicion = NAV_ITEMS.filter((i) => i.group === "adquisicion").map((i) => i.name);
+    expect(deAdquisicion[0]).toBe("Contenido");
   });
 });
 
 // ── Etapa 4 ────────────────────────────────────────────────────────────────
 
-import { visibleNavItems } from "./items";
-
 describe("Agenda en el menu (F8)", () => {
   const agenda = NAV_ITEMS.find((i) => i.name === "Agenda");
 
-  it("esta, va despues de Contacts y abre directo las agendas (sin sub-menu)", () => {
+  it("esta, va despues de Contactos (antes Contacts) y abre directo las agendas (sin sub-menu)", () => {
     expect(agenda).toBeDefined();
     expect(agenda?.href).toBe("/dashboard/agenda");
     expect(agenda?.adminOnly).toBe(false);
+    expect(agenda?.group).toBe("ventas");
     const nombres = NAV_ITEMS.map((i) => i.name);
-    expect(nombres.indexOf("Agenda")).toBe(nombres.indexOf("Contacts") + 1);
+    expect(nombres.indexOf("Agenda")).toBe(nombres.indexOf("Contactos") + 1);
   });
 
   it("se muestra con scheduling.use o bookings.view, y a nadie mas", () => {
@@ -84,7 +112,128 @@ describe("Agenda en el menu (F8)", () => {
   });
 
   it("los items sin `permissions` siguen dependiendo solo de adminOnly", () => {
+    // Antes: ["Dashboards","Flows","Contenido","Inbox","Contacts","Agentes"].
+    // Los nombres cambiaron (bloque N) y el orden ahora sigue a los grupos.
     const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] }).map((i) => i.name);
-    expect(member).toEqual(["Dashboards", "Flows", "Contenido", "Inbox", "Contacts", "Agentes"]);
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Automatizaciones", "Agentes"]);
+  });
+});
+
+// ── Bloque N: grupos (requerimientos v2.0, seccion 4, N1/N5) ───────────────
+
+describe("grupos del menu (bloque N, N1)", () => {
+  it("todo item pertenece a un grupo declarado en NAV_GROUPS", () => {
+    const idsDeclarados = new Set(NAV_GROUPS.map((g) => g.id));
+    const sinGrupo = NAV_ITEMS.filter((item) => !idsDeclarados.has(item.group));
+
+    expect(sinGrupo.map((i) => i.name)).toEqual([]);
+  });
+
+  it("ningun grupo declarado queda vacio (sin ningun item en NAV_ITEMS)", () => {
+    const vacios = NAV_GROUPS.filter((g) => !NAV_ITEMS.some((item) => item.group === g.id));
+
+    expect(vacios.map((g) => g.id), "estos grupos no tienen ni un item").toEqual([]);
+  });
+
+  it("el orden de los grupos es: inicio, adquisicion, ventas, automatizacion, sistema", () => {
+    expect(NAV_GROUPS.map((g) => g.id)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion", "sistema"]);
+  });
+
+  it("inicio y sistema no tienen titulo; los del medio si", () => {
+    expect(NAV_GROUPS.find((g) => g.id === "inicio")?.title).toBeNull();
+    expect(NAV_GROUPS.find((g) => g.id === "sistema")?.title).toBeNull();
+    expect(NAV_GROUPS.find((g) => g.id === "adquisicion")?.title).toBe("Adquisición");
+    expect(NAV_GROUPS.find((g) => g.id === "ventas")?.title).toBe("Ventas");
+    expect(NAV_GROUPS.find((g) => g.id === "automatizacion")?.title).toBe("Automatización");
+  });
+
+  it("Dashboards y Bandeja son los dos sueltos de arriba, antes del primer titulo", () => {
+    const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
+    expect(sueltos).toEqual(["Dashboards", "Bandeja"]);
+  });
+
+  it("Integraciones y Ajustes son el bloque del fondo", () => {
+    const fondo = NAV_ITEMS.filter((i) => i.group === "sistema").map((i) => i.name);
+    expect(fondo.sort()).toEqual(["Ajustes", "Integraciones"]);
+  });
+
+  it("todo href de NAV_ITEMS resuelve a una ruta que existe (app/(dashboard)/.../page.tsx)", () => {
+    // Recorre el filesystem de verdad, como member-baseline y page-actions:
+    // un href puede caer bajo un route group (p.ej. Bandeja, que vive en
+    // dashboard/(comunicacion)/inbox), y esos parentesis no entran en la URL.
+    const root = resolve(__dirname, "../..");
+    const base = join(root, "app/(dashboard)");
+    const rutas = new Set<string>();
+
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry === "page.tsx") {
+          const rel = full.slice(base.length).replace(/\/page\.tsx$/, "").replace(/\/\([^)]+\)/g, "");
+          rutas.add(rel || "/");
+        }
+      }
+    };
+    walk(base);
+
+    const sinRuta = NAV_ITEMS.filter((item) => !rutas.has(item.href));
+    expect(sinRuta.map((i) => `${i.name} -> ${i.href}`)).toEqual([]);
+  });
+
+  it("todo icono de NAV_ITEMS existe en el mapa ICONS del sidebar", () => {
+    // Se lee el archivo como texto (igual que member-baseline.test.ts), no se
+    // importa components/sidebar.tsx: es un Client Component y aca no hay
+    // DOM. Asi se evita que un icono nuevo caiga en silencio al default
+    // (LayoutGrid) como le paso a Blocks cuando Integraciones salio del menu.
+    const root = resolve(__dirname, "../..");
+    const fuente = readFileSync(join(root, "components/sidebar.tsx"), "utf8");
+    const bloqueIcons = fuente.match(/const ICONS: Record<string, LucideIcon> = \{[\s\S]*?\};/)?.[0] ?? "";
+
+    expect(bloqueIcons.length, "no se encontro el mapa ICONS en sidebar.tsx").toBeGreaterThan(0);
+
+    const sinIcono = NAV_ITEMS.filter((item) => !bloqueIcons.includes(item.icon));
+    expect(sinIcono.map((i) => `${i.name} -> ${i.icon}`)).toEqual([]);
+  });
+});
+
+describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
+  it("devuelve los grupos en orden, con sus items", () => {
+    const secciones = navSections(NAV_ITEMS);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion", "sistema"]);
+  });
+
+  it("un grupo sin ningun item visible no aparece, y con el su titulo", () => {
+    // Simula lo que ve un Member: sin Social, Conocimiento, Integraciones ni
+    // Ajustes (los 4 adminOnly) y sin Agenda (sin los permisos).
+    const comoMember = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
+    const secciones = navSections(comoMember);
+
+    // "ventas" solo tenia Contactos y Agenda; sin Agenda le queda Contactos.
+    const ventas = secciones.find((s) => s.group === "ventas");
+    expect(ventas?.items.map((i) => i.name)).toEqual(["Contactos"]);
+
+    // "sistema" se queda sin nada (Integraciones y Ajustes son adminOnly) y
+    // por eso no aparece en absoluto.
+    expect(secciones.some((s) => s.group === "sistema")).toBe(false);
+  });
+
+  it("con nada filtrado no sobra ningun grupo vacio", () => {
+    const secciones = navSections(NAV_ITEMS);
+    expect(secciones.every((s) => s.items.length > 0)).toBe(true);
+  });
+});
+
+describe("navItemTooltip (bloque N, N3)", () => {
+  it("un item de un grupo con titulo muestra nombre y grupo", () => {
+    const contactos = NAV_ITEMS.find((i) => i.name === "Contactos")!;
+    expect(navItemTooltip(contactos)).toBe("Contactos · Ventas");
+  });
+
+  it("un item suelto (inicio o sistema) muestra solo el nombre", () => {
+    const dashboards = NAV_ITEMS.find((i) => i.name === "Dashboards")!;
+    const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes")!;
+    expect(navItemTooltip(dashboards)).toBe("Dashboards");
+    expect(navItemTooltip(ajustes)).toBe("Ajustes");
   });
 });

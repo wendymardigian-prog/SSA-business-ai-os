@@ -1,12 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { NAV_ITEMS } from "./items";
 import { isNavItemActive, activeNavHref } from "./active";
 
 /**
  * Caracterizacion de como se marca el item activo ANTES del bloque N
  * (requerimientos v2.0, seccion 4). Fija el comportamiento de hoy, agujeros
  * incluidos, para que N4 pueda cambiarlo con una red debajo.
+ *
+ * Usa una lista fija, no NAV_ITEMS de items.ts: ese archivo ya tiene los
+ * grupos del bloque N (N1), y esta caracterizacion es del "antes". Es la
+ * misma lista de los 11 items originales, antes de N1.
  */
+const ITEMS_ANTES_DEL_BLOQUE_N = [
+  { href: "/dashboard/dashboards/chat" },
+  { href: "/dashboard/flows" },
+  { href: "/dashboard/content" },
+  { href: "/dashboard/social" },
+  { href: "/dashboard/inbox" },
+  { href: "/dashboard/contacts" },
+  { href: "/dashboard/agenda" },
+  { href: "/dashboard/channels" },
+  { href: "/dashboard/agents" },
+  { href: "/dashboard/knowledge" },
+  { href: "/dashboard/settings" },
+];
 describe("caracterizacion: item activo (antes del bloque N)", () => {
   it("un href matchea por prefijo exacto", () => {
     expect(isNavItemActive("/dashboard/contacts", "/dashboard/contacts")).toBe(true);
@@ -24,7 +40,7 @@ describe("caracterizacion: item activo (antes del bloque N)", () => {
     expect(isNavItemActive("/dashboard/drafts", "/dashboard/contacts")).toBe(false);
   });
 
-  it("hoy, en NAV_ITEMS, cada ruta tiene como mucho un item activo (ningun href es prefijo de otro)", () => {
+  it("hoy, en ITEMS_ANTES_DEL_BLOQUE_N, cada ruta tiene como mucho un item activo (ningun href es prefijo de otro)", () => {
     const rutasDeEjemplo = [
       "/dashboard/dashboards/chat",
       "/dashboard/flows",
@@ -41,14 +57,14 @@ describe("caracterizacion: item activo (antes del bloque N)", () => {
       "/dashboard/settings/integrations",
     ];
     for (const pathname of rutasDeEjemplo) {
-      const activos = NAV_ITEMS.filter((item) => isNavItemActive(pathname, item.href));
+      const activos = ITEMS_ANTES_DEL_BLOQUE_N.filter((item) => isNavItemActive(pathname, item.href));
       expect(activos.length, pathname).toBeLessThanOrEqual(1);
     }
   });
 
   it("activeNavHref devuelve el href del item activo", () => {
-    expect(activeNavHref("/dashboard/contacts/9f0d", NAV_ITEMS)).toBe("/dashboard/contacts");
-    expect(activeNavHref("/dashboard/broadcasts", NAV_ITEMS)).toBe("/dashboard/inbox");
+    expect(activeNavHref("/dashboard/contacts/9f0d", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/contacts");
+    expect(activeNavHref("/dashboard/broadcasts", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/inbox");
   });
 
   it("el agujero de hoy: las sub-rutas de dashboards que no son /chat no dejan nada marcado", () => {
@@ -62,14 +78,14 @@ describe("caracterizacion: item activo (antes del bloque N)", () => {
       "/dashboard/dashboards/unified",
       "/dashboard/dashboards/ads/campaigns/abc",
     ]) {
-      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBeNull();
+      expect(activeNavHref(pathname, ITEMS_ANTES_DEL_BLOQUE_N), pathname).toBeNull();
     }
   });
 
   it("integraciones hoy no tiene item propio: su ruta cae marcando Ajustes", () => {
-    // No hay item "Integraciones" en NAV_ITEMS todavia (sale en N1). Mientras
-    // tanto, /dashboard/settings/integrations matchea por prefijo al item
-    // Settings, como cualquier otra sub-ruta de settings.
-    expect(activeNavHref("/dashboard/settings/integrations", NAV_ITEMS)).toBe("/dashboard/settings");
+    // No hay item "Integraciones" todavia (sale en N1). Mientras tanto,
+    // /dashboard/settings/integrations matchea por prefijo al item Settings,
+    // como cualquier otra sub-ruta de settings.
+    expect(activeNavHref("/dashboard/settings/integrations", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/settings");
   });
 });
