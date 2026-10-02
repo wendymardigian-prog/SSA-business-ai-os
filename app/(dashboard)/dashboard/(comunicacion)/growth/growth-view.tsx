@@ -289,6 +289,7 @@ export function GrowthView({
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/growth"
+        left={<SectionTabs />}
         right={
           <button
             onClick={() => { setEditingId(null); setShowCreate(true); }}
@@ -300,7 +301,6 @@ export function GrowthView({
           </button>
         }
       />
-      <SectionTabs />
 
       <div className="flex-1 overflow-auto p-8">
         {/* Stats cards */}

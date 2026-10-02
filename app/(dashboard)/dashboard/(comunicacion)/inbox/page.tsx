@@ -246,8 +246,7 @@ export default async function InboxPage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/inbox" />
-      <SectionTabs />
+      <PageHeader route="/dashboard/inbox" left={<SectionTabs />} />
       <div className="min-h-0 flex-1">
         <InboxView
       conversations={conversations}

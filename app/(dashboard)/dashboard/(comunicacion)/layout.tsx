@@ -6,9 +6,9 @@
  * /dashboard/sequences y /dashboard/growth siguen siendo exactamente las
  * mismas direcciones de antes.
  *
- * Las sub-pestañas ya no se dibujan aca: desde F7 cada pantalla empieza con su
- * barra superior y las pestañas van justo debajo, dentro del contenido. Si el
- * layout las pusiera arriba, quedarian ENCIMA de la barra de la pagina.
+ * Las sub-pestañas no se dibujan aca: cada pantalla las pasa al `left` de su
+ * `PageHeader`, adentro de la barra superior (Bloque I, I2). Si el layout las
+ * dibujara, quedarian ENCIMA de la barra de la pagina.
  *
  * min-h-0: las cuatro pantallas son de alto completo (la bandeja scrollea
  * adentro, no la pagina). Sin min-h-0 el hijo no se deja achicar y el pie se

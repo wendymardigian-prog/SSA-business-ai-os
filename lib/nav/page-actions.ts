@@ -80,7 +80,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Automatizaciones armadas para copiar y ajustar.",
   },
   "/dashboard/inbox": {
-    title: "Inbox",
+    title: "Bandeja",
     tooltip: "Todas las conversaciones de todos los canales, en un solo lugar.",
   },
   "/dashboard/broadcasts": {

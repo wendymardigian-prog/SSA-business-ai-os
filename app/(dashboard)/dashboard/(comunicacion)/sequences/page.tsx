@@ -50,9 +50,9 @@ export default async function SequencesPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/sequences"
+        left={<SectionTabs />}
         right={canEdit ? <CreateSequenceButton /> : null}
       />
-      <SectionTabs />
 
       <div className="flex-1 overflow-auto px-8 py-6">
         {!sequences || sequences.length === 0 ? (

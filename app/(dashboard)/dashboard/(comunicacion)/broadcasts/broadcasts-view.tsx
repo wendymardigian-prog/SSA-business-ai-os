@@ -145,6 +145,7 @@ export function BroadcastsView({
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/broadcasts"
+        left={<SectionTabs />}
         right={
           <button
             onClick={() => setShowCreate(true)}
@@ -155,7 +156,6 @@ export function BroadcastsView({
           </button>
         }
       />
-      <SectionTabs />
 
       <div className="px-4 md:px-8">
         {/* Create form */}
