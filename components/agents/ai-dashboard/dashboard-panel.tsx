@@ -83,7 +83,14 @@ export function AiDashboardPanel({
           {hasAnyRuns ? (
             <>
               <AiKpiCards cards={cards} periodQuery={periodQuery} firstAgentId={firstAgentId} systemStatus={{ status: systemStatus }} />
-              <SpendChartTabs spendByDay={spendByDay} timeZone={timeZone} range={range} />
+              {/*
+                `key` por rango: sin esto, al cambiar de periodo React
+                conserva la instancia del grafico (es el mismo componente en
+                el mismo lugar del arbol) y la dispersion que ya se habia
+                pedido para el periodo VIEJO se queda en pantalla. El `key`
+                fuerza un componente nuevo, que pide la suya.
+              */}
+              <SpendChartTabs key={`${range.from ?? ""}|${range.to ?? ""}`} spendByDay={spendByDay} timeZone={timeZone} range={range} />
             </>
           ) : (
             <div className="space-y-4">
