@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Verificacion de las Mejoras de Chat, corrida B (Bloques 4-6).
+ * Verificacion de las Mejoras de Chat, corrida B (Bloques 4-6) y de la banca
+ * de recursos unificada (textos + audios).
  *
  * Corre contra la base real con usuarios de verdad. Prueba lo que vitest NO
  * puede probar: policies de Storage y RLS evaluadas por la BASE, no por el
@@ -8,14 +9,15 @@
  *
  * Tres cosas:
  *   A. El bucket `chat-media` sigue scopeado por workspace para la banca de
- *      audios (`<ws>/library/...`), igual que para los adjuntos del chat: un
- *      Member de otro workspace no lee, y nadie sube directo (solo el
+ *      recursos (`<ws>/library/...`), igual que para los adjuntos del chat:
+ *      un Member de otro workspace no lee, y nadie sube directo (solo el
  *      service role, via signed upload URL).
- *   B. RLS de `audio_assets` (migracion 00105): cualquier miembro lee, solo
- *      Owner/Admin escriben. Si la 00105 todavia no esta aplicada (corrida B
- *      la escribio pero no la aplico a proposito), esta seccion se SALTEA
- *      con un aviso en vez de marcar una falla: no hay nada roto, falta
- *      aplicar la migracion.
+ *   B. RLS de `response_assets` (migracion 00105): cualquier miembro lee,
+ *      solo Owner/Admin escriben. Si la 00105 todavia no esta aplicada, esta
+ *      seccion se SALTEA con un aviso en vez de marcar una falla: no hay
+ *      nada roto, falta aplicar la migracion. Incluye el chequeo de que el
+ *      atajo es unico ENTRE LOS DOS TIPOS: un texto y un audio no pueden
+ *      compartir uno.
  *   C. La foto de un contacto copiada a Storage (F16) sigue el path
  *      `avatars/<ws>/contacts/<id>.jpg` (bucket publico, migracion 00095,
  *      ya aplicada).
@@ -118,43 +120,59 @@ try {
     }
   }
 
-  console.log("\n— B. RLS de audio_assets (00105) —");
+  console.log("\n— B. RLS de response_assets (00105) —");
   {
-    const { error: probe } = await svc.from("audio_assets").select("id").limit(1);
+    const { error: probe } = await svc.from("response_assets").select("id").limit(1);
     if (probe && isMissingTable(probe)) {
-      skip("audio_assets no existe todavia: la 00105 esta escrita pero no aplicada (a proposito, ver docs/PENDIENTE.md)");
+      skip("response_assets no existe todavia: la 00105 esta escrita pero no aplicada");
     } else if (probe) {
-      fail("no pude consultar audio_assets", probe.message);
+      fail("no pude consultar response_assets", probe.message);
     } else {
-      const { data: asset, error: insErr } = await svc.from("audio_assets").insert({
-        workspace_id: wsA.id, name: "zz-test audio", description: "para probar RLS",
+      const { data: asset, error: insErr } = await svc.from("response_assets").insert({
+        workspace_id: wsA.id, kind: "audio", name: "zz-test audio", description: "para probar RLS",
         storage_path: `${wsA.id}/library/zz-test-rls.m4a`, mime_type: "audio/mp4", source: "uploaded",
       }).select("id").single();
       if (insErr) {
         fail("el service role pudo crear un audio (precondicion)", insErr.message);
       } else {
-        const { data: lee, error: eLee } = await member.client.from("audio_assets").select("id").eq("id", asset.id).maybeSingle();
+        const { data: lee, error: eLee } = await member.client.from("response_assets").select("id").eq("id", asset.id).maybeSingle();
         check(!eLee && lee?.id === asset.id, "un Member LEE el audio de su workspace");
 
-        const { data: leeAjeno } = await ajeno.client.from("audio_assets").select("id").eq("id", asset.id).maybeSingle();
+        const { data: leeAjeno } = await ajeno.client.from("response_assets").select("id").eq("id", asset.id).maybeSingle();
         check(!leeAjeno, "un miembro de otro workspace no lo lee");
 
-        const { error: eUpdate } = await member.client.from("audio_assets")
+        const { error: eUpdate } = await member.client.from("response_assets")
           .update({ name: "intento de Member" }).eq("id", asset.id);
-        const { data: sigue } = await svc.from("audio_assets").select("name").eq("id", asset.id).single();
+        const { data: sigue } = await svc.from("response_assets").select("name").eq("id", asset.id).single();
         check(sigue?.name === "zz-test audio", "un Member NO puede editarlo (la RLS lo corta, aunque el UPDATE no de error)");
 
-        const { error: eInsertMember } = await member.client.from("audio_assets").insert({
-          workspace_id: wsA.id, name: "zz-test desde Member", description: "no deberia entrar",
+        const { error: eInsertMember } = await member.client.from("response_assets").insert({
+          workspace_id: wsA.id, kind: "audio", name: "zz-test desde Member", description: "no deberia entrar",
           storage_path: `${wsA.id}/library/zz-test-member.m4a`, mime_type: "audio/mp4", source: "uploaded",
         });
-        check(Boolean(eInsertMember), "un Member no puede crear un audio");
+        check(Boolean(eInsertMember), "un Member no puede crear un recurso");
 
-        const { error: eInsertAdmin } = await admin.client.from("audio_assets").insert({
-          workspace_id: wsA.id, name: "zz-test desde Admin", description: "si deberia entrar",
+        const { error: eInsertAdmin } = await admin.client.from("response_assets").insert({
+          workspace_id: wsA.id, kind: "audio", name: "zz-test desde Admin", description: "si deberia entrar",
           storage_path: `${wsA.id}/library/zz-test-admin.m4a`, mime_type: "audio/mp4", source: "uploaded",
         }).select("id").single();
-        check(!eInsertAdmin, "un Admin si puede crear un audio");
+        check(!eInsertAdmin, "un Admin si puede crear un recurso");
+      }
+
+      // El atajo es unico ENTRE LOS DOS TIPOS (idx_response_assets_shortcut no
+      // lleva `kind`): un texto y un audio no pueden compartir uno.
+      const shortcut = `/zz-test-${randomUUID().slice(0, 8)}`;
+      const { error: textErr } = await svc.from("response_assets").insert({
+        workspace_id: wsA.id, kind: "text", name: "zz-test texto", content: "contenido de prueba", shortcut,
+      });
+      if (textErr) {
+        fail("el service role pudo crear un texto con atajo (precondicion)", textErr.message);
+      } else {
+        const { error: clashErr } = await svc.from("response_assets").insert({
+          workspace_id: wsA.id, kind: "audio", name: "zz-test audio con el mismo atajo", description: "choca",
+          storage_path: `${wsA.id}/library/zz-test-clash.m4a`, mime_type: "audio/mp4", source: "uploaded", shortcut,
+        });
+        check(Boolean(clashErr), "un audio no puede compartir atajo con un texto ya existente");
       }
     }
   }

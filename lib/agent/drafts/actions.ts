@@ -12,7 +12,7 @@ import { pauseAgentInConversation } from "../tools/effects";
 import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, hasGuardrailReview, parseSuggestedActions, type SuggestedAction } from "./types";
 import { findWhatsappLinkForRun } from "../tools/whatsapp-link";
 import { recordWhatsappHandoff } from "../whatsapp-handoff";
-import { sendAgentAudio } from "../send-audio";
+import { sendAgentAsset } from "../send-asset";
 
 /**
  * Las decisiones sobre un borrador (Bloque 2c): enviar (tal cual o editado),
@@ -346,18 +346,19 @@ async function applySuggestions(
           { maxMinutes: s.maxMinutes, autoResume: s.autoResume },
           { minutes: s.minutes, reason: s.reason, now },
         );
-      } else if (s.type === "send_audio") {
+      } else if (s.type === "send_asset") {
         // Se relee el audio en vez de confiar en lo que dejo la sugerencia:
         // entre que el agente lo eligio y que Wendy aprueba puede haberse
         // dado de baja, apagado para el agente, o perdido la transcripcion.
         const { data: asset } = await service
-          .from("audio_assets")
+          .from("response_assets")
           .select("id, name, storage_path, mime_type, duration_seconds, transcript, transcript_status, agent_enabled, is_active, deleted_at")
-          .eq("id", s.audioAssetId)
+          .eq("id", s.assetId)
           .eq("workspace_id", draft.workspace_id)
+          .eq("kind", "audio")
           .maybeSingle();
-        if (asset && asset.is_active && !asset.deleted_at && asset.agent_enabled && asset.transcript_status === "ready" && asset.transcript) {
-          await sendAgentAudio(
+        if (asset && asset.is_active && !asset.deleted_at && asset.agent_enabled && asset.transcript_status === "ready" && asset.transcript && asset.storage_path && asset.mime_type) {
+          await sendAgentAsset(
             service,
             {
               workspaceId: draft.workspace_id,
@@ -370,7 +371,7 @@ async function applySuggestions(
               sentByUserId: userId,
             },
             {
-              audioAssetId: asset.id,
+              assetId: asset.id,
               name: asset.name,
               storagePath: asset.storage_path,
               mimeType: asset.mime_type,
@@ -379,7 +380,7 @@ async function applySuggestions(
             },
           );
         } else {
-          console.error("[drafts] el audio sugerido ya no esta disponible para el agente:", s.audioAssetId);
+          console.error("[drafts] el audio sugerido ya no esta disponible para el agente:", s.assetId);
         }
       }
     } catch (err) {

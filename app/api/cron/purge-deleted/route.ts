@@ -10,7 +10,7 @@ import { createServiceClient } from "@/lib/supabase/server";
  * la tabla de pg_net). Lo manda asi private.call_app_cron, migracion 00036.
  *
  * Borra de verdad lo que lleva mas de 30 dias marcado como eliminado (F15):
- * contactos, notas, conversaciones y templates de respuesta.
+ * contactos, notas, conversaciones y recursos de la banca (response_assets).
  *
  * Nada se borra en el momento — se marca con deleted_at y desaparece de los
  * listados — asi que un borrado por error se puede deshacer durante un mes.
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     (data?.contacts ?? 0) +
     (data?.conversations ?? 0) +
     (data?.contact_notes ?? 0) +
-    (data?.response_templates ?? 0);
+    (data?.response_assets ?? 0);
 
   if (purged > 0) {
     console.log("[cron/purge-deleted] purgados:", JSON.stringify(data));

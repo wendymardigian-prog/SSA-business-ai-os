@@ -77,11 +77,12 @@ export interface AgentToolResult {
    */
   endsTurn?: boolean;
   /**
-   * Para una herramienta con `defersInDraftAsync` (enviar_audio, F22): en modo
-   * borrador, en vez de ejecutar el efecto de verdad, `execute` devuelve esto
-   * y buildToolSet lo suma a las sugerencias del borrador. Distinto de
-   * `deferInDraft` (sincronico): esta herramienta necesita leer la base antes
-   * de decidir, y `deferInDraft` no puede ser async.
+   * Para una herramienta con `defersInDraftAsync` (usar_recurso con un
+   * audio): en modo borrador, en vez de ejecutar el efecto de verdad,
+   * `execute` devuelve esto y buildToolSet lo suma a las sugerencias del
+   * borrador. Distinto de `deferInDraft` (sincronico): esta herramienta
+   * necesita leer la base antes de decidir, y `deferInDraft` no puede ser
+   * async.
    */
   suggestion?: SuggestedAction;
 }
@@ -192,8 +193,8 @@ export interface AgentToolDefinition<TInput = unknown, TConfig = unknown> {
   descriptionInDraft?: string;
   /**
    * Como `deferInDraft`, pero para una herramienta que necesita leer la base
-   * para decidir que sugerir (enviar_audio: hay que saber si el audio sigue
-   * habilitado y traer su archivo). `deferInDraft` es sincronico y no puede
+   * para decidir que sugerir (usar_recurso con un audio: hay que saber si
+   * sigue habilitado y traer su archivo). `deferInDraft` es sincronico y no puede
    * hacer esa consulta, asi que esta herramienta la hace DENTRO de `execute`
    * (que es async) y devuelve `result.suggestion` en vez de mandar de verdad.
    * Con esto en `true`, buildToolSet llama a `execute` igual en modo borrador

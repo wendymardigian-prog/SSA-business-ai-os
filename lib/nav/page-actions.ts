@@ -215,13 +215,9 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Campos personalizados",
     tooltip: "Los datos propios que se guardan de cada contacto.",
   },
-  "/dashboard/settings/templates": {
-    title: "Respuestas rapidas",
-    tooltip: "Textos guardados para contestar sin volver a escribirlos.",
-  },
-  "/dashboard/settings/audios": {
-    title: "Banca de audios",
-    tooltip: "Notas de voz guardadas para reutilizar en la bandeja o que el agente las mande solo.",
+  "/dashboard/settings/recursos": {
+    title: "Banca de recursos",
+    tooltip: "Textos y audios guardados para mandar en la bandeja con un clic, o que el agente los use solo.",
   },
   "/dashboard/settings/background": {
     title: "Tareas en segundo plano",
@@ -239,6 +235,10 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "El editor de flows es un lienzo a pantalla completa con su propia barra. Es zona intocable de la etapa 2.",
   "/dashboard/channels/callback":
     "Pantalla de paso del OAuth de un canal: se cierra sola.",
+  "/dashboard/settings/templates":
+    "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
+  "/dashboard/settings/audios":
+    "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
 };
 
 /** Convierte un pathname real en el patron con el que se guarda. */
@@ -303,11 +303,8 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
   "/dashboard/settings/custom-fields": () => [
     { id: "new", label: "Nuevo campo", kind: "primary", adminOnly: true },
   ],
-  "/dashboard/settings/templates": () => [
-    { id: "new", label: "Nueva respuesta", kind: "primary", adminOnly: true },
-  ],
-  "/dashboard/settings/audios": () => [
-    { id: "new", label: "Nuevo audio", kind: "primary", adminOnly: true },
+  "/dashboard/settings/recursos": () => [
+    { id: "new", label: "Nuevo recurso", kind: "primary", adminOnly: true },
   ],
 };
 

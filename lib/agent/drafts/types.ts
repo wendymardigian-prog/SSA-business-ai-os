@@ -20,16 +20,16 @@ export type SuggestedAction =
    */
   | { type: "guardrail_review"; hits: Array<{ rule: string; text: string }> }
   /**
-   * enviar_audio (F22) en modo borrador: el audio de la banca que el agente
-   * eligio no se manda solo, queda anotado para que la bandeja lo muestre con
-   * su reproductor y se mande recien al aprobar el borrador. Lleva el archivo
-   * (no solo el id) para que la tarjeta lo reproduzca sin una consulta aparte;
-   * al aprobar, applySuggestions vuelve a leer la base por las dudas de que
-   * haya cambiado entre que se sugirio y que se aprobo.
+   * usar_recurso con un audio, en modo borrador: el audio de la banca que el
+   * agente eligio no se manda solo, queda anotado para que la bandeja lo
+   * muestre con su reproductor y se mande recien al aprobar el borrador.
+   * Lleva el archivo (no solo el id) para que la tarjeta lo reproduzca sin
+   * una consulta aparte; al aprobar, applySuggestions vuelve a leer la base
+   * por las dudas de que haya cambiado entre que se sugirio y que se aprobo.
    */
   | {
-      type: "send_audio";
-      audioAssetId: string;
+      type: "send_asset";
+      assetId: string;
       name: string;
       storagePath: string;
       mimeType: string;
@@ -70,7 +70,7 @@ export function parseSuggestedActions(raw: unknown): SuggestedAction[] {
   return raw.filter((a): a is SuggestedAction => {
     if (!a || typeof a !== "object") return false;
     const type = (a as { type?: unknown }).type;
-    return type === "escalate" || type === "pause" || type === "guardrail_review" || type === "send_audio";
+    return type === "escalate" || type === "pause" || type === "guardrail_review" || type === "send_asset";
   });
 }
 

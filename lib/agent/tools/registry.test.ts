@@ -10,7 +10,7 @@ import { agentRow } from "../testing/fixtures";
  */
 
 describe("registro de herramientas", () => {
-  it("tiene las herramientas de la Etapa 1 mas las siete de agendamiento y las dos de la banca de audios", () => {
+  it("tiene las herramientas de la Etapa 1 mas las siete de agendamiento y las dos de la banca de recursos", () => {
     expect(listAgentTools().map((t) => t.name).sort()).toEqual(
       [
         "asignar_conversacion",
@@ -19,12 +19,12 @@ describe("registro de herramientas", () => {
         "cambiar_temperatura",
         "declarar_intencion",
         "derivar_a_humano",
-        "enviar_audio",
         "etiquetar_contacto",
         "generar_link_whatsapp",
-        "listar_audios",
+        "listar_recursos",
         "pausarse",
         "programar_seguimiento",
+        "usar_recurso",
         // Etapa 4: la habilidad de agendamiento. Estan registradas siempre,
         // pero con la habilidad apagada ninguna se OFRECE (isAvailable).
         "scheduling_book",

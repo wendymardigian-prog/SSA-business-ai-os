@@ -138,17 +138,25 @@ copiando la 00031 letra por letra, cambiando solo las dos lineas del
 `avatar_url`; la definicion vieja queda completa en el comentario de cabecera
 de la migracion por si hace falta volver atras.
 
-La `00105_audio_assets` (banca de audios, F20) **esta escrita pero
-deliberadamente SIN aplicar**: Wendy decidio unificarla con
-`response_templates` en un solo banco de assets (audios + plantillas de
-mensaje) antes de llevarla a produccion, asi que el esquema de esta version va
-a cambiar. El codigo de Bloque 6 (`lib/audio-library/`, `/dashboard/settings/audios`,
-el picker `/a`, las herramientas `listar_audios`/`enviar_audio`) **esta
-mergeado a `main` igual**: no rompe nada sin la tabla (todas las consultas
-manejan `{data, error}` de Supabase sin tirar excepcion, verificado en vivo),
-simplemente la banca queda vacia y sin uso hasta que se aplique el esquema
-nuevo. Antes de retomarlo: leer `docs/PENDIENTE.md` (seccion "Corrida B") y
-decidir si la 00105 se aplica tal cual o se reescribe para el banco unificado.
+La `00105_response_assets` (banca de recursos unificada, 1/10/2026)
+**reescribe por completo** la vieja `00105_audio_assets` (nunca se habia
+aplicado) para crear `response_assets`: una sola tabla con `kind` ('text' |
+'audio') que reemplaza tanto a la banca de audios del Bloque 6 como a
+`response_templates` (Fase 1, 0 filas en produccion). El atajo es unico ENTRE
+LOS DOS TIPOS. La `00106_drop_response_templates` elimina `response_templates`
+en la misma tanda, abortando con `RAISE EXCEPTION` si encontrara alguna fila
+(no las hay) y redefiniendo `purge_soft_deleted` para purgar `response_assets`.
+Las dos migraciones **estan escritas, sin aplicar todavia**: se aplican antes
+de desplegar el codigo de `feature/banca-recursos-unificada`, primero la
+00105 y despues la 00106 (ver el comentario de cabecera de cada una). El
+codigo viejo del Bloque 6 (`lib/audio-library/`, `/dashboard/settings/audios`,
+el picker `/a`, `listar_audios`/`enviar_audio`) **ya no existe**: la pantalla
+unica es `/dashboard/settings/recursos`, el picker de la bandeja es un solo
+"/" (`components/inbox/asset-picker.tsx`), y las herramientas del agente son
+`listar_recursos`/`usar_recurso` (`lib/agent/tools/assets.ts`). Detalle
+completo en `docs/PENDIENTE.md` (seccion "Banca de recursos unificada"). La
+proxima migracion disponible es la **00107**.
+
 La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
 aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
 borradores creados DESPUES de aplicarla, asi que enchufarla con la cola vacia
@@ -310,10 +318,9 @@ Bloques 1-3 (adjuntos, transcripcion, que el agente entienda o se calle) en
 `main` desde el 29/9/2026. Bloques 0 (arreglos sobre produccion), 4 (fotos de
 perfil y el @ de Instagram clickeable) y 5 (grabar y mandar audio por el chat)
 en `main` desde el 1/10/2026, con sus migraciones aplicadas. El Bloque 6
-(banca de audios) tambien esta en `main` desde esa fecha, pero **su migracion
-no**: va a rediseñarse para compartir tabla con `response_templates` (un solo
-banco de assets). Ver la seccion "Migraciones" mas arriba y
-`docs/PENDIENTE.md` antes de tocarlo.
+(banca de audios) se rediseño el mismo dia como parte de la banca de recursos
+unificada (texto + audio, rama `feature/banca-recursos-unificada`): ver la
+seccion "Migraciones" mas arriba y `docs/PENDIENTE.md`.
 
 ## Los adjuntos tienen UN solo contrato
 `messages.attachments` es jsonb libre y cada origen escribia una forma distinta.
@@ -435,36 +442,55 @@ existentes, sin migracion propia:
 - Instagram rechaza audio ogg/opus/webm/mp3 **antes de subir nada**
   (`instagramAcceptsAudio`); WhatsApp/Evolution convierte cualquier formato.
 
-## Bloque 6 — Banca de audios (F20-F22) — codigo en `main`, migracion EN PAUSA
-Una biblioteca de audios reutilizables por workspace (nombre, atajo,
-descripcion para la IA, transcripcion) que se manda desde el chat con `/a` o
-que el agente usa con las herramientas `listar_audios`/`enviar_audio`.
+## Bloque 6 — Banca de recursos unificada (texto + audio)
+Lo que antes eran dos cosas (las respuestas rapidas de texto, Fase 1, y la
+banca de audios del Bloque 6) se unificaron en una sola: una tabla
+`response_assets` con `kind` ('text' | 'audio'), una pantalla
+(`/dashboard/settings/recursos`), un buscador en la bandeja (`/`, se elimino
+el prefijo `/a`) y una herramienta del agente (`listar_recursos`/`usar_recurso`,
+`lib/agent/tools/assets.ts`). Rama `feature/banca-recursos-unificada`
+(1/10/2026), sobre `oneshot-chat-media-b`.
 
-**La migracion `00105_audio_assets` no esta aplicada a proposito**: Wendy
-decidio (1/10/2026) unificarla con `response_templates` en un solo banco de
-assets antes de llevarla a produccion, en vez de tener dos tablas casi
-identicas (audios y plantillas de texto). El codigo de este bloque esta en
-`main` igual, porque se verifico que no rompe nada sin la tabla — toda
-consulta a `audio_assets` maneja `{data, error}` de Supabase sin tirar
-excepcion, asi que la banca simplemente queda vacia (empty state) hasta que
-se aplique el esquema nuevo.
+**Por que se hizo ahora y no antes de construir el Bloque 6**: `response_templates`
+tenia 0 filas en produccion y la vieja `audio_assets` nunca se habia aplicado,
+asi que unificar no migraba ni un dato. El atajo (`/precio`) es unico ENTRE
+LOS DOS TIPOS: un texto y un audio no pueden compartir uno, cosa que con dos
+tablas separadas ningun indice podia garantizar.
 
-Lo que hay que decidir antes de retomarlo (la proxima sesion, con un diseno de
-banco unificado):
-- Si `audio_assets` se funde con `response_templates` (una tabla con un
-  `kind` que distinga texto de audio) o si quedan tablas separadas con una
-  vista/tipo comun para el picker y las herramientas del agente.
-- Que pasa con lo ya construido que asume una tabla propia: `lib/audio-library/*`,
-  `lib/agent/tools/audio.ts`, `/dashboard/settings/audios`, el picker `/a`
-  (`components/inbox/audio-picker.tsx`), y `defersInDraftAsync` (la pieza que
-  se sumo a `AgentToolDefinition` en `lib/agent/tools/types.ts` para que
-  `enviar_audio` pueda leer la base en modo borrador — revisar si el diseno
-  unificado todavia la necesita).
-- La migracion `00105` escrita hoy puede servir de referencia para RLS e
-  indices, aunque la tabla final sea otra.
+**Lo que se arreglo de paso** (bugs del Bloque 6 que la fusion dejo a la
+vista):
+- El agente mandaba un audio pasando el path de la BIBLIOTECA directo a
+  `sendChannelMessage`. El barrido de retencion del chat (180 dias,
+  `lib/chat-media/cleanup.ts`) se lo llevaba del bucket a los 180 dias de ese
+  mensaje — no un archivo huerfano: el recurso entero, para todos los envios
+  futuros. Ahora `lib/response-assets/send-copy.ts` (`copyAssetToChat`) copia
+  el archivo a la conversacion ANTES de mandar, server-side, en los dos
+  caminos (el picker de la bandeja y el agente, `lib/agent/send-asset.ts`).
+- Un audio enviado por email quedaba posible de ofrecer (`sendViaResendChannel`
+  ignora `message.media` en silencio): `lib/channels/media.ts`
+  (`channelAcceptsMedia`) es el unico lugar que decide si un canal acepta
+  media, y lo consultan el picker, la API de envio manual y el agente.
+- Borrar o reemplazar un audio no borraba su archivo del bucket. Ahora
+  `deleteAsset`/`updateAsset` (`lib/actions/response-assets.ts`) lo borran en
+  el momento, y `lib/response-assets/cleanup.ts` (colgado del cron
+  `content-media-cleanup`) es la red de seguridad a los 28 dias.
 
-Detalle completo de lo construido y lo que quedo afuera en
-`docs/PENDIENTE.md` (seccion "Corrida B").
+**`usar_recurso` con un texto no manda un mensaje aparte**: devuelve el
+contenido ya interpolado (con el contacto y el workspace reales) para que el
+modelo lo use como su propia respuesta — mandarlo tambien como mensaje
+separado seria mandar dos. Con un audio sigue el camino de siempre: memo del
+turno, maximo uno por respuesta, `defersInDraftAsync` para el modo borrador
+(se quedo, la necesita solo la rama de audio).
+
+**Test de frontera** (`lib/response-assets/table-boundary.test.ts`, mismo
+patron que `lib/ai/transcribe-boundary.test.ts`): falla si `audio_assets` o
+`response_templates` aparecen en el codigo de aplicacion (`lib`, `app`,
+`components`, `scripts`) fuera de comentarios historicos sin el nombre
+literal. Las migraciones SQL quedan exentas: tienen derecho a nombrar una
+tabla vieja.
+
+Detalle completo en `docs/PENDIENTE.md` (seccion "Banca de recursos
+unificada").
 
 # Seguridad
 

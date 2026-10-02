@@ -320,12 +320,13 @@ describe("el handler del job (F7)", () => {
     expect(transcribeDedupeKey("m-1")).not.toBe(transcribeDedupeKey("m-2"));
   });
 
-  it("con audioAssetId en el payload, transcribe la banca y no un mensaje (F20)", async () => {
+  it("con assetId en el payload, transcribe la banca y no un mensaje", async () => {
     const memory = memoryDb({
-      audio_assets: [
+      response_assets: [
         {
           id: "audio-1",
           workspace_id: WS,
+          kind: "audio",
           storage_path: `${WS}/library/audio-1.m4a`,
           mime_type: "audio/mp4",
           transcript_status: "none",
@@ -339,10 +340,33 @@ describe("el handler del job (F7)", () => {
     const handler = getJobHandler(TRANSCRIBE_AUDIO_JOB)!;
 
     await expect(
-      handler({ supabase: memory.client, job: { id: "j-1", type: TRANSCRIBE_AUDIO_JOB, payload: { audioAssetId: "audio-1" }, attempts: 0 } }),
+      handler({ supabase: memory.client, job: { id: "j-1", type: TRANSCRIBE_AUDIO_JOB, payload: { assetId: "audio-1" }, attempts: 0 } }),
     ).resolves.toBeUndefined();
 
-    expect(memory.rows("audio_assets")[0]).toMatchObject({ transcript_status: "ready" });
+    expect(memory.rows("response_assets")[0]).toMatchObject({ transcript_status: "ready" });
+  });
+
+  it("con assetId de un recurso kind='text', no transcribe nada y no lanza", async () => {
+    const memory = memoryDb({
+      response_assets: [
+        {
+          id: "text-1",
+          workspace_id: WS,
+          kind: "text",
+          content: "Hola",
+          transcript_status: "none",
+          transcript_source: "auto",
+        },
+      ],
+    });
+    const handler = getJobHandler(TRANSCRIBE_AUDIO_JOB)!;
+
+    await expect(
+      handler({ supabase: memory.client, job: { id: "j-1", type: TRANSCRIBE_AUDIO_JOB, payload: { assetId: "text-1" }, attempts: 0 } }),
+    ).resolves.toBeUndefined();
+
+    expect(transcribeAudio).not.toHaveBeenCalled();
+    expect(memory.rows("response_assets")[0].transcript_status).toBe("none");
   });
 
   it("la clave de dedupe de la banca es distinta de la de un mensaje", () => {

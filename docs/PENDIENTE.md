@@ -397,3 +397,114 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
   - Si todavía hace falta `defersInDraftAsync` (la pieza que se sumó a `AgentToolDefinition`/`AgentToolResult` para que `enviar_audio` lea la base en modo borrador) con el diseño nuevo, o si el banco unificado permite resolverlo distinto.
   - La migración `00105_audio_assets.sql` actual (ya escrita, con su RLS e índices) puede servir de punto de partida para la tabla unificada, pero el `CREATE TABLE` en sí casi seguro cambia.
 - **Mientras tanto:** el código del Bloque 6 queda en `main`, desplegado, pero efectivamente inerte (banca vacía, sin tabla) hasta que esto se resuelva. No hay apuro de romperlo: no afecta nada más del sistema.
+
+## Banca de recursos unificada (1/10/2026) — resuelve el punto anterior
+
+Rama `feature/banca-recursos-unificada`, sobre `oneshot-chat-media-b`. Resuelve
+la decisión que había quedado pendiente al final de la Corrida B: una sola
+tabla, con `kind`.
+
+### La decisión de diseño
+
+Una sola tabla (`response_assets`, `kind: 'text' | 'audio'`), no dos tablas
+con una vista común. El motivo que inclinó la balanza: el atajo (`/precio`)
+tiene que ser único **entre los dos tipos** — un texto y un audio no pueden
+compartir uno — y con dos tablas separadas ningún índice único puede
+garantizar eso; hay que resolverlo a mano en cada consulta. Con una tabla, el
+mismo índice parcial de siempre (`idx_response_assets_shortcut`, sin `kind`
+en las columnas) lo resuelve solo.
+
+### Las dos migraciones
+
+- **00105_response_assets.sql**: reescribe por completo la vieja
+  `00105_audio_assets.sql` (nunca se había aplicado, así que no hay tabla
+  muerta que dejar en el historial). Crea `response_assets` con 11 CHECKs
+  nombrados (los de forma, `kind <> 'x' OR (...)`, para que el error diga qué
+  tipo falló), 6 índices (incluido uno GIN para `tags`, nuevo: ninguna de las
+  dos tablas viejas lo tenía), RLS idéntica a `response_templates` letra por
+  letra, y **no toca `purge_soft_deleted`**.
+- **00106_drop_response_templates.sql**: nueva. Aborta con `RAISE EXCEPTION`
+  si `response_templates` tiene alguna fila (0 verificado, nunca las borra) y
+  recién ahí la dropea. Redefine `purge_soft_deleted` en la misma transacción
+  para que pase a purgar `response_assets`. Las dos cosas van en la 00106 y no
+  antes: la función nombra cada tabla a mano, así que separarlas dejaría una
+  ventana donde una tabla no se purga o la función apunta a una tabla
+  inexistente.
+
+Las dos están **escritas, sin aplicar**: se aplican antes de desplegar, 00105
+primero.
+
+### Lo que arregló de paso
+
+Tres cosas que estaban mal en el código de la Corrida B y que la fusión tocó
+de costado (ninguna estaba en el pedido original, se decidieron al encontrarlas
+durante la exploración y se confirmaron con Wendy antes de construir):
+
+1. **El agente se auto-destruía el recurso a los 180 días.**
+   `lib/agent/send-audio.ts` (ahora `lib/agent/send-asset.ts`) le pasaba a
+   `sendChannelMessage` el path de la BIBLIOTECA directo, y
+   `planChatMediaCleanup` (`lib/chat-media/cleanup.ts`) barre todo adjunto
+   `ready` sin `meta.bucket` a los 180 días. No eran archivos huérfanos: era
+   el archivo del recurso, para todos los envíos futuros. Se resolvió con
+   `lib/response-assets/send-copy.ts` (`copyAssetToChat`): copia el archivo a
+   la conversación del lado del servidor ANTES de mandar, en los dos caminos
+   (el picker de la bandeja y el agente).
+2. **El picker re-subía el archivo en cada envío** (descarga + nueva subida),
+   forzado por el guard de prefijo de `validateOutboundMedia`
+   (`app/api/v1/messages/route.ts`), que exige `<ws>/<conversationId>/` y que
+   un path de biblioteca no cumple. La misma copia server-side resuelve esto:
+   el picker pasa a llamar `prepareAssetSend` y postear el resultado, sin
+   bajar ni subir bytes por el navegador.
+3. **Un audio por email**: `sendViaResendChannel` ignora `message.media` en
+   silencio. La API ya lo rechazaba con un 400, pero el agente no. Se creó
+   `lib/channels/media.ts` (`channelAcceptsMedia`), un solo lugar para la
+   pregunta "este canal acepta media", consultado por el picker, la API y el
+   agente.
+
+### Lo que se decidió sobre lo que había quedado abierto
+
+- **`defersInDraftAsync` se queda**, con una justificación más angosta: solo
+  la rama de audio de `usar_recurso` la necesita (leer la base antes de
+  armar la sugerencia). La rama de texto no difiere nada — devolver texto es
+  una lectura.
+- **`usar_recurso` con un texto no manda un mensaje aparte**: devuelve el
+  contenido ya interpolado (con el contacto y el workspace reales, resueltos
+  dentro de la herramienta) para que el modelo lo use como su propia
+  respuesta. El requerimiento original decía "lo manda como mensaje", pero el
+  agente ya emite su propia respuesta de texto en el mismo turno — mandarlo
+  aparte también hubiera sido mandar dos mensajes. Confirmado con Wendy antes
+  de construir.
+- **`agent_enabled` gobierna los dos tipos**, no solo audio: un texto nuevo
+  arranca apagado para el agente y se habilita a mano, igual que un audio.
+  Confirmado con Wendy antes de construir.
+- El `ToolOptionSource` nuevo que el plano original de F22 había descartado
+  sigue descartado: `listar_recursos`/`usar_recurso` (`lib/agent/tools/assets.ts`)
+  filtran directo por `agent_enabled = true`, igual que antes.
+
+### El test de frontera
+
+`lib/response-assets/table-boundary.test.ts`, mismo patrón que
+`lib/ai/transcribe-boundary.test.ts`: recorre `lib`, `app`, `components` y
+`scripts` (sumados estos dos últimos al patrón de `transcribe-boundary.test.ts`,
+que solo escanea `lib`/`app`/`components`) y falla si `audio_assets` o
+`response_templates` aparecen en código de aplicación, sin excepciones. Un
+segundo chequeo confirma que los archivos que SÍ tienen que mencionar
+`response_assets` (incluido `scripts/verify-chat-media.mjs`, que ningún test
+de Vitest hubiera cubierto) lo siguen haciendo.
+
+### Qué queda para la verificación en vivo (después de aplicar las migraciones)
+
+- `/dashboard/settings/recursos` carga con el filtro Todos/Textos/Audios; las
+  rutas viejas (`/templates`, `/audios`) redirigen.
+- Crear un texto y un audio con el mismo atajo → el segundo falla con "Ya hay
+  un recurso con ese atajo".
+- En WhatsApp, `/` lista los dos tipos; un texto se inserta editable, un audio
+  abre el preview (Enter no manda).
+- En email, `/` lista solo textos.
+- Grabar un audio, habilitar "Asistente", que el agente lo liste y lo mande;
+  confirmar en Storage que el archivo de la biblioteca sigue ahí y el mensaje
+  apunta a una copia.
+- Borrar ese recurso: su archivo de biblioteca se va del bucket, y el mensaje
+  ya enviado sigue reproduciéndose (apunta a la copia).
+- `node scripts/verify-chat-media.mjs` — la sección B corre de verdad (ya no
+  se saltea) e incluye el chequeo del atajo cruzado entre tipos.

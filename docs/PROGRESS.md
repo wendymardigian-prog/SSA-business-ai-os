@@ -6,6 +6,14 @@ Corrida autónoma en la rama `oneshot-chat-media-b`. Plano: [docs/requerimientos
 
 El progreso de la corrida A quedó archivado en [docs/chat-media/PROGRESS-a.md](chat-media/PROGRESS-a.md).
 
+**Sobre el Bloque 6 (más abajo):** la migración 00105 que esta corrida dejó
+pausada se reescribió el 1/10/2026 como parte de la banca de recursos
+unificada (texto + audio), rama `feature/banca-recursos-unificada`. El
+código del Bloque 6 descrito abajo (`lib/audio-library/`, `/dashboard/settings/audios`,
+el picker `/a`, `listar_audios`/`enviar_audio`) ya no existe tal cual: ver
+`docs/PENDIENTE.md`, sección "Banca de recursos unificada", para el estado
+actual.
+
 ## Punto de partida (1/10/2026, `oneshot-chat-media-b` = `main` = `4fd0960`)
 
 | Comando | Resultado |
