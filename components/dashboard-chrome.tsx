@@ -115,7 +115,8 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
                 <X className="h-5 w-5" aria-hidden />
               </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+            {/* flex flex-col: para que el bloque del fondo del menu (Integraciones, Ajustes) se empuje con mt-auto tambien aca. */}
+            <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto p-3">
               <NavLinks role={chrome.role} permissionKeys={chrome.permissionKeys} drafts={drafts} onNavigate={() => setOpen(false)} />
             </nav>
             <div className="border-t border-sidebar-border p-3">

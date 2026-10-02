@@ -10,7 +10,7 @@ import {
   MessageSquare,
   Users,
   LayoutGrid,
-  Plug,
+  Blocks,
   BookOpen,
   Bot,
   Settings,
@@ -18,7 +18,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip } from "@/lib/nav/items";
+import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -49,10 +50,11 @@ interface WorkspaceItem {
 // Inbox, la pestana de la bandeja, el chip de cada conversacion y los avisos.
 //
 // Radio, ListOrdered y Sprout ya no estan aca: se mudaron a las sub-pestañas
-// de Inbox (components/comunicacion/section-tabs.tsx). Blocks era de
-// Integraciones, que ahora se llega desde Settings.
+// de Inbox (components/comunicacion/section-tabs.tsx). Channels ya no tiene
+// item propio (D3): se llega desde el detalle de Zernio/Evolution en
+// Integraciones, que es la que trae a Blocks de vuelta al mapa.
 const ICONS: Record<string, LucideIcon> = {
-  LayoutGrid, GitBranch, MessageSquare, Users, Plug, Bot, BookOpen, Settings,
+  LayoutGrid, GitBranch, MessageSquare, Users, Blocks, Bot, BookOpen, Settings,
   Clapperboard, Grid3x3, CalendarDays,
 };
 
@@ -62,6 +64,8 @@ export const navigation = NAV_ITEMS.map((item) => ({
   permissions: item.permissions,
   icon: ICONS[item.icon] ?? LayoutGrid,
   adminOnly: item.adminOnly,
+  group: item.group,
+  alsoActiveOn: item.alsoActiveOn,
 }));
 
 export function Sidebar({
@@ -138,7 +142,13 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3 collapsed:px-2">
+      {/*
+        flex flex-col: para que el bloque del fondo (Integraciones, Ajustes)
+        pueda empujarse con mt-auto sin importar cuantos grupos haya arriba.
+        overflow-y-auto: con los titulos de grupo el menu es mas alto; en una
+        pantalla baja scrollea en vez de cortarse.
+      */}
+      <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto p-3 collapsed:px-2">
         <NavLinks role={role} permissionKeys={permissionKeys} drafts={drafts} collapsed={collapsed} />
       </nav>
 
@@ -187,44 +197,72 @@ export function NavLinks({
 }) {
   const pathname = usePathname();
   const navItems = visibleNavItems(navigation, { isAdmin: isAdminRole(role), permissionKeys });
+  // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
+  // nada visible no aparece, y con el su titulo (N1).
+  const sections = navSections(navItems);
+  // Se resuelve UNA sola vez, sobre todos los items visibles: asi, cuando dos
+  // matchean (Integraciones es sub-ruta de Ajustes), gana el mas especifico
+  // en vez de marcar los dos (N4).
+  const activeHref = activeNavHref(pathname, navItems);
   return (
     <>
-      {navItems.map((item) => {
-        // La cola de borradores cuelga de Inbox: estando ahi, Inbox queda marcado.
-        // Broadcasts, Sequences y Growth son sub-pestañas de Inbox, asi que
-        // tambien lo dejan marcado (las cuatro son la misma seccion).
-        const isActive =
-          pathname.startsWith(item.href) ||
-          (item.href === "/dashboard/inbox" &&
-            ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"].some((href) =>
-              pathname.startsWith(href),
-            ));
-        const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
-        return (
-          // El badge de borradores es un link propio y no puede vivir adentro
-          // del link de Inbox (anidar <a> es invalido y llevaria a la bandeja
-          // en vez de a la cola). Por eso la fila es un contenedor relativo.
-          <div key={item.name} className="relative">
-            <Link
-              href={item.href}
-              onClick={onNavigate}
-              aria-current={isActive ? "page" : undefined}
-              title={collapsed ? item.name : undefined}
-              className={cn(
-                "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
-                badge && "pr-14 collapsed:pr-0",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              <span className="collapsed:hidden">{item.name}</span>
-            </Link>
-            {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
-          </div>
-        );
-      })}
+      {sections.map((section) => (
+        <div
+          key={section.group}
+          className={cn(
+            "space-y-1",
+            // El bloque del fondo (Integraciones, Ajustes) se empuja contra
+            // el pie del menu y se separa del grupo anterior con una linea,
+            // en vez de un titulo (N1).
+            section.group === "sistema"
+              ? "mt-auto border-t border-sidebar-border pt-3 collapsed:pt-2"
+              : "mt-4 first:mt-0",
+          )}
+        >
+          {section.title && (
+            <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/40 collapsed:hidden">
+              {section.title}
+            </div>
+          )}
+          {/*
+            Colapsado (N3), los titulos de grupo no entran: se esconden
+            (arriba) y en su lugar va esta linea fina. El bloque del fondo ya
+            tiene la suya (el border-t del contenedor), por eso no se duplica.
+          */}
+          {section.separatorBefore && section.group !== "sistema" && (
+            <div className="hidden border-t border-sidebar-border pt-2 collapsed:-mt-1 collapsed:block" aria-hidden="true" />
+          )}
+          {section.items.map((item) => {
+            const isActive = item.href === activeHref;
+            const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
+            return (
+              // El badge de borradores es un link propio y no puede vivir
+              // adentro del link de Inbox (anidar <a> es invalido y llevaria
+              // a la bandeja en vez de a la cola). Por eso la fila es un
+              // contenedor relativo.
+              <div key={item.name} className="relative">
+                <Link
+                  href={item.href}
+                  onClick={onNavigate}
+                  aria-current={isActive ? "page" : undefined}
+                  title={collapsed ? navItemTooltip(item) : undefined}
+                  className={cn(
+                    "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
+                    badge && "pr-14 collapsed:pr-0",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="collapsed:hidden">{item.name}</span>
+                </Link>
+                {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </>
   );
 }
