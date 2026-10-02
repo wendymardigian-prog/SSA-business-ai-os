@@ -23,8 +23,5 @@ export const GENERAL_SECTIONS: GeneralSection[] = [
 /**
  * Destino del link a Corridas (S7). `ai_costs.view` ya existe en el
  * catálogo de permisos; no hace falta ninguna clave nueva.
- *
- * Apunta a la lista de agentes hasta que exista la pantalla de Corridas
- * (`/dashboard/agents/runs`, Bloque A+R), que la reemplaza.
  */
-export const AI_RUNS_HREF = "/dashboard/agents";
+export const AI_RUNS_HREF = "/dashboard/agents/runs";

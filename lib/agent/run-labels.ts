@@ -83,6 +83,16 @@ export function describeRunDetail(detail: string | null): string[] {
     });
 }
 
+/** Los 6 valores de agent_runs.trigger, para el detalle de una corrida (R4). */
+export const TRIGGER_LABELS: Record<string, string> = {
+  inbound_message: "Mensaje entrante",
+  cron_close: "Cierre automático (cron)",
+  manual: "Manual",
+  flow_node: "Nodo de un flow",
+  sequence_step: "Paso de una secuencia",
+  job: "Trabajo en segundo plano",
+};
+
 export const STEP_KIND_LABELS: Record<string, string> = {
   model_call: "Llamada al modelo",
   kb_search: "Busqueda en la base de conocimiento",

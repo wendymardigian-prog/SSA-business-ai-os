@@ -61,6 +61,10 @@ const MEMBER_PAGES = [
   "app/(dashboard)/dashboard/flows/page.tsx",
   "app/(dashboard)/dashboard/content/page.tsx",
   "app/(dashboard)/dashboard/agents/page.tsx",
+  // Corridas (Bloque A+R, D8): ex pestaña del agente, ahora global. Un
+  // Member la abre igual; sin ai_costs.view no ve costo ni tokens, y la
+  // RLS ya lo deja ver solo los runs de sus conversaciones.
+  "app/(dashboard)/dashboard/agents/runs/page.tsx",
   "app/(dashboard)/dashboard/dashboards/chat/page.tsx",
 ] as const;
 

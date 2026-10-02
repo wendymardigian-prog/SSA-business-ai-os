@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { describeModelError, describeRunDetail, RUN_SOURCE_LABELS } from "./run-labels";
+import { describeModelError, describeRunDetail, RUN_SOURCE_LABELS, TRIGGER_LABELS } from "./run-labels";
 
 /**
  * Los valores del CHECK vigente de agent_runs.source, leidos de las
@@ -94,5 +94,13 @@ describe("RUN_SOURCE_LABELS (A4)", () => {
 
   it("ninguna etiqueta queda igual al valor crudo (la gracia es traducirlo)", () => {
     for (const [source, label] of Object.entries(RUN_SOURCE_LABELS)) expect(label).not.toBe(source);
+  });
+});
+
+describe("TRIGGER_LABELS (R4)", () => {
+  it("tiene los 6 valores del CHECK de agent_runs.trigger, que nunca cambio", () => {
+    expect(Object.keys(TRIGGER_LABELS).sort()).toEqual(
+      ["cron_close", "flow_node", "inbound_message", "job", "manual", "sequence_step"],
+    );
   });
 });

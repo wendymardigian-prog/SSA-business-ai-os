@@ -143,6 +143,24 @@ interface RawRun {
   contacts?: { display_name: string | null } | { display_name: string | null }[] | null;
 }
 
+/**
+ * Los `source` con al menos una corrida en el rango (R1): desde los datos,
+ * nunca de la lista de valores del CHECK. `message_classification_eval` esta
+ * en el CHECK y nadie lo escribe (docs/PENDIENTE.md); listarla igual seria un
+ * filtro que nunca devuelve nada.
+ */
+export async function loadActiveSources(client: Db, args: { workspaceId: string; dateRange: { from: string | null; to: string | null } }): Promise<string[]> {
+  let query = client.from("agent_runs").select("source").eq("workspace_id", args.workspaceId).neq("status", "running");
+  if (args.dateRange.from) query = query.gte("created_at", args.dateRange.from);
+  if (args.dateRange.to) query = query.lte("created_at", args.dateRange.to);
+  const { data, error } = await query.limit(5000);
+  if (error) {
+    console.error("[runs] no pude leer los origenes del periodo:", error.message);
+    return [];
+  }
+  return [...new Set((data ?? []).map((r) => r.source))].sort();
+}
+
 export async function loadRuns(
   client: Db,
   args: {
@@ -157,6 +175,8 @@ export async function loadRuns(
      * (PeriodPreset). Esta funcion no conoce ninguno de los dos vocabularios.
      */
     dateRange: { from: string | null; to: string | null };
+    /** Para el export a CSV (R3): mas filas que una pagina, en una sola pasada. */
+    pageSize?: number;
   },
 ): Promise<{ rows: RunRow[]; total: number }> {
   const f = args.filters;
@@ -196,9 +216,10 @@ export async function loadRuns(
   if (args.dateRange.from) query = query.gte("created_at", args.dateRange.from);
   if (args.dateRange.to) query = query.lte("created_at", args.dateRange.to);
 
-  const from = (f.page - 1) * RUNS_PAGE_SIZE;
+  const pageSize = args.pageSize ?? RUNS_PAGE_SIZE;
+  const from = (f.page - 1) * pageSize;
   const orderCol = args.includeCost && f.masCaras ? "cost_usd" : "created_at";
-  const { data, count, error } = await query.order(orderCol, { ascending: false }).range(from, from + RUNS_PAGE_SIZE - 1);
+  const { data, count, error } = await query.order(orderCol, { ascending: false }).range(from, from + pageSize - 1);
   if (error) {
     console.error("[runs] no pude leer los runs:", error.message);
     return { rows: [], total: 0 };

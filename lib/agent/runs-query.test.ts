@@ -44,9 +44,11 @@ const RUN_FIXTURE = {
   contact_id: "contact-1",
   channel_id: "ch-1",
   trigger: "inbound_message",
+  thread_id: null,
   status: "responded",
   status_detail: null,
   routing: { mode: "model" },
+  intent: null,
   provider: "anthropic",
   model: "claude-sonnet-5",
   latency_ms: 1200,
@@ -73,6 +75,7 @@ const STEP_FIXTURE = {
   audit_log_id: null,
   duration_ms: 80,
   error: null,
+  created_at: "2026-09-28T17:00:01Z",
 };
 const CHUNK_FIXTURE = { id: "chunk-1", chunk_index: 2, knowledge_base: { title: "Guía de precios" } };
 
@@ -114,11 +117,14 @@ describe("loadRuns — caracterizacion con un agentId (antes de generalizar, R1)
       page: 1, datePreset: "30d", dateFrom: "", dateTo: "",
       agente: "agent-1", canal: "", contacto: "", conversacion: "", q: "",
       resultado: "", modelo: "", accion: "", regla: "", detalle: "",
-      costoMin: null, costoMax: null,
+      costoMin: null, costoMax: null, origen: "",
     } as RunFilters,
     includeCost,
     agentNames: new Map([["agent-1", "Asistente"]]),
     channelLabels: new Map([["ch-1", "Instagram"]]),
+    // El cliente falso no filtra por fecha: lo que importa es que loadRuns ya
+    // no resuelve el rango por su cuenta, lo recibe resuelto (D6).
+    dateRange: { from: "2026-09-03T06:00:00.000Z", to: null },
   });
 
   it("Member (sin costo): la forma exacta de hoy", async () => {
@@ -130,6 +136,7 @@ describe("loadRuns — caracterizacion con un agentId (antes de generalizar, R1)
     expect(rows[0].steps[0]).toMatchObject({
       id: "step-1", index: 0, kind: "kb_search", name: null,
       input: null, output: { found: 1 }, auditLogId: null, durationMs: 80, error: null,
+      createdAt: "2026-09-28T17:00:01Z",
       kbChunks: [{ id: "chunk-1", label: "Guía de precios · fragmento 3" }],
     });
   });

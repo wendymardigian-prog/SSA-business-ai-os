@@ -153,6 +153,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Agente",
     tooltip: "Configuracion, herramientas, historial y costos de este agente.",
   },
+  "/dashboard/agents/runs": {
+    title: "Corridas",
+    tooltip: "Todas las corridas de IA del workspace, de cualquier agente y cualquier origen.",
+  },
   "/dashboard/agents/runs/[runId]": {
     title: "Turno del agente",
     tooltip: "Paso por paso de lo que hizo el agente en este turno.",

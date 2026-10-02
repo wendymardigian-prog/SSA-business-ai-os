@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -8,11 +8,9 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
-import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData, type TagsTabData } from "@/lib/agent/screen";
+import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type TagsTabData } from "@/lib/agent/screen";
 import { agentUsableTagIds } from "@/lib/tags/effects";
 import { serializeSkillsForScreen, serializeToolsForScreen } from "@/lib/agent/tools/config";
-import { loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
-import { ruleFilterOptions } from "@/lib/agent/runs-filters";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
@@ -45,6 +43,9 @@ export default async function AgentDetailPage({
 
   const { tabs, defaultTab } = tabsForViewer(typeDef, isAdmin);
   const requested = typeof query.tab === "string" ? query.tab : defaultTab;
+  // Runs ya no es una pestaña propia (D8): un link viejo a ?tab=runs va a la
+  // pantalla global de Corridas, con este agente como filtro.
+  if (requested === "runs") redirect(`/dashboard/agents/runs?agente=${agent.id}`);
   const tab = tabs.find((t) => t.key === requested && t.available)?.key ?? defaultTab;
 
   const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes] = await Promise.all([
@@ -107,57 +108,6 @@ export default async function AgentDetailPage({
     screenAgent.monthlyCostLimitUsd = null;
     screenAgent.systemPrompt = "";
     screenAgent.toolsConfig = {};
-  }
-
-  let runs: RunsTabData | undefined;
-  if (tab === "runs") {
-    const tools = serializeToolsForScreen().map((t) => ({ name: t.name, label: t.label }));
-    const models = [...new Set([agent.model, agent.fallbackModel, ...pricedModels.map((p) => p.split("/")[1])].filter((m): m is string => Boolean(m)))].sort();
-    // Las reglas del agente, para el filtro por regla (§15.4). Se valida contra
-    // las que existen: un id inventado en la URL no llega a la consulta.
-    const ruleList = screenAgent.responseRules.map((r) => ({ id: r.id, name: r.name ?? null }));
-    const filters = parseRunFilters(query, {
-      currentAgentId: agent.id,
-      agentIds: agents.map((a) => a.id),
-      channelIds: channels.map((c) => c.id),
-      toolNames: tools.map((t) => t.name),
-      models,
-      allowCost: isAdmin,
-      ruleIds: ruleList.map((r) => r.id),
-    });
-    const channelLabel = (c: (typeof channels)[number]) => (c.handle ? `${c.label} ${c.handle}` : c.label);
-    // Admin: service role, con costos. Member: su cliente, RLS = scope, sin costos.
-    const client = isAdmin ? service : supabase;
-    const since7d = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
-    const [{ rows, total }, anyRes, healthRes] = await Promise.all([
-      loadRuns(client, {
-        workspaceId: workspace.id,
-        filters,
-        includeCost: isAdmin,
-        agentNames: new Map(agents.map((a) => [a.id, a.name])),
-        channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
-      }),
-      client.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
-      client.from("agent_runs").select("routing").eq("workspace_id", workspace.id).gte("created_at", since7d).not("routing", "is", null).limit(2000),
-    ]);
-    const { refreshHealth } = await import("@/lib/agent/refresh-health");
-    const health = refreshHealth(((healthRes.data ?? []) as Array<{ routing?: { refresh?: string } }>).map((r) => r.routing ?? null));
-    runs = {
-      filters,
-      rows,
-      total,
-      pageSize: RUNS_PAGE_SIZE,
-      anyRuns: (anyRes.count ?? 0) > 0,
-      refreshHealth: { total: health.total, failedPct: health.failedPct },
-      options: {
-        agents: agents.map((a) => ({ id: a.id, name: a.name })),
-        channels: channels.map((c) => ({ id: c.id, label: channelLabel(c) })),
-        models,
-        tools,
-        rules: ruleFilterOptions(ruleList),
-      },
-      showCost: isAdmin,
-    };
   }
 
   let actions: ActionsTabData | undefined;
@@ -286,7 +236,6 @@ export default async function AgentDetailPage({
     copywriter,
     kpis,
     costs,
-    runs,
     actions,
     tags,
     agent: screenAgent,

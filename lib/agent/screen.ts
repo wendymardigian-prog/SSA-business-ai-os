@@ -85,6 +85,16 @@ export interface RunRow {
   steps: RunStepRow[];
 }
 
+/** Las opciones de filtro de la pantalla global de Corridas (R1). */
+export interface RunsScreenOptions {
+  agents: Array<{ id: string; name: string }>;
+  channels: Array<{ id: string; label: string }>;
+  models: string[];
+  tools: Array<{ name: string; label: string }>;
+  sources: string[];
+  rules: Array<{ value: string; label: string }>;
+}
+
 export interface RunsTabData {
   filters: RunFilters;
   rows: RunRow[];

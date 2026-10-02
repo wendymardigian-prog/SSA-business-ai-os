@@ -1,123 +1,125 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
-import { AGENT_RUN_PUBLIC_COLUMNS } from "@/lib/agent/public";
-import {
-  RUN_SOURCE_LABELS,
-  RUN_STATUS_LABELS,
-  STEP_KIND_LABELS,
-  describeRunDetail,
-} from "@/lib/agent/run-labels";
-import { formatDateTime } from "@/components/contacts/ui";
+import { getPermissionContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
+import { loadWorkspaceAgents } from "@/lib/agent/config";
+import { findAdjacentRun, getRunDetail } from "@/lib/agent/runs-query";
+import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
+import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS } from "@/lib/agent/run-labels";
+import { RunDetail } from "@/components/agents/run-detail";
 import { PageHeader } from "@/components/page-header";
 
 /**
- * Detalle de un run (minimo, Bloque 2a).
+ * El detalle de una corrida sola (R4): el mismo componente `RunDetail` que
+ * usa la fila expandida de Corridas. Bifurca por rol como `[agentId]/page.tsx`:
+ * service role detras de `ai_costs.view` para quien lo tiene, cliente del
+ * usuario para el resto (la RLS de la 00060 hace el resto: otro workspace,
+ * o un Member sin acceso a esta conversacion, da 404).
  *
- * Existe para que el punto rojo de la bandeja lleve a algun lado: que paso,
- * que busco, que decidio. El historial con filtros, las acciones y los costos
- * son las pestanas del Bloque 2b.
- *
- * Con el cliente del usuario: un Member solo abre runs de conversaciones que le
- * corresponden (RLS 00060) y nunca ve tokens ni costo (columnas explicitas).
+ * Anterior/siguiente respetan los filtros con los que se llego (los mismos
+ * query params que trae la URL).
  */
-export default async function AgentRunPage({ params }: { params: Promise<{ runId: string }> }) {
+export default async function AgentRunPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ runId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { runId } = await params;
-  const { supabase, workspace } = await getWorkspace();
+  const { workspace, supabase } = await getWorkspace();
+  const service = await createServiceClient();
+  const permissions = await getPermissionContext();
+  const includeCost = permissions.can("ai_costs.view");
+  const client = includeCost ? service : supabase;
+  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
 
-  const { data: run } = await supabase
-    .from("agent_runs")
-    .select(AGENT_RUN_PUBLIC_COLUMNS)
-    .eq("id", runId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
+  const sp = await searchParams;
+  const urlParams = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) if (typeof v === "string") urlParams.set(k, v);
+
+  const agents = await loadWorkspaceAgents(service, workspace.id);
+  const agentNames = new Map(agents.map((a) => [a.id, a.name]));
+
+  const run = await getRunDetail(client, {
+    runId,
+    workspaceId: workspace.id,
+    includeCost,
+    agentNames,
+    channelLabels: new Map(),
+  });
   if (!run) notFound();
 
-  const { data: steps } = await supabase
-    .from("agent_run_steps")
-    .select("id, step_index, kind, name, output, kb_chunk_ids, duration_ms, error, created_at")
-    .eq("run_id", run.id)
-    .order("step_index", { ascending: true });
+  // El canal se resuelve aparte: no hace falta la lista completa de canales
+  // para una sola corrida, alcanza con su propio channel_id.
+  if (run.channelId) {
+    const { data: ch } = await client.from("channels").select("id, platform, username, display_name").eq("id", run.channelId).maybeSingle();
+    if (ch) run.channelLabel = ch.display_name ?? (ch.username ? `@${ch.username}` : ch.platform);
+  }
 
-  const details = describeRunDetail(run.status_detail);
+  // Anterior/siguiente, con el mismo filtro que trajo hasta aca (R4).
+  let prevId: string | null = null;
+  let nextId: string | null = null;
+  if (urlParams.toString()) {
+    const { filters, dateRange } = await loadRunsScreenInputs({
+      workspaceId: workspace.id,
+      timeZone,
+      service,
+      userClient: supabase,
+      includeCost,
+      searchParams: urlParams,
+      rawParams: sp,
+    });
+    [prevId, nextId] = await Promise.all([
+      findAdjacentRun(client, { workspaceId: workspace.id, filters, includeCost, dateRange, anchorCreatedAt: run.createdAt, direction: "anterior" }),
+      findAdjacentRun(client, { workspaceId: workspace.id, filters, includeCost, dateRange, anchorCreatedAt: run.createdAt, direction: "siguiente" }),
+    ]);
+  }
+
+  const qs = urlParams.toString();
+  const withQs = (id: string) => `/dashboard/agents/runs/${id}${qs ? `?${qs}` : ""}`;
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/agents/runs/[runId]"
         title={RUN_STATUS_LABELS[run.status] ?? run.status}
+        tooltip={`${RUN_SOURCE_LABELS[run.source] ?? run.source}${run.agentName ? ` · ${run.agentName}` : ""}`}
         backHref={
           <Link
-            href={run.conversation_id ? `/dashboard/inbox?c=${run.conversation_id}` : "/dashboard/inbox"}
-            aria-label={run.conversation_id ? "Volver a la conversación" : "Volver a la bandeja"}
+            href={qs ? `/dashboard/agents/runs?${qs}` : "/dashboard/agents/runs"}
+            aria-label="Volver a Corridas"
             className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
         }
+        right={
+          (prevId || nextId) && (
+            <div className="flex gap-1">
+              <Link
+                href={prevId ? withQs(prevId) : "#"}
+                aria-disabled={!prevId}
+                className={`rounded-lg border border-border px-2 py-1 text-xs ${prevId ? "hover:bg-accent" : "pointer-events-none opacity-40"}`}
+              >
+                ← Anterior
+              </Link>
+              <Link
+                href={nextId ? withQs(nextId) : "#"}
+                aria-disabled={!nextId}
+                className={`rounded-lg border border-border px-2 py-1 text-xs ${nextId ? "hover:bg-accent" : "pointer-events-none opacity-40"}`}
+              >
+                Siguiente →
+              </Link>
+            </div>
+          )
+        }
       />
-      <div className="border-b border-border px-4 py-4 md:px-8">
-        <p className="mt-1 text-sm text-muted-foreground">
-          {RUN_SOURCE_LABELS[run.source] ?? run.source} · {formatDateTime(run.created_at)}
-          {run.model ? ` · ${run.provider}/${run.model}` : ""}
-          {run.latency_ms !== null ? ` · ${(run.latency_ms / 1000).toFixed(1)} s` : ""}
-        </p>
-      </div>
 
-      <div className="flex-1 space-y-6 overflow-auto px-8 py-6">
-        {(details.length > 0 || run.error) && (
-          <section className="rounded-lg border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold">Por qué terminó así</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {details.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
-            {run.error && (
-              <p className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                {run.error}
-              </p>
-            )}
-          </section>
-        )}
-
-        <section>
-          <h2 className="text-sm font-semibold">Qué hizo, paso a paso</h2>
-          {!steps || steps.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Este run no tuvo pasos: terminó antes de llamar al modelo.
-            </p>
-          ) : (
-            <ol className="mt-3 space-y-2">
-              {steps.map((step) => (
-                <li key={step.id} className="rounded-lg border border-border bg-card p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium">
-                      {STEP_KIND_LABELS[step.kind] ?? step.kind}
-                      {step.name ? <span className="text-muted-foreground"> · {step.name}</span> : null}
-                    </p>
-                    {step.duration_ms !== null && (
-                      <span className="text-xs text-muted-foreground">{step.duration_ms} ms</span>
-                    )}
-                  </div>
-                  {step.kb_chunk_ids && step.kb_chunk_ids.length > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Usó {step.kb_chunk_ids.length} fragmento(s) de la base de conocimiento.
-                    </p>
-                  )}
-                  {step.output !== null && (
-                    <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-2 text-[11px] text-muted-foreground">
-                      {JSON.stringify(step.output, null, 2)}
-                    </pre>
-                  )}
-                  {step.error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{step.error}</p>}
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
+      <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
+        <RunDetail run={run} showCost={includeCost} agentHref={(agentId) => `/dashboard/agents/${agentId}?tab=actions`} />
       </div>
     </div>
   );
