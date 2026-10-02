@@ -1,0 +1,61 @@
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const serverOnly = needsServerToFilter(filters);
+
+    const scheduleRefresh = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE_MS);
+    };
+
+    const channel = supabase
+      .channel("conversations-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          if (payload.eventType !== "UPDATE") {
+            scheduleRefresh();
+            return;
+          }
+
+          const updated = payload.new as Database["public"]["Tables"]["conversations"]["Row"];
+
+          setConversations((prev) => {
+            const current = prev.find((c) => c.id === updated.id);
+            if (!current) {
+              // No estaba en pantalla: puede que ahora corresponda mostrarla.
+              scheduleRefresh();
+              return prev;
+            }
+
+            const merged = { ...current, ...updated };
+
+            if (serverOnly || !matchesInboxRow(merged, filters, dateRange)) {
+              scheduleRefresh();
+              return prev;
+            }
+
+            return prev
+              .map((c) => (c.id === updated.id ? merged : c))
+              .sort((a, b) => {
+                const aTime = a.last_message_at ?? a.created_at;
+                const bTime = b.last_message_at ?? b.created_at;
+                return new Date(bTime).getTime() - new Date(aTime).getTime();
+              });
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      supabase.removeChannel(channel);
+    };
+  }, [workspaceId, filters, dateRange, router]);
