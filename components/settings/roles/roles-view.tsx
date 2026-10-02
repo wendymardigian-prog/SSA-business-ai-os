@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
 import {
   PERMISSION_MODULES,
@@ -63,7 +64,16 @@ const emptyDraft = (): Draft => ({
   bookingsScope: "own",
 });
 
-export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
+export function RolesView({
+  roles: initial,
+  canSeeMembers,
+}: {
+  roles: RoleRow[];
+  /** Si puede ver también Equipo: oculta "Miembros" del segmented para un
+   * rol personalizado con `roles.manage` que no es Owner/Admin (esa pantalla
+   * lo rebotaría). Default true: Owner/Admin es el caso normal. */
+  canSeeMembers?: boolean;
+}) {
   const [roles, setRoles] = useState(sortRoles(initial));
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pending, start] = useTransition();
@@ -149,8 +159,14 @@ export function RolesView({ roles: initial }: { roles: RoleRow[] }) {
         }
       />
       <SettingsTabs />
+      <TeamRolesSwitch canSeeMembers={canSeeMembers} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Los roles Owner, Admin y Member vienen con el sistema y no se editan. Para armar
+          el tuyo, usá Nuevo rol.
+        </p>
+
         {error && (
           <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
             {error}

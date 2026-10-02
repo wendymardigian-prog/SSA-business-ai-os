@@ -13,7 +13,6 @@ import {
   Clock,
   Plus,
   Loader2,
-  ArrowLeft,
   Copy,
   Check,
 } from "lucide-react";
@@ -30,6 +29,7 @@ import Link from "next/link";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 
 interface MemberDetail {
   userId: string;
@@ -236,19 +236,11 @@ export function TeamView({
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader
-        route="/dashboard/settings/team"
-        backHref={
-          <Link
-            href="/dashboard/settings"
-            aria-label="Volver a Ajustes"
-            className="-ml-1 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        }
-      />
+      {/* Sin flecha de "volver a Ajustes": las pestañas de abajo ya cumplen
+          esa función (S3). */}
+      <PageHeader route="/dashboard/settings/team" />
       <SettingsTabs />
+      <TeamRolesSwitch />
 
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-2xl space-y-8 px-8 py-8">
