@@ -1,17 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle, Check, Plug, TriangleAlert } from "lucide-react";
 import { STATUS_LABELS, type IntegrationStatus } from "@/lib/integrations/status";
-import type { ProviderDefinition } from "@/lib/integrations/providers";
+import { CHIP_LABELS, chipsOf, type ProviderDefinition } from "@/lib/integrations/providers";
+import { formatConnectedSince, formatLastRefreshed, formatOAuthExpiry } from "@/lib/integrations/format";
+import { GoogleServices } from "./google-services";
 import type { IntegrationCardData } from "./types";
 
 /**
- * La card de una integracion (F2).
+ * La card de una integracion (F2, G2).
  *
- * Compacta a proposito: icono, nombre, una linea, el estado, la cuenta, la
- * barra de uso y UN boton. Todo lo demas vive en el modal. Antes la pantalla
- * era una columna con los campos a la vista, y con quince integraciones eso no
- * se puede leer.
+ * Compacta a proposito: icono, nombre, chips, una linea, el estado, la
+ * cuenta, la barra de uso y UN boton que ahora navega al detalle (G5) en vez
+ * de abrir un modal. Todo el formulario vive ahi. Antes la pantalla era una
+ * columna con los campos a la vista, y con quince integraciones eso no se
+ * puede leer.
  */
 
 const STATUS_STYLES: Record<IntegrationStatus, string> = {
@@ -36,14 +40,22 @@ function StatusBadge({ status }: { status: IntegrationStatus }) {
 export function IntegrationCard({
   provider,
   data,
-  onOpen,
+  detailHref,
 }: {
   provider: ProviderDefinition;
   data: IntegrationCardData;
-  onOpen: () => void;
+  /** A donde navega el boton (G5). Ya lleva el chip y "Requiere atencion" vigentes, para volver igual. */
+  detailHref: string;
 }) {
   const connected = data.status !== "not_connected";
   const usage = data.usage;
+  const chips = chipsOf(provider);
+  const connectedSince = formatConnectedSince(data.connectedAt);
+
+  // Client ID y Secret guardados, pero nadie autorizo la cuenta todavia: la
+  // integracion igual figura "Conectada" (preexistente, no se cambia), pero
+  // la card lo dice.
+  const missingAuthorization = provider.connection === "oauth_app" && connected && !data.oauth;
 
   return (
     <div className="flex flex-col rounded-xl border border-border bg-card p-4">
@@ -52,7 +64,20 @@ export function IntegrationCard({
         <StatusBadge status={data.status} />
       </div>
 
-      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{provider.description}</p>
+      {chips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+            >
+              {CHIP_LABELS[chip]}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{provider.description}</p>
 
       {data.account && (
         <p className="mt-2 truncate text-xs font-medium" title={data.account}>
@@ -60,11 +85,41 @@ export function IntegrationCard({
         </p>
       )}
 
-      {data.reasons.length > 0 && (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-          <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
-          <span>{data.reasons[0]}</span>
+      {connectedSince && <p className="mt-1 text-[11px] text-muted-foreground">{connectedSince}</p>}
+
+      {data.oauth && (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {[formatOAuthExpiry(data.oauth.tokenExpiresAt), formatLastRefreshed(data.oauth.lastRefreshedAt)]
+            .filter(Boolean)
+            .join(" · ") || "Sin vencimiento conocido"}
         </p>
+      )}
+
+      {provider.id === "google" && (
+        <GoogleServices youtubeConnected={Boolean(data.oauth)} calendarPeople={data.calendarPeople ?? 0} />
+      )}
+
+      {missingAuthorization && (
+        <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">Falta autorizar la cuenta.</p>
+      )}
+
+      {data.reasons.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {data.reasons.slice(0, 2).map((reason) => (
+            <p
+              key={reason}
+              className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+            >
+              <AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
+              <span>{reason}</span>
+            </p>
+          ))}
+          {data.reasons.length > 2 && (
+            <p className="pl-[18px] text-[11px] text-amber-600 dark:text-amber-400">
+              +{data.reasons.length - 2} más
+            </p>
+          )}
+        </div>
       )}
 
       {usage && (
@@ -91,13 +146,12 @@ export function IntegrationCard({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onOpen}
-        className="mt-4 h-9 w-full rounded-lg border border-border text-sm font-medium hover:bg-accent"
+      <Link
+        href={detailHref}
+        className="mt-4 flex h-9 w-full items-center justify-center rounded-lg border border-border text-sm font-medium hover:bg-accent"
       >
         {connected ? "Configurar" : "Conectar"}
-      </button>
+      </Link>
     </div>
   );
 }

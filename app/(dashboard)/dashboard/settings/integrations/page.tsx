@@ -8,23 +8,16 @@ import { loadIntegrations } from "@/lib/integrations/load";
  * `loadIntegrations` arma lo que cada card necesita —estado (ahora con la
  * salud de la credencial OAuth enchufada, G3), cuenta conectada, barra de uso
  * y QUE secretos hay guardados— y nada mas. El valor de un secreto no sale de
- * Vault: de los secretos viaja solo su nombre.
+ * Vault: de los secretos viaja solo su nombre. El resto de lo que devuelve
+ * (webhooks, cuentas de Zernio y Meta, la prueba de YouTube) lo usa el
+ * detalle de cada proveedor (`[providerId]/page.tsx`, G5), no esta pantalla.
  *
  * Solo Owner/Admin. El guard rebota al dashboard y ademas la RLS de
  * integration_configs no le devuelve una sola fila a un Member.
  */
 export default async function IntegrationsPage() {
   const { workspace, supabase } = await requireWorkspaceAdmin();
-  const loaded = await loadIntegrations(supabase, workspace.id);
+  const { integrations } = await loadIntegrations(supabase, workspace.id);
 
-  return (
-    <IntegrationsGrid
-      integrations={loaded.integrations}
-      webhookUrls={loaded.webhookUrls}
-      youtubeVerifiedAt={loaded.youtubeVerifiedAt}
-      metaAccounts={loaded.metaAccounts}
-      metaIgUsername={loaded.metaIgUsername}
-      channelsSummary={loaded.channelsSummary}
-    />
-  );
+  return <IntegrationsGrid integrations={integrations} />;
 }

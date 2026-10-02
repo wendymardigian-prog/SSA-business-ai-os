@@ -1,63 +1,77 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
-import { providersBySection, getProvider } from "@/lib/integrations/providers";
-import { needsAttention } from "@/lib/integrations/status";
+import {
+  providersBySection,
+  CHIP_ORDER,
+  CHIP_LABELS,
+  type IntegrationChip,
+} from "@/lib/integrations/providers";
+import { filterSections, countByChip } from "@/lib/integrations/grid-filter";
+import { missingEssentials } from "@/lib/integrations/onboarding";
 import { IntegrationCard } from "./integration-card";
-import { IntegrationModal } from "./integration-modal";
-import { YouTubeProbeFooter } from "./youtube-probe-footer";
-import { MetaAccountsFooter } from "./meta-accounts-footer";
+import { OnboardingBanner } from "./onboarding-banner";
 import type { IntegrationCardData } from "./types";
-import type { AdAccount } from "@/lib/meta/accounts";
 
 /**
- * La pantalla de integraciones (F2).
+ * La pantalla de integraciones (F2, Bloque G).
  *
- * Secciones con grilla (1 columna en el celular, 2 desde 768 px, 3 desde
- * 1280), cards compactas y toda la configuracion en un modal. El filtro
- * "Requiere atencion" vive en la barra superior, no adentro del contenido
- * (F7): esta pantalla es la primera que sigue esa convencion.
+ * Dos secciones con chips de tipo (G1), cards que navegan al detalle en vez
+ * de abrir un modal (G2, G5), y la franja de primera conexion (G8). El chip y
+ * "Requiere atencion" viven en la URL (`?tipo=`, `?atencion=1`): sobreviven
+ * la ida y vuelta al detalle de una integracion.
  */
+const ALL_SECTIONS = providersBySection();
+const CHIP_COUNTS = countByChip(ALL_SECTIONS);
+
 export function IntegrationsGrid({
   integrations,
-  webhookUrls,
-  channelsSummary,
-  youtubeVerifiedAt = null,
-  metaAccounts = [],
-  metaIgUsername = null,
 }: {
   integrations: Record<string, IntegrationCardData>;
-  /** Direcciones que hay que pegar en cada proveedor, por id. */
-  webhookUrls: Record<string, string>;
-  /** Cuentas conectadas por Zernio, para mostrarlas en su modal. */
-  channelsSummary: Array<{ id: string; label: string; platform: string }>;
-  /** Cuando se probo por ultima vez la subida directa a YouTube (F38). */
-  youtubeVerifiedAt?: string | null;
-  /** Las cuentas publicitarias de Meta ya descubiertas (F40). */
-  metaAccounts?: AdAccount[];
-  metaIgUsername?: string | null;
 }) {
-  const [onlyAttention, setOnlyAttention] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const sections = useMemo(() => {
-    return providersBySection()
-      .map((section) => ({
-        ...section,
-        providers: section.providers.filter((provider) => {
-          if (!onlyAttention) return true;
-          const data = integrations[provider.id];
-          return data ? needsAttention(data.status) : false;
-        }),
-      }))
-      .filter((section) => section.providers.length > 0);
-  }, [integrations, onlyAttention]);
+  const chipParam = searchParams.get("tipo");
+  const chip: IntegrationChip | null =
+    chipParam && (CHIP_ORDER as readonly string[]).includes(chipParam) ? (chipParam as IntegrationChip) : null;
+  const onlyAttention = searchParams.get("atencion") === "1";
 
-  const openProvider = openId ? getProvider(openId) : undefined;
-  const openData = openId ? integrations[openId] : undefined;
+  function updateParams(next: { tipo?: IntegrationChip | null; atencion?: boolean }) {
+    const params = new URLSearchParams(searchParams.toString());
+    if ("tipo" in next) {
+      if (next.tipo) params.set("tipo", next.tipo);
+      else params.delete("tipo");
+    }
+    if ("atencion" in next) {
+      if (next.atencion) params.set("atencion", "1");
+      else params.delete("atencion");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  const sections = useMemo(
+    () => filterSections(ALL_SECTIONS, (id) => integrations[id], { chip, onlyAttention }),
+    [integrations, chip, onlyAttention],
+  );
+
+  const missing = useMemo(
+    () => missingEssentials((id) => integrations[id]?.status),
+    [integrations],
+  );
+
+  function detailHrefFor(providerId: string): string {
+    const params = new URLSearchParams();
+    if (chip) params.set("tipo", chip);
+    if (onlyAttention) params.set("atencion", "1");
+    const qs = params.toString();
+    return `/dashboard/settings/integrations/${providerId}${qs ? `?${qs}` : ""}`;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -67,7 +81,7 @@ export function IntegrationsGrid({
         right={
           <button
             type="button"
-            onClick={() => setOnlyAttention((v) => !v)}
+            onClick={() => updateParams({ atencion: !onlyAttention })}
             aria-pressed={onlyAttention}
             className={`h-8 rounded-lg border px-3 text-sm ${
               onlyAttention
@@ -80,6 +94,24 @@ export function IntegrationsGrid({
         }
       />
       <SettingsTabs />
+
+      <OnboardingBanner missing={missing} />
+
+      <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 md:px-6">
+        <ChipButton active={chip === null} label="Todos" onClick={() => updateParams({ tipo: null })} />
+        {CHIP_ORDER.map((c) => {
+          const count = CHIP_COUNTS[c] ?? 0;
+          return (
+            <ChipButton
+              key={c}
+              active={chip === c}
+              disabled={count === 0}
+              label={CHIP_LABELS[c]}
+              onClick={() => updateParams({ tipo: chip === c ? null : c })}
+            />
+          );
+        })}
+      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
         {sections.length === 0 ? (
@@ -99,7 +131,7 @@ export function IntegrationsGrid({
                       key={provider.id}
                       provider={provider}
                       data={integrations[provider.id]}
-                      onOpen={() => setOpenId(provider.id)}
+                      detailHref={detailHrefFor(provider.id)}
                     />
                   ))}
                 </div>
@@ -108,92 +140,32 @@ export function IntegrationsGrid({
           </div>
         )}
       </div>
-
-      {openProvider && openData && (
-        <IntegrationModal
-          provider={openProvider}
-          data={openData}
-          webhookUrl={webhookUrls[openProvider.id] ?? null}
-          onClose={() => setOpenId(null)}
-          onSave={openProvider.id === "zernio" ? saveZernio : undefined}
-          extraFooter={
-            openProvider.id === "zernio" ? (
-              <ZernioFooter channels={channelsSummary} />
-            ) : openProvider.id === "meta" ? (
-              <MetaAccountsFooter accounts={metaAccounts} igUsername={metaIgUsername} />
-            ) : openProvider.id === "google" ? (
-              <YouTubeProbeFooter verifiedAt={youtubeVerifiedAt} />
-            ) : openProvider.connection === "qr" ? (
-              <Link href="/dashboard/channels" className="text-sm underline">
-                Abrir WhatsApp (QR)
-              </Link>
-            ) : null
-          }
-        />
-      )}
     </div>
   );
 }
 
-/**
- * Zernio se guarda por su ruta de siempre.
- *
- * `/api/v1/channels/test-key` no solo valida la clave: registra el webhook,
- * sincroniza los canales y trae el historial de la bandeja. Guardarla con la
- * accion generica dejaria la clave en Vault y la bandeja sin canales, que es
- * peor que no guardarla.
- */
-async function saveZernio(values: { secrets: Record<string, string> }) {
-  const apiKey = (values.secrets.api_key ?? "").trim();
-  if (!apiKey) {
-    return { ok: false as const, error: "Pega la API key de Zernio para volver a probarla" };
-  }
-
-  const res = await fetch("/api/v1/channels/test-key", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
-  });
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok || data.error) {
-    return { ok: false as const, error: data.error || `No se pudo conectar (${res.status})` };
-  }
-  return { ok: true as const };
-}
-
-function ZernioFooter({
-  channels,
+function ChipButton({
+  label,
+  active,
+  disabled = false,
+  onClick,
 }: {
-  channels: Array<{ id: string; label: string; platform: string }>;
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="space-y-3">
-      {channels.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Todavia no hay cuentas conectadas. Al guardar la clave se sincronizan solas.
-        </p>
-      ) : (
-        <ZernioChannels channels={channels} />
-      )}
-    </div>
-  );
-}
-
-function ZernioChannels({ channels }: { channels: Array<{ id: string; label: string; platform: string }> }) {
-  return (
-    <div>
-      <p className="text-xs font-medium">Cuentas conectadas</p>
-      <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-        {channels.map((channel) => (
-          <li key={channel.id}>
-            {channel.label} <span className="opacity-70">({channel.platform})</span>
-          </li>
-        ))}
-      </ul>
-      <Link href="/dashboard/channels" className="mt-2 inline-block text-xs underline">
-        Administrar canales
-      </Link>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={`h-7 rounded-full border px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+        active ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-accent"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
