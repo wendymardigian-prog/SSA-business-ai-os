@@ -18,7 +18,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS, visibleNavItems, navSections } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip } from "@/lib/nav/items";
 import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -224,6 +224,14 @@ export function NavLinks({
               {section.title}
             </div>
           )}
+          {/*
+            Colapsado (N3), los titulos de grupo no entran: se esconden
+            (arriba) y en su lugar va esta linea fina. El bloque del fondo ya
+            tiene la suya (el border-t del contenedor), por eso no se duplica.
+          */}
+          {section.separatorBefore && section.group !== "sistema" && (
+            <div className="hidden border-t border-sidebar-border pt-2 collapsed:-mt-1 collapsed:block" aria-hidden="true" />
+          )}
           {section.items.map((item) => {
             const isActive = item.href === activeHref;
             const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
@@ -237,7 +245,7 @@ export function NavLinks({
                   href={item.href}
                   onClick={onNavigate}
                   aria-current={isActive ? "page" : undefined}
-                  title={collapsed ? item.name : undefined}
+                  title={collapsed ? navItemTooltip(item) : undefined}
                   className={cn(
                     "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors md:min-h-0 collapsed:justify-center collapsed:gap-0 collapsed:px-0",
                     badge && "pr-14 collapsed:pr-0",

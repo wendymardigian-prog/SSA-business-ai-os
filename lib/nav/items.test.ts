@@ -224,6 +224,35 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
   });
 });
 
+describe("navSections: separatorBefore, para el colapsado (bloque N, N3)", () => {
+  it("la primera seccion visible nunca lleva separador, y las demas si", () => {
+    const secciones = navSections(NAV_ITEMS);
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true, true]);
+  });
+
+  it("el bloque del fondo (sistema) tambien lleva separador: es el que ya tiene su linea", () => {
+    const secciones = navSections(NAV_ITEMS);
+    expect(secciones.find((s) => s.group === "sistema")?.separatorBefore).toBe(true);
+  });
+
+  it("si un grupo del medio queda vacio, el separador sigue siendo solo uno por cada hueco entre los que quedan", () => {
+    // Como Member: "sistema" desaparece entero, asi que quedan 4 secciones
+    // visibles (inicio, adquisicion, ventas, automatizacion) con 3
+    // separadores, no 4.
+    const comoMember = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
+    const secciones = navSections(comoMember);
+    expect(secciones.map((s) => s.group)).toEqual(["inicio", "adquisicion", "ventas", "automatizacion"]);
+    expect(secciones.map((s) => s.separatorBefore)).toEqual([false, true, true, true]);
+  });
+
+  it("con una sola seccion visible, no hay ningun separador", () => {
+    const soloInicio = NAV_ITEMS.filter((i) => i.group === "inicio");
+    const secciones = navSections(soloInicio);
+    expect(secciones).toHaveLength(1);
+    expect(secciones[0].separatorBefore).toBe(false);
+  });
+});
+
 describe("navItemTooltip (bloque N, N3)", () => {
   it("un item de un grupo con titulo muestra nombre y grupo", () => {
     const contactos = NAV_ITEMS.find((i) => i.name === "Contactos")!;

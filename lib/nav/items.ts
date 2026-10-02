@@ -115,6 +115,14 @@ export interface NavSection<T> {
   group: NavGroupId;
   title: string | null;
   items: T[];
+  /**
+   * Colapsado (N3), el titulo del grupo se esconde y en su lugar va una
+   * linea fina. `true` para toda seccion salvo la primera que queda visible:
+   * nunca hay una linea antes de la primera (arriba del todo no hace falta
+   * separar de nada), ni una de mas si un grupo quedo vacio y no se
+   * renderizo.
+   */
+  separatorBefore: boolean;
 }
 
 /**
@@ -125,11 +133,13 @@ export interface NavSection<T> {
  * aparicion en `items`.
  */
 export function navSections<T extends Pick<NavItemMeta, "group">>(items: T[]): NavSection<T>[] {
-  return NAV_GROUPS.map((g) => ({
+  const visibles = NAV_GROUPS.map((g) => ({
     group: g.id,
     title: g.title,
     items: items.filter((item) => item.group === g.id),
   })).filter((section) => section.items.length > 0);
+
+  return visibles.map((section, idx) => ({ ...section, separatorBefore: idx > 0 }));
 }
 
 /**
