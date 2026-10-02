@@ -24,6 +24,7 @@ import { formatRecordingDuration } from "@/lib/audio/recording";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError, EmptyHint } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 /**
  * Pantalla de la banca de recursos: una tabla para textos y audios juntos,
@@ -180,6 +181,10 @@ export function RecursosView({
           </div>
         }
       />
+      {/* Un Member entra a Recursos para usarlos, no para administrar
+          Ajustes: sin las pestañas no le ofrecemos links a pantallas de
+          admin que lo van a rebotar. */}
+      {canManage && <SettingsTabs />}
       {error && (
         <div className="px-4 pt-4 md:px-8">
           <ActionError message={error} />

@@ -17,6 +17,7 @@ import type { CustomFieldType } from "@/lib/types/database";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError, EmptyHint } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 
 export interface FieldRow {
   id: string;
@@ -71,6 +72,7 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
           </button>
         }
       />
+      <SettingsTabs />
       {error && <div className="px-4 pt-4 md:px-8"><ActionError message={error} /></div>}
 
       <div className="flex-1">
