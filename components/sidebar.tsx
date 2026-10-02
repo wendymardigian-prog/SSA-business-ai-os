@@ -19,7 +19,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { NAV_ITEMS, visibleNavItems, navSections } from "@/lib/nav/items";
-import { isNavItemActive } from "@/lib/nav/active";
+import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -65,6 +65,7 @@ export const navigation = NAV_ITEMS.map((item) => ({
   icon: ICONS[item.icon] ?? LayoutGrid,
   adminOnly: item.adminOnly,
   group: item.group,
+  alsoActiveOn: item.alsoActiveOn,
 }));
 
 export function Sidebar({
@@ -199,6 +200,10 @@ export function NavLinks({
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);
+  // Se resuelve UNA sola vez, sobre todos los items visibles: asi, cuando dos
+  // matchean (Integraciones es sub-ruta de Ajustes), gana el mas especifico
+  // en vez de marcar los dos (N4).
+  const activeHref = activeNavHref(pathname, navItems);
   return (
     <>
       {sections.map((section) => (
@@ -220,11 +225,7 @@ export function NavLinks({
             </div>
           )}
           {section.items.map((item) => {
-            // La regla de que queda marcado vive en lib/nav/active.ts,
-            // testeada sin DOM. Hoy incluye la excepcion de Inbox
-            // (borradores y las sub-pestañas de la bandeja); el bloque N la
-            // generaliza.
-            const isActive = isNavItemActive(pathname, item.href);
+            const isActive = item.href === activeHref;
             const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
             return (
               // El badge de borradores es un link propio y no puede vivir

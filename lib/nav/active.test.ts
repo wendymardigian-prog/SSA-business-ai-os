@@ -1,91 +1,105 @@
 import { describe, it, expect } from "vitest";
 import { isNavItemActive, activeNavHref } from "./active";
+import { NAV_ITEMS, visibleNavItems } from "./items";
+import { PAGE_META } from "./page-actions";
 
 /**
- * Caracterizacion de como se marca el item activo ANTES del bloque N
- * (requerimientos v2.0, seccion 4). Fija el comportamiento de hoy, agujeros
- * incluidos, para que N4 pueda cambiarlo con una red debajo.
+ * La regla de HOY (bloque N, N4): gana, entre todos los items, el candidato
+ * (href o algun alsoActiveOn) mas largo que matchee por segmento.
  *
- * Usa una lista fija, no NAV_ITEMS de items.ts: ese archivo ya tiene los
- * grupos del bloque N (N1), y esta caracterizacion es del "antes". Es la
- * misma lista de los 11 items originales, antes de N1.
+ * Antes de este bloque la regla era mas simple y tenia un agujero real: cada
+ * item se marcaba por su cuenta, por texto crudo (sin segmento) y con una
+ * sola excepcion a mano (Inbox). Las pruebas de ese "antes" se reescriben
+ * aca con la regla nueva; no queda ninguna asercion vieja sin actualizar.
  */
-const ITEMS_ANTES_DEL_BLOQUE_N = [
-  { href: "/dashboard/dashboards/chat" },
-  { href: "/dashboard/flows" },
-  { href: "/dashboard/content" },
-  { href: "/dashboard/social" },
-  { href: "/dashboard/inbox" },
-  { href: "/dashboard/contacts" },
-  { href: "/dashboard/agenda" },
-  { href: "/dashboard/channels" },
-  { href: "/dashboard/agents" },
-  { href: "/dashboard/knowledge" },
-  { href: "/dashboard/settings" },
-];
-describe("caracterizacion: item activo (antes del bloque N)", () => {
-  it("un href matchea por prefijo exacto", () => {
-    expect(isNavItemActive("/dashboard/contacts", "/dashboard/contacts")).toBe(true);
-    expect(isNavItemActive("/dashboard/contacts/abc123", "/dashboard/contacts")).toBe(true);
-    expect(isNavItemActive("/dashboard/contactsnomatch", "/dashboard/contacts")).toBe(true); // hoy es startsWith de texto, no por segmento
+describe("isNavItemActive: coincide por segmento, no por texto crudo", () => {
+  it("un href matchea su propia ruta y sus sub-rutas", () => {
+    expect(isNavItemActive("/dashboard/contacts", { href: "/dashboard/contacts" })).toBe(true);
+    expect(isNavItemActive("/dashboard/contacts/abc123", { href: "/dashboard/contacts" })).toBe(true);
   });
 
-  it("Inbox tambien queda marcado desde drafts, broadcasts, sequences y growth", () => {
-    for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"]) {
-      expect(isNavItemActive(pathname, "/dashboard/inbox")).toBe(true);
-    }
+  it("ya NO matchea un texto que arranca igual pero no es un segmento (el bug de la version vieja)", () => {
+    // Antes esto daba `true` (startsWith de texto crudo). El bloque N lo
+    // corrige como efecto colateral de comparar por segmento (N4).
+    expect(isNavItemActive("/dashboard/contactsnomatch", { href: "/dashboard/contacts" })).toBe(false);
   });
 
-  it("esa excepcion es solo de Inbox: ningun otro href la recibe", () => {
-    expect(isNavItemActive("/dashboard/drafts", "/dashboard/contacts")).toBe(false);
+  it("alsoActiveOn deja el item activo igual que su propio href", () => {
+    const bandeja = { href: "/dashboard/inbox", alsoActiveOn: ["/dashboard/drafts"] };
+    expect(isNavItemActive("/dashboard/drafts", bandeja)).toBe(true);
+    expect(isNavItemActive("/dashboard/drafts/algo", bandeja)).toBe(true);
+    expect(isNavItemActive("/dashboard/broadcasts", bandeja)).toBe(false); // no esta en SU alsoActiveOn
   });
+});
 
-  it("hoy, en ITEMS_ANTES_DEL_BLOQUE_N, cada ruta tiene como mucho un item activo (ningun href es prefijo de otro)", () => {
-    const rutasDeEjemplo = [
-      "/dashboard/dashboards/chat",
-      "/dashboard/flows",
-      "/dashboard/content",
-      "/dashboard/social",
-      "/dashboard/inbox",
-      "/dashboard/contacts",
-      "/dashboard/agenda",
-      "/dashboard/channels",
-      "/dashboard/agents",
-      "/dashboard/knowledge",
-      "/dashboard/settings",
-      "/dashboard/settings/team",
+describe("activeNavHref: gana el candidato mas largo (N4)", () => {
+  it("Integraciones (sub-ruta de Ajustes) le gana a Ajustes en su propia ruta", () => {
+    expect(activeNavHref("/dashboard/settings/integrations", NAV_ITEMS)).toBe(
       "/dashboard/settings/integrations",
-    ];
-    for (const pathname of rutasDeEjemplo) {
-      const activos = ITEMS_ANTES_DEL_BLOQUE_N.filter((item) => isNavItemActive(pathname, item.href));
-      expect(activos.length, pathname).toBeLessThanOrEqual(1);
+    );
+  });
+
+  it("Ajustes queda activo, e Integraciones no, en el resto de settings", () => {
+    expect(activeNavHref("/dashboard/settings/team", NAV_ITEMS)).toBe("/dashboard/settings");
+  });
+
+  it("/dashboard/channels deja marcado Integraciones (D3: la pantalla se conserva, el item no)", () => {
+    expect(activeNavHref("/dashboard/channels", NAV_ITEMS)).toBe("/dashboard/settings/integrations");
+  });
+
+  it("Bandeja queda marcada desde drafts, broadcasts, sequences y growth", () => {
+    for (const pathname of ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"]) {
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/inbox");
     }
   });
 
-  it("activeNavHref devuelve el href del item activo", () => {
-    expect(activeNavHref("/dashboard/contacts/9f0d", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/contacts");
-    expect(activeNavHref("/dashboard/broadcasts", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/inbox");
-  });
-
-  it("el agujero de hoy: las sub-rutas de dashboards que no son /chat no dejan nada marcado", () => {
-    // Dashboards tiene href /dashboard/dashboards/chat. Las otras pantallas de
-    // dashboards (ads, content, unified y sus detalles) no empiezan con eso,
-    // asi que ningun item queda activo ahi. El bloque N lo cierra (N4) dejando
-    // Dashboards activo en toda /dashboard/dashboards.
+  it("Dashboards queda marcado en cualquier pantalla de dashboards, no solo /chat", () => {
+    // Antes del bloque N esto no marcaba nada (era el agujero documentado).
     for (const pathname of [
+      "/dashboard/dashboards/chat",
       "/dashboard/dashboards/ads",
       "/dashboard/dashboards/content",
       "/dashboard/dashboards/unified",
       "/dashboard/dashboards/ads/campaigns/abc",
     ]) {
-      expect(activeNavHref(pathname, ITEMS_ANTES_DEL_BLOQUE_N), pathname).toBeNull();
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/dashboards/chat");
     }
   });
 
-  it("integraciones hoy no tiene item propio: su ruta cae marcando Ajustes", () => {
-    // No hay item "Integraciones" todavia (sale en N1). Mientras tanto,
-    // /dashboard/settings/integrations matchea por prefijo al item Settings,
-    // como cualquier otra sub-ruta de settings.
-    expect(activeNavHref("/dashboard/settings/integrations", ITEMS_ANTES_DEL_BLOQUE_N)).toBe("/dashboard/settings");
+  it("sin ningun match, no hay item activo", () => {
+    expect(activeNavHref("/dashboard/inventada", NAV_ITEMS)).toBeNull();
   });
+});
+
+describe("exactamente un item activo en cualquier ruta real del dashboard (N4)", () => {
+  // Recorre PAGE_META, que es la lista real de rutas con barra superior.
+  // Los segmentos dinamicos ([id], [contactId], etc.) se resuelven con un
+  // valor de relleno: lo unico que importa aca es el PREFIJO de la ruta.
+  const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
+
+  const admin = visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [] });
+  const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
+
+  for (const patron of Object.keys(PAGE_META)) {
+    it(`${patron}: exactamente un item activo para un admin`, () => {
+      // Un admin ve TODO el menu, asi que para cualquier ruta real tiene que
+      // haber un ganador: cero seria un item nuevo sin alsoActiveOn, y dos
+      // seria un empate que activeNavHref no deberia producir.
+      const pathname = rutaDeEjemplo(patron);
+      const href = activeNavHref(pathname, admin);
+
+      expect(href, pathname).not.toBeNull();
+      expect(admin.filter((item) => item.href === href).length, pathname).toBe(1);
+    });
+
+    it(`${patron}: a lo sumo un item activo para un member`, () => {
+      // Un member no ve los items admin-only: en una ruta que no puede
+      // abrir, cero items activos es el estado correcto (no dos).
+      const pathname = rutaDeEjemplo(patron);
+      const href = activeNavHref(pathname, member);
+      const activos = member.filter((item) => item.href === href && href !== null);
+
+      expect(activos.length, pathname).toBeLessThanOrEqual(1);
+    });
+  }
 });

@@ -48,11 +48,22 @@ export interface NavItemMeta {
    * el item se muestra a cualquier miembro (o solo a admins, si adminOnly).
    */
   permissions?: string[];
+  /**
+   * Otras rutas que TAMBIEN dejan este item marcado como activo (N4), ademas
+   * de su propio `href`. Lo resuelve `lib/nav/active.ts`: gana, entre todos
+   * los items, el candidato (href o alsoActiveOn) mas largo que matchee.
+   */
+  alsoActiveOn?: string[];
 }
 
 export const NAV_ITEMS: NavItemMeta[] = [
-  { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", adminOnly: false, group: "inicio" },
-  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio" },
+  // alsoActiveOn: "/dashboard/dashboards" (sin el /chat) para que las otras
+  // pantallas de dashboards (ads, content, unified y sus detalles) tambien
+  // dejen marcado este item. Antes del bloque N ninguna lo hacia (N4).
+  { name: "Dashboards", href: "/dashboard/dashboards/chat", icon: "LayoutGrid", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/dashboards"] },
+  // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
+  // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
+  { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
 
   { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false, group: "adquisicion" },
   // Social: el perfil de cada red y sus publicaciones. Owner/Admin hasta el
@@ -69,12 +80,14 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Agentes", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },
   { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", adminOnly: true, group: "automatizacion" },
 
-  // Integraciones (nuevo, N1): se llega desde Ajustes hoy en dia (el href no
-  // cambia, N4 ya la deja marcada por su propio item). adminOnly, como el
-  // resto de las pantallas de admin (N2): la clave `integrations.manage`
-  // existe, pero el item sigue el mismo criterio que sus vecinas del fondo
-  // para no desalinearse de member-baseline.
-  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: "Blocks", adminOnly: true, group: "sistema" },
+  // Integraciones (nuevo, N1): es sub-ruta de Ajustes (gana por ser el
+  // candidato mas largo, N4), y ademas deja marcado a Channels: esa pantalla
+  // ya no tiene item propio (D3), pero conceptualmente cuelga de Integraciones
+  // (se llega desde el detalle de Zernio/Evolution). adminOnly, como el resto
+  // de las pantallas de admin (N2): la clave `integrations.manage` existe,
+  // pero el item sigue el mismo criterio que sus vecinas del fondo para no
+  // desalinearse de member-baseline.
+  { name: "Integraciones", href: "/dashboard/settings/integrations", icon: "Blocks", adminOnly: true, group: "sistema", alsoActiveOn: ["/dashboard/channels"] },
   { name: "Ajustes", href: "/dashboard/settings", icon: "Settings", adminOnly: true, group: "sistema" },
 ];
 
