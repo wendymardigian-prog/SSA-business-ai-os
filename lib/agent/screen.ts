@@ -31,6 +31,14 @@ export interface RunFilters {
   detalle: string;
   costoMin: number | null;
   costoMax: number | null;
+  /** El `source` de agent_runs (Bloque R, R2). Vacio = cualquiera. */
+  origen: string;
+  /** Atajo "Sin precio" (R2): cost_usd NULL con tokens > 0. Solo con permiso de costo. */
+  sinPrecio: boolean;
+  /** Atajo "Más lentas de 30 s" (R2). */
+  masLentas: boolean;
+  /** Atajo "Más caras" (R2): ordena por cost_usd descendente en vez de por fecha. Solo con permiso de costo. */
+  masCaras: boolean;
 }
 
 export interface RunStepRow {
@@ -44,6 +52,8 @@ export interface RunStepRow {
   auditLogId: string | null;
   durationMs: number | null;
   error: string | null;
+  /** Para saber si el contenido se purgo por retencion (R4): mas de 12 meses con input/output null. */
+  createdAt: string;
 }
 
 export interface RunRow {
@@ -52,9 +62,11 @@ export interface RunRow {
   completedAt: string | null;
   source: string;
   trigger: string;
+  threadId: string | null;
   status: string;
   statusDetail: string | null;
   routing: Record<string, unknown> | null;
+  intent: Record<string, unknown> | null;
   agentId: string | null;
   agentName: string | null;
   promptVersion: number | null;
