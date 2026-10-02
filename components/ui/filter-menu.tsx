@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isFormField, menuKeyAction, MENU_ITEM_SELECTOR } from "@/lib/ui/menu-keys";
 
 /**
  * El envoltorio de los filtros de la barra: un boton y un menu propio.
@@ -16,6 +17,11 @@ import { cn } from "@/lib/utils";
  * devolviendo el foco al boton, y cerrar al hacer clic afuera. El menu es
  * `role="menu"` y cada opcion `role="menuitemradio"`, asi un lector de pantalla
  * anuncia cual esta elegida.
+ *
+ * Tambien acepta campos adentro (un `<select>`, un `<input type="date">`): con
+ * el foco en un campo, las flechas son del campo y Tab pasa al item siguiente
+ * sin cerrar. La regla completa, pura y testeada, esta en `lib/ui/menu-keys.ts`.
+ * Un menu sin campos (los del dashboard de Chat) se comporta igual que antes.
  */
 
 /**
@@ -76,7 +82,7 @@ export function FilterMenu({
   // atras y el menu queda flotando sin dueño.
   useEffect(() => {
     if (!open) return;
-    const first = menuRef.current?.querySelector<HTMLElement>('[role="menuitemradio"]:not([disabled]), button:not([disabled])');
+    const first = menuRef.current?.querySelector<HTMLElement>(MENU_ITEM_SELECTOR);
     first?.focus();
   }, [open]);
 
@@ -89,31 +95,23 @@ export function FilterMenu({
   const closeFromChild = useCallback(() => close(true), [close]);
 
   function onMenuKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-      return;
-    }
-    if (e.key === "Tab") {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR) ?? [])];
+    const focused = document.activeElement as HTMLElement | null;
+    const action = menuKeyAction({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      onField: isFormField(focused?.tagName),
+      index: focused ? items.indexOf(focused) : -1,
+      count: items.length,
+    });
+    if (action.kind === "native") return;
+    if (action.kind === "dismiss") {
       setOpen(false);
       return;
     }
-    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]:not([disabled]), button:not([disabled])') ?? [])];
-    if (items.length === 0) return;
-    const index = items.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      items[(index + 1 + items.length) % items.length]?.focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      items[(index - 1 + items.length) % items.length]?.focus();
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      items[0]?.focus();
-    } else if (e.key === "End") {
-      e.preventDefault();
-      items[items.length - 1]?.focus();
-    }
+    e.preventDefault();
+    if (action.kind === "close") close();
+    else items[action.index]?.focus();
   }
 
   return (
