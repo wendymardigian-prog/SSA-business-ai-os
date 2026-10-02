@@ -4,6 +4,7 @@ import {
   publisherEntrySchema,
   resolveDefaultPublisher,
   usablePublishers,
+  canChooseDefault,
   type PublisherEntry,
 } from "./accounts-schema";
 
@@ -128,5 +129,29 @@ describe("cual publicador se usa", () => {
       publisher: "zernio",
       changed: true,
     });
+  });
+});
+
+describe("canChooseDefault (G7)", () => {
+  it("disponible: se puede elegir", () => {
+    const entries = [entry({ publisher: "zernio", status: "available" })];
+    expect(canChooseDefault(entries, "zernio")).toBe(true);
+  });
+
+  it("no disponible: no se puede elegir", () => {
+    const entries = [entry({ publisher: "postproxy", status: "unavailable", status_reason: "sin key" })];
+    expect(canChooseDefault(entries, "postproxy")).toBe(false);
+  });
+
+  it("habilitado a mano, aunque no este 'available': se puede elegir", () => {
+    const entries = [
+      entry({ publisher: "youtube_api", status: "unverified", manually_enabled: true }),
+    ];
+    expect(canChooseDefault(entries, "youtube_api")).toBe(true);
+  });
+
+  it("un publicador que no esta entre las entradas de la cuenta: no se puede elegir", () => {
+    const entries = [entry({ publisher: "zernio", status: "available" })];
+    expect(canChooseDefault(entries, "postproxy")).toBe(false);
   });
 });

@@ -42,6 +42,7 @@ const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/settings/background/page.tsx",
   "app/(dashboard)/dashboard/settings/custom-fields/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/page.tsx",
+  "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
   "app/(dashboard)/dashboard/settings/team/page.tsx",
   "app/(dashboard)/dashboard/social/page.tsx",
 ] as const;
@@ -114,10 +115,11 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     expect(sinGuard, `estas paginas dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
   });
 
-  it("son exactamente doce, y estan todas en el repo", () => {
+  it("son exactamente trece, y estan todas en el repo", () => {
     // El numero importa: si aparece una pagina nueva de Admin sin sumarla
     // aca, el bloque 9 puede cambiarle el guard sin que nadie lo note.
-    expect(ADMIN_PAGES).toHaveLength(12);
+    // (Bloque G suma el detalle de una integracion, G5.)
+    expect(ADMIN_PAGES).toHaveLength(13);
     for (const page of ADMIN_PAGES) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }

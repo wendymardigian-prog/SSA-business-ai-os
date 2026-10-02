@@ -40,7 +40,6 @@ import {
   saveIntegration,
   disconnectIntegration,
   updateIntegrationConfig,
-  migrateZernioSecretsToVault,
 } from "./integrations";
 
 const WS = "ws-1";
@@ -314,35 +313,6 @@ describe("desconectar una integracion", () => {
 
     expect(result.ok).toBe(false);
     expect(deleteSecret).not.toHaveBeenCalled();
-  });
-});
-
-describe("migrar los secretos viejos de Zernio a Vault (F5, 00090)", () => {
-  it("ya no hay nada que migrar: las columnas viejas se borraron", async () => {
-    // La accion se conserva en vez de borrarse porque una pestaña vieja que
-    // quedo abierta la puede llamar, y "no hay nada que migrar" es mas claro
-    // que un error de columna inexistente.
-    admin();
-
-    expect(await migrateZernioSecretsToVault()).toEqual({ ok: true, migrated: [] });
-    expect(storeSecret).not.toHaveBeenCalled();
-  });
-
-  it("no consulta ninguna tabla", async () => {
-    // Consultar `workspaces.late_api_key_encrypted` hoy seria un error de
-    // columna inexistente.
-    admin();
-
-    await migrateZernioSecretsToVault();
-
-    expect(listSecretNames).not.toHaveBeenCalled();
-  });
-
-  it("un Member no puede", async () => {
-    getAdminContext.mockResolvedValue(null);
-
-    expect((await migrateZernioSecretsToVault()).ok).toBe(false);
-    expect(storeSecret).not.toHaveBeenCalled();
   });
 });
 

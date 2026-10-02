@@ -530,3 +530,20 @@ de Vitest hubiera cubierto) lo siguen haciendo.
 - **Qué quedó:** el documento pedía el placeholder "Buscar por nombre, teléfono o texto del mensaje", pero el servidor busca solo por `contacts.display_name`.
 - **Por qué:** ampliar la búsqueda cambia su semántica, y este bloque no la cambia.
 - **Qué se decidió en su lugar (con Wendy):** el placeholder dice lo que hace, "Buscar por nombre". Buscar por teléfono o por texto del mensaje es una mejora aparte, que toca la consulta del servidor y `scripts/verify-inbox-filters.mjs`.
+
+## Bloque G — Integraciones (2/10/2026, rama `feat/integraciones-dos-secciones`)
+
+### WhatsApp (Evolution): no hay gestión de varias instancias
+- **Qué quedó:** la pestaña Cuentas de `evolution` muestra el único número de WhatsApp del workspace (su `connection_status` y `last_error`, leídos de `channels`) y linkea a `/dashboard/channels` para el QR. No se construyó alta ni baja de instancias.
+- **Por qué:** el modelo real del sistema es un número de WhatsApp por workspace (lo dice la propia descripción del proveedor en el catálogo); construir multi-instancia sería agregar una funcionalidad que el sistema no tiene en ningún otro lado.
+- **Qué se decidió en su lugar:** se deja anotado para cuando el negocio necesite más de un número.
+
+### La pestaña Actividad no audita conectar por OAuth ni renovar
+- **Qué quedó:** `audit_log` hoy solo recibe dos acciones de una integración: guardar (`saveIntegration`) y desconectar (`disconnectIntegration`), siempre con `entity_type: "channel"` y `metadata.provider`. Autorizar una cuenta por OAuth, renovarla (el cron semanal o la renovación a demanda) y sus errores **no se auditan**. La pestaña Actividad del detalle (G5) muestra lo que hay en `audit_log` más el estado actual de la conexión (vencimiento, última renovación, scopes otorgados), para no dejarla vacía.
+- **Por qué:** sumar `logAudit` al flujo de OAuth (`lib/oauth/flow.ts`, `lib/social/refresh-connection.ts`) es tocar ese flujo, que este bloque tiene prohibido tocar (regla del documento: "No se toca... el flujo de OAuth").
+- **Qué se decidió en su lugar (con Wendy):** se deja para otro bloque. Cuando se haga, son dos `logAudit` nuevos: uno en `saveConnection` (`lib/oauth/flow.ts`) y otro en `refreshConnection` (`lib/social/refresh-connection.ts`), con `entity_type: "oauth_connection"` (ya existe en `AuditEntityType`) y `metadata.provider`.
+
+### El `redirect_to` de OAuth siempre vuelve al listado, nunca al detalle
+- **Qué quedó:** `ConnectWithProvider` (dentro de `credentials-form.tsx`) arma el link de autorizar con `redirect_to=/dashboard/settings/integrations` fijo. Autorizar una cuenta desde el detalle de `google`, `linkedin` o `threads` deja a la persona en el listado, no de vuelta en la pestaña Credenciales de donde salió.
+- **Por qué:** `safeRedirect` (`lib/oauth/state.ts`) solo acepta una lista cerrada de rutas internas (un redirector abierto sería un agujero de seguridad), y sumarle la ruta del detalle es tocar el flujo de OAuth.
+- **Qué se decidió en su lugar:** se deja igual. El arreglo es agregar `/dashboard/settings/integrations/[providerId]` (o un patrón) a `REDIRECT_ALLOWLIST` el día que se toque ese archivo por otro motivo.

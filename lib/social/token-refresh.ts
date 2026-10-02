@@ -13,11 +13,17 @@
  */
 
 import type { OAuthConnectionStatus } from "@/lib/types/database";
+import { EXPIRY_WARNING_DAYS } from "@/lib/integrations/status";
 
 /** Cuando empieza a preocupar que un token venza. */
 export const REFRESH_WHEN_DAYS_LEFT = 15;
-/** Cuando se avisa que hay que reconectar a mano. */
-export const WARN_WHEN_DAYS_LEFT = 7;
+/**
+ * Cuando se avisa que hay que reconectar a mano.
+ *
+ * Es el mismo umbral que usa la card de Integraciones (G3): un solo numero en
+ * todo el sistema, `EXPIRY_WARNING_DAYS` de `lib/integrations/status.ts`.
+ */
+export const WARN_WHEN_DAYS_LEFT = EXPIRY_WARNING_DAYS;
 
 export interface ConnectionToCheck {
   id: string;
