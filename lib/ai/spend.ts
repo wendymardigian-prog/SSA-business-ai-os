@@ -16,7 +16,14 @@ import { BUSINESS_TIMEZONE, startOfZonedDay, startOfZonedMonth } from "@/lib/dat
  *   - del agente: sus propios topes (default USD 5 diario que avisa, USD 100
  *     mensual que apaga);
  *   - del workspace: todo el gasto de IA del sistema, si hay tope global
- *     cargado. El diario avisa y el mensual apaga, igual que el del agente.
+ *     cargado. Los dos CORTAN: un tope global que solo avisa no frena nada.
+ *     Sus ventanas salen de workspaceSpendCandidates, la misma definicion que
+ *     usa workspace-budget.ts para lo que no es el agente.
+ *
+ * Que significa cortar depende de la ventana (isTemporaryBlock):
+ *   - un tope DIARIO corta hasta la medianoche local y no apaga nada: al dia
+ *     siguiente la suma vuelve a cero y todo sigue solo;
+ *   - un tope MENSUAL apaga el agente, y se vuelve a encender a mano.
  *
  * La suma la hace la base (sum_ai_spend, 00064): sumar filas en la app choca
  * con el limite de 1.000 filas por consulta y subestima el gasto.
@@ -56,6 +63,42 @@ interface Candidate {
   agentId: string | null;
 }
 
+/** Un tope diario corta solo hasta la medianoche local; el mensual apaga. */
+export function isTemporaryBlock(scope: SpendScope): boolean {
+  return scope === "agent_daily" || scope === "workspace_daily";
+}
+
+/** Un monto de la base (numeric puede llegar como string) o null si no hay tope. */
+function toLimit(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Los topes del WORKSPACE con su ventana, solo los que estan cargados. Es la
+ * unica definicion: la usan el agente (checkSpendLimits) y lo que no es el
+ * agente (withinWorkspaceBudget). Si cada uno armara la suya, "llegue al
+ * tope" significaria dos cosas distintas segun quien pregunte.
+ */
+export function workspaceSpendCandidates(args: {
+  dailyUsd: number | string | null | undefined;
+  monthlyUsd: number | string | null | undefined;
+  now: Date;
+  timeZone: string;
+}): Array<{ scope: "workspace_daily" | "workspace_monthly"; limitUsd: number; action: CostLimitAction; since: Date }> {
+  const out: Array<{ scope: "workspace_daily" | "workspace_monthly"; limitUsd: number; action: CostLimitAction; since: Date }> = [];
+  const daily = toLimit(args.dailyUsd);
+  const monthly = toLimit(args.monthlyUsd);
+  if (daily !== null) {
+    out.push({ scope: "workspace_daily", limitUsd: daily, action: "disable", since: startOfZonedDay(args.now, args.timeZone) });
+  }
+  if (monthly !== null) {
+    out.push({ scope: "workspace_monthly", limitUsd: monthly, action: "disable", since: startOfZonedMonth(args.now, args.timeZone) });
+  }
+  return out;
+}
+
 /**
  * Decide con los montos ya sumados. Pura: es lo que se testea.
  * Un tope se considera alcanzado cuando lo gastado lo iguala o lo supera.
@@ -89,11 +132,14 @@ export async function checkSpendLimits(
   const l = args.limits;
 
   const candidates: Candidate[] = [
-    { scope: "agent_daily", limitUsd: l.agentDailyUsd, action: l.agentDailyAction, since: dayStart, agentId: args.agentId },
-    { scope: "agent_monthly", limitUsd: l.agentMonthlyUsd, action: l.agentMonthlyAction, since: monthStart, agentId: args.agentId },
-    { scope: "workspace_daily", limitUsd: l.workspaceDailyUsd, action: "notify", since: dayStart, agentId: null },
-    { scope: "workspace_monthly", limitUsd: l.workspaceMonthlyUsd, action: "disable", since: monthStart, agentId: null },
-  ].filter((c) => c.limitUsd !== null) as Candidate[];
+    ...([
+      { scope: "agent_daily", limitUsd: l.agentDailyUsd, action: l.agentDailyAction, since: dayStart, agentId: args.agentId },
+      { scope: "agent_monthly", limitUsd: l.agentMonthlyUsd, action: l.agentMonthlyAction, since: monthStart, agentId: args.agentId },
+    ] as Candidate[]).filter((c) => c.limitUsd !== null),
+    ...workspaceSpendCandidates({ dailyUsd: l.workspaceDailyUsd, monthlyUsd: l.workspaceMonthlyUsd, now, timeZone: tz }).map(
+      (c) => ({ ...c, agentId: null }),
+    ),
+  ];
 
   if (candidates.length === 0) return { allowed: true, warnings: [] };
 

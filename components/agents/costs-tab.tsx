@@ -174,14 +174,16 @@ function LimitsSection({ limits, agentId }: { limits: NonNullable<AgentScreenDat
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [pending, start] = useTransition();
   const dirty = daily !== limits.workspaceDailyUsd || monthly !== limits.workspaceMonthlyUsd;
-  const action = (a: "notify" | "disable") => (a === "disable" ? "apaga el agente" : "avisa");
+  // Un diario que corta lo hace hasta la medianoche; un mensual apaga el agente.
+  const action = (a: "notify" | "disable", window: "daily" | "monthly") =>
+    a === "notify" ? "avisa" : window === "daily" ? "corta hasta mañana" : "apaga el agente";
 
   return (
     <Section title="Topes de gasto" description="Se evalúan antes de cada llamada al modelo, en la zona del negocio. Estimados según los precios cargados.">
       <div className="rounded-lg border border-border p-3 text-sm">
         <p className="font-medium">Del agente</p>
         <p className="text-xs text-muted-foreground">
-          Diario: {formatUsd(limits.agentDailyUsd)} ({action(limits.agentDailyAction)}) · Mensual: {formatUsd(limits.agentMonthlyUsd)} ({action(limits.agentMonthlyAction)}).{" "}
+          Diario: {formatUsd(limits.agentDailyUsd)} ({action(limits.agentDailyAction, "daily")}) · Mensual: {formatUsd(limits.agentMonthlyUsd)} ({action(limits.agentMonthlyAction, "monthly")}).{" "}
           <Link href={`/dashboard/agents/${agentId}?tab=config`} className="underline underline-offset-2">
             Se editan en Configuración → Guardarraíles
           </Link>
@@ -190,7 +192,7 @@ function LimitsSection({ limits, agentId }: { limits: NonNullable<AgentScreenDat
       </div>
       <div className="rounded-lg border border-border p-3">
         <p className="text-sm font-medium">Del workspace (todo el gasto de IA)</p>
-        <p className="text-xs text-muted-foreground">El diario avisa; el mensual apaga el agente. Vacío: sin tope global.</p>
+        <p className="text-xs text-muted-foreground">El diario corta todo el gasto de IA hasta mañana; el mensual además apaga el agente. Vacío: sin tope global.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <Field label="Diario (USD)">{(id) => <NumberInput id={id} value={daily} min={0} step={0.5} allowEmpty onChange={(v) => { setMessage(null); setDaily(v); }} />}</Field>
           <Field label="Mensual (USD)">{(id) => <NumberInput id={id} value={monthly} min={0} step={1} allowEmpty onChange={(v) => { setMessage(null); setMonthly(v); }} />}</Field>
