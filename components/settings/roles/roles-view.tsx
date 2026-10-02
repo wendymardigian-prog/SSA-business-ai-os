@@ -5,6 +5,8 @@ import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { createRole, deleteRole, updateRole } from "@/lib/actions/roles";
 import {
   PERMISSION_MODULES,
@@ -183,6 +185,20 @@ export function RolesView({
           </ul>
         )}
 
+        {roles.length === 0 ? (
+          <SettingsEmptyState
+            description={SETTINGS_EMPTY_STATES.roles}
+            action={
+              <button
+                type="button"
+                onClick={openNew}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                Nuevo rol
+              </button>
+            }
+          />
+        ) : (
         <ul className="space-y-2">
           {roles.map((role) => (
             <li key={role.id} className="rounded-xl border border-border p-3">
@@ -255,6 +271,7 @@ export function RolesView({
             </li>
           ))}
         </ul>
+        )}
 
         {draft && (
           <section className="mt-6 rounded-xl border border-border p-4">

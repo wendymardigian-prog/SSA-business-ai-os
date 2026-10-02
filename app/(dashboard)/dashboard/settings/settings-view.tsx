@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
-import Link from "next/link";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
@@ -14,7 +13,8 @@ import { EscalationSettings } from "@/components/settings/escalation-settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
-import { AI_RUNS_HREF } from "@/lib/settings/general-sections";
+import { AiRunsLink } from "@/components/settings/ai-runs-link";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 interface WorkspaceSettings {
   id: string;
@@ -242,7 +242,7 @@ export function SettingsView({
                   </div>
                 ) : (
                   <p className="mt-3 text-xs text-muted-foreground/70">
-                    Todavía no hay palabras clave configuradas
+                    {SETTINGS_EMPTY_STATES.generalKeywords}
                   </p>
                 )}
 
@@ -275,17 +275,8 @@ export function SettingsView({
 
               <EscalationSettings enabled={workspace.escalateOnUnreadable} />
 
-              {canViewAiCosts && (
-                <>
-                  <hr className="border-border" />
-                  <Link
-                    href={AI_RUNS_HREF}
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-2 hover:underline"
-                  >
-                    Ver corridas de IA →
-                  </Link>
-                </>
-              )}
+              {canViewAiCosts && <hr className="border-border" />}
+              <AiRunsLink canView={canViewAiCosts} />
             </section>
           </div>
         </div>

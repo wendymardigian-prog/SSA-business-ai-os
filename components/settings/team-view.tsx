@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Users,
@@ -30,6 +30,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 interface MemberDetail {
   userId: string;
@@ -96,6 +98,9 @@ export function TeamView({
 
   const [members, setMembers] = useState(initialMembers);
   const [invites, setInvites] = useState(initialInvites);
+  // El estado vacío de arriba enfoca este input en vez de duplicar el
+  // formulario (S5).
+  const inviteEmailRef = useRef<HTMLInputElement>(null);
 
   // Invite form
   const [inviteEmail, setInviteEmail] = useState("");
@@ -262,6 +267,22 @@ export function TeamView({
               </h2>
             </div>
 
+            {members.length === 0 ? (
+              <SettingsEmptyState
+                description={SETTINGS_EMPTY_STATES.team}
+                action={
+                  canManageTeam && (
+                    <button
+                      type="button"
+                      onClick={() => inviteEmailRef.current?.focus()}
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                    >
+                      Invitar a alguien
+                    </button>
+                  )
+                }
+              />
+            ) : (
             <div className="mt-4 space-y-2">
               {members.map((member) => (
                 <div
@@ -379,6 +400,7 @@ export function TeamView({
                 </div>
               ))}
             </div>
+            )}
 
             {roleError && (
               <p
@@ -415,6 +437,7 @@ export function TeamView({
 
                 <form onSubmit={handleInvite} className="mt-4 flex gap-2">
                   <input
+                    ref={inviteEmailRef}
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => {

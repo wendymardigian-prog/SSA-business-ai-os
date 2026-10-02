@@ -15,9 +15,11 @@ import {
 } from "@/lib/custom-fields";
 import type { CustomFieldType } from "@/lib/types/database";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { ActionError, EmptyHint } from "@/components/contacts/ui";
+import { ActionError } from "@/components/contacts/ui";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 export interface FieldRow {
   id: string;
@@ -77,13 +79,18 @@ export function CustomFieldsView({ fields }: { fields: FieldRow[] }) {
 
       <div className="flex-1">
         {fields.length === 0 ? (
-          <div className="px-8 py-12">
-            <EmptyHint>
-              Todavía no hay campos personalizados. Creá el primero con algo que tu
-              negocio necesite saber de cada contacto y el sistema no traiga: el
-              presupuesto que pidió, de dónde vino, qué plan tiene.
-            </EmptyHint>
-          </div>
+          <SettingsEmptyState
+            description={SETTINGS_EMPTY_STATES.customFields}
+            action={
+              <button
+                type="button"
+                onClick={() => { setError(null); setEditing("new"); }}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                Nuevo campo
+              </button>
+            }
+          />
         ) : (
           <table className="w-full">
             <thead>
