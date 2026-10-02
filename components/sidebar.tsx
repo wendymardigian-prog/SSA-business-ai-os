@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
 } from "lucide-react";
 import { NAV_ITEMS, visibleNavItems } from "@/lib/nav/items";
+import { isNavItemActive } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -190,15 +191,10 @@ export function NavLinks({
   return (
     <>
       {navItems.map((item) => {
-        // La cola de borradores cuelga de Inbox: estando ahi, Inbox queda marcado.
-        // Broadcasts, Sequences y Growth son sub-pestañas de Inbox, asi que
-        // tambien lo dejan marcado (las cuatro son la misma seccion).
-        const isActive =
-          pathname.startsWith(item.href) ||
-          (item.href === "/dashboard/inbox" &&
-            ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"].some((href) =>
-              pathname.startsWith(href),
-            ));
+        // La regla de que queda marcado vive en lib/nav/active.ts, testeada
+        // sin DOM. Hoy incluye la excepcion de Inbox (borradores y las
+        // sub-pestañas de la bandeja); el bloque N la generaliza.
+        const isActive = isNavItemActive(pathname, item.href);
         const badge = item.href === "/dashboard/inbox" && drafts ? drafts : null;
         return (
           // El badge de borradores es un link propio y no puede vivir adentro
