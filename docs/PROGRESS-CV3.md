@@ -35,15 +35,15 @@ Decisiones tomadas con Wendy (ver `docs/PENDIENTE.md`, sección "Corrida Conteni
 
 ### B10: desatasque (F73 a F80)
 - [x] **F73** Cuentas sociales desde la lista de Zernio. `computeAccounts` acepta `zernioAccounts`; sin lista, respaldo por canales. Commit `0eab9c9`. Tests: `lib/social/accounts-zernio.test.ts` (7), `accounts.test.ts` (13).
-- [ ] F74 Disparadores de la sync (guardar, desconectar, canales, botón). **En curso.** Hecho: helper `lib/social/sync-hook.ts` (nunca lanza), cableado en `saveIntegration`, `disconnectIntegration`, `app/api/v1/channels/sync`, acción `syncSocialAccountsNow`. Tests: `lib/actions/integrations-social-sync.test.ts`. Falta: botón en la UI y mostrar los avisos en la card.
-- [ ] F75 Perfil real (handle, avatar, bio, profile_url; null si no hay dato; `markAccountSync` con error).
+- [x] **F74** Disparadores de la sync. Commits `0276f65` y `502bb2b`. Helper `lib/social/sync-hook.ts` (nunca lanza). Cableado en `saveIntegration`, `disconnectIntegration`, `channels/sync`, `channels/test-key` (la clave de Zernio se guarda ahí, no con `saveIntegration`), y la acción `syncSocialAccountsNow`. Botón "Sincronizar cuentas" y avisos en la card. Tests: `lib/actions/integrations-social-sync.test.ts`.
+- [~] **F75** Perfil real. Commit `fe27fa4`. Hecho: foto y link desde Zernio, `handle`, sellado solo con lectura buena. **Falta:** guardar el error en la cuenta (necesita la 00113) y la bio (no viene en la lista de Zernio).
 - [ ] F76 Adopción de comentarios huérfanos (`external_post_id`, migración 00113).
 - [ ] F77 Validación por red en el servidor y tope diario (TikTok 15 videos + 15 fotos).
 - [ ] F78 Social y métricas por permiso (`social.view`, `dashboards.content.view`; RLS en 00113; `member-baseline.test.ts`).
 - [ ] F79 Regla de frecuencia de métricas y `LINKEDIN_API_VERSION`.
 - [ ] F80 **Prueba de punta a punta** `lib/publishing/e2e-zernio.test.ts`. Un caso por plataforma y uno por disparador. Procedimiento de mutación pendiente.
 
-Pendiente de decisión de Wendy: aplicar la migración 00113 en la base real (el `/goal` autoriza migraciones aditivas; se aplica cuando el archivo esté escrito y verificado).
+**BLOQUEADO:** la migración `00113_comment_post_and_profile_rls.sql` está escrita pero **no aplicada**. El clasificador de permisos denegó la escritura sobre la base compartida. Ver `docs/PENDIENTE.md`, sección "Corrida Contenido v3". Hasta que se aplique, F76 y el error de perfil no pueden cerrarse.
 
 ### B11: atribución (F81 a F88)
 - [ ] F81 Taxonomía · [ ] F82 Tabla `contact_touches` (00114) · [ ] F83 `recordTouch` · [ ] F84 Lectura de las tres formas (00115) · [ ] F85 Captura en DMs · [ ] F86 Captura en comentarios · [ ] F87 Otros caminos y backfill · [ ] F88 Atribución en pantalla

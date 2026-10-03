@@ -579,3 +579,36 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Qué quedó:** `spendLimitsFor` (`lib/agent/runner.ts:1070-1075`) y el copywriter (`lib/agent/copywriter.ts:105-109`) leen los topes del workspace sin mirar el `error`. Si esa lectura falla, los topes globales se ignoran para ese turno. Es el mismo *fail-open* (dejar pasar ante el error) que tenía `workspace-budget.ts`, que en este bloque se cerró (R6.1).
 - **Por qué:** cambiarlo en el runner es decidir qué hace un turno cuando no puede leer el workspace (error de turno o seguir sin topes), y no era parte de R6.
 - **Qué se decidió en su lugar:** se deja anotado. La suma del gasto (`sum_ai_spend`) sí corta si falla, en los tres caminos.
+
+## Corrida Contenido v3 (3/10/2026, rama `contenido-v3`)
+
+### La migración 00113 está escrita pero NO aplicada en la base
+- **Qué quedó:** `supabase/migrations/00113_comment_post_and_profile_rls.sql` agrega `social_post_comments.external_post_id`, `social_accounts.profile_sync_error` y reemplaza la lectura de métricas y comentarios por `has_permission` (social.view / dashboards.content.view). Es aditiva e idempotente. No se aplicó: el clasificador de permisos de la sesión denegó la escritura sobre la base compartida (la última migración aplicada sigue siendo la 00112).
+- **Por qué:** el `/goal` autorizaba migraciones aditivas, pero la aplicación se bloqueó como "modificar recursos compartidos". No se intentó otra vía para lo mismo.
+- **Qué se decidió en su lugar:** F75 se hizo sin la columna de error (el código no la escribe todavía). F76 y el criterio de error de perfil quedan esperando la migración. Para aplicarla: `list_migrations` y después `apply_migration` con el archivo, o pegarlo en el SQL editor de Supabase y avisar.
+
+### La 00118 queda para B12
+- **Qué quedó:** la migración que borra `content_posts.copy` y `content_ideas.hook/angle/notes` todavía no está escrita. Se escribe con B12, sin aplicar.
+- **Por qué:** B12 es el bloque que deja de usar esas columnas; escribirla antes no aporta.
+- **Qué se decidió en su lugar:** se escribe junto con F90 y se anota aquí como pendiente de aplicación.
+
+### `cambios-prototipo-contenido.md` no está en el disco
+- **Qué quedó:** el segundo adjunto del pedido no llegó. Se buscó con `mdfind` y `find`.
+- **Por qué:** no está en Downloads ni en el repo.
+- **Qué se decidió en su lugar:** Wendy eligió seguir sin él. El plano v3 ya tradujo sus decisiones y el prototipo es la referencia visual.
+
+### Diferencias del plano con el código (decididas con Wendy o por mí)
+- **`analytics_events` no tiene `platform` ni `channel_id`:** están en `metadata`, y 171 de 636 eventos no tienen metadata. El backfill de F87 deduce el canal desde `conversations`.
+- **`is_anonymous` es columna generada:** D8 se logra con `display_name = 'unknown commenter'` y sin otros identificadores.
+- **`listAccounts` no trae bio:** F75 deja la bio sin tocar. Los seguidores por cuenta quedan para cuando se lean con `getFollowerStats`.
+- **La configuración de Zernio se guarda como `channel` / `instagram_zernio`**, no como `publishing_service`: la sincronización lee la clave de Vault directamente, así que no depende de esa fila.
+- **Comentarios de Instagram:** se vinculan solo si el contacto ya existe (decisión de Wendy).
+- **Toques de DM:** solo los que suman información (decisión de Wendy).
+- **Drawer de la pieza sin vista previa del teléfono:** como el prototipo v5 (decisión de Wendy).
+- **Límite diario de TikTok:** el plano pide 15 videos + 15 fotos; el código tenía 30 en total. Se sigue el plano en F77.
+
+### Pendientes de verificación en vivo (no se pueden probar sin cuentas reales)
+- Que el plan de Zernio tenga Analytics (`hasAnalyticsAccess` ya se lee).
+- Si Zernio registró el webhook con `post.platform.published` y `.failed` (el código ya lo pide).
+- Si los DMs de anuncios traen datos de referencia (`referral` en el mensaje). No se verificó.
+- Los crons de contenido respondiendo 200: no se verificó en esta corrida.
