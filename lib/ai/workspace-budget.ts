@@ -6,15 +6,19 @@
  * anuncios), y si cada uno tuviera su propio chequeo, "llegue al tope"
  * significaria dos cosas distintas segun quien pregunte.
  *
- * Se apoya en `evaluateSpend`, la misma funcion pura que usa el agente.
+ * Se apoya en `evaluateSpend` y `workspaceSpendCandidates`, las mismas
+ * funciones que usa el agente: los topes, sus ventanas (medianoche LOCAL del
+ * workspace, no UTC) y lo que significa alcanzarlos salen de un solo lugar.
+ * Un tope diario corta hasta manana; uno mensual, hasta el proximo mes.
  *
- * La decision que importa: **si no se puede leer el gasto, no se llama al
- * modelo**. Un tope que se salta cuando falla la consulta no es un tope.
+ * La decision que importa: **si no se puede leer el gasto, o los topes, no
+ * se llama al modelo**. Un tope que se salta cuando falla la consulta no es
+ * un tope.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { evaluateSpend } from "@/lib/ai/spend";
+import { evaluateSpend, isTemporaryBlock, workspaceSpendCandidates } from "@/lib/ai/spend";
 import { BUSINESS_TIMEZONE } from "@/lib/dates";
 
 type Db = SupabaseClient<Database>;
@@ -23,6 +27,8 @@ export interface BudgetDecision {
   allowed: boolean;
   message?: string;
 }
+
+const READ_ERROR_MESSAGE = "No pude verificar el gasto de IA del workspace.";
 
 async function sumSpend(supabase: Db, workspaceId: string, since: Date): Promise<number | null> {
   const { data, error } = await supabase.rpc("sum_ai_spend", {
@@ -43,45 +49,37 @@ export async function withinWorkspaceBudget(
   workspaceId: string,
   now: Date = new Date(),
 ): Promise<BudgetDecision> {
-  const { data: workspace } = await supabase
+  const { data: workspace, error } = await supabase
     .from("workspaces")
-    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd")
+    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, timezone")
     .eq("id", workspaceId)
     .maybeSingle();
-
-  const daily = workspace?.ai_daily_cost_limit_usd ?? null;
-  const monthly = workspace?.ai_monthly_cost_limit_usd ?? null;
-  // Sin topes configurados no hay nada que chequear.
-  if (daily === null && monthly === null) return { allowed: true };
-
-  const dayStart = new Date(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: BUSINESS_TIMEZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now) + "T00:00:00Z",
-  );
-  const monthStart = new Date(`${dayStart.toISOString().slice(0, 7)}-01T00:00:00Z`);
-
-  const [spentDay, spentMonth] = await Promise.all([
-    sumSpend(supabase, workspaceId, dayStart),
-    sumSpend(supabase, workspaceId, monthStart),
-  ]);
-
-  if (spentDay === null || spentMonth === null) {
-    return { allowed: false, message: "No pude verificar el gasto de IA del workspace." };
+  if (error) {
+    console.error("[ia] no pude leer los topes del workspace:", error.message);
+    return { allowed: false, message: READ_ERROR_MESSAGE };
   }
 
-  const check = evaluateSpend([
-    { scope: "workspace_daily", limitUsd: daily, action: "disable", spentUsd: spentDay },
-    { scope: "workspace_monthly", limitUsd: monthly, action: "disable", spentUsd: spentMonth },
-  ]);
+  const candidates = workspaceSpendCandidates({
+    dailyUsd: workspace?.ai_daily_cost_limit_usd,
+    monthlyUsd: workspace?.ai_monthly_cost_limit_usd,
+    now,
+    timeZone: workspace?.timezone || BUSINESS_TIMEZONE,
+  });
+  // Sin topes configurados no hay nada que chequear.
+  if (candidates.length === 0) return { allowed: true };
 
+  const spent = await Promise.all(candidates.map((c) => sumSpend(supabase, workspaceId, c.since)));
+  if (spent.some((s) => s === null)) return { allowed: false, message: READ_ERROR_MESSAGE };
+
+  const check = evaluateSpend(
+    candidates.map((c, i) => ({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: spent[i] as number })),
+  );
   if (check.allowed) return { allowed: true };
 
   return {
     allowed: false,
-    message: `El workspace llego a su tope de gasto de IA (USD ${check.blocking.limitUsd}). Subilo en Agentes → Costos o espera al proximo periodo.`,
+    message: isTemporaryBlock(check.blocking.scope)
+      ? `El workspace llego a su tope diario de gasto de IA (USD ${check.blocking.limitUsd}). Se reanuda solo manana, o subilo en Agentes → Costos.`
+      : `El workspace llego a su tope mensual de gasto de IA (USD ${check.blocking.limitUsd}). Subilo en Agentes → Costos o espera al proximo mes.`,
   };
 }

@@ -641,6 +641,34 @@ try {
       const { error: eStarAdmin } = await admin.client.from("agent_runs").select("cost_usd").eq("id", runAjeno.id);
       check(!!eStarAdmin, "ni un Admin lee costos con el cliente de usuario (solo servidor)");
 
+      // Gasto por dia y dispersion (00112): solo service role, como ai_cost_report.
+      // Un run sin precio (cost_usd NULL con tokens) cuenta en runs y en
+      // missing_pricing, y suma 0 al costo.
+      await svc.from("agent_runs")
+        .insert({ workspace_id: ws.id, source: "kb_indexing", trigger: "job", status: "completed", embedding_tokens: 500 });
+      const rango = {
+        p_workspace_id: ws.id,
+        p_from: new Date(Date.now() - 86_400_000).toISOString(),
+        p_to: new Date(Date.now() + 60_000).toISOString(),
+      };
+      for (const [quien, cliente] of [["un Member", member.client], ["un Admin", admin.client]]) {
+        const { error: eDia } = await cliente.rpc("ai_spend_by_day", { ...rango, p_tz: "America/Costa_Rica" });
+        check(!!eDia, `${quien} NO puede llamar ai_spend_by_day con su cliente (solo servidor)`);
+        const { error: eDisp } = await cliente.rpc("ai_runs_scatter", rango);
+        check(!!eDisp, `${quien} NO puede llamar ai_runs_scatter con su cliente (solo servidor)`);
+      }
+      const { data: serie, error: eSerie } = await svc.rpc("ai_spend_by_day", { ...rango, p_tz: "America/Costa_Rica" });
+      const sumar = (k) => (serie ?? []).reduce((acc, e) => acc + Number(e[k]), 0);
+      check(!eSerie && sumar("runs") === 3 && Math.abs(sumar("cost_usd") - 0.0041) < 1e-9 && sumar("missing_pricing") === 1,
+        "ai_spend_by_day cuenta los tres runs, suma su costo y marca el que no tiene precio",
+        eSerie?.message ?? JSON.stringify(serie));
+      check(new Set((serie ?? []).map((e) => e.day)).size === 2 && (serie ?? []).length === 4,
+        "ai_spend_by_day devuelve el dia sin runs en cero, para cada origen del rango", JSON.stringify(serie));
+      const { data: puntos, error: ePuntos } = await svc.rpc("ai_runs_scatter", rango);
+      check(!ePuntos && (puntos ?? []).length === 3 && (puntos ?? []).some((p) => p.cost_usd === null),
+        "ai_runs_scatter devuelve las filas, con el costo NULL tal cual (sin precio no es $0)",
+        ePuntos?.message ?? JSON.stringify(puntos));
+
       // Escritura: solo service role
       const { error: eRunIns } = await admin.client.from("agent_runs")
         .insert({ workspace_id: ws.id, source: "agent", trigger: "manual", status: "responded" });

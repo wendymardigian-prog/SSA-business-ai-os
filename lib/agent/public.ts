@@ -13,9 +13,13 @@ import type { AgentChannelMode } from "@/lib/types/database";
 
 export const AGENT_PUBLIC_COLUMNS = "id, name, type, is_enabled, enabled_channel_ids, channel_modes, deleted_at" as const;
 
-/** Columnas de agent_runs sin tokens ni costo (00060). */
+/**
+ * Columnas de agent_runs sin tokens ni costo: TODAS las que tienen GRANT de
+ * lectura para authenticated (00060, 00070, 00077, 00080), y ninguna mas.
+ * public.test.ts lo verifica contra las migraciones.
+ */
 export const AGENT_RUN_PUBLIC_COLUMNS =
-  "id, workspace_id, source, agent_id, prompt_version, conversation_id, thread_id, contact_id, channel_id, trigger, status, status_detail, routing, provider, model, latency_ms, step_count, error, created_at, completed_at" as const;
+  "id, workspace_id, source, agent_id, prompt_version, conversation_id, thread_id, contact_id, channel_id, trigger, status, status_detail, routing, intent, provider, model, latency_ms, step_count, error, created_at, completed_at, inbound_at, responded_at" as const;
 
 /** Las columnas que NUNCA pueden aparecer en una consulta del cliente de un usuario. */
 export const AGENT_RUN_COST_COLUMNS = [
@@ -25,6 +29,7 @@ export const AGENT_RUN_COST_COLUMNS = [
   "embedding_tokens",
   "cost_usd",
   "pricing_id",
+  "audio_seconds",
 ] as const;
 
 export interface PublicAgent {

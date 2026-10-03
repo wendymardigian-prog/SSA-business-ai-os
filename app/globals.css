@@ -57,6 +57,17 @@
   --color-ig: var(--ig);
   --color-wa: var(--wa);
   --color-grid: var(--grid);
+
+  /* Origen de una corrida de IA (A4). */
+  --color-src-agent: var(--src-agent);
+  --color-src-flow: var(--src-flow);
+  --color-src-sequence: var(--src-sequence);
+  --color-src-classifier: var(--src-classifier);
+  --color-src-copywriter: var(--src-copywriter);
+  --color-src-ads: var(--src-ads);
+  --color-src-transcription: var(--src-transcription);
+  --color-src-media: var(--src-media);
+  --color-src-otros: var(--src-otros);
 }
 
 :root {
@@ -99,6 +110,26 @@
   --ig: #db2777;
   --wa: #16a34a;
   --grid: #ececf0;
+
+  /*
+   * Origen de una corrida de IA (A4). Ocho familias fijas: la paleta
+   * categorica validada de la guia de dataviz, sin reordenar (asi queda
+   * validada en el piso de un vistazo, sin correr el validador de nuevo).
+   * Mas de ocho series en una sola pantalla es ruido, no informacion: los
+   * tres origenes que quedan afuera (indexacion de la base, resumen de
+   * cierre, y el que nadie escribe) son trabajo de sistema, no de atencion a
+   * un lead, y entran en --src-otros, que reusa el gris de "externo" del
+   * dashboard de Chat (--c-ext) en vez de inventar un noveno color.
+   */
+  --src-agent: #2a78d6;
+  --src-flow: #eb6834;
+  --src-sequence: #1baf7a;
+  --src-classifier: #eda100;
+  --src-copywriter: #e87ba4;
+  --src-ads: #008300;
+  --src-transcription: #4a3aa7;
+  --src-media: #e34948;
+  --src-otros: var(--c-ext);
 }
 
 .dark {
@@ -140,6 +171,17 @@
   --ig: #ec4899;
   --wa: #22c55e;
   --grid: #26262b;
+
+  /* Origen de una corrida de IA, pasos de dark mode de la misma paleta (A4). */
+  --src-agent: #3987e5;
+  --src-flow: #d95926;
+  --src-sequence: #199e70;
+  --src-classifier: #c98500;
+  --src-copywriter: #d55181;
+  --src-ads: #008300;
+  --src-transcription: #9085e9;
+  --src-media: #e66767;
+  --src-otros: var(--c-ext);
 }
 
 /*

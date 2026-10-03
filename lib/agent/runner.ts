@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { getExactWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun, recordRunOutcome, type AiRunHandle, type OpenRunInput } from "@/lib/ai/run";
-import { checkSpendLimits, type SpendCheck } from "@/lib/ai/spend";
+import { checkSpendLimits, isTemporaryBlock, type SpendBreach, type SpendCheck } from "@/lib/ai/spend";
 import { logAudit } from "@/lib/audit";
 import { findWaitingSession } from "@/lib/flow-engine/engine";
 import { createNotificationOnce } from "@/lib/notifications/create";
@@ -553,7 +553,10 @@ async function continueTurn(
       });
       return close("error", "spend_check_failed", "No se pudo verificar el gasto de IA antes de llamar al modelo.");
     }
-    await disableForSpend(supabase, agent, spend.blocking.scope);
+    // Un tope diario corta hasta manana sin apagar el agente: al dia siguiente
+    // la suma vuelve a cero y responde solo. Uno mensual lo apaga.
+    if (isTemporaryBlock(spend.blocking.scope)) await pauseForDailySpend(supabase, agent, spend.blocking);
+    else await disableForSpend(supabase, agent, spend.blocking.scope);
     await run.step({ kind: "guardrail", name: "spend_limit", output: spend.blocking });
     if (draftMode || rulesMode) {
       return leaveDraft(
@@ -1101,7 +1104,24 @@ async function handleSpendWarnings(supabase: Db, agent: AgentConfig, spend: Spen
   }
 }
 
-/** Un tope con accion "disable": se apaga el agente, queda auditado y se avisa. */
+/**
+ * Un tope DIARIO alcanzado: el turno no llama al modelo y pasa a una persona,
+ * pero el agente queda encendido. No hay nada que reencender: manana la suma
+ * del dia vuelve a cero y el proximo turno responde solo. Se avisa una vez.
+ */
+async function pauseForDailySpend(supabase: Db, agent: AgentConfig, breach: SpendBreach): Promise<void> {
+  await createNotificationOnce({
+    supabase,
+    workspaceId: agent.workspaceId,
+    type: "agent_spend_limit",
+    title: `El agente quedo en pausa hasta manana: tope ${SCOPE_LABELS[breach.scope] ?? breach.scope}`,
+    body: `Gastado: USD ${breach.spentUsd.toFixed(2)} de USD ${breach.limitUsd.toFixed(2)} (estimado segun los precios cargados). Hasta la medianoche las conversaciones nuevas pasan a una persona; despues vuelve a responder solo.`,
+    metadata: { agent_id: agent.id, scope: breach.scope, disabled: false },
+    withinMinutes: 12 * 60,
+  });
+}
+
+/** Un tope MENSUAL con accion "disable": se apaga el agente, queda auditado y se avisa. */
 async function disableForSpend(supabase: Db, agent: AgentConfig, scope: string): Promise<void> {
   const { error } = await supabase.from("agents").update({ is_enabled: false }).eq("id", agent.id).eq("is_enabled", true);
   if (error) console.error("[agent-spend] no pude apagar el agente:", error.message);

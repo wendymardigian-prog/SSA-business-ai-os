@@ -21,6 +21,18 @@
         "3001"
       ],
       "port": 3001
+    },
+    {
+      "name": "ssa-dev-observabilidad",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3091"
+      ],
+      "port": 3091
     }
   ]
 }

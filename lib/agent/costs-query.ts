@@ -27,7 +27,7 @@ export function parseCostFilters(params: SearchParams): CostFilters {
   };
 }
 
-interface RawReport {
+export interface RawReport {
   totals: {
     runs: number;
     cost_usd: number | string;

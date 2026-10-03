@@ -114,7 +114,7 @@ export default async function ChatDashboardPage({
       hasDraftChannels={drafts.hasAny}
       draftChannelsLabel={draftChannelLabels(drafts, channels)}
       draftsHref={draftsQueueHref(draftCounts)}
-      agentHref={agent ? `/dashboard/agents/${agent.id}?tab=runs` : null}
+      agentHref={agent ? `/dashboard/agents/runs?agente=${agent.id}` : null}
       agentActionsHref={agent ? `/dashboard/agents/${agent.id}?tab=actions` : null}
     />
   );

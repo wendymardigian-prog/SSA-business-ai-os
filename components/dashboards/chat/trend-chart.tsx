@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { ChartLegend, type ChartSeries } from "@/components/dashboards/charts";
 import { axisTicks, axisTop, labelEvery, niceStep } from "@/lib/dashboards/chat/scale";
 
@@ -27,6 +27,20 @@ const T = 12;
 
 export type TrendMode = "single" | "group" | "stack" | "line";
 
+/**
+ * Envuelve una barra o un tramo en un `<a>` cuando hay href (A4): un SVG `<a>`
+ * con `href` es un link real, con clic derecho y abrir en pestaña nueva
+ * incluidos. Sin href, un `Fragment` deja el DOM igual que antes de este prop.
+ */
+function wrapWithLink(key: string, href: string | null | undefined, node: ReactNode): ReactNode {
+  if (!href) return <Fragment key={key}>{node}</Fragment>;
+  return (
+    <a key={key} href={href} className="cursor-pointer">
+      {node}
+    </a>
+  );
+}
+
 export interface TrendPoint {
   /** Clave del grupo (un dia o una semana), ya formateada para el eje. */
   bucket: string;
@@ -43,6 +57,7 @@ export function TrendChart({
   reference,
   ariaLabel,
   footer,
+  hrefFor,
 }: {
   points: TrendPoint[];
   series: ChartSeries[];
@@ -55,6 +70,13 @@ export function TrendChart({
   reference?: { value: number; label: string; color?: string } | null;
   ariaLabel: string;
   footer?: ReactNode;
+  /**
+   * Opcional (Bloque A, A4): a donde lleva un clic en una barra o, en modo
+   * "stack", en uno de sus tramos (`seriesKey` presente). `null`/`undefined`
+   * deja esa marca sin link. Sin este prop el grafico se comporta exactamente
+   * igual que antes: nada se envuelve en un `<a>`.
+   */
+  hrefFor?: (index: number, seriesKey?: string) => string | null | undefined;
 }) {
   const [hover, setHover] = useState<number | null>(null);
 
@@ -147,17 +169,17 @@ export function TrendChart({
               if (mode === "single") {
                 const v = valueAt(series[0], i);
                 if (v === null || v <= 0) return null;
-                return (
-                  <rect key={p.bucket} x={cx - barWidth / 2} y={y(v)} width={barWidth} height={Math.max(0, y(0) - y(v))} rx={Math.min(4, barWidth / 3)} fill={series[0].color} />
+                const bar = (
+                  <rect x={cx - barWidth / 2} y={y(v)} width={barWidth} height={Math.max(0, y(0) - y(v))} rx={Math.min(4, barWidth / 3)} fill={series[0].color} />
                 );
+                return wrapWithLink(p.bucket, hrefFor?.(i, series[0].key), bar);
               }
               if (mode === "group") {
                 return series.map((s, j) => {
                   const v = valueAt(s, i);
                   if (v === null || v <= 0) return null;
-                  return (
+                  const bar = (
                     <rect
-                      key={`${s.key}-${p.bucket}`}
                       x={j ? cx + 1 : cx - barWidth - 1}
                       y={y(v)}
                       width={barWidth}
@@ -166,6 +188,7 @@ export function TrendChart({
                       fill={s.color}
                     />
                   );
+                  return wrapWithLink(`${s.key}-${p.bucket}`, hrefFor?.(i, s.key), bar);
                 });
               }
               // Apiladas: 2 px de separacion entre tramos, como el prototipo.
@@ -177,9 +200,8 @@ export function TrendChart({
                 const y0 = y(acc);
                 const h = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0));
                 acc += v;
-                return (
+                const bar = (
                   <rect
-                    key={`${s.key}-${p.bucket}`}
                     x={cx - barWidth / 2}
                     y={y1}
                     width={barWidth}
@@ -188,6 +210,7 @@ export function TrendChart({
                     fill={s.color}
                   />
                 );
+                return wrapWithLink(`${s.key}-${p.bucket}`, hrefFor?.(i, s.key), bar);
               });
             })}
 

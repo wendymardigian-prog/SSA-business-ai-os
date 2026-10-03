@@ -429,7 +429,7 @@ function GuardrailsSection({ form, set }: SectionProps) {
             {(id) => (
               <select id={id} value={form.dailyCostLimitAction} onChange={(e) => set({ dailyCostLimitAction: e.target.value as "notify" | "disable" })} className={inputClass}>
                 <option value="notify">Avisar</option>
-                <option value="disable">Apagar el agente</option>
+                <option value="disable">Cortar hasta mañana</option>
               </select>
             )}
           </Field>

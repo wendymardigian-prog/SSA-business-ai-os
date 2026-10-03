@@ -4440,6 +4440,26 @@ export interface Database {
         };
         Returns: Json;
       };
+      /** Gasto de IA por dia y por origen, serie densa (migracion 00112). Solo service_role. */
+      ai_spend_by_day: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_tz: string;
+        };
+        Returns: Json;
+      };
+      /** Corridas de IA para la dispersion costo/tiempo (migracion 00112). Solo service_role. */
+      ai_runs_scatter: {
+        Args: {
+          p_workspace_id: string;
+          p_from: string | null;
+          p_to: string | null;
+          p_limit?: number;
+        };
+        Returns: Json;
+      };
       /**
        * Franja de la cola de borradores (migracion 00071). Se llama con el
        * cliente del usuario: a un Member le devuelve sus numeros siempre.

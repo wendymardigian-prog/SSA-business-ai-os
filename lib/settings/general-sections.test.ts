@@ -13,7 +13,7 @@ describe("GENERAL_SECTIONS", () => {
 });
 
 describe("AI_RUNS_HREF", () => {
-  it("apunta a la lista de agentes hasta que exista /dashboard/agents/runs", () => {
-    expect(AI_RUNS_HREF).toBe("/dashboard/agents");
+  it("apunta a la pantalla global de Corridas (Bloque A+R)", () => {
+    expect(AI_RUNS_HREF).toBe("/dashboard/agents/runs");
   });
 });

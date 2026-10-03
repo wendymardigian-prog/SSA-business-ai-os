@@ -168,6 +168,28 @@ describe("guardarrailes: se evaluan antes del modelo", () => {
     expect(w.db.rows("notifications").some((n) => n.type === "agent_spend_limit")).toBe(true);
   });
 
+  it("un tope diario que corta: no llama al proveedor, pero NO apaga el agente (manana responde solo)", async () => {
+    for (const scope of ["workspace_daily", "agent_daily"] as const) {
+      const w = turnWorld();
+      w.addInbound("hola", 0);
+      w.clock.ms = T0 + 45_000;
+      w.deps.checkSpend = async () => ({
+        allowed: false,
+        blocking: { scope, limitUsd: 5, spentUsd: 5.1, action: "disable" },
+        warnings: [],
+      });
+
+      const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
+
+      expect(w.modelCalls).toHaveLength(0);
+      expect(outcome).toMatchObject({ status: "blocked_guardrail", detail: `spend:${scope}` });
+      expect(w.db.rows("agents")[0].is_enabled).toBe(true);
+      const aviso = w.db.rows("notifications").find((n) => n.type === "agent_spend_limit");
+      expect(aviso?.title).toContain("hasta manana");
+      expect(aviso?.metadata).toMatchObject({ scope, disabled: false });
+    }
+  });
+
   it("el tope diario que avisa: notifica y el agente sigue respondiendo", async () => {
     const w = turnWorld();
     w.addInbound("hola", 0);

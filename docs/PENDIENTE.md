@@ -547,3 +547,35 @@ de Vitest hubiera cubierto) lo siguen haciendo.
 - **Qué quedó:** `ConnectWithProvider` (dentro de `credentials-form.tsx`) arma el link de autorizar con `redirect_to=/dashboard/settings/integrations` fijo. Autorizar una cuenta desde el detalle de `google`, `linkedin` o `threads` deja a la persona en el listado, no de vuelta en la pestaña Credenciales de donde salió.
 - **Por qué:** `safeRedirect` (`lib/oauth/state.ts`) solo acepta una lista cerrada de rutas internas (un redirector abierto sería un agujero de seguridad), y sumarle la ruta del detalle es tocar el flujo de OAuth.
 - **Qué se decidió en su lugar:** se deja igual. El arreglo es agregar `/dashboard/settings/integrations/[providerId]` (o un patrón) a `REDIRECT_ALLOWLIST` el día que se toque ese archivo por otro motivo.
+
+## Bloques A+R — Observabilidad de IA (2/10/2026, rama `feat/observabilidad-ia`)
+
+La instrumentación está mejor de lo esperado: diez fuentes registran corrida
+por `lib/ai/run.ts` y no apareció consumo de IA sin registrar. Pero hay grietas
+reales, y van acá para que nadie lea el mini dashboard como si fuera completo.
+Este bloque **no las arregla**: solo las anota (§9.R5).
+
+### R5.1 · Una transcripción que falla no deja corrida
+- **Qué quedó:** en `lib/ai/transcribe.ts:374-375`, `recordUsage` se llama solo dentro de `if (attempt.ok)`. Un intento fallido (`:383-390`) no registra nada. Además `recordUsage` (`:402`) abre el run con `openAiRun` (`:409`) **después** de que el proveedor ya contestó (la llamada es la `:372`), al revés de lo que manda `run.ts`. Un audio que falló, o un proceso que se murió en el medio, no deja fila, y algunos proveedores cobran igual. De paso, `latency_ms` sale casi en cero, y si el proveedor no devuelve la duración el costo queda en `0` y no en `NULL` (no hay `addAudioUsage`, `:420`).
+- **Por qué:** arreglarlo bien es cambiar el orden de apertura del run (abrir antes de llamar, cerrar con error si falla), y eso merece su propia corrida con sus tests.
+- **Qué se decidió en su lugar:** no se tocó `transcribe.ts`. El dashboard puede subestimar el gasto de transcripción en los audios que fallan.
+
+### R5.2 · El modo Económico todavía no mide
+- **Qué quedó:** `app/api/cron/bg-collect/route.ts:7-13` dice en su propio comentario que el pipeline de lote está pendiente y que debería cerrar el run; la línea `:18` es un `TODO(bloque 5)`. Hoy no hay lotes en vuelo, así que no se pierde nada.
+- **Por qué:** el pipeline no existe todavía.
+- **Qué se decidió en su lugar:** cuando se encienda, cada lote tiene que abrir y cerrar su run con `openAiRun` antes de mandarse. Si no, va a haber consumo sin registrar.
+
+### R5.3 · `message_classification_eval` está en el CHECK y nadie lo escribe
+- **Qué quedó:** el valor está en `agent_runs_source_check` (`supabase/migrations/00103_transcripts_and_needs_human.sql:123`) y en el tipo `AgentRunSource` (`lib/types/database.ts:274`), pero ningún código lo escribe.
+- **Por qué:** quedó reservado para una evaluación del clasificador que no se construyó.
+- **Qué se decidió en su lugar:** `ai_spend_by_day` (00112) arma los orígenes **desde los datos del rango**, no desde el CHECK, así que el gráfico no muestra un segmento siempre vacío. El filtro de origen de Corridas tiene que hacer lo mismo.
+
+### Observación extra · `missing_pricing` no cuenta los audios sin precio
+- **Qué quedó:** `ai_cost_report` (`supabase/migrations/00071_draft_metrics.sql:75`), y por lo tanto `ai_spend_by_day`, que copia la definición, cuentan una corrida como "sin precio" solo si tiene tokens. Una transcripción con `cost_usd NULL` (modelo sin `audio_per_hour`) tiene `audio_seconds` pero no tokens, así que no aparece en el aviso.
+- **Por qué:** `audio_seconds` llegó en la 00103, después de la definición.
+- **Qué se decidió en su lugar:** se dejó igual en las dos para que la serie y el total coincidan. El arreglo es sumar `OR COALESCE(audio_seconds, 0) > 0` en las dos funciones, en una migración propia.
+
+### Observación extra · El agente y el copywriter no avisan si no pueden leer los topes
+- **Qué quedó:** `spendLimitsFor` (`lib/agent/runner.ts:1070-1075`) y el copywriter (`lib/agent/copywriter.ts:105-109`) leen los topes del workspace sin mirar el `error`. Si esa lectura falla, los topes globales se ignoran para ese turno. Es el mismo *fail-open* (dejar pasar ante el error) que tenía `workspace-budget.ts`, que en este bloque se cerró (R6.1).
+- **Por qué:** cambiarlo en el runner es decidir qué hace un turno cuando no puede leer el workspace (error de turno o seguir sin topes), y no era parte de R6.
+- **Qué se decidió en su lugar:** se deja anotado. La suma del gasto (`sum_ai_spend`) sí corta si falla, en los tres caminos.
