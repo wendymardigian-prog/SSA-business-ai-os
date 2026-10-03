@@ -64,6 +64,9 @@ export interface ZernioAccountSource {
   username: string | null;
   displayName: string | null;
   isActive: boolean;
+  /** Foto de perfil y link, si Zernio los trae (F75). */
+  profilePicture: string | null;
+  profileUrl: string | null;
 }
 
 export interface AccountSources {
@@ -92,6 +95,11 @@ export interface ComputedAccount {
   defaultPublisher: PublisherId | null;
   /** El publicador por defecto cambio solo: hay que avisar. */
   defaultChanged: boolean;
+  /** Datos de perfil que la fuente entregó (F75). Ausente = no lo entregó. */
+  avatarUrl?: string | null;
+  profileUrl?: string | null;
+  /** La lectura del perfil salió bien: se puede sellar `profile_synced_at`. */
+  profileSynced?: boolean;
 }
 
 export interface ComputedAccounts {
@@ -187,6 +195,10 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
         displayName: account.displayName,
         // Solo Instagram tiene canal de bandeja; TikTok queda sin canal (F73).
         channelId: platform === "instagram" ? (channel?.id ?? null) : null,
+        // El perfil viene de la misma lista: no se inventa nada que no traiga.
+        avatarUrl: account.profilePicture,
+        profileUrl: account.profileUrl,
+        profileSynced: true,
       });
     }
   } else {
@@ -349,6 +361,14 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
   });
 
   for (const account of computed.accounts) {
+    // Los datos de perfil se escriben solo si la fuente los entregó. Un campo
+    // ausente no se pisa (undefined no viaja en el JSON) y no se inventa cero.
+    const profile = {
+      handle: account.username ?? undefined,
+      avatar_url: account.avatarUrl ?? undefined,
+      profile_url: account.profileUrl ?? undefined,
+      profile_synced_at: account.profileSynced ? new Date().toISOString() : undefined,
+    };
     const { error } = await supabase.from("social_accounts").upsert(
       {
         workspace_id: workspaceId,
@@ -360,6 +380,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
         default_publisher: account.defaultPublisher,
         publishers: account.publishers as unknown as Database["public"]["Tables"]["social_accounts"]["Insert"]["publishers"],
         is_active: true,
+        ...profile,
       },
       { onConflict: "workspace_id,platform" },
     );
@@ -394,6 +415,8 @@ async function readZernioAccounts(workspaceId: string): Promise<{
       username?: string | null;
       displayName?: string | null;
       isActive?: boolean;
+      profilePicture?: string | null;
+      profileUrl?: string | null;
     }> = res.data?.accounts ?? [];
     const accounts: ZernioAccountSource[] = raw.map((a) => ({
       _id: a._id,
@@ -401,6 +424,8 @@ async function readZernioAccounts(workspaceId: string): Promise<{
       username: a.username ?? null,
       displayName: a.displayName ?? null,
       isActive: a.isActive !== false,
+      profilePicture: a.profilePicture ?? null,
+      profileUrl: a.profileUrl ?? null,
     }));
     return {
       accounts,

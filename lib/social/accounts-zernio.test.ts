@@ -29,6 +29,8 @@ const zernioAccount = (over: Record<string, unknown>) => ({
   username: "wendymardigian",
   displayName: "Wendy Mardigian",
   isActive: true,
+  profilePicture: null,
+  profileUrl: null,
   ...over,
 });
 
@@ -83,6 +85,28 @@ describe("computeAccounts con la lista de Zernio (F73)", () => {
     );
     expect(out.accounts.map((a) => a.platform)).toEqual(["instagram"]);
     expect(out.accounts[0].channelId).toBe("ch-ig");
+  });
+});
+
+describe("perfil real de la cuenta (F75)", () => {
+  it("foto y link vienen de la lista de Zernio; el perfil queda sellado", () => {
+    const out = computeAccounts(
+      sources({
+        zernioAccounts: [
+          zernioAccount({ profilePicture: "https://img.test/ig.jpg", profileUrl: "https://instagram.com/wendymardigian" }),
+        ],
+      }),
+    );
+    const ig = out.accounts[0];
+    expect(ig.avatarUrl).toBe("https://img.test/ig.jpg");
+    expect(ig.profileUrl).toBe("https://instagram.com/wendymardigian");
+    expect(ig.profileSynced).toBe(true);
+  });
+
+  it("un campo que Zernio no trae queda null, no un valor inventado", () => {
+    const out = computeAccounts(sources({ zernioAccounts: [zernioAccount({})] }));
+    expect(out.accounts[0].avatarUrl).toBeNull();
+    expect(out.accounts[0].profileUrl).toBeNull();
   });
 });
 
