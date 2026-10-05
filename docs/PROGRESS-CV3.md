@@ -43,7 +43,7 @@ Decisiones tomadas con Wendy (ver `docs/PENDIENTE.md`, sección "Corrida Conteni
 - [ ] F79 Regla de frecuencia de métricas y `LINKEDIN_API_VERSION`.
 - [ ] F80 **Prueba de punta a punta** `lib/publishing/e2e-zernio.test.ts`. Un caso por plataforma y uno por disparador. Procedimiento de mutación pendiente.
 
-**BLOQUEADO:** la migración `00113_comment_post_and_profile_rls.sql` está escrita pero **no aplicada**. El clasificador de permisos denegó la escritura sobre la base compartida. Ver `docs/PENDIENTE.md`, sección "Corrida Contenido v3". Hasta que se aplique, F76 y el error de perfil no pueden cerrarse.
+**Migración 00113 aplicada** el 5/10/2026 (CLI, con OK de Wendy) y verificada con `verify-rls` (240 checks en verde). Ver `docs/PENDIENTE.md`. Pendiente: F76 y guardar el error de perfil en la cuenta.
 
 ### B11: atribución (F81 a F88)
 - [ ] F81 Taxonomía · [ ] F82 Tabla `contact_touches` (00114) · [ ] F83 `recordTouch` · [ ] F84 Lectura de las tres formas (00115) · [ ] F85 Captura en DMs · [ ] F86 Captura en comentarios · [ ] F87 Otros caminos y backfill · [ ] F88 Atribución en pantalla
