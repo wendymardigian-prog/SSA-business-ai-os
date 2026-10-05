@@ -21,8 +21,13 @@ import {
   type PublisherId,
 } from "./accounts-schema";
 import { canUploadToYouTube } from "./google";
+import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { createZernioClient } from "@/lib/zernio-client";
 
 type Db = SupabaseClient<Database>;
+
+/** Las redes que `social_accounts.platform` admite (ver el CHECK de 00082). */
+const SOCIAL_PLATFORMS: SocialPlatform[] = ["instagram", "tiktok", "youtube", "linkedin", "threads"];
 
 /** Un canal de la bandeja conectado por Zernio. */
 export interface ZernioChannelSource {
@@ -48,8 +53,29 @@ export interface ExistingAccount {
   publishers: unknown;
 }
 
+/**
+ * Una cuenta que Zernio lista con su API (`accounts.listAccounts`, F73). Es la
+ * fuente de verdad de Instagram y TikTok: TikTok no tiene canal de bandeja, así
+ * que sin esta lista no hay forma de que exista.
+ */
+export interface ZernioAccountSource {
+  _id: string;
+  platform: string;
+  username: string | null;
+  displayName: string | null;
+  isActive: boolean;
+  /** Foto de perfil y link, si Zernio los trae (F75). */
+  profilePicture: string | null;
+  profileUrl: string | null;
+}
+
 export interface AccountSources {
   zernioChannels: ZernioChannelSource[];
+  /**
+   * Lo que Zernio dice de cada cuenta. `null` (o sin pasar) = no se pudo leer:
+   * se usa `zernioChannels` como respaldo, que es lo que se hacía hasta hoy.
+   */
+  zernioAccounts?: ZernioAccountSource[] | null;
   postproxyConnected: boolean;
   /** El perfil de YouTube dentro de Postproxy, si la prueba lo encontro (A11). */
   postproxyProfileId?: string | null;
@@ -69,6 +95,11 @@ export interface ComputedAccount {
   defaultPublisher: PublisherId | null;
   /** El publicador por defecto cambio solo: hay que avisar. */
   defaultChanged: boolean;
+  /** Datos de perfil que la fuente entregó (F75). Ausente = no lo entregó. */
+  avatarUrl?: string | null;
+  profileUrl?: string | null;
+  /** La lectura del perfil salió bien: se puede sellar `profile_synced_at`. */
+  profileSynced?: boolean;
 }
 
 export interface ComputedAccounts {
@@ -141,17 +172,49 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
   };
 
   // ── Lo que llega por Zernio: Instagram y TikTok ──────────────────────────
-  for (const channel of sources.zernioChannels) {
-    if (channel.platform !== "instagram" && channel.platform !== "tiktok") continue;
-    const platform = channel.platform as SocialPlatform;
+  if (sources.zernioAccounts) {
+    // Camino nuevo (F73): la lista que devuelve Zernio. Cada cuenta es una
+    // fila; si además hay un canal de bandeja con ese mismo id, se enlaza.
+    for (const account of sources.zernioAccounts) {
+      if (!account.isActive) continue;
+      if (!SOCIAL_PLATFORMS.includes(account.platform as SocialPlatform)) {
+        // Una red que social_accounts no admite se saltea con aviso, sin fallar (F73).
+        warnings.push(`Zernio tiene una cuenta de "${account.platform}" que todavía no se puede usar acá.`);
+        continue;
+      }
+      // YouTube, LinkedIn y Threads no salen por Zernio: se arman por sus propios caminos.
+      if (account.platform !== "instagram" && account.platform !== "tiktok") continue;
+      const platform = account.platform as SocialPlatform;
+      const channel = sources.zernioChannels.find(
+        (c) => c.late_account_id === account._id && c.platform === "instagram",
+      );
 
-    finish(platform, [entry("zernio", "available", { account_ref: channel.late_account_id })], {
-      externalId: channel.late_account_id,
-      username: channel.username,
-      displayName: channel.display_name,
-      // Instagram ademas conversa: es la misma cuenta.
-      channelId: channel.id,
-    });
+      finish(platform, [entry("zernio", "available", { account_ref: account._id })], {
+        externalId: account._id,
+        username: account.username,
+        displayName: account.displayName,
+        // Solo Instagram tiene canal de bandeja; TikTok queda sin canal (F73).
+        channelId: platform === "instagram" ? (channel?.id ?? null) : null,
+        // El perfil viene de la misma lista: no se inventa nada que no traiga.
+        avatarUrl: account.profilePicture,
+        profileUrl: account.profileUrl,
+        profileSynced: true,
+      });
+    }
+  } else {
+    // Respaldo: lo de siempre, armado desde los canales de la bandeja.
+    for (const channel of sources.zernioChannels) {
+      if (channel.platform !== "instagram" && channel.platform !== "tiktok") continue;
+      const platform = channel.platform as SocialPlatform;
+
+      finish(platform, [entry("zernio", "available", { account_ref: channel.late_account_id })], {
+        externalId: channel.late_account_id,
+        username: channel.username,
+        displayName: channel.display_name,
+        // Instagram ademas conversa: es la misma cuenta.
+        channelId: channel.id,
+      });
+    }
   }
 
   // ── YouTube: puede tener dos caminos a la vez ────────────────────────────
@@ -231,6 +294,8 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
 export interface SyncResult {
   accounts: ComputedAccount[];
   warnings: string[];
+  /** Lo que Zernio informa sobre Analytics del plan (null si no se pudo leer). */
+  zernioHasAnalytics: boolean | null;
 }
 
 /**
@@ -240,6 +305,10 @@ export interface SyncResult {
  * deja lo mismo, porque escribe por `(workspace, red)`.
  */
 export async function syncSocialAccounts(supabase: Db, workspaceId: string): Promise<SyncResult> {
+  // Lo que dice Zernio de sus cuentas (F73). Si no hay clave o la llamada
+  // falla, no se borra nada: se avisa y queda el respaldo por canales.
+  const zernio = await readZernioAccounts(workspaceId);
+
   const [channels, connections, integrations, existing] = await Promise.all([
     supabase
       .from("channels")
@@ -276,6 +345,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
 
   const computed = computeAccounts({
     zernioChannels: (channels.data ?? []) as ZernioChannelSource[],
+    zernioAccounts: zernio.accounts,
     postproxyConnected: (integrations.data ?? []).some(
       (i) => i.provider === "postproxy" && i.is_active,
     ),
@@ -291,6 +361,14 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
   });
 
   for (const account of computed.accounts) {
+    // Los datos de perfil se escriben solo si la fuente los entregó. Un campo
+    // ausente no se pisa (undefined no viaja en el JSON) y no se inventa cero.
+    const profile = {
+      handle: account.username ?? undefined,
+      avatar_url: account.avatarUrl ?? undefined,
+      profile_url: account.profileUrl ?? undefined,
+      profile_synced_at: account.profileSynced ? new Date().toISOString() : undefined,
+    };
     const { error } = await supabase.from("social_accounts").upsert(
       {
         workspace_id: workspaceId,
@@ -302,6 +380,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
         default_publisher: account.defaultPublisher,
         publishers: account.publishers as unknown as Database["public"]["Tables"]["social_accounts"]["Insert"]["publishers"],
         is_active: true,
+        ...profile,
       },
       { onConflict: "workspace_id,platform" },
     );
@@ -311,5 +390,55 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     }
   }
 
-  return { accounts: computed.accounts, warnings: computed.warnings };
+  const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];
+  return { accounts: computed.accounts, warnings, zernioHasAnalytics: zernio.hasAnalytics };
+}
+
+/**
+ * Lee de Zernio las cuentas de Instagram y TikTok. Nunca lanza: un error de red
+ * o una clave ausente se devuelve como `warning` y el llamador sigue.
+ */
+async function readZernioAccounts(workspaceId: string): Promise<{
+  accounts: ZernioAccountSource[] | null;
+  hasAnalytics: boolean | null;
+  warning: string | null;
+}> {
+  try {
+    const apiKey = await getZernioApiKey(workspaceId);
+    if (!apiKey) return { accounts: null, hasAnalytics: null, warning: null };
+
+    const res = await createZernioClient(apiKey).accounts.listAccounts();
+    // El SDK tipa la respuesta; la anotación evita depender de la inferencia.
+    const raw: Array<{
+      _id: string;
+      platform: string;
+      username?: string | null;
+      displayName?: string | null;
+      isActive?: boolean;
+      profilePicture?: string | null;
+      profileUrl?: string | null;
+    }> = res.data?.accounts ?? [];
+    const accounts: ZernioAccountSource[] = raw.map((a) => ({
+      _id: a._id,
+      platform: a.platform,
+      username: a.username ?? null,
+      displayName: a.displayName ?? null,
+      isActive: a.isActive !== false,
+      profilePicture: a.profilePicture ?? null,
+      profileUrl: a.profileUrl ?? null,
+    }));
+    return {
+      accounts,
+      hasAnalytics: res.data?.hasAnalyticsAccess ?? null,
+      warning: null,
+    };
+  } catch (err) {
+    const detalle = err instanceof Error ? err.message : String(err);
+    console.error("[social] no pude leer las cuentas de Zernio:", detalle);
+    return {
+      accounts: null,
+      hasAnalytics: null,
+      warning: "No pude leer las cuentas de Zernio. Quedan las últimas que se guardaron; probá de nuevo en un rato.",
+    };
+  }
 }

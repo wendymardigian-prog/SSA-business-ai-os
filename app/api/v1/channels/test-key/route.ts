@@ -11,6 +11,7 @@ import {
 import { backfillInboxConversations } from "@/lib/inbox-sync";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
+import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
 
 /**
  * POST /api/v1/channels/test-key
@@ -138,6 +139,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Guardar la clave de Zernio arma las cuentas de Instagram y TikTok (F74).
+  // Un fallo no tumba el guardado: viaja como aviso.
+  const warnings = await syncAccountsAfterChange(supabase, workspaceId, "guardar zernio");
+
   // Backfill conversations that predate webhook registration so a
   // first-time API-key setup fills the Inbox immediately (best-effort).
   try {
@@ -159,5 +164,5 @@ export async function POST(request: NextRequest) {
     console.error("[test-key] inbox backfill failed:", err);
   }
 
-  return NextResponse.json({ accounts });
+  return NextResponse.json({ accounts, warnings });
 }

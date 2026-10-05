@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
@@ -36,7 +37,9 @@ import {
 
 const INTEGRATIONS_PATH = "/dashboard/settings/integrations";
 
-export type IntegrationActionResult = { ok: true } | { ok: false; error: string };
+export type IntegrationActionResult =
+  | { ok: true; warnings?: string[] }
+  | { ok: false; error: string };
 
 
 /** Solo los campos que declara el proveedor: nada de guardar lo que mande el cliente. */
@@ -213,6 +216,12 @@ export async function saveIntegration(
   // hizo. La entidad es el workspace porque integration_configs se hace upsert
   // y no tiene una fila estable a la que apuntar. Nunca un valor de secreto:
   // solo QUE campos se rotaron.
+  // Zernio y Postproxy cambian qué cuentas existen (F74). Si la sincronización
+  // falla, el guardado sigue: el aviso viaja en la respuesta.
+  const warnings = SOCIAL_PROVIDER_IDS.includes(provider.id)
+    ? await syncAccountsAfterChange(supabase, workspace.id, `guardar ${provider.id}`)
+    : [];
+
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
     action: existing?.is_active ? "update" : "create",
@@ -225,7 +234,7 @@ export async function saveIntegration(
   });
 
   revalidatePath(INTEGRATIONS_PATH);
-  return { ok: true };
+  return warnings.length ? { ok: true, warnings } : { ok: true };
 }
 
 /** Cambia la config (remitente, modelo) sin tocar ningun secreto. */
@@ -321,8 +330,14 @@ export async function disconnectIntegration(
     performedBy: ctx.user.id,
   });
 
+  // Desconectar una red saca su publicador de las cuentas (F74). Si el
+  // publicador por defecto era otro, se recalcula y se avisa.
+  const warnings = SOCIAL_PROVIDER_IDS.includes(provider.id)
+    ? await syncAccountsAfterChange(supabase, workspace.id, `desconectar ${provider.id}`)
+    : [];
+
   revalidatePath(INTEGRATIONS_PATH);
-  return { ok: true };
+  return warnings.length ? { ok: true, warnings } : { ok: true };
 }
 
 /**

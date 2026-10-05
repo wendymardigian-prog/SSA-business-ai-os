@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Copy, ExternalLink, Loader2 } from "lucide-react";
 import { saveIntegration, disconnectIntegration, countScheduledUses } from "@/lib/actions/integrations";
+import { syncSocialAccountsNow } from "@/lib/actions/social-accounts";
 import { secretFieldsOf, type ProviderDefinition } from "@/lib/integrations/providers";
 import type { IntegrationCardData } from "./types";
 
@@ -40,6 +41,8 @@ export function CredentialsForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /** Avisos que no son error: la sincronización de cuentas dejó algo que saber. */
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [scheduledUses, setScheduledUses] = useState<number | null>(null);
 
@@ -79,6 +82,20 @@ export function CredentialsForm({
         setError(result.error);
         return;
       }
+      setWarnings("warnings" in result && result.warnings ? result.warnings : []);
+      router.refresh();
+    });
+  }
+
+  function syncAccounts() {
+    setError(null);
+    startTransition(async () => {
+      const result = await syncSocialAccountsNow();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setWarnings(result.warnings);
       router.refresh();
     });
   }
@@ -191,6 +208,26 @@ export function CredentialsForm({
         </p>
       )}
 
+      {warnings.length > 0 && (
+        <ul className="mt-4 space-y-1 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
+
+      {/* Solo las redes que arman cuentas sociales (F74): Zernio y Postproxy. */}
+      {connected && (provider.id === "zernio" || provider.id === "postproxy") && (
+        <button
+          type="button"
+          onClick={syncAccounts}
+          disabled={pending}
+          className="mt-4 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
+        >
+          Sincronizar cuentas
+        </button>
+      )}
+
       {confirmingDisconnect ? (
         <div className="mt-4 rounded-lg border border-border p-3">
           <p className="text-sm font-medium">Desconectar {provider.label}</p>
@@ -277,7 +314,7 @@ async function saveZernio(secrets: Record<string, string>) {
   if (!res.ok || data.error) {
     return { ok: false as const, error: data.error || `No se pudo conectar (${res.status})` };
   }
-  return { ok: true as const };
+  return { ok: true as const, warnings: (data.warnings ?? []) as string[] };
 }
 
 function CopyableUrl({ label, url }: { label: string; url: string }) {

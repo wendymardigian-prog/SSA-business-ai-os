@@ -11,6 +11,7 @@ import {
 import { backfillInboxConversations } from "@/lib/inbox-sync";
 import { isSupportedPlatform } from "@/lib/platforms";
 import { channelWebhookUrl } from "@/lib/webhook-url";
+import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
 
 /**
  * POST /api/v1/channels/sync
@@ -182,9 +183,14 @@ export async function POST() {
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false });
 
+    // Sincronizar canales también actualiza las cuentas sociales (F74). Un
+    // fallo no tumba la respuesta: viaja como aviso.
+    const socialWarnings = await syncAccountsAfterChange(supabase, workspace.id, "sincronizar canales");
+
     return NextResponse.json({
       channels: channels ?? [],
       webhook,
+      warnings: socialWarnings,
       synced: {
         created,
         updated,

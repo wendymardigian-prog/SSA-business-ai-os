@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { parsePublishers, canChooseDefault, type PublisherId } from "@/lib/social/accounts-schema";
+import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
 
 /**
  * Cambiar el publicador por defecto de una cuenta social, a mano (G7).
@@ -69,4 +70,19 @@ export async function setDefaultPublisher(
 
   revalidatePath("/dashboard/settings/integrations");
   return { ok: true };
+}
+
+/**
+ * Botón "Sincronizar cuentas" (F74): vuelve a armar las cuentas desde Zernio y
+ * Postproxy, sin tocar ninguna integración. Devuelve los avisos para mostrarlos.
+ */
+export async function syncSocialAccountsNow(): Promise<
+  { ok: true; warnings: string[] } | { ok: false; error: string }
+> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden sincronizar las cuentas" };
+
+  const warnings = await syncAccountsAfterChange(ctx.supabase, ctx.workspace.id, "boton sincronizar cuentas");
+  revalidatePath("/dashboard/settings/integrations");
+  return { ok: true, warnings };
 }

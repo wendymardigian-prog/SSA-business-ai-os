@@ -320,16 +320,18 @@ export async function markAccountSync(
   supabase: Db,
   params: { socialAccountId: string; now: Date; error?: string | null },
 ): Promise<void> {
+  // Solo se sella la sincronizacion si la lectura salio bien (F75). Antes se
+  // sellaba igual y la card decia "sincronizado" aunque hubiera fallado.
+  // Guardar el error en la cuenta queda para la 00113 (profile_sync_error).
+  if (params.error) {
+    console.error(`[metricas] cuenta ${params.socialAccountId}: ${params.error}`);
+    return;
+  }
+
   await supabase
     .from("social_accounts")
     .update({ profile_synced_at: params.now.toISOString() })
     .eq("id", params.socialAccountId);
-
-  if (params.error) {
-    // El error va en las publicaciones que no se pudieron leer, no en la
-    // cuenta: la cuenta esta bien, lo que fallo fue una lectura.
-    console.error(`[metricas] cuenta ${params.socialAccountId}: ${params.error}`);
-  }
 }
 
 /** La fecha de hoy para este workspace. */
