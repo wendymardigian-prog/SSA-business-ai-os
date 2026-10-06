@@ -26,7 +26,16 @@ describe("platform allowlist", () => {
 
   it("falls back to a capitalised name for unknown platforms", () => {
     expect(platformLabel("whatsapp")).toBe("WhatsApp");
-    expect(platformLabel("tiktok")).toBe("Tiktok");
+    expect(platformLabel("mastodon")).toBe("Mastodon");
+  });
+
+  it("names the publishing-only networks with their brand spelling", () => {
+    expect(platformLabel("tiktok")).toBe("TikTok");
+    expect(platformLabel("youtube")).toBe("YouTube");
+    expect(platformLabel("linkedin")).toBe("LinkedIn");
+    expect(platformLabel("threads")).toBe("Threads");
+    // Ser una red de publicacion no la vuelve un canal de mensajes.
+    expect(isSupportedPlatform("youtube")).toBe(false);
   });
 
   it("matches the channels platform check constraint", () => {

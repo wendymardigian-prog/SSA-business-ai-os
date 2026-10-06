@@ -91,8 +91,14 @@ export function Drawer({
   }, []);
 
   // El foco vuelve a quien abrio el drawer. Va aparte, solo al desmontar.
+  // `returnFocus.current` se lee AL desmontar a proposito: no es el nodo de un
+  // elemento de este componente (lo que la regla teme que haya cambiado), sino
+  // la ultima tarjeta que se toco, y esa puede cambiar mientras el drawer esta
+  // abierto (pasar de una idea a otra). Copiarla al montar volveria el foco a
+  // la primera.
   useEffect(() => {
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       const origin = returnFocus?.current;
       if (origin && origin.isConnected) origin.focus();
     };
