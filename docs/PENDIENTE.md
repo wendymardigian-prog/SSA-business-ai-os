@@ -666,3 +666,19 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - Las redes que crean `approve_content_idea_v2`, "Nuevo post" y "Agregar red" nacen **sin formato** (modelo anterior); la persona elige el formato en la fila.
 - Las variantes con archivos propios del modelo anterior (`networks[].media`) siguen funcionando y no se migran: no hay ninguna en producción. Elegir un formato en esa red la pasa a la biblioteca.
 - El detalle de solo lectura de una pieza (`/dashboard/content/[id]`) no muestra la clasificación nueva: B13 lo reemplaza por el drawer y lo redirige.
+
+### B13 · El pie del drawer a 390 px
+- **Qué quedó:** en el celular el pie de la pieza (el resumen y cuatro botones) se parte en tres filas y ocupa casi un quinto de la pantalla. Se usa, pero está apretado.
+- **Por qué:** se priorizó que no hubiera scroll horizontal y que ningún botón desapareciera.
+- **Qué se decidió en su lugar:** nada; si molesta, lo natural es dejar solo el botón principal a la vista y mandar "Guardar versión" y "Archivar" a un menú de tres puntos en el celular.
+
+### B13 · Cosas que no se vieron con datos reales
+- **El número de contactos por pieza con contactos de verdad:** hoy ningún contacto llegó por una pieza, así que solo se vio el caso "publicada con 0". La consulta se probó contra la base real (acepta la ruta JSON con alias y el filtro) y la regla tiene su test; falta verlo con un lead que haya comentado una pieza.
+- **El historial con versiones y "Restaurar":** se vio vacío y con una versión; restaurar está cubierto por tests (`migrate-copy.test.ts`) pero no se apretó en vivo.
+- **La aprobación de ideas en secuencia con varias ideas:** hay una sola idea real; la secuencia (siguiente/anterior, cerrar con aviso al terminar) está cubierta por `idea-gallery.test.ts` y no se vio con tres ideas.
+
+### B13 · Cosas chicas que conviene saber
+- Los avisos de la campana y el link a la pieza desde la ficha de un contacto (`lib/notifications/types.ts`, `lib/contacts/attribution-view.ts`) todavía apuntan a `/dashboard/content/<id>`: funcionan por la redirección de F99 pero dan un salto de más. Se pueden apuntar directo a `?piece=<id>`.
+- La entrada `/dashboard/content/new` de `lib/nav/page-actions.ts` es de una pantalla que ya no existe (quedó de antes); es inofensiva.
+- El indicador "N" que aparece abajo a la izquierda en las capturas es la herramienta de desarrollo de Next, no algo de la app.
+- **La CLI de Supabase dejó de iniciar sesión** un rato durante B13b (error 500 del lado de Supabase, "FGAAuthenticationError"); no había nada que aplicar en ese tramo, así que no frenó nada. Para sembrar y borrar los datos de prueba usé la clave de servicio del proyecto (como los scripts `verify-*`).
