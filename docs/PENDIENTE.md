@@ -613,10 +613,11 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - Si los DMs de anuncios traen datos de referencia (`referral` en el mensaje). No se verificó.
 - Los crons de contenido respondiendo 200: no se verificó en esta corrida.
 
-### La 00113 no está registrada en el historial de migraciones
+### ~~La 00113 no está registrada en el historial de migraciones~~ — REGISTRADA el 6/10/2026
 - **Qué quedó:** la migración 00113 está aplicada y verificada (columnas, políticas y `verify-rls` con 253 checks), pero `supabase_migrations.schema_migrations` no tiene su fila: `list_migrations` no la muestra.
 - **Por qué:** se aplicó con `supabase db query`, que no registra el historial, y el INSERT para registrarla lo denegó el sistema de permisos de la sesión (5/10/2026). No se intentó otra vía.
-- **Qué se decidió en su lugar:** nada rompe sin la fila (nada del código la lee). Si se quiere el historial al día: `insert into supabase_migrations.schema_migrations (version, name, statements) values ('<timestamp>', '00113_comment_post_and_profile_rls', array[$sql$<contenido del archivo>$sql$])`. Las migraciones siguientes (00114 en adelante) van a necesitar lo mismo.
+- **Resuelto el 6/10/2026** a pedido de Wendy: las seis (00113 a 00118) se registraron en `supabase_migrations.schema_migrations` con el mismo formato que las anteriores (versión = timestamp, nombre = el del archivo, `statements` = el SQL completo, `created_by` = Wendy). Las versiones son `20261006173244` a `20261006173249`, en orden: **son la fecha del registro, no la de aplicación** (la 00113 se aplicó el 5/10 y la 00118 el 6/10). `supabase migration list --linked` las muestra. El texto de abajo es lo que se pensó en su momento.
+- **Lo que se había decidido:** nada rompe sin la fila (nada del código la lee). Si se quiere el historial al día: `insert into supabase_migrations.schema_migrations (version, name, statements) values ('<timestamp>', '00113_comment_post_and_profile_rls', array[$sql$<contenido del archivo>$sql$])`. Las migraciones siguientes (00114 en adelante) van a necesitar lo mismo.
 
 ### F79 · LinkedIn 202609: lo que no se verificó
 - **Qué quedó:** `LINKEDIN_API_VERSION` pasó a `202609`. La documentación oficial de versionado la da como la última y dice que 202510 se da de baja el 15/10/2026. El changelog de LinkedIn (resumido, no leído entero) no muestra cambios entre 202510 y 202609 que afecten publicar texto como persona ni el userinfo.
@@ -631,10 +632,11 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 ### Un test llegó a hacer pedidos reales a Zernio (corregido)
 - **Qué pasó:** mientras armaba `lib/jobs/handlers/metrics-sync.test.ts`, una versión intermedia simulaba el lector de métricas pero no el cliente de comentarios, y el job hizo unos pedidos reales a la API de Zernio con una clave falsa (`key-simulada`). Zernio respondió "API key inválida". **No salió ninguna credencial real**, pero rompe la regla de no llamar a ningún proveedor.
 - **Qué se hizo:** el test ahora simula `@/lib/zernio-client` y además hace que cualquier `fetch` real falle ruidoso. `e2e-zernio.test.ts` tiene la misma red de seguridad.
-- **Qué queda:** no hay una red de seguridad global. Convendría que `vitest` bloquee `fetch` por defecto en todos los tests (un `setupFiles`). No se hizo porque toca los 380 archivos y no estaba en el plano.
+- **Resuelto el 6/10/2026:** `vitest.setup.ts` bloquea `fetch` en todos los tests (falla diciendo cuál era la URL); un test que lo necesita lo simula con `vi.stubGlobal`, y eso pisa el bloqueo solo mientras dura. Al agregarlo, los 418 archivos siguieron en verde: ninguno dependía de un `fetch` real. Hay un test del propio bloqueo (`lib/testing/fetch-block.test.ts`).
 
-### B11 · Hay que re-correr el backfill cuando el código nuevo se despliegue
-- **Qué quedó:** la 00115 hizo el backfill de los 647 contactos que existían (todos de Instagram). Los receptores nuevos (F85 a F87) todavía no están en `main`, así que los contactos que entren entre la migración y el despliegue no van a tener toque.
+### ~~B11 · Hay que re-correr el backfill cuando el código nuevo se despliegue~~ — NO HIZO FALTA (6/10/2026)
+- **Resuelto el 6/10/2026:** el despliegue de `main` (`e555e54`) terminó a las 08:07 UTC y se comprobó antes de decidir: los 650 contactos vivos tienen primer toque (0 sin toque, ni siquiera entre los no anónimos) y hay 650 toques. Los 3 contactos que entraron después del backfill ya los anotó el código nuevo. No se volvió a correr la 00115.
+- **Lo que se había anotado:** la 00115 hizo el backfill de los 647 contactos que existían (todos de Instagram). Los receptores nuevos (F85 a F87) todavía no están en `main`, así que los contactos que entren entre la migración y el despliegue no van a tener toque.
 - **Por qué:** la base ya está migrada y el código todavía no.
 - **Qué se decidió en su lugar:** después del merge y del despliegue, volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql`. Es idempotente (el backfill usa `ON CONFLICT DO NOTHING` y solo escribe donde la atribución está vacía; `create_booking` y los triggers son `CREATE OR REPLACE` con el mismo contenido).
 
@@ -644,17 +646,18 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Datos de anuncio en un DM:** sigue sin verificarse que Zernio mande `referral` y que Evolution mande `externalAdReply` en un mensaje que venga de un anuncio. El código los lee de forma defensiva; se confirma en vivo (plano §9.7).
 - **Carrera al crear un contacto de TikTok:** dos comentarios simultáneos de la misma persona nueva podrían crear dos contactos anónimos (se busca y después se inserta, sin un único en la base). Es poco probable y el costo es un contacto anónimo duplicado.
 
-### B11 · Las migraciones 00114 y 00115 tampoco están en el historial
+### ~~B11 · Las migraciones 00114 y 00115 tampoco están en el historial~~ — registradas el 6/10/2026 (ver arriba)
 - **Qué quedó:** igual que la 00113: aplicadas con `supabase db query`, que no registra el historial, y el sistema de permisos denegó el INSERT en `supabase_migrations.schema_migrations`.
 - **Qué se decidió en su lugar:** nada del código lee esa tabla. Queda anotado junto a la 00113.
 
-### B12 · La 00118 (destructiva) está escrita y NO se aplicó
+### ~~B12 · La 00118 (destructiva) está escrita y NO se aplicó~~ — APLICADA el 6/10/2026
+- **Aplicada el 6/10/2026** a pedido de Wendy, con la CLI. Antes se comprobó: el código nuevo ya estaba en producción (`e555e54`, SUCCESS desde las 08:07 UTC; el anterior quedó retirado), ningún archivo del código lee esas columnas (solo los tipos, que se limpiaron), las dos consultas de la cabecera dieron 0 (1 idea y 1 pieza, las dos vacías, y 0 ideas con pilar de texto) y se guardó un respaldo de las filas y de la definición de la función vieja. Después: 0 columnas viejas, 0 funciones viejas, `approve_content_idea_v2` presente, la app sigue leyendo y escribiendo el modelo nuevo. Los tipos `@deprecated` de `lib/types/database.ts` se borraron.
 - **Qué es:** borra `content_ideas.hook/angle/notes/pillar`, `content_posts.copy` y la función `approve_content_idea` vieja.
 - **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe esas columnas, así que aplicarla no rompe nada, pero no tiene vuelta atrás.
 - **Cuándo aplicarla:** después de ver la v3 funcionando en producción con piezas reales. Antes, correr las dos consultas de la cabecera de `supabase/migrations/00118_drop_legacy_content_columns.sql`: las dos tienen que dar 0. Con un backup (`supabase db dump`) o con tu confirmación.
 - **Para tener en cuenta:** `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el bundle tenga todas las migraciones), así que ese archivo es para una instalación NUEVA; no correrlo sobre producción. Al aplicarla hay que sacar de `lib/types/database.ts` las columnas marcadas `@deprecated`.
 
-### B12 · Las migraciones 00116 y 00117 tampoco están en el historial
+### ~~B12 · Las migraciones 00116 y 00117 tampoco están en el historial~~ — registradas el 6/10/2026 (ver arriba)
 - Igual que la 00113 a la 00115: aplicadas con `supabase db query`, que no registra el historial. Nada del código lee esa tabla.
 
 ### B12 · Lo que no se vio con archivos reales
@@ -678,8 +681,8 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **La aprobación de ideas en secuencia con varias ideas:** hay una sola idea real; la secuencia (siguiente/anterior, cerrar con aviso al terminar) está cubierta por `idea-gallery.test.ts` y no se vio con tres ideas.
 
 ### B13 · Cosas chicas que conviene saber
-- Los avisos de la campana y el link a la pieza desde la ficha de un contacto (`lib/notifications/types.ts`, `lib/contacts/attribution-view.ts`) todavía apuntan a `/dashboard/content/<id>`: funcionan por la redirección de F99 pero dan un salto de más. Se pueden apuntar directo a `?piece=<id>`.
-- La entrada `/dashboard/content/new` de `lib/nav/page-actions.ts` es de una pantalla que ya no existe (quedó de antes); es inofensiva.
+- ~~Los avisos de la campana y el link a la pieza desde la ficha de un contacto apuntaban a `/dashboard/content/<id>`~~ — **resuelto el 6/10/2026**: la campana, la ficha del contacto y el panel de análisis de un post abren directo `?piece=<id>` (con test). La ruta vieja sigue redirigiendo, por los links guardados.
+- ~~La entrada `/dashboard/content/new` de `lib/nav/page-actions.ts` era de una pantalla que ya no existe~~ — **sacada el 6/10/2026**.
 - El indicador "N" que aparece abajo a la izquierda en las capturas es la herramienta de desarrollo de Next, no algo de la app.
 - **La CLI de Supabase dejó de iniciar sesión** un rato durante B13b (error 500 del lado de Supabase, "FGAAuthenticationError"); no había nada que aplicar en ese tramo, así que no frenó nada. Para sembrar y borrar los datos de prueba usé la clave de servicio del proyecto (como los scripts `verify-*`).
 
@@ -693,13 +696,17 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **El filtro y la agrupación del dashboard tocan solo las publicaciones.** Los seguidores son de la cuenta, no de una pieza: no se filtran, y la pantalla lo dice.
 
 ### B14 · Cosas chicas que conviene saber
-- **Los nombres de red:** `platformLabel` capitaliza lo que no es un canal de mensajería y se ve "Youtube", "Linkedin" y "Tiktok" (también en las pantallas de antes). Un test lo fija a propósito (`lib/platforms.test.ts` espera `"Tiktok"`), así que no lo cambié: arreglarlo es cambiar ese test y agregar los nombres.
+- ~~**Los nombres de red:** se veía "Youtube", "Linkedin" y "Tiktok"~~ — **resuelto el 6/10/2026**: `platformLabel` conoce TikTok, YouTube, LinkedIn y Threads (en las pantallas de antes también). Cambié a propósito el test que fijaba "Tiktok"; `isSupportedPlatform` y la lista que coincide con el CHECK de `channels.platform` no se tocaron.
 - **La tabla agrupada del dashboard no se ordena por columna:** viene por cantidad de publicaciones, con "Sin asignar" al final. La tabla "Tus posts" de más abajo sí se ordena.
 - **Tope de lectura de comparables:** el índice lee hasta 1.000 publicaciones comparables (PostgREST corta ahí sin avisar); si se llega, queda un aviso en el log. Con la cantidad de publicaciones que tiene un negocio como este no debería pasar.
 - **Un hueco de tests que encontró la mutación y arreglé:** ningún test distinguía "el total de leads de la pieza" de "la suma de las filas" (la pieza cuenta una vez a quien llegó por una publicación ya borrada y las filas no). Con el test nuevo, los 14 mutantes de B14 quedan en rojo (tabla en `docs/PROGRESS-CV3.md`).
 - **Los números del drawer se leen con el cliente de quien mira:** un Member ve solo los leads de sus contactos (alcance de leads), así que su columna "Leads" puede ser menor que la de un Admin. Es lo esperado.
 
-## Cierre de la corrida Contenido v3
-- **Una sola cosa para hacer después del merge y del despliegue:** volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql` (es idempotente) para darles toque a los contactos que hayan entrado entre la migración y el despliegue. Ver "B11 · Hay que re-correr el backfill…".
-- **La 00118 sigue sin aplicar a propósito.** Ver "B12 · La 00118…".
-- **Las migraciones 00113 a 00117 están aplicadas pero no registradas en el historial de Supabase.**
+## Cierre de la corrida Contenido v3 (actualizado el 6/10/2026)
+- **La 00118 está aplicada** y las migraciones 00113 a 00118 están **registradas en el historial de Supabase**.
+- **La 00115 no hizo falta volver a correrla** (los 650 contactos vivos tienen primer toque).
+- **Lo que sigue abierto** (no se puede o no corresponde cerrar sin una decisión tuya o sin cuentas reales):
+  - Verificar en vivo con cuentas conectadas: el índice con métricas reales, los datos de anuncio en un DM (`referral` de Zernio, `externalAdReply` de Evolution), el webhook de Zernio y la versión de la API de LinkedIn.
+  - El pie del drawer a 390 px (ver "B13 · El pie del drawer a 390 px"): es una decisión de diseño.
+  - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración (00119), y el costo del problema es un contacto anónimo duplicado.
+  - Las cosas de otras corridas (bio de la cuenta, más de una instancia de Evolution, etc.), que siguen donde estaban.

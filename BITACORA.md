@@ -1338,3 +1338,30 @@ En `docs/PENDIENTE.md`. Lo principal:
 - **Las migraciones 00113 a 00117 no están en el historial de Supabase** (la CLI no lo registra y el sistema de permisos negó el INSERT). Nada del código lo lee.
 - **Verificar en vivo con cuentas conectadas:** los datos de anuncio en un DM, el webhook de Zernio, la versión de la API de LinkedIn y el índice con métricas reales: hoy no hay cuentas conectadas.
 - **Cosmético:** los nombres "Youtube", "Linkedin" y "Tiktok" salen de `platformLabel`, que un test fija a propósito.
+
+---
+## Contenido v3 — cierre (aplicar la 00118 y dejar todo registrado)
+
+**Fecha:** 6 de octubre de 2026, después del merge a `main`
+**Rama:** `contenido-v3-cierre`
+**Migración:** 00118 aplicada. 00113 a 00118 registradas en el historial de Supabase.
+
+### Qué se hizo
+
+Wendy pidió aplicar la migración que había quedado pendiente y terminar lo anotado. Se hizo en este orden, que es el que corresponde a una migración que **borra**:
+
+1. **El código nuevo, primero.** Se comprobó en Railway que el deploy de `main` (`e555e54`) estaba en SUCCESS y que el anterior ya estaba retirado. Aplicar la 00118 antes habría roto el servicio que todavía leía `copy`.
+2. **Que nada lea lo que se va a borrar.** Se buscó en `lib`, `app`, `components`, `scripts` y los seeds: solo quedaban los tipos escritos a mano y la lectura de versiones viejas del historial (que guardan `copy` adentro de un jsonb y no dependen de la columna).
+3. **Las dos consultas de seguridad de la cabecera**, las dos en 0.
+4. **Un respaldo** de las filas de las columnas y de la definición de la función vieja.
+5. **Recién ahí, la migración**, y una verificación contra la base (0 columnas viejas, 0 funciones viejas, la v2 presente, lectura del modelo nuevo).
+
+Después se registraron las seis migraciones (00113 a 00118) en el historial con el mismo formato de las anteriores. Se comprobó que los 650 contactos vivos ya tenían primer toque, así que no hizo falta volver a correr la 00115.
+
+### Código que quedó prolijo
+
+Los tipos sin las columnas borradas; la campana, la ficha del contacto y el panel de análisis abren la pieza directo en el drawer; sin la entrada muerta de `/dashboard/content/new`; los nombres de red bien escritos (TikTok, YouTube, LinkedIn); un warning de lint explicado en vez de ignorado; y **los tests ya no pueden hacer `fetch` real**: un test que se olvidaba de simular un proveedor llamaba al proveedor de verdad (pasó una vez con Zernio). Los 418 archivos de tests siguieron en verde con el bloqueo puesto.
+
+### Lo que sigue abierto
+
+En `docs/PENDIENTE.md`: verificar con cuentas conectadas (índice con métricas reales, datos de anuncio, webhook de Zernio, versión de LinkedIn), el pie del drawer a 390 px (decisión de diseño) y la carrera de dos comentarios simultáneos de TikTok (arreglarla de verdad pide un único en la base).

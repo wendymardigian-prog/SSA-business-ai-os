@@ -158,22 +158,31 @@ completo en `docs/PENDIENTE.md` (seccion "Banca de recursos unificada").
 La `00112_ai_spend_by_day` (gasto de IA por dia) esta aplicada. **Las `00107` a
 `00109` quedaron sin usar** (eran de la banda de multimedia): no reutilizarlas.
 
-**Contenido v3 (octubre 2026).** `00113` a `00117` estan **aplicadas** (con la
+**Contenido v3 (octubre 2026).** `00113` a `00118` estan **aplicadas** (con la
 CLI de Supabase; de la `00114` a la `00117` se ensayaron antes en una
-transaccion que se deshace sola) y verificadas: `00113` (comentarios con publicacion y perfil), `00114`
-(`contact_touches`), `00115` (atribucion v2, `create_booking` con el toque y
-backfill de 647 contactos solo donde la atribucion estaba vacia), `00116`
-(pilares, ofertas, clasificacion y `approve_content_idea_v2`) y `00117` (texto
-unico). **No estan en el historial de migraciones** de Supabase
-(`supabase_migrations.schema_migrations`): la CLI las aplico sin registrarlas, y
-el sistema de permisos nego el INSERT; `list_migrations` no las muestra y eso es
-esperable. Ver `docs/PENDIENTE.md`.
+transaccion que se deshace sola) y verificadas: `00113` (comentarios con
+publicacion y perfil), `00114` (`contact_touches`), `00115` (atribucion v2,
+`create_booking` con el toque y backfill de 647 contactos solo donde la
+atribucion estaba vacia), `00116` (pilares, ofertas, clasificacion y
+`approve_content_idea_v2`), `00117` (texto unico) y `00118`, la unica que
+borra: `hook`, `angle`, `notes`, `pillar` (texto) y `copy`, y la
+`approve_content_idea` vieja. La `00118` se aplico el 6/10/2026, DESPUES de
+comprobar que el codigo nuevo ya estaba en produccion y que las dos consultas
+de su cabecera daban 0. **Todas estan registradas en el historial de Supabase**
+(`supabase_migrations.schema_migrations`, versiones `20261006173244` a
+`...49`: son la fecha del registro, no la de aplicacion). **La proxima
+migracion disponible es la `00119`.**
 
-**La `00118_drop_legacy_content_columns` esta escrita y SIN aplicar, a
-proposito**: borra `hook`, `angle`, `notes`, `pillar` (texto), `copy` y la
-`approve_content_idea` vieja. El codigo ya no las lee. Su cabecera trae las dos
-consultas que tienen que dar 0 antes de correrla. **La proxima migracion
-disponible es la `00119`.**
+**Una migracion que borra se aplica en este orden**: primero el codigo que ya
+no la usa, desplegado y comprobado en el servicio; despues las consultas de
+seguridad de su cabecera; un respaldo de lo que se va a borrar; y recien ahi la
+migracion. Las aditivas pueden ir antes del codigo; las que borran, nunca.
+
+**Aplicar y registrar con la CLI** (el MCP de Supabase puede negarse):
+`supabase db query --linked -f <archivo>` aplica, y el registro es un
+`INSERT` en `supabase_migrations.schema_migrations (version, name, statements,
+created_by)` con version = timestamp UTC, name = nombre del archivo y
+`statements` = `array[<el SQL completo>]`. `db query` NO registra solo.
 
 La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
 aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
@@ -576,9 +585,6 @@ en `docs/contenido.md`, `docs/publicacion.md` y `docs/atribucion.md`.
 
 ## Cosas conocidas
 
-- `platformLabel` capitaliza lo que no es un canal de mensajeria: se ve "Youtube",
-  "Linkedin", "Tiktok". Un test lo fija (`lib/platforms.test.ts`); arreglarlo es
-  cambiar ese test a proposito.
 - `LINKEDIN_API_VERSION` es `202609`; LinkedIn retira cada version a los ~12
   meses: revisarla antes de septiembre de 2027.
 
@@ -638,6 +644,7 @@ en `docs/contenido.md`, `docs/publicacion.md` y `docs/atribucion.md`.
 
 ## Testing y accesibilidad
 - Tests para logica de negocio critica, sin depender de servicios externos (mockear APIs).
+- **Los tests no pueden hacer `fetch` real**: `vitest.setup.ts` lo bloquea y dice cual era la URL. Un test que lo necesita lo simula con `vi.stubGlobal("fetch", ...)`. Ya paso que un test llamo a Zernio de verdad con una clave falsa.
 - Labels en inputs, contraste WCAG AA, navegacion por teclado, alt en imagenes.
 
 # Estructura del proyecto
