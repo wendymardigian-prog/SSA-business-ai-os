@@ -53,6 +53,7 @@ import { NetworkBadge } from "../network-badge";
 import { NetworkRow } from "../editor/network-row";
 import { ClassificationFields } from "../classification-fields";
 import { Drawer } from "./drawer";
+import { PiecePerformanceSection } from "./piece-performance";
 import { PiecePublications } from "./piece-publications";
 import { StatusSelect } from "./status-select";
 import { useToast } from "./toast";
@@ -563,6 +564,9 @@ export function PieceDrawer({
           reviewNote={post.reviewNote}
         />
 
+        {/* Rendimiento por red (F102): solo si alguna publicacion ya salio. */}
+        <PiecePerformanceSection performance={data.measurement} timeZone={timeZone} />
+
         {/* ── Guion ── */}
         <section className="space-y-3" aria-labelledby="guion">
           <div className="flex flex-wrap items-center gap-2">
@@ -820,9 +824,9 @@ export function PieceDrawer({
           )}
         </section>
 
-        {publicationsVisible(publications) && (
+        {publicationsVisible(publications) && !data.measurement && (
           <p className="text-[11px] text-muted-foreground">
-            El rendimiento de cada publicación aparece acá cuando la red ya devolvió métricas.
+            El rendimiento de cada publicación aparece arriba cuando salga la primera.
           </p>
         )}
       </div>

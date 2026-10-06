@@ -15,6 +15,8 @@
 import type { PermissionContext } from "@/lib/auth/guards";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
+import { loadPieceMeasurement } from "@/lib/dashboards/piece-load";
+import type { PiecePerformance } from "@/lib/dashboards/piece-performance";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { authorshipLine } from "./classification";
 import type { PublicationSummary } from "./detail";
@@ -68,6 +70,8 @@ export interface PieceData {
   aiAvailable: boolean;
   timeZone: string;
   taxonomy: ContentTaxonomy;
+  /** Como le fue a cada publicacion (F102). Null si todavia no salio ninguna. */
+  measurement: PiecePerformance | null;
 }
 
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
@@ -86,7 +90,18 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
 
   if (!post) return null;
 
-  const [publicationsRes, accountsRes, channelsRes, triggersRes, versionsRes, aiProviders, members, taxonomy, ideaRes] =
+  const [
+    publicationsRes,
+    accountsRes,
+    channelsRes,
+    triggersRes,
+    versionsRes,
+    aiProviders,
+    members,
+    taxonomy,
+    ideaRes,
+    measurement,
+  ] =
     await Promise.all([
       supabase
         .from("social_posts")
@@ -132,6 +147,8 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
             .eq("workspace_id", workspace.id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
+      // El rendimiento por red (F102): lo lee con el cliente de quien mira.
+      loadPieceMeasurement(supabase, { workspaceId: workspace.id, pieceId: postId }),
     ]);
 
   // Las plataformas de `channels` y las de `social_accounts` no son el mismo
@@ -241,5 +258,6 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
     aiAvailable: aiProviders.length > 0,
     timeZone,
     taxonomy,
+    measurement,
   };
 }

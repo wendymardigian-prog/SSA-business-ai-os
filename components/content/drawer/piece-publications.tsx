@@ -9,7 +9,7 @@ import { NetworkBadge } from "../network-badge";
  *
  * Aparece cuando alguna red tiene una publicacion viva. "No salio" va con el
  * motivo al lado, y no con un codigo: quien mira quiere saber si tiene que
- * hacer algo, no depurar una API. El rendimiento por red (B14) entra aca mismo.
+ * hacer algo, no depurar una API. El rendimiento por red (F102) esta justo debajo, en `piece-performance.tsx`.
  */
 
 const TONE_ICON = {
