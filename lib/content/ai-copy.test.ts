@@ -72,6 +72,54 @@ describe("armar el pedido (F29)", () => {
     expect(prompt).toContain("Desde la objecion mas comun");
   });
 
+  it("F94: la clasificacion entra al pedido: pilar, oferta, etapa del embudo y referencia", () => {
+    const prompt = buildPrompt({
+      title: "x",
+      platforms: [],
+      classification: {
+        pillar: "Educativo",
+        offer: "Mentoria 1:1",
+        funnelStage: "mofu",
+        reference: "https://ref.test/post",
+      },
+    });
+
+    expect(prompt).toContain("Pilar: Educativo");
+    expect(prompt).toContain("Oferta: Mentoria 1:1");
+    // La etapa va con su descripcion: tofu/mofu/bofu no le dice nada a un modelo.
+    expect(prompt).toContain("Etapa del embudo: Consideración");
+    expect(prompt).toContain("Gente que ya te sigue");
+    expect(prompt).toContain("Referencia: https://ref.test/post");
+  });
+
+  it("F94: lo que no esta clasificado no aparece en el pedido", () => {
+    const prompt = buildPrompt({ title: "x", platforms: [], classification: { pillar: null, offer: "  " } });
+
+    expect(prompt).not.toContain("Pilar:");
+    expect(prompt).not.toContain("Oferta:");
+    expect(prompt).not.toContain("Etapa del embudo");
+  });
+
+  it("F94: el formato de cada red entra al pedido", () => {
+    const prompt = buildPrompt({
+      title: "x",
+      platforms: ["instagram", "tiktok"],
+      networkFormats: { instagram: "Carrusel", tiktok: "Video" },
+    });
+
+    expect(prompt).toContain("instagram: Carrusel");
+    expect(prompt).toContain("tiktok: Video");
+  });
+
+  it("F94: pide el guion y las notas por separado, y no el copy viejo de cuatro campos", () => {
+    const prompt = buildPrompt({ title: "x", platforms: ["instagram"] });
+
+    expect(prompt).toContain("- script:");
+    expect(prompt).toContain("- recording_notes:");
+    expect(prompt).not.toContain("copy.hook");
+    expect(prompt).not.toContain("copy.cta");
+  });
+
   it("sin voz de marca ni idea, igual arma un pedido usable", () => {
     expect(buildPrompt({ title: "Una pieza", platforms: ["instagram"] })).toContain("Una pieza");
   });

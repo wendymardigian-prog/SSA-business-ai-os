@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { funnelStageInfo } from "./classification";
 import { PLATFORM_LIMITS } from "./limits";
 
 /** La voz de marca, de `workspaces.content_copy_settings`. */
@@ -37,6 +38,18 @@ export interface CopyRequest {
   } | null;
   title: string;
   format?: string | null;
+  /**
+   * Como esta clasificada la pieza (F94), con los NOMBRES y no los ids: el
+   * modelo no sabe que es "p-3f2a". Lo que no esta clasificado no se manda.
+   */
+  classification?: {
+    pillar?: string | null;
+    offer?: string | null;
+    funnelStage?: string | null;
+    reference?: string | null;
+  } | null;
+  /** El formato elegido en cada red ("Carrusel", "Short"), si lo hay. */
+  networkFormats?: Record<string, string> | null;
   /** Las redes para las que hay que escribir caption. */
   platforms: string[];
   brand?: BrandVoice | null;
@@ -87,6 +100,27 @@ export function buildPrompt(request: CopyRequest): string {
 
   parts.push(`Titulo de la pieza: ${request.title}`);
   if (request.format) parts.push(`Formato: ${request.format}`);
+
+  const classification = request.classification;
+  if (classification) {
+    const stage = funnelStageInfo(classification.funnelStage);
+    const lines = [
+      classification.pillar?.trim() && `Pilar: ${classification.pillar.trim()}`,
+      classification.offer?.trim() && `Oferta: ${classification.offer.trim()}`,
+      // La etapa con su descripcion: tofu/mofu/bofu no le dicen nada a un modelo.
+      stage && `Etapa del embudo: ${stage.label} (${stage.description})`,
+      // La de la idea ya va en "La idea de origen"; aca solo si es otra.
+      classification.reference?.trim() &&
+        classification.reference.trim() !== request.idea?.reference?.trim() &&
+        `Referencia: ${classification.reference.trim()}`,
+    ].filter(Boolean);
+    if (lines.length > 0) parts.push(`Como esta clasificada:\n${lines.join("\n")}`);
+  }
+
+  const formats = Object.entries(request.networkFormats ?? {}).filter(([, label]) => label.trim());
+  if (formats.length > 0) {
+    parts.push(`Formato en cada red:\n${formats.map(([platform, label]) => `- ${platform}: ${label}`).join("\n")}`);
+  }
 
   if (request.idea) {
     const idea = [

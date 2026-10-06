@@ -77,10 +77,10 @@ async function probeVideo(file: Blob): Promise<ProbedMedia> {
   );
 }
 
-async function withObjectUrl<T>(file: Blob, use: (url: string) => Promise<T>): Promise<T> {
+async function withObjectUrl<T>(file: Blob, work: (url: string) => Promise<T>): Promise<T> {
   const url = URL.createObjectURL(file);
   try {
-    return await use(url);
+    return await work(url);
   } finally {
     URL.revokeObjectURL(url);
   }

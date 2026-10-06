@@ -151,7 +151,6 @@ const sane = (value: number | null | undefined, max: number): number | null =>
 /** El nombre del archivo, sin separadores de ruta ni caracteres de control. */
 function cleanName(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  // eslint-disable-next-line no-control-regex
   const name = raw.replace(/[\u0000-\u001f\u007f]/g, "").replace(/[\\/]/g, "_").trim().slice(0, 200);
   return name === "" ? null : name;
 }

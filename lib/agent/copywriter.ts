@@ -25,6 +25,7 @@ import { getWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun } from "@/lib/ai/run";
 import { checkSpendLimits } from "@/lib/ai/spend";
 import { loadAutomationRules } from "@/lib/publishing/post-ids";
+import { getFormat } from "@/lib/content/network-format";
 import {
   copyOutputSchema,
   SYSTEM_PROMPT,
@@ -96,7 +97,7 @@ export async function runCopywriter(
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, workspace_id, title, format, script, caption, networks, idea_id")
+    .select("id, workspace_id, title, format, script, caption, networks, idea_id, pillar_id, offer_id, funnel_stage, reference")
     .eq("id", input.postId)
     .eq("workspace_id", agent.workspace_id)
     .maybeSingle();
@@ -236,6 +237,10 @@ interface PostRow {
   caption: string | null;
   networks: unknown;
   idea_id: string | null;
+  pillar_id: string | null;
+  offer_id: string | null;
+  funnel_stage: string | null;
+  reference: string | null;
 }
 
 /**
@@ -258,6 +263,7 @@ async function gatherContext(
 
   const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
     platform?: string;
+    format?: string | null;
   }>;
   const platforms = networks.map((n) => String(n.platform ?? "")).filter(Boolean);
   const principal = platforms[0] ?? "instagram";
@@ -277,6 +283,35 @@ async function gatherContext(
     kind: "tool_call",
     name: "leer_idea",
     output: { encontrada: Boolean(idea) },
+  });
+
+  // 1b. Como esta clasificada la pieza (F94): pilar y oferta por NOMBRE.
+  // Se leen del workspace de la pieza: un id de otro negocio no devuelve nada.
+  const [pillar, offer] = await Promise.all([
+    post.pillar_id
+      ? supabase
+          .from("content_pillars")
+          .select("name")
+          .eq("id", post.pillar_id)
+          .eq("workspace_id", post.workspace_id)
+          .maybeSingle()
+          .then((r) => r.data?.name ?? null)
+      : Promise.resolve(null),
+    post.offer_id
+      ? supabase
+          .from("content_offers")
+          .select("name")
+          .eq("id", post.offer_id)
+          .eq("workspace_id", post.workspace_id)
+          .maybeSingle()
+          .then((r) => r.data?.name ?? null)
+      : Promise.resolve(null),
+  ]);
+
+  await run.step({
+    kind: "tool_call",
+    name: "leer_clasificacion",
+    output: { pilar: Boolean(pillar), oferta: Boolean(offer), embudo: post.funnel_stage ?? null },
   });
 
   // 2. Lo que mejor funciono en esa red y ese formato.
@@ -347,6 +382,12 @@ async function gatherContext(
     idea,
     title: post.title,
     format: post.format,
+    classification: { pillar, offer, funnelStage: post.funnel_stage, reference: post.reference },
+    networkFormats: Object.fromEntries(
+      networks
+        .filter((n) => n.platform && n.format)
+        .map((n) => [String(n.platform), getFormat(String(n.platform), n.format)?.label ?? String(n.format)]),
+    ),
     platforms: platforms.length > 0 ? platforms : [principal],
     brand: config.brand,
     existingScript: post.script?.trim() ? post.script : null,
