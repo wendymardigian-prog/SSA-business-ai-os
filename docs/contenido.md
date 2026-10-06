@@ -5,8 +5,9 @@ solo lugar.
 
 ## El recorrido
 
-Una **idea** es una anotación: un título y, si hay, el gancho y el ángulo.
-Sirve para que lo que se pensó un martes no se pierda.
+Una **idea** es una anotación: un título y un texto libre (`content`). Sirve
+para que lo que se pensó un martes no se pierda. Desde Contenido v3 el gancho,
+el ángulo y las notas son **un solo campo de texto**; ver "Contenido v3" al final.
 
 Cuando una idea se aprueba, se convierte en una **pieza**. La pieza es lo que
 se produce: el guion, el caption, la media y en qué redes va. Su estado se
@@ -65,9 +66,12 @@ un error caro.
 
 ## El editor
 
-Una sola pantalla, en cuatro secciones: **Copy**, **Caption**, **Media** y
-**Redes**. Cada red es una fila que se abre; cerrada muestra su estado, su
-fecha y si le falta algo.
+> Desde Contenido v3 el editor y el detalle son **el drawer de la pieza**
+> (`?piece=<id>` en el tablero): ver "Contenido v3" al final. Lo de abajo
+> describe cómo se guarda y qué se valida, que sigue valiendo.
+
+Una pieza se escribe con **guion**, **caption** y **redes**. Cada red es una
+tarjeta que se abre; cerrada muestra su estado, su fecha y si le falta algo.
 
 Se guarda solo cada diez segundos. Al salir con cambios sin guardar, avisa.
 
@@ -187,3 +191,127 @@ La generación simple se reemplazó por el **copywriter** (ver
 [docs/agente-ia.md](agente-ia.md)). Corre en segundo plano: el botón contesta
 al instante y la pieza dice "el copywriter está escribiendo" hasta que
 termina.
+
+## Contenido v3 (octubre 2026)
+
+Cinco bloques (B10 a B14, F73 a F105) con el plano en
+[requerimientos-contenido-v3.md](requerimientos-contenido-v3.md) y el avance en
+[PROGRESS-CV3.md](PROGRESS-CV3.md). La parte de publicar está en
+[publicacion.md](publicacion.md) y la de atribución en [atribucion.md](atribucion.md).
+
+### El modelo de la pieza
+
+- **La idea tiene un solo texto** (`content_ideas.content`): lo que antes eran
+  gancho, ángulo y notas. Las columnas viejas se conservan hasta la migración
+  `00118`, que está escrita y **sin aplicar** (ver `docs/PENDIENTE.md`).
+- **La pieza tiene `script` (el guion para grabar) y `recording_notes`** en vez
+  de `copy`. Aprobar una idea (`approve_content_idea_v2`) copia la clasificación
+  y las plataformas; el guion y las notas arrancan **vacíos**: el texto de la
+  idea es contexto, no el guion.
+- **Las versiones viejas** del historial guardan `copy` dentro del jsonb. Se
+  normalizan al leer, comparar y restaurar (`lib/content/legacy.ts`), así que no
+  hace falta migrarlas.
+- **Clasificación** de idea y pieza: formato, oferta, pilar, etapa del embudo
+  (Descubrimiento, Consideración, Decisión) y referencia. La oferta y el pilar
+  se eligen de una lista que se administra en **Ajustes → Contenido**
+  (`settings.manage`): se crean, se renombran y se **archivan**; no se borran,
+  porque una pieza vieja seguiría siendo de esa oferta.
+- **Autor y fechas** visibles en la idea, la pieza, el kanban y la lista.
+
+### Archivos y formato por red
+
+`media` es la **biblioteca** de la pieza. Cada archivo tiene `id`, nombre,
+dimensiones y duración, y se ve qué redes lo usan (o "Sin usar"). Cada red
+elige su **formato** (Instagram: Reel, Carrusel, Imagen, Historia; TikTok: Video,
+Carrusel de fotos; YouTube: Video, Short; LinkedIn: Solo texto, Imagen, Carrusel
+PDF, Video; Threads: Solo texto, Imagen, Carrusel, Video) y **qué archivos usa,
+en orden** (↑ ↓ para mover; no se arrastra, para que se pueda con teclado).
+
+La misma función valida en el editor y en el servidor: un carrusel con un solo
+archivo no se programa aunque alguien se saltee la pantalla. Una red sin formato
+sigue el modelo anterior (usa toda la biblioteca, sin chequeo de formato).
+
+### Los drawers
+
+El tablero abre **drawers** en la URL: `?idea=<id>` y `?piece=<id>`. Se comparte
+con un link y "atrás" lo cierra. Al cerrar, el foco vuelve a la tarjeta de origen.
+
+- **Idea** (~560 px, galería con "N de M"): todo editable al abrir, con
+  autoguardado. Descartar y Aprobar pasan a la siguiente idea; **✦ Aprobar y
+  producir copy** abre la pieza generada en el mismo drawer.
+- **Pieza** (~900 px; pantalla completa en el celular): guion, notas de grabación,
+  clasificación, archivos, caption base, una tarjeta por red, estado por red y,
+  si ya salió algo, el **rendimiento** (abajo). El estado es un desplegable con
+  las transiciones permitidas. **Sin vista previa del teléfono**, a propósito.
+- **Historial** detrás del botón de reloj, en el mismo drawer.
+- `/dashboard/content/<id>` y `/dashboard/content/<id>/edit` redirigen a
+  `?piece=<id>`; una pieza que no existe sigue dando el 404 de siempre.
+
+La barra superior es una sola: vistas, conteo (solo calendario), filtro de Red
+(vale para las tres vistas), el ⓘ con lo que puede hacer **ese** rol y las dos
+altas. Lo que se ve y se puede tocar sale de **permisos** (`content.approve`,
+`content.publish`, `content.ai`), no del cargo.
+
+### Social
+
+El perfil muestra las cifras reales que lee la sincronización (una cifra que la
+red no dio es un guion, nunca un cero) y **avisa si la última lectura falló**,
+sin esconder lo último que se leyó. Arriba de la grilla, **"Próximas"**: lo
+programado y lo tentativo de esa red; al tocar, abre la pieza. LinkedIn es una
+lista de lo publicado desde el sistema, con el aviso de que no entrega métricas.
+
+### Medir una pieza (B14)
+
+El drawer de una pieza publicada muestra **una fila por red** y un total
+(`lib/dashboards/piece-performance.ts`, todo puro y con test):
+
+| Columna | Qué es |
+|---|---|
+| Edad | Días desde que salió **esa** publicación. |
+| Alcance | El alcance acumulado; si la red no da alcance, las vistas (lo dice). |
+| Interacciones | Me gusta + comentarios + compartidos + guardados, los que la red dé. |
+| Engag. 7 días | Interacciones sobre alcance, congelado a los 7 días (`engagement_d7`). |
+| Índice | Contra lo normal de esa red y ese formato (abajo). |
+| Leads | Contactos que llegaron por un comentario (abajo). |
+
+Reglas que atraviesan la tabla:
+
+1. **Se compara por edad, nunca por fecha.** Un Reel de 10 días y un Short de 3
+   no se ponen lado a lado con los números de hoy. Debajo de la tabla van los
+   dos **al día de la más joven** ("A la misma edad (día 3)").
+2. **Nunca se inventan ceros.** Lo que la red no entrega es un guion. LinkedIn
+   no entrega ninguna métrica con esta conexión: su fila muestra el aviso.
+3. **Las sumas del total son contexto, no ranking.** Sumar el alcance de un Reel
+   con las vistas de un Short no mide nada. El ranking es el índice.
+
+**El índice** (`lib/dashboards/piece-index.ts`): el engagement a 7 días de la
+publicación dividido por la **mediana** del de las publicaciones de la misma red
+y el mismo formato (`social_posts.media_type`) de los **90 días anteriores** a
+ella. `1,8×` es casi el doble de lo normal; verde desde `1,5×`, rojo por debajo
+de `0,8×`. Es el mismo criterio de mediana que el salto de seguidores
+(`follower-bump.ts`). Con **menos de 3** publicaciones comparables no hay índice:
+"Base insuficiente", con los números crudos a la vista. Una publicación sin
+`engagement_d7` y con menos de 7 días está **"En curso"** y queda fuera del
+promedio; con más de 7 días y sin dato dice "Sin dato" (no "en curso" para
+siempre). El índice de la pieza es el promedio de los de sus publicaciones que lo
+tienen. La ventana termina el día de la publicación, no hoy: así el índice no
+cambia cada día que pasa.
+
+### El dashboard de contenido agrupa y filtra por la pieza
+
+`/dashboard/dashboards/content` suma una tabla **"Rendimiento por …"** que se
+agrupa por pieza, oferta, pilar, etapa del embudo, red o formato (`?agrupar=`), y
+cinco filtros (`?oferta=`, `?pilar=`, `?embudo=`, `?formato=`, `?pieza=`) que
+acotan **todo** el dashboard, también el periodo anterior contra el que se
+compara. Tocar un grupo de la tabla filtra por él.
+
+- **Nada se pierde:** toda publicación cae en exactamente un grupo, y la suma de
+  las filas es el total. Una pieza sin oferta, o lo publicado a mano, va a **"Sin
+  asignar"** (siempre al final). Los totales de una oferta son la suma de sus
+  piezas.
+- **Red y formato son los de cada publicación**, no los de la pieza: una pieza
+  que fue Reel en Instagram y video en TikTok agrupa en las dos filas.
+- **Los seguidores no se filtran:** son de la cuenta, no de una pieza.
+- **Leads:** contactos cuyo **primer** contacto fue un comentario en esas
+  publicaciones. Solo Instagram y TikTok lo miden; en otra red es un guion, no un
+  cero.

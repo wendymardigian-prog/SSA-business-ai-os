@@ -169,3 +169,65 @@ forma del error y clasifica por código.
 Subir un video por trozos puede tardar minutos, y dentro del cron general esos
 minutos se los comía la cola entera. `/api/cron/content-upload` corre de a una
 subida, cada dos minutos, con cinco de margen.
+
+## Contenido v3 (octubre 2026)
+
+Lo que cambió en publicar y en las cuentas, con el avance completo en
+[PROGRESS-CV3.md](PROGRESS-CV3.md). Lo de la pieza y los drawers está en
+[contenido.md](contenido.md).
+
+### Las cuentas salen de la lista de Zernio (F73 a F76)
+
+- **Una cuenta social es lo que Zernio dice que está conectado.** Sin clave de
+  Zernio, las cuentas que salían por Zernio quedan **"no disponibles"** (conservan
+  su identidad y su canal) en vez de usar los canales como respaldo. Una falla de
+  Vault al leer la clave **no** cuenta como "desconectado": distingue presente,
+  ausente y "no pude leer" (`getZernioKeyState`).
+- **Se sincroniza sola** al guardar la clave de Zernio (`channels/test-key`), al
+  guardar Postproxy, al desconectar, con "Sincronizar canales" y con "Sincronizar
+  cuentas". Todo pasa por `lib/social/sync-hook.ts`, que **nunca lanza**: un
+  guardado de integración no puede fallar porque no se pudo sincronizar.
+- **El perfil** (foto, link, seguidores y otras cifras) se lee de Zernio. La
+  biografía no viene en esa lista y queda vacía. Una lectura que falla guarda el
+  motivo (`profile_sync_error`) y **no** sella la cuenta como sincronizada.
+- **Los comentarios huérfanos** (de publicaciones que todavía no estaban en el
+  sistema) se vinculan cuando la publicación aparece, sin crear publicaciones
+  (`adoptOrphanComments`).
+
+### Se valida en el servidor (F77, F93)
+
+`scheduleNetworks` valida cada red con **la misma función que el editor**
+(`resolveNetworkContent` + `validateNetwork`): el mensaje es idéntico y saltearse
+la pantalla no sirve. Incluye el formato elegido de cada red y que la cantidad y
+el tipo de archivos coincidan (un carrusel con un archivo no se programa).
+
+**Tope diario de TikTok:** 15 videos y 15 fotos por día, contando lo publicado y
+lo ya programado para ese día en la zona del negocio (`lib/content/limits.ts`).
+La fila de `social_posts` guarda `media_type` para poder contarlos.
+
+El formato elegido en cada red completa las opciones del publicador (tipo de
+Instagram, video o fotos en TikTok, Short en YouTube, tipo de LinkedIn) con una
+sola función (`resolveNetworkOptions`) que usan el editor, el servidor y el
+publicador.
+
+### Métricas (F79)
+
+La lectura de métricas mira los posts de los últimos 30 días y **estira esa
+ventana (hasta 90) solo si a un post ya guardado le toca su lectura semanal**,
+con 6 horas de tolerancia para que el retraso del cron no se salte una semana.
+Frecuencia por antigüedad: diaria hasta 30 días, semanal hasta 90, nunca después.
+
+`LINKEDIN_API_VERSION` es `202609`, la última según la documentación de
+LinkedIn (leída el 5/10/2026). **LinkedIn retira cada versión a los ~12 meses:**
+hay que revisarla antes de septiembre de 2027.
+
+### La prueba de punta a punta (F80)
+
+`lib/publishing/e2e-zernio.test.ts` recorre guardar clave → cuentas → pieza →
+media → revisar → aprobar → programar → el cron real de subida → el webhook
+firmado → `published`, para Instagram y TikTok. Solo se simula el cliente de
+Zernio y lo inevitable (sesión, storage, `fetch`). Hay un caso por disparador de
+la sincronización: **si alguien quita uno, el test se pone en rojo**.
+
+Se comprobó quitando cada pieza (mutación): tabla en
+[PROGRESS-CV3.md](PROGRESS-CV3.md), B10.
