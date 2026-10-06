@@ -1050,8 +1050,9 @@ try {
   }
 
   console.log("\n— Etapa 2: metricas, comentarios y anuncios (00086) —");
-  { // Las cuatro tablas las escribe solo el servidor y las lee solo
-    // Owner/Admin. Un Member no ve metricas hasta el bloque 9.
+  { // Las cuatro tablas las escribe solo el servidor. Los anuncios los lee solo
+    // Owner/Admin; las metricas y los comentarios, quien tenga `social.view` o
+    // `dashboards.content.view` (00113, F78). Un Member comun no ve ninguna.
     const otro = await makeUser("otro-metricas");
     const { data: wsOtro } = await svc.from("workspaces")
       .insert({ name: "zz-test-metricas-ws", slug: `zz-test-metricas-${Date.now()}` }).select("id").single();
@@ -1105,6 +1106,47 @@ try {
           ? { ad_account_id: "act_zz", level: "ad", object_id: "zz-falso", date: "2020-01-01" } : {}),
       });
       check(!!error, `ni un Admin escribe en ${tabla}: eso es del servidor`);
+    }
+
+    // F78 (00113): un rol personalizado lee metricas y comentarios por su
+    // permiso, no por ser admin. `meta_ads_insights_daily` NO cambio: sigue
+    // siendo solo de admins.
+    for (const [clave, quien] of [
+      ["social.view", "con social.view"],
+      ["dashboards.content.view", "con dashboards.content.view"],
+    ]) {
+      const persona = await makeUser(`rol-${clave.replace(/\W/g, "-")}`);
+      const { data: rol } = await svc.from("workspace_roles").insert({
+        workspace_id: ws.id, name: `zz-test-rol-${clave}`,
+        permissions: { keys: [clave], scopes: { leads: "own", conversations: "own" } },
+      }).select("id").single();
+      await svc.from("workspace_members").insert({
+        workspace_id: ws.id, user_id: persona.id, role: "member", role_id: rol.id,
+      });
+
+      for (const [tabla, id, que] of tablas.slice(0, 3)) {
+        check((await sees(persona, tabla, id)).seen, `un rol personalizado ${quien} ve ${que}`);
+      }
+      check(!(await sees(persona, "meta_ads_insights_daily", ads.id)).seen,
+        `un rol personalizado ${quien} NO ve los anuncios`);
+      const { error: escribe } = await persona.client.from("social_post_metrics_daily").insert({
+        workspace_id: ws.id, social_post_id: pub.id, date: "2020-01-02",
+      });
+      check(!!escribe, `un rol personalizado ${quien} NO escribe metricas`);
+    }
+
+    { // Un permiso que no corresponde no abre nada.
+      const ajeno = await makeUser("rol-sin-metricas");
+      const { data: rol } = await svc.from("workspace_roles").insert({
+        workspace_id: ws.id, name: "zz-test-rol-contenido",
+        permissions: { keys: ["content.view", "content.create"], scopes: { leads: "own", conversations: "own" } },
+      }).select("id").single();
+      await svc.from("workspace_members").insert({
+        workspace_id: ws.id, user_id: ajeno.id, role: "member", role_id: rol.id,
+      });
+      for (const [tabla, id, que] of tablas.slice(0, 3)) {
+        check(!(await sees(ajeno, tabla, id)).seen, `un rol sin permiso de metricas NO ve ${que}`);
+      }
     }
 
     // El unico de comentarios: el webhook y la relectura no lo duplican.

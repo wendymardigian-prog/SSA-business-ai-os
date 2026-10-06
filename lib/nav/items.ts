@@ -66,10 +66,10 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
 
   { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false, group: "adquisicion" },
-  // Social: el perfil de cada red y sus publicaciones. Owner/Admin hasta el
-  // bloque 9, donde pasa al permiso `social.view` y un rol personalizado
-  // puede darselo a un Member.
-  { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: true, group: "adquisicion" },
+  // Social: el perfil de cada red y sus publicaciones. Se ve con el permiso
+  // `social.view` (F78): Owner y Admin lo tienen siempre, y un rol
+  // personalizado se lo puede dar a un Member.
+  { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: false, permissions: ["social.view"], group: "adquisicion" },
 
   { name: "Contactos", href: "/dashboard/contacts", icon: "Users", adminOnly: false, group: "ventas" },
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va

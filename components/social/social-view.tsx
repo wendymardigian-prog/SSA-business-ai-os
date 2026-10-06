@@ -49,11 +49,14 @@ export function SocialView({
   profiles,
   tiles,
   followerPoints,
+  canRefresh,
 }: {
   platforms: string[];
   profiles: Record<string, ProfileSource>;
   tiles: SocialTile[];
   followerPoints: Record<string, Array<{ date: string; followers: number | null }>>;
+  /** "Actualizar ahora" cuesta llamadas a las redes: solo Owner y Admin (F78). */
+  canRefresh: boolean;
 }) {
   const [platform, setPlatform] = useState(platforms[0] ?? "");
   const [format, setFormat] = useState<string | null>(null);
@@ -141,24 +144,26 @@ export function SocialView({
               Analiticas
             </Link>
 
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  const result = await refreshMetricsNow();
-                  setNotice(result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error);
-                })
-              }
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs disabled:opacity-60"
-            >
-              {pending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-              )}
-              Actualizar
-            </button>
+            {canRefresh && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    const result = await refreshMetricsNow();
+                    setNotice(result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error);
+                  })
+                }
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs disabled:opacity-60"
+              >
+                {pending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                )}
+                Actualizar
+              </button>
+            )}
           </div>
         }
       />

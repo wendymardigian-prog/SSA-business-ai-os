@@ -1,4 +1,4 @@
-import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { ContentDashboard } from "@/components/dashboards/content-dashboard";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
@@ -10,9 +10,10 @@ export const dynamic = "force-dynamic";
 /**
  * Dashboard de contenido organico (F48 a F50, F53).
  *
- * Owner/Admin: las tablas de metricas solo las lee `is_workspace_admin`
- * (00086). En el bloque 9 pasa a `dashboards.content.view`, y ahi un rol
- * personalizado puede darselo a un Member.
+ * Pide `dashboards.content.view` (F78). Owner y Admin lo tienen siempre y un
+ * rol personalizado se lo puede dar a un Member: las tablas de metricas lo
+ * leen por la misma clave (00113). "Actualizar ahora" sigue siendo de Owner y
+ * Admin, porque gasta llamadas a las redes.
  *
  * Se leen dos periodos: el elegido y el anterior del mismo largo, que es
  * contra lo que se compara cada cifra.
@@ -22,8 +23,9 @@ export default async function ContentDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
-  const dashboards = availableDashboards((await getPermissionContext()).can);
+  const ctx = await requirePermission("dashboards.content.view");
+  const { workspace, supabase, role } = ctx;
+  const dashboards = availableDashboards(ctx.can);
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -65,7 +67,7 @@ export default async function ContentDashboardPage({
       connectedPlatforms={(accountsRes.data ?? []).map((a) => a.platform as string)}
       period={period}
       platform={platform}
-      canRefresh
+      canRefresh={role === "owner" || role === "admin"}
     />
   );
 }

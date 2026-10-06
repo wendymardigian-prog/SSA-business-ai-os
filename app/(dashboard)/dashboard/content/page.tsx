@@ -1,5 +1,4 @@
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
@@ -24,8 +23,12 @@ export default async function ContentPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const filters = parseContentFilters(await searchParams);
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const isAdmin = isAdminRole(role);
+  // Por permiso y no por cargo (F78): lo que se ve en el tablero sale de las
+  // claves del rol, no de ser Owner o Admin.
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const canApprove = can("content.approve");
+  const canPublish = can("content.publish");
+  const canUseAi = can("content.ai");
 
   const [ideasRes, postsRes, publicationsRes, aiProviders] = await Promise.all([
     supabase
@@ -45,7 +48,7 @@ export default async function ContentPage({
       .select("content_post_id, platform, status, scheduled_at, published_at")
       .eq("workspace_id", workspace.id)
       .not("content_post_id", "is", null),
-    isAdmin ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+    canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -150,8 +153,8 @@ export default async function ContentPage({
   ].sort();
 
   const copywriter = {
-    available: isAdmin && aiProviders.length > 0,
-    reason: !isAdmin
+    available: canUseAi && aiProviders.length > 0,
+    reason: !canUseAi
       ? "Necesitás el permiso de generar copy con IA."
       : aiProviders.length === 0
         ? "Conectá un proveedor de IA en Ajustes → Integraciones."
@@ -164,7 +167,7 @@ export default async function ContentPage({
     platforms,
     pillars,
     copywriter,
-    canApprove: isAdmin,
+    canApprove,
   };
 
   // La lista muestra TODO lo que hay, ideas incluidas (C15): si una idea no
@@ -219,7 +222,7 @@ export default async function ContentPage({
         <ContentKanban
           ideas={ideas}
           posts={posts}
-          perms={{ create: true, approve: isAdmin, publish: isAdmin, ai: isAdmin }}
+          perms={{ create: true, approve: canApprove, publish: canPublish, ai: canUseAi }}
           currentUserId={user.id}
           aiAvailable={aiProviders.length > 0}
           platforms={platforms}
@@ -240,7 +243,7 @@ export default async function ContentPage({
           timeZone={timeZone}
           month={month}
           countMode={filters.count}
-          canPublish={isAdmin}
+          canPublish={canPublish}
         />
       )}
 

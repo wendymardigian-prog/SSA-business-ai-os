@@ -1,6 +1,6 @@
 "use server";
 
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { workspaceDate } from "@/lib/metrics/rules";
 import {
   benchmark,
@@ -55,7 +55,13 @@ export async function loadPostAnalysis(input: {
   socialPostId: string;
   metric?: AnalysisMetric;
 }): Promise<AnalysisResult> {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  // Se abre desde Social y desde el dashboard de contenido: alcanza con poder
+  // ver cualquiera de los dos (F78). Solo lee lo que la base ya deja leer.
+  const ctx = await getPermissionContext();
+  if (!ctx.can("social.view") && !ctx.can("dashboards.content.view")) {
+    return { ok: false, error: "No tenes permiso para ver el analisis de las publicaciones" };
+  }
+  const { workspace, supabase } = ctx;
   const metric: AnalysisMetric = input.metric ?? "views";
 
   const { data: post } = await supabase

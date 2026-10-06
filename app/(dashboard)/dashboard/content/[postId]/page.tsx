@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { PostDetailBar } from "@/components/content/post-detail-bar";
 import { PostDetail } from "@/components/content/post-detail";
@@ -22,8 +21,10 @@ export default async function PostDetailPage({
   params: Promise<{ postId: string }>;
 }) {
   const { postId } = await params;
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const isAdmin = isAdminRole(role);
+  // Por permiso y no por cargo (F78).
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const canApprove = can("content.approve");
+  const canPublish = can("content.publish");
 
   const { data: post } = await supabase
     .from("content_posts")
@@ -66,7 +67,7 @@ export default async function PostDetailPage({
             {STATUS_LABELS[post.status]}
           </span>
         }
-        right={<PostDetailBar postId={post.id} canArchive={isAdmin} />}
+        right={<PostDetailBar postId={post.id} canArchive={canApprove || canPublish} />}
         backHref={
           // "‹ Contenido" con el nombre, y no solo una flecha: a dónde vuelve
           // tiene que decirlo el botón, no adivinarse (C16).
@@ -89,8 +90,8 @@ export default async function PostDetailPage({
           reviewNote={post.review_note}
           perms={{
             create: true,
-            approve: isAdmin,
-            publish: isAdmin,
+            approve: canApprove,
+            publish: canPublish,
             isAuthor: post.created_by === user.id,
           }}
           publications={summaries}

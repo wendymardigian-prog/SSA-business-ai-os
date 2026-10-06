@@ -1,4 +1,4 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { SocialView, type SocialTile } from "@/components/social/social-view";
 import type { ProfileSource } from "@/lib/social/profile-page";
 
@@ -8,14 +8,15 @@ export const dynamic = "force-dynamic";
  * La pagina Social (F54).
  *
  * El perfil de cada red conectada y su grilla de publicaciones, con las
- * metricas que la red no muestra. Owner/Admin hasta el bloque 9, donde pasa
- * al permiso `social.view`.
+ * metricas que la red no muestra. Pide el permiso `social.view` (F78): Owner y
+ * Admin lo tienen siempre, y un rol personalizado se lo puede dar a un Member.
+ * Las tablas de metricas lo dejan leer por la misma clave (00113).
  *
  * Todo sale de lo que ya se recolecto: esta pantalla no llama a ninguna API.
  * Las historias en vivo (Instagram) llegan con el bloque siguiente.
  */
 export default async function SocialPage() {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase, role } = await requirePermission("social.view");
 
   const { data: accounts } = await supabase
     .from("social_accounts")
@@ -140,6 +141,7 @@ export default async function SocialPage() {
       profiles={profiles}
       tiles={tiles}
       followerPoints={followerPoints}
+      canRefresh={role === "owner" || role === "admin"}
     />
   );
 }

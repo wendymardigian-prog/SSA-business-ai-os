@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { PostEditor, type EditorPost } from "@/components/content/post-editor";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
@@ -26,8 +25,9 @@ export default async function EditPostPage({
   params: Promise<{ postId: string }>;
 }) {
   const { postId } = await params;
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const isAdmin = isAdminRole(role);
+  // Por permiso y no por cargo (F78).
+  const { workspace, user, supabase, can } = await getPermissionContext();
+  const canUseAi = can("content.ai");
 
   const { data: post } = await supabase
     .from("content_posts")
@@ -69,7 +69,7 @@ export default async function EditPostPage({
         .eq("post_id", postId)
         .order("version_no", { ascending: false })
         .limit(50),
-      isAdmin ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+      canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
       getWorkspaceMembers(workspace.id),
     ]);
 
@@ -169,9 +169,9 @@ export default async function EditPostPage({
         post={editorPost}
         perms={{
           create: true,
-          approve: isAdmin,
-          publish: isAdmin,
-          ai: isAdmin,
+          approve: can("content.approve"),
+          publish: can("content.publish"),
+          ai: canUseAi,
           isAuthor: post.created_by === user.id,
         }}
         publications={(publicationsRes.data ?? []).map((p) => ({

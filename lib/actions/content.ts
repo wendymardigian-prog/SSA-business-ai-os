@@ -44,7 +44,6 @@ export type ContentActionResult<T = undefined> =
  */
 async function contentContext() {
   const { workspace, user, supabase, can } = await getPermissionContext();
-  const admin = can("content.approve") || can("content.publish");
   return {
     workspace,
     user,
@@ -55,7 +54,7 @@ async function contentContext() {
       publish: can("content.publish"),
       isAuthor,
     }),
-    isAdmin: admin,
+    can,
   };
 }
 
@@ -109,8 +108,14 @@ export async function approveIdea(
   ideaId: string,
   options: { produceCopy?: boolean } = {},
 ): Promise<ContentActionResult<{ postId: string; copyQueued: boolean; copyError?: string }>> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) return { ok: false, error: "Aprobar ideas es de Owner y Admin" };
+  const { workspace, user, supabase, can } = await contentContext();
+  // `content.approve` y no "ser admin" (F78). "Aprobar y producir copy" pide
+  // ademas `content.ai`, y se rechaza ANTES de aprobar: aprobar la idea y
+  // dejar el copy sin pedir seria hacer solo la mitad de lo que se apreto.
+  if (!can("content.approve")) return { ok: false, error: "No tenes permiso para aprobar ideas" };
+  if (options.produceCopy === true && !can("content.ai")) {
+    return { ok: false, error: "No tenes permiso para producir copy con IA" };
+  }
 
   const { data: idea, error: readError } = await supabase
     .from("content_ideas")
@@ -242,8 +247,8 @@ export async function discardIdea(
   ideaId: string,
   reason?: string,
 ): Promise<ContentActionResult> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) return { ok: false, error: "Descartar ideas es de Owner y Admin" };
+  const { workspace, user, supabase, can } = await contentContext();
+  if (!can("content.approve")) return { ok: false, error: "No tenes permiso para descartar ideas" };
 
   const { error } = await supabase
     .from("content_ideas")

@@ -119,6 +119,31 @@ describe("Agenda en el menu (F8)", () => {
   });
 });
 
+describe("Social en el menu (F78)", () => {
+  const social = NAV_ITEMS.find((i) => i.name === "Social");
+  const names = (isAdmin: boolean, keys: string[]) =>
+    visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: keys }).map((i) => i.name);
+
+  it("no es por cargo: se muestra con el permiso social.view", () => {
+    expect(social?.adminOnly).toBe(false);
+    expect(social?.permissions).toEqual(["social.view"]);
+  });
+
+  it("un rol personalizado con social.view lo ve", () => {
+    // Es el caso del rol "Content Manager" de produccion.
+    expect(names(false, ["social.view"])).toContain("Social");
+  });
+
+  it("un Member sin ese permiso no lo ve", () => {
+    expect(names(false, [])).not.toContain("Social");
+    expect(names(false, ["dashboards.content.view", "content.view"])).not.toContain("Social");
+  });
+
+  it("Owner y Admin lo ven siempre", () => {
+    expect(names(true, [])).toContain("Social");
+  });
+});
+
 // ── Bloque N: grupos (requerimientos v2.0, seccion 4, N1/N5) ───────────────
 
 describe("grupos del menu (bloque N, N1)", () => {
