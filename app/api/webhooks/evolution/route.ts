@@ -28,6 +28,7 @@ import { previewForMessage } from "@/lib/message-preview";
 import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
+import { fromBaileysMessage, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
@@ -298,6 +299,31 @@ async function processMessage(
     // insert propio ya guardó este id, el índice único lo descarta.
     origin: fromMe ? "external" : null,
   });
+
+  // ── El toque de atribución (F85) ──────────────────────────────────────────
+  // Solo los ENTRANTES: lo que sale desde el teléfono no es el lead escribiendo.
+  // Va después de guardar el mensaje y no puede tumbar el webhook: la función
+  // atrapa todo. Si el mensaje vino de un anuncio de "clic a WhatsApp", los
+  // datos están en `contextInfo.externalAdReply` del mensaje crudo de Baileys.
+  if (!fromMe) {
+    try {
+      await recordInboundTouch(supabase, {
+        workspaceId: channel.workspace_id,
+        contactId: contact.contactId,
+        conversationId: conversation.id,
+        platform: channel.platform,
+        contactExisted: contact.existed,
+        messageAt: new Date(at),
+        platformMessageId: messageId,
+        messageId: inserted.id ?? null,
+        referral: fromBaileysMessage(data?.message),
+      });
+    } catch (err) {
+      // Cinturón de seguridad: la función ya atrapa todo, pero el lead no se
+      // queda sin su flow por una estadística.
+      console.error("[evolution] el toque de atribución falló:", err instanceof Error ? err.message : err);
+    }
+  }
 
   // ── La media, adentro (F4) ────────────────────────────────────────────────
   // WhatsApp borra la media de su servidor pasado un tiempo, asi que se pide

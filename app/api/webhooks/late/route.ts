@@ -21,6 +21,7 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
+import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
 import { messagePreview, previewForMessage } from "@/lib/message-preview";
@@ -97,6 +98,13 @@ interface WebhookPayload {
      * palabra clave (F6).
      */
     storyReply?: { storyId: string; storyUrl?: string };
+    /**
+     * Datos del anuncio que originó la conversación. Solo viene en el PRIMER
+     * mensaje después del clic (ad_id y ref en Instagram y Messenger; ctwa_clid
+     * y source_id en WhatsApp). Sin tipar a propósito: ningún campo es seguro y
+     * `fromZernioReferral` lo lee de forma defensiva (F85).
+     */
+    referral?: unknown;
   };
   timestamp: string;
 }
@@ -332,6 +340,30 @@ async function processMessageEvent(
     postbackPayload: metadata?.postbackPayload ?? null,
     callbackData: metadata?.callbackData ?? null,
   });
+
+  // ── El toque de atribución (F85) ──────────────────────────────────────────
+  // DESPUÉS de guardar el mensaje y ANTES del opt-out: el lead escribió aunque
+  // después pida que no lo contacten. Nunca puede tumbar la recepción:
+  // `recordInboundTouch` atrapa todo y el mensaje ya está guardado. Solo anota
+  // lo que suma información (primer mensaje, historia, anuncio, una vuelta).
+  try {
+    await recordInboundTouch(supabase, {
+      workspaceId: channel.workspace_id,
+      contactId,
+      conversationId: conversation.id,
+      platform: channel.platform,
+      contactExisted: contact.existed,
+      messageAt: new Date(msg.sentAt || Date.now()),
+      platformMessageId: msg.id ?? null,
+      messageId: inserted.id ?? null,
+      storyId: metadata?.storyReply?.storyId ?? null,
+      referral: fromZernioReferral(metadata?.referral),
+    });
+  } catch (err) {
+    // `recordInboundTouch` ya atrapa todo; esto es el cinturón de seguridad. Si
+    // algo se escapara, el lead no se queda sin su flow por una estadística.
+    console.error("[webhook] el toque de atribución falló:", err instanceof Error ? err.message : err);
+  }
 
   // ── La media, adentro (F3) ────────────────────────────────────────────────
   // Va aca, dentro del after() que ya existe, y no en la cola: la URL del CDN

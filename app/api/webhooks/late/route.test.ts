@@ -60,6 +60,15 @@ vi.mock("@/lib/agent/drafts/lifecycle", () => ({ supersedePendingDrafts }));
 const storeInboundMedia = vi.fn();
 vi.mock("@/lib/inbound-media", () => ({ storeInboundMedia }));
 
+// El registro del toque (F85) tiene sus propios tests: aca se prueba que la ruta
+// lo llame con lo correcto y que un fallo suyo no frene nada. Lo demas del modulo
+// (la lectura del referral) corre de verdad.
+const recordInboundTouch = vi.fn();
+vi.mock("@/lib/contacts/touch-inbound", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/contacts/touch-inbound")>();
+  return { ...actual, recordInboundTouch };
+});
+
 const WS = "ws-1";
 const ACCOUNT = "late-account-1";
 const SECRET = "secreto-del-workspace";
@@ -515,5 +524,118 @@ describe("webhook de Zernio: comentarios", () => {
     const res = await callRoute(post(comment()));
 
     expect(await res.json()).toEqual({ ok: true, skipped: "evento repetido" });
+  });
+});
+
+
+describe("webhook de Zernio: el toque de atribución del DM (F85)", () => {
+  it("un contacto nuevo: registra el toque con la plataforma, el mensaje y el contacto", async () => {
+    db();
+    upsertContactForSender.mockResolvedValue({ contactId: "contact-9", existed: false });
+
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        workspaceId: WS,
+        contactId: "contact-9",
+        conversationId: "conv-1",
+        platform: "instagram",
+        contactExisted: false,
+        platformMessageId: "6ab5aaaaaaaaaaaaaaaaaaaa",
+        messageId: "msg-1",
+        storyId: null,
+        referral: null,
+      }),
+    );
+  });
+
+  it("va DESPUES de guardar el mensaje", async () => {
+    db();
+    const order: string[] = [];
+    persistInboundMessage.mockImplementation(async () => {
+      order.push("mensaje");
+      return { stored: true, id: "msg-1" };
+    });
+    recordInboundTouch.mockImplementation(async () => void order.push("toque"));
+
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(order).toEqual(["mensaje", "toque"]);
+  });
+
+  it("una respuesta a una historia pasa el id de la historia", async () => {
+    db();
+
+    await callRoute(post({ ...dm(), metadata: { storyReply: { storyId: "story-77" } } }));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ storyId: "story-77" }),
+    );
+  });
+
+  it("un mensaje de un anuncio pasa los datos del anuncio", async () => {
+    db();
+
+    await callRoute(post({ ...dm(), metadata: { referral: { ad_id: "ad-9", ref: "promo", ads_context_data: { ad_title: "Clase gratis" } } } }));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        referral: expect.objectContaining({ adId: "ad-9", ref: "promo", title: "Clase gratis" }),
+      }),
+    );
+  });
+
+  it("un referral ilegible no rompe nada: se trata como un mensaje común", async () => {
+    db();
+
+    await callRoute(post({ ...dm(), metadata: { referral: "basura" } }));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ referral: null }));
+    expect(runInboundAutomation).toHaveBeenCalled();
+  });
+
+  it("si el registro LANZA, el mensaje ya está guardado y el flow y el agente corren igual", async () => {
+    db();
+    recordInboundTouch.mockRejectedValue(new Error("se cayo la atribucion"));
+
+    const response = await callRoute(post(dm()));
+    await runAfter();
+
+    expect(response.status).toBe(200);
+    expect(persistInboundMessage).toHaveBeenCalled();
+    expect(runInboundAutomation).toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).toHaveBeenCalled();
+  });
+
+  it("el mismo webhook dos veces registra UN solo toque", async () => {
+    db();
+    claimWebhookEvent.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await callRoute(post(dm()));
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el lead pidió que no le escriban, el toque se registra igual: escribió", async () => {
+    db();
+    applyOptOut.mockResolvedValue({ matched: true });
+
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
+    expect(runInboundAutomation).not.toHaveBeenCalled();
   });
 });

@@ -31,6 +31,15 @@ vi.mock("@/lib/evolution-media", async (importOriginal) => {
   return { ...actual, storeEvolutionMedia };
 });
 
+// El registro del toque (F85) tiene sus propios tests: aca se prueba que la ruta
+// lo llame con lo correcto y que un fallo suyo no frene nada. La lectura del
+// anuncio de Baileys corre de verdad.
+const recordInboundTouch = vi.fn();
+vi.mock("@/lib/contacts/touch-inbound", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/contacts/touch-inbound")>();
+  return { ...actual, recordInboundTouch };
+});
+
 const getEvolutionConfig = vi.fn();
 vi.mock("@/lib/evolution-config", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/evolution-config")>();
@@ -451,5 +460,95 @@ describe("webhook de Evolution: el estado de la conexion", () => {
     await callRoute(post({ event: "connection.update", instance: INSTANCE, data: { state: "connecting" } }));
 
     expect(memory.rows("channels")[0].connection_status).toBe("connecting");
+  });
+});
+
+
+describe("webhook de Evolution: el toque de atribución del mensaje (F85)", () => {
+  it("un contacto nuevo: registra el toque de WhatsApp con el mensaje y el contacto", async () => {
+    db();
+    upsertContactForSender.mockResolvedValue({ contactId: "contact-9", existed: false });
+
+    await callRoute(post(message()));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        contactId: "contact-9",
+        conversationId: "conv-1",
+        platform: "whatsapp",
+        contactExisted: false,
+        platformMessageId: "msg-1",
+        messageId: "msg-1",
+        referral: null,
+      }),
+    );
+  });
+
+  it("un mensaje de un anuncio de 'clic a WhatsApp': pasa el ctwa_clid y el anuncio", async () => {
+    db();
+    const externalAdReply = { sourceType: "ad", sourceId: "ad-55", ctwaClid: "ctwa-1", title: "Mentoría" };
+
+    await callRoute(
+      post(message({ message: { extendedTextMessage: { text: "hola", contextInfo: { externalAdReply } } } })),
+    );
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        referral: expect.objectContaining({ adId: "ad-55", ctwaClid: "ctwa-1", title: "Mentoría" }),
+      }),
+    );
+  });
+
+  it("lo que sale desde el teléfono NO es un toque del lead", async () => {
+    db();
+
+    await callRoute(post(message({ key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "msg-eco" } })));
+    await runAfter();
+
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+  });
+
+  it("va DESPUES de guardar el mensaje", async () => {
+    db();
+    const order: string[] = [];
+    insertMessage.mockImplementation(async () => {
+      order.push("mensaje");
+      return { stored: true, id: "msg-1" };
+    });
+    recordInboundTouch.mockImplementation(async () => void order.push("toque"));
+
+    await callRoute(post(message()));
+    await runAfter();
+
+    expect(order).toEqual(["mensaje", "toque"]);
+  });
+
+  it("si el registro LANZA, el mensaje ya está guardado y el flow y el agente corren igual", async () => {
+    db();
+    recordInboundTouch.mockRejectedValue(new Error("se cayo la atribucion"));
+
+    const response = await callRoute(post(message()));
+    await runAfter();
+
+    expect(response.status).toBe(200);
+    expect(insertMessage).toHaveBeenCalled();
+    expect(runInboundAutomation).toHaveBeenCalled();
+    expect(maybeScheduleAgentTurn).toHaveBeenCalled();
+  });
+
+  it("el mismo mensaje dos veces registra UN solo toque", async () => {
+    db();
+    claimWebhookEvent.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await callRoute(post(message()));
+    await callRoute(post(message()));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
   });
 });
