@@ -8,22 +8,36 @@ import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
 import { BarList, DualAxisChart, colorFor, type ChartSeries } from "./charts";
 import { TrendExplorer } from "./trend-explorer";
+import { GroupTable } from "./group-table";
 import { PostsTable, toRows } from "./posts-table";
 import { PostAnalysisPanel } from "./post-analysis-panel";
 import { refreshMetricsNow } from "@/lib/actions/metrics";
 import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { platformLabel } from "@/lib/platforms";
+import { FUNNEL_STAGES } from "@/lib/content/classification";
+import { DEFAULT_GROUP, GROUP_PARAM, selectedFor, withParam } from "@/lib/dashboards/content-params";
+import type { FilterOptions } from "@/lib/dashboards/content-load";
 import {
+  FORMAT_LABELS,
+  GROUP_DIMENSIONS,
+  UNASSIGNED_KEY,
+  UNASSIGNED_LABEL,
   computeKpis,
   followerGrowth,
   formatPerformance,
   freshness,
+  groupPerformance,
+  isGroupDimension,
   publishActivity,
   sumByBucket,
   unavailableMetricsNote,
   weeklyD7,
   type AccountDailyRow,
+  type ClassificationFilters,
+  type GroupDimension,
+  type GroupRow,
   type Grouping,
+  type PieceInfo,
   type PostDailyRow,
   type PublishedPost,
 } from "@/lib/dashboards/content";
@@ -55,19 +69,17 @@ export interface ContentDashboardProps {
   canRefresh: boolean;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
+  /** La pieza de cada publicacion que salio del sistema (F105). */
+  pieces: PieceInfo[];
+  /** Contactos que llegaron por comentario, por publicacion (F104). Null = no se pudo leer. */
+  leadsByPost: Array<[string, number]> | null;
+  /** Por que dimension se agrupa la tabla de rendimiento. */
+  group: GroupDimension;
+  /** Los filtros activos sobre la clasificacion de la pieza. */
+  filters: ClassificationFilters;
+  /** Lo que se puede elegir en cada filtro. */
+  filterOptions: FilterOptions;
 }
-
-const FORMAT_LABELS: Record<string, string> = {
-  reel: "Reel",
-  carousel: "Carrusel",
-  image: "Imagen",
-  story: "Story",
-  video: "Video",
-  short: "Short",
-  text: "Texto",
-  document: "Documento",
-  otro: "Sin formato",
-};
 
 export function ContentDashboard(props: ContentDashboardProps) {
   const router = useRouter();
@@ -112,6 +124,26 @@ export function ContentDashboard(props: ContentDashboardProps) {
 
   const d7 = useMemo(() => weeklyD7(props.posts, now), [props.posts, now]);
 
+  const pieces = useMemo(() => new Map(props.pieces.map((p) => [p.id, p])), [props.pieces]);
+  const leadsByPost = useMemo(
+    () => (props.leadsByPost ? new Map(props.leadsByPost) : null),
+    [props.leadsByPost],
+  );
+  const groupRows = useMemo(
+    () =>
+      groupPerformance({
+        posts: props.posts,
+        latestByPost,
+        pieces,
+        leadsByPost,
+        dimension: props.group,
+      }),
+    [props.posts, latestByPost, pieces, leadsByPost, props.group],
+  );
+  const groupLabel = GROUP_DIMENSIONS.find((d) => d.value === props.group)?.label ?? "Oferta";
+  const hasClassificationFilter = Object.values(props.filters).some(Boolean);
+  const selectedGroup = selectedFor(props.group, props.filters, props.platform);
+
   const tableRows = useMemo(
     () => toRows(props.posts, latestByPost, new Map(props.postDetails)),
     [props.posts, latestByPost, props.postDetails],
@@ -130,10 +162,22 @@ export function ContentDashboard(props: ContentDashboardProps) {
     : null;
 
   function setParam(key: string, value: string | null) {
+    const query = withParam(new URLSearchParams(searchParams?.toString() ?? ""), key, value);
+    router.push(query ? `/dashboard/dashboards/content?${query}` : "/dashboard/dashboards/content");
+  }
+
+  function clearClassificationFilters() {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    if (value) params.set(key, value);
-    else params.delete(key);
-    router.push(`/dashboard/dashboards/content?${params.toString()}`);
+    for (const key of ["pieza", "oferta", "pilar", "embudo", "formato"]) params.delete(key);
+    const query = params.toString();
+    router.push(query ? `/dashboard/dashboards/content?${query}` : "/dashboard/dashboards/content");
+  }
+
+  /** Tocar un grupo de la tabla filtra el dashboard por el; tocarlo de nuevo, lo quita. */
+  function filterByGroup(row: GroupRow) {
+    // No hay "red sin asignar": toda publicacion tiene una.
+    if (props.group === "platform" && row.unassigned) return;
+    setParam(GROUP_PARAM[props.group], selectedGroup === row.key ? null : row.key);
   }
 
   function refresh() {
@@ -266,6 +310,54 @@ export function ContentDashboard(props: ContentDashboardProps) {
           </p>
         )}
 
+        {/* Filtros por la clasificacion de la pieza (F105) */}
+        <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filtros de contenido">
+          <FilterSelect
+            label="Oferta"
+            value={props.filters.offer ?? ""}
+            options={props.filterOptions.offers.map((o) => ({ value: o.id, label: o.name }))}
+            onChange={(v) => setParam("oferta", v)}
+          />
+          <FilterSelect
+            label="Pilar"
+            value={props.filters.pillar ?? ""}
+            options={props.filterOptions.pillars.map((o) => ({ value: o.id, label: o.name }))}
+            onChange={(v) => setParam("pilar", v)}
+          />
+          <FilterSelect
+            label="Etapa del embudo"
+            value={props.filters.funnel ?? ""}
+            options={FUNNEL_STAGES.map((stage) => ({ value: stage.value, label: stage.label }))}
+            onChange={(v) => setParam("embudo", v)}
+          />
+          <FilterSelect
+            label="Formato"
+            value={props.filters.format ?? ""}
+            options={props.filterOptions.formats.map((f) => ({ value: f, label: FORMAT_LABELS[f] ?? f }))}
+            onChange={(v) => setParam("formato", v)}
+          />
+          <FilterSelect
+            label="Pieza"
+            value={props.filters.piece ?? ""}
+            options={props.filterOptions.pieces.map((p) => ({ value: p.id, label: p.title }))}
+            onChange={(v) => setParam("pieza", v)}
+          />
+          {hasClassificationFilter && (
+            <button
+              type="button"
+              onClick={clearClassificationFilters}
+              className="rounded-md px-2 py-1 text-xs text-muted-foreground underline hover:text-foreground"
+            >
+              Quitar filtros
+            </button>
+          )}
+        </div>
+        {hasClassificationFilter && (
+          <p className="-mt-2 mb-4 text-xs text-muted-foreground">
+            Los filtros acotan las publicaciones. Los seguidores no se filtran: son de la cuenta, no de una pieza.
+          </p>
+        )}
+
         {/* Datos al dia (F53) */}
         {fresh.length > 0 && (
           <ul className="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -353,6 +445,48 @@ export function ContentDashboard(props: ContentDashboardProps) {
           </div>
         </section>
 
+        <section className="mt-6" aria-labelledby="rendimiento-agrupado">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 id="rendimiento-agrupado" className="text-sm font-semibold">
+              Rendimiento por {groupLabel.toLowerCase()}
+            </h2>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              Agrupar por
+              <select
+                aria-label="Agrupar el rendimiento por"
+                value={props.group}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setParam("agrupar", isGroupDimension(value) ? value : DEFAULT_GROUP);
+                }}
+                className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+              >
+                {GROUP_DIMENSIONS.map((dimension) => (
+                  <option key={dimension.value} value={dimension.value}>
+                    {dimension.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <GroupTable
+            rows={groupRows}
+            dimensionLabel={groupLabel}
+            onSelect={filterByGroup}
+            selectedKey={selectedGroup}
+          />
+          {props.leadsByPost === null && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              No pude leer los leads por comentario ahora: la columna queda vacía en vez de en cero.
+            </p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            “{UNASSIGNED_LABEL}” junta lo que no tiene {groupLabel.toLowerCase()} (incluidas las publicaciones hechas a
+            mano). Leads: contactos cuyo primer contacto fue un comentario en esas publicaciones; solo Instagram y TikTok
+            lo miden.
+          </p>
+        </section>
+
         <TrendExplorer
           postDaily={props.postDaily}
           accountDaily={props.accountDaily}
@@ -434,5 +568,37 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      {label}
+      <select
+        aria-label={`Filtrar por ${label.toLowerCase()}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="max-w-[12rem] rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+      >
+        <option value="">Todas</option>
+        <option value={UNASSIGNED_KEY}>{UNASSIGNED_LABEL}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { ContentDashboard } from "@/components/dashboards/content-dashboard";
+import { parseClassificationParams } from "@/lib/dashboards/content-params";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
@@ -32,6 +33,8 @@ export default async function ContentDashboardPage({
   const period: PeriodPreset =
     periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
   const platform = typeof sp.red === "string" ? sp.red : null;
+  // Agrupar y filtrar por la clasificacion de la pieza (F105).
+  const { group, filters } = parseClassificationParams(sp);
 
   const timeZone = workspace.timezone || "America/Costa_Rica";
   const now = new Date();
@@ -39,8 +42,10 @@ export default async function ContentDashboardPage({
   const before = previousPeriod(range, now);
 
   const [current, previous, accountsRes] = await Promise.all([
-    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range, platform }),
-    loadContentDashboard(supabase, { workspaceId: workspace.id, period: before, platform }),
+    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range, platform, filters }),
+    // El periodo anterior con los mismos filtros: si no, "▲ 40%" compararia
+    // una oferta contra todo el contenido.
+    loadContentDashboard(supabase, { workspaceId: workspace.id, period: before, platform, filters }),
     supabase
       .from("social_accounts")
       .select("platform")
@@ -67,6 +72,11 @@ export default async function ContentDashboardPage({
       connectedPlatforms={(accountsRes.data ?? []).map((a) => a.platform as string)}
       period={period}
       platform={platform}
+      pieces={[...current.pieces.values()]}
+      leadsByPost={current.leadsByPost ? [...current.leadsByPost.entries()] : null}
+      group={group}
+      filters={filters}
+      filterOptions={current.filterOptions}
       canRefresh={role === "owner" || role === "admin"}
     />
   );
