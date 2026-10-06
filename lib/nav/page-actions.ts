@@ -227,6 +227,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Banca de recursos",
     tooltip: "Textos y audios guardados para mandar en la bandeja con un clic, o que el agente los use solo.",
   },
+  "/dashboard/settings/contenido": {
+    title: "Contenido",
+    tooltip: "Los pilares y las ofertas con los que clasificas tus ideas y piezas. Se archivan, no se borran.",
+  },
   "/dashboard/settings/background": {
     title: "Tareas en segundo plano",
     tooltip: "Que trabajos de IA corren solos, cuando y con que modelo.",

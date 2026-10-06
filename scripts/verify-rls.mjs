@@ -1326,6 +1326,73 @@ try {
     check(!(await sees(otroWs, "oauth_connections", connCal.id)).seen, "otro workspace no ve esa conexion");
   }
 
+  console.log("\n— Pilares y ofertas (Contenido v3, 00116) —");
+  { const otroWs = await makeUser("otro-taxonomia");
+    const { data: wsC } = await svc.from("workspaces")
+      .insert({ name: "zz-test-taxonomia-ws", slug: `zz-test-taxonomia-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsC.id, user_id: otroWs.id, role: "owner" });
+
+    // Un rol personalizado con settings.manage: la policy mira el permiso, no el cargo.
+    const gestor = await makeUser("gestor-taxonomia");
+    const { data: rolGestor } = await svc.from("workspace_roles").insert({
+      workspace_id: ws.id, name: "zz-test Gestor de contenido",
+      permissions: { keys: ["settings.manage"], scopes: { leads: "own", conversations: "own" } },
+    }).select("id").single();
+    await svc.from("workspace_members").insert({
+      workspace_id: ws.id, user_id: gestor.id, role: "member", role_id: rolGestor.id,
+    });
+
+    for (const [tabla, singular, un, el] of [["content_pillars", "pilar", "un", "el"], ["content_offers", "oferta", "una", "la"]]) {
+      const { data: fila, error: eAlta } = await admin.client.from(tabla)
+        .insert({ workspace_id: ws.id, name: "zz-test Educativo" }).select("id").single();
+      check(!eAlta && !!fila, `un Admin crea ${un} ${singular}`, eAlta?.message);
+      if (!fila) continue;
+
+      check((await sees(member, tabla, fila.id)).seen, `un Member LEE ${el} ${singular} (la elige al cargar una idea)`);
+      check(!(await sees(otroWs, tabla, fila.id)).seen, `otro workspace NO ve ${el} ${singular}`);
+
+      check(!!(await member.client.from(tabla).insert({ workspace_id: ws.id, name: "zz-test Colada" })).error,
+        `un Member comun NO crea ${un} ${singular}`);
+      { const { data: tocada } = await member.client.from(tabla)
+          .update({ name: "zz-test Pisada" }).eq("id", fila.id).select("id");
+        check((tocada ?? []).length === 0, `un Member comun NO renombra ${un} ${singular}`); }
+      check(!!(await otroWs.client.from(tabla).insert({ workspace_id: ws.id, name: "zz-test Ajena" })).error,
+        `otro workspace NO crea ${un} ${singular} en este`);
+
+      { const { data: creada, error } = await gestor.client.from(tabla)
+          .insert({ workspace_id: ws.id, name: "zz-test Del gestor" }).select("id").single();
+        check(!error && !!creada, `un rol personalizado con settings.manage SI crea ${un} ${singular}`, error?.message); }
+
+      // Archivar es un UPDATE, y es la unica forma de sacarla de circulacion.
+      { const { data: arch } = await admin.client.from(tabla)
+          .update({ archived_at: new Date().toISOString() }).eq("id", fila.id).select("id");
+        check((arch ?? []).length === 1, `un Admin archiva ${el} ${singular}`); }
+
+      // Sin policy de DELETE: PostgREST no devuelve error, simplemente no borra.
+      await admin.client.from(tabla).delete().eq("id", fila.id);
+      { const { data: sigue } = await svc.from(tabla).select("id, archived_at").eq("id", fila.id);
+        check((sigue ?? []).length === 1, `ni un Admin BORRA ${un} ${singular}: archivar es la unica salida`); }
+
+      // El nombre es unico entre los no archivados, y un archivado lo libera.
+      { const { error } = await svc.from(tabla).insert({ workspace_id: ws.id, name: "  ZZ-TEST del gestor " });
+        check(!!error, `el nombre no se repite entre ${el === "el" ? "los" : "las"} activ${el === "el" ? "os" : "as"} (${singular}; ignora mayusculas y espacios)`); }
+      { const { error } = await svc.from(tabla).insert({ workspace_id: ws.id, name: "  ZZ-TEST EDUCATIVO" });
+        check(!error, `${el === "el" ? "un" : "una"} ${singular} archivad${el === "el" ? "o" : "a"} libera su nombre`, error?.message); }
+    }
+
+    // Un color que no es #rrggbb lo rechaza la base, no solo la pantalla.
+    check(!!(await svc.from("content_pillars").insert({ workspace_id: ws.id, name: "zz-test Color malo", color: "rojo" })).error,
+      "la base rechaza un color que no es #rrggbb");
+    // La etapa del embudo y las redes son listas cerradas en la base.
+    { const { data: i } = await svc.from("content_ideas").insert({ workspace_id: ws.id, title: "zz-test idea" }).select("id").single();
+      check(!!(await svc.from("content_ideas").update({ funnel_stage: "xofu" }).eq("id", i.id)).error,
+        "la base rechaza una etapa de embudo que no es tofu/mofu/bofu");
+      check(!!(await svc.from("content_ideas").update({ platforms: ["facebook"] }).eq("id", i.id)).error,
+        "la base rechaza una plataforma que no es de las cinco");
+      check(!(await svc.from("content_ideas").update({ platforms: ["instagram", "tiktok"], funnel_stage: "tofu" }).eq("id", i.id)).error,
+        "y acepta las validas"); }
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

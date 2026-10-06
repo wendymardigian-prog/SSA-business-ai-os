@@ -12,6 +12,10 @@ export const SETTINGS_EMPTY_STATES = {
     "Creá el primer campo con algo que tu negocio necesite saber de cada contacto y el sistema no traiga: el presupuesto que pidió, de dónde vino, qué plan tiene.",
   recursosAdmin: "Guardá un texto o grabá un audio y tu equipo va a poder mandarlo con un clic.",
   recursosMember: "Cuando un Owner o Admin cree el primero, lo vas a poder usar desde la bandeja.",
+  contentPillars:
+    "Un pilar es un gran tema de tu contenido: educativo, casos de éxito, autoridad. Creá el primero y vas a poder elegirlo al cargar una idea.",
+  contentOffers:
+    "Una oferta es lo que vendés: una mentoría, un servicio, un curso. Creá la primera y vas a poder ver qué contenido empuja cada una.",
   integrations: "Ninguna integración está conectada todavía.",
   background: "Cuando el sistema empiece a registrar tareas, las vas a ver acá.",
 } as const;

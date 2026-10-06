@@ -3,7 +3,8 @@
  *
  * Antes eran cuatro: General, Equipo y roles, Integraciones y Tareas.
  * `custom-fields` y `recursos` tenían ruta propia pero habían quedado
- * afuera del sistema de pestañas. Ahora son seis: se mantiene el mecanismo
+ * afuera del sistema de pestañas. Luego fueron seis y Contenido (pilares y
+ * ofertas, F89) hizo siete: se mantiene el mecanismo
  * de sub-rutas (no se migra a `?tab=`) y el patrón de "otras rutas que
  * dejan esta pestaña marcada" (`also`), que ya existía para Roles.
  */
@@ -31,6 +32,7 @@ export const SETTINGS_TABS: SettingsTab[] = [
     href: "/dashboard/settings/recursos",
     also: ["/dashboard/settings/templates", "/dashboard/settings/audios"],
   },
+  { name: "Contenido", href: "/dashboard/settings/contenido" },
   { name: "Integraciones", href: "/dashboard/settings/integrations" },
   { name: "Tareas", href: "/dashboard/settings/background" },
 ];
