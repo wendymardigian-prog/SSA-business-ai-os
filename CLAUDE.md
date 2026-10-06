@@ -146,16 +146,34 @@ aplicado) para crear `response_assets`: una sola tabla con `kind` ('text' |
 LOS DOS TIPOS. La `00106_drop_response_templates` elimina `response_templates`
 en la misma tanda, abortando con `RAISE EXCEPTION` si encontrara alguna fila
 (no las hay) y redefiniendo `purge_soft_deleted` para purgar `response_assets`.
-Las dos migraciones **estan escritas, sin aplicar todavia**: se aplican antes
-de desplegar el codigo de `feature/banca-recursos-unificada`, primero la
-00105 y despues la 00106 (ver el comentario de cabecera de cada una). El
+Las dos **estan aplicadas** (comprobado el 6/10/2026, solo lectura:
+`response_assets` existe y `response_templates` y `audio_assets` ya no). El
 codigo viejo del Bloque 6 (`lib/audio-library/`, `/dashboard/settings/audios`,
 el picker `/a`, `listar_audios`/`enviar_audio`) **ya no existe**: la pantalla
 unica es `/dashboard/settings/recursos`, el picker de la bandeja es un solo
 "/" (`components/inbox/asset-picker.tsx`), y las herramientas del agente son
 `listar_recursos`/`usar_recurso` (`lib/agent/tools/assets.ts`). Detalle
-completo en `docs/PENDIENTE.md` (seccion "Banca de recursos unificada"). La
-proxima migracion disponible es la **00107**.
+completo en `docs/PENDIENTE.md` (seccion "Banca de recursos unificada").
+
+La `00112_ai_spend_by_day` (gasto de IA por dia) esta aplicada. **Las `00107` a
+`00109` quedaron sin usar** (eran de la banda de multimedia): no reutilizarlas.
+
+**Contenido v3 (octubre 2026).** `00113` a `00117` estan **aplicadas** (con la
+CLI de Supabase; de la `00114` a la `00117` se ensayaron antes en una
+transaccion que se deshace sola) y verificadas: `00113` (comentarios con publicacion y perfil), `00114`
+(`contact_touches`), `00115` (atribucion v2, `create_booking` con el toque y
+backfill de 647 contactos solo donde la atribucion estaba vacia), `00116`
+(pilares, ofertas, clasificacion y `approve_content_idea_v2`) y `00117` (texto
+unico). **No estan en el historial de migraciones** de Supabase
+(`supabase_migrations.schema_migrations`): la CLI las aplico sin registrarlas, y
+el sistema de permisos nego el INSERT; `list_migrations` no las muestra y eso es
+esperable. Ver `docs/PENDIENTE.md`.
+
+**La `00118_drop_legacy_content_columns` esta escrita y SIN aplicar, a
+proposito**: borra `hook`, `angle`, `notes`, `pillar` (texto), `copy` y la
+`approve_content_idea` vieja. El codigo ya no las lee. Su cabecera trae las dos
+consultas que tienen que dar 0 antes de correrla. **La proxima migracion
+disponible es la `00119`.**
 
 La `00072_draft_window_alerts`, que arrastraba sin aplicar desde la Fase 3, se
 aplico el 28/9/2026: su guarda `draft_alerts_since` hace que solo avise por
@@ -219,6 +237,7 @@ node scripts/verify-crm.mjs
 node scripts/verify-inbox-filters.mjs
 node scripts/verify-dashboards.mjs
 node scripts/verify-publishing.mjs # publicar de punta a punta, proveedores simulados
+node scripts/verify-attribution.mjs # toques, primer/ultimo toque, reserva (Contenido v3)
 ```
 
 No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpieza.
@@ -491,6 +510,77 @@ tabla vieja.
 
 Detalle completo en `docs/PENDIENTE.md` (seccion "Banca de recursos
 unificada").
+
+# Contenido v3 (B10-B14, F73-F105)
+
+Cinco bloques sobre la rama `contenido-v3`: desatascar publicar, atribucion, el
+modelo nuevo de la pieza, los drawers y medir. Plano en
+`docs/requerimientos-contenido-v3.md`, avance en `docs/PROGRESS-CV3.md`, detalle
+en `docs/contenido.md`, `docs/publicacion.md` y `docs/atribucion.md`.
+
+## Lo que no se puede romper
+
+- **La atribucion y la sincronizacion de cuentas NUNCA tumban nada.** `recordTouch`
+  y `lib/social/sync-hook.ts` no lanzan; el toque de un mensaje va siempre
+  DESPUES de guardarlo y dentro de un `try/catch`. Un guardado de integracion no
+  puede fallar porque no se pudo sincronizar.
+- **No se tocan** `find_or_link_contact`, el CHECK de `channels.platform` ni
+  `processComment`: la atribucion se engancha antes y despues, no adentro.
+- **`contacts.attribution` es una copia derivada** de `contact_touches` (la
+  recalcula `record_contact_touch` desde la tabla). Hay tres formas guardadas
+  (canonica, clicks, plana) y `readAttribution` devuelve siempre la canonica. Las
+  viejas no se borran.
+- **Instagram no crea contactos por comentar; TikTok si, anonimos.** Solo se
+  cuenta como lead por comentario el contacto cuyo PRIMER toque fue ese
+  comentario, una vez por pieza. Nada de atribuir desde un DM por palabra clave.
+- **Pilares y ofertas no se borran, se archivan** (la tabla no tiene policy de
+  DELETE; una prueba falla si aparece un `.delete()`).
+- **Lo que se programa se valida en el servidor con la misma funcion que el
+  editor** (`resolveNetworkContent` + `validateNetwork`). Tope diario de TikTok:
+  15 videos y 15 fotos.
+- **Sin clave de Zernio, sus cuentas quedan "no disponibles"**, no se usan los
+  canales como respaldo. Una falla de Vault al leer la clave NO cuenta como
+  desconectado (`getZernioKeyState`: present / absent / unknown).
+- **`lib/publishing/e2e-zernio.test.ts` es la red de seguridad** de los
+  disparadores de sincronizacion: si alguien quita uno, se pone en rojo.
+
+## El modelo de la pieza
+
+- La idea tiene un solo texto (`content`); la pieza, `script` y
+  `recording_notes`. `approve_content_idea_v2` hereda clasificacion y redes, pero
+  el guion y las notas arrancan vacios. Lo viejo (`copy`, `hook`, `angle`, `notes`,
+  `pillar`) solo se lee dentro de versiones viejas (`lib/content/legacy.ts`).
+- `media` es la biblioteca de la pieza (cada archivo con `id`); cada red guarda su
+  `format` y sus `files` en orden. Una red sin formato sigue el modelo anterior.
+- Los permisos mandan, no el cargo: `content.approve`, `content.publish`,
+  `content.ai`, `social.view`, `dashboards.content.view`, `settings.manage`.
+- **Los drawers viven en la URL** (`?idea=` y `?piece=`); las rutas viejas
+  `/dashboard/content/<id>` y `/edit` redirigen. El borrador con cambios sin
+  guardar nunca se pisa con lo que llega del servidor.
+
+## Medir una pieza
+
+- **Se compara por edad, nunca por fecha de calendario.** Y **nunca se inventa un
+  cero**: lo que la red no da es un guion; LinkedIn muestra su aviso.
+- **El indice** (`lib/dashboards/piece-index.ts`) es el engagement a 7 dias contra
+  la MEDIANA de la misma red y el mismo formato de los 90 dias anteriores
+  (`social_posts.media_type`); minimo 3 comparables (si no, "base insuficiente");
+  verde desde 1,5x, rojo por debajo de 0,8x. Una publicacion sin `engagement_d7`
+  esta "en curso" y queda fuera del promedio de la pieza.
+- **El total de leads de la pieza no es la suma de sus filas** (una persona que
+  comento dos publicaciones cuenta una vez).
+- El dashboard de contenido agrupa y filtra por pieza, oferta, pilar, etapa del
+  embudo, red y formato (`?agrupar=`, `?oferta=`, `?pilar=`, `?embudo=`,
+  `?formato=`, `?pieza=`). **Nada se pierde:** lo que no tiene valor va a "Sin
+  asignar" y la suma de las filas es el total.
+
+## Cosas conocidas
+
+- `platformLabel` capitaliza lo que no es un canal de mensajeria: se ve "Youtube",
+  "Linkedin", "Tiktok". Un test lo fija (`lib/platforms.test.ts`); arreglarlo es
+  cambiar ese test a proposito.
+- `LINKEDIN_API_VERSION` es `202609`; LinkedIn retira cada version a los ~12
+  meses: revisarla antes de septiembre de 2027.
 
 # Seguridad
 
