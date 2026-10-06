@@ -3,10 +3,18 @@
 import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Link2 as LinkIcon, Loader2, Plus } from "lucide-react";
+import { Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
 import { movePostToColumn } from "@/lib/actions/content";
 import { drawerHref } from "@/lib/content/drawer-url";
-import { buildBoard, evaluateDrop, redistributionChip, type BoardCard, type BoardIdea, type BoardPost } from "@/lib/content/board";
+import {
+  attributionTooltip,
+  buildBoard,
+  evaluateDrop,
+  redistributionChip,
+  type BoardCard,
+  type BoardIdea,
+  type BoardPost,
+} from "@/lib/content/board";
 import { contentExcerpt } from "@/lib/content/ideas";
 import { STATUS_LABELS, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import { NetworkBadge, NetworkBadges } from "./network-badge";
@@ -363,6 +371,16 @@ function PostCard({
 
           <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
             {post.authorship && <span>{post.authorship}</span>}
+            {post.attributedContacts !== null && (
+              <span
+                className="inline-flex items-center gap-0.5 tabular-nums"
+                title={attributionTooltip(post.attributedContacts)}
+                data-testid="attributed-contacts"
+              >
+                <Users className="h-3 w-3" aria-hidden />
+                {post.attributedContacts}
+              </span>
+            )}
           </span>
         </span>
       </Link>

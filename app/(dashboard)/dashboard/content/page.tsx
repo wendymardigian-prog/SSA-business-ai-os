@@ -12,7 +12,7 @@ import { contentTooltip } from "@/lib/nav/page-actions";
 import { timeZoneLabel } from "@/lib/dates";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import type { BoardIdea, BoardPost } from "@/lib/content/board";
+import { attributedContactsFor, countByPiece, type BoardIdea, type BoardPost } from "@/lib/content/board";
 import { authorshipLine } from "@/lib/content/classification";
 import { tagFor } from "@/lib/content/taxonomy";
 import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
@@ -25,6 +25,41 @@ import type { ContentPostStatus } from "@/lib/types/database";
  * cualquiera crea ideas y piezas, y aprobar, programar y generar con IA es de
  * Owner y Admin (en el bloque 9 pasa a ser un permiso configurable).
  */
+const COUNT_PAGE = 1000;
+const COUNT_MAX_PAGES = 10;
+
+/**
+ * Cuantos contactos tienen cada pieza como PRIMER toque (F101).
+ *
+ * Se lee con el cliente de quien mira, no con el del servidor: la lista de
+ * contactos tiene scope (un Member solo ve los suyos), y el numero no puede
+ * mostrar lo que la persona no puede ver. Va de a paginas: PostgREST corta en
+ * 1000 filas sin avisar, y un conteo que se queda corto en silencio es peor
+ * que no tener conteo. Solo se traen los contactos que SI llegaron por una pieza.
+ */
+async function firstTouchCounts(supabase: Awaited<ReturnType<typeof getPermissionContext>>["supabase"]) {
+  const rows: Array<{ content_post_id: string | null }> = [];
+
+  for (let page = 0; page < COUNT_MAX_PAGES; page++) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("content_post_id:attribution->first_touch->>content_post_id")
+      .is("deleted_at", null)
+      .not("attribution->first_touch->>content_post_id", "is", null)
+      .order("id")
+      .range(page * COUNT_PAGE, (page + 1) * COUNT_PAGE - 1);
+
+    if (error) {
+      console.error("[content] no pude contar los contactos por pieza:", error.message);
+      break;
+    }
+    rows.push(...((data ?? []) as unknown as Array<{ content_post_id: string | null }>));
+    if ((data ?? []).length < COUNT_PAGE) break;
+  }
+
+  return countByPiece(rows);
+}
+
 export default async function ContentPage({
   searchParams,
 }: {
@@ -43,7 +78,7 @@ export default async function ContentPage({
 
   const timeZone = workspace.timezone || "America/Costa_Rica";
 
-  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy] = await Promise.all([
+  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed] = await Promise.all([
     supabase
       .from("content_ideas")
       .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
@@ -65,6 +100,7 @@ export default async function ContentPage({
     // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
     // mostrando aunque ya no se ofrezca en el selector (F89).
     loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
+    firstTouchCounts(supabase),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -155,6 +191,12 @@ export default async function ContentPage({
       pillar: tagFor(taxonomy.pillars, post.pillar_id),
       offer: tagFor(taxonomy.offers, post.offer_id),
       funnelStage: post.funnel_stage,
+      // Solo con publicaciones salidas: un cero en una pieza que no salio
+      // diria "no funciono" cuando todavia no pudo funcionar (F101).
+      attributedContacts: attributedContactsFor(
+        attributed.get(post.id),
+        published.some((p) => p.status === "published"),
+      ),
       createdAt: post.created_at,
       updatedAt: post.updated_at,
       authorName: post.created_by ? (authorNames.get(post.created_by) ?? null) : null,
@@ -240,6 +282,7 @@ export default async function ContentPage({
       pillar: post.pillar,
       firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
       hasCopy: post.hasCopy,
+      attributedContacts: post.attributedContacts,
     })),
   ];
 

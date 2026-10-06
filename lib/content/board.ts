@@ -69,6 +69,12 @@ export interface BoardPost {
   pillar: TaxonomyTag | null;
   offer: TaxonomyTag | null;
   funnelStage: FunnelStage | null;
+  /**
+   * Cuantos contactos tienen a esta pieza como su PRIMER toque (F101). Null =
+   * no se muestra: la pieza no tiene publicaciones, y un cero ahi afirmaria
+   * algo que todavia no puede pasar.
+   */
+  attributedContacts: number | null;
   createdAt: string | null;
   updatedAt: string | null;
   authorName: string | null;
@@ -216,4 +222,40 @@ export function redistributionChip(networks: BoardNetwork[]): string | null {
   return pending.length === 1
     ? `↻ ${first.platform} programado ${fecha}`
     : `↻ ${pending.length} redes programadas`;
+}
+
+// ── La atribucion en la tarjeta (F101) ─────────────────────────────────────
+
+/**
+ * Cuantos contactos tienen cada pieza como primer toque.
+ *
+ * Recibe una fila por contacto con su `first_touch.content_post_id`; los que
+ * no llegaron por una pieza (null) no cuentan para ninguna.
+ */
+export function countByPiece(rows: Array<{ content_post_id: string | null }>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.content_post_id) continue;
+    counts.set(row.content_post_id, (counts.get(row.content_post_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * El numero que se muestra en la tarjeta y en la fila, o null para no
+ * mostrar nada.
+ *
+ * Una pieza SIN publicaciones no muestra el numero, ni como cero: todavia no
+ * pudo traer a nadie, y un "0" ahi se lee como "no funciono". Una publicada
+ * con cero contactos si lo muestra: ahi el cero es un dato.
+ */
+export function attributedContactsFor(count: number | undefined, hasPublications: boolean): number | null {
+  if (!hasPublications) return null;
+  return count ?? 0;
+}
+
+export function attributionTooltip(count: number): string {
+  return count === 1
+    ? "1 contacto llegó por primera vez desde esta pieza"
+    : `${count} contactos llegaron por primera vez desde esta pieza`;
 }

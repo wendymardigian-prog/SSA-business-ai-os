@@ -5,7 +5,9 @@ import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
 import type { ContentPostStatus } from "@/lib/types/database";
 import type { TaxonomyTag } from "@/lib/content/taxonomy";
+import { Users } from "lucide-react";
 import { drawerHref } from "@/lib/content/drawer-url";
+import { attributionTooltip } from "@/lib/content/board";
 import { NetworkBadges } from "./network-badge";
 import { PillarDot } from "./pillar-tag";
 
@@ -26,6 +28,8 @@ export interface ListRow extends FilterablePost {
   firstAt: string | null;
   /** Si ya tiene el guion escrito (C15). */
   hasCopy: boolean;
+  /** Contactos con esta pieza como primer toque; null = no se muestra (F101). */
+  attributedContacts?: number | null;
   /** Una idea todavia sin decidir, para que la lista muestre TODO (C15). */
   isIdea?: boolean;
 }
@@ -115,6 +119,7 @@ export function ContentList({
                 <th className="py-2 pr-3 font-medium">Estado</th>
                 <th className="hidden py-2 pr-3 font-medium sm:table-cell">Guion</th>
                 <th className="hidden py-2 pr-3 font-medium sm:table-cell">Fecha</th>
+                <th className="hidden py-2 pr-3 font-medium lg:table-cell">Contactos</th>
                 <th className="hidden py-2 font-medium md:table-cell">Autor</th>
               </tr>
             </thead>
@@ -171,6 +176,19 @@ export function ContentList({
                           month: "short",
                         })
                       : "Sin fecha"}
+                  </td>
+                  <td className="hidden py-2 pr-3 text-xs lg:table-cell">
+                    {row.attributedContacts === null || row.attributedContacts === undefined ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 tabular-nums"
+                        title={attributionTooltip(row.attributedContacts)}
+                      >
+                        <Users className="h-3 w-3 text-muted-foreground" aria-hidden />
+                        {row.attributedContacts}
+                      </span>
+                    )}
                   </td>
                   <td className="hidden py-2 text-xs text-muted-foreground md:table-cell">
                     {row.authorship ?? row.authorName ?? "—"}
