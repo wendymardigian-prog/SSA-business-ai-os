@@ -181,6 +181,14 @@ export function pathBelongsToWorkspace(path: string, workspaceId: string): boole
 }
 
 export interface MediaEntry {
+  /**
+   * Identifica al archivo DENTRO de la pieza (F92): es lo que guarda cada red
+   * en `networks[].files`. Los archivos de antes no lo tienen; se deduce del
+   * path (`mediaIdFor`), que es unico y no cambia.
+   */
+  id?: string;
+  /** El nombre original del archivo, para reconocerlo en la biblioteca. */
+  name?: string | null;
   storage_path: string;
   mime_type: string;
   kind: MediaKind;

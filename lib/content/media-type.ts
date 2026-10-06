@@ -26,6 +26,9 @@ export function socialMediaTypeFor(content: NetworkContent): SocialPostMediaType
   const documents = media.filter((m) => m.kind === "document");
   const contentType = content.options?.contentType;
 
+  // Un Short elegido como formato cuenta como Short (F93).
+  if (content.platform === "youtube" && content.format === "short") return "short";
+
   if (content.platform === "instagram") {
     if (contentType === "story") return "story";
     if (contentType === "reel") return "reel";

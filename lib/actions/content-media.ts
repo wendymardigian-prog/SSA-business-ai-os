@@ -11,6 +11,9 @@ import {
   validateMedia,
   type MediaEntry,
 } from "@/lib/content/media";
+import { ensureMediaIds, removeFileFromNetworks } from "@/lib/content/media-library";
+import { parseNewMediaEntry } from "@/lib/content/networks-schema";
+import type { NetworkEntry } from "@/lib/content/redistribution";
 
 /**
  * Subir y sacar media de una pieza (F18).
@@ -102,100 +105,75 @@ export async function requestMediaUpload(input: {
   return { ok: true, data: { path, mime: checked.mime, resumable: false, token: data.token } };
 }
 
-/** Anota en la pieza un archivo que ya se subio. */
+/**
+ * Anota en la biblioteca de la pieza un archivo que ya se subio (F92).
+ *
+ * El servidor arma la entrada (`parseNewMediaEntry`): le da su id, limpia el
+ * nombre y solo acepta dimensiones y duracion razonables. Lo que manda el
+ * navegador es una pista para mostrar la proporcion y avisar de un Reel muy
+ * largo, no un dato en el que confiar.
+ */
 export async function attachMedia(input: {
   postId: string;
   path: string;
   mime: string;
   kind: MediaEntry["kind"];
   sizeBytes: number;
+  name?: string | null;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
   isCover?: boolean;
   altText?: string | null;
-  /**
-   * La media propia de una red (C8): va dentro de `networks[].media` en vez
-   * de la de la pieza. Sin esto, la variante solo se podia armar tocando el
-   * jsonb a mano.
-   */
-  platform?: string | null;
-}): Promise<MediaActionResult> {
+}): Promise<MediaActionResult<{ id: string }>> {
   const { workspace, supabase } = await getWorkspace();
 
   if (!pathBelongsToWorkspace(input.path, workspace.id)) {
     return { ok: false, error: "Esa ruta no es de este workspace" };
   }
 
+  const parsed = parseNewMediaEntry(input);
+  if (!parsed.ok) return parsed;
+
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, media, networks")
+    .select("id, media")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
-  const entry: MediaEntry = {
-    storage_path: input.path,
-    mime_type: input.mime,
-    kind: input.kind,
-    size_bytes: input.sizeBytes,
-    is_cover: input.isCover ?? false,
-    alt_text: input.altText ?? null,
-  };
+  // Al escribir, tambien les queda el id a los archivos de antes.
+  const library = ensureMediaIds((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]);
 
-  const patch = input.platform
-    ? {
-        networks: patchNetworkMedia(post.networks, input.platform, (media) => [
-          ...media,
-          entry,
-        ]) as never,
-      }
-    : {
-        media: [
-          ...((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]),
-          entry,
-        ] as never,
-      };
+  const { error } = await supabase
+    .from("content_posts")
+    .update({ media: [...library, parsed.entry] as never })
+    .eq("id", input.postId);
 
-  const { error } = await supabase.from("content_posts").update(patch).eq("id", input.postId);
-
-  if (error) return { ok: false, error: "No pude guardar la media en la pieza" };
+  if (error) return { ok: false, error: "No pude guardar el archivo en la pieza" };
 
   revalidatePath(CONTENT_PATH);
-  return { ok: true };
-}
-
-/** Cambia la media de UNA red dentro del jsonb, sin tocar el resto. */
-function patchNetworkMedia(
-  networks: unknown,
-  platform: string,
-  change: (media: MediaEntry[]) => MediaEntry[],
-): unknown[] {
-  const list = (Array.isArray(networks) ? networks : []) as Array<{
-    platform?: string;
-    media?: unknown[] | null;
-  }>;
-
-  return list.map((n) =>
-    n.platform === platform
-      ? { ...n, media: change((Array.isArray(n.media) ? n.media : []) as MediaEntry[]) }
-      : n,
-  );
+  return { ok: true, data: { id: parsed.entry.id! } };
 }
 
 /**
- * Saca una media de la pieza.
+ * Saca un archivo de la biblioteca de la pieza (F92).
  *
- * Si la pieza no se publico, el archivo se borra del bucket; si ya salio, se
- * marca y se conserva (`removalPlan`). El borrado usa el service client
- * porque la policy solo deja borrar a Owner/Admin y esta accion ya decidio
- * que corresponde.
+ * Tres cosas pasan, en este orden de importancia:
+ *  1. Si alguna red lo usaba, se le quita tambien (`removeFileFromNetworks`):
+ *     ninguna red puede quedar apuntando a un archivo que ya no esta. Se
+ *     devuelve cuales eran para poder avisarlo.
+ *  2. Si la pieza no se publico, el archivo se borra del bucket; si ya salio,
+ *     se marca y se conserva (`removalPlan`, F18).
+ *  3. El borrado usa el service client porque la policy solo deja borrar a
+ *     Owner/Admin y esta accion ya decidio que corresponde.
  */
 export async function removeMedia(input: {
   postId: string;
-  path: string;
-  /** La media propia de una red (C8). */
-  platform?: string | null;
-}): Promise<MediaActionResult> {
+  fileId: string;
+}): Promise<MediaActionResult<{ removedFrom: string[] }>> {
   const { workspace, supabase } = await getWorkspace();
 
   const { data: post } = await supabase
@@ -207,37 +185,26 @@ export async function removeMedia(input: {
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
 
-  const current = input.platform
-    ? ((
-        (Array.isArray(post.networks) ? post.networks : []) as Array<{
-          platform?: string;
-          media?: unknown[] | null;
-        }>
-      ).find((n) => n.platform === input.platform)?.media ?? []) as unknown as MediaEntry[]
-    : ((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]);
+  const library = ensureMediaIds((Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[]);
+  const target = library.find((m) => m.id === input.fileId && !m.deleted_at);
+  if (!target) return { ok: false, error: "Ese archivo ya no esta en la pieza" };
 
   const published = ["published", "partially_published", "publishing"].includes(post.status);
   const plan = removalPlan({
-    media: current,
-    storagePath: input.path,
+    media: library,
+    storagePath: target.storage_path,
     postPublished: published,
   });
 
-  if (!plan.found) return { ok: false, error: "Esa media ya no esta en la pieza" };
+  const networks = (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[];
+  const stripped = removeFileFromNetworks(networks, input.fileId);
 
   const { error } = await supabase
     .from("content_posts")
-    .update(
-      input.platform
-        ? {
-            networks: patchNetworkMedia(
-              post.networks,
-              input.platform,
-              () => plan.media as MediaEntry[],
-            ) as never,
-          }
-        : { media: plan.media as never },
-    )
+    .update({
+      media: plan.media as never,
+      ...(stripped.affected.length > 0 ? { networks: stripped.networks as never } : {}),
+    })
     .eq("id", input.postId);
 
   if (error) return { ok: false, error: "No pude actualizar la pieza" };
@@ -246,7 +213,7 @@ export async function removeMedia(input: {
     const service = await createServiceClient();
     const { error: storageError } = await service.storage
       .from("content-media")
-      .remove([input.path]);
+      .remove([target.storage_path]);
     // Que quede un archivo huerfano es menos grave que dejar la pieza
     // apuntando a algo que ya no existe: el cron de limpieza lo barre.
     if (storageError) {
@@ -255,5 +222,5 @@ export async function removeMedia(input: {
   }
 
   revalidatePath(CONTENT_PATH);
-  return { ok: true };
+  return { ok: true, data: { removedFrom: stripped.affected } };
 }

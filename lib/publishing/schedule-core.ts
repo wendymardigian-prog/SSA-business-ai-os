@@ -16,6 +16,7 @@ import {
 } from "@/lib/content/schedule";
 import { aggregatePostStatus } from "@/lib/content/status";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
+import { resolveNetworkOptions } from "@/lib/content/network-format";
 import { socialMediaTypeFor } from "@/lib/content/media-type";
 import type { MediaEntry } from "@/lib/content/media";
 import { validateNetwork, type NetworkContent } from "@/lib/content/validation";
@@ -122,8 +123,10 @@ async function loadPost(
       plannedAt: n.planned_at ?? null,
       publisher: n.publisher ?? null,
     })),
+    // Con el formato ya aplicado (F93): lo que el editor muestra, lo que se
+    // valida aca y lo que se publica salen de las mismas opciones.
     options: Object.fromEntries(
-      networks.map((n) => [String(n.platform ?? ""), n.options ?? {}]),
+      networks.map((n) => [String(n.platform ?? ""), resolveNetworkOptions(n)]),
     ),
     contents: Object.fromEntries(
       networks.map((n) => {
@@ -137,7 +140,8 @@ async function loadPost(
           text: resolved.caption,
           media: resolved.media,
           title: n.youtube_title ?? null,
-          options: n.options ?? {},
+          format: n.format ?? null,
+          options: resolveNetworkOptions(n),
         };
         return [content.platform, content];
       }),

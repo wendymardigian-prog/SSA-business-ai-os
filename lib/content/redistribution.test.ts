@@ -47,6 +47,55 @@ describe("variantes dentro de la pieza (F28)", () => {
   });
 });
 
+describe("archivos elegidos de la biblioteca (F92/F93)", () => {
+  const lib = [
+    { id: "a", storage_path: "ws/p/a.jpg" },
+    { id: "b", storage_path: "ws/p/b.jpg" },
+    { id: "c", storage_path: "ws/p/c.jpg" },
+  ];
+
+  it("`files` manda la media EN ESE ORDEN, no en el de la biblioteca", () => {
+    const network = { platform: "instagram", files: ["c", "a"] };
+
+    expect(resolveNetworkContent({ network, baseCaption: null, baseMedia: lib }).media.map((m) => m.id)).toEqual([
+      "c",
+      "a",
+    ]);
+  });
+
+  it("una red con `files` cuenta como variante, aunque la lista este vacia", () => {
+    expect(hasVariant({ platform: "instagram", files: [] })).toBe(true);
+    expect(resolveNetworkContent({ network: { platform: "instagram", files: [] }, baseCaption: null, baseMedia: lib })).toMatchObject({
+      media: [],
+      ownMedia: true,
+    });
+  });
+
+  it("un id que ya no esta en la biblioteca se saltea, sin romper", () => {
+    const network = { platform: "instagram", files: ["a", "fantasma", "b"] };
+
+    expect(resolveNetworkContent({ network, baseCaption: null, baseMedia: lib }).media.map((m) => m.id)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("archivos de antes de F92 (sin id) se encuentran por el id deducido del path", () => {
+    const sinId = [{ storage_path: "ws/p/uuid-1.jpg" }, { storage_path: "ws/p/uuid-2.jpg" }];
+    const network = { platform: "instagram", files: ["uuid-2"] };
+
+    expect(resolveNetworkContent({ network, baseCaption: null, baseMedia: sinId }).media).toEqual([
+      { storage_path: "ws/p/uuid-2.jpg" },
+    ]);
+  });
+
+  it("`files` gana sobre la media propia del modelo anterior", () => {
+    const network = { platform: "instagram", files: ["b"], media: [{ id: "viejo", storage_path: "ws/p/v.jpg" }] };
+
+    expect(resolveNetworkContent({ network, baseCaption: null, baseMedia: lib }).media.map((m) => m.id)).toEqual(["b"]);
+  });
+});
+
 describe("duplicar como variante", () => {
   const source = {
     id: "p1",

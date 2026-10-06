@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AlertTriangle, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { NetworkBadge } from "../network-badge";
-import { MediaUploader } from "../media-uploader";
+import { FormatFiles } from "./format-files";
 import {
   INSTAGRAM_CONTENT_TYPES,
   INSTAGRAM_CONTENT_TYPE_LABELS,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/content/network-options";
 import { createAutomationHref, checkCta, type AutomationRule, type CtaType } from "@/lib/content/keywords";
 import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
+import { getFormat } from "@/lib/content/network-format";
 import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { NetworkSummary } from "@/lib/content/editor";
 import type { NetworkValidation } from "@/lib/content/validation";
@@ -67,6 +68,10 @@ export interface NetworkRowProps {
   channelId: string | null;
   /** Los publicadores disponibles para esa red. */
   publishers: string[];
+  /** La biblioteca de archivos de la pieza (F92). */
+  library: MediaEntry[];
+  /** El formato escrito de la pieza, para sugerir el de la red (F93). */
+  pieceFormat: string | null;
   onToggle: () => void;
   onChange: (patch: Partial<NetworkEntry>) => void;
   onRemove: () => void;
@@ -88,8 +93,7 @@ export function NetworkRow(props: NetworkRowProps) {
   });
 
   const faltan = missingRequiredOptions(network.platform, options);
-  const ownMedia = network.media !== null && network.media !== undefined;
-  const mediaLocked = !editable;
+  const ownMedia = Array.isArray(network.files) || (network.media !== null && network.media !== undefined);
 
   return (
     <li className="rounded-lg border border-border">
@@ -117,7 +121,14 @@ export function NetworkRow(props: NetworkRowProps) {
             {network.caption !== null && network.caption !== undefined && (
               <Mark>Caption propio</Mark>
             )}
-            {ownMedia && <Mark>Variante</Mark>}
+            {network.format ? (
+              <Mark>
+                {getFormat(network.platform, network.format)?.label ?? network.format}
+                {Array.isArray(network.files) && ` · ${network.files.length} archivo${network.files.length === 1 ? "" : "s"}`}
+              </Mark>
+            ) : (
+              ownMedia && <Mark>Variante</Mark>
+            )}
             {cta.keyword && <Mark>⚡ {cta.keyword}</Mark>}
             {validation.errors.length > 0 && (
               <span className="text-red-600 dark:text-red-400" title="Hay errores">
@@ -186,37 +197,14 @@ export function NetworkRow(props: NetworkRowProps) {
             </Field>
           )}
 
-          {/* ── Media ── */}
-          <Field label="Media">
-            <>
-              <div className="inline-flex rounded-lg border border-border p-0.5">
-                <Segment
-                  on={!ownMedia}
-                  disabled={mediaLocked}
-                  onClick={() => props.onChange({ media: null })}
-                >
-                  Igual a la base
-                </Segment>
-                <Segment
-                  on={ownMedia}
-                  disabled={mediaLocked}
-                  onClick={() => props.onChange({ media: [] })}
-                >
-                  Propia de esta red
-                </Segment>
-              </div>
-              {ownMedia && (
-                <div className="mt-2">
-                  <MediaUploader
-                    postId={props.postId}
-                    media={(network.media ?? []) as MediaEntry[]}
-                    canEdit={editable}
-                    platform={network.platform}
-                  />
-                </div>
-              )}
-            </>
-          </Field>
+          {/* ── Formato y archivos (F93) ── */}
+          <FormatFiles
+            network={network}
+            library={props.library}
+            pieceFormat={props.pieceFormat}
+            editable={editable}
+            onChange={props.onChange}
+          />
 
           {/* ── CTA ── */}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -290,6 +278,7 @@ export function NetworkRow(props: NetworkRowProps) {
             options={options}
             disabled={!editable}
             onChange={setOption}
+            hideInstagramType={Boolean(network.format)}
           />
 
           {faltan.map((m) => (
@@ -297,7 +286,8 @@ export function NetworkRow(props: NetworkRowProps) {
               ⚠ {m}
             </p>
           ))}
-          {validation.errors.map((e) => (
+          {/* El error del formato ya esta en su propia linea, arriba. */}
+          {validation.errors.filter((e) => !isFormatError(e)).map((e) => (
             <p key={e} className="text-xs text-red-600 dark:text-red-400">
               {e}
             </p>
@@ -347,6 +337,11 @@ export function NetworkRow(props: NetworkRowProps) {
   );
 }
 
+/** Los errores que ya muestra la linea de verificacion del formato. */
+function isFormatError(message: string): boolean {
+  return /^(Faltan archivos|Sobran archivos|Un archivo no sirve)/.test(message);
+}
+
 const PUBLISHER_LABELS: Record<string, string> = {
   zernio: "Zernio",
   postproxy: "Postproxy",
@@ -361,13 +356,17 @@ function NetworkOptions({
   options,
   disabled,
   onChange,
+  hideInstagramType,
 }: {
   platform: string;
   options: Record<string, unknown>;
   disabled: boolean;
   onChange: (key: string, value: unknown) => void;
+  /** Con formato elegido, el tipo de Instagram lo decide el formato. */
+  hideInstagramType?: boolean;
 }) {
   if (platform === "instagram") {
+    if (hideInstagramType) return null;
     return (
       <Field label="Tipo">
         <select
@@ -538,32 +537,6 @@ function Check({
       />
       {label}
     </label>
-  );
-}
-
-function Segment({
-  on,
-  disabled,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-md px-2.5 py-1 text-xs disabled:opacity-50 ${
-        on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

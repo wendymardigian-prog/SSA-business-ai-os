@@ -374,3 +374,82 @@ describe("F77 · el servidor valida y cuenta el tope diario", () => {
     expect(db.rows("social_posts").find((r) => r.content_post_id === POST)?.media_type).toBe("carousel");
   });
 });
+
+describe("F93 · el servidor valida el formato y los archivos de cada red", () => {
+  const at = () => new Date(Date.now() + 60 * 60_000).toISOString();
+
+  const img = (name: string) => ({
+    id: name,
+    storage_path: `${WS}/${POST}/${name}.jpg`,
+    mime_type: "image/jpeg",
+    kind: "image",
+    size_bytes: 1_000_000,
+  });
+
+  /** Una pieza con un video y tres imagenes en la biblioteca, e Instagram con ese formato. */
+  function seedFormat(network: Record<string, unknown>) {
+    seed({ networks: [{ platform: "instagram", planned_at: at(), options: {}, ...network }] });
+    const video = (db.rows("content_posts")[0].media as unknown[])[0];
+    db.rows("content_posts")[0].media = [video, img("i1"), img("i2"), img("i3")];
+  }
+
+  it("CRITERIO: un carrusel con un solo archivo NO se programa, aunque se salteen el editor", async () => {
+    seedFormat({ format: "carousel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Faltan archivos: este formato pide entre 2 y 10");
+    expect(db.rows("social_posts")).toHaveLength(0);
+  });
+
+  it("el mensaje es el mismo que muestra el editor", async () => {
+    const { validateNetwork } = await import("@/lib/content/validation");
+    seedFormat({ format: "carousel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    const delEditor = validateNetwork({
+      platform: "instagram",
+      text: "Un caption de prueba",
+      format: "carousel",
+      media: [img("i1")] as never,
+      options: {},
+    }).errors.join(" ");
+    expect(result.ok === false && result.error).toBe(delEditor);
+  });
+
+  it("un carrusel con 3 imagenes se programa y la fila guarda el tipo", async () => {
+    seedFormat({ format: "carousel", files: ["i3", "i1", "i2"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
+    expect(db.rows("social_posts")[0].media_type).toBe("carousel");
+  });
+
+  it("el formato Reel marca el tipo aunque las opciones guardadas digan otra cosa", async () => {
+    seedFormat({ format: "reel", files: ["video"], options: { contentType: "feed" } });
+
+    await scheduleNetworks({ postId: POST });
+
+    expect(db.rows("social_posts")[0].media_type).toBe("reel");
+  });
+
+  it("un Reel con una imagen se rechaza: el archivo no sirve para el formato", async () => {
+    seedFormat({ format: "reel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("no sirve");
+  });
+
+  it("una red del modelo anterior (sin formato ni files) se programa como siempre", async () => {
+    seedFormat({});
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
+  });
+});

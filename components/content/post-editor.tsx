@@ -15,6 +15,9 @@ import { editorActions, summarizeNetwork, type EditorPermissions } from "@/lib/c
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords, type AutomationRule } from "@/lib/content/keywords";
 import { ClassificationFields, type TaxonomyOptions } from "./classification-fields";
+import { ensureMediaIds, removeFileFromNetworks, usageByFile } from "@/lib/content/media-library";
+import { resolveNetworkOptions } from "@/lib/content/network-format";
+import { liveMedia } from "@/lib/content/media";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import type { ExistingPublication } from "@/lib/content/schedule";
 import type { MediaEntry } from "@/lib/content/media";
@@ -155,6 +158,10 @@ export function PostEditor({
 
   const editable = ["draft", "in_production", "in_review"].includes(post.status);
 
+  // La biblioteca de la pieza (F92): todos sus archivos vivos, con id. Cada red
+  // elige los suyos por id en `networks[].files`.
+  const library = useMemo(() => liveMedia(ensureMediaIds(post.media)), [post.media]);
+
   // ── Autoguardado ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!editable) return;
@@ -198,17 +205,26 @@ export function PostEditor({
       const resolved = resolveNetworkContent({
         network,
         baseCaption: draft.caption,
-        baseMedia: post.media,
+        baseMedia: library,
       });
+      // Con el formato ya aplicado: es lo mismo que valida el servidor al
+      // programar (F77), asi el mensaje del editor es el que despues se ve.
       return validateNetwork({
         platform: network.platform,
         text: resolved.caption,
         media: resolved.media,
         title: network.youtube_title,
-        options: network.options,
+        format: network.format ?? null,
+        options: resolveNetworkOptions(network),
       });
     });
-  }, [draft.networks, draft.caption, post.media]);
+  }, [draft.networks, draft.caption, library]);
+
+  /** Que redes usa cada archivo de la biblioteca (F92). */
+  const usage = useMemo(
+    () => Object.fromEntries(usageByFile(library, draft.networks)),
+    [library, draft.networks],
+  );
 
   /**
    * Las palabras en mayúscula del CTA, y si alguna automatización las
@@ -455,11 +471,24 @@ export function PostEditor({
           />
         </section>
 
-        {/* ── Media base ── */}
+        {/* ── Archivos de la pieza (F92) ── */}
         <section>
-          <h2 className="text-sm font-semibold">Media base</h2>
+          <h2 className="text-sm font-semibold">Archivos de la pieza</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Se suben una vez. Después cada red elige cuáles publica y en qué orden.
+          </p>
           <div className="mt-2">
-            <MediaUploader postId={post.id} media={post.media} canEdit={editable} />
+            <MediaUploader
+              postId={post.id}
+              media={library}
+              usage={usage}
+              canEdit={editable}
+              onRemoved={(fileId) =>
+                // El servidor ya lo saco de las redes; el borrador local
+                // tiene que enterarse o lo volveria a mostrar y a guardar.
+                setDraft((d) => ({ ...d, networks: removeFileFromNetworks(d.networks, fileId).networks }))
+              }
+            />
           </div>
         </section>
 
@@ -468,7 +497,7 @@ export function PostEditor({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Redes y publicación</h2>
             <p className="text-xs text-muted-foreground">
-              Fecha, caption, media, CTA y opciones de cada red
+              Fecha, caption, formato y archivos, CTA y opciones de cada red
             </p>
           </div>
 
@@ -507,6 +536,8 @@ export function PostEditor({
                     automations={automations}
                     channelId={channelIdByPlatform[network.platform] ?? null}
                     publishers={publishersByPlatform[network.platform] ?? []}
+                    library={library}
+                    pieceFormat={draft.format.trim() || null}
                     onToggle={() =>
                       setOpenNetwork(openNetwork === network.platform ? null : network.platform)
                     }
@@ -573,12 +604,14 @@ export function PostEditor({
             platform={previewNetwork.platform}
             caption={previewNetwork.caption ?? draft.caption}
             media={
-              previewNetwork.media !== null && previewNetwork.media !== undefined
-                ? (previewNetwork.media as MediaEntry[])
-                : post.media
+              resolveNetworkContent<MediaEntry>({
+                network: previewNetwork,
+                baseCaption: draft.caption,
+                baseMedia: library,
+              }).media
             }
             title={previewNetwork.platform === "youtube" ? previewNetwork.youtube_title : null}
-            variant={previewNetwork.media !== null && previewNetwork.media !== undefined}
+            variant={previewNetwork.media !== null && previewNetwork.media !== undefined || Array.isArray(previewNetwork.files)}
             accountName={accountNames[previewNetwork.platform] ?? null}
           />
         )}
@@ -593,7 +626,7 @@ export function PostEditor({
             recording_notes: draft.recording_notes,
             caption: draft.caption,
             networks: draft.networks,
-            media: post.media,
+            media: library,
           }}
           authorNames={authorNames}
           canEdit={editable}

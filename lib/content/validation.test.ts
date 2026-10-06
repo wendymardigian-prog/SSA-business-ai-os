@@ -173,3 +173,91 @@ describe("validar varias redes juntas", () => {
     expect(result.blocked).toEqual(["instagram"]);
   });
 });
+
+describe("validar el formato elegido (F93)", () => {
+  const imgs = (n: number) => Array.from({ length: n }, (_, i) => image({ storage_path: `ws/p/i${i}.png` }));
+
+  it("CRITERIO: un carrusel con un solo archivo es error y la red NO se puede programar", () => {
+    const result = validateNetwork(content({ format: "carousel", media: imgs(1) }));
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("Faltan archivos: este formato pide entre 2 y 10");
+  });
+
+  it("un carrusel con 3 imagenes pasa", () => {
+    expect(validateNetwork(content({ format: "carousel", media: imgs(3) })).ok).toBe(true);
+  });
+
+  it("un Reel con una imagen: el archivo no sirve para el formato", () => {
+    const result = validateNetwork(content({ format: "reel", media: imgs(1) }));
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("no sirve"))).toBe(true);
+  });
+
+  it("el error del carrusel no se repite: lo da el formato y no tambien el viejo contentType", () => {
+    const result = validateNetwork(
+      content({ format: "carousel", media: imgs(1), options: { contentType: "carousel" } }),
+    );
+
+    expect(result.errors.filter((e) => /carrusel|Faltan/.test(e))).toHaveLength(1);
+  });
+
+  it("sin formato (modelo anterior) no se aplica nada de esto", () => {
+    expect(validateNetwork(content({ media: imgs(1) })).ok).toBe(true);
+  });
+
+  it("un formato que la red no tiene es error", () => {
+    const result = validateNetwork(content({ format: "pdf", media: [video()] }));
+
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain("pdf");
+  });
+
+  it("LinkedIn Solo texto con un archivo sobra", () => {
+    const result = validateNetwork(content({ platform: "linkedin", format: "text", media: imgs(1) }));
+
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain("Sobran");
+  });
+
+  it("LinkedIn Solo texto sin archivos pasa aunque la red no exija media", () => {
+    expect(validateNetwork(content({ platform: "linkedin", format: "text", media: [] })).ok).toBe(true);
+  });
+
+  it("el carrusel de fotos de TikTok acepta hasta 35, no 10", () => {
+    const result = validateNetwork(
+      content({
+        platform: "tiktok",
+        format: "photos",
+        media: imgs(20),
+        options: { privacyLevel: "PUBLIC_TO_EVERYONE", contentPreviewConfirmed: true, expressConsentGiven: true },
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("un Short de mas de 3 minutos es error; uno horizontal, advertencia", () => {
+    const largo = validateNetwork(
+      content({ platform: "youtube", title: "Un titulo", format: "short", media: [video({ duration_ms: 200_000 })] }),
+    );
+    expect(largo.ok).toBe(false);
+    expect(largo.errors.some((e) => e.includes("Short"))).toBe(true);
+
+    const horizontal = validateNetwork(
+      content({ platform: "youtube", title: "Un titulo", format: "short", media: [video({ width: 1920, height: 1080 })] }),
+    );
+    expect(horizontal.ok).toBe(true);
+    expect(horizontal.warnings.some((w) => w.includes("vertical"))).toBe(true);
+  });
+
+  it("un Short vertical y corto pasa sin avisos", () => {
+    const result = validateNetwork(
+      content({ platform: "youtube", title: "Un titulo", format: "short", media: [video()] }),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+});

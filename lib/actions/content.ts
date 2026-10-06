@@ -6,6 +6,8 @@ import { logAudit } from "@/lib/audit";
 import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
 import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
 import { cleanClassification, pickInheritedClassification } from "@/lib/content/classification";
+import { normalizeNetworks } from "@/lib/content/networks-schema";
+import type { MediaEntry } from "@/lib/content/media";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
@@ -592,12 +594,25 @@ export async function savePostDraft(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status, pillar_id, offer_id")
+    .select("id, updated_at, status, pillar_id, offer_id, media")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
+
+  // Las redes son un jsonb: antes se escribian tal cual llegaban. Ahora se
+  // valida la forma y los archivos se contrastan con la biblioteca real de la
+  // pieza (F92/F93).
+  let networks: unknown[] | undefined;
+  if (input.networks !== undefined) {
+    const checked = normalizeNetworks(
+      input.networks,
+      (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
+    );
+    if (!checked.ok) return { ok: false, error: checked.error };
+    networks = checked.networks;
+  }
 
   // Gana el ultimo que guarda, pero se avisa: perder el trabajo de otro sin
   // enterarse es peor que tener que copiar y pegar.
@@ -629,7 +644,7 @@ export async function savePostDraft(input: {
   if (input.script !== undefined) patch.script = input.script;
   if (input.recording_notes !== undefined) patch.recording_notes = input.recording_notes;
   if (input.caption !== undefined) patch.caption = input.caption;
-  if (input.networks !== undefined) patch.networks = input.networks;
+  if (networks !== undefined) patch.networks = networks;
 
   // Editar a mano marca el texto como revisado: la advertencia de "generado
   // con IA, revisalo" deja de tener sentido apenas alguien lo toca.
@@ -653,8 +668,8 @@ export async function savePostDraft(input: {
   // Cambiar la fecha de una red YA programada tiene que mover la publicacion
   // de verdad (A5). Antes solo se guardaba el campo y la publicacion salia a
   // la hora vieja: la pantalla decia una cosa y el sistema hacia otra.
-  const rescheduleWarnings = input.networks
-    ? await applyPlannedDateChanges(workspace.id, input.postId, input.networks)
+  const rescheduleWarnings = networks
+    ? await applyPlannedDateChanges(workspace.id, input.postId, networks)
     : [];
 
   revalidatePath(CONTENT_PATH);
