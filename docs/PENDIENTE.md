@@ -682,3 +682,25 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - La entrada `/dashboard/content/new` de `lib/nav/page-actions.ts` es de una pantalla que ya no existe (quedó de antes); es inofensiva.
 - El indicador "N" que aparece abajo a la izquierda en las capturas es la herramienta de desarrollo de Next, no algo de la app.
 - **La CLI de Supabase dejó de iniciar sesión** un rato durante B13b (error 500 del lado de Supabase, "FGAAuthenticationError"); no había nada que aplicar en ese tramo, así que no frenó nada. Para sembrar y borrar los datos de prueba usé la clave de servicio del proyecto (como los scripts `verify-*`).
+
+### B14 · Medir con métricas reales
+- **Qué quedó:** el rendimiento por red del drawer y la tabla agrupada del dashboard se vieron con datos `zz-test` que sembré y borré (3 piezas, 9 publicaciones con sus fotos diarias, 3 contactos anónimos; después quedó 1 idea, 1 pieza, 0 cuentas, 0 publicaciones, 0 pilares y 0 ofertas). **No se vieron con métricas de verdad**: hoy no hay cuentas conectadas ni publicaciones reales.
+- **Qué mirar cuando las haya:** que `engagement_d7` se congele solo a los 7 días (lo hace la lectura de métricas, no esto), que el índice salga con una base real de 3 o más publicaciones del mismo formato, y que los leads cuenten contactos reales (la consulta con ruta JSON `attribution->first_touch->>origin` se probó contra la base real con contactos sembrados).
+
+### B14 · Decisiones donde el plano admitía dos lecturas
+- **La ventana del índice termina el día de la publicación (90 días previos), no hoy.** El plano dice "los últimos 90 días". Con "hoy", el índice de una publicación cambiaría cada día y una de hace seis meses se compararía con lo que pasó hace un mes. Si se prefiere la otra lectura, el cambio es la condición de ventana de `publicationIndex` (`lib/dashboards/piece-index.ts`).
+- **"En curso" solo dura 7 días.** Una publicación con más de 7 días y sin `engagement_d7` dice "Sin dato", no "En curso" para siempre (la red no dio alcance, o no se recolectó).
+- **El filtro y la agrupación del dashboard tocan solo las publicaciones.** Los seguidores son de la cuenta, no de una pieza: no se filtran, y la pantalla lo dice.
+
+### B14 · Cosas chicas que conviene saber
+- **Los nombres de red:** `platformLabel` capitaliza lo que no es un canal de mensajería y se ve "Youtube", "Linkedin" y "Tiktok" (también en las pantallas de antes). Un test lo fija a propósito (`lib/platforms.test.ts` espera `"Tiktok"`), así que no lo cambié: arreglarlo es cambiar ese test y agregar los nombres.
+- **La tabla agrupada del dashboard no se ordena por columna:** viene por cantidad de publicaciones, con "Sin asignar" al final. La tabla "Tus posts" de más abajo sí se ordena.
+- **Tope de lectura de comparables:** el índice lee hasta 1.000 publicaciones comparables (PostgREST corta ahí sin avisar); si se llega, queda un aviso en el log. Con la cantidad de publicaciones que tiene un negocio como este no debería pasar.
+- **Dos errores que encontró la mutación y arreglé:** un test del total de leads no distinguía "total de la pieza" de "suma de las filas" (la pieza cuenta una vez a quien llegó por una publicación ya borrada y las filas no), y el segundo borde de la ventana de 90 días. Los 14 mutantes de B14 quedan en rojo (tabla en `docs/PROGRESS-CV3.md`).
+- **El aviso de edición de una pieza y los números del drawer se leen con el cliente de quien mira:** un Member ve solo los leads de sus contactos (alcance de leads), así que su columna "Leads" puede ser menor que la de un Admin. Es lo esperado.
+
+## Cierre de la corrida Contenido v3
+- **Una sola cosa para hacer después del merge y del despliegue:** volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql` (es idempotente) para darles toque a los contactos que hayan entrado entre la migración y el despliegue. Ver "B11 · Hay que re-correr el backfill…".
+- **La 00118 sigue sin aplicar a propósito.** Ver "B12 · La 00118…".
+- **Las migraciones 00113 a 00117 están aplicadas pero no registradas en el historial de Supabase.**
+- **Las claves de la base ya están en el estado final de la corrida**: no hay nada pendiente de aplicar salvo la 00118.
