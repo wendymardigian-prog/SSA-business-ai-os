@@ -42,6 +42,11 @@ export interface NetworkValidation {
 export interface ValidationContext {
   /** Cuantas publicaciones ya hay agendadas para ese dia y esa red. */
   publishedToday?: number;
+  /**
+   * Lo mismo separado por tipo, para las redes que tienen un tope por tipo
+   * (TikTok). Se mira ademas de `publishedToday`, no en su lugar.
+   */
+  publishedTodayByKind?: { video: number; image: number };
 }
 
 export function validateNetwork(
@@ -180,6 +185,18 @@ export function validateNetwork(
     error(
       `Ya hay ${context.publishedToday} publicaciones de ${content.platform} ese dia y el limite es ${limits.dailyMax}.`,
     );
+  }
+
+  if (limits.dailyMaxByKind && context.publishedTodayByKind) {
+    // Un video cuenta contra el tope de videos; lo que no tiene video, contra
+    // el de fotos. Sin ningun archivo no hay tipo que contar.
+    const kind: "video" | "image" | null =
+      videos.length > 0 ? "video" : images.length > 0 ? "image" : null;
+    if (kind && context.publishedTodayByKind[kind] >= limits.dailyMaxByKind[kind]) {
+      error(
+        `Ya hay ${context.publishedTodayByKind[kind]} ${kind === "video" ? "videos" : "publicaciones de fotos"} de ${content.platform} ese dia y el limite es ${limits.dailyMaxByKind[kind]}.`,
+      );
+    }
   }
 
   const errors = issues.filter((i) => i.level === "error").map((i) => i.message);

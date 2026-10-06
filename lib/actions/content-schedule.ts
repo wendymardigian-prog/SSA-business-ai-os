@@ -46,6 +46,7 @@ async function scheduleContext() {
     supabase,
     service,
     canPublish: can("content.publish"),
+    timeZone: workspace.timezone ?? undefined,
     credentialsFor: ({ publisherId }: { publisherId: string }) =>
       credentialsForPublisher(service, { publisherId, workspaceId: workspace.id }),
   };

@@ -18,6 +18,11 @@ export interface PlatformLimits {
   document?: { maxBytes: number; maxPages?: number };
   /** Cuantas publicaciones por dia acepta la red. */
   dailyMax: number;
+  /**
+   * Tope aparte por tipo, cuando la red lo tiene (TikTok: 15 videos y 15
+   * fotos por dia, no 30 de cualquier cosa). Convive con `dailyMax`.
+   */
+  dailyMaxByKind?: { video: number; image: number };
   /** Titulo propio (YouTube). */
   titleMax?: number;
 }
@@ -45,6 +50,7 @@ export const PLATFORM_LIMITS: Record<string, PlatformLimits> = {
     image: { maxBytes: 20 * MB, maxCount: 35, minCount: 1 },
     video: { maxBytes: 4 * GB, minSeconds: 3, maxSeconds: 600 },
     dailyMax: 30,
+    dailyMaxByKind: { video: 15, image: 15 },
   },
   youtube: {
     textMax: 5000,
