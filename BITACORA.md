@@ -1316,9 +1316,9 @@ Cinco bloques, F73 a F105, con el plano en `docs/requerimientos-contenido-v3.md`
 
 **Medir por edad y contra la mediana.** Un Reel de 10 días y un Short de 3 no se comparan con los números de hoy. El índice usa el engagement a 7 días contra la mediana de la misma red y el mismo formato de los 90 días previos, con un mínimo de 3 comparables: con menos, "base insuficiente" y los crudos a la vista. Es el mismo criterio que el salto de seguidores: dos reglas para el mismo problema confunden. Y **nunca un cero inventado**: lo que la red no da es un guion, y LinkedIn muestra su aviso.
 
-**La base se migra antes que el código.** Las migraciones son aditivas, así que el código viejo sigue andando; la 00118 (la única que borra) quedó escrita y sin aplicar, con dos consultas en la cabecera que tienen que dar 0 antes de correrla. Todas se ensayaron antes en una transacción que se deshace sola, sembrando filas de prueba.
+**La base se migra antes que el código.** Las migraciones son aditivas, así que el código viejo sigue andando; la 00118 (la única que borra) quedó escrita y sin aplicar, con dos consultas en la cabecera que tienen que dar 0 antes de correrla. De la 00114 a la 00117 se ensayaron antes en una transacción que se deshace sola, sembrando filas de prueba.
 
-**Un solo merge a `main`, al final.** Hasta que todo estuvo en verde no se tocó `main`.
+**Un solo merge a `main`, al final.** Después del primer tramo (F73 a F75), que ya estaba en `main`, no se volvió a tocar hasta que todo estuvo en verde.
 
 ### Lo que encontraron las pruebas, y por qué importó
 
@@ -1326,7 +1326,7 @@ Cinco bloques, F73 a F105, con el plano en `docs/requerimientos-contenido-v3.md`
 - **El aviso "alguien más editó esta pieza" saltaba de mentira** desde el segundo autoguardado: se comparaba con la fecha de la primera carga. Se arregló con la fecha de la última escritura, y el drawer conserva esa lógica.
 - **Un test llegó a hacer pedidos reales a Zernio** con una clave falsa. No salió ninguna credencial real, pero rompía la regla de no llamar a un proveedor: ahora los tests de ese camino hacen fallar cualquier `fetch` real.
 - **Los tests de mutación** (quitar una pieza y ver si el test se pone rojo) encontraron un hueco en B14: ningún test distinguía "el total de leads de la pieza" de "la suma de las filas". Con el test nuevo, los 14 mutantes quedan en rojo; los siete de B10 también.
-- **La revisión en vivo** encontró textos mal conjugados ("Nombre del oferta nuevo") y el desborde de una tabla a 390 px.
+- **La revisión en vivo** encontró textos mal escritos ("Nombre del oferta nuevo" y "Mostra" sin tilde) que los tests no podían ver.
 - **`CLAUDE.md` estaba desactualizado:** decía que la 00105 y la 00106 no estaban aplicadas (sí lo están) y que la próxima migración era la 00107 (es la 00119).
 
 ### Lo que queda
