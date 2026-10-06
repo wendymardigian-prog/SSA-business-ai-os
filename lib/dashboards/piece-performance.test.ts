@@ -276,6 +276,28 @@ describe("buildPiecePerformance (F102)", () => {
       expect(result.total.leads).toBe(2);
     });
 
+    it("el total viene de la pieza, no de sumar filas: incluye a quien llego por una publicacion que ya no esta", () => {
+      const leads = pieceLeads({
+        pieceId: "piece-1",
+        publicationIds: ["ig-1"],
+        touches: [
+          comment("a", "ig-1", "2026-09-30T10:00:00Z"),
+          // Su publicacion se borro, pero el toque guarda la pieza.
+          comment("b", "sp-borrada", "2026-10-01T10:00:00Z"),
+        ],
+      });
+
+      const result = buildPiecePerformance({
+        publications: [instagram()],
+        population: NO_PEERS,
+        leads,
+        now: NOW,
+      });
+
+      expect(result.rows[0].leads).toBe(1);
+      expect(result.total.leads).toBe(2);
+    });
+
     it("sin lectura de leads, todo queda en hueco", () => {
       const result = buildPiecePerformance({
         publications: [instagram()],
