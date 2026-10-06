@@ -3560,6 +3560,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      /**
+       * Los toques de atribucion de un contacto (migracion 00114). Cada
+       * interaccion atribuible: un primer DM, un comentario, una reserva. La
+       * escribe SOLO el servidor (`record_contact_touch`); el cliente solo lee.
+       */
+      contact_touches: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          occurred_at: string;
+          source: string;
+          medium: string | null;
+          campaign: string | null;
+          /** El "content" de la taxonomia: la pieza, en palabras. */
+          content_label: string | null;
+          term: string | null;
+          /** El medio no es de la lista cerrada: se guardo crudo. */
+          medium_raw: boolean;
+          social_post_id: string | null;
+          content_post_id: string | null;
+          ad_id: string | null;
+          adset_id: string | null;
+          campaign_id: string | null;
+          fbclid: string | null;
+          gclid: string | null;
+          ttclid: string | null;
+          li_fat_id: string | null;
+          ctwa_clid: string | null;
+          referrer_url: string | null;
+          landing_page: string | null;
+          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
+          dedupe_key: string;
+          raw: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        // El servidor escribe por la funcion de la base, no por la API de tablas.
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       social_accounts: {
         Row: {
           id: string;

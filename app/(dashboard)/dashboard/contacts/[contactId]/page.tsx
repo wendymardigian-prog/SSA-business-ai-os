@@ -5,7 +5,7 @@ import { ArrowLeft, Mail, Phone, Globe, Calendar, CalendarClock } from "lucide-r
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import { readClickAttribution } from "@/lib/contacts/attribution";
+import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -71,6 +71,7 @@ export default async function ContactDetailPage({
     enrollmentsRes,
     activeSequencesRes,
     bookingsRes,
+    touchesRes,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -132,10 +133,25 @@ export default async function ContactDetailPage({
         .eq("workspace_id", workspace.id)
         .order("start_at", { ascending: false })
         .limit(20),
+      // El camino de toques de atribucion (F88). Lo que se ve lo decide la RLS:
+      // un Member ve los toques de los contactos que ya puede ver.
+      supabase
+        .from("contact_touches")
+        .select("id, occurred_at, source, medium, content_label, content_post_id, origin")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("occurred_at", { ascending: true })
+        .limit(100),
     ]);
 
   const contact = contactRes.data;
   if (!contact) notFound();
+
+  const attributionView = buildAttributionView({
+    attribution: contact.attribution,
+    rows: touchesRes.data ?? [],
+    timeZone: (workspace as { timezone?: string }).timezone || "America/Costa_Rica",
+  });
 
   const members = await getWorkspaceMembers(workspace.id);
   const tagOptions = (tagsRes.data ?? []).map((t) => ({
@@ -380,7 +396,7 @@ export default async function ContactDetailPage({
 
             <NotesSection contactId={contact.id} notes={contact.notes} />
 
-            <AttributionSection attribution={readClickAttribution(contact.attribution)} />
+            <AttributionSection view={attributionView} />
 
             <HistorySection entries={history} />
           </div>

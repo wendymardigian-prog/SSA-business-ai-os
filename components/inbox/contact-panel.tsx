@@ -16,7 +16,7 @@ import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
 import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
-import { readClickAttribution } from "@/lib/contacts/attribution";
+import { buildAttributionView } from "@/lib/contacts/attribution-view";
 import { getDmLink, platformHandles } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
@@ -383,9 +383,9 @@ function Channels({ details }: { details: ContactDetails }) {
 }
 
 function Activity({ contact }: { contact: Contact }) {
-  const attribution = readClickAttribution(contact.attribution);
-  const source = attribution.first_click?.utm_source ?? attribution.last_click?.utm_source ?? null;
-  const campaign = attribution.first_click?.utm_campaign ?? null;
+  // Sin la lista de toques: el panel es chico y no hace una consulta mas. El
+  // camino completo esta en la ficha del contacto (F88).
+  const attribution = buildAttributionView({ attribution: contact.attribution });
   return (
     <PanelSection title="Actividad">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -393,10 +393,16 @@ function Activity({ contact }: { contact: Contact }) {
         <dd>{formatDate(contact.last_interaction_at)}</dd>
         <dt className="text-muted-foreground">Creado</dt>
         <dd>{formatDate(contact.created_at)}</dd>
-        {source && (
+        {attribution.first && (
           <>
-            <dt className="text-muted-foreground">Origen</dt>
-            <dd className="truncate">{campaign ? `${source} · ${campaign}` : source}</dd>
+            <dt className="text-muted-foreground">{attribution.last ? "Origen" : "Origen (único toque)"}</dt>
+            <dd className="min-w-0 break-words" title={attribution.first.text}>{attribution.first.text}</dd>
+          </>
+        )}
+        {attribution.last && (
+          <>
+            <dt className="text-muted-foreground">Último toque</dt>
+            <dd className="min-w-0 break-words" title={attribution.last.text}>{attribution.last.text}</dd>
           </>
         )}
       </dl>
