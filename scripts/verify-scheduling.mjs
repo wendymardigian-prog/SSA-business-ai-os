@@ -374,6 +374,19 @@ try {
       check(ct.timezone === "America/Costa_Rica", "la zona del invitado queda en el contacto");
       check(ct.attribution?.source === "scheduling", "la atribucion dice que vino de agenda");
 
+      // Contenido v3 (00115): la reserva ademas deja su toque de atribucion, y la
+      // forma plana de siempre NO se borra (la lee el trigger de alta).
+      check(ct.attribution?.version === 2 && ct.attribution?.first_touch?.medium === "booking",
+        "la reserva deja su toque canonico (medium booking)");
+      check(ct.attribution?.first_touch?.source === "instagram" && ct.attribution?.first_touch?.origin === "booking",
+        "el toque toma la fuente del utm_source y el origen booking");
+      check(ct.attribution?.source === "scheduling" && ct.attribution?.utm_source === "instagram",
+        "la atribucion plana del contacto sigue intacta junto a la canonica");
+      const { data: toques } = await svc.from("contact_touches").select("dedupe_key, origin, medium, referrer_url").eq("contact_id", r1.contact_id);
+      check((toques ?? []).length === 1 && toques[0].dedupe_key === `booking:${r1.booking_id}`,
+        "queda UNA fila de toque, con la clave de la reserva");
+      check(toques?.[0]?.referrer_url === "https://instagram.com/", "el toque guarda el referente de la reserva");
+
       const { data: hist } = await svc.from("audit_log").select("action, entity_type").eq("entity_id", r1.booking_id);
       check((hist ?? []).some((h) => h.entity_type === "booking" && h.action === "booking.created"), "el historial arranca con booking.created");
 
