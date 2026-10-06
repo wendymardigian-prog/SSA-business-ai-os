@@ -55,6 +55,13 @@ export function shouldCollect(params: {
   publishedAt: string | null;
   lastSyncedAt: string | null;
   now: Date;
+  /**
+   * Tolerancia para quien corre en un horario fijo (el cron de las 3 locales).
+   * Se compara por dias ENTEROS: si la corrida de la semana pasada fue a las
+   * 03:30:12 y la de hoy a las 03:30:05, pasaron 6,99 dias y la semanal se
+   * salteaba una semana entera. Con unas horas de margen eso no pasa.
+   */
+  graceMs?: number;
 }): boolean {
   if (!params.publishedAt) return false;
 
@@ -63,8 +70,75 @@ export function shouldCollect(params: {
   if (cadence === "never") return false;
   if (!params.lastSyncedAt) return true;
 
-  const since = daysBetween(params.lastSyncedAt, params.now);
+  const since = daysBetween(params.lastSyncedAt, new Date(params.now.getTime() + (params.graceMs ?? 0)));
   return cadence === "daily" ? since >= 1 : since >= 7;
+}
+
+/** El margen que usa el job de metricas (ver `shouldCollect`). */
+export const COLLECT_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/** Un post que ya esta guardado, en lo que importa para decidir si se vuelve a leer. */
+export interface StoredPost {
+  externalPostId: string;
+  publishedAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+/**
+ * Desde que dia hay que pedirle posts a la red (F79).
+ *
+ * Hasta hoy el job pedia siempre los ultimos 30 dias, asi que un post de 31 a
+ * 90 dias no se volvia a leer nunca: la regla semanal existia y nadie la
+ * llamaba. La ventana sigue siendo de 30 dias, y solo se estira hacia atras
+ * cuando hay un post guardado de 31 a 90 dias al que ya le toca su lectura
+ * semanal. Uno de mas de 90 dias nunca la estira.
+ */
+export function readWindowStart(now: Date, stored: StoredPost[]): string {
+  let oldest = DAILY_UNTIL_DAYS;
+
+  for (const post of stored) {
+    if (!post.publishedAt) continue;
+    const age = daysBetween(post.publishedAt, now);
+    if (age <= DAILY_UNTIL_DAYS || age > WEEKLY_UNTIL_DAYS) continue;
+    if (shouldCollect({ ...post, now, graceMs: COLLECT_GRACE_MS })) oldest = Math.max(oldest, age);
+  }
+
+  // Un dia de margen: la edad se cuenta en dias enteros y la API filtra por
+  // fecha, asi que sin esto el post mas viejo podia quedar justo afuera.
+  return new Date(now.getTime() - (oldest + (oldest > DAILY_UNTIL_DAYS ? 1 : 0)) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * De lo que devolvio la red, lo que se guarda hoy (F79).
+ *
+ * - Hasta 30 dias: siempre, como siempre. "Actualizar ahora" depende de esto.
+ * - De 31 a 90: solo si ya paso una semana desde la ultima lectura.
+ * - Mas de 90: no, ni la primera vez.
+ * - Uno que todavia no tenemos entra si cae dentro de esas reglas.
+ * - Uno sin fecha de publicacion se guarda: sin fecha no hay regla que aplicar.
+ */
+export function selectPostsToPersist<T extends { externalPostId: string; publishedAt: string | null }>(
+  posts: T[],
+  stored: StoredPost[],
+  now: Date,
+): T[] {
+  const byId = new Map(stored.map((s) => [s.externalPostId, s]));
+
+  return posts.filter((post) => {
+    const known = byId.get(post.externalPostId);
+    const publishedAt = known?.publishedAt ?? post.publishedAt;
+    if (!publishedAt) return true;
+    if (daysBetween(publishedAt, now) <= DAILY_UNTIL_DAYS) return true;
+
+    return shouldCollect({
+      publishedAt,
+      lastSyncedAt: known?.lastSyncedAt ?? null,
+      now,
+      graceMs: COLLECT_GRACE_MS,
+    });
+  });
 }
 
 /**

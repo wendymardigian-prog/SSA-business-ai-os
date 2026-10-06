@@ -18,7 +18,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, SocialPlatform, SocialPostMediaType } from "@/lib/types/database";
-import { computeD7, shouldCollect, workspaceDate, type DailyPoint } from "./rules";
+import { computeD7, shouldCollect, workspaceDate, type DailyPoint, type StoredPost } from "./rules";
 import type { AccountSnapshot, PostMetrics, PostSnapshot } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -313,6 +313,31 @@ export async function postsDueForSync(
       externalPostId: row.external_post_id as string,
       publishedAt: row.published_at,
     }));
+}
+
+/**
+ * Los posts que la cuenta ya tiene guardados, para decidir que se vuelve a
+ * leer (F79). Si la lectura falla devuelve una lista vacia: sin esto se lee la
+ * ventana de siempre, que es lo seguro.
+ */
+export async function storedPosts(supabase: Db, socialAccountId: string): Promise<StoredPost[]> {
+  const { data, error } = await supabase
+    .from("social_posts")
+    .select("external_post_id, published_at, last_synced_at")
+    .eq("social_account_id", socialAccountId)
+    .not("external_post_id", "is", null)
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("[metricas] no pude leer los posts guardados:", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row) => ({
+    externalPostId: row.external_post_id as string,
+    publishedAt: row.published_at,
+    lastSyncedAt: row.last_synced_at,
+  }));
 }
 
 /** Anota como le fue a una cuenta, para que la card lo muestre. */
