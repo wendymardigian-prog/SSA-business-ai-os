@@ -61,8 +61,24 @@ Lo que cambió respecto del plan original de B10 (y por qué): F73 ahora disting
 
 **Tests al cierre de B10:** 382 archivos, 4.590 tests en verde (línea base: 373 y 4.486).
 
-### B11: atribución (F81 a F88)
-- [ ] F81 Taxonomía · [ ] F82 Tabla `contact_touches` (00114) · [ ] F83 `recordTouch` · [ ] F84 Lectura de las tres formas (00115) · [ ] F85 Captura en DMs · [ ] F86 Captura en comentarios · [ ] F87 Otros caminos y backfill · [ ] F88 Atribución en pantalla
+### B11: atribución (F81 a F88) — COMPLETO en la rama, 6/10/2026
+- [x] **F81** Taxonomía cerrada (`lib/contacts/taxonomy.ts`): lo desconocido se guarda crudo y el medio queda marcado `medium_raw`. `2995f0b`.
+- [x] **F82** Tabla `contact_touches` (**00114, aplicada**): RLS por el scope del contacto, solo el servidor escribe, cascada. `2995f0b`.
+- [x] **F83** `recordTouch` (`lib/contacts/touch.ts`): valida con Zod, `raw` con lista blanca (nunca tokens), **nunca lanza**; `record_contact_touch` en la base recalcula primero y último DESDE LA TABLA. `2995f0b`.
+- [x] **F84** `readAttribution` entiende las tres formas (canónica, clicks y la plana del agendamiento, antes invisible). **00115 aplicada**: `create_booking` idéntica a la de la 00099 más el toque (verificado con `diff`), triggers con respaldo, backfill de 647 contactos solo donde la atribución estaba vacía. Se ensayó antes en una transacción que se deshace sola. `2995f0b`.
+- [x] **F85** Toque de los mensajes entrantes (Zernio y Evolution), solo los que suman información. `2337727`.
+- [x] **F86** Atribución de comentarios (`lib/comments/attribution.ts`): Instagram solo vincula a quien ya es contacto (se llama antes y después de `processComment`); TikTok crea un contacto anónimo. `8e203b2`.
+- [x] **F87** Alta manual, importación de CSV (solo contactos nuevos) y email. La reserva y el backfill estaban en la 00115. `69bb43f`.
+- [x] **F88** Pantalla: ficha (primer y último toque, camino plegado), panel de la bandeja y filtros de la lista por fuente y medio del **primer** toque. `1a46e7d`.
+- Verificación contra la base real: `verify-attribution.mjs` (nuevo, **39 checks**), `verify-scheduling.mjs` (**108**, suma 5 del toque de la reserva), `verify-booking-concurrency.mjs` (13) y `verify-crm.mjs`, todos en verde. `00fd73a`.
+- Revisión visual (1440 y 390 px, con la sesión que ya tenía el navegador; no ingresé credenciales): la lista de contactos con los filtros nuevos (445 resultados para Instagram · mensaje directo, que son los 647 menos los 202 sin datos ocultos) y la ficha con "Único toque" se ven bien y a 390 px no hay scroll horizontal.
+- **Tests al cierre de B11:** 390 archivos, 4.748 tests en verde.
+
+Decisiones tomadas en B11 y por qué:
+- **Un toque por DM no:** solo el primero, una respuesta a historia, un mensaje con datos de anuncio, o la vuelta tras 7 días (decisión de Wendy).
+- **Instagram no crea contacto por comentar:** solo vincula al que ya existe (decisión de Wendy). TikTok sí, anónimo.
+- **Se conservan las formas viejas** (`||` en la base, `readClickAttribution` en el código): nada se borra.
+- **El alta manual deja de escribir la forma vieja de clicks.**
 
 ### B12: modelo nuevo de la pieza (F89 a F94)
 - [ ] F89 Pilares y ofertas (00116) · [ ] F90 Campo único de texto (00117; 00118 **sin aplicar**) · [ ] F91 Clasificación · [ ] F92 Biblioteca de archivos · [ ] F93 Formato y archivos por red · [ ] F94 IA al modelo nuevo

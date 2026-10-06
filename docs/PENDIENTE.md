@@ -632,3 +632,18 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Qué pasó:** mientras armaba `lib/jobs/handlers/metrics-sync.test.ts`, una versión intermedia simulaba el lector de métricas pero no el cliente de comentarios, y el job hizo unos pedidos reales a la API de Zernio con una clave falsa (`key-simulada`). Zernio respondió "API key inválida". **No salió ninguna credencial real**, pero rompe la regla de no llamar a ningún proveedor.
 - **Qué se hizo:** el test ahora simula `@/lib/zernio-client` y además hace que cualquier `fetch` real falle ruidoso. `e2e-zernio.test.ts` tiene la misma red de seguridad.
 - **Qué queda:** no hay una red de seguridad global. Convendría que `vitest` bloquee `fetch` por defecto en todos los tests (un `setupFiles`). No se hizo porque toca los 380 archivos y no estaba en el plano.
+
+### B11 · Hay que re-correr el backfill cuando el código nuevo se despliegue
+- **Qué quedó:** la 00115 hizo el backfill de los 647 contactos que existían (todos de Instagram). Los receptores nuevos (F85 a F87) todavía no están en `main`, así que los contactos que entren entre la migración y el despliegue no van a tener toque.
+- **Por qué:** la base ya está migrada y el código todavía no.
+- **Qué se decidió en su lugar:** después del merge y del despliegue, volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql`. Es idempotente (el backfill usa `ON CONFLICT DO NOTHING` y solo escribe donde la atribución está vacía; `create_booking` y los triggers son `CREATE OR REPLACE` con el mismo contenido).
+
+### B11 · Lo que no se vio con datos reales
+- **Panel de la bandeja:** no se abrió ninguna conversación real para verlo (abrirla la marca como leída). Usa el mismo modelo de vista que la ficha y tiene sus tests.
+- **Ficha con varios toques** (las dos tarjetas y el camino plegado): hoy ningún contacto real tiene más de un toque, así que solo se vio el "Único toque". El modelo de vista lo cubre con tests y aparecerá con datos cuando un contacto interactúe de nuevo.
+- **Datos de anuncio en un DM:** sigue sin verificarse que Zernio mande `referral` y que Evolution mande `externalAdReply` en un mensaje que venga de un anuncio. El código los lee de forma defensiva; se confirma en vivo (plano §9.7).
+- **Carrera al crear un contacto de TikTok:** dos comentarios simultáneos de la misma persona nueva podrían crear dos contactos anónimos (se busca y después se inserta, sin un único en la base). Es poco probable y el costo es un contacto anónimo duplicado.
+
+### B11 · Las migraciones 00114 y 00115 tampoco están en el historial
+- **Qué quedó:** igual que la 00113: aplicadas con `supabase db query`, que no registra el historial, y el sistema de permisos denegó el INSERT en `supabase_migrations.schema_migrations`.
+- **Qué se decidió en su lugar:** nada del código lee esa tabla. Queda anotado junto a la 00113.
