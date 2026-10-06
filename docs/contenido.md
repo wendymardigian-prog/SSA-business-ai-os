@@ -202,8 +202,8 @@ Cinco bloques (B10 a B14, F73 a F105) con el plano en
 ### El modelo de la pieza
 
 - **La idea tiene un solo texto** (`content_ideas.content`): lo que antes eran
-  gancho, ángulo y notas. Las columnas viejas se conservan hasta la migración
-  `00118`, que está escrita y **sin aplicar** (ver `docs/PENDIENTE.md`).
+  gancho, ángulo y notas. Las columnas viejas las borró la migración `00118`
+  (aplicada el 6/10/2026).
 - **La pieza tiene `script` (el guion para grabar) y `recording_notes`** en vez
   de `copy`. Aprobar una idea (`approve_content_idea_v2`) copia la clasificación
   y las plataformas; el guion y las notas arrancan **vacíos**: el texto de la

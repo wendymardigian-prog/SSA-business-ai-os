@@ -17,5 +17,7 @@ export default defineConfig({
     //   medio hacer, que no es nuestro).
     exclude: ["node_modules/**", "docs/referencia/**", ".claude/worktrees/**"],
     environment: "node",
+    // Bloquea `fetch` real en todos los tests (ver el archivo).
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

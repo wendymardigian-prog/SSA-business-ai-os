@@ -110,7 +110,7 @@ try {
 
     const { data: idea } = await svc.from("content_ideas").select("status").eq("id", ideaMember.id).single();
     const { data: post } = await svc.from("content_posts")
-      .select("id, status, idea_id, format, pillar_id, offer_id, funnel_stage, reference, networks, script, recording_notes, copy")
+      .select("id, status, idea_id, format, pillar_id, offer_id, funnel_stage, reference, networks, script, recording_notes")
       .eq("id", postId).maybeSingle();
     check(idea.status === "aprobada" && post?.status === "draft" && post?.idea_id === ideaMember.id,
       "quedan las dos cosas: idea aprobada y pieza en borrador");
@@ -125,7 +125,15 @@ try {
       "las redes heredadas entran SIN fecha ni caption: elegir la red no es programarla");
     check(post?.script === null && post?.recording_notes === null,
       "el guion y las notas de grabacion arrancan vacios: el texto de la idea es contexto");
-    check(JSON.stringify(post?.copy) === "{}", "y la columna vieja `copy` no se toca");
+
+    // La 00118 (6/10/2026) borro lo del modelo viejo: que no vuelva sin que nadie lo note.
+    const { error: eCopy } = await svc.from("content_posts").select("copy").limit(1);
+    const { error: eHook } = await svc.from("content_ideas").select("hook").limit(1);
+    check(!!eCopy && !!eHook, "las columnas viejas (`copy`, `hook`) ya no existen: las borro la 00118");
+    const { error: eV1 } = await owner.client.rpc("approve_content_idea", {
+      p_idea_id: ideaMember.id, p_title: "x", p_format: null, p_copy: {},
+    });
+    check(!!eV1 && /could not find the function/i.test(eV1.message), "la funcion `approve_content_idea` vieja ya no existe", eV1?.message);
 
     const { error: eDoble } = await owner.client.rpc("approve_content_idea_v2", {
       p_idea_id: ideaMember.id, p_title: "otra", p_format: null,

@@ -3000,16 +3000,8 @@ export interface Database {
           id: string;
           workspace_id: string;
           title: string;
-          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
-          hook: string | null;
-          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
-          angle: string | null;
           format: string | null;
-          /** @deprecated Texto libre; ahora es `pillar_id` (00116). Se borra en la 00118. */
-          pillar: string | null;
           reference: string | null;
-          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
-          notes: string | null;
           /** El texto unico de la idea (00116). */
           content: string | null;
           /** Redes a las que apunta: es una intencion, al aprobar se hereda. */
@@ -3036,12 +3028,8 @@ export interface Database {
           id?: string;
           workspace_id: string;
           title: string;
-          hook?: string | null;
-          angle?: string | null;
           format?: string | null;
-          pillar?: string | null;
           reference?: string | null;
-          notes?: string | null;
           content?: string | null;
           platforms?: SocialPlatform[];
           offer_id?: string | null;
@@ -3055,12 +3043,8 @@ export interface Database {
         };
         Update: {
           title?: string;
-          hook?: string | null;
-          angle?: string | null;
           format?: string | null;
-          pillar?: string | null;
           reference?: string | null;
-          notes?: string | null;
           content?: string | null;
           platforms?: SocialPlatform[];
           offer_id?: string | null;
@@ -3084,11 +3068,6 @@ export interface Database {
           idea_id: string | null;
           title: string;
           format: string | null;
-          /**
-           * @deprecated { hook, body, cta, recording_notes }. Reemplazado por
-           * `script` y `recording_notes` (00116). Se borra en la 00118.
-           */
-          copy: Json;
           /** El guion completo para grabar (00116). */
           script: string | null;
           /** Instrucciones de produccion (00116). */
@@ -3125,7 +3104,6 @@ export interface Database {
           idea_id?: string | null;
           title: string;
           format?: string | null;
-          copy?: Json;
           script?: string | null;
           recording_notes?: string | null;
           offer_id?: string | null;
@@ -3148,7 +3126,6 @@ export interface Database {
           idea_id?: string | null;
           title?: string;
           format?: string | null;
-          copy?: Json;
           script?: string | null;
           recording_notes?: string | null;
           offer_id?: string | null;
@@ -4321,23 +4298,6 @@ export interface Database {
        * Momento 2 de la verificación (migración 00077): bajo advisory lock por
        * conversación, true si ya hubo un saliente posterior al inbound del turno
        * que no es el propio run. Solo service_role.
-       */
-      /**
-       * Crea el post y marca la idea aprobada, en una transaccion (00084).
-       * SECURITY INVOKER: la RLS decide si quien llama puede aprobar.
-       */
-      approve_content_idea: {
-        Args: {
-          p_idea_id: string;
-          p_title: string;
-          p_format: string | null;
-          p_copy: Json;
-        };
-        Returns: string;
-      };
-      /**
-       * Como `approve_content_idea` pero hereda la clasificacion y las
-       * plataformas de la idea (00116). La v1 se borra en la 00118.
        */
       approve_content_idea_v2: {
         Args: {

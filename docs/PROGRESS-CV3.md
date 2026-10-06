@@ -171,3 +171,13 @@ Decisiones tomadas en B14 y por qué:
 | Docs | `contenido.md`, `publicacion.md`, `atribucion.md` (nuevo), `CLAUDE.md`, `BITACORA.md`, `PENDIENTE.md` al día |
 
 - [x] Todo lo anterior en verde → se puede mergear `contenido-v3` a `main` (`--no-ff`) y pushear.
+
+## Cierre posterior (6/10/2026, a pedido de Wendy)
+
+Después del merge a `main` se terminó lo que había quedado anotado en `docs/PENDIENTE.md`:
+
+- [x] **00118 aplicada.** Antes: el deploy `e555e54` estaba en producción (SUCCESS desde las 08:07 UTC; el anterior, retirado), ningún archivo del código leía las columnas (solo los tipos), las dos consultas de la cabecera dieron 0 (1 idea y 1 pieza, vacías; 0 ideas con pilar de texto) y se guardó un respaldo de las filas y de la función vieja. Después: 0 columnas viejas, 0 funciones viejas, `approve_content_idea_v2` presente, la app sigue leyendo y escribiendo el modelo nuevo.
+- [x] **Historial de migraciones al día:** 00113 a 00118 registradas en `supabase_migrations.schema_migrations` (versiones `20261006173244` a `...49`, fecha del registro) con el mismo formato que las anteriores. `supabase migration list --linked` las muestra.
+- [x] **00115 no hizo falta volver a correrla:** 650 contactos vivos, 650 con primer toque, 650 toques; los 3 que entraron después del backfill ya los anotó el código nuevo.
+- [x] **Código:** `lib/types/database.ts` sin las columnas y la función borradas; la campana, la ficha del contacto y el panel de análisis abren la pieza directo en `?piece=<id>` (con test); sacada la entrada muerta `/dashboard/content/new`; el warning de lint de `drawer.tsx` documentado (el ref se lee al desmontar a propósito); `platformLabel` ahora dice TikTok, YouTube, LinkedIn y Threads (cambié a propósito el test que fijaba "Tiktok"); y `vitest.setup.ts` bloquea `fetch` real en todos los tests (418 archivos siguieron en verde, así que ninguno dependía de uno).
+- Lo que sigue abierto está en `docs/PENDIENTE.md`, "Cierre de la corrida": verificar con cuentas reales, el pie del drawer a 390 px (decisión de diseño) y la carrera de TikTok (pide una migración).

@@ -44,7 +44,7 @@ describe("validar una idea (F19)", () => {
   });
 
   it("la idea ya no tiene hook, angulo, notas ni pilar de texto: no se escriben mas", () => {
-    // Las columnas viejas las borra la 00118; el codigo nuevo no las toca.
+    // Las columnas viejas las borro la 00118; el codigo nuevo no las toca.
     const result = validateIdea({
       title: "x",
       hook: "viejo",

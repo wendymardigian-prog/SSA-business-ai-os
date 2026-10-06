@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink, Loader2, X } from "lucide-react";
 import { loadPostAnalysis, type PostAnalysis } from "@/lib/actions/post-analysis";
+import { drawerHref } from "@/lib/content/drawer-url";
 import { ANALYSIS_METRIC_LABELS, ageLabel, type AnalysisMetric } from "@/lib/dashboards/post-analysis";
 import { platformLabel } from "@/lib/platforms";
 import { colorFor, DualAxisChart, type ChartSeries } from "./charts";
@@ -200,7 +201,7 @@ export function PostAnalysisPanel({
                 )}
                 {data.post.contentPostId && (
                   <Link
-                    href={`/dashboard/content/${data.post.contentPostId}`}
+                    href={drawerHref(new URLSearchParams(), { kind: "piece", id: data.post.contentPostId })}
                     className="text-muted-foreground hover:text-foreground"
                   >
                     Abrir en Contenido

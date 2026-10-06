@@ -14,6 +14,7 @@
  * Sin dato no se inventa nada: ni ceros ni guiones, un estado vacío.
  */
 
+import { drawerHref } from "@/lib/content/drawer-url";
 import { readAttribution, type AttributionTouch } from "./attribution";
 import { mediumLabel, sourceLabel } from "./taxonomy";
 
@@ -73,7 +74,8 @@ export function shortDate(iso: string | null | undefined, timeZone = "America/Co
 }
 
 /** A dónde lleva una pieza. La ruta vieja redirige al drawer (F99). */
-export const pieceHref = (contentPostId: string) => `/dashboard/content/${contentPostId}`;
+export const pieceHref = (contentPostId: string) =>
+  drawerHref(new URLSearchParams(), { kind: "piece", id: contentPostId });
 
 /** Un toque, dicho en palabras. Funciona con el de la copia derivada y con una fila. */
 export function describeTouch(

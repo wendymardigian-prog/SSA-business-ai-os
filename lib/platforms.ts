@@ -35,8 +35,20 @@ export function isSupportedPlatform(value: unknown): value is Platform {
   );
 }
 
+/**
+ * Los nombres de las redes en las que solo se PUBLICA (Etapa 2): no tienen
+ * bandeja de mensajes, asi que no estan en `PLATFORMS` (que es el CHECK de
+ * `channels.platform` y no se toca). Sin esto, el nombre salia capitalizado a
+ * secas: "Youtube", "Linkedin", "Tiktok".
+ */
+const PUBLISHING_LABELS: Record<string, string> = {
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  threads: "Threads",
+};
+
 export function platformLabel(platform: string): string {
-  return isSupportedPlatform(platform)
-    ? PLATFORM_LABELS[platform]
-    : platform.charAt(0).toUpperCase() + platform.slice(1);
+  if (isSupportedPlatform(platform)) return PLATFORM_LABELS[platform];
+  return PUBLISHING_LABELS[platform] ?? platform.charAt(0).toUpperCase() + platform.slice(1);
 }

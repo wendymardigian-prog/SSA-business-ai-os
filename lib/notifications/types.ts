@@ -9,6 +9,8 @@
  * para saber que icono y que link mostrar.
  */
 
+import { drawerHref } from "@/lib/content/drawer-url";
+
 export const NOTIFICATION_TYPES = [
   "human_takeover",
   "channel_disconnected",
@@ -291,7 +293,9 @@ export function linkFor(
       return "/dashboard/settings/integrations";
 
     case "content_post":
-      return entityId ? `/dashboard/content/${entityId}` : "/dashboard/content";
+      return entityId
+        ? drawerHref(new URLSearchParams(), { kind: "piece", id: entityId })
+        : "/dashboard/content";
 
     case "draft_queue":
       // Avisos de ventana: a la cola, filtrada por los que estan por vencer.
