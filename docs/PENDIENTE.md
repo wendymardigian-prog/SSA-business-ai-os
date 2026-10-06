@@ -696,11 +696,10 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Los nombres de red:** `platformLabel` capitaliza lo que no es un canal de mensajería y se ve "Youtube", "Linkedin" y "Tiktok" (también en las pantallas de antes). Un test lo fija a propósito (`lib/platforms.test.ts` espera `"Tiktok"`), así que no lo cambié: arreglarlo es cambiar ese test y agregar los nombres.
 - **La tabla agrupada del dashboard no se ordena por columna:** viene por cantidad de publicaciones, con "Sin asignar" al final. La tabla "Tus posts" de más abajo sí se ordena.
 - **Tope de lectura de comparables:** el índice lee hasta 1.000 publicaciones comparables (PostgREST corta ahí sin avisar); si se llega, queda un aviso en el log. Con la cantidad de publicaciones que tiene un negocio como este no debería pasar.
-- **Dos errores que encontró la mutación y arreglé:** un test del total de leads no distinguía "total de la pieza" de "suma de las filas" (la pieza cuenta una vez a quien llegó por una publicación ya borrada y las filas no), y el segundo borde de la ventana de 90 días. Los 14 mutantes de B14 quedan en rojo (tabla en `docs/PROGRESS-CV3.md`).
-- **El aviso de edición de una pieza y los números del drawer se leen con el cliente de quien mira:** un Member ve solo los leads de sus contactos (alcance de leads), así que su columna "Leads" puede ser menor que la de un Admin. Es lo esperado.
+- **Un hueco de tests que encontró la mutación y arreglé:** ningún test distinguía "el total de leads de la pieza" de "la suma de las filas" (la pieza cuenta una vez a quien llegó por una publicación ya borrada y las filas no). Con el test nuevo, los 14 mutantes de B14 quedan en rojo (tabla en `docs/PROGRESS-CV3.md`).
+- **Los números del drawer se leen con el cliente de quien mira:** un Member ve solo los leads de sus contactos (alcance de leads), así que su columna "Leads" puede ser menor que la de un Admin. Es lo esperado.
 
 ## Cierre de la corrida Contenido v3
 - **Una sola cosa para hacer después del merge y del despliegue:** volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql` (es idempotente) para darles toque a los contactos que hayan entrado entre la migración y el despliegue. Ver "B11 · Hay que re-correr el backfill…".
 - **La 00118 sigue sin aplicar a propósito.** Ver "B12 · La 00118…".
 - **Las migraciones 00113 a 00117 están aplicadas pero no registradas en el historial de Supabase.**
-- **Las claves de la base ya están en el estado final de la corrida**: no hay nada pendiente de aplicar salvo la 00118.
