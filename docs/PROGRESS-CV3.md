@@ -33,17 +33,33 @@ Decisiones tomadas con Wendy (ver `docs/PENDIENTE.md`, sección "Corrida Conteni
 
 ## Bloques
 
-### B10: desatasque (F73 a F80)
-- [x] **F73** Cuentas sociales desde la lista de Zernio. `computeAccounts` acepta `zernioAccounts`; sin lista, respaldo por canales. Commit `0eab9c9`. Tests: `lib/social/accounts-zernio.test.ts` (7), `accounts.test.ts` (13).
-- [x] **F74** Disparadores de la sync. Commits `0276f65` y `502bb2b`. Helper `lib/social/sync-hook.ts` (nunca lanza). Cableado en `saveIntegration`, `disconnectIntegration`, `channels/sync`, `channels/test-key` (la clave de Zernio se guarda ahí, no con `saveIntegration`), y la acción `syncSocialAccountsNow`. Botón "Sincronizar cuentas" y avisos en la card. Tests: `lib/actions/integrations-social-sync.test.ts`.
-- [~] **F75** Perfil real. Commit `fe27fa4`. Hecho: foto y link desde Zernio, `handle`, sellado solo con lectura buena. **Falta:** guardar el error en la cuenta (necesita la 00113) y la bio (no viene en la lista de Zernio).
-- [ ] F76 Adopción de comentarios huérfanos (`external_post_id`, migración 00113).
-- [ ] F77 Validación por red en el servidor y tope diario (TikTok 15 videos + 15 fotos).
-- [ ] F78 Social y métricas por permiso (`social.view`, `dashboards.content.view`; RLS en 00113; `member-baseline.test.ts`).
-- [ ] F79 Regla de frecuencia de métricas y `LINKEDIN_API_VERSION`.
-- [ ] F80 **Prueba de punta a punta** `lib/publishing/e2e-zernio.test.ts`. Un caso por plataforma y uno por disparador. Procedimiento de mutación pendiente.
+### B10: desatasque (F73 a F80) — COMPLETO en la rama, 5/10/2026
+- [x] **F73** Cuentas sociales desde la lista de Zernio. `0eab9c9`. Sin clave de Zernio, las cuentas que salían por Zernio quedan "no disponibles" (conservan identidad y canal); una falla de Vault NO cuenta como desconectado (`getZernioKeyState`: present / absent / unknown). `a9d1dd3`.
+- [x] **F74** Disparadores de la sync. `0276f65`, `502bb2b`. Helper `lib/social/sync-hook.ts` (nunca lanza), en `saveIntegration`, `disconnectIntegration`, `channels/sync`, `channels/test-key` (la clave de Zernio se guarda ahí) y `syncSocialAccountsNow`. Botón y avisos en la card.
+- [x] **F75** Perfil real. `fe27fa4`, `3a981c2`. Foto y link desde Zernio, cifras de perfil en `extra.profile` (solo las que la red da), `markAccountSync` guarda el error y no sella con lectura mala. **La bio no viene en la lista de Zernio: queda null.**
+- [x] **F76** Adopción de comentarios huérfanos. `2f61155`. `storeComment` guarda `external_post_id` y ya no desvincula; `adoptOrphanComments` (nunca crea publicaciones) corre después de sincronizar cuentas y de cada sincronización de métricas.
+- [x] **F77** Validación en el servidor y tope diario. `450d7f0`. Mismo cálculo y mismo mensaje que el editor; TikTok 15 videos + 15 fotos; la fila guarda `media_type`.
+- [x] **F78** Social y métricas por permiso. `9c2218d`. Páginas, menú, `loadPostAnalysis` y las acciones de contenido (aprobar, devolver, archivar, programar) por permiso; producir copy exige `content.ai`. "Actualizar ahora" sigue siendo de Owner/Admin. `verify-rls`: 253 checks en verde, incluye un rol personalizado con `social.view` y otro con `dashboards.content.view` contra la base real.
+- [x] **F79** Frecuencia de métricas y LinkedIn. `c538d14`. Ventana de 30 días que se estira (hasta 90) solo si a un post guardado le toca su lectura semanal; tolerancia de 6 h para que el jitter del cron no saltee una semana. `LINKEDIN_API_VERSION` 202510 → **202609** (la última según la documentación de LinkedIn, leída el 5/10/2026).
+- [x] **F80** Prueba de punta a punta `lib/publishing/e2e-zernio.test.ts` (12 tests). Solo se simula el cliente de Zernio y la infraestructura. Recorre guardar clave → cuentas → pieza → media → revisar → aprobar → programar → cron real (`/api/cron/content-upload`) → webhook firmado con el secreto que el propio sistema generó → `published`, para Instagram y TikTok. Un caso por disparador de F74, más línea base (sin conectar, programar está bloqueado), idempotencia y firma inválida.
 
-**Migración 00113 aplicada** el 5/10/2026 (CLI, con OK de Wendy) y verificada con `verify-rls` (240 checks en verde). Ver `docs/PENDIENTE.md`. Pendiente: F76 y guardar el error de perfil en la cuenta.
+**Procedimiento de mutación de F80** (quitar cada pieza y comprobar que el test se pone rojo; el archivo se restauró después de cada una):
+
+| Mutante | Casos en rojo |
+|---|---|
+| M1 quitar la sync de `saveIntegration` (Postproxy) | guardar Postproxy |
+| M2 quitar la sync de guardar Zernio (`test-key`) | 8: guardar Zernio, desconectar y el recorrido completo de las dos redes |
+| M3 quitar la sync de `disconnectIntegration` | desconectar Zernio |
+| M4 quitar la sync de "Sincronizar canales" | Sincronizar canales |
+| M5 vaciar "Sincronizar cuentas" | Sincronizar cuentas |
+| M6 `computeAccounts` no crea TikTok | 6: los tres de TikTok y los de guardar/sincronizar que lo verifican |
+| M7 se ignora `zernioConnected` (desconectar no se nota) | desconectar Zernio |
+
+**Migración 00113 aplicada** el 5/10/2026 (CLI, con OK de Wendy) y verificada. **No está registrada en el historial** (`supabase_migrations.schema_migrations`): el sistema de permisos denegó el INSERT. Ver `docs/PENDIENTE.md`.
+
+Lo que cambió respecto del plan original de B10 (y por qué): F73 ahora distingue "desconectado" de "no pude leer" (hacía falta para que F80 pudiera probar la desconexión); F78 sumó `loadPostAnalysis` y las acciones de contenido por permiso (sin eso el rol Content Manager veía la pantalla y fallaba al tocar).
+
+**Tests al cierre de B10:** 382 archivos, 4.590 tests en verde (línea base: 373 y 4.486).
 
 ### B11: atribución (F81 a F88)
 - [ ] F81 Taxonomía · [ ] F82 Tabla `contact_touches` (00114) · [ ] F83 `recordTouch` · [ ] F84 Lectura de las tres formas (00115) · [ ] F85 Captura en DMs · [ ] F86 Captura en comentarios · [ ] F87 Otros caminos y backfill · [ ] F88 Atribución en pantalla

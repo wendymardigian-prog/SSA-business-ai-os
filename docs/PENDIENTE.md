@@ -612,3 +612,23 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - Si Zernio registró el webhook con `post.platform.published` y `.failed` (el código ya lo pide).
 - Si los DMs de anuncios traen datos de referencia (`referral` en el mensaje). No se verificó.
 - Los crons de contenido respondiendo 200: no se verificó en esta corrida.
+
+### La 00113 no está registrada en el historial de migraciones
+- **Qué quedó:** la migración 00113 está aplicada y verificada (columnas, políticas y `verify-rls` con 253 checks), pero `supabase_migrations.schema_migrations` no tiene su fila: `list_migrations` no la muestra.
+- **Por qué:** se aplicó con `supabase db query`, que no registra el historial, y el INSERT para registrarla lo denegó el sistema de permisos de la sesión (5/10/2026). No se intentó otra vía.
+- **Qué se decidió en su lugar:** nada rompe sin la fila (nada del código la lee). Si se quiere el historial al día: `insert into supabase_migrations.schema_migrations (version, name, statements) values ('<timestamp>', '00113_comment_post_and_profile_rls', array[$sql$<contenido del archivo>$sql$])`. Las migraciones siguientes (00114 en adelante) van a necesitar lo mismo.
+
+### F79 · LinkedIn 202609: lo que no se verificó
+- **Qué quedó:** `LINKEDIN_API_VERSION` pasó a `202609`. La documentación oficial de versionado la da como la última y dice que 202510 se da de baja el 15/10/2026. El changelog de LinkedIn (resumido, no leído entero) no muestra cambios entre 202510 y 202609 que afecten publicar texto como persona ni el userinfo.
+- **Por qué:** la cuenta de LinkedIn no está conectada, así que no hay forma de probar una publicación real.
+- **Qué se decidió en su lugar:** se verifica en vivo al conectar la cuenta (§9 del plano). Si LinkedIn rechaza la versión, el arreglo es esa constante. Revisar de nuevo antes de octubre de 2027.
+
+### F75 · La bio de la cuenta queda vacía
+- **Qué quedó:** `accounts.listAccounts` de Zernio no trae `bio` (el campo no existe en `SocialAccount`; solo en LinkedIn va dentro de `metadata`). La tarjeta de perfil de Social muestra foto, usuario, link y cifras, pero no la bio.
+- **Por qué:** la otra fuente es `readProfile` de la Graph de Meta, que necesita el token de system user, que no está configurado.
+- **Qué se decidió en su lugar:** `bio` queda en null (nunca un valor inventado). Se completa solo cuando haya token de Meta.
+
+### Un test llegó a hacer pedidos reales a Zernio (corregido)
+- **Qué pasó:** mientras armaba `lib/jobs/handlers/metrics-sync.test.ts`, una versión intermedia simulaba el lector de métricas pero no el cliente de comentarios, y el job hizo unos pedidos reales a la API de Zernio con una clave falsa (`key-simulada`). Zernio respondió "API key inválida". **No salió ninguna credencial real**, pero rompe la regla de no llamar a ningún proveedor.
+- **Qué se hizo:** el test ahora simula `@/lib/zernio-client` y además hace que cualquier `fetch` real falle ruidoso. `e2e-zernio.test.ts` tiene la misma red de seguridad.
+- **Qué queda:** no hay una red de seguridad global. Convendría que `vitest` bloquee `fetch` por defecto en todos los tests (un `setupFiles`). No se hizo porque toca los 380 archivos y no estaba en el plano.
