@@ -3,6 +3,7 @@ import {
   activeFilterCount,
   applyContentFilters,
   contentFiltersToQuery,
+  matchesPlatform,
   parseContentFilters,
   type FilterablePost,
 } from "./filters";
@@ -130,5 +131,21 @@ describe("C15 · filtrar por mes", () => {
   it("una sin fecha no pertenece a ningun mes", () => {
     const result = applyContentFilters(posts, { ...base, month: "2026-11" });
     expect(result.map((p) => p.id)).toEqual(["b"]);
+  });
+});
+
+describe("el filtro de Red de la barra superior (F98)", () => {
+  it("sin red elegida entra todo", () => {
+    expect(matchesPlatform(["instagram"], null)).toBe(true);
+    expect(matchesPlatform([], null)).toBe(true);
+  });
+
+  it("con una red elegida, entra lo que apunta a ella", () => {
+    expect(matchesPlatform(["instagram", "tiktok"], "tiktok")).toBe(true);
+    expect(matchesPlatform(["instagram"], "tiktok")).toBe(false);
+  });
+
+  it("algo sin redes no entra cuando se filtra por una", () => {
+    expect(matchesPlatform([], "instagram")).toBe(false);
   });
 });

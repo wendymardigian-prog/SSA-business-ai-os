@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeVersion } from "@/lib/content/save-version";
-import { normalizeSnapshot, type SaveContext, type StoredSnapshot } from "@/lib/content/versions";
+import { normalizeSnapshot, type PostSnapshot, type SaveContext, type StoredSnapshot } from "@/lib/content/versions";
 
 /**
  * El historial de una pieza (F22).
@@ -57,11 +57,14 @@ export async function saveVersion(input: {
  * Crea una version nueva con lo que hay AHORA antes de pisar nada: restaurar
  * no puede ser la forma de perder el trabajo de hoy. Despues escribe el
  * contenido viejo sobre la pieza.
+ *
+ * Devuelve lo que quedo escrito (ya en la forma nueva): el drawer lo usa para
+ * actualizar su borrador sin esperar a que la pagina vuelva a leer.
  */
 export async function restoreVersion(input: {
   postId: string;
   versionId: string;
-}): Promise<VersionResult> {
+}): Promise<VersionResult<{ snapshot: PostSnapshot }>> {
   const { workspace, supabase } = await getWorkspace();
 
   const { data: version } = await supabase
@@ -103,5 +106,5 @@ export async function restoreVersion(input: {
   }
 
   revalidatePath(CONTENT_PATH);
-  return { ok: true };
+  return { ok: true, data: { snapshot } };
 }

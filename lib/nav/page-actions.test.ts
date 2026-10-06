@@ -5,6 +5,7 @@ import {
   PAGE_META,
   PAGES_WITHOUT_HEADER,
   pageActions,
+  contentTooltip,
   pageMetaFor,
   routePattern,
 } from "./page-actions";
@@ -164,5 +165,51 @@ describe("cada pantalla dibuja la barra de verdad", () => {
       .map((f) => relative(root, f));
 
     expect(sinBarra).toEqual([]);
+  });
+});
+
+describe("el ⓘ de Contenido dice lo que puede hacer cada rol (F98)", () => {
+  const admin = { approve: true, publish: true, ai: true };
+  const member = { approve: false, publish: false, ai: false };
+
+  it("quien aprueba, publica y usa IA lo ve entre lo que puede hacer", () => {
+    const text = contentTooltip(admin);
+
+    expect(text).toContain("aprobás ideas y piezas");
+    expect(text).toContain("programás y publicás");
+    expect(text).toContain("generás el guion y los captions con IA");
+  });
+
+  it("CRITERIO: quien NO tiene content.approve, el ⓘ se lo dice", () => {
+    const text = contentTooltip({ ...admin, approve: false });
+
+    expect(text).not.toContain("aprobás ideas");
+    expect(text).toContain("aprobar es de quien tiene ese permiso");
+  });
+
+  it("un Member ve que propone y crea, y todo lo que NO puede, junto", () => {
+    const text = contentTooltip(member);
+
+    expect(text).toContain("proponés ideas");
+    expect(text).toContain("aprobar, programar y publicar, generar con IA son de quien tiene ese permiso");
+    expect(text).not.toContain("programás y publicás");
+  });
+
+  it("un rol con solo publicar no ve 'publicar' entre lo que no puede", () => {
+    const text = contentTooltip({ approve: false, publish: true, ai: false });
+
+    expect(text).toContain("programás y publicás");
+    expect(text).not.toContain("programar y publicar");
+  });
+
+  it("suma la zona horaria cuando se la dan", () => {
+    expect(contentTooltip(admin, "GMT-6")).toContain("Zona horaria del negocio: GMT-6.");
+    expect(contentTooltip(admin)).not.toContain("Zona horaria");
+  });
+
+  it("las rutas viejas de la pieza no dibujan nada: estan entre las excepciones, con motivo", () => {
+    expect(PAGES_WITHOUT_HEADER["/dashboard/content/[postId]"]).toContain("drawer");
+    expect(PAGES_WITHOUT_HEADER["/dashboard/content/[postId]/edit"]).toContain("drawer");
+    expect(PAGE_META["/dashboard/content/[postId]"]).toBeUndefined();
   });
 });

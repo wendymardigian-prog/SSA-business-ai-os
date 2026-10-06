@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { History, RotateCcw } from "lucide-react";
 import { restoreVersion } from "@/lib/actions/content-versions";
-import { compareVersions, describeVersion, type StoredVersion } from "@/lib/content/versions";
+import { compareVersions, describeVersion, type PostSnapshot, type StoredVersion } from "@/lib/content/versions";
 
 /**
  * El historial de la pieza (F22).
@@ -19,6 +19,7 @@ export function VersionHistory({
   current,
   authorNames,
   canEdit,
+  onRestored,
 }: {
   postId: string;
   versions: StoredVersion[];
@@ -26,6 +27,8 @@ export function VersionHistory({
   current: StoredVersion["snapshot"];
   authorNames: Record<string, string>;
   canEdit: boolean;
+  /** Despues de restaurar (F97): el drawer vuelve al post y relee lo escrito. */
+  onRestored?: (snapshot: PostSnapshot) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -92,7 +95,10 @@ export function VersionHistory({
                         start(async () => {
                           const result = await restoreVersion({ postId, versionId: version.id });
                           if (!result.ok) setError(result.error);
-                          else router.refresh();
+                          else {
+                            onRestored?.(result.data.snapshot);
+                            router.refresh();
+                          }
                         })
                       }
                       className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs hover:bg-accent"

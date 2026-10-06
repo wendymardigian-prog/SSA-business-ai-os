@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buildCalendar, summarize, type CalendarCard, type CalendarPiece } from "@/lib/content/calendar";
 import { NetworkBadges } from "./network-badge";
 import { movePieceToDay } from "@/lib/actions/content-calendar";
+import { drawerHref } from "@/lib/content/drawer-url";
 
 /**
  * El calendario de contenido (F21).
@@ -86,6 +87,9 @@ export function ContentCalendar({
       }).format(new Date()),
     [timeZone],
   );
+
+  /** Abre la pieza en el drawer, sin perder el mes ni los filtros. */
+  const pieceHref = (id: string) => drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id });
 
   function goToMonth(delta: number) {
     const [y, m] = month.split("-").map(Number);
@@ -186,6 +190,7 @@ export function ContentCalendar({
                   <DayCard
                     key={`${card.pieceId}-${card.day}`}
                     card={card}
+                    href={pieceHref(card.pieceId)}
                     draggable={canPublish && !moving}
                     onDragStart={() => setDragging(card)}
                   />
@@ -206,7 +211,7 @@ export function ContentCalendar({
               <h3 className="text-xs font-semibold text-muted-foreground">{dayLabel(day)}</h3>
               <div className="mt-1 space-y-1">
                 {list.map((card) => (
-                  <DayCard key={`${card.pieceId}-${card.day}`} card={card} />
+                  <DayCard key={`${card.pieceId}-${card.day}`} card={card} href={pieceHref(card.pieceId)} />
                 ))}
               </div>
             </section>
@@ -238,16 +243,21 @@ const LEGEND: Record<"tentative" | "scheduled" | "published" | "failed", string>
 
 function DayCard({
   card,
+  href,
   draggable,
   onDragStart,
 }: {
   card: CalendarCard;
+  /** El link que abre el drawer de la pieza (F96). */
+  href: string;
   draggable?: boolean;
   onDragStart?: () => void;
 }) {
   return (
     <Link
-      href={`/dashboard/content/${card.pieceId}`}
+      href={href}
+      scroll={false}
+      data-card-id={`piece-${card.pieceId}`}
       draggable={draggable}
       onDragStart={onDragStart}
       className={`block rounded-md border px-1.5 py-1 text-[11px] leading-tight ${TONES[card.tone]}`}

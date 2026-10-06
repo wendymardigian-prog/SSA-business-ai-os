@@ -1,15 +1,14 @@
 /**
- * Lo que muestra el detalle de una pieza (F36).
+ * Como le fue a cada red de una pieza (F36).
  *
- * Una pantalla que contesta cuatro preguntas sin hacer clic: que se publico,
- * donde, como quedo cada red y que se puede hacer ahora. Todo derivado, sin
- * estado propio: si el detalle dijera algo distinto del tablero, uno de los
- * dos estaria mintiendo.
+ * Es la seccion "Estado por red" del drawer de la pieza (F96), que reemplazo
+ * al detalle: que se publico, donde y como quedo cada red. Los botones que
+ * ofrecia el detalle ahora son los del pie del drawer (`pieceButtons`).
+ * Todo derivado, sin estado propio: si dijera algo distinto del tablero, uno
+ * de los dos estaria mintiendo.
  */
 
-import type { ContentPostStatus, SocialPostStatus } from "@/lib/types/database";
-import { STATUS_LABELS, type ContentPermissions } from "./status";
-import { canApprove, canEditContent, canRequestReview } from "./review";
+import type { SocialPostStatus } from "@/lib/types/database";
 
 export interface PublicationSummary {
   platform: string;
@@ -96,58 +95,4 @@ export function networkRows(
       canRetry: params.canPublish && pub.status === "failed",
     };
   });
-}
-
-export interface DetailAction {
-  action: "edit" | "request_review" | "approve" | "return" | "schedule" | "retry_all" | "archive";
-  label: string;
-  tone?: "primary" | "danger";
-}
-
-/**
- * Los botones del detalle, segun estado y permisos.
- *
- * Es la misma decision que toma el editor (`lib/content/editor.ts`) pero con
- * las acciones del detalle: ver un boton que despues rebota es peor que no
- * verlo.
- */
-export function detailActions(params: {
-  perms: ContentPermissions;
-  status: ContentPostStatus;
-  publications: PublicationSummary[];
-}): DetailAction[] {
-  const actions: DetailAction[] = [];
-  const hasScheduled = params.publications.some((p) => p.status === "scheduled");
-  const hasFailed = params.publications.some((p) => p.status === "failed");
-
-  // Editar y Archivar viven en la barra superior (C16): son las dos cosas
-  // que se hacen desde acá y estaban al final del cuerpo, después de todo lo
-  // demás.
-  if (canRequestReview(params.perms, params.status).ok) {
-    actions.push({ action: "request_review", label: "Mandar a revision", tone: "primary" });
-  }
-  if (canApprove(params.perms, params.status).ok) {
-    actions.push({ action: "approve", label: "Aprobar", tone: "primary" });
-    actions.push({ action: "return", label: "Devolver" });
-  }
-  if (params.perms.publish && params.status === "approved") {
-    actions.push({ action: "schedule", label: "Programar", tone: "primary" });
-  }
-  if (params.perms.publish && hasFailed) {
-    actions.push({ action: "retry_all", label: "Reintentar las que fallaron", tone: "primary" });
-  }
-  return actions;
-}
-
-/** El encabezado del detalle, en una linea. */
-export function detailHeadline(params: {
-  status: ContentPostStatus;
-  publications: PublicationSummary[];
-}): string {
-  const published = params.publications.filter((p) => p.status === "published").length;
-  const total = params.publications.filter((p) => p.status && p.status !== "cancelled").length;
-
-  if (total === 0) return STATUS_LABELS[params.status];
-  if (published === total) return `${STATUS_LABELS[params.status]} en ${total} ${total === 1 ? "red" : "redes"}`;
-  return `${STATUS_LABELS[params.status]} · ${published} de ${total} redes`;
 }

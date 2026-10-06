@@ -5,6 +5,7 @@ import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
 import type { ContentPostStatus } from "@/lib/types/database";
 import type { TaxonomyTag } from "@/lib/content/taxonomy";
+import { drawerHref } from "@/lib/content/drawer-url";
 import { NetworkBadges } from "./network-badge";
 import { PillarDot } from "./pillar-tag";
 
@@ -33,13 +34,11 @@ export function ContentList({
   rows,
   filters,
   authors,
-  platforms,
   months,
 }: {
   rows: ListRow[];
   filters: ContentFilters;
   authors: Array<{ id: string; name: string }>;
-  platforms: string[];
   /** Los meses que tienen algo, para el filtro de fecha (C15). */
   months: string[];
 }) {
@@ -55,6 +54,14 @@ export function ContentList({
 
   const visible = applyContentFilters(rows, filters);
 
+  /** Una idea o una pieza se abren en el drawer, sin salir de la lista. */
+  function open(row: ListRow) {
+    router.push(
+      drawerHref(new URLSearchParams(params.toString()), { kind: row.isIdea ? "idea" : "piece", id: row.id }),
+      { scroll: false },
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-4 pt-4 md:px-6">
@@ -65,12 +72,6 @@ export function ContentList({
           placeholder="Buscar por titulo"
           aria-label="Buscar piezas"
           className="h-8 min-w-48 flex-1 rounded-lg border border-border bg-background px-3 text-sm sm:max-w-xs"
-        />
-        <Select
-          label="Red"
-          value={filters.platform ?? ""}
-          onChange={(v) => setFilter("red", v)}
-          options={platforms.map((p) => ({ value: p, label: p }))}
         />
         <Select
           label="Estado"
@@ -123,10 +124,17 @@ export function ContentList({
                 // tabla de cien filas es una puntería que nadie tiene (C15).
                 <tr
                   key={row.id}
-                  onClick={() => !row.isIdea && router.push(`/dashboard/content/${row.id}`)}
-                  className={`border-b border-border last:border-0 ${
-                    row.isIdea ? "" : "cursor-pointer hover:bg-accent/40"
-                  }`}
+                  data-card-id={`${row.isIdea ? "idea" : "piece"}-${row.id}`}
+                  tabIndex={0}
+                  aria-label={`Abrir ${row.title}`}
+                  onClick={() => open(row)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      open(row);
+                    }
+                  }}
+                  className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
                 >
                   <td className="py-2 pr-3">
                     <span className="font-medium">{row.title}</span>

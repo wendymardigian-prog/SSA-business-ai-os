@@ -3,8 +3,13 @@ import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
 import { ContentList, type ListRow } from "@/components/content/list-view";
-import { ContentViewSwitcher, CountModeSwitcher } from "@/components/content/view-switcher";
-import { parseContentFilters } from "@/lib/content/filters";
+import { ContentViewSwitcher, CountModeSwitcher, PlatformFilter } from "@/components/content/view-switcher";
+import { ContentShell } from "@/components/content/drawer/content-shell";
+import { parseContentFilters, matchesPlatform } from "@/lib/content/filters";
+import { parseDrawer } from "@/lib/content/drawer-url";
+import { loadPiece, type PieceData } from "@/lib/content/load-piece";
+import { contentTooltip } from "@/lib/nav/page-actions";
+import { timeZoneLabel } from "@/lib/dates";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import type { BoardIdea, BoardPost } from "@/lib/content/board";
@@ -25,10 +30,13 @@ export default async function ContentPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const filters = parseContentFilters(await searchParams);
+  const params = await searchParams;
+  const filters = parseContentFilters(params);
+  const target = parseDrawer(params);
   // Por permiso y no por cargo (F78): lo que se ve en el tablero sale de las
   // claves del rol, no de ser Owner o Admin.
-  const { workspace, user, supabase, can } = await getPermissionContext();
+  const ctx = await getPermissionContext();
+  const { workspace, user, supabase, can } = ctx;
   const canApprove = can("content.approve");
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
@@ -159,6 +167,24 @@ export default async function ContentPage({
     };
   });
 
+  // El filtro de Red de la barra superior (F98). El drawer de ideas recorre TODAS
+  // (si no, cambiar el filtro con un drawer abierto dejaria la idea sin lugar).
+  const visibleIdeas = ideas.filter((i) => matchesPlatform(i.platforms, filters.platform));
+  const visiblePosts = posts.filter((p) =>
+    matchesPlatform(p.networks.map((n) => n.platform), filters.platform),
+  );
+
+  // El drawer: la pieza se lee aca, en el mismo viaje que el tablero. Una que
+  // no existe (o de otro negocio) no abre nada y avisa.
+  let piece: PieceData | null = null;
+  let notice: string | null = null;
+  if (target?.kind === "piece") {
+    piece = await loadPiece(ctx, target.id);
+    if (!piece) notice = "No encontré esa pieza, o no tenés acceso a ella.";
+  } else if (target?.kind === "idea" && !ideas.some((i) => i.id === target.id)) {
+    notice = "Esa idea ya no está en el tablero: la aprobaron o la descartaron.";
+  }
+
   // Lo que necesitan los modales de crear: las redes conectadas.
   const { data: accountsRes } = await supabase
     .from("social_accounts")
@@ -193,7 +219,7 @@ export default async function ContentPage({
       title: idea.title,
       status: "draft",
       createdBy: idea.createdBy,
-      platforms: [],
+      platforms: idea.platforms,
       format: idea.format,
       authorName: idea.authorName,
       authorship: idea.authorship,
@@ -227,19 +253,47 @@ export default async function ContentPage({
       .format(new Date())
       .slice(0, 7);
 
+  // La barra de redes del filtro: las conectadas y las que ya aparecen en alguna pieza o idea.
+  const filterPlatforms = [
+    ...new Set([...platforms, ...posts.flatMap((p) => p.networks.map((n) => n.platform)), ...ideas.flatMap((i) => i.platforms)]),
+  ].sort();
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <ContentShell
+      target={target}
+      ideas={ideas}
+      piece={piece}
+      notice={notice}
+      userId={user.id}
+      perms={{ approve: canApprove, ai: canUseAi }}
+      platforms={platforms}
+      taxonomy={taxonomy}
+      aiAvailable={aiProviders.length > 0}
+      aiReason={copywriter.reason}
+    >
+      {/* La barra superior concentra todo lo de la pantalla (F98): las vistas,
+          el conteo, el filtro de Red, el ⓘ con lo que puede hacer el rol y las
+          dos altas. El cuerpo queda limpio: solo el tablero. */}
       <PageHeader
         route="/dashboard/content"
+        tooltip={contentTooltip(
+          { approve: canApprove, publish: canPublish, ai: canUseAi },
+          timeZoneLabel(timeZone),
+        )}
         left={<ContentViewSwitcher current={filters.view} />}
-        filters={filters.view === "calendar" ? <CountModeSwitcher current={filters.count} /> : undefined}
+        filters={
+          <>
+            <PlatformFilter current={filters.platform} platforms={filterPlatforms} />
+            {filters.view === "calendar" && <CountModeSwitcher current={filters.count} />}
+          </>
+        }
         right={<NewContentButtons {...crear} />}
       />
 
       {filters.view === "kanban" && (
         <ContentKanban
-          ideas={ideas}
-          posts={posts}
+          ideas={visibleIdeas}
+          posts={visiblePosts}
           perms={{ create: true, approve: canApprove, publish: canPublish, ai: canUseAi }}
           currentUserId={user.id}
           aiAvailable={aiProviders.length > 0}
@@ -250,12 +304,12 @@ export default async function ContentPage({
 
       {filters.view === "calendar" && (
         <ContentCalendar
-          pieces={posts.map((post) => ({
+          pieces={visiblePosts.map((post) => ({
             id: post.id,
             title: post.title,
             format: post.format,
             networks: post.networks
-              .filter((n) => n.at)
+              .filter((n) => n.at && matchesPlatform([n.platform], filters.platform))
               .map((n) => ({ platform: n.platform, at: n.at!, status: n.status })),
           }))}
           timeZone={timeZone}
@@ -270,10 +324,9 @@ export default async function ContentPage({
           rows={listRows}
           filters={filters}
           authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
-          platforms={[...new Set(posts.flatMap((p) => p.networks.map((n) => n.platform)))]}
           months={listMonths}
         />
       )}
-    </div>
+    </ContentShell>
   );
 }

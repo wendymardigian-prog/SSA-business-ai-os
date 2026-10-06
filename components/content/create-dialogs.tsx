@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { createIdea, createPost, updateIdea } from "@/lib/actions/content";
+import { createIdea, createPost } from "@/lib/actions/content";
+import { drawerHref } from "@/lib/content/drawer-url";
 import { ContentDialog, DialogField, fieldInput } from "./dialog";
 import { ClassificationFields, FormatField, type TaxonomyOptions } from "./classification-fields";
 import { NetworkBadge } from "./network-badge";
@@ -13,8 +14,11 @@ import { NetworkBadge } from "./network-badge";
  *
  * Antes eran una pagina aparte: se perdia el tablero de vista y volver
  * costaba dos clics. Y "Crear" devolvia al kanban, asi que para escribir
- * habia que buscar la pieza y entrar. Ahora "Crear y abrir" lleva al editor,
- * que es lo que se iba a hacer igual.
+ * habia que buscar la pieza y entrar. Ahora "Crear y abrir" abre el drawer de
+ * la pieza, que es lo que se iba a hacer igual.
+ *
+ * Editar una idea ya no pasa por aca: se edita en el drawer (F95), donde todo
+ * es editable al abrir.
  */
 
 export interface CreateDialogsProps {
@@ -40,14 +44,11 @@ const EMPTY_IDEA = {
 };
 
 export function IdeaDialog({
-  /** Con idea, edita; sin idea, crea. */
-  idea,
   canApprove,
   platforms,
   taxonomy,
   onClose,
 }: {
-  idea?: (typeof EMPTY_IDEA & { id: string }) | null;
   canApprove: boolean;
   /** Las redes conectadas, para elegir a cuales apunta (F91). */
   platforms: string[];
@@ -57,7 +58,7 @@ export function IdeaDialog({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [values, setValues] = useState(idea ?? EMPTY_IDEA);
+  const [values, setValues] = useState(EMPTY_IDEA);
 
   const set = (key: "title" | "content") => (v: string) =>
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -75,7 +76,7 @@ export function IdeaDialog({
         offer_id: values.offerId || null,
         funnel_stage: values.funnelStage || null,
       };
-      const result = idea ? await updateIdea(idea.id, input) : await createIdea(input);
+      const result = await createIdea(input);
       if (!result.ok) return setError(result.error);
       onClose();
       router.refresh();
@@ -84,8 +85,8 @@ export function IdeaDialog({
 
   return (
     <ContentDialog
-      label={idea ? "Editar idea" : "Nueva idea"}
-      title={idea ? "Editar idea" : "Nueva idea"}
+      label="Nueva idea"
+      title="Nueva idea"
       onClose={onClose}
       footer={
         <>
@@ -111,7 +112,7 @@ export function IdeaDialog({
             disabled={pending || !values.title.trim()}
             className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
-            {idea ? "Guardar" : "Guardar idea"}
+            Guardar idea
           </button>
         </>
       }
@@ -183,6 +184,7 @@ export function NewPostDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -203,15 +205,17 @@ export function NewPostDialog({
 
       if (!result.ok) return setError(result.error);
 
-      // "Crear y abrir": lleva al editor, que es donde se iba a ir igual.
-      // Si se pidio el copy, el editor ya lo muestra escribiendo.
+      // "Crear y abrir": abre el drawer de la pieza, que es donde se iba a ir
+      // igual. Si se pidio el copy, el drawer ya lo muestra escribiendo.
       if (withAi && copywriter.available) {
         const { requestCopy } = await import("@/lib/actions/copywriter");
         await requestCopy({ postId: result.data.id, confirmed: true });
       }
 
       onClose();
-      router.push(`/dashboard/content/${result.data.id}/edit`);
+      router.push(drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id: result.data.id }), {
+        scroll: false,
+      });
       router.refresh();
     });
   }
