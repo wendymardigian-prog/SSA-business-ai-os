@@ -16,10 +16,20 @@ describe("markAccountSync (F75)", () => {
     expect(db.rows("social_accounts")[0].profile_synced_at).toBe(now.toISOString());
   });
 
-  it("con error NO sella y deja la fecha anterior", async () => {
+  it("con error NO sella, deja la fecha anterior y guarda el error", async () => {
     const anterior = "2026-10-01T00:00:00.000Z";
-    const db = memoryDb({ social_accounts: [{ id: "sa-1", profile_synced_at: anterior }] });
+    const db = memoryDb({ social_accounts: [{ id: "sa-1", profile_synced_at: anterior, profile_sync_error: null }] });
     await markAccountSync(db.client as never, { socialAccountId: "sa-1", now, error: "Graph caído" });
-    expect(db.rows("social_accounts")[0].profile_synced_at).toBe(anterior);
+    const row = db.rows("social_accounts")[0];
+    expect(row.profile_synced_at).toBe(anterior);
+    expect(row.profile_sync_error).toBe("Graph caído");
+  });
+
+  it("una lectura buena despues de un error limpia el error", async () => {
+    const db = memoryDb({ social_accounts: [{ id: "sa-1", profile_synced_at: null, profile_sync_error: "Graph caído" }] });
+    await markAccountSync(db.client as never, { socialAccountId: "sa-1", now, error: null });
+    const row = db.rows("social_accounts")[0];
+    expect(row.profile_sync_error).toBeNull();
+    expect(row.profile_synced_at).toBe(now.toISOString());
   });
 });

@@ -3371,6 +3371,8 @@ export interface Database {
           like_count: number | null;
           hidden: boolean;
           contact_id: string | null;
+          /** El id del post en la red: con esto un comentario huerfano se adopta despues (00113). */
+          external_post_id: string | null;
           source: CommentSource;
           deleted_at: string | null;
           created_at: string;
@@ -3393,6 +3395,7 @@ export interface Database {
           like_count?: number | null;
           hidden?: boolean;
           contact_id?: string | null;
+          external_post_id?: string | null;
           source?: CommentSource;
           deleted_at?: string | null;
           created_at?: string;
@@ -3400,6 +3403,7 @@ export interface Database {
         };
         Update: {
           social_post_id?: string | null;
+          external_post_id?: string | null;
           text?: string | null;
           like_count?: number | null;
           hidden?: boolean;
@@ -3576,6 +3580,8 @@ export interface Database {
           publishers: Json;
           is_active: boolean;
           profile_synced_at: string | null;
+          /** El error de la ultima lectura de perfil; null si salio bien (00113). */
+          profile_sync_error: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -3596,6 +3602,7 @@ export interface Database {
           publishers?: Json;
           is_active?: boolean;
           profile_synced_at?: string | null;
+          profile_sync_error?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -3613,6 +3620,7 @@ export interface Database {
           publishers?: Json;
           is_active?: boolean;
           profile_synced_at?: string | null;
+          profile_sync_error?: string | null;
           updated_at?: string;
         };
         Relationships: [];

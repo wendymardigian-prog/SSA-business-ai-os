@@ -320,17 +320,22 @@ export async function markAccountSync(
   supabase: Db,
   params: { socialAccountId: string; now: Date; error?: string | null },
 ): Promise<void> {
-  // Solo se sella la sincronizacion si la lectura salio bien (F75). Antes se
-  // sellaba igual y la card decia "sincronizado" aunque hubiera fallado.
-  // Guardar el error en la cuenta queda para la 00113 (profile_sync_error).
+  // Con un error NO se sella `profile_synced_at` (F75): antes se sellaba igual
+  // y la card decia "sincronizado" aunque hubiera fallado. El error se guarda
+  // en la cuenta para que la pantalla lo muestre, y la fecha del ultimo dato
+  // bueno queda como estaba.
   if (params.error) {
     console.error(`[metricas] cuenta ${params.socialAccountId}: ${params.error}`);
+    await supabase
+      .from("social_accounts")
+      .update({ profile_sync_error: params.error.slice(0, 500) })
+      .eq("id", params.socialAccountId);
     return;
   }
 
   await supabase
     .from("social_accounts")
-    .update({ profile_synced_at: params.now.toISOString() })
+    .update({ profile_synced_at: params.now.toISOString(), profile_sync_error: null })
     .eq("id", params.socialAccountId);
 }
 
