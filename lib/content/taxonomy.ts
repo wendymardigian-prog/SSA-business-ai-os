@@ -36,6 +36,26 @@ export interface TaxonomyItem {
   id: string;
   name: string;
   archivedAt: string | null;
+  /** Solo los pilares tienen color. */
+  color?: string | null;
+}
+
+/** Un pilar u oferta tal como lo muestra una tarjeta o una fila. */
+export interface TaxonomyTag {
+  id: string;
+  name: string;
+  color: string | null;
+  archived: boolean;
+}
+
+/**
+ * El pilar u oferta de una idea o pieza, listo para pintar, o null si no tiene
+ * (o si apunta a algo que ya no esta: se muestra como "sin", no como un hueco).
+ */
+export function tagFor(items: TaxonomyItem[], id: string | null | undefined): TaxonomyTag | null {
+  const found = id ? items.find((i) => i.id === id) : undefined;
+  if (!found) return null;
+  return { id: found.id, name: found.name, color: found.color ?? null, archived: found.archivedAt !== null };
 }
 
 /** Recorta y junta los espacios de adentro: "  A   B " -> "A B". */

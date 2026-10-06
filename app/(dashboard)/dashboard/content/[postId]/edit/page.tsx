@@ -7,6 +7,8 @@ import { PostEditor, type EditorPost } from "@/components/content/post-editor";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { STATUS_LABELS } from "@/lib/content/status";
+import { authorshipLine } from "@/lib/content/classification";
+import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
 import type { AutomationRule } from "@/lib/content/keywords";
 import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { MediaEntry } from "@/lib/content/media";
@@ -32,7 +34,7 @@ export default async function EditPostPage({
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, script, recording_notes, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at, copy_status, idea_id",
+      "id, title, format, script, recording_notes, caption, networks, media, status, material_status, ai_unreviewed, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -40,7 +42,7 @@ export default async function EditPostPage({
 
   if (!post) notFound();
 
-  const [publicationsRes, accountsRes, channelsRes, triggersRes, versionsRes, aiProviders, members] =
+  const [publicationsRes, accountsRes, channelsRes, triggersRes, versionsRes, aiProviders, members, taxonomy] =
     await Promise.all([
       supabase
         .from("social_posts")
@@ -71,6 +73,7 @@ export default async function EditPostPage({
         .limit(50),
       canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
       getWorkspaceMembers(workspace.id),
+      loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
     ]);
 
   // Las plataformas de `channels` y las de `social_accounts` no son el mismo
@@ -134,6 +137,16 @@ export default async function EditPostPage({
     copyStatus: post.copy_status,
     script: post.script,
     recordingNotes: post.recording_notes,
+    pillarId: post.pillar_id,
+    offerId: post.offer_id,
+    funnelStage: post.funnel_stage,
+    reference: post.reference,
+    authorship: authorshipLine({
+      authorName: post.created_by ? (memberLabels(members).get(post.created_by) ?? null) : null,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      timeZone: workspace.timezone || "America/Costa_Rica",
+    }),
     caption: post.caption,
     networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
     media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
@@ -192,6 +205,7 @@ export default async function EditPostPage({
         authorNames={Object.fromEntries(memberLabels(members))}
         aiAvailable={aiProviders.length > 0}
         timeZone={workspace.timezone || "America/Costa_Rica"}
+        taxonomy={taxonomy}
       />
     </div>
   );

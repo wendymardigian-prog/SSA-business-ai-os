@@ -26,6 +26,23 @@ describe("validar una idea (F19)", () => {
     expect(result.ok && result.idea.content).toBe("Hook\n\nAngulo\n\nNotas");
   });
 
+  it("la clasificacion se limpia: redes validas sin repetir, etapa de la lista, ids vacios en null (F91)", () => {
+    const result = validateIdea({
+      title: "x",
+      platforms: ["instagram", "instagram", "facebook", "tiktok"],
+      funnel_stage: "xofu",
+      pillar_id: "",
+      offer_id: " of-1 ",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.idea.platforms).toEqual(["instagram", "tiktok"]);
+    expect(result.idea.funnel_stage).toBeNull();
+    expect(result.idea.pillar_id).toBeNull();
+    expect(result.idea.offer_id).toBe("of-1");
+  });
+
   it("la idea ya no tiene hook, angulo, notas ni pilar de texto: no se escriben mas", () => {
     // Las columnas viejas las borra la 00118; el codigo nuevo no las toca.
     const result = validateIdea({
@@ -38,7 +55,16 @@ describe("validar una idea (F19)", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(Object.keys(result.idea).sort()).toEqual(["content", "format", "reference", "title"]);
+    expect(Object.keys(result.idea).sort()).toEqual([
+      "content",
+      "format",
+      "funnel_stage",
+      "offer_id",
+      "pillar_id",
+      "platforms",
+      "reference",
+      "title",
+    ]);
   });
 
   it("un titulo enorme se rechaza", () => {

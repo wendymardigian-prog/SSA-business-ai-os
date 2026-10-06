@@ -13,6 +13,8 @@ import { contentExcerpt, ideaActions } from "@/lib/content/ideas";
 import { STATUS_LABELS, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import { NetworkBadge } from "./network-badge";
 import { IdeaDialog, NewPostDialog } from "./create-dialogs";
+import type { TaxonomyOptions } from "./classification-fields";
+import { PillarDot } from "./pillar-tag";
 import { IdeaDetailDialog } from "./idea-detail-dialog";
 
 /**
@@ -34,6 +36,7 @@ export function ContentKanban({
   currentUserId,
   aiAvailable,
   platforms,
+  taxonomy,
 }: {
   ideas: BoardIdea[];
   posts: BoardPost[];
@@ -42,7 +45,8 @@ export function ContentKanban({
   aiAvailable: boolean;
   /** Las redes conectadas, para el modal de crear. */
   platforms: string[];
-  /** Los pilares ya usados, para sugerirlos. */
+  /** Pilares y ofertas, para clasificar una idea (F91). */
+  taxonomy: TaxonomyOptions;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -194,6 +198,8 @@ export function ContentKanban({
       {dialog?.kind === "new-idea" && (
         <IdeaDialog
           canApprove={perms.approve}
+          platforms={platforms}
+          taxonomy={taxonomy}
           onClose={() => setDialog(null)}
         />
       )}
@@ -207,7 +213,13 @@ export function ContentKanban({
             content: selectedIdea.content ?? "",
             format: selectedIdea.format ?? "",
             reference: selectedIdea.reference ?? "",
+            platforms: selectedIdea.platforms,
+            pillarId: selectedIdea.pillar?.id ?? "",
+            offerId: selectedIdea.offer?.id ?? "",
+            funnelStage: selectedIdea.funnelStage ?? "",
           }}
+          platforms={platforms}
+          taxonomy={taxonomy}
           onClose={() => setDialog(null)}
         />
       )}
@@ -298,6 +310,7 @@ function IdeaCard({
             Idea
           </span>
           {idea.format && <span>{idea.format}</span>}
+          {idea.pillar && <PillarDot tag={idea.pillar} className="ml-0" />}
         </span>
 
         <span className="mt-1.5 block text-sm font-medium">{idea.title}</span>
@@ -308,9 +321,8 @@ function IdeaCard({
           </span>
         )}
 
-        <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {idea.authorName && <span>{idea.authorName}</span>}
-          {idea.createdAt && <span>{cuando(idea.createdAt)}</span>}
+        <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          {idea.authorship && <span>{idea.authorship}</span>}
           {idea.reference && (
             <span title={idea.reference} aria-label="Tiene una referencia">
               <LinkIcon className="h-3 w-3" aria-hidden />
@@ -364,14 +376,6 @@ function IdeaCard({
 }
 
 /** "hace 2 h", "3 oct". Lo que sirve para ubicarse sin leer una fecha. */
-function cuando(iso: string): string {
-  const date = new Date(iso);
-  const minutos = Math.round((Date.now() - date.getTime()) / 60_000);
-  if (minutos < 60) return `hace ${Math.max(1, minutos)} min`;
-  if (minutos < 60 * 24) return `hace ${Math.round(minutos / 60)} h`;
-  return date.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
-}
-
 /**
  * La tarjeta de una pieza (C13).
  *
@@ -416,7 +420,10 @@ function PostCard({
         )}
 
         <span className="block p-3">
-          <span className="block text-sm font-medium">{post.title}</span>
+          <span className="block text-sm font-medium">
+            {post.title}
+            {post.pillar && <PillarDot tag={post.pillar} />}
+          </span>
 
           {post.copyStatus === "generating" && (
             <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -453,7 +460,7 @@ function PostCard({
           {editable && post.copyStatus !== "generating" && (
             <span className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
               <Chip on={post.hasCopy}>
-                {post.hasCopy ? "✓" : "○"} Copy{post.hasCopy && post.copyFromAi ? " ✦" : ""}
+                {post.hasCopy ? "✓" : "○"} Guion{post.hasCopy && post.copyFromAi ? " ✦" : ""}
               </Chip>
               <Chip on={post.hasCaption}>{post.hasCaption ? "✓" : "○"} Caption</Chip>
               {post.status === "in_production" && (
@@ -462,9 +469,8 @@ function PostCard({
             </span>
           )}
 
-          <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            {post.authorName && <span>{post.authorName}</span>}
-            {post.createdAt && <span>{cuando(post.createdAt)}</span>}
+          <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            {post.authorship && <span>{post.authorship}</span>}
           </span>
         </span>
       </Link>
@@ -511,12 +517,14 @@ export function NewContentButtons({
   canCreate,
   ideas,
   platforms,
+  taxonomy,
   copywriter,
   canApprove,
 }: {
   canCreate: boolean;
   ideas: Array<{ id: string; title: string }>;
   platforms: string[];
+  taxonomy: TaxonomyOptions;
   copywriter: { available: boolean; reason?: string };
   canApprove: boolean;
 }) {
@@ -545,7 +553,7 @@ export function NewContentButtons({
       </div>
 
       {dialog === "idea" && (
-        <IdeaDialog canApprove={canApprove} onClose={() => setDialog(null)} />
+        <IdeaDialog canApprove={canApprove} platforms={platforms} taxonomy={taxonomy} onClose={() => setDialog(null)} />
       )}
       {dialog === "post" && (
         <NewPostDialog

@@ -14,6 +14,7 @@ import { VersionHistory } from "@/components/content/version-history";
 import { editorActions, summarizeNetwork, type EditorPermissions } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords, type AutomationRule } from "@/lib/content/keywords";
+import { ClassificationFields, type TaxonomyOptions } from "./classification-fields";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import type { ExistingPublication } from "@/lib/content/schedule";
 import type { MediaEntry } from "@/lib/content/media";
@@ -50,6 +51,13 @@ export interface EditorPost {
   script: string | null;
   /** Instrucciones de produccion. */
   recordingNotes: string | null;
+  /** Clasificacion (F91). */
+  pillarId: string | null;
+  offerId: string | null;
+  funnelStage: string | null;
+  reference: string | null;
+  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  authorship: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: MediaEntry[];
@@ -74,6 +82,7 @@ export function PostEditor({
   timeZone,
   publishersByPlatform,
   accountNames,
+  taxonomy,
 }: {
   post: EditorPost;
   perms: EditorPermissions;
@@ -89,6 +98,8 @@ export function PostEditor({
   publishersByPlatform: Record<string, string[]>;
   /** Con qué nombre se ve la cuenta en cada red, para la vista previa. */
   accountNames: Record<string, string | null>;
+  /** Pilares y ofertas, para clasificar la pieza (F91). */
+  taxonomy: TaxonomyOptions;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -99,6 +110,11 @@ export function PostEditor({
     title: post.title,
     script: post.script ?? "",
     recording_notes: post.recordingNotes ?? "",
+    format: post.format ?? "",
+    pillarId: post.pillarId ?? "",
+    offerId: post.offerId ?? "",
+    funnelStage: post.funnelStage ?? "",
+    reference: post.reference ?? "",
     caption: post.caption ?? "",
     networks: post.networks,
   });
@@ -116,6 +132,26 @@ export function PostEditor({
   }, []);
   const dirty = useRef(false);
   const lastEdited = useRef<string | null>(null);
+  // La fecha de la ULTIMA escritura que conocemos: se actualiza con lo que
+  // devuelve cada guardado. Con la fecha con la que se abrio la pagina, el
+  // aviso de "alguien mas edito esto" saltaba desde el segundo autoguardado,
+  // porque el primero ya habia movido `updated_at`.
+  const knownUpdatedAt = useRef(post.updatedAt);
+
+  /** Lo que se escribe en cada guardado: el borrador entero. */
+  const payload = () => ({
+    postId: post.id,
+    title: draft.title,
+    format: draft.format.trim() || null,
+    pillar_id: draft.pillarId || null,
+    offer_id: draft.offerId || null,
+    funnel_stage: draft.funnelStage || null,
+    reference: draft.reference.trim() || null,
+    script: draft.script,
+    recording_notes: draft.recording_notes,
+    caption: draft.caption,
+    networks: draft.networks,
+  });
 
   const editable = ["draft", "in_production", "in_review"].includes(post.status);
 
@@ -125,16 +161,9 @@ export function PostEditor({
     const timer = setInterval(() => {
       if (!dirty.current) return;
       dirty.current = false;
-      void savePostDraft({
-        postId: post.id,
-        title: draft.title,
-        script: draft.script,
-        recording_notes: draft.recording_notes,
-        caption: draft.caption,
-        networks: draft.networks,
-        knownUpdatedAt: post.updatedAt,
-      }).then((result) => {
+      void savePostDraft({ ...payload(), knownUpdatedAt: knownUpdatedAt.current }).then((result) => {
         if (result.ok) {
+          knownUpdatedAt.current = result.data.updatedAt;
           setSavedAt(new Date().toISOString());
           if (result.data.staleWarning) {
             setMessage({
@@ -146,7 +175,7 @@ export function PostEditor({
       });
     }, AUTOSAVE_MS);
     return () => clearInterval(timer);
-  }, [draft, editable, post.id, post.updatedAt]);
+  }, [draft, editable, post.id]);
 
   // Avisar al cerrar con cambios sin guardar.
   useEffect(() => {
@@ -222,14 +251,8 @@ export function PostEditor({
   /** Lo escrito se guarda antes de cualquier acción que cambie el estado. */
   async function saveActual() {
     dirty.current = false;
-    await savePostDraft({
-      postId: post.id,
-      title: draft.title,
-      script: draft.script,
-      recording_notes: draft.recording_notes,
-      caption: draft.caption,
-      networks: draft.networks,
-    });
+    const result = await savePostDraft({ ...payload(), knownUpdatedAt: knownUpdatedAt.current });
+    if (result.ok) knownUpdatedAt.current = result.data.updatedAt;
   }
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, okText?: string) {
@@ -291,11 +314,38 @@ export function PostEditor({
                 <span className="text-muted-foreground">· ver</span>
               </button>
             )}
-            {post.format && (
-              <span className="rounded-full border border-border px-2 py-0.5">{post.format}</span>
-            )}
           </div>
+          {post.authorship && (
+            <p className="px-1 text-[11px] text-muted-foreground" data-testid="authorship">
+              {post.authorship}
+            </p>
+          )}
         </div>
+
+        {/* ── Clasificacion (F91) ── */}
+        <section aria-labelledby="clasificacion" className="space-y-3">
+          <h2 id="clasificacion" className="text-sm font-semibold">
+            Clasificación
+          </h2>
+          <ClassificationFields
+            value={{
+              format: draft.format,
+              pillarId: draft.pillarId,
+              offerId: draft.offerId,
+              funnelStage: draft.funnelStage,
+              reference: draft.reference,
+            }}
+            onChange={(patch) => {
+              if (patch.format !== undefined) edit("format", patch.format);
+              if (patch.pillarId !== undefined) edit("pillarId", patch.pillarId);
+              if (patch.offerId !== undefined) edit("offerId", patch.offerId);
+              if (patch.funnelStage !== undefined) edit("funnelStage", patch.funnelStage);
+              if (patch.reference !== undefined) edit("reference", patch.reference);
+            }}
+            taxonomy={taxonomy}
+            disabled={!editable}
+          />
+        </section>
 
         {/* ── Copy ── */}
         <section className="space-y-3">
@@ -538,7 +588,7 @@ export function PostEditor({
           versions={versions}
           current={{
             title: draft.title,
-            format: post.format,
+            format: draft.format.trim() || null,
             script: draft.script,
             recording_notes: draft.recording_notes,
             caption: draft.caption,
@@ -600,14 +650,7 @@ export function PostEditor({
       case "save_version":
         run(
           async () => {
-            await savePostDraft({
-              postId: post.id,
-              title: draft.title,
-              script: draft.script,
-              recording_notes: draft.recording_notes,
-              caption: draft.caption,
-              networks: draft.networks,
-            });
+            await saveActual();
             return saveVersion({ postId: post.id, context: { trigger: "manual_save" } });
           },
           "Version guardada.",

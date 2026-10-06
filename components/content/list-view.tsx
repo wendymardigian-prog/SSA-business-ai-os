@@ -4,7 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
 import type { ContentPostStatus } from "@/lib/types/database";
+import type { TaxonomyTag } from "@/lib/content/taxonomy";
 import { NetworkBadges } from "./network-badge";
+import { PillarDot } from "./pillar-tag";
 
 /**
  * La vista lista (F21): la misma informacion que el tablero, pero ordenable y
@@ -15,6 +17,10 @@ import { NetworkBadges } from "./network-badge";
 export interface ListRow extends FilterablePost {
   format: string | null;
   authorName: string | null;
+  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  authorship: string | null;
+  /** El pilar, para reconocerla de un vistazo (F91). */
+  pillar: TaxonomyTag | null;
   /** La fecha mas temprana de sus redes. */
   firstAt: string | null;
   /** Si ya tiene el guion escrito (C15). */
@@ -106,7 +112,7 @@ export function ContentList({
                 <th className="py-2 pr-3 font-medium">Titulo</th>
                 <th className="py-2 pr-3 font-medium">Redes</th>
                 <th className="py-2 pr-3 font-medium">Estado</th>
-                <th className="hidden py-2 pr-3 font-medium sm:table-cell">Copy</th>
+                <th className="hidden py-2 pr-3 font-medium sm:table-cell">Guion</th>
                 <th className="hidden py-2 pr-3 font-medium sm:table-cell">Fecha</th>
                 <th className="hidden py-2 font-medium md:table-cell">Autor</th>
               </tr>
@@ -127,6 +133,7 @@ export function ContentList({
                     {row.format && (
                       <span className="ml-2 text-xs text-muted-foreground">{row.format}</span>
                     )}
+                    {row.pillar && <PillarDot tag={row.pillar} />}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
                     {row.isIdea ? <span>—</span> : <NetworkBadges platforms={row.platforms} />}
@@ -158,7 +165,7 @@ export function ContentList({
                       : "Sin fecha"}
                   </td>
                   <td className="hidden py-2 text-xs text-muted-foreground md:table-cell">
-                    {row.authorName ?? "—"}
+                    {row.authorship ?? row.authorName ?? "—"}
                   </td>
                 </tr>
               ))}

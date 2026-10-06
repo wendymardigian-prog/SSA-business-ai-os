@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { createIdea, createPost, updateIdea } from "@/lib/actions/content";
-import { FORMAT_SUGGESTIONS } from "@/lib/content/ideas";
 import { ContentDialog, DialogField, fieldInput } from "./dialog";
+import { ClassificationFields, FormatField, type TaxonomyOptions } from "./classification-fields";
 import { NetworkBadge } from "./network-badge";
 
 /**
@@ -26,33 +26,6 @@ export interface CreateDialogsProps {
   copywriter: { available: boolean; reason?: string };
 }
 
-function FormatField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <DialogField label="Formato">
-      <>
-        <input
-          list="formatos-de-contenido"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Reel"
-          className={fieldInput}
-        />
-        <datalist id="formatos-de-contenido">
-          {FORMAT_SUGGESTIONS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </>
-    </DialogField>
-  );
-}
-
 // ── Nueva idea ────────────────────────────────────────────────────────────
 
 const EMPTY_IDEA = {
@@ -60,16 +33,25 @@ const EMPTY_IDEA = {
   content: "",
   format: "",
   reference: "",
+  platforms: [] as string[],
+  pillarId: "",
+  offerId: "",
+  funnelStage: "",
 };
 
 export function IdeaDialog({
   /** Con idea, edita; sin idea, crea. */
   idea,
   canApprove,
+  platforms,
+  taxonomy,
   onClose,
 }: {
   idea?: (typeof EMPTY_IDEA & { id: string }) | null;
   canApprove: boolean;
+  /** Las redes conectadas, para elegir a cuales apunta (F91). */
+  platforms: string[];
+  taxonomy: TaxonomyOptions;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -77,13 +59,23 @@ export function IdeaDialog({
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState(idea ?? EMPTY_IDEA);
 
-  const set = (key: keyof typeof EMPTY_IDEA) => (v: string) =>
+  const set = (key: "title" | "content") => (v: string) =>
     setValues((prev) => ({ ...prev, [key]: v }));
 
   function save() {
     setError(null);
     start(async () => {
-      const result = idea ? await updateIdea(idea.id, values) : await createIdea(values);
+      const input = {
+        title: values.title,
+        content: values.content,
+        format: values.format,
+        reference: values.reference,
+        platforms: values.platforms,
+        pillar_id: values.pillarId || null,
+        offer_id: values.offerId || null,
+        funnel_stage: values.funnelStage || null,
+      };
+      const result = idea ? await updateIdea(idea.id, input) : await createIdea(input);
       if (!result.ok) return setError(result.error);
       onClose();
       router.refresh();
@@ -145,17 +137,31 @@ export function IdeaDialog({
         />
       </DialogField>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormatField value={values.format} onChange={set("format")} />
-        <DialogField label="Referencia" hint="Un link o de dónde salió.">
-          <input
-            value={values.reference}
-            onChange={(e) => set("reference")(e.target.value)}
-            placeholder="https://…"
-            className={fieldInput}
-          />
-        </DialogField>
-      </div>
+      <ClassificationFields
+        value={{
+          format: values.format,
+          pillarId: values.pillarId,
+          offerId: values.offerId,
+          funnelStage: values.funnelStage,
+          reference: values.reference,
+        }}
+        onChange={(patch) =>
+          setValues((prev) => ({
+            ...prev,
+            ...(patch.format !== undefined ? { format: patch.format } : {}),
+            ...(patch.pillarId !== undefined ? { pillarId: patch.pillarId } : {}),
+            ...(patch.offerId !== undefined ? { offerId: patch.offerId } : {}),
+            ...(patch.funnelStage !== undefined ? { funnelStage: patch.funnelStage } : {}),
+            ...(patch.reference !== undefined ? { reference: patch.reference } : {}),
+          }))
+        }
+        taxonomy={taxonomy}
+        platforms={{
+          available: platforms,
+          selected: values.platforms,
+          onChange: (next) => setValues((prev) => ({ ...prev, platforms: next })),
+        }}
+      />
     </ContentDialog>
   );
 }

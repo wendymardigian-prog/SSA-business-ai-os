@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
+import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
+import { cleanClassification, pickInheritedClassification } from "@/lib/content/classification";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
@@ -65,6 +67,10 @@ export async function createIdea(input: IdeaInput): Promise<ContentActionResult<
   if (!checked.ok) return checked;
 
   const { workspace, user, supabase } = await contentContext();
+
+  // El pilar y la oferta tienen que ser de este negocio y estar vigentes.
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, checked.idea);
+  if (!refs.ok) return refs;
 
   // Al final de la columna. Se lee el maximo en vez de contar filas: contar da
   // el numero equivocado apenas alguien reordena.
@@ -211,7 +217,7 @@ export async function updateIdea(
 
   const { data: idea } = await supabase
     .from("content_ideas")
-    .select("id, status, created_by")
+    .select("id, status, created_by, pillar_id, offer_id")
     .eq("id", ideaId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -220,6 +226,10 @@ export async function updateIdea(
   if (idea.status !== "nueva") {
     return { ok: false, error: "Esa idea ya se decidio: lo que se edita ahora es el post." };
   }
+
+  // Un pilar archivado despues de elegirlo se puede conservar; uno nuevo, no.
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, checked.idea, idea);
+  if (!refs.ok) return refs;
 
   const { error } = await supabase
     .from("content_ideas")
@@ -276,6 +286,11 @@ export interface NewPostInput {
   format?: string | null;
   ideaId?: string | null;
   platforms?: string[];
+  /** Clasificacion (F91). Si hay idea de origen y no se manda, se hereda de ella. */
+  offer_id?: string | null;
+  pillar_id?: string | null;
+  funnel_stage?: string | null;
+  reference?: string | null;
 }
 
 export async function createPost(
@@ -285,6 +300,31 @@ export async function createPost(
   if (!title) return { ok: false, error: "La pieza necesita un titulo" };
 
   const { workspace, user, supabase } = await contentContext();
+
+  // Una pieza vinculada a una idea hereda su clasificacion (F91), salvo lo que
+  // se haya elegido a mano. Las redes no: las elige quien crea la pieza.
+  const idea = input.ideaId
+    ? (
+        await supabase
+          .from("content_ideas")
+          .select("format, reference, offer_id, pillar_id, funnel_stage")
+          .eq("id", input.ideaId)
+          .eq("workspace_id", workspace.id)
+          .maybeSingle()
+      ).data
+    : null;
+
+  const own = cleanClassification(input);
+  const classification = pickInheritedClassification(idea, {
+    format: own.format,
+    offer_id: own.offer_id,
+    pillar_id: own.pillar_id,
+    funnel_stage: own.funnel_stage,
+    reference: own.reference,
+  });
+
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, classification);
+  if (!refs.ok) return refs;
 
   const { data: last } = await supabase
     .from("content_posts")
@@ -312,7 +352,11 @@ export async function createPost(
       workspace_id: workspace.id,
       idea_id: input.ideaId ?? null,
       title,
-      format: input.format ?? null,
+      format: classification.format,
+      offer_id: classification.offer_id,
+      pillar_id: classification.pillar_id,
+      funnel_stage: classification.funnel_stage,
+      reference: classification.reference,
       networks,
       created_by: user.id,
       position: (last?.position ?? 0) + 10,
@@ -529,6 +573,11 @@ export async function savePostDraft(input: {
   postId: string;
   title?: string;
   format?: string | null;
+  /** Clasificacion (F91). Solo se escribe lo que viene. */
+  offer_id?: string | null;
+  pillar_id?: string | null;
+  funnel_stage?: string | null;
+  reference?: string | null;
   /** El guion (F90). */
   script?: string | null;
   recording_notes?: string | null;
@@ -543,7 +592,7 @@ export async function savePostDraft(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status")
+    .select("id, updated_at, status, pillar_id, offer_id")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -557,6 +606,26 @@ export async function savePostDraft(input: {
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.format !== undefined) patch.format = input.format;
+
+  const classification = cleanClassification(input);
+  if (input.offer_id !== undefined) patch.offer_id = classification.offer_id;
+  if (input.pillar_id !== undefined) patch.pillar_id = classification.pillar_id;
+  if (input.funnel_stage !== undefined) patch.funnel_stage = classification.funnel_stage;
+  if (input.reference !== undefined) patch.reference = classification.reference;
+
+  if (input.offer_id !== undefined || input.pillar_id !== undefined) {
+    const refs = await checkTaxonomyRefs(
+      supabase,
+      workspace.id,
+      {
+        pillar_id: input.pillar_id !== undefined ? classification.pillar_id : null,
+        offer_id: input.offer_id !== undefined ? classification.offer_id : null,
+      },
+      post,
+    );
+    if (!refs.ok) return refs;
+  }
+
   if (input.script !== undefined) patch.script = input.script;
   if (input.recording_notes !== undefined) patch.recording_notes = input.recording_notes;
   if (input.caption !== undefined) patch.caption = input.caption;

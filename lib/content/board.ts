@@ -7,7 +7,8 @@
  * alguien recargue.
  */
 
-import type { ContentIdeaStatus, ContentPostStatus, SocialPostStatus } from "@/lib/types/database";
+import type { ContentIdeaStatus, ContentPostStatus, FunnelStage, SocialPostStatus } from "@/lib/types/database";
+import type { TaxonomyTag } from "./taxonomy";
 import {
   BOARD_COLUMNS,
   COLUMN_LABELS,
@@ -28,8 +29,16 @@ export interface BoardIdea {
   /** El texto unico de la idea (F90): la tarjeta muestra su comienzo (C13). */
   content: string | null;
   reference: string | null;
+  /** Clasificacion (F91). */
+  platforms: string[];
+  pillar: TaxonomyTag | null;
+  offer: TaxonomyTag | null;
+  funnelStage: FunnelStage | null;
   createdAt: string | null;
+  updatedAt: string | null;
   authorName: string | null;
+  /** "Wendy · creada el 3 oct · editada el 5 oct", ya armada (F91). */
+  authorship: string | null;
 }
 
 export interface BoardNetwork {
@@ -56,8 +65,14 @@ export interface BoardPost {
   materialStatus: string;
   /** Si el copywriter esta escribiendo esta pieza ahora (E6). */
   copyStatus: "idle" | "generating" | "failed";
+  /** Clasificacion (F91). */
+  pillar: TaxonomyTag | null;
+  offer: TaxonomyTag | null;
+  funnelStage: FunnelStage | null;
   createdAt: string | null;
+  updatedAt: string | null;
   authorName: string | null;
+  authorship: string | null;
 }
 
 export type BoardCard = BoardIdea | BoardPost;

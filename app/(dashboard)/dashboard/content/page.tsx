@@ -8,6 +8,9 @@ import { parseContentFilters } from "@/lib/content/filters";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import type { BoardIdea, BoardPost } from "@/lib/content/board";
+import { authorshipLine } from "@/lib/content/classification";
+import { tagFor } from "@/lib/content/taxonomy";
+import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -30,16 +33,18 @@ export default async function ContentPage({
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
 
-  const [ideasRes, postsRes, publicationsRes, aiProviders] = await Promise.all([
+  const timeZone = workspace.timezone || "America/Costa_Rica";
+
+  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy] = await Promise.all([
     supabase
       .from("content_ideas")
-      .select("id, title, content, format, reference, status, created_by, position, created_at")
+      .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .eq("status", "nueva")
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, created_at")
+      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -49,6 +54,9 @@ export default async function ContentPage({
       .eq("workspace_id", workspace.id)
       .not("content_post_id", "is", null),
     canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+    // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
+    // mostrando aunque ya no se ofrezca en el selector (F89).
+    loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -76,8 +84,19 @@ export default async function ContentPage({
     position: idea.position,
     content: idea.content,
     reference: idea.reference,
+    platforms: idea.platforms ?? [],
+    pillar: tagFor(taxonomy.pillars, idea.pillar_id),
+    offer: tagFor(taxonomy.offers, idea.offer_id),
+    funnelStage: idea.funnel_stage,
     createdAt: idea.created_at,
+    updatedAt: idea.updated_at,
     authorName: idea.created_by ? (authorNames.get(idea.created_by) ?? null) : null,
+    authorship: authorshipLine({
+      authorName: idea.created_by ? (authorNames.get(idea.created_by) ?? null) : null,
+      createdAt: idea.created_at,
+      updatedAt: idea.updated_at,
+      timeZone,
+    }),
   }));
 
   const posts: BoardPost[] = (postsRes.data ?? []).map((post) => {
@@ -125,8 +144,18 @@ export default async function ContentPage({
       copyFromAi: post.copy_source !== "manual",
       materialStatus: post.material_status,
       copyStatus: post.copy_status,
+      pillar: tagFor(taxonomy.pillars, post.pillar_id),
+      offer: tagFor(taxonomy.offers, post.offer_id),
+      funnelStage: post.funnel_stage,
       createdAt: post.created_at,
+      updatedAt: post.updated_at,
       authorName: post.created_by ? (authorNames.get(post.created_by) ?? null) : null,
+      authorship: authorshipLine({
+        authorName: post.created_by ? (authorNames.get(post.created_by) ?? null) : null,
+        createdAt: post.created_at,
+        updatedAt: post.updated_at,
+        timeZone,
+      }),
     };
   });
 
@@ -151,6 +180,7 @@ export default async function ContentPage({
     canCreate: true,
     ideas: ideas.map((i) => ({ id: i.id, title: i.title })),
     platforms,
+    taxonomy,
     copywriter,
     canApprove,
   };
@@ -166,6 +196,8 @@ export default async function ContentPage({
       platforms: [],
       format: idea.format,
       authorName: idea.authorName,
+      authorship: idea.authorship,
+      pillar: idea.pillar,
       firstAt: null,
       hasCopy: false,
       isIdea: true,
@@ -178,6 +210,8 @@ export default async function ContentPage({
       platforms: post.networks.map((n) => n.platform),
       format: post.format,
       authorName: post.authorName,
+      authorship: post.authorship,
+      pillar: post.pillar,
       firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
       hasCopy: post.hasCopy,
     })),
@@ -187,7 +221,6 @@ export default async function ContentPage({
     ...new Set(listRows.map((r) => r.firstAt?.slice(0, 7)).filter(Boolean) as string[]),
   ].sort();
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
   const month =
     filters.month ??
     new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit" })
@@ -211,6 +244,7 @@ export default async function ContentPage({
           currentUserId={user.id}
           aiAvailable={aiProviders.length > 0}
           platforms={platforms}
+          taxonomy={taxonomy}
         />
       )}
 

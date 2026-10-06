@@ -6,7 +6,10 @@ import { Sparkles } from "lucide-react";
 import { approveIdea, discardIdea } from "@/lib/actions/content";
 import { ideaActions } from "@/lib/content/ideas";
 import type { BoardIdea } from "@/lib/content/board";
+import { funnelStageInfo } from "@/lib/content/classification";
 import { ContentDialog, fieldInput } from "./dialog";
+import { NetworkBadges } from "./network-badge";
+import { PillarDot } from "./pillar-tag";
 
 /**
  * El detalle de una idea (C3).
@@ -159,6 +162,19 @@ export function IdeaDetailDialog({
           {idea.content ? <span className="whitespace-pre-wrap">{idea.content}</span> : null}
         </Row>
         <Row label="Formato">{idea.format}</Row>
+        <Row label="Pilar">{idea.pillar ? <PillarDot tag={idea.pillar} className="ml-0 text-sm text-foreground" /> : null}</Row>
+        <Row label="Oferta">{idea.offer?.name}</Row>
+        <Row label="Etapa">
+          {idea.funnelStage ? (
+            <span>
+              {funnelStageInfo(idea.funnelStage)?.label}
+              <span className="block text-[11px] text-muted-foreground">
+                {funnelStageInfo(idea.funnelStage)?.description}
+              </span>
+            </span>
+          ) : null}
+        </Row>
+        <Row label="Redes">{idea.platforms.length > 0 ? <NetworkBadges platforms={idea.platforms} /> : null}</Row>
         <Row label="Referencia">
           {idea.reference ? (
             idea.reference.startsWith("http") ? (
@@ -175,11 +191,7 @@ export function IdeaDetailDialog({
             )
           ) : null}
         </Row>
-        <Row label="Propuesta por">
-          {[idea.authorName, idea.createdAt ? fecha(idea.createdAt) : null]
-            .filter(Boolean)
-            .join(" · ") || null}
-        </Row>
+        <Row label="Autoría">{idea.authorship}</Row>
       </dl>
 
       {canApprove && (
@@ -226,8 +238,4 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="min-w-0">{children || <span className="text-muted-foreground">—</span>}</dd>
     </>
   );
-}
-
-function fecha(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
 }

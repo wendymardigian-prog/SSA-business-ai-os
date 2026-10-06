@@ -14,16 +14,29 @@
  */
 
 import type { ContentIdeaStatus } from "@/lib/types/database";
+import { cleanClassification, type Classification } from "./classification";
 
+/** Lo que manda el navegador al crear o editar una idea. */
 export interface IdeaInput {
   title: string;
   /** El texto unico de la idea: hook, angulo y notas juntos (F90). */
   content?: string | null;
   format?: string | null;
   reference?: string | null;
+  /** Clasificacion (F91): redes a las que apunta, oferta, pilar y etapa. */
+  platforms?: string[];
+  offer_id?: string | null;
+  pillar_id?: string | null;
+  funnel_stage?: string | null;
 }
 
-export type IdeaValidation = { ok: true; idea: IdeaInput } | { ok: false; error: string };
+/** Lo que se escribe en la fila, ya limpio. */
+export interface IdeaWrite extends Classification {
+  title: string;
+  content: string | null;
+}
+
+export type IdeaValidation = { ok: true; idea: IdeaWrite } | { ok: false; error: string };
 
 /** El titulo es lo unico obligatorio: una idea sin titulo no se puede ni leer. */
 export function validateIdea(input: IdeaInput): IdeaValidation {
@@ -33,18 +46,14 @@ export function validateIdea(input: IdeaInput): IdeaValidation {
     return { ok: false, error: "El titulo es muy largo: maximo 200 caracteres" };
   }
 
-  const clean = (value: string | null | undefined) => {
-    const trimmed = (value ?? "").trim();
-    return trimmed === "" ? null : trimmed;
-  };
+  const content = (input.content ?? "").trim();
 
   return {
     ok: true,
     idea: {
       title,
-      content: clean(input.content),
-      format: clean(input.format),
-      reference: clean(input.reference),
+      content: content === "" ? null : content,
+      ...cleanClassification(input),
     },
   };
 }

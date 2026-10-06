@@ -11,6 +11,7 @@ import {
   nextColor,
   normalizeName,
   selectableItems,
+  tagFor,
   type TaxonomyItem,
 } from "./taxonomy";
 
@@ -164,5 +165,22 @@ describe("groupByTaxonomy (F89: lo que no tiene pilar no queda fuera de los cont
 
   it("sin ninguna fila, no inventa un grupo 'Sin pilar' vacio", () => {
     expect(groupByTaxonomy([], () => null, pillars, NO_PILLAR_LABEL)).toEqual([]);
+  });
+});
+
+describe("tagFor", () => {
+  const items: TaxonomyItem[] = [
+    { id: "a", name: "Educativo", archivedAt: null, color: "#10b981" },
+    { id: "z", name: "Viejo", archivedAt: "2026-10-01T00:00:00Z" },
+  ];
+
+  it("devuelve nombre, color y si esta archivado", () => {
+    expect(tagFor(items, "a")).toEqual({ id: "a", name: "Educativo", color: "#10b981", archived: false });
+    expect(tagFor(items, "z")).toEqual({ id: "z", name: "Viejo", color: null, archived: true });
+  });
+
+  it("sin id o con un id que ya no existe es null, no un hueco", () => {
+    expect(tagFor(items, null)).toBeNull();
+    expect(tagFor(items, "x")).toBeNull();
   });
 });

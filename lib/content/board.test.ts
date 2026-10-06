@@ -22,8 +22,14 @@ const idea = (over: Partial<BoardIdea> = {}): BoardIdea => ({
   position: 10,
   content: null,
   reference: null,
+  platforms: [],
+  pillar: null,
+  offer: null,
+  funnelStage: null,
   createdAt: null,
+  updatedAt: null,
   authorName: null,
+  authorship: null,
   ...over,
 });
 
@@ -41,8 +47,13 @@ const post = (over: Partial<BoardPost> = {}): BoardPost => ({
   copyFromAi: false,
   materialStatus: "pendiente",
   copyStatus: "idle",
+  pillar: null,
+  offer: null,
+  funnelStage: null,
   createdAt: null,
+  updatedAt: null,
   authorName: null,
+  authorship: null,
   ...over,
 });
 
