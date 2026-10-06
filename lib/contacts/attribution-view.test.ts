@@ -21,6 +21,14 @@ const row = (over: Partial<TouchRow> = {}): TouchRow => ({
   ...over,
 });
 
+describe("pieceHref (Contenido v3)", () => {
+  it("abre la pieza en el drawer del tablero, no en la ruta vieja que solo redirige", () => {
+    expect(pieceHref("a4e752e4-f5ca-4891-86a4-b4257c06f6a0")).toBe(
+      "/dashboard/content?piece=a4e752e4-f5ca-4891-86a4-b4257c06f6a0",
+    );
+  });
+});
+
 describe("la fecha corta (F88)", () => {
   it("se dice como se diría: '12 sep'", () => {
     expect(shortDate("2026-09-12T18:00:00Z")).toBe("12 sep");

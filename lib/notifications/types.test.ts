@@ -58,6 +58,18 @@ describe("linkFor", () => {
   });
 });
 
+describe("linkFor para una pieza de contenido (Contenido v3)", () => {
+  it("abre la pieza en el drawer del tablero, no en la ruta vieja que solo redirige", () => {
+    expect(linkFor("content_post", "a4e752e4-f5ca-4891-86a4-b4257c06f6a0")).toBe(
+      "/dashboard/content?piece=a4e752e4-f5ca-4891-86a4-b4257c06f6a0",
+    );
+  });
+
+  it("sin id lleva al tablero", () => {
+    expect(linkFor("content_post", null)).toBe("/dashboard/content");
+  });
+});
+
 describe("relativeTime", () => {
   const ahora = new Date("2026-09-10T12:00:00Z");
   const hace = (ms: number) => new Date(ahora.getTime() - ms).toISOString();

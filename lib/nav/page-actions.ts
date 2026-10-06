@@ -104,10 +104,6 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip:
       "De la idea a la publicacion: el guion, el caption, la media y en que redes sale cada pieza.",
   },
-  "/dashboard/content/new": {
-    title: "Nueva pieza",
-    tooltip: "Una idea o una pieza nueva. Lo minimo para no perderla; el resto se completa despues.",
-  },
   "/dashboard/social": {
     title: "Social",
     tooltip: "Tu perfil de cada red y sus publicaciones, con las metricas que la red no muestra.",
