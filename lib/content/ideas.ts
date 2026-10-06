@@ -6,21 +6,21 @@
  * originar varias piezas (el mismo angulo para Instagram y para YouTube, o la
  * misma idea retomada meses despues).
  *
- * Lo que hay aca es la decision pura: que campos pasan de la idea al post y
- * que queda pendiente. Escribir las dos filas en una sola transaccion es de la
- * Server Action.
+ * Lo que hay aca es la validacion de la idea y que botones se ofrecen. Que
+ * campos pasan de la idea a la pieza lo decide `approve_content_idea_v2` (la
+ * funcion SQL), que escribe las dos filas en una sola transaccion: el guion y
+ * las notas de grabacion arrancan VACIOS, porque el texto de la idea es
+ * contexto y no el guion.
  */
 
 import type { ContentIdeaStatus } from "@/lib/types/database";
 
 export interface IdeaInput {
   title: string;
-  hook?: string | null;
-  angle?: string | null;
+  /** El texto unico de la idea: hook, angulo y notas juntos (F90). */
+  content?: string | null;
   format?: string | null;
-  pillar?: string | null;
   reference?: string | null;
-  notes?: string | null;
 }
 
 export type IdeaValidation = { ok: true; idea: IdeaInput } | { ok: false; error: string };
@@ -42,57 +42,27 @@ export function validateIdea(input: IdeaInput): IdeaValidation {
     ok: true,
     idea: {
       title,
-      hook: clean(input.hook),
-      angle: clean(input.angle),
+      content: clean(input.content),
       format: clean(input.format),
-      pillar: clean(input.pillar),
       reference: clean(input.reference),
-      notes: clean(input.notes),
     },
   };
-}
-
-export interface ApprovedIdea {
-  id: string;
-  title: string;
-  hook: string | null;
-  angle: string | null;
-  format: string | null;
-  notes: string | null;
-  status: ContentIdeaStatus;
-}
-
-export interface DraftFromIdea {
-  idea_id: string;
-  title: string;
-  format: string | null;
-  /** El copy arranca VACIO: el hook de la idea es una nota, no el guion. */
-  copy: { hook: string; body: string; cta: string; recording_notes: string };
-  caption: null;
 }
 
 /**
- * El post que sale de aprobar una idea.
+ * El comienzo del texto de una idea, para la tarjeta del tablero (C13).
  *
- * El hook de la idea se copia al hook del copy porque es lo mismo: la frase
- * con la que arranca. El resto del guion queda vacio, y lo escribe una persona
- * o la IA (F29). El caption no se adivina.
+ * La primera linea con algo escrito, recortada a `max` caracteres. Antes la
+ * tarjeta mostraba el hook entre comillas; con el texto unico (F90) el
+ * comienzo del texto cumple ese papel: es de lo que uno se acuerda.
  */
-export function draftFromIdea(idea: ApprovedIdea): DraftFromIdea {
-  return {
-    idea_id: idea.id,
-    title: idea.title,
-    format: idea.format,
-    copy: {
-      hook: idea.hook ?? "",
-      body: "",
-      cta: "",
-      // El angulo y las notas de la idea son contexto para grabar: se dejan a
-      // mano en vez de perderse al aprobar.
-      recording_notes: [idea.angle, idea.notes].filter(Boolean).join("\n\n"),
-    },
-    caption: null,
-  };
+export function contentExcerpt(content: string | null | undefined, max = 110): string | null {
+  const first = (content ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "");
+  if (!first) return null;
+  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
 }
 
 export type IdeaAction = "approve" | "approve_and_generate" | "discard";

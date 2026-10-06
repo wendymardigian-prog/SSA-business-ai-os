@@ -11,6 +11,8 @@
  * IA. Restaurar tambien crea una version nueva: el historial no se reescribe.
  */
 
+import { recordingNotesFromLegacyCopy, scriptFromLegacyCopy } from "./legacy";
+
 export type VersionReason =
   | "status_change"
   | "manual_save"
@@ -58,16 +60,67 @@ export function versionReasonFor(context: SaveContext): VersionReason | null {
 export interface PostSnapshot {
   title: string;
   format: string | null;
+  /** El guion (F90). */
+  script: string | null;
+  recording_notes: string | null;
+  caption: string | null;
+  networks: unknown[];
+  media: unknown[];
+}
+
+/**
+ * Una version guardada ANTES de la v3: el texto vive en `copy`
+ * ({ hook, body, cta, recording_notes }). No se migra: el historial no se
+ * reescribe. Se lee con `normalizeSnapshot`.
+ */
+export interface LegacyPostSnapshot {
+  title: string;
+  format: string | null;
   copy: Record<string, unknown>;
   caption: string | null;
   networks: unknown[];
   media: unknown[];
 }
 
+/** Lo que puede haber guardado en una version: la forma nueva o la vieja. */
+export type StoredSnapshot = PostSnapshot | LegacyPostSnapshot;
+
+/**
+ * Lleva cualquier version guardada a la forma nueva (F90).
+ *
+ * Una version con `script` o `recording_notes` ya es nueva. Una sin ninguna
+ * de las dos y con `copy` es vieja, y su guion se arma igual que lo hizo el
+ * backfill de la 00117. Se usa al comparar (para no marcar como cambio algo
+ * que es solo la forma) y al restaurar (para escribir `script` y NUNCA
+ * `copy`).
+ */
+export function normalizeSnapshot(raw: StoredSnapshot): PostSnapshot {
+  const base = {
+    title: raw.title,
+    format: raw.format ?? null,
+    caption: raw.caption ?? null,
+    networks: Array.isArray(raw.networks) ? raw.networks : [],
+    media: Array.isArray(raw.media) ? raw.media : [],
+  };
+
+  const isNew = "script" in raw || "recording_notes" in raw;
+  if (isNew) {
+    const next = raw as PostSnapshot;
+    return { ...base, script: next.script ?? null, recording_notes: next.recording_notes ?? null };
+  }
+
+  const legacy = raw as LegacyPostSnapshot;
+  return {
+    ...base,
+    script: scriptFromLegacyCopy(legacy.copy),
+    recording_notes: recordingNotesFromLegacyCopy(legacy.copy),
+  };
+}
+
 export interface StoredVersion {
   id: string;
   version_no: number;
-  snapshot: PostSnapshot;
+  snapshot: StoredSnapshot;
   author_kind: "human" | "ai" | "system";
   author_id: string | null;
   reason: VersionReason;
@@ -106,10 +159,8 @@ export interface FieldDiff {
 const FIELD_LABELS: Record<string, string> = {
   title: "Titulo",
   format: "Formato",
-  "copy.hook": "Hook",
-  "copy.body": "Desarrollo",
-  "copy.cta": "Cierre / CTA",
-  "copy.recording_notes": "Notas de grabacion",
+  script: "Guion",
+  recording_notes: "Notas de grabacion",
   caption: "Caption",
 };
 
@@ -126,16 +177,19 @@ const text = (value: unknown): string => {
  * un diff de JSON que no le dice nada a nadie. Para esos alcanza con decir
  * que cambiaron.
  */
-export function compareVersions(before: PostSnapshot, after: PostSnapshot): FieldDiff[] {
+export function compareVersions(rawBefore: StoredSnapshot, rawAfter: StoredSnapshot): FieldDiff[] {
   const diffs: FieldDiff[] = [];
+
+  // Las dos a la forma nueva: comparar una vieja contra una nueva no puede
+  // marcar "cambio" solo porque una guarda `copy` y la otra `script`.
+  const before = normalizeSnapshot(rawBefore);
+  const after = normalizeSnapshot(rawAfter);
 
   const pairs: Array<[string, unknown, unknown]> = [
     ["title", before.title, after.title],
     ["format", before.format, after.format],
-    ["copy.hook", before.copy?.hook, after.copy?.hook],
-    ["copy.body", before.copy?.body, after.copy?.body],
-    ["copy.cta", before.copy?.cta, after.copy?.cta],
-    ["copy.recording_notes", before.copy?.recording_notes, after.copy?.recording_notes],
+    ["script", before.script, after.script],
+    ["recording_notes", before.recording_notes, after.recording_notes],
     ["caption", before.caption, after.caption],
   ];
 

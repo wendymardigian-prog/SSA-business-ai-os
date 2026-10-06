@@ -13,7 +13,7 @@ import { MediaUploader } from "@/components/content/media-uploader";
 import { VersionHistory } from "@/components/content/version-history";
 import { editorActions, summarizeNetwork, type EditorPermissions } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
-import { findUppercaseWords, type AutomationRule } from "@/lib/content/keywords";
+import { findScriptKeywords, type AutomationRule } from "@/lib/content/keywords";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import type { ExistingPublication } from "@/lib/content/schedule";
 import type { MediaEntry } from "@/lib/content/media";
@@ -29,7 +29,7 @@ import { platformLabel } from "@/lib/platforms";
 /**
  * El editor de la pieza, en una sola pagina (F24).
  *
- * Orden de las secciones: Copy → Caption base → Media base → Redes. Es el
+ * Orden de las secciones: Guion → Caption base → Media base → Redes. Es el
  * orden en que se trabaja: primero que vas a decir, despues como lo contas,
  * despues con que, y al final donde sale.
  *
@@ -46,7 +46,10 @@ export interface EditorPost {
   idea: { id: string; title: string } | null;
   /** Si el copywriter está escribiendo esta pieza ahora (E6). */
   copyStatus: "idle" | "generating" | "failed";
-  copy: { hook?: string; body?: string; cta?: string; recording_notes?: string };
+  /** El guion completo para grabar (F90). */
+  script: string | null;
+  /** Instrucciones de produccion. */
+  recordingNotes: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: MediaEntry[];
@@ -94,7 +97,8 @@ export function PostEditor({
 
   const [draft, setDraft] = useState({
     title: post.title,
-    copy: { hook: "", body: "", cta: "", recording_notes: "", ...post.copy },
+    script: post.script ?? "",
+    recording_notes: post.recordingNotes ?? "",
     caption: post.caption ?? "",
     networks: post.networks,
   });
@@ -124,7 +128,8 @@ export function PostEditor({
       void savePostDraft({
         postId: post.id,
         title: draft.title,
-        copy: draft.copy,
+        script: draft.script,
+        recording_notes: draft.recording_notes,
         caption: draft.caption,
         networks: draft.networks,
         knownUpdatedAt: post.updatedAt,
@@ -186,11 +191,11 @@ export function PostEditor({
         .filter((rule) => rule.isActive)
         .flatMap((rule) => rule.keywords.map((k) => k.value.trim().toUpperCase())),
     );
-    return findUppercaseWords(draft.copy.cta ?? "").map((word) => ({
+    return findScriptKeywords(draft.script).map((word) => ({
       word,
       live: activas.has(word.toUpperCase()),
     }));
-  }, [draft.copy.cta, automations]);
+  }, [draft.script, automations]);
 
   /** Las redes conectadas que esta pieza todavía no tiene (C9). */
   const missingNetworks = connected.filter(
@@ -220,7 +225,8 @@ export function PostEditor({
     await savePostDraft({
       postId: post.id,
       title: draft.title,
-      copy: draft.copy,
+      script: draft.script,
+      recording_notes: draft.recording_notes,
       caption: draft.caption,
       networks: draft.networks,
     });
@@ -294,7 +300,7 @@ export function PostEditor({
         {/* ── Copy ── */}
         <section className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold">Copy · guion para grabar</h2>
+            <h2 className="text-sm font-semibold">Guion para grabar</h2>
             {post.aiUnreviewed && (
               <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-300">
                 ✦ Generado por el copywriter · revisalo antes de aprobar
@@ -309,19 +315,16 @@ export function PostEditor({
             </p>
           ) : (
             <>
-              {(["hook", "body", "cta", "recording_notes"] as const).map((field) => (
-                <Field key={field} label={COPY_LABELS[field]}>
-                  <textarea
-                    rows={field === "body" ? 8 : 2}
-                    value={draft.copy[field] ?? ""}
-                    onChange={(e) => edit("copy", { ...draft.copy, [field]: e.target.value })}
-                    disabled={!editable}
-                    className="w-full rounded-lg border border-border bg-background p-3 text-sm"
-                  />
-                  {/* Las palabras en mayúscula del CTA son las que el lead va
-                      a escribir: que se vean acá evita descubrir publicando
-                      que ninguna dispara nada (C11). */}
-                  {field === "cta" && detectedKeywords.length > 0 && (
+              <Field label="Guion">
+                <textarea
+                  rows={12}
+                  value={draft.script}
+                  onChange={(e) => edit("script", e.target.value)}
+                  disabled={!editable}
+                  placeholder="Lo que vas a decir frente a cámara, de principio a fin. El último párrafo es el cierre."
+                  className="w-full rounded-lg border border-border bg-background p-3 text-sm"
+                />
+                  {detectedKeywords.length > 0 && (
                     <span className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                       <span className="text-muted-foreground">Palabras clave detectadas:</span>
                       {detectedKeywords.map(({ word, live }) => (
@@ -344,8 +347,17 @@ export function PostEditor({
                       ))}
                     </span>
                   )}
-                </Field>
-              ))}
+              </Field>
+              <Field label="Notas de grabación">
+                <textarea
+                  rows={3}
+                  value={draft.recording_notes}
+                  onChange={(e) => edit("recording_notes", e.target.value)}
+                  disabled={!editable}
+                  placeholder="Tono, planos, qué mostrar. Es para quien graba, no sale publicado."
+                  className="w-full rounded-lg border border-border bg-background p-3 text-sm"
+                />
+              </Field>
 
               {/* Sin esto una pieza nunca pasa a "En producción": el estado
                   existía en la base y no había dónde tocarlo (C7). */}
@@ -527,7 +539,8 @@ export function PostEditor({
           current={{
             title: draft.title,
             format: post.format,
-            copy: draft.copy,
+            script: draft.script,
+            recording_notes: draft.recording_notes,
             caption: draft.caption,
             networks: draft.networks,
             media: post.media,
@@ -590,7 +603,8 @@ export function PostEditor({
             await savePostDraft({
               postId: post.id,
               title: draft.title,
-              copy: draft.copy,
+              script: draft.script,
+              recording_notes: draft.recording_notes,
               caption: draft.caption,
               networks: draft.networks,
             });
@@ -661,13 +675,6 @@ export function PostEditor({
     }
   }
 }
-
-const COPY_LABELS = {
-  hook: "Hook (la primera frase)",
-  body: "Desarrollo",
-  cta: "Cierre y llamado a la accion",
-  recording_notes: "Notas de grabacion",
-} as const;
 
 function Field({
   label,

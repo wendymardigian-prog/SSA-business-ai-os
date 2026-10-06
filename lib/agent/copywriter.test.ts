@@ -22,7 +22,8 @@ const POST_A = "post-a";
 const POST_B = "post-b";
 
 const SALIDA = {
-  copy: { hook: "Un hook", body: "El desarrollo", cta: "Comenta SISTEMA", recording_notes: "Vertical" },
+  script: "Un hook\n\nEl desarrollo\n\nComenta SISTEMA",
+  recording_notes: "Vertical",
   caption_base: "Un caption",
   captions: { instagram: "Para Instagram" },
 };
@@ -105,7 +106,7 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
           workspace_id: WS_A,
           title: "Detras de escena",
           format: "reel",
-          copy: {},
+          script: null,
           caption: null,
           networks: [{ platform: "instagram" }],
           idea_id: "idea-1",
@@ -115,14 +116,14 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
           workspace_id: WS_B,
           title: "Otro negocio",
           format: "reel",
-          copy: {},
+          script: null,
           caption: null,
           networks: [{ platform: "instagram" }],
           idea_id: null,
         },
       ],
       content_ideas: [
-        { id: "idea-1", title: "Por que perdes leads", hook: "Mi tasa paso de 40 a 90", angle: "Antes y despues", pillar: "Sistemas", reference: null },
+        { id: "idea-1", title: "Por que perdes leads", content: "Mi tasa paso de 40 a 90\n\nAntes y despues", reference: null },
       ],
       social_posts: [
         { workspace_id: WS_A, platform: "instagram", status: "published", caption: "El que mejor anduvo", engagement_d7: 90, published_at: haceDias(10), content_posts: { format: "reel" } },

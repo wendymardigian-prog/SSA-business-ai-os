@@ -9,7 +9,7 @@ import {
   movePostToColumn,
 } from "@/lib/actions/content";
 import { buildBoard, evaluateDrop, redistributionChip, type BoardCard, type BoardIdea, type BoardPost } from "@/lib/content/board";
-import { ideaActions } from "@/lib/content/ideas";
+import { contentExcerpt, ideaActions } from "@/lib/content/ideas";
 import { STATUS_LABELS, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import { NetworkBadge } from "./network-badge";
 import { IdeaDialog, NewPostDialog } from "./create-dialogs";
@@ -34,7 +34,6 @@ export function ContentKanban({
   currentUserId,
   aiAvailable,
   platforms,
-  pillars,
 }: {
   ideas: BoardIdea[];
   posts: BoardPost[];
@@ -44,7 +43,6 @@ export function ContentKanban({
   /** Las redes conectadas, para el modal de crear. */
   platforms: string[];
   /** Los pilares ya usados, para sugerirlos. */
-  pillars: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -195,7 +193,6 @@ export function ContentKanban({
 
       {dialog?.kind === "new-idea" && (
         <IdeaDialog
-          pillars={pillars}
           canApprove={perms.approve}
           onClose={() => setDialog(null)}
         />
@@ -203,17 +200,13 @@ export function ContentKanban({
 
       {dialog?.kind === "edit-idea" && selectedIdea && (
         <IdeaDialog
-          pillars={pillars}
           canApprove={perms.approve}
           idea={{
             id: selectedIdea.id,
             title: selectedIdea.title,
-            hook: selectedIdea.hook ?? "",
-            angle: selectedIdea.angle ?? "",
+            content: selectedIdea.content ?? "",
             format: selectedIdea.format ?? "",
-            pillar: selectedIdea.pillar ?? "",
             reference: selectedIdea.reference ?? "",
-            notes: selectedIdea.notes ?? "",
           }}
           onClose={() => setDialog(null)}
         />
@@ -273,8 +266,8 @@ function emptyHint(column: BoardColumn): string {
 /**
  * La tarjeta de una idea (C13).
  *
- * Lo que se ve es lo que hace falta para decidir sin abrirla: el formato y
- * el pilar, el hook entre comillas —que es de lo que uno se acuerda— y quién
+ * Lo que se ve es lo que hace falta para decidir sin abrirla: el formato, el
+ * comienzo del texto entre comillas —que es de lo que uno se acuerda— y quién
  * la propuso. El resto vive en el detalle.
  */
 function IdeaCard({
@@ -305,13 +298,14 @@ function IdeaCard({
             Idea
           </span>
           {idea.format && <span>{idea.format}</span>}
-          {idea.pillar && <span>· {idea.pillar}</span>}
         </span>
 
         <span className="mt-1.5 block text-sm font-medium">{idea.title}</span>
 
-        {idea.hook && (
-          <span className="mt-1 block text-xs italic text-muted-foreground">“{idea.hook}”</span>
+        {contentExcerpt(idea.content) && (
+          <span className="mt-1 block text-xs italic text-muted-foreground">
+            “{contentExcerpt(idea.content)}”
+          </span>
         )}
 
         <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -517,14 +511,12 @@ export function NewContentButtons({
   canCreate,
   ideas,
   platforms,
-  pillars,
   copywriter,
   canApprove,
 }: {
   canCreate: boolean;
   ideas: Array<{ id: string; title: string }>;
   platforms: string[];
-  pillars: string[];
   copywriter: { available: boolean; reason?: string };
   canApprove: boolean;
 }) {
@@ -553,7 +545,7 @@ export function NewContentButtons({
       </div>
 
       {dialog === "idea" && (
-        <IdeaDialog pillars={pillars} canApprove={canApprove} onClose={() => setDialog(null)} />
+        <IdeaDialog canApprove={canApprove} onClose={() => setDialog(null)} />
       )}
       {dialog === "post" && (
         <NewPostDialog

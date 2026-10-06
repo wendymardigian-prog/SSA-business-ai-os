@@ -252,9 +252,8 @@ export function buildCopywriterPrompt(context: CopywriterContext): string {
 export function checkGuardrails(output: CopyOutput, guardrails: Guardrails): string[] {
   const avisos: string[] = [];
   const todo = [
-    output.copy.hook,
-    output.copy.body,
-    output.copy.cta,
+    output.script,
+    output.recording_notes,
     output.caption_base,
     ...Object.values(output.captions ?? {}),
   ]

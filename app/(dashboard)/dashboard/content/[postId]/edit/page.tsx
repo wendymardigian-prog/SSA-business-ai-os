@@ -32,7 +32,7 @@ export default async function EditPostPage({
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, copy, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at, copy_status, idea_id",
+      "id, title, format, script, recording_notes, caption, networks, media, status, material_status, ai_unreviewed, created_by, updated_at, copy_status, idea_id",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -132,7 +132,8 @@ export default async function EditPostPage({
     format: post.format,
     idea: idea ? { id: idea.id, title: idea.title } : null,
     copyStatus: post.copy_status,
-    copy: (post.copy ?? {}) as EditorPost["copy"],
+    script: post.script,
+    recordingNotes: post.recording_notes,
     caption: post.caption,
     networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
     media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],

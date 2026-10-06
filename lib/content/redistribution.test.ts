@@ -53,7 +53,8 @@ describe("duplicar como variante", () => {
     idea_id: "i1",
     title: "Como cobrar",
     format: "reel",
-    copy: { hook: "Hola", body: "Cuerpo" },
+    script: "Hola\n\nCuerpo",
+    recording_notes: "Plano medio",
     caption: "Un caption",
     networks: [{ platform: "instagram", planned_at: "2026-10-01T15:00:00Z" }],
     media: ["archivo"],
@@ -71,16 +72,18 @@ describe("duplicar como variante", () => {
     // Heredarlas programaria dos piezas para el mismo momento sin pedirlo.
     const copia = duplicateAsVariant(source);
 
-    expect(copia.copy).toEqual(source.copy);
+    expect(copia.script).toBe(source.script);
+    expect(copia.recording_notes).toBe(source.recording_notes);
+    expect(copia).not.toHaveProperty("copy");
     expect(copia.media).toEqual(source.media);
     expect(copia.networks[0].planned_at).toBeNull();
   });
 
   it("la copia no comparte objetos con el original", () => {
     const copia = duplicateAsVariant(source);
-    (copia.copy as Record<string, unknown>).hook = "Cambiado";
+    copia.networks[0].platform = "cambiado";
 
-    expect(source.copy.hook).toBe("Hola");
+    expect(source.networks[0].platform).not.toBe("cambiado");
   });
 });
 

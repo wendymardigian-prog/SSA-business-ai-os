@@ -17,7 +17,8 @@ const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60000).toISOStrin
 const snapshot = (over: Partial<PostSnapshot> = {}): PostSnapshot => ({
   title: "Una pieza",
   format: "reel",
-  copy: { hook: "Hola", body: "Cuerpo", cta: "", recording_notes: "" },
+  script: "Hola\n\nCuerpo",
+  recording_notes: null,
   caption: "Un caption",
   networks: [],
   media: [],
@@ -100,14 +101,15 @@ describe("comparar dos versiones", () => {
     expect(diffs[0]).toMatchObject({ field: "title", before: "Una pieza", after: "Otro titulo" });
   });
 
-  it("entra en el copy, campo por campo", () => {
+  it("compara el guion y las notas de grabacion por separado", () => {
     const diffs = compareVersions(
       snapshot(),
-      snapshot({ copy: { hook: "Hola", body: "Otro cuerpo", cta: "Escribime", recording_notes: "" } }),
+      snapshot({ script: "Hola\n\nOtro cuerpo", recording_notes: "Plano medio" }),
     );
 
-    expect(diffs.map((d) => d.field)).toEqual(["copy.body", "copy.cta"]);
-    expect(diffs[0].label).toBe("Desarrollo");
+    expect(diffs.map((d) => d.field)).toEqual(["script", "recording_notes"]);
+    expect(diffs[0].label).toBe("Guion");
+    expect(diffs[1].label).toBe("Notas de grabacion");
   });
 
   it("de redes y media dice cuantas, no un diff de JSON", () => {

@@ -155,10 +155,10 @@ export function IdeaDetailDialog({
       }
     >
       <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-2 text-sm">
-        <Row label="Hook">{idea.hook ? `“${idea.hook}”` : null}</Row>
-        <Row label="Ángulo">{idea.angle}</Row>
+        <Row label="Idea">
+          {idea.content ? <span className="whitespace-pre-wrap">{idea.content}</span> : null}
+        </Row>
         <Row label="Formato">{idea.format}</Row>
-        <Row label="Pilar">{idea.pillar}</Row>
         <Row label="Referencia">
           {idea.reference ? (
             idea.reference.startsWith("http") ? (
@@ -175,7 +175,6 @@ export function IdeaDetailDialog({
             )
           ) : null}
         </Row>
-        <Row label="Notas">{idea.notes}</Row>
         <Row label="Propuesta por">
           {[idea.authorName, idea.createdAt ? fecha(idea.createdAt) : null]
             .filter(Boolean)
@@ -189,7 +188,7 @@ export function IdeaDetailDialog({
           <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
             <li>
               <b className="text-foreground">Aprobar:</b> se crea un post en Borrador con esta idea
-              vinculada. El copy y el caption quedan vacíos.
+              vinculada. El guion y el caption quedan vacíos.
             </li>
             <li>
               <b className="text-foreground">✦ Aprobar y producir copy:</b> además, el copywriter

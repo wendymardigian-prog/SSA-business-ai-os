@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { validateIdea, draftFromIdea, type IdeaInput } from "@/lib/content/ideas";
+import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
@@ -119,20 +119,19 @@ export async function approveIdea(
 
   const { data: idea, error: readError } = await supabase
     .from("content_ideas")
-    .select("id, title, hook, angle, format, notes, status")
+    .select("id, title, format, status")
     .eq("id", ideaId)
     .maybeSingle();
 
   if (readError || !idea) return { ok: false, error: "No encontre esa idea" };
   if (idea.status !== "nueva") return { ok: false, error: "Esa idea ya estaba decidida" };
 
-  const draft = draftFromIdea({ ...idea, status: idea.status });
-
-  const { data: postId, error } = await supabase.rpc("approve_content_idea", {
+  // La v2 hereda la clasificacion y las redes de la idea (F91); el guion y las
+  // notas de grabacion arrancan vacios.
+  const { data: postId, error } = await supabase.rpc("approve_content_idea_v2", {
     p_idea_id: ideaId,
-    p_title: draft.title,
-    p_format: draft.format,
-    p_copy: draft.copy,
+    p_title: idea.title,
+    p_format: idea.format,
   });
 
   if (error || !postId) {
@@ -530,7 +529,9 @@ export async function savePostDraft(input: {
   postId: string;
   title?: string;
   format?: string | null;
-  copy?: Record<string, unknown>;
+  /** El guion (F90). */
+  script?: string | null;
+  recording_notes?: string | null;
   caption?: string | null;
   networks?: unknown[];
   /** Para detectar que alguien mas lo edito mientras tanto. */
@@ -556,13 +557,14 @@ export async function savePostDraft(input: {
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.format !== undefined) patch.format = input.format;
-  if (input.copy !== undefined) patch.copy = input.copy;
+  if (input.script !== undefined) patch.script = input.script;
+  if (input.recording_notes !== undefined) patch.recording_notes = input.recording_notes;
   if (input.caption !== undefined) patch.caption = input.caption;
   if (input.networks !== undefined) patch.networks = input.networks;
 
-  // Editar a mano marca el copy como revisado: la advertencia de "generado
+  // Editar a mano marca el texto como revisado: la advertencia de "generado
   // con IA, revisalo" deja de tener sentido apenas alguien lo toca.
-  if (input.copy !== undefined) patch.ai_unreviewed = false;
+  if (input.script !== undefined || input.recording_notes !== undefined) patch.ai_unreviewed = false;
 
   if (Object.keys(patch).length === 0) {
     return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale, rescheduleWarnings: [] } };
@@ -688,7 +690,7 @@ export async function duplicatePostAsVariant(input: {
 
   const { data: source } = await supabase
     .from("content_posts")
-    .select("id, idea_id, title, format, copy, caption, networks, media")
+    .select("id, idea_id, title, format, script, recording_notes, caption, networks, media")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -700,7 +702,8 @@ export async function duplicatePostAsVariant(input: {
     idea_id: source.idea_id,
     title: source.title,
     format: source.format,
-    copy: (source.copy ?? {}) as Record<string, unknown>,
+    script: source.script ?? null,
+    recording_notes: source.recording_notes ?? null,
     caption: source.caption,
     networks: (Array.isArray(source.networks) ? source.networks : []) as never,
     media: Array.isArray(source.media) ? source.media : [],
@@ -714,7 +717,6 @@ export async function duplicatePostAsVariant(input: {
       ...variant,
       networks: variant.networks as never,
       media: variant.media as never,
-      copy: variant.copy as never,
     })
     .select("id")
     .maybeSingle();

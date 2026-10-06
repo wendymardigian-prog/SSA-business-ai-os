@@ -63,7 +63,8 @@ export interface DuplicateSource {
   idea_id: string | null;
   title: string;
   format: string | null;
-  copy: Record<string, unknown>;
+  script: string | null;
+  recording_notes: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: unknown[];
@@ -80,7 +81,8 @@ export function duplicateAsVariant(source: DuplicateSource): {
   idea_id: string | null;
   title: string;
   format: string | null;
-  copy: Record<string, unknown>;
+  script: string | null;
+  recording_notes: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: unknown[];
@@ -90,7 +92,8 @@ export function duplicateAsVariant(source: DuplicateSource): {
     idea_id: source.idea_id,
     title: `${source.title} (variante)`,
     format: source.format,
-    copy: { ...source.copy },
+    script: source.script,
+    recording_notes: source.recording_notes,
     caption: source.caption,
     networks: source.networks.map((n) => ({ ...n, planned_at: null })),
     media: [...source.media],

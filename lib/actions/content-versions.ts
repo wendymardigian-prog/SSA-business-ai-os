@@ -4,13 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeVersion } from "@/lib/content/save-version";
-import {
-  nextVersionNumber,
-  versionReasonFor,
-  versionsToPrune,
-  type PostSnapshot,
-  type SaveContext,
-} from "@/lib/content/versions";
+import { normalizeSnapshot, type SaveContext, type StoredSnapshot } from "@/lib/content/versions";
 
 /**
  * El historial de una pieza (F22).
@@ -86,14 +80,17 @@ export async function restoreVersion(input: {
   });
   if (!guardado.ok) return guardado;
 
-  const snapshot = version.snapshot as unknown as PostSnapshot;
+  // Una version vieja guarda `copy`; se lleva a la forma nueva y se escribe
+  // `script`. La columna `copy` NO se toca nunca mas (F90).
+  const snapshot = normalizeSnapshot(version.snapshot as unknown as StoredSnapshot);
 
   const { error } = await supabase
     .from("content_posts")
     .update({
       title: snapshot.title,
       format: snapshot.format,
-      copy: snapshot.copy as never,
+      script: snapshot.script,
+      recording_notes: snapshot.recording_notes,
       caption: snapshot.caption,
       networks: snapshot.networks as never,
       media: snapshot.media as never,

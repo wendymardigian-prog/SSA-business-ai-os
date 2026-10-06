@@ -96,7 +96,7 @@ export async function runCopywriter(
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, workspace_id, title, format, copy, caption, networks, idea_id")
+    .select("id, workspace_id, title, format, script, caption, networks, idea_id")
     .eq("id", input.postId)
     .eq("workspace_id", agent.workspace_id)
     .maybeSingle();
@@ -232,7 +232,7 @@ interface PostRow {
   workspace_id: string;
   title: string;
   format: string | null;
-  copy: unknown;
+  script: string | null;
   caption: string | null;
   networks: unknown;
   idea_id: string | null;
@@ -267,7 +267,7 @@ async function gatherContext(
     ? (
         await supabase
           .from("content_ideas")
-          .select("title, hook, angle, pillar, reference")
+          .select("title, content, reference")
           .eq("id", post.idea_id)
           .maybeSingle()
       ).data
@@ -343,15 +343,13 @@ async function gatherContext(
     output: { fragmentos: knowledge.length },
   });
 
-  const existingCopy = (post.copy ?? {}) as { hook?: string; body?: string; cta?: string };
-
   const request: CopyRequest = {
     idea,
     title: post.title,
     format: post.format,
     platforms: platforms.length > 0 ? platforms : [principal],
     brand: config.brand,
-    existingCopy: existingCopy.body ? existingCopy : null,
+    existingScript: post.script?.trim() ? post.script : null,
   };
 
   return {

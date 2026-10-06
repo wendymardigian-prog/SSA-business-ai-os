@@ -25,12 +25,9 @@ export interface BoardIdea {
   status: ContentIdeaStatus;
   createdBy: string | null;
   position: number;
-  /** Lo que hace util la tarjeta: el gancho es de lo que se acuerda uno (C13). */
-  hook: string | null;
-  angle: string | null;
-  pillar: string | null;
+  /** El texto unico de la idea (F90): la tarjeta muestra su comienzo (C13). */
+  content: string | null;
   reference: string | null;
-  notes: string | null;
   createdAt: string | null;
   authorName: string | null;
 }

@@ -22,8 +22,6 @@ export interface CreateDialogsProps {
   ideas: Array<{ id: string; title: string }>;
   /** Las redes conectadas del negocio. */
   platforms: string[];
-  /** Los pilares que ya se usaron, para sugerirlos. */
-  pillars: string[];
   /** Si el copywriter puede escribir al crear. */
   copywriter: { available: boolean; reason?: string };
 }
@@ -59,22 +57,17 @@ function FormatField({
 
 const EMPTY_IDEA = {
   title: "",
-  hook: "",
-  angle: "",
+  content: "",
   format: "",
-  pillar: "",
   reference: "",
-  notes: "",
 };
 
 export function IdeaDialog({
-  pillars,
   /** Con idea, edita; sin idea, crea. */
   idea,
   canApprove,
   onClose,
 }: {
-  pillars: string[];
   idea?: (typeof EMPTY_IDEA & { id: string }) | null;
   canApprove: boolean;
   onClose: () => void;
@@ -140,55 +133,29 @@ export function IdeaDialog({
         />
       </DialogField>
 
-      <DialogField label="Hook" hint="La frase con la que arranca.">
-        <input value={values.hook} onChange={(e) => set("hook")(e.target.value)} className={fieldInput} />
-      </DialogField>
-
-      <DialogField label="Ángulo" hint="Desde dónde se cuenta.">
+      <DialogField
+        label="Idea"
+        hint="Todo junto: con qué arranca, desde dónde se cuenta, notas. Escribilo como te salga."
+      >
         <textarea
-          rows={2}
-          value={values.angle}
-          onChange={(e) => set("angle")(e.target.value)}
+          rows={6}
+          value={values.content}
+          onChange={(e) => set("content")(e.target.value)}
           className={fieldInput}
         />
       </DialogField>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <FormatField value={values.format} onChange={set("format")} />
-        <DialogField label="Pilar">
-          <>
-            <input
-              list="pilares-de-contenido"
-              value={values.pillar}
-              onChange={(e) => set("pillar")(e.target.value)}
-              className={fieldInput}
-            />
-            <datalist id="pilares-de-contenido">
-              {pillars.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-          </>
+        <DialogField label="Referencia" hint="Un link o de dónde salió.">
+          <input
+            value={values.reference}
+            onChange={(e) => set("reference")(e.target.value)}
+            placeholder="https://…"
+            className={fieldInput}
+          />
         </DialogField>
       </div>
-
-      <DialogField label="Referencia" hint="Un link o de dónde salió.">
-        <input
-          value={values.reference}
-          onChange={(e) => set("reference")(e.target.value)}
-          placeholder="https://…"
-          className={fieldInput}
-        />
-      </DialogField>
-
-      <DialogField label="Notas">
-        <textarea
-          rows={2}
-          value={values.notes}
-          onChange={(e) => set("notes")(e.target.value)}
-          className={fieldInput}
-        />
-      </DialogField>
     </ContentDialog>
   );
 }

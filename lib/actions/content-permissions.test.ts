@@ -59,7 +59,7 @@ beforeEach(() => {
       workspace_roles: [],
       agents: [],
     },
-    { rpc: { approve_content_idea: () => "post-nuevo" } },
+    { rpc: { approve_content_idea_v2: () => "post-nuevo" } },
   );
 });
 
@@ -105,7 +105,7 @@ describe("aprobar y descartar una idea (F78)", () => {
     const result = await approveIdea("idea-1");
 
     expect(result.ok).toBe(true);
-    expect(db.rpcCalls.map((c) => c.name)).toEqual(["approve_content_idea"]);
+    expect(db.rpcCalls.map((c) => c.name)).toEqual(["approve_content_idea_v2"]);
     expect(enqueueCopy).not.toHaveBeenCalled();
   });
 

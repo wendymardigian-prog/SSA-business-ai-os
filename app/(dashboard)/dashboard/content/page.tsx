@@ -33,13 +33,13 @@ export default async function ContentPage({
   const [ideasRes, postsRes, publicationsRes, aiProviders] = await Promise.all([
     supabase
       .from("content_ideas")
-      .select("id, title, hook, angle, format, pillar, reference, notes, status, created_by, position, created_at")
+      .select("id, title, content, format, reference, status, created_by, position, created_at")
       .eq("workspace_id", workspace.id)
       .eq("status", "nueva")
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, copy, caption, copy_source, material_status, copy_status, created_at")
+      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, created_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -74,11 +74,8 @@ export default async function ContentPage({
     status: idea.status,
     createdBy: idea.created_by,
     position: idea.position,
-    hook: idea.hook,
-    angle: idea.angle,
-    pillar: idea.pillar,
+    content: idea.content,
     reference: idea.reference,
-    notes: idea.notes,
     createdAt: idea.created_at,
     authorName: idea.created_by ? (authorNames.get(idea.created_by) ?? null) : null,
   }));
@@ -114,8 +111,6 @@ export default async function ContentPage({
       }
     }
 
-    const copy = (post.copy ?? {}) as { hook?: string; body?: string; cta?: string };
-
     return {
       kind: "post",
       id: post.id,
@@ -125,7 +120,7 @@ export default async function ContentPage({
       createdBy: post.created_by,
       position: post.position,
       networks,
-      hasCopy: Boolean(copy.body?.trim() || copy.hook?.trim()),
+      hasCopy: Boolean(post.script?.trim()),
       hasCaption: Boolean(post.caption?.trim()),
       copyFromAi: post.copy_source !== "manual",
       materialStatus: post.material_status,
@@ -135,8 +130,7 @@ export default async function ContentPage({
     };
   });
 
-  // Lo que necesitan los modales de crear: las redes conectadas y los
-  // pilares que ya se usaron, para sugerirlos en vez de hacerlos escribir.
+  // Lo que necesitan los modales de crear: las redes conectadas.
   const { data: accountsRes } = await supabase
     .from("social_accounts")
     .select("platform")
@@ -144,14 +138,6 @@ export default async function ContentPage({
     .eq("is_active", true);
 
   const platforms = (accountsRes ?? []).map((a) => a.platform as string);
-  const pillars = [
-    ...new Set(
-      (ideasRes.data ?? [])
-        .map((i) => (i.pillar ?? "").trim())
-        .filter(Boolean),
-    ),
-  ].sort();
-
   const copywriter = {
     available: canUseAi && aiProviders.length > 0,
     reason: !canUseAi
@@ -165,7 +151,6 @@ export default async function ContentPage({
     canCreate: true,
     ideas: ideas.map((i) => ({ id: i.id, title: i.title })),
     platforms,
-    pillars,
     copywriter,
     canApprove,
   };
@@ -226,7 +211,6 @@ export default async function ContentPage({
           currentUserId={user.id}
           aiAvailable={aiProviders.length > 0}
           platforms={platforms}
-          pillars={pillars}
         />
       )}
 

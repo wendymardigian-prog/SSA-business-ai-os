@@ -231,7 +231,8 @@ describe("E4 · el pedido al modelo", () => {
 
 describe("E3 · que se revisa al recibir la respuesta", () => {
   const output = (over: Partial<CopyOutput> = {}): CopyOutput => ({
-    copy: { hook: "Un hook", body: "El desarrollo", cta: "Comenta SISTEMA", recording_notes: "" },
+    script: "Un hook\n\nEl desarrollo\n\nComenta SISTEMA",
+    recording_notes: "",
     caption_base: "Un caption normal",
     captions: { instagram: "Para Instagram" },
     ...over,
@@ -248,7 +249,7 @@ describe("E3 · que se revisa al recibir la respuesta", () => {
   });
 
   it("y si promete algo que no se puede", () => {
-    const avisos = checkGuardrails(output({ copy: { ...output().copy, body: "Resultados garantizados" } }), {
+    const avisos = checkGuardrails(output({ script: "Un hook\n\nResultados garantizados\n\nComenta SISTEMA" }), {
       ...EMPTY_GUARDRAILS,
       bannedClaims: ["resultados garantizados"],
     });

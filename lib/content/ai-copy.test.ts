@@ -8,7 +8,8 @@ import {
 } from "./ai-copy";
 
 const output = (over: Partial<CopyOutput> = {}): CopyOutput => ({
-  copy: { hook: "Un hook", body: "El desarrollo", cta: "Comenta SISTEMA", recording_notes: "Plano medio" },
+  script: "Un hook\n\nEl desarrollo\n\nComenta SISTEMA",
+  recording_notes: "Plano medio",
   caption_base: "Un caption base",
   captions: { instagram: "Para Instagram", threads: "Para Threads" },
   youtube_title: null,
@@ -53,7 +54,7 @@ describe("armar el pedido (F29)", () => {
     const prompt = buildPrompt({
       title: "x",
       platforms: [],
-      existingCopy: { body: "Lo que ya estaba escrito" },
+      existingScript: "Lo que ya estaba escrito",
     });
 
     expect(prompt).toContain("Lo que ya estaba escrito");
@@ -64,11 +65,11 @@ describe("armar el pedido (F29)", () => {
     const prompt = buildPrompt({
       title: "x",
       platforms: [],
-      idea: { hook: "El hook de la idea", angle: "Desde la objecion" },
+      idea: { content: "Si te da verguenza decir el precio\n\nDesde la objecion mas comun" },
     });
 
-    expect(prompt).toContain("El hook de la idea");
-    expect(prompt).toContain("Desde la objecion");
+    expect(prompt).toContain("Si te da verguenza decir el precio");
+    expect(prompt).toContain("Desde la objecion mas comun");
   });
 
   it("sin voz de marca ni idea, igual arma un pedido usable", () => {
@@ -82,23 +83,33 @@ describe("validar lo que devolvio el modelo", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.output.copy.hook).toBe("Un hook");
+    expect(result.output.script).toContain("Un hook");
     expect(result.warnings).toEqual([]);
   });
 
   it("una salida que no cumple el esquema se rechaza sin guardar nada", () => {
     expect(validateCopyOutput({ copy: { hook: "" } }, []).ok).toBe(false);
+    // La forma vieja (copy con cuatro campos) ya no es una salida valida.
+    expect(
+      validateCopyOutput(
+        { copy: { hook: "h", body: "b", cta: "c", recording_notes: "" }, caption_base: "", captions: {} },
+        [],
+      ).ok,
+    ).toBe(false);
     expect(validateCopyOutput("no es un objeto", []).ok).toBe(false);
     expect(validateCopyOutput(null, []).ok).toBe(false);
   });
 
-  it("un hook vacio se rechaza: es lo unico que no puede faltar", () => {
-    const result = validateCopyOutput(
-      output({ copy: { hook: "", body: "x", cta: "", recording_notes: "" } }),
-      [],
-    );
+  it("un guion vacio se rechaza: es lo unico que no puede faltar", () => {
+    expect(validateCopyOutput(output({ script: "" }), []).ok).toBe(false);
+    expect(validateCopyOutput(output({ script: "   \n  " }), []).ok).toBe(false);
+  });
 
-    expect(result.ok).toBe(false);
+  it("sin notas de grabacion igual sirve, pero el campo tiene que venir", () => {
+    expect(validateCopyOutput(output({ recording_notes: "" }), []).ok).toBe(true);
+
+    const { recording_notes: _omitido, ...sinNotas } = output();
+    expect(validateCopyOutput(sinNotas, []).ok).toBe(false);
   });
 
   it("un caption mas largo que el limite se recorta y se avisa", () => {
@@ -199,8 +210,8 @@ describe("como queda la pieza despues de generar", () => {
 
 describe("regenerar sobre algo escrito", () => {
   it("pide confirmacion si ya hay un guion", () => {
-    expect(needsConfirmation({ body: "Ya escribi esto" })).toBe(true);
-    expect(needsConfirmation({ body: "   " })).toBe(false);
+    expect(needsConfirmation({ script: "Ya escribi esto" })).toBe(true);
+    expect(needsConfirmation({ script: "   " })).toBe(false);
     expect(needsConfirmation(null)).toBe(false);
   });
 });

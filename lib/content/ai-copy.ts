@@ -31,9 +31,8 @@ export interface CopyRequest {
   /** De donde salio la pieza. */
   idea?: {
     title?: string | null;
-    hook?: string | null;
-    angle?: string | null;
-    pillar?: string | null;
+    /** El texto unico de la idea (F90). */
+    content?: string | null;
     reference?: string | null;
   } | null;
   title: string;
@@ -41,18 +40,16 @@ export interface CopyRequest {
   /** Las redes para las que hay que escribir caption. */
   platforms: string[];
   brand?: BrandVoice | null;
-  /** Lo que ya hay escrito, cuando se pide regenerar. */
-  existingCopy?: { hook?: string; body?: string; cta?: string } | null;
+  /** El guion que ya hay escrito, cuando se pide regenerar. */
+  existingScript?: string | null;
 }
 
 /** Lo que el modelo tiene que devolver. */
 export const copyOutputSchema = z.object({
-  copy: z.object({
-    hook: z.string().min(1, "El hook no puede estar vacio"),
-    body: z.string().min(1, "El desarrollo no puede estar vacio"),
-    cta: z.string(),
-    recording_notes: z.string(),
-  }),
+  /** El guion completo, de principio a fin: el ultimo parrafo es el cierre. */
+  script: z.string().trim().min(1, "El guion no puede estar vacio"),
+  /** Indicaciones para quien graba. */
+  recording_notes: z.string(),
   caption_base: z.string(),
   /** Un caption por red pedida. */
   captions: z.record(z.string(), z.string()),
@@ -93,17 +90,15 @@ export function buildPrompt(request: CopyRequest): string {
 
   if (request.idea) {
     const idea = [
-      request.idea.hook && `Hook: ${request.idea.hook}`,
-      request.idea.angle && `Angulo: ${request.idea.angle}`,
-      request.idea.pillar && `Pilar: ${request.idea.pillar}`,
+      request.idea.content && request.idea.content,
       request.idea.reference && `Referencia: ${request.idea.reference}`,
     ].filter(Boolean);
     if (idea.length > 0) parts.push(`La idea de origen:\n${idea.join("\n")}`);
   }
 
-  if (request.existingCopy?.body) {
+  if (request.existingScript?.trim()) {
     parts.push(
-      `Ya hay un guion escrito. Reescribilo mejorandolo, sin perder lo que ya funciona:\n${request.existingCopy.body}`,
+      `Ya hay un guion escrito. Reescribilo mejorandolo, sin perder lo que ya funciona:\n${request.existingScript.trim()}`,
     );
   }
 
@@ -129,10 +124,8 @@ export function buildPrompt(request: CopyRequest): string {
   parts.push(
     [
       "Devolve:",
-      "- copy.hook: la primera frase, la que frena el scroll.",
-      "- copy.body: el desarrollo, para leer frente a camara.",
-      "- copy.cta: como cierra y que pide.",
-      "- copy.recording_notes: indicaciones para grabar (tono, planos, que mostrar).",
+      "- script: el guion completo para leer frente a camara. Arranca con la frase que frena el scroll y el ULTIMO parrafo es el cierre: como termina y que pide.",
+      "- recording_notes: indicaciones para grabar (tono, planos, que mostrar). No sale publicado.",
       "- caption_base: el caption que sirve para cualquier red.",
       "- captions: uno por red, adaptado a su largo.",
     ].join("\n"),
@@ -201,17 +194,20 @@ export function applyGeneratedCopy(params: {
   output: CopyOutput;
   platforms: string[];
   previousCopySource: "manual" | "ai" | "mixed";
+  /** Si ya habia un guion escrito (a mano o por la IA antes). */
   hadManualCopy: boolean;
   networks: Array<{ platform: string; caption?: string | null; youtube_title?: string | null }>;
 }): {
-  copy: CopyOutput["copy"];
+  script: string;
+  recording_notes: string;
   caption: string;
   networks: Array<{ platform: string; caption?: string | null; youtube_title?: string | null }>;
   copy_source: "ai" | "mixed";
   ai_unreviewed: true;
 } {
   return {
-    copy: params.output.copy,
+    script: params.output.script,
+    recording_notes: params.output.recording_notes,
     caption: params.output.caption_base,
     networks: params.networks.map((network) => {
       const generated = params.output.captions[network.platform];
@@ -233,6 +229,6 @@ export function applyGeneratedCopy(params: {
 }
 
 /** Si hay que pedir confirmacion antes de pisar lo escrito. */
-export function needsConfirmation(existing: { body?: string | null } | null | undefined): boolean {
-  return Boolean(existing?.body?.trim());
+export function needsConfirmation(existing: { script?: string | null } | null | undefined): boolean {
+  return Boolean(existing?.script?.trim());
 }
