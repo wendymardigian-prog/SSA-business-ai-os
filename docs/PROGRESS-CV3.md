@@ -118,11 +118,56 @@ Decisiones tomadas en B13 y por qué:
 - **El calendario conserva su encabezado de mes** (flechas y totales): es la forma de moverse entre meses, no una barra de herramientas. Lo que se movió a la barra superior es el conteo y el filtro de Red.
 - **Un borrador con cambios sin guardar nunca se pisa** con lo que llega del servidor; el aviso de "alguien más editó" al guardar es el que lo dice.
 
-### B14: medición de la pieza (F102 a F105)
-- [ ] F102 Rendimiento de la pieza · [ ] F103 Índice · [ ] F104 Leads por comentario (opcional, puede quedar en PENDIENTE) · [ ] F105 Agrupaciones y documentación
+### B14: medición de la pieza (F102 a F105) — COMPLETO en la rama, 6/10/2026
+- [x] **F103** Índice (`lib/dashboards/piece-index.ts`, 15 tests). Engagement a 7 días contra la **mediana** de la misma red y el mismo formato (`media_type`) de los 90 días **previos a la publicación**; mínimo 3 comparables (si no, "Base insuficiente" con los crudos a la vista); verde desde 1,5×, rojo por debajo de 0,8×; mismo criterio de mediana que `follower-bump.ts` (usa su `median` y su umbral). Sin `engagement_d7` y con menos de 7 días: "En curso", fuera del promedio de la pieza; con más de 7 días: "Sin dato". Mediana cero: no se divide. `8943444`.
+- [x] **F104** Leads por comentario (`lib/dashboards/piece-leads.ts`, 12 tests). Contacto cuyo **primer** toque es un comentario en una publicación de la pieza; una persona cuenta una vez por pieza (con el primer comentario); un primer toque anterior (un DM) la deja afuera; nada de DM por palabra clave; una red que no vincula comentarios (YouTube, LinkedIn, Threads) da hueco, no cero. `8943444`.
+- [x] **F102** Rendimiento por red (`lib/dashboards/piece-performance.ts`, 13 tests; sección del drawer `components/content/drawer/piece-performance.tsx`, 10 tests; lector `lib/dashboards/piece-load.ts`, 5 tests). Una fila por publicación salida y un total; **Edad** de cada una; la comparación a la misma edad sale de `evolution` (alcance e interacciones al día de la publicación más joven, "A la misma edad (día 3)"); LinkedIn muestra el aviso, nunca ceros; las sumas del total son contexto; el total de leads viene de la pieza, no de sumar filas. Leer la medición **nunca rompe abrir la pieza** (try/catch en el lector). `8943444`, `d97c529`.
+- [x] **F105** Dashboard de contenido: tabla "Rendimiento por …" agrupada por pieza, oferta, pilar, etapa del embudo, red o formato (`?agrupar=`) y cinco filtros en la URL (`?oferta=`, `?pilar=`, `?embudo=`, `?formato=`, `?pieza=`) que acotan todo el dashboard, también el periodo anterior contra el que se compara. **Nada se pierde:** toda publicación cae en un grupo, lo que no tiene valor va a "Sin asignar" (siempre al final) y el total de la tabla es la suma de las filas; los totales de una oferta coinciden con la suma de sus piezas (test). Tocar un grupo filtra por él. Columna **Leads**. `content.test.ts` extendido (+15 tests), `content-params.test.ts` (7), `group-table.test.ts` (6). `4b6f5f5`.
+- [x] **Documentación**: `docs/atribucion.md` (nuevo), `docs/contenido.md` y `docs/publicacion.md` (secciones de Contenido v3), `CLAUDE.md` (migraciones hasta la 00117 aplicadas, 00118 escrita y sin aplicar, **próxima libre 00119**, corregido lo de la 00105/00106 que figuraba sin aplicar y sí está, sección nueva), `BITACORA.md`, `docs/PENDIENTE.md`. `c76006b`, y el resto.
+- **Revisión en vivo** con datos `zz-test` sembrados con la clave de servicio y borrados (después: 1 idea, 1 pieza, 0 cuentas, 0 publicaciones, 0 pilares, 0 ofertas, 0 contactos de prueba): el drawer con Instagram (10 días, índice 1,6× contra 4 comparables), YouTube (3 días, "En curso", sus vistas como alcance) y LinkedIn (el aviso, sin ceros), los leads (2: los dos comentarios; el contacto que ya venía por un DM no cuenta), la comparación "A la misma edad (día 3)", y a 375 px la página no se ensancha (la tabla se desliza sola). En el dashboard, la tabla por oferta (la oferta con 4 publicaciones y 2 piezas, "Sin asignar" con la pieza sin oferta y la publicada a mano, total 6), y filtrar tocando la oferta (la URL trae `?oferta=<id>`, aparecen "Quitar filtros" y el aviso de que los seguidores no se filtran).
+- **Tests al cierre de B14:** 418 archivos, **5.282 tests** en verde.
 
-## Verificación final (cuando todo esté marcado)
-- [ ] `npx vitest run` · [ ] `npm run build` · [ ] `verify-rls` · [ ] `verify-content` · [ ] `verify-crm` · [ ] `verify-attribution` (nuevo) · [ ] `verify-inbox-filters` · [ ] lint sin errores nuevos sobre la línea base de 4
-- [ ] `lib/publishing/e2e-zernio.test.ts` pasa y falla al quitar cada disparador
-- [ ] Docs: `docs/contenido.md`, `docs/publicacion.md`, `docs/atribucion.md` (nuevo), `CLAUDE.md`, `BITACORA.md`
-- [ ] Merge a `main` y push: **solo si todo lo anterior está en verde**
+**Procedimiento de mutación de B14** (cambiar la regla y comprobar que el test se pone rojo; el archivo se restauró después de cada una):
+
+| Mutante | Resultado |
+|---|---|
+| M1 base mínima 3 → 2 | rojo |
+| M2 ventana de 90 días inclusiva → exclusiva | rojo |
+| M3 una publicación "en curso" entra al promedio de la pieza | rojo |
+| M4 umbral verde 1,5 → 2 | rojo |
+| M5 leads: toma el último toque en vez del primero | rojo |
+| M6 leads: un DM también cuenta | rojo |
+| M7 leads: sin dedupe por contacto | rojo |
+| M8 edad común = la de la publicación más vieja | rojo |
+| M9 LinkedIn sin su aviso | rojo |
+| M10 total de leads = suma de las filas | **verde la primera vez** → se agregó el test que distingue ("el total viene de la pieza…") → rojo |
+| M11 agrupar: "Sin asignar" desaparece | rojo |
+| M12 agrupar: "Sin asignar" no va al final | rojo |
+| M13 el filtro `none` no elige lo sin asignar | rojo |
+| M14 leads de una red que no los mide = 0 | rojo |
+
+Decisiones tomadas en B14 y por qué:
+- **La ventana del índice termina el día de la publicación**, no hoy: así el índice no cambia cada día y una publicación vieja se compara con lo normal de entonces.
+- **El filtro de clasificación se aplica en memoria** sobre las publicaciones del periodo (la clasificación vive en la pieza, no en la publicación), con las piezas leídas de a tandas de 100 ids.
+- **Las opciones de los filtros salen de todas las publicaciones del periodo**, no de las que sobreviven al filtro: si no, al elegir una oferta las demás desaparecerían de la lista.
+- **Los seguidores no se filtran**: son de la cuenta, y la pantalla lo avisa.
+
+## Verificación final — 6/10/2026
+
+| Chequeo | Resultado |
+|---|---|
+| `npx vitest run` | **418 archivos, 5.282 tests, todos en verde** (punto de partida: 373 y 4.486; ninguno de los que pasaban se rompió) |
+| `npm run build` | **exit 0** |
+| `npm run lint` | **los mismos 4 errores de la línea base** (`dashboard-panel.tsx:56`, `spend-chart-tabs.tsx:57` y `:60`, `onboarding-banner.tsx:37`), ninguno nuevo; 39 warnings (la línea base tenía 38: el que suma es de `drawer.tsx`, de B13) |
+| `verify-rls.mjs` | **279 checks**, exit 0 |
+| `verify-content.mjs` | **36 checks**, exit 0 |
+| `verify-crm.mjs` | **25 checks**, exit 0 |
+| `verify-attribution.mjs` (nuevo en B11) | **39 checks**, exit 0 |
+| `verify-inbox-filters.mjs` | **18 checks**, exit 0 |
+| `verify-scheduling.mjs` | **108 checks**, exit 0 |
+| `lib/publishing/e2e-zernio.test.ts` (F80) | **12 tests en verde**; la tabla M1 a M7 de B10 muestra que se pone en rojo al quitar cada disparador |
+| Migraciones en la base (solo lectura) | 00113 a 00117 **aplicadas** (columnas, tablas y funciones presentes); **00118 sin aplicar**, con sus columnas viejas todavía en la base. No están en el historial de Supabase (ver `docs/PENDIENTE.md`) |
+| Datos de la base después de todo | 1 idea, 1 pieza, 0 cuentas, 0 publicaciones, 0 pilares, 0 ofertas, 647 contactos con 647 toques, 0 datos `zz-test` |
+| Docs | `contenido.md`, `publicacion.md`, `atribucion.md` (nuevo), `CLAUDE.md`, `BITACORA.md`, `PENDIENTE.md` al día |
+
+- [x] Todo lo anterior en verde → se puede mergear `contenido-v3` a `main` (`--no-ff`) y pushear.

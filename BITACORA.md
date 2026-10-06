@@ -1290,3 +1290,51 @@ contestó casi todo.
 En `docs/PENDIENTE.md`. Lo principal: `knownButtonExtra` se conecta en
 `runner.ts` después de mergear multimedia, y las versiones del clasificador
 siguen en solo lectura.
+
+---
+## Contenido v3 — desatasque, atribución, modelo de la pieza, drawers y medición
+
+**Fecha:** del 3 al 6 de octubre de 2026
+**Rama:** `contenido-v3` (mergeada a `main` al final, una sola vez)
+**Migraciones:** 00113 a 00117 **aplicadas** (con la CLI, porque el MCP de Supabase lo denegó el sistema de permisos); la **00118 escrita y sin aplicar, a propósito**.
+
+### Qué se construyó
+
+Cinco bloques, F73 a F105, con el plano en `docs/requerimientos-contenido-v3.md` y el avance paso a paso en `docs/PROGRESS-CV3.md`:
+
+1. **B10 · Desatasque (F73 a F80).** Las cuentas sociales salen de la lista de Zernio; se sincronizan solas al guardar la clave, al desconectar y con los botones; el perfil trae las cifras reales; los comentarios huérfanos se vinculan cuando aparece la publicación; lo que se programa se valida en el servidor con la misma función que el editor (más el tope de TikTok); Social y las métricas pasan a permisos; y `e2e-zernio.test.ts` prueba de punta a punta que publicar sigue funcionando.
+2. **B11 · Atribución (F81 a F88).** Un vocabulario cerrado, la tabla `contact_touches`, `record_contact_touch` en la base (recalcula primer y último toque desde la tabla), los receptores de mensajes y de comentarios que anotan toques, el alta manual, la importación y la reserva, y la ficha, el panel y los filtros que lo muestran. Backfill de 647 contactos.
+3. **B12 · Modelo de la pieza (F89 a F94).** Pilares y ofertas (Ajustes → Contenido), un solo texto en la idea y guion + notas de grabación en la pieza, clasificación, biblioteca de archivos con formato y archivos por red, y la IA al modelo nuevo.
+4. **B13 · Drawers y pantallas (F95 a F101).** El drawer de la idea (con galería) y el de la pieza, que reemplazan al editor y al detalle; la barra superior única; las rutas viejas redirigen; Social con perfil real y "Próximas"; y la cantidad de contactos por pieza en el tablero.
+5. **B14 · Medir (F102 a F105).** El rendimiento por red de cada pieza (con edad, comparación a la misma edad, índice y leads) y el dashboard de contenido agrupado y filtrado por pieza, oferta, pilar y etapa del embudo.
+
+### Las decisiones que más costaron
+
+**Instagram no crea un contacto por cada comentarista.** Se vincula el comentario solo si la persona ya es contacto o si la automatización la creó. Crear uno por comentario llenaría el CRM de gente que solo opinó y dispararía "contacto nuevo" para cada una. TikTok sí crea un contacto anónimo, porque no tiene mensajes directos y el comentario es la única señal que va a haber. (Decisión de Wendy.)
+
+**De los mensajes solo se anota el toque que suma información.** Un contacto activo manda cientos; una fila "Instagram · mensaje directo" por cada uno haría que el "último toque" cambie con cada "ok". Cuenta el primero, una respuesta a historia, un dato de anuncio y la vuelta tras 7 días. (Decisión de Wendy.)
+
+**Medir por edad y contra la mediana.** Un Reel de 10 días y un Short de 3 no se comparan con los números de hoy. El índice usa el engagement a 7 días contra la mediana de la misma red y el mismo formato de los 90 días previos, con un mínimo de 3 comparables: con menos, "base insuficiente" y los crudos a la vista. Es el mismo criterio que el salto de seguidores: dos reglas para el mismo problema confunden. Y **nunca un cero inventado**: lo que la red no da es un guion, y LinkedIn muestra su aviso.
+
+**La base se migra antes que el código.** Las migraciones son aditivas, así que el código viejo sigue andando; la 00118 (la única que borra) quedó escrita y sin aplicar, con dos consultas en la cabecera que tienen que dar 0 antes de correrla. Todas se ensayaron antes en una transacción que se deshace sola, sembrando filas de prueba.
+
+**Un solo merge a `main`, al final.** Hasta que todo estuvo en verde no se tocó `main`.
+
+### Lo que encontraron las pruebas, y por qué importó
+
+- **`savePostDraft` no validaba nada:** las redes y la media se escribían tal cual llegaban. Ahora se validan con Zod y los ids se limpian contra la biblioteca real.
+- **El aviso "alguien más editó esta pieza" saltaba de mentira** desde el segundo autoguardado: se comparaba con la fecha de la primera carga. Se arregló con la fecha de la última escritura, y el drawer conserva esa lógica.
+- **Un test llegó a hacer pedidos reales a Zernio** con una clave falsa. No salió ninguna credencial real, pero rompía la regla de no llamar a un proveedor: ahora los tests de ese camino hacen fallar cualquier `fetch` real.
+- **Los tests de mutación** (quitar una pieza y ver si el test se pone rojo) encontraron un hueco en B14: ningún test distinguía "el total de leads de la pieza" de "la suma de las filas". Con el test nuevo, los 14 mutantes quedan en rojo; los siete de B10 también.
+- **La revisión en vivo** encontró textos mal conjugados ("Nombre del oferta nuevo") y el desborde de una tabla a 390 px.
+- **`CLAUDE.md` estaba desactualizado:** decía que la 00105 y la 00106 no estaban aplicadas (sí lo están) y que la próxima migración era la 00107 (es la 00119).
+
+### Lo que queda
+
+En `docs/PENDIENTE.md`. Lo principal:
+
+- **Aplicar la 00118** cuando la v3 esté funcionando con piezas reales (con respaldo y las dos consultas de la cabecera en 0).
+- **Volver a correr la 00115** después del despliegue, para dar toque a los contactos que entren entre la migración y el despliegue (es idempotente).
+- **Las migraciones 00113 a 00117 no están en el historial de Supabase** (la CLI no lo registra y el sistema de permisos negó el INSERT). Nada del código lo lee.
+- **Verificar en vivo con cuentas conectadas:** los datos de anuncio en un DM, el webhook de Zernio, la versión de la API de LinkedIn y el índice con métricas reales: hoy no hay cuentas conectadas.
+- **Cosmético:** los nombres "Youtube", "Linkedin" y "Tiktok" salen de `platformLabel`, que un test fija a propósito.
