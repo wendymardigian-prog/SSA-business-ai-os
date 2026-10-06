@@ -16,7 +16,7 @@ import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { TemperatureBadge, ActionError } from "@/components/contacts/ui";
 import { setDoNotContact, updateContact } from "@/lib/actions/contacts";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
-import { readAttribution } from "@/lib/contacts/attribution";
+import { readClickAttribution } from "@/lib/contacts/attribution";
 import { getDmLink, platformHandles } from "@/lib/contacts/links";
 import { platformLabel } from "@/lib/platforms";
 import type { Database, LeadTemperature, Platform } from "@/lib/types/database";
@@ -383,7 +383,7 @@ function Channels({ details }: { details: ContactDetails }) {
 }
 
 function Activity({ contact }: { contact: Contact }) {
-  const attribution = readAttribution(contact.attribution);
+  const attribution = readClickAttribution(contact.attribution);
   const source = attribution.first_click?.utm_source ?? attribution.last_click?.utm_source ?? null;
   const campaign = attribution.first_click?.utm_campaign ?? null;
   return (

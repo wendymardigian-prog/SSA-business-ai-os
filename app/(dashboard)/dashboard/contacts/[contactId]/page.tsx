@@ -5,7 +5,7 @@ import { ArrowLeft, Mail, Phone, Globe, Calendar, CalendarClock } from "lucide-r
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import { readAttribution } from "@/lib/contacts/attribution";
+import { readClickAttribution } from "@/lib/contacts/attribution";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -380,7 +380,7 @@ export default async function ContactDetailPage({
 
             <NotesSection contactId={contact.id} notes={contact.notes} />
 
-            <AttributionSection attribution={readAttribution(contact.attribution)} />
+            <AttributionSection attribution={readClickAttribution(contact.attribution)} />
 
             <HistorySection entries={history} />
           </div>

@@ -1,4 +1,4 @@
-import { TRACKING_KEYS, type Attribution, type AttributionClick } from "@/lib/contacts/attribution";
+import { TRACKING_KEYS, type ClickAttribution, type AttributionClick } from "@/lib/contacts/attribution";
 import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
@@ -24,7 +24,7 @@ const LABELS: Record<string, string> = {
   landing_page: "Aterrizo en",
 };
 
-export function AttributionSection({ attribution }: { attribution: Attribution }) {
+export function AttributionSection({ attribution }: { attribution: ClickAttribution }) {
   const { first_click: first, last_click: last } = attribution;
 
   return (

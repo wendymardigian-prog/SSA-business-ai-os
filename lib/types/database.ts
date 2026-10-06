@@ -4119,6 +4119,18 @@ export interface Database {
         Returns: boolean;
       };
       /** Deduplicacion cross-canal (migracion 00025). Unica fuente de verdad. */
+      /**
+       * Registra un toque de atribucion y recalcula el primero y el ultimo
+       * (migracion 00114). Solo service_role. Idempotente por `dedupe_key`.
+       */
+      record_contact_touch: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string;
+          p_touch: Json;
+        };
+        Returns: { inserted: boolean; reason?: string; touch_id?: string };
+      };
       find_or_link_contact: {
         Args: {
           p_channel_id: string;
