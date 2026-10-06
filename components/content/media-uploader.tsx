@@ -4,10 +4,20 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2, Upload } from "lucide-react";
 import { attachMedia, removeMedia, requestMediaUpload } from "@/lib/actions/content-media";
-import { RESUMABLE_THRESHOLD_BYTES, type MediaEntry } from "@/lib/content/media";
+import { RESUMABLE_THRESHOLD_BYTES, liveMedia, type MediaEntry } from "@/lib/content/media";
+import { describeFile, idOf } from "@/lib/content/media-library";
+import { probeMediaFile } from "@/lib/content/media-probe";
+import { cn } from "@/lib/utils";
 
 /**
- * Subir media de una pieza (F18).
+ * La biblioteca de archivos de una pieza (F92) y la subida (F18).
+ *
+ * Cada archivo se sube UNA vez y se muestra con su nombre, tipo, peso y
+ * proporcion, y con **que redes lo usan** (o "Sin usar", en naranja). Cada red
+ * elige despues cuales publica; aca solo se sube y se saca.
+ *
+ * Quitar un archivo que alguna red usa avisa antes y lo saca tambien de esas
+ * redes: el servidor lo hace siempre, esto solo se lo dice a la persona.
  *
  * El archivo va DIRECTO del navegador a Storage. El servidor solo mira los
  * primeros bytes, decide si se puede y devuelve a donde: un video de 1 GB no
@@ -21,26 +31,42 @@ import { RESUMABLE_THRESHOLD_BYTES, type MediaEntry } from "@/lib/content/media"
  * `tus-js-client` se carga solo cuando hace falta (import dinamico): la
  * mayoria de las subidas son imagenes y no tienen por que pagar ese peso.
  */
+
+const PLATFORM_NAMES: Record<string, string> = {
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+  linkedin: "LinkedIn",
+  threads: "Threads",
+};
+
 export function MediaUploader({
   postId,
   media,
+  usage,
   canEdit,
-  /** Con red, sube la media PROPIA de esa red (la variante, C8). */
-  platform,
+  onRemoved,
 }: {
   postId: string;
   media: MediaEntry[];
+  /** id de archivo -> redes que lo usan. Sin entrada = sin usar. */
+  usage: Record<string, string[]>;
   canEdit: boolean;
-  platform?: string | null;
+  /** Se llama al quitar uno, con las redes de las que se saco tambien. */
+  onRemoved?: (fileId: string, removedFrom: string[]) => void;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const files = liveMedia(media);
 
   async function upload(file: File) {
     setError(null);
+    setNotice(null);
     setBusy(file.name);
     setProgress(null);
 
@@ -60,11 +86,14 @@ export function MediaUploader({
         return;
       }
 
-      if (ticket.data.resumable) {
-        await uploadResumable(file, ticket.data.path, ticket.data.mime, setProgress);
-      } else {
-        await uploadSimple(file, ticket.data.path, ticket.data.token!, ticket.data.mime);
-      }
+      // Mientras se sube se leen las dimensiones y la duracion: es lo que
+      // permite mostrar la proporcion y avisar de un Reel demasiado largo.
+      const [probed] = await Promise.all([
+        probeMediaFile(file, ticket.data.mime),
+        ticket.data.resumable
+          ? uploadResumable(file, ticket.data.path, ticket.data.mime, setProgress)
+          : uploadSimple(file, ticket.data.path, ticket.data.token!, ticket.data.mime),
+      ]);
 
       const attached = await attachMedia({
         postId,
@@ -72,7 +101,10 @@ export function MediaUploader({
         mime: ticket.data.mime,
         kind: kindOf(ticket.data.mime),
         sizeBytes: file.size,
-        platform,
+        name: file.name,
+        width: probed.width,
+        height: probed.height,
+        durationMs: probed.durationMs,
       });
 
       if (!attached.ok) {
@@ -88,31 +120,84 @@ export function MediaUploader({
     }
   }
 
+  async function remove(item: MediaEntry, label: string) {
+    const id = idOf(item);
+    const usedBy = usage[id] ?? [];
+
+    // Avisar antes: sacarlo de la biblioteca lo saca de esas redes tambien.
+    const names = usedBy.map((p) => PLATFORM_NAMES[p] ?? p).join(" y ");
+    const message =
+      usedBy.length > 0
+        ? `"${label}" lo usa ${names}. Si lo quitás, también se saca de ahí. ¿Seguís?`
+        : `¿Quitar "${label}" de la pieza?`;
+    if (!window.confirm(message)) return;
+
+    setError(null);
+    setNotice(null);
+    const result = await removeMedia({ postId, fileId: id });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    onRemoved?.(id, result.data.removedFrom);
+    if (result.data.removedFrom.length > 0) {
+      setNotice(
+        `Se quitó también de ${result.data.removedFrom.map((p) => PLATFORM_NAMES[p] ?? p).join(" y ")}.`,
+      );
+    }
+    router.refresh();
+  }
+
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
-        {media.map((item) => (
-          <figure key={item.storage_path} className="w-32 rounded-lg border border-border p-2">
-            <figcaption className="truncate text-[11px] text-muted-foreground" title={item.storage_path}>
-              {item.kind} · {formatSize(item.size_bytes)}
-            </figcaption>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const result = await removeMedia({ postId, path: item.storage_path, platform });
-                  if (!result.ok) setError(result.error);
-                  else router.refresh();
-                }}
-                className="mt-1 inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent"
-              >
-                <Trash2 className="h-3 w-3" aria-hidden />
-                Quitar
-              </button>
-            )}
-          </figure>
-        ))}
-      </div>
+      {files.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
+          Todavía no hay archivos. Subilos una vez y después elegís cuáles publica cada red.
+        </p>
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2" aria-label="Archivos de la pieza">
+          {files.map((item, index) => {
+            const info = describeFile(item, index);
+            const usedBy = usage[idOf(item)] ?? [];
+            return (
+              <li key={idOf(item)} className="rounded-lg border border-border p-3">
+                <p className="truncate text-sm font-medium" title={info.name}>
+                  {info.name}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  {[info.kindLabel, info.size, info.ratio].filter(Boolean).join(" · ")}
+                </p>
+
+                <p
+                  className={cn(
+                    "mt-1.5 inline-block rounded px-1.5 py-0.5 text-[11px]",
+                    usedBy.length === 0
+                      ? "bg-amber-500/10 font-medium text-amber-700 dark:text-amber-300"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {usedBy.length === 0
+                    ? "Sin usar"
+                    : `Se usa en ${usedBy.map((p) => PLATFORM_NAMES[p] ?? p).join(", ")}`}
+                </p>
+
+                {canEdit && (
+                  <div className="mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void remove(item, info.name)}
+                      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden />
+                      Quitar
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {canEdit && (
         <>
@@ -124,9 +209,9 @@ export function MediaUploader({
             className="sr-only"
             aria-label="Elegir archivos para subir"
             onChange={async (e) => {
-              const files = [...(e.target.files ?? [])];
+              const picked = [...(e.target.files ?? [])];
               e.target.value = "";
-              for (const file of files) await upload(file);
+              for (const file of picked) await upload(file);
             }}
           />
           <button
@@ -136,11 +221,16 @@ export function MediaUploader({
             className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
-            {busy ? `Subiendo ${busy}${progress !== null ? ` (${progress}%)` : ""}` : "Subir media"}
+            {busy ? `Subiendo ${busy}${progress !== null ? ` (${progress}%)` : ""}` : "Subir archivos"}
           </button>
         </>
       )}
 
+      {notice && (
+        <p role="status" className="mt-2 rounded-lg bg-muted p-2 text-xs text-muted-foreground">
+          {notice}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-400">
           {error}
@@ -154,11 +244,6 @@ function kindOf(mime: string): MediaEntry["kind"] {
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   return "document";
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Subida simple, con la URL firmada que dio el servidor. */

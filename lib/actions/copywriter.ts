@@ -35,7 +35,7 @@ export async function requestCopy(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, status, copy, copy_status")
+    .select("id, status, script, copy_status")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -53,7 +53,7 @@ export async function requestCopy(input: {
 
   // Pisar el guion de alguien sin preguntar es la clase de cosa que hace que
   // una funcion util deje de usarse.
-  if (!input.confirmed && needsConfirmation(post.copy as { body?: string | null } | null)) {
+  if (!input.confirmed && needsConfirmation({ script: post.script })) {
     return {
       ok: false,
       needsConfirmation: true,

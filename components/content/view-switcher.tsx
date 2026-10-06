@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, Columns3, List } from "lucide-react";
 import type { ContentView } from "@/lib/content/filters";
+import { platformLabel } from "@/lib/platforms";
 
 /**
  * Kanban / Calendario / Lista, en la barra superior (F7, F21).
@@ -76,6 +77,49 @@ export function CountModeSwitcher({ current }: { current: "pieces" | "publicatio
       >
         <option value="pieces">Piezas</option>
         <option value="publications">Publicaciones</option>
+      </select>
+    </label>
+  );
+}
+
+/**
+ * Filtro de Red, en la barra superior (F98).
+ *
+ * Vale para las tres vistas: el tablero muestra las ideas y piezas que
+ * apuntan a esa red, el calendario sus fechas y la lista sus filas. Vive en la
+ * URL (`?red=`) igual que la vista.
+ */
+export function PlatformFilter({ current, platforms }: { current: string | null; platforms: string[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+
+  if (platforms.length === 0) return null;
+
+  function go(platform: string) {
+    const next = new URLSearchParams(params.toString());
+    if (platform) next.set("red", platform);
+    else next.delete("red");
+    // Un drawer abierto sigue abierto: el filtro cambia lo de atras, no lo que se esta mirando.
+    const query = next.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
+  return (
+    <label className="flex items-center gap-1.5 text-sm">
+      <span className="hidden text-muted-foreground lg:inline">Red:</span>
+      <select
+        value={current ?? ""}
+        onChange={(e) => go(e.target.value)}
+        className="h-8 rounded-lg border border-border bg-background px-2 text-sm"
+        aria-label="Filtrar por red"
+      >
+        <option value="">Todas</option>
+        {platforms.map((p) => (
+          <option key={p} value={p}>
+            {platformLabel(p)}
+          </option>
+        ))}
       </select>
     </label>
   );

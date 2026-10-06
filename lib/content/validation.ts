@@ -14,6 +14,7 @@
 import { formatBytes, formatSeconds, limitsFor, YOUTUBE_SHORT_MAX_SECONDS } from "./limits";
 import type { MediaEntry } from "./media";
 import { missingRequiredOptions } from "./network-options";
+import { checkFormatFiles, getFormat } from "./network-format";
 
 export interface NetworkContent {
   platform: string;
@@ -23,6 +24,12 @@ export interface NetworkContent {
   media: MediaEntry[];
   /** Solo YouTube. */
   title?: string | null;
+  /**
+   * El formato elegido para esta red (F93). Con formato, la cantidad y el tipo
+   * de archivos tienen que cuadrar con lo que ese formato pide. Sin formato
+   * (una red del modelo anterior) no se aplica nada de esto.
+   */
+  format?: string | null;
   options?: Record<string, unknown>;
 }
 
@@ -42,6 +49,11 @@ export interface NetworkValidation {
 export interface ValidationContext {
   /** Cuantas publicaciones ya hay agendadas para ese dia y esa red. */
   publishedToday?: number;
+  /**
+   * Lo mismo separado por tipo, para las redes que tienen un tope por tipo
+   * (TikTok). Se mira ademas de `publishedToday`, no en su lugar.
+   */
+  publishedTodayByKind?: { video: number; image: number };
 }
 
 export function validateNetwork(
@@ -124,6 +136,21 @@ export function validateNetwork(
     error(`${content.platform} no acepta documentos.`);
   }
 
+  // ── El formato elegido (F93) ─────────────────────────────────────────────
+  //
+  // Va aca y no en el editor: el servidor valida con esta misma funcion antes
+  // de programar (F77), asi que un carrusel con un solo archivo no sale aunque
+  // alguien se saltee la pantalla.
+  if (content.format) {
+    const def = getFormat(content.platform, content.format);
+    if (!def) {
+      error(`${content.platform} no tiene el formato "${content.format}".`);
+    } else {
+      const check = checkFormatFiles(def, content.media);
+      if (!check.ok) error(check.message);
+    }
+  }
+
   // ── Lo propio de cada red ────────────────────────────────────────────────
 
   if (content.platform === "youtube") {
@@ -139,7 +166,17 @@ export function validateNetwork(
     const video = videos[0];
     const seconds = video?.duration_ms ? video.duration_ms / 1000 : null;
     const vertical = video?.width && video?.height ? video.height > video.width : false;
-    if (vertical && seconds !== null && seconds <= YOUTUBE_SHORT_MAX_SECONDS) {
+
+    if (content.format === "short") {
+      // Un Short lo decide YouTube por el video: tiene que ser corto y, para
+      // que lo trate como Short, vertical.
+      if (seconds !== null && seconds > YOUTUBE_SHORT_MAX_SECONDS) {
+        error("Un Short dura hasta 3 minutos y este video dura mas.");
+      }
+      if (video?.width && video?.height && !vertical) {
+        warn("El video no es vertical: YouTube no lo va a tratar como Short.");
+      }
+    } else if (vertical && seconds !== null && seconds <= YOUTUBE_SHORT_MAX_SECONDS) {
       // No es un error: es que va a salir en otro lado del que quiza se
       // esperaba, y eso conviene saberlo antes y no despues.
       warn("Es vertical y dura menos de 3 minutos: YouTube lo va a publicar como Short.");
@@ -148,7 +185,9 @@ export function validateNetwork(
 
   if (content.platform === "instagram") {
     const contentType = content.options?.contentType;
-    if (contentType === "carousel" && images.length < 2) {
+    // Con formato elegido, el carrusel ya se reviso arriba (mismo error dos
+    // veces no ayuda a nadie).
+    if (!content.format && contentType === "carousel" && images.length < 2) {
       error("Un carrusel de Instagram necesita al menos 2 imagenes.");
     }
     if (contentType === "story" && videos[0]?.duration_ms && videos[0].duration_ms > 60_000) {
@@ -180,6 +219,18 @@ export function validateNetwork(
     error(
       `Ya hay ${context.publishedToday} publicaciones de ${content.platform} ese dia y el limite es ${limits.dailyMax}.`,
     );
+  }
+
+  if (limits.dailyMaxByKind && context.publishedTodayByKind) {
+    // Un video cuenta contra el tope de videos; lo que no tiene video, contra
+    // el de fotos. Sin ningun archivo no hay tipo que contar.
+    const kind: "video" | "image" | null =
+      videos.length > 0 ? "video" : images.length > 0 ? "image" : null;
+    if (kind && context.publishedTodayByKind[kind] >= limits.dailyMaxByKind[kind]) {
+      error(
+        `Ya hay ${context.publishedTodayByKind[kind]} ${kind === "video" ? "videos" : "publicaciones de fotos"} de ${content.platform} ese dia y el limite es ${limits.dailyMaxByKind[kind]}.`,
+      );
+    }
   }
 
   const errors = issues.filter((i) => i.level === "error").map((i) => i.message);

@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { canApprove, canRequestReview, canReturn, statusAfterReview } from "@/lib/content/review";
@@ -28,7 +27,9 @@ export type ReviewActionResult =
   | { ok: false; error: string };
 
 async function loadPost(postId: string) {
-  const { workspace, user, role, supabase } = await getWorkspace();
+  // Por permiso y no por cargo (F78): un rol personalizado con `content.approve`
+  // aprueba aunque sea Member, y un admin al que se lo sacaron, no.
+  const { workspace, user, supabase, can } = await getPermissionContext();
 
   const { data: post } = await supabase
     .from("content_posts")
@@ -39,11 +40,10 @@ async function loadPost(postId: string) {
 
   if (!post) return null;
 
-  const admin = isAdminRole(role);
   const perms: ContentPermissions = {
     create: true,
-    approve: admin,
-    publish: admin,
+    approve: can("content.approve"),
+    publish: can("content.publish"),
     isAuthor: post.created_by === user.id,
   };
 

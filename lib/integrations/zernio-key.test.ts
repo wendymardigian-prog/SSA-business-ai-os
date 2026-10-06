@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getZernioApiKey } from "./zernio-key";
+import { getZernioApiKey, getZernioKeyState } from "./zernio-key";
 
 const WS = "11111111-1111-1111-1111-111111111111";
 
@@ -67,5 +67,43 @@ describe("getZernioApiKey", () => {
     const { client } = fakeClient({ vaultError: "forbidden" });
 
     await expect(getZernioApiKey(WS, { supabase: client })).resolves.toBeNull();
+  });
+});
+
+
+describe("getZernioKeyState: no es lo mismo no tener key que no poder mirar", () => {
+  it("con key, 'present'", async () => {
+    const { client } = fakeClient({ vaultValue: "sk-de-vault" });
+
+    await expect(getZernioKeyState(WS, { supabase: client })).resolves.toEqual({
+      state: "present",
+      key: "sk-de-vault",
+    });
+  });
+
+  it("sin key, 'absent': Zernio esta desconectado", async () => {
+    const { client } = fakeClient({ vaultValue: null });
+
+    await expect(getZernioKeyState(WS, { supabase: client })).resolves.toEqual({ state: "absent" });
+  });
+
+  it("una key de puros espacios tambien es 'absent'", async () => {
+    const { client } = fakeClient({ vaultValue: "   " });
+
+    await expect(getZernioKeyState(WS, { supabase: client })).resolves.toEqual({ state: "absent" });
+  });
+
+  it("si Vault falla, 'unknown': NO se confunde con desconectado", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { client } = fakeClient({ vaultError: "permission denied" });
+
+    await expect(getZernioKeyState(WS, { supabase: client })).resolves.toEqual({ state: "unknown" });
+  });
+
+  it("getZernioApiKey sigue devolviendo null en 'absent' y en 'unknown'", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(getZernioApiKey(WS, { supabase: fakeClient({ vaultValue: null }).client })).resolves.toBeNull();
+    await expect(getZernioApiKey(WS, { supabase: fakeClient({ vaultError: "x" }).client })).resolves.toBeNull();
   });
 });

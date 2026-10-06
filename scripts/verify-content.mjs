@@ -85,23 +85,50 @@ try {
     check(!error, "el Owner si puede decidir sobre la idea", error?.message);
     await svc.from("content_ideas").update({ status: "nueva" }).eq("id", ideaMember.id); }
 
-  console.log("\n— Aprobar es una sola transaccion —");
+  console.log("\n— Aprobar es una sola transaccion, y hereda la clasificacion —");
 
-  { const { data: postId, error } = await owner.client.rpc("approve_content_idea", {
+  // Una idea con TODA la clasificacion cargada, para ver que pasa a la pieza.
+  const { data: pilar } = await svc.from("content_pillars")
+    .insert({ workspace_id: wsA, name: "zz-test Educativo", color: "#10b981" }).select("id").single();
+  const { data: oferta } = await svc.from("content_offers")
+    .insert({ workspace_id: wsA, name: "zz-test Mentoria" }).select("id").single();
+  await svc.from("content_ideas").update({
+    content: "Hook de la idea\n\nAngulo y notas",
+    platforms: ["instagram", "tiktok"],
+    pillar_id: pilar.id,
+    offer_id: oferta.id,
+    funnel_stage: "mofu",
+    reference: "https://ejemplo.test/ref",
+  }).eq("id", ideaMember.id);
+
+  { const { data: postId, error } = await owner.client.rpc("approve_content_idea_v2", {
       p_idea_id: ideaMember.id,
       p_title: "zz-test pieza de la idea",
       p_format: "reel",
-      p_copy: { hook: "h", body: "", cta: "", recording_notes: "" },
     });
     check(!error && postId, "el Owner aprueba: se crea la pieza y la idea queda aprobada", error?.message);
 
     const { data: idea } = await svc.from("content_ideas").select("status").eq("id", ideaMember.id).single();
-    const { data: post } = await svc.from("content_posts").select("id, status, idea_id").eq("id", postId).maybeSingle();
+    const { data: post } = await svc.from("content_posts")
+      .select("id, status, idea_id, format, pillar_id, offer_id, funnel_stage, reference, networks, script, recording_notes, copy")
+      .eq("id", postId).maybeSingle();
     check(idea.status === "aprobada" && post?.status === "draft" && post?.idea_id === ideaMember.id,
       "quedan las dos cosas: idea aprobada y pieza en borrador");
 
-    const { error: eDoble } = await owner.client.rpc("approve_content_idea", {
-      p_idea_id: ideaMember.id, p_title: "otra", p_format: null, p_copy: {},
+    check(post?.pillar_id === pilar.id && post?.offer_id === oferta.id && post?.funnel_stage === "mofu",
+      "la pieza hereda el pilar, la oferta y la etapa del embudo de la idea");
+    check(post?.format === "reel" && post?.reference === "https://ejemplo.test/ref",
+      "hereda el formato y la referencia");
+    check(JSON.stringify((post?.networks ?? []).map((n) => n.platform)) === JSON.stringify(["instagram", "tiktok"]),
+      "las plataformas de la idea pasan a ser las redes de la pieza, en el mismo orden");
+    check((post?.networks ?? []).every((n) => n.planned_at === null && n.caption === null),
+      "las redes heredadas entran SIN fecha ni caption: elegir la red no es programarla");
+    check(post?.script === null && post?.recording_notes === null,
+      "el guion y las notas de grabacion arrancan vacios: el texto de la idea es contexto");
+    check(JSON.stringify(post?.copy) === "{}", "y la columna vieja `copy` no se toca");
+
+    const { error: eDoble } = await owner.client.rpc("approve_content_idea_v2", {
+      p_idea_id: ideaMember.id, p_title: "otra", p_format: null,
     });
     check(!!eDoble, "aprobar dos veces la misma idea se rechaza (un doble clic no crea dos piezas)"); }
 
@@ -111,14 +138,32 @@ try {
       .insert({ workspace_id: wsA, title: "zz-test idea para el member", created_by: member.id })
       .select("id").single();
     const antes = await svc.from("content_posts").select("id", { count: "exact", head: true }).eq("workspace_id", wsA);
-    const { error } = await member.client.rpc("approve_content_idea", {
-      p_idea_id: otraIdea.id, p_title: "zz-test no deberia existir", p_format: null, p_copy: {},
+    const { error } = await member.client.rpc("approve_content_idea_v2", {
+      p_idea_id: otraIdea.id, p_title: "zz-test no deberia existir", p_format: null,
     });
     const despues = await svc.from("content_posts").select("id", { count: "exact", head: true }).eq("workspace_id", wsA);
     const { data: idea } = await svc.from("content_ideas").select("status").eq("id", otraIdea.id).single();
     check(!!error, "un Member no puede aprobar por la API directa", error ? undefined : "no dio error");
     check(idea.status === "nueva" && antes.count === despues.count,
       "y no queda una pieza huerfana: la transaccion se deshizo entera"); }
+
+  { // Una idea sin clasificar se aprueba igual, y la pieza queda sin clasificar.
+    const { data: lisa } = await svc.from("content_ideas")
+      .insert({ workspace_id: wsA, title: "zz-test idea pelada", created_by: member.id }).select("id").single();
+    const { data: postId, error } = await owner.client.rpc("approve_content_idea_v2", {
+      p_idea_id: lisa.id, p_title: "zz-test pieza pelada", p_format: null,
+    });
+    const { data: post } = await svc.from("content_posts")
+      .select("pillar_id, offer_id, funnel_stage, networks").eq("id", postId).maybeSingle();
+    check(!error && post?.pillar_id === null && post?.offer_id === null && post?.funnel_stage === null
+      && (post?.networks ?? []).length === 0,
+      "una idea sin clasificar se aprueba igual y la pieza queda sin pilar ni oferta", error?.message); }
+
+  { // Archivar el pilar NO le saca el pilar a la pieza que ya lo tiene.
+    await svc.from("content_pillars").update({ archived_at: new Date().toISOString() }).eq("id", pilar.id);
+    const { data: post } = await svc.from("content_posts").select("pillar_id").eq("workspace_id", wsA)
+      .eq("pillar_id", pilar.id).maybeSingle();
+    check(post?.pillar_id === pilar.id, "archivar un pilar no se lo saca a la pieza que lo usa"); }
 
   console.log("\n— Piezas —");
 

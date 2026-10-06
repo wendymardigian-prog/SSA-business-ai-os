@@ -172,6 +172,27 @@ export function findUppercaseWords(text: string): string[] {
 }
 
 /**
+ * El ultimo parrafo del guion: el cierre, donde va el llamado a la accion.
+ *
+ * Antes el CTA era un campo propio del copy; con el guion unico (F90) vive al
+ * final del texto. Mirar el guion entero marcaria como "palabra clave" cada
+ * sigla en mayuscula del desarrollo (ROI, SEO...) y el aviso dejaria de
+ * servir, asi que solo se mira el cierre.
+ */
+export function closingParagraph(script: string | null | undefined): string {
+  const paragraphs = (script ?? "")
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return paragraphs[paragraphs.length - 1] ?? "";
+}
+
+/** Las palabras en mayuscula del cierre del guion: las candidatas a palabra clave. */
+export function findScriptKeywords(script: string | null | undefined): string[] {
+  return findUppercaseWords(closingParagraph(script));
+}
+
+/**
  * El link para crear la automatizacion que falta, con todo precargado.
  *
  * Que el boton lleve al editor de flows con la palabra, el tipo y la red ya

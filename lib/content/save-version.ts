@@ -42,7 +42,7 @@ export async function writeVersion(
 
   const { data: post } = await service
     .from("content_posts")
-    .select("id, title, format, copy, caption, networks, media, current_version")
+    .select("id, title, format, script, recording_notes, caption, networks, media, current_version")
     .eq("id", input.postId)
     .eq("workspace_id", input.workspaceId)
     .maybeSingle();
@@ -52,7 +52,8 @@ export async function writeVersion(
   const snapshot: PostSnapshot = {
     title: post.title,
     format: post.format,
-    copy: (post.copy ?? {}) as Record<string, unknown>,
+    script: post.script ?? null,
+    recording_notes: post.recording_notes ?? null,
     caption: post.caption,
     networks: (Array.isArray(post.networks) ? post.networks : []) as unknown[],
     media: (Array.isArray(post.media) ? post.media : []) as unknown[],

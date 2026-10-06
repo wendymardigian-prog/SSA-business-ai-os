@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { activeSettingsTab, SETTINGS_TABS } from "./tabs";
 
 describe("SETTINGS_TABS", () => {
-  it("tiene las seis pestañas en orden", () => {
+  it("tiene las siete pestañas en orden", () => {
     expect(SETTINGS_TABS.map((t) => t.name)).toEqual([
       "General",
       "Equipo y roles",
       "Campos personalizados",
       "Recursos",
+      "Contenido",
       "Integraciones",
       "Tareas",
     ]);
@@ -43,6 +44,12 @@ describe("activeSettingsTab", () => {
     );
     expect(activeSettingsTab("/dashboard/settings/audios")).toBe(
       "/dashboard/settings/recursos",
+    );
+  });
+
+  it("marca Contenido en /contenido", () => {
+    expect(activeSettingsTab("/dashboard/settings/contenido")).toBe(
+      "/dashboard/settings/contenido",
     );
   });
 

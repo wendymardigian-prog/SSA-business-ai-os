@@ -4,7 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { STATUS_LABELS } from "@/lib/content/status";
 import { applyContentFilters, type ContentFilters, type FilterablePost } from "@/lib/content/filters";
 import type { ContentPostStatus } from "@/lib/types/database";
+import type { TaxonomyTag } from "@/lib/content/taxonomy";
+import { Users } from "lucide-react";
+import { drawerHref } from "@/lib/content/drawer-url";
+import { attributionTooltip } from "@/lib/content/board";
 import { NetworkBadges } from "./network-badge";
+import { PillarDot } from "./pillar-tag";
 
 /**
  * La vista lista (F21): la misma informacion que el tablero, pero ordenable y
@@ -15,10 +20,16 @@ import { NetworkBadges } from "./network-badge";
 export interface ListRow extends FilterablePost {
   format: string | null;
   authorName: string | null;
+  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  authorship: string | null;
+  /** El pilar, para reconocerla de un vistazo (F91). */
+  pillar: TaxonomyTag | null;
   /** La fecha mas temprana de sus redes. */
   firstAt: string | null;
   /** Si ya tiene el guion escrito (C15). */
   hasCopy: boolean;
+  /** Contactos con esta pieza como primer toque; null = no se muestra (F101). */
+  attributedContacts?: number | null;
   /** Una idea todavia sin decidir, para que la lista muestre TODO (C15). */
   isIdea?: boolean;
 }
@@ -27,13 +38,11 @@ export function ContentList({
   rows,
   filters,
   authors,
-  platforms,
   months,
 }: {
   rows: ListRow[];
   filters: ContentFilters;
   authors: Array<{ id: string; name: string }>;
-  platforms: string[];
   /** Los meses que tienen algo, para el filtro de fecha (C15). */
   months: string[];
 }) {
@@ -49,6 +58,14 @@ export function ContentList({
 
   const visible = applyContentFilters(rows, filters);
 
+  /** Una idea o una pieza se abren en el drawer, sin salir de la lista. */
+  function open(row: ListRow) {
+    router.push(
+      drawerHref(new URLSearchParams(params.toString()), { kind: row.isIdea ? "idea" : "piece", id: row.id }),
+      { scroll: false },
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2 px-4 pt-4 md:px-6">
@@ -59,12 +76,6 @@ export function ContentList({
           placeholder="Buscar por titulo"
           aria-label="Buscar piezas"
           className="h-8 min-w-48 flex-1 rounded-lg border border-border bg-background px-3 text-sm sm:max-w-xs"
-        />
-        <Select
-          label="Red"
-          value={filters.platform ?? ""}
-          onChange={(v) => setFilter("red", v)}
-          options={platforms.map((p) => ({ value: p, label: p }))}
         />
         <Select
           label="Estado"
@@ -106,8 +117,9 @@ export function ContentList({
                 <th className="py-2 pr-3 font-medium">Titulo</th>
                 <th className="py-2 pr-3 font-medium">Redes</th>
                 <th className="py-2 pr-3 font-medium">Estado</th>
-                <th className="hidden py-2 pr-3 font-medium sm:table-cell">Copy</th>
+                <th className="hidden py-2 pr-3 font-medium sm:table-cell">Guion</th>
                 <th className="hidden py-2 pr-3 font-medium sm:table-cell">Fecha</th>
+                <th className="hidden py-2 pr-3 font-medium lg:table-cell">Contactos</th>
                 <th className="hidden py-2 font-medium md:table-cell">Autor</th>
               </tr>
             </thead>
@@ -117,16 +129,24 @@ export function ContentList({
                 // tabla de cien filas es una puntería que nadie tiene (C15).
                 <tr
                   key={row.id}
-                  onClick={() => !row.isIdea && router.push(`/dashboard/content/${row.id}`)}
-                  className={`border-b border-border last:border-0 ${
-                    row.isIdea ? "" : "cursor-pointer hover:bg-accent/40"
-                  }`}
+                  data-card-id={`${row.isIdea ? "idea" : "piece"}-${row.id}`}
+                  tabIndex={0}
+                  aria-label={`Abrir ${row.title}`}
+                  onClick={() => open(row)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      open(row);
+                    }
+                  }}
+                  className="cursor-pointer border-b border-border last:border-0 hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
                 >
                   <td className="py-2 pr-3">
                     <span className="font-medium">{row.title}</span>
                     {row.format && (
                       <span className="ml-2 text-xs text-muted-foreground">{row.format}</span>
                     )}
+                    {row.pillar && <PillarDot tag={row.pillar} />}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
                     {row.isIdea ? <span>—</span> : <NetworkBadges platforms={row.platforms} />}
@@ -157,8 +177,21 @@ export function ContentList({
                         })
                       : "Sin fecha"}
                   </td>
+                  <td className="hidden py-2 pr-3 text-xs lg:table-cell">
+                    {row.attributedContacts === null || row.attributedContacts === undefined ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 tabular-nums"
+                        title={attributionTooltip(row.attributedContacts)}
+                      >
+                        <Users className="h-3 w-3 text-muted-foreground" aria-hidden />
+                        {row.attributedContacts}
+                      </span>
+                    )}
+                  </td>
                   <td className="hidden py-2 text-xs text-muted-foreground md:table-cell">
-                    {row.authorName ?? "—"}
+                    {row.authorship ?? row.authorName ?? "—"}
                   </td>
                 </tr>
               ))}

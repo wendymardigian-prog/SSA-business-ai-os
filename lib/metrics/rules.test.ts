@@ -11,7 +11,10 @@ import {
   daysBetween,
   isSyncHour,
   mayStillGrow,
+  readWindowStart,
+  selectPostsToPersist,
   shouldCollect,
+  type StoredPost,
   workspaceDate,
   workspaceHour,
   type DailyPoint,
@@ -214,5 +217,121 @@ describe("dias entre fechas (F45)", () => {
 
   it("una fecha invalida da cero en vez de NaN", () => {
     expect(daysBetween("no soy fecha", "2026-09-08")).toBe(0);
+  });
+});
+
+
+// ── F79: la regla de frecuencia por fin se aplica ──────────────────────────
+
+describe("la ventana que se le pide a la red (F79)", () => {
+  // El 1 de octubre. Un post del 17 de agosto tiene 45 dias.
+  const now = new Date("2026-10-01T06:00:00Z");
+  const post = (publishedAt: string | null, lastSyncedAt: string | null, id = "p"): StoredPost => ({
+    externalPostId: id,
+    publishedAt,
+    lastSyncedAt,
+  });
+
+  it("sin posts viejos, son los 30 dias de siempre", () => {
+    expect(readWindowStart(now, [])).toBe("2026-09-01");
+    expect(readWindowStart(now, [post("2026-09-20", "2026-09-30")])).toBe("2026-09-01");
+  });
+
+  it("uno de 45 dias leido hace 3 NO estira la ventana: no se le pide nada", () => {
+    expect(readWindowStart(now, [post("2026-08-17T12:00:00Z", "2026-09-28T06:00:00Z")])).toBe("2026-09-01");
+  });
+
+  // La cuenta: el 17 de agosto a las 12:00 y el 1 de octubre a las 06:00 hay 44,75
+  // dias, o sea 44 enteros. Con el dia de margen la ventana arranca 45 dias antes
+  // de las 06:00 del 1 de octubre: el 17 de agosto, el dia en que se publico.
+  // Lo que importa es eso: que el dia del post quede ADENTRO.
+  it("uno de 45 dias leido hace 8 SI la estira, para pedirlo", () => {
+    expect(readWindowStart(now, [post("2026-08-17T12:00:00Z", "2026-09-23T06:00:00Z")])).toBe("2026-08-17");
+  });
+
+  it("uno de 45 dias que nunca se leyo tambien la estira", () => {
+    expect(readWindowStart(now, [post("2026-08-17T12:00:00Z", null)])).toBe("2026-08-17");
+  });
+
+  it("uno de 100 dias NUNCA la estira, ni aunque nunca se haya leido", () => {
+    expect(readWindowStart(now, [post("2026-06-23T12:00:00Z", null)])).toBe("2026-09-01");
+  });
+
+  it("con varios, manda el mas viejo al que le toca", () => {
+    const stored = [
+      post("2026-08-17T12:00:00Z", null, "a"), // ~45 dias
+      post("2026-07-20T12:00:00Z", null, "b"), // ~73 dias: el mas viejo al que le toca
+      post("2026-08-01T12:00:00Z", "2026-09-30T06:00:00Z", "c"), // leido ayer: no cuenta
+    ];
+    expect(readWindowStart(now, stored)).toBe("2026-07-20");
+  });
+
+  it("el post mas viejo que entra (90 dias) deja la ventana en 91 dias atras, y no mas", () => {
+    // 2 de julio 12:00 -> 1 de octubre 06:00 = 90,75 dias: 90 enteros, el limite.
+    expect(readWindowStart(now, [post("2026-07-02T12:00:00Z", null)])).toBe("2026-07-02");
+  });
+
+  it("uno de 91 dias ya no entra y no mueve la ventana", () => {
+    expect(readWindowStart(now, [post("2026-07-01T12:00:00Z", null)])).toBe("2026-09-01");
+  });
+});
+
+describe("de lo que devuelve la red, que se guarda hoy (F79)", () => {
+  const now = new Date("2026-10-01T06:00:00Z");
+  const fromNetwork = (externalPostId: string, publishedAt: string | null) => ({ externalPostId, publishedAt });
+  const ids = (posts: Array<{ externalPostId: string }>) => posts.map((p) => p.externalPostId);
+
+  it("hasta 30 dias entra siempre, aunque se haya leido hoy", () => {
+    // Es lo que hace el cron desde siempre, y lo que "Actualizar ahora" necesita.
+    const stored = [{ externalPostId: "a", publishedAt: "2026-09-25T12:00:00Z", lastSyncedAt: "2026-10-01T05:00:00Z" }];
+
+    expect(ids(selectPostsToPersist([fromNetwork("a", "2026-09-25T12:00:00Z")], stored, now))).toEqual(["a"]);
+  });
+
+  it("uno de 45 dias leido hace 3 dias NO se guarda; a los 8 SI", () => {
+    const reciente = [{ externalPostId: "a", publishedAt: "2026-08-17T12:00:00Z", lastSyncedAt: "2026-09-28T06:00:00Z" }];
+    const viejo = [{ externalPostId: "a", publishedAt: "2026-08-17T12:00:00Z", lastSyncedAt: "2026-09-23T06:00:00Z" }];
+    const post = fromNetwork("a", "2026-08-17T12:00:00Z");
+
+    expect(selectPostsToPersist([post], reciente, now)).toEqual([]);
+    expect(ids(selectPostsToPersist([post], viejo, now))).toEqual(["a"]);
+  });
+
+  it("uno de 100 dias no se guarda nunca, ni la primera vez", () => {
+    expect(selectPostsToPersist([fromNetwork("a", "2026-06-23T12:00:00Z")], [], now)).toEqual([]);
+  });
+
+  it("uno que todavia no tenemos y esta dentro de 90 dias entra", () => {
+    expect(ids(selectPostsToPersist([fromNetwork("nuevo", "2026-08-17T12:00:00Z")], [], now))).toEqual(["nuevo"]);
+  });
+
+  it("uno sin fecha de publicacion se guarda: sin fecha no hay regla", () => {
+    expect(ids(selectPostsToPersist([fromNetwork("sin-fecha", null)], [], now))).toEqual(["sin-fecha"]);
+  });
+
+  it("usa la fecha que ya teniamos guardada cuando la red no la trae", () => {
+    const stored = [{ externalPostId: "a", publishedAt: "2026-08-17T12:00:00Z", lastSyncedAt: "2026-09-28T06:00:00Z" }];
+
+    expect(selectPostsToPersist([fromNetwork("a", null)], stored, now)).toEqual([]);
+  });
+});
+
+describe("la tolerancia del cron (F79)", () => {
+  const post = { publishedAt: "2026-08-17T12:00:00Z" };
+
+  it("la corrida de la semana pasada unos segundos mas tarde NO saltea la semana", () => {
+    // 03:30:12 de hace siete dias y 03:30:05 de hoy: 6,99 dias. Por dias
+    // enteros eran 6, y el post esperaba una semana de mas.
+    const now = new Date("2026-10-01T09:30:05Z");
+    const lastSyncedAt = "2026-09-24T09:30:12Z";
+
+    expect(shouldCollect({ ...post, lastSyncedAt, now })).toBe(false);
+    expect(shouldCollect({ ...post, lastSyncedAt, now, graceMs: 6 * 3600_000 })).toBe(true);
+  });
+
+  it("la tolerancia no adelanta una lectura que de verdad es de hace tres dias", () => {
+    const now = new Date("2026-10-01T09:30:05Z");
+
+    expect(shouldCollect({ ...post, lastSyncedAt: "2026-09-28T09:30:05Z", now, graceMs: 6 * 3600_000 })).toBe(false);
   });
 });

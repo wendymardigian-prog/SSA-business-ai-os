@@ -4,13 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { writeVersion } from "@/lib/content/save-version";
-import {
-  nextVersionNumber,
-  versionReasonFor,
-  versionsToPrune,
-  type PostSnapshot,
-  type SaveContext,
-} from "@/lib/content/versions";
+import { normalizeSnapshot, type PostSnapshot, type SaveContext, type StoredSnapshot } from "@/lib/content/versions";
 
 /**
  * El historial de una pieza (F22).
@@ -63,11 +57,14 @@ export async function saveVersion(input: {
  * Crea una version nueva con lo que hay AHORA antes de pisar nada: restaurar
  * no puede ser la forma de perder el trabajo de hoy. Despues escribe el
  * contenido viejo sobre la pieza.
+ *
+ * Devuelve lo que quedo escrito (ya en la forma nueva): el drawer lo usa para
+ * actualizar su borrador sin esperar a que la pagina vuelva a leer.
  */
 export async function restoreVersion(input: {
   postId: string;
   versionId: string;
-}): Promise<VersionResult> {
+}): Promise<VersionResult<{ snapshot: PostSnapshot }>> {
   const { workspace, supabase } = await getWorkspace();
 
   const { data: version } = await supabase
@@ -86,14 +83,17 @@ export async function restoreVersion(input: {
   });
   if (!guardado.ok) return guardado;
 
-  const snapshot = version.snapshot as unknown as PostSnapshot;
+  // Una version vieja guarda `copy`; se lleva a la forma nueva y se escribe
+  // `script`. La columna `copy` NO se toca nunca mas (F90).
+  const snapshot = normalizeSnapshot(version.snapshot as unknown as StoredSnapshot);
 
   const { error } = await supabase
     .from("content_posts")
     .update({
       title: snapshot.title,
       format: snapshot.format,
-      copy: snapshot.copy as never,
+      script: snapshot.script,
+      recording_notes: snapshot.recording_notes,
       caption: snapshot.caption,
       networks: snapshot.networks as never,
       media: snapshot.media as never,
@@ -106,5 +106,5 @@ export async function restoreVersion(input: {
   }
 
   revalidatePath(CONTENT_PATH);
-  return { ok: true };
+  return { ok: true, data: { snapshot } };
 }

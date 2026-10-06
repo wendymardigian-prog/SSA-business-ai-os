@@ -170,6 +170,7 @@ export async function readZernioMetrics(params: ZernioReaderParams): Promise<Rea
   const accountDaily: AccountSnapshot[] = [];
 
   let followerCount: number | null = null;
+  let analyticsAvailable = true;
 
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const response = await client.analytics.getAnalytics({
@@ -202,6 +203,7 @@ export async function readZernioMetrics(params: ZernioReaderParams): Promise<Rea
       | undefined;
 
     if (data?.hasAnalyticsAccess === false) {
+      analyticsAvailable = false;
       warnings.push("El plan de Zernio no incluye analitica: no hay metricas para traer.");
       break;
     }
@@ -220,7 +222,12 @@ export async function readZernioMetrics(params: ZernioReaderParams): Promise<Rea
     if (!pagination?.totalPages || page >= pagination.totalPages) break;
   }
 
-  if (followerCount !== null) {
+  // Las cifras del perfil que no son una serie (seguidos, publicaciones, me
+  // gusta, videos, vistas). Solo se piden si el plan tiene analitica, y un fallo
+  // aca no tumba la lectura de los posts: son un dato de adorno, no de decision.
+  const profile = analyticsAvailable ? await readProfileStats(client, params.accountId) : null;
+
+  if (followerCount !== null || profile) {
     accountDaily.push({
       // El dia lo pone quien guarda, en la zona del workspace: el lector no
       // sabe en que zona vive quien mira el dashboard.
@@ -231,11 +238,53 @@ export async function readZernioMetrics(params: ZernioReaderParams): Promise<Rea
       impressions: null,
       reach: null,
       profileViews: null,
-      extra: {},
+      extra: profile ? { profile } : {},
     });
   }
 
   return { posts, accountDaily, warnings };
+}
+
+/** Lo que Zernio guarda del perfil de la cuenta, y que se muestra en Social (F75). */
+const PROFILE_KEYS = [
+  ["followingCount", "following"],
+  ["mediaCount", "posts"],
+  ["videoCount", "videos"],
+  ["totalViews", "views"],
+  ["likesCount", "likes"],
+] as const;
+
+/**
+ * Las cifras de perfil de una cuenta. Devuelve null si no hay ninguna: un campo
+ * que la red no dio no se escribe, porque un cero se lee despues como "no
+ * tiene" y es una afirmacion distinta y falsa.
+ */
+async function readProfileStats(
+  client: ReturnType<typeof createZernioClient>,
+  accountId: string,
+): Promise<Record<string, number> | null> {
+  try {
+    const getStats = client.accounts?.getFollowerStats;
+    if (typeof getStats !== "function") return null;
+
+    const response = await getStats.call(client.accounts, { query: { accountIds: accountId } });
+    if (response.error) return null;
+
+    const accounts: Array<{ _id?: string; accountStats?: Record<string, unknown> }> =
+      response.data?.accounts ?? [];
+    const stats = accounts.find((a) => a._id === accountId)?.accountStats;
+    if (!stats) return null;
+
+    const out: Record<string, number> = {};
+    for (const [from, to] of PROFILE_KEYS) {
+      const value = num(stats[from]);
+      if (value !== null) out[to] = value;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  } catch (err) {
+    console.error("[metricas] no pude leer las cifras de perfil:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 function errorMessage(error: unknown): string {

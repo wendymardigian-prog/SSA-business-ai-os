@@ -72,6 +72,14 @@ export function contentFiltersToQuery(filters: ContentFilters): string {
   return params.toString();
 }
 
+/**
+ * Si algo (una idea o una pieza) entra en el filtro de Red de la barra
+ * superior (F98): sin red elegida entra todo; con una, lo que apunta a ella.
+ */
+export function matchesPlatform(platforms: string[], platform: string | null): boolean {
+  return platform === null || platforms.includes(platform);
+}
+
 export interface FilterablePost {
   id: string;
   title: string;

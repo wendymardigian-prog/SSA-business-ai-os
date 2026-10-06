@@ -7,7 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/database";
+import type { Database, SocialPlatform } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { readSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
@@ -23,12 +23,14 @@ import {
   markAccountSync,
   persistAccountMetrics,
   persistPosts,
+  storedPosts,
   syncDate,
 } from "@/lib/metrics/sync";
-import { DAILY_UNTIL_DAYS } from "@/lib/metrics/rules";
+import { readWindowStart, selectPostsToPersist } from "@/lib/metrics/rules";
 import { EMPTY_READER_RESULT, type ReaderResult } from "@/lib/metrics/types";
 import { canReadComments, readThreadsReplies, readYouTubeComments, readZernioComments } from "@/lib/comments/sync";
 import { storeComment } from "@/lib/comments/store";
+import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { createZernioClient } from "@/lib/zernio-client";
 
 type Db = SupabaseClient<Database>;
@@ -261,12 +263,17 @@ async function handleMetricsSync({ supabase, job }: JobContext): Promise<void> {
   const date = syncDate(now, workspace?.timezone ?? null);
 
   // Solo la ventana que todavia cambia: pedirle a la API los mil posts
-  // historicos cada noche quema la cuota y no aporta un dato (F45).
-  const fromDate = new Date(now.getTime() - DAILY_UNTIL_DAYS * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
+  // historicos cada noche quema la cuota y no aporta un dato (F45). Son 30
+  // dias, y se estira hacia atras (hasta 90) solo si hay un post guardado al
+  // que ya le toca su lectura semanal (F79).
+  const stored = await storedPosts(supabase, account.id);
+  const fromDate = readWindowStart(now, stored);
 
   const result = await readAccount(supabase, account, fromDate, date);
+
+  // De lo que la red devolvio, solo lo que toca hoy: a uno de 45 dias leido
+  // hace tres dias no se le vuelve a pedir nada hasta que pase la semana.
+  result.posts = selectPostsToPersist(result.posts, stored, now);
 
   if (account.platform === "instagram") {
     await enrichInstagramReach(supabase, account.workspace_id, result);
@@ -291,6 +298,10 @@ async function handleMetricsSync({ supabase, job }: JobContext): Promise<void> {
   }
 
   const commentWarnings = await syncComments(supabase, account, result.posts);
+
+  // Las publicaciones recien sincronizadas pueden ser a las que cuelgan comentarios
+  // que entraron huerfanos por el webhook (F76). Nunca lanza.
+  await adoptOrphanComments(supabase, account.workspace_id, account.platform as SocialPlatform);
 
   await markAccountSync(supabase, {
     socialAccountId: account.id,

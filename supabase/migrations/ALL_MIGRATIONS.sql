@@ -17500,3 +17500,947 @@ BEGIN
     );
   END LOOP;
 END $$;
+
+-- ============================================================
+-- MIGRATION 114: CONTACT TOUCHES
+-- ============================================================
+-- 00114: la tabla de toques de atribucion (Contenido v3, B11: F82, F83).
+--
+-- Un "toque" es una interaccion atribuible de un contacto: su primer DM, un
+-- comentario en una publicacion, una reserva, un alta manual. Se guardan TODOS,
+-- no solo dos fotos, porque guardar solo "primero" y "ultimo" pierde el camino
+-- entero. `contacts.attribution` conserva `first_touch` y `last_touch` como una
+-- copia derivada, para que la ficha y los filtros no hagan JOIN.
+--
+-- Aditiva e idempotente: no toca ningun dato existente.
+--
+-- La escribe SOLO el servidor (`record_contact_touch`, service_role). Los
+-- usuarios leen: un Member ve los toques de los contactos que ya puede ver,
+-- porque la subconsulta a `contacts` hereda su scope de leads (misma tecnica
+-- que `contact_notes`).
+
+CREATE TABLE IF NOT EXISTS public.contact_touches (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id    uuid        NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id      uuid        NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  occurred_at     timestamptz NOT NULL,
+
+  -- La taxonomia (lib/contacts/taxonomy.ts). `content_label` es el "content"
+  -- de la taxonomia: el nombre se evita aca porque ya hay columnas llamadas asi.
+  source          text        NOT NULL,
+  medium          text,
+  campaign        text,
+  content_label   text,
+  term            text,
+  -- Un medio que no esta en la lista cerrada se guarda crudo y se marca.
+  medium_raw      boolean     NOT NULL DEFAULT false,
+
+  -- La pieza concreta, cuando se conoce.
+  social_post_id  uuid        REFERENCES public.social_posts(id) ON DELETE SET NULL,
+  content_post_id uuid        REFERENCES public.content_posts(id) ON DELETE SET NULL,
+
+  -- Identificadores de anuncio.
+  ad_id           text,
+  adset_id        text,
+  campaign_id     text,
+  fbclid          text,
+  gclid           text,
+  ttclid          text,
+  li_fat_id       text,
+  ctwa_clid       text,
+
+  -- Para cuando haya paginas y formularios propios.
+  referrer_url    text,
+  landing_page    text,
+
+  -- Por que camino tecnico entro.
+  origin          text        NOT NULL,
+  -- El id del mensaje, del comentario, del evento o de la reserva: es lo que
+  -- hace que el mismo toque llegando dos veces quede una sola vez.
+  dedupe_key      text        NOT NULL,
+  -- La carga original recortada a una lista blanca (nunca tokens ni secretos).
+  raw             jsonb       NOT NULL DEFAULT '{}'::jsonb,
+
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT contact_touches_origin_check
+    CHECK (origin IN ('dm', 'comment', 'booking', 'form', 'manual', 'import')),
+  CONSTRAINT contact_touches_source_not_empty CHECK (btrim(source) <> ''),
+  CONSTRAINT uq_contact_touches_dedupe UNIQUE (workspace_id, dedupe_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contact_touches_contact
+  ON public.contact_touches (workspace_id, contact_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_contact_touches_source_medium
+  ON public.contact_touches (workspace_id, source, medium, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_contact_touches_social_post
+  ON public.contact_touches (social_post_id) WHERE social_post_id IS NOT NULL;
+
+-- Los filtros de la lista de contactos (por fuente y medio del PRIMER toque) y
+-- los conteos por pieza de B13 y B14 leen la copia derivada en `contacts`.
+CREATE INDEX IF NOT EXISTS idx_contacts_first_touch_source
+  ON public.contacts (workspace_id, (attribution -> 'first_touch' ->> 'source'))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_first_touch_medium
+  ON public.contacts (workspace_id, (attribution -> 'first_touch' ->> 'medium'))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_first_touch_content_post
+  ON public.contacts (workspace_id, (attribution -> 'first_touch' ->> 'content_post_id'))
+  WHERE deleted_at IS NULL AND (attribution -> 'first_touch') ? 'content_post_id';
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.contact_touches;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.contact_touches
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- RLS: lee quien ve al contacto; nadie escribe desde el cliente.
+ALTER TABLE public.contact_touches ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "contact_touches_select" ON public.contact_touches;
+CREATE POLICY "contact_touches_select" ON public.contact_touches
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.id = contact_touches.contact_id
+        AND c.workspace_id = contact_touches.workspace_id
+    )
+  );
+
+REVOKE ALL ON public.contact_touches FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.contact_touches FROM authenticated;
+
+-- El toque tal como se guarda en `contacts.attribution`. Un solo lugar para el
+-- formato, porque lo usan la funcion de abajo y el backfill de la 00115.
+CREATE OR REPLACE FUNCTION public.contact_touch_json(t public.contact_touches)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'occurred_at',     t.occurred_at,
+    'source',          t.source,
+    'medium',          t.medium,
+    'campaign',        t.campaign,
+    'content',         t.content_label,
+    'term',            t.term,
+    'medium_raw',      CASE WHEN t.medium_raw THEN true END,
+    'social_post_id',  t.social_post_id,
+    'content_post_id', t.content_post_id,
+    'ad_id',           t.ad_id,
+    'adset_id',        t.adset_id,
+    'campaign_id',     t.campaign_id,
+    'fbclid',          t.fbclid,
+    'gclid',           t.gclid,
+    'ttclid',          t.ttclid,
+    'li_fat_id',       t.li_fat_id,
+    'ctwa_clid',       t.ctwa_clid,
+    'referrer_url',    t.referrer_url,
+    'landing_page',    t.landing_page,
+    'origin',          t.origin
+  ))
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_touch_json(public.contact_touches) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.contact_touch_json(public.contact_touches) TO service_role;
+
+-- Registra un toque y deja `first_touch` y `last_touch` bien puestos.
+--
+-- Idempotente por (workspace, dedupe_key): el mismo toque dos veces queda una
+-- sola vez y la segunda no toca nada. `first_touch` y `last_touch` se RECALCULAN
+-- desde la tabla en vez de compararse con la copia: asi un toque viejo que llega
+-- tarde (una relectura) queda en su lugar y el primero sigue siendo el primero.
+--
+-- `contacts.attribution` se mezcla con `||`: lo que ya habia (la forma vieja de
+-- clicks, o la plana del agendamiento) NO se borra.
+CREATE OR REPLACE FUNCTION public.record_contact_touch(
+  p_workspace_id uuid,
+  p_contact_id   uuid,
+  p_touch        jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_id    uuid;
+  v_first jsonb;
+  v_last  jsonb;
+BEGIN
+  IF p_touch IS NULL
+     OR nullif(btrim(p_touch->>'source'), '') IS NULL
+     OR nullif(btrim(p_touch->>'dedupe_key'), '') IS NULL
+     OR nullif(btrim(p_touch->>'origin'), '') IS NULL THEN
+    RETURN jsonb_build_object('inserted', false, 'reason', 'invalid');
+  END IF;
+
+  PERFORM 1 FROM public.contacts
+  WHERE id = p_contact_id AND workspace_id = p_workspace_id AND deleted_at IS NULL;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('inserted', false, 'reason', 'contact_not_found');
+  END IF;
+
+  INSERT INTO public.contact_touches (
+    workspace_id, contact_id, occurred_at,
+    source, medium, campaign, content_label, term, medium_raw,
+    social_post_id, content_post_id,
+    ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid,
+    referrer_url, landing_page, origin, dedupe_key, raw
+  )
+  VALUES (
+    p_workspace_id, p_contact_id,
+    coalesce((p_touch->>'occurred_at')::timestamptz, now()),
+    btrim(p_touch->>'source'),
+    nullif(btrim(p_touch->>'medium'), ''),
+    nullif(btrim(p_touch->>'campaign'), ''),
+    nullif(btrim(p_touch->>'content'), ''),
+    nullif(btrim(p_touch->>'term'), ''),
+    coalesce((p_touch->>'medium_raw')::boolean, false),
+    -- La pieza solo se enlaza si existe Y es de este workspace: una referencia
+    -- colgada o ajena no puede tumbar el registro ni filtrar datos.
+    (SELECT id FROM public.social_posts
+       WHERE id = nullif(p_touch->>'social_post_id', '')::uuid AND workspace_id = p_workspace_id),
+    (SELECT id FROM public.content_posts
+       WHERE id = nullif(p_touch->>'content_post_id', '')::uuid AND workspace_id = p_workspace_id),
+    nullif(p_touch->>'ad_id', ''),
+    nullif(p_touch->>'adset_id', ''),
+    nullif(p_touch->>'campaign_id', ''),
+    nullif(p_touch->>'fbclid', ''),
+    nullif(p_touch->>'gclid', ''),
+    nullif(p_touch->>'ttclid', ''),
+    nullif(p_touch->>'li_fat_id', ''),
+    nullif(p_touch->>'ctwa_clid', ''),
+    nullif(p_touch->>'referrer_url', ''),
+    nullif(p_touch->>'landing_page', ''),
+    btrim(p_touch->>'origin'),
+    btrim(p_touch->>'dedupe_key'),
+    coalesce(p_touch->'raw', '{}'::jsonb)
+  )
+  ON CONFLICT (workspace_id, dedupe_key) DO NOTHING
+  RETURNING id INTO v_id;
+
+  -- Ya estaba: no hay nada que recalcular ni que escribir.
+  IF v_id IS NULL THEN
+    RETURN jsonb_build_object('inserted', false, 'reason', 'duplicate');
+  END IF;
+
+  SELECT public.contact_touch_json(t) INTO v_first
+  FROM public.contact_touches t
+  WHERE t.contact_id = p_contact_id
+  ORDER BY t.occurred_at ASC, t.created_at ASC, t.id ASC
+  LIMIT 1;
+
+  SELECT public.contact_touch_json(t) INTO v_last
+  FROM public.contact_touches t
+  WHERE t.contact_id = p_contact_id
+  ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC
+  LIMIT 1;
+
+  UPDATE public.contacts
+  SET attribution = coalesce(attribution, '{}'::jsonb)
+        || jsonb_build_object('version', 2, 'first_touch', v_first, 'last_touch', v_last)
+  WHERE id = p_contact_id;
+
+  RETURN jsonb_build_object('inserted', true, 'touch_id', v_id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.record_contact_touch(uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_contact_touch(uuid, uuid, jsonb) TO service_role;
+
+COMMENT ON TABLE public.contact_touches IS
+  'Cada interaccion atribuible de un contacto (F82). Solo la escribe el servidor.';
+
+-- ============================================================
+-- MIGRATION 115: ATTRIBUTION V2 AND BACKFILL
+-- ============================================================
+-- 00115: atribucion v2 y el backfill de los contactos existentes (Contenido v3,
+-- B11: F84, F87).
+--
+-- Aditiva con backfill. Escribe SOLO donde `contacts.attribution` esta vacio:
+-- nunca pisa un valor. Idempotente: correrla dos veces no duplica toques.
+--
+-- 1. `create_booking` es la de la 00099 LETRA POR LETRA, con un unico agregado:
+--    despues de crear la reserva registra el toque (medium `booking`). El resto
+--    de la funcion, incluida la atribucion plana del contacto nuevo, no cambia:
+--    esa plana es la que lee el trigger de alta y sigue diciendo 'scheduling'.
+--    La definicion anterior esta completa en `00099_bookings.sql` por si hace
+--    falta volver atras.
+-- 2. Los dos triggers de la 00039 leen `first_touch.source` con respaldo en la
+--    clave plana `source`, asi un contacto viejo emite lo mismo que antes.
+-- 3. Backfill: un toque por cada evento `contact_created`, con la fuente que
+--    tenia el evento o, si no la traia, la del canal de la primera conversacion.
+
+-- ---------------------------------------------------------------------------
+-- 1. create_booking: la de la 00099 + el toque
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.create_booking(
+  p_workspace_id   uuid,
+  p_event_type_id  uuid,
+  p_host_user_id   uuid,
+  p_start_at       timestamptz,
+  p_end_at         timestamptz,
+  p_title          text,
+  p_name           text,
+  p_email          text,
+  p_phone          text,
+  p_timezone       text,
+  p_host_timezone  text,
+  p_location_type  text,
+  p_location_text  text,
+  p_responses      jsonb,
+  p_origin         text,
+  p_utm            jsonb,
+  p_referrer_url   text,
+  p_uid            text,
+  p_category_id    uuid,
+  p_category_snapshot jsonb,
+  p_contact_assignment text,
+  p_created_by     uuid DEFAULT NULL,
+  p_contact_id     uuid DEFAULT NULL,
+  p_metadata       jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact_id   uuid := p_contact_id;
+  v_created      boolean := false;
+  v_booking_id   uuid;
+  v_email        text := nullif(btrim(lower(p_email)), '');
+  v_phone        text := nullif(btrim(p_phone), '');
+  v_dnc          boolean := false;
+  v_setter       uuid;
+  v_vendedor     uuid;
+  v_assigned     boolean := false;
+BEGIN
+  -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+
+  -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual.
+  IF v_contact_id IS NULL THEN
+    IF v_phone IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (phone = v_phone OR whatsapp_phone = v_phone)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL AND v_email IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (lower(email) = v_email OR lower(secondary_email) = v_email)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL THEN
+      INSERT INTO public.contacts (workspace_id, display_name, email, phone, timezone, attribution, last_interaction_at)
+      VALUES (
+        p_workspace_id,
+        nullif(btrim(p_name), ''),
+        v_email,
+        v_phone,
+        nullif(p_timezone, ''),
+        coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+        now()
+      )
+      RETURNING id INTO v_contact_id;
+      v_created := true;
+    END IF;
+  END IF;
+
+  -- Completa SOLO los campos vacios: nunca pisa lo que ya hay.
+  IF NOT v_created THEN
+    UPDATE public.contacts
+    SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+        email        = coalesce(email, v_email),
+        phone        = coalesce(phone, v_phone),
+        timezone     = coalesce(timezone, nullif(p_timezone, '')),
+        last_interaction_at = now()
+    WHERE id = v_contact_id;
+  END IF;
+
+  SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+  FROM public.contacts WHERE id = v_contact_id;
+
+  -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+  -- trigger de la 00039, que emite assignment_changed en automation_events.
+  IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+    UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+    UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  END IF;
+
+  -- c. La agenda.
+  INSERT INTO public.bookings (
+    workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+    host_user_id, contact_id, title, start_at, end_at, status,
+    booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+    location_type, location_text, responses, origin, utm, referrer_url,
+    created_by, is_do_not_contact_at_booking, google_sync_status
+  ) VALUES (
+    p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+    p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+    nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+    p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+    coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+    p_created_by, coalesce(v_dnc, false), 'pending'
+  )
+  RETURNING id INTO v_booking_id;
+
+  -- c2. El toque de atribucion (Contenido v3, F87). Vale para el contacto nuevo
+  -- Y para el que ya existia: una reserva es una interaccion mas de esa persona.
+  -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+  BEGIN
+    PERFORM public.record_contact_touch(
+      p_workspace_id,
+      v_contact_id,
+      jsonb_build_object(
+        'occurred_at',  now(),
+        'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+        'medium',       'booking',
+        'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+        'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+        'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+        'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+        'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+        'referrer_url', nullif(btrim(p_referrer_url), ''),
+        'origin',       'booking',
+        'dedupe_key',   'booking:' || v_booking_id::text,
+        'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+      )
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+  END;
+
+  -- d. El historial.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    p_workspace_id, 'booking', v_booking_id, 'booking.created',
+    jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+    jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+    p_created_by
+  );
+
+  -- e. El evento de automatizacion.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (
+    p_workspace_id, 'booking_created', v_contact_id,
+    jsonb_build_object(
+      'booking_id', v_booking_id,
+      'event_type_id', p_event_type_id,
+      'host_user_id', p_host_user_id,
+      'origin', p_origin
+    )
+  );
+
+  -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+  VALUES (
+    'booking_google_sync',
+    jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+    now(), 'pending'
+  );
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+  VALUES (
+    'booking_ended',
+    jsonb_build_object('booking_id', v_booking_id),
+    p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+  );
+
+  RETURN jsonb_build_object(
+    'booking_id', v_booking_id,
+    'contact_id', v_contact_id,
+    'created_contact', v_created,
+    'assignment_changed', v_assigned,
+    'do_not_contact', coalesce(v_dnc, false)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamptz, timestamptz, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamptz, timestamptz, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. Los triggers de alta leen la forma canonica, con respaldo en la plana
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.contacts_emit_created()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(NEW.is_anonymous, false) THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM public.emit_automation_event(
+    NEW.workspace_id,
+    'contact_created',
+    NEW.id,
+    jsonb_build_object(
+      'source',
+      COALESCE(NEW.attribution->'first_touch'->>'source', NEW.attribution->>'source', 'unknown')
+    )
+  );
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.contacts_emit_deanonymized()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF COALESCE(OLD.is_anonymous, false) AND NOT COALESCE(NEW.is_anonymous, false) THEN
+    PERFORM public.emit_automation_event(
+      NEW.workspace_id,
+      'contact_created',
+      NEW.id,
+      jsonb_build_object(
+        'source',
+        COALESCE(NEW.attribution->'first_touch'->>'source', NEW.attribution->>'source', 'unknown'),
+        'deanonymized', true
+      )
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Backfill desde los eventos de alta
+-- ---------------------------------------------------------------------------
+-- Un toque por contacto vivo con evento `contact_created`. La fuente sale del
+-- evento (`metadata.platform`) y, si el evento no la traia, del canal de la
+-- primera conversacion. Si no se puede saber, NO se inventa: el contacto queda
+-- sin toque.
+INSERT INTO public.contact_touches (
+  workspace_id, contact_id, occurred_at, source, medium, origin, dedupe_key, raw
+)
+SELECT
+  e.workspace_id,
+  e.contact_id,
+  e.created_at,
+  src.platform,
+  'dm',
+  'dm',
+  'event:' || e.id::text,
+  jsonb_build_object('backfill', true, 'event_id', e.id)
+FROM public.analytics_events e
+JOIN public.contacts c
+  ON c.id = e.contact_id AND c.workspace_id = e.workspace_id AND c.deleted_at IS NULL
+CROSS JOIN LATERAL (
+  SELECT lower(nullif(btrim(coalesce(
+    e.metadata->>'platform',
+    (SELECT ch.platform
+       FROM public.conversations cv
+       JOIN public.channels ch ON ch.id = cv.channel_id
+      WHERE cv.contact_id = e.contact_id
+      ORDER BY cv.created_at ASC
+      LIMIT 1)
+  )), '')) AS platform
+) src
+WHERE e.event_type = 'contact_created'
+  AND src.platform IS NOT NULL
+ON CONFLICT (workspace_id, dedupe_key) DO NOTHING;
+
+-- La copia derivada, SOLO donde la atribucion esta vacia.
+WITH first_touch AS (
+  SELECT DISTINCT ON (t.contact_id) t.contact_id, public.contact_touch_json(t) AS j
+  FROM public.contact_touches t
+  ORDER BY t.contact_id, t.occurred_at ASC, t.created_at ASC, t.id ASC
+), last_touch AS (
+  SELECT DISTINCT ON (t.contact_id) t.contact_id, public.contact_touch_json(t) AS j
+  FROM public.contact_touches t
+  ORDER BY t.contact_id, t.occurred_at DESC, t.created_at DESC, t.id DESC
+)
+UPDATE public.contacts c
+SET attribution = jsonb_build_object('version', 2, 'first_touch', f.j, 'last_touch', l.j)
+FROM first_touch f
+JOIN last_touch l USING (contact_id)
+WHERE c.id = f.contact_id
+  AND c.attribution = '{}'::jsonb;
+
+-- ============================================================
+-- MIGRATION 116: CONTENT TAXONOMY
+-- ============================================================
+-- 00116: pilares, ofertas y clasificacion de ideas y piezas (Contenido v3, B12:
+-- F89, F91).
+--
+-- Aditiva e idempotente: no borra ni modifica datos existentes. Las columnas
+-- nuevas nacen vacias (salvo el pilar de las ideas que ya tenian texto, abajo).
+--
+-- 1. content_pillars y content_offers: listas del negocio, configurables. No se
+--    borran, se ARCHIVAN: una pieza ya publicada sigue mostrando su pilar
+--    aunque ya no se ofrezca en el selector. Por eso no hay policy de DELETE.
+--    Leer es de todo miembro (is_workspace_member y no has_permission: la
+--    funcion no conoce los permisos del Member de sistema, ver 00088);
+--    escribir pide `settings.manage`.
+-- 2. Clasificacion de ideas y piezas: plataformas, oferta, pilar, etapa del
+--    embudo (tofu | mofu | bofu) y referencia. El formato ya existia.
+-- 3. Los pilares que hoy son texto libre en content_ideas.pillar pasan a ser
+--    filas de content_pillars y la idea queda apuntando a la suya.
+-- 4. approve_content_idea_v2: aprobar hereda la clasificacion y las
+--    plataformas. La v1 (00084) no se toca: la borra la 00118, que no se aplica.
+
+-- ------------------------------------------------------------
+-- 1. Pilares y ofertas
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.content_pillars (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  color        text,
+  archived_at  timestamptz,
+  created_by   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.content_offers (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name         text NOT NULL,
+  archived_at  timestamptz,
+  created_by   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.content_pillars IS
+  'Pilares de contenido del negocio. Se archivan, nunca se borran: lo publicado sigue mostrando el suyo.';
+COMMENT ON TABLE public.content_offers IS
+  'Ofertas (lo que se vende) a las que apunta una idea o una pieza. Se archivan, nunca se borran.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_pillars_name_check') THEN
+    ALTER TABLE public.content_pillars ADD CONSTRAINT content_pillars_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 60);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_pillars_color_check') THEN
+    ALTER TABLE public.content_pillars ADD CONSTRAINT content_pillars_color_check
+      CHECK (color IS NULL OR color ~ '^#[0-9a-fA-F]{6}$');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_offers_name_check') THEN
+    ALTER TABLE public.content_offers ADD CONSTRAINT content_offers_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 60);
+  END IF;
+END $$;
+
+-- El nombre es unico entre los NO archivados: uno archivado libera el nombre,
+-- asi se puede volver a crear "Educativo" sin pelearse con el viejo.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_content_pillars_name
+  ON public.content_pillars (workspace_id, lower(btrim(name)))
+  WHERE archived_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_content_offers_name
+  ON public.content_offers (workspace_id, lower(btrim(name)))
+  WHERE archived_at IS NULL;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['content_pillars', 'content_offers'] LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at ON public.%I', t);
+    EXECUTE format(
+      'CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.update_updated_at()',
+      t
+    );
+
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_select" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_select" ON public.%1$I FOR SELECT USING (public.is_workspace_member(workspace_id))',
+      t
+    );
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_insert" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_insert" ON public.%1$I FOR INSERT WITH CHECK (public.has_permission(workspace_id, ''settings.manage''))',
+      t
+    );
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_update" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_update" ON public.%1$I FOR UPDATE USING (public.has_permission(workspace_id, ''settings.manage'')) WITH CHECK (public.has_permission(workspace_id, ''settings.manage''))',
+      t
+    );
+
+    -- Sin policy de DELETE, a proposito: archivar es la unica forma de sacar
+    -- una fila de circulacion.
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_delete" ON public.%1$I', t);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. Clasificacion de ideas y piezas
+-- ------------------------------------------------------------
+
+ALTER TABLE public.content_ideas
+  ADD COLUMN IF NOT EXISTS content      text,
+  ADD COLUMN IF NOT EXISTS platforms    text[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS offer_id     uuid REFERENCES public.content_offers(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS pillar_id    uuid REFERENCES public.content_pillars(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS funnel_stage text;
+
+ALTER TABLE public.content_posts
+  ADD COLUMN IF NOT EXISTS script          text,
+  ADD COLUMN IF NOT EXISTS recording_notes text,
+  ADD COLUMN IF NOT EXISTS offer_id        uuid REFERENCES public.content_offers(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS pillar_id       uuid REFERENCES public.content_pillars(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS funnel_stage    text,
+  ADD COLUMN IF NOT EXISTS reference       text;
+
+COMMENT ON COLUMN public.content_ideas.content IS
+  'El texto unico de la idea (reemplaza a hook + angle + notes, que quedan sin uso hasta la 00118).';
+COMMENT ON COLUMN public.content_ideas.platforms IS
+  'Redes a las que apunta la idea. Es una intencion: al aprobar se heredan a la pieza.';
+COMMENT ON COLUMN public.content_posts.script IS
+  'El guion completo para grabar (reemplaza a copy.hook + copy.body + copy.cta).';
+COMMENT ON COLUMN public.content_posts.recording_notes IS
+  'Instrucciones de produccion (reemplaza a copy.recording_notes).';
+COMMENT ON COLUMN public.content_posts.media IS
+  'La biblioteca de la pieza: todos sus archivos, subidos una vez. Cada red elige los suyos por id en networks[].files.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_ideas_funnel_check') THEN
+    ALTER TABLE public.content_ideas ADD CONSTRAINT content_ideas_funnel_check
+      CHECK (funnel_stage IS NULL OR funnel_stage IN ('tofu', 'mofu', 'bofu'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_posts_funnel_check') THEN
+    ALTER TABLE public.content_posts ADD CONSTRAINT content_posts_funnel_check
+      CHECK (funnel_stage IS NULL OR funnel_stage IN ('tofu', 'mofu', 'bofu'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_ideas_platforms_check') THEN
+    ALTER TABLE public.content_ideas ADD CONSTRAINT content_ideas_platforms_check
+      CHECK (platforms <@ ARRAY['instagram', 'tiktok', 'youtube', 'linkedin', 'threads']::text[]);
+  END IF;
+END $$;
+
+-- Para "cuantas piezas lo usan" (Ajustes) y para agrupar en el dashboard.
+CREATE INDEX IF NOT EXISTS idx_content_posts_pillar
+  ON public.content_posts (workspace_id, pillar_id) WHERE pillar_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_posts_offer
+  ON public.content_posts (workspace_id, offer_id) WHERE offer_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_ideas_pillar
+  ON public.content_ideas (workspace_id, pillar_id) WHERE pillar_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_content_ideas_offer
+  ON public.content_ideas (workspace_id, offer_id) WHERE offer_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- 3. Los pilares que eran texto pasan a ser filas
+-- ------------------------------------------------------------
+-- Solo toca las columnas NUEVAS (pillar_id) y solo donde esta vacia: el texto
+-- viejo de content_ideas.pillar queda como estaba hasta la 00118.
+
+INSERT INTO public.content_pillars (workspace_id, name)
+SELECT DISTINCT i.workspace_id, btrim(i.pillar)
+FROM public.content_ideas i
+WHERE i.pillar IS NOT NULL
+  AND btrim(i.pillar) <> ''
+  AND char_length(btrim(i.pillar)) <= 60
+  AND NOT EXISTS (
+    SELECT 1 FROM public.content_pillars p
+    WHERE p.workspace_id = i.workspace_id
+      AND p.archived_at IS NULL
+      AND lower(btrim(p.name)) = lower(btrim(i.pillar))
+  );
+
+UPDATE public.content_ideas i
+SET pillar_id = p.id
+FROM public.content_pillars p
+WHERE i.pillar_id IS NULL
+  AND i.pillar IS NOT NULL
+  AND btrim(i.pillar) <> ''
+  AND p.workspace_id = i.workspace_id
+  AND p.archived_at IS NULL
+  AND lower(btrim(p.name)) = lower(btrim(i.pillar));
+
+-- ------------------------------------------------------------
+-- 4. Aprobar una idea hereda la clasificacion
+-- ------------------------------------------------------------
+-- SECURITY INVOKER, igual que la v1: las dos escrituras pasan por la RLS de
+-- quien llama. Las redes de la idea entran a la pieza sin fecha ni caption:
+-- elegir la red es decir "va a ir aca", no "sale tal dia" (mismo criterio que
+-- createPost). El guion y las notas de grabacion arrancan vacios: el texto de
+-- la idea es contexto, no el guion.
+
+CREATE OR REPLACE FUNCTION public.approve_content_idea_v2(
+  p_idea_id uuid,
+  p_title   text,
+  p_format  text DEFAULT NULL
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  v_idea    public.content_ideas%ROWTYPE;
+  v_post_id uuid;
+  v_networks jsonb;
+BEGIN
+  SELECT * INTO v_idea FROM public.content_ideas WHERE id = p_idea_id AND deleted_at IS NULL;
+
+  IF v_idea.id IS NULL THEN
+    RAISE EXCEPTION 'idea_no_encontrada';
+  END IF;
+
+  IF v_idea.status <> 'nueva' THEN
+    RAISE EXCEPTION 'idea_ya_decidida';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'platform', p,
+    'planned_at', NULL,
+    'caption', NULL,
+    'media', NULL,
+    'cta', jsonb_build_object('type', 'none', 'keyword', NULL),
+    'options', '{}'::jsonb
+  ) ORDER BY ord), '[]'::jsonb)
+  INTO v_networks
+  FROM unnest(v_idea.platforms) WITH ORDINALITY AS u(p, ord);
+
+  INSERT INTO public.content_posts (
+    workspace_id, idea_id, title, format, reference,
+    offer_id, pillar_id, funnel_stage, networks,
+    status, created_by, position
+  )
+  VALUES (
+    v_idea.workspace_id, v_idea.id, p_title, COALESCE(p_format, v_idea.format), v_idea.reference,
+    v_idea.offer_id, v_idea.pillar_id, v_idea.funnel_stage, v_networks,
+    'draft', auth.uid(),
+    coalesce((
+      SELECT max(position) + 10 FROM public.content_posts
+      WHERE workspace_id = v_idea.workspace_id AND status = 'draft' AND deleted_at IS NULL
+    ), 10)
+  )
+  RETURNING id INTO v_post_id;
+
+  UPDATE public.content_ideas
+  SET status = 'aprobada', approved_by = auth.uid(), approved_at = now()
+  WHERE id = v_idea.id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'sin_permiso_para_aprobar';
+  END IF;
+
+  RETURN v_post_id;
+END;
+$$;
+
+COMMENT ON FUNCTION public.approve_content_idea_v2(uuid, text, text) IS
+  'Crea la pieza y marca la idea aprobada en una sola transaccion, heredando clasificacion y plataformas (F91). SECURITY INVOKER: la RLS decide si puede.';
+
+REVOKE ALL ON FUNCTION public.approve_content_idea_v2(uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.approve_content_idea_v2(uuid, text, text) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 117: CONTENT SINGLE TEXT
+-- ============================================================
+-- 00117: rellena el texto unico de ideas y piezas desde las columnas viejas
+-- (Contenido v3, B12: F90).
+--
+-- Aditiva e idempotente. Solo escribe las columnas NUEVAS (content, script,
+-- recording_notes) y solo donde estan vacias: nunca pisa algo que ya se haya
+-- escrito con el modelo nuevo, y correrla dos veces no cambia nada. Las
+-- columnas viejas (hook, angle, notes, copy) no se tocan: las borra la 00118,
+-- que no se aplica.
+--
+-- Idea: content = hook + angulo + notas, separados por una linea en blanco y
+-- salteando los que esten vacios.
+-- Pieza: script = hook + desarrollo + CTA del copy; recording_notes = las
+-- notas de grabacion del copy.
+--
+-- Hoy hay 1 idea y 1 pieza y las dos estan vacias: el backfill no toca ninguna
+-- fila existente. Importa para el dia que se clone el sistema con datos.
+
+UPDATE public.content_ideas
+SET content = nullif(btrim(concat_ws(
+  E'\n\n',
+  nullif(btrim(hook), ''),
+  nullif(btrim(angle), ''),
+  nullif(btrim(notes), '')
+)), '')
+WHERE content IS NULL
+  AND (
+    nullif(btrim(hook), '') IS NOT NULL
+    OR nullif(btrim(angle), '') IS NOT NULL
+    OR nullif(btrim(notes), '') IS NOT NULL
+  );
+
+UPDATE public.content_posts
+SET
+  script = nullif(btrim(concat_ws(
+    E'\n\n',
+    nullif(btrim(copy ->> 'hook'), ''),
+    nullif(btrim(copy ->> 'body'), ''),
+    nullif(btrim(copy ->> 'cta'), '')
+  )), ''),
+  recording_notes = nullif(btrim(copy ->> 'recording_notes'), '')
+WHERE script IS NULL
+  AND recording_notes IS NULL
+  AND jsonb_typeof(copy) = 'object'
+  AND (
+    nullif(btrim(copy ->> 'hook'), '') IS NOT NULL
+    OR nullif(btrim(copy ->> 'body'), '') IS NOT NULL
+    OR nullif(btrim(copy ->> 'cta'), '') IS NOT NULL
+    OR nullif(btrim(copy ->> 'recording_notes'), '') IS NOT NULL
+  );
+
+-- ============================================================
+-- MIGRATION 118: DROP LEGACY CONTENT COLUMNS
+-- ============================================================
+-- 00118: borra las columnas y la funcion que la v3 dejo sin uso (Contenido v3,
+-- B12).
+--
+-- *** DESTRUCTIVA. NO SE APLICA CON EL RESTO DE LA TANDA. ***
+-- Esta migracion esta escrita y anotada en docs/PENDIENTE.md, pero a
+-- proposito NO se aplico: borra datos. Se aplica a mano, DESPUES de:
+--   1. Haber visto la v3 funcionando en produccion con piezas reales.
+--   2. Haber verificado que ninguna idea o pieza tiene texto SOLO en las
+--      columnas viejas (la consulta de abajo tiene que dar 0 en las dos).
+--   3. Tener un backup (supabase db dump) o la confirmacion de Wendy.
+--
+-- Comprobacion previa (las dos tienen que devolver 0):
+--   SELECT count(*) FROM public.content_ideas
+--    WHERE content IS NULL
+--      AND (nullif(btrim(hook), '') IS NOT NULL
+--        OR nullif(btrim(angle), '') IS NOT NULL
+--        OR nullif(btrim(notes), '') IS NOT NULL);
+--   SELECT count(*) FROM public.content_posts
+--    WHERE script IS NULL AND recording_notes IS NULL
+--      AND copy <> '{}'::jsonb;
+--
+-- Las versiones viejas del historial (content_post_versions.snapshot) guardan
+-- `copy` DENTRO del jsonb, no como columna: no se tocan, y el codigo las sigue
+-- leyendo (lib/content/versions.ts normaliza al restaurar y al comparar).
+--
+-- Para volver atras esta migracion no alcanza con una inversa: las columnas se
+-- recrean vacias. Por eso la comprobacion previa es obligatoria.
+
+-- La funcion vieja recibe el copy por parametro y escribe content_posts.copy.
+DROP FUNCTION IF EXISTS public.approve_content_idea(uuid, text, text, jsonb);
+
+ALTER TABLE public.content_ideas
+  DROP COLUMN IF EXISTS hook,
+  DROP COLUMN IF EXISTS angle,
+  DROP COLUMN IF EXISTS notes,
+  DROP COLUMN IF EXISTS pillar;
+
+ALTER TABLE public.content_posts
+  DROP COLUMN IF EXISTS copy;

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles } from "lucide-react";
-import { createIdea, createPost, updateIdea } from "@/lib/actions/content";
-import { FORMAT_SUGGESTIONS } from "@/lib/content/ideas";
+import { createIdea, createPost } from "@/lib/actions/content";
+import { drawerHref } from "@/lib/content/drawer-url";
 import { ContentDialog, DialogField, fieldInput } from "./dialog";
+import { ClassificationFields, FormatField, type TaxonomyOptions } from "./classification-fields";
 import { NetworkBadge } from "./network-badge";
 
 /**
@@ -13,8 +14,11 @@ import { NetworkBadge } from "./network-badge";
  *
  * Antes eran una pagina aparte: se perdia el tablero de vista y volver
  * costaba dos clics. Y "Crear" devolvia al kanban, asi que para escribir
- * habia que buscar la pieza y entrar. Ahora "Crear y abrir" lleva al editor,
- * que es lo que se iba a hacer igual.
+ * habia que buscar la pieza y entrar. Ahora "Crear y abrir" abre el drawer de
+ * la pieza, que es lo que se iba a hacer igual.
+ *
+ * Editar una idea ya no pasa por aca: se edita en el drawer (F95), donde todo
+ * es editable al abrir.
  */
 
 export interface CreateDialogsProps {
@@ -22,75 +26,57 @@ export interface CreateDialogsProps {
   ideas: Array<{ id: string; title: string }>;
   /** Las redes conectadas del negocio. */
   platforms: string[];
-  /** Los pilares que ya se usaron, para sugerirlos. */
-  pillars: string[];
   /** Si el copywriter puede escribir al crear. */
   copywriter: { available: boolean; reason?: string };
-}
-
-function FormatField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <DialogField label="Formato">
-      <>
-        <input
-          list="formatos-de-contenido"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Reel"
-          className={fieldInput}
-        />
-        <datalist id="formatos-de-contenido">
-          {FORMAT_SUGGESTIONS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
-      </>
-    </DialogField>
-  );
 }
 
 // ── Nueva idea ────────────────────────────────────────────────────────────
 
 const EMPTY_IDEA = {
   title: "",
-  hook: "",
-  angle: "",
+  content: "",
   format: "",
-  pillar: "",
   reference: "",
-  notes: "",
+  platforms: [] as string[],
+  pillarId: "",
+  offerId: "",
+  funnelStage: "",
 };
 
 export function IdeaDialog({
-  pillars,
-  /** Con idea, edita; sin idea, crea. */
-  idea,
   canApprove,
+  platforms,
+  taxonomy,
   onClose,
 }: {
-  pillars: string[];
-  idea?: (typeof EMPTY_IDEA & { id: string }) | null;
   canApprove: boolean;
+  /** Las redes conectadas, para elegir a cuales apunta (F91). */
+  platforms: string[];
+  taxonomy: TaxonomyOptions;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [values, setValues] = useState(idea ?? EMPTY_IDEA);
+  const [values, setValues] = useState(EMPTY_IDEA);
 
-  const set = (key: keyof typeof EMPTY_IDEA) => (v: string) =>
+  const set = (key: "title" | "content") => (v: string) =>
     setValues((prev) => ({ ...prev, [key]: v }));
 
   function save() {
     setError(null);
     start(async () => {
-      const result = idea ? await updateIdea(idea.id, values) : await createIdea(values);
+      const input = {
+        title: values.title,
+        content: values.content,
+        format: values.format,
+        reference: values.reference,
+        platforms: values.platforms,
+        pillar_id: values.pillarId || null,
+        offer_id: values.offerId || null,
+        funnel_stage: values.funnelStage || null,
+      };
+      const result = await createIdea(input);
       if (!result.ok) return setError(result.error);
       onClose();
       router.refresh();
@@ -99,8 +85,8 @@ export function IdeaDialog({
 
   return (
     <ContentDialog
-      label={idea ? "Editar idea" : "Nueva idea"}
-      title={idea ? "Editar idea" : "Nueva idea"}
+      label="Nueva idea"
+      title="Nueva idea"
       onClose={onClose}
       footer={
         <>
@@ -126,7 +112,7 @@ export function IdeaDialog({
             disabled={pending || !values.title.trim()}
             className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
-            {idea ? "Guardar" : "Guardar idea"}
+            Guardar idea
           </button>
         </>
       }
@@ -140,55 +126,43 @@ export function IdeaDialog({
         />
       </DialogField>
 
-      <DialogField label="Hook" hint="La frase con la que arranca.">
-        <input value={values.hook} onChange={(e) => set("hook")(e.target.value)} className={fieldInput} />
-      </DialogField>
-
-      <DialogField label="Ángulo" hint="Desde dónde se cuenta.">
+      <DialogField
+        label="Idea"
+        hint="Todo junto: con qué arranca, desde dónde se cuenta, notas. Escribilo como te salga."
+      >
         <textarea
-          rows={2}
-          value={values.angle}
-          onChange={(e) => set("angle")(e.target.value)}
+          rows={6}
+          value={values.content}
+          onChange={(e) => set("content")(e.target.value)}
           className={fieldInput}
         />
       </DialogField>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormatField value={values.format} onChange={set("format")} />
-        <DialogField label="Pilar">
-          <>
-            <input
-              list="pilares-de-contenido"
-              value={values.pillar}
-              onChange={(e) => set("pillar")(e.target.value)}
-              className={fieldInput}
-            />
-            <datalist id="pilares-de-contenido">
-              {pillars.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
-          </>
-        </DialogField>
-      </div>
-
-      <DialogField label="Referencia" hint="Un link o de dónde salió.">
-        <input
-          value={values.reference}
-          onChange={(e) => set("reference")(e.target.value)}
-          placeholder="https://…"
-          className={fieldInput}
-        />
-      </DialogField>
-
-      <DialogField label="Notas">
-        <textarea
-          rows={2}
-          value={values.notes}
-          onChange={(e) => set("notes")(e.target.value)}
-          className={fieldInput}
-        />
-      </DialogField>
+      <ClassificationFields
+        value={{
+          format: values.format,
+          pillarId: values.pillarId,
+          offerId: values.offerId,
+          funnelStage: values.funnelStage,
+          reference: values.reference,
+        }}
+        onChange={(patch) =>
+          setValues((prev) => ({
+            ...prev,
+            ...(patch.format !== undefined ? { format: patch.format } : {}),
+            ...(patch.pillarId !== undefined ? { pillarId: patch.pillarId } : {}),
+            ...(patch.offerId !== undefined ? { offerId: patch.offerId } : {}),
+            ...(patch.funnelStage !== undefined ? { funnelStage: patch.funnelStage } : {}),
+            ...(patch.reference !== undefined ? { reference: patch.reference } : {}),
+          }))
+        }
+        taxonomy={taxonomy}
+        platforms={{
+          available: platforms,
+          selected: values.platforms,
+          onChange: (next) => setValues((prev) => ({ ...prev, platforms: next })),
+        }}
+      />
     </ContentDialog>
   );
 }
@@ -210,6 +184,7 @@ export function NewPostDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -230,15 +205,17 @@ export function NewPostDialog({
 
       if (!result.ok) return setError(result.error);
 
-      // "Crear y abrir": lleva al editor, que es donde se iba a ir igual.
-      // Si se pidio el copy, el editor ya lo muestra escribiendo.
+      // "Crear y abrir": abre el drawer de la pieza, que es donde se iba a ir
+      // igual. Si se pidio el copy, el drawer ya lo muestra escribiendo.
       if (withAi && copywriter.available) {
         const { requestCopy } = await import("@/lib/actions/copywriter");
         await requestCopy({ postId: result.data.id, confirmed: true });
       }
 
       onClose();
-      router.push(`/dashboard/content/${result.data.id}/edit`);
+      router.push(drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id: result.data.id }), {
+        scroll: false,
+      });
       router.refresh();
     });
   }

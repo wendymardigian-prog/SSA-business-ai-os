@@ -108,15 +108,6 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Nueva pieza",
     tooltip: "Una idea o una pieza nueva. Lo minimo para no perderla; el resto se completa despues.",
   },
-  "/dashboard/content/[postId]/edit": {
-    title: "Editar pieza",
-    tooltip:
-      "El guion, el caption, la media y cuando sale en cada red. Se guarda solo cada 10 segundos.",
-  },
-  "/dashboard/content/[postId]": {
-    title: "Pieza",
-    tooltip: "Como quedo en cada red, que se puede reintentar y que metricas tuvo.",
-  },
   "/dashboard/social": {
     title: "Social",
     tooltip: "Tu perfil de cada red y sus publicaciones, con las metricas que la red no muestra.",
@@ -227,6 +218,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Banca de recursos",
     tooltip: "Textos y audios guardados para mandar en la bandeja con un clic, o que el agente los use solo.",
   },
+  "/dashboard/settings/contenido": {
+    title: "Contenido",
+    tooltip: "Los pilares y las ofertas con los que clasificas tus ideas y piezas. Se archivan, no se borran.",
+  },
   "/dashboard/settings/background": {
     title: "Tareas en segundo plano",
     tooltip: "Que trabajos de IA corren solos, cuando y con que modelo.",
@@ -247,7 +242,37 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
   "/dashboard/settings/audios":
     "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
+  "/dashboard/content/[postId]":
+    "Solo redirige al tablero con el drawer de esa pieza abierto (F99); nunca se dibuja.",
+  "/dashboard/content/[postId]/edit":
+    "Solo redirige al tablero con el drawer de esa pieza abierto (F99); nunca se dibuja.",
 };
+
+/**
+ * El ⓘ de la barra de Contenido: lo que puede hacer QUIEN mira (F98).
+ *
+ * Es distinto para cada rol: un Member propone ideas y crea piezas, y aprobar,
+ * programar y publicar es de quien tiene esos permisos. Decirlo aca evita que
+ * alguien busque un boton que no esta y no sepa por que.
+ */
+export function contentTooltip(perms: { approve: boolean; publish: boolean; ai: boolean }, timeZoneLabel?: string): string {
+  const can = ["proponés ideas", "creás y editás tus piezas"];
+  if (perms.approve) can.push("aprobás ideas y piezas");
+  if (perms.ai) can.push("generás el guion y los captions con IA");
+  if (perms.publish) can.push("programás y publicás");
+
+  const cannot: string[] = [];
+  if (!perms.approve) cannot.push("aprobar");
+  if (!perms.publish) cannot.push("programar y publicar");
+  if (!perms.ai) cannot.push("generar con IA");
+
+  const parts = [`Con tu rol ${can.join(", ")}.`];
+  if (cannot.length > 0) {
+    parts.push(`${cannot.join(", ")} ${cannot.length === 1 ? "es" : "son"} de quien tiene ese permiso (Owner y Admin, o un rol que lo incluya).`);
+  }
+  if (timeZoneLabel) parts.push(`Zona horaria del negocio: ${timeZoneLabel}.`);
+  return parts.join(" ");
+}
 
 /** Convierte un pathname real en el patron con el que se guarda. */
 export function routePattern(pathname: string): string {

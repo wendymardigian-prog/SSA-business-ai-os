@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
+import { createServiceClient } from "@/lib/supabase/server";
+import { recordImportTouches } from "@/lib/contacts/touch-entry";
 import { logAudit } from "@/lib/audit";
 import { findDuplicateContact } from "@/lib/contacts/dedup";
 import { mapRow, type ColumnMapping } from "@/lib/csv/map";
@@ -151,6 +153,9 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   const tagIds = await resolveTags(supabase, workspace.id, [...nombresDeTags]);
 
   const counters: BatchCounters = { imported: 0, updated: 0, errors: 0, details: [] };
+  // Los contactos NUEVOS de esta tanda: son los unicos que entraron por la
+  // importacion. Actualizar uno que ya existia no es un origen nuevo (F87).
+  const nuevos: string[] = [];
 
   for (const result of validadas) {
     if (!result.ok) {
@@ -194,7 +199,10 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
       }
 
       if (existing) counters.updated++;
-      else counters.imported++;
+      else {
+        counters.imported++;
+        nuevos.push(contactId);
+      }
     } catch (err) {
       counters.errors++;
       counters.details.push({
@@ -202,6 +210,16 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
         error: err instanceof Error ? err.message : "Error inesperado",
       });
     }
+  }
+
+  // El toque de atribucion de los contactos nuevos. Despues de escribirlos y sin
+  // poder tumbar la tanda: `recordImportTouches` atrapa todo (F87).
+  if (nuevos.length > 0) {
+    await recordImportTouches(await createServiceClient(), {
+      workspaceId: workspace.id,
+      importId,
+      contactIds: nuevos,
+    });
   }
 
   const detallePrevio = (registro.error_details as { line: number; error: string }[]) ?? [];

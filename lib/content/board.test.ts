@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  attributedContactsFor,
+  attributionTooltip,
   buildBoard,
+  countByPiece,
   evaluateDrop,
   redistributionChip,
   reorder,
@@ -20,13 +23,16 @@ const idea = (over: Partial<BoardIdea> = {}): BoardIdea => ({
   status: "nueva",
   createdBy: "u1",
   position: 10,
-  hook: null,
-  angle: null,
-  pillar: null,
+  content: null,
   reference: null,
-  notes: null,
+  platforms: [],
+  pillar: null,
+  offer: null,
+  funnelStage: null,
   createdAt: null,
+  updatedAt: null,
   authorName: null,
+  authorship: null,
   ...over,
 });
 
@@ -44,8 +50,14 @@ const post = (over: Partial<BoardPost> = {}): BoardPost => ({
   copyFromAi: false,
   materialStatus: "pendiente",
   copyStatus: "idle",
+  pillar: null,
+  offer: null,
+  funnelStage: null,
+  attributedContacts: null,
   createdAt: null,
+  updatedAt: null,
   authorName: null,
+  authorship: null,
   ...over,
 });
 
@@ -225,5 +237,49 @@ describe("el chip de redistribucion", () => {
     ]);
 
     expect(chip).toContain("2 redes");
+  });
+});
+
+describe("la atribucion en la tarjeta (F101)", () => {
+  it("cuenta los contactos que tienen cada pieza como primer toque", () => {
+    const counts = countByPiece([
+      { content_post_id: "a" },
+      { content_post_id: "a" },
+      { content_post_id: "b" },
+      { content_post_id: null },
+    ]);
+
+    expect(counts.get("a")).toBe(2);
+    expect(counts.get("b")).toBe(1);
+    expect(counts.size).toBe(2);
+  });
+
+  it("CRITERIO: una pieza sin publicaciones NO muestra el numero, ni como cero", () => {
+    expect(attributedContactsFor(undefined, false)).toBeNull();
+    expect(attributedContactsFor(0, false)).toBeNull();
+    // Aunque alguien le hubiera atribuido contactos antes de que existiera una publicacion.
+    expect(attributedContactsFor(5, false)).toBeNull();
+  });
+
+  it("una publicada muestra el numero", () => {
+    expect(attributedContactsFor(7, true)).toBe(7);
+  });
+
+  it("una publicada con cero contactos muestra el cero: ahi es un dato", () => {
+    expect(attributedContactsFor(undefined, true)).toBe(0);
+    expect(attributedContactsFor(0, true)).toBe(0);
+  });
+
+  it("el tooltip dice que es el PRIMER toque, en singular y en plural", () => {
+    expect(attributionTooltip(1)).toBe("1 contacto llegó por primera vez desde esta pieza");
+    expect(attributionTooltip(12)).toBe("12 contactos llegaron por primera vez desde esta pieza");
+    expect(attributionTooltip(0)).toContain("0 contactos");
+  });
+
+  it("la tarjeta de una pieza lleva el numero (o null) sin tocar el resto del tablero", () => {
+    const board = buildBoard([], [post({ id: "p1", status: "published", attributedContacts: 4 }), post({ id: "p2" })]);
+    const cards = board.flatMap((c) => c.cards).filter((c) => c.kind === "post");
+
+    expect(cards.map((c) => (c as BoardPost).attributedContacts).sort()).toEqual([4, null]);
   });
 });

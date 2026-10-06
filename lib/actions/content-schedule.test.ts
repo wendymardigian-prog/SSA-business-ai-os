@@ -45,6 +45,20 @@ function seed(over: { networks?: unknown[]; accounts?: Record<string, unknown>[]
         workspace_id: WS,
         title: "Mi pieza",
         status: "approved",
+        caption: "Un caption de prueba",
+        // El servidor ahora valida lo que se programa (F77): una pieza sin
+        // media no sale en Instagram, YouTube ni TikTok. Un video corto basta.
+        media: [
+          {
+            storage_path: `${WS}/${POST}/video.mp4`,
+            mime_type: "video/mp4",
+            kind: "video",
+            size_bytes: 5_000_000,
+            width: 1080,
+            height: 1920,
+            duration_ms: 30_000,
+          },
+        ],
         // Asi nace una red en `createPost`: sin publisher y con options vacio.
         networks: over.networks ?? [{ platform: "instagram", planned_at: inOneHour, options: {} }],
       },
@@ -121,7 +135,7 @@ describe("A4 · reprogramar no deja el job viejo", () => {
   /** Con un publicador que NO agenda de su lado: ahi el job lleva la hora. */
   function seedYoutube(at: string) {
     seed({
-      networks: [{ platform: "youtube", planned_at: at, options: {} }],
+      networks: [{ platform: "youtube", planned_at: at, options: {}, youtube_title: "Un titulo" }],
       accounts: [
         { id: "acc-yt", workspace_id: WS, platform: "youtube", is_active: true, default_publisher: "youtube_api" },
       ],
@@ -138,7 +152,7 @@ describe("A4 · reprogramar no deja el job viejo", () => {
 
     const enDosHoras = new Date(Date.now() + 120 * 60_000).toISOString();
     db.rows("content_posts")[0].networks = [
-      { platform: "youtube", planned_at: enDosHoras, options: {} },
+      { platform: "youtube", planned_at: enDosHoras, options: {}, youtube_title: "Un titulo" },
     ];
 
     await scheduleNetworks({ postId: POST });
@@ -175,7 +189,7 @@ describe("D1 · quien agenda, segun el publicador", () => {
   it("un publicador que NO agenda sigue por la cola, a su hora", async () => {
     const enUnaHora = new Date(Date.now() + 60 * 60_000).toISOString();
     seed({
-      networks: [{ platform: "youtube", planned_at: enUnaHora, options: {} }],
+      networks: [{ platform: "youtube", planned_at: enUnaHora, options: {}, youtube_title: "Un titulo" }],
       accounts: [
         { id: "acc-yt", workspace_id: WS, platform: "youtube", is_active: true, default_publisher: "youtube_api" },
       ],
@@ -244,5 +258,198 @@ describe("desprogramar sigue andando", () => {
     expect(result.ok).toBe(true);
     expect(db.rows("social_posts")[0].status).toBe("cancelled");
     expect(db.rows("scheduled_jobs").filter((j) => j.status === "pending")).toHaveLength(0);
+  });
+});
+
+describe("F77 · el servidor valida y cuenta el tope diario", () => {
+  const tiktokOptions = {
+    privacyLevel: "PUBLIC_TO_EVERYONE",
+    contentPreviewConfirmed: true,
+    expressConsentGiven: true,
+  };
+
+  /** Una red de TikTok lista para programar, con su cuenta. */
+  function seedTiktok(media: unknown[]) {
+    const at = seed({
+      networks: [{ platform: "tiktok", planned_at: new Date(Date.now() + 60 * 60_000).toISOString(), options: tiktokOptions }],
+      accounts: [{ id: "acc-tt", workspace_id: WS, platform: "tiktok", is_active: true, default_publisher: "zernio" }],
+    });
+    db.rows("content_posts")[0].media = media;
+    return at;
+  }
+
+  const photo = {
+    storage_path: `${WS}/${POST}/foto.jpg`,
+    mime_type: "image/jpeg",
+    kind: "image",
+    size_bytes: 1_000_000,
+  };
+
+  /** `n` publicaciones de TikTok ya agendadas para el mismo instante. */
+  const alreadyScheduled = (n: number, mediaType: string, at: string) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `previa-${mediaType}-${i}`,
+      workspace_id: WS,
+      content_post_id: `otra-${i}`,
+      platform: "tiktok",
+      status: "scheduled",
+      media_type: mediaType,
+      scheduled_at: at,
+      deleted_at: null,
+    }));
+
+  it("rechaza lo que la validacion rechaza, aunque el editor lo haya dejado pasar", async () => {
+    // Una llamada directa a la accion (sin pasar por el editor) con un caption
+    // que Instagram no acepta: antes de F77 esto se programaba igual.
+    db.rows("content_posts")[0].caption = "x".repeat(2300);
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/2300 caracteres y instagram acepta 2200/);
+    expect(db.rows("social_posts")).toHaveLength(0);
+  });
+
+  it("el mensaje es el mismo que muestra el editor", async () => {
+    const { validateNetwork } = await import("@/lib/content/validation");
+    db.rows("content_posts")[0].media = [];
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    const delEditor = validateNetwork({ platform: "instagram", text: "Un caption de prueba", media: [], options: {} }).errors.join(" ");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(delEditor);
+  });
+
+  it("una red con errores no frena a las demas", async () => {
+    const at = new Date(Date.now() + 60 * 60_000).toISOString();
+    seed({
+      networks: [
+        { platform: "instagram", planned_at: at, options: {} },
+        { platform: "youtube", planned_at: at, options: {} }, // sin titulo: no sale
+      ],
+      accounts: [
+        { id: "acc-1", workspace_id: WS, platform: "instagram", is_active: true, default_publisher: "zernio" },
+        { id: "acc-yt", workspace_id: WS, platform: "youtube", is_active: true, default_publisher: "youtube_api" },
+      ],
+    });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.scheduled).toEqual(["instagram"]);
+      expect(result.data.skipped[0].platform).toBe("youtube");
+      expect(result.data.skipped[0].reason).toMatch(/titulo/i);
+    }
+  });
+
+  it("TikTok: con 15 videos ya agendados ese dia, el 16 se rechaza nombrando el limite", async () => {
+    seedTiktok([{ ...photo, kind: "video", mime_type: "video/mp4", storage_path: `${WS}/${POST}/v.mp4`, duration_ms: 20_000 }]);
+    const plannedAt = String((db.rows("content_posts")[0].networks as Array<{ planned_at: string }>)[0].planned_at);
+    db.rows("social_posts").push(...alreadyScheduled(15, "video", plannedAt));
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/15 videos de tiktok ese dia y el limite es 15/);
+    expect(db.rows("social_posts").filter((r) => r.content_post_id === POST)).toHaveLength(0);
+  });
+
+  it("TikTok: los 15 videos NO bloquean una publicacion de fotos", async () => {
+    seedTiktok([photo]);
+    const plannedAt = String((db.rows("content_posts")[0].networks as Array<{ planned_at: string }>)[0].planned_at);
+    db.rows("social_posts").push(...alreadyScheduled(15, "video", plannedAt));
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("la fila guarda el tipo de lo que se manda, para poder contar el tope", async () => {
+    seedTiktok([photo, { ...photo, storage_path: `${WS}/${POST}/foto2.jpg` }]);
+
+    await scheduleNetworks({ postId: POST });
+
+    expect(db.rows("social_posts").find((r) => r.content_post_id === POST)?.media_type).toBe("carousel");
+  });
+});
+
+describe("F93 · el servidor valida el formato y los archivos de cada red", () => {
+  const at = () => new Date(Date.now() + 60 * 60_000).toISOString();
+
+  const img = (name: string) => ({
+    id: name,
+    storage_path: `${WS}/${POST}/${name}.jpg`,
+    mime_type: "image/jpeg",
+    kind: "image",
+    size_bytes: 1_000_000,
+  });
+
+  /** Una pieza con un video y tres imagenes en la biblioteca, e Instagram con ese formato. */
+  function seedFormat(network: Record<string, unknown>) {
+    seed({ networks: [{ platform: "instagram", planned_at: at(), options: {}, ...network }] });
+    const video = (db.rows("content_posts")[0].media as unknown[])[0];
+    db.rows("content_posts")[0].media = [video, img("i1"), img("i2"), img("i3")];
+  }
+
+  it("CRITERIO: un carrusel con un solo archivo NO se programa, aunque se salteen el editor", async () => {
+    seedFormat({ format: "carousel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Faltan archivos: este formato pide entre 2 y 10");
+    expect(db.rows("social_posts")).toHaveLength(0);
+  });
+
+  it("el mensaje es el mismo que muestra el editor", async () => {
+    const { validateNetwork } = await import("@/lib/content/validation");
+    seedFormat({ format: "carousel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    const delEditor = validateNetwork({
+      platform: "instagram",
+      text: "Un caption de prueba",
+      format: "carousel",
+      media: [img("i1")] as never,
+      options: {},
+    }).errors.join(" ");
+    expect(result.ok === false && result.error).toBe(delEditor);
+  });
+
+  it("un carrusel con 3 imagenes se programa y la fila guarda el tipo", async () => {
+    seedFormat({ format: "carousel", files: ["i3", "i1", "i2"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
+    expect(db.rows("social_posts")[0].media_type).toBe("carousel");
+  });
+
+  it("el formato Reel marca el tipo aunque las opciones guardadas digan otra cosa", async () => {
+    seedFormat({ format: "reel", files: ["video"], options: { contentType: "feed" } });
+
+    await scheduleNetworks({ postId: POST });
+
+    expect(db.rows("social_posts")[0].media_type).toBe("reel");
+  });
+
+  it("un Reel con una imagen se rechaza: el archivo no sirve para el formato", async () => {
+    seedFormat({ format: "reel", files: ["i1"] });
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("no sirve");
+  });
+
+  it("una red del modelo anterior (sin formato ni files) se programa como siempre", async () => {
+    seedFormat({});
+
+    const result = await scheduleNetworks({ postId: POST });
+
+    expect(result.ok).toBe(true);
   });
 });

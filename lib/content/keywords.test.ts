@@ -3,6 +3,8 @@ import {
   addPostId,
   checkCta,
   createAutomationHref,
+  closingParagraph,
+  findScriptKeywords,
   findUppercaseWords,
   isLimitedToPosts,
   keywordTriggers,
@@ -151,5 +153,34 @@ describe("completar los postIds al publicar", () => {
   it("solo aplica a las automatizaciones limitadas a posts", () => {
     expect(isLimitedToPosts(rule({ postIds: [] }))).toBe(false);
     expect(isLimitedToPosts(rule({ postIds: ["ig-1"] }))).toBe(true);
+  });
+});
+
+describe("palabras clave del guion (F90)", () => {
+  const script = [
+    "Hoy te cuento por que el ROI de tu contenido no depende del algoritmo.",
+    "Primero medis, despues ajustas, y el SEO viene solo.",
+    "Comenta SISTEMA y te mando la guia.",
+  ].join("\n\n");
+
+  it("el cierre es el ultimo parrafo", () => {
+    expect(closingParagraph(script)).toBe("Comenta SISTEMA y te mando la guia.");
+  });
+
+  it("solo mira el cierre: las siglas del desarrollo no son palabras clave", () => {
+    expect(findScriptKeywords(script)).toEqual(["SISTEMA"]);
+  });
+
+  it("ignora las lineas en blanco de mas y los espacios", () => {
+    expect(closingParagraph("Uno\n\n\n   \nDos  \n\n")).toBe("Dos");
+  });
+
+  it("un guion vacio o null no tiene cierre ni palabras", () => {
+    expect(closingParagraph(null)).toBe("");
+    expect(findScriptKeywords("   ")).toEqual([]);
+  });
+
+  it("un guion de un solo parrafo es su propio cierre", () => {
+    expect(findScriptKeywords("Escribime GUIA")).toEqual(["GUIA"]);
   });
 });

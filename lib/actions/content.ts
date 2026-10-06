@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { validateIdea, draftFromIdea, type IdeaInput } from "@/lib/content/ideas";
+import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
+import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
+import { cleanClassification, pickInheritedClassification } from "@/lib/content/classification";
+import { normalizeNetworks } from "@/lib/content/networks-schema";
+import type { MediaEntry } from "@/lib/content/media";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
 import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
@@ -44,7 +48,6 @@ export type ContentActionResult<T = undefined> =
  */
 async function contentContext() {
   const { workspace, user, supabase, can } = await getPermissionContext();
-  const admin = can("content.approve") || can("content.publish");
   return {
     workspace,
     user,
@@ -55,7 +58,7 @@ async function contentContext() {
       publish: can("content.publish"),
       isAuthor,
     }),
-    isAdmin: admin,
+    can,
   };
 }
 
@@ -66,6 +69,10 @@ export async function createIdea(input: IdeaInput): Promise<ContentActionResult<
   if (!checked.ok) return checked;
 
   const { workspace, user, supabase } = await contentContext();
+
+  // El pilar y la oferta tienen que ser de este negocio y estar vigentes.
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, checked.idea);
+  if (!refs.ok) return refs;
 
   // Al final de la columna. Se lee el maximo en vez de contar filas: contar da
   // el numero equivocado apenas alguien reordena.
@@ -109,25 +116,30 @@ export async function approveIdea(
   ideaId: string,
   options: { produceCopy?: boolean } = {},
 ): Promise<ContentActionResult<{ postId: string; copyQueued: boolean; copyError?: string }>> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) return { ok: false, error: "Aprobar ideas es de Owner y Admin" };
+  const { workspace, user, supabase, can } = await contentContext();
+  // `content.approve` y no "ser admin" (F78). "Aprobar y producir copy" pide
+  // ademas `content.ai`, y se rechaza ANTES de aprobar: aprobar la idea y
+  // dejar el copy sin pedir seria hacer solo la mitad de lo que se apreto.
+  if (!can("content.approve")) return { ok: false, error: "No tenes permiso para aprobar ideas" };
+  if (options.produceCopy === true && !can("content.ai")) {
+    return { ok: false, error: "No tenes permiso para producir copy con IA" };
+  }
 
   const { data: idea, error: readError } = await supabase
     .from("content_ideas")
-    .select("id, title, hook, angle, format, notes, status")
+    .select("id, title, format, status")
     .eq("id", ideaId)
     .maybeSingle();
 
   if (readError || !idea) return { ok: false, error: "No encontre esa idea" };
   if (idea.status !== "nueva") return { ok: false, error: "Esa idea ya estaba decidida" };
 
-  const draft = draftFromIdea({ ...idea, status: idea.status });
-
-  const { data: postId, error } = await supabase.rpc("approve_content_idea", {
+  // La v2 hereda la clasificacion y las redes de la idea (F91); el guion y las
+  // notas de grabacion arrancan vacios.
+  const { data: postId, error } = await supabase.rpc("approve_content_idea_v2", {
     p_idea_id: ideaId,
-    p_title: draft.title,
-    p_format: draft.format,
-    p_copy: draft.copy,
+    p_title: idea.title,
+    p_format: idea.format,
   });
 
   if (error || !postId) {
@@ -207,7 +219,7 @@ export async function updateIdea(
 
   const { data: idea } = await supabase
     .from("content_ideas")
-    .select("id, status, created_by")
+    .select("id, status, created_by, pillar_id, offer_id")
     .eq("id", ideaId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -216,6 +228,10 @@ export async function updateIdea(
   if (idea.status !== "nueva") {
     return { ok: false, error: "Esa idea ya se decidio: lo que se edita ahora es el post." };
   }
+
+  // Un pilar archivado despues de elegirlo se puede conservar; uno nuevo, no.
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, checked.idea, idea);
+  if (!refs.ok) return refs;
 
   const { error } = await supabase
     .from("content_ideas")
@@ -242,8 +258,8 @@ export async function discardIdea(
   ideaId: string,
   reason?: string,
 ): Promise<ContentActionResult> {
-  const { workspace, user, supabase, isAdmin } = await contentContext();
-  if (!isAdmin) return { ok: false, error: "Descartar ideas es de Owner y Admin" };
+  const { workspace, user, supabase, can } = await contentContext();
+  if (!can("content.approve")) return { ok: false, error: "No tenes permiso para descartar ideas" };
 
   const { error } = await supabase
     .from("content_ideas")
@@ -272,6 +288,11 @@ export interface NewPostInput {
   format?: string | null;
   ideaId?: string | null;
   platforms?: string[];
+  /** Clasificacion (F91). Si hay idea de origen y no se manda, se hereda de ella. */
+  offer_id?: string | null;
+  pillar_id?: string | null;
+  funnel_stage?: string | null;
+  reference?: string | null;
 }
 
 export async function createPost(
@@ -281,6 +302,31 @@ export async function createPost(
   if (!title) return { ok: false, error: "La pieza necesita un titulo" };
 
   const { workspace, user, supabase } = await contentContext();
+
+  // Una pieza vinculada a una idea hereda su clasificacion (F91), salvo lo que
+  // se haya elegido a mano. Las redes no: las elige quien crea la pieza.
+  const idea = input.ideaId
+    ? (
+        await supabase
+          .from("content_ideas")
+          .select("format, reference, offer_id, pillar_id, funnel_stage")
+          .eq("id", input.ideaId)
+          .eq("workspace_id", workspace.id)
+          .maybeSingle()
+      ).data
+    : null;
+
+  const own = cleanClassification(input);
+  const classification = pickInheritedClassification(idea, {
+    format: own.format,
+    offer_id: own.offer_id,
+    pillar_id: own.pillar_id,
+    funnel_stage: own.funnel_stage,
+    reference: own.reference,
+  });
+
+  const refs = await checkTaxonomyRefs(supabase, workspace.id, classification);
+  if (!refs.ok) return refs;
 
   const { data: last } = await supabase
     .from("content_posts")
@@ -308,7 +354,11 @@ export async function createPost(
       workspace_id: workspace.id,
       idea_id: input.ideaId ?? null,
       title,
-      format: input.format ?? null,
+      format: classification.format,
+      offer_id: classification.offer_id,
+      pillar_id: classification.pillar_id,
+      funnel_stage: classification.funnel_stage,
+      reference: classification.reference,
       networks,
       created_by: user.id,
       position: (last?.position ?? 0) + 10,
@@ -525,7 +575,14 @@ export async function savePostDraft(input: {
   postId: string;
   title?: string;
   format?: string | null;
-  copy?: Record<string, unknown>;
+  /** Clasificacion (F91). Solo se escribe lo que viene. */
+  offer_id?: string | null;
+  pillar_id?: string | null;
+  funnel_stage?: string | null;
+  reference?: string | null;
+  /** El guion (F90). */
+  script?: string | null;
+  recording_notes?: string | null;
   caption?: string | null;
   networks?: unknown[];
   /** Para detectar que alguien mas lo edito mientras tanto. */
@@ -537,12 +594,25 @@ export async function savePostDraft(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status")
+    .select("id, updated_at, status, pillar_id, offer_id, media")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
 
   if (!post) return { ok: false, error: "No encontre esa pieza" };
+
+  // Las redes son un jsonb: antes se escribian tal cual llegaban. Ahora se
+  // valida la forma y los archivos se contrastan con la biblioteca real de la
+  // pieza (F92/F93).
+  let networks: unknown[] | undefined;
+  if (input.networks !== undefined) {
+    const checked = normalizeNetworks(
+      input.networks,
+      (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
+    );
+    if (!checked.ok) return { ok: false, error: checked.error };
+    networks = checked.networks;
+  }
 
   // Gana el ultimo que guarda, pero se avisa: perder el trabajo de otro sin
   // enterarse es peor que tener que copiar y pegar.
@@ -551,13 +621,34 @@ export async function savePostDraft(input: {
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.format !== undefined) patch.format = input.format;
-  if (input.copy !== undefined) patch.copy = input.copy;
-  if (input.caption !== undefined) patch.caption = input.caption;
-  if (input.networks !== undefined) patch.networks = input.networks;
 
-  // Editar a mano marca el copy como revisado: la advertencia de "generado
+  const classification = cleanClassification(input);
+  if (input.offer_id !== undefined) patch.offer_id = classification.offer_id;
+  if (input.pillar_id !== undefined) patch.pillar_id = classification.pillar_id;
+  if (input.funnel_stage !== undefined) patch.funnel_stage = classification.funnel_stage;
+  if (input.reference !== undefined) patch.reference = classification.reference;
+
+  if (input.offer_id !== undefined || input.pillar_id !== undefined) {
+    const refs = await checkTaxonomyRefs(
+      supabase,
+      workspace.id,
+      {
+        pillar_id: input.pillar_id !== undefined ? classification.pillar_id : null,
+        offer_id: input.offer_id !== undefined ? classification.offer_id : null,
+      },
+      post,
+    );
+    if (!refs.ok) return refs;
+  }
+
+  if (input.script !== undefined) patch.script = input.script;
+  if (input.recording_notes !== undefined) patch.recording_notes = input.recording_notes;
+  if (input.caption !== undefined) patch.caption = input.caption;
+  if (networks !== undefined) patch.networks = networks;
+
+  // Editar a mano marca el texto como revisado: la advertencia de "generado
   // con IA, revisalo" deja de tener sentido apenas alguien lo toca.
-  if (input.copy !== undefined) patch.ai_unreviewed = false;
+  if (input.script !== undefined || input.recording_notes !== undefined) patch.ai_unreviewed = false;
 
   if (Object.keys(patch).length === 0) {
     return { ok: true, data: { updatedAt: post.updated_at, staleWarning: stale, rescheduleWarnings: [] } };
@@ -577,8 +668,8 @@ export async function savePostDraft(input: {
   // Cambiar la fecha de una red YA programada tiene que mover la publicacion
   // de verdad (A5). Antes solo se guardaba el campo y la publicacion salia a
   // la hora vieja: la pantalla decia una cosa y el sistema hacia otra.
-  const rescheduleWarnings = input.networks
-    ? await applyPlannedDateChanges(workspace.id, input.postId, input.networks)
+  const rescheduleWarnings = networks
+    ? await applyPlannedDateChanges(workspace.id, input.postId, networks)
     : [];
 
   revalidatePath(CONTENT_PATH);
@@ -683,7 +774,7 @@ export async function duplicatePostAsVariant(input: {
 
   const { data: source } = await supabase
     .from("content_posts")
-    .select("id, idea_id, title, format, copy, caption, networks, media")
+    .select("id, idea_id, title, format, script, recording_notes, caption, networks, media")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -695,7 +786,8 @@ export async function duplicatePostAsVariant(input: {
     idea_id: source.idea_id,
     title: source.title,
     format: source.format,
-    copy: (source.copy ?? {}) as Record<string, unknown>,
+    script: source.script ?? null,
+    recording_notes: source.recording_notes ?? null,
     caption: source.caption,
     networks: (Array.isArray(source.networks) ? source.networks : []) as never,
     media: Array.isArray(source.media) ? source.media : [],
@@ -709,7 +801,6 @@ export async function duplicatePostAsVariant(input: {
       ...variant,
       networks: variant.networks as never,
       media: variant.media as never,
-      copy: variant.copy as never,
     })
     .select("id")
     .maybeSingle();

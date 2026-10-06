@@ -1,15 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draftFromIdea, ideaActions, ideaWaitingLabel, validateIdea } from "./ideas";
-
-const idea = {
-  id: "idea-1",
-  title: "Como cobrar sin miedo",
-  hook: "Si te da vergüenza decir el precio, mira esto",
-  angle: "Desde la objecion mas comun",
-  format: "reel",
-  notes: "Usar el caso de la clienta de marzo",
-  status: "nueva" as const,
-};
+import { contentExcerpt, ideaActions, ideaWaitingLabel, validateIdea } from "./ideas";
 
 describe("validar una idea (F19)", () => {
   it("el titulo es lo unico obligatorio", () => {
@@ -22,53 +12,63 @@ describe("validar una idea (F19)", () => {
 
   it("los campos vacios quedan en null, no en cadena vacia", () => {
     // Asi "sin angulo" se distingue de "angulo en blanco" al leer la fila.
-    const result = validateIdea({ title: "x", angle: "   ", hook: "" });
+    const result = validateIdea({ title: "x", content: "   ", reference: "" });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.idea.angle).toBeNull();
-    expect(result.idea.hook).toBeNull();
+    expect(result.idea.content).toBeNull();
+    expect(result.idea.reference).toBeNull();
+  });
+
+  it("el texto unico se recorta pero conserva los saltos de linea de adentro", () => {
+    const result = validateIdea({ title: "x", content: "  Hook\n\nAngulo\n\nNotas \n" });
+
+    expect(result.ok && result.idea.content).toBe("Hook\n\nAngulo\n\nNotas");
+  });
+
+  it("la clasificacion se limpia: redes validas sin repetir, etapa de la lista, ids vacios en null (F91)", () => {
+    const result = validateIdea({
+      title: "x",
+      platforms: ["instagram", "instagram", "facebook", "tiktok"],
+      funnel_stage: "xofu",
+      pillar_id: "",
+      offer_id: " of-1 ",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.idea.platforms).toEqual(["instagram", "tiktok"]);
+    expect(result.idea.funnel_stage).toBeNull();
+    expect(result.idea.pillar_id).toBeNull();
+    expect(result.idea.offer_id).toBe("of-1");
+  });
+
+  it("la idea ya no tiene hook, angulo, notas ni pilar de texto: no se escriben mas", () => {
+    // Las columnas viejas las borra la 00118; el codigo nuevo no las toca.
+    const result = validateIdea({
+      title: "x",
+      hook: "viejo",
+      angle: "viejo",
+      notes: "viejo",
+      pillar: "viejo",
+    } as never);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(Object.keys(result.idea).sort()).toEqual([
+      "content",
+      "format",
+      "funnel_stage",
+      "offer_id",
+      "pillar_id",
+      "platforms",
+      "reference",
+      "title",
+    ]);
   });
 
   it("un titulo enorme se rechaza", () => {
     expect(validateIdea({ title: "a".repeat(201) }).ok).toBe(false);
-  });
-});
-
-describe("el post que sale de aprobar", () => {
-  it("queda vinculado a la idea y hereda titulo y formato", () => {
-    const post = draftFromIdea(idea);
-
-    expect(post.idea_id).toBe("idea-1");
-    expect(post.title).toBe("Como cobrar sin miedo");
-    expect(post.format).toBe("reel");
-  });
-
-  it("el hook de la idea es el hook del guion", () => {
-    expect(draftFromIdea(idea).copy.hook).toContain("vergüenza");
-  });
-
-  it("el guion y el caption arrancan vacios: no se inventan", () => {
-    const post = draftFromIdea(idea);
-
-    expect(post.copy.body).toBe("");
-    expect(post.copy.cta).toBe("");
-    expect(post.caption).toBeNull();
-  });
-
-  it("el angulo y las notas quedan como notas de grabacion", () => {
-    // Si no, se pierden al aprobar, que es justo cuando hacen falta.
-    const notas = draftFromIdea(idea).copy.recording_notes;
-
-    expect(notas).toContain("objecion");
-    expect(notas).toContain("clienta de marzo");
-  });
-
-  it("una idea pelada igual produce un post usable", () => {
-    const post = draftFromIdea({ ...idea, hook: null, angle: null, notes: null, format: null });
-
-    expect(post.copy.hook).toBe("");
-    expect(post.copy.recording_notes).toBe("");
   });
 });
 
@@ -122,5 +122,26 @@ describe("los botones de una tarjeta de idea", () => {
     expect(ideaWaitingLabel("nueva", false)).toBe("Esperando aprobacion");
     expect(ideaWaitingLabel("nueva", true)).toBeNull();
     expect(ideaWaitingLabel("aprobada", false)).toBeNull();
+  });
+});
+
+describe("el comienzo de una idea en la tarjeta (F90)", () => {
+  it("es la primera linea con algo escrito", () => {
+    expect(contentExcerpt("\n\n  Si te da verguenza decir el precio\nSegunda linea")).toBe(
+      "Si te da verguenza decir el precio",
+    );
+  });
+
+  it("se recorta con puntos suspensivos", () => {
+    const largo = "a".repeat(200);
+    const out = contentExcerpt(largo, 50);
+
+    expect(out).toHaveLength(50);
+    expect(out?.endsWith("…")).toBe(true);
+  });
+
+  it("una idea sin texto no muestra nada", () => {
+    expect(contentExcerpt(null)).toBeNull();
+    expect(contentExcerpt("  \n  ")).toBeNull();
   });
 });

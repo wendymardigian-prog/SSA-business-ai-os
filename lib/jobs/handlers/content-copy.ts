@@ -61,7 +61,7 @@ async function handleCopy({ supabase, job }: JobContext): Promise<void> {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("copy, caption, networks, copy_source")
+    .select("script, caption, networks, copy_source")
     .eq("id", payload.postId)
     .maybeSingle();
 
@@ -70,20 +70,20 @@ async function handleCopy({ supabase, job }: JobContext): Promise<void> {
     caption?: string | null;
     youtube_title?: string | null;
   }>;
-  const existing = (post?.copy ?? {}) as { body?: string | null };
 
   const applied = applyGeneratedCopy({
     output: result.output,
     platforms: networks.map((n) => n.platform),
     previousCopySource: (post?.copy_source ?? "manual") as "manual" | "ai" | "mixed",
-    hadManualCopy: Boolean(existing.body?.trim()),
+    hadManualCopy: Boolean(post?.script?.trim()),
     networks,
   });
 
   const { error } = await supabase
     .from("content_posts")
     .update({
-      copy: applied.copy as never,
+      script: applied.script,
+      recording_notes: applied.recording_notes,
       caption: applied.caption,
       networks: applied.networks as never,
       copy_source: applied.copy_source,

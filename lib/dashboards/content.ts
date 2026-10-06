@@ -17,7 +17,10 @@
  *    no baja el promedio: se excluye y se dice por que.
  */
 
+import { funnelStageInfo } from "@/lib/content/classification";
 import { daysBetween } from "@/lib/metrics/rules";
+import { platformLabel } from "@/lib/platforms";
+import { leadsTracked } from "./piece-leads";
 
 export type Grouping = "day" | "week" | "month";
 
@@ -55,6 +58,8 @@ export interface PublishedPost {
   publishedAt: string | null;
   origin: "system" | "external";
   engagementD7: number | null;
+  /** La pieza de la que salio. Null = publicada a mano, fuera del sistema (F105). */
+  contentPostId?: string | null;
 }
 
 // ── Agrupar por dia, semana o mes ────────────────────────────────────────
@@ -524,4 +529,247 @@ export function unavailableMetricsNote(platform: string, postCount: number): str
   return postCount > 0
     ? `LinkedIn no ofrece metricas con esta conexion. En este periodo se publicaron ${postCount} ${postCount === 1 ? "pieza" : "piezas"}.`
     : "LinkedIn no ofrece metricas con esta conexion.";
+}
+
+
+// ── Agrupar y filtrar por la clasificacion de la pieza (F105) ────────────
+
+/** Lo que el dashboard necesita saber de la pieza de cada publicacion. */
+export interface PieceInfo {
+  id: string;
+  title: string;
+  offerId: string | null;
+  offerName: string | null;
+  pillarId: string | null;
+  pillarName: string | null;
+  funnelStage: string | null;
+}
+
+/** El valor de filtro y la clave de grupo de "lo que no tiene". */
+export const UNASSIGNED_KEY = "none";
+export const UNASSIGNED_LABEL = "Sin asignar";
+
+export type GroupDimension = "piece" | "offer" | "pillar" | "funnel" | "platform" | "format";
+
+export const GROUP_DIMENSIONS: Array<{ value: GroupDimension; label: string }> = [
+  { value: "piece", label: "Pieza" },
+  { value: "offer", label: "Oferta" },
+  { value: "pillar", label: "Pilar" },
+  { value: "funnel", label: "Etapa del embudo" },
+  { value: "platform", label: "Red" },
+  { value: "format", label: "Formato" },
+];
+
+export function isGroupDimension(value: unknown): value is GroupDimension {
+  return GROUP_DIMENSIONS.some((d) => d.value === value);
+}
+
+export const FORMAT_LABELS: Record<string, string> = {
+  reel: "Reel",
+  carousel: "Carrusel",
+  image: "Imagen",
+  story: "Story",
+  video: "Video",
+  short: "Short",
+  text: "Texto",
+  document: "Documento",
+  otro: "Sin formato",
+};
+
+export interface ClassificationFilters {
+  piece?: string | null;
+  offer?: string | null;
+  pillar?: string | null;
+  funnel?: string | null;
+  format?: string | null;
+}
+
+/** Los cinco ejes de una publicacion: [clave, etiqueta], o "Sin asignar". */
+function dimensionOf(
+  post: PublishedPost,
+  pieces: Map<string, PieceInfo>,
+  dimension: GroupDimension,
+): { key: string; label: string } {
+  const piece = post.contentPostId ? pieces.get(post.contentPostId) : undefined;
+  const none = { key: UNASSIGNED_KEY, label: UNASSIGNED_LABEL };
+
+  switch (dimension) {
+    case "piece":
+      return piece ? { key: piece.id, label: piece.title.trim() || "Sin título" } : none;
+    case "offer":
+      return piece?.offerId ? { key: piece.offerId, label: piece.offerName ?? "Oferta archivada" } : none;
+    case "pillar":
+      return piece?.pillarId ? { key: piece.pillarId, label: piece.pillarName ?? "Pilar archivado" } : none;
+    case "funnel": {
+      const info = funnelStageInfo(piece?.funnelStage);
+      return info ? { key: info.value, label: info.label } : none;
+    }
+    case "platform":
+      return { key: post.platform, label: platformLabel(post.platform) };
+    case "format":
+      return post.mediaType
+        ? { key: post.mediaType, label: FORMAT_LABELS[post.mediaType] ?? post.mediaType }
+        : none;
+  }
+}
+
+/**
+ * Si una publicacion pasa los filtros.
+ *
+ * `none` elige lo SIN asignar: la pieza sin oferta, y tambien lo publicado a
+ * mano, que no tiene pieza y por eso no tiene oferta. Una publicacion cuya
+ * pieza ya no se conoce se trata igual: sin pieza no hay clasificacion.
+ */
+export function matchesClassification(
+  post: PublishedPost,
+  pieces: Map<string, PieceInfo>,
+  filters: ClassificationFilters,
+): boolean {
+  const checks: Array<[string | null | undefined, GroupDimension]> = [
+    [filters.piece, "piece"],
+    [filters.offer, "offer"],
+    [filters.pillar, "pillar"],
+    [filters.funnel, "funnel"],
+    [filters.format, "format"],
+  ];
+
+  return checks.every(([wanted, dimension]) => {
+    if (!wanted) return true;
+    return dimensionOf(post, pieces, dimension).key === wanted;
+  });
+}
+
+export interface GroupRow {
+  key: string;
+  label: string;
+  /** Es el grupo de lo que no tiene valor en esta dimension. */
+  unassigned: boolean;
+  posts: number;
+  /** Piezas distintas (lo publicado a mano no suma). */
+  pieces: number;
+  /** Suma de lo crudo de cada publicacion: contexto, no ranking. */
+  reach: number | null;
+  interactions: number | null;
+  /** Promedio del engagement de cada publicacion (la ultima foto). */
+  avgEngagement: number | null;
+  /** Promedio del engagement a 7 dias de las que ya lo tienen. */
+  avgEngagementD7: number | null;
+  /** Contactos que llegaron por comentario a estas publicaciones. Null = no se mide. */
+  leads: number | null;
+}
+
+/**
+ * El rendimiento agrupado por pieza, oferta, pilar, etapa del embudo, red o
+ * formato.
+ *
+ * Tres reglas:
+ *
+ * 1. **Nada se pierde.** Toda publicacion cae en exactamente un grupo: la suma
+ *    de las filas es el total. Lo que no tiene valor (una pieza sin oferta, lo
+ *    publicado a mano) va a "Sin asignar" en vez de desaparecer, y siempre al
+ *    final: un grupo gris no puede quedar arriba de los que se eligieron.
+ * 2. **Red y formato son los de CADA publicacion**, no los de la pieza (D1): una
+ *    pieza que fue Reel en Instagram y video en TikTok agrupa en los dos.
+ * 3. **Ningun cero inventado.** Una publicacion sin metricas cuenta como
+ *    publicacion y no baja los promedios; los leads de una red que no vincula
+ *    comentarios son un hueco, no un cero.
+ */
+export function groupPerformance(params: {
+  posts: PublishedPost[];
+  latestByPost: Map<string, PostDailyRow>;
+  pieces: Map<string, PieceInfo>;
+  /** Leads por publicacion (F104), o null si no se pudieron leer. */
+  leadsByPost: Map<string, number> | null;
+  dimension: GroupDimension;
+}): GroupRow[] {
+  interface Acc {
+    label: string;
+    posts: number;
+    pieces: Set<string>;
+    reach: number[];
+    interactions: number[];
+    engagement: number[];
+    d7: number[];
+    leads: Array<number | null>;
+  }
+  const groups = new Map<string, Acc>();
+
+  for (const post of params.posts) {
+    const { key, label } = dimensionOf(post, params.pieces, params.dimension);
+    const acc: Acc = groups.get(key) ?? {
+      label,
+      posts: 0,
+      pieces: new Set(),
+      reach: [],
+      interactions: [],
+      engagement: [],
+      d7: [],
+      leads: [],
+    };
+
+    acc.posts += 1;
+    if (post.contentPostId && params.pieces.has(post.contentPostId)) acc.pieces.add(post.contentPostId);
+
+    const row = params.latestByPost.get(post.socialPostId);
+    const reach = row?.reach ?? row?.views ?? null;
+    if (reach !== null) acc.reach.push(reach);
+
+    const parts = [row?.likes, row?.comments, row?.shares, row?.saves].filter(
+      (v): v is number => typeof v === "number",
+    );
+    const interactions = parts.length > 0 ? parts.reduce((a, b) => a + b, 0) : null;
+    if (interactions !== null) acc.interactions.push(interactions);
+    if (interactions !== null && reach !== null && reach > 0) {
+      acc.engagement.push((interactions / reach) * 100);
+    }
+
+    if (post.engagementD7 !== null) acc.d7.push(post.engagementD7);
+
+    acc.leads.push(
+      params.leadsByPost && leadsTracked(post.platform) ? (params.leadsByPost.get(post.socialPostId) ?? 0) : null,
+    );
+
+    groups.set(key, acc);
+  }
+
+  const sum = (values: number[]) => (values.length > 0 ? values.reduce((a, b) => a + b, 0) : null);
+  const avg = (values: number[]) =>
+    values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(2)) : null;
+
+  return [...groups.entries()]
+    .map(([key, acc]) => ({
+      key,
+      label: acc.label,
+      unassigned: key === UNASSIGNED_KEY,
+      posts: acc.posts,
+      pieces: acc.pieces.size,
+      reach: sum(acc.reach),
+      interactions: sum(acc.interactions),
+      avgEngagement: avg(acc.engagement),
+      avgEngagementD7: avg(acc.d7),
+      leads: sum(acc.leads.filter((v): v is number => v !== null)),
+    }))
+    .sort((a, b) => {
+      if (a.unassigned !== b.unassigned) return a.unassigned ? 1 : -1;
+      return b.posts - a.posts || a.label.localeCompare(b.label);
+    });
+}
+
+/** El total de abajo de la tabla: la suma de las filas, sin que ninguna se pierda. */
+export function sumTotals(rows: GroupRow[]): {
+  posts: number;
+  reach: number | null;
+  interactions: number | null;
+  leads: number | null;
+} {
+  const sum = (values: Array<number | null>) => {
+    const present = values.filter((v): v is number => v !== null);
+    return present.length > 0 ? present.reduce((a, b) => a + b, 0) : null;
+  };
+  return {
+    posts: rows.reduce((total, r) => total + r.posts, 0),
+    reach: sum(rows.map((r) => r.reach)),
+    interactions: sum(rows.map((r) => r.interactions)),
+    leads: sum(rows.map((r) => r.leads)),
+  };
 }

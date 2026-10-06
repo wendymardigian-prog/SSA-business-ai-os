@@ -9,12 +9,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 
-const { getZernioApiKey, listAccounts } = vi.hoisted(() => ({
-  getZernioApiKey: vi.fn(),
+const { getZernioKeyState, listAccounts } = vi.hoisted(() => ({
+  getZernioKeyState: vi.fn(),
   listAccounts: vi.fn(),
 }));
 
-vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioApiKey }));
+vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioKeyState }));
 vi.mock("@/lib/zernio-client", () => ({
   createZernioClient: () => ({ accounts: { listAccounts } }),
 }));
@@ -112,9 +112,9 @@ describe("perfil real de la cuenta (F75)", () => {
 
 describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   beforeEach(() => {
-    getZernioApiKey.mockReset();
+    getZernioKeyState.mockReset();
     listAccounts.mockReset();
-    getZernioApiKey.mockResolvedValue("key-simulada");
+    getZernioKeyState.mockResolvedValue({ state: "present", key: "key-simulada" });
   });
 
   const seed = () => ({
@@ -172,13 +172,99 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
     expect(ig?.default_publisher).toBe("zernio");
   });
 
-  it("sin clave de Zernio no llama a la API y usa el respaldo por canales", async () => {
-    getZernioApiKey.mockResolvedValue(null);
-    const db = memoryDb(seed());
+  describe("desconectar Zernio (F74)", () => {
+    /** Instagram ya armada por Zernio, con su canal y su usuario. */
+    const instagramConectada = () => ({
+      ...seed(),
+      social_accounts: [
+        {
+          id: "sa-1", workspace_id: WS, platform: "instagram", external_id: "zr-ig", username: "wendymardigian",
+          display_name: "Wendy", channel_id: "ch-ig", is_active: true, default_publisher: "zernio",
+          publishers: [{ publisher: "zernio", account_ref: "zr-ig", status: "available", status_reason: null, verified_at: null, manually_enabled: false }],
+        },
+      ],
+    });
 
-    const out = await syncSocialAccounts(db.client as never, WS);
+    it("sin clave no llama a la API, y la cuenta de Instagram queda 'no disponible'", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "absent" });
+      const db = memoryDb(instagramConectada());
 
-    expect(listAccounts).not.toHaveBeenCalled();
-    expect(out.accounts.map((a) => a.platform)).toEqual(["instagram"]);
+      const out = await syncSocialAccounts(db.client as never, WS);
+
+      expect(listAccounts).not.toHaveBeenCalled();
+      const ig = db.rows("social_accounts").find((r) => r.platform === "instagram");
+      const zernio = (ig?.publishers as Array<{ publisher: string; status: string; status_reason: string }>)[0];
+      expect(zernio.status).toBe("unavailable");
+      expect(zernio.status_reason).toMatch(/Zernio no esta conectado/);
+      // Sin por donde publicar: programar tiene que decir "elegi por donde".
+      expect(ig?.default_publisher).toBeNull();
+      expect(out.warnings.join(" ")).toMatch(/instagram ya no queda por donde publicar/);
+    });
+
+    it("la cuenta no se borra ni pierde su identidad ni su canal", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "absent" });
+      const db = memoryDb(instagramConectada());
+
+      await syncSocialAccounts(db.client as never, WS);
+
+      expect(db.rows("social_accounts")).toHaveLength(1);
+      const ig = db.rows("social_accounts")[0];
+      expect(ig).toMatchObject({ username: "wendymardigian", display_name: "Wendy", channel_id: "ch-ig", external_id: "zr-ig" });
+    });
+
+    it("sin clave NO se arma una cuenta nueva desde los canales", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "absent" });
+      const db = memoryDb(seed()); // hay un canal de Instagram pero ninguna cuenta social
+
+      const out = await syncSocialAccounts(db.client as never, WS);
+
+      expect(out.accounts).toEqual([]);
+      expect(db.rows("social_accounts")).toHaveLength(0);
+    });
+
+    it("al reconectar la clave, Instagram vuelve a estar disponible", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "absent" });
+      const db = memoryDb(instagramConectada());
+      await syncSocialAccounts(db.client as never, WS);
+
+      getZernioKeyState.mockResolvedValue({ state: "present", key: "key-nueva" });
+      listAccounts.mockResolvedValue({ data: { accounts: [zernioAccount({})], hasAnalyticsAccess: true } });
+      await syncSocialAccounts(db.client as never, WS);
+
+      const ig = db.rows("social_accounts").find((r) => r.platform === "instagram");
+      expect((ig?.publishers as Array<{ status: string }>)[0].status).toBe("available");
+      expect(ig?.default_publisher).toBe("zernio");
+    });
+
+    it("si Vault FALLA no se desconecta nada: la cuenta sigue disponible y se avisa", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "unknown" });
+      const db = memoryDb(instagramConectada());
+
+      const out = await syncSocialAccounts(db.client as never, WS);
+
+      const ig = db.rows("social_accounts").find((r) => r.platform === "instagram");
+      expect((ig?.publishers as Array<{ status: string }>)[0].status).toBe("available");
+      expect(ig?.default_publisher).toBe("zernio");
+      expect(out.warnings.join(" ")).toMatch(/No pude verificar la conexion con Zernio/);
+    });
+
+    it("una cuenta que no salia por Zernio (YouTube) no se toca", async () => {
+      getZernioKeyState.mockResolvedValue({ state: "absent" });
+      const db = memoryDb({
+        ...seed(),
+        social_accounts: [
+          {
+            id: "sa-yt", workspace_id: WS, platform: "youtube", external_id: "yt-1", is_active: true,
+            default_publisher: "postproxy",
+            publishers: [{ publisher: "postproxy", account_ref: "pp", status: "available", status_reason: null, verified_at: null, manually_enabled: false }],
+          },
+        ],
+      });
+
+      await syncSocialAccounts(db.client as never, WS);
+
+      expect(db.rows("social_accounts")[0].default_publisher).toBe("postproxy");
+    });
   });
+
 });

@@ -26,6 +26,7 @@ import { aggregatePostStatus } from "@/lib/content/status";
 import { notifyPublishFailure } from "@/lib/notifications/content";
 import { liveMedia, type MediaEntry } from "@/lib/content/media";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
+import { resolveNetworkOptions } from "@/lib/content/network-format";
 import { onPublicationSettled, refreshPostStatus } from "./settled";
 import { scheduleJob } from "@/lib/scheduler";
 import { getPublisher, UnknownPublisherError } from "./registry";
@@ -369,7 +370,9 @@ export async function buildInput(
         ? (row.publish_progress as Record<string, unknown>)
         : undefined,
     options: {
-      ...(network.options ?? {}),
+      // El formato de la red ya aplicado (F93): el mismo resultado que vio y
+      // valido el editor.
+      ...resolveNetworkOptions(network),
       ...(row.requested_visibility ? { visibility: row.requested_visibility } : {}),
       // El CTA viaja con las opciones para que el despachador pueda
       // completarle el id a la automatizacion despues de publicar (F39).

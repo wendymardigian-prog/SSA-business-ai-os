@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import type { ContentPermissions } from "./status";
-import { detailActions, detailHeadline, networkRows, type PublicationSummary } from "./detail";
+import { networkRows, type PublicationSummary } from "./detail";
 
 const TZ = "America/Argentina/Buenos_Aires";
 
@@ -73,69 +73,5 @@ describe("una fila por red (F36)", () => {
     const [row] = networkRows([pub()], { timeZone: TZ, canPublish: true });
 
     expect(row.canRetry).toBe(false);
-  });
-});
-
-describe("los botones del detalle (F36)", () => {
-  const labels = (actions: ReturnType<typeof detailActions>) => actions.map((a) => a.action);
-
-  it("el autor de una en produccion la puede mandar a revision (editar vive en la barra, C16)", () => {
-    expect(labels(detailActions({ perms: perms(), status: "in_production", publications: [] }))).toEqual([
-      "request_review",
-    ]);
-  });
-
-  it("quien aprueba ve aprobar y devolver en una que esta en revision", () => {
-    const actions = labels(
-      detailActions({ perms: perms({ approve: true }), status: "in_review", publications: [] }),
-    );
-
-    expect(actions).toContain("approve");
-    expect(actions).toContain("return");
-  });
-
-  it("con una red programada no se ofrece editar", () => {
-    const actions = labels(
-      detailActions({
-        perms: perms({ approve: true, publish: true }),
-        status: "scheduled",
-        publications: [pub({ status: "scheduled", publishedAt: null })],
-      }),
-    );
-
-    expect(actions).not.toContain("edit");
-  });
-
-  it("con una red fallida se ofrece reintentar, a quien publica", () => {
-    const actions = labels(
-      detailActions({
-        perms: perms({ publish: true }),
-        status: "failed",
-        publications: [pub({ status: "failed" })],
-      }),
-    );
-
-    expect(actions).toContain("retry_all");
-  });
-});
-
-describe("el encabezado (F36)", () => {
-  it("dice en cuantas redes salio", () => {
-    expect(detailHeadline({ status: "published", publications: [pub(), pub({ platform: "threads" })] })).toContain(
-      "2 redes",
-    );
-  });
-
-  it("cuando salio en parte, lo dice con numeros", () => {
-    expect(
-      detailHeadline({
-        status: "partially_published",
-        publications: [pub(), pub({ platform: "threads", status: "failed" })],
-      }),
-    ).toContain("1 de 2");
-  });
-
-  it("sin publicaciones muestra solo el estado", () => {
-    expect(detailHeadline({ status: "draft", publications: [] })).toBe("Borrador");
   });
 });

@@ -11,7 +11,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { AccountDailyRow, PostDailyRow, PublishedPost } from "./content";
+import {
+  matchesClassification,
+  type AccountDailyRow,
+  type ClassificationFilters,
+  type PieceInfo,
+  type PostDailyRow,
+  type PublishedPost,
+} from "./content";
 import type { ResolvedPeriod } from "./period";
 
 type Db = SupabaseClient<Database>;
@@ -27,7 +34,26 @@ export interface ContentDashboardData {
   lastDataByPlatform: Map<string, string>;
   /** El caption y la miniatura de cada publicacion, para la tabla. */
   postDetails: Map<string, { caption: string | null; thumbnailUrl: string | null }>;
+  /** La pieza de cada publicacion que salio del sistema (F105). */
+  pieces: Map<string, PieceInfo>;
+  /** Contactos que llegaron por comentario, por publicacion (F104). Null si no se pudo leer. */
+  leadsByPost: Map<string, number> | null;
+  /**
+   * Lo que se puede elegir en los filtros: sale de TODAS las publicaciones del
+   * periodo, no de las que sobreviven al filtro. Si no, al elegir una oferta
+   * las demas desaparecerian de la lista y no habria como cambiar.
+   */
+  filterOptions: FilterOptions;
 }
+
+export interface FilterOptions {
+  pieces: Array<{ id: string; title: string }>;
+  offers: Array<{ id: string; name: string }>;
+  pillars: Array<{ id: string; name: string }>;
+  formats: string[];
+}
+
+const EMPTY_OPTIONS: FilterOptions = { pieces: [], offers: [], pillars: [], formats: [] };
 
 const EMPTY: ContentDashboardData = {
   posts: [],
@@ -37,6 +63,9 @@ const EMPTY: ContentDashboardData = {
   accounts: [],
   lastDataByPlatform: new Map(),
   postDetails: new Map(),
+  pieces: new Map(),
+  leadsByPost: null,
+  filterOptions: EMPTY_OPTIONS,
 };
 
 /** El rango como fechas `YYYY-MM-DD`, que es como se guardan las filas. */
@@ -47,15 +76,116 @@ function dateRange(period: ResolvedPeriod): { from: string | null; to: string | 
   };
 }
 
+/** Un `.in()` con cientos de ids pasa el largo que aguanta una URL: se pide de a tandas. */
+const IN_CHUNK = 100;
+
+/**
+ * Las piezas de las publicaciones, con los nombres de su oferta y su pilar.
+ *
+ * Los archivados tambien: una publicacion vieja sigue siendo de la oferta que
+ * despues se archivo, y mostrarla como "Sin asignar" seria mentir sobre ella.
+ */
+async function loadPieces(supabase: Db, workspaceId: string, pieceIds: string[]): Promise<Map<string, PieceInfo>> {
+  const pieces = new Map<string, PieceInfo>();
+  if (pieceIds.length === 0) return pieces;
+
+  const rows: Array<{
+    id: string;
+    title: string;
+    offer_id: string | null;
+    pillar_id: string | null;
+    funnel_stage: string | null;
+  }> = [];
+  for (let i = 0; i < pieceIds.length; i += IN_CHUNK) {
+    const { data, error } = await supabase
+      .from("content_posts")
+      .select("id, title, offer_id, pillar_id, funnel_stage")
+      .eq("workspace_id", workspaceId)
+      .in("id", pieceIds.slice(i, i + IN_CHUNK));
+    if (error) {
+      console.error("[dashboard] no pude leer las piezas:", error.message);
+      return pieces;
+    }
+    rows.push(...(data ?? []));
+  }
+
+  const offerIds = [...new Set(rows.map((r) => r.offer_id).filter((v): v is string => v !== null))];
+  const pillarIds = [...new Set(rows.map((r) => r.pillar_id).filter((v): v is string => v !== null))];
+
+  const [offers, pillars] = await Promise.all([
+    offerIds.length > 0
+      ? supabase.from("content_offers").select("id, name").eq("workspace_id", workspaceId).in("id", offerIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    pillarIds.length > 0
+      ? supabase.from("content_pillars").select("id, name").eq("workspace_id", workspaceId).in("id", pillarIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+  ]);
+
+  const offerName = new Map((offers.data ?? []).map((o) => [o.id, o.name]));
+  const pillarName = new Map((pillars.data ?? []).map((p) => [p.id, p.name]));
+
+  for (const row of rows) {
+    pieces.set(row.id, {
+      id: row.id,
+      title: row.title,
+      offerId: row.offer_id,
+      offerName: row.offer_id ? (offerName.get(row.offer_id) ?? null) : null,
+      pillarId: row.pillar_id,
+      pillarName: row.pillar_id ? (pillarName.get(row.pillar_id) ?? null) : null,
+      funnelStage: row.funnel_stage,
+    });
+  }
+  return pieces;
+}
+
+/**
+ * Cuantos contactos llegaron por comentario a cada publicacion (F104): los que
+ * tienen un comentario en esa publicacion como PRIMER toque.
+ *
+ * Con el cliente de quien mira: un Member solo cuenta los contactos que ve.
+ * Si falla, devuelve null y la columna queda en hueco, no en cero.
+ */
+async function loadLeadsByPost(supabase: Db, postIds: string[]): Promise<Map<string, number> | null> {
+  const counts = new Map<string, number>();
+  if (postIds.length === 0) return counts;
+
+  for (let i = 0; i < postIds.length; i += IN_CHUNK) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("origin:attribution->first_touch->>origin, post:attribution->first_touch->>social_post_id")
+      .is("deleted_at", null)
+      .eq("attribution->first_touch->>origin", "comment")
+      .in("attribution->first_touch->>social_post_id", postIds.slice(i, i + IN_CHUNK))
+      .limit(5000);
+
+    if (error) {
+      console.error("[dashboard] no pude leer los leads por publicacion:", error.message);
+      return null;
+    }
+    for (const row of (data ?? []) as unknown as Array<{ post: string | null }>) {
+      if (row.post) counts.set(row.post, (counts.get(row.post) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 export async function loadContentDashboard(
   supabase: Db,
-  params: { workspaceId: string; period: ResolvedPeriod; platform?: string | null },
+  params: {
+    workspaceId: string;
+    period: ResolvedPeriod;
+    platform?: string | null;
+    /** Filtros sobre la clasificacion de la pieza y el formato (F105). */
+    filters?: ClassificationFilters;
+  },
 ): Promise<ContentDashboardData> {
   const { from, to } = dateRange(params.period);
 
   let postsQuery = supabase
     .from("social_posts")
-    .select("id, platform, media_type, published_at, origin, engagement_d7, caption, thumbnail_url")
+    .select(
+      "id, platform, media_type, published_at, origin, engagement_d7, caption, thumbnail_url, content_post_id",
+    )
     .eq("workspace_id", params.workspaceId)
     .is("deleted_at", null)
     .not("published_at", "is", null);
@@ -70,14 +200,37 @@ export async function loadContentDashboard(
     return EMPTY;
   }
 
-  const posts: PublishedPost[] = (postRows ?? []).map((row) => ({
+  const allPosts: PublishedPost[] = (postRows ?? []).map((row) => ({
     socialPostId: row.id,
     platform: row.platform,
     mediaType: row.media_type,
     publishedAt: row.published_at,
     origin: row.origin as "system" | "external",
     engagementD7: row.engagement_d7,
+    contentPostId: row.content_post_id,
   }));
+
+  // La clasificacion vive en la pieza, no en la publicacion: se lee aparte y se
+  // filtra en memoria, que es poco (las publicaciones de un periodo).
+  const pieceIds = [...new Set(allPosts.map((p) => p.contentPostId).filter((v): v is string => !!v))];
+  const pieces = await loadPieces(supabase, params.workspaceId, pieceIds);
+
+  const filterOptions: FilterOptions = {
+    pieces: [...pieces.values()]
+      .map((p) => ({ id: p.id, title: p.title.trim() || "Sin título" }))
+      .sort((a, b) => a.title.localeCompare(b.title)),
+    offers: uniqueNamed([...pieces.values()].map((p) => ({ id: p.offerId, name: p.offerName }))),
+    pillars: uniqueNamed([...pieces.values()].map((p) => ({ id: p.pillarId, name: p.pillarName }))),
+    formats: [...new Set(allPosts.map((p) => p.mediaType).filter((v): v is NonNullable<typeof v> => v !== null))].sort(),
+  };
+
+  const filters = params.filters ?? {};
+  const posts = allPosts.filter((post) => matchesClassification(post, pieces, filters));
+
+  const leadsByPost = await loadLeadsByPost(
+    supabase,
+    posts.map((p) => p.socialPostId),
+  );
 
   const platformById = new Map(posts.map((p) => [p.socialPostId, p.platform]));
   const formatById = new Map(posts.map((p) => [p.socialPostId, p.mediaType]));
@@ -179,5 +332,17 @@ export async function loadContentDashboard(
         { caption: row.caption, thumbnailUrl: row.thumbnail_url },
       ]),
     ),
+    pieces,
+    leadsByPost,
+    filterOptions,
   };
+}
+
+/** Las ofertas o pilares distintos que tienen nombre, ordenados. */
+function uniqueNamed(items: Array<{ id: string | null; name: string | null }>): Array<{ id: string; name: string }> {
+  const byId = new Map<string, string>();
+  for (const item of items) {
+    if (item.id) byId.set(item.id, item.name ?? "Archivado");
+  }
+  return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }

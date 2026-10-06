@@ -21,7 +21,8 @@ import {
   type PublisherId,
 } from "./accounts-schema";
 import { canUploadToYouTube } from "./google";
-import { getZernioApiKey } from "@/lib/integrations/zernio-key";
+import { adoptOrphanComments } from "@/lib/comments/adopt";
+import { getZernioKeyState } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
 
 type Db = SupabaseClient<Database>;
@@ -51,6 +52,15 @@ export interface ExistingAccount {
   platform: SocialPlatform;
   default_publisher: string | null;
   publishers: unknown;
+  /**
+   * La identidad ya guardada. Hace falta cuando Zernio se desconecta: la cuenta
+   * no se borra, queda "no disponible", y el upsert no puede pisar su usuario,
+   * su nombre ni su canal con null.
+   */
+  external_id?: string | null;
+  username?: string | null;
+  display_name?: string | null;
+  channel_id?: string | null;
 }
 
 /**
@@ -76,6 +86,12 @@ export interface AccountSources {
    * se usa `zernioChannels` como respaldo, que es lo que se hacía hasta hoy.
    */
   zernioAccounts?: ZernioAccountSource[] | null;
+  /**
+   * Si hay clave de Zernio. `false` = se desconecto: las cuentas que salian por
+   * Zernio quedan "no disponibles" (F74). Sin pasar = se asume conectado, que
+   * es lo que hacia el codigo antes de este campo.
+   */
+  zernioConnected?: boolean;
   postproxyConnected: boolean;
   /** El perfil de YouTube dentro de Postproxy, si la prueba lo encontro (A11). */
   postproxyProfileId?: string | null;
@@ -172,7 +188,37 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
   };
 
   // ── Lo que llega por Zernio: Instagram y TikTok ──────────────────────────
-  if (sources.zernioAccounts) {
+  if (sources.zernioConnected === false) {
+    // Sin clave no se publica ni se lee nada por Zernio. Antes la
+    // sincronizacion no calculaba nada en este caso y la cuenta quedaba
+    // "disponible" para siempre, asi que desconectar no se notaba en ningun
+    // lado y programar seguia pareciendo posible. La cuenta NO se borra: se
+    // marca y se conserva todo lo demas, para que reconectar la deje como
+    // estaba.
+    for (const platform of ["instagram", "tiktok"] as const) {
+      const row = sources.existing.find((e) => e.platform === platform);
+      const before = previous(sources, platform);
+      const usedZernio =
+        before.entries.some((e) => e.publisher === "zernio") || before.defaultPublisher === "zernio";
+      if (!row || !usedZernio) continue;
+
+      finish(
+        platform,
+        [
+          entry("zernio", "unavailable", {
+            account_ref: before.entries.find((e) => e.publisher === "zernio")?.account_ref ?? null,
+            status_reason: "Zernio no esta conectado. Pega la clave de nuevo en Integraciones.",
+          }),
+        ],
+        {
+          externalId: row.external_id ?? null,
+          username: row.username ?? null,
+          displayName: row.display_name ?? null,
+          channelId: row.channel_id ?? null,
+        },
+      );
+    }
+  } else if (sources.zernioAccounts) {
     // Camino nuevo (F73): la lista que devuelve Zernio. Cada cuenta es una
     // fila; si además hay un canal de bandeja con ese mismo id, se enlaza.
     for (const account of sources.zernioAccounts) {
@@ -328,7 +374,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       .eq("type", "publishing_service"),
     supabase
       .from("social_accounts")
-      .select("platform, default_publisher, publishers")
+      .select("platform, default_publisher, publishers, external_id, username, display_name, channel_id")
       .eq("workspace_id", workspaceId),
   ]);
 
@@ -346,6 +392,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
   const computed = computeAccounts({
     zernioChannels: (channels.data ?? []) as ZernioChannelSource[],
     zernioAccounts: zernio.accounts,
+    zernioConnected: zernio.connected,
     postproxyConnected: (integrations.data ?? []).some(
       (i) => i.provider === "postproxy" && i.is_active,
     ),
@@ -390,6 +437,12 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     }
   }
 
+  // Con la cuenta ya creada, los comentarios que entraron antes (huerfanos) se
+  // vinculan a su publicacion cuando esta existe (F76). Nunca lanza.
+  for (const account of computed.accounts) {
+    await adoptOrphanComments(supabase, workspaceId, account.platform);
+  }
+
   const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];
   return { accounts: computed.accounts, warnings, zernioHasAnalytics: zernio.hasAnalytics };
 }
@@ -400,14 +453,28 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
  */
 async function readZernioAccounts(workspaceId: string): Promise<{
   accounts: ZernioAccountSource[] | null;
+  /** Hay clave de Zernio guardada. Sin ella, Zernio esta desconectado. */
+  connected: boolean;
   hasAnalytics: boolean | null;
   warning: string | null;
 }> {
   try {
-    const apiKey = await getZernioApiKey(workspaceId);
-    if (!apiKey) return { accounts: null, hasAnalytics: null, warning: null };
+    const key = await getZernioKeyState(workspaceId);
+    // Sin clave guardada: Zernio esta desconectado.
+    if (key.state === "absent") return { accounts: null, connected: false, hasAnalytics: null, warning: null };
+    // No pudimos mirar si la hay (Vault fallo): no se toca nada. Quedan las
+    // cuentas como estaban y se avisa; desconectar por una falla de red seria
+    // un susto y un Instagram que no programa hasta la proxima sincronizacion.
+    if (key.state === "unknown") {
+      return {
+        accounts: null,
+        connected: true,
+        hasAnalytics: null,
+        warning: "No pude verificar la conexion con Zernio. Quedan las cuentas como estaban; probá de nuevo en un rato.",
+      };
+    }
 
-    const res = await createZernioClient(apiKey).accounts.listAccounts();
+    const res = await createZernioClient(key.key).accounts.listAccounts();
     // El SDK tipa la respuesta; la anotación evita depender de la inferencia.
     const raw: Array<{
       _id: string;
@@ -429,14 +496,18 @@ async function readZernioAccounts(workspaceId: string): Promise<{
     }));
     return {
       accounts,
+      connected: true,
       hasAnalytics: res.data?.hasAnalyticsAccess ?? null,
       warning: null,
     };
   } catch (err) {
     const detalle = err instanceof Error ? err.message : String(err);
     console.error("[social] no pude leer las cuentas de Zernio:", detalle);
+    // Hay clave pero Zernio no respondio: sigue conectado, solo que no se pudo
+    // leer. Se usa el respaldo por canales y no se desactiva nada.
     return {
       accounts: null,
+      connected: true,
       hasAnalytics: null,
       warning: "No pude leer las cuentas de Zernio. Quedan las últimas que se guardaron; probá de nuevo en un rato.",
     };

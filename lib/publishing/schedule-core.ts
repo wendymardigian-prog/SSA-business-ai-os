@@ -15,6 +15,12 @@ import {
   type NetworkPlan,
 } from "@/lib/content/schedule";
 import { aggregatePostStatus } from "@/lib/content/status";
+import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
+import { resolveNetworkOptions } from "@/lib/content/network-format";
+import { socialMediaTypeFor } from "@/lib/content/media-type";
+import type { MediaEntry } from "@/lib/content/media";
+import { validateNetwork, type NetworkContent } from "@/lib/content/validation";
+import { countPublicationsForDay } from "./daily-count";
 import { cancelOnProvider } from "./provider-dispatch";
 import type { Database, SocialPlatform, SocialPostStatus } from "@/lib/types/database";
 
@@ -33,6 +39,9 @@ import type { Database, SocialPlatform, SocialPostStatus } from "@/lib/types/dat
  * de comprobar que un post programado se publica.
  */
 
+/** La zona del negocio, para cuando el workspace no tiene una guardada. */
+const DEFAULT_TIME_ZONE = "America/Costa_Rica";
+
 /** El contexto que la accion arma y el nucleo recibe ya resuelto. */
 export interface ScheduleContextInput {
   workspaceId: string;
@@ -43,6 +52,11 @@ export interface ScheduleContextInput {
   service: SupabaseClient<Database>;
   /** Si puede programar y despublicar (`content.publish`). */
   canPublish: boolean;
+  /**
+   * La zona horaria del workspace, para saber que dia es "hoy" al contar el
+   * tope diario (F77). Sin ella se usa la de Costa Rica, que es la del negocio.
+   */
+  timeZone?: string;
   /**
    * De donde salen las claves para hablarle al proveedor al desprogramar.
    *
@@ -67,6 +81,12 @@ interface PostForSchedule {
   networks: NetworkPlan[];
   /** Las opciones de cada red, para dejar anotado que se pidio (A17). */
   options: Record<string, Record<string, unknown>>;
+  /**
+   * Lo que se va a publicar en cada red, ya resuelto contra lo base: el mismo
+   * calculo que hace el editor, asi el servidor valida exactamente lo que se
+   * ve en pantalla (F77).
+   */
+  contents: Record<string, NetworkContent>;
   publications: Array<{ platform: string; status: SocialPostStatus | null; scheduledAt: string | null }>;
 }
 
@@ -78,7 +98,7 @@ async function loadPost(
 ): Promise<PostForSchedule | null> {
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, status, networks")
+    .select("id, status, networks, caption, media")
     .eq("id", postId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -90,12 +110,10 @@ async function loadPost(
     .select("platform, status, scheduled_at")
     .eq("content_post_id", postId);
 
-  const networks = (Array.isArray(post.networks) ? post.networks : []) as Array<{
-    platform?: string;
-    planned_at?: string | null;
-    publisher?: string | null;
-    options?: Record<string, unknown> | null;
-  }>;
+  // `networks` es jsonb: el tipo de la base no dice nada de su forma, asi que se
+  // pasa por `unknown` y se lee como lo que es, una lista de `NetworkEntry`.
+  const networks = (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[];
+  const baseMedia = (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[];
 
   return {
     id: post.id,
@@ -105,8 +123,28 @@ async function loadPost(
       plannedAt: n.planned_at ?? null,
       publisher: n.publisher ?? null,
     })),
+    // Con el formato ya aplicado (F93): lo que el editor muestra, lo que se
+    // valida aca y lo que se publica salen de las mismas opciones.
     options: Object.fromEntries(
-      networks.map((n) => [String(n.platform ?? ""), n.options ?? {}]),
+      networks.map((n) => [String(n.platform ?? ""), resolveNetworkOptions(n)]),
+    ),
+    contents: Object.fromEntries(
+      networks.map((n) => {
+        const resolved = resolveNetworkContent<MediaEntry>({
+          network: n,
+          baseCaption: post.caption,
+          baseMedia,
+        });
+        const content: NetworkContent = {
+          platform: String(n.platform ?? ""),
+          text: resolved.caption,
+          media: resolved.media,
+          title: n.youtube_title ?? null,
+          format: n.format ?? null,
+          options: resolveNetworkOptions(n),
+        };
+        return [content.platform, content];
+      }),
     ),
     publications: (publications ?? []).map((p) => ({
       platform: p.platform,
@@ -254,6 +292,36 @@ export async function runScheduleNetworks(
       })()
     : planSchedule(targets, context);
 
+  // El servidor repite la validacion del editor (F77). Antes corria SOLO en el
+  // navegador: una llamada directa a la accion se la saltaba, y el tope diario
+  // no se calculaba nunca. Una red con errores no frena a las demas.
+  const timeZone = ctx.timeZone ?? DEFAULT_TIME_ZONE;
+  const valid: typeof plan.schedule = [];
+  for (const entry of plan.schedule) {
+    const content = post.contents[entry.platform];
+    if (!content) {
+      valid.push(entry);
+      continue;
+    }
+    const day = await countPublicationsForDay(service, {
+      workspaceId: workspace.id,
+      platform: entry.platform,
+      at: input.now ? new Date() : new Date(entry.at),
+      timeZone,
+      excludePostId: post.id,
+    });
+    const result = validateNetwork(content, {
+      publishedToday: day.total,
+      publishedTodayByKind: { video: day.video, image: day.image },
+    });
+    if (!result.ok) {
+      plan.skipped.push({ platform: entry.platform, reason: result.errors.join(" ") });
+      continue;
+    }
+    valid.push(entry);
+  }
+  plan.schedule = valid;
+
   if (plan.schedule.length === 0) {
     return {
       ok: false,
@@ -287,6 +355,11 @@ export async function runScheduleNetworks(
       // (YouTube puede dejarlo privado hasta que Google audite la app).
       requested_visibility:
         (post.options[entry.platform]?.visibility as string | undefined) ?? null,
+      // El tipo de lo que se manda, para poder contar videos y fotos contra el
+      // tope diario (F77). La metrica lo corrige con el real despues de salir.
+      ...(post.contents[entry.platform]
+        ? { media_type: socialMediaTypeFor(post.contents[entry.platform]) }
+        : {}),
       attempts: 0,
     };
 

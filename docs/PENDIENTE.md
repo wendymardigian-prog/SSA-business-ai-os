@@ -612,3 +612,94 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - Si Zernio registró el webhook con `post.platform.published` y `.failed` (el código ya lo pide).
 - Si los DMs de anuncios traen datos de referencia (`referral` en el mensaje). No se verificó.
 - Los crons de contenido respondiendo 200: no se verificó en esta corrida.
+
+### La 00113 no está registrada en el historial de migraciones
+- **Qué quedó:** la migración 00113 está aplicada y verificada (columnas, políticas y `verify-rls` con 253 checks), pero `supabase_migrations.schema_migrations` no tiene su fila: `list_migrations` no la muestra.
+- **Por qué:** se aplicó con `supabase db query`, que no registra el historial, y el INSERT para registrarla lo denegó el sistema de permisos de la sesión (5/10/2026). No se intentó otra vía.
+- **Qué se decidió en su lugar:** nada rompe sin la fila (nada del código la lee). Si se quiere el historial al día: `insert into supabase_migrations.schema_migrations (version, name, statements) values ('<timestamp>', '00113_comment_post_and_profile_rls', array[$sql$<contenido del archivo>$sql$])`. Las migraciones siguientes (00114 en adelante) van a necesitar lo mismo.
+
+### F79 · LinkedIn 202609: lo que no se verificó
+- **Qué quedó:** `LINKEDIN_API_VERSION` pasó a `202609`. La documentación oficial de versionado la da como la última y dice que 202510 se da de baja el 15/10/2026. El changelog de LinkedIn (resumido, no leído entero) no muestra cambios entre 202510 y 202609 que afecten publicar texto como persona ni el userinfo.
+- **Por qué:** la cuenta de LinkedIn no está conectada, así que no hay forma de probar una publicación real.
+- **Qué se decidió en su lugar:** se verifica en vivo al conectar la cuenta (§9 del plano). Si LinkedIn rechaza la versión, el arreglo es esa constante. Revisar de nuevo antes de octubre de 2027.
+
+### F75 · La bio de la cuenta queda vacía
+- **Qué quedó:** `accounts.listAccounts` de Zernio no trae `bio` (el campo no existe en `SocialAccount`; solo en LinkedIn va dentro de `metadata`). La tarjeta de perfil de Social muestra foto, usuario, link y cifras, pero no la bio.
+- **Por qué:** la otra fuente es `readProfile` de la Graph de Meta, que necesita el token de system user, que no está configurado.
+- **Qué se decidió en su lugar:** `bio` queda en null (nunca un valor inventado). Se completa solo cuando haya token de Meta.
+
+### Un test llegó a hacer pedidos reales a Zernio (corregido)
+- **Qué pasó:** mientras armaba `lib/jobs/handlers/metrics-sync.test.ts`, una versión intermedia simulaba el lector de métricas pero no el cliente de comentarios, y el job hizo unos pedidos reales a la API de Zernio con una clave falsa (`key-simulada`). Zernio respondió "API key inválida". **No salió ninguna credencial real**, pero rompe la regla de no llamar a ningún proveedor.
+- **Qué se hizo:** el test ahora simula `@/lib/zernio-client` y además hace que cualquier `fetch` real falle ruidoso. `e2e-zernio.test.ts` tiene la misma red de seguridad.
+- **Qué queda:** no hay una red de seguridad global. Convendría que `vitest` bloquee `fetch` por defecto en todos los tests (un `setupFiles`). No se hizo porque toca los 380 archivos y no estaba en el plano.
+
+### B11 · Hay que re-correr el backfill cuando el código nuevo se despliegue
+- **Qué quedó:** la 00115 hizo el backfill de los 647 contactos que existían (todos de Instagram). Los receptores nuevos (F85 a F87) todavía no están en `main`, así que los contactos que entren entre la migración y el despliegue no van a tener toque.
+- **Por qué:** la base ya está migrada y el código todavía no.
+- **Qué se decidió en su lugar:** después del merge y del despliegue, volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql`. Es idempotente (el backfill usa `ON CONFLICT DO NOTHING` y solo escribe donde la atribución está vacía; `create_booking` y los triggers son `CREATE OR REPLACE` con el mismo contenido).
+
+### B11 · Lo que no se vio con datos reales
+- **Panel de la bandeja:** no se abrió ninguna conversación real para verlo (abrirla la marca como leída). Usa el mismo modelo de vista que la ficha y tiene sus tests.
+- **Ficha con varios toques** (las dos tarjetas y el camino plegado): hoy ningún contacto real tiene más de un toque, así que solo se vio el "Único toque". El modelo de vista lo cubre con tests y aparecerá con datos cuando un contacto interactúe de nuevo.
+- **Datos de anuncio en un DM:** sigue sin verificarse que Zernio mande `referral` y que Evolution mande `externalAdReply` en un mensaje que venga de un anuncio. El código los lee de forma defensiva; se confirma en vivo (plano §9.7).
+- **Carrera al crear un contacto de TikTok:** dos comentarios simultáneos de la misma persona nueva podrían crear dos contactos anónimos (se busca y después se inserta, sin un único en la base). Es poco probable y el costo es un contacto anónimo duplicado.
+
+### B11 · Las migraciones 00114 y 00115 tampoco están en el historial
+- **Qué quedó:** igual que la 00113: aplicadas con `supabase db query`, que no registra el historial, y el sistema de permisos denegó el INSERT en `supabase_migrations.schema_migrations`.
+- **Qué se decidió en su lugar:** nada del código lee esa tabla. Queda anotado junto a la 00113.
+
+### B12 · La 00118 (destructiva) está escrita y NO se aplicó
+- **Qué es:** borra `content_ideas.hook/angle/notes/pillar`, `content_posts.copy` y la función `approve_content_idea` vieja.
+- **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe esas columnas, así que aplicarla no rompe nada, pero no tiene vuelta atrás.
+- **Cuándo aplicarla:** después de ver la v3 funcionando en producción con piezas reales. Antes, correr las dos consultas de la cabecera de `supabase/migrations/00118_drop_legacy_content_columns.sql`: las dos tienen que dar 0. Con un backup (`supabase db dump`) o con tu confirmación.
+- **Para tener en cuenta:** `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el bundle tenga todas las migraciones), así que ese archivo es para una instalación NUEVA; no correrlo sobre producción. Al aplicarla hay que sacar de `lib/types/database.ts` las columnas marcadas `@deprecated`.
+
+### B12 · Las migraciones 00116 y 00117 tampoco están en el historial
+- Igual que la 00113 a la 00115: aplicadas con `supabase db query`, que no registra el historial. Nada del código lee esa tabla.
+
+### B12 · Lo que no se vio con archivos reales
+- **El selector de archivos de cada red y la biblioteca** no se vieron con archivos de verdad: la única pieza de producción no tiene redes ni archivos, y no quise subir nada al bucket real ni crear datos de prueba que no se puedan borrar. Quedan cubiertos por tests de render en el servidor (estructura, numeración, orden, ↑ ↓, verde y rojo, "Sin usar"). **Plan:** en la revisión visual de B13, armar una pieza `zz-test…` con archivos chicos, mirarla y borrarla.
+- **La lectura de dimensiones y duración al subir** (`lib/content/media-probe.ts`) es código de navegador y no tiene test; si no puede leer un archivo, la subida sigue sin esos datos. Consecuencia buena y a vigilar: como ahora SÍ se guarda la duración, un Reel de más de 90 segundos recién se va a frenar en los archivos subidos desde ahora; los de antes no tienen el dato y siguen sin validarse.
+- **`mediaType` en TikTok** (video o fotos, según el formato) es un campo nuevo en lo que se manda a Zernio. El tipo del SDK lo declara (`'video' | 'photo'`), pero no se probó contra la API real.
+
+### B12 · Cosas chicas que conviene saber
+- Las redes que crean `approve_content_idea_v2`, "Nuevo post" y "Agregar red" nacen **sin formato** (modelo anterior); la persona elige el formato en la fila.
+- Las variantes con archivos propios del modelo anterior (`networks[].media`) siguen funcionando y no se migran: no hay ninguna en producción. Elegir un formato en esa red la pasa a la biblioteca.
+- El detalle de solo lectura de una pieza (`/dashboard/content/[id]`) no muestra la clasificación nueva: B13 lo reemplaza por el drawer y lo redirige.
+
+### B13 · El pie del drawer a 390 px
+- **Qué quedó:** en el celular el pie de la pieza (el resumen y cuatro botones) se parte en tres filas y ocupa casi un quinto de la pantalla. Se usa, pero está apretado.
+- **Por qué:** se priorizó que no hubiera scroll horizontal y que ningún botón desapareciera.
+- **Qué se decidió en su lugar:** nada; si molesta, lo natural es dejar solo el botón principal a la vista y mandar "Guardar versión" y "Archivar" a un menú de tres puntos en el celular.
+
+### B13 · Cosas que no se vieron con datos reales
+- **El número de contactos por pieza con contactos de verdad:** hoy ningún contacto llegó por una pieza, así que solo se vio el caso "publicada con 0". La consulta se probó contra la base real (acepta la ruta JSON con alias y el filtro) y la regla tiene su test; falta verlo con un lead que haya comentado una pieza.
+- **El historial con versiones y "Restaurar":** se vio vacío y con una versión; restaurar está cubierto por tests (`migrate-copy.test.ts`) pero no se apretó en vivo.
+- **La aprobación de ideas en secuencia con varias ideas:** hay una sola idea real; la secuencia (siguiente/anterior, cerrar con aviso al terminar) está cubierta por `idea-gallery.test.ts` y no se vio con tres ideas.
+
+### B13 · Cosas chicas que conviene saber
+- Los avisos de la campana y el link a la pieza desde la ficha de un contacto (`lib/notifications/types.ts`, `lib/contacts/attribution-view.ts`) todavía apuntan a `/dashboard/content/<id>`: funcionan por la redirección de F99 pero dan un salto de más. Se pueden apuntar directo a `?piece=<id>`.
+- La entrada `/dashboard/content/new` de `lib/nav/page-actions.ts` es de una pantalla que ya no existe (quedó de antes); es inofensiva.
+- El indicador "N" que aparece abajo a la izquierda en las capturas es la herramienta de desarrollo de Next, no algo de la app.
+- **La CLI de Supabase dejó de iniciar sesión** un rato durante B13b (error 500 del lado de Supabase, "FGAAuthenticationError"); no había nada que aplicar en ese tramo, así que no frenó nada. Para sembrar y borrar los datos de prueba usé la clave de servicio del proyecto (como los scripts `verify-*`).
+
+### B14 · Medir con métricas reales
+- **Qué quedó:** el rendimiento por red del drawer y la tabla agrupada del dashboard se vieron con datos `zz-test` que sembré y borré (3 piezas, 9 publicaciones con sus fotos diarias, 3 contactos anónimos; después quedó 1 idea, 1 pieza, 0 cuentas, 0 publicaciones, 0 pilares y 0 ofertas). **No se vieron con métricas de verdad**: hoy no hay cuentas conectadas ni publicaciones reales.
+- **Qué mirar cuando las haya:** que `engagement_d7` se congele solo a los 7 días (lo hace la lectura de métricas, no esto), que el índice salga con una base real de 3 o más publicaciones del mismo formato, y que los leads cuenten contactos reales (la consulta con ruta JSON `attribution->first_touch->>origin` se probó contra la base real con contactos sembrados).
+
+### B14 · Decisiones donde el plano admitía dos lecturas
+- **La ventana del índice termina el día de la publicación (90 días previos), no hoy.** El plano dice "los últimos 90 días". Con "hoy", el índice de una publicación cambiaría cada día y una de hace seis meses se compararía con lo que pasó hace un mes. Si se prefiere la otra lectura, el cambio es la condición de ventana de `publicationIndex` (`lib/dashboards/piece-index.ts`).
+- **"En curso" solo dura 7 días.** Una publicación con más de 7 días y sin `engagement_d7` dice "Sin dato", no "En curso" para siempre (la red no dio alcance, o no se recolectó).
+- **El filtro y la agrupación del dashboard tocan solo las publicaciones.** Los seguidores son de la cuenta, no de una pieza: no se filtran, y la pantalla lo dice.
+
+### B14 · Cosas chicas que conviene saber
+- **Los nombres de red:** `platformLabel` capitaliza lo que no es un canal de mensajería y se ve "Youtube", "Linkedin" y "Tiktok" (también en las pantallas de antes). Un test lo fija a propósito (`lib/platforms.test.ts` espera `"Tiktok"`), así que no lo cambié: arreglarlo es cambiar ese test y agregar los nombres.
+- **La tabla agrupada del dashboard no se ordena por columna:** viene por cantidad de publicaciones, con "Sin asignar" al final. La tabla "Tus posts" de más abajo sí se ordena.
+- **Tope de lectura de comparables:** el índice lee hasta 1.000 publicaciones comparables (PostgREST corta ahí sin avisar); si se llega, queda un aviso en el log. Con la cantidad de publicaciones que tiene un negocio como este no debería pasar.
+- **Un hueco de tests que encontró la mutación y arreglé:** ningún test distinguía "el total de leads de la pieza" de "la suma de las filas" (la pieza cuenta una vez a quien llegó por una publicación ya borrada y las filas no). Con el test nuevo, los 14 mutantes de B14 quedan en rojo (tabla en `docs/PROGRESS-CV3.md`).
+- **Los números del drawer se leen con el cliente de quien mira:** un Member ve solo los leads de sus contactos (alcance de leads), así que su columna "Leads" puede ser menor que la de un Admin. Es lo esperado.
+
+## Cierre de la corrida Contenido v3
+- **Una sola cosa para hacer después del merge y del despliegue:** volver a correr `supabase db query --linked -f supabase/migrations/00115_attribution_v2_and_backfill.sql` (es idempotente) para darles toque a los contactos que hayan entrado entre la migración y el despliegue. Ver "B11 · Hay que re-correr el backfill…".
+- **La 00118 sigue sin aplicar a propósito.** Ver "B12 · La 00118…".
+- **Las migraciones 00113 a 00117 están aplicadas pero no registradas en el historial de Supabase.**

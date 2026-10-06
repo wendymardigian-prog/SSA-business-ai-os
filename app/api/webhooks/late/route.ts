@@ -21,6 +21,8 @@ import { after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
+import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
+import { attributeComment } from "@/lib/comments/attribution";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
 import { messagePreview, previewForMessage } from "@/lib/message-preview";
@@ -45,7 +47,7 @@ import {
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inbound";
-import { isOwnComment, linkCommentToContact, storeComment } from "@/lib/comments/store";
+import { isOwnComment, storeComment } from "@/lib/comments/store";
 import type { SocialPlatform } from "@/lib/types/database";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 
@@ -97,6 +99,13 @@ interface WebhookPayload {
      * palabra clave (F6).
      */
     storyReply?: { storyId: string; storyUrl?: string };
+    /**
+     * Datos del anuncio que originó la conversación. Solo viene en el PRIMER
+     * mensaje después del clic (ad_id y ref en Instagram y Messenger; ctwa_clid
+     * y source_id en WhatsApp). Sin tipar a propósito: ningún campo es seguro y
+     * `fromZernioReferral` lo lee de forma defensiva (F85).
+     */
+    referral?: unknown;
   };
   timestamp: string;
 }
@@ -332,6 +341,30 @@ async function processMessageEvent(
     postbackPayload: metadata?.postbackPayload ?? null,
     callbackData: metadata?.callbackData ?? null,
   });
+
+  // ── El toque de atribución (F85) ──────────────────────────────────────────
+  // DESPUÉS de guardar el mensaje y ANTES del opt-out: el lead escribió aunque
+  // después pida que no lo contacten. Nunca puede tumbar la recepción:
+  // `recordInboundTouch` atrapa todo y el mensaje ya está guardado. Solo anota
+  // lo que suma información (primer mensaje, historia, anuncio, una vuelta).
+  try {
+    await recordInboundTouch(supabase, {
+      workspaceId: channel.workspace_id,
+      contactId,
+      conversationId: conversation.id,
+      platform: channel.platform,
+      contactExisted: contact.existed,
+      messageAt: new Date(msg.sentAt || Date.now()),
+      platformMessageId: msg.id ?? null,
+      messageId: inserted.id ?? null,
+      storyId: metadata?.storyReply?.storyId ?? null,
+      referral: fromZernioReferral(metadata?.referral),
+    });
+  } catch (err) {
+    // `recordInboundTouch` ya atrapa todo; esto es el cinturón de seguridad. Si
+    // algo se escapara, el lead no se queda sin su flow por una estadística.
+    console.error("[webhook] el toque de atribución falló:", err instanceof Error ? err.message : err);
+  }
 
   // ── La media, adentro (F3) ────────────────────────────────────────────────
   // Va aca, dentro del after() que ya existe, y no en la cola: la URL del CDN
@@ -593,6 +626,18 @@ async function handleCommentWebhook(
     return NextResponse.json({ ok: true, skipped: "evento repetido" });
   }
 
+  let commentedPostId: string | null = null;
+
+  const commentAttribution = () => ({
+    workspaceId,
+    platform: platform ?? "instagram",
+    externalCommentId: payload.comment.id,
+    authorUsername: payload.comment.author?.username ?? null,
+    isOwn: own,
+    commentedAt: payload.comment.createdAt ?? null,
+    socialPostId: commentedPostId,
+  });
+
   // Ack before processing (same 5s delivery budget as messages); processComment
   // additionally dedupes on (channel_id, platform_comment_id) so cross-event
   // redeliveries of the same comment stay one-shot.
@@ -618,13 +663,11 @@ async function handleCommentWebhook(
           source: "webhook",
         },
       });
+      commentedPostId = result.socialPostId;
       if (result.stored && !own) {
-        await linkCommentToContact(supabase, {
-          workspaceId,
-          externalCommentId: payload.comment.id,
-          platform: platform ?? "instagram",
-          authorUsername: payload.comment.author?.username ?? null,
-        });
+        // Vincula al contacto (en TikTok crea uno anonimo, en Instagram solo si
+        // ya existe) y anota el toque. Nunca lanza (F86).
+        await attributeComment(supabase, commentAttribution());
       }
     } catch (err) {
       console.error("[webhook] no pude guardar el comentario:", err);
@@ -650,6 +693,15 @@ async function handleCommentWebhook(
       });
     } catch (err) {
       console.error("Webhook comment processing error:", err);
+    }
+
+    // El flow por palabra clave puede haber CREADO al contacto recien ahora: se
+    // vuelve a intentar. El toque se deduplica por el id del comentario, asi que
+    // si ya estaba anotado no se duplica (F86).
+    try {
+      await attributeComment(supabase, commentAttribution());
+    } catch (err) {
+      console.error("[webhook] la atribución del comentario falló:", err instanceof Error ? err.message : err);
     }
   });
 

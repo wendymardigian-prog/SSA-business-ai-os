@@ -30,11 +30,14 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  *
  * Cada una usa `requireWorkspaceAdmin`, que rebota al dashboard. Un Member
  * que escribe la URL a mano tampoco entra.
+ *
+ * Social y el dashboard de contenido salieron de esta lista en F78 (Contenido
+ * v3): pasaron a pedir un permiso (`social.view`, `dashboards.content.view`)
+ * y estan en `PERMISSION_PAGES`, mas abajo.
  */
 const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/channels/page.tsx",
   "app/(dashboard)/dashboard/dashboards/ads/page.tsx",
-  "app/(dashboard)/dashboard/dashboards/content/page.tsx",
   "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
   "app/(dashboard)/dashboard/knowledge/page.tsx",
   "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
@@ -44,7 +47,6 @@ const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/settings/integrations/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
   "app/(dashboard)/dashboard/settings/team/page.tsx",
-  "app/(dashboard)/dashboard/social/page.tsx",
 ] as const;
 
 /**
@@ -119,11 +121,12 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     expect(sinGuard, `estas paginas dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
   });
 
-  it("son exactamente trece, y estan todas en el repo", () => {
+  it("son exactamente once, y estan todas en el repo", () => {
     // El numero importa: si aparece una pagina nueva de Admin sin sumarla
     // aca, el bloque 9 puede cambiarle el guard sin que nadie lo note.
-    // (Bloque G suma el detalle de una integracion, G5.)
-    expect(ADMIN_PAGES).toHaveLength(13);
+    // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
+    // dashboard de contenido: pasaron a un permiso.)
+    expect(ADMIN_PAGES).toHaveLength(11);
     for (const page of ADMIN_PAGES) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
@@ -147,6 +150,37 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     const guarded = pages.filter((page) => read(page).includes("requireWorkspaceAdmin")).sort();
 
     expect(guarded).toEqual([...ADMIN_PAGES].sort());
+  });
+});
+
+/**
+ * Las paginas que pasaron de "Owner/Admin" a un permiso (F78).
+ *
+ * Owner y Admin tienen todas las claves, asi que para ellos no cambia nada. Lo
+ * que cambia es que un rol personalizado puede darselas a un Member: el rol
+ * "Content Manager" tiene las dos.
+ */
+const PERMISSION_PAGES = [
+  ["app/(dashboard)/dashboard/social/page.tsx", "social.view"],
+  ["app/(dashboard)/dashboard/dashboards/content/page.tsx", "dashboards.content.view"],
+] as const;
+
+describe("caracterizacion: las paginas que piden un permiso (F78)", () => {
+  it.each(PERMISSION_PAGES)("%s pide %s y ya no pide Admin", (page, key) => {
+    const source = read(page);
+
+    expect(source).toContain(`requirePermission("${key}")`);
+    expect(source).not.toContain("requireWorkspaceAdmin");
+  });
+
+  it("las acciones de contenido deciden por permiso, no por cargo", () => {
+    // Antes `content-review.ts` miraba `isAdminRole`: un rol con
+    // `content.approve` no podia aprobar. Ahora es la clave.
+    for (const file of ["lib/actions/content-review.ts", "lib/actions/content.ts", "lib/actions/content-schedule.ts"]) {
+      expect(read(file), file).not.toContain("isAdminRole");
+    }
+    expect(read("lib/actions/content-review.ts")).toContain('can("content.approve")');
+    expect(read("lib/actions/content-review.ts")).toContain('can("content.publish")');
   });
 });
 
@@ -217,17 +251,19 @@ describe("caracterizacion: el menu (F68)", () => {
   // con el mismo criterio adminOnly que sus vecinas de siempre. Settings e
   // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
   // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
-  it("las cuatro entradas de Admin son las de hoy, con Integraciones en vez de Channels", () => {
+  it("las tres entradas de Admin son las de hoy, con Integraciones en vez de Channels", () => {
     const adminOnly = NAV_ITEMS.filter((item) => item.adminOnly).map((item) => item.name).sort();
 
-    expect(adminOnly).toEqual(["Ajustes", "Conocimiento", "Integraciones", "Social"]);
+    // Social salio en F78: ya no es por cargo, es por el permiso `social.view`.
+    expect(adminOnly).toEqual(["Ajustes", "Conocimiento", "Integraciones"]);
   });
 
   it("las demas las ve un Member", () => {
     const visible = NAV_ITEMS.filter((item) => !item.adminOnly).map((item) => item.name).sort();
 
-    // "Agenda" (Etapa 4) no es adminOnly: se filtra por permiso (`permissions`),
-    // y el Member de sistema lo ve porque tiene scheduling.use y bookings.view.
+    // "Agenda" (Etapa 4) y "Social" (F78) no son adminOnly: se filtran por
+    // permiso (`permissions`). El Member de sistema ve Agenda porque tiene
+    // scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
     expect(visible).toEqual([
       "Agenda",
       "Agentes",
@@ -236,6 +272,7 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      "Social",
     ]);
   });
 });

@@ -14,6 +14,7 @@ import {
   ActionError,
 } from "@/components/contacts/ui";
 import { LEAD_TEMPERATURES, LEAD_TEMPERATURE_LABELS } from "@/lib/contacts/fields";
+import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
 import { bulkAddTag, createContact } from "@/lib/actions/contacts";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
@@ -50,6 +51,9 @@ interface Filters {
   platform: string;
   /** "" oculta los anonimos, "1" los suma, "solo" muestra unicamente esos. */
   anon: string;
+  /** Fuente y medio del PRIMER toque de atribucion (F88). */
+  source: string;
+  medium: string;
 }
 
 export function ContactsView({
@@ -203,6 +207,20 @@ export function ContactsView({
               value: t,
               label: LEAD_TEMPERATURE_LABELS[t],
             }))}
+          />
+          {/* Por el PRIMER toque, y el nombre lo dice: "entraron por un comentario"
+              no es "alguna vez comentaron". */}
+          <FilterSelect
+            label="Origen (1.er toque)"
+            value={filters.source}
+            onChange={(v) => setParam("fuente", v)}
+            options={SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }))}
+          />
+          <FilterSelect
+            label="Medio (1.er toque)"
+            value={filters.medium}
+            onChange={(v) => setParam("medio", v)}
+            options={MEDIUMS.map((m) => ({ value: m, label: MEDIUM_LABELS[m] }))}
           />
           {platforms.length > 0 && (
             <FilterSelect

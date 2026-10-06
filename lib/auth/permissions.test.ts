@@ -129,14 +129,19 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 
   it("coincide con lo que el menu le muestra hoy", () => {
-    // Las cuatro entradas `adminOnly` del menu son justo las que el Member
-    // no tiene permiso de ver.
+    // Las entradas `adminOnly` del menu son justo las que el Member no tiene
+    // permiso de ver.
     const adminOnly = NAV_ITEMS.filter((i) => i.adminOnly).map((i) => i.name);
 
-    expect(adminOnly).toContain("Social");
-    expect(can(member, "social.view")).toBe(false);
     expect(adminOnly).toContain("Conocimiento");
     expect(can(member, "knowledge.view")).toBe(false);
+
+    // Social dejo de ser por cargo (F78): se ve con el permiso `social.view`,
+    // y el Member de sistema no lo tiene, asi que sigue sin verlo.
+    const social = NAV_ITEMS.find((i) => i.name === "Social");
+    expect(social?.adminOnly).toBe(false);
+    expect(social?.permissions).toEqual(["social.view"]);
+    expect(can(member, "social.view")).toBe(false);
   });
 });
 

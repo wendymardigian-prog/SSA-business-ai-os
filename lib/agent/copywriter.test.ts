@@ -22,7 +22,8 @@ const POST_A = "post-a";
 const POST_B = "post-b";
 
 const SALIDA = {
-  copy: { hook: "Un hook", body: "El desarrollo", cta: "Comenta SISTEMA", recording_notes: "Vertical" },
+  script: "Un hook\n\nEl desarrollo\n\nComenta SISTEMA",
+  recording_notes: "Vertical",
   caption_base: "Un caption",
   captions: { instagram: "Para Instagram" },
 };
@@ -105,7 +106,7 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
           workspace_id: WS_A,
           title: "Detras de escena",
           format: "reel",
-          copy: {},
+          script: null,
           caption: null,
           networks: [{ platform: "instagram" }],
           idea_id: "idea-1",
@@ -115,14 +116,14 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
           workspace_id: WS_B,
           title: "Otro negocio",
           format: "reel",
-          copy: {},
+          script: null,
           caption: null,
           networks: [{ platform: "instagram" }],
           idea_id: null,
         },
       ],
       content_ideas: [
-        { id: "idea-1", title: "Por que perdes leads", hook: "Mi tasa paso de 40 a 90", angle: "Antes y despues", pillar: "Sistemas", reference: null },
+        { id: "idea-1", title: "Por que perdes leads", content: "Mi tasa paso de 40 a 90\n\nAntes y despues", reference: null },
       ],
       social_posts: [
         { workspace_id: WS_A, platform: "instagram", status: "published", caption: "El que mejor anduvo", engagement_d7: 90, published_at: haceDias(10), content_posts: { format: "reel" } },
@@ -146,6 +147,8 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
       knowledge_base: [
         { workspace_id: WS_A, title: "Oferta", content_md: "Implementacion en 10 dias", tags: ["oferta"], internal_only: false, status: "ready" },
       ],
+      content_pillars: [],
+      content_offers: [],
       agent_runs: [],
       agent_run_steps: [],
     },
@@ -174,6 +177,76 @@ describe("E4 · el contexto que junta antes de escribir", () => {
     expect(prompt).toContain("SISTEMA -> Guia por DM");
     expect(prompt).toContain("Implementacion en 10 dias");
     expect(prompt).toContain("Escribi como Wendy");
+  });
+
+  it("F94: le da la clasificacion de la pieza (pilar, oferta, etapa) con sus NOMBRES, no los ids", async () => {
+    const db = seed();
+    db.rows("content_pillars").push({ id: "p1", workspace_id: WS_A, name: "Sistemas", archived_at: null });
+    db.rows("content_offers").push({ id: "o1", workspace_id: WS_A, name: "Implementacion en 10 dias", archived_at: null });
+    Object.assign(db.rows("content_posts")[0], { pillar_id: "p1", offer_id: "o1", funnel_stage: "bofu", reference: "https://ref.test/x" });
+    const generate = fakeGenerate();
+
+    await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
+
+    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    expect(prompt).toContain("Pilar: Sistemas");
+    expect(prompt).toContain("Oferta: Implementacion en 10 dias");
+    expect(prompt).toContain("Etapa del embudo: Decisión");
+    expect(prompt).toContain("Referencia: https://ref.test/x");
+    expect(prompt).not.toContain("p1");
+  });
+
+  it("F94: un pilar archivado se sigue nombrando: la pieza lo tiene", async () => {
+    const db = seed();
+    db.rows("content_pillars").push({ id: "p1", workspace_id: WS_A, name: "Viejo", archived_at: "2026-10-01T00:00:00Z" });
+    Object.assign(db.rows("content_posts")[0], { pillar_id: "p1" });
+    const generate = fakeGenerate();
+
+    await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
+
+    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    expect(prompt).toContain("Pilar: Viejo");
+  });
+
+  it("F94: un pilar de OTRO workspace no se lee", async () => {
+    const db = seed();
+    db.rows("content_pillars").push({ id: "p-ajeno", workspace_id: WS_B, name: "Secreto del otro negocio", archived_at: null });
+    Object.assign(db.rows("content_posts")[0], { pillar_id: "p-ajeno" });
+    const generate = fakeGenerate();
+
+    await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
+
+    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    expect(prompt).not.toContain("Secreto del otro negocio");
+  });
+
+  it("F94: pasa el formato de cada red elegido en la pieza", async () => {
+    const db = seed();
+    db.rows("content_posts")[0].networks = [
+      { platform: "instagram", format: "carousel" },
+      { platform: "tiktok" },
+    ];
+    const generate = fakeGenerate();
+
+    await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
+
+    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    expect(prompt).toContain("instagram: Carrusel");
+    // Una red sin formato elegido no inventa uno (la linea de limites dice
+    // "tiktok: hasta ...", que es otra cosa).
+    expect(prompt).not.toMatch(/tiktok: (Video|Carrusel|Reel)/);
+  });
+
+  it("F94: el guion que ya habia se manda para mejorarlo", async () => {
+    const db = seed();
+    db.rows("content_posts")[0].script = "Mi guion escrito a mano";
+    const generate = fakeGenerate();
+
+    await runCopywriter(db.client, { agentId: AGENT_A, postId: POST_A }, { generate });
+
+    const prompt = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls[0][0].prompt;
+    expect(prompt).toContain("Mi guion escrito a mano");
+    expect(prompt).toContain("sin perder lo que ya funciona");
   });
 
   it("cada lectura queda como un paso del run: se puede ver que vio", async () => {

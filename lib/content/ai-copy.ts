@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { funnelStageInfo } from "./classification";
 import { PLATFORM_LIMITS } from "./limits";
 
 /** La voz de marca, de `workspaces.content_copy_settings`. */
@@ -31,28 +32,37 @@ export interface CopyRequest {
   /** De donde salio la pieza. */
   idea?: {
     title?: string | null;
-    hook?: string | null;
-    angle?: string | null;
-    pillar?: string | null;
+    /** El texto unico de la idea (F90). */
+    content?: string | null;
     reference?: string | null;
   } | null;
   title: string;
   format?: string | null;
+  /**
+   * Como esta clasificada la pieza (F94), con los NOMBRES y no los ids: el
+   * modelo no sabe que es "p-3f2a". Lo que no esta clasificado no se manda.
+   */
+  classification?: {
+    pillar?: string | null;
+    offer?: string | null;
+    funnelStage?: string | null;
+    reference?: string | null;
+  } | null;
+  /** El formato elegido en cada red ("Carrusel", "Short"), si lo hay. */
+  networkFormats?: Record<string, string> | null;
   /** Las redes para las que hay que escribir caption. */
   platforms: string[];
   brand?: BrandVoice | null;
-  /** Lo que ya hay escrito, cuando se pide regenerar. */
-  existingCopy?: { hook?: string; body?: string; cta?: string } | null;
+  /** El guion que ya hay escrito, cuando se pide regenerar. */
+  existingScript?: string | null;
 }
 
 /** Lo que el modelo tiene que devolver. */
 export const copyOutputSchema = z.object({
-  copy: z.object({
-    hook: z.string().min(1, "El hook no puede estar vacio"),
-    body: z.string().min(1, "El desarrollo no puede estar vacio"),
-    cta: z.string(),
-    recording_notes: z.string(),
-  }),
+  /** El guion completo, de principio a fin: el ultimo parrafo es el cierre. */
+  script: z.string().trim().min(1, "El guion no puede estar vacio"),
+  /** Indicaciones para quien graba. */
+  recording_notes: z.string(),
   caption_base: z.string(),
   /** Un caption por red pedida. */
   captions: z.record(z.string(), z.string()),
@@ -91,19 +101,38 @@ export function buildPrompt(request: CopyRequest): string {
   parts.push(`Titulo de la pieza: ${request.title}`);
   if (request.format) parts.push(`Formato: ${request.format}`);
 
+  const classification = request.classification;
+  if (classification) {
+    const stage = funnelStageInfo(classification.funnelStage);
+    const lines = [
+      classification.pillar?.trim() && `Pilar: ${classification.pillar.trim()}`,
+      classification.offer?.trim() && `Oferta: ${classification.offer.trim()}`,
+      // La etapa con su descripcion: tofu/mofu/bofu no le dicen nada a un modelo.
+      stage && `Etapa del embudo: ${stage.label} (${stage.description})`,
+      // La de la idea ya va en "La idea de origen"; aca solo si es otra.
+      classification.reference?.trim() &&
+        classification.reference.trim() !== request.idea?.reference?.trim() &&
+        `Referencia: ${classification.reference.trim()}`,
+    ].filter(Boolean);
+    if (lines.length > 0) parts.push(`Como esta clasificada:\n${lines.join("\n")}`);
+  }
+
+  const formats = Object.entries(request.networkFormats ?? {}).filter(([, label]) => label.trim());
+  if (formats.length > 0) {
+    parts.push(`Formato en cada red:\n${formats.map(([platform, label]) => `- ${platform}: ${label}`).join("\n")}`);
+  }
+
   if (request.idea) {
     const idea = [
-      request.idea.hook && `Hook: ${request.idea.hook}`,
-      request.idea.angle && `Angulo: ${request.idea.angle}`,
-      request.idea.pillar && `Pilar: ${request.idea.pillar}`,
+      request.idea.content && request.idea.content,
       request.idea.reference && `Referencia: ${request.idea.reference}`,
     ].filter(Boolean);
     if (idea.length > 0) parts.push(`La idea de origen:\n${idea.join("\n")}`);
   }
 
-  if (request.existingCopy?.body) {
+  if (request.existingScript?.trim()) {
     parts.push(
-      `Ya hay un guion escrito. Reescribilo mejorandolo, sin perder lo que ya funciona:\n${request.existingCopy.body}`,
+      `Ya hay un guion escrito. Reescribilo mejorandolo, sin perder lo que ya funciona:\n${request.existingScript.trim()}`,
     );
   }
 
@@ -129,10 +158,8 @@ export function buildPrompt(request: CopyRequest): string {
   parts.push(
     [
       "Devolve:",
-      "- copy.hook: la primera frase, la que frena el scroll.",
-      "- copy.body: el desarrollo, para leer frente a camara.",
-      "- copy.cta: como cierra y que pide.",
-      "- copy.recording_notes: indicaciones para grabar (tono, planos, que mostrar).",
+      "- script: el guion completo para leer frente a camara. Arranca con la frase que frena el scroll y el ULTIMO parrafo es el cierre: como termina y que pide.",
+      "- recording_notes: indicaciones para grabar (tono, planos, que mostrar). No sale publicado.",
       "- caption_base: el caption que sirve para cualquier red.",
       "- captions: uno por red, adaptado a su largo.",
     ].join("\n"),
@@ -201,17 +228,20 @@ export function applyGeneratedCopy(params: {
   output: CopyOutput;
   platforms: string[];
   previousCopySource: "manual" | "ai" | "mixed";
+  /** Si ya habia un guion escrito (a mano o por la IA antes). */
   hadManualCopy: boolean;
   networks: Array<{ platform: string; caption?: string | null; youtube_title?: string | null }>;
 }): {
-  copy: CopyOutput["copy"];
+  script: string;
+  recording_notes: string;
   caption: string;
   networks: Array<{ platform: string; caption?: string | null; youtube_title?: string | null }>;
   copy_source: "ai" | "mixed";
   ai_unreviewed: true;
 } {
   return {
-    copy: params.output.copy,
+    script: params.output.script,
+    recording_notes: params.output.recording_notes,
     caption: params.output.caption_base,
     networks: params.networks.map((network) => {
       const generated = params.output.captions[network.platform];
@@ -233,6 +263,6 @@ export function applyGeneratedCopy(params: {
 }
 
 /** Si hay que pedir confirmacion antes de pisar lo escrito. */
-export function needsConfirmation(existing: { body?: string | null } | null | undefined): boolean {
-  return Boolean(existing?.body?.trim());
+export function needsConfirmation(existing: { script?: string | null } | null | undefined): boolean {
+  return Boolean(existing?.script?.trim());
 }

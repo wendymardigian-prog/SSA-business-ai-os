@@ -19,13 +19,29 @@
 
 import type { ContentPostStatus } from "@/lib/types/database";
 import type { CtaType } from "./keywords";
+import { idOf } from "./media-library";
+import type { MediaEntry } from "./media";
 
 export interface NetworkEntry {
   platform: string;
   planned_at?: string | null;
   /** null = usa el caption base. */
   caption?: string | null;
-  /** null = usa la media base. */
+  /**
+   * Formato de la publicacion en esta red (F93): reel, carousel, image, story,
+   * video, photos, short, text, pdf. Ver `lib/content/network-format.ts`.
+   */
+  format?: string | null;
+  /**
+   * Los archivos que usa esta red, como lista ORDENADA de ids de la
+   * biblioteca de la pieza (F92). Es el modelo nuevo; si no esta, rige el
+   * anterior.
+   */
+  files?: string[];
+  /**
+   * @deprecated Modelo anterior: una COPIA de la media. null = usa la media
+   * base. Sigue funcionando para lo que ya estaba guardado; lo nuevo usa `files`.
+   */
   media?: unknown[] | null;
   cta?: { type: CtaType; keyword?: string | null } | null;
   options?: Record<string, unknown>;
@@ -37,22 +53,48 @@ export interface NetworkEntry {
 export function hasVariant(network: NetworkEntry): boolean {
   return Boolean(
     (network.caption !== null && network.caption !== undefined) ||
+      Array.isArray(network.files) ||
       (network.media !== null && network.media !== undefined),
   );
 }
 
-/** Que usa esa red, ya resuelto contra lo base. */
+/**
+ * Que usa esa red, ya resuelto contra lo base.
+ *
+ * La media sale de UNA de tres fuentes, en este orden:
+ *  1. `files` (F92/F93): los ids elegidos de la biblioteca, EN ESE ORDEN. Un id
+ *     que ya no esta en la biblioteca se saltea. Es el modelo nuevo.
+ *  2. `media` propia (modelo anterior): una copia de la media.
+ *  3. La biblioteca entera, si la red no tiene nada propio.
+ *
+ * Es el unico resolutor: lo usan el editor, la validacion del servidor, la
+ * vista previa y el publicador. Que el editor muestre una cosa y se publique
+ * otra seria el peor error de este modulo.
+ */
 export function resolveNetworkContent<T>(params: {
   network: NetworkEntry;
   baseCaption: string | null;
   baseMedia: T[];
 }): { caption: string; media: T[]; ownCaption: boolean; ownMedia: boolean } {
   const ownCaption = params.network.caption !== null && params.network.caption !== undefined;
-  const ownMedia = params.network.media !== null && params.network.media !== undefined;
+  const files = params.network.files;
+  const ownFiles = Array.isArray(files);
+  const ownMedia = ownFiles || (params.network.media !== null && params.network.media !== undefined);
+
+  let media: T[];
+  if (ownFiles) {
+    const byId = new Map<string, T>();
+    for (const m of params.baseMedia) byId.set(idOf(m as unknown as MediaEntry), m);
+    media = files.map((id) => byId.get(id)).filter((m): m is T => m !== undefined);
+  } else if (params.network.media !== null && params.network.media !== undefined) {
+    media = params.network.media as T[];
+  } else {
+    media = params.baseMedia ?? [];
+  }
 
   return {
     caption: (ownCaption ? params.network.caption : params.baseCaption) ?? "",
-    media: (ownMedia ? (params.network.media as T[]) : params.baseMedia) ?? [],
+    media,
     ownCaption,
     ownMedia,
   };
@@ -63,7 +105,8 @@ export interface DuplicateSource {
   idea_id: string | null;
   title: string;
   format: string | null;
-  copy: Record<string, unknown>;
+  script: string | null;
+  recording_notes: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: unknown[];
@@ -80,7 +123,8 @@ export function duplicateAsVariant(source: DuplicateSource): {
   idea_id: string | null;
   title: string;
   format: string | null;
-  copy: Record<string, unknown>;
+  script: string | null;
+  recording_notes: string | null;
   caption: string | null;
   networks: NetworkEntry[];
   media: unknown[];
@@ -90,7 +134,8 @@ export function duplicateAsVariant(source: DuplicateSource): {
     idea_id: source.idea_id,
     title: `${source.title} (variante)`,
     format: source.format,
-    copy: { ...source.copy },
+    script: source.script,
+    recording_notes: source.recording_notes,
     caption: source.caption,
     networks: source.networks.map((n) => ({ ...n, planned_at: null })),
     media: [...source.media],

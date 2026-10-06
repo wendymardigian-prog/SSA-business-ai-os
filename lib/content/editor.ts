@@ -158,7 +158,12 @@ export function summarizeNetwork(params: {
 
   const propios: string[] = [];
   if (params.network.caption !== null && params.network.caption !== undefined) propios.push("caption propio");
-  if (params.network.media !== null && params.network.media !== undefined) propios.push("media propia");
+  if (Array.isArray(params.network.files)) {
+    const n = params.network.files.length;
+    propios.push(`${n} archivo${n === 1 ? "" : "s"}`);
+  } else if (params.network.media !== null && params.network.media !== undefined) {
+    propios.push("media propia");
+  }
 
   const cta = params.network.cta;
   return {

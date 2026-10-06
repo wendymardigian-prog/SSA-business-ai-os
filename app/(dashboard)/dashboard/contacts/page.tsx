@@ -1,3 +1,4 @@
+import { attributionClauses, parseAttributionFilters } from "@/lib/contacts/attribution-filter";
 import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ContactsView, type ContactRow } from "./contacts-view";
@@ -50,6 +51,9 @@ export default async function ContactsPage({
   // persona responda. "1" los muestra, "solo" deja unicamente esos.
   const anon = pickEnum(params.anon, ANON_FILTER_VALUES);
   const page = pickPage(params.page);
+  // Por PRIMER toque (F88): quien lo trajo, no lo ultimo que hizo. Los valores
+  // se validan contra la taxonomia; uno inventado se ignora.
+  const attribution = parseAttributionFilters(params);
 
   // Los embeds con alias permiten filtrar por tag o por canal sin perder la
   // lista completa de tags de cada contacto: `tag_match` e `channel_match` son
@@ -86,6 +90,7 @@ export default async function ContactsPage({
   if (setterId) query = query.eq("setter_id", setterId);
   if (vendedorId) query = query.eq("vendedor_id", vendedorId);
   if (temperature) query = query.eq("lead_temperature", temperature);
+  for (const { path, value } of attributionClauses(attribution)) query = query.eq(path, value);
   if (anon === "solo") query = query.eq("is_anonymous", true);
   else if (anon !== "1") query = query.eq("is_anonymous", false);
 
@@ -159,7 +164,7 @@ export default async function ContactsPage({
       }))}
       platforms={platforms.map((p) => ({ value: p, label: platformLabel(p) }))}
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
-      filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon }}
+      filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon, source: attribution.source, medium: attribution.medium }}
       anonymousCount={anonymousRes.count ?? 0}
     />
   );

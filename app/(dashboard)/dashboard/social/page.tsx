@@ -1,6 +1,13 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { SocialView, type SocialTile } from "@/components/social/social-view";
-import type { ProfileSource } from "@/lib/social/profile-page";
+import {
+  SOCIAL_PLATFORMS,
+  buildUpcoming,
+  latestProfileStats,
+  type LinkedinSource,
+  type ProfileSource,
+  type UpcomingItem,
+} from "@/lib/social/profile-page";
 
 export const dynamic = "force-dynamic";
 
@@ -8,18 +15,24 @@ export const dynamic = "force-dynamic";
  * La pagina Social (F54).
  *
  * El perfil de cada red conectada y su grilla de publicaciones, con las
- * metricas que la red no muestra. Owner/Admin hasta el bloque 9, donde pasa
- * al permiso `social.view`.
+ * metricas que la red no muestra. Pide el permiso `social.view` (F78): Owner y
+ * Admin lo tienen siempre, y un rol personalizado se lo puede dar a un Member.
+ * Las tablas de metricas lo dejan leer por la misma clave (00113).
  *
  * Todo sale de lo que ya se recolecto: esta pantalla no llama a ninguna API.
- * Las historias en vivo (Instagram) llegan con el bloque siguiente.
+ * Las historias de Instagram quedan afuera (F100): dependen del token de Meta.
+ *
+ * El perfil muestra las cifras reales que lee la sincronizacion (F75): foto,
+ * usuario, bio, link, seguidores, seguidos, publicaciones. Arriba de la grilla
+ * van las "Proximas" (lo programado y lo tentativo), y cada red sin conectar
+ * invita a conectarla. LinkedIn es una lista: no entrega metricas.
  */
 export default async function SocialPage() {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase, role } = await requirePermission("social.view");
 
   const { data: accounts } = await supabase
     .from("social_accounts")
-    .select("id, platform, username, display_name, bio, website, avatar_url, profile_synced_at")
+    .select("id, platform, username, display_name, bio, website, avatar_url, profile_synced_at, profile_sync_error")
     .eq("workspace_id", workspace.id)
     .eq("is_active", true)
     .order("platform");
@@ -34,11 +47,13 @@ export default async function SocialPage() {
     accountIds.length > 0
       ? supabase
           .from("social_account_metrics_daily")
-          .select("social_account_id, date, followers")
+          .select("social_account_id, date, followers, extra")
           .in("social_account_id", accountIds)
           .gte("date", since)
           .order("date")
-      : Promise.resolve({ data: [] as Array<{ social_account_id: string; date: string; followers: number | null }> }),
+      : Promise.resolve({
+          data: [] as Array<{ social_account_id: string; date: string; followers: number | null; extra: unknown }>,
+        }),
     supabase
       .from("social_posts")
       .select("id, platform, media_type, thumbnail_url, caption, url, published_at, origin")
@@ -82,11 +97,21 @@ export default async function SocialPage() {
     (followerPoints[platform] ??= []).push({ date: row.date, followers: row.followers });
   }
 
+  // Las cifras de perfil que no son una serie (seguidos, publicaciones, videos,
+  // vistas, me gusta): salen del `extra` de la lectura diaria (F75).
+  const extraByPlatform: Record<string, Array<{ date: string; extra: unknown }>> = {};
+  for (const row of followerRows ?? []) {
+    const platform = platformById.get(row.social_account_id);
+    if (!platform) continue;
+    (extraByPlatform[platform] ??= []).push({ date: row.date, extra: row.extra });
+  }
+
   const profiles: Record<string, ProfileSource> = {};
   for (const account of accounts ?? []) {
     const platform = account.platform as string;
     const points = followerPoints[platform] ?? [];
     const lastFollowers = [...points].reverse().find((p) => p.followers !== null)?.followers ?? null;
+    const figures = latestProfileStats(extraByPlatform[platform] ?? []);
 
     profiles[platform] = {
       platform,
@@ -96,11 +121,13 @@ export default async function SocialPage() {
       website: account.website,
       avatarUrl: account.avatar_url,
       followers: lastFollowers,
-      // Seguidos, vistas totales y me gusta totales todavia no se guardan:
-      // ninguna recoleccion los trae. Mostrar un cero diria que no hay.
-      following: null,
-      posts: (postRows ?? []).filter((p) => p.platform === platform).length,
-      totalOther: null,
+      // Lo que la red dio de verdad. Lo que no dio queda en null y se muestra
+      // como "—": un cero diria que la cuenta no tiene nada.
+      following: figures.following,
+      posts: figures.posts,
+      videos: figures.videos,
+      totalOther: platform === "youtube" ? figures.views : platform === "tiktok" ? figures.likes : null,
+      syncError: account.profile_sync_error,
       syncedAt: account.profile_synced_at,
     };
   }
@@ -134,12 +161,80 @@ export default async function SocialPage() {
     };
   });
 
+  // "Proximas": lo programado y lo tentativo de cada red. Las piezas con su
+  // fecha planeada (jsonb) y lo que ya esta en la cola.
+  const [{ data: pieceRows }, { data: queueRows }, { data: linkedinRowsRaw }] = await Promise.all([
+    supabase
+      .from("content_posts")
+      .select("id, title, format, status, networks, archived_at")
+      .eq("workspace_id", workspace.id)
+      .is("archived_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(300),
+    supabase
+      .from("social_posts")
+      .select("content_post_id, platform, status, scheduled_at")
+      .eq("workspace_id", workspace.id)
+      .is("deleted_at", null)
+      .not("content_post_id", "is", null)
+      .limit(1000),
+    // LinkedIn no entrega metricas: se muestra lo publicado desde el sistema.
+    supabase
+      .from("social_posts")
+      .select("id, content_post_id, caption, status, published_at, scheduled_at, url, last_error")
+      .eq("workspace_id", workspace.id)
+      .eq("platform", "linkedin")
+      .eq("origin", "system")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(60),
+  ]);
+
+  const now = new Date();
+  const upcoming: Record<string, UpcomingItem[]> = {};
+  for (const platform of SOCIAL_PLATFORMS) {
+    upcoming[platform] = buildUpcoming({
+      posts: (pieceRows ?? []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        format: p.format,
+        status: p.status,
+        networks: (Array.isArray(p.networks) ? p.networks : []) as Array<{ platform?: string; planned_at?: string | null }>,
+        archivedAt: p.archived_at,
+      })),
+      publications: (queueRows ?? []).map((q) => ({
+        contentPostId: q.content_post_id as string,
+        platform: q.platform,
+        status: q.status,
+        scheduledAt: q.scheduled_at,
+      })),
+      platform,
+      now,
+    });
+  }
+
+  const linkedin: LinkedinSource[] = (linkedinRowsRaw ?? []).map((r) => ({
+    socialPostId: r.id,
+    contentPostId: r.content_post_id,
+    caption: r.caption,
+    status: r.status,
+    publishedAt: r.published_at,
+    scheduledAt: r.scheduled_at,
+    url: r.url,
+    lastError: r.last_error,
+  }));
+
   return (
     <SocialView
       platforms={platforms}
       profiles={profiles}
       tiles={tiles}
       followerPoints={followerPoints}
+      upcoming={upcoming}
+      linkedin={linkedin}
+      canRefresh={role === "owner" || role === "admin"}
+      canConnect={role === "owner" || role === "admin"}
+      timeZone={workspace.timezone || "America/Costa_Rica"}
     />
   );
 }

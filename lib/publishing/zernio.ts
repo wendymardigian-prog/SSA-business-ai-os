@@ -62,6 +62,11 @@ export function tiktokData(options: Record<string, unknown>) {
   const draft = options.mode === "draft";
   return {
     ...(draft ? { draft: true } : {}),
+    // Video o fotos, segun el formato elegido (F93). Sin esto TikTok lo
+    // deduce de la media; con esto lo que se eligio es lo que sale.
+    ...(options.mediaType === "video" || options.mediaType === "photo"
+      ? { mediaType: options.mediaType as "video" | "photo" }
+      : {}),
     ...(typeof options.privacyLevel === "string" ? { privacyLevel: options.privacyLevel } : {}),
     ...(typeof options.allowComment === "boolean" ? { allowComment: options.allowComment } : {}),
     ...(typeof options.allowDuet === "boolean" ? { allowDuet: options.allowDuet } : {}),

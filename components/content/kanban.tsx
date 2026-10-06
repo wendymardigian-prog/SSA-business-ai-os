@@ -1,19 +1,26 @@
 "use client";
 
 import { useMemo, useOptimistic, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Link2 as LinkIcon, Loader2, Plus, Sparkles } from "lucide-react";
+import { Link2 as LinkIcon, Loader2, Plus, Users } from "lucide-react";
+import { movePostToColumn } from "@/lib/actions/content";
+import { drawerHref } from "@/lib/content/drawer-url";
 import {
-  approveIdea,
-  movePostToColumn,
-} from "@/lib/actions/content";
-import { buildBoard, evaluateDrop, redistributionChip, type BoardCard, type BoardIdea, type BoardPost } from "@/lib/content/board";
-import { ideaActions } from "@/lib/content/ideas";
+  attributionTooltip,
+  buildBoard,
+  evaluateDrop,
+  redistributionChip,
+  type BoardCard,
+  type BoardIdea,
+  type BoardPost,
+} from "@/lib/content/board";
+import { contentExcerpt } from "@/lib/content/ideas";
 import { STATUS_LABELS, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
-import { NetworkBadge } from "./network-badge";
+import { NetworkBadge, NetworkBadges } from "./network-badge";
 import { IdeaDialog, NewPostDialog } from "./create-dialogs";
-import { IdeaDetailDialog } from "./idea-detail-dialog";
+import type { TaxonomyOptions } from "./classification-fields";
+import { PillarDot } from "./pillar-tag";
 
 /**
  * El kanban de contenido (F20).
@@ -34,7 +41,7 @@ export function ContentKanban({
   currentUserId,
   aiAvailable,
   platforms,
-  pillars,
+  taxonomy,
 }: {
   ideas: BoardIdea[];
   posts: BoardPost[];
@@ -43,25 +50,18 @@ export function ContentKanban({
   aiAvailable: boolean;
   /** Las redes conectadas, para el modal de crear. */
   platforms: string[];
-  /** Los pilares ya usados, para sugerirlos. */
-  pillars: string[];
+  /** Pilares y ofertas, para clasificar una idea (F91). */
+  taxonomy: TaxonomyOptions;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
 
   // Los modales viven acá y no en cada tarjeta: así el tablero no se
   // desmonta al abrirlos y volver no cuesta nada (C2, C3).
-  const [dialog, setDialog] = useState<
-    | { kind: "new-idea" }
-    | { kind: "new-post"; ideaId?: string }
-    | { kind: "idea"; id: string }
-    | { kind: "edit-idea"; id: string }
-    | null
-  >(null);
-
-  const selectedIdea = dialog && "id" in dialog ? ideas.find((i) => i.id === dialog.id) : null;
+  const [dialog, setDialog] = useState<{ kind: "new-idea" } | { kind: "new-post"; ideaId?: string } | null>(null);
 
   const copywriter = {
     available: perms.ai && aiAvailable,
@@ -100,7 +100,7 @@ export function ContentKanban({
     if (!decision.ok) {
       setMessage({ tone: "error", text: decision.reason });
       if ("openEditor" in decision && decision.openEditor) {
-        router.push(`/dashboard/content/${id}/edit`);
+        router.push(drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id }), { scroll: false });
       }
       return;
     }
@@ -156,23 +156,12 @@ export function ContentKanban({
               {(
                 column.cards.map((card) =>
                   card.kind === "idea" ? (
-                    <IdeaCard
-                      key={card.id}
-                      idea={card}
-                      canApprove={perms.approve}
-                      canUseAi={perms.ai}
-                      aiAvailable={aiAvailable}
-                      pending={pending}
-                      onOpen={() => setDialog({ kind: "idea", id: card.id })}
-                      onDone={(text) => {
-                        setMessage(text ? { tone: "info", text } : null);
-                        router.refresh();
-                      }}
-                    />
+                    <IdeaCard key={card.id} idea={card} href={drawerHref(new URLSearchParams(params.toString()), { kind: "idea", id: card.id })} />
                   ) : (
                     <PostCard
                       key={card.id}
                       post={card}
+                      href={drawerHref(new URLSearchParams(params.toString()), { kind: "piece", id: card.id })}
                       dragging={dragging === card.id}
                       onDragStart={() => setDragging(card.id)}
                       onDragEnd={() => setDragging(null)}
@@ -195,38 +184,9 @@ export function ContentKanban({
 
       {dialog?.kind === "new-idea" && (
         <IdeaDialog
-          pillars={pillars}
           canApprove={perms.approve}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "edit-idea" && selectedIdea && (
-        <IdeaDialog
-          pillars={pillars}
-          canApprove={perms.approve}
-          idea={{
-            id: selectedIdea.id,
-            title: selectedIdea.title,
-            hook: selectedIdea.hook ?? "",
-            angle: selectedIdea.angle ?? "",
-            format: selectedIdea.format ?? "",
-            pillar: selectedIdea.pillar ?? "",
-            reference: selectedIdea.reference ?? "",
-            notes: selectedIdea.notes ?? "",
-          }}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "idea" && selectedIdea && (
-        <IdeaDetailDialog
-          idea={selectedIdea}
-          canApprove={perms.approve}
-          canUseAi={perms.ai}
-          aiAvailable={aiAvailable}
-          aiReason={copywriter.reason}
-          onEdit={() => setDialog({ kind: "edit-idea", id: selectedIdea.id })}
+          platforms={platforms}
+          taxonomy={taxonomy}
           onClose={() => setDialog(null)}
         />
       )}
@@ -271,113 +231,50 @@ function emptyHint(column: BoardColumn): string {
 }
 
 /**
- * La tarjeta de una idea (C13).
+ * La tarjeta de una idea (C13, F98).
  *
- * Lo que se ve es lo que hace falta para decidir sin abrirla: el formato y
- * el pilar, el hook entre comillas —que es de lo que uno se acuerda— y quién
- * la propuso. El resto vive en el detalle.
+ * Solo abre: aprobar y descartar se hacen en el drawer (F95), donde se ve la
+ * idea entera. La tarjeta muestra lo que hace falta para ubicarla: el formato,
+ * las redes a las que apunta, el pilar, el comienzo del texto entre comillas
+ * —que es de lo que uno se acuerda—, la oferta y quien la escribio.
  */
-function IdeaCard({
-  idea,
-  canApprove,
-  canUseAi,
-  aiAvailable,
-  pending,
-  onOpen,
-  onDone,
-}: {
-  idea: BoardIdea;
-  canApprove: boolean;
-  canUseAi: boolean;
-  aiAvailable: boolean;
-  pending: boolean;
-  onOpen: () => void;
-  onDone: (message: string | null) => void;
-}) {
-  const [busy, start] = useTransition();
-  const actions = ideaActions(idea.status, { approve: canApprove, ai: canUseAi, aiAvailable });
+function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
+  const excerpt = contentExcerpt(idea.content);
 
   return (
     <article className="rounded-lg border border-border bg-card">
-      <button type="button" onClick={onOpen} className="block w-full p-3 text-left hover:bg-accent/40">
+      <Link href={href} scroll={false} data-card-id={`idea-${idea.id}`} className="block p-3 hover:bg-accent/40">
         <span className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span className="rounded bg-muted px-1.5 py-0.5 font-medium uppercase tracking-wide">
-            Idea
-          </span>
+          <span className="rounded bg-muted px-1.5 py-0.5 font-medium uppercase tracking-wide">Idea</span>
           {idea.format && <span>{idea.format}</span>}
-          {idea.pillar && <span>· {idea.pillar}</span>}
+          {idea.platforms.length > 0 && <NetworkBadges platforms={idea.platforms} />}
+          {idea.pillar && <PillarDot tag={idea.pillar} className="ml-0" />}
         </span>
 
         <span className="mt-1.5 block text-sm font-medium">{idea.title}</span>
 
-        {idea.hook && (
-          <span className="mt-1 block text-xs italic text-muted-foreground">“{idea.hook}”</span>
+        {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground">“{excerpt}”</span>}
+
+        {idea.offer && (
+          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Oferta">
+            {idea.offer.name}
+          </span>
         )}
 
-        <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {idea.authorName && <span>{idea.authorName}</span>}
-          {idea.createdAt && <span>{cuando(idea.createdAt)}</span>}
+        <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          {idea.authorship && <span>{idea.authorship}</span>}
           {idea.reference && (
             <span title={idea.reference} aria-label="Tiene una referencia">
               <LinkIcon className="h-3 w-3" aria-hidden />
             </span>
           )}
         </span>
-      </button>
-
-      {actions.length === 0 ? (
-        <p className="px-3 pb-3 text-[11px] text-muted-foreground">
-          Esperando aprobación de Owner o Admin
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5 px-3 pb-3">
-          {actions.map((action) => (
-            <button
-              key={action.action}
-              type="button"
-              disabled={busy || pending || Boolean(action.disabledReason)}
-              title={action.disabledReason}
-              onClick={() =>
-                start(async () => {
-                  const result = await approveIdea(idea.id, {
-                    produceCopy: action.action === "approve_and_generate",
-                  });
-                  onDone(
-                    result.ok
-                      ? result.data.copyError
-                        ? `Aprobada, pero el copy no salió: ${result.data.copyError}`
-                        : result.data.copyQueued
-                          ? "Aprobada. El copywriter está escribiendo."
-                          : null
-                      : result.error,
-                  );
-                })
-              }
-              className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs disabled:opacity-50 ${
-                action.action === "approve_and_generate"
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border hover:bg-accent"
-              }`}
-            >
-              {action.action === "approve_and_generate" && <Sparkles className="h-3 w-3" aria-hidden />}
-              {action.label}
-            </button>
-          ))}
-        </div>
-      )}
+      </Link>
     </article>
   );
 }
 
 /** "hace 2 h", "3 oct". Lo que sirve para ubicarse sin leer una fecha. */
-function cuando(iso: string): string {
-  const date = new Date(iso);
-  const minutos = Math.round((Date.now() - date.getTime()) / 60_000);
-  if (minutos < 60) return `hace ${Math.max(1, minutos)} min`;
-  if (minutos < 60 * 24) return `hace ${Math.round(minutos / 60)} h`;
-  return date.toLocaleDateString("es-AR", { day: "numeric", month: "short" });
-}
-
 /**
  * La tarjeta de una pieza (C13).
  *
@@ -385,23 +282,24 @@ function cuando(iso: string): string {
  * vistazo en una columna de diez. Los chips dicen qué le falta: sin eso hay
  * que abrir cada una para saber cuál está lista para grabar.
  *
- * Un borrador o algo en producción abre el EDITOR, que es lo que se va a
- * hacer. Lo demás abre el detalle, que es para mirar.
+ * Abre el drawer de la pieza (F96): el mismo para un borrador que para algo
+ * ya publicado.
  */
 function PostCard({
   post,
+  href,
   dragging,
   onDragStart,
   onDragEnd,
 }: {
   post: BoardPost;
+  href: string;
   dragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const chip = redistributionChip(post.networks);
   const editable = post.status === "draft" || post.status === "in_production";
-  const href = editable ? `/dashboard/content/${post.id}/edit` : `/dashboard/content/${post.id}`;
   const color = post.networks[0] ? NETWORK_TINT[post.networks[0].platform] : null;
 
   return (
@@ -411,7 +309,7 @@ function PostCard({
       onDragEnd={onDragEnd}
       className={`overflow-hidden rounded-lg border border-border bg-card ${dragging ? "opacity-50" : ""}`}
     >
-      <Link href={href} className="block hover:bg-accent/40">
+      <Link href={href} scroll={false} data-card-id={`piece-${post.id}`} className="block hover:bg-accent/40">
         {post.format && (
           <span
             className="flex h-9 items-center px-3 text-[11px] font-medium uppercase tracking-wide text-white/90"
@@ -422,7 +320,10 @@ function PostCard({
         )}
 
         <span className="block p-3">
-          <span className="block text-sm font-medium">{post.title}</span>
+          <span className="block text-sm font-medium">
+            {post.title}
+            {post.pillar && <PillarDot tag={post.pillar} />}
+          </span>
 
           {post.copyStatus === "generating" && (
             <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -459,7 +360,7 @@ function PostCard({
           {editable && post.copyStatus !== "generating" && (
             <span className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
               <Chip on={post.hasCopy}>
-                {post.hasCopy ? "✓" : "○"} Copy{post.hasCopy && post.copyFromAi ? " ✦" : ""}
+                {post.hasCopy ? "✓" : "○"} Guion{post.hasCopy && post.copyFromAi ? " ✦" : ""}
               </Chip>
               <Chip on={post.hasCaption}>{post.hasCaption ? "✓" : "○"} Caption</Chip>
               {post.status === "in_production" && (
@@ -468,9 +369,18 @@ function PostCard({
             </span>
           )}
 
-          <span className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            {post.authorName && <span>{post.authorName}</span>}
-            {post.createdAt && <span>{cuando(post.createdAt)}</span>}
+          <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            {post.authorship && <span>{post.authorship}</span>}
+            {post.attributedContacts !== null && (
+              <span
+                className="inline-flex items-center gap-0.5 tabular-nums"
+                title={attributionTooltip(post.attributedContacts)}
+                data-testid="attributed-contacts"
+              >
+                <Users className="h-3 w-3" aria-hidden />
+                {post.attributedContacts}
+              </span>
+            )}
           </span>
         </span>
       </Link>
@@ -517,14 +427,14 @@ export function NewContentButtons({
   canCreate,
   ideas,
   platforms,
-  pillars,
+  taxonomy,
   copywriter,
   canApprove,
 }: {
   canCreate: boolean;
   ideas: Array<{ id: string; title: string }>;
   platforms: string[];
-  pillars: string[];
+  taxonomy: TaxonomyOptions;
   copywriter: { available: boolean; reason?: string };
   canApprove: boolean;
 }) {
@@ -553,7 +463,7 @@ export function NewContentButtons({
       </div>
 
       {dialog === "idea" && (
-        <IdeaDialog pillars={pillars} canApprove={canApprove} onClose={() => setDialog(null)} />
+        <IdeaDialog canApprove={canApprove} platforms={platforms} taxonomy={taxonomy} onClose={() => setDialog(null)} />
       )}
       {dialog === "post" && (
         <NewPostDialog

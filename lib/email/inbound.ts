@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { messagePreview } from "@/lib/message-preview";
 import { applyOptOut, insertMessage, upsertConversation, type ChannelRow } from "@/lib/inbound";
@@ -259,7 +260,7 @@ export async function processInboundEmail(
     };
   }
 
-  const { stored } = await insertMessage({
+  const inserted = await insertMessage({
     supabase,
     conversationId: conversation.id,
     direction: "inbound",
@@ -280,6 +281,26 @@ export async function processInboundEmail(
       cc: email.cc,
     },
   });
+
+  const { stored } = inserted;
+
+  // El toque de atribución (F87), con el mismo criterio que los DMs: solo el
+  // primer correo de una persona o su vuelta tras una semana. Después de guardar
+  // el mensaje y sin poder frenar nada.
+  try {
+    await recordInboundTouch(supabase, {
+      workspaceId: channel.workspace_id,
+      contactId: contact.contactId,
+      conversationId: conversation.id,
+      platform: "email",
+      contactExisted: contact.existed,
+      messageAt: new Date(email.receivedAt),
+      platformMessageId: email.emailId,
+      messageId: inserted.id ?? null,
+    });
+  } catch (err) {
+    console.error("[email] el toque de atribución falló:", err instanceof Error ? err.message : err);
+  }
 
   // Opt-out: alguien que responde "desuscribir" tiene que dejar de recibir.
   await applyOptOut({

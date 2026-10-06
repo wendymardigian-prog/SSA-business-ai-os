@@ -11,14 +11,18 @@ import {
   followersAtEnd,
   formatPerformance,
   freshness,
+  groupPerformance,
   lastByBucket,
+  matchesClassification,
   monthStart,
   publishActivity,
   sumByBucket,
+  sumTotals,
   unavailableMetricsNote,
   weeklyD7,
   weekStart,
   type AccountDailyRow,
+  type PieceInfo,
   type PostDailyRow,
   type PublishedPost,
 } from "./content";
@@ -338,5 +342,233 @@ describe("una red sin metricas (F48)", () => {
 
   it("las otras redes no muestran nada", () => {
     expect(unavailableMetricsNote("instagram", 4)).toBeNull();
+  });
+});
+
+
+// ── Agrupar y filtrar por pieza, oferta, pilar y embudo (F105) ────────────
+
+describe("agrupar el rendimiento por la clasificacion de la pieza (F105)", () => {
+  const piece = (over: Partial<PieceInfo> & { id: string }): PieceInfo => ({
+    title: over.id,
+    offerId: null,
+    offerName: null,
+    pillarId: null,
+    pillarName: null,
+    funnelStage: null,
+    ...over,
+  });
+
+  // Dos piezas de la oferta "Mentoria", una sin oferta, y una publicada a mano.
+  const pieces = new Map<string, PieceInfo>([
+    ["pc-a", piece({ id: "pc-a", title: "Reel de dolares", offerId: "o-1", offerName: "Mentoria", pillarId: "p-1", pillarName: "Educativo", funnelStage: "tofu" })],
+    ["pc-b", piece({ id: "pc-b", title: "Carrusel de errores", offerId: "o-1", offerName: "Mentoria", pillarId: "p-2", pillarName: "Autoridad", funnelStage: "mofu" })],
+    ["pc-c", piece({ id: "pc-c", title: "Una sin oferta" })],
+  ]);
+
+  const posts: PublishedPost[] = [
+    post({ socialPostId: "a-ig", contentPostId: "pc-a", platform: "instagram", mediaType: "reel", engagementD7: 4 }),
+    post({ socialPostId: "a-tt", contentPostId: "pc-a", platform: "tiktok", mediaType: "video", engagementD7: 6 }),
+    post({ socialPostId: "b-ig", contentPostId: "pc-b", platform: "instagram", mediaType: "carousel", engagementD7: 2 }),
+    post({ socialPostId: "c-ig", contentPostId: "pc-c", platform: "instagram", mediaType: "reel" }),
+    post({ socialPostId: "x-ig", contentPostId: null, origin: "external", platform: "instagram", mediaType: null }),
+  ];
+
+  const latest = new Map<string, PostDailyRow>([
+    ["a-ig", daily({ socialPostId: "a-ig", date: "2026-10-01", reach: 1000, likes: 100 })],
+    ["a-tt", daily({ socialPostId: "a-tt", date: "2026-10-01", views: 500, likes: 25 })],
+    ["b-ig", daily({ socialPostId: "b-ig", date: "2026-10-01", reach: 300, likes: 15, comments: 5 })],
+    ["c-ig", daily({ socialPostId: "c-ig", date: "2026-10-01", reach: 200, likes: 10 })],
+    ["x-ig", daily({ socialPostId: "x-ig", date: "2026-10-01", reach: 100, likes: 1 })],
+  ]);
+
+  const group = (dimension: Parameters<typeof groupPerformance>[0]["dimension"], leadsByPost: Map<string, number> | null = null) =>
+    groupPerformance({ posts, latestByPost: latest, pieces, leadsByPost, dimension });
+
+  const row = (rows: ReturnType<typeof group>, key: string) => rows.find((r) => r.key === key)!;
+
+  it("por oferta, el total coincide con la suma de las piezas de esa oferta", () => {
+    const byOffer = group("offer");
+    const byPiece = group("piece");
+
+    const mentoria = row(byOffer, "o-1");
+    const piecesOfMentoria = [row(byPiece, "pc-a"), row(byPiece, "pc-b")];
+
+    expect(mentoria.label).toBe("Mentoria");
+    expect(mentoria.posts).toBe(3);
+    expect(mentoria.pieces).toBe(2);
+    expect(mentoria.posts).toBe(piecesOfMentoria.reduce((sum, r) => sum + r.posts, 0));
+    // 1000 de alcance + 500 de vistas + 300 de alcance.
+    expect(mentoria.reach).toBe(1800);
+    expect(mentoria.reach).toBe(piecesOfMentoria.reduce((sum, r) => sum + (r.reach ?? 0), 0));
+    expect(mentoria.interactions).toBe(100 + 25 + 15 + 5);
+  });
+
+  it("una pieza sin oferta aparece en 'Sin asignar' y no desaparece del total", () => {
+    const byOffer = group("offer");
+    const none = row(byOffer, "none");
+
+    expect(none.label).toBe("Sin asignar");
+    expect(none.unassigned).toBe(true);
+    // La pieza sin oferta (1) y la publicada a mano (1).
+    expect(none.posts).toBe(2);
+    // Ninguna publicacion se pierde: la suma de las filas es el total de posts.
+    expect(byOffer.reduce((sum, r) => sum + r.posts, 0)).toBe(posts.length);
+  });
+
+  it("lo publicado a mano (sin pieza) cae en 'Sin asignar' tambien al agrupar por pieza", () => {
+    const byPiece = group("piece");
+
+    expect(byPiece.reduce((sum, r) => sum + r.posts, 0)).toBe(posts.length);
+    expect(row(byPiece, "none").posts).toBe(1);
+    expect(row(byPiece, "pc-a").label).toBe("Reel de dolares");
+  });
+
+  it("por pilar y por etapa del embudo, lo que no tiene va a 'Sin asignar'", () => {
+    const byPillar = group("pillar");
+    expect(row(byPillar, "p-1").posts).toBe(2);
+    expect(row(byPillar, "p-2").posts).toBe(1);
+    expect(row(byPillar, "none").posts).toBe(2);
+
+    const byFunnel = group("funnel");
+    expect(row(byFunnel, "tofu").label).toBe("Descubrimiento");
+    expect(row(byFunnel, "mofu").label).toBe("Consideración");
+    expect(row(byFunnel, "none").posts).toBe(2);
+    expect(byFunnel.reduce((sum, r) => sum + r.posts, 0)).toBe(posts.length);
+  });
+
+  it("por red y por formato usa lo de CADA publicacion, no el formato principal de la pieza", () => {
+    const byPlatform = group("platform");
+    expect(row(byPlatform, "instagram").label).toBe("Instagram");
+    expect(row(byPlatform, "instagram").posts).toBe(4);
+    expect(row(byPlatform, "tiktok").posts).toBe(1);
+
+    const byFormat = group("format");
+    // La pieza A salio como reel en Instagram y como video en TikTok: dos filas.
+    expect(row(byFormat, "reel").posts).toBe(2);
+    expect(row(byFormat, "video").posts).toBe(1);
+    expect(row(byFormat, "carousel").posts).toBe(1);
+    expect(row(byFormat, "none").posts).toBe(1);
+  });
+
+  it("promedia el engagement a 7 dias solo de las que ya lo tienen", () => {
+    const mentoria = row(group("offer"), "o-1");
+    expect(mentoria.avgEngagementD7).toBe(4);
+    expect(row(group("offer"), "none").avgEngagementD7).toBeNull();
+  });
+
+  it("'Sin asignar' va siempre al final, aunque tenga mas publicaciones", () => {
+    const many = [...posts, post({ socialPostId: "y", contentPostId: null }), post({ socialPostId: "z", contentPostId: null })];
+    const rows = groupPerformance({
+      posts: many,
+      latestByPost: latest,
+      pieces,
+      leadsByPost: null,
+      dimension: "offer",
+    });
+
+    expect(rows[rows.length - 1].key).toBe("none");
+  });
+
+  it("los leads suman solo donde la red los mide, y sin lectura quedan en hueco", () => {
+    const leads = new Map([["a-ig", 3], ["b-ig", 1]]);
+    const byOffer = group("offer", leads);
+
+    // a-ig (3) + b-ig (1); a-tt es TikTok: tambien se mide y no tiene leads.
+    expect(row(byOffer, "o-1").leads).toBe(4);
+    expect(row(byOffer, "none").leads).toBe(0);
+
+    expect(row(group("offer", null), "o-1").leads).toBeNull();
+
+    // Una red que no vincula comentarios no aporta un cero.
+    const onlyYoutube = groupPerformance({
+      posts: [post({ socialPostId: "yt", platform: "youtube", contentPostId: "pc-c" })],
+      latestByPost: new Map(),
+      pieces,
+      leadsByPost: new Map(),
+      dimension: "piece",
+    });
+    expect(onlyYoutube[0].leads).toBeNull();
+  });
+
+  it("una publicacion sin metricas cuenta como publicacion pero no baja el promedio ni inventa ceros", () => {
+    const rows = groupPerformance({
+      posts: [post({ socialPostId: "n1", contentPostId: "pc-c" })],
+      latestByPost: new Map(),
+      pieces,
+      leadsByPost: null,
+      dimension: "piece",
+    });
+
+    expect(rows[0].posts).toBe(1);
+    expect(rows[0].reach).toBeNull();
+    expect(rows[0].avgEngagement).toBeNull();
+  });
+});
+
+describe("filtrar publicaciones por la clasificacion de su pieza (F105)", () => {
+  const pieces = new Map<string, PieceInfo>([
+    ["pc-a", { id: "pc-a", title: "A", offerId: "o-1", offerName: "Mentoria", pillarId: "p-1", pillarName: "Educativo", funnelStage: "tofu" }],
+    ["pc-c", { id: "pc-c", title: "C", offerId: null, offerName: null, pillarId: null, pillarName: null, funnelStage: null }],
+  ]);
+  const withA = post({ contentPostId: "pc-a", mediaType: "reel" });
+  const withC = post({ contentPostId: "pc-c", mediaType: "carousel" });
+  const external = post({ contentPostId: null, mediaType: null });
+
+  it("sin filtros pasa todo", () => {
+    expect([withA, withC, external].every((p) => matchesClassification(p, pieces, {}))).toBe(true);
+  });
+
+  it("por oferta, pilar y embudo", () => {
+    expect(matchesClassification(withA, pieces, { offer: "o-1" })).toBe(true);
+    expect(matchesClassification(withC, pieces, { offer: "o-1" })).toBe(false);
+    expect(matchesClassification(withA, pieces, { pillar: "p-1", funnel: "tofu" })).toBe(true);
+    expect(matchesClassification(withA, pieces, { pillar: "p-1", funnel: "bofu" })).toBe(false);
+  });
+
+  it("'none' elige lo SIN asignar: la pieza sin oferta y lo publicado a mano", () => {
+    expect(matchesClassification(withC, pieces, { offer: "none" })).toBe(true);
+    expect(matchesClassification(external, pieces, { offer: "none" })).toBe(true);
+    expect(matchesClassification(withA, pieces, { offer: "none" })).toBe(false);
+  });
+
+  it("por pieza y por formato de la publicacion", () => {
+    expect(matchesClassification(withA, pieces, { piece: "pc-a" })).toBe(true);
+    expect(matchesClassification(withC, pieces, { piece: "pc-a" })).toBe(false);
+    expect(matchesClassification(withA, pieces, { format: "reel" })).toBe(true);
+    expect(matchesClassification(withC, pieces, { format: "reel" })).toBe(false);
+    expect(matchesClassification(external, pieces, { format: "none" })).toBe(true);
+  });
+
+  it("una publicacion cuya pieza ya no se conoce se trata como sin asignar", () => {
+    const orphan = post({ contentPostId: "se-borro" });
+    expect(matchesClassification(orphan, pieces, { offer: "none" })).toBe(true);
+    expect(matchesClassification(orphan, pieces, { offer: "o-1" })).toBe(false);
+  });
+});
+
+describe("el total de la tabla agrupada (F105)", () => {
+  it("es la suma de las filas y deja el hueco cuando ninguna tiene el dato", () => {
+    const row = (over: Partial<ReturnType<typeof groupPerformance>[number]>) => ({
+      key: "k",
+      label: "k",
+      unassigned: false,
+      posts: 0,
+      pieces: 0,
+      reach: null,
+      interactions: null,
+      avgEngagement: null,
+      avgEngagementD7: null,
+      leads: null,
+      ...over,
+    });
+
+    expect(sumTotals([row({ posts: 2, reach: 10, leads: 1 }), row({ posts: 3, reach: 5 })])).toEqual({
+      posts: 5,
+      reach: 15,
+      interactions: null,
+      leads: 1,
+    });
+    expect(sumTotals([]).reach).toBeNull();
   });
 });

@@ -26,10 +26,15 @@ const USERINFO = "https://api.linkedin.com/v2/userinfo";
 /**
  * La version de la API que se manda en cada llamada.
  *
- * LinkedIn retira versiones: la 202510 deja de funcionar el 15 de octubre de
- * 2026. Cuando llegue esa fecha hay que subirla aca y probar publicar.
+ * LinkedIn publica una version por mes (YYYYMM) y soporta cada una como minimo
+ * un año; la que estaba aca, 202510, deja de funcionar el 15 de octubre de
+ * 2026. Se subio a la 202609, que era la ultima segun su documentacion
+ * (learn.microsoft.com/linkedin/marketing/versioning, leida el 5/10/2026).
+ *
+ * Revisar de nuevo antes de octubre de 2027. Una version dada de baja no
+ * "queda andando a medias": LinkedIn contesta con un error y no se publica.
  */
-export const LINKEDIN_API_VERSION = "202510";
+export const LINKEDIN_API_VERSION = "202609";
 
 /** `openid profile email` identifican; `w_member_social` publica. */
 export const LINKEDIN_SCOPES = ["openid", "profile", "email", "w_member_social"];

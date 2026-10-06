@@ -1,14 +1,21 @@
-import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
 import { ContentList, type ListRow } from "@/components/content/list-view";
-import { ContentViewSwitcher, CountModeSwitcher } from "@/components/content/view-switcher";
-import { parseContentFilters } from "@/lib/content/filters";
+import { ContentViewSwitcher, CountModeSwitcher, PlatformFilter } from "@/components/content/view-switcher";
+import { ContentShell } from "@/components/content/drawer/content-shell";
+import { parseContentFilters, matchesPlatform } from "@/lib/content/filters";
+import { parseDrawer } from "@/lib/content/drawer-url";
+import { loadPiece, type PieceData } from "@/lib/content/load-piece";
+import { contentTooltip } from "@/lib/nav/page-actions";
+import { timeZoneLabel } from "@/lib/dates";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
-import type { BoardIdea, BoardPost } from "@/lib/content/board";
+import { attributedContactsFor, countByPiece, type BoardIdea, type BoardPost } from "@/lib/content/board";
+import { authorshipLine } from "@/lib/content/classification";
+import { tagFor } from "@/lib/content/taxonomy";
+import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -18,25 +25,69 @@ import type { ContentPostStatus } from "@/lib/types/database";
  * cualquiera crea ideas y piezas, y aprobar, programar y generar con IA es de
  * Owner y Admin (en el bloque 9 pasa a ser un permiso configurable).
  */
+const COUNT_PAGE = 1000;
+const COUNT_MAX_PAGES = 10;
+
+/**
+ * Cuantos contactos tienen cada pieza como PRIMER toque (F101).
+ *
+ * Se lee con el cliente de quien mira, no con el del servidor: la lista de
+ * contactos tiene scope (un Member solo ve los suyos), y el numero no puede
+ * mostrar lo que la persona no puede ver. Va de a paginas: PostgREST corta en
+ * 1000 filas sin avisar, y un conteo que se queda corto en silencio es peor
+ * que no tener conteo. Solo se traen los contactos que SI llegaron por una pieza.
+ */
+async function firstTouchCounts(supabase: Awaited<ReturnType<typeof getPermissionContext>>["supabase"]) {
+  const rows: Array<{ content_post_id: string | null }> = [];
+
+  for (let page = 0; page < COUNT_MAX_PAGES; page++) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("content_post_id:attribution->first_touch->>content_post_id")
+      .is("deleted_at", null)
+      .not("attribution->first_touch->>content_post_id", "is", null)
+      .order("id")
+      .range(page * COUNT_PAGE, (page + 1) * COUNT_PAGE - 1);
+
+    if (error) {
+      console.error("[content] no pude contar los contactos por pieza:", error.message);
+      break;
+    }
+    rows.push(...((data ?? []) as unknown as Array<{ content_post_id: string | null }>));
+    if ((data ?? []).length < COUNT_PAGE) break;
+  }
+
+  return countByPiece(rows);
+}
+
 export default async function ContentPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const filters = parseContentFilters(await searchParams);
-  const { workspace, user, role, supabase } = await getWorkspace();
-  const isAdmin = isAdminRole(role);
+  const params = await searchParams;
+  const filters = parseContentFilters(params);
+  const target = parseDrawer(params);
+  // Por permiso y no por cargo (F78): lo que se ve en el tablero sale de las
+  // claves del rol, no de ser Owner o Admin.
+  const ctx = await getPermissionContext();
+  const { workspace, user, supabase, can } = ctx;
+  const canApprove = can("content.approve");
+  const canPublish = can("content.publish");
+  const canUseAi = can("content.ai");
 
-  const [ideasRes, postsRes, publicationsRes, aiProviders] = await Promise.all([
+  const timeZone = workspace.timezone || "America/Costa_Rica";
+
+  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed] = await Promise.all([
     supabase
       .from("content_ideas")
-      .select("id, title, hook, angle, format, pillar, reference, notes, status, created_by, position, created_at")
+      .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .eq("status", "nueva")
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, copy, caption, copy_source, material_status, copy_status, created_at")
+      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -45,7 +96,11 @@ export default async function ContentPage({
       .select("content_post_id, platform, status, scheduled_at, published_at")
       .eq("workspace_id", workspace.id)
       .not("content_post_id", "is", null),
-    isAdmin ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+    canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
+    // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
+    // mostrando aunque ya no se ofrezca en el selector (F89).
+    loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
+    firstTouchCounts(supabase),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -71,13 +126,21 @@ export default async function ContentPage({
     status: idea.status,
     createdBy: idea.created_by,
     position: idea.position,
-    hook: idea.hook,
-    angle: idea.angle,
-    pillar: idea.pillar,
+    content: idea.content,
     reference: idea.reference,
-    notes: idea.notes,
+    platforms: idea.platforms ?? [],
+    pillar: tagFor(taxonomy.pillars, idea.pillar_id),
+    offer: tagFor(taxonomy.offers, idea.offer_id),
+    funnelStage: idea.funnel_stage,
     createdAt: idea.created_at,
+    updatedAt: idea.updated_at,
     authorName: idea.created_by ? (authorNames.get(idea.created_by) ?? null) : null,
+    authorship: authorshipLine({
+      authorName: idea.created_by ? (authorNames.get(idea.created_by) ?? null) : null,
+      createdAt: idea.created_at,
+      updatedAt: idea.updated_at,
+      timeZone,
+    }),
   }));
 
   const posts: BoardPost[] = (postsRes.data ?? []).map((post) => {
@@ -111,8 +174,6 @@ export default async function ContentPage({
       }
     }
 
-    const copy = (post.copy ?? {}) as { hook?: string; body?: string; cta?: string };
-
     return {
       kind: "post",
       id: post.id,
@@ -122,18 +183,51 @@ export default async function ContentPage({
       createdBy: post.created_by,
       position: post.position,
       networks,
-      hasCopy: Boolean(copy.body?.trim() || copy.hook?.trim()),
+      hasCopy: Boolean(post.script?.trim()),
       hasCaption: Boolean(post.caption?.trim()),
       copyFromAi: post.copy_source !== "manual",
       materialStatus: post.material_status,
       copyStatus: post.copy_status,
+      pillar: tagFor(taxonomy.pillars, post.pillar_id),
+      offer: tagFor(taxonomy.offers, post.offer_id),
+      funnelStage: post.funnel_stage,
+      // Solo con publicaciones salidas: un cero en una pieza que no salio
+      // diria "no funciono" cuando todavia no pudo funcionar (F101).
+      attributedContacts: attributedContactsFor(
+        attributed.get(post.id),
+        published.some((p) => p.status === "published"),
+      ),
       createdAt: post.created_at,
+      updatedAt: post.updated_at,
       authorName: post.created_by ? (authorNames.get(post.created_by) ?? null) : null,
+      authorship: authorshipLine({
+        authorName: post.created_by ? (authorNames.get(post.created_by) ?? null) : null,
+        createdAt: post.created_at,
+        updatedAt: post.updated_at,
+        timeZone,
+      }),
     };
   });
 
-  // Lo que necesitan los modales de crear: las redes conectadas y los
-  // pilares que ya se usaron, para sugerirlos en vez de hacerlos escribir.
+  // El filtro de Red de la barra superior (F98). El drawer de ideas recorre TODAS
+  // (si no, cambiar el filtro con un drawer abierto dejaria la idea sin lugar).
+  const visibleIdeas = ideas.filter((i) => matchesPlatform(i.platforms, filters.platform));
+  const visiblePosts = posts.filter((p) =>
+    matchesPlatform(p.networks.map((n) => n.platform), filters.platform),
+  );
+
+  // El drawer: la pieza se lee aca, en el mismo viaje que el tablero. Una que
+  // no existe (o de otro negocio) no abre nada y avisa.
+  let piece: PieceData | null = null;
+  let notice: string | null = null;
+  if (target?.kind === "piece") {
+    piece = await loadPiece(ctx, target.id);
+    if (!piece) notice = "No encontré esa pieza, o no tenés acceso a ella.";
+  } else if (target?.kind === "idea" && !ideas.some((i) => i.id === target.id)) {
+    notice = "Esa idea ya no está en el tablero: la aprobaron o la descartaron.";
+  }
+
+  // Lo que necesitan los modales de crear: las redes conectadas.
   const { data: accountsRes } = await supabase
     .from("social_accounts")
     .select("platform")
@@ -141,17 +235,9 @@ export default async function ContentPage({
     .eq("is_active", true);
 
   const platforms = (accountsRes ?? []).map((a) => a.platform as string);
-  const pillars = [
-    ...new Set(
-      (ideasRes.data ?? [])
-        .map((i) => (i.pillar ?? "").trim())
-        .filter(Boolean),
-    ),
-  ].sort();
-
   const copywriter = {
-    available: isAdmin && aiProviders.length > 0,
-    reason: !isAdmin
+    available: canUseAi && aiProviders.length > 0,
+    reason: !canUseAi
       ? "Necesitás el permiso de generar copy con IA."
       : aiProviders.length === 0
         ? "Conectá un proveedor de IA en Ajustes → Integraciones."
@@ -162,9 +248,9 @@ export default async function ContentPage({
     canCreate: true,
     ideas: ideas.map((i) => ({ id: i.id, title: i.title })),
     platforms,
-    pillars,
+    taxonomy,
     copywriter,
-    canApprove: isAdmin,
+    canApprove,
   };
 
   // La lista muestra TODO lo que hay, ideas incluidas (C15): si una idea no
@@ -175,9 +261,11 @@ export default async function ContentPage({
       title: idea.title,
       status: "draft",
       createdBy: idea.createdBy,
-      platforms: [],
+      platforms: idea.platforms,
       format: idea.format,
       authorName: idea.authorName,
+      authorship: idea.authorship,
+      pillar: idea.pillar,
       firstAt: null,
       hasCopy: false,
       isIdea: true,
@@ -190,8 +278,11 @@ export default async function ContentPage({
       platforms: post.networks.map((n) => n.platform),
       format: post.format,
       authorName: post.authorName,
+      authorship: post.authorship,
+      pillar: post.pillar,
       firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
       hasCopy: post.hasCopy,
+      attributedContacts: post.attributedContacts,
     })),
   ];
 
@@ -199,48 +290,75 @@ export default async function ContentPage({
     ...new Set(listRows.map((r) => r.firstAt?.slice(0, 7)).filter(Boolean) as string[]),
   ].sort();
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
   const month =
     filters.month ??
     new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit" })
       .format(new Date())
       .slice(0, 7);
 
+  // La barra de redes del filtro: las conectadas y las que ya aparecen en alguna pieza o idea.
+  const filterPlatforms = [
+    ...new Set([...platforms, ...posts.flatMap((p) => p.networks.map((n) => n.platform)), ...ideas.flatMap((i) => i.platforms)]),
+  ].sort();
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <ContentShell
+      target={target}
+      ideas={ideas}
+      piece={piece}
+      notice={notice}
+      userId={user.id}
+      perms={{ approve: canApprove, ai: canUseAi }}
+      platforms={platforms}
+      taxonomy={taxonomy}
+      aiAvailable={aiProviders.length > 0}
+      aiReason={copywriter.reason}
+    >
+      {/* La barra superior concentra todo lo de la pantalla (F98): las vistas,
+          el conteo, el filtro de Red, el ⓘ con lo que puede hacer el rol y las
+          dos altas. El cuerpo queda limpio: solo el tablero. */}
       <PageHeader
         route="/dashboard/content"
+        tooltip={contentTooltip(
+          { approve: canApprove, publish: canPublish, ai: canUseAi },
+          timeZoneLabel(timeZone),
+        )}
         left={<ContentViewSwitcher current={filters.view} />}
-        filters={filters.view === "calendar" ? <CountModeSwitcher current={filters.count} /> : undefined}
+        filters={
+          <>
+            <PlatformFilter current={filters.platform} platforms={filterPlatforms} />
+            {filters.view === "calendar" && <CountModeSwitcher current={filters.count} />}
+          </>
+        }
         right={<NewContentButtons {...crear} />}
       />
 
       {filters.view === "kanban" && (
         <ContentKanban
-          ideas={ideas}
-          posts={posts}
-          perms={{ create: true, approve: isAdmin, publish: isAdmin, ai: isAdmin }}
+          ideas={visibleIdeas}
+          posts={visiblePosts}
+          perms={{ create: true, approve: canApprove, publish: canPublish, ai: canUseAi }}
           currentUserId={user.id}
           aiAvailable={aiProviders.length > 0}
           platforms={platforms}
-          pillars={pillars}
+          taxonomy={taxonomy}
         />
       )}
 
       {filters.view === "calendar" && (
         <ContentCalendar
-          pieces={posts.map((post) => ({
+          pieces={visiblePosts.map((post) => ({
             id: post.id,
             title: post.title,
             format: post.format,
             networks: post.networks
-              .filter((n) => n.at)
+              .filter((n) => n.at && matchesPlatform([n.platform], filters.platform))
               .map((n) => ({ platform: n.platform, at: n.at!, status: n.status })),
           }))}
           timeZone={timeZone}
           month={month}
           countMode={filters.count}
-          canPublish={isAdmin}
+          canPublish={canPublish}
         />
       )}
 
@@ -249,10 +367,9 @@ export default async function ContentPage({
           rows={listRows}
           filters={filters}
           authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
-          platforms={[...new Set(posts.flatMap((p) => p.networks.map((n) => n.platform)))]}
           months={listMonths}
         />
       )}
-    </div>
+    </ContentShell>
   );
 }

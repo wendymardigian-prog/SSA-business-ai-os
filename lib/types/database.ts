@@ -83,6 +83,9 @@ export type CancelledByType = "invitee" | "host" | "system";
 export type GoogleSyncStatus = "pending" | "synced" | "failed" | "not_applicable";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
+
+/** Etapa del embudo de una idea o pieza (migracion 00116). Lista fija en codigo. */
+export type FunnelStage = "tofu" | "mofu" | "bofu";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
 export type ContentPostStatus =
   | "draft"
@@ -2997,12 +3000,23 @@ export interface Database {
           id: string;
           workspace_id: string;
           title: string;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           hook: string | null;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           angle: string | null;
           format: string | null;
+          /** @deprecated Texto libre; ahora es `pillar_id` (00116). Se borra en la 00118. */
           pillar: string | null;
           reference: string | null;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           notes: string | null;
+          /** El texto unico de la idea (00116). */
+          content: string | null;
+          /** Redes a las que apunta: es una intencion, al aprobar se hereda. */
+          platforms: SocialPlatform[];
+          offer_id: string | null;
+          pillar_id: string | null;
+          funnel_stage: FunnelStage | null;
           status: ContentIdeaStatus;
           source: "manual" | "agent";
           position: number;
@@ -3028,6 +3042,11 @@ export interface Database {
           pillar?: string | null;
           reference?: string | null;
           notes?: string | null;
+          content?: string | null;
+          platforms?: SocialPlatform[];
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
           source?: "manual" | "agent";
           position?: number;
@@ -3042,6 +3061,11 @@ export interface Database {
           pillar?: string | null;
           reference?: string | null;
           notes?: string | null;
+          content?: string | null;
+          platforms?: SocialPlatform[];
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
           position?: number;
           approved_by?: string | null;
@@ -3060,8 +3084,19 @@ export interface Database {
           idea_id: string | null;
           title: string;
           format: string | null;
-          /** { hook, body, cta, recording_notes } */
+          /**
+           * @deprecated { hook, body, cta, recording_notes }. Reemplazado por
+           * `script` y `recording_notes` (00116). Se borra en la 00118.
+           */
           copy: Json;
+          /** El guion completo para grabar (00116). */
+          script: string | null;
+          /** Instrucciones de produccion (00116). */
+          recording_notes: string | null;
+          offer_id: string | null;
+          pillar_id: string | null;
+          funnel_stage: FunnelStage | null;
+          reference: string | null;
           caption: string | null;
           /** Lo propio de cada red, incluida su fecha tentativa. */
           networks: Json;
@@ -3091,6 +3126,12 @@ export interface Database {
           title: string;
           format?: string | null;
           copy?: Json;
+          script?: string | null;
+          recording_notes?: string | null;
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
+          reference?: string | null;
           caption?: string | null;
           networks?: Json;
           media?: Json;
@@ -3108,6 +3149,12 @@ export interface Database {
           title?: string;
           format?: string | null;
           copy?: Json;
+          script?: string | null;
+          recording_notes?: string | null;
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
+          reference?: string | null;
           caption?: string | null;
           networks?: Json;
           media?: Json;
@@ -3124,6 +3171,59 @@ export interface Database {
           archived_at?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** Pilares de contenido (00116). Se archivan, no se borran. */
+      content_pillars: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          color: string | null;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          color?: string | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Ofertas a las que apunta una idea o pieza (00116). Se archivan, no se borran. */
+      content_offers: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          archived_at?: string | null;
         };
         Relationships: [];
       };
@@ -3371,6 +3471,8 @@ export interface Database {
           like_count: number | null;
           hidden: boolean;
           contact_id: string | null;
+          /** El id del post en la red: con esto un comentario huerfano se adopta despues (00113). */
+          external_post_id: string | null;
           source: CommentSource;
           deleted_at: string | null;
           created_at: string;
@@ -3393,6 +3495,7 @@ export interface Database {
           like_count?: number | null;
           hidden?: boolean;
           contact_id?: string | null;
+          external_post_id?: string | null;
           source?: CommentSource;
           deleted_at?: string | null;
           created_at?: string;
@@ -3400,6 +3503,7 @@ export interface Database {
         };
         Update: {
           social_post_id?: string | null;
+          external_post_id?: string | null;
           text?: string | null;
           like_count?: number | null;
           hidden?: boolean;
@@ -3556,6 +3660,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      /**
+       * Los toques de atribucion de un contacto (migracion 00114). Cada
+       * interaccion atribuible: un primer DM, un comentario, una reserva. La
+       * escribe SOLO el servidor (`record_contact_touch`); el cliente solo lee.
+       */
+      contact_touches: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          occurred_at: string;
+          source: string;
+          medium: string | null;
+          campaign: string | null;
+          /** El "content" de la taxonomia: la pieza, en palabras. */
+          content_label: string | null;
+          term: string | null;
+          /** El medio no es de la lista cerrada: se guardo crudo. */
+          medium_raw: boolean;
+          social_post_id: string | null;
+          content_post_id: string | null;
+          ad_id: string | null;
+          adset_id: string | null;
+          campaign_id: string | null;
+          fbclid: string | null;
+          gclid: string | null;
+          ttclid: string | null;
+          li_fat_id: string | null;
+          ctwa_clid: string | null;
+          referrer_url: string | null;
+          landing_page: string | null;
+          origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
+          dedupe_key: string;
+          raw: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        // El servidor escribe por la funcion de la base, no por la API de tablas.
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       social_accounts: {
         Row: {
           id: string;
@@ -3576,6 +3722,8 @@ export interface Database {
           publishers: Json;
           is_active: boolean;
           profile_synced_at: string | null;
+          /** El error de la ultima lectura de perfil; null si salio bien (00113). */
+          profile_sync_error: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -3596,6 +3744,7 @@ export interface Database {
           publishers?: Json;
           is_active?: boolean;
           profile_synced_at?: string | null;
+          profile_sync_error?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -3613,6 +3762,7 @@ export interface Database {
           publishers?: Json;
           is_active?: boolean;
           profile_synced_at?: string | null;
+          profile_sync_error?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -4111,6 +4261,18 @@ export interface Database {
         Returns: boolean;
       };
       /** Deduplicacion cross-canal (migracion 00025). Unica fuente de verdad. */
+      /**
+       * Registra un toque de atribucion y recalcula el primero y el ultimo
+       * (migracion 00114). Solo service_role. Idempotente por `dedupe_key`.
+       */
+      record_contact_touch: {
+        Args: {
+          p_workspace_id: string;
+          p_contact_id: string;
+          p_touch: Json;
+        };
+        Returns: { inserted: boolean; reason?: string; touch_id?: string };
+      };
       find_or_link_contact: {
         Args: {
           p_channel_id: string;
@@ -4170,6 +4332,18 @@ export interface Database {
           p_title: string;
           p_format: string | null;
           p_copy: Json;
+        };
+        Returns: string;
+      };
+      /**
+       * Como `approve_content_idea` pero hereda la clasificacion y las
+       * plataformas de la idea (00116). La v1 se borra en la 00118.
+       */
+      approve_content_idea_v2: {
+        Args: {
+          p_idea_id: string;
+          p_title: string;
+          p_format?: string | null;
         };
         Returns: string;
       };
