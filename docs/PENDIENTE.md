@@ -647,3 +647,22 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 ### B11 · Las migraciones 00114 y 00115 tampoco están en el historial
 - **Qué quedó:** igual que la 00113: aplicadas con `supabase db query`, que no registra el historial, y el sistema de permisos denegó el INSERT en `supabase_migrations.schema_migrations`.
 - **Qué se decidió en su lugar:** nada del código lee esa tabla. Queda anotado junto a la 00113.
+
+### B12 · La 00118 (destructiva) está escrita y NO se aplicó
+- **Qué es:** borra `content_ideas.hook/angle/notes/pillar`, `content_posts.copy` y la función `approve_content_idea` vieja.
+- **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe esas columnas, así que aplicarla no rompe nada, pero no tiene vuelta atrás.
+- **Cuándo aplicarla:** después de ver la v3 funcionando en producción con piezas reales. Antes, correr las dos consultas de la cabecera de `supabase/migrations/00118_drop_legacy_content_columns.sql`: las dos tienen que dar 0. Con un backup (`supabase db dump`) o con tu confirmación.
+- **Para tener en cuenta:** `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el bundle tenga todas las migraciones), así que ese archivo es para una instalación NUEVA; no correrlo sobre producción. Al aplicarla hay que sacar de `lib/types/database.ts` las columnas marcadas `@deprecated`.
+
+### B12 · Las migraciones 00116 y 00117 tampoco están en el historial
+- Igual que la 00113 a la 00115: aplicadas con `supabase db query`, que no registra el historial. Nada del código lee esa tabla.
+
+### B12 · Lo que no se vio con archivos reales
+- **El selector de archivos de cada red y la biblioteca** no se vieron con archivos de verdad: la única pieza de producción no tiene redes ni archivos, y no quise subir nada al bucket real ni crear datos de prueba que no se puedan borrar. Quedan cubiertos por tests de render en el servidor (estructura, numeración, orden, ↑ ↓, verde y rojo, "Sin usar"). **Plan:** en la revisión visual de B13, armar una pieza `zz-test…` con archivos chicos, mirarla y borrarla.
+- **La lectura de dimensiones y duración al subir** (`lib/content/media-probe.ts`) es código de navegador y no tiene test; si no puede leer un archivo, la subida sigue sin esos datos. Consecuencia buena y a vigilar: como ahora SÍ se guarda la duración, un Reel de más de 90 segundos recién se va a frenar en los archivos subidos desde ahora; los de antes no tienen el dato y siguen sin validarse.
+- **`mediaType` en TikTok** (video o fotos, según el formato) es un campo nuevo en lo que se manda a Zernio. El tipo del SDK lo declara (`'video' | 'photo'`), pero no se probó contra la API real.
+
+### B12 · Cosas chicas que conviene saber
+- Las redes que crean `approve_content_idea_v2`, "Nuevo post" y "Agregar red" nacen **sin formato** (modelo anterior); la persona elige el formato en la fila.
+- Las variantes con archivos propios del modelo anterior (`networks[].media`) siguen funcionando y no se migran: no hay ninguna en producción. Elegir un formato en esa red la pasa a la biblioteca.
+- El detalle de solo lectura de una pieza (`/dashboard/content/[id]`) no muestra la clasificación nueva: B13 lo reemplaza por el drawer y lo redirige.
