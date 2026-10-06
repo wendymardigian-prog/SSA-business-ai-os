@@ -5,8 +5,8 @@
  * `copy` de cuatro campos. Ahora son un texto unico (`content`) y un guion
  * (`script`) con sus notas de grabacion (`recording_notes`).
  *
- * El codigo nuevo NO lee ni escribe las columnas viejas: asi la 00118 las
- * puede borrar sin romper nada. Pero hay una cosa que si sigue teniendo la
+ * Las columnas viejas ya no existen (las borro la 00118, el 6/10/2026). Pero
+ * hay una cosa que si sigue teniendo la
  * forma vieja y no se puede migrar: el historial. Cada version guardada
  * antes de la v3 lleva el `copy` DENTRO de su jsonb, y "nada se pisa sin dejar
  * version" quiere decir que esas versiones se siguen pudiendo leer, comparar y
