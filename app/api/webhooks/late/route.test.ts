@@ -69,6 +69,11 @@ vi.mock("@/lib/contacts/touch-inbound", async (importOriginal) => {
   return { ...actual, recordInboundTouch };
 });
 
+// Lo mismo para la atribucion de comentarios (F86): tiene sus tests en
+// lib/comments/contact-link.test.ts.
+const attributeComment = vi.fn();
+vi.mock("@/lib/comments/attribution", () => ({ attributeComment }));
+
 const WS = "ws-1";
 const ACCOUNT = "late-account-1";
 const SECRET = "secreto-del-workspace";
@@ -637,5 +642,81 @@ describe("webhook de Zernio: el toque de atribución del DM (F85)", () => {
 
     expect(recordInboundTouch).toHaveBeenCalledTimes(1);
     expect(runInboundAutomation).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("webhook de Zernio: la atribución del comentario (F86)", () => {
+  it("un comentario de un tercero: se atribuye ANTES y DESPUES de processComment", async () => {
+    // Despues porque el flow por palabra clave puede crear al contacto recien ahi.
+    db();
+    const order: string[] = [];
+    attributeComment.mockImplementation(async () => void order.push("atribucion"));
+    processComment.mockImplementation(async () => void order.push("flow"));
+
+    await callRoute(post(comment()));
+    await runAfter();
+
+    expect(order).toEqual(["atribucion", "flow", "atribucion"]);
+    expect(attributeComment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        workspaceId: WS,
+        platform: "instagram",
+        externalCommentId: "comment-1",
+        authorUsername: "unlead",
+        isOwn: false,
+      }),
+    );
+  });
+
+  it("un comentario PROPIO no se atribuye, ni antes ni despues", async () => {
+    db();
+
+    await callRoute(post(comment({ comment: { author: { id: "me", username: "minegocio" } } })));
+    await runAfter();
+
+    expect(attributeComment).not.toHaveBeenCalled();
+    expect(processComment).not.toHaveBeenCalled();
+  });
+
+  it("TikTok (sin canal): se atribuye una sola vez, porque no hay flow", async () => {
+    db({
+      channels: [channelRow({ late_account_id: "otra-cuenta" })],
+      social_accounts: [
+        { id: "sa-1", workspace_id: "ws-1", platform: "tiktok", username: "minegocio", external_id: "late-account-1" },
+      ],
+    });
+
+    await callRoute(post(comment({ account: { id: ACCOUNT, platform: "tiktok", username: "minegocio" } })));
+    await runAfter();
+
+    expect(attributeComment).toHaveBeenCalledTimes(1);
+    expect(attributeComment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ platform: "tiktok" }));
+    expect(processComment).not.toHaveBeenCalled();
+  });
+
+  it("si la atribución LANZA, el flow por palabra clave corre igual", async () => {
+    db();
+    attributeComment.mockRejectedValue(new Error("se cayo la atribucion"));
+
+    const res = await callRoute(post(comment()));
+    await runAfter();
+
+    expect(res.status).toBe(200);
+    expect(processComment).toHaveBeenCalledTimes(1);
+  });
+
+  it("el mismo comentario dos veces se atribuye una sola vez", async () => {
+    db();
+    claimWebhookEvent.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await callRoute(post(comment()));
+    await callRoute(post(comment()));
+    await runAfter();
+
+    // Una pasada completa son dos llamadas (antes y despues del flow).
+    expect(attributeComment).toHaveBeenCalledTimes(2);
+    expect(processComment).toHaveBeenCalledTimes(1);
   });
 });

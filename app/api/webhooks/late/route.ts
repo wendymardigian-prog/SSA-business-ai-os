@@ -22,6 +22,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
+import { attributeComment } from "@/lib/comments/attribution";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
 import { messagePreview, previewForMessage } from "@/lib/message-preview";
@@ -46,7 +47,7 @@ import {
 import { maybeScheduleAgentTurn } from "@/lib/agent/dispatch";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
 import { fromZernioPlatformEvent, settlePublication } from "@/lib/publishing/inbound";
-import { isOwnComment, linkCommentToContact, storeComment } from "@/lib/comments/store";
+import { isOwnComment, storeComment } from "@/lib/comments/store";
 import type { SocialPlatform } from "@/lib/types/database";
 import { supersedePendingDrafts } from "@/lib/agent/drafts/lifecycle";
 
@@ -625,6 +626,18 @@ async function handleCommentWebhook(
     return NextResponse.json({ ok: true, skipped: "evento repetido" });
   }
 
+  let commentedPostId: string | null = null;
+
+  const commentAttribution = () => ({
+    workspaceId,
+    platform: platform ?? "instagram",
+    externalCommentId: payload.comment.id,
+    authorUsername: payload.comment.author?.username ?? null,
+    isOwn: own,
+    commentedAt: payload.comment.createdAt ?? null,
+    socialPostId: commentedPostId,
+  });
+
   // Ack before processing (same 5s delivery budget as messages); processComment
   // additionally dedupes on (channel_id, platform_comment_id) so cross-event
   // redeliveries of the same comment stay one-shot.
@@ -650,13 +663,11 @@ async function handleCommentWebhook(
           source: "webhook",
         },
       });
+      commentedPostId = result.socialPostId;
       if (result.stored && !own) {
-        await linkCommentToContact(supabase, {
-          workspaceId,
-          externalCommentId: payload.comment.id,
-          platform: platform ?? "instagram",
-          authorUsername: payload.comment.author?.username ?? null,
-        });
+        // Vincula al contacto (en TikTok crea uno anonimo, en Instagram solo si
+        // ya existe) y anota el toque. Nunca lanza (F86).
+        await attributeComment(supabase, commentAttribution());
       }
     } catch (err) {
       console.error("[webhook] no pude guardar el comentario:", err);
@@ -682,6 +693,15 @@ async function handleCommentWebhook(
       });
     } catch (err) {
       console.error("Webhook comment processing error:", err);
+    }
+
+    // El flow por palabra clave puede haber CREADO al contacto recien ahora: se
+    // vuelve a intentar. El toque se deduplica por el id del comentario, asi que
+    // si ya estaba anotado no se duplica (F86).
+    try {
+      await attributeComment(supabase, commentAttribution());
+    } catch (err) {
+      console.error("[webhook] la atribución del comentario falló:", err instanceof Error ? err.message : err);
     }
   });
 
