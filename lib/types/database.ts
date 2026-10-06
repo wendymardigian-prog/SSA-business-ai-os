@@ -83,6 +83,9 @@ export type CancelledByType = "invitee" | "host" | "system";
 export type GoogleSyncStatus = "pending" | "synced" | "failed" | "not_applicable";
 /** Estados de una idea de contenido (00083). */
 export type ContentIdeaStatus = "nueva" | "aprobada" | "descartada";
+
+/** Etapa del embudo de una idea o pieza (migracion 00116). Lista fija en codigo. */
+export type FunnelStage = "tofu" | "mofu" | "bofu";
 /** Estados de una pieza de contenido (00083). Desde `scheduled` se derivan. */
 export type ContentPostStatus =
   | "draft"
@@ -2997,12 +3000,23 @@ export interface Database {
           id: string;
           workspace_id: string;
           title: string;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           hook: string | null;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           angle: string | null;
           format: string | null;
+          /** @deprecated Texto libre; ahora es `pillar_id` (00116). Se borra en la 00118. */
           pillar: string | null;
           reference: string | null;
+          /** @deprecated Reemplazado por `content` (00116). Se borra en la 00118. */
           notes: string | null;
+          /** El texto unico de la idea (00116). */
+          content: string | null;
+          /** Redes a las que apunta: es una intencion, al aprobar se hereda. */
+          platforms: SocialPlatform[];
+          offer_id: string | null;
+          pillar_id: string | null;
+          funnel_stage: FunnelStage | null;
           status: ContentIdeaStatus;
           source: "manual" | "agent";
           position: number;
@@ -3028,6 +3042,11 @@ export interface Database {
           pillar?: string | null;
           reference?: string | null;
           notes?: string | null;
+          content?: string | null;
+          platforms?: SocialPlatform[];
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
           source?: "manual" | "agent";
           position?: number;
@@ -3042,6 +3061,11 @@ export interface Database {
           pillar?: string | null;
           reference?: string | null;
           notes?: string | null;
+          content?: string | null;
+          platforms?: SocialPlatform[];
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
           position?: number;
           approved_by?: string | null;
@@ -3060,8 +3084,19 @@ export interface Database {
           idea_id: string | null;
           title: string;
           format: string | null;
-          /** { hook, body, cta, recording_notes } */
+          /**
+           * @deprecated { hook, body, cta, recording_notes }. Reemplazado por
+           * `script` y `recording_notes` (00116). Se borra en la 00118.
+           */
           copy: Json;
+          /** El guion completo para grabar (00116). */
+          script: string | null;
+          /** Instrucciones de produccion (00116). */
+          recording_notes: string | null;
+          offer_id: string | null;
+          pillar_id: string | null;
+          funnel_stage: FunnelStage | null;
+          reference: string | null;
           caption: string | null;
           /** Lo propio de cada red, incluida su fecha tentativa. */
           networks: Json;
@@ -3091,6 +3126,12 @@ export interface Database {
           title: string;
           format?: string | null;
           copy?: Json;
+          script?: string | null;
+          recording_notes?: string | null;
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
+          reference?: string | null;
           caption?: string | null;
           networks?: Json;
           media?: Json;
@@ -3108,6 +3149,12 @@ export interface Database {
           title?: string;
           format?: string | null;
           copy?: Json;
+          script?: string | null;
+          recording_notes?: string | null;
+          offer_id?: string | null;
+          pillar_id?: string | null;
+          funnel_stage?: FunnelStage | null;
+          reference?: string | null;
           caption?: string | null;
           networks?: Json;
           media?: Json;
@@ -3124,6 +3171,59 @@ export interface Database {
           archived_at?: string | null;
           deleted_at?: string | null;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      /** Pilares de contenido (00116). Se archivan, no se borran. */
+      content_pillars: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          color: string | null;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          color?: string | null;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          color?: string | null;
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Ofertas a las que apunta una idea o pieza (00116). Se archivan, no se borran. */
+      content_offers: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          archived_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          archived_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          archived_at?: string | null;
         };
         Relationships: [];
       };
@@ -4232,6 +4332,18 @@ export interface Database {
           p_title: string;
           p_format: string | null;
           p_copy: Json;
+        };
+        Returns: string;
+      };
+      /**
+       * Como `approve_content_idea` pero hereda la clasificacion y las
+       * plataformas de la idea (00116). La v1 se borra en la 00118.
+       */
+      approve_content_idea_v2: {
+        Args: {
+          p_idea_id: string;
+          p_title: string;
+          p_format?: string | null;
         };
         Returns: string;
       };
