@@ -7,7 +7,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/database";
+import type { Database, SocialPlatform } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { readSecret, SECRET_NAMES, oauthSecretName } from "@/lib/vault";
@@ -29,6 +29,7 @@ import { DAILY_UNTIL_DAYS } from "@/lib/metrics/rules";
 import { EMPTY_READER_RESULT, type ReaderResult } from "@/lib/metrics/types";
 import { canReadComments, readThreadsReplies, readYouTubeComments, readZernioComments } from "@/lib/comments/sync";
 import { storeComment } from "@/lib/comments/store";
+import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { createZernioClient } from "@/lib/zernio-client";
 
 type Db = SupabaseClient<Database>;
@@ -291,6 +292,10 @@ async function handleMetricsSync({ supabase, job }: JobContext): Promise<void> {
   }
 
   const commentWarnings = await syncComments(supabase, account, result.posts);
+
+  // Las publicaciones recien sincronizadas pueden ser a las que cuelgan comentarios
+  // que entraron huerfanos por el webhook (F76). Nunca lanza.
+  await adoptOrphanComments(supabase, account.workspace_id, account.platform as SocialPlatform);
 
   await markAccountSync(supabase, {
     socialAccountId: account.id,

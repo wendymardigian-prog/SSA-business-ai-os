@@ -161,7 +161,10 @@ describe("guardar (F46)", () => {
     });
 
     expect(result.stored).toBe(true);
-    expect(memory.rows("social_post_comments")[0].social_post_id).toBeNull();
+    // `storeComment` ya no manda `social_post_id: null` (F76): en Postgres la
+    // columna omitida queda en null, y el fake en memoria no aplica defaults de
+    // columna, asi que ahi queda undefined. Las dos cosas son "sin publicacion".
+    expect(memory.rows("social_post_comments")[0].social_post_id ?? null).toBeNull();
     expect(memory.rows("social_posts")).toHaveLength(0);
   });
 });

@@ -14,8 +14,10 @@
  *    disparar automatizaciones: eso seria un bot contestandose solo.
  * 2. **Un comentario puede guardarse sin publicacion.** Llega antes de que la
  *    publicacion exista de nuestro lado (un post hecho a mano del que todavia
- *    no sincronizamos nada). Se guarda huerfano y la sincronizacion lo
- *    adopta. Descartarlo seria perder el comentario.
+ *    no sincronizamos nada). Se guarda huerfano, con el id del post en la red
+ *    (`external_post_id`), y `adoptOrphanComments` (lib/comments/adopt.ts) lo
+ *    vincula cuando la publicacion aparece. Descartarlo seria perder el
+ *    comentario.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -98,7 +100,13 @@ export async function storeComment(
   const { error } = await supabase.from("social_post_comments").upsert(
     {
       workspace_id: params.workspaceId,
-      social_post_id: socialPostId,
+      // Un campo que no se pudo resolver NO se manda: PostgREST deja intacto lo
+      // que no viaja. Mandar null desvincularia un comentario que ya tenia su
+      // publicacion cuando la relectura no logra resolverla (F76).
+      ...(socialPostId ? { social_post_id: socialPostId } : {}),
+      // El id del post en la red es lo que permite adoptar el comentario mas
+      // tarde, cuando la cuenta social o la publicacion ya existan (F76).
+      ...(comment.externalPostId ? { external_post_id: comment.externalPostId } : {}),
       platform: comment.platform as SocialPlatform,
       external_comment_id: comment.externalCommentId,
       parent_external_comment_id: comment.parentExternalCommentId ?? null,

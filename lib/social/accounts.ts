@@ -21,6 +21,7 @@ import {
   type PublisherId,
 } from "./accounts-schema";
 import { canUploadToYouTube } from "./google";
+import { adoptOrphanComments } from "@/lib/comments/adopt";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { createZernioClient } from "@/lib/zernio-client";
 
@@ -388,6 +389,12 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
     if (error) {
       console.error(`[social] no pude guardar la cuenta de ${account.platform}:`, error.message);
     }
+  }
+
+  // Con la cuenta ya creada, los comentarios que entraron antes (huerfanos) se
+  // vinculan a su publicacion cuando esta existe (F76). Nunca lanza.
+  for (const account of computed.accounts) {
+    await adoptOrphanComments(supabase, workspaceId, account.platform);
   }
 
   const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];
