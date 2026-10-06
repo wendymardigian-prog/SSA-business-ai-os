@@ -63,6 +63,7 @@ export function ContenidoView({ pillars, offers }: { pillars: TaxonomyRow[]; off
           title="Pilares"
           description="Los grandes temas de tu contenido. Cada idea y cada pieza apunta a uno."
           singular="pilar"
+          feminine={false}
           rows={pillars}
           withColor
           actions={{
@@ -77,6 +78,7 @@ export function ContenidoView({ pillars, offers }: { pillars: TaxonomyRow[]; off
           title="Ofertas"
           description="Lo que vendes. Sirve para saber que contenido empuja cada oferta."
           singular="oferta"
+          feminine
           rows={offers}
           actions={{
             create: (name) => createOffer({ name }),
@@ -102,6 +104,7 @@ function TaxonomySection({
   title,
   description,
   singular,
+  feminine,
   rows,
   withColor = false,
   actions,
@@ -109,6 +112,8 @@ function TaxonomySection({
   title: string;
   description: string;
   singular: string;
+  /** "oferta" es femenino: cambia el articulo de las etiquetas. */
+  feminine: boolean;
   rows: TaxonomyRow[];
   withColor?: boolean;
   actions: SectionActions;
@@ -121,6 +126,7 @@ function TaxonomySection({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  const nameOf = feminine ? `de la ${singular}` : `del ${singular}`;
   const active = rows.filter((r) => !r.archived);
   const archived = rows.filter((r) => r.archived);
   const shown = showArchived ? rows : active;
@@ -162,14 +168,14 @@ function TaxonomySection({
         }}
       >
         <label htmlFor={`new-${singular}`} className="sr-only">
-          Nombre del {singular} nuevo
+          Nombre {nameOf} {feminine ? "nueva" : "nuevo"}
         </label>
         <input
           id={`new-${singular}`}
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           maxLength={TAXONOMY_NAME_MAX}
-          placeholder={`Nuevo ${singular}`}
+          placeholder={feminine ? `Nueva ${singular}` : `Nuevo ${singular}`}
           className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
         />
         <button
@@ -196,7 +202,7 @@ function TaxonomySection({
         <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
           {shown.length === 0 && (
             <li className="px-3 py-4 text-sm text-muted-foreground">
-              Todo esta archivado. Mostra los archivados para restaurar alguno.
+              Todo está archivado. Mostrá los archivados para restaurar alguno.
             </li>
           )}
           {shown.map((row) => (
@@ -218,7 +224,7 @@ function TaxonomySection({
                   }}
                 >
                   <label htmlFor={`edit-${row.id}`} className="sr-only">
-                    Nombre del {singular}
+                    Nombre {nameOf}
                   </label>
                   <input
                     id={`edit-${row.id}`}
@@ -335,7 +341,7 @@ function ColorSwatch({
       {open && (
         <div
           role="listbox"
-          aria-label="Elegi un color"
+          aria-label="Elegí un color"
           className="absolute left-0 top-7 z-10 flex gap-1.5 rounded-lg border border-border bg-popover p-2 shadow-md"
         >
           {PILLAR_COLORS.map((color) => (

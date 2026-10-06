@@ -32,9 +32,10 @@ export type TaxonomyResult<T = undefined> =
 
 type Table = "content_pillars" | "content_offers";
 
-const KIND: Record<Table, { label: string; audit: string }> = {
-  content_pillars: { label: "pilar", audit: "content_pillar" },
-  content_offers: { label: "oferta", audit: "content_offer" },
+// El genero importa para los mensajes: "el pilar" / "la oferta".
+const KIND: Record<Table, { label: string; audit: string; the: string; that: string; it: string }> = {
+  content_pillars: { label: "pilar", audit: "content_pillar", the: "el", that: "ese", it: "o" },
+  content_offers: { label: "oferta", audit: "content_offer", the: "la", that: "esa", it: "a" },
 };
 
 async function manageContext() {
@@ -97,7 +98,7 @@ async function create(
     // no lo ve, el indice unico si.
     if (error && uniqueViolation(error)) return { ok: false, error: `Ya existe "${checked.name}"` };
     console.error(`[content-taxonomy] no pude crear ${KIND[table].label}:`, error?.message);
-    return { ok: false, error: `No pude crear el ${KIND[table].label}` };
+    return { ok: false, error: `No pude crear ${KIND[table].the} ${KIND[table].label}` };
   }
 
   await logAudit({
@@ -118,7 +119,7 @@ async function rename(table: Table, id: string, rawName: string): Promise<Taxono
   const { workspace, supabase, user } = ctx;
 
   const items = await loadItems(supabase, table, workspace.id);
-  if (!items.some((i) => i.id === id)) return { ok: false, error: `No encontre ese ${KIND[table].label}` };
+  if (!items.some((i) => i.id === id)) return { ok: false, error: `No encontre ${KIND[table].that} ${KIND[table].label}` };
 
   const checked = checkName(rawName, items, id);
   if (!checked.ok) return checked;
@@ -154,7 +155,7 @@ async function setArchived(table: Table, id: string, archived: boolean): Promise
 
   const items = await loadItems(supabase, table, workspace.id);
   const target = items.find((i) => i.id === id);
-  if (!target) return { ok: false, error: `No encontre ese ${KIND[table].label}` };
+  if (!target) return { ok: false, error: `No encontre ${KIND[table].that} ${KIND[table].label}` };
 
   // Restaurar vuelve a ocupar el nombre: si mientras tanto se creo otro con el
   // mismo, hay que avisar en vez de chocar con el indice unico.
@@ -173,7 +174,7 @@ async function setArchived(table: Table, id: string, archived: boolean): Promise
 
   if (error) {
     console.error(`[content-taxonomy] no pude archivar ${KIND[table].label}:`, error.message);
-    return { ok: false, error: archived ? "No pude archivarlo" : "No pude restaurarlo" };
+    return { ok: false, error: archived ? `No pude archivarl${KIND[table].it}` : `No pude restaurarl${KIND[table].it}` };
   }
 
   await logAudit({
