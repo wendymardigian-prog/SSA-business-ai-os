@@ -6,7 +6,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
-import { mergeAttribution, parseTrackingParams } from "@/lib/contacts/attribution";
+import { parseTrackingParams } from "@/lib/contacts/attribution";
+import { recordManualTouch } from "@/lib/contacts/touch-entry";
 import { findDuplicateContact } from "@/lib/contacts/dedup";
 import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
@@ -92,11 +93,14 @@ export async function createContact(
     };
   }
 
-  const attribution = mergeAttribution({}, parseTrackingParams(input));
+  // Las UTM que traiga el pedido (la pantalla hoy no las pide, la accion si las
+  // acepta) se anotan como el toque del alta. Ya no se escribe la forma vieja de
+  // clicks en `attribution`: lo escribe `record_contact_touch` (F87).
+  const tracking = parseTrackingParams(input);
 
   const { data, error } = await supabase
     .from("contacts")
-    .insert({ workspace_id: workspace.id, ...patch, attribution: attribution as Json })
+    .insert({ workspace_id: workspace.id, ...patch })
     .select("id")
     .single();
 
@@ -108,6 +112,14 @@ export async function createContact(
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "contact", entityId: data.id,
     action: "create", metadata: { source: "manual" }, performedBy: user.id,
+  });
+
+  // El toque de atribucion lo escribe el servidor: la funcion de la base solo la
+  // ejecuta `service_role`. Nunca puede hacer fallar el alta (F87).
+  await recordManualTouch(await createServiceClient(), {
+    workspaceId: workspace.id,
+    contactId: data.id,
+    tracking,
   });
 
   revalidateContact(data.id);

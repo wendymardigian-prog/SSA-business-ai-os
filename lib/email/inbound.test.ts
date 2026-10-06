@@ -8,13 +8,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { maybeScheduleAgentTurn, upsertContactForSender } = vi.hoisted(() => ({
+const { maybeScheduleAgentTurn, upsertContactForSender, recordInboundTouch } = vi.hoisted(() => ({
   maybeScheduleAgentTurn: vi.fn(),
   upsertContactForSender: vi.fn(),
+  recordInboundTouch: vi.fn(),
 }));
 
 vi.mock("@/lib/agent/dispatch", () => ({ maybeScheduleAgentTurn }));
 vi.mock("@/lib/inbox-sync", () => ({ upsertContactForSender }));
+// El registro del toque (F87) tiene sus propios tests: aca solo se prueba que el
+// receptor lo llame bien y que un fallo suyo no frene nada.
+vi.mock("@/lib/contacts/touch-inbound", () => ({ recordInboundTouch }));
 
 import { memoryDb } from "@/lib/agent/testing/memory-db";
 import type { ChannelRow } from "@/lib/inbound";
@@ -210,5 +214,45 @@ describe("procesar el correo (F63)", () => {
 
     expect(result.stored).toBe(false);
     expect(memory.rows("messages")).toHaveLength(0);
+  });
+});
+
+
+describe("el toque de atribución de un correo entrante (F87)", () => {
+  it("un correo de una persona nueva registra un toque con plataforma email", async () => {
+    const memory = db();
+
+    await processInboundEmail(memory.client as never, { channel, email: email() });
+
+    expect(recordInboundTouch).toHaveBeenCalledTimes(1);
+    expect(recordInboundTouch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        workspaceId: WS,
+        contactId: "ct-1",
+        platform: "email",
+        contactExisted: false,
+        platformMessageId: "re_1",
+        messageAt: new Date("2026-10-01T12:00:00Z"),
+      }),
+    );
+  });
+
+  it("un correo automático (rebote, no-reply) no crea contacto y no deja toque", async () => {
+    const memory = db();
+
+    await processInboundEmail(memory.client as never, { channel, email: email({ from: "no-reply@banco.com", subject: "Out of office" }) });
+
+    expect(recordInboundTouch).not.toHaveBeenCalled();
+  });
+
+  it("si el registro LANZA, el correo queda guardado igual", async () => {
+    const memory = db();
+    recordInboundTouch.mockRejectedValue(new Error("se cayo la atribucion"));
+
+    const result = await processInboundEmail(memory.client as never, { channel, email: email() });
+
+    expect(result.stored).toBe(true);
+    expect(memory.rows("messages")).toHaveLength(1);
   });
 });
