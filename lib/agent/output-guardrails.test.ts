@@ -54,9 +54,13 @@ describe("checkOutputGuardrails: links", () => {
 });
 
 describe("checkOutputGuardrails: palabras, escasez y cifras", () => {
-  it("ScaleOS se bloquea (y scaleos tambien)", () => {
-    expect(checkOutputGuardrails("Somos ScaleOS", G).ok).toBe(false);
-    expect(checkOutputGuardrails("somos scaleos hoy", G).ok).toBe(false);
+  it("una palabra prohibida configurada se bloquea, sin distinguir mayusculas", () => {
+    const g = { ...G, palabrasProhibidas: { enabled: true, phrases: ["miempresa"] } };
+    expect(checkOutputGuardrails("Somos MiEmpresa", g).ok).toBe(false);
+    expect(checkOutputGuardrails("somos miempresa hoy", g).ok).toBe(false);
+  });
+  it("sin palabras prohibidas configuradas (default), nada se bloquea por eso", () => {
+    expect(checkOutputGuardrails("Somos MiEmpresa", G).ok).toBe(true);
   });
   it("'quedan 3 cupos' se bloquea por escasez", () => {
     const r = checkOutputGuardrails("apurate que quedan 3 lugares", G);
@@ -69,8 +73,12 @@ describe("checkOutputGuardrails: palabras, escasez y cifras", () => {
     expect(checkOutputGuardrails("sale $497", conLista).ok).toBe(true);
   });
   it("junta todos los hallazgos, no solo el primero", () => {
-    const g = { ...G, linksPermitidos: ["wa.me/5491100000000"] };
-    const r = checkOutputGuardrails("ScaleOS te cobra $99 en https://otro.com", g);
+    const g = {
+      ...G,
+      linksPermitidos: ["wa.me/5491100000000"],
+      palabrasProhibidas: { enabled: true, phrases: ["miempresa"] },
+    };
+    const r = checkOutputGuardrails("MiEmpresa te cobra $99 en https://otro.com", g);
     expect(r.ok).toBe(false);
     if (!r.ok) {
       const rules = new Set(r.hits.map((h) => h.rule));

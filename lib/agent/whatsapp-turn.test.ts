@@ -121,18 +121,20 @@ describe("guardarrail de salida", () => {
     expect(step).toBeTruthy();
   });
 
-  it("ScaleOS en la salida se bloquea", async () => {
-    const w = turnWorld({ agent: WHATSAPP_AGENT });
+  it("una palabra prohibida configurada, en la salida, se bloquea", async () => {
+    const w = turnWorld({
+      agent: { ...WHATSAPP_AGENT, guardrails: { palabrasProhibidas: { enabled: true, phrases: ["miempresa"] } } },
+    });
     w.addInbound("con quien hablo?", 0);
     w.clock.ms = T0 + 75_000;
-    w.setModel(async () => ({ text: "Soy el asistente de ScaleOS", totalUsage: { inputTokens: 5, outputTokens: 2 } }));
+    w.setModel(async () => ({ text: "Soy el asistente de MiEmpresa", totalUsage: { inputTokens: 5, outputTokens: 2 } }));
 
     const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
     expect(outcome).toMatchObject({ status: "blocked_guardrail" });
     expect(w.sent).toHaveLength(0);
   });
 
-  it("lista de links vacia: un link cualquiera no bloquea (pero ScaleOS off no aplica aca)", async () => {
+  it("lista de links vacia: un link cualquiera no bloquea (palabras prohibidas off, no aplica aca)", async () => {
     const w = turnWorld({
       // Sin palabras prohibidas ni links, para aislar: solo confirma que la lista vacia no frena links.
       agent: { ...WHATSAPP_AGENT, guardrails: { palabrasProhibidas: { enabled: false, phrases: [] }, cifras: { enabled: false, permitidas: [] } } },
