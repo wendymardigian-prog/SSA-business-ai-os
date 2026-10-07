@@ -338,7 +338,7 @@ try {
     {
       platform: "instagram",
       planned_at: at,
-      options: { contentType: "reel" },
+      format: "reel",
       cta: { type: "comment", keyword: "SISTEMA" },
     },
     { platform: "tiktok", planned_at: at, options: TIKTOK_OPTIONS },
@@ -474,7 +474,7 @@ try {
   const post2 = await seedPost(
     ws,
     owner,
-    [{ platform: "instagram", planned_at: otroAt, options: { contentType: "reel" } }],
+    [{ platform: "instagram", planned_at: otroAt, format: "reel" }],
     "zz-test pieza 2",
   );
   await runScheduleNetworks(ctx, { postId: post2 });
@@ -516,7 +516,7 @@ try {
   const post3 = await seedPost(
     ws,
     owner,
-    [{ platform: "instagram", planned_at: null, options: { contentType: "reel" } }],
+    [{ platform: "instagram", planned_at: null, format: "reel" }],
     "zz-test pieza 3",
   );
   const ahora = await runScheduleNetworks(ctx, { postId: post3, platform: "instagram", now: true });

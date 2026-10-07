@@ -24,15 +24,14 @@ export function socialMediaTypeFor(content: NetworkContent): SocialPostMediaType
   const videos = media.filter((m) => m.kind === "video");
   const images = media.filter((m) => m.kind === "image");
   const documents = media.filter((m) => m.kind === "document");
-  const contentType = content.options?.contentType;
 
   // Un Short elegido como formato cuenta como Short (F93).
   if (content.platform === "youtube" && content.format === "short") return "short";
 
   if (content.platform === "instagram") {
-    if (contentType === "story") return "story";
-    if (contentType === "reel") return "reel";
-    if (contentType === "carousel") return "carousel";
+    if (content.format === "story") return "story";
+    if (content.format === "reel") return "reel";
+    if (content.format === "carousel") return "carousel";
   }
 
   if (videos.length > 0) {

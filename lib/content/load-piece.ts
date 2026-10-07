@@ -63,8 +63,10 @@ export interface PieceData {
   connected: string[];
   automations: AutomationRule[];
   channelIdByPlatform: Record<string, string | null>;
-  /** Por donde puede salir cada red, para "Publicar por". */
+  /** Por donde puede salir cada red (C10: solo informativo, no se elige por pieza). */
   publishersByPlatform: Record<string, string[]>;
+  /** El publicador real de cada cuenta, el que usa el despachador (F13). */
+  defaultPublisherByPlatform: Record<string, string | null>;
   versions: StoredVersion[];
   authorNames: Record<string, string>;
   aiAvailable: boolean;
@@ -264,6 +266,9 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       ]),
     ),
     publishersByPlatform,
+    defaultPublisherByPlatform: Object.fromEntries(
+      (accountsRes.data ?? []).map((a) => [a.platform as string, (a.default_publisher as string | null) ?? null]),
+    ),
     versions: (versionsRes.data ?? []) as unknown as StoredVersion[],
     authorNames: Object.fromEntries(labels),
     aiAvailable: aiProviders.length > 0,

@@ -52,7 +52,7 @@ function seedDb(over: Record<string, unknown> = {}): MemoryDb {
         title: "Mi pieza",
         caption: "El caption base",
         media: [{ storage_path: `${WS}/p/a.jpg`, mime_type: "image/jpeg", kind: "image", size_bytes: 10 }],
-        networks: [{ platform: "instagram", options: { contentType: "reel" } }],
+        networks: [{ platform: "instagram", format: "reel" }],
         status: "scheduled",
       },
     ],
@@ -201,7 +201,7 @@ describe("publicar (F35)", () => {
     expect(input.text).toBe("El caption base");
     expect(input.mediaUrls[0]).toContain("https://signed.test/");
     expect(input.accountRef).toBe("ig-acc");
-    expect(input.options.contentType).toBe("reel");
+    expect(input.format).toBe("reel");
   });
 
   it("si la red tiene caption propio, se publica el propio", async () => {

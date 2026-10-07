@@ -111,7 +111,11 @@ export function normalizeNetworks(raw: unknown, library: MediaEntry[]): Networks
 
   const networks: NetworkEntry[] = [];
   for (const network of parsed.data) {
-    const entry = network as unknown as NetworkEntry;
+    // Contenido v4, C10: "Publicar por" ya no se elige por pieza. El unico
+    // publicador valido es el de la cuenta (F13); guardar uno por red solo
+    // podia dejarlo desincronizado en silencio si la cuenta cambiaba el suyo.
+    const { publisher: _publisher, ...rest } = network as unknown as NetworkEntry;
+    const entry = rest as NetworkEntry;
 
     if (entry.format) {
       if (!getFormat(entry.platform, entry.format)) {

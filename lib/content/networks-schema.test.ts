@@ -262,3 +262,11 @@ describe("Contenido v4 · el link de una publicacion a mano", () => {
     expect(cleanExternalUrl("youtube punto com").ok).toBe(false);
   });
 });
+
+describe("Contenido v4 · C10, 'Publicar por' ya no es de la pieza", () => {
+  it("normalizeNetworks descarta publisher: el efectivo es siempre el de la cuenta", () => {
+    const result = normalizeNetworks([{ platform: "instagram", publisher: "postproxy" }], []);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.networks[0]).not.toHaveProperty("publisher");
+  });
+});

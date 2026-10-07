@@ -428,8 +428,8 @@ describe("F93 · el servidor valida el formato y los archivos de cada red", () =
     expect(db.rows("social_posts")[0].media_type).toBe("carousel");
   });
 
-  it("el formato Reel marca el tipo aunque las opciones guardadas digan otra cosa", async () => {
-    seedFormat({ format: "reel", files: ["video"], options: { contentType: "feed" } });
+  it("el formato Reel marca el tipo (C9: el formato es la unica fuente)", async () => {
+    seedFormat({ format: "reel", files: ["video"] });
 
     await scheduleNetworks({ postId: POST });
 

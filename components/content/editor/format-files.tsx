@@ -11,7 +11,6 @@ import {
   getFormat,
   moveFile,
   requirementText,
-  suggestFormat,
   toggleFile,
 } from "@/lib/content/network-format";
 import type { NetworkEntry } from "@/lib/content/redistribution";
@@ -35,22 +34,17 @@ const field = "w-full rounded-lg border border-border bg-background px-3 py-2 te
 export function FormatFiles({
   network,
   library,
-  pieceFormat,
   editable,
   onChange,
 }: {
   network: NetworkEntry;
   library: MediaEntry[];
-  /** El formato escrito de la pieza, para sugerir uno. */
-  pieceFormat: string | null;
   editable: boolean;
   onChange: (patch: Partial<NetworkEntry>) => void;
 }) {
   const def = getFormat(network.platform, network.format);
   const live = liveMedia(library);
   const byId = new Map(live.map((m, index) => [idOf(m), { entry: m, index }]));
-  const suggested = !network.format ? suggestFormat(network.platform, pieceFormat) : null;
-  const suggestedLabel = suggested ? getFormat(network.platform, suggested)?.label : null;
 
   const legacyOwn = Array.isArray(network.media) ? network.media.length : 0;
 
@@ -85,18 +79,6 @@ export function FormatFiles({
               : "Esta red usa todos los archivos de la biblioteca."}{" "}
             Elegí un formato para decidir cuáles publica y en qué orden.
           </p>
-          {suggested && editable && (
-            <button
-              type="button"
-              onClick={() => {
-                const next = changeFormat(network, suggested, library);
-                onChange({ format: next.format, files: next.files, media: null });
-              }}
-              className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-accent"
-            >
-              Usar el sugerido: {suggestedLabel}
-            </button>
-          )}
         </div>
       ) : (
         <FilesPicker network={network} def={def} byId={byId} live={live} editable={editable} onChange={onChange} />

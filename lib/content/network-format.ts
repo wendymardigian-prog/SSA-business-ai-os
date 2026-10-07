@@ -201,13 +201,6 @@ export function moveFile(files: string[], id: string, direction: "up" | "down"):
 
 // ── El formato completa las opciones del publicador ───────────────────────
 
-const IG_CONTENT_TYPE: Record<string, string> = {
-  reel: "reel",
-  carousel: "carousel",
-  image: "feed",
-  story: "story",
-};
-
 const LINKEDIN_POST_TYPE: Record<string, string> = {
   text: "text",
   image: "image",
@@ -216,15 +209,15 @@ const LINKEDIN_POST_TYPE: Record<string, string> = {
 };
 
 /**
- * Lo que el formato agrega a `options`: el tipo de Instagram, video o fotos en
- * TikTok, el tipo de publicacion de LinkedIn. YouTube y Threads no agregan
- * nada: un Short lo decide YouTube segun el video.
+ * Lo que el formato agrega a `options`: video o fotos en TikTok, el tipo de
+ * publicacion de LinkedIn. Instagram ya no agrega nada aca (Contenido v4,
+ * C9): el publicador lee `format` directo (ver `zernio.ts instagramData`).
+ * YouTube y Threads tampoco: un Short lo decide YouTube segun el video.
  */
 export function optionsForFormat(platform: string, formatId: string | null | undefined): Record<string, unknown> {
   const def = getFormat(platform, formatId);
   if (!def) return {};
 
-  if (platform === "instagram") return { contentType: IG_CONTENT_TYPE[def.id] };
   if (platform === "tiktok") return { mediaType: def.id === "photos" ? "photo" : "video" };
   if (platform === "linkedin") return { postType: LINKEDIN_POST_TYPE[def.id] };
   return {};
@@ -239,25 +232,6 @@ export function resolveNetworkOptions(network: NetworkEntry): Record<string, unk
   return { ...(network.options ?? {}), ...optionsForFormat(network.platform, network.format) };
 }
 
-/** El formato que tenia una red ANTES de que existiera `format`, mirando sus opciones. */
-export function formatFromOptions(platform: string, options: Record<string, unknown> | null | undefined): string {
-  const o = options ?? {};
-
-  if (platform === "instagram") {
-    const t = o.contentType;
-    if (t === "reel" || t === "carousel" || t === "story") return t;
-    return "image";
-  }
-  if (platform === "linkedin") {
-    const t = o.postType;
-    if (t === "document") return "pdf";
-    if (t === "video") return "video";
-    if (t === "image" || t === "multi_image") return "image";
-    return "text";
-  }
-  if (platform === "threads") return "text";
-  return "video";
-}
 
 // ── Sugerir desde el formato de la pieza ───────────────────────────────────
 

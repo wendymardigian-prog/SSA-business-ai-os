@@ -33,9 +33,9 @@ import { summarizeNetwork } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords } from "@/lib/content/keywords";
 import { ensureMediaIds, removeFileFromNetworks, usageByFile } from "@/lib/content/media-library";
-import { CONTENT_PLATFORMS, resolveNetworkOptions } from "@/lib/content/network-format";
+import { changeFormat, CONTENT_PLATFORMS, resolveNetworkOptions, suggestFormat } from "@/lib/content/network-format";
 import { liveMedia } from "@/lib/content/media";
-import { resolveNetworkContent } from "@/lib/content/redistribution";
+import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import { networkStateOf, networkSummaryText } from "@/lib/content/network-state";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import {
@@ -98,6 +98,7 @@ export function PieceDrawer({
   onClose: () => void;
 }) {
   const { post, perms, publications, connected, automations, channelIdByPlatform, publishersByPlatform } = data;
+  const { defaultPublisherByPlatform } = data;
   const { versions, authorNames, aiAvailable, timeZone, taxonomy } = data;
 
   const router = useRouter();
@@ -791,8 +792,8 @@ export function PieceDrawer({
                     automations={automations}
                     channelId={channelIdByPlatform[network.platform] ?? null}
                     publishers={publishersByPlatform[network.platform] ?? []}
+                    defaultPublisher={defaultPublisherByPlatform[network.platform] ?? null}
                     library={library}
-                    pieceFormat={draft.format.trim() || null}
                     onToggle={() => setOpenNetwork(openNetwork === network.platform ? null : network.platform)}
                     onChange={(patch) =>
                       edit(
@@ -853,7 +854,17 @@ export function PieceDrawer({
                   key={platform}
                   type="button"
                   onClick={() => {
-                    edit("networks", [...draft.networks, { platform, planned_at: null, options: defaultOptionsFor(platform) }]);
+                    const base: NetworkEntry = {
+                      platform,
+                      planned_at: null,
+                      options: defaultOptionsFor(platform),
+                    };
+                    // El formato NO arranca vacio (C9): hereda el de la
+                    // pieza, ya elegido (y con sus archivos, si hay uno que
+                    // sirva), en vez de dejar que la persona lo adivine.
+                    const suggested = suggestFormat(platform, draft.format);
+                    const entry = suggested ? changeFormat(base, suggested, library) : base;
+                    edit("networks", [...draft.networks, entry]);
                     setOpenNetwork(platform);
                   }}
                   className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"

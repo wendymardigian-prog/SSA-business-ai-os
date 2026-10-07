@@ -6,17 +6,18 @@
  * `zernioScheduler` / `zernioPublisher`). Solo se simula el cliente del SDK.
  *
  * Es lo que decide si Instagram publica un Reel o un post de feed: el error
- * mas caro de toda la publicacion. Por eso:
+ * mas caro de toda la publicacion. Por eso **las salidas esperadas
+ * (`expected`) no se cambian nunca**: si unificar el formato (C9) cambia algo
+ * de lo que sale, el test tiene que ponerse rojo.
  *
- * - **Las salidas esperadas (`expected`) no se cambian nunca.** Si unificar el
- *   formato (C9) cambia algo de lo que sale, el test tiene que ponerse rojo.
- * - Las ENTRADAS si cambian: se escribio con las dos formas que existian el
- *   7/10/2026 (la vieja, `options.contentType`, y la nueva, `format`), y en C9
- *   la vieja desaparece. Lo que salia con `contentType: 'reel'` es lo que
- *   tiene que seguir saliendo con `format: 'reel'`.
- *
- * Hoy Instagram solo recibe `contentType: "story"`. Reel, feed y carrusel no
- * mandan tipo: Zernio lo deduce de `mediaItems` (un video, una imagen, varias).
+ * Se escribio el 7/10/2026, ANTES de C9, con las dos formas que existian
+ * entonces para pedir un tipo de Instagram: la vieja (`options.contentType`)
+ * y la nueva (`format`), probando que las dos daban la MISMA salida — esa
+ * prueba de equivalencia es lo que permitio migrar los datos con confianza
+ * (00126) y borrar despues la forma vieja. Ya borrada la vieja (C9 completo,
+ * 7/10/2026), los casos que pedian el tipo SOLO por `contentType` se
+ * sacaron: ya no es una entrada valida (el schema no la acepta mas). Los
+ * casos por `format` quedan, con la MISMA salida que entonces.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -112,7 +113,6 @@ const CASES: Case[] = [
     media: [file("v1", "video")],
     inputs: {
       "formato reel": { format: "reel", files: ["v1"], options: { shareToFeed: true } },
-      "contentType reel (modelo viejo)": { options: { contentType: "reel", shareToFeed: true } },
     },
     expected: {
       content: "Caption base",
@@ -129,7 +129,6 @@ const CASES: Case[] = [
     media: [file("i1", "image")],
     inputs: {
       "formato image": { format: "image", files: ["i1"] },
-      "contentType feed (modelo viejo)": { options: { contentType: "feed" } },
     },
     expected: {
       content: "Caption base",
@@ -144,7 +143,6 @@ const CASES: Case[] = [
     media: [file("i1", "image"), file("i2", "image"), file("i3", "image")],
     inputs: {
       "formato carousel": { format: "carousel", files: ["i1", "i2", "i3"] },
-      "contentType carousel (modelo viejo)": { options: { contentType: "carousel" } },
     },
     expected: {
       content: "Caption base",
@@ -163,7 +161,6 @@ const CASES: Case[] = [
     media: [file("v1", "video")],
     inputs: {
       "formato story": { format: "story", files: ["v1"] },
-      "contentType story (modelo viejo)": { options: { contentType: "story" } },
     },
     expected: {
       content: "Caption base",
@@ -183,9 +180,6 @@ const CASES: Case[] = [
         format: "reel",
         files: ["v1"],
         options: { collaborators: ["sofi.ramirez"], coverOffsetMs: 1500, shareToFeed: false },
-      },
-      "contentType reel (modelo viejo)": {
-        options: { contentType: "reel", collaborators: ["sofi.ramirez"], coverOffsetMs: 1500, shareToFeed: false },
       },
     },
     expected: {

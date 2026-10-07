@@ -5,16 +5,21 @@ import { AlertTriangle, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { NetworkBadge } from "../network-badge";
 import { FormatFiles } from "./format-files";
 import {
-  INSTAGRAM_CONTENT_TYPES,
-  INSTAGRAM_CONTENT_TYPE_LABELS,
   TIKTOK_MODES,
   TIKTOK_MODE_LABELS,
   TIKTOK_PRIVACY,
   TIKTOK_PRIVACY_LABELS,
+  THREADS_REPLY_CONTROL,
   YOUTUBE_VISIBILITY,
   YOUTUBE_VISIBILITY_LABELS,
   missingRequiredOptions,
 } from "@/lib/content/network-options";
+
+const THREADS_REPLY_CONTROL_LABELS: Record<(typeof THREADS_REPLY_CONTROL)[number], string> = {
+  everyone: "Cualquiera",
+  accounts_you_follow: "Solo a quienes sigo",
+  mentioned_only: "Solo a quien mencione",
+};
 import { createAutomationHref, checkCta, type AutomationRule, type CtaType } from "@/lib/content/keywords";
 import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
 import { getFormat } from "@/lib/content/network-format";
@@ -22,10 +27,11 @@ import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { NetworkSummary } from "@/lib/content/editor";
 import type { NetworkValidation } from "@/lib/content/validation";
 import type { MediaEntry } from "@/lib/content/media";
-import { networkCardView } from "@/lib/content/network-card";
+import { networkCardView, publisherLine } from "@/lib/content/network-card";
 import { networkStateOf, type NetworkPublication } from "@/lib/content/network-state";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { useState } from "react";
+import { PUBLISHER_LABELS as ACCOUNT_PUBLISHER_LABELS } from "@/lib/social/accounts-schema";
 
 /**
  * La fila de una red en el editor (C8).
@@ -92,11 +98,12 @@ export interface NetworkRowProps {
   automations: AutomationRule[];
   channelId: string | null;
   /** Los publicadores disponibles para esa red. */
+  /** Los publicadores USABLES de la cuenta (C10: solo para decidir si se muestra la linea). */
   publishers: string[];
+  /** El publicador real que usa esa cuenta (F13). */
+  defaultPublisher: string | null;
   /** La biblioteca de archivos de la pieza (F92). */
   library: MediaEntry[];
-  /** El formato escrito de la pieza, para sugerir el de la red (F93). */
-  pieceFormat: string | null;
   onToggle: () => void;
   onChange: (patch: Partial<NetworkEntry>) => void;
   onRemove: () => void;
@@ -132,6 +139,12 @@ export function NetworkRow(props: NetworkRowProps) {
     publication: props.publication,
     connected: props.connected,
   });
+  const publisherInfo = publisherLine({
+    available: props.publishers,
+    current: props.defaultPublisher,
+    labels: ACCOUNT_PUBLISHER_LABELS,
+  });
+
   const card = networkCardView({
     connected: props.connected,
     canPublish,
@@ -203,35 +216,29 @@ export function NetworkRow(props: NetworkRowProps) {
 
       {open && (
         <div className="space-y-3 border-t border-border p-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={`Fecha y hora en ${network.platform}`} hint="Cada red tiene la suya.">
-              <input
-                type="datetime-local"
-                value={isoToDatetimeInput(network.planned_at ?? null, props.timeZone)}
-                onChange={(e) =>
-                  props.onChange({ planned_at: datetimeInputToIso(e.target.value, props.timeZone) })
-                }
-                disabled={!editable && !canPublish}
-                className={field}
-              />
-            </Field>
+          <Field label={`Fecha y hora en ${network.platform}`} hint="Cada red tiene la suya.">
+            <input
+              type="datetime-local"
+              value={isoToDatetimeInput(network.planned_at ?? null, props.timeZone)}
+              onChange={(e) =>
+                props.onChange({ planned_at: datetimeInputToIso(e.target.value, props.timeZone) })
+              }
+              disabled={!editable && !canPublish}
+              className={field}
+            />
+          </Field>
 
-            <Field label="Publicar por" hint="Por dónde sale esta red.">
-              <select
-                value={network.publisher ?? ""}
-                onChange={(e) => props.onChange({ publisher: e.target.value || null })}
-                disabled={!editable}
-                className={field}
-              >
-                <option value="">El de la cuenta</option>
-                {props.publishers.map((p) => (
-                  <option key={p} value={p}>
-                    {PUBLISHER_LABELS[p] ?? p}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          {/* "Publicar por" ya no es de la pieza (C10): es de la cuenta, en
+              Integraciones (F13). Solo se avisa cuando hay mas de un camino
+              posible; con uno solo no hay nada que decidir. */}
+          {publisherInfo && (
+            <p className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+              Se publica con <b className="text-foreground">{publisherInfo}</b> ·{" "}
+              <Link href="/dashboard/settings/integrations" className="underline underline-offset-2">
+                cambiar en Integraciones
+              </Link>
+            </p>
+          )}
 
           <Field label={`Caption para ${network.platform}`} hint="Vacío = usa el caption base.">
             <textarea
@@ -258,7 +265,6 @@ export function NetworkRow(props: NetworkRowProps) {
           <FormatFiles
             network={network}
             library={props.library}
-            pieceFormat={props.pieceFormat}
             editable={editable}
             onChange={props.onChange}
           />
@@ -335,7 +341,6 @@ export function NetworkRow(props: NetworkRowProps) {
             options={options}
             disabled={!editable}
             onChange={setOption}
-            hideInstagramType={Boolean(network.format)}
           />
 
           {faltan.map((m) => (
@@ -530,46 +535,33 @@ function isFormatError(message: string): boolean {
   return /^(Faltan archivos|Sobran archivos|Un archivo no sirve)/.test(message);
 }
 
-const PUBLISHER_LABELS: Record<string, string> = {
-  zernio: "Zernio",
-  postproxy: "Postproxy",
-  youtube_api: "API oficial de YouTube",
-  linkedin_api: "API de LinkedIn",
-  threads_api: "API de Threads",
-};
 
-/** Lo propio de cada red (§9.5, A8, A9, A17). */
+/**
+ * Lo propio de cada red (§9.5, A8, A9, A17, C10).
+ *
+ * "Tipo" de Instagram ya no existe: era el mismo dato que el formato,
+ * duplicado (C9). Lo que queda de Instagram es lo que el formato NO decide:
+ * compartir el Reel tambien en el feed.
+ */
 function NetworkOptions({
   platform,
   options,
   disabled,
   onChange,
-  hideInstagramType,
 }: {
   platform: string;
   options: Record<string, unknown>;
   disabled: boolean;
   onChange: (key: string, value: unknown) => void;
-  /** Con formato elegido, el tipo de Instagram lo decide el formato. */
-  hideInstagramType?: boolean;
 }) {
   if (platform === "instagram") {
-    if (hideInstagramType) return null;
     return (
-      <Field label="Tipo">
-        <select
-          value={String(options.contentType ?? "feed")}
-          onChange={(e) => onChange("contentType", e.target.value)}
-          disabled={disabled}
-          className={field}
-        >
-          {INSTAGRAM_CONTENT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {INSTAGRAM_CONTENT_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <Check
+        label="Compartir también en el feed"
+        checked={options.shareToFeed !== false}
+        disabled={disabled}
+        onChange={(v) => onChange("shareToFeed", v)}
+      />
     );
   }
 
@@ -679,6 +671,25 @@ function NetworkOptions({
           />
         </div>
       </div>
+    );
+  }
+
+  if (platform === "threads") {
+    return (
+      <Field label="Quién puede responder">
+        <select
+          value={String(options.replyControl ?? "everyone")}
+          onChange={(e) => onChange("replyControl", e.target.value)}
+          disabled={disabled}
+          className={field}
+        >
+          {THREADS_REPLY_CONTROL.map((v) => (
+            <option key={v} value={v}>
+              {THREADS_REPLY_CONTROL_LABELS[v]}
+            </option>
+          ))}
+        </select>
+      </Field>
     );
   }
 

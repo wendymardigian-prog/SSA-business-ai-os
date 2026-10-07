@@ -18,18 +18,12 @@ import { z } from "zod";
 
 // ── Instagram (A9) ─────────────────────────────────────────────────────────
 
-export const INSTAGRAM_CONTENT_TYPES = ["feed", "carousel", "reel", "story"] as const;
-export type InstagramContentType = (typeof INSTAGRAM_CONTENT_TYPES)[number];
-
-export const INSTAGRAM_CONTENT_TYPE_LABELS: Record<InstagramContentType, string> = {
-  feed: "Feed",
-  carousel: "Carrusel",
-  reel: "Reel",
-  story: "Historia",
-};
-
+/**
+ * El tipo de Instagram ("Tipo") se elimino: era el mismo dato que `format`,
+ * duplicado (Contenido v4, C9). `networks[].format` es ahora el unico campo
+ * de formato.
+ */
 export const instagramOptionsSchema = z.object({
-  contentType: z.enum(INSTAGRAM_CONTENT_TYPES).optional(),
   /** Un Reel tambien aparece en el feed. */
   shareToFeed: z.boolean().optional(),
   collaborators: z.array(z.string()).max(3).optional(),
@@ -159,7 +153,6 @@ export function missingRequiredOptions(platform: string, raw: unknown): string[]
 
 /** Lo que se guarda al agregar una red nueva a una pieza. */
 export function defaultOptionsFor(platform: string): NetworkOptions {
-  if (platform === "instagram") return { contentType: "feed" };
   if (platform === "tiktok") {
     return {
       mode: "public",
