@@ -99,13 +99,13 @@ GRANT EXECUTE ON FUNCTION public.purge_old_messages(integer, integer) TO service
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-messages');
+  PERFORM cron.unschedule('purge-messages');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-messages',
+  'purge-messages',
   '0 5 * * *',
   $$SELECT public.purge_old_messages(12)$$
 );

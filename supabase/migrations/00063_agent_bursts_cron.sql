@@ -111,9 +111,9 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-agent-bursts',
-    'ssa-cron-purge-pg-net',
-    'ssa-cron-purge-cron-runs'
+    'agent-bursts',
+    'purge-pg-net',
+    'purge-cron-runs'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -123,21 +123,21 @@ END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-bursts',
+  'agent-bursts',
   '15 seconds',
   $$SELECT private.call_app_cron('agent-bursts')$$
 );
 
 -- Cada hora al minuto 10, 1 dia de retencion (antes: 4:10 diario, 3 dias).
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 * * * *',
   $$SELECT private.purge_pg_net_responses(1)$$
 );
 
 -- 5:20, despues de las purgas de mensajes (5:00) y de pasos del agente (5:10).
 SELECT cron.schedule(
-  'ssa-cron-purge-cron-runs',
+  'purge-cron-runs',
   '20 5 * * *',
   $$SELECT private.purge_cron_run_details(3)$$
 );

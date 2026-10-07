@@ -125,14 +125,14 @@ GRANT EXECUTE ON FUNCTION public.purge_send_windows(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-send-windows') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-send-windows');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-send-windows') THEN
+    PERFORM cron.unschedule('purge-send-windows');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-send-windows',
+  'purge-send-windows',
   '20 4 * * *',
   $$SELECT public.purge_send_windows(2)$$
 );

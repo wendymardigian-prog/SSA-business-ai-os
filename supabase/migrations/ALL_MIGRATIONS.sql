@@ -4147,11 +4147,11 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-jobs',
-    'ssa-cron-sequences',
-    'ssa-cron-whatsapp-health',
-    'ssa-cron-purge-deleted',
-    'ssa-cron-purge-pg-net'
+    'jobs',
+    'sequences',
+    'whatsapp-health',
+    'purge-deleted',
+    'purge-pg-net'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -4162,14 +4162,14 @@ $$;
 
 -- Despierta las sesiones de flow dormidas (nodos Delay) y manda los broadcasts.
 SELECT cron.schedule(
-  'ssa-cron-jobs',
+  'jobs',
   '* * * * *',
   $$SELECT private.call_app_cron('jobs')$$
 );
 
 -- Avanza los pasos de las secuencias.
 SELECT cron.schedule(
-  'ssa-cron-sequences',
+  'sequences',
   '* * * * *',
   $$SELECT private.call_app_cron('sequences')$$
 );
@@ -4178,7 +4178,7 @@ SELECT cron.schedule(
 -- nada, porque no hay ningun canal de Evolution: queda agendado para que el
 -- dia que se conecte el numero no haya que acordarse de esto.
 SELECT cron.schedule(
-  'ssa-cron-whatsapp-health',
+  'whatsapp-health',
   '*/5 * * * *',
   $$SELECT private.call_app_cron('whatsapp-health')$$
 );
@@ -4186,13 +4186,13 @@ SELECT cron.schedule(
 -- La purga es puro SQL: se llama directo, sin dar la vuelta por HTTP. La ruta
 -- /api/cron/purge-deleted se conserva para poder correrla a mano.
 SELECT cron.schedule(
-  'ssa-cron-purge-deleted',
+  'purge-deleted',
   '0 4 * * *',
   $$SELECT public.purge_soft_deleted(30)$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 4 * * *',
   $$SELECT private.purge_pg_net_responses(3)$$
 );
@@ -4345,14 +4345,14 @@ GRANT EXECUTE ON FUNCTION public.purge_send_windows(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-send-windows') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-send-windows');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-send-windows') THEN
+    PERFORM cron.unschedule('purge-send-windows');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-send-windows',
+  'purge-send-windows',
   '20 4 * * *',
   $$SELECT public.purge_send_windows(2)$$
 );
@@ -4554,14 +4554,14 @@ GRANT EXECUTE ON FUNCTION public.purge_trigger_fires(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-trigger-fires') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-trigger-fires');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-trigger-fires') THEN
+    PERFORM cron.unschedule('purge-trigger-fires');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-trigger-fires',
+  'purge-trigger-fires',
   '30 4 * * *',
   $$SELECT public.purge_trigger_fires(90)$$
 );
@@ -4569,14 +4569,14 @@ SELECT cron.schedule(
 -- El trigger de inactividad corre por cron cada 15 minutos.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-inactivity') THEN
-    PERFORM cron.unschedule('ssa-cron-inactivity');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'inactivity') THEN
+    PERFORM cron.unschedule('inactivity');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-inactivity',
+  'inactivity',
   '*/15 * * * *',
   $$SELECT private.call_app_cron('inactivity')$$
 );
@@ -4881,11 +4881,11 @@ GRANT EXECUTE ON FUNCTION public.purge_automation_events(integer) TO service_rol
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'automation-events') THEN
+    PERFORM cron.unschedule('automation-events');
   END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-automation-events') THEN
+    PERFORM cron.unschedule('purge-automation-events');
   END IF;
 END;
 $$;
@@ -4893,13 +4893,13 @@ $$;
 -- Cada minuto: un contacto nuevo que tiene que recibir un mensaje de
 -- bienvenida no puede esperar un cuarto de hora.
 SELECT cron.schedule(
-  'ssa-cron-automation-events',
+  'automation-events',
   '* * * * *',
   $$SELECT private.call_app_cron('automation-events')$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-automation-events',
+  'purge-automation-events',
   '40 4 * * *',
   $$SELECT public.purge_automation_events(7)$$
 );
@@ -6188,14 +6188,14 @@ GRANT EXECUTE ON FUNCTION public.purge_read_notifications(integer) TO service_ro
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-notifications');
+  PERFORM cron.unschedule('purge-notifications');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 4:50: las otras purgas ya ocupan :00, :10, :20, :30 y :40.
 SELECT cron.schedule(
-  'ssa-cron-purge-notifications',
+  'purge-notifications',
   '50 4 * * *',
   $$SELECT public.purge_read_notifications(60)$$
 );
@@ -6530,13 +6530,13 @@ GRANT EXECUTE ON FUNCTION public.purge_old_messages(integer, integer) TO service
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-messages');
+  PERFORM cron.unschedule('purge-messages');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-messages',
+  'purge-messages',
   '0 5 * * *',
   $$SELECT public.purge_old_messages(12)$$
 );
@@ -7238,14 +7238,14 @@ GRANT EXECUTE ON FUNCTION public.purge_agent_run_step_content(integer) TO servic
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-agent-steps');
+  PERFORM cron.unschedule('purge-agent-steps');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 5:10, despues de la purga de mensajes de las 5:00.
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-steps',
+  'purge-agent-steps',
   '10 5 * * *',
   $$SELECT public.purge_agent_run_step_content(12)$$
 );
@@ -7783,9 +7783,9 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-agent-bursts',
-    'ssa-cron-purge-pg-net',
-    'ssa-cron-purge-cron-runs'
+    'agent-bursts',
+    'purge-pg-net',
+    'purge-cron-runs'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -7795,21 +7795,21 @@ END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-bursts',
+  'agent-bursts',
   '15 seconds',
   $$SELECT private.call_app_cron('agent-bursts')$$
 );
 
 -- Cada hora al minuto 10, 1 dia de retencion (antes: 4:10 diario, 3 dias).
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 * * * *',
   $$SELECT private.purge_pg_net_responses(1)$$
 );
 
 -- 5:20, despues de las purgas de mensajes (5:00) y de pasos del agente (5:10).
 SELECT cron.schedule(
-  'ssa-cron-purge-cron-runs',
+  'purge-cron-runs',
   '20 5 * * *',
   $$SELECT private.purge_cron_run_details(3)$$
 );
@@ -8640,7 +8640,7 @@ DO $$
 DECLARE
   v_job text;
 BEGIN
-  FOREACH v_job IN ARRAY ARRAY['ssa-cron-agent-drafts-sweep', 'ssa-cron-purge-agent-drafts'] LOOP
+  FOREACH v_job IN ARRAY ARRAY['agent-drafts-sweep', 'purge-agent-drafts'] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
     END IF;
@@ -8648,13 +8648,13 @@ BEGIN
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-drafts-sweep',
+  'agent-drafts-sweep',
   '*/5 * * * *',
   $$SELECT private.sweep_agent_drafts()$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-drafts',
+  'purge-agent-drafts',
   '30 5 * * *',
   $$SELECT public.purge_agent_draft_content(12)$$
 );
@@ -9233,13 +9233,13 @@ REVOKE ALL ON FUNCTION private.alert_draft_windows() FROM PUBLIC, anon, authenti
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-draft-window-alerts') THEN
-    PERFORM cron.unschedule('ssa-cron-draft-window-alerts');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'draft-window-alerts') THEN
+    PERFORM cron.unschedule('draft-window-alerts');
   END IF;
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-draft-window-alerts',
+  'draft-window-alerts',
   '*/5 * * * *',
   $$SELECT private.alert_draft_windows()$$
 );
@@ -9960,7 +9960,7 @@ COMMENT ON FUNCTION public.normalize_for_grouping(text) IS
 --      saliente, descarta el borrador pendiente/fallido de esa conversación si
 --      es posterior a su ráfaga y no salió de su propio run. auto:manual_reply
 --      si el saliente es de una persona, auto:answered_elsewhere si no.
---   5. Cron ssa-cron-drafts-refresh cada 5 min (refresca contra Zernio las
+--   5. Cron drafts-refresh cada 5 min (refresca contra Zernio las
 --      conversaciones con borrador pendiente) + whitelist de call_app_cron.
 --
 -- Idempotente. Aditiva.
@@ -10105,10 +10105,10 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-drafts-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-drafts-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'drafts-refresh') THEN
+    PERFORM cron.unschedule('drafts-refresh');
   END IF;
-  PERFORM cron.schedule('ssa-cron-drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
+  PERFORM cron.schedule('drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
 END $$;
 
 -- ============================================================
@@ -10652,7 +10652,7 @@ GRANT EXECUTE ON FUNCTION public.chat_dashboard_patterns(uuid, text, timestamptz
 --      no es conversación en vivo (clasificación, resumen, cierre, indexación).
 --   2. agent_runs.intent (jsonb): la intención que declara el agente en cada
 --      turno (F26). Con GRANT SELECT (no es un costo).
---   3. Cron ssa-cron-bg-dispatch y ssa-cron-bg-collect cada 15 min + whitelist.
+--   3. Cron bg-dispatch y bg-collect cada 15 min + whitelist.
 --
 -- Idempotente y aditiva.
 -- ============================================================================
@@ -10685,10 +10685,10 @@ END; $$;
 REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
 
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-dispatch') THEN PERFORM cron.unschedule('ssa-cron-bg-dispatch'); END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-collect') THEN PERFORM cron.unschedule('ssa-cron-bg-collect'); END IF;
-  PERFORM cron.schedule('ssa-cron-bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
-  PERFORM cron.schedule('ssa-cron-bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-dispatch') THEN PERFORM cron.unschedule('bg-dispatch'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-collect') THEN PERFORM cron.unschedule('bg-collect'); END IF;
+  PERFORM cron.schedule('bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
+  PERFORM cron.schedule('bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
 END $$;
 
 -- ============================================================
@@ -10971,11 +10971,11 @@ END; $function$;
 -- quedan menos de 15: una vez por semana alcanza de sobra.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-social-token-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-social-token-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'social-token-refresh') THEN
+    PERFORM cron.unschedule('social-token-refresh');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-social-token-refresh',
+    'social-token-refresh',
     '40 4 * * 1',
     $cron$SELECT private.call_app_cron('social-token-refresh')$cron$
   );
@@ -11505,11 +11505,11 @@ END; $function$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-media-cleanup') THEN
-    PERFORM cron.unschedule('ssa-cron-content-media-cleanup');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-media-cleanup') THEN
+    PERFORM cron.unschedule('content-media-cleanup');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-content-media-cleanup',
+    'content-media-cleanup',
     '50 5 * * *',
     $cron$SELECT private.call_app_cron('content-media-cleanup')$cron$
   );
@@ -11969,14 +11969,14 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-metrics-sync') THEN
-    PERFORM cron.unschedule('ssa-cron-metrics-sync');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'metrics-sync') THEN
+    PERFORM cron.unschedule('metrics-sync');
   END IF;
   -- Al minuto 30 de cada hora: la ruta se queda con los workspaces cuya hora
   -- local es 03:30. Las zonas con medias horas (India, Nepal) entran igual
   -- porque la ruta compara la hora local, no el offset.
   PERFORM cron.schedule(
-    'ssa-cron-metrics-sync',
+    'metrics-sync',
     '30 * * * *',
     $cron$SELECT private.call_app_cron('metrics-sync')$cron$
   );
@@ -12726,11 +12726,11 @@ END; $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    PERFORM cron.unschedule('ssa-cron-content-upload')
-      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-upload');
+    PERFORM cron.unschedule('content-upload')
+      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-upload');
 
     PERFORM cron.schedule(
-      'ssa-cron-content-upload',
+      'content-upload',
       '*/2 * * * *',
       $cron$SELECT private.call_app_cron('content-upload');$cron$
     );
@@ -18536,3 +18536,50 @@ exception when others then
   return new;
 end;
 $$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- MIGRATION 120: RENAME CRON JOBS
+-- ============================================================
+-- ============================================================
+-- 00120_rename_cron_jobs.sql
+--
+-- Los 25 cron jobs se agendaron con el prefijo 'ssa-cron-' (00036 a 00092).
+-- Las migraciones de origen ya se editaron para agendar sin el prefijo
+-- ('jobs', 'sequences', 'purge-deleted', etc.): un clon nuevo, que corre esas
+-- migraciones desde cero, nace directo con los nombres neutros y esta
+-- migracion no encuentra nada que renombrar (el bloque de abajo es un no-op).
+--
+-- En una base donde 00036-00092 ya corrieron con los nombres viejos (como la
+-- de produccion), hay que des-agendar cada 'ssa-cron-X' y agendar 'X' en su
+-- lugar, con el mismo horario y el mismo comando que ya tenia: se leen de
+-- `cron.job`, no se repiten a mano, para no poder transcribirlos mal.
+--
+-- Idempotente: una segunda corrida no encuentra ningun 'ssa-cron-%' (ya
+-- renombrados) y no hace nada. Si pg_cron no esta habilitado (por ejemplo un
+-- entorno de desarrollo sin la extension), tambien no hace nada.
+-- ============================================================
+
+do $$
+declare
+  r record;
+  new_name text;
+begin
+  if to_regclass('cron.job') is null then
+    return;
+  end if;
+
+  for r in
+    select jobid, jobname, schedule, command
+    from cron.job
+    where jobname like 'ssa-cron-%'
+  loop
+    new_name := regexp_replace(r.jobname, '^ssa-cron-', '');
+
+    -- Por si una corrida anterior quedo a mitad de camino: no duplicar.
+    if not exists (select 1 from cron.job where jobname = new_name) then
+      perform cron.schedule(new_name, r.schedule, r.command);
+    end if;
+
+    perform cron.unschedule(r.jobid);
+  end loop;
+end $$;

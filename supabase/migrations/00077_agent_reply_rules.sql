@@ -23,7 +23,7 @@
 --      saliente, descarta el borrador pendiente/fallido de esa conversación si
 --      es posterior a su ráfaga y no salió de su propio run. auto:manual_reply
 --      si el saliente es de una persona, auto:answered_elsewhere si no.
---   5. Cron ssa-cron-drafts-refresh cada 5 min (refresca contra Zernio las
+--   5. Cron drafts-refresh cada 5 min (refresca contra Zernio las
 --      conversaciones con borrador pendiente) + whitelist de call_app_cron.
 --
 -- Idempotente. Aditiva.
@@ -168,8 +168,8 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-drafts-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-drafts-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'drafts-refresh') THEN
+    PERFORM cron.unschedule('drafts-refresh');
   END IF;
-  PERFORM cron.schedule('ssa-cron-drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
+  PERFORM cron.schedule('drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
 END $$;

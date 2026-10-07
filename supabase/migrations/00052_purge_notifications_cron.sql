@@ -19,14 +19,14 @@
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-notifications');
+  PERFORM cron.unschedule('purge-notifications');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 4:50: las otras purgas ya ocupan :00, :10, :20, :30 y :40.
 SELECT cron.schedule(
-  'ssa-cron-purge-notifications',
+  'purge-notifications',
   '50 4 * * *',
   $$SELECT public.purge_read_notifications(60)$$
 );

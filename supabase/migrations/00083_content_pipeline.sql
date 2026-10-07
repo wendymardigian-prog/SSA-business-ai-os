@@ -519,11 +519,11 @@ END; $function$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-media-cleanup') THEN
-    PERFORM cron.unschedule('ssa-cron-content-media-cleanup');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-media-cleanup') THEN
+    PERFORM cron.unschedule('content-media-cleanup');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-content-media-cleanup',
+    'content-media-cleanup',
     '50 5 * * *',
     $cron$SELECT private.call_app_cron('content-media-cleanup')$cron$
   );

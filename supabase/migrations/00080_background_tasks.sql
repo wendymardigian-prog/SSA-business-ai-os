@@ -5,7 +5,7 @@
 --      no es conversación en vivo (clasificación, resumen, cierre, indexación).
 --   2. agent_runs.intent (jsonb): la intención que declara el agente en cada
 --      turno (F26). Con GRANT SELECT (no es un costo).
---   3. Cron ssa-cron-bg-dispatch y ssa-cron-bg-collect cada 15 min + whitelist.
+--   3. Cron bg-dispatch y bg-collect cada 15 min + whitelist.
 --
 -- Idempotente y aditiva.
 -- ============================================================================
@@ -38,8 +38,8 @@ END; $$;
 REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
 
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-dispatch') THEN PERFORM cron.unschedule('ssa-cron-bg-dispatch'); END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-collect') THEN PERFORM cron.unschedule('ssa-cron-bg-collect'); END IF;
-  PERFORM cron.schedule('ssa-cron-bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
-  PERFORM cron.schedule('ssa-cron-bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-dispatch') THEN PERFORM cron.unschedule('bg-dispatch'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-collect') THEN PERFORM cron.unschedule('bg-collect'); END IF;
+  PERFORM cron.schedule('bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
+  PERFORM cron.schedule('bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
 END $$;

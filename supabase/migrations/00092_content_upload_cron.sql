@@ -47,11 +47,11 @@ END; $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    PERFORM cron.unschedule('ssa-cron-content-upload')
-      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-upload');
+    PERFORM cron.unschedule('content-upload')
+      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-upload');
 
     PERFORM cron.schedule(
-      'ssa-cron-content-upload',
+      'content-upload',
       '*/2 * * * *',
       $cron$SELECT private.call_app_cron('content-upload');$cron$
     );

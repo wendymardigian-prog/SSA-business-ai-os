@@ -192,14 +192,14 @@ GRANT EXECUTE ON FUNCTION public.purge_trigger_fires(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-trigger-fires') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-trigger-fires');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-trigger-fires') THEN
+    PERFORM cron.unschedule('purge-trigger-fires');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-trigger-fires',
+  'purge-trigger-fires',
   '30 4 * * *',
   $$SELECT public.purge_trigger_fires(90)$$
 );
@@ -207,14 +207,14 @@ SELECT cron.schedule(
 -- El trigger de inactividad corre por cron cada 15 minutos.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-inactivity') THEN
-    PERFORM cron.unschedule('ssa-cron-inactivity');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'inactivity') THEN
+    PERFORM cron.unschedule('inactivity');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-inactivity',
+  'inactivity',
   '*/15 * * * *',
   $$SELECT private.call_app_cron('inactivity')$$
 );
