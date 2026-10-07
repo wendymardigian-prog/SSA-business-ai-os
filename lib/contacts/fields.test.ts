@@ -49,6 +49,33 @@ describe("validateContactField", () => {
     expect(validateContactField("phone", "")).toEqual({ ok: true, value: null });
     expect(validateContactField("email", null)).toEqual({ ok: true, value: null });
   });
+
+  describe("next_followup_date (kind: date)", () => {
+    it("un datetime-local sin zona se lee en la zona que se le pasa, no en UTC", () => {
+      // 14:30 en Buenos Aires (UTC-3) es 17:30 UTC.
+      const result = validateContactField("next_followup_date", "2026-03-15T14:30", "America/Argentina/Buenos_Aires");
+      expect(result).toEqual({ ok: true, value: "2026-03-15T17:30:00.000Z" });
+    });
+
+    it("sin zona, cae a UTC (nunca a la del servidor)", () => {
+      const result = validateContactField("next_followup_date", "2026-03-15T14:30");
+      expect(result).toEqual({ ok: true, value: "2026-03-15T14:30:00.000Z" });
+    });
+
+    it("un ISO con offset (lo manda FollowupField) se parsea tal cual, sin reinterpretar", () => {
+      const result = validateContactField("next_followup_date", "2026-03-15T15:00:00.000Z", "America/Argentina/Buenos_Aires");
+      expect(result).toEqual({ ok: true, value: "2026-03-15T15:00:00.000Z" });
+    });
+
+    it("una fecha sola (la que manda un CSV) se sigue aceptando igual que siempre", () => {
+      const result = validateContactField("next_followup_date", "2026-03-15");
+      expect(result.ok).toBe(true);
+    });
+
+    it("una fecha invalida da error", () => {
+      expect(validateContactField("next_followup_date", "no es una fecha").ok).toBe(false);
+    });
+  });
 });
 
 describe("validateContactInput", () => {

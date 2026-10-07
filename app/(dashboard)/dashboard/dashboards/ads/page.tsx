@@ -7,6 +7,8 @@ import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
 import { fetchUniqueReach } from "@/lib/meta/live";
+import { isoToDateInput } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +65,7 @@ export default async function AdsDashboardPage({
   const adAccountId = resolved.adAccountId;
   const account = accounts.find((a) => a.ad_account_id === adAccountId);
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
   const range = resolvePeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
@@ -71,14 +73,14 @@ export default async function AdsDashboardPage({
   const token = await getMetaToken(supabase, workspace.id);
 
   const [rows, previousRows, live] = await Promise.all([
-    loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range }),
-    loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before }),
+    loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
+    loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
     token && range.from
       ? fetchUniqueReach({
           token,
           adAccountId,
-          since: range.from.slice(0, 10),
-          until: (range.to ?? now.toISOString()).slice(0, 10),
+          since: isoToDateInput(range.from, timeZone),
+          until: range.to ? isoToDateInput(range.to, timeZone) : isoToDateInput(now.toISOString(), timeZone),
         })
       : Promise.resolve(null),
   ]);

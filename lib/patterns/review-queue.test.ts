@@ -61,13 +61,14 @@ describe("accuracyByWeek", () => {
         { reviewedAt: "2026-09-22T10:00:00.000Z", reviewResult: "ok" },
       ],
       weeks,
+      "UTC",
     );
     expect(out[0]).toEqual({ weekStart: "2026-09-14", reviewed: 2, accuracy: 50 });
     expect(out[1]).toEqual({ weekStart: "2026-09-21", reviewed: 1, accuracy: 100 });
   });
 
   it("una semana sin revisiones es un hueco, no un 0 %", () => {
-    const out = accuracyByWeek([], weeks);
+    const out = accuracyByWeek([], weeks, "UTC");
     expect(out.every((w) => w.accuracy === null)).toBe(true);
   });
 
@@ -75,14 +76,32 @@ describe("accuracyByWeek", () => {
     const out = accuracyByWeek(
       [{ reviewedAt: "x", reviewResult: "ok" }, { reviewedAt: "2026-09-15T10:00:00.000Z", reviewResult: null }],
       weeks,
+      "UTC",
     );
     expect(out[0].reviewed).toBe(0);
+  });
+
+  it("la semana se corta en la zona del negocio, no en UTC", () => {
+    // Martes 15 a las 23:30 UTC es ya miercoles 16 en Asia/Tokyo (UTC+9),
+    // pero sigue siendo la semana del 14.
+    const out = accuracyByWeek(
+      [{ reviewedAt: "2026-09-15T23:30:00.000Z", reviewResult: "ok" }],
+      weeks,
+      "Asia/Tokyo",
+    );
+    expect(out[0]).toEqual({ weekStart: "2026-09-14", reviewed: 1, accuracy: 100 });
   });
 });
 
 describe("lastWeeks", () => {
   it("son lunes consecutivos, del mas viejo al mas nuevo", () => {
-    expect(lastWeeks(new Date("2026-09-25T00:00:00.000Z"), 3)).toEqual(["2026-09-07", "2026-09-14", "2026-09-21"]);
+    expect(lastWeeks(new Date("2026-09-25T00:00:00.000Z"), 3, "UTC")).toEqual(["2026-09-07", "2026-09-14", "2026-09-21"]);
+  });
+
+  it("se corta en la zona del negocio, no en UTC", () => {
+    // 2026-09-25T23:30:00Z es ya 26/9 en Asia/Tokyo, pero sigue siendo la
+    // semana del 21.
+    expect(lastWeeks(new Date("2026-09-25T23:30:00.000Z"), 1, "Asia/Tokyo")).toEqual(["2026-09-21"]);
   });
 });
 

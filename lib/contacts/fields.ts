@@ -13,6 +13,7 @@
  */
 
 import { normalizePhone } from "@/lib/phone";
+import { datetimeInputToIso } from "@/lib/dates";
 import type { LeadTemperature } from "@/lib/types/database";
 
 export type FieldResult =
@@ -85,8 +86,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_TEXT = 500;
 const MAX_LONG_TEXT = 10000;
 
-/** Normaliza y valida un campo. Vacio siempre es valido: todos son opcionales. */
-export function validateContactField(key: ContactFieldKey, raw: unknown): FieldResult {
+/**
+ * Normaliza y valida un campo. Vacio siempre es valido: todos son opcionales.
+ *
+ * `timeZone` solo importa para el campo "date": sin ella, un
+ * <input type="datetime-local"> (sin zona en el string) se interpretaria en
+ * la zona del SERVIDOR, que no es la de quien lo escribio.
+ */
+export function validateContactField(key: ContactFieldKey, raw: unknown, timeZone?: string): FieldResult {
   const def = FIELD_BY_KEY.get(key);
   if (!def) return { ok: false, error: `Campo desconocido: ${key}` };
 
@@ -146,11 +153,24 @@ export function validateContactField(key: ContactFieldKey, raw: unknown): FieldR
     }
 
     case "date": {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
+      // Un <input type="datetime-local"> sin zona en el string
+      // ("YYYY-MM-DDTHH:mm", lo manda el editor de la ficha) se interpreta en
+      // la zona de quien lo escribio, o un dia distinto segun la zona del
+      // servidor. Cualquier otra forma (una fecha sola, un ISO con offset —
+      // lo que mandan el CSV y FollowupField) se sigue parseando tal cual,
+      // que es el comportamiento de siempre.
+      const isBareDatetimeLocal = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value);
+      const iso = isBareDatetimeLocal
+        ? datetimeInputToIso(value, timeZone ?? "UTC")
+        : (() => {
+            const parsed = new Date(value);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+          })();
+
+      if (!iso) {
         return { ok: false, error: `${def.label}: "${value}" no es una fecha valida` };
       }
-      return { ok: true, value: parsed.toISOString() };
+      return { ok: true, value: iso };
     }
 
     default:
@@ -174,12 +194,13 @@ export type ContactPatch = Partial<
  */
 export function validateContactInput(
   input: Record<string, unknown>,
+  timeZone?: string,
 ): { ok: true; patch: ContactPatch } | { ok: false; error: string } {
   const patch: ContactPatch = {};
 
   for (const def of CONTACT_FIELDS) {
     if (!(def.key in input)) continue;
-    const result = validateContactField(def.key, input[def.key]);
+    const result = validateContactField(def.key, input[def.key], timeZone);
     if (!result.ok) return result;
     if (def.key === "lead_temperature") {
       patch.lead_temperature = result.value as LeadTemperature | null;

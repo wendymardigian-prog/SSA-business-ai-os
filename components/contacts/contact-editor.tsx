@@ -17,6 +17,8 @@ import {
   setDoNotContact,
   softDeleteContact,
 } from "@/lib/actions/contacts";
+import { isoToDatetimeInput } from "@/lib/dates";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ActionError } from "./ui";
 
 /**
@@ -44,6 +46,7 @@ export function ContactEditor({
   isAdmin: boolean;
 }) {
   const router = useRouter();
+  const timeZone = useViewerTimezone();
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState<Values>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +63,7 @@ export function ContactEditor({
   function save() {
     // Chequeo local primero: asi el error sale al instante y sin round trip.
     for (const field of CONTACT_FIELDS) {
-      const result = validateContactField(field.key, values[field.key] ?? null);
+      const result = validateContactField(field.key, values[field.key] ?? null, timeZone);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -208,7 +211,7 @@ export function ContactEditor({
               <input
                 id={`contact-${field.key}`}
                 type={field.kind === "date" ? "datetime-local" : "text"}
-                value={toInputValue(field.kind, values[field.key])}
+                value={toInputValue(field.kind, values[field.key], timeZone)}
                 onChange={(e) => set(field.key, e.target.value)}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
@@ -252,11 +255,13 @@ export function ContactEditor({
  * <input type="datetime-local"> no acepta un ISO con zona: quiere
  * "YYYY-MM-DDTHH:mm" en hora local. La base guarda UTC, asi que hay que
  * traducir en los dos sentidos.
+ *
+ * "Local" es la zona de QUIEN MIRA, no la del navegador: usar
+ * `date.getHours()` etc. (hora del navegador) significa que lo que se ve
+ * tipeado no es lo que termina guardado si el navegador y el servidor estan
+ * en zonas distintas. `isoToDatetimeInput` (lib/dates.ts) lo hace explicito.
  */
-function toInputValue(kind: string, value: string | undefined): string {
+function toInputValue(kind: string, value: string | undefined, timeZone: string): string {
   if (kind !== "date" || !value) return value ?? "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return isoToDatetimeInput(value, timeZone);
 }

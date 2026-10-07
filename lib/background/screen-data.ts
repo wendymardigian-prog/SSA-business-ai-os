@@ -172,7 +172,8 @@ export async function loadBackgroundScreen(workspaceId: string, timezone: string
     quality: { ...quality, calibration: confidenceCalibration(reviewed) },
     accuracyWeeks: accuracyByWeek(
       texts.map((t) => ({ reviewedAt: t.reviewed_at, reviewResult: t.review_result })),
-      lastWeeks(now, 7),
+      lastWeeks(now, 7, timezone),
+      timezone,
     ),
     mostCorrected: mostCorrectedCategories(
       texts.map((t) => ({

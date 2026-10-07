@@ -14,6 +14,7 @@ import type { AgentToolContext, AgentToolDefinition } from "../types";
 import { schedulingConfigOf, schedulingSkillSchema, schedulingUsable, type SchedulingSkillConfig } from "./config";
 import { getPublicSlots } from "@/lib/scheduling/slots-service";
 import { formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
+import { startOfDay } from "@/lib/dates";
 import { categoryLabel } from "@/lib/scheduling/categories";
 import { listCategories, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { inferTimezone, shouldAskTimezone } from "./timezone";
@@ -107,7 +108,15 @@ export const schedulingGetSlotsTool: AgentToolDefinition<z.infer<typeof slotsInp
       workspaceTimezone: (workspace as { timezone?: string } | null)?.timezone ?? "America/Costa_Rica",
     });
 
-    const from = input.desde ? new Date(`${input.desde}T00:00:00.000Z`) : new Date();
+    // "desde" es una fecha de pared (YYYY-MM-DD): se interpreta como medianoche
+    // en la zona ya inferida arriba, no en UTC. Si no, "hoy" para un lead en
+    // una zona adelantada a UTC podria quedar en el dia de ayer.
+    const from = input.desde
+      ? (() => {
+          const [y, m, d] = input.desde!.split("-").map(Number);
+          return startOfDay(y, m, d, inferred.timezone);
+        })()
+      : new Date();
     const to = new Date(from.getTime() + config.dias_a_mirar * 24 * 60 * 60 * 1000);
 
     const result = await getPublicSlots(ctx.supabase, {

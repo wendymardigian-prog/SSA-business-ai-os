@@ -3,6 +3,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { parseDashboardFilters } from "@/lib/dashboards/url-state";
 import { chatQueryArgs, loadReplies } from "@/lib/dashboards/chat/loaders";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import type { RepliesPanel } from "@/lib/dashboards/chat/patterns";
 import type { BlockResult } from "@/lib/dashboards/chat/types";
 
@@ -24,7 +25,7 @@ export async function fetchRepliesAction(
 
   const { workspace, supabase } = await getWorkspace();
   const filters = parseDashboardFilters(new URLSearchParams(query));
-  const timezone = (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  const timezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const args = chatQueryArgs({ workspaceId: workspace.id, filters, timezone });
 
   return loadReplies(supabase, args, categoryId);

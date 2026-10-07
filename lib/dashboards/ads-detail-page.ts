@@ -16,6 +16,8 @@ import { fetchObjectMeta, fetchUniqueReach } from "@/lib/meta/live";
 import { loadAdsInsights } from "./ads-load";
 import { buildDetail, type DetailLevel, type DetailView } from "./ads-detail";
 import { daysBetween } from "@/lib/metrics/rules";
+import { isoToDateInput } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import type { AdsRow } from "./ads";
 
 export interface DetailPageData {
@@ -65,13 +67,15 @@ export async function loadDetailPage(params: {
   const account = syncedAccounts(config.ad_accounts).find((a) => a.ad_account_id === adAccountId);
 
   const now = new Date();
-  const range = resolvePeriod(period, now, workspace.timezone || "America/Costa_Rica");
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  const range = resolvePeriod(period, now, timeZone);
   const token = await getMetaToken(supabase, workspace.id);
 
   const allRows = await loadAdsInsights(supabase, {
     workspaceId: workspace.id,
     adAccountId,
     period: range,
+    timeZone,
   });
 
   const [live, objectMeta] = await Promise.all([
@@ -80,8 +84,8 @@ export async function loadDetailPage(params: {
           token,
           adAccountId,
           objectId: params.objectId,
-          since: range.from.slice(0, 10),
-          until: (range.to ?? now.toISOString()).slice(0, 10),
+          since: isoToDateInput(range.from, timeZone),
+          until: range.to ? isoToDateInput(range.to, timeZone) : isoToDateInput(now.toISOString(), timeZone),
         })
       : Promise.resolve(null),
     token

@@ -76,7 +76,10 @@ export default async function ContentPage({
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  // La zona del NEGOCIO, no la de quien mira: es la misma que usa el editor
+  // para agendar (A19, lib/dates.ts) y el tope diario server-side
+  // (lib/publishing/schedule-core.ts) — las tres tienen que coincidir.
+  const timeZone = workspace.timezone || "UTC";
 
   const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed] = await Promise.all([
     supabase

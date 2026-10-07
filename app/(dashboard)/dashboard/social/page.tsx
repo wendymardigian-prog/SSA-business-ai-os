@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/auth/guards";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { SocialView, type SocialTile } from "@/components/social/social-view";
 import {
   SOCIAL_PLATFORMS,
@@ -213,6 +214,8 @@ export default async function SocialPage() {
     });
   }
 
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+
   const linkedin: LinkedinSource[] = (linkedinRowsRaw ?? []).map((r) => ({
     socialPostId: r.id,
     contentPostId: r.content_post_id,
@@ -234,7 +237,7 @@ export default async function SocialPage() {
       linkedin={linkedin}
       canRefresh={role === "owner" || role === "admin"}
       canConnect={role === "owner" || role === "admin"}
-      timeZone={workspace.timezone || "America/Costa_Rica"}
+      timeZone={timeZone}
     />
   );
 }

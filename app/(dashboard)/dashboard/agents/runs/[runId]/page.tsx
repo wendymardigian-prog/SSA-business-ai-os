@@ -10,6 +10,7 @@ import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS } from "@/lib/agent/run-labels";
 import { RunDetail } from "@/components/agents/run-detail";
 import { PageHeader } from "@/components/page-header";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * El detalle de una corrida sola (R4): el mismo componente `RunDetail` que
@@ -34,7 +35,7 @@ export default async function AgentRunPage({
   const permissions = await getPermissionContext();
   const includeCost = permissions.can("ai_costs.view");
   const client = includeCost ? service : supabase;
-  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
 
   const sp = await searchParams;
   const urlParams = new URLSearchParams();

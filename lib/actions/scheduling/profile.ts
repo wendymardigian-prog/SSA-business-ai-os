@@ -55,7 +55,7 @@ export async function suggestProfileUsername(forUserId?: string | null): Promise
     ok: true,
     data: {
       username: suggestUsername(displayName, targetId === ctx.user.id ? ctx.user.email : null, taken),
-      timezone: (ctx.workspace as { timezone?: string }).timezone ?? "America/Costa_Rica",
+      timezone: (ctx.workspace as { timezone?: string }).timezone ?? "UTC",
       displayName,
     },
   };

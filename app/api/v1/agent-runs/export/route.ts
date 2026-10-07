@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { loadRuns } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { runsToCsv } from "@/lib/agent/runs-csv";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Export a CSV de Corridas (R3), con el mismo filtro que la pantalla.
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const service = await createServiceClient();
   const permissions = await getPermissionContext();
   const includeCost = permissions.can("ai_costs.view");
-  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
 
   const searchParams = request.nextUrl.searchParams;
   const rawParams: Record<string, string> = {};

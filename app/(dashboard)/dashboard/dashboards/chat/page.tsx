@@ -13,6 +13,7 @@ import { chatQueryArgs, loadAgent, loadAgentActions, loadCards, loadDrafts, load
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
 import { ChatDashboardShell } from "@/components/dashboards/chat/chat-dashboard-shell";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function ChatDashboardPage({
   for (const [k, v] of Object.entries(sp)) if (typeof v === "string") params.set(k, v);
 
   const filters = parseDashboardFilters(params);
-  const timezone = (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  const timezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const isAdmin = isAdminRole(role);
 
   const [permissions, members, channelsRes, agentsRes, draftCounts] = await Promise.all([
