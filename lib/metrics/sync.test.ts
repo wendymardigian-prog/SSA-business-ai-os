@@ -302,7 +302,7 @@ describe("congelar el engagement a 7 dias (F47)", () => {
 });
 
 describe("la fecha del workspace (F47)", () => {
-  it("sin zona configurada usa la del negocio", () => {
-    expect(syncDate(new Date("2026-10-01T02:00:00Z"), null)).toBe("2026-09-30");
+  it("sin zona configurada cae a UTC (respaldo neutro, no la de ningun negocio en particular)", () => {
+    expect(syncDate(new Date("2026-10-01T02:00:00Z"), null)).toBe("2026-10-01");
   });
 });

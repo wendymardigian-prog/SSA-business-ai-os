@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const due = (workspaces ?? []).filter((w) => isSyncHour(now, w.timezone || "America/Costa_Rica"));
+  const due = (workspaces ?? []).filter((w) => isSyncHour(now, w.timezone || "UTC"));
   if (due.length === 0) {
     return NextResponse.json({ ok: true, queued: 0, skipped: "no es la hora de ningun workspace" });
   }

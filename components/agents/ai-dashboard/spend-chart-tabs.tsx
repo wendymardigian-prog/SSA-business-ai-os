@@ -113,7 +113,7 @@ export function SpendChartTabs({
       ) : scatter === "error" ? (
         <p className="px-2 py-10 text-center text-sm text-muted-foreground">No se pudo cargar la dispersión. Probá de nuevo.</p>
       ) : (
-        <ScatterChart rows={scatter} domain={domain} />
+        <ScatterChart rows={scatter} domain={domain} timeZone={timeZone} />
       )}
     </div>
   );

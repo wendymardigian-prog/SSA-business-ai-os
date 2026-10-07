@@ -49,7 +49,7 @@ export async function movePieceToDay(input: {
     networks,
     fromDay: input.fromDay,
     toDay: input.toDay,
-    timeZone: ws?.timezone || "America/Argentina/Buenos_Aires",
+    timeZone: ws?.timezone || "UTC",
   });
 
   if (!decision.ok) return decision;

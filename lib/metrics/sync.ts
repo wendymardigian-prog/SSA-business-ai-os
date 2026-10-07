@@ -366,5 +366,5 @@ export async function markAccountSync(
 
 /** La fecha de hoy para este workspace. */
 export function syncDate(now: Date, timeZone: string | null): string {
-  return workspaceDate(now, timeZone || "America/Costa_Rica");
+  return workspaceDate(now, timeZone || "UTC");
 }

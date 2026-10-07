@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       const { data: workspaces } = await supabase.from("workspaces").select("id, timezone, ai_background_settings");
       for (const w of (workspaces ?? []) as Array<{ id: string; timezone: string | null; ai_background_settings: unknown }>) {
         const settings = resolveBackgroundSettings(w.ai_background_settings);
-        const planned = planDispatch(w.id, settings, new Date(), w.timezone ?? "America/Costa_Rica");
+        const planned = planDispatch(w.id, settings, new Date(), w.timezone ?? "UTC");
         await enqueuePlanned(supabase, w.id, planned);
       }
     } catch (err) {
