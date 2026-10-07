@@ -17,6 +17,7 @@ import { completeOAuth } from "@/lib/oauth/flow";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth/state";
 import { oauthCallbackUrl } from "@/lib/webhook-url";
 import { syncSocialAccounts } from "@/lib/social/accounts";
+import { queueFirstRead } from "@/lib/social/sync-hook";
 import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { appUrl } from "@/lib/app-url";
 
@@ -69,7 +70,9 @@ export async function GET(
       if (adapter.perUser) {
         await syncCalendars({ supabase: service }, result.connectionId);
       } else {
-        await syncSocialAccounts(service, ctx.workspace.id);
+        const synced = await syncSocialAccounts(service, ctx.workspace.id);
+        // Una red recien conectada se lee ya, no a las 3 AM. Nunca lanza.
+        await queueFirstRead(ctx.workspace.id, synced.newAccountIds, `oauth ${adapter.provider}`);
       }
     } catch (err) {
       console.error(`[oauth] ${adapter.provider}: no pude sincronizar despues de conectar:`, err);

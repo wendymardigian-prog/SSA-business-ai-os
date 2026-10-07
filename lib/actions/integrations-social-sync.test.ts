@@ -52,7 +52,7 @@ beforeEach(() => {
   deleteSecret.mockResolvedValue({ ok: true });
   listSecretNames.mockResolvedValue([]);
   logAudit.mockResolvedValue("audit-1");
-  syncSocialAccounts.mockResolvedValue({ accounts: [], warnings: [], zernioHasAnalytics: null });
+  syncSocialAccounts.mockResolvedValue({ accounts: [], warnings: [], zernioHasAnalytics: null, newAccountIds: [] });
 });
 
 describe("guardar una integracion de red dispara la sincronizacion (F74)", () => {

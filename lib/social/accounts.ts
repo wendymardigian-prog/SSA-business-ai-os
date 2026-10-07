@@ -342,6 +342,11 @@ export interface SyncResult {
   warnings: string[];
   /** Lo que Zernio informa sobre Analytics del plan (null si no se pudo leer). */
   zernioHasAnalytics: boolean | null;
+  /**
+   * Las cuentas que esta corrida conecto: una red que no estaba, o que estaba
+   * desactivada. Son las que hay que leer ya, sin esperar al cron de las 3 AM.
+   */
+  newAccountIds: string[];
 }
 
 /**
@@ -374,9 +379,15 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       .eq("type", "publishing_service"),
     supabase
       .from("social_accounts")
-      .select("platform, default_publisher, publishers, external_id, username, display_name, channel_id")
+      .select("platform, default_publisher, publishers, external_id, username, display_name, channel_id, is_active")
       .eq("workspace_id", workspaceId),
   ]);
+
+  // Lo que ya estaba activo antes de esta corrida: todo lo demas es nuevo.
+  const activeBefore = new Set(
+    (existing.data ?? []).filter((row) => row.is_active).map((row) => row.platform),
+  );
+  const newAccountIds: string[] = [];
 
   const connectionOf = (provider: string): ConnectionSource | null => {
     const row = (connections.data ?? []).find((c) => c.provider === provider);
@@ -416,7 +427,7 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
       profile_url: account.profileUrl ?? undefined,
       profile_synced_at: account.profileSynced ? new Date().toISOString() : undefined,
     };
-    const { error } = await supabase.from("social_accounts").upsert(
+    const { data: saved, error } = await supabase.from("social_accounts").upsert(
       {
         workspace_id: workspaceId,
         platform: account.platform,
@@ -430,10 +441,12 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
         ...profile,
       },
       { onConflict: "workspace_id,platform" },
-    );
+    ).select("id").maybeSingle();
 
     if (error) {
       console.error(`[social] no pude guardar la cuenta de ${account.platform}:`, error.message);
+    } else if (saved && !activeBefore.has(account.platform)) {
+      newAccountIds.push(saved.id);
     }
   }
 
@@ -444,7 +457,12 @@ export async function syncSocialAccounts(supabase: Db, workspaceId: string): Pro
   }
 
   const warnings = [...computed.warnings, ...(zernio.warning ? [zernio.warning] : [])];
-  return { accounts: computed.accounts, warnings, zernioHasAnalytics: zernio.hasAnalytics };
+  return {
+    accounts: computed.accounts,
+    warnings,
+    zernioHasAnalytics: zernio.hasAnalytics,
+    newAccountIds,
+  };
 }
 
 /**

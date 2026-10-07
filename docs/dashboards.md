@@ -319,6 +319,20 @@ dato.
 minutos: cada actualización son decenas de llamadas contra APIs con cuota
 diaria, y apretar cinco veces seguidas no trae datos más nuevos.
 
+El tope es **por cuenta**, no del negocio entero: que Instagram se haya leído
+hace un minuto no dice nada de YouTube. El botón actualiza la red que se está
+mirando; con "Todas" (dashboard de contenido) encola las que ya pueden y
+saltea las demás.
+
+**Una red recién conectada se lee en el momento**, sin esperar a las 3 AM.
+`syncSocialAccounts` devuelve `newAccountIds` (una red que no estaba, o que
+estaba desactivada) y quien la llama (`lib/social/sync-hook.ts` y el regreso de
+OAuth) encola su primera lectura. Si encolar falla, la cuenta queda conectada
+igual: la lee el cron de la noche. Los tres caminos —cron, botón y conexión—
+encolan con `queueMetricsSync` (`lib/metrics/queue.ts`) y la misma clave de
+dedupe, así apretar Actualizar justo después de conectar no suma una segunda
+lectura.
+
 **LinkedIn no da métricas de publicaciones** con los permisos de una app sin
 partnership. Se dice en pantalla; no es un error que alguien pueda arreglar
 reconectando.
