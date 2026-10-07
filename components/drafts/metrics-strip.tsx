@@ -23,9 +23,9 @@ export async function MetricsStrip({
   members: Array<{ userId: string; label: string }>;
   onlyMine?: boolean;
 }) {
-  const { user } = await getWorkspace();
+  const { user, workspace } = await getWorkspace();
   const supabase = await createClient();
-  const view = await loadDraftMetrics(supabase, { workspaceId, isAdmin, userId: user.id, onlyMine });
+  const view = await loadDraftMetrics(supabase, { workspaceId, isAdmin, userId: user.id, onlyMine, timeZone: workspace.timezone });
   const labels = new Map(members.map((m) => [m.userId, m.label]));
 
   const tiles: Array<{ label: string; value: string; hint: string; highlight?: boolean }> = [

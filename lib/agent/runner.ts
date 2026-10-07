@@ -388,9 +388,21 @@ async function continueTurn(
     ...(refresh ? { refresh } : {}),
   });
 
+  // El horario de atencion y los topes de gasto son reglas del NEGOCIO, no de
+  // quien mira: siempre en workspaces.timezone, nunca en la zona de quien abre
+  // el run o de un respaldo fijo (antes corria en Costa Rica siempre, aunque
+  // el ajuste del workspace dijera otra cosa).
+  const { data: workspaceRow } = await supabase
+    .from("workspaces")
+    .select("timezone")
+    .eq("id", conversation.workspace_id)
+    .maybeSingle();
+  const workspaceTimeZone = workspaceRow?.timezone || "UTC";
+
   // En modo borrador el horario de atencion no aplica: si hay una persona para
   // aprobar, no esta fuera de horario. Queda anotado en el run.
-  const outsideHoursNote = draftMode && !isWithinBusinessHours(agent.guardrails, deps.now()) ? "outside_hours" : null;
+  const outsideHoursNote =
+    draftMode && !isWithinBusinessHours(agent.guardrails, deps.now(), workspaceTimeZone) ? "outside_hours" : null;
 
   /**
    * Termina el turno dejando el borrador (modo borrador). Si otro borrador de
@@ -487,6 +499,7 @@ async function continueTurn(
     repliesSinceHuman,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
     unresolvedTurns,
+    timeZone: workspaceTimeZone,
   });
 
   if (block) {
@@ -540,6 +553,7 @@ async function continueTurn(
     agentId: agent.id,
     limits: await spendLimitsFor(supabase, agent),
     now: deps.now(),
+    timeZone: workspaceTimeZone,
   });
   await handleSpendWarnings(supabase, agent, spend);
   if (!spend.allowed) {
@@ -619,7 +633,7 @@ async function continueTurn(
       hasPriorMessages,
       assigned: conversation.assigned_to != null,
       channel: conversation.channel_id,
-      inBusinessHours: isWithinBusinessHours(agent.guardrails, deps.now()),
+      inBusinessHours: isWithinBusinessHours(agent.guardrails, deps.now(), workspaceTimeZone),
     });
     const pre = evaluateRules(agent.responseRules, preRuleCtx, "before_generation", agent.responseRulesDefault);
     if (pre.action === "skip") {

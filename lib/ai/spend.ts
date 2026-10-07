@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CostLimitAction, Database } from "@/lib/types/database";
-import { BUSINESS_TIMEZONE, startOfZonedDay, startOfZonedMonth } from "@/lib/dates";
+import { startOfZonedDay, startOfZonedMonth } from "@/lib/dates";
 
 /**
  * Topes de gasto de IA (F25/F29), evaluados ANTES de cada llamada al modelo.
@@ -126,7 +126,7 @@ export async function checkSpendLimits(
   },
 ): Promise<SpendCheck> {
   const now = args.now ?? new Date();
-  const tz = args.timeZone ?? BUSINESS_TIMEZONE;
+  const tz = args.timeZone ?? "UTC";
   const dayStart = startOfZonedDay(now, tz);
   const monthStart = startOfZonedMonth(now, tz);
   const l = args.limits;

@@ -1,18 +1,18 @@
 /**
- * Rangos de fecha para los filtros, resueltos en la zona horaria del negocio.
+ * Rangos de fecha para los filtros, resueltos en una zona horaria.
  *
  * Por que no alcanza con `new Date()`: los timestamps se guardan en UTC, y si
- * "hoy" se calcula en UTC, un usuario en Argentina (UTC-3) que filtra a las
+ * "hoy" se calcula en UTC, alguien en Argentina (UTC-3) que filtra a las
  * 21:30 recibe la ventana de manana y no ve ninguno de los mensajes del dia.
  * El corte de dia tiene que hacerse en la zona en la que la persona vive.
  *
- * Todas las funciones reciben la zona por parametro. `workspaces.timezone`
- * existe desde la 00075 y es la que hay que pasarles cuando se sabe de que
- * workspace se trata; las constantes de abajo son el respaldo para los usos
- * que todavia no la tienen a mano.
+ * Todas las funciones reciben la zona por parametro, SIN default: no hay una
+ * zona que valga para todos los casos. Lo que se muestra, filtra o agrupa
+ * para una persona usa su zona (`lib/user-timezone.ts`, `resolveViewerTimezone`);
+ * lo que es una regla del negocio y no puede depender de quien mira (horario
+ * de atencion del agente, topes de gasto, hora de las tareas programadas)
+ * usa `workspaces.timezone`.
  */
-
-export const APP_TIMEZONE = "America/Argentina/Buenos_Aires";
 
 export type DatePreset = "hoy" | "7d" | "30d" | "custom";
 
@@ -141,10 +141,10 @@ function parseDateOnly(raw: string): { year: number; month: number; day: number 
  */
 export function resolveDateRange(
   preset: DatePreset | "",
-  fromDate?: string,
-  toDate?: string,
-  now: Date = new Date(),
-  timeZone: string = APP_TIMEZONE,
+  fromDate: string | undefined,
+  toDate: string | undefined,
+  now: Date | undefined,
+  timeZone: string,
 ): DateRange {
   if (!preset) return EMPTY_RANGE;
 
@@ -165,7 +165,7 @@ export function resolveDateRange(
     };
   }
 
-  const today = civilDate(now, timeZone);
+  const today = civilDate(now ?? new Date(), timeZone);
   const days = PRESET_DAYS[preset];
   // Restar sobre el calendario civil: correr el instante UTC hacia atras
   // fallaria justo en el cambio de hora, que es cuando un dia no dura 24 horas.
@@ -183,8 +183,8 @@ export function resolveDateRange(
 }
 
 /** El dia de hoy en la zona, en formato YYYY-MM-DD, para el value de un input date. */
-export function todayInputValue(now: Date = new Date(), timeZone: string = APP_TIMEZONE): string {
-  const { year, month, day } = civilDate(now, timeZone);
+export function todayInputValue(now: Date | undefined, timeZone: string): string {
+  const { year, month, day } = civilDate(now ?? new Date(), timeZone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
@@ -198,7 +198,7 @@ export function todayInputValue(now: Date = new Date(), timeZone: string = APP_T
  * se lee igual desde cualquier zona que este a menos de 11 horas de la del
  * negocio, que cubre America entera y Europa.
  */
-export function dateInputToIso(value: string, timeZone: string = APP_TIMEZONE): string | null {
+export function dateInputToIso(value: string, timeZone: string): string | null {
   if (!DATE_ONLY.test(value)) return null;
   const parts = parseDateOnly(value);
   if (!parts) return null;
@@ -207,7 +207,7 @@ export function dateInputToIso(value: string, timeZone: string = APP_TIMEZONE): 
 }
 
 /** El instante guardado de vuelta al valor de un <input type="date">. */
-export function isoToDateInput(iso: string | null | undefined, timeZone: string = APP_TIMEZONE): string {
+export function isoToDateInput(iso: string | null | undefined, timeZone: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -217,7 +217,7 @@ export function isoToDateInput(iso: string | null | undefined, timeZone: string 
 }
 
 /** Una fecha para mostrar, sin hora: la hora de un seguimiento no significa nada. */
-export function formatDateOnly(iso: string | null | undefined, timeZone: string = APP_TIMEZONE): string {
+export function formatDateOnly(iso: string | null | undefined, timeZone: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -230,26 +230,15 @@ export function formatDateOnly(iso: string | null | undefined, timeZone: string 
   }).format(date);
 }
 
-/**
- * La zona del negocio para los cortes del agente de IA: dia y mes de los topes
- * de gasto, y el horario de atencion. Es la que fija el documento de la Fase 3.
- *
- * OJO: no coincide con APP_TIMEZONE, que es la que usan desde antes los
- * filtros de fecha de la bandeja. Las dos son respaldos: donde se conoce el
- * workspace hay que pasar `workspaces.timezone`. Unificarlas es una decision
- * pendiente, anotada en docs/PENDIENTE.md.
- */
-export const BUSINESS_TIMEZONE = "America/Costa_Rica";
-
 /** El instante UTC en que empezo el dia de `now` en la zona. */
-export function startOfZonedDay(now: Date = new Date(), timeZone: string = BUSINESS_TIMEZONE): Date {
-  const { year, month, day } = civilDate(now, timeZone);
+export function startOfZonedDay(now: Date | undefined, timeZone: string): Date {
+  const { year, month, day } = civilDate(now ?? new Date(), timeZone);
   return startOfDay(year, month, day, timeZone);
 }
 
 /** El instante UTC en que empezo el mes de `now` en la zona. */
-export function startOfZonedMonth(now: Date = new Date(), timeZone: string = BUSINESS_TIMEZONE): Date {
-  const { year, month } = civilDate(now, timeZone);
+export function startOfZonedMonth(now: Date | undefined, timeZone: string): Date {
+  const { year, month } = civilDate(now ?? new Date(), timeZone);
   return startOfDay(year, month, 1, timeZone);
 }
 
@@ -258,8 +247,8 @@ export function startOfZonedMonth(now: Date = new Date(), timeZone: string = BUS
  * Lo usa el horario de atencion del agente.
  */
 export function zonedClock(
-  now: Date = new Date(),
-  timeZone: string = BUSINESS_TIMEZONE,
+  now: Date | undefined,
+  timeZone: string,
 ): { weekday: number; minutes: number } {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -267,7 +256,7 @@ export function zonedClock(
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).formatToParts(now);
+  }).formatToParts(now ?? new Date());
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
   const hour = Number(get("hour")) % 24;
@@ -287,7 +276,7 @@ const DATETIME_LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
 /** El valor de un <input type="datetime-local"> leido en la zona indicada. */
 export function datetimeInputToIso(
   value: string,
-  timeZone: string = APP_TIMEZONE,
+  timeZone: string,
 ): string | null {
   const match = DATETIME_LOCAL.exec(value);
   if (!match) return null;
@@ -302,7 +291,7 @@ export function datetimeInputToIso(
 /** El instante guardado, escrito para un <input type="datetime-local">. */
 export function isoToDatetimeInput(
   iso: string | null | undefined,
-  timeZone: string = APP_TIMEZONE,
+  timeZone: string,
 ): string {
   if (!iso) return "";
   const date = new Date(iso);

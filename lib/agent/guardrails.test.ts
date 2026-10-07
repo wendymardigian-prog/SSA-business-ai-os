@@ -11,6 +11,7 @@ const base = {
   repliesSinceHuman: 0,
   maxRepliesPerConversation: 12,
   unresolvedTurns: 0,
+  timeZone: "America/Costa_Rica",
 };
 
 describe("temas vedados: derivan ANTES de llamar al modelo", () => {
@@ -73,15 +74,15 @@ describe("horario de atencion, cortado en Costa Rica", () => {
   });
 
   it("24/7 por defecto", () => {
-    expect(isWithinBusinessHours(DEFAULTS, new Date("2026-09-13T08:00:00Z"))).toBe(true);
+    expect(isWithinBusinessHours(DEFAULTS, new Date("2026-09-13T08:00:00Z"), "America/Costa_Rica")).toBe(true);
   });
 
   it("martes 10:00 CR (16:00 UTC) esta dentro", () => {
-    expect(isWithinBusinessHours(hours, new Date("2026-09-15T16:00:00Z"))).toBe(true);
+    expect(isWithinBusinessHours(hours, new Date("2026-09-15T16:00:00Z"), "America/Costa_Rica")).toBe(true);
   });
 
   it("martes 19:30 CR (miercoles 01:30 UTC) esta afuera, aunque en UTC ya sea otro dia habil", () => {
-    expect(isWithinBusinessHours(hours, new Date("2026-09-16T01:30:00Z"))).toBe(false);
+    expect(isWithinBusinessHours(hours, new Date("2026-09-16T01:30:00Z"), "America/Costa_Rica")).toBe(false);
   });
 
   it("fuera de horario devuelve el modo configurado", () => {

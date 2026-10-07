@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { BUSINESS_TIMEZONE, DATE_PRESETS, DATE_PRESET_LABELS, resolveDateRange, startOfZonedDay, startOfZonedMonth, type DatePreset } from "@/lib/dates";
+import { DATE_PRESETS, DATE_PRESET_LABELS, resolveDateRange, startOfZonedDay, startOfZonedMonth, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, type SearchParams } from "@/lib/url-params";
 import { RUN_SOURCE_LABELS } from "./run-labels";
 import type { AgentConfig } from "./config";
@@ -65,10 +65,10 @@ export async function fetchCostReport(service: Db, args: { workspaceId: string; 
 }
 
 /** Los indicadores de la cabecera del agente: runs de hoy, gasto del mes, % de derivaciones. */
-export async function loadHeaderKpis(service: Db, args: { workspaceId: string; agentId: string; now?: Date }): Promise<HeaderKpis> {
+export async function loadHeaderKpis(service: Db, args: { workspaceId: string; agentId: string; timeZone: string; now?: Date }): Promise<HeaderKpis> {
   const now = args.now ?? new Date();
-  const dayStart = startOfZonedDay(now, BUSINESS_TIMEZONE);
-  const monthStart = startOfZonedMonth(now, BUSINESS_TIMEZONE);
+  const dayStart = startOfZonedDay(now, args.timeZone);
+  const monthStart = startOfZonedMonth(now, args.timeZone);
   const soon = new Date(now.getTime() + 60_000);
 
   const [{ count: runsToday }, month] = await Promise.all([
@@ -94,11 +94,12 @@ export async function loadCostsTab(
     agentNames: Map<string, string>;
     workspaceLimits: { daily: number | null; monthly: number | null };
     canEditPricing: boolean;
+    timeZone: string;
     now?: Date;
   },
 ): Promise<CostsTabData> {
   const now = args.now ?? new Date();
-  const range = resolveDateRange(args.filters.datePreset, args.filters.dateFrom, args.filters.dateTo, now, BUSINESS_TIMEZONE);
+  const range = resolveDateRange(args.filters.datePreset, args.filters.dateFrom, args.filters.dateTo, now, args.timeZone);
   const from = range.from ? new Date(range.from) : new Date(0);
   const to = range.to ? new Date(range.to) : new Date(now.getTime() + 60_000);
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { BUSINESS_TIMEZONE, startOfZonedDay } from "@/lib/dates";
+import { startOfZonedDay } from "@/lib/dates";
 
 /**
  * La franja de medicion de la cola (Bloque 2c). Lee draft_queue_metrics y
@@ -61,11 +61,11 @@ export function toMetrics(raw: unknown): DraftMetrics | null {
 
 export async function loadDraftMetrics(
   user: Db,
-  args: { workspaceId: string; isAdmin: boolean; userId: string; onlyMine: boolean; now?: Date },
+  args: { workspaceId: string; isAdmin: boolean; userId: string; onlyMine: boolean; timeZone: string; now?: Date },
 ): Promise<DraftMetricsView> {
   const now = args.now ?? new Date();
   const soon = new Date(now.getTime() + 60_000).toISOString();
-  const dayStart = startOfZonedDay(now, BUSINESS_TIMEZONE).toISOString();
+  const dayStart = startOfZonedDay(now, args.timeZone).toISOString();
   const weekStart = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   // Para un Member la base ignora el parametro y usa su id: se manda igual.
   const person = !args.isAdmin || args.onlyMine ? args.userId : null;

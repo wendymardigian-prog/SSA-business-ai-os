@@ -1,4 +1,4 @@
-import { zonedClock, BUSINESS_TIMEZONE } from "@/lib/dates";
+import { zonedClock } from "@/lib/dates";
 import type { Guardrails } from "./schemas";
 import { findPhrase } from "./text";
 
@@ -33,13 +33,14 @@ export interface GuardrailInput {
   maxRepliesPerConversation: number | null;
   /** Turnos seguidos del agente en el intercambio actual. */
   unresolvedTurns: number;
-  timeZone?: string;
+  /** La zona del NEGOCIO (workspaces.timezone), no la de quien mira. */
+  timeZone: string;
 }
 
 export function isWithinBusinessHours(
   guardrails: Guardrails,
   now: Date,
-  timeZone: string = BUSINESS_TIMEZONE,
+  timeZone: string,
 ): boolean {
   const hours = guardrails.businessHours;
   if (!hours.enabled) return true;
