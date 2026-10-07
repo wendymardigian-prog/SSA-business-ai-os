@@ -1736,6 +1736,28 @@ export interface Database {
           },
         ];
       };
+      user_preferences: {
+        Row: {
+          user_id: string;
+          timezone: string;
+          timezone_source: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          timezone: string;
+          timezone_source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          timezone?: string;
+          timezone_source?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       comment_logs: {
         Row: {
           id: string;

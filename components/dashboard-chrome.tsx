@@ -33,6 +33,13 @@ export interface DashboardChrome {
   permissionKeys?: string[];
   unreadNotifications: number;
   draftCounts?: PendingDraftCounts;
+  /**
+   * La zona horaria de QUIEN MIRA (no la del negocio): ya resuelta por el
+   * servidor (lib/user-timezone.ts), con el respaldo a `workspace.timezone`
+   * aplicado. Todo lo que muestra, filtra o agrupa fechas para esta persona
+   * usa esta zona, nunca `workspace.timezone` directo.
+   */
+  viewerTimezone: string;
 }
 
 const ChromeContext = createContext<DashboardChrome | null>(null);
@@ -55,6 +62,15 @@ export function DashboardChromeProvider({
  */
 export function useDashboardChrome(): DashboardChrome | null {
   return useContext(ChromeContext);
+}
+
+/**
+ * La zona horaria de quien mira. Fuera del layout del dashboard (un test, una
+ * pantalla suelta) cae a UTC: nunca null, para que quien la usa no tenga que
+ * manejar ese caso en cada pantalla.
+ */
+export function useViewerTimezone(): string {
+  return useDashboardChrome()?.viewerTimezone ?? "UTC";
 }
 
 /**
