@@ -710,3 +710,43 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
   - El pie del drawer a 390 px (ver "B13 · El pie del drawer a 390 px"): es una decisión de diseño.
   - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración nueva (la 00119 ya se usó para el white label, ver más abajo; la próxima libre es la que corresponda en ese momento), y el costo del problema es un contacto anónimo duplicado.
   - Las cosas de otras corridas (bio de la cuenta, más de una instancia de Evolution, etc.), que siguen donde estaban.
+
+## White label (corrida en `oneshot-white-label`, 7/10/2026)
+
+Detalle completo en [docs/PROGRESS-white-label.md](PROGRESS-white-label.md).
+Las migraciones 00119 a 00123 ya están aplicadas contra la base real y
+verificadas; esto es lo que queda, no lo ya hecho.
+
+- **Qué quedó:** apagar "Allow new users to sign up" en el Supabase alojado
+  (Authentication → Sign In / Providers).
+- **Por qué:** es un ajuste de seguridad del proyecto de Supabase, no algo
+  que se pueda hacer por código ni por migración.
+- **Qué hay que hacer:** entrar al panel de Supabase del proyecto
+  `knrxjnmxnmjavivyuwew` y apagarlo a mano. El registro público del lado de
+  la app (`/register`) ya no existe desde el código (Bloque A), así que esto
+  es un cinturón de seguridad extra: alguien que llamara directo a la API de
+  Supabase Auth con `signUp` todavía podría crear una cuenta hasta que se
+  apague.
+
+- **Qué quedó:** un segundo workspace, "Paula Diaz's Workspace", separado
+  del workspace real de Wendy.
+- **Por qué:** el `/register` público (ya borrado) y el trigger viejo de
+  altas crearon un workspace propio para cualquiera que se registrara; esa
+  persona no es miembro del workspace de Wendy.
+- **Qué se decidió en su lugar:** no tocarlo. Si esa persona es alguien del
+  equipo de Wendy, hay que invitarla de nuevo (ahora por invitación) al
+  workspace real; si no, es una cuenta huérfana sin dato sensible del
+  negocio adentro (vacía salvo lo que esa persona haya cargado ahí misma).
+
+- **Qué quedó:** el barrido de `"es-AR"` suelto en formateadores (~38
+  archivos) hacia una variable `NEXT_PUBLIC_LOCALE`, y `DEFAULT_PHONE_COUNTRY
+  = "CR"` hacia `NEXT_PUBLIC_DEFAULT_COUNTRY`.
+- **Por qué:** son configurables por cliente en espíritu (un cliente en
+  México preferiría `es-MX` y país `MX`), pero ninguno es un bug: hoy
+  funcionan igual para cualquier cliente, solo que con formato y código de
+  país argentino/costarricense fijos en vez de configurables. Se priorizó
+  arreglar los bugs reales de zona horaria (horario del agente, topes de
+  gasto, filtros con el default equivocado) antes que este pulido.
+- **Qué se decidió en su lugar:** queda anotado para una corrida aparte. El
+  patrón para hacerlo es el mismo que `lib/brand.ts`/`lib/ai/language-style.ts`:
+  un módulo puro que lee la variable de entorno con un default.
