@@ -21,7 +21,7 @@ const booking: Booking = {
   category_snapshot: { area_id: "a", area_name: "Ventas", type_id: "t", type_name: "Triaje" },
 };
 const eventType = { title: "Llamada de triaje", duration_minutes: 30 };
-const host = { name: "Wendy", timezone: "America/Costa_Rica" };
+const host = { name: "Ana", timezone: "America/Costa_Rica" };
 const opts = { baseUrl: "https://agenda.ejemplo.com/" };
 
 describe("bookingVariables (F47)", () => {
@@ -49,7 +49,7 @@ describe("bookingVariables (F47)", () => {
       category_type: "Triaje",
       location: "https://meet.google.com/abc",
       meet_url: "https://meet.google.com/abc",
-      host_name: "Wendy",
+      host_name: "Ana",
       reschedule_url: "https://agenda.ejemplo.com/calendario/agenda/u1u1u1u1u1u1u1u1u1u1u1/reagendar",
       cancel_url: "https://agenda.ejemplo.com/calendario/agenda/u1u1u1u1u1u1u1u1u1u1u1",
       cancellation_reason: "",
@@ -71,10 +71,10 @@ describe("bookingVariables (F47)", () => {
   });
 
   it("scheduling.link.<usuario>.<slug> con guiones como guión bajo", () => {
-    const vars = schedulingLinkVariables([{ username: "wendy", slug: "llamada-de-triaje" }], opts.baseUrl);
-    expect(vars.scheduling.link.wendy.llamada_de_triaje).toBe("https://agenda.ejemplo.com/calendario/wendy/llamada-de-triaje");
-    expect(interpolateVariables("Agendá acá: {{scheduling.link.wendy.llamada_de_triaje}}", vars)).toBe(
-      "Agendá acá: https://agenda.ejemplo.com/calendario/wendy/llamada-de-triaje",
+    const vars = schedulingLinkVariables([{ username: "ana", slug: "llamada-de-triaje" }], opts.baseUrl);
+    expect(vars.scheduling.link.ana.llamada_de_triaje).toBe("https://agenda.ejemplo.com/calendario/ana/llamada-de-triaje");
+    expect(interpolateVariables("Agendá acá: {{scheduling.link.ana.llamada_de_triaje}}", vars)).toBe(
+      "Agendá acá: https://agenda.ejemplo.com/calendario/ana/llamada-de-triaje",
     );
   });
 });

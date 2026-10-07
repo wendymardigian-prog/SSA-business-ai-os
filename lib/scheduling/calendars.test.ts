@@ -25,10 +25,10 @@ describe("sincronizar calendarios (F5)", () => {
       g({ id: "es.cr#holiday@group.v.calendar.google.com" }),
       g({ id: "addressbook#contacts@group.v.calendar.google.com" }),
       g({ id: "x#weeknum@group.v.calendar.google.com" }),
-      g({ id: "wendy@ejemplo.com", primary: true }),
+      g({ id: "ana@ejemplo.com", primary: true }),
     ]);
-    expect(plan.inserts.map((i) => i.external_calendar_id)).toEqual(["wendy@ejemplo.com"]);
-    expect(isSystemCalendar("wendy@ejemplo.com")).toBe(false);
+    expect(plan.inserts.map((i) => i.external_calendar_id)).toEqual(["ana@ejemplo.com"]);
+    expect(isSystemCalendar("ana@ejemplo.com")).toBe(false);
   });
 
   it("la primera vez, el primario nace revisando conflictos y los demas no", () => {

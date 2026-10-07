@@ -419,7 +419,7 @@ describe("webhook de Evolution: lo que se manda desde el telefono", () => {
       post(
         message({
           key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "m3" },
-          pushName: "Wendy",
+          pushName: "Ana",
         }),
       ),
     );

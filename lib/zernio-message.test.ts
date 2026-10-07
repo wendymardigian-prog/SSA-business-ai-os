@@ -8,15 +8,16 @@ import {
 } from "./zernio-message";
 
 /**
- * El mensaje de plantilla es el payload REAL que devolvio Zernio para una de
- * las conversaciones que mostraban "Attachment" en vez del texto.
+ * El mensaje de plantilla reproduce la forma de un payload real que devolvio
+ * Zernio para una de las conversaciones que mostraban "Attachment" en vez del
+ * texto (ids anonimizados).
  */
 const plantilla = {
-  id: "aWdfZAG1faXRlbToxOklHTWVzc2FnZA",
-  conversationId: "1024574473955803",
+  id: "oHBvRPOIvGrv5iFlbCBFNOgmBjMtpsi",
+  conversationId: "5566778899001122",
   platform: "instagram",
   message: "",
-  senderId: "17841401412602901",
+  senderId: "17841400000099999",
   senderName: "You",
   direction: "outgoing",
   createdAt: "2026-09-05T02:39:11.605Z",

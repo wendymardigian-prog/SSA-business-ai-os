@@ -5,7 +5,7 @@
  * horario, el motor recibe los conteos ya hechos (`bookingCounts`) en la zona
  * del horario, y acá solo se decide si un horario más superaría el tope.
  *
- * La semana empieza el lunes (decisión de Wendy).
+ * La semana empieza el lunes (decisión de Ana).
  */
 import type { DateString } from "../types";
 import { addDays, dateInTz, weekdayInTz } from "../time/tz";

@@ -7,7 +7,7 @@
 --   1. Haber visto la v3 funcionando en produccion con piezas reales.
 --   2. Haber verificado que ninguna idea o pieza tiene texto SOLO en las
 --      columnas viejas (la consulta de abajo tiene que dar 0 en las dos).
---   3. Tener un backup (supabase db dump) o la confirmacion de Wendy.
+--   3. Tener un backup (supabase db dump) o la confirmacion de la duena del negocio.
 --
 -- Comprobacion previa (las dos tienen que devolver 0):
 --   SELECT count(*) FROM public.content_ideas

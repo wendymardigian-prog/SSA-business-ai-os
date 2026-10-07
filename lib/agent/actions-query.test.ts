@@ -31,13 +31,13 @@ describe("describeChanges", () => {
     reverted_by_audit_id: null,
   });
   const tags = new Map([["t-1", "Interesado"]]);
-  const members = new Map([["u-1", "Wendy"]]);
+  const members = new Map([["u-1", "Ana"]]);
 
   it("traduce ids de tags y de miembros a nombres, y los valores a palabras", () => {
     expect(describeChanges(entry("tag", { tags: { old: null, new: "t-1,t-x" } }), tags, members)).toEqual([
       { field: "Etiquetas", before: "vacío", after: "Interesado, etiqueta borrada" },
     ]);
-    expect(describeChanges(entry("assign", { assigned_to: { old: null, new: "u-1" } }), tags, members)).toEqual([{ field: "Asignada a", before: "vacío", after: "Wendy" }]);
+    expect(describeChanges(entry("assign", { assigned_to: { old: null, new: "u-1" } }), tags, members)).toEqual([{ field: "Asignada a", before: "vacío", after: "Ana" }]);
     expect(describeChanges(entry("temperature", { lead_temperature: { old: "cold", new: "hot" } }), tags, members)).toEqual([{ field: "Temperatura", before: "frío", after: "caliente" }]);
     expect(describeChanges(entry("human_takeover", { agent_enabled: { old: null, new: false } }), tags, members)).toEqual([
       { field: "Agente en la conversación", before: "hereda del canal", after: "apagado" },

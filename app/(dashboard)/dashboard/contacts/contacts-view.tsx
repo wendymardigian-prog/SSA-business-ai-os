@@ -596,7 +596,7 @@ function NewContactDialog({ onClose }: { onClose: () => void }) {
 
 /**
  * La barra de la accion masiva (Bloque 2d-A): etiquetar los contactos
- * seleccionados. Wendy va a marcar varias decenas de conocidos de una
+ * seleccionados. Ana va a marcar varias decenas de conocidos de una
  * sentada. Una etiqueta con efecto pide confirmacion con las consecuencias.
  */
 function BulkTagBar({

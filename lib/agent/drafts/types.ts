@@ -16,7 +16,7 @@ export type SuggestedAction =
   /**
    * El guardarrail de salida marco este borrador: el texto propuesto tiene un
    * link, palabra, escasez o cifra que no pasa. No se aplica nada (applySuggestions
-   * lo ignora); marca la fila para que Wendy lo edite antes de enviar.
+   * lo ignora); marca la fila para que Ana lo edite antes de enviar.
    */
   | { type: "guardrail_review"; hits: Array<{ rule: string; text: string }> }
   /**

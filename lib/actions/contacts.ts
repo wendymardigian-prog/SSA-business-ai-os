@@ -557,7 +557,7 @@ export type BulkTagResult =
   | { ok: false; error: string };
 
 /**
- * Etiqueta varios contactos de una vez (Bloque 2d-A). Wendy va a marcar varias
+ * Etiqueta varios contactos de una vez (Bloque 2d-A). Ana va a marcar varias
  * decenas de conocidos de una sentada; de a uno es la diferencia entre que lo
  * haga y que no.
  *

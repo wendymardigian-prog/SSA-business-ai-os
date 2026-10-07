@@ -274,7 +274,7 @@ export async function approveDraft(args: {
   await clearAgentError(args.service, draft.conversation_id);
 
   // El pase a WhatsApp: si el texto que salio (el enviado, editado o no) lleva
-  // el link que genero el run, queda en audit_log. Si Wendy lo edito y saco el
+  // el link que genero el run, queda en audit_log. Si Ana lo edito y saco el
   // link, no se registra nada: el criterio es lo que salio.
   const handoffLink = await findWhatsappLinkForRun(args.service, draft.run_id);
   if (handoffLink) {
@@ -348,7 +348,7 @@ async function applySuggestions(
         );
       } else if (s.type === "send_asset") {
         // Se relee el audio en vez de confiar en lo que dejo la sugerencia:
-        // entre que el agente lo eligio y que Wendy aprueba puede haberse
+        // entre que el agente lo eligio y que Ana aprueba puede haberse
         // dado de baja, apagado para el agente, o perdido la transcripcion.
         const { data: asset } = await service
           .from("response_assets")

@@ -47,7 +47,7 @@ function google(options: { sub: string; email: string; scopes?: string[] }) {
       return new Response(JSON.stringify({ access_token: "acc", refresh_token: "ref", expires_in: 3600, scope: (options.scopes ?? GOOGLE_CALENDAR_SCOPES).join(" ") }), { status: 200 });
     }
     if (url.startsWith("https://openidconnect.googleapis.com/v1/userinfo")) {
-      return new Response(JSON.stringify({ sub: options.sub, email: options.email, name: "Wendy" }), { status: 200 });
+      return new Response(JSON.stringify({ sub: options.sub, email: options.email, name: "Ana" }), { status: 200 });
     }
     return new Response("{}", { status: 404 });
   }) as typeof fetch;
@@ -91,10 +91,10 @@ describe("conectar Google Calendar (F4)", () => {
 
   it("se guarda a nombre de la persona, con el sub de Google y los tokens en Vault con el id de la conexion", async () => {
     const database = db();
-    const result = await complete(database, google({ sub: "sub-1", email: "wendy@ejemplo.com" }));
+    const result = await complete(database, google({ sub: "sub-1", email: "ana@ejemplo.com" }));
     expect(result.ok).toBe(true);
     const row = database.rows("oauth_connections")[0];
-    expect(row).toMatchObject({ provider: "google_calendar", user_id: USER, external_account_id: "sub-1", account_label: "wendy@ejemplo.com", status: "active" });
+    expect(row).toMatchObject({ provider: "google_calendar", user_id: USER, external_account_id: "sub-1", account_label: "ana@ejemplo.com", status: "active" });
     expect(row.vault_secret_prefix).toBe(`oauth_google_calendar_${row.id}`);
     expect(storeSecret.mock.calls.map((c) => c[2])).toEqual([`oauth_google_calendar_${row.id}_access_token`, `oauth_google_calendar_${row.id}_refresh_token`]);
     expect(result.ok && result.connectionId).toBe(row.id);

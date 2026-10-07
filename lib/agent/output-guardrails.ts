@@ -9,7 +9,7 @@ import { findPhrase, normalizeText } from "./text";
  *
  * Cuatro reglas, cada una con su switch en agents.guardrails:
  *   - links fuera de la lista blanca (solo corre si la lista no esta vacia)
- *   - palabras prohibidas (default: ScaleOS)
+ *   - palabras prohibidas (default: vacio)
  *   - escasez inventada (cupos, quedan N, ...)
  *   - cifras con $ que no esten en una lista blanca
  *

@@ -16,7 +16,7 @@ const futura = { start_at: "2026-10-07T15:00:00.000Z" };
 const pasada = { start_at: "2026-10-06T15:00:00.000Z" };
 
 describe("catálogo de estados (F32)", () => {
-  it("son los 11 de Wendy, en orden y con grupo", () => {
+  it("son los 11 de Ana, en orden y con grupo", () => {
     expect(BOOKING_STATUS_KEYS).toEqual([
       "scheduled",
       "confirmed",

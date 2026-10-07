@@ -46,14 +46,14 @@ beforeEach(() => {
 
 describe("GET /api/public/scheduling/event", () => {
   it("devuelve lo publico del evento y nada mas", async () => {
-    const res = await getEvent(eventRequest("user=wendy&event=llamada-de-triaje"));
+    const res = await getEvent(eventRequest("user=ana&event=llamada-de-triaje"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.event).toMatchObject({ title: "Llamada de triaje", durationMinutes: 30 });
 
     const text = JSON.stringify(body);
     // Nada interno: ni ids de calendario, ni el email del calendario, ni topes.
-    expect(text).not.toContain("wendy@ejemplo.com");
+    expect(text).not.toContain("ana@ejemplo.com");
     expect(text).not.toContain("cal-1");
     expect(text).not.toContain("conn-1");
     expect(text).not.toContain("max_per_day");
@@ -61,23 +61,23 @@ describe("GET /api/public/scheduling/event", () => {
   });
 
   it("un evento que no existe da 404 igual que uno inactivo", async () => {
-    const missing = await getEvent(eventRequest("user=wendy&event=no-existe"));
+    const missing = await getEvent(eventRequest("user=ana&event=no-existe"));
     expect(missing.status).toBe(404);
 
     db = schedulingWorld({ event: { status: "inactive" } });
-    const inactive = await getEvent(eventRequest("user=wendy&event=llamada-de-triaje"));
+    const inactive = await getEvent(eventRequest("user=ana&event=llamada-de-triaje"));
     expect(inactive.status).toBe(404);
     expect(await inactive.json()).toEqual({ reason: "not_found" });
   });
 
   it("sin usuario ni evento, 400", async () => {
-    expect((await getEvent(eventRequest("user=wendy"))).status).toBe(400);
+    expect((await getEvent(eventRequest("user=ana"))).status).toBe(400);
   });
 });
 
 describe("GET /api/public/scheduling/slots", () => {
   it("devuelve los horarios agrupados por dia", async () => {
-    const res = await getSlots(slotsRequest("user=wendy&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=America/Costa_Rica"));
+    const res = await getSlots(slotsRequest("user=ana&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=America/Costa_Rica"));
     expect(res.status).toBe(200);
     const body = await res.json();
     const days = Object.keys(body.slots);
@@ -88,28 +88,28 @@ describe("GET /api/public/scheduling/slots", () => {
   });
 
   it("un rango de mas de 45 dias se rechaza", async () => {
-    const res = await getSlots(slotsRequest("user=wendy&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-12-15T00:00:00Z&tz=UTC"));
+    const res = await getSlots(slotsRequest("user=ana&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-12-15T00:00:00Z&tz=UTC"));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ reason: "range_too_wide" });
   });
 
   it("una zona horaria inventada se rechaza", async () => {
-    const res = await getSlots(slotsRequest("user=wendy&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=Marte/Olympus"));
+    const res = await getSlots(slotsRequest("user=ana&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=Marte/Olympus"));
     expect(res.status).toBe(400);
   });
 
   it("faltan parametros: 400", async () => {
-    expect((await getSlots(slotsRequest("user=wendy"))).status).toBe(400);
+    expect((await getSlots(slotsRequest("user=ana"))).status).toBe(400);
   });
 
   it("un evento que no existe: 404", async () => {
-    const res = await getSlots(slotsRequest("user=wendy&event=nada&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=UTC"));
+    const res = await getSlots(slotsRequest("user=ana&event=nada&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=UTC"));
     expect(res.status).toBe(404);
   });
 
   it("si la persona no puede recibir agendas, 200 con el motivo y sin horarios", async () => {
     db = schedulingWorld({ connection: { status: "revoked" }, calendar: { check_conflicts: true } });
-    const res = await getSlots(slotsRequest("user=wendy&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=UTC"));
+    const res = await getSlots(slotsRequest("user=ana&event=llamada-de-triaje&from=2026-10-01T00:00:00Z&to=2026-10-03T00:00:00Z&tz=UTC"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ slots: {}, unavailableReason: "temporarily_unavailable" });
   });
@@ -117,7 +117,7 @@ describe("GET /api/public/scheduling/slots", () => {
 
 describe("POST /api/public/scheduling/bookings", () => {
   const body = {
-    user: "wendy",
+    user: "ana",
     event: "llamada-de-triaje",
     startUtc: START,
     timezone: "America/Costa_Rica",

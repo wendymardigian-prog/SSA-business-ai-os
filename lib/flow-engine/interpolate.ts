@@ -33,7 +33,7 @@ export function resolveVariablePath(
  * algo, antes que mandarle al lead un mensaje con un hueco vacio.
  *
  * El token admite guiones porque el link de un evento los lleva:
- * `{{scheduling.link.wendy.llamada-de-diagnostico}}`. Sin eso, el token se
+ * `{{scheduling.link.ana.llamada-de-diagnostico}}`. Sin eso, el token se
  * cortaba en el guion y el mensaje salia con media variable pegada al texto.
  */
 export function interpolateVariables(

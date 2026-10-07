@@ -162,7 +162,7 @@ function shortDate(iso: string | null | undefined, timeZone: string): string | n
 }
 
 /**
- * "Wendy · creada el 3 oct · editada el 5 oct" (F91).
+ * "Ana · creada el 3 oct · editada el 5 oct" (F91).
  *
  * El dia se cuenta en la zona del negocio y no en UTC: una pieza creada a las
  * 8 de la noche en Costa Rica ya es del dia siguiente en UTC, y mostrar la

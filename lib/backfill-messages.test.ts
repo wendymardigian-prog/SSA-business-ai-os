@@ -108,8 +108,8 @@ describe("toMessageStatus", () => {
   });
 });
 
-const META_MID = "aWdfZAG1faXRlbToxOklHTWVzc2FnZAUlEOjE3ODQxNDAxNDEyNjAyOTAxOjM0MDI4MjM2Njg0MTcxMDMwMTI0NDI1OTk1NDk4MTE2NzE2MTk3OTozMzAyNDQ5OTgwOTUzNDk2ODI3MzA1MDU0NzI1OTQ0MTE1MgZDZD";
-const ZERNIO_ID = "6ab539dfb3bdf62f301b63fb";
+const META_MID = "aOclRz3AwzKsbVRJN9wVGFYGW2WmQzCudiH7YFjS1on43XkMtECqOxSF2O3GYRdo1XKXWNqRs7rpEmoKiuPKdYR7osjOrU1xxDO0CzUZREN68k4tUNpfZ46pdJQIPvjiQvlb5lZXOIgfFwD3HJoKyrbmEYYmdhQj38Ar";
+const ZERNIO_ID = "5f1a2b3c4d5e6f7a8b9c0d1e";
 
 describe("isZernioId", () => {
   it("reconoce el ObjectId corto de Zernio y no el mid largo de Meta", () => {

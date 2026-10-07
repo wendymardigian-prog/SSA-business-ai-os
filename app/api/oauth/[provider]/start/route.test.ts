@@ -37,10 +37,10 @@ describe("empezar una conexion como Member", () => {
   });
 
   it("google_calendar se puede con scheduling.use, a nombre de la persona", async () => {
-    const res = await call("google_calendar", "?login_hint=wendy%40ejemplo.com");
+    const res = await call("google_calendar", "?login_hint=ana%40ejemplo.com");
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("accounts.google.com");
-    expect(startOAuth).toHaveBeenCalledWith(expect.objectContaining({ userId: "member-1", workspaceId: "ws-1", loginHint: "wendy@ejemplo.com" }));
+    expect(startOAuth).toHaveBeenCalledWith(expect.objectContaining({ userId: "member-1", workspaceId: "ws-1", loginHint: "ana@ejemplo.com" }));
     expect(startOAuth.mock.calls[0][0].adapter.provider).toBe("google_calendar");
   });
 

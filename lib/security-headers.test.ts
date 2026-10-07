@@ -6,7 +6,7 @@ const xfo = (path: string) => securityHeadersFor(path).find((h) => h.key === "X-
 
 describe("encabezados por ruta (§15)", () => {
   it("/calendario/* y /embed/* se pueden embeber", () => {
-    for (const p of ["/calendario/wendy/llamada", "/calendario/agenda/abc", "/embed/embed.js", "/calendario"]) {
+    for (const p of ["/calendario/ana/llamada", "/calendario/agenda/abc", "/embed/embed.js", "/calendario"]) {
       expect(isEmbeddablePath(p)).toBe(true);
       expect(csp(p)).toBe("frame-ancestors *");
       expect(xfo(p)).toBeUndefined();
