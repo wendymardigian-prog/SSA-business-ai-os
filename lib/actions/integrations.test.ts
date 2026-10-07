@@ -34,7 +34,7 @@ vi.mock("@/lib/vault", async (importOriginal) => {
 vi.mock("@/lib/audit", () => ({ logAudit }));
 // La sincronizacion de cuentas (F74) tiene su propio test: aca se aisla.
 vi.mock("@/lib/social/accounts", () => ({
-  syncSocialAccounts: vi.fn().mockResolvedValue({ accounts: [], warnings: [], zernioHasAnalytics: null }),
+  syncSocialAccounts: vi.fn().mockResolvedValue({ accounts: [], warnings: [], zernioHasAnalytics: null, newAccountIds: [] }),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));

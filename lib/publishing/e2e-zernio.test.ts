@@ -464,6 +464,11 @@ describe.each([
     // 1. Guardar la integracion crea las cuentas. Sin esto no hay nada mas.
     expect((await trigger.saveZernio()).status).toBe(200);
     expect(accountOf(platform)?.external_id).toBe(zernioAccountId);
+    // Y cada cuenta recien conectada tiene su primera lectura de metricas en
+    // la cola: sin eso, Social queda vacia hasta el cron de las 3 AM.
+    const metricsJobs = () => db.rows("scheduled_jobs").filter((j) => j.type === "metrics_sync");
+    expect(metricsJobs().map((j) => (j.payload as { socialAccountId: string }).socialAccountId))
+      .toContain(accountOf(platform)?.id);
 
     // 2. La pieza, hasta aprobada.
     const postId = await aprobadaConVideo(platform);
@@ -474,8 +479,9 @@ describe.each([
     const row = () => db.rows("social_posts").find((p) => p.platform === platform)!;
     expect(row().status).toBe("uploading");
     expect(row().publisher).toBe("zernio");
-    expect(db.rows("scheduled_jobs")).toHaveLength(1);
-    expect(db.rows("scheduled_jobs")[0].type).toBe("content_provider_schedule");
+    const publishJobs = db.rows("scheduled_jobs").filter((j) => j.type !== "metrics_sync");
+    expect(publishJobs).toHaveLength(1);
+    expect(publishJobs[0].type).toBe("content_provider_schedule");
 
     // 4. El cron REAL sube la media y agenda el post en Zernio.
     const ran = await cron();
