@@ -144,8 +144,34 @@ verde, lint en la línea base. `verify-content.mjs` en verde;
 punto de partida (carrera con el cron real), sin fallas nuevas en 3
 corridas. Commits `c32e4a2`, `6da675e`.
 
-### B18: guardado automático y versiones (C6)
-- [ ] **C6** Todo se guarda solo; versiones por sesión
+### B18: guardado automático y versiones (C6) — COMPLETO, 7/10/2026
+- [x] **C6** Todo se guarda solo; versiones por sesión. Migración **00127
+  aplicada** (aditiva: `updated_at` + `reason` admite `edit`/`approve`).
+  `lib/content/autosave.ts` (`decideVersionWrite`): la primera edición
+  después de 10 min inserta una versión con `reason='edit'`; las
+  siguientes, del mismo autor y dentro de la sesión, **actualizan esa
+  misma fila**. Cuatro eventos cortan la sesión e insertan siempre:
+  cambiar el estado (`status_change`), aprobar (`approve`, separado),
+  generar con IA y restaurar (ya escribían). `status_change` no se
+  escribía nunca antes de esta corrida, pese a que la ayuda del historial
+  decía que sí: quedó conectado en `requestReview`, `returnPost` y
+  `movePostToColumn`.
+  Cliente: se saca el intervalo de 10 s (pieza) y el debounce de 900 ms
+  (idea); el guardado es por delegación (`onChangeCapture`/`onBlurCapture`
+  en la raíz): select/checkbox/fecha al elegir, texto al salir. Se guarda
+  también antes de abrir el historial. Se borran "Guardar versión" y
+  "Enviar a revisión".
+  **Límite anotado, no una pérdida de datos**: los botones de elegir
+  archivo y reordenar un carrusel (`format-files.tsx`) son `<button>`, no
+  `<select>`; la delegación no los agarra, así que no guardan al instante
+  del clic — se guardan en el próximo blur, cambio de estado o cierre
+  (nunca se pierden).
+
+Verificación: `npx vitest run` 5437/5437 (`autosave.test.ts`,
+`save-version.test.ts` con los 5 casos del documento con reloj simulado,
+`content-review.test.ts`, `content-move.test.ts` nuevos), build y
+typecheck en verde, lint en la línea base. `verify-content.mjs` en verde.
+Commit `4f549ea`.
 
 ## Verificación final
 

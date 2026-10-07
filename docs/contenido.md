@@ -18,8 +18,11 @@ Borrador → En producción → En revisión → Aprobada → Programada → Pub
 ```
 
 Los últimos tres no se arrastran a mano: los pone el sistema según cómo salió
-cada red. Una pieza que salió en Instagram y falló en TikTok queda
-**"Publicada en parte"**, que es la verdad, en vez de "publicada" o "falló".
+cada red — **incluida una publicación marcada a mano** (Contenido v4). Una
+pieza que salió en Instagram y falló en TikTok queda **"Publicada en
+parte"**, que es la verdad, en vez de "publicada" o "falló". El chip de
+estado del drawer se tiñe con el color de cada estado; cuando es uno de
+estos cuatro, el dropdown se bloquea con el aviso "Lo definen las redes".
 
 ## Quién hace qué
 
@@ -27,6 +30,7 @@ cada red. Una pieza que salió en Instagram y falló en TikTok queda
 |---|---|---|
 | Crear y editar sus piezas | Sí | Sí |
 | Mandar a revisión | Sí | Sí |
+| Moverla entre Borrador, En producción y En revisión | Sí, la suya | Sí, cualquiera |
 | Aprobar y devolver | No | Sí |
 | Programar y publicar | No | Sí |
 | Generar con IA | No | Sí |
@@ -64,6 +68,31 @@ Las horas se muestran en formato de 24 horas a propósito. "15:00" no se puede
 confundir; "03:00 p. m." sí, y programar una publicación doce horas antes es
 un error caro.
 
+## Planificar en redes sin conectar (Contenido v4)
+
+Cualquiera de las cinco redes se puede agregar a una idea o a una pieza, esté
+conectada o no. Las que no tienen cuenta llevan el chip **"a mano"** y se
+configuran completas igual: formato, archivos, caption y fecha. Esa fecha
+queda siempre **tentativa**: entra al calendario para planificar, pero nada
+se publica solo.
+
+Cada red declara además **cómo se publica**: "La subo yo" (la fecha queda
+tentativa) o "El sistema la publica" (programa de verdad, F25 sin cambios).
+La segunda opción solo se puede elegir con la cuenta conectada y la pieza
+aprobada.
+
+**Estado de cada red**, de un vistazo: Sin fecha, Fecha tentativa, Programado
+(resaltado, con barra de color), Publicado y Falló. Distinguir Programado de
+Fecha tentativa es lo más importante de toda la pantalla: la diferencia entre
+"esto sale solo" y "esto lo tengo que subir yo".
+
+**Marcar como publicado** registra lo que se subió por fuera de la app: crea
+una publicación real (no un flag cosmético), que entra al calendario, a
+Social y al rendimiento de la pieza igual que una automática. Si después la
+cuenta se conecta y la sincronización encuentra el post real, lo completa en
+esa misma fila, nunca la duplica. Deshacerlo se rechaza si la fila ya trajo
+métricas o comentarios.
+
 ## El editor
 
 > Desde Contenido v3 el editor y el detalle son **el drawer de la pieza**
@@ -73,7 +102,9 @@ un error caro.
 Una pieza se escribe con **guion**, **caption** y **redes**. Cada red es una
 tarjeta que se abre; cerrada muestra su estado, su fecha y si le falta algo.
 
-Se guarda solo cada diez segundos. Al salir con cambios sin guardar, avisa.
+Se guarda solo: un dropdown o un chip al elegir, un campo de texto al salir
+(blur), y siempre antes de cerrar (Contenido v4, C6 — ver "Guardado
+automático y versiones" más abajo). No hay botón de guardar.
 
 ### Palabras clave
 
@@ -102,10 +133,25 @@ La **voz de marca** (cómo escribe el negocio, a quién le habla, ejemplos y
 qué evitar) se configura una vez en Ajustes → Tareas en segundo plano, y se
 usa en todas las generaciones.
 
-## Versiones
+## Guardado automático y versiones (Contenido v4, C6)
 
-Cada cambio de estado, cada "Guardar versión" y cada generación con IA dejan
-una versión. Se pueden comparar contra lo que hay ahora y restaurar.
+Todo se guarda solo, sin ningún botón: un dropdown, un chip o un toggle
+guardan al elegir; un campo de texto, al salir (blur), nunca por tecla. El
+drawer también guarda antes de cerrar (✕, Esc, clic afuera) y antes de abrir
+el historial. **Guardar el dato no es guardar una versión**: son dos cosas
+distintas, y confundirlas es lo que hacía que el historial de una tarde de
+edición tuviera treinta entradas en vez de tres.
+
+**Una versión no es por cada cambio, es por sesión de edición.** El primer
+cambio después de 10 minutos sin tocar esa pieza abre una versión nueva, con
+motivo "edición". Cada cambio siguiente, de la misma persona y dentro de esa
+ventana, **actualiza esa misma fila** (el contenido se reemplaza, el número
+de versión no cambia). La sesión es por autor: si otra persona edita, su
+primer cambio abre la suya, aunque hayan pasado solo dos minutos.
+
+Cuatro eventos siempre cortan la sesión y dejan su propia versión, con su
+motivo: cambiar el estado, aprobar (separado de un cambio de estado
+cualquiera), generar con IA y restaurar.
 
 Restaurar **no borra nada**: guarda lo actual como una versión más y después
 escribe lo viejo. El camino de vuelta siempre existe.

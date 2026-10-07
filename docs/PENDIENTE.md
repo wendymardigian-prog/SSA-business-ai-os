@@ -799,3 +799,52 @@ verificadas; esto es lo que queda, no lo ya hecho.
   documento (§17) es no adivinar un formato sin archivos. En el drawer esa
   red va a aparecer con la verificación en rojo ("Elegí el formato") hasta
   que alguien lo complete a mano.
+
+### Contenido v4 · La 00128 (destructiva) está escrita y NO se aplicó
+
+- **Qué es:** borra `content_posts.material_status` y la clave
+  `options.contentType` de adentro de cada entrada de `networks[]`
+  (`supabase/migrations/00128_drop_material_and_content_type.sql`).
+- **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe
+  ninguna de las dos (grep limpio en `lib/` y `app/`, salvo el comentario del
+  tipo de la base y el campo propio que el *body* de Zernio le manda a
+  Zernio, que se llama igual por casualidad), así que aplicarla no rompe
+  nada funcionando — pero no tiene vuelta atrás.
+- **Cuándo aplicarla:** después de ver la v4 funcionando en producción (ver
+  §16 del documento, "Verificación en vivo"). Antes, correr la consulta C de
+  la cabecera de la migración (tiene que dar 0) y guardar el respaldo de la
+  consulta D (`material_status` y `networks` de toda `content_posts`).
+- **Para tener en cuenta:** igual que la 00118 de Contenido v3,
+  `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el
+  bundle tenga todas las migraciones) — ese archivo es para una instalación
+  NUEVA, donde la base está vacía y no hay nada que perder. No correrlo sobre
+  producción.
+
+### Contenido v4 · Una red queda con `format: null` después de la 00126
+
+- **Qué es:** la única pieza de producción tiene una red de Instagram con
+  `options.contentType: 'feed'` pero **0 archivos**. La migración 00126
+  (backfill de formato) no adivina un formato sin archivos (regla del
+  documento, §17), así que esa red quedó con `format: null`.
+- **Qué se ve:** en el drawer, esa tarjeta de red aparece con la
+  verificación en rojo ("Elegí un formato") hasta que alguien lo complete a
+  mano. No bloquea nada más de la pieza.
+- **Qué hacer:** abrir la pieza, elegir el formato de esa red (y los
+  archivos, si corresponde) la próxima vez que se trabaje con ella.
+
+### Contenido v4 · Incidente durante la 00126, corregido en el momento (sin pérdida de datos)
+
+Ver la sección "Contenido v4 (corrida del 7/10/2026)" más arriba en este
+mismo archivo: el detalle completo del bug de `jsonb_set` con `NULL` de SQL,
+cómo se detectó, cómo se restauró y cómo se corrigió antes de reaplicar.
+
+### Contenido v4 · Revisión visual contra el prototipo — pendiente con Wendy
+
+- **Qué quedó:** la comparación del drawer de la pieza, el de la idea, el
+  kanban y el calendario contra la copia local del prototipo (v23), a 1440 y
+  390 px, en claro y oscuro, no se hizo en esta corrida.
+- **Por qué:** la app pide iniciar sesión y no hay una sesión abierta en
+  este entorno; la regla del proyecto es no ingresar credenciales.
+- **Qué hacer:** levantar `npm run dev`, iniciar sesión como Wendy, y
+  recorrer las cuatro pantallas de la sección 11 del documento
+  (`requerimientos-contenido-v4.md`) contra `docs/referencia/prototipo-ssa-baios.html`.
