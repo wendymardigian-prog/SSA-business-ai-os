@@ -3264,7 +3264,7 @@ export interface Database {
           publisher: string | null;
           publisher_ref: string | null;
           publish_progress: Json | null;
-          origin: "system" | "external";
+          origin: "system" | "external" | "manual";
           status: SocialPostStatus | null;
           scheduled_at: string | null;
           attempts: number;
@@ -3299,7 +3299,7 @@ export interface Database {
           publisher?: string | null;
           publisher_ref?: string | null;
           publish_progress?: Json | null;
-          origin?: "system" | "external";
+          origin?: "system" | "external" | "manual";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;
@@ -3312,9 +3312,12 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          content_post_id?: string | null;
+          social_account_id?: string | null;
           publisher?: string | null;
           publisher_ref?: string | null;
           publish_progress?: Json | null;
+          origin?: "system" | "external" | "manual";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;

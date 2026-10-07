@@ -6,7 +6,9 @@
  * hecho y el aviso viaja en la respuesta. Nunca al revés.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { memoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+
+let db: MemoryDb;
 
 const { getAdminContext, storeSecret, deleteSecret, listSecretNames, logAudit, fetchMock, syncSocialAccounts } =
   vi.hoisted(() => ({
@@ -28,6 +30,11 @@ vi.mock("@/lib/audit", () => ({ logAudit }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/ai/provider", () => ({ listConnectedAiProviders: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/social/accounts", () => ({ syncSocialAccounts }));
+// Desconectar (Contenido v4) saca de la cola lo programado con ESE
+// publicador antes de borrar la clave: usa el service role, igual que en
+// produccion.
+vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
+vi.mock("@/lib/publishing/credentials", () => ({ credentialsForPublisher: vi.fn() }));
 
 import { saveIntegration, disconnectIntegration } from "./integrations";
 
@@ -35,7 +42,14 @@ const WS = "ws-1";
 const USER = "user-1";
 
 function admin(seed: Record<string, Array<Record<string, unknown>>> = {}) {
-  const db = memoryDb({ integration_configs: [], ...seed });
+  db = memoryDb({
+    integration_configs: [],
+    social_posts: [],
+    scheduled_jobs: [],
+    content_posts: [],
+    notifications: [],
+    ...seed,
+  });
   getAdminContext.mockResolvedValue({ workspace: { id: WS }, supabase: db.client, user: { id: USER } });
   return db;
 }

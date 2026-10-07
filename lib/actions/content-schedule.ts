@@ -11,6 +11,11 @@ import {
   type ScheduleActionResult,
   type ScheduleOutcome,
 } from "@/lib/publishing/schedule-core";
+import {
+  runMarkPublished,
+  runSetPublishMode,
+  runUnmarkPublished,
+} from "@/lib/publishing/publish-mode-core";
 
 /**
  * Programar y desprogramar cada red, desde la pantalla (F25).
@@ -69,6 +74,44 @@ export async function unscheduleNetwork(input: {
   platform: string;
 }): Promise<ScheduleActionResult<{ postStatus: string }>> {
   const result = await runUnscheduleNetwork(await scheduleContext(), input);
+  revalidatePath(CONTENT_PATH);
+  return result;
+}
+
+/**
+ * "La subo yo" / "El sistema la publica" para una red (Contenido v4, C2).
+ *
+ * El servidor rechaza "el sistema la publica" sin cuenta conectada, sin
+ * aprobacion o sin fecha valida, aunque la llamada se saltee el editor.
+ */
+export async function setNetworkPublishMode(input: {
+  postId: string;
+  platform: string;
+  auto: boolean;
+}): Promise<ScheduleActionResult<{ postStatus: string }>> {
+  const result = await runSetPublishMode(await scheduleContext(), input);
+  revalidatePath(CONTENT_PATH);
+  return result;
+}
+
+/** Lo que se subio a mano, como publicacion real (Contenido v4, C3). */
+export async function markNetworkPublished(input: {
+  postId: string;
+  platform: string;
+  publishedAt?: string | null;
+  url?: string | null;
+}): Promise<ScheduleActionResult<{ postStatus: string }>> {
+  const result = await runMarkPublished(await scheduleContext(), input);
+  revalidatePath(CONTENT_PATH);
+  return result;
+}
+
+/** Deshace un publicado a mano, mientras la red no haya traido metricas (C3). */
+export async function unmarkNetworkPublished(input: {
+  postId: string;
+  platform: string;
+}): Promise<ScheduleActionResult<{ postStatus: string }>> {
+  const result = await runUnmarkPublished(await scheduleContext(), input);
   revalidatePath(CONTENT_PATH);
   return result;
 }

@@ -6,11 +6,11 @@ import { logAudit } from "@/lib/audit";
 import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
 import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
 import { cleanClassification, pickInheritedClassification } from "@/lib/content/classification";
-import { normalizeNetworks } from "@/lib/content/networks-schema";
+import { keepServerFields, normalizeNetworks } from "@/lib/content/networks-schema";
 import type { MediaEntry } from "@/lib/content/media";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
-import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
+import { canRedistribute, duplicateAsVariant, type NetworkEntry } from "@/lib/content/redistribution";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import { enqueueCopy } from "@/lib/content/copy-queue";
 import { readCopywriterConfig } from "@/lib/content/copywriter";
@@ -594,7 +594,7 @@ export async function savePostDraft(input: {
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status, pillar_id, offer_id, media")
+    .select("id, updated_at, status, pillar_id, offer_id, media, networks")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -611,7 +611,12 @@ export async function savePostDraft(input: {
       (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
     );
     if (!checked.ok) return { ok: false, error: checked.error };
-    networks = checked.networks;
+    // Como se publica cada red y lo marcado a mano lo escribe solo el
+    // servidor, con su permiso (Contenido v4): se conserva lo guardado.
+    networks = keepServerFields(
+      checked.networks,
+      (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
+    );
   }
 
   // Gana el ultimo que guarda, pero se avisa: perder el trabajo de otro sin

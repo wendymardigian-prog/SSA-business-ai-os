@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaEntry } from "./media";
-import { normalizeNetworks, parseNewMediaEntry } from "./networks-schema";
+import { cleanExternalUrl, keepServerFields, normalizeNetworks, parseNewMediaEntry } from "./networks-schema";
 
 const file = (id: string, kind: MediaEntry["kind"] = "image"): MediaEntry => ({
   id,
@@ -195,5 +195,70 @@ describe("parseNewMediaEntry: lo que el servidor acepta de una subida (F92)", ()
   it("un tamano cero o negativo se rechaza", () => {
     expect(parseNewMediaEntry({ ...good, sizeBytes: 0 }).ok).toBe(false);
     expect(parseNewMediaEntry({ ...good, sizeBytes: -1 }).ok).toBe(false);
+  });
+});
+
+describe("Contenido v4 · lo que solo escribe el servidor", () => {
+  it("el autoguardado no puede prender 'el sistema la publica' ni inventar un publicado a mano", () => {
+    const stored = [{ platform: "instagram", auto: false }];
+    const incoming = [
+      {
+        platform: "instagram",
+        caption: "nuevo",
+        auto: true,
+        published_manually_at: "2026-10-01T10:00:00.000Z",
+        external_url: "https://evil.test",
+        status_before_manual: "approved" as const,
+      },
+    ];
+    const [out] = keepServerFields(incoming, stored);
+    expect(out.caption).toBe("nuevo");
+    expect(out.auto).toBe(false);
+    expect(out).not.toHaveProperty("published_manually_at");
+    expect(out).not.toHaveProperty("external_url");
+    expect(out).not.toHaveProperty("status_before_manual");
+  });
+
+  it("conserva lo guardado aunque el navegador no lo mande", () => {
+    const stored = [
+      {
+        platform: "youtube",
+        auto: false,
+        published_manually_at: "2026-10-15T16:00:00.000Z",
+        external_url: "https://youtu.be/abc",
+        status_before_manual: "draft" as const,
+      },
+    ];
+    const [out] = keepServerFields([{ platform: "youtube", planned_at: null }], stored);
+    expect(out).toMatchObject(stored[0]);
+  });
+
+  it("una red nueva arranca sin campos del servidor", () => {
+    const [out] = keepServerFields([{ platform: "threads", auto: true }], []);
+    expect(out).not.toHaveProperty("auto");
+  });
+
+  it("la forma de los campos nuevos se valida igual", () => {
+    expect(normalizeNetworks([{ platform: "instagram", auto: "si" }], []).ok).toBe(false);
+    expect(normalizeNetworks([{ platform: "instagram", auto: true }], []).ok).toBe(true);
+  });
+});
+
+describe("Contenido v4 · el link de una publicacion a mano", () => {
+  it("vacio es valido: el link es opcional", () => {
+    expect(cleanExternalUrl("")).toEqual({ ok: true, url: null });
+    expect(cleanExternalUrl(null)).toEqual({ ok: true, url: null });
+  });
+
+  it("acepta https y lo normaliza", () => {
+    expect(cleanExternalUrl("  https://www.youtube.com/watch?v=abc ")).toEqual({
+      ok: true,
+      url: "https://www.youtube.com/watch?v=abc",
+    });
+  });
+
+  it("rechaza lo que no es un link web", () => {
+    expect(cleanExternalUrl("javascript:alert(1)").ok).toBe(false);
+    expect(cleanExternalUrl("youtube punto com").ok).toBe(false);
   });
 });

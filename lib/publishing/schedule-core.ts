@@ -14,7 +14,6 @@ import {
   planSchedule,
   type NetworkPlan,
 } from "@/lib/content/schedule";
-import { aggregatePostStatus } from "@/lib/content/status";
 import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
 import { resolveNetworkOptions } from "@/lib/content/network-format";
 import { socialMediaTypeFor } from "@/lib/content/media-type";
@@ -22,7 +21,8 @@ import type { MediaEntry } from "@/lib/content/media";
 import { validateNetwork, type NetworkContent } from "@/lib/content/validation";
 import { countPublicationsForDay } from "./daily-count";
 import { cancelOnProvider } from "./provider-dispatch";
-import type { Database, SocialPlatform, SocialPostStatus } from "@/lib/types/database";
+import { refreshPostStatus as refreshPieceStatus } from "./settled";
+import type { ContentPostStatus, Database, SocialPlatform, SocialPostStatus } from "@/lib/types/database";
 
 /**
  * Programar y desprogramar cada red (F25), sin depender de la pantalla.
@@ -211,20 +211,17 @@ async function deletePendingPublishJobs(
   }
 }
 
-/** Recalcula el estado de la pieza a partir de sus publicaciones. */
+/**
+ * Recalcula el estado de la pieza: el mismo calculo que el resto de la
+ * publicacion (`settled.ts`). Antes habia una copia aca, y dos copias de la
+ * misma regla terminan diciendo cosas distintas.
+ */
 async function refreshPostStatus(
   service: SupabaseClient<Database>,
   postId: string,
-) {
-  const { data: publications } = await service
-    .from("social_posts")
-    .select("status")
-    .eq("content_post_id", postId)
-    .is("deleted_at", null);
-
-  const status = aggregatePostStatus(publications ?? []);
-  await service.from("content_posts").update({ status }).eq("id", postId);
-  return status;
+  opts: { manual?: ContentPostStatus } = {},
+): Promise<string> {
+  return (await refreshPieceStatus(service, postId, opts)) ?? "approved";
 }
 
 export interface ScheduleOutcome {

@@ -47,7 +47,33 @@ export interface NetworkEntry {
   options?: Record<string, unknown>;
   publisher?: string | null;
   youtube_title?: string | null;
+  /**
+   * Como se publica esta red (Contenido v4, C2): `true` = el sistema la
+   * publica sola a la fecha; `false` o ausente = la sube la persona y la fecha
+   * queda tentativa. Solo puede ser `true` con la cuenta conectada.
+   *
+   * Lo escribe SOLO el servidor (`setNetworkPublishMode`): el autoguardado
+   * conserva el valor guardado (`keepServerFields`).
+   */
+  auto?: boolean;
+  /** Cuando se marco como publicada a mano (C3). Solo el servidor. */
+  published_manually_at?: string | null;
+  /** El link del post subido a mano (C3). Solo el servidor. */
+  external_url?: string | null;
+  /**
+   * El estado manual de la pieza antes de marcarla publicada a mano: al
+   * deshacer, la pieza vuelve ahi y no a "Aprobado" (decision del 7/10).
+   */
+  status_before_manual?: ContentPostStatus | null;
 }
+
+/** Los campos de una red que solo escribe el servidor, con sus acciones y permisos. */
+export const SERVER_NETWORK_FIELDS = [
+  "auto",
+  "published_manually_at",
+  "external_url",
+  "status_before_manual",
+] as const;
 
 /** Si esa red tiene algo propio, o usa todo lo de la pieza. */
 export function hasVariant(network: NetworkEntry): boolean {

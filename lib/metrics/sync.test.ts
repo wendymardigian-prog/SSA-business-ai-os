@@ -173,6 +173,183 @@ describe("guardar las publicaciones (F47)", () => {
     expect(memory.rows("social_posts")[0]).toMatchObject({ origin: "external", status: null });
   });
 
+  it("C3 · un post marcado a mano SIN link se vincula por fecha, no se duplica", async () => {
+    const memory = db({
+      content_posts: [{ id: "post-1", workspace_id: WS, title: "La pieza" }],
+      social_posts: [
+        {
+          id: "sp-manual",
+          workspace_id: WS,
+          content_post_id: "post-1",
+          social_account_id: null,
+          external_post_id: null,
+          platform: "instagram",
+          origin: "manual",
+          status: "published",
+          published_at: "2026-09-20T14:30:00Z",
+          url: null,
+          deleted_at: null,
+        },
+      ],
+    });
+
+    const result = await persistPosts(memory.client, {
+      workspaceId: WS,
+      socialAccountId: ACC,
+      platform: "instagram",
+      posts: [snapshot()], // publishedAt 2026-09-20T15:00:00Z, 30 min despues
+      date: "2026-10-01",
+      now: NOW,
+    });
+
+    expect(result.created).toBe(0);
+    expect(memory.rows("social_posts")).toHaveLength(1);
+    expect(memory.rows("social_posts")[0]).toMatchObject({
+      id: "sp-manual",
+      content_post_id: "post-1",
+      origin: "manual",
+      external_post_id: "ig-9",
+      social_account_id: ACC,
+      caption: "El caption",
+    });
+  });
+
+  it("C3 · un post marcado a mano CON link se vincula por el link", async () => {
+    const memory = db({
+      content_posts: [{ id: "post-1", workspace_id: WS, title: "La pieza" }],
+      social_posts: [
+        {
+          id: "sp-manual",
+          workspace_id: WS,
+          content_post_id: "post-1",
+          social_account_id: null,
+          external_post_id: null,
+          platform: "instagram",
+          origin: "manual",
+          status: "published",
+          published_at: "2026-01-01T00:00:00Z", // lejos en el tiempo: solo el link lo salva
+          url: "https://www.instagram.com/p/ig-9/?igsh=1",
+          deleted_at: null,
+        },
+      ],
+    });
+
+    const result = await persistPosts(memory.client, {
+      workspaceId: WS,
+      socialAccountId: ACC,
+      platform: "instagram",
+      posts: [snapshot({ url: "https://instagram.com/p/ig-9" })],
+      date: "2026-10-01",
+      now: NOW,
+    });
+
+    expect(result.created).toBe(0);
+    expect(memory.rows("social_posts")[0]).toMatchObject({ id: "sp-manual", external_post_id: "ig-9" });
+  });
+
+  it("C3 · dos manuales que podrian ser el mismo post: no se adopta ninguna", async () => {
+    const memory = db({
+      content_posts: [
+        { id: "post-1", workspace_id: WS, title: "Pieza 1" },
+        { id: "post-2", workspace_id: WS, title: "Pieza 2" },
+      ],
+      social_posts: [
+        {
+          id: "sp-1",
+          workspace_id: WS,
+          content_post_id: "post-1",
+          external_post_id: null,
+          platform: "instagram",
+          origin: "manual",
+          status: "published",
+          published_at: "2026-09-20T15:05:00Z",
+          url: null,
+          deleted_at: null,
+        },
+        {
+          id: "sp-2",
+          workspace_id: WS,
+          content_post_id: "post-2",
+          external_post_id: null,
+          platform: "instagram",
+          origin: "manual",
+          status: "published",
+          published_at: "2026-09-20T14:55:00Z",
+          url: null,
+          deleted_at: null,
+        },
+      ],
+    });
+
+    const result = await persistPosts(memory.client, {
+      workspaceId: WS,
+      socialAccountId: ACC,
+      platform: "instagram",
+      posts: [snapshot()],
+      date: "2026-10-01",
+      now: NOW,
+    });
+
+    // Ninguna de las dos se toca, y el post entra como externo suelto: no se
+    // adivina, pero tampoco se pierde.
+    expect(result.created).toBe(1);
+    expect(memory.rows("social_posts")).toHaveLength(3);
+    expect(memory.rows("social_posts").filter((r) => r.external_post_id === "ig-9")).toHaveLength(1);
+  });
+
+  it("C3 · un comentario ya habia creado la fila externa antes que la sincronizacion: se pasa a la pieza", async () => {
+    const memory = db({
+      content_posts: [{ id: "post-1", workspace_id: WS, title: "La pieza" }],
+      social_posts: [
+        {
+          id: "sp-manual",
+          workspace_id: WS,
+          content_post_id: "post-1",
+          external_post_id: null,
+          platform: "instagram",
+          origin: "manual",
+          status: "published",
+          published_at: null,
+          url: "https://instagram.com/p/ig-9",
+          deleted_at: null,
+        },
+        {
+          id: "sp-externa",
+          workspace_id: WS,
+          content_post_id: null,
+          social_account_id: ACC,
+          external_post_id: "ig-9",
+          platform: "instagram",
+          origin: "external",
+          status: null,
+          deleted_at: null,
+        },
+      ],
+    });
+
+    const result = await persistPosts(memory.client, {
+      workspaceId: WS,
+      socialAccountId: ACC,
+      platform: "instagram",
+      posts: [snapshot({ url: "https://instagram.com/p/ig-9" })],
+      date: "2026-10-01",
+      now: NOW,
+    });
+
+    const live = memory.rows("social_posts").filter((r) => !r.deleted_at);
+    expect(result.created).toBe(0);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toMatchObject({
+      id: "sp-externa",
+      content_post_id: "post-1",
+      origin: "manual",
+      status: "published",
+      external_post_id: "ig-9",
+    });
+    // La manual vieja queda borrada de forma logica, no duplicada.
+    expect(memory.rows("social_posts").find((r) => r.id === "sp-manual")?.deleted_at).toBeTruthy();
+  });
+
   it("guarda la fila del dia de cada post", async () => {
     const memory = db();
 

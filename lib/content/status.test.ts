@@ -4,6 +4,9 @@ import {
   BOARD_COLUMNS,
   canTransition,
   columnFor,
+  derivePieceStatus,
+  isManualStatus,
+  MANUAL_STATUSES,
   statusAfterMaterialChange,
   STATUS_LABELS,
   type ContentPermissions,
@@ -154,5 +157,78 @@ describe("marcar el material", () => {
 
   it("volver el material a pendiente no mueve la pieza", () => {
     expect(statusAfterMaterialChange("draft", "pendiente")).toBe("draft");
+  });
+});
+
+describe("C4 · el estado de la pieza desde TODAS sus redes", () => {
+  const derive = (
+    rows: Array<[string, SocialPostStatus | null]>,
+    platforms: string[] = rows.map(([p]) => p),
+    manual: ContentPostStatus = "approved",
+  ) =>
+    derivePieceStatus({
+      platforms,
+      publications: rows.map(([platform, status]) => ({ platform, status })),
+      manual,
+    });
+
+  it("si cada red tiene su fila, da lo mismo que la regla de antes (F17)", () => {
+    const S: SocialPostStatus[] = ["scheduled", "uploading", "publishing", "published", "failed"];
+    for (const a of S) {
+      for (const b of S) {
+        for (const c of S) {
+          const rows: Array<[string, SocialPostStatus]> = [
+            ["instagram", a],
+            ["tiktok", b],
+            ["youtube", c],
+          ];
+          expect(derive(rows), `${a}/${b}/${c}`).toBe(
+            aggregatePostStatus(rows.map(([, status]) => ({ status }))),
+          );
+        }
+      }
+    }
+  });
+
+  it("una marcada a mano y dos tentativas: publicada en parte, no publicada", () => {
+    expect(derive([["instagram", "published"]], ["instagram", "youtube", "linkedin"], "draft")).toBe(
+      "partially_published",
+    );
+  });
+
+  it("todas marcadas a mano: publicada, sin tocar el dropdown", () => {
+    expect(derive([["youtube", "published"], ["linkedin", "published"]], ["youtube", "linkedin"], "draft")).toBe(
+      "published",
+    );
+  });
+
+  it("una programada y el resto tentativas: programada", () => {
+    expect(derive([["instagram", "scheduled"]], ["instagram", "youtube"])).toBe("scheduled");
+  });
+
+  it("todo tentativo: vale el estado que eligio la persona", () => {
+    expect(derive([], ["instagram", "youtube"], "in_production")).toBe("in_production");
+    expect(derive([["instagram", "cancelled"]], ["instagram"], "draft")).toBe("draft");
+  });
+
+  it("una fallida y otra tentativa: fallo (que no se pierda el aviso)", () => {
+    expect(derive([["instagram", "failed"]], ["instagram", "youtube"])).toBe("failed");
+  });
+
+  it("una fila viva de una red que ya no esta en la pieza sigue contando", () => {
+    expect(derive([["tiktok", "published"]], ["instagram"], "approved")).toBe("partially_published");
+  });
+
+  it("sin redes: el estado elegido", () => {
+    expect(derive([], [], "in_review")).toBe("in_review");
+  });
+});
+
+describe("C4 · que estados se eligen y cuales se derivan", () => {
+  it("se eligen los cuatro primeros", () => {
+    expect(MANUAL_STATUSES).toEqual(["draft", "in_production", "in_review", "approved"]);
+    for (const s of ["scheduled", "publishing", "published", "partially_published", "failed"]) {
+      expect(isManualStatus(s)).toBe(false);
+    }
   });
 });

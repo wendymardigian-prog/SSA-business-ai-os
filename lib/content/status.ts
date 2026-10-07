@@ -176,6 +176,61 @@ export function aggregatePostStatus(
   return "scheduled";
 }
 
+/** Los estados que elige una persona (Contenido v4, C4). El resto lo definen las redes. */
+export const MANUAL_STATUSES: ContentPostStatus[] = ["draft", "in_production", "in_review", "approved"];
+
+export function isManualStatus(status: ContentPostStatus | string | null | undefined): status is ContentPostStatus {
+  return MANUAL_STATUSES.includes(status as ContentPostStatus);
+}
+
+/**
+ * El estado de la pieza a partir de TODAS sus redes (Contenido v4, C4).
+ *
+ * `aggregatePostStatus` mira solo las filas de `social_posts`: una red con
+ * fecha tentativa (sin fila) no existia para el. Con la publicacion a mano eso
+ * miente: Instagram marcado a mano y LinkedIn y YouTube tentativos daban
+ * "Publicado" cuando faltan dos. Aca cada red de la pieza cuenta, tenga fila
+ * o no.
+ *
+ *   todas publicadas                       → Publicado
+ *   todas fallidas                         → Fallo
+ *   alguna saliendo                        → Publicando
+ *   alguna publicada y otras no            → Publicado parcial
+ *   alguna en la cola                      → Programado
+ *   alguna fallida y nada en cola ni salio → Fallo
+ *   nada de lo anterior                    → el estado que eligio la persona
+ *
+ * Cuando todas las redes tienen fila, da lo mismo que `aggregatePostStatus`
+ * (hay un test que lo recorre): lo unico nuevo es que las redes sin fila
+ * cuentan como "todavia no".
+ */
+export function derivePieceStatus(params: {
+  /** Las redes de la pieza (`networks[].platform`). */
+  platforms: string[];
+  publications: Array<{ platform: string; status: SocialPostStatus | null }>;
+  /** El estado elegido a mano que vale si las redes no definen nada. */
+  manual: ContentPostStatus;
+}): ContentPostStatus {
+  const live = params.publications.filter((p) => p.status && p.status !== "cancelled");
+
+  // Una fila viva de una red que ya no esta en la pieza sigue siendo una
+  // publicacion real: cuenta igual.
+  const platforms = [...new Set([...params.platforms, ...live.map((p) => p.platform)])];
+  if (platforms.length === 0) return params.manual;
+
+  const states = platforms.map((platform) => live.find((p) => p.platform === platform)?.status ?? null);
+  const all = (s: SocialPostStatus) => states.every((x) => x === s);
+  const has = (s: SocialPostStatus) => states.some((x) => x === s);
+
+  if (all("published")) return "published";
+  if (all("failed")) return "failed";
+  if (has("publishing")) return "publishing";
+  if (has("published")) return "partially_published";
+  if (has("scheduled") || has("uploading")) return "scheduled";
+  if (has("failed")) return "failed";
+  return params.manual;
+}
+
 /**
  * Marcar el material como grabado empuja la pieza a produccion.
  *

@@ -20,8 +20,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/types/database";
-import { aggregatePostStatus } from "@/lib/content/status";
+import type { ContentPostStatus, Database } from "@/lib/types/database";
+import { derivePieceStatus, isManualStatus } from "@/lib/content/status";
 import { notifyPublishFailure } from "@/lib/notifications/content";
 import { completePostIds } from "./post-ids";
 import type { NetworkCta } from "@/lib/content/keywords";
@@ -45,18 +45,41 @@ interface SettledRow {
  * Se llama SIEMPRE, incluso cuando la red quedo en proceso: el estado de la
  * pieza es el resumen de lo que esta pasando, y un resumen viejo es una
  * pantalla que miente.
+ *
+ * Desde Contenido v4 cuentan TODAS las redes de la pieza, tengan fila o no
+ * (`derivePieceStatus`): una red tentativa es una red que todavia no salio.
+ * Si las redes no definen nada, vale el estado elegido a mano: el que tiene
+ * la pieza si es uno de esos, `manual` si quien llama sabe cual (deshacer un
+ * publicado a mano), o Aprobado, que es a donde volvia una pieza programada
+ * a la que se le saco todo de la cola.
  */
-export async function refreshPostStatus(supabase: Db, contentPostId: string | null) {
-  if (!contentPostId) return;
+export async function refreshPostStatus(
+  supabase: Db,
+  contentPostId: string | null,
+  opts: { manual?: ContentPostStatus } = {},
+): Promise<ContentPostStatus | null> {
+  if (!contentPostId) return null;
 
-  const { data: rows } = await supabase
-    .from("social_posts")
-    .select("status")
-    .eq("content_post_id", contentPostId)
-    .is("deleted_at", null);
+  const [{ data: post }, { data: rows }] = await Promise.all([
+    supabase.from("content_posts").select("status, networks").eq("id", contentPostId).maybeSingle(),
+    supabase
+      .from("social_posts")
+      .select("platform, status")
+      .eq("content_post_id", contentPostId)
+      .is("deleted_at", null),
+  ]);
 
-  const status = aggregatePostStatus(rows ?? []);
+  const networks = (Array.isArray(post?.networks) ? post.networks : []) as Array<{ platform?: string }>;
+  const manual: ContentPostStatus =
+    opts.manual ?? (isManualStatus(post?.status) ? (post?.status as ContentPostStatus) : "approved");
+
+  const status = derivePieceStatus({
+    platforms: networks.map((n) => String(n.platform ?? "")).filter(Boolean),
+    publications: (rows ?? []).map((r) => ({ platform: r.platform as string, status: r.status })),
+    manual,
+  });
   await supabase.from("content_posts").update({ status }).eq("id", contentPostId);
+  return status;
 }
 
 /** El CTA que la pieza configuro para esa red, y el canal de la cuenta. */
