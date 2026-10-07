@@ -363,9 +363,6 @@ function PostCard({
                 {post.hasCopy ? "✓" : "○"} Guion{post.hasCopy && post.copyFromAi ? " ✦" : ""}
               </Chip>
               <Chip on={post.hasCaption}>{post.hasCaption ? "✓" : "○"} Caption</Chip>
-              {post.status === "in_production" && (
-                <Chip on>🎬 {MATERIAL_LABELS[post.materialStatus] ?? post.materialStatus}</Chip>
-              )}
             </span>
           )}
 
@@ -406,12 +403,6 @@ const NETWORK_TINT: Record<string, string> = {
   facebook: "#1877F2",
 };
 
-const MATERIAL_LABELS: Record<string, string> = {
-  pendiente: "Sin grabar",
-  grabado: "Grabado",
-  editado: "Editado",
-  listo: "Listo",
-};
 
 /**
  * Los botones de crear de la barra superior.

@@ -49,7 +49,6 @@ export interface PiecePost {
   networks: NetworkEntry[];
   media: MediaEntry[];
   status: ContentPostStatus;
-  materialStatus: string;
   aiUnreviewed: boolean;
   /** El comentario con el que la devolvieron, si la devolvieron. */
   reviewNote: string | null;
@@ -85,7 +84,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, script, recording_notes, caption, networks, media, status, material_status, ai_unreviewed, review_note, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
+      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -223,7 +222,6 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
       media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
       status: post.status,
-      materialStatus: post.material_status,
       aiUnreviewed: post.ai_unreviewed,
       reviewNote: post.review_note,
       updatedAt: post.updated_at,

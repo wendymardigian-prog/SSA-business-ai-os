@@ -48,7 +48,6 @@ const post = (over: Partial<BoardPost> = {}): BoardPost => ({
   hasCopy: false,
   hasCaption: false,
   copyFromAi: false,
-  materialStatus: "pendiente",
   copyStatus: "idle",
   pillar: null,
   offer: null,

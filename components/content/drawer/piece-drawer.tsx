@@ -12,7 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Check, History, Loader2, Sparkles, X } from "lucide-react";
-import { savePostDraft, setMaterialStatus, movePostToColumn } from "@/lib/actions/content";
+import { savePostDraft, movePostToColumn } from "@/lib/actions/content";
 import { requestCopy } from "@/lib/actions/copywriter";
 import {
   markNetworkPublished,
@@ -51,7 +51,7 @@ import {
   type PieceDraft,
 } from "@/lib/content/piece-drawer";
 import type { PieceData } from "@/lib/content/load-piece";
-import type { BoardColumn } from "@/lib/content/status";
+import { isManualStatus, type BoardColumn } from "@/lib/content/status";
 import { platformLabel } from "@/lib/platforms";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { MediaUploader } from "../media-uploader";
@@ -88,13 +88,6 @@ import { useToast } from "./toast";
 const AUTOSAVE_MS = 10_000;
 const COPY_POLL_MS = 4_000;
 
-const MATERIAL_LABELS = {
-  pendiente: "Sin grabar",
-  grabado: "Grabado",
-  editado: "Editado",
-  listo: "Listo",
-} as const;
-
 export function PieceDrawer({
   data,
   returnFocus,
@@ -114,7 +107,6 @@ export function PieceDrawer({
   const [openNetwork, setOpenNetwork] = useState<string | null>(null);
   const [draft, setDraft] = useState<PieceDraft>(() => draftFromPost(post));
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [material, setMaterial] = useState(post.materialStatus);
 
   // Para que "Guardado hace X s" se mueva solo.
   const [now, setNow] = useState(() => Date.now());
@@ -504,6 +496,7 @@ export function PieceDrawer({
           <StatusSelect
             options={statuses}
             value={post.status}
+            derived={!isManualStatus(post.status)}
             disabled={pending || statuses.every((o) => o.value === post.status || o.disabled)}
             onChange={changeStatus}
           />
@@ -686,30 +679,6 @@ export function PieceDrawer({
             taxonomy={taxonomy}
             disabled={!editable}
           />
-
-          {/* Sin esto una pieza nunca pasa a "En produccion": el estado
-              existia en la base y no habia donde tocarlo (C7). */}
-          <Field label="Estado del material" hint="Al marcar “Grabado” pasa a En producción.">
-            <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5">
-              {(Object.keys(MATERIAL_LABELS) as Array<keyof typeof MATERIAL_LABELS>).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={material === value}
-                  disabled={!editable || pending}
-                  onClick={() => {
-                    setMaterial(value);
-                    run(() => setMaterialStatus(post.id, value));
-                  }}
-                  className={`rounded-md px-2.5 py-1 text-xs disabled:opacity-50 ${
-                    material === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {MATERIAL_LABELS[value]}
-                </button>
-              ))}
-            </div>
-          </Field>
         </section>
 
         {/* ── Archivos de la pieza (F92) ── */}

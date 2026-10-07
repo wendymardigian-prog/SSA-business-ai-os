@@ -7,7 +7,6 @@ import {
   derivePieceStatus,
   isManualStatus,
   MANUAL_STATUSES,
-  statusAfterMaterialChange,
   STATUS_LABELS,
   type ContentPermissions,
 } from "./status";
@@ -144,21 +143,11 @@ describe("el estado que se deriva de las redes", () => {
   });
 });
 
-describe("marcar el material", () => {
-  it("marcarlo grabado empuja la pieza a produccion", () => {
-    expect(statusAfterMaterialChange("draft", "grabado")).toBe("in_production");
-    expect(statusAfterMaterialChange("draft", "listo")).toBe("in_production");
-  });
-
-  it("no toca una pieza que ya avanzo", () => {
-    expect(statusAfterMaterialChange("in_review", "grabado")).toBe("in_review");
-    expect(statusAfterMaterialChange("published", "listo")).toBe("published");
-  });
-
-  it("volver el material a pendiente no mueve la pieza", () => {
-    expect(statusAfterMaterialChange("draft", "pendiente")).toBe("draft");
-  });
-});
+// C4 (Contenido v4): se elimino "Estado del material" y el camino que
+// marcarlo "Grabado" empujaba la pieza a En produccion sola
+// (statusAfterMaterialChange, ya no existe). Ahora ese movimiento lo hace la
+// persona con el dropdown, con la regla de siempre: "quien puede mover una
+// pieza", arriba, ya prueba Borrador -> En produccion con un Member.
 
 describe("C4 · el estado de la pieza desde TODAS sus redes", () => {
   const derive = (

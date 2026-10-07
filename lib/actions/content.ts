@@ -449,40 +449,6 @@ export async function movePostToColumn(
   return { ok: true, data: { status: decision.status } };
 }
 
-/** Cambia el estado del material, que puede empujar la pieza a produccion. */
-export async function setMaterialStatus(
-  postId: string,
-  material: "pendiente" | "grabado" | "editado" | "listo",
-): Promise<ContentActionResult<{ status: ContentPostStatus }>> {
-  const { workspace, user, supabase, perms } = await contentContext();
-
-  const { data: post } = await supabase
-    .from("content_posts")
-    .select("id, status, created_by")
-    .eq("id", postId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  if (!post) return { ok: false, error: "No encontre esa pieza" };
-
-  const { statusAfterMaterialChange } = await import("@/lib/content/status");
-  const next = statusAfterMaterialChange(post.status, material);
-
-  if (next !== post.status) {
-    const allowed = canTransition(perms(post.created_by === user.id), post.status, next);
-    if (!allowed.ok) return { ok: false, error: allowed.reason };
-  }
-
-  const { error } = await supabase
-    .from("content_posts")
-    .update({ material_status: material, status: next })
-    .eq("id", postId);
-
-  if (error) return { ok: false, error: "No pude guardar el estado del material" };
-
-  revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { status: next } };
-}
 
 /** El orden dentro de una columna, ya calculado por `reorder`. */
 export async function saveOrder(

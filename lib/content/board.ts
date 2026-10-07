@@ -62,7 +62,6 @@ export interface BoardPost {
   hasCopy: boolean;
   hasCaption: boolean;
   copyFromAi: boolean;
-  materialStatus: string;
   /** Si el copywriter esta escribiendo esta pieza ahora (E6). */
   copyStatus: "idle" | "generating" | "failed";
   /** Clasificacion (F91). */

@@ -231,17 +231,3 @@ export function derivePieceStatus(params: {
   return params.manual;
 }
 
-/**
- * Marcar el material como grabado empuja la pieza a produccion.
- *
- * Es el unico cambio de estado que se dispara por otra cosa: la persona marca
- * "ya lo grabe" y el tablero se actualiza solo, en vez de pedirle que ademas
- * arrastre la tarjeta.
- */
-export function statusAfterMaterialChange(
-  current: ContentPostStatus,
-  material: "pendiente" | "grabado" | "editado" | "listo",
-): ContentPostStatus {
-  if (current === "draft" && material !== "pendiente") return "in_production";
-  return current;
-}

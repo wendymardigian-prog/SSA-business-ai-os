@@ -90,7 +90,7 @@ export default async function ContentPage({
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
+      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -189,7 +189,6 @@ export default async function ContentPage({
       hasCopy: Boolean(post.script?.trim()),
       hasCaption: Boolean(post.caption?.trim()),
       copyFromAi: post.copy_source !== "manual",
-      materialStatus: post.material_status,
       copyStatus: post.copy_status,
       pillar: tagFor(taxonomy.pillars, post.pillar_id),
       offer: tagFor(taxonomy.offers, post.offer_id),

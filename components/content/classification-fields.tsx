@@ -262,7 +262,7 @@ export function ClassificationFields({
               <option value="">Sin etapa</option>
               {FUNNEL_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>
-                  {s.label}
+                  {s.value.toUpperCase()} · {s.label}
                 </option>
               ))}
             </select>

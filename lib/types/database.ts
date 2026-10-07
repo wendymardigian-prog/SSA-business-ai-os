@@ -3102,6 +3102,7 @@ export interface Database {
           /** Lo propio de cada red, incluida su fecha tentativa. */
           networks: Json;
           media: Json;
+          /** Sin uso desde Contenido v4 (el dropdown de estado lo reemplaza). La 00128 la borra. */
           material_status: MaterialStatus;
           copy_source: CopySource;
           /** Si el copywriter esta escribiendo esta pieza (E6). */
@@ -3135,7 +3136,6 @@ export interface Database {
           caption?: string | null;
           networks?: Json;
           media?: Json;
-          material_status?: MaterialStatus;
           copy_source?: CopySource;
           copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
@@ -3157,7 +3157,6 @@ export interface Database {
           caption?: string | null;
           networks?: Json;
           media?: Json;
-          material_status?: MaterialStatus;
           copy_source?: CopySource;
           copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
