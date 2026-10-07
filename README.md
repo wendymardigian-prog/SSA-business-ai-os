@@ -122,4 +122,4 @@ Los scripts `scripts/verify-*.mjs` corren contra una base real, con usuarios de 
 
 ## Licencia
 
-MIT. Este proyecto arrancó como un fork de [ZernFlow](https://github.com/zernio-dev/zernflow) (MIT) — ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. Este proyecto se construyó sobre la base de un proyecto de código abierto bajo la misma licencia — ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) para el detalle y el aviso de copyright original.

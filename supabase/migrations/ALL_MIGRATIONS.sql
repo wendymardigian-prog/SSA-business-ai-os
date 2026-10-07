@@ -18668,7 +18668,7 @@ CREATE POLICY user_preferences_update ON public.user_preferences
 --
 -- Esto NO toca el valor de ningun workspace que ya exista (ALTER COLUMN ...
 -- SET DEFAULT solo cambia que valor toma una fila NUEVA sin especificar la
--- columna): el de Wendy sigue en 'America/Costa_Rica', puesto a mano.
+-- columna): el de un workspace que ya tiene un valor puesto no cambia.
 --
 -- Las funciones RPC de los dashboards (chat_dashboard_trends,
 -- chat_dashboard_agent_weekly, chat_dashboard_drafts, chat_dashboard_numbers,
