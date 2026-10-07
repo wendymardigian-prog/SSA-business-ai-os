@@ -125,6 +125,8 @@ export function SocialView({
               onChange={(e) => {
                 setPlatform(e.target.value);
                 setFormat(null);
+                // El aviso era de la red anterior.
+                setNotice(null);
               }}
               className="rounded-md border border-input bg-background px-2 py-1 text-sm"
             >
@@ -168,7 +170,7 @@ export function SocialView({
                 disabled={pending}
                 onClick={() =>
                   start(async () => {
-                    const result = await refreshMetricsNow();
+                    const result = await refreshMetricsNow(platform);
                     setNotice(result.ok ? "Se esta actualizando. Recarga en un minuto." : result.error);
                   })
                 }

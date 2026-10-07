@@ -155,6 +155,43 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
     expect(first.warnings).toEqual([]);
   });
 
+  it("avisa que cuentas son nuevas: la primera vez si, la segunda no", async () => {
+    listAccounts.mockResolvedValue({
+      data: {
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        hasAnalyticsAccess: true,
+      },
+    });
+    const db = memoryDb(seed());
+
+    const first = await syncSocialAccounts(db.client as never, WS);
+    const second = await syncSocialAccounts(db.client as never, WS);
+
+    const ids = db.rows("social_accounts").map((r) => r.id).sort();
+    expect([...first.newAccountIds].sort()).toEqual(ids);
+    expect(second.newAccountIds).toEqual([]);
+  });
+
+  it("una red que estaba desactivada y vuelve cuenta como nueva; la activa no", async () => {
+    listAccounts.mockResolvedValue({
+      data: {
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        hasAnalyticsAccess: true,
+      },
+    });
+    const db = memoryDb({
+      ...seed(),
+      social_accounts: [
+        { id: "sa-ig", workspace_id: WS, platform: "instagram", external_id: "zr-ig", is_active: true },
+        { id: "sa-tt", workspace_id: WS, platform: "tiktok", external_id: "zr-tt", is_active: false },
+      ],
+    });
+
+    const result = await syncSocialAccounts(db.client as never, WS);
+
+    expect(result.newAccountIds).toEqual(["sa-tt"]);
+  });
+
   it("si Zernio falla: aviso, y no se borra ni desactiva lo que ya estaba", async () => {
     listAccounts.mockRejectedValue(new Error("red caída"));
     const db = memoryDb({

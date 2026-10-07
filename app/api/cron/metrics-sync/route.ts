@@ -15,7 +15,7 @@ import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { scheduleJob } from "@/lib/scheduler";
 import { isSyncHour } from "@/lib/metrics/rules";
-import { METRICS_SYNC_JOB } from "@/lib/jobs/handlers/metrics-sync";
+import { queueMetricsSync } from "@/lib/metrics/queue";
 import { adAccountsToSync, META_ADS_SYNC_JOB } from "@/lib/jobs/handlers/meta-ads-sync";
 
 export async function GET(request: NextRequest) {
@@ -46,22 +46,22 @@ export async function GET(request: NextRequest) {
       .eq("workspace_id", workspace.id)
       .eq("is_active", true);
 
-    for (const account of accounts ?? []) {
-      try {
-        await scheduleJob(
-          supabase,
-          METRICS_SYNC_JOB,
-          { workspaceId: workspace.id, socialAccountId: account.id },
-          now,
-          // La clave de dedupe evita que dos corridas del cron encolen la
-          // misma cuenta dos veces: con una pendiente, el insert falla.
-          `metrics:${account.id}:${now.toISOString().slice(0, 13)}`,
-        );
-        queued += 1;
-      } catch {
-        // Ya habia uno pendiente para esta cuenta y esta hora: es el
-        // comportamiento que se busca, no un error.
-      }
+    // Una cuenta con un job pendiente de esta hora no suma otro (la clave de
+    // dedupe lo impide). Si la cola falla por otra cosa, este workspace se
+    // registra y los demas siguen.
+    try {
+      const result = await queueMetricsSync(
+        supabase,
+        workspace.id,
+        (accounts ?? []).map((a) => a.id),
+        now,
+      );
+      queued += result.queued;
+    } catch (err) {
+      console.error(
+        `[metrics-sync] no pude encolar las cuentas del workspace ${workspace.id}:`,
+        err instanceof Error ? err.message : err,
+      );
     }
 
     // Las cuentas publicitarias van en su propio job: Meta tiene su cuota y

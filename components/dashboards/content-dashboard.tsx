@@ -185,7 +185,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
   function refresh() {
     setNotice(null);
     start(async () => {
-      const result = await refreshMetricsNow();
+      const result = await refreshMetricsNow(props.platform);
       setNotice(
         result.ok
           ? "Se esta actualizando. Recarga en un minuto para ver los datos nuevos."
