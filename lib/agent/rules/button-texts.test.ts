@@ -37,10 +37,8 @@ describe("las dos fuentes se suman", () => {
     expect(isKnownButtonText("Recurso gratuito", extra)).toBe(true);
   });
 
-  it("los doce de la constante siguen reconociéndose", () => {
-    expect(isKnownButtonText("Si enviámelo", extra)).toBe(true);
-    // Y también sin la lista de la base: borrar una fila no los apaga.
-    expect(isKnownButtonText("Si enviámelo")).toBe(true);
+  it("sin filas de la base y con la constante vacia (default), nada es un boton conocido", () => {
+    expect(isKnownButtonText("Recurso gratuito")).toBe(false);
   });
 
   it("algo que no es un botón sigue sin serlo", () => {

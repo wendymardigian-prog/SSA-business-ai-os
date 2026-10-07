@@ -179,7 +179,7 @@ export async function runCopywriter(
     const result = await generate({
       model: resolved.model,
       schema: copyOutputSchema,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT(),
       prompt,
       ...(agent.temperature !== null ? { temperature: agent.temperature } : {}),
       ...(agent.max_output_tokens !== null ? { maxOutputTokens: agent.max_output_tokens } : {}),

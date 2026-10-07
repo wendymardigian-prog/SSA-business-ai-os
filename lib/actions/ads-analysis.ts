@@ -100,7 +100,7 @@ export async function analyzeAdsWithAi(input: {
   try {
     const result = await generateText({
       model: model.model,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT(),
       prompt: input.question ? `${context}\n\nPREGUNTA: ${input.question}` : context,
     });
 

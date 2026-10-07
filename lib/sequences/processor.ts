@@ -12,6 +12,7 @@ import {
   stepVariables,
 } from "./steps";
 import type { Database, SequenceStep } from "@/lib/types/database";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 
 /**
  * El procesador de secuencias. Lo llama el cron cada minuto.
@@ -256,7 +257,7 @@ async function deliverStep(
       provider: step.provider,
       modelId: step.model,
       systemPrompt:
-        "Sos quien atiende los mensajes de este negocio. Escribi en español rioplatense, breve y natural, como una persona. No saludes de nuevo si la conversacion ya empezo.",
+        `Sos quien atiende los mensajes de este negocio. Escribi en ${aiLanguageStyle()}, breve y natural, como una persona. No saludes de nuevo si la conversacion ya empezo.`,
       userPrompt: interpolateVariables(step.prompt ?? "", variables),
       temperature: step.temperature,
       maxTokens: step.maxTokens,

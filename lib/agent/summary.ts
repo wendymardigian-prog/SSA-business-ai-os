@@ -11,6 +11,7 @@ import { applyTags, setFollowup, setTemperature, type EffectContext } from "./to
 import { getAgentTool } from "./tools/index";
 import { newNonce, wrapUntrusted } from "./untrusted";
 import { effectiveMessageText } from "./effective-text";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 
 /**
  * Memoria acumulativa (F33) y clasificacion al cierre (F34).
@@ -90,7 +91,7 @@ export function parseSummaryOutput(text: string): SummaryModelOutput | null {
 export function buildSummarySystemPrompt(nonce: string, allowedTagNames: string[], canClassify: boolean): string {
   const rules = [
     "Sos quien mantiene la memoria del negocio sobre cada contacto. Recibis el resumen previo (si existe) y los mensajes nuevos de una conversacion que acaba de cerrarse.",
-    "Escribi un resumen INTEGRADO en espanol rioplatense, en tercera persona, con: temas hablados, decisiones, preferencias, problemas reportados, compromisos y proximo paso sugerido.",
+    `Escribi un resumen INTEGRADO en ${aiLanguageStyle()}, en tercera persona, con: temas hablados, decisiones, preferencias, problemas reportados, compromisos y proximo paso sugerido.`,
     "Reconciliacion: si un dato nuevo contradice o corrige uno del resumen previo (cambio de plan, de fecha, de preferencia), quedate con el NUEVO y no dejes el viejo. Nunca acumules versiones contradictorias.",
     `Largo maximo: ${SUMMARY_MAX_CHARS} caracteres. Si no entra, condensa lo mas antiguo y conserva lo reciente y lo relevante para vender o atender.`,
     "No inventes nada que no este en los mensajes o en el resumen previo. Si un dato no se sabe, no lo pongas.",

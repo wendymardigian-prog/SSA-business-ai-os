@@ -40,7 +40,7 @@ describe("interpolador del motor y del simulador", () => {
 
 describe("interpolateVariables", () => {
   it("reemplaza un token simple", () => {
-    expect(interpolateVariables("Hola {{nombre}}", { nombre: "Noelia" })).toBe("Hola Noelia");
+    expect(interpolateVariables("Hola {{nombre}}", { nombre: "Ana" })).toBe("Hola Ana");
   });
 
   it("sigue un dot-path", () => {

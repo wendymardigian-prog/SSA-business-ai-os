@@ -10575,23 +10575,15 @@ WHERE t.normalized_text = '' AND t.category_id IS NULL
   AND c.workspace_id = t.workspace_id AND c.direction = t.direction AND c.name = 'Solo emoji o adjunto';
 
 -- 7. Textos de botón conocidos (§10.6). Categoría inbound "Respuesta a botón",
--- los 12 textos con is_button = true y source = 'rule' (no los toca el modelo).
+-- para marcar con is_button = true y source = 'rule' los textos que la base
+-- de CADA cliente use como botón (no los toca el modelo). La categoría es
+-- generica y se crea siempre; los textos puntuales no se siembran aca: son
+-- campaña de cada negocio, no del sistema (lib/agent/rules/known-buttons.ts,
+-- hoy una lista vacia a proposito — ver docs/PROGRESS-white-label.md).
 INSERT INTO public.message_categories (workspace_id, direction, name, description, is_fallback, created_by)
 SELECT w.id, 'inbound', 'Respuesta a botón', 'Clic en un botón de ManyChat u otra automatización', false, 'system'
 FROM public.workspaces w
 ON CONFLICT DO NOTHING;
-
-WITH buttons(t) AS (VALUES
-  ('si enviamelo'), ('quiero aprender'), ('tengo un negocio'), ('tengo una base'),
-  ('si quiero a clase'), ('si quiero la clase'), ('generar contenido'), ('empiezo de 0'),
-  ('automatizar todo'), ('equipo ventas ia'), ('agentes'), ('responder mensajes')
-)
-UPDATE public.message_texts t
-SET is_button = true, source = 'rule',
-    category_id = c.id
-FROM buttons b, public.message_categories c
-WHERE t.direction = 'inbound' AND t.normalized_text = b.t
-  AND c.direction = 'inbound' AND c.name = 'Respuesta a botón' AND c.workspace_id = t.workspace_id;
 
 -- 8. Categorías de sistema al crear un workspace ----------------------------
 -- Sin esto, un workspace nuevo (o el de prueba de verify-dashboards) no tiene

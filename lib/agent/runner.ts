@@ -55,6 +55,7 @@ import { defaultRefresh, type RefreshFn } from "./refresh";
 import { alreadyAnsweredSince, claimAgentReply, lastExternalOutboundAt, withinExternalCooldown } from "./reply-check";
 import { evaluateRules, type RuleEvalResult } from "./rules/evaluate";
 import { buildPreRuleContext, fillResponseContext } from "./rules/context";
+import { buttonTextsFromRows, BUTTON_TEXTS_QUERY } from "./rules/button-texts";
 import { validateIntent } from "./tools/declare-intent";
 import type { RuleAction } from "./rules/fields";
 import { buildToolSet } from "./tools/build";
@@ -599,10 +600,19 @@ async function continueTurn(
     const hasPriorOutbound = messages.some(
       (m) => m.direction === "outbound" && ms(m.created_at) < ms(burst[0].created_at),
     );
+    // Textos de boton de la base (cada negocio tiene los suyos), ademas de los
+    // que trae la constante KNOWN_BUTTON_TEXTS (vacia por defecto desde el
+    // white label: las dos fuentes se suman, no se reemplazan).
+    const { data: buttonRows } = await supabase
+      .from(BUTTON_TEXTS_QUERY.table)
+      .select(BUTTON_TEXTS_QUERY.columns)
+      .eq("workspace_id", conversation.workspace_id)
+      .eq("direction", BUTTON_TEXTS_QUERY.direction);
     preRuleCtx = buildPreRuleContext({
       burstText: burst.map((m) => effectiveMessageText(m) ?? "").join("\n"),
       burstCount: burst.length,
       lastInboundText: burst[burst.length - 1].text ?? null,
+      knownButtonExtra: buttonTextsFromRows(buttonRows),
       temperature: contact.leadTemperature,
       tags: contact.tags,
       hasPriorOutbound,
@@ -898,7 +908,7 @@ async function continueTurn(
       : { mode: effectiveMode, refresh: routingRefresh };
 
   // 6d (enganche). Guardarrail de salida bloqueado. En borrador se guarda igual,
-  // marcado, para que Wendy vea que quiso mandar; en envio directo no sale nada
+  // marcado, para que quien lo revise vea que quiso mandar; en envio directo no sale nada
   // y se avisa. Va aca, con routingNow ya definido, para no perder que regla
   // decidio en modo reglas.
   if (!outputCheck.ok) {

@@ -249,7 +249,7 @@ describe("partir un texto editado", () => {
 });
 
 const NOOP_REFRESH = async () => ({ ok: true, inserted: 0, error: null });
-const WA_LINK = "https://wa.me/50670814873?text=Hola%20Wendy%2C%20soy%20Ana.";
+const WA_LINK = "https://wa.me/5491100000000?text=Hola%2C%20soy%20Ana.";
 
 describe("borrador con link de WhatsApp: registro del pase", () => {
   function withLinkStep(draftOver: Record<string, unknown> = {}) {
@@ -260,7 +260,7 @@ describe("borrador con link de WhatsApp: registro del pase", () => {
     });
     w.db.rows("agent_run_steps").push({
       id: "step-1", run_id: "run-1", kind: "tool_call", name: "generar_link_whatsapp",
-      error: null, created_at: hoursAgo(2), output: { link: WA_LINK, texto_preescrito: "Hola Wendy, soy Ana." },
+      error: null, created_at: hoursAgo(2), output: { link: WA_LINK, texto_preescrito: "Hola, soy Ana." },
     });
     return w;
   }

@@ -138,7 +138,7 @@ export function AiResponsePanel({ data: rawData, onChange }: AiResponsePanelProp
         <textarea
           value={data.systemPrompt || ""}
           onChange={(e) => onChange({ ...data, systemPrompt: e.target.value })}
-          placeholder="Sos el asistente de una agencia de marketing. Responde breve, en español rioplatense..."
+          placeholder="Sos el asistente de este negocio. Responde breve y claro..."
           rows={8}
           className="w-full resize-none rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />

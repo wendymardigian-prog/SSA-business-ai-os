@@ -225,13 +225,13 @@ try {
     check(emoji?.source === "rule", "el emoji quedó con source rule");
     const { data: emojiCat } = await svc.from("message_categories").select("name").eq("id", emoji?.category_id).maybeSingle();
     check(emojiCat?.name === "Solo emoji o adjunto", "el emoji fue a 'Solo emoji o adjunto'");
-    // (Los 12 textos de botón se siembran en la migración sobre el workspace real;
-    // verificado por SQL aparte. Un workspace de prueba nuevo no los recibe.)
+    // (Los textos de botón son de cada negocio, no se siembran en la migración:
+    // se marcan a mano en Ajustes → Tareas, message_texts.is_button.)
   }
 
   console.log("\n— normalize_for_grouping (paridad con la app) —");
   {
-    const cases = [["Sí!!", "si"], ["siii", "si"], ["Siii quiero a clase", "si quiero a clase"], ["❤", ""]];
+    const cases = [["Sí!!", "si"], ["siii", "si"], ["Siii quiero el curso", "si quiero el curso"], ["❤", ""]];
     for (const [input, want] of cases) {
       const { data } = await rpc(svc, "normalize_for_grouping", { p_raw: input });
       eq(data, want, `normalize(${JSON.stringify(input)}) = ${JSON.stringify(want)}`);

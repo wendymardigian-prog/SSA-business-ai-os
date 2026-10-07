@@ -366,7 +366,7 @@ function GuardrailsSection({ form, set }: SectionProps) {
         </p>
         <Field
           label="Links permitidos (uno por línea)"
-          hint="Se compara por dominio y camino, sin protocolo ni parámetros. Vacío: no se revisan links. Ej: wa.me/50670814873, wendymardigian.com/academia"
+          hint="Se compara por dominio y camino, sin protocolo ni parámetros. Vacío: no se revisan links. Ej: wa.me/5491100000000, tusitio.com/oferta"
         >
           {(id) => (
             <textarea

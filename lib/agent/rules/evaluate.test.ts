@@ -26,7 +26,7 @@ describe("evaluateRules — operadores y campos (F8)", () => {
 
   it("is_known_button", () => {
     const rules = [rule({ id: "b", action: "skip", conditions: [{ field: "inbound.is_known_button", op: "is", value: true }] })];
-    expect(evaluateRules(rules, ctx({ inbound: { text: "si enviamelo", is_known_button: true, length: 12, burst_count: 1 } }), "before_generation", "draft").action).toBe("skip");
+    expect(evaluateRules(rules, ctx({ inbound: { text: "quiero mas info", is_known_button: true, length: 12, burst_count: 1 } }), "before_generation", "draft").action).toBe("skip");
     expect(evaluateRules(rules, ctx(), "before_generation", "draft").action).toBe("draft");
   });
 
@@ -96,7 +96,7 @@ describe("evaluateRules — corte en dos etapas (F8)", () => {
   it("dos etapas dan el mismo resultado que la lista completa (≥10 casos)", () => {
     const { rules, defaultAction } = defaultRulesTemplate();
     const cases: RuleContext[] = [
-      ctx({ inbound: { text: "si enviamelo", is_known_button: true, length: 12, burst_count: 1 } }),
+      ctx({ inbound: { text: "quiero mas info", is_known_button: true, length: 12, burst_count: 1 } }),
       ctx({ inbound: { text: "gracias por ponerte en contacto", is_known_button: false, length: 30, burst_count: 1 } }),
       ctx({ response: { text: "el precio es 500", has_link: false, parts: 1 } }),
       ctx({ agent: { wants_escalate: true, kb_miss: false, used_tools: [] } }),

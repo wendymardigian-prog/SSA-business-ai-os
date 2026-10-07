@@ -135,14 +135,16 @@ export async function sendFlowTestEmail(input: { flowId: string; subject: string
   const to = ctx.user.email ?? "";
   if (!to) return { ok: false, error: "Tu usuario no tiene email." };
 
+  const hostName =
+    ctx.user.user_metadata?.full_name ?? ctx.user.user_metadata?.name ?? ctx.user.email ?? "Alguien";
   const sample = {
-    contact: { first_name: "Noelia", name: "Noelia Mereles" },
+    contact: { first_name: "Ana", name: "Ana Pérez" },
     booking: {
       ...emptyBookingVariables(),
       event_title: "Llamada de diagnóstico",
       start_invitee: "martes 6 de octubre, 14:00 (hora de Ciudad de México)",
       time_invitee: "14:00",
-      host_name: "Wendy",
+      host_name: hostName,
       location: "Google Meet",
       meet_url: "https://meet.google.com/ejemplo",
       reschedule_url: "https://ejemplo/calendario/agenda/abc/reagendar",

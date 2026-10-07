@@ -6,7 +6,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-const LINK = "https://wa.me/50670814873?text=hola";
+const LINK = "https://wa.me/5491100000000?text=hola";
 
 describe("applyWhatsappMarker", () => {
   it("reemplaza todas las apariciones cuando hubo llamada", () => {
@@ -54,7 +54,7 @@ describe("recordWhatsappHandoff", () => {
     channelId: "ch-1",
     runId: "run-1",
     link: LINK,
-    textoPreescrito: "Hola Wendy, soy Ana.",
+    textoPreescrito: "Hola, soy Ana.",
     origin: "tool" as const,
   };
 
@@ -72,7 +72,7 @@ describe("recordWhatsappHandoff", () => {
     });
     const meta = rows[0].metadata as Record<string, unknown>;
     expect(meta.link).toBe(LINK);
-    expect(meta.reason).toBe("Hola Wendy, soy Ana.");
+    expect(meta.reason).toBe("Hola, soy Ana.");
     expect(meta.message_id).toBe("m-1");
     expect(meta.run_id).toBe("run-1");
   });

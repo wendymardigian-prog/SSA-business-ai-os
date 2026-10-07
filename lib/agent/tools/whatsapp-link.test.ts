@@ -12,18 +12,20 @@ import { toAgentConfig } from "../config";
 import { agentRow } from "../testing/fixtures";
 import { toolsForAgent } from "./index";
 
+const FAKE_PHONE = "5491100000000";
+
 describe("normalizePhone", () => {
   it("quita +, espacios, guiones y parentesis", () => {
-    expect(normalizePhone("+506 7081-4873")).toBe("50670814873");
-    expect(normalizePhone("(506) 7081 4873")).toBe("50670814873");
+    expect(normalizePhone("+54 9 11 0000-0000")).toBe(FAKE_PHONE);
+    expect(normalizePhone("(54) 9 11 00000000")).toBe(FAKE_PHONE);
   });
 });
 
 describe("configSchema (via la definicion)", () => {
   const schema = whatsappLinkTool.configSchema;
   it("normaliza el numero al validar y rechaza uno de 5 digitos", () => {
-    const ok = schema.safeParse({ numero: "+506 7081-4873" });
-    expect(ok.success && ok.data.numero).toBe("50670814873");
+    const ok = schema.safeParse({ numero: "+54 9 11 0000-0000" });
+    expect(ok.success && ok.data.numero).toBe(FAKE_PHONE);
     expect(schema.safeParse({ numero: "12345" }).success).toBe(false);
     expect(schema.safeParse({ numero: "012345678" }).success).toBe(false); // empieza en 0
   });
@@ -31,11 +33,15 @@ describe("configSchema (via la definicion)", () => {
     const r = schema.safeParse({});
     expect(r.success && r.data.numero).toBe("");
   });
+  it("nombre_destino es opcional y vacio por defecto", () => {
+    const r = schema.safeParse({});
+    expect(r.success && r.data.nombre_destino).toBe("");
+  });
 });
 
 describe("inputSchema: rechaza campos extra", () => {
   it("un numero propio del modelo se rechaza (strict)", () => {
-    expect(whatsappLinkTool.inputSchema.safeParse({ contexto: "hola", numero: "50611112222" }).success).toBe(false);
+    expect(whatsappLinkTool.inputSchema.safeParse({ contexto: "hola", numero: FAKE_PHONE }).success).toBe(false);
     expect(whatsappLinkTool.inputSchema.safeParse({ contexto: "hola", nombre: "Ana" }).success).toBe(true);
   });
 });
@@ -65,7 +71,7 @@ describe("cutForLink + codificacion", () => {
     });
     expect(texto.length).toBeLessThanOrEqual(40);
     expect(texto).not.toMatch(/\s$/); // no corta dejando espacio colgando
-    const link = buildWhatsappLink("50670814873", texto);
+    const link = buildWhatsappLink(FAKE_PHONE, texto);
     const decoded = decodeURIComponent(link.split("?text=")[1]);
     expect(decoded).toBe(texto);
     // Ningun escape partido: el %XX siempre completo.
@@ -81,19 +87,27 @@ describe("cutForLink + codificacion", () => {
 });
 
 describe("composePrewrittenText", () => {
-  it("con nombre y contexto", () => {
+  it("con nombre y contexto, sin nombre_destino configurado: saludo generico", () => {
     expect(composePrewrittenText({ nombre: "Ana", contexto: "quiero el curso", plantillaDefault: "x", max: 180 })).toBe(
-      "Hola Wendy, soy Ana. quiero el curso",
+      "Hola, soy Ana. quiero el curso",
     );
   });
   it("sin nombre", () => {
     expect(composePrewrittenText({ nombre: null, contexto: "quiero el curso", plantillaDefault: "x", max: 180 })).toBe(
-      "Hola Wendy. quiero el curso",
+      "Hola. quiero el curso",
     );
   });
+  it("con nombre_destino configurado, el saludo lo nombra", () => {
+    expect(
+      composePrewrittenText({ nombre: "Ana", contexto: "quiero el curso", plantillaDefault: "x", max: 180, nombreDestino: "Juan" }),
+    ).toBe("Hola Juan, soy Ana. quiero el curso");
+    expect(
+      composePrewrittenText({ nombre: null, contexto: "quiero el curso", plantillaDefault: "x", max: 180, nombreDestino: "Juan" }),
+    ).toBe("Hola Juan. quiero el curso");
+  });
   it("sin contexto usa la plantilla por defecto", () => {
-    expect(composePrewrittenText({ nombre: "Ana", contexto: undefined, plantillaDefault: "Hola Wendy, vengo de Instagram.", max: 180 })).toBe(
-      "Hola Wendy, vengo de Instagram.",
+    expect(composePrewrittenText({ nombre: "Ana", contexto: undefined, plantillaDefault: "Hola, vengo de Instagram.", max: 180 })).toBe(
+      "Hola, vengo de Instagram.",
     );
   });
   it("un contexto que es solo un link cae a la plantilla (se saneo a vacio)", () => {
@@ -112,7 +126,7 @@ describe("isAvailable / toolsForAgent", () => {
     const sin = toAgentConfig(agentRow({ allowed_tools: ["generar_link_whatsapp"], tools_config: {} }));
     expect(toolsForAgent(sin).map((t) => t.name)).not.toContain("generar_link_whatsapp");
     const con = toAgentConfig(
-      agentRow({ allowed_tools: ["generar_link_whatsapp"], tools_config: { generar_link_whatsapp: { numero: "50670814873" } } }),
+      agentRow({ allowed_tools: ["generar_link_whatsapp"], tools_config: { generar_link_whatsapp: { numero: FAKE_PHONE } } }),
     );
     expect(toolsForAgent(con).map((t) => t.name)).toContain("generar_link_whatsapp");
   });

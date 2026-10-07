@@ -10,7 +10,7 @@ import { WHATSAPP_MARKER } from "./tools/whatsapp-link";
  *
  * El marcador vive en el texto del modelo; el link real solo se conoce en el
  * turno (lo genero la herramienta). Se reemplaza DESPUES de partir en burbujas
- * y ANTES de persistir, asi el borrador guarda el link real (Wendy lo clickea)
+ * y ANTES de persistir, asi el borrador guarda el link real (quien lo revisa lo clickea)
  * y el envio manda el link, nunca el marcador ni la url cruda del modelo.
  */
 

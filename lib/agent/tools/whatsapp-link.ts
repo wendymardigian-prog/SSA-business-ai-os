@@ -6,7 +6,7 @@ import type { AgentConfig } from "../config";
 import { stripLinks } from "../output-guardrails";
 
 /**
- * generar_link_whatsapp: arma el link de WhatsApp de Wendy con un mensaje
+ * generar_link_whatsapp: arma el link de WhatsApp del negocio con un mensaje
  * preescrito, para pasarle un lead calificado. NO escribe la url en el mensaje:
  * devuelve un marcador ({{LINK_WHATSAPP}}) que el modelo pone en su texto, y el
  * runner lo reemplaza por el link real antes de enviar o guardar el borrador.
@@ -44,7 +44,11 @@ const configSchema = z.object({
     // Vacio es valido para poder guardar sin numero; isAvailable la esconde.
     // Con numero: 8 a 15 digitos, sin empezar en 0.
     .refine((v) => v === "" || /^[1-9]\d{7,14}$/.test(v), "El numero va en formato internacional sin +: entre 8 y 15 digitos, sin empezar en 0."),
-  plantilla_default: z.string().trim().min(1).max(200).default("Hola Wendy, te escribo desde Instagram."),
+  plantilla_default: z.string().trim().min(1).max(200).default("Hola, te escribo desde Instagram."),
+  // Quien recibe el mensaje (dueno del negocio, un vendedor). Opcional: sin
+  // esto el saludo queda generico ("Hola, soy <lead>...") en vez de nombrar a
+  // alguien en particular.
+  nombre_destino: z.string().trim().max(60).default(""),
   max_caracteres: z.number().int().min(40).max(300).default(180),
 });
 
@@ -101,16 +105,18 @@ export function buildWhatsappLink(numero: string, texto: string): string {
  * plantilla por defecto si no hay contexto. Saneado y recortado a max.
  */
 export function composePrewrittenText(
-  args: { nombre: string | null; contexto: string | undefined; plantillaDefault: string; max: number },
+  args: { nombre: string | null; contexto: string | undefined; plantillaDefault: string; max: number; nombreDestino?: string },
 ): string {
   const contexto = sanitizeForLink(args.contexto ?? "");
+  const destino = sanitizeForLink(args.nombreDestino ?? "");
+  const saludo = destino ? `Hola ${destino}` : "Hola";
   let base: string;
   if (!contexto) {
     base = args.plantillaDefault;
   } else if (args.nombre) {
-    base = `Hola Wendy, soy ${sanitizeForLink(args.nombre)}. ${contexto}`;
+    base = `${saludo}, soy ${sanitizeForLink(args.nombre)}. ${contexto}`;
   } else {
-    base = `Hola Wendy. ${contexto}`;
+    base = `${saludo}. ${contexto}`;
   }
   base = sanitizeForLink(base);
   base = cutForLink(base, args.max);
@@ -186,19 +192,26 @@ export const whatsappLinkTool: AgentToolDefinition<z.infer<typeof inputSchema>, 
   name: "generar_link_whatsapp",
   label: "Pasar el lead a WhatsApp",
   description:
-    "Genera el link de WhatsApp de Wendy con un mensaje preescrito, para pasarle un lead calificado que quiere avanzar. En tu mensaje al lead escribí exactamente el marcador {{LINK_WHATSAPP}} donde va el link, nunca la URL: el sistema lo reemplaza por el link real. Usala una sola vez por conversación; no repitas el link.",
+    "Genera el link de WhatsApp del negocio con un mensaje preescrito, para pasarle un lead calificado que quiere avanzar. En tu mensaje al lead escribí exactamente el marcador {{LINK_WHATSAPP}} donde va el link, nunca la URL: el sistema lo reemplaza por el link real. Usala una sola vez por conversación; no repitas el link.",
   inputSchema,
   configSchema,
   configFields: [
     {
       key: "numero",
       label: "Número de WhatsApp de destino",
-      hint: "Formato internacional sin +, sin espacios ni guiones. Ej: 50670814873.",
+      hint: "Formato internacional sin +, sin espacios ni guiones. Ej: 5491100000000.",
       kind: "text",
       inputMode: "tel",
       requiredForTool: true,
       emptyMessage:
         "Falta el número de WhatsApp de destino (formato internacional, sin +). Sin número, la herramienta no existe para el agente.",
+    },
+    {
+      key: "nombre_destino",
+      label: "Nombre de quien recibe",
+      hint: "Opcional. Si lo completás, el saludo del mensaje preescrito lo nombra (\"Hola <nombre>, soy...\").",
+      kind: "text",
+      maxLength: 60,
     },
     {
       key: "plantilla_default",
@@ -258,6 +271,7 @@ export const whatsappLinkTool: AgentToolDefinition<z.infer<typeof inputSchema>, 
       contexto: input.contexto,
       plantillaDefault: config.plantilla_default,
       max: config.max_caracteres,
+      nombreDestino: config.nombre_destino,
     });
     const link = buildWhatsappLink(config.numero, textoPreescrito);
 

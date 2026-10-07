@@ -14,21 +14,25 @@
 
 import { computeTotals, money, percent, type AdsRow, type GroupedRow } from "@/lib/dashboards/ads";
 import { groupByObject } from "@/lib/dashboards/ads";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 
 export const MAX_CAMPAIGNS = 10;
 export const MAX_ADSETS = 15;
 export const MAX_ADS = 15;
 
-export const SYSTEM_PROMPT = `Sos un analista de medios pagos que trabaja para una agencia de marketing en Argentina.
+/** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
+export function SYSTEM_PROMPT(): string {
+  return `Sos un analista de medios pagos que trabaja para este negocio.
 
 Te paso los numeros reales de una cuenta de Meta Ads. Tu trabajo es decir que esta funcionando, que no, y que conviene hacer.
 
 Reglas:
-- Hablá en castellano rioplatense (vos, tenés), simple y directo.
+- Hablá en ${aiLanguageStyle()}, simple y directo.
 - No inventes numeros: usá solo los que te paso. Si falta un dato, decilo.
 - Priorizá: tres o cuatro cosas concretas, no una lista de veinte.
 - Cada recomendacion tiene que decir sobre QUE objeto (campaña, conjunto o anuncio) y POR QUE, con el numero que lo justifica.
 - Si algo no se puede concluir con estos datos, decilo en vez de suponer.`;
+}
 
 export interface AnalysisContext {
   periodLabel: string;
