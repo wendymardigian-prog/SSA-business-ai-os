@@ -762,3 +762,40 @@ verificadas; esto es lo que queda, no lo ya hecho.
 - **Qué se decidió en su lugar:** queda anotado para una corrida aparte. El
   patrón para hacerlo es el mismo que `lib/brand.ts`/`lib/ai/language-style.ts`:
   un módulo puro que lee la variable de entorno con un default.
+
+## Contenido v4 (corrida del 7/10/2026)
+
+- **Incidente durante la 00126 (backfill de formato), arreglado en el momento.**
+  La primera versión de la función de la migración usaba
+  `jsonb_set(entry, '{format}', to_jsonb(new_format), true)`. Cuando no se
+  podía mapear un formato (`contentType='feed'` con 0 archivos) `new_format`
+  era `NULL` de SQL, y `to_jsonb(NULL)` también es `NULL` de SQL: `jsonb_set`
+  con un `new_value` que es `NULL` de SQL devuelve `NULL` para toda la fila,
+  no el jsonb `null`. La única pieza de producción quedó con
+  `"networks":[null]`, perdiendo también `cta`, `options` y `platform` de esa
+  entrada.
+  - **Se detectó al toque** (se leyó la fila después de aplicar, como pide
+    el procedimiento) y se restauró con el valor exacto que se había leído
+    antes de aplicar (capturado en la exploración inicial de esta misma
+    corrida). Se verificó con una lectura posterior que coincide con el
+    original.
+  - **La función se corrigió** (`COALESCE(to_jsonb(new_format), 'null'::jsonb)`,
+    que si convierte `NULL` de SQL en el jsonb `null`) y se probó la
+    expresión sola, de forma aislada y de solo lectura, antes de volver a
+    aplicar la migración sobre la base real.
+  - **Ningún dato se perdió**: la restauración fue exacta y la segunda
+    corrida de la migración, ya corregida, dejó la fila con `"format":null`
+    (el resultado esperado: 0 archivos, no se adivina un formato) y el
+    resto de la entrada intacto.
+  - **Queda para la próxima vez que se escriba una migración así**: probar
+    la expresión jsonb por separado (una `SELECT` de solo lectura, sin tocar
+    la tabla) antes de aplicarla sobre una columna jsonb completa, en vez de
+    confiar en que el camino "sin valor" de un `CASE` se comporta como el
+    camino "con valor".
+
+- **La pieza `425ac42a-2c7b-42ec-b047-5af199b64cc6`** (la única en
+  producción) tiene su red de Instagram con `format: null` después de la
+  00126: tenía `contentType: 'feed'` pero 0 archivos, y la regla del
+  documento (§17) es no adivinar un formato sin archivos. En el drawer esa
+  red va a aparecer con la verificación en rojo ("Elegí el formato") hasta
+  que alguien lo complete a mano.
