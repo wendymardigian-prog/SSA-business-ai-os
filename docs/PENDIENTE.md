@@ -738,6 +738,18 @@ verificadas; esto es lo que queda, no lo ya hecho.
   workspace real; si no, es una cuenta huérfana sin dato sensible del
   negocio adentro (vacía salvo lo que esa persona haya cargado ahí misma).
 
+- **Qué quedó:** el mismo corte de día en UTC (`.slice(0,10)` sobre un ISO)
+  que se arregló en los dashboards de contenido/ads/unified aparece tambien
+  en `lib/dashboards/post-analysis.ts`, `lib/dashboards/follower-bump.ts` y
+  `lib/dashboards/chat/trends.ts`.
+- **Por qué:** no estaban en la lista original de archivos a arreglar de
+  esta corrida, y agregarlos sin que nadie los pidiera era ampliar el
+  alcance por cuenta propia.
+- **Qué hay que hacer:** el mismo patrón ya aplicado en
+  `lib/dashboards/content.ts`/`ads-load.ts`/`content-load.ts`: bucketear
+  con `civilDate`/`isoToDateInput` en la zona que corresponda (de quien
+  mira, si es un dashboard) en vez de `.slice(0,10)`.
+
 - **Qué quedó:** el barrido de `"es-AR"` suelto en formateadores (~38
   archivos) hacia una variable `NEXT_PUBLIC_LOCALE`, y `DEFAULT_PHONE_COUNTRY
   = "CR"` hacia `NEXT_PUBLIC_DEFAULT_COUNTRY`.

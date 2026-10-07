@@ -173,14 +173,51 @@ sobre `app lib components public scripts supabase` da 0** (fuera de
   recibe `timeZone` por prop como el resto del dashboard de IA.
 - Fechas de integraciones (antes Buenos Aires fija) y el seguimiento de un
   contacto pasan a la zona de quien mira.
-- **Barrido más amplio delegado** (rama `oneshot-white-label-c-sweep`, en
-  revisión): el resto de las páginas de dashboards/reportes que todavía
-  tenían `workspace.timezone || "America/Costa_Rica"` como único origen, y
-  los bugs puntuales ya identificados (cortes de día en UTC con
-  `.slice(0,10)` en los dashboards, el rango UTC de la agenda admin, la
-  medianoche UTC de `read-tools.ts`, las semanas UTC de `review-queue.ts`,
-  el "hoy" UTC de `usage-counts.ts`, y el doble-interpretación de zona en
-  `contact-editor.tsx`). Se actualiza este documento cuando termine.
+- **Barrido más amplio** (rama `oneshot-white-label-c-sweep`, delegada y
+  **mergeada**): el resto de las páginas de dashboards/reportes que todavía
+  tenían `workspace.timezone || "America/Costa_Rica"` como único origen
+  pasaron a la zona de quien mira, y los seis bugs puntuales se arreglaron
+  de verdad:
+  1. Cortes de día en UTC con `.slice(0,10)` en los dashboards de
+     contenido/ads/unified (`lib/dashboards/content.ts`,
+     `trend-explorer.tsx`, `ads-load.ts`, `content-load.ts`,
+     `ads-detail-page.ts` — este último no estaba en la lista pero tenía
+     exactamente el mismo bug que `ads/page.tsx`, así que se arregló igual).
+  2. El rango UTC de la agenda admin (`agenda/page.tsx`) pasa a
+     `startOfDay`/`endOfDay` en la zona de la página.
+  3. La medianoche UTC de `read-tools.ts` pasa a la zona ya inferida del
+     lead (no una nueva).
+  4. Las semanas UTC de `review-queue.ts` pasan a `civilDate`/`zonedClock`.
+     Es un reporte de equipo, así que recibe la zona del NEGOCIO, no la de
+     quien mira — decisión correcta y automática, porque la única fuente
+     que lo alimenta (`settings/background/page.tsx`) ya era la del
+     negocio y no necesitaba partirse en dos valores.
+  5. El "hoy" UTC de `usage-counts.ts` (tope diario de emails) pasa a la
+     zona del negocio (una consulta liviana extra a `workspaces`).
+  6. El doble-interpretación de zona en `contact-editor.tsx`: el mismo
+     campo `next_followup_date` lo escriben dos caminos (`FollowupField`,
+     ya correcto, y el `datetime-local` genérico del editor, que mandaba
+     la hora sin zona y el servidor la interpretaba con la suya). Se
+     distinguió por forma en `lib/contacts/fields.ts` (una regex que solo
+     redirige un `datetime-local` SIN offset) para no romper el import de
+     CSV, que llama a la misma función con otro formato.
+  - Tres desviaciones del plan, con motivo documentado en el commit: la
+    hora de una publicación programada (`content/page.tsx`,
+    `load-piece.ts`) se queda en la zona del NEGOCIO a propósito — el
+    propio encabezado de `lib/dates.ts` (sección A19) ya documentaba esa
+    decisión, y validar en el editor con la zona de quien mira haría que
+    la hora mostrada no coincida con la que el servidor valida. El
+    selector de zona horaria del NEGOCIO en Ajustes (`settings/page.tsx`)
+    se queda leyendo `workspace.timezone` — es el valor editable del
+    ajuste mismo, resolverlo a la del usuario pisaría el ajuste al
+    guardar. Los perfiles de agenda (`out-of-office.ts`, `profile.ts`)
+    conservan su cadena `perfil → negocio`, solo sin el país fijo al final.
+  - **Verificado:** 421 archivos / 5314 tests (9 nuevos, ninguno sacado),
+    build y lint sin errores nuevos.
+  - **Tres lugares con el mismo patrón de corte UTC que NO se tocaron**,
+    fuera de lo pedido a propósito (`lib/dashboards/post-analysis.ts`,
+    `lib/dashboards/follower-bump.ts`, `lib/dashboards/chat/trends.ts`) —
+    anotados en `docs/PENDIENTE.md` para una pasada aparte.
 
 **Deliberadamente fuera de esta corrida** (no son bugs, son pulido o una
 variable nueva que nadie pidió con urgencia):
