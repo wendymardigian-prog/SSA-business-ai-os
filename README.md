@@ -1,184 +1,125 @@
-# ZernFlow
+# Sistema Operativo de Negocio con IA
 
-The open-source ManyChat alternative. Visual flow builder for Instagram, Facebook, WhatsApp, Telegram, Twitter/X, Bluesky & Reddit.
+Sistema operativo centralizado que unifica CRM, inbox multicanal con bot de IA, automatizaciones, contenido, ventas y finanzas en una sola plataforma, para que ningún lead quede sin respuesta.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Website](https://img.shields.io/badge/Website-zernflow.com-indigo)](https://zernflow.com)
 
-**Live at [zernflow.com](https://zernflow.com)**
+## White label
 
-## What is ZernFlow?
+Este proyecto se duplica por cliente: cada copia es un deploy aparte con su propia marca, su propia base de Supabase y sin ningún dato del resto. La marca (nombre, logo, color) sale de tres variables de entorno, nunca de un valor escrito en el código — ver `.env.example` y [lib/brand.ts](lib/brand.ts).
 
-ZernFlow is an open-source alternative to ManyChat. Build visual chatbot flows, manage contacts, send broadcasts, run drip campaigns, and handle live chat conversations across 7 social media platforms.
+```
+NEXT_PUBLIC_BRAND_NAME=Nombre del negocio
+NEXT_PUBLIC_BRAND_LOGO_URL=https://.../logo.png   # opcional; sin esto se muestra un monograma
+NEXT_PUBLIC_BRAND_COLOR=#4f46e5                   # opcional; sin esto queda el color por defecto
+```
 
-**Powered by [Zernio](https://zernio.com)** for OAuth, token refresh, rate limiting, and cross-platform messaging.
-
-### Features
-
-- **Visual Flow Builder** - Drag-and-drop chatbot builder with 15+ node types
-- **AI Response Node** - AI-powered replies via OpenAI, Anthropic, or Google (Vercel AI SDK)
-- **Live Chat Inbox** - Real-time inbox with human takeover and conversation assignment
-- **Contact CRM** - Tags, custom fields, segments, and contact management
-- **Broadcasting** - Send targeted messages to contact segments
-- **Sequences** - Drip campaigns with timed message series and automatic enrollment
-- **Team Management** - Invite members, assign roles, manage permissions
-- **Multi-Platform** - Instagram, Facebook, WhatsApp, Telegram, Twitter/X, Bluesky, Reddit
-  - WhatsApp needs a WhatsApp Business Account; Meta's signup flow creates one during connect. Meta only accepts free-form messages within 24 hours of the contact's last message, so auto-replies work while broadcasts and delayed sequence steps can be rejected outside that window (approved message templates are not supported yet).
-- **Connect Channels** - OAuth connection flow directly from ZernFlow (powered by Zernio)
-- **Rich Messaging** - Buttons, quick replies, and carousel cards
-- **Comment-to-DM** - Automatically DM users who comment specific keywords
-- **Growth Tools** - Conversation starter links for each connected platform
-- **A/B Testing** - Split test different message paths
-- **Webhooks & HTTP** - Connect to external APIs from your flows
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- A [Supabase](https://supabase.com) project (free tier works)
-- A [Zernio](https://zernio.com) API key (entered in Settings after setup)
-- A [Vercel AI Gateway](https://vercel.com/ai-gateway) key (optional, for AI node, entered in Settings or env)
-
-### Setup
-
-1. **Clone the repo**
+No hay registro público: la única forma de entrar la primera vez es creando el primer Owner a mano, con la Service Role Key.
 
 ```bash
-git clone https://github.com/zernio-dev/zernflow.git
-cd zernflow
-npm install
+node scripts/create-owner.mjs --email=duena@negocio.com --name="Duena del negocio" --workspace="Nombre del negocio" --timezone=America/Costa_Rica
 ```
 
-2. **Set up Supabase**
-
-Create a free project at [supabase.com](https://supabase.com). Then run the SQL migrations in the Supabase SQL editor:
-
-```bash
-# Run every numbered file in supabase/migrations/ in order, 00001 upwards.
-# Skipping later ones leaves features broken: 00016, for example, is what
-# lets a WhatsApp channel be stored at all.
-```
-
-3. **Configure environment**
-
-```bash
-cp .env.example .env
-```
-
-Fill in your Supabase credentials:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-CRON_SECRET=your-cron-secret              # For sequence processor + job scheduler
-# AI_GATEWAY_API_KEY=...                  # Optional, for self-hosted (Vercel handles this automatically)
-```
-
-After starting the app, go to **Settings** to enter your Zernio API key and (optionally) AI Gateway key.
-
-4. **Run**
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000), sign up, and start building flows.
-
-## Architecture
-
-```
-Browser (Flow Builder, Inbox, CRM, Sequences)
-        |
-   Next.js App Router
-        |
-   +----+----+----+----+----+
-   |    |    |    |    |    |
-Webhook Flow CRM  Live  Broadcast Sequence
-Recv.  Engine     Chat           Processor
-   |    |    |    |    |    |
-   +----+----+----+----+----+
-        |         |         |
-    Supabase   Zernio API AI SDK
-  (PG + Auth   (7 platforms) (OpenAI /
-  + Realtime)              Anthropic /
-                           Google)
-```
+Después de eso, el resto del equipo entra por invitación (`Ajustes → Equipo`).
 
 ## Stack
 
-| Layer | Tool |
-|-------|------|
-| Framework | Next.js 16 (App Router, Turbopack) |
-| Database + Auth + Realtime | Supabase |
-| Flow Builder | React Flow (@xyflow/react) |
-| AI | Vercel AI SDK + [AI Gateway](https://vercel.com/ai-gateway) |
-| UI | Tailwind CSS 4 |
-| Icons | @icons-pack/react-simple-icons |
-| Messaging | [Zernio API](https://zernio.com) |
-
-## Flow Node Types
-
-| Node | Description |
+| Capa | Herramienta |
 |------|-------------|
-| Trigger | Keyword, postback, quick reply, welcome, default |
-| Send Message | Text, images, buttons, quick replies, carousels |
-| AI Response | AI-powered replies with conversation context (OpenAI, Anthropic, Google) |
-| Condition | If/else on tags, fields, platform, variables |
-| Delay | Wait seconds/minutes/hours/days |
-| Add/Remove Tag | Manage contact tags |
-| Set Custom Field | Set contact field values with variable interpolation |
-| HTTP Request | Call external APIs, store responses |
-| Go To Flow | Jump to another flow (with return stack) |
-| Human Takeover | Pause automation, alert inbox |
-| Enroll in Sequence | Add contact to a drip campaign |
-| Subscribe/Unsubscribe | Toggle contact subscription |
-| A/B Split | Randomly route contacts for testing |
-| Smart Delay | Wait for user response or timeout |
-| Comment Reply | Public reply to comments |
-| Private Reply | Instagram comment-to-DM |
+| Framework | Next.js 16 (App Router) + React 19 + TypeScript 5 |
+| Base de datos + Auth + Realtime | Supabase (PostgreSQL) |
+| Estilos | Tailwind CSS v4 |
+| Flow builder | React Flow (@xyflow/react) |
+| IA | Vercel AI SDK, BYOK multi-proveedor (OpenAI / Anthropic / Google) |
+| Canal Instagram | Zernio (OAuth, mensajería cross-plataforma) |
+| Canal WhatsApp | Evolution API (Baileys), self-hosted |
+| Email saliente | Resend |
+| Secrets | Supabase Vault (AES-256) |
+| Testing | Vitest 3 |
 
-## Project Structure
+## Puesta en marcha
+
+### Requisitos
+
+- Node.js 18+
+- Un proyecto de [Supabase](https://supabase.com) (el plan free alcanza para desarrollo)
+
+### Pasos
+
+1. **Instalar dependencias**
+
+   ```bash
+   npm install
+   ```
+
+2. **Correr las migraciones**
+
+   Cada archivo numerado de `supabase/migrations/`, en orden, desde `00001`. Con la CLI de Supabase:
+
+   ```bash
+   supabase db query --linked -f supabase/migrations/00001_initial_schema.sql
+   # ... y así con cada archivo siguiente, en orden
+   ```
+
+   O pegando `supabase/migrations/ALL_MIGRATIONS.sql` entero en el editor SQL del panel de Supabase.
+
+3. **Configurar el entorno**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Completá las credenciales de Supabase y el resto de las variables — cada una documentada en el propio `.env.example`. Las claves de integraciones (Zernio, Resend, los proveedores de IA) **no van en variables de entorno**: se cargan desde `Ajustes → Integraciones` y se guardan cifradas en Supabase Vault.
+
+4. **Crear el primer usuario**
+
+   ```bash
+   node scripts/create-owner.mjs --email=... --name=... --workspace=...
+   ```
+
+5. **Correr en desarrollo**
+
+   ```bash
+   npm run dev
+   ```
+
+   Abrí [http://localhost:3000](http://localhost:3000) e iniciá sesión con la cuenta que creaste en el paso anterior.
+
+## Estructura del proyecto
 
 ```
-zernflow/
-├── app/
-│   ├── (auth)/             # Login, register pages
-│   ├── (dashboard)/        # Flows, inbox, contacts, sequences, settings
-│   ├── invite/             # Team invite acceptance page
-│   └── api/
-│       ├── webhooks/late/      # Webhook receiver — Zernio / Instagram (HMAC)
-│       ├── webhooks/evolution/ # Webhook receiver — Evolution / WhatsApp (token)
-│                               # Both persist incoming messages — see docs/flujo-de-mensajes.md
-│       ├── cron/jobs/          # Job scheduler
-│       ├── cron/sequences/     # Sequence step processor
-│       └── v1/                 # CRUD API routes
-├── components/
-│   ├── flow-builder/        # Canvas, nodes, panels
-│   ├── inbox/               # Conversation list, thread, contact panel
-│   ├── sequences/           # Sequence editor, enrollment list
-│   ├── settings/            # Team management
-│   └── ui/                  # Shared UI components
-├── lib/
-│   ├── supabase/            # Server/client/middleware
-│   ├── flow-engine/         # Engine, trigger matcher, platform adapter, AI node
-│   ├── actions/             # Server actions (team, sequences, workspace)
-│   └── types/               # TypeScript types
-└── supabase/
-    └── migrations/          # SQL schema + RLS policies (00001-00009)
+app/
+├── (auth)/              # Login (el único acceso público)
+├── (dashboard)/         # La app: inbox, CRM, flows, contenido, agenda, ajustes
+├── invite/              # Aceptar una invitación (y crear la cuenta, si hace falta)
+├── calendario/          # Páginas públicas de agenda (sin sesión)
+└── api/
+    ├── webhooks/        # Receptores: Zernio (Instagram), Evolution (WhatsApp), Resend
+    ├── cron/            # Jobs programados (pg_cron llama acá)
+    └── v1/               # API interna
+components/
+├── flow-builder/        # Canvas, nodos, paneles
+├── inbox/               # Bandeja, hilo de conversación, panel de contacto
+├── scheduling/          # Agenda: admin y booker público
+└── settings/            # Equipo, integraciones, recursos
+lib/
+├── supabase/            # Clientes server / browser / middleware
+├── flow-engine/         # Motor de flows
+├── agent/               # Agente de IA: runner, herramientas, guardarrails
+├── actions/             # Server Actions
+└── brand.ts             # Config de marca (white label)
+supabase/
+└── migrations/          # Esquema SQL + políticas RLS, numeradas en orden
 ```
 
-## Contributing
+## Testing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+```bash
+npx vitest run
+```
 
-## License
+Los scripts `scripts/verify-*.mjs` corren contra una base real, con usuarios de prueba que crean y limpian solos (prefijo `zz-test-`). No correr dos en simultáneo: comparten el prefijo y se pisan la limpieza.
 
-MIT
+## Licencia
 
-<p align="center">
-  <a href="https://zernio.com">
-    <img src="https://zernio.com/brand/powered-by-zernio.svg" alt="Powered by Zernio" width="180">
-  </a>
-</p>
+MIT. Este proyecto arrancó como un fork de [ZernFlow](https://github.com/zernio-dev/zernflow) (MIT) — ver [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

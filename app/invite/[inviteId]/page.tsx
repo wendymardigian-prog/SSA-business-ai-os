@@ -1,5 +1,24 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { AcceptInviteView } from "./accept-invite-view";
+import { BrandMark } from "@/components/brand-mark";
+
+function InviteMessage({ title, body, cta, href }: { title: string; body: string; cta: string; href: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm text-center space-y-4">
+        <BrandMark size={40} className="mx-auto" />
+        <h1 className="text-2xl font-bold">{title}</h1>
+        <p className="text-sm text-muted-foreground">{body}</p>
+        <a
+          href={href}
+          className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        >
+          {cta}
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export default async function InvitePage({
   params,
@@ -19,20 +38,12 @@ export default async function InvitePage({
 
   if (error || !invite) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center space-y-4">
-          <h1 className="text-2xl font-bold">Invite not found</h1>
-          <p className="text-sm text-muted-foreground">
-            This invite link may be invalid or has been revoked.
-          </p>
-          <a
-            href="/login"
-            className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
+      <InviteMessage
+        title="Invitación no encontrada"
+        body="Este link puede ser invalido o la invitación fue revocada."
+        cta="Ir al login"
+        href="/login"
+      />
     );
   }
 
@@ -41,40 +52,23 @@ export default async function InvitePage({
 
   if (isExpired) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center space-y-4">
-          <h1 className="text-2xl font-bold">Invite expired</h1>
-          <p className="text-sm text-muted-foreground">
-            This invite has expired. Please ask the workspace owner to send a
-            new one.
-          </p>
-          <a
-            href="/login"
-            className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            Go to Login
-          </a>
-        </div>
-      </div>
+      <InviteMessage
+        title="Invitación vencida"
+        body="Pedile a quien te invitó que te mande una nueva."
+        cta="Ir al login"
+        href="/login"
+      />
     );
   }
 
   if (isAlreadyAccepted) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center space-y-4">
-          <h1 className="text-2xl font-bold">Invite already used</h1>
-          <p className="text-sm text-muted-foreground">
-            This invite has already been accepted.
-          </p>
-          <a
-            href="/dashboard"
-            className="inline-flex rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            Go to Dashboard
-          </a>
-        </div>
-      </div>
+      <InviteMessage
+        title="Invitación ya usada"
+        body="Esta invitación ya fue aceptada."
+        cta="Ir al dashboard"
+        href="/dashboard"
+      />
     );
   }
 
@@ -94,7 +88,7 @@ export default async function InvitePage({
     inviter?.user_metadata?.full_name ??
     inviter?.user_metadata?.name ??
     inviter?.email ??
-    "Someone";
+    "Alguien";
 
   // Check if current user is logged in
   const {
@@ -104,7 +98,7 @@ export default async function InvitePage({
   return (
     <AcceptInviteView
       inviteId={invite.id}
-      workspaceName={workspace?.name ?? "a workspace"}
+      workspaceName={workspace?.name ?? "un workspace"}
       inviterName={inviterName}
       role={invite.role}
       email={invite.email}

@@ -117,7 +117,7 @@ export function AdsDetailView({
     {
       key: barMetric,
       label: { spend: "Gasto", impressions: "Impresiones", clicks: "Clics", leads: "Leads" }[barMetric],
-      color: "#6366f1",
+      color: "var(--primary)",
       points: dailySeries(detail.daily, barMetric),
     },
   ];

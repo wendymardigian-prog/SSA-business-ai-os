@@ -25,9 +25,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { usuario, evento } = await params;
   const service = await createServiceClient();
   const found = await getPublicEvent(service, usuario, evento);
-  if (!found) return { title: "No encontrado" };
+  if (!found) return { title: { absolute: "No encontrado" } };
   return {
-    title: `${found.title} · ${found.hostName}`,
+    title: { absolute: `${found.title} · ${found.hostName}` },
     description: found.description ?? undefined,
     robots: { index: false, follow: false },
   };

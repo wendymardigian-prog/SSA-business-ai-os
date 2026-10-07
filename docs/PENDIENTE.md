@@ -708,5 +708,5 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Lo que sigue abierto** (no se puede o no corresponde cerrar sin una decisión tuya o sin cuentas reales):
   - Verificar en vivo con cuentas conectadas: el índice con métricas reales, los datos de anuncio en un DM (`referral` de Zernio, `externalAdReply` de Evolution), el webhook de Zernio y la versión de la API de LinkedIn.
   - El pie del drawer a 390 px (ver "B13 · El pie del drawer a 390 px"): es una decisión de diseño.
-  - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración (00119), y el costo del problema es un contacto anónimo duplicado.
+  - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración nueva (la 00119 ya se usó para el white label, ver más abajo; la próxima libre es la que corresponda en ese momento), y el costo del problema es un contacto anónimo duplicado.
   - Las cosas de otras corridas (bio de la cuenta, más de una instancia de Evolution, etc.), que siguen donde estaban.

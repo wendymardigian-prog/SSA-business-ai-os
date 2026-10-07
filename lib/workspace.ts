@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-export const WORKSPACE_COOKIE = "zernflow_workspace_id";
+export const WORKSPACE_COOKIE = "workspace_id";
+/** Nombre viejo (hasta el white label): se sigue leyendo como respaldo para no perder la seleccion de quien ya tenia la cookie puesta. */
+const LEGACY_WORKSPACE_COOKIE = "zernflow_workspace_id";
 
 /**
  * Cached per-request: deduplicates across layout + page in the same render.
@@ -18,7 +20,7 @@ export const getWorkspace = cache(async () => {
   if (!user) redirect("/login");
 
   const cookieStore = await cookies();
-  const selectedId = cookieStore.get(WORKSPACE_COOKIE)?.value;
+  const selectedId = cookieStore.get(WORKSPACE_COOKIE)?.value ?? cookieStore.get(LEGACY_WORKSPACE_COOKIE)?.value;
 
   // Try cookie workspace first
   if (selectedId) {

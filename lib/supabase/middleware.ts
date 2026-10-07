@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  const isAuthPage = pathname === "/login" || pathname === "/register";
+  const isAuthPage = pathname === "/login";
   const isAuthCallback = pathname === "/auth/callback";
   const isDashboard = pathname.startsWith("/dashboard");
   const isApiRoute = pathname.startsWith("/api/");
@@ -39,6 +39,18 @@ export async function updateSession(request: NextRequest) {
   // Auth callback and API routes (including webhooks) always pass through
   if (isAuthCallback || isApiRoute) {
     return supabaseResponse;
+  }
+
+  // El registro publico no existe mas: solo por invitacion. Un link viejo a
+  // /register (favoritos, un email ya mandado) va al login en vez de 404.
+  if (pathname === "/register") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    const redirectResponse = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return redirectResponse;
   }
 
   // Redirect logged-in users away from auth pages to dashboard

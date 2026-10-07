@@ -211,7 +211,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
     {
       key: "total",
       label: "Total de seguidores",
-      color: "#6366f1",
+      color: "var(--primary)",
       points: growth.map((g) => ({ bucket: g.bucket, value: g.total })),
     },
   ];
@@ -220,7 +220,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
   const activitySeries: ChartSeries[] = formatsInActivity.map((format, index) => ({
     key: format,
     label: FORMAT_LABELS[format] ?? format,
-    color: ["#6366f1", "#d946ef", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444"][index % 6],
+    color: ["var(--primary)", "#d946ef", "#0ea5e9", "#f59e0b", "#10b981", "#ef4444"][index % 6],
     points: activity.map((a) => ({ bucket: a.bucket, value: a.byFormat[format] ?? null })),
   }));
 
@@ -230,7 +230,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
       label: { saves: "Guardados", shares: "Compartidos", comments: "Comentarios", likes: "Me gusta" }[
         engagementMetric
       ],
-      color: "#6366f1",
+      color: "var(--primary)",
       points: sumByBucket(
         props.postDaily.map((r) => ({ date: r.date, value: r[engagementMetric] })),
         "day",

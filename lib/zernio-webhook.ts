@@ -14,10 +14,17 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readSecret, storeSecret, SECRET_NAMES } from "@/lib/vault";
+import { brandName } from "@/lib/brand";
 import type { Zernio } from "./zernio-client";
 
-/** Name used to identify Zernflow's webhook among a profile's webhooks. */
-export const WEBHOOK_NAME = "Zernflow";
+/**
+ * Nombre para identificar nuestro webhook entre los de un perfil. Sale de la
+ * marca de esta copia: cada cliente ve en su cuenta de Zernio el nombre de SU
+ * negocio. `ensureWebhookRegistered` tambien matchea por URL (ver abajo), asi
+ * que si la marca cambia no se duplica el webhook: se renombra el que ya
+ * existe.
+ */
+export const WEBHOOK_NAME = brandName();
 
 /** Events Zernflow needs delivered to its webhook. */
 export type WebhookEvent =

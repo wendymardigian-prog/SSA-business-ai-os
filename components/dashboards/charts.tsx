@@ -34,7 +34,7 @@ export const PLATFORM_COLORS: Record<string, string> = {
   threads: "#64748b",
 };
 
-export function colorFor(platform: string, fallback = "#6366f1"): string {
+export function colorFor(platform: string, fallback = "var(--primary)"): string {
   return PLATFORM_COLORS[platform] ?? fallback;
 }
 

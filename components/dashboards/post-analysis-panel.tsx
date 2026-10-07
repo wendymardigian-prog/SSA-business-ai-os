@@ -92,7 +92,7 @@ export function PostAnalysisPanel({
         {
           key: "cumulative",
           label: "Acumulado",
-          color: "#6366f1",
+          color: "var(--primary)",
           points: data.evolution.map((p) => ({ bucket: `dia ${p.day}`, value: p.cumulative })),
         },
         {

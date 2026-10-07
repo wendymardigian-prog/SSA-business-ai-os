@@ -97,13 +97,19 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
 
-  /* Series del dashboard de Chat (valores del prototipo, modo claro). */
-  --c-agent: #4f46e5;
+  /*
+   * Series del dashboard de Chat (valores del prototipo, modo claro).
+   * --c-agent y --sent son a proposito el MISMO color que --primary (el
+   * agente de IA se pinta con el color de marca): toman var(--primary) en
+   * vez de repetir el hex, asi siguen el color de marca por cliente
+   * (NEXT_PUBLIC_BRAND_COLOR, ver lib/brand.ts y app/layout.tsx).
+   */
+  --c-agent: var(--primary);
   --c-team: #0d9488;
   --c-auto: #d97706;
   --c-ext: #a1a1aa;
   --recv: #a8a8b3;
-  --sent: #4f46e5;
+  --sent: var(--primary);
   --good: #16a34a;
   --bad: #dc2626;
   --warn: #c2410c;
@@ -158,13 +164,13 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.35 0 0);
 
-  /* Series del dashboard de Chat (valores del prototipo, modo oscuro). */
-  --c-agent: #7c83f2;
+  /* Series del dashboard de Chat (valores del prototipo, modo oscuro). Ver el comentario de --c-agent en :root. */
+  --c-agent: var(--primary);
   --c-team: #11a595;
   --c-auto: #d17f08;
   --c-ext: #6b6b75;
   --recv: #8b8b96;
-  --sent: #7c83f2;
+  --sent: var(--primary);
   --good: #4ade80;
   --bad: #f87171;
   --warn: #fb923c;

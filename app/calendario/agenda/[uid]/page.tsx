@@ -14,7 +14,7 @@ import { findBookingByUid, toPublicBooking } from "@/lib/scheduling/data/public-
 import { BookingView } from "@/components/scheduling/booker/booking-view";
 import { googleCalendarLink, outlookLink } from "@/lib/scheduling/ics";
 
-export const metadata: Metadata = { title: "Tu reunión", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: { absolute: "Tu reunión" }, robots: { index: false, follow: false } };
 
 export default async function AgendaPage({
   params,
