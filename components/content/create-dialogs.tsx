@@ -8,6 +8,7 @@ import { drawerHref } from "@/lib/content/drawer-url";
 import { ContentDialog, DialogField, fieldInput } from "./dialog";
 import { ClassificationFields, FormatField, type TaxonomyOptions } from "./classification-fields";
 import { NetworkBadge } from "./network-badge";
+import { CONTENT_PLATFORMS } from "@/lib/content/network-format";
 
 /**
  * Crear una idea o un post, encima del tablero (C2).
@@ -158,7 +159,8 @@ export function IdeaDialog({
         }
         taxonomy={taxonomy}
         platforms={{
-          available: platforms,
+          available: CONTENT_PLATFORMS,
+          manual: CONTENT_PLATFORMS.filter((p) => !platforms.includes(p)),
           selected: values.platforms,
           onChange: (next) => setValues((prev) => ({ ...prev, platforms: next })),
         }}
@@ -278,35 +280,29 @@ export function NewPostDialog({
         </DialogField>
       </div>
 
-      <DialogField label="Redes" hint="Se pueden cambiar después, en el editor.">
-        {platforms.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Todavía no hay ninguna red conectada. La pieza se crea igual.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {platforms.map((platform) => {
-              const on = selected.includes(platform);
-              return (
-                <button
-                  key={platform}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() =>
-                    setSelected(on ? selected.filter((p) => p !== platform) : [...selected, platform])
-                  }
-                  className={
-                    on
-                      ? "rounded-full ring-2 ring-primary"
-                      : "rounded-full opacity-60 hover:opacity-100"
-                  }
-                >
-                  <NetworkBadge platform={platform} />
-                </button>
-              );
-            })}
-          </div>
-        )}
+      <DialogField label="Redes" hint="Pueden ser redes todavía no conectadas. Se pueden cambiar después, en el editor.">
+        <div className="flex flex-wrap gap-1.5">
+          {CONTENT_PLATFORMS.map((platform) => {
+            const on = selected.includes(platform);
+            const manual = !platforms.includes(platform);
+            return (
+              <button
+                key={platform}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  setSelected(on ? selected.filter((p) => p !== platform) : [...selected, platform])
+                }
+                className={`inline-flex items-center gap-1 rounded-full ${
+                  on ? "ring-2 ring-primary" : "opacity-60 hover:opacity-100"
+                }`}
+              >
+                <NetworkBadge platform={platform} />
+                {manual && <span className="text-[10px] text-amber-700 dark:text-amber-400">a mano</span>}
+              </button>
+            );
+          })}
+        </div>
       </DialogField>
 
       <label className="flex items-start gap-2.5 rounded-lg border border-border p-3">

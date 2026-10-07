@@ -26,6 +26,8 @@ export const NOTIFICATION_TYPES = [
   "content_review_requested",
   "content_returned",
   "content_publish_failed",
+  /** Desconectar una cuenta saco redes programadas de la cola (Contenido v4). */
+  "content_networks_unscheduled",
   "content_copy_ready",
   "content_copy_failed",
   // Agenda (Etapa 4, F38).
@@ -194,6 +196,13 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     label: "Una publicacion no salio",
     tone: "warning",
     entity: "content_post",
+  },
+
+  content_networks_unscheduled: {
+    type: "content_networks_unscheduled",
+    label: "Redes desprogramadas",
+    tone: "warning",
+    entity: "integration",
   },
 
   /**

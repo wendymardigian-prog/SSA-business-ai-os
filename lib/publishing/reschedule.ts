@@ -6,14 +6,23 @@
  * no la fila, la pantalla muestra una hora que no es.
  *
  * Con la programacion del lado del proveedor (grupo D) las redes de Zernio
- * no tienen job y se mueven con `updatePost`: por eso el cambio de hora pasa
- * por aca y no por el llamador.
+ * no tienen job de publicar: el post vive agendado ALLA. Moverlas es pedirle
+ * a Zernio que cambie la fecha de SU post (`updatePost`, que hace
+ * `runProviderSchedule` cuando la fila ya tiene `publisher_ref`). Encolar un
+ * "publicar ahora" a la hora nueva, como con las demas, la publicaba dos
+ * veces: una a la hora vieja (Zernio) y otra a la nueva (Contenido v4).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { scheduleJob } from "@/lib/scheduler";
-import { CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB, jobTypeForPublisher } from "@/lib/content/jobs";
+import {
+  CONTENT_PROVIDER_SCHEDULE_JOB,
+  CONTENT_PUBLISH_JOB,
+  CONTENT_UPLOAD_JOB,
+  jobTypeForPublisher,
+} from "@/lib/content/jobs";
+import { schedulesOnProvider } from "./provider-scheduling";
 
 type Db = SupabaseClient<Database>;
 
@@ -28,9 +37,18 @@ export async function reschedulePublication(
     .eq("id", params.socialPostId)
     .maybeSingle();
 
+  const onProvider = schedulesOnProvider(row?.publisher);
+
   const { error } = await supabase
     .from("social_posts")
-    .update({ scheduled_at: params.at, status: "scheduled", last_error: null, last_error_kind: null })
+    .update({
+      scheduled_at: params.at,
+      // En Zernio vuelve a `uploading` hasta que confirme la hora nueva: decir
+      // "programado" antes seria prometer una hora que todavia no tiene.
+      status: onProvider ? "uploading" : "scheduled",
+      last_error: null,
+      last_error_kind: null,
+    })
     .eq("id", params.socialPostId)
     // Solo se mueve lo que todavia esta en la cola: una publicacion que ya
     // salio o que esta saliendo no se reprograma por cambiar un campo.
@@ -41,7 +59,7 @@ export async function reschedulePublication(
     return false;
   }
 
-  for (const type of [CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB]) {
+  for (const type of [CONTENT_PUBLISH_JOB, CONTENT_UPLOAD_JOB, CONTENT_PROVIDER_SCHEDULE_JOB]) {
     await supabase
       .from("scheduled_jobs")
       .delete()
@@ -53,9 +71,11 @@ export async function reschedulePublication(
   try {
     await scheduleJob(
       supabase,
-      jobTypeForPublisher(row?.publisher),
+      // Zernio: el job corre YA y le cambia la fecha a su post. Las demas: el
+      // job es el que publica, a la hora nueva.
+      onProvider ? CONTENT_PROVIDER_SCHEDULE_JOB : jobTypeForPublisher(row?.publisher),
       { socialPostId: params.socialPostId, workspaceId: params.workspaceId },
-      new Date(params.at),
+      onProvider ? new Date() : new Date(params.at),
     );
   } catch (err) {
     console.error("[publishing] no pude agendar la hora nueva:", err);

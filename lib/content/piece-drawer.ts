@@ -19,6 +19,22 @@ export function isEditableStatus(status: ContentPostStatus): boolean {
   return EDITABLE_STATUSES.includes(status);
 }
 
+/**
+ * El color de cada estado, para el dropdown teñido (C4). Los mismos nombres
+ * que usa el kanban (F17): nada nuevo, solo se reusan.
+ */
+export const STATUS_COLOR: Record<ContentPostStatus, string> = {
+  draft: "var(--muted-foreground)",
+  in_production: "var(--zn)",
+  in_review: "var(--c-auto)",
+  approved: "var(--primary)",
+  scheduled: "var(--li)",
+  publishing: "var(--li)",
+  published: "var(--good)",
+  partially_published: "var(--warn)",
+  failed: "var(--bad)",
+};
+
 export interface StatusOption {
   value: ContentPostStatus;
   label: string;
@@ -70,11 +86,6 @@ export function statusChangeAction(from: ContentPostStatus, to: ContentPostStatu
   return "move";
 }
 
-/** "2 de 3 redes con fecha", para el pie. */
-export function datesSummary(total: number, withDate: number): string {
-  if (total === 0) return "Todavía no elegiste ninguna red";
-  return `${withDate} de ${total} ${total === 1 ? "red" : "redes"} con fecha`;
-}
 
 /** Si hay algo que mostrar en "estado por red": una publicacion viva, no cancelada. */
 export function publicationsVisible(publications: Array<{ status: string | null }>): boolean {

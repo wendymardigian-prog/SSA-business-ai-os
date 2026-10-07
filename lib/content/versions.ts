@@ -18,7 +18,11 @@ export type VersionReason =
   | "manual_save"
   | "resume_after_idle"
   | "ai_generation"
-  | "restore";
+  | "restore"
+  /** El autoguardado de verdad (Contenido v4, C6): reemplaza a 'manual_save' y 'resume_after_idle' para lo nuevo. */
+  | "edit"
+  /** Aprobar corta la sesion con su propio motivo, separado de un cambio de estado cualquiera. */
+  | "approve";
 
 /** Cuantas versiones se conservan por pieza. */
 export const MAX_VERSIONS_PER_POST = 50;
@@ -27,7 +31,7 @@ export const MAX_VERSIONS_PER_POST = 50;
 export const IDLE_MINUTES = 10;
 
 export interface SaveContext {
-  trigger: "autosave" | "manual_save" | "status_change" | "ai_generation" | "restore";
+  trigger: "autosave" | "manual_save" | "status_change" | "ai_generation" | "restore" | "edit" | "approve";
   /** Cuando fue la ultima edicion, para saber si hubo una pausa. */
   lastEditedAt?: string | null;
   now?: Date;
@@ -40,10 +44,16 @@ export function versionReasonFor(context: SaveContext): VersionReason | null {
       return "manual_save";
     case "status_change":
       return "status_change";
+    case "approve":
+      return "approve";
     case "ai_generation":
       return "ai_generation";
     case "restore":
       return "restore";
+    // 'edit' siempre deja version: lo que decide si es una fila nueva o se
+    // actualiza la ultima es `decideVersionWrite` (autosave.ts), no esto.
+    case "edit":
+      return "edit";
     case "autosave": {
       // Un autoguardado normal no deja version. Pero si la persona volvio
       // despues de un rato, lo que habia antes es "como estaba ayer" y vale
@@ -125,6 +135,8 @@ export interface StoredVersion {
   author_id: string | null;
   reason: VersionReason;
   created_at: string;
+  /** La ultima vez que se toco esta fila (C6): la usa `decideVersionWrite` para saber si la sesion sigue. */
+  updated_at?: string;
 }
 
 /** El numero de la version que se esta por crear. */
@@ -237,5 +249,9 @@ export function describeVersion(version: StoredVersion, authorName?: string | nu
       return "Generada con IA";
     case "restore":
       return `Restaurada por ${who}`;
+    case "edit":
+      return `Editado por ${who}`;
+    case "approve":
+      return `Aprobada por ${who}`;
   }
 }

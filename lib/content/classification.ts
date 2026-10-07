@@ -26,17 +26,17 @@ export const FUNNEL_STAGES: FunnelStageInfo[] = [
   {
     value: "tofu",
     label: "Descubrimiento",
-    description: "Gente que todavía no te conoce. Contenido amplio que atrae y no vende.",
+    description: "Le habla a quien todavía no sabe que tiene el problema. Alcance y gente nueva.",
   },
   {
     value: "mofu",
     label: "Consideración",
-    description: "Gente que ya te sigue y está evaluando. Contenido que educa y demuestra cómo trabajás.",
+    description: "Le habla a quien ya sabe que tiene el problema y compara cómo resolverlo. Prueba y método.",
   },
   {
     value: "bofu",
     label: "Decisión",
-    description: "Gente lista para comprar. Contenido que cierra con prueba concreta y una oferta.",
+    description: "Le habla a quien ya te sigue y está por comprar. Casos, objeciones y oferta.",
   },
 ];
 

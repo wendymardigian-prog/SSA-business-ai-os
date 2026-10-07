@@ -205,10 +205,11 @@ el tipo de archivos coincidan (un carrusel con un archivo no se programa).
 lo ya programado para ese día en la zona del negocio (`lib/content/limits.ts`).
 La fila de `social_posts` guarda `media_type` para poder contarlos.
 
-El formato elegido en cada red completa las opciones del publicador (tipo de
-Instagram, video o fotos en TikTok, Short en YouTube, tipo de LinkedIn) con una
-sola función (`resolveNetworkOptions`) que usan el editor, el servidor y el
-publicador.
+El formato elegido en cada red completa las opciones del publicador (video o
+fotos en TikTok, Short en YouTube, tipo de LinkedIn) con una sola función
+(`resolveNetworkOptions`) que usan el editor, el servidor y el publicador.
+**Desde Contenido v4, Instagram ya no tiene una opción de "tipo" separada**:
+el publicador de Zernio decide directo con `format` (ver más abajo).
 
 ### Métricas (F79)
 
@@ -231,3 +232,56 @@ la sincronización: **si alguien quita uno, el test se pone en rojo**.
 
 Se comprobó quitando cada pieza (mutación): tabla en
 [PROGRESS-CV3.md](PROGRESS-CV3.md), B10.
+
+
+## Contenido v4 (octubre 2026)
+
+Lo de planificar sin cuenta conectada y marcar como publicado está en
+[contenido.md](contenido.md). Acá, lo que cambió en cómo se publica de
+verdad.
+
+### Un solo campo de formato (C9)
+
+`networks[].format` es ahora el **único** campo de formato: "Formato" y
+"Tipo" eran el mismo dato duplicado (uno de F93, el otro del plano original
+de la Etapa 2), y tenerlos los dos es lo que dejaba publicar un Reel como
+post de feed si se desincronizaban. `options.contentType` se eliminó de la
+interfaz, de los publicadores y de la validación; la migración `00126`
+completó `format` desde el valor viejo donde estaba vacío.
+
+**El publicador de Instagram (Zernio) manda exactamente lo mismo que
+mandaba antes**, verificado con un test de caracterización
+(`lib/publishing/zernio.test.ts`) escrito ANTES de tocar nada: solo decide
+`contentType: "story"` cuando el formato es Historia; Reel, feed y
+carrusel no mandan tipo, Zernio lo deduce de los archivos que recibe
+(`mediaItems`), exactamente como antes.
+
+### El publicador es de la cuenta, no de la pieza (C10)
+
+"Publicar por" se saca de la tarjeta de cada red: el publicador efectivo es
+siempre el `default_publisher` de la cuenta (F13), nunca algo elegido pieza
+por pieza. Un `networks[].publisher` que una pieza vieja tuviera guardado se
+descarta al guardar (`normalizeNetworks`). Solo se avisa en la tarjeta cuando
+la cuenta tiene **más de un** publicador posible (hoy, solo YouTube:
+Postproxy o la API oficial), con un link a Integraciones para cambiarlo.
+
+### La sincronización adopta lo marcado a mano, nunca lo duplica
+
+Una publicación marcada a mano (`origin = 'manual'`, ver contenido.md) no
+tiene el id que le da la red. Cuando la cuenta se conecta y la
+sincronización trae ese post, lo reconoce por el **link** (normalizado: el
+mismo Reel con `www.` o con parámetros de rastreo sigue siendo el mismo) o,
+sin link, por ser la **única** fila marcada a mano de esa red publicada
+dentro de ±24 horas de la fecha real. Con dos candidatas posibles, no
+adopta ninguna: nunca se adivina (`lib/metrics/adopt-manual.ts`).
+
+### El bug de reprogramar en Zernio (arreglado de paso)
+
+Cambiar la fecha de una red ya agendada en Zernio encolaba un "publicar
+ahora" a la hora nueva **sin tocar el post que ya estaba agendado allá**: se
+publicaba dos veces, una a la hora vieja y otra a la nueva. Con el
+guardado automático de C6 (la fecha se guarda sola al salir del campo) esto
+iba a pasar más seguido. Ahora, para una fila agendada del lado del
+proveedor, reprogramar le pide a Zernio que mueva **su propio** post
+(`updatePost`), igual que ya hacía "Programar" cuando la fila tenía
+referencia (`lib/publishing/reschedule.ts`).

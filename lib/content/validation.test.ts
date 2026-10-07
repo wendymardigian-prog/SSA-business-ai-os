@@ -107,14 +107,6 @@ describe("validar por red (F26)", () => {
     expect(result.errors[0]).toContain("9 MB");
   });
 
-  it("un carrusel de Instagram con una sola imagen es error", () => {
-    const result = validateNetwork(
-      content({ media: [image()], options: { contentType: "carousel" } }),
-    );
-
-    expect(result.errors.some((e) => e.includes("2 imagenes"))).toBe(true);
-  });
-
   it("TikTok con una privacidad que no sea publica o borrador se rechaza antes de llamar", () => {
     // El proveedor devolveria un error que no explica nada.
     const result = validateNetwork(
@@ -195,10 +187,9 @@ describe("validar el formato elegido (F93)", () => {
     expect(result.errors.some((e) => e.includes("no sirve"))).toBe(true);
   });
 
-  it("el error del carrusel no se repite: lo da el formato y no tambien el viejo contentType", () => {
-    const result = validateNetwork(
-      content({ format: "carousel", media: imgs(1), options: { contentType: "carousel" } }),
-    );
+  it("el error del carrusel no se repite: una sola linea, no una por regla", () => {
+    // C9: contentType ya no existe, asi que el formato es la UNICA fuente.
+    const result = validateNetwork(content({ format: "carousel", media: imgs(1) }));
 
     expect(result.errors.filter((e) => /carrusel|Faltan/.test(e))).toHaveLength(1);
   });

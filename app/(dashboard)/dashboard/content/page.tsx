@@ -90,7 +90,7 @@ export default async function ContentPage({
       .order("position"),
     supabase
       .from("content_posts")
-      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, material_status, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
+      .select("id, title, format, status, created_by, position, networks, script, caption, copy_source, copy_status, pillar_id, offer_id, funnel_stage, created_at, updated_at")
       .eq("workspace_id", workspace.id)
       .is("archived_at", null)
       .order("position"),
@@ -98,7 +98,8 @@ export default async function ContentPage({
       .from("social_posts")
       .select("content_post_id, platform, status, scheduled_at, published_at")
       .eq("workspace_id", workspace.id)
-      .not("content_post_id", "is", null),
+      .not("content_post_id", "is", null)
+      .is("deleted_at", null),
     canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
     // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
     // mostrando aunque ya no se ofrezca en el selector (F89).
@@ -109,6 +110,10 @@ export default async function ContentPage({
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
   for (const row of publicationsRes.data ?? []) {
     if (!row.content_post_id) continue;
+    // Una fila cancelada (se desprogramo, o se paso a "la subo yo") no es la
+    // publicacion de verdad: contarla dejaria el kanban y el calendario
+    // mostrando "mixed" en vez de volver a la fecha tentativa (Contenido v4).
+    if (row.status === "cancelled") continue;
     const list = publicationsByPost.get(row.content_post_id) ?? [];
     list.push({
       platform: row.platform,
@@ -189,7 +194,6 @@ export default async function ContentPage({
       hasCopy: Boolean(post.script?.trim()),
       hasCaption: Boolean(post.caption?.trim()),
       copyFromAi: post.copy_source !== "manual",
-      materialStatus: post.material_status,
       copyStatus: post.copy_status,
       pillar: tagFor(taxonomy.pillars, post.pillar_id),
       offer: tagFor(taxonomy.offers, post.offer_id),

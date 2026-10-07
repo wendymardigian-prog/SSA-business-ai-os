@@ -8,8 +8,10 @@ import {
 describe("opciones por red (§9.5)", () => {
   it("limpia lo que no encaja en vez de romper", () => {
     // Una opcion vieja o de otra red no puede impedir que la pieza se abra.
-    expect(parseNetworkOptions("instagram", { contentType: "story", cualquiera: 1 })).toEqual({
-      contentType: "story",
+    // contentType ya no es una opcion de Instagram (C9): se descarta como
+    // cualquier otra clave desconocida.
+    expect(parseNetworkOptions("instagram", { contentType: "story", shareToFeed: true, cualquiera: 1 })).toEqual({
+      shareToFeed: true,
     });
   });
 
@@ -17,9 +19,9 @@ describe("opciones por red (§9.5)", () => {
     expect(parseNetworkOptions("facebook", { lo: "que sea" })).toEqual({});
   });
 
-  it("A9 · Instagram puede elegir historia", () => {
-    expect(parseNetworkOptions("instagram", { contentType: "story" })).toMatchObject({
-      contentType: "story",
+  it("A9 · Instagram puede compartir el Reel tambien en el feed", () => {
+    expect(parseNetworkOptions("instagram", { shareToFeed: false })).toMatchObject({
+      shareToFeed: false,
     });
   });
 

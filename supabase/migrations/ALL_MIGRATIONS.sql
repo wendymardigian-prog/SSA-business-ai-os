@@ -18730,3 +18730,296 @@ CREATE POLICY user_preferences_insert ON public.user_preferences
 DROP POLICY IF EXISTS user_preferences_update ON public.user_preferences;
 CREATE POLICY user_preferences_update ON public.user_preferences
   FOR UPDATE USING (user_id = (select auth.uid())) WITH CHECK (user_id = (select auth.uid()));
+
+-- ============================================================
+-- MIGRATION 125: SOCIAL POSTS ORIGIN MANUAL
+-- ============================================================
+-- ============================================================
+-- 00125_social_posts_origin_manual.sql  (Contenido v4, C3)
+--
+-- Una publicacion subida A MANO por fuera de la app (una red no conectada, o
+-- una que se publico desde el celular) pasa a existir como fila real de
+-- social_posts con origin = 'manual'. Sin esto no entraria al calendario, a
+-- Social ni a las metricas: un flag cosmetico en la pieza no alcanza.
+--
+-- Solo AMPLIA la lista permitida. No toca ninguna fila existente.
+--
+-- Definicion vieja (00083_content_pipeline.sql):
+--   CHECK (origin IN ('system', 'external'))
+--
+-- Reversa (solo funciona si antes se borran o reasignan las filas 'manual'):
+--   ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_origin_check;
+--   ALTER TABLE public.social_posts ADD CONSTRAINT social_posts_origin_check
+--     CHECK (origin IN ('system', 'external'));
+--
+-- Idempotente: si el CHECK ya admite 'manual', no hace nada.
+-- ============================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'social_posts_origin_check'
+      AND pg_get_constraintdef(oid) LIKE '%manual%'
+  ) THEN
+    ALTER TABLE public.social_posts DROP CONSTRAINT IF EXISTS social_posts_origin_check;
+    ALTER TABLE public.social_posts ADD CONSTRAINT social_posts_origin_check
+      CHECK (origin IN ('system', 'external', 'manual'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.social_posts.origin IS
+  'system: la publico el sistema. external: la trajo la sincronizacion. manual: la subio una persona por fuera de la app y la marco como publicada (Contenido v4).';
+
+-- ============================================================
+-- MIGRATION 126: NETWORKS FORMAT BACKFILL
+-- ============================================================
+-- ============================================================
+-- 00126_networks_format_backfill.sql  (Contenido v4, C9)
+--
+-- Completa `content_posts.networks[].format` desde el campo viejo
+-- `networks[].options.contentType`, donde `format` esta vacio. Es el paso
+-- previo a que el publicador de Instagram (y la validacion y el calculo de
+-- media_type) dejen de leer `contentType` y lean solo `format`.
+--
+-- Mapeo (solo Instagram tenia `contentType`; las demas redes no se tocan):
+--   reel     -> reel
+--   story    -> story
+--   carousel -> carousel
+--   feed     -> image si la red (o, sin `files` propios, la pieza) tiene 1
+--               archivo; carousel si tiene 2 o mas; NULL si tiene 0 (nunca
+--               se adivina un formato sin archivos: queda para revisar a
+--               mano, ver docs/PENDIENTE.md)
+--   otro valor (no deberia haber ninguno) -> NULL
+--
+-- Idempotente: solo completa entradas con `format` vacio Y `contentType`
+-- presente. Una vez corrida, una segunda corrida no encuentra nada que
+-- cambiar.
+--
+-- Reversa: poner `format` en NULL donde la pieza tenga
+-- `networks[].options.contentType`:
+--   update content_posts set networks = (
+--     select jsonb_agg(
+--       case when n->'options'->>'contentType' is not null
+--         then n - 'format' else n end
+--     ) from jsonb_array_elements(networks) n
+--   ) where networks @> '[{"options":{}}]'::jsonb; -- (ajustar el filtro)
+-- La definicion completa de esta migracion, para copiar y pegar en la
+-- reversa si hiciera falta el detalle exacto, queda en este comentario.
+-- ============================================================
+
+-- Funcion de uso unico: transforma un `networks[]` completo. `media` es la
+-- biblioteca de la pieza, para contar archivos cuando la red no tiene
+-- `files` propios (modelo anterior a F92/F93).
+CREATE OR REPLACE FUNCTION private._cv4_backfill_network_format(networks jsonb, media jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+IMMUTABLE
+AS $$
+DECLARE
+  entry jsonb;
+  result jsonb := '[]'::jsonb;
+  content_type text;
+  file_count int;
+  new_format text;
+BEGIN
+  FOR entry IN SELECT * FROM jsonb_array_elements(COALESCE(networks, '[]'::jsonb))
+  LOOP
+    content_type := entry -> 'options' ->> 'contentType';
+
+    IF entry ->> 'platform' = 'instagram'
+       AND (entry ->> 'format' IS NULL OR entry ->> 'format' = '')
+       AND content_type IS NOT NULL
+    THEN
+      IF entry ? 'files' THEN
+        file_count := jsonb_array_length(entry -> 'files');
+      ELSE
+        file_count := COALESCE(jsonb_array_length(media), 0);
+      END IF;
+
+      new_format := CASE content_type
+        WHEN 'reel' THEN 'reel'
+        WHEN 'story' THEN 'story'
+        WHEN 'carousel' THEN 'carousel'
+        WHEN 'feed' THEN
+          CASE
+            WHEN file_count >= 2 THEN 'carousel'
+            WHEN file_count = 1 THEN 'image'
+            ELSE NULL
+          END
+        ELSE NULL
+      END;
+
+      -- OJO: jsonb_set con un new_value que es SQL NULL devuelve SQL NULL
+      -- (se pierde la fila entera), no el jsonb 'null'. Hay que convertir
+      -- expresamente: to_jsonb(new_format) es NULL cuando new_format es
+      -- NULL; coalesce a 'null'::jsonb lo vuelve un valor jsonb valido.
+      entry := jsonb_set(entry, '{format}', COALESCE(to_jsonb(new_format), 'null'::jsonb), true);
+    END IF;
+
+    result := result || jsonb_build_array(entry);
+  END LOOP;
+
+  RETURN result;
+END;
+$$;
+
+-- Respaldo de lo que se va a tocar, para poder auditar o volver atras sin
+-- adivinar que habia antes (se consulta con list_migrations / execute_sql;
+-- no es una tabla nueva, es el registro de esta corrida en el comentario de
+-- PROGRESS-CV4.md tras aplicar).
+UPDATE public.content_posts
+SET networks = private._cv4_backfill_network_format(networks, media)
+WHERE EXISTS (
+  SELECT 1
+  FROM jsonb_array_elements(networks) n
+  WHERE n ->> 'platform' = 'instagram'
+    AND (n ->> 'format' IS NULL OR n ->> 'format' = '')
+    AND n -> 'options' ->> 'contentType' IS NOT NULL
+);
+
+DROP FUNCTION private._cv4_backfill_network_format(jsonb, jsonb);
+
+-- ============================================================
+-- MIGRATION 127: CONTENT VERSIONS SESSION
+-- ============================================================
+-- ============================================================
+-- 00127_content_versions_session.sql  (Contenido v4, C6)
+--
+-- Agrupar las versiones de una pieza por SESION de edicion, no una por
+-- cambio: con el autoguardado (C6 escribe en cada blur/change), la regla
+-- vieja (F22) generaria decenas de versiones en una tarde.
+--
+-- Dos cosas, las dos aditivas:
+--
+--   1. `updated_at`: para saber si el ultimo cambio de esa version fue hace
+--      menos de 10 minutos (la sesion sigue) o mas (se corto). Nace en
+--      `now()` para las filas que ya existen: no hay forma de saber cuando
+--      se habian tocado de verdad, y tratarlas como "recien tocadas" es el
+--      lado seguro (el peor caso es una sesion que no se agrupa, no una que
+--      se agrupa de mas).
+--   2. El CHECK de `reason` suma 'edit' (el autoguardado de verdad) y
+--      'approve' (aprobar corta la sesion con su propio motivo, separado de
+--      'status_change'). Los cinco motivos viejos se conservan: el
+--      historial no se reescribe.
+--
+-- Idempotente: `ADD COLUMN IF NOT EXISTS` y el CHECK se reemplaza solo si
+-- todavia no incluye los valores nuevos.
+--
+-- Reversa:
+--   ALTER TABLE public.content_post_versions DROP COLUMN IF EXISTS updated_at;
+--   ALTER TABLE public.content_post_versions DROP CONSTRAINT IF EXISTS content_post_versions_reason_check;
+--   ALTER TABLE public.content_post_versions ADD CONSTRAINT content_post_versions_reason_check
+--     CHECK (reason IN ('status_change','manual_save','resume_after_idle','ai_generation','restore'));
+--   -- Solo funciona si antes se borran o se reescriben las filas con
+--   -- reason IN ('edit','approve').
+-- ============================================================
+
+ALTER TABLE public.content_post_versions
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'content_post_versions_reason_check'
+      AND pg_get_constraintdef(oid) LIKE '%''edit''%'
+  ) THEN
+    ALTER TABLE public.content_post_versions DROP CONSTRAINT IF EXISTS content_post_versions_reason_check;
+    ALTER TABLE public.content_post_versions ADD CONSTRAINT content_post_versions_reason_check
+      CHECK (reason IN ('status_change', 'manual_save', 'resume_after_idle', 'ai_generation', 'restore', 'edit', 'approve'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.content_post_versions.updated_at IS
+  'Cuando se toco por ultima vez esta fila. Con reason=edit y menos de 10 minutos, el proximo cambio del mismo autor actualiza esta misma version en vez de crear otra (Contenido v4, C6).';
+
+-- ============================================================
+-- MIGRATION 128: DROP MATERIAL AND CONTENT TYPE
+-- ============================================================
+-- ============================================================
+-- 00128_drop_material_and_content_type.sql  (Contenido v4, C4 + C9)
+--
+-- ESCRITA Y NO APLICADA A PROPOSITO (regla del proyecto: lo destructivo se
+-- escribe y se anota, nunca se aplica en la misma corrida que lo reemplaza).
+-- Ver docs/PENDIENTE.md, seccion "Contenido v4", para el orden exacto y el
+-- estado de las consultas de seguridad de abajo.
+--
+-- Borra DOS cosas que dejaron de leerse en esta tanda:
+--
+--   1. `content_posts.material_status` (C4): reemplazado por el dropdown de
+--      estado, teñido con el color del estado. Sin referencias en lib/ ni en
+--      app/ fuera de un comentario en el tipo de la base (que dice "sin uso,
+--      se borra en la 00128").
+--   2. La clave `options.contentType` dentro de `content_posts.networks[]`
+--      (C9): reemplazada por `networks[].format`, el unico campo de formato.
+--      No es una columna, es una clave de un jsonb: se borra con
+--      `jsonb_set(... '{options}' ...)` quitando `contentType` del objeto
+--      `options` de cada entrada de red, sin tocar el resto.
+--
+-- Esta migracion NO borra `copy`, `hook`, `angle`, `notes` ni `pillar`
+-- (texto): esos ya los borro la 00118 (Contenido v3, 6/10/2026).
+--
+-- ============================================================
+-- Consultas de seguridad: tienen que dar 0 ANTES de aplicar esta migracion.
+-- ============================================================
+--
+--   -- A. Nada en el codigo desplegado lee material_status (fuera del
+--   --    comentario del tipo y de esta migracion): se verifica con
+--   --    `grep -rn "material_status" lib app` en el commit que esta en
+--   --    produccion, no aca.
+--
+--   -- B. Nada en el codigo desplegado lee options.contentType como dato de
+--   --    la pieza (fuera del campo propio que el body de Zernio le manda a
+--   --    Zernio, que se llama igual mal pero es otra cosa): se verifica con
+--   --    `grep -rn "contentType" lib app` en el commit que esta en
+--   --    produccion.
+--
+--   -- C. Nadie quedo con una red sin `format` que dependiera de
+--   --    `options.contentType` para programarse: tiene que dar 0.
+--   SELECT count(*) FROM content_posts p, jsonb_array_elements(p.networks) n
+--   WHERE n ->> 'platform' = 'instagram'
+--     AND (n ->> 'format' IS NULL OR n ->> 'format' = '')
+--     AND n -> 'options' ->> 'contentType' IS NOT NULL;
+--
+--   -- D. Un respaldo de lo que se va a borrar (no es una tabla nueva: una
+--   --    exportacion a un archivo, fuera de la base, antes de aplicar):
+--   SELECT id, material_status, networks FROM content_posts WHERE deleted_at IS NULL;
+--
+-- ============================================================
+-- Reversa (solo funciona si se guardo el respaldo de la consulta D; sin eso
+-- es IRREVERSIBLE: los valores se pierden):
+--   ALTER TABLE public.content_posts ADD COLUMN material_status text;
+--   -- + restaurar material_status y options.contentType desde el respaldo.
+-- ============================================================
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'content_posts' AND column_name = 'material_status'
+  ) THEN
+    ALTER TABLE public.content_posts DROP CONSTRAINT IF EXISTS content_posts_material_check;
+    ALTER TABLE public.content_posts DROP COLUMN material_status;
+  END IF;
+END $$;
+
+-- Saca la clave 'contentType' de adentro de 'options', en cada entrada de
+-- 'networks' de cada pieza que la tenga. El resto de la entrada (platform,
+-- format, files, cta, planned_at...) no se toca.
+UPDATE public.content_posts
+SET networks = (
+  SELECT jsonb_agg(
+    CASE
+      WHEN n -> 'options' ? 'contentType'
+        THEN jsonb_set(n, '{options}', (n -> 'options') - 'contentType')
+      ELSE n
+    END
+  )
+  FROM jsonb_array_elements(networks) n
+)
+WHERE EXISTS (
+  SELECT 1 FROM jsonb_array_elements(networks) n WHERE n -> 'options' ? 'contentType'
+);

@@ -5,16 +5,21 @@ import { AlertTriangle, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { NetworkBadge } from "../network-badge";
 import { FormatFiles } from "./format-files";
 import {
-  INSTAGRAM_CONTENT_TYPES,
-  INSTAGRAM_CONTENT_TYPE_LABELS,
   TIKTOK_MODES,
   TIKTOK_MODE_LABELS,
   TIKTOK_PRIVACY,
   TIKTOK_PRIVACY_LABELS,
+  THREADS_REPLY_CONTROL,
   YOUTUBE_VISIBILITY,
   YOUTUBE_VISIBILITY_LABELS,
   missingRequiredOptions,
 } from "@/lib/content/network-options";
+
+const THREADS_REPLY_CONTROL_LABELS: Record<(typeof THREADS_REPLY_CONTROL)[number], string> = {
+  everyone: "Cualquiera",
+  accounts_you_follow: "Solo a quienes sigo",
+  mentioned_only: "Solo a quien mencione",
+};
 import { createAutomationHref, checkCta, type AutomationRule, type CtaType } from "@/lib/content/keywords";
 import { datetimeInputToIso, isoToDatetimeInput } from "@/lib/dates";
 import { getFormat } from "@/lib/content/network-format";
@@ -22,6 +27,11 @@ import type { NetworkEntry } from "@/lib/content/redistribution";
 import type { NetworkSummary } from "@/lib/content/editor";
 import type { NetworkValidation } from "@/lib/content/validation";
 import type { MediaEntry } from "@/lib/content/media";
+import { networkCardView, publisherLine } from "@/lib/content/network-card";
+import { networkStateOf, type NetworkPublication } from "@/lib/content/network-state";
+import type { ContentPostStatus } from "@/lib/types/database";
+import { useState } from "react";
+import { PUBLISHER_LABELS as ACCOUNT_PUBLISHER_LABELS } from "@/lib/social/accounts-schema";
 
 /**
  * La fila de una red en el editor (C8).
@@ -51,6 +61,21 @@ const STATE_TONES: Record<string, string> = {
   failed: "text-red-600 dark:text-red-400",
 };
 
+/** Colores del estado nuevo (Contenido v4, C3): el borde izquierdo de la tarjeta. */
+const BORDER_BY_STATE: Record<string, string> = {
+  sched: "border-l-4 border-l-blue-500",
+  pub: "border-l-4 border-l-emerald-500",
+  fail: "border-l-4 border-l-red-500",
+};
+
+const PILL_BY_STATE: Record<string, string> = {
+  none: "bg-muted text-muted-foreground",
+  tent: "border border-dashed border-border text-muted-foreground",
+  sched: "bg-blue-600 text-white",
+  pub: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  fail: "bg-red-500/15 text-red-700 dark:text-red-400",
+};
+
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 
 export interface NetworkRowProps {
@@ -59,6 +84,12 @@ export interface NetworkRowProps {
   summary: NetworkSummary;
   validation: NetworkValidation;
   publicationStatus: string | null;
+  /** La publicacion de esta red, para el estado de 5 valores (Contenido v4, C3). */
+  publication: NetworkPublication | undefined;
+  /** Si la red tiene cuenta activa CON publicador (C1, C2). */
+  connected: boolean;
+  /** El estado de la pieza: decide si "el sistema la publica" se puede elegir. */
+  postStatus: ContentPostStatus;
   open: boolean;
   editable: boolean;
   canPublish: boolean;
@@ -67,16 +98,22 @@ export interface NetworkRowProps {
   automations: AutomationRule[];
   channelId: string | null;
   /** Los publicadores disponibles para esa red. */
+  /** Los publicadores USABLES de la cuenta (C10: solo para decidir si se muestra la linea). */
   publishers: string[];
+  /** El publicador real que usa esa cuenta (F13). */
+  defaultPublisher: string | null;
   /** La biblioteca de archivos de la pieza (F92). */
   library: MediaEntry[];
-  /** El formato escrito de la pieza, para sugerir el de la red (F93). */
-  pieceFormat: string | null;
   onToggle: () => void;
   onChange: (patch: Partial<NetworkEntry>) => void;
   onRemove: () => void;
   onSchedule: () => void;
   onUnschedule: () => void;
+  /** "La subo yo" / "El sistema la publica" (C2). */
+  onSetAuto: (auto: boolean) => void;
+  /** Marcar como publicado a mano, con la fecha y el link (C3). */
+  onMarkPublished: (input: { publishedAt: string | null; url: string | null }) => void;
+  onUnmarkPublished: () => void;
 }
 
 export function NetworkRow(props: NetworkRowProps) {
@@ -95,8 +132,29 @@ export function NetworkRow(props: NetworkRowProps) {
   const faltan = missingRequiredOptions(network.platform, options);
   const ownMedia = Array.isArray(network.files) || (network.media !== null && network.media !== undefined);
 
+  // El estado de 5 valores (Contenido v4, C3): lo que decide el chip "a mano",
+  // la pastilla, el borde y si se puede programar o marcar como publicado.
+  const state = networkStateOf({
+    plannedAt: network.planned_at ?? null,
+    publication: props.publication,
+    connected: props.connected,
+  });
+  const publisherInfo = publisherLine({
+    available: props.publishers,
+    current: props.defaultPublisher,
+    labels: ACCOUNT_PUBLISHER_LABELS,
+  });
+
+  const card = networkCardView({
+    connected: props.connected,
+    canPublish,
+    postStatus: props.postStatus,
+    state,
+    auto: typeof network.auto === "boolean" ? network.auto : props.publication?.status === "scheduled",
+  });
+
   return (
-    <li className="rounded-lg border border-border">
+    <li className={`rounded-lg border border-border ${BORDER_BY_STATE[state.id] ?? ""}`}>
       <button
         type="button"
         onClick={props.onToggle}
@@ -112,9 +170,21 @@ export function NetworkRow(props: NetworkRowProps) {
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
             <NetworkBadge platform={network.platform} />
-            <span className={`text-xs ${STATE_TONES[summary.stateKind] ?? "text-muted-foreground"}`}>
-              {summary.state}
+            {card.manualChip && (
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                a mano
+              </span>
+            )}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PILL_BY_STATE[state.id] ?? "bg-muted text-muted-foreground"}`}
+            >
+              {state.label}
             </span>
+            {summary.state.includes("·") && (
+              <span className={`text-xs ${STATE_TONES[summary.stateKind] ?? "text-muted-foreground"}`}>
+                {summary.state.split("·").slice(1).join("·").trim()}
+              </span>
+            )}
           </span>
 
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -146,35 +216,29 @@ export function NetworkRow(props: NetworkRowProps) {
 
       {open && (
         <div className="space-y-3 border-t border-border p-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={`Fecha y hora en ${network.platform}`} hint="Cada red tiene la suya.">
-              <input
-                type="datetime-local"
-                value={isoToDatetimeInput(network.planned_at ?? null, props.timeZone)}
-                onChange={(e) =>
-                  props.onChange({ planned_at: datetimeInputToIso(e.target.value, props.timeZone) })
-                }
-                disabled={!editable && !canPublish}
-                className={field}
-              />
-            </Field>
+          <Field label={`Fecha y hora en ${network.platform}`} hint="Cada red tiene la suya.">
+            <input
+              type="datetime-local"
+              value={isoToDatetimeInput(network.planned_at ?? null, props.timeZone)}
+              onChange={(e) =>
+                props.onChange({ planned_at: datetimeInputToIso(e.target.value, props.timeZone) })
+              }
+              disabled={!editable && !canPublish}
+              className={field}
+            />
+          </Field>
 
-            <Field label="Publicar por" hint="Por dónde sale esta red.">
-              <select
-                value={network.publisher ?? ""}
-                onChange={(e) => props.onChange({ publisher: e.target.value || null })}
-                disabled={!editable}
-                className={field}
-              >
-                <option value="">El de la cuenta</option>
-                {props.publishers.map((p) => (
-                  <option key={p} value={p}>
-                    {PUBLISHER_LABELS[p] ?? p}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          {/* "Publicar por" ya no es de la pieza (C10): es de la cuenta, en
+              Integraciones (F13). Solo se avisa cuando hay mas de un camino
+              posible; con uno solo no hay nada que decidir. */}
+          {publisherInfo && (
+            <p className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+              Se publica con <b className="text-foreground">{publisherInfo}</b> ·{" "}
+              <Link href="/dashboard/settings/integrations" className="underline underline-offset-2">
+                cambiar en Integraciones
+              </Link>
+            </p>
+          )}
 
           <Field label={`Caption para ${network.platform}`} hint="Vacío = usa el caption base.">
             <textarea
@@ -201,7 +265,6 @@ export function NetworkRow(props: NetworkRowProps) {
           <FormatFiles
             network={network}
             library={props.library}
-            pieceFormat={props.pieceFormat}
             editable={editable}
             onChange={props.onChange}
           />
@@ -272,14 +335,24 @@ export function NetworkRow(props: NetworkRowProps) {
             </p>
           )}
 
-          {/* ── Opciones de la red (§9.5) ── */}
-          <NetworkOptions
-            platform={network.platform}
-            options={options}
-            disabled={!editable}
-            onChange={setOption}
-            hideInstagramType={Boolean(network.format)}
-          />
+          {/* ── Opciones de [red], plegado y cerrado por defecto (C10) ──
+              LinkedIn no tiene opciones propias (su "tipo" ya lo decide el
+              formato): no se muestra un desplegable vacio. */}
+          {network.platform !== "linkedin" && (
+            <details className="rounded-lg border border-border">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted-foreground">
+                Opciones de {network.platform}
+              </summary>
+              <div className="border-t border-border p-3">
+                <NetworkOptions
+                  platform={network.platform}
+                  options={options}
+                  disabled={!editable}
+                  onChange={setOption}
+                />
+              </div>
+            </details>
+          )}
 
           {faltan.map((m) => (
             <p key={m} className="text-xs text-amber-700 dark:text-amber-300">
@@ -298,28 +371,20 @@ export function NetworkRow(props: NetworkRowProps) {
             </p>
           ))}
 
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            {canPublish && (
-              <button
-                type="button"
-                disabled={props.pending || !validation.ok || faltan.length > 0}
-                onClick={props.onSchedule}
-                className="h-8 rounded-lg border border-border px-3 text-xs disabled:opacity-50"
-              >
-                Programar solo {network.platform}
-              </button>
-            )}
-            {canPublish && summary.stateKind === "scheduled" && (
-              <button
-                type="button"
-                disabled={props.pending}
-                onClick={props.onUnschedule}
-                className="h-8 rounded-lg px-3 text-xs text-muted-foreground hover:bg-accent"
-              >
-                Desprogramar
-              </button>
-            )}
-            <span className="flex-1" />
+          {/* ── Como se publica, y marcar como publicado (Contenido v4, C2/C3) ── */}
+          <PublishModeBlock
+            platform={network.platform}
+            state={state}
+            card={card}
+            pending={props.pending}
+            canSchedule={validation.ok && faltan.length === 0}
+            timeZone={props.timeZone}
+            onSetAuto={props.onSetAuto}
+            onMarkPublished={props.onMarkPublished}
+            onUnmarkPublished={props.onUnmarkPublished}
+          />
+
+          <div className="flex items-center justify-end pt-1">
             {editable && props.publicationStatus === null && (
               <button
                 type="button"
@@ -337,51 +402,177 @@ export function NetworkRow(props: NetworkRowProps) {
   );
 }
 
+/**
+ * "Como se publica en [red]" y "Marcar como publicado" (C2, C3).
+ *
+ * Las dos opciones del modo son excluyentes: la segunda toca `onSetAuto`, que
+ * programa o desprograma de verdad (el servidor valida todo de nuevo, F77).
+ * "Marcar como publicado" abre un formulario chico con la fecha y el link.
+ */
+function PublishModeBlock({
+  platform,
+  state,
+  card,
+  pending,
+  canSchedule,
+  timeZone,
+  onSetAuto,
+  onMarkPublished,
+  onUnmarkPublished,
+}: {
+  platform: string;
+  state: { id: string; label: string; manual: boolean; at: string | null };
+  card: ReturnType<typeof networkCardView>;
+  pending: boolean;
+  canSchedule: boolean;
+  timeZone: string;
+  onSetAuto: (auto: boolean) => void;
+  onMarkPublished: (input: { publishedAt: string | null; url: string | null }) => void;
+  onUnmarkPublished: () => void;
+}) {
+  const [marking, setMarking] = useState(false);
+  const [publishedAt, setPublishedAt] = useState(() => isoToDatetimeInput(new Date().toISOString(), timeZone));
+  const [url, setUrl] = useState("");
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-xs font-medium">Cómo se publica en {platform}</p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={card.mode === "self"}
+          disabled={pending || Boolean(card.selfDisabledReason)}
+          title={card.selfDisabledReason ?? undefined}
+          onClick={() => onSetAuto(false)}
+          className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
+            card.mode === "self" ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          <b className="block">La subo yo</b>
+          <span className="text-muted-foreground">
+            La fecha queda tentativa: entra al calendario, pero el sistema no publica nada.
+          </span>
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={card.mode === "system"}
+          disabled={pending || Boolean(card.systemDisabledReason) || (card.mode !== "system" && !canSchedule)}
+          title={card.systemDisabledReason ?? (!canSchedule ? "Revisá los avisos del formato primero." : undefined)}
+          onClick={() => onSetAuto(true)}
+          className={`flex-1 rounded-lg border px-3 py-2 text-left text-xs disabled:opacity-50 ${
+            card.mode === "system" ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          <b className="block">El sistema la publica</b>
+          <span className="text-muted-foreground">
+            {card.systemDisabledReason ?? "A la fecha de arriba se publica sola. Queda en cola."}
+          </span>
+        </button>
+      </div>
+
+      {state.id === "pub" ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-emerald-700 dark:text-emerald-400">
+            ✓ Publicado{state.manual ? " a mano" : ""}
+            {state.at ? ` · ${new Intl.DateTimeFormat("es-AR", { dateStyle: "medium" }).format(new Date(state.at))}` : ""}
+          </span>
+          {card.canUndoManual && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onUnmarkPublished}
+              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Deshacer
+            </button>
+          )}
+        </div>
+      ) : marking ? (
+        <div className="space-y-2 rounded-lg bg-muted/40 p-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="Cuándo se publicó">
+              <input
+                type="datetime-local"
+                value={publishedAt}
+                onChange={(e) => setPublishedAt(e.target.value)}
+                className={field}
+              />
+            </Field>
+            <Field label="Link del post" hint="Opcional.">
+              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" className={field} />
+            </Field>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                onMarkPublished({ publishedAt: datetimeInputToIso(publishedAt, timeZone), url: url.trim() || null });
+                setMarking(false);
+              }}
+              className="h-8 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground disabled:opacity-50"
+            >
+              Confirmar
+            </button>
+            <button
+              type="button"
+              onClick={() => setMarking(false)}
+              className="h-8 rounded-lg px-3 text-xs text-muted-foreground hover:bg-accent"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        card.canMarkPublished && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setMarking(true)}
+            className="h-8 rounded-lg border border-border px-3 text-xs disabled:opacity-50"
+          >
+            Marcar como publicado
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 /** Los errores que ya muestra la linea de verificacion del formato. */
 function isFormatError(message: string): boolean {
   return /^(Faltan archivos|Sobran archivos|Un archivo no sirve)/.test(message);
 }
 
-const PUBLISHER_LABELS: Record<string, string> = {
-  zernio: "Zernio",
-  postproxy: "Postproxy",
-  youtube_api: "API oficial de YouTube",
-  linkedin_api: "API de LinkedIn",
-  threads_api: "API de Threads",
-};
 
-/** Lo propio de cada red (§9.5, A8, A9, A17). */
+/**
+ * Lo propio de cada red (§9.5, A8, A9, A17, C10).
+ *
+ * "Tipo" de Instagram ya no existe: era el mismo dato que el formato,
+ * duplicado (C9). Lo que queda de Instagram es lo que el formato NO decide:
+ * compartir el Reel tambien en el feed.
+ */
 function NetworkOptions({
   platform,
   options,
   disabled,
   onChange,
-  hideInstagramType,
 }: {
   platform: string;
   options: Record<string, unknown>;
   disabled: boolean;
   onChange: (key: string, value: unknown) => void;
-  /** Con formato elegido, el tipo de Instagram lo decide el formato. */
-  hideInstagramType?: boolean;
 }) {
   if (platform === "instagram") {
-    if (hideInstagramType) return null;
     return (
-      <Field label="Tipo">
-        <select
-          value={String(options.contentType ?? "feed")}
-          onChange={(e) => onChange("contentType", e.target.value)}
-          disabled={disabled}
-          className={field}
-        >
-          {INSTAGRAM_CONTENT_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {INSTAGRAM_CONTENT_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <Check
+        label="Compartir también en el feed"
+        checked={options.shareToFeed !== false}
+        disabled={disabled}
+        onChange={(v) => onChange("shareToFeed", v)}
+      />
     );
   }
 
@@ -491,6 +682,25 @@ function NetworkOptions({
           />
         </div>
       </div>
+    );
+  }
+
+  if (platform === "threads") {
+    return (
+      <Field label="Quién puede responder">
+        <select
+          value={String(options.replyControl ?? "everyone")}
+          onChange={(e) => onChange("replyControl", e.target.value)}
+          disabled={disabled}
+          className={field}
+        >
+          {THREADS_REPLY_CONTROL.map((v) => (
+            <option key={v} value={v}>
+              {THREADS_REPLY_CONTROL_LABELS[v]}
+            </option>
+          ))}
+        </select>
+      </Field>
     );
   }
 

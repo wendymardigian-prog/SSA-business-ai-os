@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   copyJustFinished,
-  datesSummary,
   draftFromPost,
   draftPayload,
   shouldPollCopy,
@@ -96,17 +95,6 @@ describe("que hace cada cambio del dropdown", () => {
   });
 });
 
-describe("el pie: 'N de M redes con fecha' (F96)", () => {
-  it("cuenta las que tienen fecha", () => {
-    expect(datesSummary(3, 2)).toBe("2 de 3 redes con fecha");
-    expect(datesSummary(1, 1)).toBe("1 de 1 red con fecha");
-    expect(datesSummary(2, 0)).toBe("0 de 2 redes con fecha");
-  });
-
-  it("sin redes lo dice distinto: no hay nada que contar", () => {
-    expect(datesSummary(0, 0)).toBe("Todavía no elegiste ninguna red");
-  });
-});
 
 describe("que se puede editar", () => {
   it("solo Borrador, Produccion y Revision", () => {
@@ -136,8 +124,10 @@ describe("los botones del pie, segun permiso y estado (F96)", () => {
   const actions = (over: Partial<Parameters<typeof pieceButtons>[0]>) =>
     pieceButtons({ status: "draft", perms: { ...admin, ai: true }, ...base, ...over }).map((b) => b.action);
 
-  it("un admin con IA en Borrador ve Generar, Guardar version y Enviar a revision", () => {
-    expect(actions({})).toEqual(expect.arrayContaining(["generate_copy", "save_version", "send_to_review"]));
+  it("un admin con IA en Borrador ve Generar (C6: sin Guardar version ni Enviar a revision)", () => {
+    expect(actions({})).toEqual(expect.arrayContaining(["generate_copy"]));
+    expect(actions({})).not.toContain("save_version");
+    expect(actions({})).not.toContain("send_to_review");
   });
 
   it("un Member NO ve Programar ni Publicar ahora: no estan, no es que esten apagados", () => {
@@ -146,7 +136,6 @@ describe("los botones del pie, segun permiso y estado (F96)", () => {
     expect(a).not.toContain("schedule");
     expect(a).not.toContain("publish_now");
     expect(a).not.toContain("generate_copy");
-    expect(a).toContain("send_to_review");
   });
 
   it("aprobada: se puede Programar", () => {

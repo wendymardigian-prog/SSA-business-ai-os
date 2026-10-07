@@ -212,7 +212,14 @@ export function ClassificationFields({
    * Las redes a elegir, solo en la idea. En la pieza las redes son sus filas
    * de "Redes", asi que no se repiten aca.
    */
-  platforms?: { available: string[]; selected: string[]; onChange: (next: string[]) => void };
+  platforms?: {
+    /** Las cinco redes (Contenido v4, C1): siempre se puede elegir cualquiera. */
+    available: string[];
+    /** Las que no tienen cuenta conectada: se marcan "a mano", no se ocultan. */
+    manual: string[];
+    selected: string[];
+    onChange: (next: string[]) => void;
+  };
 }) {
   const stage = funnelStageInfo(value.funnelStage);
 
@@ -255,7 +262,7 @@ export function ClassificationFields({
               <option value="">Sin etapa</option>
               {FUNNEL_STAGES.map((s) => (
                 <option key={s.value} value={s.value}>
-                  {s.label}
+                  {s.value.toUpperCase()} · {s.label}
                 </option>
               ))}
             </select>
@@ -282,32 +289,36 @@ export function ClassificationFields({
       </DialogField>
 
       {platforms && (
-        <DialogField label="Redes" hint="A cuáles apunta. Al aprobar la idea pasan a la pieza.">
-          {platforms.available.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Todavía no hay ninguna red conectada.</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {platforms.available.map((platform) => {
-                const on = platforms.selected.includes(platform);
-                return (
-                  <button
-                    key={platform}
-                    type="button"
-                    aria-pressed={on}
-                    disabled={disabled}
-                    onClick={() =>
-                      platforms.onChange(
-                        on ? platforms.selected.filter((p) => p !== platform) : [...platforms.selected, platform],
-                      )
-                    }
-                    className={on ? "rounded-full ring-2 ring-primary" : "rounded-full opacity-60 hover:opacity-100"}
-                  >
-                    <NetworkBadge platform={platform} />
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        <DialogField
+          label="Redes"
+          hint="A cuáles apunta. Pueden ser redes todavía no conectadas: al aprobar la idea pasan a la pieza, y ahí se define la fecha de cada una."
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {platforms.available.map((platform) => {
+              const on = platforms.selected.includes(platform);
+              const manual = platforms.manual.includes(platform);
+              return (
+                <button
+                  key={platform}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={disabled}
+                  onClick={() =>
+                    platforms.onChange(
+                      on ? platforms.selected.filter((p) => p !== platform) : [...platforms.selected, platform],
+                    )
+                  }
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full",
+                    on ? "ring-2 ring-primary" : "opacity-60 hover:opacity-100",
+                  )}
+                >
+                  <NetworkBadge platform={platform} />
+                  {manual && <span className="text-[10px] text-amber-700 dark:text-amber-400">a mano</span>}
+                </button>
+              );
+            })}
+          </div>
         </DialogField>
       )}
     </div>

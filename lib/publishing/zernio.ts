@@ -35,12 +35,16 @@ function mediaItems(input: PublishInput) {
   });
 }
 
-/** Las opciones de Instagram, tal como las nombra el SDK. */
-export function instagramData(options: Record<string, unknown>) {
-  const contentType = options.contentType;
+/**
+ * Las opciones de Instagram, tal como las nombra el SDK.
+ *
+ * El tipo sale del FORMATO de la red (F93, Contenido v4 C9), no de
+ * `options.contentType`, que ya no existe. El SDK solo declara 'story': feed,
+ * Reel y carrusel los decide Zernio por la media que recibe.
+ */
+export function instagramData(options: Record<string, unknown>, format?: string | null) {
   return {
-    // El SDK solo declara 'story': feed y Reel los decide por la media.
-    ...(contentType === "story" ? { contentType: "story" as const } : {}),
+    ...(format === "story" ? { contentType: "story" as const } : {}),
     ...(typeof options.shareToFeed === "boolean" ? { shareToFeed: options.shareToFeed } : {}),
     ...(Array.isArray(options.collaborators) && options.collaborators.length > 0
       ? { collaborators: options.collaborators as string[] }
@@ -153,7 +157,7 @@ function createBody(
 
   const platformSpecificData =
     input.platform === "instagram"
-      ? instagramData(input.options)
+      ? instagramData(input.options, input.format)
       : input.platform === "tiktok"
         ? tiktokData(input.options)
         : undefined;

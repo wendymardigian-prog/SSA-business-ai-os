@@ -88,7 +88,7 @@ describe("armar el pedido (F29)", () => {
     expect(prompt).toContain("Oferta: Mentoria 1:1");
     // La etapa va con su descripcion: tofu/mofu/bofu no le dice nada a un modelo.
     expect(prompt).toContain("Etapa del embudo: Consideración");
-    expect(prompt).toContain("Gente que ya te sigue");
+    expect(prompt).toContain("Le habla a quien ya sabe que tiene el problema");
     expect(prompt).toContain("Referencia: https://ref.test/post");
   });
 

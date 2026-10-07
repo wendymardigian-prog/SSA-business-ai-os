@@ -365,6 +365,7 @@ export async function buildInput(
     title: network.youtube_title ?? post?.title ?? null,
     media: live,
     mediaUrls: urls,
+    format: network.format ?? null,
     progress:
       row.publish_progress && typeof row.publish_progress === "object"
         ? (row.publish_progress as Record<string, unknown>)

@@ -762,3 +762,89 @@ verificadas; esto es lo que queda, no lo ya hecho.
 - **Qué se decidió en su lugar:** queda anotado para una corrida aparte. El
   patrón para hacerlo es el mismo que `lib/brand.ts`/`lib/ai/language-style.ts`:
   un módulo puro que lee la variable de entorno con un default.
+
+## Contenido v4 (corrida del 7/10/2026)
+
+- **Incidente durante la 00126 (backfill de formato), arreglado en el momento.**
+  La primera versión de la función de la migración usaba
+  `jsonb_set(entry, '{format}', to_jsonb(new_format), true)`. Cuando no se
+  podía mapear un formato (`contentType='feed'` con 0 archivos) `new_format`
+  era `NULL` de SQL, y `to_jsonb(NULL)` también es `NULL` de SQL: `jsonb_set`
+  con un `new_value` que es `NULL` de SQL devuelve `NULL` para toda la fila,
+  no el jsonb `null`. La única pieza de producción quedó con
+  `"networks":[null]`, perdiendo también `cta`, `options` y `platform` de esa
+  entrada.
+  - **Se detectó al toque** (se leyó la fila después de aplicar, como pide
+    el procedimiento) y se restauró con el valor exacto que se había leído
+    antes de aplicar (capturado en la exploración inicial de esta misma
+    corrida). Se verificó con una lectura posterior que coincide con el
+    original.
+  - **La función se corrigió** (`COALESCE(to_jsonb(new_format), 'null'::jsonb)`,
+    que si convierte `NULL` de SQL en el jsonb `null`) y se probó la
+    expresión sola, de forma aislada y de solo lectura, antes de volver a
+    aplicar la migración sobre la base real.
+  - **Ningún dato se perdió**: la restauración fue exacta y la segunda
+    corrida de la migración, ya corregida, dejó la fila con `"format":null`
+    (el resultado esperado: 0 archivos, no se adivina un formato) y el
+    resto de la entrada intacto.
+  - **Queda para la próxima vez que se escriba una migración así**: probar
+    la expresión jsonb por separado (una `SELECT` de solo lectura, sin tocar
+    la tabla) antes de aplicarla sobre una columna jsonb completa, en vez de
+    confiar en que el camino "sin valor" de un `CASE` se comporta como el
+    camino "con valor".
+
+- **La pieza `425ac42a-2c7b-42ec-b047-5af199b64cc6`** (la única en
+  producción) tiene su red de Instagram con `format: null` después de la
+  00126: tenía `contentType: 'feed'` pero 0 archivos, y la regla del
+  documento (§17) es no adivinar un formato sin archivos. En el drawer esa
+  red va a aparecer con la verificación en rojo ("Elegí el formato") hasta
+  que alguien lo complete a mano.
+
+### Contenido v4 · La 00128 (destructiva) está escrita y NO se aplicó
+
+- **Qué es:** borra `content_posts.material_status` y la clave
+  `options.contentType` de adentro de cada entrada de `networks[]`
+  (`supabase/migrations/00128_drop_material_and_content_type.sql`).
+- **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe
+  ninguna de las dos (grep limpio en `lib/` y `app/`, salvo el comentario del
+  tipo de la base y el campo propio que el *body* de Zernio le manda a
+  Zernio, que se llama igual por casualidad), así que aplicarla no rompe
+  nada funcionando — pero no tiene vuelta atrás.
+- **Cuándo aplicarla:** después de ver la v4 funcionando en producción (ver
+  §16 del documento, "Verificación en vivo"). Antes, correr la consulta C de
+  la cabecera de la migración (tiene que dar 0) y guardar el respaldo de la
+  consulta D (`material_status` y `networks` de toda `content_posts`).
+- **Para tener en cuenta:** igual que la 00118 de Contenido v3,
+  `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el
+  bundle tenga todas las migraciones) — ese archivo es para una instalación
+  NUEVA, donde la base está vacía y no hay nada que perder. No correrlo sobre
+  producción.
+
+### Contenido v4 · Una red queda con `format: null` después de la 00126
+
+- **Qué es:** la única pieza de producción tiene una red de Instagram con
+  `options.contentType: 'feed'` pero **0 archivos**. La migración 00126
+  (backfill de formato) no adivina un formato sin archivos (regla del
+  documento, §17), así que esa red quedó con `format: null`.
+- **Qué se ve:** en el drawer, esa tarjeta de red aparece con la
+  verificación en rojo ("Elegí un formato") hasta que alguien lo complete a
+  mano. No bloquea nada más de la pieza.
+- **Qué hacer:** abrir la pieza, elegir el formato de esa red (y los
+  archivos, si corresponde) la próxima vez que se trabaje con ella.
+
+### Contenido v4 · Incidente durante la 00126, corregido en el momento (sin pérdida de datos)
+
+Ver la sección "Contenido v4 (corrida del 7/10/2026)" más arriba en este
+mismo archivo: el detalle completo del bug de `jsonb_set` con `NULL` de SQL,
+cómo se detectó, cómo se restauró y cómo se corrigió antes de reaplicar.
+
+### Contenido v4 · Revisión visual contra el prototipo — pendiente con Wendy
+
+- **Qué quedó:** la comparación del drawer de la pieza, el de la idea, el
+  kanban y el calendario contra la copia local del prototipo (v23), a 1440 y
+  390 px, en claro y oscuro, no se hizo en esta corrida.
+- **Por qué:** la app pide iniciar sesión y no hay una sesión abierta en
+  este entorno; la regla del proyecto es no ingresar credenciales.
+- **Qué hacer:** levantar `npm run dev`, iniciar sesión como Wendy, y
+  recorrer las cuatro pantallas de la sección 11 del documento
+  (`requerimientos-contenido-v4.md`) contra `docs/referencia/prototipo-ssa-baios.html`.

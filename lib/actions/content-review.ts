@@ -10,6 +10,7 @@ import { notifyReturnedToProduction, notifyReviewRequested } from "@/lib/notific
 import { runPublication } from "@/lib/publishing/dispatcher";
 import { publishDeps } from "@/lib/jobs/handlers/content-publish";
 import { registerPublishing } from "@/lib/publishing/bootstrap";
+import { writeVersion } from "@/lib/content/save-version";
 import type { ContentPostStatus } from "@/lib/types/database";
 
 /**
@@ -76,6 +77,15 @@ export async function requestReview(input: { postId: string }): Promise<ReviewAc
     requestedBy: user.id,
   });
 
+  // Cambiar el estado corta la sesion de edicion (C6): se lleva su propia
+  // version, siempre.
+  await writeVersion(service, {
+    postId: post.id,
+    workspaceId: workspace.id,
+    context: { trigger: "status_change" },
+    authorId: user.id,
+  });
+
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
     action: "update",
@@ -109,6 +119,15 @@ export async function approvePost(input: { postId: string }): Promise<ReviewActi
     .eq("id", post.id);
 
   if (error) return { ok: false, error: "No pude aprobarla" };
+
+  // Aprobar tiene su propio motivo, separado de un cambio de estado
+  // cualquiera (C6).
+  await writeVersion(await createServiceClient(), {
+    postId: post.id,
+    workspaceId: workspace.id,
+    context: { trigger: "approve" },
+    authorId: user.id,
+  });
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
@@ -148,6 +167,13 @@ export async function returnPost(input: {
     title: post.title,
     recipientId: post.created_by,
     comment,
+  });
+
+  await writeVersion(service, {
+    postId: post.id,
+    workspaceId: workspace.id,
+    context: { trigger: "status_change" },
+    authorId: user.id,
   });
 
   await logAudit({

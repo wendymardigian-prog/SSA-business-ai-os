@@ -5,7 +5,6 @@ import {
   changeFormat,
   checkFormatFiles,
   eligibleFiles,
-  formatFromOptions,
   formatsFor,
   getFormat,
   moveFile,
@@ -301,12 +300,13 @@ describe("elegir y ordenar archivos (F93, D4)", () => {
   });
 });
 
-describe("el formato completa las opciones del publicador (F93)", () => {
-  it("Instagram: el tipo de contenido", () => {
-    expect(optionsForFormat("instagram", "reel")).toEqual({ contentType: "reel" });
-    expect(optionsForFormat("instagram", "carousel")).toEqual({ contentType: "carousel" });
-    expect(optionsForFormat("instagram", "image")).toEqual({ contentType: "feed" });
-    expect(optionsForFormat("instagram", "story")).toEqual({ contentType: "story" });
+describe("el formato completa las opciones del publicador (F93, C9)", () => {
+  it("Instagram ya no agrega nada: el publicador lee el formato directo", () => {
+    // El "Tipo" (contentType) era el mismo dato duplicado; se borro en C9.
+    expect(optionsForFormat("instagram", "reel")).toEqual({});
+    expect(optionsForFormat("instagram", "carousel")).toEqual({});
+    expect(optionsForFormat("instagram", "image")).toEqual({});
+    expect(optionsForFormat("instagram", "story")).toEqual({});
   });
 
   it("TikTok: video o fotos", () => {
@@ -329,37 +329,14 @@ describe("el formato completa las opciones del publicador (F93)", () => {
     expect(optionsForFormat("instagram", "inventado")).toEqual({});
   });
 
-  it("resolveNetworkOptions mezcla: el formato gana sobre un contentType viejo", () => {
-    const red: NetworkEntry = { platform: "instagram", format: "reel", options: { contentType: "feed", shareToFeed: true } };
+  it("resolveNetworkOptions en Instagram deja las opciones propias intactas (shareToFeed, no el tipo)", () => {
+    const red: NetworkEntry = { platform: "instagram", format: "reel", options: { shareToFeed: true } };
 
-    expect(resolveNetworkOptions(red)).toEqual({ contentType: "reel", shareToFeed: true });
+    expect(resolveNetworkOptions(red)).toEqual({ shareToFeed: true });
   });
 
   it("sin formato deja las opciones como estaban", () => {
-    expect(resolveNetworkOptions({ platform: "instagram", options: { contentType: "story" } })).toEqual({
-      contentType: "story",
-    });
     expect(resolveNetworkOptions({ platform: "tiktok" })).toEqual({});
-  });
-});
-
-describe("inferir el formato de lo que ya estaba guardado", () => {
-  it("Instagram sale del contentType", () => {
-    expect(formatFromOptions("instagram", { contentType: "reel" })).toBe("reel");
-    expect(formatFromOptions("instagram", { contentType: "carousel" })).toBe("carousel");
-    expect(formatFromOptions("instagram", { contentType: "story" })).toBe("story");
-    expect(formatFromOptions("instagram", { contentType: "feed" })).toBe("image");
-  });
-
-  it("LinkedIn sale del postType", () => {
-    expect(formatFromOptions("linkedin", { postType: "document" })).toBe("pdf");
-    expect(formatFromOptions("linkedin", { postType: "video" })).toBe("video");
-  });
-
-  it("el resto tiene un valor por defecto razonable", () => {
-    expect(formatFromOptions("tiktok", {})).toBe("video");
-    expect(formatFromOptions("youtube", {})).toBe("video");
-    expect(formatFromOptions("threads", {})).toBe("text");
   });
 });
 

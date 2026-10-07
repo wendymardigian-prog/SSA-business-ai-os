@@ -10,11 +10,17 @@ import {
   type MutableRefObject,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Check, History, Loader2, Sparkles, X } from "lucide-react";
-import { savePostDraft, setMaterialStatus, movePostToColumn } from "@/lib/actions/content";
+import { savePostDraft, movePostToColumn } from "@/lib/actions/content";
 import { requestCopy } from "@/lib/actions/copywriter";
-import { scheduleNetworks, unscheduleNetwork } from "@/lib/actions/content-schedule";
-import { saveVersion } from "@/lib/actions/content-versions";
+import {
+  markNetworkPublished,
+  scheduleNetworks,
+  setNetworkPublishMode,
+  unmarkNetworkPublished,
+  unscheduleNetwork,
+} from "@/lib/actions/content-schedule";
 import {
   approvePost,
   archivePost,
@@ -26,13 +32,13 @@ import { summarizeNetwork } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords } from "@/lib/content/keywords";
 import { ensureMediaIds, removeFileFromNetworks, usageByFile } from "@/lib/content/media-library";
-import { resolveNetworkOptions } from "@/lib/content/network-format";
+import { changeFormat, CONTENT_PLATFORMS, resolveNetworkOptions, suggestFormat } from "@/lib/content/network-format";
 import { liveMedia } from "@/lib/content/media";
-import { resolveNetworkContent } from "@/lib/content/redistribution";
+import { resolveNetworkContent, type NetworkEntry } from "@/lib/content/redistribution";
+import { networkStateOf, networkSummaryText } from "@/lib/content/network-state";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import {
   copyJustFinished,
-  datesSummary,
   draftFromPost,
   draftPayload,
   isEditableStatus,
@@ -44,7 +50,7 @@ import {
   type PieceDraft,
 } from "@/lib/content/piece-drawer";
 import type { PieceData } from "@/lib/content/load-piece";
-import type { BoardColumn } from "@/lib/content/status";
+import { isManualStatus, type BoardColumn } from "@/lib/content/status";
 import { platformLabel } from "@/lib/platforms";
 import type { ContentPostStatus } from "@/lib/types/database";
 import { MediaUploader } from "../media-uploader";
@@ -78,15 +84,9 @@ import { useToast } from "./toast";
  * el borrador la adopta.
  */
 
-const AUTOSAVE_MS = 10_000;
 const COPY_POLL_MS = 4_000;
-
-const MATERIAL_LABELS = {
-  pendiente: "Sin grabar",
-  grabado: "Grabado",
-  editado: "Editado",
-  listo: "Listo",
-} as const;
+/** Cuanto dura "Guardado ✓" antes de volver a "Se guarda solo" (C6). */
+const SAVED_FLASH_MS = 1_500;
 
 export function PieceDrawer({
   data,
@@ -98,6 +98,7 @@ export function PieceDrawer({
   onClose: () => void;
 }) {
   const { post, perms, publications, connected, automations, channelIdByPlatform, publishersByPlatform } = data;
+  const { defaultPublisherByPlatform } = data;
   const { versions, authorNames, aiAvailable, timeZone, taxonomy } = data;
 
   const router = useRouter();
@@ -106,15 +107,9 @@ export function PieceDrawer({
   const [view, setView] = useState<"edit" | "history">("edit");
   const [openNetwork, setOpenNetwork] = useState<string | null>(null);
   const [draft, setDraft] = useState<PieceDraft>(() => draftFromPost(post));
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [material, setMaterial] = useState(post.materialStatus);
-
-  // Para que "Guardado hace X s" se mueva solo.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(timer);
-  }, []);
+  // "Se guarda solo" -> "Guardado ✓" por 1,5 s despues de cada guardado (C6).
+  const [justSaved, setJustSaved] = useState(false);
+  const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // "Hay cambios sin guardar". Vive en dos lugares a proposito: un ref que
   // lee quien guarda (un reloj, un clic) y necesita el valor de AHORA, y un
@@ -159,7 +154,10 @@ export function PieceDrawer({
     }
 
     knownUpdatedAt.current = result.data.updatedAt;
-    setSavedAt(new Date().toISOString());
+    // "Guardado ✓" por 1,5 s y vuelve a "Se guarda solo" (C6).
+    setJustSaved(true);
+    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    savedFlashTimer.current = setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
     if (result.data.staleWarning) {
       toast.push({
         tone: "warning",
@@ -170,11 +168,40 @@ export function PieceDrawer({
     return true;
   }, [post.id, toast, markDirty]);
 
-  useEffect(() => {
-    if (!editable) return;
-    const timer = setInterval(() => void flush(), AUTOSAVE_MS);
-    return () => clearInterval(timer);
-  }, [editable, flush]);
+  useEffect(() => () => {
+    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+  }, []);
+
+  // Guardado automatico (C6): el dropdown, un chip o un toggle guardan al
+  // elegir; un campo de texto, al salir (blur). Los dos casos llegan aca por
+  // delegacion (un solo listener en la raiz del cuerpo) en vez de cablear
+  // cada campo uno por uno. `setTimeout` deja que React termine de aplicar
+  // el cambio de estado del campo (el `useEffect` que actualiza `draftRef`)
+  // ANTES de leerlo: guardar en el mismo tick guardaria el valor anterior.
+  const flushSoon = useCallback(() => {
+    setTimeout(() => void flush(), 0);
+  }, [flush]);
+
+  function onBodyChangeCapture(e: React.ChangeEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    // Select, checkbox, radio y los selectores de fecha disparan "change" al
+    // elegir: eso es "al elegir" (C6). Un input o textarea de texto dispara
+    // "change" en CADA tecla (es como React nombra el evento `input` nativo):
+    // esos se guardan en el blur, no aca.
+    if (
+      el.tagName === "SELECT" ||
+      ["checkbox", "radio", "datetime-local", "date"].includes(el.type)
+    ) {
+      flushSoon();
+    }
+  }
+
+  function onBodyBlurCapture(e: React.FocusEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    if (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type === "text")) {
+      flushSoon();
+    }
+  }
 
   // Lo escrito se guarda tambien si el drawer se desmonta (Esc, fondo, atras).
   const flushRef = useRef(flush);
@@ -263,9 +290,32 @@ export function PieceDrawer({
     return findScriptKeywords(draft.script).map((word) => ({ word, live: activas.has(word.toUpperCase()) }));
   }, [draft.script, automations]);
 
-  const missingNetworks = connected.filter((platform) => !draft.networks.some((n) => n.platform === platform));
+  // Cualquiera de las cinco, conectada o no (Contenido v4, C1): el bloqueo
+  // de antes impedia planificar YouTube, LinkedIn y Threads hasta tramitar
+  // la cuenta.
+  const missingNetworks = CONTENT_PLATFORMS.filter((platform) => !draft.networks.some((n) => n.platform === platform));
   const withDate = draft.networks.filter((n) => n.planned_at).length;
   const schedulable = validations.filter((v) => v.ok).length;
+
+  // El estado de cada red (C3), para el pie (C8): "N programadas · N
+  // tentativas · N publicadas", y para distinguir de un vistazo lo que sale
+  // solo de lo que hay que subir a mano.
+  const networkStates = draft.networks.map((network) => {
+    const publication = publications.find((p) => p.platform === network.platform);
+    return networkStateOf({
+      plannedAt: network.planned_at ?? null,
+      publication: publication
+        ? {
+            platform: publication.platform,
+            status: publication.status,
+            scheduledAt: publication.scheduledAt,
+            publishedAt: publication.publishedAt,
+            origin: publication.origin,
+          }
+        : undefined,
+      connected: connected.includes(network.platform),
+    });
+  });
 
   const buttons = pieceButtons({
     status: post.status,
@@ -327,13 +377,6 @@ export function PieceDrawer({
 
   function onAction(action: string) {
     switch (action) {
-      case "save_version":
-        run(async () => {
-          if (!(await flush())) return { ok: false, error: "No pude guardar lo que escribiste." };
-          return saveVersion({ postId: post.id, context: { trigger: "manual_save" } });
-        }, "Versión guardada.");
-        break;
-
       case "generate_copy":
         run(async () => {
           // El copywriter escribe en segundo plano: esto encola y vuelve.
@@ -355,10 +398,6 @@ export function PieceDrawer({
       case "publish_now":
         if (!window.confirm("¿Publicar ahora en las redes con fecha?")) return;
         run(() => saved(() => scheduleNetworks({ postId: post.id, now: true })), "Saliendo.");
-        break;
-
-      case "send_to_review":
-        run(() => saved(() => requestReview({ postId: post.id })), "La mandaste a revisión.");
         break;
 
       case "approve":
@@ -415,9 +454,10 @@ export function PieceDrawer({
       >
         <div className="space-y-3 p-4 md:p-6">
           <p className="text-xs text-muted-foreground">
-            Se guarda una versión al cambiar de estado, al tocar &quot;Guardar versión&quot;, al retomar un borrador
-            después de 10 minutos y en cada generación con IA. El autoguardado de cada 10 segundos no crea versiones.
-            Restaurar nunca borra: crea una versión nueva.
+            Todo se guarda solo, sin crear una versión por cada cambio: el primer cambio después de 10 minutos de
+            silencio abre una versión nueva, y los siguientes de la misma sesión actualizan esa misma fila. Cambiar de
+            estado, aprobar, generar con IA y restaurar siempre cortan la sesión y dejan la suya. Restaurar nunca
+            borra: crea una versión nueva.
           </p>
           <VersionHistory
             postId={post.id}
@@ -474,6 +514,7 @@ export function PieceDrawer({
           <StatusSelect
             options={statuses}
             value={post.status}
+            derived={!isManualStatus(post.status)}
             disabled={pending || statuses.every((o) => o.value === post.status || o.disabled)}
             onChange={changeStatus}
           />
@@ -484,7 +525,7 @@ export function PieceDrawer({
           )}
           <button
             type="button"
-            onClick={() => setView("history")}
+            onClick={() => void flush().then(() => setView("history"))}
             aria-label={`Historial de versiones (${versions.length})`}
             title="Historial de versiones"
             className="relative rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
@@ -501,13 +542,19 @@ export function PieceDrawer({
       }
       footer={
         <>
-          <span className="text-xs text-muted-foreground">{datesSummary(draft.networks.length, withDate)}</span>
-          {savedAt && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Check className="h-3 w-3" aria-hidden />
-              Guardado {haceCuanto(savedAt, now)}
-            </span>
-          )}
+          <span className="text-xs text-muted-foreground">{networkSummaryText(networkStates)}</span>
+          <span
+            className={`inline-flex items-center gap-1 text-xs ${justSaved ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+          >
+            {justSaved ? (
+              <>
+                <Check className="h-3 w-3" aria-hidden />
+                Guardado ✓
+              </>
+            ) : (
+              "Se guarda solo"
+            )}
+          </span>
           <span className="flex-1" />
           {buttons.map((button) => (
             <button
@@ -532,7 +579,11 @@ export function PieceDrawer({
         </>
       }
     >
-      <div className="space-y-6 p-4 md:p-6">
+      <div
+        className="space-y-6 p-4 md:p-6"
+        onChangeCapture={onBodyChangeCapture}
+        onBlurCapture={onBodyBlurCapture}
+      >
         <div className="space-y-2">
           {post.authorship && (
             <p className="text-[11px] text-muted-foreground" data-testid="authorship">
@@ -656,30 +707,6 @@ export function PieceDrawer({
             taxonomy={taxonomy}
             disabled={!editable}
           />
-
-          {/* Sin esto una pieza nunca pasa a "En produccion": el estado
-              existia en la base y no habia donde tocarlo (C7). */}
-          <Field label="Estado del material" hint="Al marcar “Grabado” pasa a En producción.">
-            <div className="inline-flex flex-wrap rounded-lg border border-border p-0.5">
-              {(Object.keys(MATERIAL_LABELS) as Array<keyof typeof MATERIAL_LABELS>).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={material === value}
-                  disabled={!editable || pending}
-                  onClick={() => {
-                    setMaterial(value);
-                    run(() => setMaterialStatus(post.id, value));
-                  }}
-                  className={`rounded-md px-2.5 py-1 text-xs disabled:opacity-50 ${
-                    material === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {MATERIAL_LABELS[value]}
-                </button>
-              ))}
-            </div>
-          </Field>
         </section>
 
         {/* ── Archivos de la pieza (F92) ── */}
@@ -732,11 +759,21 @@ export function PieceDrawer({
             <p className="text-xs text-muted-foreground">Cada red con su formato, sus archivos y su caption</p>
           </div>
 
+          {/* El estado vacio ya no bloquea: es informativo, con el link a
+              Integraciones (C1). La planificacion sigue andando igual. */}
+          {connected.length === 0 && (
+            <p className="mt-2 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+              Todavía no hay ninguna red conectada. Podés planificar igual: lo que subas a mano lo marcás con
+              &quot;Marcar como publicado&quot;.{" "}
+              <Link href="/dashboard/settings/integrations" className="underline underline-offset-2">
+                Conectar una red
+              </Link>
+            </p>
+          )}
+
           {draft.networks.length === 0 ? (
             <p className="mt-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
-              {connected.length === 0
-                ? "Todavía no hay ninguna red conectada. Conectá una en Integraciones para poder programar."
-                : "Esta pieza todavía no tiene redes. Agregá una acá abajo."}
+              Esta pieza todavía no tiene redes. Agregá una acá abajo.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -761,6 +798,19 @@ export function PieceDrawer({
                     summary={summary}
                     validation={validation}
                     publicationStatus={publication?.status ?? null}
+                    publication={
+                      publication
+                        ? {
+                            platform: publication.platform,
+                            status: publication.status,
+                            scheduledAt: publication.scheduledAt,
+                            publishedAt: publication.publishedAt,
+                            origin: publication.origin,
+                          }
+                        : undefined
+                    }
+                    connected={connected.includes(network.platform)}
+                    postStatus={post.status}
                     open={openNetwork === network.platform}
                     editable={editable}
                     canPublish={perms.publish}
@@ -769,8 +819,8 @@ export function PieceDrawer({
                     automations={automations}
                     channelId={channelIdByPlatform[network.platform] ?? null}
                     publishers={publishersByPlatform[network.platform] ?? []}
+                    defaultPublisher={defaultPublisherByPlatform[network.platform] ?? null}
                     library={library}
-                    pieceFormat={draft.format.trim() || null}
                     onToggle={() => setOpenNetwork(openNetwork === network.platform ? null : network.platform)}
                     onChange={(patch) =>
                       edit(
@@ -796,6 +846,26 @@ export function PieceDrawer({
                         "Desprogramada. La fecha queda guardada.",
                       )
                     }
+                    onSetAuto={(auto) =>
+                      run(
+                        () => saved(() => setNetworkPublishMode({ postId: post.id, platform: network.platform, auto })),
+                        auto
+                          ? `${platformLabel(network.platform)}: queda programado, se publica solo.`
+                          : `${platformLabel(network.platform)}: fecha tentativa, la subís vos.`,
+                      )
+                    }
+                    onMarkPublished={(input) =>
+                      run(
+                        () => markNetworkPublished({ postId: post.id, platform: network.platform, ...input }),
+                        `${platformLabel(network.platform)}: marcado como publicado.`,
+                      )
+                    }
+                    onUnmarkPublished={() =>
+                      run(
+                        () => unmarkNetworkPublished({ postId: post.id, platform: network.platform }),
+                        "Deshecho.",
+                      )
+                    }
                   />
                 );
               })}
@@ -811,13 +881,26 @@ export function PieceDrawer({
                   key={platform}
                   type="button"
                   onClick={() => {
-                    edit("networks", [...draft.networks, { platform, planned_at: null, options: defaultOptionsFor(platform) }]);
+                    const base: NetworkEntry = {
+                      platform,
+                      planned_at: null,
+                      options: defaultOptionsFor(platform),
+                    };
+                    // El formato NO arranca vacio (C9): hereda el de la
+                    // pieza, ya elegido (y con sus archivos, si hay uno que
+                    // sirva), en vez de dejar que la persona lo adivine.
+                    const suggested = suggestFormat(platform, draft.format);
+                    const entry = suggested ? changeFormat(base, suggested, library) : base;
+                    edit("networks", [...draft.networks, entry]);
                     setOpenNetwork(platform);
                   }}
                   className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                 >
                   + <NetworkBadge platform={platform} variant="dot" size="sm" />
                   {platformLabel(platform)}
+                  {!connected.includes(platform) && (
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400">a mano</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -858,9 +941,4 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 /** "hace 8 s", "hace 3 min". Lo que dice si se guardo de verdad. */
-function haceCuanto(iso: string, now: number): string {
-  const segundos = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (segundos < 60) return `hace ${segundos} s`;
-  return `hace ${Math.round(segundos / 60)} min`;
-}
 

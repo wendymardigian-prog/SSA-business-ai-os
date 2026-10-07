@@ -44,12 +44,11 @@ const video = (id: string, name: string): MediaEntry => ({
 
 const LIB = [img("i1", "uno.jpg"), img("i2", "dos.jpg"), img("i3", "tres.jpg"), video("v1", "clip.mp4")];
 
-const render = (network: NetworkEntry, over: { pieceFormat?: string | null; editable?: boolean } = {}) =>
+const render = (network: NetworkEntry, over: { editable?: boolean } = {}) =>
   renderToStaticMarkup(
     createElement(FormatFiles, {
       network,
       library: LIB,
-      pieceFormat: over.pieceFormat ?? null,
       editable: over.editable ?? true,
       onChange: () => undefined,
     }),
@@ -63,8 +62,11 @@ describe("el selector de formato y archivos (F93)", () => {
     expect(html).toContain("usa todos los archivos de la biblioteca");
   });
 
-  it("sugiere el formato desde el de la pieza", () => {
-    expect(render({ platform: "instagram" }, { pieceFormat: "Reel" })).toContain("Usar el sugerido: Reel");
+  // C9: el formato ya no arranca vacio. Cuando se agrega una red hereda el
+  // de la pieza (suggestFormat + changeFormat, ver piece-drawer.tsx), asi que
+  // esta tarjeta ya no necesita ofrecer un sugerido: si la red no tiene
+  // formato es porque viene de antes de F93, y el chip desaparecio.
+  it("sin formato no ofrece ningun sugerido: lo hereda al agregarla, no aca", () => {
     expect(render({ platform: "instagram" })).not.toContain("Usar el sugerido");
   });
 

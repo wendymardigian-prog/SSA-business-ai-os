@@ -6,15 +6,16 @@ import { logAudit } from "@/lib/audit";
 import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
 import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
 import { cleanClassification, pickInheritedClassification } from "@/lib/content/classification";
-import { normalizeNetworks } from "@/lib/content/networks-schema";
+import { keepServerFields, normalizeNetworks } from "@/lib/content/networks-schema";
 import type { MediaEntry } from "@/lib/content/media";
 import { evaluateDrop } from "@/lib/content/board";
 import { plannedDateChanges } from "@/lib/content/reschedule";
-import { canRedistribute, duplicateAsVariant } from "@/lib/content/redistribution";
+import { canRedistribute, duplicateAsVariant, type NetworkEntry } from "@/lib/content/redistribution";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import { enqueueCopy } from "@/lib/content/copy-queue";
 import { readCopywriterConfig } from "@/lib/content/copywriter";
 import { createServiceClient } from "@/lib/supabase/server";
+import { writeVersion } from "@/lib/content/save-version";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
@@ -438,6 +439,20 @@ export async function movePostToColumn(
     return { ok: false, error: "No pude mover la pieza" };
   }
 
+  // Cambiar el estado corta la sesion de edicion (C6): se lleva su propia
+  // version, siempre.
+  try {
+    const service = await createServiceClient();
+    await writeVersion(service, {
+      postId,
+      workspaceId: workspace.id,
+      context: { trigger: "status_change" },
+      authorId: user.id,
+    });
+  } catch (err) {
+    console.error("[content] no pude registrar la version del cambio de estado:", err);
+  }
+
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
     action: "update",
@@ -449,40 +464,6 @@ export async function movePostToColumn(
   return { ok: true, data: { status: decision.status } };
 }
 
-/** Cambia el estado del material, que puede empujar la pieza a produccion. */
-export async function setMaterialStatus(
-  postId: string,
-  material: "pendiente" | "grabado" | "editado" | "listo",
-): Promise<ContentActionResult<{ status: ContentPostStatus }>> {
-  const { workspace, user, supabase, perms } = await contentContext();
-
-  const { data: post } = await supabase
-    .from("content_posts")
-    .select("id, status, created_by")
-    .eq("id", postId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-
-  if (!post) return { ok: false, error: "No encontre esa pieza" };
-
-  const { statusAfterMaterialChange } = await import("@/lib/content/status");
-  const next = statusAfterMaterialChange(post.status, material);
-
-  if (next !== post.status) {
-    const allowed = canTransition(perms(post.created_by === user.id), post.status, next);
-    if (!allowed.ok) return { ok: false, error: allowed.reason };
-  }
-
-  const { error } = await supabase
-    .from("content_posts")
-    .update({ material_status: material, status: next })
-    .eq("id", postId);
-
-  if (error) return { ok: false, error: "No pude guardar el estado del material" };
-
-  revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { status: next } };
-}
 
 /** El orden dentro de una columna, ya calculado por `reorder`. */
 export async function saveOrder(
@@ -590,11 +571,11 @@ export async function savePostDraft(input: {
 }): Promise<
   ContentActionResult<{ updatedAt: string; staleWarning: boolean; rescheduleWarnings: string[] }>
 > {
-  const { workspace, supabase } = await contentContext();
+  const { workspace, user, supabase } = await contentContext();
 
   const { data: post } = await supabase
     .from("content_posts")
-    .select("id, updated_at, status, pillar_id, offer_id, media")
+    .select("id, updated_at, status, pillar_id, offer_id, media, networks")
     .eq("id", input.postId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
@@ -611,7 +592,12 @@ export async function savePostDraft(input: {
       (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
     );
     if (!checked.ok) return { ok: false, error: checked.error };
-    networks = checked.networks;
+    // Como se publica cada red y lo marcado a mano lo escribe solo el
+    // servidor, con su permiso (Contenido v4): se conserva lo guardado.
+    networks = keepServerFields(
+      checked.networks,
+      (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
+    );
   }
 
   // Gana el ultimo que guarda, pero se avisa: perder el trabajo de otro sin
@@ -671,6 +657,22 @@ export async function savePostDraft(input: {
   const rescheduleWarnings = networks
     ? await applyPlannedDateChanges(workspace.id, input.postId, networks)
     : [];
+
+  // La sesion de edicion (Contenido v4, C6): el primer cambio despues de 10
+  // minutos crea una version; los siguientes, dentro de la sesion, pisan esa
+  // misma fila. Que esto falle no puede tirar abajo un guardado que ya quedo
+  // escrito: el historial es un extra, no el dato.
+  try {
+    const service = await createServiceClient();
+    await writeVersion(service, {
+      postId: input.postId,
+      workspaceId: workspace.id,
+      context: { trigger: "edit" },
+      authorId: user.id,
+    });
+  } catch (err) {
+    console.error("[content] no pude registrar la version de esta sesion:", err);
+  }
 
   revalidatePath(CONTENT_PATH);
   return {

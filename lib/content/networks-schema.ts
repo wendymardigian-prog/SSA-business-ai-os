@@ -17,7 +17,7 @@ import { z } from "zod";
 import { ALLOWED_MEDIA, MAX_MEDIA_BYTES, type MediaEntry } from "./media";
 import { idOf, mediaIdFor } from "./media-library";
 import { getFormat } from "./network-format";
-import type { NetworkEntry } from "./redistribution";
+import { SERVER_NETWORK_FIELDS, type NetworkEntry } from "./redistribution";
 
 const PLATFORMS = ["instagram", "tiktok", "youtube", "linkedin", "threads"] as const;
 
@@ -60,6 +60,12 @@ const networkEntrySchema = z
     publisher: z.string().max(60).nullable().optional(),
     youtube_title: z.string().max(500).nullable().optional(),
     needs_review: z.boolean().optional(),
+    // Contenido v4. Los escribe solo el servidor: lo que mande el navegador se
+    // reemplaza por lo guardado (`keepServerFields`). La forma igual se valida.
+    auto: z.boolean().optional(),
+    published_manually_at: z.string().refine(isDate).nullable().optional(),
+    external_url: z.string().max(2000).nullable().optional(),
+    status_before_manual: z.string().max(30).nullable().optional(),
   })
   .passthrough();
 
@@ -105,7 +111,11 @@ export function normalizeNetworks(raw: unknown, library: MediaEntry[]): Networks
 
   const networks: NetworkEntry[] = [];
   for (const network of parsed.data) {
-    const entry = network as unknown as NetworkEntry;
+    // Contenido v4, C10: "Publicar por" ya no se elige por pieza. El unico
+    // publicador valido es el de la cuenta (F13); guardar uno por red solo
+    // podia dejarlo desincronizado en silencio si la cuenta cambiaba el suyo.
+    const { publisher: _publisher, ...rest } = network as unknown as NetworkEntry;
+    const entry = rest as NetworkEntry;
 
     if (entry.format) {
       if (!getFormat(entry.platform, entry.format)) {
@@ -125,6 +135,44 @@ export function normalizeNetworks(raw: unknown, library: MediaEntry[]): Networks
   }
 
   return { ok: true, networks };
+}
+
+/**
+ * Lo que solo escribe el servidor no se toma del navegador (Contenido v4).
+ *
+ * El autoguardado manda la lista entera de redes. Si se escribiera tal cual,
+ * cualquier cliente podria poner `auto: true` en una red sin cuenta, o
+ * inventar una publicacion a mano sin el permiso `content.publish`. Por eso
+ * cada red conserva esos campos de lo que ya estaba guardado, y una red nueva
+ * arranca sin ellos.
+ */
+export function keepServerFields(incoming: NetworkEntry[], stored: NetworkEntry[]): NetworkEntry[] {
+  return incoming.map((entry) => {
+    const before = stored.find((s) => s.platform === entry.platform);
+    const out: Record<string, unknown> = { ...entry };
+    for (const field of SERVER_NETWORK_FIELDS) {
+      const kept = before?.[field];
+      if (kept === undefined) delete out[field];
+      else out[field] = kept;
+    }
+    return out as unknown as NetworkEntry;
+  });
+}
+
+/** Un link publicado a mano: http(s), con algo despues del dominio o sin el. */
+export function cleanExternalUrl(raw: string | null | undefined): { ok: true; url: string | null } | { ok: false; error: string } {
+  const value = (raw ?? "").trim();
+  if (!value) return { ok: true, url: null };
+  if (value.length > 2000) return { ok: false, error: "El link es demasiado largo." };
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return { ok: false, error: "El link tiene que empezar con https://" };
+    }
+    return { ok: true, url: parsed.toString() };
+  } catch {
+    return { ok: false, error: "Ese link no se entiende. Pegalo completo, con https://" };
+  }
 }
 
 // ── Una subida nueva ───────────────────────────────────────────────────────

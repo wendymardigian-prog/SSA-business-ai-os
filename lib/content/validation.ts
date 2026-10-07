@@ -184,13 +184,10 @@ export function validateNetwork(
   }
 
   if (content.platform === "instagram") {
-    const contentType = content.options?.contentType;
-    // Con formato elegido, el carrusel ya se reviso arriba (mismo error dos
-    // veces no ayuda a nadie).
-    if (!content.format && contentType === "carousel" && images.length < 2) {
-      error("Un carrusel de Instagram necesita al menos 2 imagenes.");
-    }
-    if (contentType === "story" && videos[0]?.duration_ms && videos[0].duration_ms > 60_000) {
+    // El formato (F93, C9) ya reviso la cantidad de archivos arriba
+    // (checkFormatFiles): lo unico propio de Instagram que falta es la
+    // duracion maxima de una historia, que ningun FormatDef mira.
+    if (content.format === "story" && videos[0]?.duration_ms && videos[0].duration_ms > 60_000) {
       error("Una historia de Instagram acepta hasta 60 segundos.");
     }
   }

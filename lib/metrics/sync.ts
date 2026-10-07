@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, SocialPlatform, SocialPostMediaType } from "@/lib/types/database";
 import { computeD7, shouldCollect, workspaceDate, type DailyPoint, type StoredPost } from "./rules";
 import type { AccountSnapshot, PostMetrics, PostSnapshot } from "./types";
+import { findManualMatch } from "./adopt-manual";
 
 type Db = SupabaseClient<Database>;
 
@@ -64,6 +65,93 @@ export interface PersistResult {
   warnings: string[];
 }
 
+type ExistingRow = {
+  id: string;
+  origin: "system" | "external" | "manual";
+  published_at: string | null;
+  d7_computed_at: string | null;
+  content_post_id: string | null;
+};
+
+/**
+ * Si este post es una publicacion marcada a mano, la deja vinculada.
+ *
+ * Dos casos:
+ *  - No habia ninguna fila con ese id: la fila manual RECIBE el id de la red
+ *    (`external_post_id`) y su cuenta. Es la misma fila: la pieza, el
+ *    calendario y el rendimiento siguen apuntando ahi.
+ *  - Ya habia una fila suelta (`external`, sin pieza) para ese post, porque
+ *    llego un comentario antes que la sincronizacion: esa fila ya tiene el id
+ *    y lo que cuelga de ella (comentarios, toques). Se la pasa a la pieza
+ *    como publicacion a mano, y la manual (que no tiene nada: sin id no pudo
+ *    traer metricas ni comentarios) se borra de forma logica.
+ *
+ * Nunca lanza: no encontrar la pareja es el caso de siempre.
+ */
+async function adoptManual(
+  supabase: Db,
+  params: { workspaceId: string; socialAccountId: string; platform: string },
+  post: PostSnapshot,
+  existing: ExistingRow | null,
+): Promise<ExistingRow | null> {
+  try {
+    const manualId = await findManualMatch(supabase, {
+      workspaceId: params.workspaceId,
+      socialAccountId: params.socialAccountId,
+      platform: params.platform,
+      url: post.url ?? null,
+      publishedAt: post.publishedAt ?? null,
+    });
+    if (!manualId) return existing;
+
+    const { data: manual } = await supabase
+      .from("social_posts")
+      .select("id, content_post_id, published_at, url")
+      .eq("id", manualId)
+      .maybeSingle();
+    if (!manual) return existing;
+
+    if (!existing) {
+      const { error } = await supabase
+        .from("social_posts")
+        .update({ external_post_id: post.externalPostId, social_account_id: params.socialAccountId })
+        .eq("id", manual.id);
+      if (error) {
+        console.error("[metricas] no pude vincular la publicacion marcada a mano:", error.message);
+        return null;
+      }
+      return {
+        id: manual.id,
+        origin: "manual",
+        published_at: manual.published_at,
+        d7_computed_at: null,
+        content_post_id: manual.content_post_id,
+      };
+    }
+
+    // La manual primero: el indice unico (pieza, red) admite una sola viva.
+    await supabase.from("social_posts").update({ deleted_at: new Date().toISOString() }).eq("id", manual.id);
+    const { error } = await supabase
+      .from("social_posts")
+      .update({
+        content_post_id: manual.content_post_id,
+        origin: "manual",
+        status: "published",
+        ...(manual.url ? { url: manual.url } : {}),
+      })
+      .eq("id", existing.id);
+    if (error) {
+      console.error("[metricas] no pude pasar la publicacion a la pieza:", error.message);
+      await supabase.from("social_posts").update({ deleted_at: null }).eq("id", manual.id);
+      return existing;
+    }
+    return { ...existing, origin: "manual", content_post_id: manual.content_post_id };
+  } catch (err) {
+    console.error("[metricas] fallo la busqueda de publicaciones marcadas a mano:", err);
+    return existing;
+  }
+}
+
 /**
  * Guarda los posts leidos: la publicacion y su fila del dia.
  *
@@ -88,12 +176,19 @@ export async function persistPosts(
   let metricRows = 0;
 
   for (const post of params.posts) {
-    const { data: existing } = await supabase
+    const found = await supabase
       .from("social_posts")
-      .select("id, origin, published_at, d7_computed_at")
+      .select("id, origin, published_at, d7_computed_at, content_post_id")
       .eq("social_account_id", params.socialAccountId)
       .eq("external_post_id", post.externalPostId)
       .maybeSingle();
+    let existing = found.data;
+
+    // Un post subido a mano y marcado como publicado (Contenido v4) ya tiene
+    // su fila, sin el id de la red. Se completa ESA fila en vez de crear otra.
+    if (!existing || (existing.origin === "external" && !existing.content_post_id)) {
+      existing = await adoptManual(supabase, params, post, existing);
+    }
 
     let socialPostId = existing?.id ?? null;
 

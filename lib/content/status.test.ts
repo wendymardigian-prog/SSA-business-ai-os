@@ -4,7 +4,9 @@ import {
   BOARD_COLUMNS,
   canTransition,
   columnFor,
-  statusAfterMaterialChange,
+  derivePieceStatus,
+  isManualStatus,
+  MANUAL_STATUSES,
   STATUS_LABELS,
   type ContentPermissions,
 } from "./status";
@@ -141,18 +143,81 @@ describe("el estado que se deriva de las redes", () => {
   });
 });
 
-describe("marcar el material", () => {
-  it("marcarlo grabado empuja la pieza a produccion", () => {
-    expect(statusAfterMaterialChange("draft", "grabado")).toBe("in_production");
-    expect(statusAfterMaterialChange("draft", "listo")).toBe("in_production");
+// C4 (Contenido v4): se elimino "Estado del material" y el camino que
+// marcarlo "Grabado" empujaba la pieza a En produccion sola
+// (statusAfterMaterialChange, ya no existe). Ahora ese movimiento lo hace la
+// persona con el dropdown, con la regla de siempre: "quien puede mover una
+// pieza", arriba, ya prueba Borrador -> En produccion con un Member.
+
+describe("C4 · el estado de la pieza desde TODAS sus redes", () => {
+  const derive = (
+    rows: Array<[string, SocialPostStatus | null]>,
+    platforms: string[] = rows.map(([p]) => p),
+    manual: ContentPostStatus = "approved",
+  ) =>
+    derivePieceStatus({
+      platforms,
+      publications: rows.map(([platform, status]) => ({ platform, status })),
+      manual,
+    });
+
+  it("si cada red tiene su fila, da lo mismo que la regla de antes (F17)", () => {
+    const S: SocialPostStatus[] = ["scheduled", "uploading", "publishing", "published", "failed"];
+    for (const a of S) {
+      for (const b of S) {
+        for (const c of S) {
+          const rows: Array<[string, SocialPostStatus]> = [
+            ["instagram", a],
+            ["tiktok", b],
+            ["youtube", c],
+          ];
+          expect(derive(rows), `${a}/${b}/${c}`).toBe(
+            aggregatePostStatus(rows.map(([, status]) => ({ status }))),
+          );
+        }
+      }
+    }
   });
 
-  it("no toca una pieza que ya avanzo", () => {
-    expect(statusAfterMaterialChange("in_review", "grabado")).toBe("in_review");
-    expect(statusAfterMaterialChange("published", "listo")).toBe("published");
+  it("una marcada a mano y dos tentativas: publicada en parte, no publicada", () => {
+    expect(derive([["instagram", "published"]], ["instagram", "youtube", "linkedin"], "draft")).toBe(
+      "partially_published",
+    );
   });
 
-  it("volver el material a pendiente no mueve la pieza", () => {
-    expect(statusAfterMaterialChange("draft", "pendiente")).toBe("draft");
+  it("todas marcadas a mano: publicada, sin tocar el dropdown", () => {
+    expect(derive([["youtube", "published"], ["linkedin", "published"]], ["youtube", "linkedin"], "draft")).toBe(
+      "published",
+    );
+  });
+
+  it("una programada y el resto tentativas: programada", () => {
+    expect(derive([["instagram", "scheduled"]], ["instagram", "youtube"])).toBe("scheduled");
+  });
+
+  it("todo tentativo: vale el estado que eligio la persona", () => {
+    expect(derive([], ["instagram", "youtube"], "in_production")).toBe("in_production");
+    expect(derive([["instagram", "cancelled"]], ["instagram"], "draft")).toBe("draft");
+  });
+
+  it("una fallida y otra tentativa: fallo (que no se pierda el aviso)", () => {
+    expect(derive([["instagram", "failed"]], ["instagram", "youtube"])).toBe("failed");
+  });
+
+  it("una fila viva de una red que ya no esta en la pieza sigue contando", () => {
+    expect(derive([["tiktok", "published"]], ["instagram"], "approved")).toBe("partially_published");
+  });
+
+  it("sin redes: el estado elegido", () => {
+    expect(derive([], [], "in_review")).toBe("in_review");
+  });
+});
+
+describe("C4 · que estados se eligen y cuales se derivan", () => {
+  it("se eligen los cuatro primeros", () => {
+    expect(MANUAL_STATUSES).toEqual(["draft", "in_production", "in_review", "approved"]);
+    for (const s of ["scheduled", "publishing", "published", "partially_published", "failed"]) {
+      expect(isManualStatus(s)).toBe(false);
+    }
   });
 });

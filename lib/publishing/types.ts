@@ -27,6 +27,8 @@ export interface PublishInput {
   mediaUrls: string[];
   /** Lo propio de la red (§9.5). */
   options: Record<string, unknown>;
+  /** El formato elegido (F93, Contenido v4 C9): el unico campo de formato. */
+  format?: string | null;
   /** Con que cuenta se publica. */
   accountRef: string | null;
   /**

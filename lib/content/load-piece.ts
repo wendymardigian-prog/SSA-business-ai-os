@@ -18,6 +18,7 @@ import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { loadPieceMeasurement } from "@/lib/dashboards/piece-load";
 import type { PiecePerformance } from "@/lib/dashboards/piece-performance";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { connectedPlatforms } from "./connection";
 import { authorshipLine } from "./classification";
 import type { PublicationSummary } from "./detail";
 import type { EditorPermissions } from "./editor";
@@ -48,7 +49,6 @@ export interface PiecePost {
   networks: NetworkEntry[];
   media: MediaEntry[];
   status: ContentPostStatus;
-  materialStatus: string;
   aiUnreviewed: boolean;
   /** El comentario con el que la devolvieron, si la devolvieron. */
   reviewNote: string | null;
@@ -63,8 +63,10 @@ export interface PieceData {
   connected: string[];
   automations: AutomationRule[];
   channelIdByPlatform: Record<string, string | null>;
-  /** Por donde puede salir cada red, para "Publicar por". */
+  /** Por donde puede salir cada red (C10: solo informativo, no se elige por pieza). */
   publishersByPlatform: Record<string, string[]>;
+  /** El publicador real de cada cuenta, el que usa el despachador (F13). */
+  defaultPublisherByPlatform: Record<string, string | null>;
   versions: StoredVersion[];
   authorNames: Record<string, string>;
   aiAvailable: boolean;
@@ -84,7 +86,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
   const { data: post } = await supabase
     .from("content_posts")
     .select(
-      "id, title, format, script, recording_notes, caption, networks, media, status, material_status, ai_unreviewed, review_note, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
+      "id, title, format, script, recording_notes, caption, networks, media, status, ai_unreviewed, review_note, created_by, created_at, updated_at, copy_status, idea_id, pillar_id, offer_id, funnel_stage, reference",
     )
     .eq("id", postId)
     .eq("workspace_id", workspace.id)
@@ -108,7 +110,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       supabase
         .from("social_posts")
         .select(
-          "platform, status, scheduled_at, published_at, url, last_error, last_error_kind, attempts, warning, actual_visibility",
+          "platform, status, scheduled_at, published_at, url, origin, last_error, last_error_kind, attempts, warning, actual_visibility",
         )
         .eq("content_post_id", postId)
         .is("deleted_at", null)
@@ -222,7 +224,6 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       networks: (Array.isArray(post.networks) ? post.networks : []) as unknown as NetworkEntry[],
       media: (Array.isArray(post.media) ? post.media : []) as unknown as MediaEntry[],
       status: post.status,
-      materialStatus: post.material_status,
       aiUnreviewed: post.ai_unreviewed,
       reviewNote: post.review_note,
       updatedAt: post.updated_at,
@@ -239,6 +240,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       status: p.status,
       scheduledAt: p.scheduled_at,
       publishedAt: p.published_at,
+      origin: p.origin,
       url: p.url,
       lastError: p.last_error,
       lastErrorKind: p.last_error_kind,
@@ -246,7 +248,16 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       warning: p.warning,
       actualVisibility: p.actual_visibility,
     })),
-    connected: (accountsRes.data ?? []).map((a) => a.platform as string),
+    // Conectada = cuenta activa CON publicador usable (Contenido v4, C1): la
+    // consulta ya filtra is_active, pero desconectar Zernio deja la cuenta
+    // activa sin publicador, y esa red no esta conectada para nada.
+    connected: connectedPlatforms(
+      (accountsRes.data ?? []).map((a) => ({
+        platform: a.platform as string,
+        is_active: true,
+        default_publisher: a.default_publisher as string | null,
+      })),
+    ),
     automations,
     channelIdByPlatform: Object.fromEntries(
       (accountsRes.data ?? []).map((a) => [
@@ -255,6 +266,9 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       ]),
     ),
     publishersByPlatform,
+    defaultPublisherByPlatform: Object.fromEntries(
+      (accountsRes.data ?? []).map((a) => [a.platform as string, (a.default_publisher as string | null) ?? null]),
+    ),
     versions: (versionsRes.data ?? []) as unknown as StoredVersion[],
     authorNames: Object.fromEntries(labels),
     aiAvailable: aiProviders.length > 0,

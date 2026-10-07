@@ -119,7 +119,9 @@ export type SocialPostMediaType =
   | "image" | "carousel" | "reel" | "story" | "video" | "short" | "text" | "document";
 /** Por que se guardo una version del post (00083). */
 export type VersionReason =
-  | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore";
+  | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore"
+  /** Contenido v4, C6: el autoguardado de verdad, y aprobar por separado de un cambio de estado cualquiera. */
+  | "edit" | "approve";
 
 /** De donde salio un comentario guardado (00086). */
 export type CommentSource = "webhook" | "sync";
@@ -3102,6 +3104,7 @@ export interface Database {
           /** Lo propio de cada red, incluida su fecha tentativa. */
           networks: Json;
           media: Json;
+          /** Sin uso desde Contenido v4 (el dropdown de estado lo reemplaza). La 00128 la borra. */
           material_status: MaterialStatus;
           copy_source: CopySource;
           /** Si el copywriter esta escribiendo esta pieza (E6). */
@@ -3135,7 +3138,6 @@ export interface Database {
           caption?: string | null;
           networks?: Json;
           media?: Json;
-          material_status?: MaterialStatus;
           copy_source?: CopySource;
           copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
@@ -3157,7 +3159,6 @@ export interface Database {
           caption?: string | null;
           networks?: Json;
           media?: Json;
-          material_status?: MaterialStatus;
           copy_source?: CopySource;
           copy_status?: "idle" | "generating" | "failed";
           ai_unreviewed?: boolean;
@@ -3238,6 +3239,8 @@ export interface Database {
           author_id: string | null;
           reason: VersionReason;
           created_at: string;
+          /** Contenido v4, C6: cuando se toco por ultima vez esta fila (la sesion de edicion). */
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -3249,8 +3252,9 @@ export interface Database {
           author_id?: string | null;
           reason: VersionReason;
           created_at?: string;
+          updated_at?: string;
         };
-        Update: { snapshot?: Json };
+        Update: { snapshot?: Json; updated_at?: string };
         Relationships: [];
       };
 
@@ -3264,7 +3268,7 @@ export interface Database {
           publisher: string | null;
           publisher_ref: string | null;
           publish_progress: Json | null;
-          origin: "system" | "external";
+          origin: "system" | "external" | "manual";
           status: SocialPostStatus | null;
           scheduled_at: string | null;
           attempts: number;
@@ -3299,7 +3303,7 @@ export interface Database {
           publisher?: string | null;
           publisher_ref?: string | null;
           publish_progress?: Json | null;
-          origin?: "system" | "external";
+          origin?: "system" | "external" | "manual";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;
@@ -3312,9 +3316,12 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          content_post_id?: string | null;
+          social_account_id?: string | null;
           publisher?: string | null;
           publisher_ref?: string | null;
           publish_progress?: Json | null;
+          origin?: "system" | "external" | "manual";
           status?: SocialPostStatus | null;
           scheduled_at?: string | null;
           attempts?: number;

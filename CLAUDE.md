@@ -181,8 +181,28 @@ borra: `hook`, `angle`, `notes`, `pillar` (texto) y `copy`, y la
 comprobar que el codigo nuevo ya estaba en produccion y que las dos consultas
 de su cabecera daban 0. **Todas estan registradas en el historial de Supabase**
 (`supabase_migrations.schema_migrations`, versiones `20261006173244` a
-`...49`: son la fecha del registro, no la de aplicacion). **La proxima
-migracion disponible es la `00119`.**
+`...49`: son la fecha del registro, no la de aplicacion).
+
+**White label (7/10/2026).** `00119` a `00124` estan **aplicadas**: invitacion
+sin workspace previo, cron jobs renombrados, `user_preferences` (zona horaria
+por usuario), default de `workspaces.timezone` a UTC, el trigger compartido de
+`user_preferences` y el ajuste de performance de su RLS.
+
+**Contenido v4 (7/10/2026).** `00125` y `00126` y `00127` estan **aplicadas**
+y registradas: `00125` (CHECK de `social_posts.origin` suma `'manual'`),
+`00126` (backfill de `networks[].format` desde el `contentType` viejo —
+tuvo un bug de `jsonb_set` con un valor `NULL`, corregido en el momento sin
+perdida de datos antes de reaplicar; detalle en `docs/PENDIENTE.md`) y
+`00127` (`content_post_versions` suma `updated_at` y el CHECK de `reason`
+admite `edit`/`approve`). La `00128` (borra `material_status` y la clave
+`options.contentType`) esta **escrita y sin aplicar**, anotada en
+`docs/PENDIENTE.md`. **La proxima migracion disponible es la `00129`.**
+
+**El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
+diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
+pasan en paralelo (pasó con esta sección, que decía `00119` cuando la base
+ya tenía hasta la `00112` de una corrida de Contenido v3 en simultáneo).
+Confirmar con `list_migrations` antes de escribir la siguiente.
 
 **Una migracion que borra se aplica en este orden**: primero el codigo que ya
 no la usa, desplegado y comprobado en el servicio; despues las consultas de
@@ -636,6 +656,45 @@ en `docs/contenido.md`, `docs/publicacion.md` y `docs/atribucion.md`.
 - [ ] Secrets en Vault o env vars, no en codigo
 - [ ] Logs sin datos sensibles
 - [ ] Webhooks con firma validada (Zernio) e idempotencia
+
+# Contenido v4 (B15-B18, C1-C10)
+
+Correccion sobre Contenido v3, en `docs/requerimientos-contenido-v4.md`.
+Pasa el modulo de "publicar automatico" a "planificar, se publique solo o
+no". Detalle en `docs/contenido.md`, `docs/publicacion.md` y el avance
+completo en `docs/PROGRESS-CV4.md`.
+
+## Lo que no se puede romper
+
+- **Una red sin cuenta conectada nunca esta "Programada".** Cualquiera de
+  las cinco redes se agrega a una idea o a una pieza este conectada o no
+  (chip "a mano"); su fecha queda siempre tentativa hasta que alguien la
+  programa de verdad o la marca como publicada.
+- **"Conectada" = cuenta activa CON publicador usable**, no solo
+  `is_active` (`lib/content/connection.ts`). Desconectar Zernio deja la
+  cuenta activa pero sin publicador: no cuenta como conectada.
+- **Marcar como publicado crea una fila REAL** en `social_posts` con
+  `origin = 'manual'`, nunca un flag cosmetico: es lo que la hace contar en
+  el calendario, en Social y en el rendimiento de la pieza. La
+  sincronizacion la adopta despues por el link o por fecha unica en
+  ±24 h; con mas de una candidata, no adivina ninguna
+  (`lib/metrics/adopt-manual.ts`).
+- **`networks[].format` es el UNICO campo de formato.** `options.contentType`
+  se elimino (C9); el publicador de Instagram lee `format` directo. El test
+  de caracterizacion (`lib/publishing/zernio.test.ts`) fija el body exacto
+  que recibe Zernio: sus aserciones no se tocan nunca.
+- **El estado de la pieza se deriva de TODAS sus redes**, tengan fila o no
+  (`derivePieceStatus`, reemplaza a `aggregatePostStatus` en los dos
+  lugares que escriben el estado). "Estado del material" ya no existe: el
+  avance Borrador → En produccion lo hace la persona con el dropdown.
+- **Una version no es por cada cambio, es por sesion de edicion.** El
+  primer cambio despues de 10 minutos abre una version con
+  `reason='edit'`; los siguientes de la misma persona actualizan esa misma
+  fila. Cambiar el estado, aprobar, generar con IA y restaurar siempre
+  cortan la sesion con la suya.
+- **`networks[].publisher` no se escribe mas**: el publicador efectivo es
+  siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
+  pieza.
 
 # Buenas practicas de desarrollo
 

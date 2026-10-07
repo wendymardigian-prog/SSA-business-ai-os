@@ -54,6 +54,9 @@
   --color-good: var(--good);
   --color-bad: var(--bad);
   --color-warn: var(--warn);
+  /* Estado de una pieza o una red (Contenido v4): programado y en produccion. */
+  --color-li: var(--li);
+  --color-zn: var(--zn);
   --color-ig: var(--ig);
   --color-wa: var(--wa);
   --color-grid: var(--grid);
@@ -113,6 +116,9 @@
   --good: #16a34a;
   --bad: #dc2626;
   --warn: #c2410c;
+  /* Estado de una pieza o una red (Contenido v4, C4): "Programado" y "En produccion". Valores del prototipo. */
+  --li: #0a66c2;
+  --zn: #6d28d9;
   --ig: #db2777;
   --wa: #16a34a;
   --grid: #ececf0;
@@ -174,6 +180,8 @@
   --good: #4ade80;
   --bad: #f87171;
   --warn: #fb923c;
+  --li: #60a5fa;
+  --zn: #a78bfa;
   --ig: #ec4899;
   --wa: #22c55e;
   --grid: #26262b;

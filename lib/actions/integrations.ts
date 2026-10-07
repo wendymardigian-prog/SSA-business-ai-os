@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { SOCIAL_PROVIDER_IDS, syncAccountsAfterChange } from "@/lib/social/sync-hook";
+import { createServiceClient } from "@/lib/supabase/server";
+import { credentialsForPublisher } from "@/lib/publishing/credentials";
+import { unscheduleOnDisconnect } from "@/lib/publishing/disconnect-networks";
+import { registerPublishing } from "@/lib/publishing/bootstrap";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { storeSecret, deleteSecret, listSecretNames, SECRET_NAMES } from "@/lib/vault";
@@ -302,6 +306,21 @@ export async function disconnectIntegration(
   if (!provider) return { ok: false, error: "Integracion desconocida" };
 
   const { workspace, supabase } = ctx;
+
+  // Lo que depende de publicar sale ANTES de borrar la clave: cancelar en
+  // Zernio necesita la clave todavia viva. Despues ya es tarde (Contenido v4).
+  const publishers = PUBLISHERS_BY_PROVIDER[provider.id];
+  if (publishers?.length) {
+    registerPublishing();
+    const service = await createServiceClient();
+    for (const publisher of publishers) {
+      await unscheduleOnDisconnect(service, {
+        workspaceId: workspace.id,
+        publisher,
+        credentialsFor: (params) => credentialsForPublisher(service, params),
+      });
+    }
+  }
 
   for (const field of secretFieldsOf(provider)) {
     const removed = await deleteSecret(supabase, workspace.id, field.secretName);

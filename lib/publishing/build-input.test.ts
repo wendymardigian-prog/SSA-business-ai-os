@@ -66,14 +66,15 @@ describe("buildInput con formato y archivos (F92/F93)", () => {
     expect(input.media[0].kind).toBe("video");
   });
 
-  it("el formato completa las opciones: Reel gana sobre un contentType viejo", async () => {
+  it("el formato viaja aparte en `input.format`, y las opciones propias de Instagram quedan", async () => {
     const db = seed([
-      { platform: "instagram", format: "reel", files: ["v1"], options: { contentType: "feed", shareToFeed: true } },
+      { platform: "instagram", format: "reel", files: ["v1"], options: { shareToFeed: true } },
     ]);
 
     const input = await buildInput(db.client as never, row("instagram"), deps);
 
-    expect(input.options).toMatchObject({ contentType: "reel", shareToFeed: true });
+    expect(input.format).toBe("reel");
+    expect(input.options).toMatchObject({ shareToFeed: true });
   });
 
   it("TikTok con fotos manda mediaType photo, y tiktokData lo lleva al proveedor", async () => {
