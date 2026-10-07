@@ -124,8 +124,10 @@ describe("los botones del pie, segun permiso y estado (F96)", () => {
   const actions = (over: Partial<Parameters<typeof pieceButtons>[0]>) =>
     pieceButtons({ status: "draft", perms: { ...admin, ai: true }, ...base, ...over }).map((b) => b.action);
 
-  it("un admin con IA en Borrador ve Generar, Guardar version y Enviar a revision", () => {
-    expect(actions({})).toEqual(expect.arrayContaining(["generate_copy", "save_version", "send_to_review"]));
+  it("un admin con IA en Borrador ve Generar (C6: sin Guardar version ni Enviar a revision)", () => {
+    expect(actions({})).toEqual(expect.arrayContaining(["generate_copy"]));
+    expect(actions({})).not.toContain("save_version");
+    expect(actions({})).not.toContain("send_to_review");
   });
 
   it("un Member NO ve Programar ni Publicar ahora: no estan, no es que esten apagados", () => {
@@ -134,7 +136,6 @@ describe("los botones del pie, segun permiso y estado (F96)", () => {
     expect(a).not.toContain("schedule");
     expect(a).not.toContain("publish_now");
     expect(a).not.toContain("generate_copy");
-    expect(a).toContain("send_to_review");
   });
 
   it("aprobada: se puede Programar", () => {

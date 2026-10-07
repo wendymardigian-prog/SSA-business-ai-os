@@ -23,9 +23,7 @@ export interface EditorPermissions {
 }
 
 export type EditorAction =
-  | "save_version"
   | "generate_copy"
-  | "send_to_review"
   | "approve"
   | "return_to_draft"
   | "schedule"
@@ -61,11 +59,10 @@ export function editorActions(params: {
 }): EditorButton[] {
   const buttons: EditorButton[] = [];
   const editable = ["draft", "in_production", "in_review"].includes(params.status);
-  const canEdit = params.perms.approve || params.perms.publish || params.perms.isAuthor;
 
-  if (editable && canEdit) {
-    buttons.push({ action: "save_version", label: "Guardar version", tone: "secondary" });
-  }
+  // "Guardar version" y "Enviar a revision" ya no existen (Contenido v4,
+  // C6): todo se guarda solo, y el cambio de estado se hace con el dropdown
+  // de la cabecera (incluido pasar a En revision), no con un boton aparte.
 
   if (params.perms.ai && editable) {
     buttons.push({
@@ -76,10 +73,6 @@ export function editorActions(params: {
         ? undefined
         : "Conecta un proveedor de IA en Integraciones.",
     });
-  }
-
-  if (canEdit && (params.status === "draft" || params.status === "in_production")) {
-    buttons.push({ action: "send_to_review", label: "Enviar a revision", tone: "primary" });
   }
 
   if (params.perms.approve && params.status === "in_review") {

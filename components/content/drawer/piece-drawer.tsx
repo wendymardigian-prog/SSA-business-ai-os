@@ -21,7 +21,6 @@ import {
   unmarkNetworkPublished,
   unscheduleNetwork,
 } from "@/lib/actions/content-schedule";
-import { saveVersion } from "@/lib/actions/content-versions";
 import {
   approvePost,
   archivePost,
@@ -85,8 +84,9 @@ import { useToast } from "./toast";
  * el borrador la adopta.
  */
 
-const AUTOSAVE_MS = 10_000;
 const COPY_POLL_MS = 4_000;
+/** Cuanto dura "Guardado ✓" antes de volver a "Se guarda solo" (C6). */
+const SAVED_FLASH_MS = 1_500;
 
 export function PieceDrawer({
   data,
@@ -107,14 +107,9 @@ export function PieceDrawer({
   const [view, setView] = useState<"edit" | "history">("edit");
   const [openNetwork, setOpenNetwork] = useState<string | null>(null);
   const [draft, setDraft] = useState<PieceDraft>(() => draftFromPost(post));
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-
-  // Para que "Guardado hace X s" se mueva solo.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(timer);
-  }, []);
+  // "Se guarda solo" -> "Guardado ✓" por 1,5 s despues de cada guardado (C6).
+  const [justSaved, setJustSaved] = useState(false);
+  const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // "Hay cambios sin guardar". Vive en dos lugares a proposito: un ref que
   // lee quien guarda (un reloj, un clic) y necesita el valor de AHORA, y un
@@ -159,7 +154,10 @@ export function PieceDrawer({
     }
 
     knownUpdatedAt.current = result.data.updatedAt;
-    setSavedAt(new Date().toISOString());
+    // "Guardado ✓" por 1,5 s y vuelve a "Se guarda solo" (C6).
+    setJustSaved(true);
+    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+    savedFlashTimer.current = setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
     if (result.data.staleWarning) {
       toast.push({
         tone: "warning",
@@ -170,11 +168,40 @@ export function PieceDrawer({
     return true;
   }, [post.id, toast, markDirty]);
 
-  useEffect(() => {
-    if (!editable) return;
-    const timer = setInterval(() => void flush(), AUTOSAVE_MS);
-    return () => clearInterval(timer);
-  }, [editable, flush]);
+  useEffect(() => () => {
+    if (savedFlashTimer.current) clearTimeout(savedFlashTimer.current);
+  }, []);
+
+  // Guardado automatico (C6): el dropdown, un chip o un toggle guardan al
+  // elegir; un campo de texto, al salir (blur). Los dos casos llegan aca por
+  // delegacion (un solo listener en la raiz del cuerpo) en vez de cablear
+  // cada campo uno por uno. `setTimeout` deja que React termine de aplicar
+  // el cambio de estado del campo (el `useEffect` que actualiza `draftRef`)
+  // ANTES de leerlo: guardar en el mismo tick guardaria el valor anterior.
+  const flushSoon = useCallback(() => {
+    setTimeout(() => void flush(), 0);
+  }, [flush]);
+
+  function onBodyChangeCapture(e: React.ChangeEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    // Select, checkbox, radio y los selectores de fecha disparan "change" al
+    // elegir: eso es "al elegir" (C6). Un input o textarea de texto dispara
+    // "change" en CADA tecla (es como React nombra el evento `input` nativo):
+    // esos se guardan en el blur, no aca.
+    if (
+      el.tagName === "SELECT" ||
+      ["checkbox", "radio", "datetime-local", "date"].includes(el.type)
+    ) {
+      flushSoon();
+    }
+  }
+
+  function onBodyBlurCapture(e: React.FocusEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    if (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type === "text")) {
+      flushSoon();
+    }
+  }
 
   // Lo escrito se guarda tambien si el drawer se desmonta (Esc, fondo, atras).
   const flushRef = useRef(flush);
@@ -350,13 +377,6 @@ export function PieceDrawer({
 
   function onAction(action: string) {
     switch (action) {
-      case "save_version":
-        run(async () => {
-          if (!(await flush())) return { ok: false, error: "No pude guardar lo que escribiste." };
-          return saveVersion({ postId: post.id, context: { trigger: "manual_save" } });
-        }, "Versión guardada.");
-        break;
-
       case "generate_copy":
         run(async () => {
           // El copywriter escribe en segundo plano: esto encola y vuelve.
@@ -378,10 +398,6 @@ export function PieceDrawer({
       case "publish_now":
         if (!window.confirm("¿Publicar ahora en las redes con fecha?")) return;
         run(() => saved(() => scheduleNetworks({ postId: post.id, now: true })), "Saliendo.");
-        break;
-
-      case "send_to_review":
-        run(() => saved(() => requestReview({ postId: post.id })), "La mandaste a revisión.");
         break;
 
       case "approve":
@@ -438,9 +454,10 @@ export function PieceDrawer({
       >
         <div className="space-y-3 p-4 md:p-6">
           <p className="text-xs text-muted-foreground">
-            Se guarda una versión al cambiar de estado, al tocar &quot;Guardar versión&quot;, al retomar un borrador
-            después de 10 minutos y en cada generación con IA. El autoguardado de cada 10 segundos no crea versiones.
-            Restaurar nunca borra: crea una versión nueva.
+            Todo se guarda solo, sin crear una versión por cada cambio: el primer cambio después de 10 minutos de
+            silencio abre una versión nueva, y los siguientes de la misma sesión actualizan esa misma fila. Cambiar de
+            estado, aprobar, generar con IA y restaurar siempre cortan la sesión y dejan la suya. Restaurar nunca
+            borra: crea una versión nueva.
           </p>
           <VersionHistory
             postId={post.id}
@@ -508,7 +525,7 @@ export function PieceDrawer({
           )}
           <button
             type="button"
-            onClick={() => setView("history")}
+            onClick={() => void flush().then(() => setView("history"))}
             aria-label={`Historial de versiones (${versions.length})`}
             title="Historial de versiones"
             className="relative rounded-lg p-1.5 text-muted-foreground hover:bg-accent"
@@ -526,12 +543,18 @@ export function PieceDrawer({
       footer={
         <>
           <span className="text-xs text-muted-foreground">{networkSummaryText(networkStates)}</span>
-          {savedAt && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Check className="h-3 w-3" aria-hidden />
-              Guardado {haceCuanto(savedAt, now)}
-            </span>
-          )}
+          <span
+            className={`inline-flex items-center gap-1 text-xs ${justSaved ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+          >
+            {justSaved ? (
+              <>
+                <Check className="h-3 w-3" aria-hidden />
+                Guardado ✓
+              </>
+            ) : (
+              "Se guarda solo"
+            )}
+          </span>
           <span className="flex-1" />
           {buttons.map((button) => (
             <button
@@ -556,7 +579,11 @@ export function PieceDrawer({
         </>
       }
     >
-      <div className="space-y-6 p-4 md:p-6">
+      <div
+        className="space-y-6 p-4 md:p-6"
+        onChangeCapture={onBodyChangeCapture}
+        onBlurCapture={onBodyBlurCapture}
+      >
         <div className="space-y-2">
           {post.authorship && (
             <p className="text-[11px] text-muted-foreground" data-testid="authorship">
@@ -914,9 +941,4 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 /** "hace 8 s", "hace 3 min". Lo que dice si se guardo de verdad. */
-function haceCuanto(iso: string, now: number): string {
-  const segundos = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (segundos < 60) return `hace ${segundos} s`;
-  return `hace ${Math.round(segundos / 60)} min`;
-}
 

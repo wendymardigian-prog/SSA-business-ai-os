@@ -43,8 +43,8 @@ export function VersionHistory({
           Historial
         </h3>
         <p className="mt-2 text-xs text-muted-foreground">
-          Todavia no hay versiones. Se guarda una al cambiar de estado, al tocar
-          &quot;Guardar version&quot; y cada vez que la IA escribe.
+          Todavia no hay versiones. Se guarda una al editar (agrupadas por sesion), al cambiar de estado, al
+          aprobar y cada vez que la IA escribe.
         </p>
       </section>
     );

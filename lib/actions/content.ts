@@ -15,6 +15,7 @@ import { defaultOptionsFor } from "@/lib/content/network-options";
 import { enqueueCopy } from "@/lib/content/copy-queue";
 import { readCopywriterConfig } from "@/lib/content/copywriter";
 import { createServiceClient } from "@/lib/supabase/server";
+import { writeVersion } from "@/lib/content/save-version";
 import { reschedulePublication } from "@/lib/publishing/reschedule";
 import { canTransition, columnFor, type BoardColumn, type ContentPermissions } from "@/lib/content/status";
 import type { ContentPostStatus } from "@/lib/types/database";
@@ -438,6 +439,20 @@ export async function movePostToColumn(
     return { ok: false, error: "No pude mover la pieza" };
   }
 
+  // Cambiar el estado corta la sesion de edicion (C6): se lleva su propia
+  // version, siempre.
+  try {
+    const service = await createServiceClient();
+    await writeVersion(service, {
+      postId,
+      workspaceId: workspace.id,
+      context: { trigger: "status_change" },
+      authorId: user.id,
+    });
+  } catch (err) {
+    console.error("[content] no pude registrar la version del cambio de estado:", err);
+  }
+
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "channel", entityId: workspace.id,
     action: "update",
@@ -556,7 +571,7 @@ export async function savePostDraft(input: {
 }): Promise<
   ContentActionResult<{ updatedAt: string; staleWarning: boolean; rescheduleWarnings: string[] }>
 > {
-  const { workspace, supabase } = await contentContext();
+  const { workspace, user, supabase } = await contentContext();
 
   const { data: post } = await supabase
     .from("content_posts")
@@ -642,6 +657,22 @@ export async function savePostDraft(input: {
   const rescheduleWarnings = networks
     ? await applyPlannedDateChanges(workspace.id, input.postId, networks)
     : [];
+
+  // La sesion de edicion (Contenido v4, C6): el primer cambio despues de 10
+  // minutos crea una version; los siguientes, dentro de la sesion, pisan esa
+  // misma fila. Que esto falle no puede tirar abajo un guardado que ya quedo
+  // escrito: el historial es un extra, no el dato.
+  try {
+    const service = await createServiceClient();
+    await writeVersion(service, {
+      postId: input.postId,
+      workspaceId: workspace.id,
+      context: { trigger: "edit" },
+      authorId: user.id,
+    });
+  } catch (err) {
+    console.error("[content] no pude registrar la version de esta sesion:", err);
+  }
 
   revalidatePath(CONTENT_PATH);
   return {

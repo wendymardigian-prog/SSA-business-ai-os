@@ -119,7 +119,9 @@ export type SocialPostMediaType =
   | "image" | "carousel" | "reel" | "story" | "video" | "short" | "text" | "document";
 /** Por que se guardo una version del post (00083). */
 export type VersionReason =
-  | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore";
+  | "status_change" | "manual_save" | "resume_after_idle" | "ai_generation" | "restore"
+  /** Contenido v4, C6: el autoguardado de verdad, y aprobar por separado de un cambio de estado cualquiera. */
+  | "edit" | "approve";
 
 /** De donde salio un comentario guardado (00086). */
 export type CommentSource = "webhook" | "sync";
@@ -3237,6 +3239,8 @@ export interface Database {
           author_id: string | null;
           reason: VersionReason;
           created_at: string;
+          /** Contenido v4, C6: cuando se toco por ultima vez esta fila (la sesion de edicion). */
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -3248,8 +3252,9 @@ export interface Database {
           author_id?: string | null;
           reason: VersionReason;
           created_at?: string;
+          updated_at?: string;
         };
-        Update: { snapshot?: Json };
+        Update: { snapshot?: Json; updated_at?: string };
         Relationships: [];
       };
 

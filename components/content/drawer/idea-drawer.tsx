@@ -32,7 +32,6 @@ import { useToast } from "./toast";
  * ninguna, el drawer se cierra con un aviso.
  */
 
-const AUTOSAVE_MS = 900;
 
 interface Values {
   title: string;
@@ -143,12 +142,21 @@ export function IdeaDrawer({
     return true;
   }, [ideaId, toast]);
 
-  // Autoguardado: a los ~1 s de dejar de escribir.
-  useEffect(() => {
-    if (!dirty.current) return;
-    const timer = setTimeout(() => void save(), AUTOSAVE_MS);
-    return () => clearTimeout(timer);
-  }, [values, save]);
+  // Guardado automatico (C6): un dropdown o un toggle guardan al elegir; un
+  // campo de texto, al salir (blur). Por delegacion, igual que en el drawer
+  // de la pieza: un solo listener en la raiz en vez de cablear cada campo.
+  const saveSoon = useCallback(() => {
+    setTimeout(() => void save(), 0);
+  }, [save]);
+
+  function onBodyChangeCapture(e: React.ChangeEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    if (el.tagName === "SELECT" || ["checkbox", "radio"].includes(el.type)) saveSoon();
+  }
+  function onBodyBlurCapture(e: React.FocusEvent<HTMLElement>) {
+    const el = e.target as HTMLInputElement;
+    if (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && el.type === "text")) saveSoon();
+  }
 
   // Lo escrito se guarda tambien si se cierra el drawer (Esc, fondo, atras).
   const saveRef = useRef(save);
@@ -298,7 +306,7 @@ export function IdeaDrawer({
         )
       }
     >
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-4" onChangeCapture={onBodyChangeCapture} onBlurCapture={onBodyBlurCapture}>
         <DialogField label="Título">
           <input
             value={values.title}
@@ -330,7 +338,11 @@ export function IdeaDrawer({
             available: CONTENT_PLATFORMS,
             manual: CONTENT_PLATFORMS.filter((p) => !platforms.includes(p)),
             selected: values.platforms,
-            onChange: (next) => edit({ platforms: next }),
+            onChange: (next) => {
+              edit({ platforms: next });
+              // Es un boton, no un <select>: la delegacion no lo agarra.
+              saveSoon();
+            },
           }}
         />
 

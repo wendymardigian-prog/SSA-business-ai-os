@@ -25,8 +25,8 @@ describe("los botones del editor (F24)", () => {
     expect(suyos).not.toContain("generate_copy");
   });
 
-  it("un Member si puede guardar version y enviar a revision", () => {
-    expect(actions({ perms: member })).toEqual(["save_version", "send_to_review"]);
+  it("un Member sin nada mas que hacer no ve ningun boton: el estado se cambia con el dropdown (C6)", () => {
+    expect(actions({ perms: member })).toEqual([]);
   });
 
   it("sin proveedor de IA, el boton aparece deshabilitado con el motivo", () => {
@@ -77,10 +77,8 @@ describe("los botones del editor (F24)", () => {
     expect(actions({ status: "published" })).not.toContain("archive");
   });
 
-  it("una pieza publicada no ofrece guardar version ni generar", () => {
-    const publicada = actions({ status: "published" });
-    expect(publicada).not.toContain("save_version");
-    expect(publicada).not.toContain("generate_copy");
+  it("una pieza publicada no ofrece generar", () => {
+    expect(actions({ status: "published" })).not.toContain("generate_copy");
   });
 });
 

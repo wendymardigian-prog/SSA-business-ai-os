@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { decideVersionWrite } from "./autosave";
 import {
   nextVersionNumber,
   versionReasonFor,
@@ -59,6 +60,44 @@ export async function writeVersion(
     media: (Array.isArray(post.media) ? post.media : []) as unknown[],
   };
 
+  const authorKind = input.authorKind ?? "human";
+  const authorId = authorKind === "ai" ? null : (input.authorId ?? null);
+  const now = input.context.now ?? new Date();
+
+  // 'edit' agrupa por sesion (C6): un edit dentro de los 10 minutos del
+  // mismo autor ACTUALIZA la ultima version en vez de crear otra. Los demas
+  // motivos (cambio de estado, aprobar, IA, restaurar) siempre insertan: son
+  // justo lo que corta la sesion.
+  if (reason === "edit") {
+    const { data: last } = await service
+      .from("content_post_versions")
+      .select("id, author_id, reason, updated_at")
+      .eq("post_id", post.id)
+      .order("version_no", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const mode = decideVersionWrite({
+      last: last ? { authorId: last.author_id, reason: last.reason, updatedAt: last.updated_at } : null,
+      authorId,
+      now,
+    });
+
+    if (mode === "update" && last) {
+      const { error } = await service
+        .from("content_post_versions")
+        .update({ snapshot: snapshot as never, updated_at: now.toISOString() })
+        .eq("id", last.id);
+
+      if (error) {
+        console.error("[content] no pude actualizar la version de la sesion:", error.message);
+        return { ok: false, error: "No pude guardar la version" };
+      }
+
+      return { ok: true, saved: true, versionNo: post.current_version ?? 0 };
+    }
+  }
+
   const versionNo = nextVersionNumber(post.current_version ?? 0);
 
   const { error } = await service.from("content_post_versions").insert({
@@ -66,9 +105,10 @@ export async function writeVersion(
     post_id: post.id,
     version_no: versionNo,
     snapshot: snapshot as never,
-    author_kind: input.authorKind ?? "human",
-    author_id: input.authorKind === "ai" ? null : (input.authorId ?? null),
+    author_kind: authorKind,
+    author_id: authorId,
     reason,
+    updated_at: now.toISOString(),
   });
 
   if (error) {
