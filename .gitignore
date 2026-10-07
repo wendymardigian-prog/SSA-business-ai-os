@@ -42,3 +42,9 @@ supabase/.temp
 
 # codigo de referencia de la etapa 2 (se lee, nunca se importa; se borra al cerrar)
 docs/referencia/
+
+# El project_ref de Supabase es de ESTA copia, no va al template. Ver .mcp.json.example.
+.mcp.json
+
+# Worktrees de sesiones de Claude Code en paralelo: nunca se commitean.
+.claude/worktrees/

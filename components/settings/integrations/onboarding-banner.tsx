@@ -11,7 +11,7 @@ import { shouldShowBanner, type MissingEssential } from "@/lib/integrations/onbo
  * navegador, no una decision del workspace. Sin `localStorage` (privado,
  * bloqueado) la franja simplemente se sigue mostrando, que es lo seguro.
  */
-const STORAGE_KEY = "ssa.integ.onboarding.dismissed";
+const STORAGE_KEY = "app.integ.onboarding.dismissed";
 
 function readDismissedAt(): string | null {
   try {
