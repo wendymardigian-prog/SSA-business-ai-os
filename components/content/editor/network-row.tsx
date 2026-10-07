@@ -335,13 +335,24 @@ export function NetworkRow(props: NetworkRowProps) {
             </p>
           )}
 
-          {/* ── Opciones de la red (§9.5) ── */}
-          <NetworkOptions
-            platform={network.platform}
-            options={options}
-            disabled={!editable}
-            onChange={setOption}
-          />
+          {/* ── Opciones de [red], plegado y cerrado por defecto (C10) ──
+              LinkedIn no tiene opciones propias (su "tipo" ya lo decide el
+              formato): no se muestra un desplegable vacio. */}
+          {network.platform !== "linkedin" && (
+            <details className="rounded-lg border border-border">
+              <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted-foreground">
+                Opciones de {network.platform}
+              </summary>
+              <div className="border-t border-border p-3">
+                <NetworkOptions
+                  platform={network.platform}
+                  options={options}
+                  disabled={!editable}
+                  onChange={setOption}
+                />
+              </div>
+            </details>
+          )}
 
           {faltan.map((m) => (
             <p key={m} className="text-xs text-amber-700 dark:text-amber-300">

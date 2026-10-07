@@ -113,10 +113,36 @@ Commits `3a04e2d`, `1dd1b6f`, `9509061`.
     (depende de la fila real, que una red sin conectar nunca tiene); sin
     cambios.
 
-### B17: limpieza de campos duplicados (C7, C9, C10)
-- [ ] **C9** Un solo campo de formato
-- [ ] **C7** Archivos filtrados por formato
-- [ ] **C10** "Publicar por" fuera de la tarjeta
+### B17: limpieza de campos duplicados (C7, C9, C10) — COMPLETO, 7/10/2026
+- [x] **C9** Un solo campo de formato. Migración **00126 aplicada**
+  (con un incidente corregido en el momento, sin pérdida de datos; detalle
+  en `docs/PENDIENTE.md`). `options.contentType` se elimina de la interfaz,
+  los publicadores (`zernio.ts`), `media-type.ts` y `validation.ts`; lo
+  reemplaza `networks[].format` en todos lados. El publicador supuesto
+  (§18, "solo `zernio.ts` lee `contentType`") era **falso**: también lo
+  leían `validation.ts` y `media-type.ts`, ya corregidos. `zernio.test.ts`
+  (la caracterización de B15) sigue en verde **sin cambiar sus
+  aserciones de salida** para los casos por formato; se sacaron los 6 casos
+  que probaban el modelo viejo (ya no son una entrada válida). Al agregar
+  una red, el formato hereda el de la pieza ya elegido (con archivos, si
+  hay uno que sirve); se borra el chip "Usar el sugerido". Grep final
+  limpio (solo MIME y el campo propio de Zernio).
+- [x] **C7** Verificado sin cambios: el filtrado, la numeración, la
+  verificación y el descarte al cambiar de formato no dependen de si la
+  cuenta está conectada (arquitectura ya separada de C1–C3).
+- [x] **C10** "Publicar por" sale de la tarjeta. `normalizeNetworks`
+  descarta `networks[].publisher` al guardar (el efectivo es siempre el
+  `default_publisher` de la cuenta). Línea informativa "Se publica con X ·
+  cambiar en Integraciones" solo con más de un publicador usable (hoy, solo
+  YouTube). Las opciones propias de cada red van en un `<details>` plegado
+  "Opciones de [red]"; se suman las que no se mostraban en ningún lado
+  (Instagram: compartir en el feed; Threads: quién puede responder).
+
+Verificación: `npx vitest run` 5418/5418, `npm run build` y typecheck en
+verde, lint en la línea base. `verify-content.mjs` en verde;
+`verify-publishing.mjs` con la misma intermitencia ya documentada en el
+punto de partida (carrera con el cron real), sin fallas nuevas en 3
+corridas. Commits `c32e4a2`, `6da675e`.
 
 ### B18: guardado automático y versiones (C6)
 - [ ] **C6** Todo se guarda solo; versiones por sesión
