@@ -1,7 +1,7 @@
 -- ============================================================
 -- MIGRACION 00019 — DE DONDE VIENE CADA CANAL
 -- ============================================================
--- La tabla channels de ZernFlow asume que todo canal se conecto por Zernio:
+-- La tabla channels del sistema original asume que todo canal se conecto por Zernio:
 -- late_account_id es obligatorio y todo el codigo de sync sale de ahi.
 -- WhatsApp de Etapa 1 no pasa por Zernio, sino por Evolution API self-hosted.
 --

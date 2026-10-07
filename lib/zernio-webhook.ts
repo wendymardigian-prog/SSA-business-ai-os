@@ -26,7 +26,7 @@ import type { Zernio } from "./zernio-client";
  */
 export const WEBHOOK_NAME = brandName();
 
-/** Events Zernflow needs delivered to its webhook. */
+/** Events the app needs delivered to its webhook. */
 export type WebhookEvent =
   | "message.received"
   | "comment.received"
@@ -107,7 +107,7 @@ function samePath(a: string | undefined, b: string): boolean {
 }
 
 /**
- * Ensures Zernflow's webhook is registered in Zernio and up to date.
+ * Ensures the app's webhook is registered in Zernio and up to date.
  *
  * - No webhook found → create it.
  * - Found but URL differs or an event is missing → update it.

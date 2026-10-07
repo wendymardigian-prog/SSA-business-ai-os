@@ -1275,7 +1275,7 @@ GRANT EXECUTE ON FUNCTION public.is_workspace_admin(uuid) TO authenticated, serv
 -- ============================================================
 -- Dos cosas:
 --
--- 1. Roles. ZernFlow guarda el rol como texto libre y varias policies asumen
+-- 1. Roles. El sistema original guarda el rol como texto libre y varias policies asumen
 --    owner-only. El alcance de Etapa 1 pide Owner/Admin/Member con Admin
 --    pudiendo invitar y cambiar roles, y Member sin acceso a configuracion.
 --
@@ -1609,7 +1609,7 @@ CREATE POLICY "workspace_members_select" ON public.workspace_members
 -- ============================================================
 -- MIGRACION 00019 — DE DONDE VIENE CADA CANAL
 -- ============================================================
--- La tabla channels de ZernFlow asume que todo canal se conecto por Zernio:
+-- La tabla channels del sistema original asume que todo canal se conecto por Zernio:
 -- late_account_id es obligatorio y todo el codigo de sync sale de ahi.
 -- WhatsApp de Etapa 1 no pasa por Zernio, sino por Evolution API self-hosted.
 --
@@ -1897,7 +1897,7 @@ CREATE POLICY "email_log_select" ON public.email_log
 -- ============================================================
 -- MIGRACION 00022 — MODELO DE CONTACTO EXTENDIDO (F9 + F10)
 -- ============================================================
--- ZernFlow trae un contacto minimo: display_name, email, avatar_url,
+-- El sistema original trae un contacto minimo: display_name, email, avatar_url,
 -- is_subscribed, last_interaction_at y metadata. Para un CRM de servicios
 -- digitales falta todo lo demas: telefono, redes, asignaciones, seguimiento,
 -- atribucion y borrado logico.
@@ -3110,7 +3110,7 @@ BEGIN
   END IF;
 
   -- is_subscribed tambien baja: es la marca que ya miraban los broadcasts y
-  -- las palabras clave globales de ZernFlow, y seria raro que un contacto
+  -- las palabras clave globales del sistema original, y seria raro que un contacto
   -- quede "no contactar" pero suscripto.
   UPDATE public.contacts
   SET do_not_contact = true,
@@ -4363,7 +4363,7 @@ SELECT cron.schedule(
 -- ============================================================
 -- MIGRACION 00038 — TIPOS NUEVOS DE TRIGGER (F3, F4, F5)
 -- ============================================================
--- La tabla `triggers` viene de ZernFlow con seis tipos, todos disparados por
+-- La tabla `triggers` viene del sistema original con seis tipos, todos disparados por
 -- algo que hace el contacto en el chat: una palabra clave, un boton, el primer
 -- mensaje. La Fase 2 suma tres que nacen en otro lado:
 --
@@ -4466,7 +4466,7 @@ ALTER TABLE public.triggers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT 
 -- ------------------------------------------------------------
 -- 4. RLS mas estricta
 -- ------------------------------------------------------------
--- Las policies que venian de ZernFlow (migracion 00002) daban FOR ALL a
+-- Las policies que venian del sistema original (migracion 00002) daban FOR ALL a
 -- cualquier miembro del workspace: un Member podia crear, editar y borrar
 -- triggers de cualquier flow. Es incoherente con el resto del sistema, donde
 -- crear y publicar flows es cosa de Owner/Admin, y ademas es un agujero: un

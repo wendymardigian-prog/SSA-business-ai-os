@@ -6,7 +6,7 @@ export const contentType = "image/png";
 
 /**
  * Favicon generado: la inicial de la marca sobre su color. Un clon sin logo
- * propio no se queda sin favicon (antes era el de ZernFlow, fijo en public/).
+ * propio no se queda sin favicon (antes era uno fijo en public/).
  */
 export default function Icon() {
   return new ImageResponse(

@@ -66,7 +66,7 @@ export async function flowsForEventType(supabase: Db, eventTypeId: string): Prom
  * El grafo guardado de un flow, para el editor lineal.
  *
  * Los nodos y las aristas viven en dos columnas jsonb de `flows`, no en tablas
- * aparte: es como lo guarda el canvas desde ZernFlow.
+ * aparte: es como lo guarda el canvas desde el sistema original.
  */
 export async function flowGraph(supabase: Db, flowId: string) {
   const { data: flow } = await supabase

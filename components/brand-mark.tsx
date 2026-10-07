@@ -4,7 +4,7 @@ import { brandName, brandLogoUrl, brandInitial } from "@/lib/brand";
  * El logo del producto, o un monograma si el cliente no subio uno.
  *
  * Sin esto, un clon sin `NEXT_PUBLIC_BRAND_LOGO_URL` configurada quedaria sin
- * ningun logo (antes se mostraba el de ZernFlow a mano). El monograma hace
+ * ningun logo (antes se mostraba uno fijo a mano). El monograma hace
  * que la pantalla de acceso y el menu lateral nunca queden vacios.
  */
 export function BrandMark({ size = 48, className }: { size?: number; className?: string }) {
