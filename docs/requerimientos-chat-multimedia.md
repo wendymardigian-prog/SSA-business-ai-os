@@ -1044,7 +1044,7 @@ Fork de ZernFlow. Next.js 16 App Router + React 19 + TypeScript 5 + Tailwind v4 
 
 Estos eran supuestos. Se verificaron contra el despliegue real y contra el código fuente de la versión exacta que corre, así que el Bloque 5 ya no tiene incógnitas de API.
 
-**Evolution API: versión `2.3.7`** (imagen `evoapicloud/evolution-api:v2.3.7`, proyecto Railway "Evo-Api", dominio público `evolution-api-production-8691c.up.railway.app`, endpoint de red privada `evolution-api`). Verificado leyendo el código fuente del tag `2.3.7`:
+**Evolution API: versión `2.3.7`** (imagen `evoapicloud/evolution-api:v2.3.7`, proyecto Railway "Evo-Api", dominio público `<tu-evolution>.up.railway.app`, endpoint de red privada `evolution-api`). Verificado leyendo el código fuente del tag `2.3.7`:
 
 | Endpoint | Cuerpo | Notas verificadas |
 |---|---|---|

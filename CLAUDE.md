@@ -71,6 +71,15 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 
 Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene API de DMs/comentarios (verificado en el SDK `@zernio/node`) — entra recien en Etapa 2 como publicacion de contenido y metricas. La 2ª cuenta free de Zernio se reserva para ese contenido de Etapa 2.
 
+## White label
+
+El sistema se duplica por cliente: cada clon es su propia copia, con su propia base.
+
+- Marca por variables de entorno, nunca en el codigo: `NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR` (ver `lib/brand.ts`). Sin configurar, el sistema muestra un nombre generico.
+- Alta solo por invitacion: no hay registro publico. `scripts/create-owner.mjs` crea el primer Owner de un clon nuevo (cuenta + workspace + zona horaria).
+- `private.system_config` necesita `app_url` y `cron_secret` propios por clon (checklist de despliegue en `docs/seguridad-advertencias-aceptadas.md`).
+- `scripts/export-template.mjs` corta una copia limpia del repo (sin docs internos, sin `.env`, con su propio `git init`) como punto de partida para un cliente nuevo.
+
 # Comandos
 
 ## Desarrollo

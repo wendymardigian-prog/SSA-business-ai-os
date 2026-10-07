@@ -20,7 +20,7 @@ Un lead manda una nota de voz por Instagram o WhatsApp. El mensaje entra con `te
 | `npm run lint` | **1 error y 41 warnings, los dos preexistentes** (ver PENDIENTE). El error está en `components/scheduling/booker/use-embed-bridge.ts:22`, que es de la Etapa 4 |
 | Última migración | `00101_bg_task_dedupe`, en archivos y **aplicada** en la base (`list_migrations`). Las nuevas: **00102 y 00103** |
 | Testing | Solo `vitest ^3.2.4`, `environment: node`, `include: **/*.test.ts`. **No se suman dependencias** |
-| Evolution API (Railway) | **v2.3.7** en `evolution-api-production-8691c.up.railway.app` |
+| Evolution API (Railway) | **v2.3.7** en `<tu-evolution>.up.railway.app` |
 | Datos | 2471 mensajes, 88 con `attachments` (86 sin texto). 1 workspace. IA en `integration_configs`: **solo `anthropic` y `voyage`** |
 | Buckets | `avatars` (público), `content-media`, `email-attachments`, `knowledge`. **No existe `chat-media`** |
 
