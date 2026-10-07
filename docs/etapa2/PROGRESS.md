@@ -17,7 +17,7 @@ Este archivo es la memoria de la corrida: se actualiza por funcionalidad, no sol
 
 "Sin errores nuevos de lint" = seguir en **0 errores**; los 44 warnings son la línea base.
 
-**Base** (`knrxjnmxnmjavivyuwew`): última migración aplicada `00080_background_tasks` (la base tiene además
+**Base** (`<project-ref>`): última migración aplicada `00080_background_tasks` (la base tiene además
 `00078_chat_dashboard_trends`, `00079b` y `00079c`, que en el repo viven dentro de 00078/00079).
 **La Etapa 2 empieza en `00081`.** La `00072_draft_window_alerts` **no está aplicada** (verificado: no existen
 `private.alert_draft_windows` ni su cron); sigue diferida.

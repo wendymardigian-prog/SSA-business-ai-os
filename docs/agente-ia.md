@@ -658,7 +658,7 @@ Con el agente en modo borrador (no hace falta prenderlo):
    más de 32.000: contador en rojo, Guardar deshabilitado con el motivo.
 2. **Configurar la herramienta.** En Herramientas, `generar_link_whatsapp`
    aparece deshabilitada con el mensaje de que falta el número. Cargar el número
-   con `+506 7081-4873`, guardar, y verificar que quedó `50670814873` y el switch
+   con `+54 9 11 0000-0000`, guardar, y verificar que quedó `5491100000000` y el switch
    se puede habilitar. **No prender el agente todavía.**
 3. **Link con tildes.** Provocar un pase con un contexto con tildes y ñ: el
    borrador guarda un `https://wa.me/...` clickeable; al abrirlo, el texto

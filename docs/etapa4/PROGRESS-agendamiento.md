@@ -18,7 +18,7 @@ El núcleo (Tanda A, rama `etapa4-nucleo`) ya está mergeado en `main`: [docs/et
 
 "Sin errores nuevos de lint" = seguir en **0 errores**; los 44 warnings son la línea base.
 
-**Base** (`knrxjnmxnmjavivyuwew`): última migración aplicada `00101_bg_task_dedupe`. **No queda ninguna sin aplicar** (la `00072` se aplicó el 28/9/2026). **La Etapa 4 empieza en `00095`** (la banda `00121` era para correr en paralelo con la Etapa 2, que ya está mergeada entera). `btree_gist` disponible, no instalada.
+**Base** (`<project-ref>`): última migración aplicada `00101_bg_task_dedupe`. **No queda ninguna sin aplicar** (la `00072` se aplicó el 28/9/2026). **La Etapa 4 empieza en `00095`** (la banda `00121` era para correr en paralelo con la Etapa 2, que ya está mergeada entera). `btree_gist` disponible, no instalada.
 
 **Datos al arrancar:** 1 workspace, 1 Owner (sin Members), `oauth_connections` vacía, `automation_events` solo `contact_created`, agentes `chat` y `copywriter` con `tools_config = {}`.
 

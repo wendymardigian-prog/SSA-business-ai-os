@@ -98,7 +98,7 @@ de lo que pasó, en orden:
    ~2.5 minutos (`7a541a8c...`, contenedor arriba en 329ms). Logs del
    contenedor nuevo revisados: sin ningún error de columna o tabla
    inexistente, sin nada relacionado a `audio_assets` ni `avatar_source`.
-9. **Verificación en vivo**: `https://ssa-business-ai-os-production.up.railway.app/login`
+9. **Verificación en vivo**: `https://<tu-app>.up.railway.app/login`
    responde 200. El resto (bandeja cargando, banca de audios con su empty
    state, picker `/a` sin romper con la lista vacía) ya se había verificado
    en vivo contra la MISMA base de datos antes del deploy (no hay base

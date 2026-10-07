@@ -655,7 +655,7 @@ línea un `workspace_id` mal completado se habría visto como "todo verde".
 ### Estado del prerrequisito al arrancar
 
 El receptor único de webhooks ya funcionaba: Zernio entrega en
-`https://ssa-business-ai-os-production.up.railway.app/api/webhooks/late`, con el
+`https://<tu-app>.up.railway.app/api/webhooks/late`, con el
 secreto que coincide, y la cadena `route.ts → runInboundAutomation →
 matchTrigger → executeFlow` corre de verdad (verificado contra la API de Zernio
 y contra la base, no solo contra el código).
