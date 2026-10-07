@@ -341,6 +341,7 @@ function PostCard({
                   key={n.platform}
                   platform={n.platform}
                   size="sm"
+                  className={NETWORK_STATE_TINT[n.status ?? ""]}
                   detail={
                     n.at
                       ? new Date(n.at).toLocaleDateString("es-AR", { day: "numeric", month: "short" })
@@ -392,6 +393,18 @@ function Chip({ on, children }: { on: boolean; children: React.ReactNode }) {
     </span>
   );
 }
+
+/**
+ * Las redes resaltadas en la tarjeta del kanban (Contenido v4, C8): lo que
+ * esta en la cola se ve distinto de lo que todavia es solo una fecha.
+ */
+const NETWORK_STATE_TINT: Record<string, string> = {
+  scheduled: "border-blue-500 bg-blue-500/10",
+  uploading: "border-blue-500 bg-blue-500/10",
+  publishing: "border-blue-500 bg-blue-500/10",
+  published: "border-emerald-500 bg-emerald-500/10",
+  failed: "border-red-500 bg-red-500/10",
+};
 
 /** El color del bloque de formato. El mismo de la insignia de la red. */
 const NETWORK_TINT: Record<string, string> = {

@@ -84,10 +84,34 @@ Verificación: `npx vitest run` 5430/5430, `npm run build` exit 0, `npm run
 lint` 4 errores (línea base), `verify-rls` y `verify-content` en verde.
 Commits `3a04e2d`, `1dd1b6f`, `9509061`.
 
-### B16: estados y clasificación (C4, C5, C8)
-- [ ] **C4** Estado de la pieza como dropdown, sin estado del material
-- [ ] **C5** TOFU / MOFU / BOFU
-- [ ] **C8** Dónde se ven los programados
+### B16: estados y clasificación (C4, C5, C8) — COMPLETO, 7/10/2026
+- [x] **C4** Estado de la pieza como dropdown teñido, sin estado del material.
+  Se borran `setMaterialStatus`, `statusAfterMaterialChange` y toda la
+  interfaz del campo. El avance Borrador→En producción que antes disparaba
+  "Grabado" ahora lo hace la persona con el dropdown (ya lo permitía
+  `canTransition`: sin código nuevo, solo un test que lo deja anotado).
+  `StatusSelect` usa `STATUS_COLOR` (los mismos colores que el kanban, más
+  `--li`/`--zn` nuevos en `globals.css` con los valores del prototipo) y
+  bloquea con el tooltip "Lo definen las redes" cuando el estado es
+  derivado. Columna de la base marcada "sin uso" en el tipo de lectura (se
+  borra en la 00128); sin referencias en `lib/`/`app/` fuera de eso.
+- [x] **C5** TOFU/MOFU/BOFU. Etiquetas "TOFU · Descubrimiento" etc. en el
+  selector y descripciones al texto exacto del documento. "Sin etapa" ya
+  funcionaba.
+- [x] **C8** Dónde se ven los programados.
+  - Pie del drawer: adelantado en B15 (mismo modelo de estado).
+  - Kanban: los íconos de red se resaltan (azul=en cola, verde=publicada,
+    rojo=fallida) en vez de verse todos iguales.
+  - Calendario: ya mostraba una publicación manual como publicada y una red
+    sin conectar como tentativa (el tono depende de `status`, no de
+    `origin`); **se encontró y arregló un bug real de paso**: la consulta
+    de publicaciones del tablero/calendario no filtraba `deleted_at` ni
+    `status='cancelled'`, así que una red desprogramada podía verse "mixed"
+    en vez de volver a tentativa. Corregido en
+    `app/(dashboard)/dashboard/content/page.tsx`.
+  - Social → Próximas: ya distinguía programado de tentativo correctamente
+    (depende de la fila real, que una red sin conectar nunca tiene); sin
+    cambios.
 
 ### B17: limpieza de campos duplicados (C7, C9, C10)
 - [ ] **C9** Un solo campo de formato
