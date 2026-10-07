@@ -12,6 +12,7 @@ import {
   type GalleryPosition,
 } from "@/lib/content/idea-gallery";
 import { ideaActions } from "@/lib/content/ideas";
+import { CONTENT_PLATFORMS } from "@/lib/content/network-format";
 import { cn } from "@/lib/utils";
 import { ClassificationFields, type TaxonomyOptions } from "../classification-fields";
 import { DialogField, fieldInput } from "../dialog";
@@ -326,7 +327,8 @@ export function IdeaDrawer({
           taxonomy={taxonomy}
           disabled={!editable}
           platforms={{
-            available: platforms,
+            available: CONTENT_PLATFORMS,
+            manual: CONTENT_PLATFORMS.filter((p) => !platforms.includes(p)),
             selected: values.platforms,
             onChange: (next) => edit({ platforms: next }),
           }}

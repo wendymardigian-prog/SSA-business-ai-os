@@ -15,6 +15,8 @@ export interface PublicationSummary {
   status: SocialPostStatus | null;
   scheduledAt: string | null;
   publishedAt: string | null;
+  /** 'manual' = la marco una persona a mano (Contenido v4, C3). */
+  origin?: "system" | "external" | "manual" | null;
   url: string | null;
   lastError: string | null;
   lastErrorKind: "temporary" | "permanent" | null;

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   copyJustFinished,
-  datesSummary,
   draftFromPost,
   draftPayload,
   shouldPollCopy,
@@ -96,17 +95,6 @@ describe("que hace cada cambio del dropdown", () => {
   });
 });
 
-describe("el pie: 'N de M redes con fecha' (F96)", () => {
-  it("cuenta las que tienen fecha", () => {
-    expect(datesSummary(3, 2)).toBe("2 de 3 redes con fecha");
-    expect(datesSummary(1, 1)).toBe("1 de 1 red con fecha");
-    expect(datesSummary(2, 0)).toBe("0 de 2 redes con fecha");
-  });
-
-  it("sin redes lo dice distinto: no hay nada que contar", () => {
-    expect(datesSummary(0, 0)).toBe("Todavía no elegiste ninguna red");
-  });
-});
 
 describe("que se puede editar", () => {
   it("solo Borrador, Produccion y Revision", () => {

@@ -57,6 +57,9 @@ export const NETWORK_FORMATS: Record<string, FormatDef[]> = {
   ],
 };
 
+/** Las cinco redes que puede tener una pieza (Contenido v4, C1). */
+export const CONTENT_PLATFORMS = Object.keys(NETWORK_FORMATS);
+
 export function formatsFor(platform: string): FormatDef[] {
   return NETWORK_FORMATS[platform] ?? [];
 }

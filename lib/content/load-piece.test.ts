@@ -62,7 +62,7 @@ function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
         { id: "sp-2", content_post_id: "post-1", platform: "tiktok", status: "published", deleted_at: "2026-10-01T00:00:00Z" },
       ],
       social_accounts: [
-        { workspace_id: WS, platform: "instagram", channel_id: "ch-1", username: "ana", publishers: [{ publisher: "zernio", status: "available" }, { publisher: "postproxy", status: "unavailable" }], is_active: true },
+        { workspace_id: WS, platform: "instagram", channel_id: "ch-1", username: "ana", publishers: [{ publisher: "zernio", status: "available" }, { publisher: "postproxy", status: "unavailable" }], default_publisher: "zernio", is_active: true },
       ],
       channels: [{ id: "ch-1", workspace_id: WS, platform: "instagram", is_active: true }],
       triggers: [],

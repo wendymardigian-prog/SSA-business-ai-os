@@ -70,11 +70,6 @@ export function statusChangeAction(from: ContentPostStatus, to: ContentPostStatu
   return "move";
 }
 
-/** "2 de 3 redes con fecha", para el pie. */
-export function datesSummary(total: number, withDate: number): string {
-  if (total === 0) return "Todavía no elegiste ninguna red";
-  return `${withDate} de ${total} ${total === 1 ? "red" : "redes"} con fecha`;
-}
 
 /** Si hay algo que mostrar en "estado por red": una publicacion viva, no cancelada. */
 export function publicationsVisible(publications: Array<{ status: string | null }>): boolean {

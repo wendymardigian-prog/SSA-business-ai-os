@@ -10,10 +10,17 @@ import {
   type MutableRefObject,
 } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, Check, History, Loader2, Sparkles, X } from "lucide-react";
 import { savePostDraft, setMaterialStatus, movePostToColumn } from "@/lib/actions/content";
 import { requestCopy } from "@/lib/actions/copywriter";
-import { scheduleNetworks, unscheduleNetwork } from "@/lib/actions/content-schedule";
+import {
+  markNetworkPublished,
+  scheduleNetworks,
+  setNetworkPublishMode,
+  unmarkNetworkPublished,
+  unscheduleNetwork,
+} from "@/lib/actions/content-schedule";
 import { saveVersion } from "@/lib/actions/content-versions";
 import {
   approvePost,
@@ -26,13 +33,13 @@ import { summarizeNetwork } from "@/lib/content/editor";
 import { validateNetwork } from "@/lib/content/validation";
 import { findScriptKeywords } from "@/lib/content/keywords";
 import { ensureMediaIds, removeFileFromNetworks, usageByFile } from "@/lib/content/media-library";
-import { resolveNetworkOptions } from "@/lib/content/network-format";
+import { CONTENT_PLATFORMS, resolveNetworkOptions } from "@/lib/content/network-format";
 import { liveMedia } from "@/lib/content/media";
 import { resolveNetworkContent } from "@/lib/content/redistribution";
+import { networkStateOf, networkSummaryText } from "@/lib/content/network-state";
 import { defaultOptionsFor } from "@/lib/content/network-options";
 import {
   copyJustFinished,
-  datesSummary,
   draftFromPost,
   draftPayload,
   isEditableStatus,
@@ -263,9 +270,32 @@ export function PieceDrawer({
     return findScriptKeywords(draft.script).map((word) => ({ word, live: activas.has(word.toUpperCase()) }));
   }, [draft.script, automations]);
 
-  const missingNetworks = connected.filter((platform) => !draft.networks.some((n) => n.platform === platform));
+  // Cualquiera de las cinco, conectada o no (Contenido v4, C1): el bloqueo
+  // de antes impedia planificar YouTube, LinkedIn y Threads hasta tramitar
+  // la cuenta.
+  const missingNetworks = CONTENT_PLATFORMS.filter((platform) => !draft.networks.some((n) => n.platform === platform));
   const withDate = draft.networks.filter((n) => n.planned_at).length;
   const schedulable = validations.filter((v) => v.ok).length;
+
+  // El estado de cada red (C3), para el pie (C8): "N programadas · N
+  // tentativas · N publicadas", y para distinguir de un vistazo lo que sale
+  // solo de lo que hay que subir a mano.
+  const networkStates = draft.networks.map((network) => {
+    const publication = publications.find((p) => p.platform === network.platform);
+    return networkStateOf({
+      plannedAt: network.planned_at ?? null,
+      publication: publication
+        ? {
+            platform: publication.platform,
+            status: publication.status,
+            scheduledAt: publication.scheduledAt,
+            publishedAt: publication.publishedAt,
+            origin: publication.origin,
+          }
+        : undefined,
+      connected: connected.includes(network.platform),
+    });
+  });
 
   const buttons = pieceButtons({
     status: post.status,
@@ -501,7 +531,7 @@ export function PieceDrawer({
       }
       footer={
         <>
-          <span className="text-xs text-muted-foreground">{datesSummary(draft.networks.length, withDate)}</span>
+          <span className="text-xs text-muted-foreground">{networkSummaryText(networkStates)}</span>
           {savedAt && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Check className="h-3 w-3" aria-hidden />
@@ -732,11 +762,21 @@ export function PieceDrawer({
             <p className="text-xs text-muted-foreground">Cada red con su formato, sus archivos y su caption</p>
           </div>
 
+          {/* El estado vacio ya no bloquea: es informativo, con el link a
+              Integraciones (C1). La planificacion sigue andando igual. */}
+          {connected.length === 0 && (
+            <p className="mt-2 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+              Todavía no hay ninguna red conectada. Podés planificar igual: lo que subas a mano lo marcás con
+              &quot;Marcar como publicado&quot;.{" "}
+              <Link href="/dashboard/settings/integrations" className="underline underline-offset-2">
+                Conectar una red
+              </Link>
+            </p>
+          )}
+
           {draft.networks.length === 0 ? (
             <p className="mt-2 rounded-lg border border-dashed border-border p-4 text-xs text-muted-foreground">
-              {connected.length === 0
-                ? "Todavía no hay ninguna red conectada. Conectá una en Integraciones para poder programar."
-                : "Esta pieza todavía no tiene redes. Agregá una acá abajo."}
+              Esta pieza todavía no tiene redes. Agregá una acá abajo.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -761,6 +801,19 @@ export function PieceDrawer({
                     summary={summary}
                     validation={validation}
                     publicationStatus={publication?.status ?? null}
+                    publication={
+                      publication
+                        ? {
+                            platform: publication.platform,
+                            status: publication.status,
+                            scheduledAt: publication.scheduledAt,
+                            publishedAt: publication.publishedAt,
+                            origin: publication.origin,
+                          }
+                        : undefined
+                    }
+                    connected={connected.includes(network.platform)}
+                    postStatus={post.status}
                     open={openNetwork === network.platform}
                     editable={editable}
                     canPublish={perms.publish}
@@ -796,6 +849,26 @@ export function PieceDrawer({
                         "Desprogramada. La fecha queda guardada.",
                       )
                     }
+                    onSetAuto={(auto) =>
+                      run(
+                        () => saved(() => setNetworkPublishMode({ postId: post.id, platform: network.platform, auto })),
+                        auto
+                          ? `${platformLabel(network.platform)}: queda programado, se publica solo.`
+                          : `${platformLabel(network.platform)}: fecha tentativa, la subís vos.`,
+                      )
+                    }
+                    onMarkPublished={(input) =>
+                      run(
+                        () => markNetworkPublished({ postId: post.id, platform: network.platform, ...input }),
+                        `${platformLabel(network.platform)}: marcado como publicado.`,
+                      )
+                    }
+                    onUnmarkPublished={() =>
+                      run(
+                        () => unmarkNetworkPublished({ postId: post.id, platform: network.platform }),
+                        "Deshecho.",
+                      )
+                    }
                   />
                 );
               })}
@@ -818,6 +891,9 @@ export function PieceDrawer({
                 >
                   + <NetworkBadge platform={platform} variant="dot" size="sm" />
                   {platformLabel(platform)}
+                  {!connected.includes(platform) && (
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400">a mano</span>
+                  )}
                 </button>
               ))}
             </div>

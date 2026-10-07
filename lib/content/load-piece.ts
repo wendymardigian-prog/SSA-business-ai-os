@@ -18,6 +18,7 @@ import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { loadPieceMeasurement } from "@/lib/dashboards/piece-load";
 import type { PiecePerformance } from "@/lib/dashboards/piece-performance";
 import type { ContentPostStatus } from "@/lib/types/database";
+import { connectedPlatforms } from "./connection";
 import { authorshipLine } from "./classification";
 import type { PublicationSummary } from "./detail";
 import type { EditorPermissions } from "./editor";
@@ -108,7 +109,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       supabase
         .from("social_posts")
         .select(
-          "platform, status, scheduled_at, published_at, url, last_error, last_error_kind, attempts, warning, actual_visibility",
+          "platform, status, scheduled_at, published_at, url, origin, last_error, last_error_kind, attempts, warning, actual_visibility",
         )
         .eq("content_post_id", postId)
         .is("deleted_at", null)
@@ -239,6 +240,7 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       status: p.status,
       scheduledAt: p.scheduled_at,
       publishedAt: p.published_at,
+      origin: p.origin,
       url: p.url,
       lastError: p.last_error,
       lastErrorKind: p.last_error_kind,
@@ -246,7 +248,16 @@ export async function loadPiece(ctx: PermissionContext, postId: string): Promise
       warning: p.warning,
       actualVisibility: p.actual_visibility,
     })),
-    connected: (accountsRes.data ?? []).map((a) => a.platform as string),
+    // Conectada = cuenta activa CON publicador usable (Contenido v4, C1): la
+    // consulta ya filtra is_active, pero desconectar Zernio deja la cuenta
+    // activa sin publicador, y esa red no esta conectada para nada.
+    connected: connectedPlatforms(
+      (accountsRes.data ?? []).map((a) => ({
+        platform: a.platform as string,
+        is_active: true,
+        default_publisher: a.default_publisher as string | null,
+      })),
+    ),
     automations,
     channelIdByPlatform: Object.fromEntries(
       (accountsRes.data ?? []).map((a) => [
