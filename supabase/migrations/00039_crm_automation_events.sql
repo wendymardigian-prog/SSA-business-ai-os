@@ -295,11 +295,11 @@ GRANT EXECUTE ON FUNCTION public.purge_automation_events(integer) TO service_rol
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'automation-events') THEN
+    PERFORM cron.unschedule('automation-events');
   END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-automation-events') THEN
+    PERFORM cron.unschedule('purge-automation-events');
   END IF;
 END;
 $$;
@@ -307,13 +307,13 @@ $$;
 -- Cada minuto: un contacto nuevo que tiene que recibir un mensaje de
 -- bienvenida no puede esperar un cuarto de hora.
 SELECT cron.schedule(
-  'ssa-cron-automation-events',
+  'automation-events',
   '* * * * *',
   $$SELECT private.call_app_cron('automation-events')$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-automation-events',
+  'purge-automation-events',
   '40 4 * * *',
   $$SELECT public.purge_automation_events(7)$$
 );

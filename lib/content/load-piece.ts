@@ -42,7 +42,7 @@ export interface PiecePost {
   offerId: string | null;
   funnelStage: string | null;
   reference: string | null;
-  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  /** "Ana · creada el 3 oct · editada el 5 oct" (F91). */
   authorship: string | null;
   caption: string | null;
   networks: NetworkEntry[];
@@ -77,7 +77,9 @@ export interface PieceData {
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
   const { workspace, user, supabase, can } = ctx;
   const canUseAi = can("content.ai");
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  // La zona del NEGOCIO: la misma que usa el editor para agendar (A19,
+  // lib/dates.ts) y el tope diario server-side (lib/publishing/schedule-core.ts).
+  const timeZone = workspace.timezone || "UTC";
 
   const { data: post } = await supabase
     .from("content_posts")

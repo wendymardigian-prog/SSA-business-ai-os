@@ -20,7 +20,7 @@ import { dateInTz } from "@/lib/scheduling/time/tz";
 import { Booker } from "@/components/scheduling/booker/booker";
 import type { BookingField, SlotsByDate, UnavailableMessages } from "@/lib/scheduling/types";
 
-export const metadata: Metadata = { title: "Cambiar la fecha", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: { absolute: "Cambiar la fecha" }, robots: { index: false, follow: false } };
 
 export default async function ReagendarPage({
   params,

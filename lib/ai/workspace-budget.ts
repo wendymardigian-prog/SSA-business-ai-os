@@ -19,7 +19,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { evaluateSpend, isTemporaryBlock, workspaceSpendCandidates } from "@/lib/ai/spend";
-import { BUSINESS_TIMEZONE } from "@/lib/dates";
 
 type Db = SupabaseClient<Database>;
 
@@ -63,7 +62,7 @@ export async function withinWorkspaceBudget(
     dailyUsd: workspace?.ai_daily_cost_limit_usd,
     monthlyUsd: workspace?.ai_monthly_cost_limit_usd,
     now,
-    timeZone: workspace?.timezone || BUSINESS_TIMEZONE,
+    timeZone: workspace?.timezone || "UTC",
   });
   // Sin topes configurados no hay nada que chequear.
   if (candidates.length === 0) return { allowed: true };

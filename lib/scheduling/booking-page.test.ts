@@ -65,9 +65,9 @@ describe("inviteeActions", () => {
 
 describe("cancelledByText", () => {
   it("dice quien cancelo", () => {
-    expect(cancelledByText({ cancelled_by_type: "invitee" }, "Wendy")).toBe("La cancelaste vos.");
-    expect(cancelledByText({ cancelled_by_type: "host" }, "Wendy")).toBe("La canceló Wendy.");
-    expect(cancelledByText({ cancelled_by_type: "system" }, "Wendy")).toBe("La canceló el sistema.");
-    expect(cancelledByText({ cancelled_by_type: null }, "Wendy")).toBe("Está cancelada.");
+    expect(cancelledByText({ cancelled_by_type: "invitee" }, "Ana")).toBe("La cancelaste vos.");
+    expect(cancelledByText({ cancelled_by_type: "host" }, "Ana")).toBe("La canceló Ana.");
+    expect(cancelledByText({ cancelled_by_type: "system" }, "Ana")).toBe("La canceló el sistema.");
+    expect(cancelledByText({ cancelled_by_type: null }, "Ana")).toBe("Está cancelada.");
   });
 });

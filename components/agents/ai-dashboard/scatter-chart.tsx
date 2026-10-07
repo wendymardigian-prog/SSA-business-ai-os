@@ -47,10 +47,12 @@ function jitter(id: string): number {
 export function ScatterChart({
   rows,
   domain,
+  timeZone,
 }: {
   rows: ScatterRunRow[];
   /** El mismo rango de tiempo que la pestaña Barras, para que las dos cuenten la misma historia. */
   domain: { fromMs: number; toMs: number };
+  timeZone: string;
 }) {
   const points = useMemo(() => buildScatterPoints(rows), [rows]);
   const logDom = useMemo(() => logDomain(points.filter((p) => p.lane === "cost").map((p) => p.costUsd as number)), [points]);
@@ -94,7 +96,7 @@ export function ScatterChart({
 
         {dateTicks.map((ms, i) => (
           <text key={i} x={xOf(ms)} y={dateY} textAnchor={i === 0 ? "start" : i === dateTicks.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[11px]">
-            {formatCivilShort(civilDate(new Date(ms), "America/Costa_Rica"))}
+            {formatCivilShort(civilDate(new Date(ms), timeZone))}
           </text>
         ))}
 
@@ -104,7 +106,7 @@ export function ScatterChart({
           const r = pointRadius(p.totalTokens, maxTokens);
           const color = p.ok ? "var(--good)" : "var(--bad)";
           const costText = p.lane === "cost" ? formatUsd(p.costUsd) : p.costUsd === 0 ? "sin costo (sin uso que facturar)" : "sin precio cargado";
-          const when = new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Costa_Rica" }).format(p.createdAtMs);
+          const when = new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", timeStyle: "short", timeZone }).format(p.createdAtMs);
           const title = `${p.ok ? "Terminó bien" : "Terminó con error"} · ${seriesLabel(seriesKeyFor(p.source))} · ${RUN_STATUS_LABELS[p.status] ?? p.status} · ${costText} · ${when}`;
           return (
             <a key={p.id} href={`/dashboard/agents/runs/${p.id}`} aria-label={title}>

@@ -37,7 +37,7 @@ export interface BoardIdea {
   createdAt: string | null;
   updatedAt: string | null;
   authorName: string | null;
-  /** "Wendy · creada el 3 oct · editada el 5 oct", ya armada (F91). */
+  /** "Ana · creada el 3 oct · editada el 5 oct", ya armada (F91). */
   authorship: string | null;
 }
 

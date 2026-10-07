@@ -145,13 +145,13 @@ REVOKE ALL ON FUNCTION private.alert_draft_windows() FROM PUBLIC, anon, authenti
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-draft-window-alerts') THEN
-    PERFORM cron.unschedule('ssa-cron-draft-window-alerts');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'draft-window-alerts') THEN
+    PERFORM cron.unschedule('draft-window-alerts');
   END IF;
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-draft-window-alerts',
+  'draft-window-alerts',
   '*/5 * * * *',
   $$SELECT private.alert_draft_windows()$$
 );

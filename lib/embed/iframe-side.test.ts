@@ -2,7 +2,7 @@
  * El lado de adentro del embed (F41).
  *
  * Lo que más importa acá es lo que NO pasa: sin origen declarado no sale
- * ningún mensaje, y un `ssa:ui` de otro origen se ignora.
+ * ningún mensaje, y un `agenda:ui` de otro origen se ignora.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -55,7 +55,7 @@ describe("connectIframeSide", () => {
     side.ready();
     expect(posts).toHaveLength(1);
     expect(posts[0].origin).toBe("https://cliente.com");
-    expect(posts[0].message).toMatchObject({ source: EMBED_MESSAGE_SOURCE, type: "ssa:loaded" });
+    expect(posts[0].message).toMatchObject({ source: EMBED_MESSAGE_SOURCE, type: "agenda:loaded" });
   });
 
   it("sin origen declarado no manda nada (nunca postMessage a *)", () => {
@@ -63,7 +63,7 @@ describe("connectIframeSide", () => {
     const side = connectIframeSide({ window: win, parentOrigin: null });
     side.ready();
     side.sendHeight(400);
-    side.emit("ssa:bookingSuccessful", { uid: "abc" });
+    side.emit("agenda:bookingSuccessful", { uid: "abc" });
     expect(posts).toHaveLength(0);
   });
 
@@ -84,19 +84,19 @@ describe("connectIframeSide", () => {
     expect(posts).toHaveLength(0);
   });
 
-  it("acepta ssa:ui del origen declarado", () => {
+  it("acepta agenda:ui del origen declarado", () => {
     const { win, fire } = fakeWindow();
     const onUi = vi.fn();
     connectIframeSide({ window: win, parentOrigin: "https://cliente.com", onUi });
-    fire({ source: EMBED_MESSAGE_SOURCE, type: "ssa:ui", namespace: "", payload: { theme: "dark" } }, "https://cliente.com");
+    fire({ source: EMBED_MESSAGE_SOURCE, type: "agenda:ui", namespace: "", payload: { theme: "dark" } }, "https://cliente.com");
     expect(onUi).toHaveBeenCalledWith({ theme: "dark" });
   });
 
-  it("ignora ssa:ui de otro origen", () => {
+  it("ignora agenda:ui de otro origen", () => {
     const { win, fire } = fakeWindow();
     const onUi = vi.fn();
     connectIframeSide({ window: win, parentOrigin: "https://cliente.com", onUi });
-    fire({ source: EMBED_MESSAGE_SOURCE, type: "ssa:ui", namespace: "", payload: { theme: "dark" } }, "https://atacante.com");
+    fire({ source: EMBED_MESSAGE_SOURCE, type: "agenda:ui", namespace: "", payload: { theme: "dark" } }, "https://atacante.com");
     expect(onUi).not.toHaveBeenCalled();
   });
 
@@ -104,7 +104,7 @@ describe("connectIframeSide", () => {
     const { win, fire } = fakeWindow();
     const onUi = vi.fn();
     connectIframeSide({ window: win, parentOrigin: "https://cliente.com", onUi });
-    fire({ type: "ssa:ui", payload: { theme: "dark" } }, "https://cliente.com");
+    fire({ type: "agenda:ui", payload: { theme: "dark" } }, "https://cliente.com");
     fire("hola", "https://cliente.com");
     expect(onUi).not.toHaveBeenCalled();
   });
@@ -114,14 +114,14 @@ describe("connectIframeSide", () => {
     const onUi = vi.fn();
     const side = connectIframeSide({ window: win, parentOrigin: "https://cliente.com", onUi });
     side.stop();
-    fire({ source: EMBED_MESSAGE_SOURCE, type: "ssa:ui", namespace: "", payload: {} }, "https://cliente.com");
+    fire({ source: EMBED_MESSAGE_SOURCE, type: "agenda:ui", namespace: "", payload: {} }, "https://cliente.com");
     expect(onUi).not.toHaveBeenCalled();
   });
 
   it("el evento de agenda creada viaja con el espacio de nombres", () => {
     const { win, posts } = fakeWindow();
     const side = connectIframeSide({ window: win, parentOrigin: "https://cliente.com", namespace: "ventas" });
-    side.emit("ssa:bookingSuccessful", { uid: "abc", startTime: "2026-10-01T15:00:00.000Z" });
-    expect(posts[0].message).toMatchObject({ type: "ssa:bookingSuccessful", namespace: "ventas" });
+    side.emit("agenda:bookingSuccessful", { uid: "abc", startTime: "2026-10-01T15:00:00.000Z" });
+    expect(posts[0].message).toMatchObject({ type: "agenda:bookingSuccessful", namespace: "ventas" });
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The platforms ZernFlow can drive. Zernio itself connects many more (TikTok,
+ * The platforms the app can drive. Zernio itself connects many more (TikTok,
  * YouTube, LinkedIn, ads accounts...), but only these expose the DM inbox that
  * flows, sequences and broadcasts are built on, so account sync skips the rest.
  */

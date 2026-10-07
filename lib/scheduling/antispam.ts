@@ -4,10 +4,14 @@
  *
  * La IP nunca se guarda en texto: va como sha256 con sal. Sin sal propia
  * (`RATE_LIMIT_SALT`) se deriva de `CRON_SECRET`, que es un secreto que ya
- * existe y no sale de la app.
+ * existe y no sale de la app. Sin ninguna de las dos (no deberia pasar en
+ * produccion), se genera una al azar en este proceso: sigue funcionando,
+ * pero cambia en cada reinicio y no coincide entre instancias, asi que el
+ * tope por IP deja de ser preciso con mas de un servidor. Se avisa fuerte
+ * por log para que se note y se configure RATE_LIMIT_SALT.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 
@@ -23,8 +27,19 @@ export const LIMITS = {
 
 export type RateLimitAction = keyof typeof LIMITS;
 
+let fallbackSalt: string | null = null;
+
 function salt(): string {
-  return process.env.RATE_LIMIT_SALT?.trim() || process.env.CRON_SECRET?.trim() || "ssa-scheduling";
+  const configured = process.env.RATE_LIMIT_SALT?.trim() || process.env.CRON_SECRET?.trim();
+  if (configured) return configured;
+  if (!fallbackSalt) {
+    console.error(
+      "[antispam] Falta RATE_LIMIT_SALT y CRON_SECRET: se genero una sal al azar para este proceso. " +
+        "El tope por IP sigue funcionando, pero no es estable entre reinicios ni entre instancias. Configura RATE_LIMIT_SALT."
+    );
+    fallbackSalt = randomBytes(32).toString("hex");
+  }
+  return fallbackSalt;
 }
 
 /** El hash de una IP. Nunca se devuelve la IP. */

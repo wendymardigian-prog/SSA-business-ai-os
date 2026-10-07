@@ -173,11 +173,11 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-jobs',
-    'ssa-cron-sequences',
-    'ssa-cron-whatsapp-health',
-    'ssa-cron-purge-deleted',
-    'ssa-cron-purge-pg-net'
+    'jobs',
+    'sequences',
+    'whatsapp-health',
+    'purge-deleted',
+    'purge-pg-net'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -188,14 +188,14 @@ $$;
 
 -- Despierta las sesiones de flow dormidas (nodos Delay) y manda los broadcasts.
 SELECT cron.schedule(
-  'ssa-cron-jobs',
+  'jobs',
   '* * * * *',
   $$SELECT private.call_app_cron('jobs')$$
 );
 
 -- Avanza los pasos de las secuencias.
 SELECT cron.schedule(
-  'ssa-cron-sequences',
+  'sequences',
   '* * * * *',
   $$SELECT private.call_app_cron('sequences')$$
 );
@@ -204,7 +204,7 @@ SELECT cron.schedule(
 -- nada, porque no hay ningun canal de Evolution: queda agendado para que el
 -- dia que se conecte el numero no haya que acordarse de esto.
 SELECT cron.schedule(
-  'ssa-cron-whatsapp-health',
+  'whatsapp-health',
   '*/5 * * * *',
   $$SELECT private.call_app_cron('whatsapp-health')$$
 );
@@ -212,13 +212,13 @@ SELECT cron.schedule(
 -- La purga es puro SQL: se llama directo, sin dar la vuelta por HTTP. La ruta
 -- /api/cron/purge-deleted se conserva para poder correrla a mano.
 SELECT cron.schedule(
-  'ssa-cron-purge-deleted',
+  'purge-deleted',
   '0 4 * * *',
   $$SELECT public.purge_soft_deleted(30)$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 4 * * *',
   $$SELECT private.purge_pg_net_responses(3)$$
 );

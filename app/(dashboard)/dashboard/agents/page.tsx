@@ -14,6 +14,7 @@ import { AiPeriodControl } from "@/components/agents/ai-dashboard/period-control
 import { AiDashboardSkeleton } from "@/components/agents/ai-dashboard/dashboard-panel";
 import { AiDashboardSection } from "@/components/agents/ai-dashboard/section";
 import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Agentes (F24): lista de agentes con su estado.
@@ -39,7 +40,7 @@ export default async function AgentsPage({
   const service = await createServiceClient();
   const [agents, permissions] = await Promise.all([loadWorkspaceAgents(service, workspace.id), getPermissionContext()]);
   const canViewCosts = permissions.can("ai_costs.view");
-  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   let filter = null;
   if (canViewCosts) {

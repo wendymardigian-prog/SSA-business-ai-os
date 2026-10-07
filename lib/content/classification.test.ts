@@ -129,20 +129,20 @@ describe("autor y fechas (F91: visibles en la idea, la pieza, el kanban y la lis
 
   it("dice quien la creo y cuando", () => {
     expect(
-      authorshipLine({ ...base, authorName: "Wendy", createdAt: "2026-10-03T15:00:00Z", updatedAt: "2026-10-03T15:00:00Z" }),
-    ).toBe("Wendy · creada el 3 oct");
+      authorshipLine({ ...base, authorName: "Ana", createdAt: "2026-10-03T15:00:00Z", updatedAt: "2026-10-03T15:00:00Z" }),
+    ).toBe("Ana · creada el 3 oct");
   });
 
   it("si se edito despues, suma la ultima edicion", () => {
     expect(
-      authorshipLine({ ...base, authorName: "Wendy", createdAt: "2026-10-03T15:00:00Z", updatedAt: "2026-10-05T15:00:00Z" }),
-    ).toBe("Wendy · creada el 3 oct · editada el 5 oct");
+      authorshipLine({ ...base, authorName: "Ana", createdAt: "2026-10-03T15:00:00Z", updatedAt: "2026-10-05T15:00:00Z" }),
+    ).toBe("Ana · creada el 3 oct · editada el 5 oct");
   });
 
   it("una edicion el mismo dia que la creacion no se repite", () => {
     expect(
-      authorshipLine({ ...base, authorName: "Wendy", createdAt: "2026-10-03T14:00:00Z", updatedAt: "2026-10-03T18:00:00Z" }),
-    ).toBe("Wendy · creada el 3 oct");
+      authorshipLine({ ...base, authorName: "Ana", createdAt: "2026-10-03T14:00:00Z", updatedAt: "2026-10-03T18:00:00Z" }),
+    ).toBe("Ana · creada el 3 oct");
   });
 
   it("sin autor conocido igual muestra las fechas", () => {
@@ -162,7 +162,7 @@ describe("autor y fechas (F91: visibles en la idea, la pieza, el kanban y la lis
   });
 
   it("una fecha rota no rompe", () => {
-    expect(authorshipLine({ ...base, authorName: "Wendy", createdAt: "no es fecha", updatedAt: null })).toBe("Wendy");
+    expect(authorshipLine({ ...base, authorName: "Ana", createdAt: "no es fecha", updatedAt: null })).toBe("Ana");
   });
 });
 

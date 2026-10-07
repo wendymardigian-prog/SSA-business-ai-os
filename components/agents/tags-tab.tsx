@@ -14,7 +14,7 @@ import { Notice, Section } from "./fields";
 /**
  * Pestana Etiquetas (Bloque 2d-A): que etiquetas ademas de clasificar tienen
  * efecto sobre el agente. Pensado para `es-conocido` (contactos personales de
- * Wendy) y `no-es-lead` (autorespuestas de otras empresas, spam), pero vale
+ * Ana) y `no-es-lead` (autorespuestas de otras empresas, spam), pero vale
  * para cualquiera: es una sola regla, no dos casos especiales.
  *
  * El efecto lo aplica la base (00073), sea quien sea que ponga la etiqueta:

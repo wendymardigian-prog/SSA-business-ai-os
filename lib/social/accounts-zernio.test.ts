@@ -26,8 +26,8 @@ const WS = "ws-1";
 const zernioAccount = (over: Record<string, unknown>) => ({
   _id: "zr-ig",
   platform: "instagram",
-  username: "wendymardigian",
-  displayName: "Wendy Mardigian",
+  username: "cuenta_demo",
+  displayName: "Ana Pérez",
   isActive: true,
   profilePicture: null,
   profileUrl: null,
@@ -50,7 +50,7 @@ describe("computeAccounts con la lista de Zernio (F73)", () => {
       sources({
         zernioAccounts: [
           zernioAccount({}),
-          zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" }),
+          zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" }),
         ],
         zernioChannels: [{ id: "ch-ig", platform: "instagram", late_account_id: "zr-ig", username: null, display_name: null }],
       }),
@@ -93,13 +93,13 @@ describe("perfil real de la cuenta (F75)", () => {
     const out = computeAccounts(
       sources({
         zernioAccounts: [
-          zernioAccount({ profilePicture: "https://img.test/ig.jpg", profileUrl: "https://instagram.com/wendymardigian" }),
+          zernioAccount({ profilePicture: "https://img.test/ig.jpg", profileUrl: "https://instagram.com/cuenta_demo" }),
         ],
       }),
     );
     const ig = out.accounts[0];
     expect(ig.avatarUrl).toBe("https://img.test/ig.jpg");
-    expect(ig.profileUrl).toBe("https://instagram.com/wendymardigian");
+    expect(ig.profileUrl).toBe("https://instagram.com/cuenta_demo");
     expect(ig.profileSynced).toBe(true);
   });
 
@@ -126,8 +126,8 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
         provider: "zernio",
         late_account_id: "zr-ig",
         is_active: true,
-        username: "wendymardigian",
-        display_name: "Wendy",
+        username: "cuenta_demo",
+        display_name: "Ana",
       },
     ],
     oauth_connections: [],
@@ -138,7 +138,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   it("crea Instagram y TikTok, y dos corridas no duplican filas", async () => {
     listAccounts.mockResolvedValue({
       data: {
-        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" })],
         hasAnalyticsAccess: true,
       },
     });
@@ -158,7 +158,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   it("avisa que cuentas son nuevas: la primera vez si, la segunda no", async () => {
     listAccounts.mockResolvedValue({
       data: {
-        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" })],
         hasAnalyticsAccess: true,
       },
     });
@@ -175,7 +175,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   it("una red que estaba desactivada y vuelve cuenta como nueva; la activa no", async () => {
     listAccounts.mockResolvedValue({
       data: {
-        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" })],
         hasAnalyticsAccess: true,
       },
     });
@@ -215,8 +215,8 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
       ...seed(),
       social_accounts: [
         {
-          id: "sa-1", workspace_id: WS, platform: "instagram", external_id: "zr-ig", username: "wendymardigian",
-          display_name: "Wendy", channel_id: "ch-ig", is_active: true, default_publisher: "zernio",
+          id: "sa-1", workspace_id: WS, platform: "instagram", external_id: "zr-ig", username: "cuenta_demo",
+          display_name: "Ana", channel_id: "ch-ig", is_active: true, default_publisher: "zernio",
           publishers: [{ publisher: "zernio", account_ref: "zr-ig", status: "available", status_reason: null, verified_at: null, manually_enabled: false }],
         },
       ],
@@ -246,7 +246,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
 
       expect(db.rows("social_accounts")).toHaveLength(1);
       const ig = db.rows("social_accounts")[0];
-      expect(ig).toMatchObject({ username: "wendymardigian", display_name: "Wendy", channel_id: "ch-ig", external_id: "zr-ig" });
+      expect(ig).toMatchObject({ username: "cuenta_demo", display_name: "Ana", channel_id: "ch-ig", external_id: "zr-ig" });
     });
 
     it("sin clave NO se arma una cuenta nueva desde los canales", async () => {

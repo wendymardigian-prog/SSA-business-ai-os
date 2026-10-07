@@ -1,7 +1,7 @@
 /**
- * Respaldo del embed (F58): si el iframe no avisa `ssa:loaded` en 10
+ * Respaldo del embed (F58): si el iframe no avisa `agenda:loaded` en 10
  * segundos (o falla), se reemplaza por el mensaje `load_error` que viaja en
- * `data-ssa-fallback`. Como el servidor puede estar caído, todo lo que hace
+ * `data-agenda-fallback`. Como el servidor puede estar caído, todo lo que hace
  * falta para pintarlo está acá y en el snippet; nada se descarga.
  *
  * Sin DOM real en los tests: el vigía recibe los temporizadores y el
@@ -22,7 +22,7 @@ export interface WatchdogTimers {
 
 export interface LoadWatchdog {
   start(): void;
-  /** Llamar cuando llega `ssa:loaded`. */
+  /** Llamar cuando llega `agenda:loaded`. */
   loaded(): void;
   /** Llamar si el iframe falla antes del tiempo (error de carga). */
   fail(): void;
@@ -81,7 +81,7 @@ export function createLoadWatchdog(options: {
   };
 }
 
-/** Lee `data-ssa-fallback`. Si falta o está roto (código viejo), el texto por defecto. */
+/** Lee `data-agenda-fallback`. Si falta o está roto (código viejo), el texto por defecto. */
 export function parseFallbackAttr(raw: string | null | undefined): FallbackPayload {
   const fallback: FallbackPayload = {
     title: DEFAULT_UNAVAILABLE_MESSAGES.load_error.title,
@@ -150,7 +150,7 @@ export function renderFallback(
   container.textContent = "";
 
   const root = doc.createElement("div");
-  root.setAttribute("data-ssa-fallback-view", "load_error");
+  root.setAttribute("data-agenda-fallback-view", "load_error");
   root.setAttribute("role", "status");
   setStyle(root, {
     fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",

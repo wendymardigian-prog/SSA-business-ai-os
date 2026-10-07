@@ -9,6 +9,7 @@ import { buildAnalysisContext, hasSomethingToAnalyze, SYSTEM_PROMPT } from "@/li
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
 import { isPeriodPreset, PERIOD_LABELS, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * "Analizar con IA" el rendimiento de los anuncios (F61).
@@ -54,11 +55,13 @@ export async function analyzeAdsWithAi(input: {
     (a) => a.ad_account_id === resolved.adAccountId,
   );
 
-  const range = resolvePeriod(period, new Date(), workspace.timezone || "America/Costa_Rica");
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  const range = resolvePeriod(period, new Date(), timeZone);
   const rows = await loadAdsInsights(supabase, {
     workspaceId: workspace.id,
     adAccountId: resolved.adAccountId,
     period: range,
+    timeZone,
   });
 
   // Sin gasto no hay nada que analizar: gastar una llamada al modelo para
@@ -100,7 +103,7 @@ export async function analyzeAdsWithAi(input: {
   try {
     const result = await generateText({
       model: model.model,
-      system: SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT(),
       prompt: input.question ? `${context}\n\nPREGUNTA: ${input.question}` : context,
     });
 

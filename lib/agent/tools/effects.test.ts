@@ -59,14 +59,14 @@ describe("etiquetar: solo la lista blanca, nunca crea", () => {
     const db = world({
       tags: [
         { id: "t-conocido", workspace_id: "ws-1", name: "es-conocido", disables_agent: true, assigns_to: null },
-        { id: "t-asigna", workspace_id: "ws-1", name: "vip-wendy", disables_agent: false, assigns_to: "u-1" },
+        { id: "t-asigna", workspace_id: "ws-1", name: "vip-ana", disables_agent: false, assigns_to: "u-1" },
         { id: "t-interesado", workspace_id: "ws-1", name: "Interesado", disables_agent: false, assigns_to: null },
       ],
     });
     const r = await applyTags(
       ctxFor(db),
       { allowedTagIds: ["t-conocido", "t-asigna", "t-interesado"], canRemove: false },
-      { add: ["es-conocido", "vip-wendy", "Interesado"], remove: [] },
+      { add: ["es-conocido", "vip-ana", "Interesado"], remove: [] },
     );
     expect(db.rows("contact_tags").map((t) => t.tag_id)).toEqual(["t-interesado"]);
     expect(r.message).toContain("es-conocido");

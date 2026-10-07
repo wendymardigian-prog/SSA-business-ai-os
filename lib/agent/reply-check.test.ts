@@ -39,7 +39,7 @@ describe("verificación antes de responder (F5)", () => {
 
   it("2. una respuesta de ManyChat que sólo aparece al refrescar: abstiene sin tokens", async () => {
     const w = turnWorld();
-    w.addInbound("si enviamelo", 0);
+    w.addInbound("quiero mas info", 0);
     w.clock.ms = T0 + 75_000;
     // El refresco del momento 1 trae el saliente de ManyChat (a los 3 s).
     w.deps.refresh = async () => {

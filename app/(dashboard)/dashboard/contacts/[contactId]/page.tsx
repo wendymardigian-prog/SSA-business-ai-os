@@ -38,6 +38,7 @@ import {
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { PageHeader } from "@/components/page-header";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Ficha de contacto (F14).
@@ -147,10 +148,11 @@ export default async function ContactDetailPage({
   const contact = contactRes.data;
   if (!contact) notFound();
 
+  const viewerTimezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
   const attributionView = buildAttributionView({
     attribution: contact.attribution,
     rows: touchesRes.data ?? [],
-    timeZone: (workspace as { timezone?: string }).timezone || "America/Costa_Rica",
+    timeZone: viewerTimezone,
   });
 
   const members = await getWorkspaceMembers(workspace.id);
@@ -175,7 +177,7 @@ export default async function ContactDetailPage({
     .eq("workspace_id", workspace.id)
     .eq("user_id", user.id)
     .maybeSingle();
-  const bookingTimezone = schedulingProfile?.timezone ?? (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  const bookingTimezone = schedulingProfile?.timezone ?? (workspace as { timezone?: string }).timezone ?? "UTC";
   const bookingTimeFormat = schedulingProfile?.time_format ?? "24h";
 
   const assignedTagIds = (contact.contact_tags ?? []).map(

@@ -1,7 +1,7 @@
 -- ============================================================
 -- MIGRACION 00022 — MODELO DE CONTACTO EXTENDIDO (F9 + F10)
 -- ============================================================
--- ZernFlow trae un contacto minimo: display_name, email, avatar_url,
+-- El sistema original trae un contacto minimo: display_name, email, avatar_url,
 -- is_subscribed, last_interaction_at y metadata. Para un CRM de servicios
 -- digitales falta todo lo demas: telefono, redes, asignaciones, seguimiento,
 -- atribucion y borrado logico.

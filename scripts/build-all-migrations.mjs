@@ -20,7 +20,7 @@ const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "supa
 const BUNDLE = "ALL_MIGRATIONS.sql";
 
 const HEADER = `-- =============================================
--- ZERNFLOW - COMBINED MIGRATIONS
+-- COMBINED MIGRATIONS
 -- Generated from supabase/migrations/*.sql, in order.
 -- DO NOT EDIT BY HAND: run \`node scripts/build-all-migrations.mjs\`
 -- Paste this entire file into Supabase SQL Editor

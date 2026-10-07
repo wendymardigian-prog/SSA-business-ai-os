@@ -358,7 +358,7 @@ describe("coexistencia: nunca respuesta doble", () => {
     w.clock.ms = T0 + 45_000;
     w.setModel(async () => {
       // El operador responde desde la bandeja: se guarda su mensaje y se apaga el toggle.
-      w.db.rows("messages").push({ id: "human-1", conversation_id: "cv-1", direction: "outbound", text: "Hola, soy Wendy", created_at: at(62), sent_by_user_id: "user-1", sent_by_flow_id: null, sent_by_agent_id: null, agent_run_id: null });
+      w.db.rows("messages").push({ id: "human-1", conversation_id: "cv-1", direction: "outbound", text: "Hola, soy Ana", created_at: at(62), sent_by_user_id: "user-1", sent_by_flow_id: null, sent_by_agent_id: null, agent_run_id: null });
       w.db.rows("conversations")[0].agent_enabled = false;
       return { text: "Hola!", totalUsage: { inputTokens: 10, outputTokens: 2 } };
     });

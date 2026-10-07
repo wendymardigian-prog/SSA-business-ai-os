@@ -9,7 +9,7 @@ import type { AiKpiCards as AiKpiCardsData } from "@/lib/agent/ai-dashboard/kpis
 import type { SpendByDayRow } from "@/lib/agent/ai-dashboard/spend-chart";
 import type { SystemStatus } from "@/lib/agent/ai-dashboard/system-status";
 
-const STORAGE_KEY = "ssa.ai.dashboard.collapsed";
+const STORAGE_KEY = "app.ai.dashboard.collapsed";
 
 function readCollapsed(): boolean {
   try {

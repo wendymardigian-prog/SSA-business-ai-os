@@ -200,7 +200,7 @@ export function buildEventBody(input: CreateEventInput): Record<string, unknown>
     description: input.description,
     start: { dateTime: input.startUtc, timeZone: input.timeZone },
     end: { dateTime: input.endUtc, timeZone: input.timeZone },
-    extendedProperties: { private: { ssaBookingUid: input.bookingUid } },
+    extendedProperties: { private: { bookingUid: input.bookingUid } },
   };
   if (input.attendeeEmail) {
     body.attendees = [{ email: input.attendeeEmail, ...(input.attendeeName ? { displayName: input.attendeeName } : {}) }];

@@ -4,7 +4,13 @@
  * HTML simple a proposito: los clientes de email rompen casi todo el CSS
  * moderno, asi que se usan estilos en linea y una sola columna. Sin imagenes
  * remotas (muchos clientes las bloquean por defecto).
+ *
+ * El boton usa el color de marca (NEXT_PUBLIC_BRAND_COLOR, lib/brand.ts) si
+ * el cliente configuro uno: un email no entiende variables CSS, asi que el
+ * hex se resuelve aca, en el momento de armar el HTML, no en el navegador.
  */
+
+import { brandColorHex } from "@/lib/brand";
 
 interface EmailContent {
   subject: string;
@@ -32,7 +38,8 @@ function layout(body: string): string {
 }
 
 function button(url: string, label: string): string {
-  return `<a href="${escapeHtml(url)}" style="display:inline-block;margin:24px 0;padding:12px 20px;background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(label)}</a>
+  const background = brandColorHex() ?? "#111827";
+  return `<a href="${escapeHtml(url)}" style="display:inline-block;margin:24px 0;padding:12px 20px;background:${background};color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">${escapeHtml(label)}</a>
     <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:0;">Si el boton no funciona, copia y pega este link en tu navegador:<br />
       <span style="color:#374151;word-break:break-all;">${escapeHtml(url)}</span>
     </p>`;

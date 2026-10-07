@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronUp, LogOut, Moon, Sun } from "lucide-react";
+import { ChevronUp, Clock, LogOut, Moon, Sun } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useHtmlClass } from "@/components/use-html-class";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
+import { setViewerTimezone } from "@/lib/actions/user-preferences";
+import { listTimeZones } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -62,6 +65,17 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dark = useHtmlClass("dark");
+  const viewerTimezone = useViewerTimezone();
+  const [pendingTz, startTz] = useTransition();
+  const zones = listTimeZones();
+
+  function changeTimezone(next: string) {
+    if (next === viewerTimezone) return;
+    startTz(async () => {
+      await setViewerTimezone(next);
+      router.refresh();
+    });
+  }
 
   const nombre = nombreDe(user);
   // Sin nombre, el email pasa a ser el renglon principal: mostrar un renglon
@@ -146,6 +160,24 @@ export function ProfileMenu({
             {dark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
             {dark ? "Light mode" : "Dark mode"}
           </button>
+
+          <label className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground md:min-h-0">
+            <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="sr-only">Zona horaria</span>
+            <select
+              value={viewerTimezone}
+              disabled={pendingTz}
+              onChange={(e) => changeTimezone(e.target.value)}
+              className="min-w-0 flex-1 truncate bg-transparent outline-none disabled:opacity-60"
+              title="Zona horaria"
+            >
+              {zones.map((z) => (
+                <option key={z} value={z}>
+                  {z.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className="my-1 border-t border-border" />
 

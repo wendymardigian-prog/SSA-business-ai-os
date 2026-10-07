@@ -9,7 +9,7 @@ import { initialsOf } from "@/lib/dashboards/chat/team-rows";
  *
  * Los valores son los que la funcion SQL reconoce. "Equipo" no es una opcion a
  * proposito: se filtra por persona, no por el grupo, porque la pregunta real es
- * "que hizo Sofia", no "que hizo el equipo junto".
+ * "que hizo Ana", no "que hizo el equipo junto".
  */
 
 export interface AuthorMember {

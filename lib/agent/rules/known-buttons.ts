@@ -1,27 +1,16 @@
 import { normalizeForGrouping } from "@/lib/text/normalize";
 
 /**
- * Textos de botón conocidos para sembrar (§10.6, datos reales al 25/09/2026,
- * verificados contra la base: los 12 coinciden exactamente).
+ * Textos de botón conocidos, escritos a mano (§10.6).
  *
- * Los usa la condición `inbound.is_known_button` (F8). En el Bloque 4 la fuente
- * pasa a ser `message_texts.is_button`; esta lista es la que la siembra (F19) y
- * la que se usa mientras la tabla no exista.
+ * Los usa la condición `inbound.is_known_button` (F8). La fuente real es
+ * `message_texts.is_button` (F19, `lib/agent/rules/button-texts.ts`, conectada
+ * en `lib/agent/runner.ts`): cada negocio tiene sus propios textos de botón,
+ * según su propia campaña, y se marcan desde Ajustes → Tareas. Esta lista es
+ * un respaldo que se suma a esa fuente, no la reemplaza — vacía por defecto
+ * para no sembrar la campaña de ningún cliente en particular.
  */
-export const KNOWN_BUTTON_TEXTS: string[] = [
-  "si enviamelo",
-  "quiero aprender",
-  "tengo un negocio",
-  "tengo una base",
-  "si quiero a clase",
-  "si quiero la clase",
-  "generar contenido",
-  "empiezo de 0",
-  "automatizar todo",
-  "equipo ventas ia",
-  "agentes",
-  "responder mensajes",
-];
+export const KNOWN_BUTTON_TEXTS: string[] = [];
 
 const NORMALIZED = new Set(KNOWN_BUTTON_TEXTS.map((t) => normalizeForGrouping(t)));
 

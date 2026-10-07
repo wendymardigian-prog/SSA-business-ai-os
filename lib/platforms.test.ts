@@ -18,7 +18,7 @@ describe("platform allowlist", () => {
   it("accepts supported platforms and rejects everything else", () => {
     expect(isSupportedPlatform("whatsapp")).toBe(true);
     expect(isSupportedPlatform("instagram")).toBe(true);
-    // Zernio connects these, ZernFlow has no inbox for them.
+    // Zernio connects these, the app has no inbox for them.
     expect(isSupportedPlatform("tiktok")).toBe(false);
     expect(isSupportedPlatform("youtube")).toBe(false);
     expect(isSupportedPlatform(undefined)).toBe(false);

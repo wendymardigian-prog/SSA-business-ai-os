@@ -5,6 +5,7 @@ import { parseClassificationParams } from "@/lib/dashboards/content-params";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -36,16 +37,16 @@ export default async function ContentDashboardPage({
   // Agrupar y filtrar por la clasificacion de la pieza (F105).
   const { group, filters } = parseClassificationParams(sp);
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
   const now = new Date();
   const range = resolvePeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
 
   const [current, previous, accountsRes] = await Promise.all([
-    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range, platform, filters }),
+    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range, platform, filters, timeZone }),
     // El periodo anterior con los mismos filtros: si no, "▲ 40%" compararia
     // una oferta contra todo el contenido.
-    loadContentDashboard(supabase, { workspaceId: workspace.id, period: before, platform, filters }),
+    loadContentDashboard(supabase, { workspaceId: workspace.id, period: before, platform, filters, timeZone }),
     supabase
       .from("social_accounts")
       .select("platform")
@@ -78,6 +79,7 @@ export default async function ContentDashboardPage({
       filters={filters}
       filterOptions={current.filterOptions}
       canRefresh={role === "owner" || role === "admin"}
+      timeZone={timeZone}
     />
   );
 }

@@ -1,0 +1,23 @@
+-- ============================================================
+-- 00122_workspace_timezone_default_utc.sql
+--
+-- El default de workspaces.timezone era 'America/Costa_Rica' (00075): tenia
+-- sentido para un solo negocio, no para un template que se duplica por
+-- cliente. Pasa a 'UTC', neutral.
+--
+-- Esto NO toca el valor de ningun workspace que ya exista (ALTER COLUMN ...
+-- SET DEFAULT solo cambia que valor toma una fila NUEVA sin especificar la
+-- columna): el de un workspace que ya tiene un valor puesto no cambia.
+--
+-- Las funciones RPC de los dashboards (chat_dashboard_trends,
+-- chat_dashboard_agent_weekly, chat_dashboard_drafts, chat_dashboard_numbers,
+-- message_classification_status) tienen el mismo default en su parametro
+-- p_tz. Se deja sin tocar a proposito: la app SIEMPRE pasa p_tz explicito
+-- (verificado), asi que el default no afecta ningun comportamiento real, y
+-- reescribir esas funciones completas en una migracion nueva solo para
+-- cambiar un default sin uso es correr un riesgo real (transcribir mal un
+-- cuerpo de funcion grande) por un beneficio simbolico. Ver
+-- docs/PROGRESS-white-label.md.
+-- ============================================================
+
+ALTER TABLE public.workspaces ALTER COLUMN timezone SET DEFAULT 'UTC';

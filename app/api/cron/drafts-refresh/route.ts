@@ -9,7 +9,7 @@ export const maxDuration = 120;
 /**
  * Momento 3 (F6): refresca contra Zernio las conversaciones con borrador
  * pendiente. Ack inmediato y trabajo en after(): el refresco llama a Zernio y
- * puede tardar. Lo agenda pg_cron cada 5 minutos (ssa-cron-drafts-refresh).
+ * puede tardar. Lo agenda pg_cron cada 5 minutos (drafts-refresh).
  */
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);

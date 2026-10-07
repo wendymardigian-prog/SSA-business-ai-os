@@ -166,7 +166,7 @@ export function NewEventDialog({
             ))}
           </div>
           {locationType === "manual" && (
-            <input value={locationText} onChange={(e) => setLocationText(e.target.value)} maxLength={500} className={`${inputClass} mt-2`} placeholder="Av. Escazú, Torre Lexus, piso 3" />
+            <input value={locationText} onChange={(e) => setLocationText(e.target.value)} maxLength={500} className={`${inputClass} mt-2`} placeholder="Av. Siempre Viva 123, piso 3" />
           )}
         </div>
 

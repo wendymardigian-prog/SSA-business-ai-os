@@ -33,6 +33,9 @@ vi.mock("@/lib/workspace", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 vi.mock("@/lib/auth/guards", () => ({ getAdminContext: async () => null }));
+// No es parte de lo que prueba este archivo (F87, atribucion): se simula para
+// no tener que mockear tambien @/lib/supabase/server#createClient.
+vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 
 // El detector de duplicados usa `.or()`, que la base en memoria no soporta.
 const duplicates = new Set<string>();

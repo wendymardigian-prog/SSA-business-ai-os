@@ -15,7 +15,7 @@ const NOW = new Date("2026-09-30T16:00:00.000Z");
 const START = "2026-10-01T16:00:00.000Z";
 
 const base = {
-  username: "wendy",
+  username: "ana",
   slug: "llamada-de-triaje",
   startUtc: START,
   inviteeTz: "America/Costa_Rica",

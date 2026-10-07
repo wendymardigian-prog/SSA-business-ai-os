@@ -6,7 +6,7 @@ describe("getViewerTimezone (F8)", () => {
     expect(getViewerTimezone({ profileTimezone: "America/Mexico_City", browserTimezone: "Europe/Madrid", workspaceTimezone: "America/Costa_Rica" })).toBe("America/Mexico_City");
     expect(getViewerTimezone({ profileTimezone: null, browserTimezone: "Europe/Madrid", workspaceTimezone: "America/Costa_Rica" })).toBe("Europe/Madrid");
     expect(getViewerTimezone({ workspaceTimezone: "America/Bogota" })).toBe("America/Bogota");
-    expect(getViewerTimezone({})).toBe("America/Costa_Rica");
+    expect(getViewerTimezone({})).toBe("UTC");
   });
   it("una zona invalida se saltea", () => {
     expect(getViewerTimezone({ profileTimezone: "Marte/Olympus", browserTimezone: "America/Lima" })).toBe("America/Lima");

@@ -1253,7 +1253,7 @@ try {
 
   console.log("\n— La media del chat (00102): el bucket chat-media —");
   { // El bucket es privado y su policy mira el workspace del PRIMER segmento
-    // del path. Si estuviera abierta a cualquier autenticado (como en ScaleOS),
+    // del path. Si estuviera abierta a cualquier autenticado (como en un sistema anterior),
     // un usuario de otro negocio escucharia las notas de voz de este.
     //
     // Los chequeos se saltean solos si la 00102 todavia no se aplico: el script

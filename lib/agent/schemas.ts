@@ -72,8 +72,13 @@ export const DEFAULT_FRUSTRATION_PHRASES = [
 
 export const DEFAULT_URGENCY_PHRASES = ["urgente", "emergencia", "ya mismo", "inmediatamente"];
 
-/** Palabra que el agente nunca puede nombrar en su salida (F: guardarrail de salida). */
-export const DEFAULT_BANNED_WORDS = ["ScaleOS"];
+/**
+ * Palabras que el agente nunca puede nombrar en su salida (F: guardarrail de
+ * salida). Vacia por defecto: no hay una palabra que valga para todos los
+ * clientes, cada negocio agrega la suya (su propio nombre, un competidor,
+ * etc.) desde Ajustes.
+ */
+export const DEFAULT_BANNED_WORDS: string[] = [];
 /** Frases de escasez inventada. "N" adentro de una frase = un numero cualquiera. */
 export const DEFAULT_SCARCITY_PHRASES = ["cupos", "lugares", "quedan N", "ultimos", "se llena"];
 

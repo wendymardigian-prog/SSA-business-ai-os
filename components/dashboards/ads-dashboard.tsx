@@ -117,7 +117,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
     {
       key: barMetric,
       label: METRIC_LABELS[barMetric],
-      color: "#6366f1",
+      color: "var(--primary)",
       points: dailySeries(accountRows, barMetric),
     },
   ];

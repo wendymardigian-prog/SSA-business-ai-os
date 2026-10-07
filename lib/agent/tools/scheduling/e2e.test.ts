@@ -179,7 +179,7 @@ describe("guion 4: el agente solo pasa el link", () => {
   it("el link que devuelve es el público del evento", async () => {
     const result = await schedulingSendLinkTool.execute({ input: { event_type_id: EVENT }, config: {}, ctx: ctx({ puede_agendar: false }) });
     expect(result.ok).toBe(true);
-    expect(result.forModel).toContain("/calendario/wendy/llamada-de-triaje");
+    expect(result.forModel).toContain("/calendario/ana/llamada-de-triaje");
   });
 });
 

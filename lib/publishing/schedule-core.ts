@@ -39,8 +39,8 @@ import type { Database, SocialPlatform, SocialPostStatus } from "@/lib/types/dat
  * de comprobar que un post programado se publica.
  */
 
-/** La zona del negocio, para cuando el workspace no tiene una guardada. */
-const DEFAULT_TIME_ZONE = "America/Costa_Rica";
+/** Respaldo neutro, para cuando el contexto no trae la zona del workspace. */
+const DEFAULT_TIME_ZONE = "UTC";
 
 /** El contexto que la accion arma y el nucleo recibe ya resuelto. */
 export interface ScheduleContextInput {

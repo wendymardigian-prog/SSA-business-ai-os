@@ -40,7 +40,7 @@ export function UnifiedDashboard({
     {
       key: "paid",
       label: "Alcance pago",
-      color: "#6366f1",
+      color: "var(--primary)",
       points: view.daily.map((d) => ({ bucket: d.date, value: d.paidReach })),
     },
   ];

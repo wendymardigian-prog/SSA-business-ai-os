@@ -19,6 +19,7 @@
 import { z } from "zod";
 import { funnelStageInfo } from "./classification";
 import { PLATFORM_LIMITS } from "./limits";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 
 /** La voz de marca, de `workspaces.content_copy_settings`. */
 export interface BrandVoice {
@@ -71,12 +72,15 @@ export const copyOutputSchema = z.object({
 
 export type CopyOutput = z.infer<typeof copyOutputSchema>;
 
-export const SYSTEM_PROMPT = [
-  "Sos quien escribe el contenido de este negocio.",
-  "Escribis en español rioplatense (vos/tenes), directo y sin relleno.",
-  "No usas emojis salvo que la voz de marca los pida, ni frases de manual de marketing.",
-  "Devolves SOLO lo que se te pide, en el formato indicado.",
-].join(" ");
+/** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
+export function SYSTEM_PROMPT(): string {
+  return [
+    "Sos quien escribe el contenido de este negocio.",
+    `Escribis en ${aiLanguageStyle()}.`,
+    "No usas emojis salvo que la voz de marca los pida, ni frases de manual de marketing.",
+    "Devolves SOLO lo que se te pide, en el formato indicado.",
+  ].join(" ");
+}
 
 /** El pedido, en texto. Se arma aca para poder leerlo y testearlo. */
 export function buildPrompt(request: CopyRequest): string {

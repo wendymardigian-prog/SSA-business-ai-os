@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarClock, Loader2, X } from "lucide-react";
 import { updateContact } from "@/lib/actions/contacts";
 import { dateInputToIso, isoToDateInput, formatDateOnly } from "@/lib/dates";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ActionError } from "./ui";
 
 /**
@@ -16,8 +17,8 @@ import { ActionError } from "./ui";
  *
  * Es una fecha sin hora a proposito: nadie agenda un seguimiento a las 14:35.
  * La columna es timestamptz, asi que el dia elegido se ancla al mediodia de la
- * zona del negocio — con la medianoche, "15 de marzo" se guarda como el 15 a
- * las 00:00 UTC y se lee como el 14 en Argentina.
+ * zona de quien lo guarda — con la medianoche, "15 de marzo" se guarda como
+ * el 15 a las 00:00 UTC y se lee como el 14 en una zona mas atrasada.
  */
 export function FollowupField({
   contactId,
@@ -32,11 +33,12 @@ export function FollowupField({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const timeZone = useViewerTimezone();
 
   function save(nextDate: string) {
     setError(null);
 
-    const iso = nextDate ? dateInputToIso(nextDate) : null;
+    const iso = nextDate ? dateInputToIso(nextDate, timeZone) : null;
     if (nextDate && !iso) {
       setError("Esa fecha no es válida");
       return;
@@ -68,7 +70,7 @@ export function FollowupField({
         <input
           id="followup-date"
           type="date"
-          value={isoToDateInput(value)}
+          value={isoToDateInput(value, timeZone)}
           onChange={(e) => save(e.target.value)}
           disabled={pending}
           className="flex-1 rounded-lg border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
@@ -87,7 +89,7 @@ export function FollowupField({
 
       {value && !error && (
         <p className="mt-1.5 text-xs text-muted-foreground/70">
-          Agendado para el {formatDateOnly(value)}
+          Agendado para el {formatDateOnly(value, timeZone)}
         </p>
       )}
 

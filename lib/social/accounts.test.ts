@@ -153,7 +153,7 @@ describe("que cuentas y publicadores salen de lo conectado (F13)", () => {
   it("LinkedIn y Threads conectados dan su cuenta", () => {
     const result = computeAccounts(
       sources({
-        linkedin: { status: "active", granted_scopes: [], external_account_id: "urn:li:person:1", account_label: "Wendy M" },
+        linkedin: { status: "active", granted_scopes: [], external_account_id: "urn:li:person:1", account_label: "Ana M" },
         threads: { status: "active", granted_scopes: [], external_account_id: "9", account_label: "@minegocio" },
       }),
     );

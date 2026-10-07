@@ -1,7 +1,7 @@
 -- ============================================================
 -- MIGRACION 00038 — TIPOS NUEVOS DE TRIGGER (F3, F4, F5)
 -- ============================================================
--- La tabla `triggers` viene de ZernFlow con seis tipos, todos disparados por
+-- La tabla `triggers` viene del sistema original con seis tipos, todos disparados por
 -- algo que hace el contacto en el chat: una palabra clave, un boton, el primer
 -- mensaje. La Fase 2 suma tres que nacen en otro lado:
 --
@@ -104,7 +104,7 @@ ALTER TABLE public.triggers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT 
 -- ------------------------------------------------------------
 -- 4. RLS mas estricta
 -- ------------------------------------------------------------
--- Las policies que venian de ZernFlow (migracion 00002) daban FOR ALL a
+-- Las policies que venian del sistema original (migracion 00002) daban FOR ALL a
 -- cualquier miembro del workspace: un Member podia crear, editar y borrar
 -- triggers de cualquier flow. Es incoherente con el resto del sistema, donde
 -- crear y publicar flows es cosa de Owner/Admin, y ademas es un agujero: un
@@ -192,14 +192,14 @@ GRANT EXECUTE ON FUNCTION public.purge_trigger_fires(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-trigger-fires') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-trigger-fires');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-trigger-fires') THEN
+    PERFORM cron.unschedule('purge-trigger-fires');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-trigger-fires',
+  'purge-trigger-fires',
   '30 4 * * *',
   $$SELECT public.purge_trigger_fires(90)$$
 );
@@ -207,14 +207,14 @@ SELECT cron.schedule(
 -- El trigger de inactividad corre por cron cada 15 minutos.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-inactivity') THEN
-    PERFORM cron.unschedule('ssa-cron-inactivity');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'inactivity') THEN
+    PERFORM cron.unschedule('inactivity');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-inactivity',
+  'inactivity',
   '*/15 * * * *',
   $$SELECT private.call_app_cron('inactivity')$$
 );

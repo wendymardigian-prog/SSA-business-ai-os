@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { parseTrackingParams } from "@/lib/contacts/attribution";
 import { recordManualTouch } from "@/lib/contacts/touch-entry";
 import { findDuplicateContact } from "@/lib/contacts/dedup";
@@ -67,7 +68,8 @@ export async function createContact(
 ): Promise<CreateContactResult> {
   const { workspace, supabase, user } = await getWorkspace();
 
-  const validated = validateContactInput(input);
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  const validated = validateContactInput(input, timeZone);
   if (!validated.ok) return validated;
 
   const patch = validated.patch;
@@ -136,7 +138,8 @@ export async function updateContact(
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
 
-  const validated = validateContactInput(input);
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
+  const validated = validateContactInput(input, timeZone);
   if (!validated.ok) return validated;
   if (Object.keys(validated.patch).length === 0) return { ok: true, contactId };
 
@@ -557,7 +560,7 @@ export type BulkTagResult =
   | { ok: false; error: string };
 
 /**
- * Etiqueta varios contactos de una vez (Bloque 2d-A). Wendy va a marcar varias
+ * Etiqueta varios contactos de una vez (Bloque 2d-A). Ana va a marcar varias
  * decenas de conocidos de una sentada; de a uno es la diferencia entre que lo
  * haga y que no.
  *

@@ -15,6 +15,7 @@ import { BookingsScreen } from "@/components/scheduling/bookings/bookings-view";
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
 import type { BookingField, BookingStatus } from "@/lib/scheduling/types";
 import { rangeFor } from "@/lib/scheduling/calendar-range";
+import { startOfDay, endOfDay } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -67,9 +68,28 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   };
 
   const now = new Date();
+  // El rango del calendario se corta en la MISMA zona con la que se resolvio
+  // el ancla (linea de arriba), no en UTC: un `T00:00:00.000Z` fijo corre el
+  // dia entero para cualquier zona que no sea UTC.
+  const dayBoundary = (day: string) => {
+    const [y, m, d] = day.split("-").map(Number);
+    return { y, m, d };
+  };
   const listQuery =
     view === "calendar"
-      ? { from: `${range!.from}T00:00:00.000Z`, to: `${range!.to}T23:59:59.999Z`, limit: 500, ascending: true, ...base }
+      ? {
+          from: (() => {
+            const { y, m, d } = dayBoundary(range!.from);
+            return startOfDay(y, m, d, timezone).toISOString();
+          })(),
+          to: (() => {
+            const { y, m, d } = dayBoundary(range!.to);
+            return endOfDay(y, m, d, timezone).toISOString();
+          })(),
+          limit: 500,
+          ascending: true,
+          ...base,
+        }
       : view === "kanban"
         ? { limit: 300, ascending: true, ...base }
         : {

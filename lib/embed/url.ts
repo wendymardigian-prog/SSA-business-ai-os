@@ -12,10 +12,10 @@ import { IDENTIFIER_RE } from "@/lib/scheduling/identifier";
 
 export const CAL_LINK_RE = /^[a-z0-9-]+\/[a-z0-9-]+$/;
 
-/** La configuración que acepta `SSA("inline"|"floatingButton", {config})` y `data-ssa-config`. */
+/** La configuración que acepta `Agenda("inline"|"floatingButton", {config})` y `data-agenda-config`. */
 export interface EmbedConfig {
   theme?: BookerTheme | string | null;
-  /** Color principal, hex. `brandColor` es el alias que usa `SSA("ui")`. */
+  /** Color principal, hex. `brandColor` es el alias que usa `Agenda("ui")`. */
   color?: string | null;
   brandColor?: string | null;
   hideEventTypeDetails?: boolean;
@@ -52,8 +52,8 @@ export function parentUtmFromSearch(search: string): ParentUtm {
 }
 
 /**
- * `buildEmbedIframeUrl("wendy/llamada", {theme: "dark", color: "#aa00ff"}, {utm_source: "web"})`
- * → `/calendario/wendy/llamada?embed=1&theme=dark&color=%23aa00ff&utm_source=web`
+ * `buildEmbedIframeUrl("ana/llamada", {theme: "dark", color: "#aa00ff"}, {utm_source: "web"})`
+ * → `/calendario/ana/llamada?embed=1&theme=dark&color=%23aa00ff&utm_source=web`
  *
  * Con `origin` devuelve la URL absoluta. Un color que no es hex se ignora.
  */

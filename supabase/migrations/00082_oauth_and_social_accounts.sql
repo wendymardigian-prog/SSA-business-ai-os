@@ -230,11 +230,11 @@ END; $function$;
 -- quedan menos de 15: una vez por semana alcanza de sobra.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-social-token-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-social-token-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'social-token-refresh') THEN
+    PERFORM cron.unschedule('social-token-refresh');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-social-token-refresh',
+    'social-token-refresh',
     '40 4 * * 1',
     $cron$SELECT private.call_app_cron('social-token-refresh')$cron$
   );

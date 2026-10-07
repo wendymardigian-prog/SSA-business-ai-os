@@ -172,6 +172,69 @@ export async function removeTeamMember(
   return { ok: true };
 }
 
+type ServiceClient = ReturnType<typeof createServiceClient> extends Promise<infer T> ? T : never;
+/** Fila cruda de workspace_invites (select("*")): no hay un tipo generado aparte. */
+type InviteRow = Record<string, unknown> & { id: string; workspace_id: string; email: string; role: string; status: string; expires_at: string };
+
+/**
+ * Las tres validaciones que tiene que pasar una invitacion para poder
+ * aceptarse, tanto si quien acepta ya tiene cuenta (`acceptInvite`) como si
+ * se la crea en el momento (`registerFromInvite`).
+ */
+async function validatePendingInvite(
+  serviceClient: ServiceClient,
+  inviteId: string,
+  expectedEmail?: string
+): Promise<{ ok: true; invite: InviteRow } | { ok: false; error: string }> {
+  const { data: invite, error: fetchError } = await serviceClient
+    .from("workspace_invites")
+    .select("*")
+    .eq("id", inviteId)
+    .single();
+
+  if (fetchError || !invite) {
+    return { ok: false, error: "No encontré esa invitación" };
+  }
+  if (invite.status !== "pending") {
+    return { ok: false, error: "Esta invitación ya no es válida" };
+  }
+  if (new Date(invite.expires_at) < new Date()) {
+    return { ok: false, error: "Esta invitación venció" };
+  }
+  if (expectedEmail && invite.email !== expectedEmail) {
+    return { ok: false, error: "Esta invitación se mandó a otro email" };
+  }
+  return { ok: true, invite };
+}
+
+/** Suma al workspace y marca la invitacion aceptada. Service client: bypassea la RLS de owner-only sobre workspace_members. */
+async function finalizeAcceptInvite(serviceClient: ServiceClient, invite: InviteRow, userId: string) {
+  const { data: existingMembership } = await serviceClient
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("workspace_id", invite.workspace_id)
+    .eq("user_id", userId)
+    .single();
+
+  if (existingMembership) {
+    await serviceClient.from("workspace_invites").update({ status: "accepted" }).eq("id", invite.id);
+    return { ok: true as const, workspaceId: invite.workspace_id, alreadyMember: true };
+  }
+
+  const { error: insertError } = await serviceClient.from("workspace_members").insert({
+    workspace_id: invite.workspace_id,
+    user_id: userId,
+    role: invite.role,
+  });
+
+  if (insertError) {
+    return { ok: false as const, error: insertError.message };
+  }
+
+  await serviceClient.from("workspace_invites").update({ status: "accepted" }).eq("id", invite.id);
+  return { ok: true as const, workspaceId: invite.workspace_id };
+}
+
 export async function acceptInvite(inviteId: string) {
   const supabase = await createClient();
   const {
@@ -183,68 +246,56 @@ export async function acceptInvite(inviteId: string) {
   // Use service client to bypass RLS (the user is not a workspace member yet)
   const serviceClient = await createServiceClient();
 
-  // Fetch the invite
-  const { data: invite, error: fetchError } = await serviceClient
-    .from("workspace_invites")
-    .select("*")
-    .eq("id", inviteId)
-    .single();
+  const validation = await validatePendingInvite(serviceClient, inviteId, user.email);
+  if (!validation.ok) return { error: validation.error };
 
-  if (fetchError || !invite) {
-    return { error: "No encontré esa invitación" };
+  return finalizeAcceptInvite(serviceClient, validation.invite, user.id);
+}
+
+/**
+ * Crea la cuenta y acepta la invitacion en un solo paso: es el unico lugar
+ * donde alguien puede registrarse (no hay `/register` publico). El email
+ * viene fijo de la invitacion, nunca del formulario.
+ *
+ * `email_confirm: true` porque el link ya llego a ese correo: pedirle que
+ * confirme de nuevo es un paso de mas.
+ */
+export async function registerFromInvite(inviteId: string, fullName: string, password: string) {
+  const name = fullName.trim();
+  if (!name) return { error: "Ingresá tu nombre" };
+  if (password.length < 6) return { error: "La contraseña tiene que tener al menos 6 caracteres" };
+
+  const serviceClient = await createServiceClient();
+  const validation = await validatePendingInvite(serviceClient, inviteId);
+  if (!validation.ok) return { error: validation.error };
+  const invite = validation.invite;
+
+  const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
+    email: invite.email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: name, invite_id: invite.id },
+  });
+
+  if (createError || !created?.user) {
+    if (/already|existe|registrad/i.test(createError?.message ?? "")) {
+      return { error: "Ya existe una cuenta con ese email. Iniciá sesión.", alreadyRegistered: true };
+    }
+    return { error: createError?.message || "No se pudo crear la cuenta" };
   }
 
-  if (invite.status !== "pending") {
-    return { error: "Esta invitación ya no es válida" };
+  // El service client no tiene cookies: inicia sesion con el cliente normal
+  // para que la sesion quede guardada en el navegador de quien se registra.
+  const supabase = await createClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email: invite.email, password });
+  if (signInError) {
+    return {
+      error: "Tu cuenta se creó. Iniciá sesión con tu email y tu contraseña para aceptar la invitación.",
+      alreadyRegistered: true,
+    };
   }
 
-  if (new Date(invite.expires_at) < new Date()) {
-    return { error: "Esta invitación venció" };
-  }
-
-  // Verify the invite email matches the current user's email
-  if (invite.email !== user.email) {
-    return { error: "Esta invitación se mandó a otro email" };
-  }
-
-  // Check if user is already a member
-  const { data: existingMembership } = await serviceClient
-    .from("workspace_members")
-    .select("workspace_id")
-    .eq("workspace_id", invite.workspace_id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (existingMembership) {
-    // Already a member, just mark the invite as accepted
-    await serviceClient
-      .from("workspace_invites")
-      .update({ status: "accepted" })
-      .eq("id", inviteId);
-
-    return { ok: true, workspaceId: invite.workspace_id, alreadyMember: true };
-  }
-
-  // Insert into workspace_members (service client bypasses owner-only RLS)
-  const { error: insertError } = await serviceClient
-    .from("workspace_members")
-    .insert({
-      workspace_id: invite.workspace_id,
-      user_id: user.id,
-      role: invite.role,
-    });
-
-  if (insertError) {
-    return { error: insertError.message };
-  }
-
-  // Update invite status to accepted
-  await serviceClient
-    .from("workspace_invites")
-    .update({ status: "accepted" })
-    .eq("id", inviteId);
-
-  return { ok: true, workspaceId: invite.workspace_id };
+  return finalizeAcceptInvite(serviceClient, invite, created.user.id);
 }
 
 export async function revokeInvite(inviteId: string) {

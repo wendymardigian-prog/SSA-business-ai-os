@@ -49,6 +49,7 @@ describe("loadCostsTab", () => {
       agentNames: new Map([["agent-1", "Asistente"]]),
       workspaceLimits: { daily: null, monthly: 200 },
       canEditPricing: true,
+      timeZone: "America/Costa_Rica",
     });
     expect(data.report.totals).toMatchObject({ runs: 4, costUsd: 0.08, conversations: 2, escalations: 1, missingPricing: 1 });
     expect(data.averages).toEqual({ perRun: 0.02, perConversation: 0.04, perEscalation: 0.08, escalationRatePct: 25 });
@@ -63,7 +64,7 @@ describe("loadCostsTab", () => {
 
   it("sin runs, los promedios son null y nada explota", async () => {
     const db = world({ totals: { runs: 0, cost_usd: 0, conversations: 0, escalations: 0, responded: 0, missing_pricing: 0, input_tokens: 0, output_tokens: 0, cached_tokens: 0, embedding_tokens: 0 }, by_source: [], by_agent: [], by_model: [], top_conversations: [] });
-    const data = await loadCostsTab(db.client, { workspaceId: "ws-1", agent, filters: parseCostFilters({}), agentNames: new Map(), workspaceLimits: { daily: null, monthly: null }, canEditPricing: false });
+    const data = await loadCostsTab(db.client, { workspaceId: "ws-1", agent, filters: parseCostFilters({}), agentNames: new Map(), workspaceLimits: { daily: null, monthly: null }, canEditPricing: false, timeZone: "America/Costa_Rica" });
     expect(data.averages).toEqual({ perRun: null, perConversation: null, perEscalation: null, escalationRatePct: null });
     expect(data.report.topConversations).toEqual([]);
   });
@@ -72,7 +73,7 @@ describe("loadCostsTab", () => {
 describe("loadHeaderKpis", () => {
   it("runs de hoy, gasto del mes y % de derivaciones", async () => {
     const db = world();
-    const kpis = await loadHeaderKpis(db.client, { workspaceId: "ws-1", agentId: "agent-1", now: new Date("2026-09-24T18:00:00Z") });
+    const kpis = await loadHeaderKpis(db.client, { workspaceId: "ws-1", agentId: "agent-1", timeZone: "America/Costa_Rica", now: new Date("2026-09-24T18:00:00Z") });
     expect(kpis).toEqual({ runsToday: 1, monthCostUsd: 0.08, escalationRatePct: 25, missingPricing: 1 });
   });
 });
@@ -86,6 +87,7 @@ describe("borradores en Costos (Bloque 2c)", () => {
       agentNames: new Map(),
       workspaceLimits: { daily: null, monthly: null },
       canEditPricing: false,
+      timeZone: "America/Costa_Rica",
     });
 
   it("lee el gasto en borradores descartados y los enviados sin editar", async () => {

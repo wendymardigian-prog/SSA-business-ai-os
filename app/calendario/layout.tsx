@@ -9,7 +9,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Agendar",
+  // `absolute` corta el template `%s | <marca>` del layout raiz: quien agenda
+  // ve al negocio, no al software que usa por detras.
+  title: { absolute: "Agendar" },
   // Una página de agenda no tiene por qué aparecer en Google.
   robots: { index: false, follow: false },
 };

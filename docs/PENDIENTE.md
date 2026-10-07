@@ -386,7 +386,7 @@ No son parte de esta corrida. El detalle de cada uno está en [docs/etapa2/PENDI
 ### Revisión visual — hecha, con una limitación por las migraciones sin aplicar
 - **Qué se revisó:** con un workspace y usuario `zz-test-` descartables (limpiados al final) y el dev server con el `.env` de la carpeta principal, se vieron en el navegador integrado: la pantalla de la banca de audios vacía y su modal "Nuevo audio" (nombre, atajo, descripción "para la IA", Grabar/Subir archivo) en escritorio y a 375px; el composer de la bandeja con el placeholder nuevo ("... o /a para un audio"), los botones de clip y micrófono, y el estado de error del grabador cuando el navegador no tiene permiso de micrófono (`Habilitá el micrófono para este sitio` — confirma que `microphoneErrorMessage` se pinta bien). Importante: este dev server apuntaba a la base de producción real (no hay base "local" separada), así que esto equivale a una revisión en vivo.
 - **Qué NO se pudo ver:** el picker `/a` con audios de verdad adentro (la lista llega vacía porque `audio_assets` no existe sin la 00105 aplicada — comportamiento esperado, no un bug: `audioPickerOpen` exige `audios.length > 0`), la tabla de la banca con una fila real, y grabar un audio de punta a punta (el navegador integrado bloquea el micrófono real). Queda para la lista de verificación en vivo del §15, con Wendy logueada y micrófono real.
-- **Después del deploy a `main`** (1/10/2026): se confirmó que `https://ssa-business-ai-os-production.up.railway.app/login` responde 200 y renderiza bien. No se repitió la creación de un workspace de prueba contra el dominio de Railway porque es la misma base de datos que ya se había revisado arriba.
+- **Después del deploy a `main`** (1/10/2026): se confirmó que `https://<tu-app>.up.railway.app/login` responde 200 y renderiza bien. No se repitió la creación de un workspace de prueba contra el dominio de Railway porque es la misma base de datos que ya se había revisado arriba.
 
 ### Banco de assets unificado (audios + templates) — por diseñar en la próxima sesión
 - **Qué quedó:** Wendy pidió (1/10/2026) no aplicar la 00105 tal cual porque quiere un solo banco de assets que incluya audios Y templates de mensaje, en vez de dos tablas casi idénticas (`audio_assets` nueva y `response_templates` que ya existe desde la 00023).
@@ -708,5 +708,57 @@ Este bloque **no las arregla**: solo las anota (§9.R5).
 - **Lo que sigue abierto** (no se puede o no corresponde cerrar sin una decisión tuya o sin cuentas reales):
   - Verificar en vivo con cuentas conectadas: el índice con métricas reales, los datos de anuncio en un DM (`referral` de Zernio, `externalAdReply` de Evolution), el webhook de Zernio y la versión de la API de LinkedIn.
   - El pie del drawer a 390 px (ver "B13 · El pie del drawer a 390 px"): es una decisión de diseño.
-  - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración (00119), y el costo del problema es un contacto anónimo duplicado.
+  - La carrera de dos comentarios simultáneos de TikTok (ver "B11 · Lo que no se vio con datos reales"): arreglarla de verdad pide un único en la base, o sea una migración nueva (la 00119 ya se usó para el white label, ver más abajo; la próxima libre es la que corresponda en ese momento), y el costo del problema es un contacto anónimo duplicado.
   - Las cosas de otras corridas (bio de la cuenta, más de una instancia de Evolution, etc.), que siguen donde estaban.
+
+## White label (corrida en `oneshot-white-label`, 7/10/2026)
+
+Detalle completo en [docs/PROGRESS-white-label.md](PROGRESS-white-label.md).
+Las migraciones 00119 a 00123 ya están aplicadas contra la base real y
+verificadas; esto es lo que queda, no lo ya hecho.
+
+- **Qué quedó:** apagar "Allow new users to sign up" en el Supabase alojado
+  (Authentication → Sign In / Providers).
+- **Por qué:** es un ajuste de seguridad del proyecto de Supabase, no algo
+  que se pueda hacer por código ni por migración.
+- **Qué hay que hacer:** entrar al panel de Supabase del proyecto
+  `knrxjnmxnmjavivyuwew` y apagarlo a mano. El registro público del lado de
+  la app (`/register`) ya no existe desde el código (Bloque A), así que esto
+  es un cinturón de seguridad extra: alguien que llamara directo a la API de
+  Supabase Auth con `signUp` todavía podría crear una cuenta hasta que se
+  apague.
+
+- **Qué quedó:** un segundo workspace, "Paula Diaz's Workspace", separado
+  del workspace real de Wendy.
+- **Por qué:** el `/register` público (ya borrado) y el trigger viejo de
+  altas crearon un workspace propio para cualquiera que se registrara; esa
+  persona no es miembro del workspace de Wendy.
+- **Qué se decidió en su lugar:** no tocarlo. Si esa persona es alguien del
+  equipo de Wendy, hay que invitarla de nuevo (ahora por invitación) al
+  workspace real; si no, es una cuenta huérfana sin dato sensible del
+  negocio adentro (vacía salvo lo que esa persona haya cargado ahí misma).
+
+- **Qué quedó:** el mismo corte de día en UTC (`.slice(0,10)` sobre un ISO)
+  que se arregló en los dashboards de contenido/ads/unified aparece tambien
+  en `lib/dashboards/post-analysis.ts`, `lib/dashboards/follower-bump.ts` y
+  `lib/dashboards/chat/trends.ts`.
+- **Por qué:** no estaban en la lista original de archivos a arreglar de
+  esta corrida, y agregarlos sin que nadie los pidiera era ampliar el
+  alcance por cuenta propia.
+- **Qué hay que hacer:** el mismo patrón ya aplicado en
+  `lib/dashboards/content.ts`/`ads-load.ts`/`content-load.ts`: bucketear
+  con `civilDate`/`isoToDateInput` en la zona que corresponda (de quien
+  mira, si es un dashboard) en vez de `.slice(0,10)`.
+
+- **Qué quedó:** el barrido de `"es-AR"` suelto en formateadores (~38
+  archivos) hacia una variable `NEXT_PUBLIC_LOCALE`, y `DEFAULT_PHONE_COUNTRY
+  = "CR"` hacia `NEXT_PUBLIC_DEFAULT_COUNTRY`.
+- **Por qué:** son configurables por cliente en espíritu (un cliente en
+  México preferiría `es-MX` y país `MX`), pero ninguno es un bug: hoy
+  funcionan igual para cualquier cliente, solo que con formato y código de
+  país argentino/costarricense fijos en vez de configurables. Se priorizó
+  arreglar los bugs reales de zona horaria (horario del agente, topes de
+  gasto, filtros con el default equivocado) antes que este pulido.
+- **Qué se decidió en su lugar:** queda anotado para una corrida aparte. El
+  patrón para hacerlo es el mismo que `lib/brand.ts`/`lib/ai/language-style.ts`:
+  un módulo puro que lee la variable de entorno con un default.

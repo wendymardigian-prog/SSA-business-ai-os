@@ -1,7 +1,7 @@
 /**
  * Acceso a la Graph API de Meta (F40, F43, F55).
  *
- * Portado de ScaleOS (`supabase/functions/_shared/instagram-graph.ts`),
+ * Portado de un sistema anterior (`supabase/functions/_shared/instagram-graph.ts`),
  * adaptado a este proyecto: el token sale de Vault y no de una variable de
  * entorno, y no hay nada de Deno.
  *

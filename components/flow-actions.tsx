@@ -13,7 +13,7 @@ interface FlowExportData {
   edges: Json;
   version: number;
   exportedAt: string;
-  source: "zernflow";
+  source: "business-os";
 }
 
 function isValidFlowData(data: unknown): data is FlowExportData {
@@ -42,7 +42,7 @@ export function ExportFlowButton({
       edges: flow.edges,
       version: flow.version || 1,
       exportedAt: new Date().toISOString(),
-      source: "zernflow",
+      source: "business-os",
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {

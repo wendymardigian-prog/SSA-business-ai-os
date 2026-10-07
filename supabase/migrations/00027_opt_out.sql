@@ -180,7 +180,7 @@ BEGIN
   END IF;
 
   -- is_subscribed tambien baja: es la marca que ya miraban los broadcasts y
-  -- las palabras clave globales de ZernFlow, y seria raro que un contacto
+  -- las palabras clave globales del sistema original, y seria raro que un contacto
   -- quede "no contactar" pero suscripto.
   UPDATE public.contacts
   SET do_not_contact = true,

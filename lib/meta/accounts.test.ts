@@ -1,7 +1,7 @@
 /**
  * Cuentas publicitarias de Meta (F40).
  *
- * Portado de ScaleOS y extendido: aca las cuentas viven en la config de la
+ * Portado de un sistema anterior y extendido: aca las cuentas viven en la config de la
  * integracion, no en una tabla.
  */
 

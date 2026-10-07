@@ -87,7 +87,7 @@ const meta = (entry: RawEntry, key: string): string | null => {
 
 export async function loadActions(
   client: Db,
-  args: { workspaceId: string; filters: ActionFilters; agentNames: Map<string, string>; channelLabels: Map<string, string>; tagNames: Map<string, string>; memberNames: Map<string, string>; timeZone?: string },
+  args: { workspaceId: string; filters: ActionFilters; agentNames: Map<string, string>; channelLabels: Map<string, string>; tagNames: Map<string, string>; memberNames: Map<string, string>; timeZone: string },
 ): Promise<{ rows: ActionRow[]; total: number }> {
   const f = args.filters;
   let query = client

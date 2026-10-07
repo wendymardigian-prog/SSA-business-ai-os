@@ -12,17 +12,17 @@ describe("eventos del embed (F41)", () => {
     responses: { presupuesto: "1000" },
   };
 
-  it("ssa:bookingSuccessful lleva exactamente uid, startTime, endTime, eventSlug y meetUrl", () => {
-    const ev = serializeEmbedEvent("ssa:bookingSuccessful", booking, "llamada");
+  it("agenda:bookingSuccessful lleva exactamente uid, startTime, endTime, eventSlug y meetUrl", () => {
+    const ev = serializeEmbedEvent("agenda:bookingSuccessful", booking, "llamada");
     expect(ev).toEqual({
-      type: "ssa:bookingSuccessful",
+      type: "agenda:bookingSuccessful",
       payload: { uid: "u1", startTime: "2026-10-06T20:00:00.000Z", endTime: "2026-10-06T20:30:00.000Z", eventSlug: "llamada", meetUrl: "https://meet.google.com/abc" },
     });
     expect(Object.keys(ev.payload).sort()).toEqual(["endTime", "eventSlug", "meetUrl", "startTime", "uid"]);
   });
 
   it("nunca incluye email, teléfono ni respuestas; sin Meet no hay clave meetUrl", () => {
-    const ev = serializeEmbedEvent("ssa:bookingCancelled", { ...booking, meet_url: null }, "llamada");
+    const ev = serializeEmbedEvent("agenda:bookingCancelled", { ...booking, meet_url: null }, "llamada");
     const json = JSON.stringify(ev);
     expect(json).not.toContain("a@b.com");
     expect(json).not.toContain("50688881234");
@@ -31,15 +31,15 @@ describe("eventos del embed (F41)", () => {
   });
 
   it("los cinco eventos públicos del plano", () => {
-    expect([...EMBED_EVENTS]).toEqual(["ssa:bookerReady", "ssa:slotSelected", "ssa:bookingSuccessful", "ssa:rescheduleSuccessful", "ssa:bookingCancelled"]);
-    expect(isEmbedEventName("ssa:loaded")).toBe(false);
+    expect([...EMBED_EVENTS]).toEqual(["agenda:bookerReady", "agenda:slotSelected", "agenda:bookingSuccessful", "agenda:rescheduleSuccessful", "agenda:bookingCancelled"]);
+    expect(isEmbedEventName("agenda:loaded")).toBe(false);
   });
 
   it("parseEmbedMessage acepta solo nuestros mensajes", () => {
-    const msg = embedMessage("ssa:height", { height: 720 }, "");
-    expect(parseEmbedMessage(msg)).toEqual({ source: "ssa-embed", type: "ssa:height", namespace: "", payload: { height: 720 } });
-    expect(parseEmbedMessage({ type: "ssa:height" })).toBeNull();
-    expect(parseEmbedMessage({ source: "ssa-embed", type: "otro" })).toBeNull();
+    const msg = embedMessage("agenda:height", { height: 720 }, "");
+    expect(parseEmbedMessage(msg)).toEqual({ source: "agenda-embed", type: "agenda:height", namespace: "", payload: { height: 720 } });
+    expect(parseEmbedMessage({ type: "agenda:height" })).toBeNull();
+    expect(parseEmbedMessage({ source: "agenda-embed", type: "otro" })).toBeNull();
     expect(parseEmbedMessage("texto")).toBeNull();
   });
 

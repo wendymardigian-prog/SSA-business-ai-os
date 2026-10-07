@@ -142,11 +142,11 @@ describe("como se lee cada version en el historial", () => {
   });
 
   it("dice quien y por que", () => {
-    expect(describeVersion(version(), "Wendy")).toBe("Guardada por Wendy");
+    expect(describeVersion(version(), "Ana")).toBe("Guardada por Ana");
     expect(describeVersion(version({ reason: "ai_generation", author_kind: "ai" }))).toBe(
       "Generada con IA",
     );
-    expect(describeVersion(version({ reason: "resume_after_idle" }), "Wendy")).toContain("retomar");
+    expect(describeVersion(version({ reason: "resume_after_idle" }), "Ana")).toContain("retomar");
   });
 
   it("sin nombre, no queda un hueco", () => {

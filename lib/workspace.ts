@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-export const WORKSPACE_COOKIE = "zernflow_workspace_id";
+export const WORKSPACE_COOKIE = "workspace_id";
 
 /**
  * Cached per-request: deduplicates across layout + page in the same render.

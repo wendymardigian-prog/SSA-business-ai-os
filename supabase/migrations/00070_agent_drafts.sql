@@ -413,7 +413,7 @@ DO $$
 DECLARE
   v_job text;
 BEGIN
-  FOREACH v_job IN ARRAY ARRAY['ssa-cron-agent-drafts-sweep', 'ssa-cron-purge-agent-drafts'] LOOP
+  FOREACH v_job IN ARRAY ARRAY['agent-drafts-sweep', 'purge-agent-drafts'] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
     END IF;
@@ -421,13 +421,13 @@ BEGIN
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-drafts-sweep',
+  'agent-drafts-sweep',
   '*/5 * * * *',
   $$SELECT private.sweep_agent_drafts()$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-drafts',
+  'purge-agent-drafts',
   '30 5 * * *',
   $$SELECT public.purge_agent_draft_content(12)$$
 );

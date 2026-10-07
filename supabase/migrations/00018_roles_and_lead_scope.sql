@@ -3,7 +3,7 @@
 -- ============================================================
 -- Dos cosas:
 --
--- 1. Roles. ZernFlow guarda el rol como texto libre y varias policies asumen
+-- 1. Roles. El sistema original guarda el rol como texto libre y varias policies asumen
 --    owner-only. El alcance de Etapa 1 pide Owner/Admin/Member con Admin
 --    pudiendo invitar y cambiar roles, y Member sin acceso a configuracion.
 --

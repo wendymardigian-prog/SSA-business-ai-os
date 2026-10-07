@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { CHIP_LABELS, chipsOf, type ProviderDefinition } from "@/lib/integrations/providers";
 import { formatLastRefreshed, formatLongDate, formatOAuthExpiry } from "@/lib/integrations/format";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CredentialsForm } from "./credentials-form";
 import { AccountsTab, hasAccountsTab, type EvolutionChannelInfo } from "./accounts-tab";
 import type { SocialAccountRow } from "./publisher-defaults";
@@ -159,13 +160,14 @@ function ActivityList({
   entries: ActivityEntry[];
   oauth: IntegrationCardData["oauth"];
 }) {
+  const timeZone = useViewerTimezone();
   return (
     <div className="max-w-lg space-y-4">
       {oauth && (
         <div className="rounded-lg border border-border p-3 text-xs">
           <p className="font-medium">Estado actual de la conexion</p>
           <p className="mt-1 text-muted-foreground">
-            {[formatOAuthExpiry(oauth.tokenExpiresAt), formatLastRefreshed(oauth.lastRefreshedAt)]
+            {[formatOAuthExpiry(oauth.tokenExpiresAt, timeZone), formatLastRefreshed(oauth.lastRefreshedAt, timeZone)]
               .filter(Boolean)
               .join(" · ") || "Sin vencimiento conocido"}
           </p>
@@ -180,7 +182,7 @@ function ActivityList({
             <li key={entry.id} className="rounded-lg border border-border p-3 text-xs">
               <p className="font-medium">{entry.label}</p>
               <p className="mt-0.5 text-muted-foreground">
-                {entry.actorLabel} · {formatLongDate(entry.performedAt) ?? entry.performedAt}
+                {entry.actorLabel} · {formatLongDate(entry.performedAt, timeZone) ?? entry.performedAt}
               </p>
             </li>
           ))}

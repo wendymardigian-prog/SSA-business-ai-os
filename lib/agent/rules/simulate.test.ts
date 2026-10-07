@@ -39,7 +39,7 @@ function buildCases(): SimulationCase[] {
   }
   // 8 entrantes sin turno: 6 botones (skip r1) + 2 texto libre (default draft)
   for (let i = 0; i < 6; i++) {
-    cases.push({ context: ctx({ inbound: { text: "si enviamelo", is_known_button: true, length: 12, burst_count: 1 }, response: undefined }), hasResponse: false, leadText: "si enviamelo", responseText: null, realOutcome: null });
+    cases.push({ context: ctx({ inbound: { text: "quiero mas info", is_known_button: true, length: 12, burst_count: 1 }, response: undefined }), hasResponse: false, leadText: "quiero mas info", responseText: null, realOutcome: null });
   }
   for (let i = 0; i < 2; i++) {
     cases.push({ context: ctx({ inbound: { text: "una consulta", is_known_button: false, length: 12, burst_count: 1 }, response: undefined }), hasResponse: false, leadText: "una consulta", responseText: null, realOutcome: null });

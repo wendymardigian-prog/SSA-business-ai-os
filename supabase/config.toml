@@ -11,6 +11,12 @@ enabled = true
 site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
 jwt_expiry = 3600
+# Sin registro publico: la unica forma de crear una cuenta es aceptando una
+# invitacion (lib/actions/team.ts, registerFromInvite), que crea el usuario
+# con la service role (auth.admin.createUser) y por eso no pasa por este
+# interruptor. En el proyecto de Supabase alojado, el mismo ajuste esta en
+# Authentication -> Sign In / Providers -> "Allow new users to sign up".
+enable_signup = false
 
 # Este proyecto no usa Edge Functions. Los webhooks entrantes los recibe la app
 # (app/api/webhooks/), que es donde corre el motor de flows: desde Deno no se

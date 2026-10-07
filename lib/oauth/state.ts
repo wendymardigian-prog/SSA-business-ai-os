@@ -171,4 +171,4 @@ export function safeRedirect(raw: string | null | undefined): string {
   return REDIRECT_ALLOWLIST.includes(path) ? value : REDIRECT_ALLOWLIST[0];
 }
 
-export const OAUTH_STATE_COOKIE = "ssa_oauth_nonce";
+export const OAUTH_STATE_COOKIE = "oauth_nonce";

@@ -55,6 +55,7 @@ import { defaultRefresh, type RefreshFn } from "./refresh";
 import { alreadyAnsweredSince, claimAgentReply, lastExternalOutboundAt, withinExternalCooldown } from "./reply-check";
 import { evaluateRules, type RuleEvalResult } from "./rules/evaluate";
 import { buildPreRuleContext, fillResponseContext } from "./rules/context";
+import { buttonTextsFromRows, BUTTON_TEXTS_QUERY } from "./rules/button-texts";
 import { validateIntent } from "./tools/declare-intent";
 import type { RuleAction } from "./rules/fields";
 import { buildToolSet } from "./tools/build";
@@ -387,9 +388,21 @@ async function continueTurn(
     ...(refresh ? { refresh } : {}),
   });
 
+  // El horario de atencion y los topes de gasto son reglas del NEGOCIO, no de
+  // quien mira: siempre en workspaces.timezone, nunca en la zona de quien abre
+  // el run o de un respaldo fijo (antes corria en Costa Rica siempre, aunque
+  // el ajuste del workspace dijera otra cosa).
+  const { data: workspaceRow } = await supabase
+    .from("workspaces")
+    .select("timezone")
+    .eq("id", conversation.workspace_id)
+    .maybeSingle();
+  const workspaceTimeZone = workspaceRow?.timezone || "UTC";
+
   // En modo borrador el horario de atencion no aplica: si hay una persona para
   // aprobar, no esta fuera de horario. Queda anotado en el run.
-  const outsideHoursNote = draftMode && !isWithinBusinessHours(agent.guardrails, deps.now()) ? "outside_hours" : null;
+  const outsideHoursNote =
+    draftMode && !isWithinBusinessHours(agent.guardrails, deps.now(), workspaceTimeZone) ? "outside_hours" : null;
 
   /**
    * Termina el turno dejando el borrador (modo borrador). Si otro borrador de
@@ -486,6 +499,7 @@ async function continueTurn(
     repliesSinceHuman,
     maxRepliesPerConversation: agent.maxRepliesPerConversation,
     unresolvedTurns,
+    timeZone: workspaceTimeZone,
   });
 
   if (block) {
@@ -539,6 +553,7 @@ async function continueTurn(
     agentId: agent.id,
     limits: await spendLimitsFor(supabase, agent),
     now: deps.now(),
+    timeZone: workspaceTimeZone,
   });
   await handleSpendWarnings(supabase, agent, spend);
   if (!spend.allowed) {
@@ -599,17 +614,26 @@ async function continueTurn(
     const hasPriorOutbound = messages.some(
       (m) => m.direction === "outbound" && ms(m.created_at) < ms(burst[0].created_at),
     );
+    // Textos de boton de la base (cada negocio tiene los suyos), ademas de los
+    // que trae la constante KNOWN_BUTTON_TEXTS (vacia por defecto desde el
+    // white label: las dos fuentes se suman, no se reemplazan).
+    const { data: buttonRows } = await supabase
+      .from(BUTTON_TEXTS_QUERY.table)
+      .select(BUTTON_TEXTS_QUERY.columns)
+      .eq("workspace_id", conversation.workspace_id)
+      .eq("direction", BUTTON_TEXTS_QUERY.direction);
     preRuleCtx = buildPreRuleContext({
       burstText: burst.map((m) => effectiveMessageText(m) ?? "").join("\n"),
       burstCount: burst.length,
       lastInboundText: burst[burst.length - 1].text ?? null,
+      knownButtonExtra: buttonTextsFromRows(buttonRows),
       temperature: contact.leadTemperature,
       tags: contact.tags,
       hasPriorOutbound,
       hasPriorMessages,
       assigned: conversation.assigned_to != null,
       channel: conversation.channel_id,
-      inBusinessHours: isWithinBusinessHours(agent.guardrails, deps.now()),
+      inBusinessHours: isWithinBusinessHours(agent.guardrails, deps.now(), workspaceTimeZone),
     });
     const pre = evaluateRules(agent.responseRules, preRuleCtx, "before_generation", agent.responseRulesDefault);
     if (pre.action === "skip") {
@@ -898,7 +922,7 @@ async function continueTurn(
       : { mode: effectiveMode, refresh: routingRefresh };
 
   // 6d (enganche). Guardarrail de salida bloqueado. En borrador se guarda igual,
-  // marcado, para que Wendy vea que quiso mandar; en envio directo no sale nada
+  // marcado, para que quien lo revise vea que quiso mandar; en envio directo no sale nada
   // y se avisa. Va aca, con routingNow ya definido, para no perder que regla
   // decidio en modo reglas.
   if (!outputCheck.ok) {

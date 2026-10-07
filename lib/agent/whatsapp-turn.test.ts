@@ -14,7 +14,7 @@ const call = (tools: ModelRunInput["tools"], name: string, input: unknown) =>
 
 const WHATSAPP_AGENT = {
   allowed_tools: ["generar_link_whatsapp"],
-  tools_config: { generar_link_whatsapp: { numero: "50670814873" } },
+  tools_config: { generar_link_whatsapp: { numero: "5491100000000" } },
 };
 
 beforeEach(() => {
@@ -36,7 +36,7 @@ describe("generar_link_whatsapp: envio directo", () => {
 
     // El mensaje enviado lleva el link real, no el marcador.
     expect(w.sent).toHaveLength(1);
-    expect(w.sent[0].text).toContain("https://wa.me/50670814873?text=");
+    expect(w.sent[0].text).toContain("https://wa.me/5491100000000?text=");
     expect(w.sent[0].text).not.toContain("{{LINK_WHATSAPP}}");
 
     // Un solo paso tool_call de la herramienta.
@@ -82,11 +82,11 @@ describe("generar_link_whatsapp: envio directo", () => {
   it("reusa el link de un run anterior de la conversacion", async () => {
     const w = turnWorld({ agent: WHATSAPP_AGENT });
     // Un run anterior con su paso de herramienta ya guardado.
-    const prevLink = "https://wa.me/50670814873?text=Hola%20Wendy%2C%20soy%20Ana.";
+    const prevLink = "https://wa.me/5491100000000?text=Hola%2C%20soy%20Ana.";
     w.db.rows("agent_runs").push({ id: "run-prev", conversation_id: "cv-1", workspace_id: "ws-1", created_at: at(-100) });
     w.db.rows("agent_run_steps").push({
       id: "step-prev", run_id: "run-prev", kind: "tool_call", name: "generar_link_whatsapp",
-      error: null, created_at: at(-100), output: { link: prevLink, texto_preescrito: "Hola Wendy, soy Ana." },
+      error: null, created_at: at(-100), output: { link: prevLink, texto_preescrito: "Hola, soy Ana." },
     });
     w.addInbound("me pasas el link de nuevo?", 0);
     w.clock.ms = T0 + 75_000;
@@ -107,7 +107,7 @@ describe("generar_link_whatsapp: envio directo", () => {
 describe("guardarrail de salida", () => {
   it("envio directo: link a otro numero bloquea, el lead no recibe nada, run blocked_guardrail y aviso", async () => {
     const w = turnWorld({
-      agent: { ...WHATSAPP_AGENT, guardrails: { linksPermitidos: ["wa.me/50670814873"] } },
+      agent: { ...WHATSAPP_AGENT, guardrails: { linksPermitidos: ["wa.me/5491100000000"] } },
     });
     w.addInbound("hola", 0);
     w.clock.ms = T0 + 75_000;
@@ -121,18 +121,20 @@ describe("guardarrail de salida", () => {
     expect(step).toBeTruthy();
   });
 
-  it("ScaleOS en la salida se bloquea", async () => {
-    const w = turnWorld({ agent: WHATSAPP_AGENT });
+  it("una palabra prohibida configurada, en la salida, se bloquea", async () => {
+    const w = turnWorld({
+      agent: { ...WHATSAPP_AGENT, guardrails: { palabrasProhibidas: { enabled: true, phrases: ["miempresa"] } } },
+    });
     w.addInbound("con quien hablo?", 0);
     w.clock.ms = T0 + 75_000;
-    w.setModel(async () => ({ text: "Soy el asistente de ScaleOS", totalUsage: { inputTokens: 5, outputTokens: 2 } }));
+    w.setModel(async () => ({ text: "Soy el asistente de MiEmpresa", totalUsage: { inputTokens: 5, outputTokens: 2 } }));
 
     const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);
     expect(outcome).toMatchObject({ status: "blocked_guardrail" });
     expect(w.sent).toHaveLength(0);
   });
 
-  it("lista de links vacia: un link cualquiera no bloquea (pero ScaleOS off no aplica aca)", async () => {
+  it("lista de links vacia: un link cualquiera no bloquea (palabras prohibidas off, no aplica aca)", async () => {
     const w = turnWorld({
       // Sin palabras prohibidas ni links, para aislar: solo confirma que la lista vacia no frena links.
       agent: { ...WHATSAPP_AGENT, guardrails: { palabrasProhibidas: { enabled: false, phrases: [] }, cifras: { enabled: false, permitidas: [] } } },
@@ -151,7 +153,7 @@ describe("guardarrail de salida en modo borrador", () => {
   it("no envia: guarda el borrador marcado con el hallazgo", async () => {
     const w = turnWorld({
       draft: true,
-      agent: { ...WHATSAPP_AGENT, guardrails: { linksPermitidos: ["wa.me/50670814873"] } },
+      agent: { ...WHATSAPP_AGENT, guardrails: { linksPermitidos: ["wa.me/5491100000000"] } },
     });
     w.addInbound("hola", 0);
     w.clock.ms = T0 + 75_000;

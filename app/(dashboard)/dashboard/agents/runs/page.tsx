@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { RUNS_PAGE_SIZE, loadRuns } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { PageHeader } from "@/components/page-header";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { AiPeriodControl } from "@/components/agents/ai-dashboard/period-control";
 import { RunsScreen } from "@/components/agents/runs-screen";
 
@@ -27,7 +28,7 @@ export default async function AgentRunsPage({
   const service = await createServiceClient();
   const permissions = await getPermissionContext();
   const includeCost = permissions.can("ai_costs.view");
-  const timeZone = (workspace as { timezone?: string }).timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
 
   const sp = await searchParams;
   const urlParams = new URLSearchParams();

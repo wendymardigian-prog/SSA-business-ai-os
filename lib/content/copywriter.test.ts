@@ -136,14 +136,14 @@ describe("E3 · la configuracion, con respaldo en lo que ya habia", () => {
   it("usa la del agente cuando esta", () => {
     const config = readCopywriterConfig(
       {
-        system_prompt: "Escribi como Wendy",
+        system_prompt: "Escribi como Ana",
         config: { brand: { voice: "Directa" }, auto_on_approve: true },
         knowledge_tags: ["oferta"],
       },
       { voice: "La vieja" },
     );
 
-    expect(config.instructions).toBe("Escribi como Wendy");
+    expect(config.instructions).toBe("Escribi como Ana");
     expect(config.brand.voice).toBe("Directa");
     expect(config.knowledgeTags).toEqual(["oferta"]);
     expect(config.autoOnApprove).toBe(true);
@@ -174,7 +174,7 @@ describe("E4 · el pedido al modelo", () => {
   const base: CopywriterContext = {
     request: { title: "Una pieza", platforms: ["instagram"] },
     config: {
-      instructions: "Escribi como Wendy",
+      instructions: "Escribi como Ana",
       brand: {},
       guardrails: { bannedPhrases: ["revolucionario"], bannedClaims: [], maxLength: 300 },
       knowledgeTags: [],
@@ -188,7 +188,7 @@ describe("E4 · el pedido al modelo", () => {
   it("lleva las instrucciones, los limites, el conocimiento y los ejemplos", () => {
     const prompt = buildCopywriterPrompt(base);
 
-    expect(prompt).toContain("Escribi como Wendy");
+    expect(prompt).toContain("Escribi como Ana");
     expect(prompt).toContain("revolucionario");
     expect(prompt).toContain("300 caracteres");
     expect(prompt).toContain("Implementacion en 10 dias");

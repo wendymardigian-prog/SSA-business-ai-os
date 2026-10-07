@@ -12,6 +12,7 @@ import {
 } from "@/lib/dashboards/post-analysis";
 import { computeFollowerBump, neighborPosts } from "@/lib/dashboards/follower-bump";
 import { daysBetween } from "@/lib/metrics/rules";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 /**
  * Los datos del panel de analisis de un post (F51, F52).
@@ -76,7 +77,7 @@ export async function loadPostAnalysis(input: {
   if (!post) return { ok: false, error: "No encontre esa publicacion" };
 
   const now = new Date();
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   const { data: snapshotRows } = await supabase
     .from("social_post_metrics_daily")

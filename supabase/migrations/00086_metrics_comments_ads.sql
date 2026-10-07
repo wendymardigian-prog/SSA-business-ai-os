@@ -310,14 +310,14 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-metrics-sync') THEN
-    PERFORM cron.unschedule('ssa-cron-metrics-sync');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'metrics-sync') THEN
+    PERFORM cron.unschedule('metrics-sync');
   END IF;
   -- Al minuto 30 de cada hora: la ruta se queda con los workspaces cuya hora
   -- local es 03:30. Las zonas con medias horas (India, Nepal) entran igual
   -- porque la ruta compara la hora local, no el offset.
   PERFORM cron.schedule(
-    'ssa-cron-metrics-sync',
+    'metrics-sync',
     '30 * * * *',
     $cron$SELECT private.call_app_cron('metrics-sync')$cron$
   );

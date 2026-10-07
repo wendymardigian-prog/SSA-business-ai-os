@@ -13,6 +13,7 @@ import { agentUsableTagIds } from "@/lib/tags/effects";
 import { serializeSkillsForScreen, serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
 /**
@@ -34,6 +35,9 @@ export default async function AgentDetailPage({
   const { workspace, supabase, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
   const service = await createServiceClient();
+  // Costos y topes: la zona del NEGOCIO (consistente con los topes que
+  // evalua el agente). La pestana Acciones es un filtro: la de quien mira.
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
 
   const agents = await loadWorkspaceAgents(service, workspace.id);
   const agent = agents.find((a) => a.id === agentId);
@@ -128,6 +132,7 @@ export default async function AgentDetailPage({
         channelLabels: new Map(channels.map((c) => [c.id, channelLabel(c)])),
         tagNames: new Map(allTags.map((t) => [t.id, t.name])),
         memberNames,
+        timeZone: viewerTimezone,
       }),
       supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).not("performed_by_agent_id", "is", null),
     ]);
@@ -174,7 +179,7 @@ export default async function AgentDetailPage({
       monthly: workspace.ai_monthly_cost_limit_usd === null || workspace.ai_monthly_cost_limit_usd === undefined ? null : Number(workspace.ai_monthly_cost_limit_usd),
     };
     [kpis, costs] = await Promise.all([
-      loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id }),
+      loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id, timeZone: workspace.timezone }),
       tab === "costs"
         ? loadCostsTab(service, {
             workspaceId: workspace.id,
@@ -183,6 +188,7 @@ export default async function AgentDetailPage({
             agentNames: new Map(agents.map((a) => [a.id, a.name])),
             workspaceLimits,
             canEditPricing: isOwnerRole(role),
+            timeZone: workspace.timezone,
           })
         : Promise.resolve(undefined),
     ]);

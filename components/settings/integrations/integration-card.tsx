@@ -5,6 +5,7 @@ import { AlertTriangle, Check, Plug, TriangleAlert } from "lucide-react";
 import { STATUS_LABELS, type IntegrationStatus } from "@/lib/integrations/status";
 import { CHIP_LABELS, chipsOf, type ProviderDefinition } from "@/lib/integrations/providers";
 import { formatConnectedSince, formatLastRefreshed, formatOAuthExpiry } from "@/lib/integrations/format";
+import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { GoogleServices } from "./google-services";
 import type { IntegrationCardData } from "./types";
 
@@ -50,7 +51,8 @@ export function IntegrationCard({
   const connected = data.status !== "not_connected";
   const usage = data.usage;
   const chips = chipsOf(provider);
-  const connectedSince = formatConnectedSince(data.connectedAt);
+  const timeZone = useViewerTimezone();
+  const connectedSince = formatConnectedSince(data.connectedAt, timeZone);
 
   // Client ID y Secret guardados, pero nadie autorizo la cuenta todavia: la
   // integracion igual figura "Conectada" (preexistente, no se cambia), pero
@@ -89,7 +91,7 @@ export function IntegrationCard({
 
       {data.oauth && (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {[formatOAuthExpiry(data.oauth.tokenExpiresAt), formatLastRefreshed(data.oauth.lastRefreshedAt)]
+          {[formatOAuthExpiry(data.oauth.tokenExpiresAt, timeZone), formatLastRefreshed(data.oauth.lastRefreshedAt, timeZone)]
             .filter(Boolean)
             .join(" · ") || "Sin vencimiento conocido"}
         </p>

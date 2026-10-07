@@ -9,7 +9,7 @@ import { findPhrase, normalizeText } from "./text";
  *
  * Cuatro reglas, cada una con su switch en agents.guardrails:
  *   - links fuera de la lista blanca (solo corre si la lista no esta vacia)
- *   - palabras prohibidas (default: ScaleOS)
+ *   - palabras prohibidas (default: vacio)
  *   - escasez inventada (cupos, quedan N, ...)
  *   - cifras con $ que no esten en una lista blanca
  *
@@ -66,8 +66,8 @@ export function normalizeLink(url: string): { host: string; path: string } {
 /**
  * Un link esta permitido si su host y su camino coinciden con una entrada de la
  * lista. Una entrada sin camino permite todo el host. Una entrada con camino
- * exige ese camino o un subcamino por segmento: "wa.me/50670814873" NO permite
- * "wa.me/506708148731" (otro numero), pero "sitio.com/a" permite "sitio.com/a/b".
+ * exige ese camino o un subcamino por segmento: "wa.me/5491100000000" NO permite
+ * "wa.me/54911000000000" (otro numero), pero "sitio.com/a" permite "sitio.com/a/b".
  */
 export function linkAllowed(url: string, list: string[]): boolean {
   const link = normalizeLink(url);
@@ -121,7 +121,7 @@ export function checkOutputGuardrails(
   const hits: OutputGuardrailHit[] = [];
 
   // Links: la lista efectiva es lo configurado mas el link que genero la
-  // herramienta en este turno (sale del numero de Wendy, no del modelo).
+  // herramienta en este turno (sale del numero del negocio, no del modelo).
   const configured = guardrails.linksPermitidos ?? [];
   if (configured.length > 0) {
     const allow = [...configured, ...(options.allowedLinks ?? [])];

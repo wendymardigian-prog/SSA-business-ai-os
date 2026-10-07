@@ -207,7 +207,7 @@ export type AuditAction =
   /** Una persona revirtio una accion del agente. metadata.reverted_audit_id. */
   | "revert"
   /**
-   * El agente paso un lead calificado al WhatsApp de Wendy: el mensaje salio con
+   * El agente paso un lead calificado al WhatsApp de Ana: el mensaje salio con
    * el link. entity contact, performed_by_agent_id, metadata.reason = texto
    * preescrito. No se revierte (un mensaje enviado no se deshace).
    */
@@ -1735,6 +1735,28 @@ export interface Database {
             referencedColumns: ["id"];
           },
         ];
+      };
+      user_preferences: {
+        Row: {
+          user_id: string;
+          timezone: string;
+          timezone_source: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          timezone: string;
+          timezone_source?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          timezone?: string;
+          timezone_source?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       comment_logs: {
         Row: {

@@ -20,6 +20,7 @@
 import { funnelStageInfo } from "@/lib/content/classification";
 import { daysBetween } from "@/lib/metrics/rules";
 import { platformLabel } from "@/lib/platforms";
+import { isoToDateInput } from "@/lib/dates";
 import { leadsTracked } from "./piece-leads";
 
 export type Grouping = "day" | "week" | "month";
@@ -351,13 +352,19 @@ export interface ActivityPoint {
   total: number;
 }
 
-/** Publicaciones por grupo, apiladas por formato. */
-export function publishActivity(posts: PublishedPost[], grouping: Grouping): ActivityPoint[] {
+/**
+ * Publicaciones por grupo, apiladas por formato.
+ *
+ * `publishedAt` es un instante UTC: cortarlo con `.slice(0, 10)` da el dia en
+ * UTC, que es el dia anterior para cualquier zona adelantada a UTC. El dia
+ * tiene que leerse en la zona de quien mira.
+ */
+export function publishActivity(posts: PublishedPost[], grouping: Grouping, timeZone: string): ActivityPoint[] {
   const buckets = new Map<string, Record<string, number>>();
 
   for (const post of posts) {
     if (!post.publishedAt) continue;
-    const key = bucketOf(post.publishedAt.slice(0, 10), grouping);
+    const key = bucketOf(isoToDateInput(post.publishedAt, timeZone), grouping);
     const format = post.mediaType ?? "otro";
     const entry = buckets.get(key) ?? {};
     entry[format] = (entry[format] ?? 0) + 1;
@@ -435,13 +442,16 @@ export interface WeeklyD7 {
  * La semana en curso se marca: sus posts todavia no cumplieron 7 dias y su
  * promedio va a subir. Mostrarla igual que las cerradas haria parecer que
  * el rendimiento se derrumbo esta semana.
+ *
+ * El dia de publicacion se lee en `timeZone` (de quien mira), no en UTC: ver
+ * el comentario de `publishActivity`.
  */
-export function weeklyD7(posts: PublishedPost[], now: Date): WeeklyD7[] {
+export function weeklyD7(posts: PublishedPost[], now: Date, timeZone: string): WeeklyD7[] {
   const weeks = new Map<string, { byPlatform: Map<string, number[]>; inProgress: boolean }>();
 
   for (const post of posts) {
     if (!post.publishedAt) continue;
-    const week = weekStart(post.publishedAt.slice(0, 10));
+    const week = weekStart(isoToDateInput(post.publishedAt, timeZone));
     const entry = weeks.get(week) ?? { byPlatform: new Map<string, number[]>(), inProgress: false };
 
     if (post.engagementD7 !== null) {

@@ -3,10 +3,11 @@
 -- ============================================================================
 -- Fase 3, Bloque 2d-A.
 --
--- Wendy tiene contactos personales en el mismo Instagram por el que entran los
--- leads. El peor error posible del sistema es que el agente le ofrezca la
--- academia a un amigo. Una etiqueta que solo queda guardada no alcanza: el
--- agente igual redactaria la respuesta de venta. Tiene que tener efecto.
+-- La persona duena del negocio tiene contactos personales en el mismo Instagram
+-- por el que entran los leads. El peor error posible del sistema es que el
+-- agente le ofrezca la academia a un amigo. Una etiqueta que solo queda
+-- guardada no alcanza: el agente igual redactaria la respuesta de venta.
+-- Tiene que tener efecto.
 --
 -- Una sola implementacion generica, no dos casos especiales: `es-conocido` y
 -- `no-es-lead` piden lo mismo (apagar el agente en las conversaciones del
@@ -34,7 +35,7 @@
 --
 --   4. Al sacarla (AFTER DELETE): las conversaciones con la marca de ESA
 --      etiqueta vuelven a heredar (NULL). La asignacion NO se revierte (la
---      persona sigue siendo la responsable; decision de Wendy). Si el contacto
+--      persona sigue siendo la responsable; decision de producto). Si el contacto
 --      conserva otra etiqueta con efecto, la marca pasa a esa y nada se prende.
 --
 --   5. Conversaciones nuevas del contacto (BEFORE INSERT en conversations) y
@@ -96,7 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_disabled_by_tag
 -- ------------------------------------------------------------
 -- La 00002 tenia una sola FOR ALL para cualquier miembro. No se usa privilegio
 -- de columna: todos los usuarios son el mismo rol `authenticated`, asi que
--- revocar la columna se la sacaria tambien a Wendy.
+-- revocar la columna se la sacaria tambien a la duena del negocio.
 
 DROP POLICY IF EXISTS "Users can manage tags in their workspaces" ON public.tags;
 DROP POLICY IF EXISTS "tags_insert" ON public.tags;

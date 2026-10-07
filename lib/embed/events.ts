@@ -10,20 +10,20 @@
  */
 import type { Booking } from "@/lib/scheduling/types";
 
-export const EMBED_MESSAGE_SOURCE = "ssa-embed";
+export const EMBED_MESSAGE_SOURCE = "agenda-embed";
 
-/** Eventos públicos, escuchables con `SSA("on", {action, callback})`. */
+/** Eventos públicos, escuchables con `Agenda("on", {action, callback})`. */
 export const EMBED_EVENTS = [
-  "ssa:bookerReady",
-  "ssa:slotSelected",
-  "ssa:bookingSuccessful",
-  "ssa:rescheduleSuccessful",
-  "ssa:bookingCancelled",
+  "agenda:bookerReady",
+  "agenda:slotSelected",
+  "agenda:bookingSuccessful",
+  "agenda:rescheduleSuccessful",
+  "agenda:bookingCancelled",
 ] as const;
 export type EmbedEventName = (typeof EMBED_EVENTS)[number];
 
 /** Eventos internos del protocolo (no se exponen con `on`). */
-export const EMBED_INTERNAL_EVENTS = ["ssa:loaded", "ssa:height", "ssa:ui"] as const;
+export const EMBED_INTERNAL_EVENTS = ["agenda:loaded", "agenda:height", "agenda:ui"] as const;
 export type EmbedInternalEventName = (typeof EMBED_INTERNAL_EVENTS)[number];
 
 export type EmbedMessageType = EmbedEventName | EmbedInternalEventName;
@@ -52,7 +52,7 @@ export function isEmbedEventName(value: unknown): value is EmbedEventName {
  * Meet si ya está. Nunca email, teléfono ni respuestas.
  */
 export function serializeEmbedEvent(
-  name: "ssa:bookingSuccessful" | "ssa:rescheduleSuccessful" | "ssa:bookingCancelled",
+  name: "agenda:bookingSuccessful" | "agenda:rescheduleSuccessful" | "agenda:bookingCancelled",
   booking: Pick<Booking, "uid" | "start_at" | "end_at"> & { meet_url?: string | null },
   eventSlug: string,
 ): { type: typeof name; payload: BookingEventPayload } {

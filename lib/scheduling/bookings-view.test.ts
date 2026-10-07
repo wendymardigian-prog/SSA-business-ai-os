@@ -68,8 +68,8 @@ describe("filterBookings", () => {
     host_user_id: "u1",
     event_type_id: "ev1",
     category_snapshot: { area_id: "area-ventas", area_name: "Ventas", type_id: "tipo-triaje", type_name: "Triaje" },
-    booker_name: "Noelia Mereles",
-    booker_email: "noe@estudio.test",
+    booker_name: "Ana Pérez",
+    booker_email: "ana@estudio.test",
     booker_phone: "+50687123344",
     ...over,
   });
@@ -103,7 +103,7 @@ describe("filterBookings", () => {
   it("busca por nombre, email o teléfono, sin distinguir mayúsculas", () => {
     const uno = row();
     const otro = row({ booker_name: "Juan", booker_email: "juan@otro.test", booker_phone: "+5215555" });
-    expect(filterBookings([uno, otro], { search: "NOELIA" }, now)).toEqual([uno]);
+    expect(filterBookings([uno, otro], { search: "ANA" }, now)).toEqual([uno]);
     expect(filterBookings([uno, otro], { search: "juan@otro" }, now)).toEqual([otro]);
     expect(filterBookings([uno, otro], { search: "8712" }, now)).toEqual([uno]);
     expect(filterBookings([uno, otro], { search: "nadie" }, now)).toEqual([]);

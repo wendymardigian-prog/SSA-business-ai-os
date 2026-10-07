@@ -4,6 +4,7 @@ import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel, type Platform } from "@/lib/platforms";
 import { firstParam, listParam, pickEnum, pickIds, pickPage, sanitizeSearch } from "@/lib/url-params";
 import { resolveDateRange, DATE_PRESETS, type DatePreset } from "@/lib/dates";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 import {
   INBOX_STATUS_VALUES,
   DEFAULT_INBOX_STATUS,
@@ -105,7 +106,8 @@ export default async function InboxPage({
   const page = pickPage(params.page);
   const selectedId = firstParam(params.c);
 
-  const range = resolveDateRange(datePreset, dateFrom, dateTo);
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
+  const range = resolveDateRange(datePreset, dateFrom, dateTo, new Date(), viewerTimezone);
 
   // El inner join con alias recorta que conversaciones vuelven sin perder los
   // datos del contacto de las que vuelven. Es el mismo mecanismo que usa la

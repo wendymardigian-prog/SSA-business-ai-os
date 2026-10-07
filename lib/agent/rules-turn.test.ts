@@ -27,7 +27,13 @@ const R = {
 describe("integración de reglas en el turno (F9)", () => {
   it("no responder antes de generar: 0 llamadas al modelo", async () => {
     const w = rulesWorld([R.buttonSkip]);
-    w.addInbound("si enviamelo", 0);
+    // "quiero mas info" es un texto de boton de ESTE workspace (message_texts,
+    // is_button = true): la condicion inbound.is_known_button se alimenta de
+    // ahi, no de una lista fija (lib/agent/rules/button-texts.ts).
+    w.db.tables.message_texts = [
+      { workspace_id: "ws-1", direction: "inbound", normalized_text: "quiero mas info", is_button: true },
+    ];
+    w.addInbound("quiero mas info", 0);
     w.clock.ms = T0 + 75_000;
 
     const outcome = await runAgentTurn(w.db.client, w.payload, w.deps);

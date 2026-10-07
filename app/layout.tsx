@@ -1,39 +1,20 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { brandName, brandColorHex } from "@/lib/brand";
+import { appUrl } from "@/lib/app-url";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const name = brandName();
+
 export const metadata: Metadata = {
   title: {
-    default: "ZernFlow - The Open Source ManyChat Alternative",
-    template: "%s | ZernFlow",
+    default: name,
+    template: `%s | ${name}`,
   },
-  description:
-    "Automate DMs, comments, and flows across Instagram, Facebook, WhatsApp, Telegram, X, Bluesky, and Reddit. Free, self-hostable, and open source.",
-  metadataBase: new URL("https://zernflow.com"),
-  openGraph: {
-    title: "ZernFlow - The Open Source ManyChat Alternative",
-    description:
-      "Automate DMs, comments, and flows across Instagram, Facebook, WhatsApp, Telegram, X, Bluesky, and Reddit. Free, self-hostable, and open source.",
-    url: "https://zernflow.com",
-    siteName: "ZernFlow",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "ZernFlow - The Open Source ManyChat Alternative",
-    description:
-      "Automate DMs, comments, and flows across 7 platforms. Free, self-hostable, open source.",
-  },
-  icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-    ],
-    apple: "/apple-touch-icon.png",
-  },
+  description: "Sistema operativo de negocio: CRM, bandeja multicanal, automatizaciones y agente de IA en un solo lugar.",
+  metadataBase: new URL(appUrl()),
 };
 
 export default function RootLayout({
@@ -41,8 +22,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const brandColor = brandColorHex();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <head>
         {/*
           Las dos preferencias que cambian como se ve la pantalla apenas carga:
@@ -57,6 +40,27 @@ export default function RootLayout({
 try{if(localStorage.getItem("sidebar-collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}`,
           }}
         />
+        {/*
+          Color de marca por cliente (NEXT_PUBLIC_BRAND_COLOR, ver lib/brand.ts).
+          Con !important porque pisa tanto :root como .dark/[data-theme]
+          independientemente de en que orden el bundler termine metiendo cada
+          hoja de estilos: sin eso, el orden de carga decide cual gana.
+
+          Se pisan DOS pares de variables, no uno: `--primary`/`--ring` (los
+          que usa el codigo que escribe `var(--primary)` a mano) y
+          `--color-primary`/`--color-ring` (los que Tailwind v4 usa de verdad
+          para las utilidades `bg-primary`/`ring-primary`: @theme los declara
+          UNA vez en :root como `var(--primary)`, pero .dark y [data-theme]
+          los redefinen con un oklch literal, asi que de ahi para abajo ya no
+          siguen a `--primary`. Ver el comentario de app/globals.css:220.
+        */}
+        {brandColor && (
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `:root,.dark,[data-theme="dark"],[data-theme="light"]{--primary:${brandColor} !important;--ring:${brandColor} !important;--color-primary:${brandColor} !important;--color-ring:${brandColor} !important;}`,
+            }}
+          />
+        )}
       </head>
       <body className={inter.className}>{children}</body>
     </html>

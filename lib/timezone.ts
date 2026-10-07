@@ -19,7 +19,7 @@ const FALLBACK_TIMEZONES = [
   "UTC",
 ];
 
-export const DEFAULT_TIMEZONE = "America/Costa_Rica";
+export const DEFAULT_TIMEZONE = "UTC";
 
 /** Verdadero si la zona es una IANA válida que el runtime reconoce. */
 export function isValidTimeZone(tz: string): boolean {

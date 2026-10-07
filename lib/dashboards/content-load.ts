@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { isoToDateInput } from "@/lib/dates";
 import {
   matchesClassification,
   type AccountDailyRow,
@@ -68,11 +69,18 @@ const EMPTY: ContentDashboardData = {
   filterOptions: EMPTY_OPTIONS,
 };
 
-/** El rango como fechas `YYYY-MM-DD`, que es como se guardan las filas. */
-function dateRange(period: ResolvedPeriod): { from: string | null; to: string | null } {
+/**
+ * El rango como fechas `YYYY-MM-DD`, que es como se guardan las filas.
+ *
+ * `period.from`/`to` son instantes UTC (el borde del dia en la zona con la
+ * que se armo el periodo); cortarlos con `.slice(0, 10)` da el dia en UTC,
+ * que es el dia anterior para cualquier zona adelantada a UTC. Hay que leer
+ * el dia civil en la MISMA zona con la que se armo `period`.
+ */
+function dateRange(period: ResolvedPeriod, timeZone: string): { from: string | null; to: string | null } {
   return {
-    from: period.from ? period.from.slice(0, 10) : null,
-    to: period.to ? period.to.slice(0, 10) : null,
+    from: period.from ? isoToDateInput(period.from, timeZone) : null,
+    to: period.to ? isoToDateInput(period.to, timeZone) : null,
   };
 }
 
@@ -177,9 +185,11 @@ export async function loadContentDashboard(
     platform?: string | null;
     /** Filtros sobre la clasificacion de la pieza y el formato (F105). */
     filters?: ClassificationFilters;
+    /** La misma zona con la que se armo `period` (resolvePeriod). */
+    timeZone: string;
   },
 ): Promise<ContentDashboardData> {
-  const { from, to } = dateRange(params.period);
+  const { from, to } = dateRange(params.period, params.timeZone);
 
   let postsQuery = supabase
     .from("social_posts")

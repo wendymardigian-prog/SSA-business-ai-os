@@ -38,7 +38,7 @@ export function validateUsername(
   return { ok: true, username };
 }
 
-/** Un usuario a partir del nombre: "Wendy Mardigian" -> "wendy-mardigian"; si esta tomado, "-2", "-3"... */
+/** Un usuario a partir del nombre: "Ana Pérez" -> "ana-perez"; si esta tomado, "-2", "-3"... */
 export function suggestUsername(displayName: string | null | undefined, email: string | null | undefined, taken: string[] = []): string {
   const fromName = slugify(displayName ?? "");
   const fromEmail = slugify((email ?? "").split("@")[0] ?? "");

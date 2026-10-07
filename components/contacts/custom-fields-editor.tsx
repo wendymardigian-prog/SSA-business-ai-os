@@ -10,7 +10,7 @@ import { ActionError, EmptyHint } from "./ui";
 export interface CustomFieldItem {
   id: string;
   name: string;
-  /** Los 6 tipos reales de ZernFlow: text, number, boolean, date, url, email. */
+  /** Los 6 tipos reales: text, number, boolean, date, url, email. */
   type: string;
   value: string;
 }
@@ -19,7 +19,7 @@ export interface CustomFieldItem {
  * Campos personalizados, editables inline.
  *
  * El tipo de cada campo solo define el input que se muestra: la validacion
- * fuerte de estos valores no existe en ZernFlow y no la agrego aca para no
+ * fuerte de estos valores no existe en el sistema original y no la agrego aca para no
  * cambiar el comportamiento de una funcionalidad que ya venia del fork.
  */
 export function CustomFieldsEditor({

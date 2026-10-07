@@ -299,14 +299,14 @@ GRANT EXECUTE ON FUNCTION public.purge_agent_run_step_content(integer) TO servic
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-agent-steps');
+  PERFORM cron.unschedule('purge-agent-steps');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 5:10, despues de la purga de mensajes de las 5:00.
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-steps',
+  'purge-agent-steps',
   '10 5 * * *',
   $$SELECT public.purge_agent_run_step_content(12)$$
 );

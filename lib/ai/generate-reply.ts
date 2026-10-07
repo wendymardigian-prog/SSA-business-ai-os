@@ -6,6 +6,7 @@ import { openAiRun, type AiRunHandle, type OpenRunInput } from "./run";
 import { effectiveMessageText, type MessageWithMedia } from "@/lib/agent/effective-text";
 import { assessInterpretability } from "@/lib/agent/interpretability";
 import { markNeedsHuman } from "@/lib/agent/needs-human";
+import { aiLanguageStyle } from "./language-style";
 
 /**
  * Generar una respuesta con IA, sin saber nada de flows.
@@ -91,8 +92,10 @@ export function runInputForTrace(request: AiReplyRequest): OpenRunInput {
   };
 }
 
-const DEFAULT_SYSTEM_PROMPT =
-  "Sos un asistente de atencion al cliente. Responde en español rioplatense, breve y claro.";
+/** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
+function defaultSystemPrompt(): string {
+  return `Sos un asistente de atencion al cliente. Responde en ${aiLanguageStyle()}, breve y claro.`;
+}
 
 /**
  * Arma el historial para el modelo, del mas viejo al mas nuevo.
@@ -240,7 +243,7 @@ export async function generateAiReply(
   if (aiMessages.length === 0) {
     aiMessages.push({
       role: "user",
-      content: request.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      content: request.systemPrompt || defaultSystemPrompt(),
     });
   }
 
@@ -249,7 +252,7 @@ export async function generateAiReply(
   try {
     const result = await generateText({
       model: resolved.model,
-      system: request.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      system: request.systemPrompt || defaultSystemPrompt(),
       messages: aiMessages,
       temperature: request.temperature ?? 0.7,
       maxOutputTokens: request.maxTokens ?? 500,

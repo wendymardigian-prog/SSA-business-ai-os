@@ -1,7 +1,7 @@
 /**
  * El token de Meta y a que cuenta de Instagram da acceso (F40, F43).
  *
- * Portado de ScaleOS, con el cambio que importa: el token sale de **Vault**
+ * Portado de un sistema anterior, con el cambio que importa: el token sale de **Vault**
  * y no de una variable de entorno. Es un token de System User, que no vence,
  * asi que no hay refresco ni intercambio: se genera una vez en el Business
  * Manager y se pega.

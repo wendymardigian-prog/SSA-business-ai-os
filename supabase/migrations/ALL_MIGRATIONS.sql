@@ -1,5 +1,5 @@
 -- =============================================
--- ZERNFLOW - COMBINED MIGRATIONS
+-- COMBINED MIGRATIONS
 -- Generated from supabase/migrations/*.sql, in order.
 -- DO NOT EDIT BY HAND: run `node scripts/build-all-migrations.mjs`
 -- Paste this entire file into Supabase SQL Editor
@@ -1275,7 +1275,7 @@ GRANT EXECUTE ON FUNCTION public.is_workspace_admin(uuid) TO authenticated, serv
 -- ============================================================
 -- Dos cosas:
 --
--- 1. Roles. ZernFlow guarda el rol como texto libre y varias policies asumen
+-- 1. Roles. El sistema original guarda el rol como texto libre y varias policies asumen
 --    owner-only. El alcance de Etapa 1 pide Owner/Admin/Member con Admin
 --    pudiendo invitar y cambiar roles, y Member sin acceso a configuracion.
 --
@@ -1609,7 +1609,7 @@ CREATE POLICY "workspace_members_select" ON public.workspace_members
 -- ============================================================
 -- MIGRACION 00019 — DE DONDE VIENE CADA CANAL
 -- ============================================================
--- La tabla channels de ZernFlow asume que todo canal se conecto por Zernio:
+-- La tabla channels del sistema original asume que todo canal se conecto por Zernio:
 -- late_account_id es obligatorio y todo el codigo de sync sale de ahi.
 -- WhatsApp de Etapa 1 no pasa por Zernio, sino por Evolution API self-hosted.
 --
@@ -1897,7 +1897,7 @@ CREATE POLICY "email_log_select" ON public.email_log
 -- ============================================================
 -- MIGRACION 00022 — MODELO DE CONTACTO EXTENDIDO (F9 + F10)
 -- ============================================================
--- ZernFlow trae un contacto minimo: display_name, email, avatar_url,
+-- El sistema original trae un contacto minimo: display_name, email, avatar_url,
 -- is_subscribed, last_interaction_at y metadata. Para un CRM de servicios
 -- digitales falta todo lo demas: telefono, redes, asignaciones, seguimiento,
 -- atribucion y borrado logico.
@@ -3110,7 +3110,7 @@ BEGIN
   END IF;
 
   -- is_subscribed tambien baja: es la marca que ya miraban los broadcasts y
-  -- las palabras clave globales de ZernFlow, y seria raro que un contacto
+  -- las palabras clave globales del sistema original, y seria raro que un contacto
   -- quede "no contactar" pero suscripto.
   UPDATE public.contacts
   SET do_not_contact = true,
@@ -4147,11 +4147,11 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-jobs',
-    'ssa-cron-sequences',
-    'ssa-cron-whatsapp-health',
-    'ssa-cron-purge-deleted',
-    'ssa-cron-purge-pg-net'
+    'jobs',
+    'sequences',
+    'whatsapp-health',
+    'purge-deleted',
+    'purge-pg-net'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -4162,14 +4162,14 @@ $$;
 
 -- Despierta las sesiones de flow dormidas (nodos Delay) y manda los broadcasts.
 SELECT cron.schedule(
-  'ssa-cron-jobs',
+  'jobs',
   '* * * * *',
   $$SELECT private.call_app_cron('jobs')$$
 );
 
 -- Avanza los pasos de las secuencias.
 SELECT cron.schedule(
-  'ssa-cron-sequences',
+  'sequences',
   '* * * * *',
   $$SELECT private.call_app_cron('sequences')$$
 );
@@ -4178,7 +4178,7 @@ SELECT cron.schedule(
 -- nada, porque no hay ningun canal de Evolution: queda agendado para que el
 -- dia que se conecte el numero no haya que acordarse de esto.
 SELECT cron.schedule(
-  'ssa-cron-whatsapp-health',
+  'whatsapp-health',
   '*/5 * * * *',
   $$SELECT private.call_app_cron('whatsapp-health')$$
 );
@@ -4186,13 +4186,13 @@ SELECT cron.schedule(
 -- La purga es puro SQL: se llama directo, sin dar la vuelta por HTTP. La ruta
 -- /api/cron/purge-deleted se conserva para poder correrla a mano.
 SELECT cron.schedule(
-  'ssa-cron-purge-deleted',
+  'purge-deleted',
   '0 4 * * *',
   $$SELECT public.purge_soft_deleted(30)$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 4 * * *',
   $$SELECT private.purge_pg_net_responses(3)$$
 );
@@ -4345,14 +4345,14 @@ GRANT EXECUTE ON FUNCTION public.purge_send_windows(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-send-windows') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-send-windows');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-send-windows') THEN
+    PERFORM cron.unschedule('purge-send-windows');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-send-windows',
+  'purge-send-windows',
   '20 4 * * *',
   $$SELECT public.purge_send_windows(2)$$
 );
@@ -4363,7 +4363,7 @@ SELECT cron.schedule(
 -- ============================================================
 -- MIGRACION 00038 — TIPOS NUEVOS DE TRIGGER (F3, F4, F5)
 -- ============================================================
--- La tabla `triggers` viene de ZernFlow con seis tipos, todos disparados por
+-- La tabla `triggers` viene del sistema original con seis tipos, todos disparados por
 -- algo que hace el contacto en el chat: una palabra clave, un boton, el primer
 -- mensaje. La Fase 2 suma tres que nacen en otro lado:
 --
@@ -4466,7 +4466,7 @@ ALTER TABLE public.triggers ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT 
 -- ------------------------------------------------------------
 -- 4. RLS mas estricta
 -- ------------------------------------------------------------
--- Las policies que venian de ZernFlow (migracion 00002) daban FOR ALL a
+-- Las policies que venian del sistema original (migracion 00002) daban FOR ALL a
 -- cualquier miembro del workspace: un Member podia crear, editar y borrar
 -- triggers de cualquier flow. Es incoherente con el resto del sistema, donde
 -- crear y publicar flows es cosa de Owner/Admin, y ademas es un agujero: un
@@ -4554,14 +4554,14 @@ GRANT EXECUTE ON FUNCTION public.purge_trigger_fires(integer) TO service_role;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-trigger-fires') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-trigger-fires');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-trigger-fires') THEN
+    PERFORM cron.unschedule('purge-trigger-fires');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-trigger-fires',
+  'purge-trigger-fires',
   '30 4 * * *',
   $$SELECT public.purge_trigger_fires(90)$$
 );
@@ -4569,14 +4569,14 @@ SELECT cron.schedule(
 -- El trigger de inactividad corre por cron cada 15 minutos.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-inactivity') THEN
-    PERFORM cron.unschedule('ssa-cron-inactivity');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'inactivity') THEN
+    PERFORM cron.unschedule('inactivity');
   END IF;
 END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-inactivity',
+  'inactivity',
   '*/15 * * * *',
   $$SELECT private.call_app_cron('inactivity')$$
 );
@@ -4881,11 +4881,11 @@ GRANT EXECUTE ON FUNCTION public.purge_automation_events(integer) TO service_rol
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'automation-events') THEN
+    PERFORM cron.unschedule('automation-events');
   END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-purge-automation-events') THEN
-    PERFORM cron.unschedule('ssa-cron-purge-automation-events');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'purge-automation-events') THEN
+    PERFORM cron.unschedule('purge-automation-events');
   END IF;
 END;
 $$;
@@ -4893,13 +4893,13 @@ $$;
 -- Cada minuto: un contacto nuevo que tiene que recibir un mensaje de
 -- bienvenida no puede esperar un cuarto de hora.
 SELECT cron.schedule(
-  'ssa-cron-automation-events',
+  'automation-events',
   '* * * * *',
   $$SELECT private.call_app_cron('automation-events')$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-automation-events',
+  'purge-automation-events',
   '40 4 * * *',
   $$SELECT public.purge_automation_events(7)$$
 );
@@ -6188,14 +6188,14 @@ GRANT EXECUTE ON FUNCTION public.purge_read_notifications(integer) TO service_ro
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-notifications');
+  PERFORM cron.unschedule('purge-notifications');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 4:50: las otras purgas ya ocupan :00, :10, :20, :30 y :40.
 SELECT cron.schedule(
-  'ssa-cron-purge-notifications',
+  'purge-notifications',
   '50 4 * * *',
   $$SELECT public.purge_read_notifications(60)$$
 );
@@ -6530,13 +6530,13 @@ GRANT EXECUTE ON FUNCTION public.purge_old_messages(integer, integer) TO service
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-messages');
+  PERFORM cron.unschedule('purge-messages');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-purge-messages',
+  'purge-messages',
   '0 5 * * *',
   $$SELECT public.purge_old_messages(12)$$
 );
@@ -7238,14 +7238,14 @@ GRANT EXECUTE ON FUNCTION public.purge_agent_run_step_content(integer) TO servic
 
 DO $$
 BEGIN
-  PERFORM cron.unschedule('ssa-cron-purge-agent-steps');
+  PERFORM cron.unschedule('purge-agent-steps');
 EXCEPTION
   WHEN OTHERS THEN NULL;  -- todavia no existia
 END $$;
 
 -- 5:10, despues de la purga de mensajes de las 5:00.
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-steps',
+  'purge-agent-steps',
   '10 5 * * *',
   $$SELECT public.purge_agent_run_step_content(12)$$
 );
@@ -7783,9 +7783,9 @@ DECLARE
   v_job text;
 BEGIN
   FOREACH v_job IN ARRAY ARRAY[
-    'ssa-cron-agent-bursts',
-    'ssa-cron-purge-pg-net',
-    'ssa-cron-purge-cron-runs'
+    'agent-bursts',
+    'purge-pg-net',
+    'purge-cron-runs'
   ] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
@@ -7795,21 +7795,21 @@ END;
 $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-bursts',
+  'agent-bursts',
   '15 seconds',
   $$SELECT private.call_app_cron('agent-bursts')$$
 );
 
 -- Cada hora al minuto 10, 1 dia de retencion (antes: 4:10 diario, 3 dias).
 SELECT cron.schedule(
-  'ssa-cron-purge-pg-net',
+  'purge-pg-net',
   '10 * * * *',
   $$SELECT private.purge_pg_net_responses(1)$$
 );
 
 -- 5:20, despues de las purgas de mensajes (5:00) y de pasos del agente (5:10).
 SELECT cron.schedule(
-  'ssa-cron-purge-cron-runs',
+  'purge-cron-runs',
   '20 5 * * *',
   $$SELECT private.purge_cron_run_details(3)$$
 );
@@ -8640,7 +8640,7 @@ DO $$
 DECLARE
   v_job text;
 BEGIN
-  FOREACH v_job IN ARRAY ARRAY['ssa-cron-agent-drafts-sweep', 'ssa-cron-purge-agent-drafts'] LOOP
+  FOREACH v_job IN ARRAY ARRAY['agent-drafts-sweep', 'purge-agent-drafts'] LOOP
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = v_job) THEN
       PERFORM cron.unschedule(v_job);
     END IF;
@@ -8648,13 +8648,13 @@ BEGIN
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-agent-drafts-sweep',
+  'agent-drafts-sweep',
   '*/5 * * * *',
   $$SELECT private.sweep_agent_drafts()$$
 );
 
 SELECT cron.schedule(
-  'ssa-cron-purge-agent-drafts',
+  'purge-agent-drafts',
   '30 5 * * *',
   $$SELECT public.purge_agent_draft_content(12)$$
 );
@@ -9233,13 +9233,13 @@ REVOKE ALL ON FUNCTION private.alert_draft_windows() FROM PUBLIC, anon, authenti
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-draft-window-alerts') THEN
-    PERFORM cron.unschedule('ssa-cron-draft-window-alerts');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'draft-window-alerts') THEN
+    PERFORM cron.unschedule('draft-window-alerts');
   END IF;
 END $$;
 
 SELECT cron.schedule(
-  'ssa-cron-draft-window-alerts',
+  'draft-window-alerts',
   '*/5 * * * *',
   $$SELECT private.alert_draft_windows()$$
 );
@@ -9252,10 +9252,11 @@ SELECT cron.schedule(
 -- ============================================================================
 -- Fase 3, Bloque 2d-A.
 --
--- Wendy tiene contactos personales en el mismo Instagram por el que entran los
--- leads. El peor error posible del sistema es que el agente le ofrezca la
--- academia a un amigo. Una etiqueta que solo queda guardada no alcanza: el
--- agente igual redactaria la respuesta de venta. Tiene que tener efecto.
+-- La persona duena del negocio tiene contactos personales en el mismo Instagram
+-- por el que entran los leads. El peor error posible del sistema es que el
+-- agente le ofrezca la academia a un amigo. Una etiqueta que solo queda
+-- guardada no alcanza: el agente igual redactaria la respuesta de venta.
+-- Tiene que tener efecto.
 --
 -- Una sola implementacion generica, no dos casos especiales: `es-conocido` y
 -- `no-es-lead` piden lo mismo (apagar el agente en las conversaciones del
@@ -9283,7 +9284,7 @@ SELECT cron.schedule(
 --
 --   4. Al sacarla (AFTER DELETE): las conversaciones con la marca de ESA
 --      etiqueta vuelven a heredar (NULL). La asignacion NO se revierte (la
---      persona sigue siendo la responsable; decision de Wendy). Si el contacto
+--      persona sigue siendo la responsable; decision de producto). Si el contacto
 --      conserva otra etiqueta con efecto, la marca pasa a esa y nada se prende.
 --
 --   5. Conversaciones nuevas del contacto (BEFORE INSERT en conversations) y
@@ -9345,7 +9346,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_disabled_by_tag
 -- ------------------------------------------------------------
 -- La 00002 tenia una sola FOR ALL para cualquier miembro. No se usa privilegio
 -- de columna: todos los usuarios son el mismo rol `authenticated`, asi que
--- revocar la columna se la sacaria tambien a Wendy.
+-- revocar la columna se la sacaria tambien a la duena del negocio.
 
 DROP POLICY IF EXISTS "Users can manage tags in their workspaces" ON public.tags;
 DROP POLICY IF EXISTS "tags_insert" ON public.tags;
@@ -9960,7 +9961,7 @@ COMMENT ON FUNCTION public.normalize_for_grouping(text) IS
 --      saliente, descarta el borrador pendiente/fallido de esa conversación si
 --      es posterior a su ráfaga y no salió de su propio run. auto:manual_reply
 --      si el saliente es de una persona, auto:answered_elsewhere si no.
---   5. Cron ssa-cron-drafts-refresh cada 5 min (refresca contra Zernio las
+--   5. Cron drafts-refresh cada 5 min (refresca contra Zernio las
 --      conversaciones con borrador pendiente) + whitelist de call_app_cron.
 --
 -- Idempotente. Aditiva.
@@ -10105,10 +10106,10 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-drafts-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-drafts-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'drafts-refresh') THEN
+    PERFORM cron.unschedule('drafts-refresh');
   END IF;
-  PERFORM cron.schedule('ssa-cron-drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
+  PERFORM cron.schedule('drafts-refresh', '*/5 * * * *', $cron$SELECT private.call_app_cron('drafts-refresh')$cron$);
 END $$;
 
 -- ============================================================
@@ -10575,23 +10576,15 @@ WHERE t.normalized_text = '' AND t.category_id IS NULL
   AND c.workspace_id = t.workspace_id AND c.direction = t.direction AND c.name = 'Solo emoji o adjunto';
 
 -- 7. Textos de botón conocidos (§10.6). Categoría inbound "Respuesta a botón",
--- los 12 textos con is_button = true y source = 'rule' (no los toca el modelo).
+-- para marcar con is_button = true y source = 'rule' los textos que la base
+-- de CADA cliente use como botón (no los toca el modelo). La categoría es
+-- generica y se crea siempre; los textos puntuales no se siembran aca: son
+-- campaña de cada negocio, no del sistema (lib/agent/rules/known-buttons.ts,
+-- hoy una lista vacia a proposito — ver docs/PROGRESS-white-label.md).
 INSERT INTO public.message_categories (workspace_id, direction, name, description, is_fallback, created_by)
 SELECT w.id, 'inbound', 'Respuesta a botón', 'Clic en un botón de ManyChat u otra automatización', false, 'system'
 FROM public.workspaces w
 ON CONFLICT DO NOTHING;
-
-WITH buttons(t) AS (VALUES
-  ('si enviamelo'), ('quiero aprender'), ('tengo un negocio'), ('tengo una base'),
-  ('si quiero a clase'), ('si quiero la clase'), ('generar contenido'), ('empiezo de 0'),
-  ('automatizar todo'), ('equipo ventas ia'), ('agentes'), ('responder mensajes')
-)
-UPDATE public.message_texts t
-SET is_button = true, source = 'rule',
-    category_id = c.id
-FROM buttons b, public.message_categories c
-WHERE t.direction = 'inbound' AND t.normalized_text = b.t
-  AND c.direction = 'inbound' AND c.name = 'Respuesta a botón' AND c.workspace_id = t.workspace_id;
 
 -- 8. Categorías de sistema al crear un workspace ----------------------------
 -- Sin esto, un workspace nuevo (o el de prueba de verify-dashboards) no tiene
@@ -10660,7 +10653,7 @@ GRANT EXECUTE ON FUNCTION public.chat_dashboard_patterns(uuid, text, timestamptz
 --      no es conversación en vivo (clasificación, resumen, cierre, indexación).
 --   2. agent_runs.intent (jsonb): la intención que declara el agente en cada
 --      turno (F26). Con GRANT SELECT (no es un costo).
---   3. Cron ssa-cron-bg-dispatch y ssa-cron-bg-collect cada 15 min + whitelist.
+--   3. Cron bg-dispatch y bg-collect cada 15 min + whitelist.
 --
 -- Idempotente y aditiva.
 -- ============================================================================
@@ -10693,10 +10686,10 @@ END; $$;
 REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authenticated;
 
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-dispatch') THEN PERFORM cron.unschedule('ssa-cron-bg-dispatch'); END IF;
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-bg-collect') THEN PERFORM cron.unschedule('ssa-cron-bg-collect'); END IF;
-  PERFORM cron.schedule('ssa-cron-bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
-  PERFORM cron.schedule('ssa-cron-bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-dispatch') THEN PERFORM cron.unschedule('bg-dispatch'); END IF;
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'bg-collect') THEN PERFORM cron.unschedule('bg-collect'); END IF;
+  PERFORM cron.schedule('bg-dispatch', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-dispatch')$c$);
+  PERFORM cron.schedule('bg-collect', '*/15 * * * *', $c$SELECT private.call_app_cron('bg-collect')$c$);
 END $$;
 
 -- ============================================================
@@ -10979,11 +10972,11 @@ END; $function$;
 -- quedan menos de 15: una vez por semana alcanza de sobra.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-social-token-refresh') THEN
-    PERFORM cron.unschedule('ssa-cron-social-token-refresh');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'social-token-refresh') THEN
+    PERFORM cron.unschedule('social-token-refresh');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-social-token-refresh',
+    'social-token-refresh',
     '40 4 * * 1',
     $cron$SELECT private.call_app_cron('social-token-refresh')$cron$
   );
@@ -11513,11 +11506,11 @@ END; $function$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-media-cleanup') THEN
-    PERFORM cron.unschedule('ssa-cron-content-media-cleanup');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-media-cleanup') THEN
+    PERFORM cron.unschedule('content-media-cleanup');
   END IF;
   PERFORM cron.schedule(
-    'ssa-cron-content-media-cleanup',
+    'content-media-cleanup',
     '50 5 * * *',
     $cron$SELECT private.call_app_cron('content-media-cleanup')$cron$
   );
@@ -11977,14 +11970,14 @@ REVOKE ALL ON FUNCTION private.call_app_cron(text) FROM PUBLIC, anon, authentica
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-metrics-sync') THEN
-    PERFORM cron.unschedule('ssa-cron-metrics-sync');
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'metrics-sync') THEN
+    PERFORM cron.unschedule('metrics-sync');
   END IF;
   -- Al minuto 30 de cada hora: la ruta se queda con los workspaces cuya hora
   -- local es 03:30. Las zonas con medias horas (India, Nepal) entran igual
   -- porque la ruta compara la hora local, no el offset.
   PERFORM cron.schedule(
-    'ssa-cron-metrics-sync',
+    'metrics-sync',
     '30 * * * *',
     $cron$SELECT private.call_app_cron('metrics-sync')$cron$
   );
@@ -12734,11 +12727,11 @@ END; $$;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-    PERFORM cron.unschedule('ssa-cron-content-upload')
-      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'ssa-cron-content-upload');
+    PERFORM cron.unschedule('content-upload')
+      WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'content-upload');
 
     PERFORM cron.schedule(
-      'ssa-cron-content-upload',
+      'content-upload',
       '*/2 * * * *',
       $cron$SELECT private.call_app_cron('content-upload');$cron$
     );
@@ -18414,7 +18407,7 @@ WHERE script IS NULL
 --   1. Haber visto la v3 funcionando en produccion con piezas reales.
 --   2. Haber verificado que ninguna idea o pieza tiene texto SOLO en las
 --      columnas viejas (la consulta de abajo tiene que dar 0 en las dos).
---   3. Tener un backup (supabase db dump) o la confirmacion de Wendy.
+--   3. Tener un backup (supabase db dump) o la confirmacion de la duena del negocio.
 --
 -- Comprobacion previa (las dos tienen que devolver 0):
 --   SELECT count(*) FROM public.content_ideas
@@ -18444,3 +18437,296 @@ ALTER TABLE public.content_ideas
 
 ALTER TABLE public.content_posts
   DROP COLUMN IF EXISTS copy;
+
+-- ============================================================
+-- MIGRATION 119: INVITE SIGNUP NO WORKSPACE
+-- ============================================================
+-- ============================================================
+-- 00119_invite_signup_no_workspace.sql
+--
+-- Hasta ahora, CUALQUIER alta en auth.users recibia un workspace propio via
+-- el trigger on_auth_user_created (00001): el registro publico estaba
+-- abierto en /register, asi que cualquiera terminaba con su propio negocio.
+--
+-- El registro publico se sacó (lib/actions/team.ts, registerFromInvite): la
+-- unica forma de crear una cuenta es aceptando una invitacion. Pero el
+-- trigger viejo seguia creando un workspace de mentira ANTES de que
+-- registerFromInvite sumara a la persona al workspace de la invitacion, asi
+-- que terminaba con DOS: el suyo, vacio, y el real.
+--
+-- Unico cambio sobre la 00001: si new.raw_user_meta_data trae un 'invite_id'
+-- que corresponde a una invitacion PENDIENTE para ese mismo email, no se crea
+-- workspace ni membership aca. El alta la termina registerFromInvite llamando
+-- a finalizeAcceptInvite, que suma a la persona al workspace correcto.
+--
+-- Definicion vieja completa (00001), por si hay que volver atras:
+--
+-- create or replace function handle_new_user()
+-- returns trigger as $$
+-- declare
+--   ws_id uuid;
+--   user_name text;
+--   workspace_slug text;
+-- begin
+--   user_name := coalesce(
+--     new.raw_user_meta_data->>'full_name',
+--     new.raw_user_meta_data->>'name',
+--     split_part(new.email, '@', 1)
+--   );
+--   workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+--
+--   insert into public.workspaces (name, slug)
+--   values (user_name || '''s Workspace', workspace_slug)
+--   returning id into ws_id;
+--
+--   insert into public.workspace_members (workspace_id, user_id, role)
+--   values (ws_id, new.id, 'owner');
+--
+--   return new;
+-- exception when others then
+--   raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+--   return new;
+-- end;
+-- $$ language plpgsql security definer set search_path = public;
+-- ============================================================
+
+create or replace function handle_new_user()
+returns trigger as $$
+declare
+  ws_id uuid;
+  user_name text;
+  workspace_slug text;
+  v_invite_id uuid;
+  v_has_pending_invite boolean;
+begin
+  -- Alta por invitacion: no se crea workspace propio. registerFromInvite ya
+  -- valido la invitacion antes de crear esta cuenta y suma la membresia el
+  -- mismo, con finalizeAcceptInvite.
+  v_invite_id := (new.raw_user_meta_data->>'invite_id')::uuid;
+  if v_invite_id is not null then
+    select exists (
+      select 1 from public.workspace_invites
+      where id = v_invite_id
+        and email = new.email
+        and status = 'pending'
+        and expires_at > now()
+    ) into v_has_pending_invite;
+
+    if v_has_pending_invite then
+      return new;
+    end if;
+  end if;
+
+  user_name := coalesce(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    split_part(new.email, '@', 1)
+  );
+  workspace_slug := lower(regexp_replace(user_name, '[^a-zA-Z0-9]', '-', 'g')) || '-' || substr(new.id::text, 1, 8);
+
+  insert into public.workspaces (name, slug)
+  values (user_name || '''s Workspace', workspace_slug)
+  returning id into ws_id;
+
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (ws_id, new.id, 'owner');
+
+  return new;
+exception when others then
+  raise log 'handle_new_user error: % %', sqlerrm, sqlstate;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+-- ============================================================
+-- MIGRATION 120: RENAME CRON JOBS
+-- ============================================================
+-- ============================================================
+-- 00120_rename_cron_jobs.sql
+--
+-- Los 25 cron jobs se agendaron con el prefijo 'ssa-cron-' (00036 a 00092).
+-- Las migraciones de origen ya se editaron para agendar sin el prefijo
+-- ('jobs', 'sequences', 'purge-deleted', etc.): un clon nuevo, que corre esas
+-- migraciones desde cero, nace directo con los nombres neutros y esta
+-- migracion no encuentra nada que renombrar (el bloque de abajo es un no-op).
+--
+-- En una base donde 00036-00092 ya corrieron con los nombres viejos (como la
+-- de produccion), hay que des-agendar cada 'ssa-cron-X' y agendar 'X' en su
+-- lugar, con el mismo horario y el mismo comando que ya tenia: se leen de
+-- `cron.job`, no se repiten a mano, para no poder transcribirlos mal.
+--
+-- Idempotente: una segunda corrida no encuentra ningun 'ssa-cron-%' (ya
+-- renombrados) y no hace nada. Si pg_cron no esta habilitado (por ejemplo un
+-- entorno de desarrollo sin la extension), tambien no hace nada.
+-- ============================================================
+
+do $$
+declare
+  r record;
+  new_name text;
+begin
+  if to_regclass('cron.job') is null then
+    return;
+  end if;
+
+  for r in
+    select jobid, jobname, schedule, command
+    from cron.job
+    where jobname like 'ssa-cron-%'
+  loop
+    new_name := regexp_replace(r.jobname, '^ssa-cron-', '');
+
+    -- Por si una corrida anterior quedo a mitad de camino: no duplicar.
+    if not exists (select 1 from cron.job where jobname = new_name) then
+      perform cron.schedule(new_name, r.schedule, r.command);
+    end if;
+
+    perform cron.unschedule(r.jobid);
+  end loop;
+end $$;
+
+-- ============================================================
+-- MIGRATION 121: USER PREFERENCES
+-- ============================================================
+-- ============================================================
+-- 00121_user_preferences.sql
+--
+-- Zona horaria por usuario (no por workspace): cada persona ve la bandeja,
+-- los dashboards y los filtros en SU zona, detectada del navegador la
+-- primera vez que entra y editable despues desde el menu de perfil.
+--
+-- Independiente del workspace a proposito: es una preferencia de la PERSONA,
+-- no del negocio. `workspaces.timezone` sigue existiendo y sigue siendo la
+-- que usan las reglas que no pueden depender de quien mira (horario de
+-- atencion del agente, topes diarios de gasto de IA, hora de las tareas
+-- programadas) — ver 00122.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.user_preferences (
+  user_id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  timezone        text NOT NULL,
+  -- 'browser': se detecto sola y se guardo en el primer ingreso.
+  -- 'manual': la persona la cambio a mano desde el menu de perfil.
+  -- Una vez 'manual', no se vuelve a pisar sola (components/timezone-bootstrap.tsx).
+  timezone_source text NOT NULL DEFAULT 'browser',
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_preferences_timezone_source_check') THEN
+    ALTER TABLE public.user_preferences ADD CONSTRAINT user_preferences_timezone_source_check
+      CHECK (timezone_source IN ('browser', 'manual'));
+  END IF;
+END $$;
+
+COMMENT ON TABLE public.user_preferences IS
+  'Preferencias por persona, no por workspace. Hoy solo la zona horaria.';
+
+CREATE OR REPLACE FUNCTION public.set_updated_at_user_preferences()
+RETURNS trigger AS $$
+BEGIN
+  new.updated_at = now();
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.user_preferences;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_preferences
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_user_preferences();
+
+ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
+
+-- Cada uno ve, crea y edita UNICAMENTE su propia fila. No depende de ningun
+-- workspace ni de is_workspace_member: es pura identidad (auth.uid()).
+DROP POLICY IF EXISTS user_preferences_select ON public.user_preferences;
+CREATE POLICY user_preferences_select ON public.user_preferences
+  FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS user_preferences_insert ON public.user_preferences;
+CREATE POLICY user_preferences_insert ON public.user_preferences
+  FOR INSERT WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS user_preferences_update ON public.user_preferences;
+CREATE POLICY user_preferences_update ON public.user_preferences
+  FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+-- Sin policy de DELETE a proposito: se borra sola en cascada si se borra el
+-- usuario (ON DELETE CASCADE arriba). Nadie necesita borrar su propia fila;
+-- "quiero que se vuelva a detectar" es simplemente cambiarla a mano.
+
+-- ============================================================
+-- MIGRATION 122: WORKSPACE TIMEZONE DEFAULT UTC
+-- ============================================================
+-- ============================================================
+-- 00122_workspace_timezone_default_utc.sql
+--
+-- El default de workspaces.timezone era 'America/Costa_Rica' (00075): tenia
+-- sentido para un solo negocio, no para un template que se duplica por
+-- cliente. Pasa a 'UTC', neutral.
+--
+-- Esto NO toca el valor de ningun workspace que ya exista (ALTER COLUMN ...
+-- SET DEFAULT solo cambia que valor toma una fila NUEVA sin especificar la
+-- columna): el de un workspace que ya tiene un valor puesto no cambia.
+--
+-- Las funciones RPC de los dashboards (chat_dashboard_trends,
+-- chat_dashboard_agent_weekly, chat_dashboard_drafts, chat_dashboard_numbers,
+-- message_classification_status) tienen el mismo default en su parametro
+-- p_tz. Se deja sin tocar a proposito: la app SIEMPRE pasa p_tz explicito
+-- (verificado), asi que el default no afecta ningun comportamiento real, y
+-- reescribir esas funciones completas en una migracion nueva solo para
+-- cambiar un default sin uso es correr un riesgo real (transcribir mal un
+-- cuerpo de funcion grande) por un beneficio simbolico. Ver
+-- docs/PROGRESS-white-label.md.
+-- ============================================================
+
+ALTER TABLE public.workspaces ALTER COLUMN timezone SET DEFAULT 'UTC';
+
+-- ============================================================
+-- MIGRATION 123: USER PREFERENCES SHARED TRIGGER
+-- ============================================================
+-- ============================================================
+-- 00123_user_preferences_shared_trigger.sql
+--
+-- La 00121 creaba una funcion de trigger propia para user_preferences
+-- (set_updated_at_user_preferences) en vez de reusar la que ya existe para
+-- esto mismo en el resto de las tablas (public.update_updated_at, 00001).
+-- Duplicar la logica tuvo un costo real: la version nueva no tenia
+-- `SET search_path`, que la version compartida sí tiene desde hace rato
+-- (get_advisors lo marco como WARN apenas se aplico la 00121).
+--
+-- Se repunta el trigger a la funcion compartida y se borra la propia.
+-- ============================================================
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.user_preferences;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.user_preferences
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+DROP FUNCTION IF EXISTS public.set_updated_at_user_preferences();
+
+-- ============================================================
+-- MIGRATION 124: USER PREFERENCES RLS PERF
+-- ============================================================
+-- ============================================================
+-- 00124_user_preferences_rls_perf.sql
+--
+-- Las tres policies de la 00121 llamaban a auth.uid() directo. Postgres la
+-- re-evalua fila por fila en vez de una sola vez por consulta (get_advisors,
+-- auth_rls_initplan, lo marco apenas se aplico la 00121). Con una sola fila
+-- por usuario no se nota, pero el patron correcto es `(select auth.uid())`,
+-- que Postgres si puede tratar como estable. Mismo comportamiento, mejor
+-- plan.
+-- ============================================================
+
+DROP POLICY IF EXISTS user_preferences_select ON public.user_preferences;
+CREATE POLICY user_preferences_select ON public.user_preferences
+  FOR SELECT USING (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS user_preferences_insert ON public.user_preferences;
+CREATE POLICY user_preferences_insert ON public.user_preferences
+  FOR INSERT WITH CHECK (user_id = (select auth.uid()));
+
+DROP POLICY IF EXISTS user_preferences_update ON public.user_preferences;
+CREATE POLICY user_preferences_update ON public.user_preferences
+  FOR UPDATE USING (user_id = (select auth.uid())) WITH CHECK (user_id = (select auth.uid()));

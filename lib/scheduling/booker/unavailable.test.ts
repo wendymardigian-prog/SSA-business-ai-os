@@ -9,7 +9,7 @@ import {
 } from "./unavailable";
 import type { UnavailableMessages } from "../types";
 
-const vars = { event_title: "Llamada de triaje", host_name: "Wendy" };
+const vars = { event_title: "Llamada de triaje", host_name: "Ana" };
 
 describe("resolveUnavailableMessage (F58)", () => {
   it("sin configuración usa el texto por defecto con las variables reemplazadas", () => {
@@ -24,7 +24,7 @@ describe("resolveUnavailableMessage (F58)", () => {
   it("devuelve el del caso configurado", () => {
     const cfg: UnavailableMessages = { same_for_all: false, unavailable: { title: "Ups, {{host_name}}", body: "Volvé en un rato" } };
     const m = resolveUnavailableMessage({ unavailable_messages: cfg }, "unavailable", vars);
-    expect(m).toMatchObject({ custom: true, title: "Ups, Wendy", body: "Volvé en un rato" });
+    expect(m).toMatchObject({ custom: true, title: "Ups, Ana", body: "Volvé en un rato" });
     // Los otros casos siguen en default.
     expect(resolveUnavailableMessage({ unavailable_messages: cfg }, "load_error", vars).custom).toBe(false);
   });
@@ -91,7 +91,7 @@ describe("fallbackPayload (lo que viaja en el snippet)", () => {
       same_for_all: false,
       load_error: { title: "No carga", body: "Escribinos, {{host_name}}", cta: { label: "WhatsApp", kind: "whatsapp", value: "+50688881234" } },
     };
-    expect(fallbackPayload({ unavailable_messages: cfg }, vars)).toEqual({ title: "No carga", body: "Escribinos, Wendy", cta: { label: "WhatsApp", href: "https://wa.me/50688881234" } });
+    expect(fallbackPayload({ unavailable_messages: cfg }, vars)).toEqual({ title: "No carga", body: "Escribinos, Ana", cta: { label: "WhatsApp", href: "https://wa.me/50688881234" } });
     expect(fallbackPayload({ unavailable_messages: null }, vars)).toEqual({ ...DEFAULT_UNAVAILABLE_MESSAGES.load_error });
   });
 });

@@ -5,16 +5,13 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, Loader2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { switchWorkspace, createWorkspace } from "@/lib/actions/workspace";
+import { BrandMark } from "@/components/brand-mark";
 
 interface WorkspaceItem {
   id: string;
   name: string;
   slug: string;
   role: string;
-}
-
-function avatarUrl(seed: string, size = 28) {
-  return `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${encodeURIComponent(seed)}&size=${size}`;
 }
 
 export function WorkspaceSwitcher({
@@ -82,11 +79,7 @@ export function WorkspaceSwitcher({
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-sidebar-accent transition-colors"
       >
-        <img
-          src={avatarUrl(current.id)}
-          alt=""
-          className="h-7 w-7 rounded-md"
-        />
+        <BrandMark size={28} className="rounded-md" />
         <span className="flex-1 truncate text-sm font-semibold text-sidebar-foreground">
           {current.name}
         </span>
@@ -116,11 +109,7 @@ export function WorkspaceSwitcher({
                     : "text-popover-foreground hover:bg-accent"
                 )}
               >
-                <img
-                  src={avatarUrl(ws.id, 24)}
-                  alt=""
-                  className="h-6 w-6 rounded"
-                />
+                <BrandMark size={24} className="rounded" />
                 <span className="flex-1 truncate text-left">{ws.name}</span>
                 {isLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

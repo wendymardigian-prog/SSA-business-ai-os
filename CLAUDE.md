@@ -71,6 +71,17 @@ NO reescribir (ya existe en ZernFlow, solo verificar/extender):
 
 Nota de canales: TikTok, YouTube y LinkedIn NO van en Etapa 1. TikTok no tiene API de DMs/comentarios (verificado en el SDK `@zernio/node`) — entra recien en Etapa 2 como publicacion de contenido y metricas. La 2ª cuenta free de Zernio se reserva para ese contenido de Etapa 2.
 
+## White label
+
+El sistema se duplica por cliente: cada clon es su propia copia, con su propia base.
+
+- Marca por variables de entorno, nunca en el codigo: `NEXT_PUBLIC_BRAND_NAME`, `NEXT_PUBLIC_BRAND_LOGO_URL`, `NEXT_PUBLIC_BRAND_COLOR` (ver `lib/brand.ts`). Sin configurar, el sistema muestra un nombre generico.
+- Como habla el agente en espanol: `AI_LANGUAGE_STYLE` (ver `lib/ai/language-style.ts`). Sin configurar, "espanol neutro, directo y sin relleno".
+- Alta solo por invitacion: no hay registro publico. `scripts/create-owner.mjs` crea el primer Owner de un clon nuevo (cuenta + workspace + zona horaria del negocio).
+- Zona horaria por USUARIO, no por workspace: se detecta del navegador en el primer ingreso y se guarda en `user_preferences` (00121); editable desde el menu de perfil. `workspaces.timezone` sigue existiendo aparte, para las reglas que no pueden depender de quien mira (horario de atencion del agente, topes de gasto, hora de las tareas programadas) — ver `lib/dates.ts` y `lib/user-timezone.ts`.
+- `private.system_config` necesita `app_url` y `cron_secret` propios por clon — el paso a paso completo (con el `INSERT` exacto) esta en el comentario de `CRON_SECRET` en `.env.example`, no en un doc aparte.
+- `scripts/export-template.mjs` corta una copia limpia del repo (sin docs internos, sin `.env`, con su propio `git init`) como punto de partida para un cliente nuevo.
+
 # Comandos
 
 ## Desarrollo

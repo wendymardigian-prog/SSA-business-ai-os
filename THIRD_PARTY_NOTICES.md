@@ -2,6 +2,12 @@
 
 Este proyecto incluye código adaptado de proyectos de código abierto. Cada archivo adaptado lo indica en su encabezado.
 
+## ZernFlow
+
+- Origen: https://github.com/zernio-dev/zernflow
+- Uso: este proyecto arrancó como un fork completo de ZernFlow. La base de datos, el motor de flows, la bandeja, el CRM y la autenticación parten de su código; el aviso de copyright original queda en [LICENSE](LICENSE), como exige la licencia MIT.
+- Licencia: MIT (ver [LICENSE](LICENSE), que es la licencia de este mismo repositorio).
+
 ## Cal.diy
 
 - Origen: https://github.com/calcom/cal.diy (rama `main`, commit `54343aa` del 20/9/2026)

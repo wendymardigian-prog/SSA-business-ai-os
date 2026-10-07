@@ -18,7 +18,7 @@ describe("zona horaria (F3)", () => {
 
   it("el default es una zona válida", () => {
     expect(isValidTimeZone(DEFAULT_TIMEZONE)).toBe(true);
-    expect(DEFAULT_TIMEZONE).toBe("America/Costa_Rica");
+    expect(DEFAULT_TIMEZONE).toBe("UTC");
   });
 
   it("la lista incluye el default y no está vacía", () => {

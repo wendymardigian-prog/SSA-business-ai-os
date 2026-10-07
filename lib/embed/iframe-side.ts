@@ -8,7 +8,7 @@
  * Dos reglas que no se negocian:
  *  - Los mensajes que SALEN no llevan nunca datos del formulario: solo el
  *    código público de la agenda, el rango y el slug del evento.
- *  - Los mensajes que ENTRAN (`ssa:ui`) se aceptan solo si vienen del origen
+ *  - Los mensajes que ENTRAN (`agenda:ui`) se aceptan solo si vienen del origen
  *    que el script del cliente declaró. Cualquier página puede mandar un
  *    postMessage a un iframe; el origen es lo único que los distingue.
  */
@@ -86,21 +86,21 @@ export function connectIframeSide(options: IframeSideOptions): IframeSide {
   const onMessage = (event: { data: unknown; origin: string }) => {
     if (!target || !isTrustedOrigin(event.origin, target)) return;
     const message = parseEmbedMessage(event.data);
-    if (!message || message.type !== "ssa:ui") return;
+    if (!message || message.type !== "agenda:ui") return;
     options.onUi?.((message.payload ?? {}) as { theme?: string; brandColor?: string });
   };
 
   win.addEventListener("message", onMessage);
 
   return {
-    ready: () => post("ssa:loaded", { source: EMBED_MESSAGE_SOURCE }),
+    ready: () => post("agenda:loaded", { source: EMBED_MESSAGE_SOURCE }),
     sendHeight: (height: number) => {
       const rounded = Math.ceil(height);
       // Solo cuando cambia: el observador dispara muchas veces por el mismo
       // número y cada mensaje obliga al padre a recalcular el layout.
       if (rounded === lastHeight || rounded <= 0) return;
       lastHeight = rounded;
-      post("ssa:height", { height: rounded });
+      post("agenda:height", { height: rounded });
     },
     emit: (type, payload) => post(type, payload),
     stop: () => win.removeEventListener("message", onMessage),

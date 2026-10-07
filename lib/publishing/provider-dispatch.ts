@@ -220,7 +220,7 @@ async function workspaceTimezone(supabase: Db, workspaceId: string): Promise<str
     .select("timezone")
     .eq("id", workspaceId)
     .maybeSingle();
-  return data?.timezone || "America/Argentina/Buenos_Aires";
+  return data?.timezone || "UTC";
 }
 
 /** El mismo criterio que el despachador: cada publicador tiene su cuenta. */
