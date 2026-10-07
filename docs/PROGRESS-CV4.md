@@ -46,11 +46,43 @@ Decisiones propias (con el porqué en el plan): "El sistema la publica" exige la
 
 ## Bloques
 
-### B15: planificación sin conexión (C1, C2, C3)
-- [ ] **C1** Cualquier red, conectada o no
-- [ ] **C2** Cómo se publica cada red
-- [ ] **C3** Estado por red y "Marcar como publicado"
-- [ ] Arreglo: reprogramar en Zernio no publica dos veces
+### B15: planificación sin conexión (C1, C2, C3) — COMPLETO, 7/10/2026
+- [x] **C1** Cualquier red, conectada o no. `lib/content/connection.ts`
+  (`isNetworkConnected`/`connectedPlatforms`: cuenta activa CON publicador
+  usable, no solo `is_active`). Drawer de la pieza y de la idea, y los dos
+  diálogos rápidos de creación, ofrecen las cinco redes con chip "a mano" en
+  las no conectadas. El estado vacío es informativo (link a Integraciones),
+  no bloquea.
+- [x] **C2** Cómo se publica cada red. `networks[].auto` (jsonb, sin
+  migración de columna). `setNetworkPublishMode` exige cuenta conectada +
+  pieza aprobada + fecha futura + F77; desprogramar conserva `planned_at`.
+  Desconectar una cuenta (`unscheduleOnDisconnect`) cancela en Zernio ANTES
+  de borrar la clave, pasa a `auto:false` conservando la fecha, y avisa
+  (notificación `content_networks_unscheduled`).
+- [x] **C3** Estado por red y "Marcar como publicado". `networkStateOf`
+  (cinco estados, nunca "Programado" sin cuenta conectada).
+  `markNetworkPublished`/`unmarkNetworkPublished` crean/borran una fila real
+  con `origin='manual'` (migración **00125**, aplicada y registrada).
+  Deshacer se rechaza con métricas o comentarios. `derivePieceStatus`
+  reemplaza `aggregatePostStatus` en los dos lugares que escriben el estado:
+  ahora cuenta TODAS las redes, tengan fila o no.
+- [x] Adopción por la sincronización: `lib/metrics/adopt-manual.ts` (por URL
+  normalizada o por fecha única en ±24h; con dos candidatas no adopta
+  ninguna). `findOrCreatePublication` (comentarios) **no necesitó
+  cambios**: converge solo en la próxima sincronización, que es donde hay
+  URL/fecha reales para decidir sin adivinar.
+- [x] Arreglo: reprogramar una red agendada en Zernio publicaba dos veces
+  (`lib/publishing/reschedule.ts`). Test de caracterización que lo muestra
+  en rojo antes del arreglo.
+- [x] Test de caracterización C9 (antes de B17): `lib/publishing/zernio.test.ts`,
+  15 casos, el body exacto que recibe Zernio por formato.
+- [x] Adelantado de C8 (mismo modelo de estado): pie del drawer con "N
+  programadas · N tentativas · N publicadas" (`networkSummaryText`). Se
+  borró `datesSummary`, que quedó sin uso.
+
+Verificación: `npx vitest run` 5430/5430, `npm run build` exit 0, `npm run
+lint` 4 errores (línea base), `verify-rls` y `verify-content` en verde.
+Commits `3a04e2d`, `1dd1b6f`, `9509061`.
 
 ### B16: estados y clasificación (C4, C5, C8)
 - [ ] **C4** Estado de la pieza como dropdown, sin estado del material
