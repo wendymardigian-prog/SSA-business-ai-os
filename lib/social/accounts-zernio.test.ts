@@ -158,7 +158,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   it("avisa que cuentas son nuevas: la primera vez si, la segunda no", async () => {
     listAccounts.mockResolvedValue({
       data: {
-        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" })],
         hasAnalyticsAccess: true,
       },
     });
@@ -175,7 +175,7 @@ describe("syncSocialAccounts contra Zernio simulado (F73)", () => {
   it("una red que estaba desactivada y vuelve cuenta como nueva; la activa no", async () => {
     listAccounts.mockResolvedValue({
       data: {
-        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas" })],
+        accounts: [zernioAccount({}), zernioAccount({ _id: "zr-tt", platform: "tiktok", username: "cuenta_demo" })],
         hasAnalyticsAccess: true,
       },
     });
