@@ -486,13 +486,13 @@ try {
     .from("content_posts")
     .update({ networks: [{ platform: "instagram", planned_at: nuevoAt, options: {} }] as never })
     .eq("id", post2);
-  await runScheduleNetworks(ctx, { postId: post2 });
+  const reprogramado = await runScheduleNetworks(ctx, { postId: post2 });
   await runProviderSchedule(svc, (await rowsOf(post2))[0].id, deps as never);
 
   check(
     calls.update.length === 1 && mismoInstante(calls.update[0].at, nuevoAt),
     "D3 · reprogramar edita el post en Zernio en vez de crear otro",
-    JSON.stringify(calls.update),
+    JSON.stringify({ update: calls.update, reprogramado }),
   );
   const jobsDuplicados = await pendingJobs(fila2.id);
   check(
