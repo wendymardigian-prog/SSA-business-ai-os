@@ -105,7 +105,7 @@ describe("renderFallback", () => {
     renderFallback(container, { title: "No <b>carga</b>", body: "Línea 1\nLínea 2", cta: { label: "WhatsApp", href: "https://wa.me/50688881234" } }, doc, { theme: "dark", color: "#aa00ff" });
     expect(container.children).toHaveLength(1);
     const root = container.children[0];
-    expect(root.attrs["data-ssa-fallback-view"]).toBe("load_error");
+    expect(root.attrs["data-agenda-fallback-view"]).toBe("load_error");
     expect(root.find("h3")?.textContent).toBe("No <b>carga</b>"); // texto, no HTML
     expect(root.find("p")?.textContent).toBe("Línea 1\nLínea 2");
     const a = root.find("a")!;
@@ -118,7 +118,7 @@ describe("renderFallback", () => {
   it("sin botón propio muestra 'Abrir el calendario en otra pestaña', y con onRetry el botón Reintentar", () => {
     const container = new FakeEl("div");
     const onRetry = vi.fn();
-    renderFallback(container, { title: DEFAULT_UNAVAILABLE_MESSAGES.load_error.title, body: DEFAULT_UNAVAILABLE_MESSAGES.load_error.body }, doc, { openUrl: "https://agenda.ejemplo.com/calendario/wendy/llamada", onRetry });
+    renderFallback(container, { title: DEFAULT_UNAVAILABLE_MESSAGES.load_error.title, body: DEFAULT_UNAVAILABLE_MESSAGES.load_error.body }, doc, { openUrl: "https://agenda.ejemplo.com/calendario/anfitrion/llamada", onRetry });
     const root = container.children[0];
     expect(root.find("a")?.textContent).toBe(OPEN_IN_TAB_LABEL);
     const btn = root.find("button")!;

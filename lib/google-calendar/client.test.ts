@@ -139,7 +139,7 @@ describe("eventos", () => {
     const body = JSON.parse(insert.init.body as string);
     expect(body.conferenceData).toEqual({ createRequest: { requestId: "uid-123", conferenceSolutionKey: { type: "hangoutsMeet" } } });
     expect(body.attendees).toEqual([{ email: "ana@ejemplo.com", displayName: "Ana" }]);
-    expect(body.extendedProperties).toEqual({ private: { ssaBookingUid: "uid-123" } });
+    expect(body.extendedProperties).toEqual({ private: { bookingUid: "uid-123" } });
     expect(body.start).toEqual({ dateTime: "2026-10-06T18:00:00.000Z", timeZone: "America/Costa_Rica" });
   });
 

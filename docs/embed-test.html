@@ -26,12 +26,12 @@
 
     <h2>1. En la página</h2>
     <p>El calendario va adentro de un contenedor y crece con su contenido.</p>
-    <div id="agenda-inline" class="caja" style="min-height: 640px" data-ssa-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'></div>
+    <div id="agenda-inline" class="caja" style="min-height: 640px" data-agenda-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'></div>
 
     <h2>2. Ventana</h2>
     <p>Un botón abre el calendario encima de la página.</p>
-    <!-- El botón se marca con data-ssa-link; el script lo engancha solo, igual que el código que genera la pantalla. -->
-    <button type="button" id="agenda-popup" data-ssa-link="" data-ssa-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'>
+    <!-- El botón se marca con data-agenda-link; el script lo engancha solo, igual que el código que genera la pantalla. -->
+    <button type="button" id="agenda-popup" data-agenda-link="" data-agenda-fallback='{"title":"No pudimos cargar el calendario","body":"Probá de nuevo o escribinos."}'>
       Agendar una llamada
     </button>
 
@@ -44,25 +44,25 @@
 
     <script>
       // Cambiá esto por tu usuario y el slug de un evento activo.
-      var CAL_LINK = "wendy/llamada-de-diagnostico";
+      var CAL_LINK = "anfitrion/llamada-de-diagnostico";
       var ORIGEN = "http://localhost:3000";
     </script>
     <script>
       (function (w, d, s, o) {
         var f = d.getElementsByTagName(s)[0], j = d.createElement(s);
-        w.SSA = w.SSA || function () { (w.SSA.q = w.SSA.q || []).push(arguments); };
+        w.Agenda = w.Agenda || function () { (w.Agenda.q = w.Agenda.q || []).push(arguments); };
         j.async = 1; j.src = o; f.parentNode.insertBefore(j, f);
       })(window, document, "script", ORIGEN + "/embed/embed.js");
 
       // El botón de ventana se marca en el HTML; acá solo se completa el link
       // antes del init, que es quien engancha los botones.
-      document.getElementById("agenda-popup").setAttribute("data-ssa-link", CAL_LINK);
+      document.getElementById("agenda-popup").setAttribute("data-agenda-link", CAL_LINK);
 
-      SSA("init", { origin: ORIGEN });
+      Agenda("init", { origin: ORIGEN });
 
-      SSA("inline", { elementOrSelector: "#agenda-inline", calLink: CAL_LINK });
+      Agenda("inline", { elementOrSelector: "#agenda-inline", calLink: CAL_LINK });
 
-      SSA("floatingButton", { calLink: CAL_LINK, buttonText: "Agendá conmigo", buttonPosition: "bottom-right" });
+      Agenda("floatingButton", { calLink: CAL_LINK, buttonText: "Agendá conmigo", buttonPosition: "bottom-right" });
 
       var registro = document.getElementById("registro");
       var primero = true;
@@ -70,8 +70,8 @@
         if (primero) { registro.textContent = ""; primero = false; }
         registro.textContent += nombre + " " + JSON.stringify(datos) + "\n";
       }
-      ["ssa:bookerReady", "ssa:slotSelected", "ssa:bookingSuccessful", "ssa:rescheduleSuccessful", "ssa:bookingCancelled"].forEach(function (nombre) {
-        SSA("on", { action: nombre, callback: function (e) { anotar(nombre, e && e.detail ? e.detail : e); } });
+      ["agenda:bookerReady", "agenda:slotSelected", "agenda:bookingSuccessful", "agenda:rescheduleSuccessful", "agenda:bookingCancelled"].forEach(function (nombre) {
+        Agenda("on", { action: nombre, callback: function (e) { anotar(nombre, e && e.detail ? e.detail : e); } });
       });
     </script>
   </body>

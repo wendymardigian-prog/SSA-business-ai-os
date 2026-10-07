@@ -46,7 +46,7 @@ async function main() {
     minify: true,
     outfile: OUT,
     legalComments: "none",
-    banner: { js: "/* SSA embed — generado por scripts/build-embed.mjs. No editar a mano. */" },
+    banner: { js: "/* Agenda embed — generado por scripts/build-embed.mjs. No editar a mano. */" },
     logLevel: "warning",
   });
 

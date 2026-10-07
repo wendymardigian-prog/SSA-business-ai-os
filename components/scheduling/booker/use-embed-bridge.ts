@@ -37,7 +37,7 @@ export function useEmbedBridge(enabled: boolean, onUi?: (ui: { theme?: string; b
     });
     side.current = connection;
     connection.ready();
-    connection.emit("ssa:bookerReady", {});
+    connection.emit("agenda:bookerReady", {});
 
     const observer = new ResizeObserver(() => connection.sendHeight(document.documentElement.scrollHeight));
     observer.observe(document.documentElement);

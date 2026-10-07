@@ -3,7 +3,7 @@
  * Fuente del script del embed (F39, F41, F58). Adaptado de
  * `packages/embeds/embed-core/src/embed.ts` y `sdk-action-manager.ts`,
  * reducido a lo que pide el plano: `init`, `inline`, `floatingButton`,
- * popup por `data-ssa-link`, `ui`, `on`/`off` y `preload`. Sin
+ * popup por `data-agenda-link`, `ui`, `on`/`off` y `preload`. Sin
  * pre-renderizado, sin namespaces anidados en el iframe, sin CSS inyectado
  * más allá de estilos inline.
  *
@@ -20,10 +20,10 @@ import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable-defaul
 export type Instruction = [string, ...unknown[]];
 export type Queue = Instruction[];
 
-export interface SsaGlobal {
+export interface AgendaGlobal {
   (...args: unknown[]): void;
   q: Queue;
-  ns: Record<string, SsaGlobal>;
+  ns: Record<string, AgendaGlobal>;
   loaded?: boolean;
   instance?: EmbedRuntime;
 }
@@ -59,7 +59,7 @@ export interface EmbedWindow {
   setTimeout(cb: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
   location: { href: string; search: string };
-  SSA?: SsaGlobal;
+  Agenda?: AgendaGlobal;
 }
 
 export interface RuntimeEnv {
@@ -84,8 +84,8 @@ interface Frame {
   watchdog: ReturnType<typeof createLoadWatchdog>;
 }
 
-export const FLOATING_BUTTON_ID = "ssa-floating-button";
-export const MODAL_ID = "ssa-modal";
+export const FLOATING_BUTTON_ID = "agenda-floating-button";
+export const MODAL_ID = "agenda-modal";
 
 function style(el: EmbedElement, styles: Record<string, string>) {
   const s = el.style as Record<string, string>;
@@ -127,13 +127,13 @@ export class EmbedRuntime {
     const [method, ...args] = Array.from(instruction as ArrayLike<unknown>) as Instruction;
     const api = this.api[method as keyof typeof this.api];
     if (typeof api !== "function") {
-      console.error(`[SSA embed] instrucción desconocida: ${String(method)}`);
+      console.error(`[Agenda embed] instrucción desconocida: ${String(method)}`);
       return;
     }
     try {
       (api as (...a: unknown[]) => void).call(this, ...args);
     } catch (e) {
-      console.error(`[SSA embed] no se pudo ejecutar ${String(method)}`, e);
+      console.error(`[Agenda embed] no se pudo ejecutar ${String(method)}`, e);
     }
   }
 
@@ -157,7 +157,7 @@ export class EmbedRuntime {
   }
 
   getOrigin(): string {
-    if (!this.origin) throw new Error('SSA("init", {origin}) tiene que llamarse antes');
+    if (!this.origin) throw new Error('Agenda("init", {origin}) tiene que llamarse antes');
     return this.origin;
   }
 
@@ -166,7 +166,7 @@ export class EmbedRuntime {
     if (!container) throw new Error(`No se encontró el elemento ${String(elementOrSelector)}`);
     if (this.inlineContainer === container) return; // no duplicar
     this.inlineContainer = container;
-    const fallback = parseFallbackAttr(container.getAttribute("data-ssa-fallback"));
+    const fallback = parseFallbackAttr(container.getAttribute("data-agenda-fallback"));
     const iframe = this.createIframe(calLink, { ...this.uiAsConfig(), ...config }, container, fallback);
     style(iframe, { width: "100%", height: "100%", minHeight: "480px", border: "0" });
     container.appendChild(iframe);
@@ -177,7 +177,7 @@ export class EmbedRuntime {
     const btn = doc.createElement("button");
     btn.id = FLOATING_BUTTON_ID;
     btn.setAttribute("type", "button");
-    btn.setAttribute("data-ssa-link", args.calLink);
+    btn.setAttribute("data-agenda-link", args.calLink);
     btn.textContent = args.buttonText || "Agendar una llamada";
     style(btn, {
       position: "fixed",
@@ -194,14 +194,14 @@ export class EmbedRuntime {
       boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
       cursor: "pointer",
     });
-    if (args.fallback) btn.setAttribute("data-ssa-fallback", JSON.stringify(args.fallback));
-    if (args.config) btn.setAttribute("data-ssa-config", JSON.stringify(args.config));
+    if (args.fallback) btn.setAttribute("data-agenda-fallback", JSON.stringify(args.fallback));
+    if (args.config) btn.setAttribute("data-agenda-config", JSON.stringify(args.config));
     doc.body.appendChild(btn);
   }
 
   setUi(cfg: UiConfig): void {
     this.ui = { ...this.ui, ...cfg };
-    for (const frame of this.frames.values()) this.postToFrame(frame, embedMessage("ssa:ui", this.ui, this.namespace));
+    for (const frame of this.frames.values()) this.postToFrame(frame, embedMessage("agenda:ui", this.ui, this.namespace));
   }
 
   on(action: EmbedEventName, callback: Listener): void {
@@ -240,7 +240,7 @@ export class EmbedRuntime {
 
     const box = doc.createElement("div");
     style(box, { position: "relative", width: "100%", maxWidth: "1080px", height: "min(92vh, 760px)", background: "transparent" });
-    box.setAttribute("data-ssa-fallback", JSON.stringify(fallback ?? parseFallbackAttr(null)));
+    box.setAttribute("data-agenda-fallback", JSON.stringify(fallback ?? parseFallbackAttr(null)));
 
     const close = doc.createElement("button");
     close.setAttribute("type", "button");
@@ -293,7 +293,7 @@ export class EmbedRuntime {
     iframe.setAttribute("title", "Agenda");
     iframe.setAttribute("allow", "clipboard-write");
     iframe.setAttribute("loading", "eager");
-    if (this.namespace) iframe.setAttribute("name", `ssa-embed=${this.namespace}`);
+    if (this.namespace) iframe.setAttribute("name", `agenda-embed=${this.namespace}`);
 
     const openUrl = url.replace(/([?&])embed=1&?/, "$1").replace(/[?&]$/, "");
     const watchdog = createLoadWatchdog({
@@ -342,22 +342,22 @@ export class EmbedRuntime {
 
     const frame = [...this.frames.values()].find((f) => f.iframe.contentWindow === ev.source) ?? [...this.frames.values()][0];
 
-    if (msg.type === "ssa:loaded") {
+    if (msg.type === "agenda:loaded") {
       frame?.watchdog.loaded();
-      if (frame) this.postToFrame(frame, embedMessage("ssa:ui", this.ui, this.namespace));
+      if (frame) this.postToFrame(frame, embedMessage("agenda:ui", this.ui, this.namespace));
       return;
     }
-    if (msg.type === "ssa:height") {
+    if (msg.type === "agenda:height") {
       const h = typeof msg.payload === "number" ? msg.payload : Number((msg.payload as { height?: number })?.height);
       if (frame && Number.isFinite(h) && h > 0 && frame.container === this.inlineContainer) style(frame.iframe, { height: `${Math.ceil(h)}px` });
       return;
     }
-    if (msg.type === "ssa:ui") return;
+    if (msg.type === "agenda:ui") return;
     for (const cb of this.listeners.get(msg.type) ?? []) {
       try {
         cb(msg.payload);
       } catch (e) {
-        console.error("[SSA embed] error en un listener", e);
+        console.error("[Agenda embed] error en un listener", e);
       }
     }
   }
@@ -369,18 +369,18 @@ export class EmbedRuntime {
     this.popupBound = true;
     this.env.document.addEventListener("click", (ev) => {
       const target = ev.target as EmbedElement | null | undefined;
-      const el = target?.closest?.("[data-ssa-link]") ?? (target?.getAttribute?.("data-ssa-link") ? target : null);
+      const el = target?.closest?.("[data-agenda-link]") ?? (target?.getAttribute?.("data-agenda-link") ? target : null);
       if (!el) return;
-      const calLink = el.getAttribute("data-ssa-link");
+      const calLink = el.getAttribute("data-agenda-link");
       if (!calLink) return;
       ev.preventDefault?.();
       let config: EmbedConfig = {};
       try {
-        config = JSON.parse(el.getAttribute("data-ssa-config") || "{}") as EmbedConfig;
+        config = JSON.parse(el.getAttribute("data-agenda-config") || "{}") as EmbedConfig;
       } catch {
         config = {};
       }
-      this.openModal(calLink, config, parseFallbackAttr(el.getAttribute("data-ssa-fallback")));
+      this.openModal(calLink, config, parseFallbackAttr(el.getAttribute("data-agenda-fallback")));
     });
     this.env.document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") this.closeModal();
@@ -399,11 +399,11 @@ export interface FloatingButtonArgs {
 }
 
 /**
- * Arranque del script: toma `window.SSA` (creado por el snippet), procesa
+ * Arranque del script: toma `window.Agenda` (creado por el snippet), procesa
  * la cola por defecto y la de cada namespace. Idempotente.
  */
 export function bootstrap(env: RuntimeEnv): EmbedRuntime | null {
-  const global = env.window.SSA;
+  const global = env.window.Agenda;
   if (!global) return null;
   if (global.instance) return global.instance;
   global.q = global.q || [];

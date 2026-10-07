@@ -5,6 +5,7 @@
  * `ics` (el VEVENT se arma a mano) ni recurrencia.
  */
 import type { Booking } from "./types";
+import { brandName } from "@/lib/brand";
 
 export type IcsBooking = Pick<
   Booking,
@@ -72,7 +73,7 @@ export function buildIcs(booking: IcsBooking, options: IcsOptions): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    `PRODID:${options.prodId ?? "-//SSA//Agenda//ES"}`,
+    `PRODID:${options.prodId ?? `-//${brandName()}//Agenda//ES`}`,
     "CALSCALE:GREGORIAN",
     `METHOD:${cancelled ? "CANCEL" : "PUBLISH"}`,
     "BEGIN:VEVENT",

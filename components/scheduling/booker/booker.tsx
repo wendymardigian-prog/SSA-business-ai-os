@@ -232,7 +232,7 @@ export function Booker({
         return;
       }
 
-      bridge.emit(rescheduleUid ? "ssa:rescheduleSuccessful" : "ssa:bookingSuccessful", {
+      bridge.emit(rescheduleUid ? "agenda:rescheduleSuccessful" : "agenda:bookingSuccessful", {
         // Nunca datos del formulario: solo el código público y el rango.
         uid: body.uid ?? rescheduleUid,
         startTime: state.selectedSlot.startUtc,
@@ -250,7 +250,7 @@ export function Booker({
     }
   }
 
-  // El padre puede cambiar el tema y el color en vivo con `SSA("ui", …)`.
+  // El padre puede cambiar el tema y el color en vivo con `Agenda("ui", …)`.
   const theme = (forcedUi.theme as typeof embed.theme | undefined) ?? embed.theme;
   const themeAttr = theme === "auto" ? undefined : theme;
   const brandColor = forcedUi.brandColor ?? embed.color;
@@ -336,7 +336,7 @@ export function Booker({
               timezone={state.timezone}
               timeFormat={event.timeFormat}
               onPick={(slot) => {
-                bridge.emit("ssa:slotSelected", { startTime: slot.startUtc, endTime: slot.endUtc, eventSlug: slug });
+                bridge.emit("agenda:slotSelected", { startTime: slot.startUtc, endTime: slot.endUtc, eventSlug: slug });
                 dispatch({ type: "pickSlot", slot });
               }}
               loading={state.loading}

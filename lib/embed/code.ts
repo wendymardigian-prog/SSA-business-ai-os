@@ -1,7 +1,7 @@
 /**
  * Generador de código del embed (F40): el snippet en HTML y en React para
  * los tres modos, con el mensaje de respaldo `load_error` adentro
- * (`data-ssa-fallback`, F58).
+ * (`data-agenda-fallback`, F58).
  */
 import type { BookerTheme } from "@/lib/scheduling/booker/embed-params";
 import { normalizeHexColor } from "@/lib/scheduling/booker/embed-params";
@@ -73,15 +73,15 @@ function iframeConfig(options: EmbedCodeOptions) {
 
 function instructions(mode: EmbedMode, options: EmbedCodeOptions, baseUrl: string, elementId: string): string[] {
   const origin = baseUrl.replace(/\/$/, "");
-  const lines = [`SSA("init", ${jsonForScript({ origin })});`];
+  const lines = [`Agenda("init", ${jsonForScript({ origin })});`];
   if (mode === "inline") {
     lines.push(
-      `SSA("inline", ${jsonForScript({ elementOrSelector: `#${elementId}`, calLink: options.calLink, config: iframeConfig(options) })});`,
+      `Agenda("inline", ${jsonForScript({ elementOrSelector: `#${elementId}`, calLink: options.calLink, config: iframeConfig(options) })});`,
     );
   }
   if (mode === "floating") {
     lines.push(
-      `SSA("floatingButton", ${jsonForScript({
+      `Agenda("floatingButton", ${jsonForScript({
         calLink: options.calLink,
         buttonText: options.buttonText || "Agendar una llamada",
         buttonColor: normalizeHexColor(options.buttonColor) ?? normalizeHexColor(options.color) ?? "#111827",
@@ -92,7 +92,7 @@ function instructions(mode: EmbedMode, options: EmbedCodeOptions, baseUrl: strin
       })});`,
     );
   }
-  lines.push(`SSA("ui", ${jsonForScript(uiConfig(options))});`);
+  lines.push(`Agenda("ui", ${jsonForScript(uiConfig(options))});`);
   return lines;
 }
 
@@ -103,7 +103,7 @@ function instructions(mode: EmbedMode, options: EmbedCodeOptions, baseUrl: strin
  */
 export function generateEmbedCode(mode: EmbedMode, options: EmbedCodeOptions, baseUrl: string): EmbedCode {
   if (!CAL_LINK_RE.test(options.calLink)) throw new Error(`calLink inválido: "${options.calLink}"`);
-  const elementId = `ssa-${options.calLink.replace("/", "-")}`;
+  const elementId = `agenda-${options.calLink.replace("/", "-")}`;
   const fallbackAttr = escapeHtmlAttribute(JSON.stringify(options.fallback));
   const loader = loaderSnippet(embedScriptUrl(baseUrl));
   const lines = instructions(mode, options, baseUrl, elementId);
@@ -111,10 +111,10 @@ export function generateEmbedCode(mode: EmbedMode, options: EmbedCodeOptions, ba
 
   let markup = "";
   if (mode === "inline") {
-    markup = `<div id="${elementId}" style="width:100%;height:100%;min-height:640px;overflow:auto" data-ssa-fallback='${fallbackAttr}'></div>`;
+    markup = `<div id="${elementId}" style="width:100%;height:100%;min-height:640px;overflow:auto" data-agenda-fallback='${fallbackAttr}'></div>`;
   } else if (mode === "popup") {
     const config = escapeHtmlAttribute(JSON.stringify(iframeConfig(options)));
-    markup = `<button type="button" data-ssa-link="${options.calLink}" data-ssa-config='${config}' data-ssa-fallback='${fallbackAttr}'>${escapeHtmlAttribute(options.buttonText || "Agendar una llamada")}</button>`;
+    markup = `<button type="button" data-agenda-link="${options.calLink}" data-agenda-config='${config}' data-agenda-fallback='${fallbackAttr}'>${escapeHtmlAttribute(options.buttonText || "Agendar una llamada")}</button>`;
   } else {
     markup = `<!-- El botón flotante lo agrega el script; el respaldo viaja en la instrucción. -->`;
   }
@@ -123,9 +123,9 @@ export function generateEmbedCode(mode: EmbedMode, options: EmbedCodeOptions, ba
 
   const reactMarkup =
     mode === "inline"
-      ? `<div id="${elementId}" style={{ width: "100%", height: "100%", minHeight: 640, overflow: "auto" }} data-ssa-fallback={JSON.stringify(fallback)} />`
+      ? `<div id="${elementId}" style={{ width: "100%", height: "100%", minHeight: 640, overflow: "auto" }} data-agenda-fallback={JSON.stringify(fallback)} />`
       : mode === "popup"
-        ? `<button type="button" data-ssa-link="${options.calLink}" data-ssa-config={JSON.stringify(${jsonForScript(iframeConfig(options))})} data-ssa-fallback={JSON.stringify(fallback)}>\n        ${escapeHtmlAttribute(options.buttonText || "Agendar una llamada")}\n      </button>`
+        ? `<button type="button" data-agenda-link="${options.calLink}" data-agenda-config={JSON.stringify(${jsonForScript(iframeConfig(options))})} data-agenda-fallback={JSON.stringify(fallback)}>\n        ${escapeHtmlAttribute(options.buttonText || "Agendar una llamada")}\n      </button>`
         : `null`;
 
   const react = `import { useEffect } from "react";

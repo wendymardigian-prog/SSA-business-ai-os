@@ -32,11 +32,11 @@ describe("public/embed/embed.js", () => {
 
   it("es el bundle generado, no la fuente", () => {
     const text = readFileSync(FILE, "utf8");
-    expect(text.startsWith("/* SSA embed")).toBe(true);
+    expect(text.startsWith("/* Agenda embed")).toBe(true);
     // Compilado: sin imports de módulos.
     expect(text).not.toMatch(/^import\s/m);
     // Y con la marca del protocolo adentro.
-    expect(text).toContain("ssa-embed");
+    expect(text).toContain("agenda-embed");
   });
 
   it("la ruta que arma el snippet es la que existe", () => {

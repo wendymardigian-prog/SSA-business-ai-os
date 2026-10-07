@@ -25,7 +25,7 @@ export const DEFAULT_UNAVAILABLE_MESSAGES: Record<UnavailableKey, UnavailableMes
   },
 };
 
-/** Lo que viaja en `data-ssa-fallback` del snippet: ya resuelto, sin variables. */
+/** Lo que viaja en `data-agenda-fallback` del snippet: ya resuelto, sin variables. */
 export interface FallbackPayload {
   title: string;
   body: string;
