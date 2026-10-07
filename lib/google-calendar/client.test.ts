@@ -29,7 +29,7 @@ function db(over: Record<string, unknown> = {}) {
         status: "active",
         vault_secret_prefix: `oauth_google_calendar_${CONN}`,
         token_expires_at: new Date(NOW.getTime() + 3600_000).toISOString(),
-        account_label: "wendy@ejemplo.com",
+        account_label: "ana@ejemplo.com",
         ...over,
       },
     ],
@@ -185,7 +185,7 @@ describe("eventos", () => {
     const database = db();
     const { fetchImpl } = fakeFetch((url) => {
       const token = url.searchParams.get("pageToken");
-      if (!token) return { status: 200, body: { items: [{ id: "primary-id", summary: "Wendy", accessRole: "owner", primary: true }], nextPageToken: "p2" } };
+      if (!token) return { status: 200, body: { items: [{ id: "primary-id", summary: "Ana", accessRole: "owner", primary: true }], nextPageToken: "p2" } };
       return { status: 200, body: { items: [{ id: "shared", summary: "Equipo", accessRole: "reader", backgroundColor: "#ccc" }] } };
     });
     const items = await listCalendars({ supabase: database.client, fetchImpl, now: () => NOW }, CONN);

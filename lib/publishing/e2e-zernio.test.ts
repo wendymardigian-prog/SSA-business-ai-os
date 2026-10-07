@@ -133,8 +133,8 @@ const vaultKey = (workspace: string, name: string) => `${workspace}:${name}`;
 
 function freshWorld() {
   zernio.accounts = [
-    { _id: "zr-ig", platform: "instagram", username: "wendymardigian", displayName: "Wendy", isActive: true },
-    { _id: "zr-tt", platform: "tiktok", username: "wendy.sistemas", displayName: "Wendy TikTok", isActive: true },
+    { _id: "zr-ig", platform: "instagram", username: "cuenta_demo", displayName: "Ana", isActive: true },
+    { _id: "zr-tt", platform: "tiktok", username: "cuenta_demo", displayName: "Ana TikTok", isActive: true },
   ];
   zernio.created = [];
   zernio.presigned = 0;

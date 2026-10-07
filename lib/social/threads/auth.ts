@@ -1,7 +1,7 @@
 /**
  * Conexion con Threads (F12).
  *
- * Portado de ScaleOS (`_shared/threads-api.ts`, `threads-auth/index.ts`),
+ * Portado de un sistema anterior (`_shared/threads-api.ts`, `threads-auth/index.ts`),
  * adaptado a la interfaz comun de OAuth y con los tokens en Vault en vez de
  * una columna.
  *

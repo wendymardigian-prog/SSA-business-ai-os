@@ -32,7 +32,7 @@ const event: EventType = {
 
 const ctx: ActivationContext = {
   scheduleName: "Horario normal",
-  destinationCalendar: { name: "wendy@gmail.com", provider: "google", writable: true },
+  destinationCalendar: { name: "ana@gmail.com", provider: "google", writable: true },
   formValid: true,
   enabledFlows: 0,
 };

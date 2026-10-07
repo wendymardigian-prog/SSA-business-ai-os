@@ -106,7 +106,7 @@ export type FilterRange = "today" | "this_week" | { from: DateString; to: DateSt
  * cortado en la zona de quien mira. El fin es exclusivo: "hoy" es desde las
  * 00:00 de hoy hasta las 00:00 de mañana, hora local.
  *
- * La semana empieza el lunes (decisión de Wendy).
+ * La semana empieza el lunes (decisión de Ana).
  *
  * Un rango explícito al revés se da vuelta, como hace `resolveDateRange` en
  * la bandeja: es un error de tipeo, no una búsqueda vacía.

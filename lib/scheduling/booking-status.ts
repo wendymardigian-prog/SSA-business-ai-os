@@ -1,5 +1,5 @@
 /**
- * Catálogo de estados de agenda (F32), definido por Wendy. Cada estado tiene
+ * Catálogo de estados de agenda (F32), definido por Ana. Cada estado tiene
  * clave, etiqueta, color, orden y grupo; el sistema decide por el grupo.
  *
  * `BOOKING_STATUS_KEYS` es la lista canónica: la Tanda B la compara con el

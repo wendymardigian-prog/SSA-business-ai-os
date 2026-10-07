@@ -40,7 +40,7 @@ function world(booking: Record<string, unknown> = {}) {
         workspace_id: WS,
         user_id: HOST,
         connection_id: "conn-1",
-        external_calendar_id: "wendy@ejemplo.com",
+        external_calendar_id: "ana@ejemplo.com",
         is_active: true,
         can_write: true,
         access_role: "owner",
@@ -131,7 +131,7 @@ describe("handleBookingGoogleSync · crear", () => {
     expect(createEvent).toHaveBeenCalledTimes(1);
     const [, connectionId, externalId, body] = createEvent.mock.calls[0];
     expect(connectionId).toBe("conn-1");
-    expect(externalId).toBe("wendy@ejemplo.com");
+    expect(externalId).toBe("ana@ejemplo.com");
     expect(body).toMatchObject({ bookingUid: "abcdefghijklmnopqrstuv", attendeeEmail: "juan@ejemplo.com", timeZone: "America/Costa_Rica" });
     expect(body.location).toEqual({ kind: "google_meet" });
 

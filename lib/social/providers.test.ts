@@ -177,12 +177,12 @@ describe("LinkedIn (F11)", () => {
   });
 
   it("guarda el URN de la persona, que es lo que firma cada post", async () => {
-    const f = fakeFetch({ body: { sub: "abc123", name: "Wendy M", picture: "https://x/y.jpg" } });
+    const f = fakeFetch({ body: { sub: "abc123", name: "Ana M", picture: "https://x/y.jpg" } });
 
     const identity = await linkedinFetchIdentity({ accessToken: "at", fetchImpl: f.impl });
 
     expect(identity.externalAccountId).toBe("urn:li:person:abc123");
-    expect(identity.label).toBe("Wendy M");
+    expect(identity.label).toBe("Ana M");
   });
 
   it("toda llamada lleva la version de la API", () => {

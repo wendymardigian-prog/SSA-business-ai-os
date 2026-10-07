@@ -14,8 +14,8 @@ vi.mock("@/lib/ai/provider", () => ({
   listConnectedAiProviders: async (_ws: string) => [{ provider: "anthropic", label: "Anthropic", defaultModel: "x", models: [] }],
 }));
 vi.mock("@/lib/workspace-members", () => ({
-  getWorkspaceMembers: async () => [{ userId: "u1", name: "Wendy", email: "w@x.test", role: "owner" }],
-  memberLabels: () => new Map([["u1", "Wendy"]]),
+  getWorkspaceMembers: async () => [{ userId: "u1", name: "Ana", email: "w@x.test", role: "owner" }],
+  memberLabels: () => new Map([["u1", "Ana"]]),
 }));
 
 const { loadPiece } = await import("./load-piece");
@@ -62,7 +62,7 @@ function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
         { id: "sp-2", content_post_id: "post-1", platform: "tiktok", status: "published", deleted_at: "2026-10-01T00:00:00Z" },
       ],
       social_accounts: [
-        { workspace_id: WS, platform: "instagram", channel_id: "ch-1", username: "wendy", publishers: [{ publisher: "zernio", status: "available" }, { publisher: "postproxy", status: "unavailable" }], is_active: true },
+        { workspace_id: WS, platform: "instagram", channel_id: "ch-1", username: "ana", publishers: [{ publisher: "zernio", status: "available" }, { publisher: "postproxy", status: "unavailable" }], is_active: true },
       ],
       channels: [{ id: "ch-1", workspace_id: WS, platform: "instagram", is_active: true }],
       triggers: [],
@@ -99,7 +99,7 @@ describe("loadPiece (F96)", () => {
   it("la autoria sale con el nombre y las fechas en la zona del negocio", async () => {
     const data = await loadPiece(ctx(), "post-1");
 
-    expect(data!.post.authorship).toBe("Wendy · creada el 1 oct · editada el 2 oct");
+    expect(data!.post.authorship).toBe("Ana · creada el 1 oct · editada el 2 oct");
   });
 
   it("CRITERIO (F99): una pieza que no existe, o de otro workspace, es null", async () => {
@@ -144,7 +144,7 @@ describe("loadPiece (F96)", () => {
     const data = await loadPiece(ctx(), "post-1");
 
     expect(data!.versions).toHaveLength(1);
-    expect(data!.authorNames).toEqual({ u1: "Wendy" });
+    expect(data!.authorNames).toEqual({ u1: "Ana" });
   });
 
   it("el selector '+ Crear' lo habilita settings.manage", async () => {

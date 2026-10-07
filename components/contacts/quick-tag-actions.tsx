@@ -11,7 +11,7 @@ import type { TagOption } from "./tags-editor";
 /**
  * Acciones rapidas (Bloque 2d-A): las etiquetas con efecto sobre el agente, a
  * un clic desde el panel de la bandeja y la ficha. El peor error del sistema
- * es que el agente le ofrezca la academia a un amigo de Wendy; marcarlo tiene
+ * es que el agente le ofrezca la academia a un amigo de Ana; marcarlo tiene
  * que estar a mano, y decir antes que va a pasar.
  *
  * El efecto (apagar el agente, asignar) lo aplica la base (00073). Aca solo se

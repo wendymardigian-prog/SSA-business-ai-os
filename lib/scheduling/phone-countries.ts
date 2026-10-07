@@ -1,7 +1,7 @@
 /**
  * Países y prefijos para los inputs de teléfono (F20).
  *
- * Decisión de Wendy: todo input de teléfono lleva un selector de país, así
+ * Decisión de Ana: todo input de teléfono lleva un selector de país, así
  * los números se guardan siempre con prefijo internacional. Esta es la lista
  * del selector; vive en código (no es una tabla de la base). El valor
  * validado es siempre `+<dígitos>` (E.164), como lo guarda `contacts.phone`.

@@ -42,7 +42,7 @@ export interface PiecePost {
   offerId: string | null;
   funnelStage: string | null;
   reference: string | null;
-  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  /** "Ana · creada el 3 oct · editada el 5 oct" (F91). */
   authorship: string | null;
   caption: string | null;
   networks: NetworkEntry[];

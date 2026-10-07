@@ -53,9 +53,9 @@ describe("interpolateVariables", () => {
   });
 
   it("admite guiones: el link de un evento los lleva", () => {
-    const vars = { scheduling: { link: { wendy: { "llamada-de-diagnostico": "https://x/calendario/wendy/llamada-de-diagnostico" } } } };
-    expect(interpolateVariables("Agendá en {{scheduling.link.wendy.llamada-de-diagnostico}}", vars)).toBe(
-      "Agendá en https://x/calendario/wendy/llamada-de-diagnostico",
+    const vars = { scheduling: { link: { ana: { "llamada-de-diagnostico": "https://x/calendario/ana/llamada-de-diagnostico" } } } };
+    expect(interpolateVariables("Agendá en {{scheduling.link.ana.llamada-de-diagnostico}}", vars)).toBe(
+      "Agendá en https://x/calendario/ana/llamada-de-diagnostico",
     );
   });
 

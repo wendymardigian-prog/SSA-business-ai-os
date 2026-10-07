@@ -18,7 +18,7 @@
  *    empezar desde el post principal, que ya estaba publicado. Ahora cada
  *    paso queda anotado en `progress` y el reintento arranca donde quedo.
  *
- * Portado de ScaleOS (`_shared/threads.ts`), adaptado a la interfaz comun.
+ * Portado de un sistema anterior (`_shared/threads.ts`), adaptado a la interfaz comun.
  */
 
 import { THREADS_HOST } from "@/lib/social/threads/auth";

@@ -52,8 +52,8 @@ export function parentUtmFromSearch(search: string): ParentUtm {
 }
 
 /**
- * `buildEmbedIframeUrl("wendy/llamada", {theme: "dark", color: "#aa00ff"}, {utm_source: "web"})`
- * → `/calendario/wendy/llamada?embed=1&theme=dark&color=%23aa00ff&utm_source=web`
+ * `buildEmbedIframeUrl("ana/llamada", {theme: "dark", color: "#aa00ff"}, {utm_source: "web"})`
+ * → `/calendario/ana/llamada?embed=1&theme=dark&color=%23aa00ff&utm_source=web`
  *
  * Con `origin` devuelve la URL absoluta. Un color que no es hex se ignora.
  */

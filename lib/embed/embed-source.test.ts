@@ -99,16 +99,16 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const rt = new EmbedRuntime(env, "");
     rt.processQueue([
       ["init", { origin: ORIGIN }],
-      ["inline", { elementOrSelector: "#agenda-inline", calLink: "wendy/llamada", config: { theme: "dark", color: "#aa00ff", email: "a@b.com" } }],
+      ["inline", { elementOrSelector: "#agenda-inline", calLink: "ana/llamada", config: { theme: "dark", color: "#aa00ff", email: "a@b.com" } }],
     ]);
     const iframe = container.find((e) => e.tag === "iframe")!;
     expect(iframe).toBeTruthy();
     const u = new URL(iframe.src!);
     expect(u.origin).toBe(ORIGIN);
-    expect(u.pathname).toBe("/calendario/wendy/llamada");
+    expect(u.pathname).toBe("/calendario/ana/llamada");
     expect(Object.fromEntries(u.searchParams)).toMatchObject({ embed: "1", theme: "dark", color: "#aa00ff", email: "a@b.com", utm_source: "web", referrer: "https://mi-web.com/landing?utm_source=web" });
     // Una segunda instrucción inline sobre el mismo contenedor no duplica.
-    rt.processInstruction(["inline", { elementOrSelector: "#agenda-inline", calLink: "wendy/llamada" }]);
+    rt.processInstruction(["inline", { elementOrSelector: "#agenda-inline", calLink: "ana/llamada" }]);
     expect(container.children.filter((c) => c.tag === "iframe")).toHaveLength(1);
   });
 
@@ -119,7 +119,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     container.setAttribute("data-agenda-fallback", JSON.stringify({ title: "No carga (custom)", body: "Escribinos", cta: { label: "WA", href: "https://wa.me/1" } }));
     const rt = new EmbedRuntime(env, "");
     rt.init({ origin: ORIGIN });
-    rt.inline({ elementOrSelector: "#c", calLink: "wendy/llamada" });
+    rt.inline({ elementOrSelector: "#c", calLink: "ana/llamada" });
     vi.advanceTimersByTime(9_999);
     expect(container.find((e) => e.tag === "iframe")).toBeTruthy();
     vi.advanceTimersByTime(1);
@@ -136,7 +136,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const env = makeEnv();
     env.register(Object.assign(new FakeEl("div"), { id: "c" }));
     const rt = new EmbedRuntime(env, "");
-    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "wendy/llamada" }]]);
+    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "ana/llamada" }]]);
     env.window.fire({ origin: "https://evil.com", data: embedMessage("agenda:loaded", {}, "") });
     env.window.fire({ origin: ORIGIN, data: embedMessage("agenda:loaded", {}, "") });
     vi.advanceTimersByTime(20_000);
@@ -153,7 +153,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     env.register(Object.assign(new FakeEl("div"), { id: "c" }));
     const rt = new EmbedRuntime(env, "");
     const cb = vi.fn();
-    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "wendy/llamada" }], ["on", { action: "agenda:bookingSuccessful", callback: cb }]]);
+    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "ana/llamada" }], ["on", { action: "agenda:bookingSuccessful", callback: cb }]]);
     const payload = { uid: "u1", startTime: "x", endTime: "y", eventSlug: "llamada" };
     env.window.fire({ origin: ORIGIN, data: embedMessage("agenda:bookingSuccessful", payload, "") });
     expect(cb).toHaveBeenCalledWith(payload);
@@ -171,7 +171,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const rt = new EmbedRuntime(env, "");
     rt.init({ origin: ORIGIN });
     const btn = env.register(new FakeEl("button"));
-    btn.setAttribute("data-agenda-link", "wendy/llamada");
+    btn.setAttribute("data-agenda-link", "ana/llamada");
     btn.setAttribute("data-agenda-config", '{"theme":"light"}');
     const preventDefault = vi.fn();
     env.docListeners.click[0]({ target: btn, preventDefault });
@@ -179,7 +179,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const modal = env.body.find((e) => e.id === MODAL_ID)!;
     expect(modal).toBeTruthy();
     const iframe = modal.find((e) => e.tag === "iframe")!;
-    expect(iframe.src).toContain("/calendario/wendy/llamada?embed=1&theme=light");
+    expect(iframe.src).toContain("/calendario/ana/llamada?embed=1&theme=light");
     env.docListeners.keydown[0]({ key: "Escape" });
     expect(env.body.find((e) => e.id === MODAL_ID)).toBeNull();
   });
@@ -188,17 +188,17 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const env = makeEnv();
     const rt = new EmbedRuntime(env, "");
     rt.init({ origin: ORIGIN });
-    rt.floatingButton({ calLink: "wendy/llamada", buttonText: "Agendar", buttonColor: "#aa00ff", buttonPosition: "bottom-left" });
+    rt.floatingButton({ calLink: "ana/llamada", buttonText: "Agendar", buttonColor: "#aa00ff", buttonPosition: "bottom-left" });
     const btn = env.body.find((e) => e.id === FLOATING_BUTTON_ID)!;
     expect(btn.textContent).toBe("Agendar");
-    expect(btn.attrs["data-agenda-link"]).toBe("wendy/llamada");
+    expect(btn.attrs["data-agenda-link"]).toBe("ana/llamada");
     expect(btn.style).toMatchObject({ background: "#aa00ff", left: "24px" });
   });
 
   it("bootstrap toma window.Agenda del snippet, procesa la cola y marca loaded; es idempotente", () => {
     const env = makeEnv();
     env.register(Object.assign(new FakeEl("div"), { id: "c" }));
-    const q: [string, ...unknown[]][] = [["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "wendy/llamada" }]];
+    const q: [string, ...unknown[]][] = [["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#c", calLink: "ana/llamada" }]];
     const Agenda = Object.assign(() => undefined, { q, ns: {} }) as unknown as AgendaGlobal;
     env.window.Agenda = Agenda;
     const rt = bootstrap(env);
@@ -218,7 +218,7 @@ describe("runtime del embed (F39, F41, F58)", () => {
     const env = makeEnv();
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const rt = new EmbedRuntime(env, "");
-    rt.processQueue([["noExiste", {}], ["inline", { elementOrSelector: "#nada", calLink: "wendy/llamada" }]]);
+    rt.processQueue([["noExiste", {}], ["inline", { elementOrSelector: "#nada", calLink: "ana/llamada" }]]);
     expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
   });

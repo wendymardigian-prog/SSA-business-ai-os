@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildTeamRows, filterValueFor, initialsOf, timeTone, type TeamSqlRow } from "./team-rows";
 
 const SOFIA = "11111111-1111-4111-8111-111111111111";
-const WENDY = "22222222-2222-4222-8222-222222222222";
+const ANA = "22222222-2222-4222-8222-222222222222";
 
 function row(author: string, over: Partial<TeamSqlRow> = {}): TeamSqlRow {
   return {
@@ -20,8 +20,8 @@ function row(author: string, over: Partial<TeamSqlRow> = {}): TeamSqlRow {
 }
 
 const members = [
-  { id: SOFIA, label: "Sofía Ramírez", role: "Setter" },
-  { id: WENDY, label: "Wendy Mardigian", role: "Owner" },
+  { id: SOFIA, label: "Ana Gómez", role: "Setter" },
+  { id: ANA, label: "Ana Pérez", role: "Owner" },
 ];
 
 describe("buildTeamRows", () => {
@@ -39,16 +39,16 @@ describe("buildTeamRows", () => {
 
   it("a una persona le pone su nombre y su rol", () => {
     const rows = buildTeamRows([row(SOFIA)], members);
-    expect(rows[0]).toMatchObject({ label: "Sofía Ramírez", sublabel: "Setter", initials: "SR", isPerson: true });
+    expect(rows[0]).toMatchObject({ label: "Ana Gómez", sublabel: "Setter", initials: "AG", isPerson: true });
   });
 
   it("marca la fila propia con (vos)", () => {
-    const rows = buildTeamRows([row(WENDY)], members, WENDY);
-    expect(rows[0].label).toBe("Wendy Mardigian (vos)");
+    const rows = buildTeamRows([row(ANA)], members, ANA);
+    expect(rows[0].label).toBe("Ana Pérez (vos)");
   });
 
   it("un Member no conoce al equipo: la fila ajena queda sin nombre pero filtrable", () => {
-    const rows = buildTeamRows([row(SOFIA)], [], WENDY);
+    const rows = buildTeamRows([row(SOFIA)], [], ANA);
     expect(rows[0].label).toBe("Alguien del equipo");
     expect(filterValueFor(rows[0])).toBe(SOFIA);
   });
@@ -84,8 +84,8 @@ describe("filterValueFor", () => {
 
 describe("initialsOf", () => {
   it("toma la primera y la ultima", () => {
-    expect(initialsOf("Sofía Ramírez")).toBe("SR");
-    expect(initialsOf("Wendy")).toBe("WE");
+    expect(initialsOf("Ana Gómez")).toBe("AG");
+    expect(initialsOf("Ana")).toBe("AN");
     expect(initialsOf("  ")).toBe("?");
   });
 });

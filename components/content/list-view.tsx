@@ -20,7 +20,7 @@ import { PillarDot } from "./pillar-tag";
 export interface ListRow extends FilterablePost {
   format: string | null;
   authorName: string | null;
-  /** "Wendy · creada el 3 oct · editada el 5 oct" (F91). */
+  /** "Ana · creada el 3 oct · editada el 5 oct" (F91). */
   authorship: string | null;
   /** El pilar, para reconocerla de un vistazo (F91). */
   pillar: TaxonomyTag | null;

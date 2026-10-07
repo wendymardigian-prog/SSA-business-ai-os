@@ -30,7 +30,7 @@ export interface TokenSet {
 export interface OAuthIdentity {
   /** El id de la cuenta en el proveedor. */
   externalAccountId: string;
-  /** Como se muestra ("@minegocio", "Canal de Wendy"). */
+  /** Como se muestra ("@minegocio", "Canal de Ana"). */
   label: string;
   /** Datos de perfil, cuando el proveedor los da en el mismo paso. */
   profile?: {

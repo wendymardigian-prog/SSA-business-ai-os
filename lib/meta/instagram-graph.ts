@@ -10,7 +10,7 @@
  *  - **Las historias activas**, que duran 24 horas y por eso no se guardan:
  *    se consultan en vivo con cache (F54).
  *
- * Portado de ScaleOS. Conserva lo que ahi se aprendio a golpes: Meta
+ * Portado de un sistema anterior. Conserva lo que ahi se aprendio a golpes: Meta
  * reemplazo los metrics de audiencia por `follower_demographics` con
  * breakdown, y las cuentas viejas todavia responden a los anteriores, asi
  * que se intentan los dos.

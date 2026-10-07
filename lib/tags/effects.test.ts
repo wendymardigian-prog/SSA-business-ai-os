@@ -17,8 +17,8 @@ describe("etiquetas con efecto", () => {
   });
 
   it("describe las dos consecuencias en una frase", () => {
-    expect(describeEffect(tag("es-conocido", true, "u-1"), "Wendy")).toBe(
-      "Apaga el agente en sus conversaciones y lo asigna a Wendy",
+    expect(describeEffect(tag("es-conocido", true, "u-1"), "Ana")).toBe(
+      "Apaga el agente en sus conversaciones y lo asigna a Ana",
     );
     expect(describeEffect(tag("no-es-lead", true), null)).toBe("Apaga el agente en sus conversaciones");
     expect(describeEffect(tag("quiere-aprender"), null)).toBeNull();

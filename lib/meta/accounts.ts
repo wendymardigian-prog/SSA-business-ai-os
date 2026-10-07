@@ -1,7 +1,7 @@
 /**
  * Cuentas publicitarias de Meta (F40).
  *
- * Portado de ScaleOS (`meta-ads-accounts.ts`), con un cambio: no hay tabla
+ * Portado de un sistema anterior (`meta-ads-accounts.ts`), con un cambio: no hay tabla
  * propia. Las cuentas viven en `integration_configs.config.ad_accounts`,
  * validadas con Zod. Son cinco o seis filas que solo describen que
  * sincronizar; una tabla con RLS para eso es una tabla de mas.

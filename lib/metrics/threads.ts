@@ -1,7 +1,7 @@
 /**
  * Lector de metricas de Threads (F44).
  *
- * Portado de ScaleOS, con un cambio de criterio: ahi un metric que no venia
+ * Portado de un sistema anterior, con un cambio de criterio: ahi un metric que no venia
  * quedaba en cero; aca queda en `null`. Un cero escrito en la tabla se lee
  * despues como "ese dia no hubo vistas", y eso no es lo que Threads dijo.
  *

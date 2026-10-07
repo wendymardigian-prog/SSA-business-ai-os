@@ -3,16 +3,16 @@ import { RESERVED_USERNAMES, suggestUsername, usernameChangeNeedsConfirmation, v
 
 describe("usuario del perfil (F3)", () => {
   it("acepta minusculas, numeros y guiones entre 3 y 40", () => {
-    expect(validateUsername("wendy")).toEqual({ ok: true, username: "wendy" });
-    expect(validateUsername("  Wendy-M2 ")).toEqual({ ok: true, username: "wendy-m2" });
+    expect(validateUsername("ana")).toEqual({ ok: true, username: "ana" });
+    expect(validateUsername("  Ana-M2 ")).toEqual({ ok: true, username: "ana-m2" });
   });
 
   it.each([
     ["ab", "too_short"],
     ["a".repeat(41), "too_long"],
-    ["wendy_m", "invalid_chars"],
-    ["-wendy", "invalid_chars"],
-    ["wendy-", "invalid_chars"],
+    ["ana_m", "invalid_chars"],
+    ["-ana", "invalid_chars"],
+    ["ana-", "invalid_chars"],
     ["ñandu", "invalid_chars"],
     ["admin", "reserved"],
     ["Agenda", "reserved"],
@@ -24,7 +24,7 @@ describe("usuario del perfil (F3)", () => {
   });
 
   it("rechaza uno ya usado en el workspace, sin importar mayusculas", () => {
-    const result = validateUsername("Wendy", { taken: ["wendy"] });
+    const result = validateUsername("Ana", { taken: ["ana"] });
     expect(!result.ok && result.error).toBe("taken");
   });
 
@@ -35,7 +35,7 @@ describe("usuario del perfil (F3)", () => {
 
 describe("sugerencia de usuario", () => {
   it("sale del nombre, sin acentos ni espacios", () => {
-    expect(suggestUsername("Wendy Mardigián", "w@x.com")).toBe("wendy-mardigian");
+    expect(suggestUsername("Ana Pérez", "w@x.com")).toBe("ana-perez");
   });
   it("si no hay nombre, del email; si esta tomado, suma un numero", () => {
     expect(suggestUsername("", "ana.perez@ejemplo.com")).toBe("ana-perez");
@@ -49,15 +49,15 @@ describe("sugerencia de usuario", () => {
 
 describe("cambiar el usuario con eventos activos", () => {
   it("sin eventos activos, o con confirmacion, pasa", () => {
-    expect(usernameChangeNeedsConfirmation({ currentUsername: "wendy", nextUsername: "wen", activeEvents: 0 })).toEqual({ ok: true });
-    expect(usernameChangeNeedsConfirmation({ currentUsername: "wendy", nextUsername: "wen", activeEvents: 3, confirmBrokenLinks: true })).toEqual({ ok: true });
+    expect(usernameChangeNeedsConfirmation({ currentUsername: "ana", nextUsername: "wen", activeEvents: 0 })).toEqual({ ok: true });
+    expect(usernameChangeNeedsConfirmation({ currentUsername: "ana", nextUsername: "wen", activeEvents: 3, confirmBrokenLinks: true })).toEqual({ ok: true });
   });
   it("con eventos activos y sin confirmar, se rechaza diciendo cuantos links cambian", () => {
-    const r = usernameChangeNeedsConfirmation({ currentUsername: "wendy", nextUsername: "wen", activeEvents: 3 });
+    const r = usernameChangeNeedsConfirmation({ currentUsername: "ana", nextUsername: "wen", activeEvents: 3 });
     expect(r).toMatchObject({ ok: false, needsConfirmation: true, links: 3 });
     expect(!r.ok && r.message).toContain("3 eventos");
   });
   it("el mismo usuario (aunque cambie de mayusculas) no pide nada", () => {
-    expect(usernameChangeNeedsConfirmation({ currentUsername: "wendy", nextUsername: "WENDY", activeEvents: 5 })).toEqual({ ok: true });
+    expect(usernameChangeNeedsConfirmation({ currentUsername: "ana", nextUsername: "ANA", activeEvents: 5 })).toEqual({ ok: true });
   });
 });

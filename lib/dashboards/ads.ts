@@ -1,7 +1,7 @@
 /**
  * Las cuentas del dashboard de Meta Ads (F56).
  *
- * Las formulas son las de ScaleOS, y estan aca por una razon: **cada una se
+ * Las formulas son las de un sistema anterior, y estan aca por una razon: **cada una se
  * calcula sobre los totales del periodo, no promediando los diarios**. El
  * CPC del mes no es el promedio de los CPC diarios; es el gasto del mes
  * dividido por los clics del mes. Un dia con dos clics y mucho gasto

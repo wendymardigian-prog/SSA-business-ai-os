@@ -49,7 +49,7 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
           name: "Copywriter de contenido",
           type: "copywriter",
           is_enabled: true,
-          system_prompt: over.agentPrompt ?? "Escribi como Wendy: directa y sin vueltas.",
+          system_prompt: over.agentPrompt ?? "Escribi como Ana: directa y sin vueltas.",
           active_prompt_version: 1,
           provider: null,
           model: null,
@@ -176,7 +176,7 @@ describe("E4 · el contexto que junta antes de escribir", () => {
     expect(prompt).not.toContain("El viejo");
     expect(prompt).toContain("SISTEMA -> Guia por DM");
     expect(prompt).toContain("Implementacion en 10 dias");
-    expect(prompt).toContain("Escribi como Wendy");
+    expect(prompt).toContain("Escribi como Ana");
   });
 
   it("F94: le da la clasificacion de la pieza (pilar, oferta, etapa) con sus NOMBRES, no los ids", async () => {
@@ -286,9 +286,9 @@ describe("E11 · cada workspace corre con SU configuracion", () => {
     await runCopywriter(db.client, { agentId: AGENT_B, postId: POST_B }, { generate });
 
     const calls = (generate as unknown as { mock: { calls: Array<[{ prompt: string }]> } }).mock.calls;
-    expect(calls[0][0].prompt).toContain("Escribi como Wendy");
+    expect(calls[0][0].prompt).toContain("Escribi como Ana");
     expect(calls[1][0].prompt).toContain("Escribi formal");
-    expect(calls[1][0].prompt).not.toContain("Escribi como Wendy");
+    expect(calls[1][0].prompt).not.toContain("Escribi como Ana");
     // Y el de B no ve nada del negocio de A.
     expect(calls[1][0].prompt).not.toContain("Implementacion en 10 dias");
   });
