@@ -247,10 +247,24 @@ describe("actividad y formatos (F48)", () => {
         post({ publishedAt: "2026-09-29T10:00:00Z", mediaType: "carousel" }),
       ],
       "week",
+      "UTC",
     );
 
     expect(activity[0]).toMatchObject({ bucket: "2026-09-28", total: 3 });
     expect(activity[0].byFormat).toEqual({ reel: 2, carousel: 1 });
+  });
+
+  it("el dia se lee en la zona de quien mira, no en UTC", () => {
+    // 23:30 UTC del 28 de septiembre es ya 29 de septiembre en una zona
+    // adelantada a UTC (ej: Asia/Tokyo, UTC+9): cortar con .slice(0, 10)
+    // lo dejaria en el dia anterior.
+    const activity = publishActivity(
+      [post({ publishedAt: "2026-09-28T23:30:00Z", mediaType: "reel" })],
+      "day",
+      "Asia/Tokyo",
+    );
+
+    expect(activity[0].bucket).toBe("2026-09-29");
   });
 
   it("el rendimiento por formato promedia alcance y engagement", () => {
@@ -285,20 +299,33 @@ describe("engagement a 7 dias por semana (F50)", () => {
         post({ publishedAt: "2026-09-09T10:00:00Z", platform: "threads", engagementD7: 2 }),
       ],
       now,
+      "UTC",
     );
 
     expect(result[0].byPlatform).toEqual({ instagram: 5, threads: 2 });
   });
 
+  it("la semana de publicacion se lee en la zona de quien mira", () => {
+    // Lunes 7 de septiembre 23:30 UTC es ya martes 8 en una zona adelantada:
+    // sigue siendo la semana del 7, no la siguiente.
+    const result = weeklyD7(
+      [post({ publishedAt: "2026-09-07T23:30:00Z", engagementD7: 4 })],
+      now,
+      "Asia/Tokyo",
+    );
+
+    expect(result[0].week).toBe("2026-09-07");
+  });
+
   it("la semana con posts de menos de 7 dias se marca en curso", () => {
     // Si no, pareceria que el rendimiento se derrumbo esta semana.
-    const result = weeklyD7([post({ publishedAt: "2026-09-29T10:00:00Z", engagementD7: null })], now);
+    const result = weeklyD7([post({ publishedAt: "2026-09-29T10:00:00Z", engagementD7: null })], now, "UTC");
 
     expect(result[0].inProgress).toBe(true);
   });
 
   it("una semana cerrada no se marca", () => {
-    const result = weeklyD7([post({ publishedAt: "2026-09-07T10:00:00Z", engagementD7: 4 })], now);
+    const result = weeklyD7([post({ publishedAt: "2026-09-07T10:00:00Z", engagementD7: 4 })], now, "UTC");
 
     expect(result[0].inProgress).toBe(false);
   });

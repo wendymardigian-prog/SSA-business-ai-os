@@ -9,6 +9,8 @@
  * `lib/patterns/quality.ts`, que es la unica formula; aca solo se ordena.
  */
 
+import { civilDate, zonedClock } from "@/lib/dates";
+
 export const REVIEW_SESSION_SIZE = 20;
 
 export interface ReviewCandidate {
@@ -55,13 +57,20 @@ export interface WeeklyAccuracy {
   accuracy: number | null;
 }
 
-/** El lunes de la semana de una fecha ISO. */
-function mondayKey(iso: string): string | null {
+/**
+ * El lunes de la semana de una fecha ISO, en la zona del negocio.
+ *
+ * Es un reporte agregado (parejo para todo el equipo), no una vista
+ * personal: la zona es la del workspace, no la de quien mira.
+ */
+function mondayKey(iso: string, timeZone: string): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  const dow = d.getUTCDay();
-  d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1));
-  return d.toISOString().slice(0, 10);
+  const { year, month, day } = civilDate(d, timeZone);
+  const dow = zonedClock(d, timeZone).weekday;
+  const cal = new Date(Date.UTC(year, month - 1, day));
+  cal.setUTCDate(cal.getUTCDate() - (dow === 0 ? 6 : dow - 1));
+  return cal.toISOString().slice(0, 10);
 }
 
 /**
@@ -73,11 +82,12 @@ function mondayKey(iso: string): string | null {
 export function accuracyByWeek(
   reviewed: Array<{ reviewedAt: string | null; reviewResult: string | null }>,
   weeks: string[],
+  timeZone: string,
 ): WeeklyAccuracy[] {
   const byWeek = new Map<string, { ok: number; total: number }>();
   for (const row of reviewed) {
     if (!row.reviewedAt || row.reviewResult === null) continue;
-    const key = mondayKey(row.reviewedAt);
+    const key = mondayKey(row.reviewedAt, timeZone);
     if (!key) continue;
     const acc = byWeek.get(key) ?? { ok: 0, total: 0 };
     acc.total += 1;
@@ -94,11 +104,12 @@ export function accuracyByWeek(
   });
 }
 
-/** Las ultimas N semanas (lunes), de la mas vieja a la mas nueva. */
-export function lastWeeks(now: Date, count: number): string[] {
+/** Las ultimas N semanas (lunes), de la mas vieja a la mas nueva, en la zona del negocio. */
+export function lastWeeks(now: Date, count: number, timeZone: string): string[] {
   const out: string[] = [];
-  const base = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const dow = base.getUTCDay();
+  const { year, month, day } = civilDate(now, timeZone);
+  const base = new Date(Date.UTC(year, month - 1, day));
+  const dow = zonedClock(now, timeZone).weekday;
   base.setUTCDate(base.getUTCDate() - (dow === 0 ? 6 : dow - 1));
   for (let i = count - 1; i >= 0; i--) {
     const d = new Date(base);

@@ -11,6 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { isoToDateInput } from "@/lib/dates";
 import type { AdsRow } from "./ads";
 import type { ResolvedPeriod } from "./period";
 
@@ -22,6 +23,13 @@ export async function loadAdsInsights(
     workspaceId: string;
     adAccountId: string;
     period: ResolvedPeriod;
+    /**
+     * La misma zona con la que se armo `period` (resolvePeriod). `date` es un
+     * DATE, no un timestamptz: cortar el ISO de `period.from`/`to` con
+     * `.slice(0, 10)` da el dia en UTC, que es un dia distinto del que se
+     * pidio para cualquier zona adelantada a UTC.
+     */
+    timeZone: string;
   },
 ): Promise<AdsRow[]> {
   let query = supabase
@@ -32,8 +40,8 @@ export async function loadAdsInsights(
     .eq("workspace_id", params.workspaceId)
     .eq("ad_account_id", params.adAccountId);
 
-  if (params.period.from) query = query.gte("date", params.period.from.slice(0, 10));
-  if (params.period.to) query = query.lte("date", params.period.to.slice(0, 10));
+  if (params.period.from) query = query.gte("date", isoToDateInput(params.period.from, params.timeZone));
+  if (params.period.to) query = query.lte("date", isoToDateInput(params.period.to, params.timeZone));
 
   const { data, error } = await query;
 

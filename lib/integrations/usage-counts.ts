@@ -7,6 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { civilDate, startOfDay } from "@/lib/dates";
 
 /**
  * Cuentas que ocupan un lugar del plan de Zernio.
@@ -45,15 +46,23 @@ export async function countZernioAccounts(
  * solo los salientes diria que queda cuota cuando no queda, y las
  * respuestas de la tarde no saldrian sin aviso.
  *
- * El dia arranca en UTC. Es una aproximacion: el corte de Resend tampoco es
- * en la zona del negocio, y errar por unas horas en una barra informativa
- * es mejor que una consulta por workspace con su zona.
+ * `countEmailsToday` tambien gatea el aviso de cuota diaria (`warnIfNearQuota`
+ * en `lib/email/send-reply.ts`), que SI es una regla de negocio: el dia
+ * arranca en la zona del WORKSPACE, no en UTC, o alguien en una zona
+ * adelantada a UTC ve "hoy" vaciarse de cuota un dia antes de tiempo.
  */
 export async function countEmailsToday(
   supabase: SupabaseClient<Database>,
   workspaceId: string,
 ): Promise<number> {
-  const since = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
+  const { data: ws } = await supabase
+    .from("workspaces")
+    .select("timezone")
+    .eq("id", workspaceId)
+    .maybeSingle();
+  const timeZone = ws?.timezone || "UTC";
+  const { year, month, day } = civilDate(new Date(), timeZone);
+  const since = startOfDay(year, month, day, timeZone).toISOString();
 
   const { count, error } = await supabase
     .from("messages")

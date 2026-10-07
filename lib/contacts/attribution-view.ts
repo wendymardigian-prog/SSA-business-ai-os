@@ -56,8 +56,8 @@ export interface AttributionView {
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-/** "12 sep" en la zona del negocio: la fecha que ve quien mira, no la de UTC. */
-export function shortDate(iso: string | null | undefined, timeZone = "America/Costa_Rica"): string {
+/** "12 sep" en la zona de quien mira (o UTC si no se la pasaron). */
+export function shortDate(iso: string | null | undefined, timeZone = "UTC"): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";

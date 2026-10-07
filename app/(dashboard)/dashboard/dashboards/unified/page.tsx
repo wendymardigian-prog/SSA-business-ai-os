@@ -9,6 +9,7 @@ import { followerGrowth, sumByBucket, total } from "@/lib/dashboards/content";
 import { isPeriodPreset, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
+import { resolveViewerTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function UnifiedDashboardPage({
   const period: PeriodPreset =
     periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
 
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  const timeZone = await resolveViewerTimezone(workspace.timezone);
   const range = resolvePeriod(period, new Date(), timeZone);
 
   const [{ data: configRow }, { data: accounts }, content] = await Promise.all([
@@ -47,7 +48,7 @@ export default async function UnifiedDashboardPage({
       .select("id")
       .eq("workspace_id", workspace.id)
       .eq("is_active", true),
-    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range }),
+    loadContentDashboard(supabase, { workspaceId: workspace.id, period: range, timeZone }),
   ]);
 
   const config = parseMetaConfig(configRow?.config);
@@ -59,6 +60,7 @@ export default async function UnifiedDashboardPage({
         workspaceId: workspace.id,
         adAccountId: resolved.adAccountId,
         period: range,
+        timeZone,
       })
     : [];
 

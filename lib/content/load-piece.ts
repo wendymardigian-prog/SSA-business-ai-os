@@ -77,7 +77,9 @@ export interface PieceData {
 export async function loadPiece(ctx: PermissionContext, postId: string): Promise<PieceData | null> {
   const { workspace, user, supabase, can } = ctx;
   const canUseAi = can("content.ai");
-  const timeZone = workspace.timezone || "America/Costa_Rica";
+  // La zona del NEGOCIO: la misma que usa el editor para agendar (A19,
+  // lib/dates.ts) y el tope diario server-side (lib/publishing/schedule-core.ts).
+  const timeZone = workspace.timezone || "UTC";
 
   const { data: post } = await supabase
     .from("content_posts")

@@ -79,6 +79,8 @@ export interface ContentDashboardProps {
   filters: ClassificationFilters;
   /** Lo que se puede elegir en cada filtro. */
   filterOptions: FilterOptions;
+  /** La zona de quien mira: en que dia cae cada publicacion en el grafico. */
+  timeZone: string;
 }
 
 export function ContentDashboard(props: ContentDashboardProps) {
@@ -113,8 +115,8 @@ export function ContentDashboard(props: ContentDashboardProps) {
   );
 
   const activity = useMemo(
-    () => publishActivity(props.posts, activityGrouping),
-    [props.posts, activityGrouping],
+    () => publishActivity(props.posts, activityGrouping, props.timeZone),
+    [props.posts, activityGrouping, props.timeZone],
   );
 
   const formats = useMemo(
@@ -122,7 +124,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
     [props.posts, latestByPost],
   );
 
-  const d7 = useMemo(() => weeklyD7(props.posts, now), [props.posts, now]);
+  const d7 = useMemo(() => weeklyD7(props.posts, now, props.timeZone), [props.posts, now, props.timeZone]);
 
   const pieces = useMemo(() => new Map(props.pieces.map((p) => [p.id, p])), [props.pieces]);
   const leadsByPost = useMemo(
@@ -492,6 +494,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
           accountDaily={props.accountDaily}
           posts={props.posts}
           connectedPlatforms={props.connectedPlatforms}
+          timeZone={props.timeZone}
         />
 
         <section className="mt-6">

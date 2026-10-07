@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
  */
 export default async function BackgroundTasksPage() {
   const { workspace } = await requireWorkspaceAdmin();
-  const timezone = (workspace as { timezone?: string }).timezone ?? "America/Costa_Rica";
+  // La zona del NEGOCIO, no la de quien mira: la precision semanal de
+  // review-queue.ts es un reporte agregado, igual para todo el equipo.
+  const timezone = (workspace as { timezone?: string }).timezone ?? "UTC";
   const settings = resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings);
 
   const [data, categories] = await Promise.all([

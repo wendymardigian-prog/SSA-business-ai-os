@@ -35,7 +35,7 @@ async function target(forUserId: string | null | undefined) {
     return { error: "No tenes permiso para editar el tiempo fuera de otra persona" as string, ctx: null } as const;
   }
   const profile = await getProfileForUser(ctx.supabase, ctx.workspace.id, userId);
-  const timezone = profile?.timezone ?? ((ctx.workspace as { timezone?: string }).timezone ?? "America/Costa_Rica");
+  const timezone = profile?.timezone ?? ((ctx.workspace as { timezone?: string }).timezone ?? "UTC");
   return { ctx, userId, timezone, error: null } as const;
 }
 

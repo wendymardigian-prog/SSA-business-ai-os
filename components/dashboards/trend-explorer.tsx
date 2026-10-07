@@ -17,6 +17,7 @@ import {
   type ExplorerMetric,
 } from "@/lib/dashboards/explorer";
 import { sumByBucket, lastByBucket, type AccountDailyRow, type PostDailyRow, type PublishedPost } from "@/lib/dashboards/content";
+import { isoToDateInput } from "@/lib/dates";
 
 /**
  * El explorador de tendencias (F49).
@@ -30,11 +31,14 @@ export function TrendExplorer({
   accountDaily,
   posts,
   connectedPlatforms,
+  timeZone,
 }: {
   postDaily: PostDailyRow[];
   accountDaily: AccountDailyRow[];
   posts: PublishedPost[];
   connectedPlatforms: string[];
+  /** La zona de quien mira: en que dia cae cada publicacion marcada en el grafico. */
+  timeZone: string;
 }) {
   const [config, setConfig] = useState<ExplorerConfig>(DEFAULT_CONFIG);
   const [copied, setCopied] = useState(false);
@@ -83,14 +87,14 @@ export function TrendExplorer({
             return sumByBucket(
               posts
                 .filter((p) => p.platform === platform && p.publishedAt)
-                .map((p) => ({ date: (p.publishedAt as string).slice(0, 10), value: 1 })),
+                .map((p) => ({ date: isoToDateInput(p.publishedAt as string, timeZone), value: 1 })),
               config.grouping,
             );
           case "engagement_d7":
             return sumByBucket(
               posts
                 .filter((p) => p.platform === platform && p.publishedAt && p.engagementD7 !== null)
-                .map((p) => ({ date: (p.publishedAt as string).slice(0, 10), value: p.engagementD7 })),
+                .map((p) => ({ date: isoToDateInput(p.publishedAt as string, timeZone), value: p.engagementD7 })),
               config.grouping,
             );
           case "engagement_rate":
@@ -108,7 +112,7 @@ export function TrendExplorer({
             return [];
         }
       },
-    [postDaily, accountDaily, posts, config.grouping],
+    [postDaily, accountDaily, posts, config.grouping, timeZone],
   );
 
   const series = useMemo(
@@ -279,7 +283,7 @@ export function TrendExplorer({
             ? posts
                 .filter((p) => p.publishedAt)
                 .map((p) => ({
-                  bucket: (p.publishedAt as string).slice(0, 10),
+                  bucket: isoToDateInput(p.publishedAt as string, timeZone),
                   label: `${platformLabel(p.platform)} · ${p.mediaType ?? "publicacion"}`,
                   color: colorFor(p.platform),
                 }))
