@@ -443,6 +443,18 @@ try {
     const { count: sigue } = await svc.from("bookings").select("id", { count: "exact", head: true }).eq("id", unaFila.id);
     check(sigue === 1, "ni el Owner borra una agenda: se cancela", eDel?.message);
 
+    // `bookings` solo tiene policy de SELECT: ni el Owner puede escribir con
+    // su propio cliente. Las acciones del servidor escriben con el service
+    // role (Agenda v2); esto deja fijo ese limite para que no vuelva a
+    // colarse un UPDATE con el cliente del usuario (fallaba en silencio: 0
+    // filas, sin error).
+    const { data: filaUpd, error: eUpdUser } = await owner.client
+      .from("bookings")
+      .update({ internal_notes: "zz-test no deberia guardar" })
+      .eq("id", unaFila.id)
+      .select("id");
+    check(!filaUpd?.length, "ni el Owner actualiza una agenda con su propio cliente: escribir es del servidor", eUpdUser?.message);
+
     // La purga conserva los eventos que tienen agendas.
     await svc.from("event_types").update({ deleted_at: "2020-01-01T00:00:00Z" }).eq("id", evB.id);
     await svc.rpc("purge_soft_deleted", { p_retention_days: 30 });

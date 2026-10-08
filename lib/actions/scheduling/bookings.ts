@@ -69,14 +69,21 @@ export async function changeBookingStatus(input: { bookingId: string; status: st
     return { ok: true };
   }
 
-  const { error } = await ctx.supabase
+  // `bookings` solo tiene policy de SELECT (escribir es del servidor): el
+  // cliente del usuario no puede hacer este UPDATE. `.select("id")` detecta
+  // el caso silencioso (0 filas, sin error) en vez de festejar un cambio que
+  // nunca se guardó.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service
     .from("bookings")
     .update({ status: input.status, status_changed_at: now.toISOString(), status_changed_by: ctx.user.id })
-    .eq("id", booking.id);
+    .eq("id", booking.id)
+    .select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar el cambio de estado." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,
@@ -86,7 +93,6 @@ export async function changeBookingStatus(input: { bookingId: string; status: st
     performedBy: ctx.user.id,
   });
 
-  const service = await createServiceClient();
   await service.from("automation_events").insert({
     workspace_id: booking.workspace_id,
     event_type: "booking_status_changed",
@@ -152,11 +158,15 @@ export async function updateBookingDetails(input: {
   if (input.internalNotes !== undefined) patch.internal_notes = input.internalNotes?.trim() || null;
   if (Object.keys(patch).length === 0) return { ok: true };
 
-  const { error } = await ctx.supabase.from("bookings").update(patch).eq("id", booking.id);
+  // Escribir es del servidor: `bookings` no tiene policy de UPDATE para el
+  // usuario logueado.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service.from("bookings").update(patch).eq("id", booking.id).select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar los cambios." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,
@@ -168,7 +178,6 @@ export async function updateBookingDetails(input: {
     performedBy: ctx.user.id,
   });
 
-  const service = await createServiceClient();
   await service.from("automation_events").insert({
     workspace_id: booking.workspace_id,
     event_type: "booking_updated",
@@ -207,14 +216,19 @@ export async function fixBookingCategory(input: { bookingId: string; categoryId:
   // cuatro campos vienen en null. Eso es lo que hay que rechazar.
   if (!snapshot.area_id && !snapshot.type_id) return { ok: false, error: "Esa categoría no existe." };
 
-  const { error } = await ctx.supabase
+  // Escribir es del servidor: `bookings` no tiene policy de UPDATE para el
+  // usuario logueado.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service
     .from("bookings")
     .update({ category_id: input.categoryId, category_snapshot: snapshot as unknown as Json })
-    .eq("id", booking.id);
+    .eq("id", booking.id)
+    .select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar la categoría." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,
