@@ -199,9 +199,14 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     bookingUtmOptions(ctx.supabase, ctx.workspace.id),
   ]);
 
-  // El link público de cada evento necesita el usuario de su dueño.
-  const { data: profileRows } = await ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id);
+  // El link público de cada evento necesita el usuario de su dueño. De paso,
+  // quién tiene perfil de agenda (para reasignar) y quién conectó Google.
+  const [{ data: profileRows }, { data: googleRows }] = await Promise.all([
+    ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id),
+    ctx.supabase.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active"),
+  ]);
   const usernameByUser = new Map((profileRows ?? []).map((p) => [p.user_id, p.username]));
+  const hasGoogleByUser = new Set((googleRows ?? []).map((c) => c.user_id));
   const shareableEvents: ShareableEvent[] = events
     .filter((e) => e.status === "active")
     .map((e) => {
@@ -243,6 +248,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       hasEverBooked={(everCount ?? 0) > 0}
       hasCalendar={defaults?.hasCalendar ?? false}
       utmOptions={utmOptions}
+      canReassign={ctx.scope("bookings") === "all"}
+      reassignHostOptions={[...names.keys()]
+        .filter((userId) => usernameByUser.has(userId))
+        .map((userId) => ({ userId, label: names.get(userId) ?? "Sin nombre", hasGoogle: hasGoogleByUser.has(userId) }))}
       detail={
         detail
           ? {
@@ -252,6 +261,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               startAt: detail.booking.start_at,
               endAt: detail.booking.end_at,
               status: detail.booking.status,
+              hostUserId: detail.booking.host_user_id,
               hostName: names.get(detail.booking.host_user_id) ?? "Sin nombre",
               hostTimezone: detail.booking.host_timezone ?? timezone,
               inviteeTimezone: detail.booking.booker_timezone ?? timezone,

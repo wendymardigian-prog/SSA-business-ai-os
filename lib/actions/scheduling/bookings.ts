@@ -11,6 +11,8 @@ import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cance
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { createBooking } from "@/lib/scheduling/booking/create";
 import { occupyBookingSlot, releaseBookingSlot } from "@/lib/scheduling/booking/release";
+import { reassignBookingHost } from "@/lib/scheduling/booking/reassign";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { getPublicSlots } from "@/lib/scheduling/slots-service";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
@@ -168,6 +170,39 @@ export async function occupyBookingSlotAsHost(input: { bookingId: string }): Pro
   const { ctx, booking } = found;
 
   const result = await occupyBookingSlot(await createServiceClient(), booking.id, ctx.user.id);
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
+}
+
+/**
+ * Reasignar el anfitrión de una agenda (Agenda v2), sin avisarle al invitado.
+ *
+ * Alcance total nomás (Owner/Admin): reasignar es tocar la agenda de otra
+ * persona, no solo la propia.
+ */
+export async function reassignBookingHostAsHost(input: {
+  bookingId: string;
+  newHostUserId: string;
+  transferAssignment?: boolean;
+}): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+  if (ctx.scope("bookings") !== "all") return { ok: false, error: "No tenés permiso para reasignar agendas." };
+
+  const members = await getWorkspaceMembers(booking.workspace_id);
+  const newHost = members.find((m) => m.userId === input.newHostUserId);
+  if (!newHost) return { ok: false, error: "No encontré a esa persona en el equipo." };
+
+  const result = await reassignBookingHost(await createServiceClient(), {
+    bookingId: booking.id,
+    newHostUserId: input.newHostUserId,
+    newHostEmail: newHost.email || null,
+    newHostName: newHost.name,
+    actorUserId: ctx.user.id,
+    transferAssignment: input.transferAssignment,
+  });
   if (!result.ok) return { ok: false, error: result.message };
   revalidatePath(PATH);
   return { ok: true };

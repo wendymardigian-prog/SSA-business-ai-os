@@ -29,9 +29,16 @@ export const MAX_SYNC_ATTEMPTS = SYNC_RETRY_MINUTES.length + 1;
 
 export interface SyncPayload {
   booking_id: string;
-  /** "release"/"occupy" (Agenda v2): transparency del evento, sin avisar al invitado. */
-  action: "create" | "update" | "delete" | "release" | "occupy";
+  /**
+   * "release"/"occupy" (Agenda v2): transparency del evento, sin avisar al
+   * invitado. "reassign": suma al nuevo anfitrión como invitado confirmado y
+   * libera la copia del organizador, también sin avisar.
+   */
+  action: "create" | "update" | "delete" | "release" | "occupy" | "reassign";
   attempt?: number;
+  /** Solo para "reassign". */
+  new_host_email?: string | null;
+  new_host_name?: string | null;
 }
 
 /** Cuando reintentar, o null si ya no hay que reintentar. */
@@ -147,6 +154,25 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
         if (!cal) throw new GoogleCalendarError("El calendario ya no existe", "permanent", null, "no_calendar");
         await updateEvent({ supabase: service }, booking.google_connection_id, cal.external_calendar_id, booking.google_event_id, {
           transparency: payload.action === "release" ? "transparent" : "opaque",
+          sendUpdates: "none",
+        });
+      }
+      await service.from("bookings").update({ google_sync_status: "synced", google_sync_error: null }).eq("id", booking.id);
+    } else if (payload.action === "reassign") {
+      // Reasignar (Agenda v2): el organizador en Google sigue siendo el de
+      // siempre. Se suma al nuevo anfitrión como invitado confirmado (eso
+      // alcanza para que el evento le aparezca "Ocupado") y el organizador
+      // pasa a "Disponible" en su propia copia. Todo con sendUpdates=none.
+      if (booking.google_event_id && booking.google_connection_id && booking.google_calendar_id) {
+        const { data: cal } = await service.from("calendars").select("external_calendar_id").eq("id", booking.google_calendar_id).maybeSingle();
+        if (!cal) throw new GoogleCalendarError("El calendario ya no existe", "permanent", null, "no_calendar");
+        const attendees: Array<{ email: string; displayName?: string; responseStatus?: "accepted" }> = [];
+        if (booking.booker_email) attendees.push({ email: booking.booker_email, ...(booking.booker_name ? { displayName: booking.booker_name } : {}) });
+        if (payload.new_host_email) attendees.push({ email: payload.new_host_email, ...(payload.new_host_name ? { displayName: payload.new_host_name } : {}), responseStatus: "accepted" });
+        await updateEvent({ supabase: service }, booking.google_connection_id, cal.external_calendar_id, booking.google_event_id, {
+          attendees,
+          guestsCanModify: true,
+          transparency: "transparent",
           sendUpdates: "none",
         });
       }

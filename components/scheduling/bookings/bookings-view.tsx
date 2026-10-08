@@ -64,6 +64,8 @@ export function BookingsScreen({
   hasEverBooked,
   hasCalendar,
   utmOptions,
+  canReassign,
+  reassignHostOptions,
   detail,
   view,
   quick,
@@ -97,6 +99,10 @@ export function BookingsScreen({
   hasCalendar: boolean;
   /** Fuente/medio/campaña que de verdad existen en el workspace, para el grupo "UTM" del widget de filtros. */
   utmOptions: { sources: string[]; mediums: string[]; campaigns: string[] };
+  /** Owner/Admin con alcance total (Agenda v2): solo ellos reasignan. */
+  canReassign: boolean;
+  /** Quién tiene perfil de agenda, para elegir a quién reasignar (incluye al anfitrión actual, se saca al armar el detalle). */
+  reassignHostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
   detail: BookingDetailData | null;
   view: "list" | "kanban" | "calendar";
   quick: QuickPick;
@@ -359,7 +365,16 @@ export function BookingsScreen({
       )}
 
       {detail && (
-        <BookingDetailPanel booking={detail} categories={categories} timezone={timezone} timeFormat={timeFormat} canManage={canManage} onClose={closeDetail} />
+        <BookingDetailPanel
+          booking={detail}
+          categories={categories}
+          timezone={timezone}
+          timeFormat={timeFormat}
+          canManage={canManage}
+          canReassign={canReassign}
+          hostOptions={reassignHostOptions.filter((h) => h.userId !== detail.hostUserId)}
+          onClose={closeDetail}
+        />
       )}
 
       {manualOpen && (

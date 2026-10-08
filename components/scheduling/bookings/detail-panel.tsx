@@ -19,7 +19,7 @@ import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRA
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
-import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
+import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 
 export interface BookingDetailData {
@@ -29,6 +29,7 @@ export interface BookingDetailData {
   startAt: string;
   endAt: string;
   status: BookingStatus;
+  hostUserId: string;
   hostName: string;
   hostTimezone: string;
   inviteeTimezone: string;
@@ -62,6 +63,8 @@ export function BookingDetailPanel({
   timezone,
   timeFormat,
   canManage,
+  canReassign,
+  hostOptions,
   onClose,
 }: {
   booking: BookingDetailData;
@@ -69,11 +72,18 @@ export function BookingDetailPanel({
   timezone: string;
   timeFormat: "12h" | "24h";
   canManage: boolean;
+  /** Owner/Admin con alcance total (Agenda v2): solo ellos pueden reasignar. */
+  canReassign: boolean;
+  /** Quién tiene perfil de agenda, para elegir a quién reasignar. Sin el anfitrión actual. */
+  hostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cancelFor, setCancelFor] = useState<BookingStatus | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [newHostId, setNewHostId] = useState("");
+  const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState(booking.internalNotes ?? "");
   const [location, setLocation] = useState(booking.locationText ?? "");
@@ -104,6 +114,7 @@ export function BookingDetailPanel({
       setToast(done);
       setMenuOpen(false);
       setCancelFor(null);
+      setReassignOpen(false);
       router.refresh();
     });
   }
@@ -203,6 +214,49 @@ export function BookingDetailPanel({
             </div>
           )}
 
+          {reassignOpen && (
+            <div className="rounded-lg border border-border p-3">
+              <p className="font-medium">Reasignar anfitrión</p>
+              <label htmlFor="reassign-host" className="mt-2 block text-xs text-muted-foreground">
+                Nueva persona
+              </label>
+              <select
+                id="reassign-host"
+                value={newHostId}
+                onChange={(e) => setNewHostId(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Elegir…</option>
+                {hostOptions.map((h) => (
+                  <option key={h.userId} value={h.userId}>
+                    {h.label}
+                    {h.hasGoogle ? "" : " (sin Google Calendar conectado)"}
+                  </option>
+                ))}
+              </select>
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={transferAssignment} onChange={(e) => setTransferAssignment(e.target.checked)} />
+                También pasarle los leads asignados (si el closer o el setter era {booking.hostName})
+              </label>
+              <p className="mt-2 text-xs text-muted-foreground">
+                El invitado no se entera: sigue viendo el mismo link de Meet. La nueva persona aparece confirmada en su calendario.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => setReassignOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !newHostId}
+                  onClick={() => run(() => reassignBookingHostAsHost({ bookingId: booking.id, newHostUserId: newHostId, transferAssignment }), "Agenda reasignada")}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                >
+                  {pending ? "Reasignando…" : "Reasignar"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {pendingOutcome && canManage && !cancelFor && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
               <p className="font-medium">La llamada ya pasó. ¿Cómo resultó?</p>
@@ -254,7 +308,14 @@ export function BookingDetailPanel({
               )}
             </dd>
             <dt className="text-muted-foreground">Anfitrión</dt>
-            <dd>{booking.hostName}</dd>
+            <dd className="flex flex-wrap items-center gap-2">
+              {booking.hostName}
+              {canReassign && isActive(booking.status) && hostOptions.length > 0 && !reassignOpen && (
+                <button type="button" onClick={() => setReassignOpen(true)} className="text-xs text-primary underline">
+                  Reasignar
+                </button>
+              )}
+            </dd>
             <dt className="text-muted-foreground">Dónde</dt>
             <dd>
               {booking.locationType === "google_meet" ? (

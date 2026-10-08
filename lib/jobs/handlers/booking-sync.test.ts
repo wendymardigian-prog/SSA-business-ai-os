@@ -273,6 +273,30 @@ describe("handleBookingGoogleSync · liberar espacio (Agenda v2)", () => {
   });
 });
 
+describe("handleBookingGoogleSync · reasignar (Agenda v2)", () => {
+  it("suma al nuevo anfitrión como invitado confirmado y libera la copia del organizador", async () => {
+    const db = world({ google_event_id: "gev-1", google_connection_id: "conn-1", google_calendar_id: "cal-1" });
+    updateEvent.mockResolvedValue({ meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "reassign", new_host_email: "nuevo@ejemplo.com", new_host_name: "Lucía" }));
+
+    expect(updateEvent).toHaveBeenCalledWith(expect.anything(), "conn-1", "ana@ejemplo.com", "gev-1", {
+      attendees: [{ email: "juan@ejemplo.com", displayName: "Juan Pérez" }, { email: "nuevo@ejemplo.com", displayName: "Lucía", responseStatus: "accepted" }],
+      guestsCanModify: true,
+      transparency: "transparent",
+      sendUpdates: "none",
+    });
+    expect(db.rows("bookings")[0].google_sync_status).toBe("synced");
+  });
+
+  it("reasignar sin evento en Google no falla", async () => {
+    const db = world();
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "reassign", new_host_email: "nuevo@ejemplo.com" }));
+    expect(updateEvent).not.toHaveBeenCalled();
+    expect(db.rows("bookings")[0].google_sync_status).toBe("synced");
+  });
+});
+
 describe("handleBookingEnded", () => {
   it("emite booking_ended con el evento y el anfitrion", async () => {
     const db = world();

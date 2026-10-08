@@ -110,6 +110,42 @@ revierte.
 - Botón en el panel de detalle, visible solo con `bookings.manage` sobre una
   agenda activa.
 
+## Reasignar anfitrión (Agenda v2)
+
+Cambia quién atiende la llamada, sin avisarle al invitado y sin crear un
+evento nuevo. Solo Owner/Admin (alcance total), sobre una agenda activa, a
+alguien que ya tiene perfil de agenda en el workspace —
+`lib/scheduling/booking/reassign.ts` / `components/scheduling/bookings/detail-panel.tsx`.
+
+- **Por qué no se mueve el evento de Google**: no hay forma de pasar un
+  evento de una cuenta a otra sin permisos de edición compartidos entre
+  calendarios (que acá no hay), y borrar y crear uno nuevo le manda al
+  invitado un mail de cancelación y otro de invitación. El organizador en
+  Google **sigue siendo para siempre quien creó el evento**
+  (`bookings.google_connection_id`/`google_calendar_id`/`google_event_id` no
+  cambian).
+- **Lo que sí hace, con `sendUpdates: "none"`**: suma al nuevo anfitrión como
+  invitado con `responseStatus: "accepted"` y `guestsCanModify: true`, y pasa
+  el evento a "Disponible" en la copia del organizador original. Un invitado
+  que acepta una reunión le aparece "Ocupado" en su propio calendario por
+  default, sea quien sea el organizador — no hace falta una segunda llamada
+  con la conexión del nuevo anfitrión para lograr eso.
+- **El closer y el setter del contacto pasan al nuevo SOLO si eran el
+  anfitrión original** (`transferAssignment`, tildado por default en el
+  diálogo).
+- **Choque con otra agenda activa de la nueva persona**: se revisa antes de
+  intentar (mensaje claro) y la base lo vuelve a proteger con la misma
+  exclusión de siempre (23P01) si alguien gana la carrera justo en el medio.
+- **Límite conocido, no resuelto todavía**: si una agenda ya reasignada se
+  **libera** (ver arriba), hoy el "Disponible" se escribe en la copia del
+  **organizador original**, no en la del anfitrión actual — porque liberar
+  usa `google_connection_id`, que nunca cambia. En la práctica el horario
+  igual queda libre para que el equipo ofrezca el lugar (es la base, no
+  Google, la que decide si se puede agendar encima), pero el calendario del
+  anfitrión actual puede seguir mostrando el bloque como ocupado hasta que
+  se revise. `google_host_connection_id`/`google_host_calendar_id` (00130)
+  quedaron pensadas para resolver esto más adelante.
+
 ## Los reintentos de sincronización
 
 Los agenda **el handler**, no la cola: 1, 5 y 15 minutos. La cola reintenta a
