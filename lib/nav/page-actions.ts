@@ -27,6 +27,11 @@ export interface PageAction {
   href?: string;
   /** Solo lo ven Owner y Admin. */
   adminOnly?: boolean;
+  /**
+   * Lo ve quien tiene este permiso (Owner y Admin los tienen todos). Para
+   * las acciones que un rol personalizado puede hacer sin ser Admin.
+   */
+  permission?: string;
 }
 
 export interface PageMeta {
@@ -212,7 +217,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings/recursos": {
     title: "Banca de recursos",
-    tooltip: "Textos y audios guardados para mandar en la bandeja con un clic, o que el agente los use solo.",
+    tooltip: "Textos, audios, videos, imágenes, archivos y enlaces guardados para mandar desde la bandeja con un clic, o para que el asistente los use solo.",
   },
   "/dashboard/settings/contenido": {
     title: "Contenido",
@@ -293,6 +298,8 @@ export function pageMetaFor(pathname: string): PageMeta | null {
 
 export interface PageActionState {
   isAdmin: boolean;
+  /** Las claves del rol resuelto, para las acciones con `permission`. */
+  permissionKeys?: string[];
   /** Vista elegida, para las pantallas que tienen varias. */
   view?: string;
   /** Hay algo para filtrar (si no, el filtro no se ofrece). */
@@ -333,7 +340,8 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
     { id: "new", label: "Nuevo campo", kind: "primary", adminOnly: true },
   ],
   "/dashboard/settings/recursos": () => [
-    { id: "new", label: "Nuevo recurso", kind: "primary", adminOnly: true },
+    // Banca v2 (F4): no es por cargo, es por permiso.
+    { id: "new", label: "Nuevo recurso", kind: "primary", permission: "templates.manage" },
   ],
 };
 
@@ -346,5 +354,9 @@ const ACTIONS: Record<string, (state: PageActionState) => PageAction[]> = {
 export function pageActions(pathname: string, state: PageActionState): PageAction[] {
   const build = ACTIONS[routePattern(pathname)];
   if (!build) return [];
-  return build(state).filter((action) => !action.adminOnly || state.isAdmin);
+  return build(state).filter((action) => {
+    if (action.adminOnly && !state.isAdmin) return false;
+    if (action.permission && !state.isAdmin) return (state.permissionKeys ?? []).includes(action.permission);
+    return true;
+  });
 }

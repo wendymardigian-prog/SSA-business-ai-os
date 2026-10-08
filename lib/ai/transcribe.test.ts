@@ -348,3 +348,18 @@ describe("la extension desde el mime (F6)", () => {
     expect(isTranscribableMime(null)).toBe(false);
   });
 });
+
+describe("assetTranscriptionSupport (banca v2, F12)", () => {
+  it("audio y video mp4/webm si; mov y 3gp no, con motivo; lo demas no tiene audio", async () => {
+    const { assetTranscriptionSupport, audioFilenameForMime } = await import("./transcribe");
+    expect(assetTranscriptionSupport("audio/ogg")).toEqual({ ok: true });
+    expect(assetTranscriptionSupport("video/mp4")).toEqual({ ok: true });
+    expect(assetTranscriptionSupport("video/webm")).toEqual({ ok: true });
+    expect(assetTranscriptionSupport("video/quicktime")).toMatchObject({ ok: false, reason: expect.stringContaining("formato MOV") });
+    expect(assetTranscriptionSupport("video/3gpp")).toMatchObject({ ok: false, reason: expect.stringContaining("formato 3GP") });
+    expect(assetTranscriptionSupport("application/pdf")).toMatchObject({ ok: false });
+    // El nombre que va al proveedor respeta el contenedor del video.
+    expect(audioFilenameForMime("video/mp4")).toBe("video.mp4");
+    expect(audioFilenameForMime("video/webm")).toBe("video.webm");
+  });
+});

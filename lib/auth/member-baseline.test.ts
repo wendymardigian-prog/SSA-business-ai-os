@@ -20,6 +20,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { NAV_ITEMS } from "@/lib/nav/items";
+import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const ROOT = resolve(__dirname, "../..");
 
@@ -81,7 +82,6 @@ const ADMIN_ACTION_FILES = [
   "lib/actions/patterns.ts",
   "lib/actions/sequences.ts",
   "lib/actions/tag-effects.ts",
-  "lib/actions/response-assets.ts",
   "lib/actions/workspace.ts",
 ] as const;
 
@@ -184,6 +184,31 @@ describe("caracterizacion: las paginas que piden un permiso (F78)", () => {
   });
 });
 
+describe("caracterizacion: la banca de recursos decide por permiso (banca v2, F4)", () => {
+  const source = read("lib/actions/response-assets.ts");
+
+  it("crear, editar y borrar piden templates.manage, no el cargo", () => {
+    // Antes era getAdminContext: un rol personalizado con la clave no podia
+    // crear nada. La RLS de la 00131 acepta la clave igual que aca.
+    expect(source).toContain('const MANAGE = "templates.manage"');
+    expect(source).toMatch(/getPermissionAction\(MANAGE\)/);
+    expect(source).not.toContain("getAdminContext");
+    expect(source).not.toContain("isAdminRole");
+    expect(read("supabase/migrations/00131_response_assets_six_kinds.sql")).toContain(
+      "public.has_permission(workspace_id, 'templates.manage')",
+    );
+  });
+
+  it("el Member de sistema la ve y la usa, pero no la administra", () => {
+    expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain("templates.manage");
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain("templates.manage");
+    // La pantalla no tiene guard de pagina: la abre cualquier miembro.
+    const page = read("app/(dashboard)/dashboard/settings/recursos/page.tsx");
+    expect(page).not.toContain("requireWorkspaceAdmin");
+    expect(page).not.toContain("requirePermission(");
+  });
+});
+
 describe("caracterizacion: las paginas que un Member abre (F68)", () => {
   it("ninguna exige Admin", () => {
     const conGuard = MEMBER_PAGES.filter((page) => read(page).includes("requireWorkspaceAdmin"));
@@ -272,6 +297,9 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
+      // para todos. Crear y editar los decide templates.manage.
+      "Recursos",
       "Social",
     ]);
   });

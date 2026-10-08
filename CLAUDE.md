@@ -214,7 +214,13 @@ para que una agenda liberada no bloquee el horario, y
 `google_host_connection_id`/`google_host_calendar_id` (sin usar todavia,
 quedan listas para reasignar anfitrion). Verificado con
 `verify-scheduling.mjs` y el caso nuevo de `verify-booking-concurrency.mjs`.
-**La proxima migracion disponible es la `00131`.**
+
+**Banca de recursos v2 (8/10/2026).** `00131` (seis tipos, seis columnas, las
+reglas de forma y la escritura con `templates.manage`) y `00132`
+(`touch_response_asset`) estan **aplicadas** y registradas. El plano las
+numeraba 00125/00126, que ya estaban ocupadas. La cabecera de la 00131 tiene
+los cuatro CHECK y las tres policies viejas letra por letra, para volver atras.
+**La proxima migracion disponible es la `00133`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -568,6 +574,46 @@ tabla vieja.
 
 Detalle completo en `docs/PENDIENTE.md` (seccion "Banca de recursos
 unificada").
+
+# Banca de recursos v2 (seis tipos)
+
+La banca pasa de texto y audio a seis tipos: texto, audio, video, imagen,
+archivo y enlace, en la MISMA tabla `response_assets`. Avance y decisiones en
+`docs/PROGRESS-recursos-v2.md` y `docs/PENDIENTE.md`.
+
+## Lo que no se puede romper
+
+- **Que exige cada tipo lo dice `lib/response-assets/shape.ts`** (`KIND_SHAPE`),
+  y lo llaman el formulario Y las Server Actions. Es la misma regla que los
+  CHECK de la 00131: la base rechaza una forma invalida aunque alguien se
+  saltee la pantalla.
+- **`channelAccepts(provider, kind, mime)` (`lib/channels/media.ts`) es el
+  UNICO lugar que decide que manda cada canal.** Lo consultan el widget, la API
+  de envio y el agente. Email: texto y enlace. WhatsApp: todo. Instagram: todo
+  menos archivos (no verificado en el SDK) y segun el formato del audio. Rama
+  explicita por proveedor, nunca un `else`.
+- **Todo lo que tiene archivo pasa por `copyAssetToChat` antes de mandarse**,
+  por cualquier camino. Nunca se manda el path de `library/`.
+- **Un solo widget** (`components/inbox/asset-picker.tsx`) para "/", el boton
+  y ⌘/Ctrl + /. Se abre siempre (tambien vacio). Enter nunca manda: inserta un
+  texto o enlace, o abre el preview. Estado y teclado en `lib/inbox/asset-widget.ts`.
+- **El preview reusa `MediaAttachment`** (via `lib/response-assets/preview.ts`):
+  no hay visor propio. Las miniaturas cargan lazy; los reproductores firman al
+  apretar play.
+- **Administrar es `templates.manage`, no el cargo.** Ver la pantalla y usar
+  los recursos, cualquier miembro. La RLS de la 00131 usa `has_permission`.
+- **El contador (`usage_count`, `last_used_at`) solo lo escribe
+  `touch_response_asset`**, despues de mandar, y nunca frena un envio.
+- **El agente**: un audio o un video con voz necesita la transcripcion lista;
+  un video sin voz (`transcript_status = 'none'`), una imagen, un archivo o un
+  enlace alcanzan con su descripcion (`agentUsable`, `lib/response-assets/list.ts`).
+- **Un video se transcribe por la misma puerta** (`lib/ai/transcribe.ts`):
+  mp4 y webm si; un .mov o un .3gp quedan en `failed` sin llamar al proveedor
+  (`assetTranscriptionSupport`). `isTranscribableMime` NO cambio: los videos
+  que manda un lead no se transcriben.
+- **`sniffUploadMime`** (`lib/content/media.ts`) refina a `sniffMime` para las
+  subidas (Office por su contenedor + lo declarado, HEIC, 3GP, WebM de video).
+  `sniffMime` queda igual porque la usa tambien el pipeline de contenido.
 
 # Contenido v3 (B10-B14, F73-F105)
 

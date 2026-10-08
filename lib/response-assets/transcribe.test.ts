@@ -158,3 +158,29 @@ describe("reapStuckAssetTranscriptions", () => {
     await expect(reapStuckAssetTranscriptions(memory.client, NOW)).resolves.toEqual({ freed: 0 });
   });
 });
+
+describe("transcribeAsset: videos (banca v2, F12)", () => {
+  it("un video mp4 pasa por la misma puerta y queda transcripto", async () => {
+    const memory = db([assetRow({ kind: "video", mime_type: "video/mp4", storage_path: `${WS}/library/${ASSET}.mp4`, source: "uploaded" })]);
+    const result = await transcribeAsset(memory.client, ASSET, { now: () => NOW });
+    expect(result).toEqual({ kind: "done", text: "Cuesta tanto por mes" });
+    expect(transcribeAudio).toHaveBeenCalledWith(expect.objectContaining({ mime: "video/mp4" }));
+    expect(row(memory)).toMatchObject({ transcript_status: "ready", transcript: "Cuesta tanto por mes" });
+  });
+
+  it("un .mov queda en failed con un motivo que se entiende, sin llamar al proveedor (ni cobrar)", async () => {
+    const memory = db([assetRow({ kind: "video", mime_type: "video/quicktime", storage_path: `${WS}/library/${ASSET}.mov`, source: "uploaded" })]);
+    const result = await transcribeAsset(memory.client, ASSET, { now: () => NOW });
+    expect(result).toMatchObject({ kind: "failed" });
+    expect(transcribeAudio).not.toHaveBeenCalled();
+    expect(row(memory).transcript_status).toBe("failed");
+    expect(row(memory).transcript_error).toMatch(/formato MOV no se puede transcribir\. Subilo en MP4/);
+  });
+
+  it("una imagen o un archivo nunca se reclaman", async () => {
+    const memory = db([assetRow({ kind: "image", mime_type: "image/png", storage_path: `${WS}/library/${ASSET}.png`, source: "uploaded" })]);
+    const result = await transcribeAsset(memory.client, ASSET, { now: () => NOW });
+    expect(result.kind).toBe("skipped");
+    expect(row(memory).transcript_status).toBe("none");
+  });
+});

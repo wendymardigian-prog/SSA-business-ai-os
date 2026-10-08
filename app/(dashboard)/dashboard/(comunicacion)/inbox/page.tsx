@@ -18,6 +18,8 @@ import {
 import { NEEDS_HUMAN_PARAM } from "@/lib/inbox/needs-human";
 import { InboxView } from "./inbox-view";
 import type { InboxAsset } from "@/components/inbox/message-thread";
+import { toBankAsset } from "@/lib/response-assets/list";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
@@ -161,20 +163,26 @@ export default async function InboxPage({
 
   const from = (page - 1) * PAGE_SIZE;
 
-  const [conversationsRes, assetsRes, draftCounts] = await Promise.all([
+  const [conversationsRes, assetsRes, permissionCtx, draftCounts] = await Promise.all([
     query
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(from, from + PAGE_SIZE - 1),
-    // La banca de recursos del selector "/" (textos y audios juntos).
-    // Cualquier miembro la lee.
+    // La banca de recursos del widget del composer (los seis tipos). Cualquier
+    // miembro la lee. Sin URLs firmadas: las miniaturas cargan lazy y los
+    // reproductores firman al apretar play. Los mas usados primero.
     supabase
       .from("response_assets")
-      .select("id, kind, name, shortcut, content, transcript, tags, storage_path, mime_type, duration_seconds")
+      .select(
+        "id, kind, name, shortcut, description, tags, content, url, link_kind, caption, storage_path, preview_path, mime_type, size_bytes, duration_seconds, transcript, transcript_status, transcript_error, agent_enabled, is_active, usage_count, last_used_at, created_at",
+      )
       .eq("workspace_id", workspace.id)
       .eq("is_active", true)
       .is("deleted_at", null)
-      .order("name"),
+      .order("usage_count", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    getPermissionContext(),
     // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
     // mantiene al dia Realtime (useDraftCounts).
     countPendingDrafts(),
@@ -187,18 +195,8 @@ export default async function InboxPage({
     console.error("[inbox] banca de recursos fallida:", assetsRes.error.message);
   }
 
-  const assets: InboxAsset[] = (assetsRes.data ?? []).map((a) => ({
-    id: a.id,
-    kind: a.kind,
-    name: a.name,
-    shortcut: a.shortcut,
-    content: a.content,
-    transcript: a.transcript,
-    tags: a.tags,
-    storagePath: a.storage_path,
-    mimeType: a.mime_type,
-    durationSeconds: a.duration_seconds,
-  }));
+  const assets: InboxAsset[] = (assetsRes.data ?? []).map(toBankAsset);
+  const canManageAssets = permissionCtx.can("templates.manage");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -279,6 +277,7 @@ export default async function InboxPage({
       workspaceId={workspace.id}
       workspaceName={workspace.name}
       assets={assets}
+      canManageAssets={canManageAssets}
       filters={filters}
       dateRange={range}
       tags={tags}

@@ -1,5 +1,5 @@
 /**
- * Transcribir un audio de la banca de recursos.
+ * Transcribir un audio, o un video con voz, de la banca de recursos.
  *
  * Mismo patron que `lib/chat-media/transcribe-message.ts` (F7): claim
  * condicional, el mismo proveedor (`lib/ai/transcribe.ts`, que no sabe quien
@@ -10,14 +10,20 @@
  *     corrigio la transcripcion a mano, ningun reintento automatico la puede
  *     pisar -- ni siquiera uno transitorio que la hubiera dejado en `failed`
  *     antes de la correccion.
- *   - El claim filtra `kind = 'audio'`: un texto nunca tiene nada que
- *     transcribir (su `transcript_status` queda forzado en 'none' por el
- *     CHECK `response_assets_text_no_transcript`), asi que ni se intenta.
+ *   - El claim filtra `kind IN ('audio', 'video')`: un texto, una imagen,
+ *     un archivo o un enlace nunca tienen nada que transcribir (su
+ *     `transcript_status` queda forzado en 'none' por el CHECK
+ *     `response_assets_no_transcript`, 00131), asi que ni se intenta.
+ *
+ * Un video (banca v2, F12) pasa por la MISMA puerta (`lib/ai/transcribe.ts`):
+ * el proveedor acepta el mp4 o el webm entero, sin extraer el audio. Un
+ * formato que no acepta (un .mov) queda en `failed` con su motivo ANTES de
+ * llamar al proveedor: no se gasta una llamada ni se cobra.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { transcribeAudio } from "@/lib/ai/transcribe";
+import { assetTranscriptionSupport, transcribeAudio } from "@/lib/ai/transcribe";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
 
 type Db = SupabaseClient<Database>;
@@ -45,22 +51,30 @@ export async function transcribeAsset(
       .from("response_assets")
       .update({ transcript_status: "pending", transcript_started_at: now().toISOString(), transcript_error: null })
       .eq("id", assetId)
-      .eq("kind", "audio")
+      .in("kind", ["audio", "video"])
       .in("transcript_status", ["none", "failed"])
       .neq("transcript_source", "manual")
       .select("id, workspace_id, storage_path, mime_type")
       .maybeSingle();
 
     if (claimError) {
-      console.error("[response-assets] no pude reclamar el audio:", claimError.message);
-      return { kind: "retry", reason: "no pude reclamar el audio" };
+      console.error("[response-assets] no pude reclamar el recurso:", claimError.message);
+      return { kind: "retry", reason: "no pude reclamar el recurso" };
     }
-    if (!claimed) return { kind: "skipped", reason: "ya lo tomo otro, es una correccion manual, o no es un audio" };
+    if (!claimed) return { kind: "skipped", reason: "ya lo tomo otro, es una correccion manual, o no es un audio ni un video" };
     if (!claimed.storage_path || !claimed.mime_type) {
       // No deberia pasar nunca (el CHECK de forma lo exige), pero sin archivo
       // no hay nada que transcribir.
-      await fail(supabase, assetId, "El recurso no tiene archivo de audio");
+      await fail(supabase, assetId, "El recurso no tiene archivo para transcribir");
       return { kind: "failed", reason: "sin archivo" };
+    }
+
+    // Antes de bajar nada ni llamar al proveedor: un formato que no acepta
+    // queda en `failed` con un motivo legible, sin cobrar.
+    const support = assetTranscriptionSupport(claimed.mime_type);
+    if (!support.ok) {
+      await fail(supabase, assetId, support.reason);
+      return { kind: "failed", reason: "formato no soportado" };
     }
 
     const { data: file, error: downloadError } = await supabase.storage
@@ -68,7 +82,7 @@ export async function transcribeAsset(
       .download(claimed.storage_path);
 
     if (downloadError || !file) {
-      await revert(supabase, assetId, "No pudimos abrir el archivo de audio");
+      await revert(supabase, assetId, "No pudimos abrir el archivo");
       return { kind: "retry", reason: "no pude bajar el archivo" };
     }
 

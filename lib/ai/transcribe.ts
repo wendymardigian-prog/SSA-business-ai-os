@@ -95,6 +95,14 @@ export function audioFilenameForMime(mime: string | null | undefined): string {
       return "audio.wav";
     case "audio/flac":
       return "audio.flac";
+    // Un video de la banca de recursos (banca v2, F12): Groq y OpenAI aceptan
+    // el contenedor mp4 o webm entero y transcriben su pista de audio. No hace
+    // falta extraer el audio ni ffmpeg. Los mensajes entrantes nunca llegan
+    // aca con un video: `isTranscribableMime` solo deja pasar audio.
+    case "video/mp4":
+      return "video.mp4";
+    case "video/webm":
+      return "video.webm";
     default:
       // m4a como respaldo: es el formato que mas aceptan los proveedores.
       return "audio.m4a";
@@ -105,6 +113,41 @@ export function audioFilenameForMime(mime: string | null | undefined): string {
 export function isTranscribableMime(mime: string | null | undefined): boolean {
   const clean = (mime ?? "").split(";")[0].trim().toLowerCase();
   return clean.startsWith("audio/");
+}
+
+/**
+ * Los contenedores de VIDEO que aceptan los dos proveedores (Groq y OpenAI
+ * whisper: flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm). Un .mov
+ * (QuickTime) o un .3gp no estan en la lista.
+ */
+const TRANSCRIBABLE_VIDEO_MIME = new Set(["video/mp4", "video/webm"]);
+
+const VIDEO_FORMAT_NAME: Record<string, string> = {
+  "video/quicktime": "MOV",
+  "video/3gpp": "3GP",
+};
+
+/**
+ * Si un archivo de la banca de recursos (un audio o un video) se puede
+ * transcribir, decidido ANTES de llamar al proveedor (banca v2, F12).
+ *
+ * Un video en un formato que el proveedor no acepta no se manda igual a ver
+ * que pasa: queda en `failed` con un motivo que se entiende y una salida
+ * (subirlo en MP4 o escribir la transcripcion a mano), sin gastar una
+ * llamada ni cobrar nada. Nunca queda en `pending` para siempre.
+ */
+export function assetTranscriptionSupport(mime: string | null | undefined): { ok: true } | { ok: false; reason: string } {
+  const clean = (mime ?? "").split(";")[0].trim().toLowerCase();
+  if (clean.startsWith("audio/")) return { ok: true };
+  if (TRANSCRIBABLE_VIDEO_MIME.has(clean)) return { ok: true };
+  if (clean.startsWith("video/")) {
+    const name = VIDEO_FORMAT_NAME[clean] ?? "este formato";
+    return {
+      ok: false,
+      reason: `Un video en ${name === "este formato" ? name : `formato ${name}`} no se puede transcribir. Subilo en MP4 o escribí la transcripción a mano.`,
+    };
+  }
+  return { ok: false, reason: "Este archivo no tiene audio para transcribir." };
 }
 
 interface TranscriberInput {

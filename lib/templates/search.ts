@@ -35,10 +35,15 @@ function fold(value: string): string {
  *
  * Con la busqueda vacia devuelve todo, que es lo que corresponde apenas se
  * escribe "/" y todavia no se filtro nada.
+ *
+ * `tieBreak` decide entre dos resultados igual de relevantes. Sin pasarlo,
+ * por nombre (como siempre); la banca de recursos pasa "el mas usado
+ * primero" (lib/response-assets/search.ts).
  */
 export function filterTemplates<T extends SearchableTemplate>(
   templates: T[],
   query: string,
+  tieBreak: (a: T, b: T) => number = (a, b) => a.name.localeCompare(b.name, "es"),
 ): T[] {
   const needle = fold(query.trim());
   if (!needle) return templates;
@@ -70,6 +75,6 @@ export function filterTemplates<T extends SearchableTemplate>(
   }
 
   return scored
-    .sort((a, b) => a.score - b.score || a.template.name.localeCompare(b.template.name, "es"))
+    .sort((a, b) => a.score - b.score || tieBreak(a.template, b.template))
     .map((s) => s.template);
 }

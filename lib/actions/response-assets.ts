@@ -3,44 +3,55 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sniffMime } from "@/lib/content/media";
-import { CHAT_MEDIA_BUCKET, MAX_CHAT_UPLOAD_BYTES, extensionForMime } from "@/lib/chat-media/bucket";
+import { sniffUploadMime } from "@/lib/content/media";
+import { CHAT_MEDIA_BUCKET, extensionForMime, isSafeStoragePath } from "@/lib/chat-media/bucket";
 import { scheduleJob } from "@/lib/scheduler";
 import { TRANSCRIBE_AUDIO_JOB, transcribeAssetDedupeKey } from "@/lib/jobs/handlers/transcribe-audio";
 import { copyAssetToChat, type AssetChatCopy } from "@/lib/response-assets/send-copy";
-import { usedVariables } from "@/lib/templates/interpolate";
-import type { AssetKind } from "@/lib/response-assets/kind";
+import { validateAssetFields, type AssetFields } from "@/lib/response-assets/shape";
+import { fileRejection, isFileAssetKind, mimeMatchesKind, type FileAssetKind } from "@/lib/response-assets/files";
+import { agentUsable, type TranscriptStatus } from "@/lib/response-assets/list";
+import {
+  ASSET_KIND_LABEL,
+  hasFile,
+  isAssetKind,
+  isTranscribableKind,
+  type AssetKind,
+} from "@/lib/response-assets/kind";
 
 /**
- * La banca de recursos: textos (F17) y audios (F20) en una sola tabla,
- * distinguidos por `kind`. Fusiona lo que antes eran dos acciones separadas,
- * una por plantillas de texto y otra por la biblioteca de audios.
+ * La banca de recursos: textos, audios, videos, imagenes, archivos y enlaces
+ * en una sola tabla, distinguidos por `kind`.
  *
- * Permisos: los ve y los usa cualquier miembro (el selector "/" de la bandeja
- * los necesita), los gestionan Owner y Admin. La regla vive en la RLS
- * (migracion 00105) y se repite aca para poder devolver un mensaje claro en
- * vez de un silencioso "0 filas afectadas".
+ * Permisos (banca v2, F4): los ve y los usa cualquier miembro (el widget de
+ * la bandeja los necesita); crear, editar y borrar pide `templates.manage`,
+ * que Owner y Admin tienen siempre y un rol personalizado puede tener. La
+ * regla vive en la RLS (00131: `has_permission`) y se repite aca para poder
+ * devolver un mensaje claro en vez de un silencioso "0 filas afectadas".
+ *
+ * Que campos exige cada tipo lo decide `lib/response-assets/shape.ts`, el
+ * mismo modulo que usa el formulario: validar solo en la pantalla dejaria la
+ * puerta abierta a un INSERT por la API.
  *
  * El `kind` no se cambia despues de crear: convertir un texto en audio no es
  * editar, es crear otra cosa. Por eso `updateAsset` lee el `kind` de la fila
  * existente en vez de recibirlo, y no lo toca.
  *
  * Borrado logico: el recurso desaparece de las listas y a los 30 dias lo
- * purga el cron (`purge_soft_deleted`, 00106).
+ * purga el cron (`purge_soft_deleted`, 00106). Su archivo se borra del bucket
+ * en el momento.
  */
 
-const MAX_NAME = 80;
-const MAX_CONTENT = 5000;
-const MAX_DESCRIPTION = 500;
-const MAX_SHORTCUT = 30;
-const MAX_TAGS = 20;
-
-const SHORTCUT_FORMAT = /^\/[a-z0-9][a-z0-9_-]{0,29}$/;
+const MANAGE = "templates.manage";
+const NO_PERMISSION = "No tenés permiso para administrar la banca de recursos. Pedíselo a un Admin.";
 
 const LIST_PATH = "/dashboard/settings/recursos";
+
+/** El tope de una miniatura de video (un jpg chico sacado en el navegador). */
+const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
 
 export type AssetActionResult =
   | { ok: true; assetId?: string }
@@ -52,139 +63,134 @@ export interface AssetUploadTicket {
   token: string;
 }
 
-export interface CreateTextAssetInput {
-  kind: "text";
+/** Un archivo ya subido con un ticket de `requestAssetUpload`. */
+export interface AssetFileInput {
+  storagePath: string;
+  mimeType: string;
+  sizeBytes?: number | null;
+  durationSeconds?: number | null;
+  /** 'recorded' solo para un audio grabado en el navegador. */
+  source?: "recorded" | "uploaded";
+  /** Solo video: la miniatura, subida con `requestAssetPreviewUpload`. */
+  previewPath?: string | null;
+}
+
+export interface CreateAssetInput {
+  kind: AssetKind;
   name: string;
   shortcut?: string | null;
   description?: string | null;
   tags?: string[];
-  content: string;
+  /** Texto. */
+  content?: string | null;
+  /** Enlace. */
+  url?: string | null;
+  linkKind?: string | null;
+  /** Imagen, video y archivo. */
+  caption?: string | null;
+  /** Audio, video, imagen y archivo. */
+  file?: AssetFileInput | null;
+  /** Solo video: false = "este video no tiene voz" (no se transcribe ni se cobra). */
+  hasVoice?: boolean;
 }
-
-export interface CreateAudioAssetInput {
-  kind: "audio";
-  name: string;
-  shortcut?: string | null;
-  description: string;
-  tags?: string[];
-  storagePath: string;
-  mimeType: string;
-  durationSeconds?: number | null;
-  sizeBytes?: number | null;
-  source: "recorded" | "uploaded";
-}
-
-export type CreateAssetInput = CreateTextAssetInput | CreateAudioAssetInput;
 
 export interface UpdateAssetInput {
   name: string;
   shortcut?: string | null;
   description?: string | null;
   tags?: string[];
-  /** Solo si el recurso es kind='text'. */
-  content?: string;
+  content?: string | null;
+  url?: string | null;
+  linkKind?: string | null;
+  caption?: string | null;
   agentEnabled?: boolean;
   isActive?: boolean;
-  /** Solo si el recurso es kind='audio' y se reemplazo el archivo: dispara una nueva transcripcion y descarta la anterior. */
-  replacement?: { storagePath: string; mimeType: string; durationSeconds?: number | null; sizeBytes?: number | null };
+  /** Reemplazar el archivo: descarta la transcripcion y la miniatura anteriores. */
+  replacement?: (AssetFileInput & { hasVoice?: boolean }) | null;
 }
 
-/**
- * Deja el atajo como se guarda: minusculas, sin espacios y con una sola barra
- * adelante. Devuelve null cuando el campo vino vacio, que es valido.
- */
-function normalizeShortcut(raw: string | null | undefined): string | null {
-  const trimmed = (raw ?? "").trim().toLowerCase().replace(/\s+/g, "");
-  if (!trimmed) return null;
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-}
-
-/** El error del indice unico de la 00105 dicho en castellano. Es unico ENTRE los dos tipos. */
-function describeError(message: string | undefined): string {
+/** El error del indice unico del atajo, dicho en castellano: es unico ENTRE TODOS los tipos. */
+async function describeError(
+  supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"],
+  workspaceId: string,
+  shortcut: string | null,
+  message: string | undefined,
+): Promise<string> {
   if (message?.includes("idx_response_assets_shortcut") || message?.includes("duplicate key")) {
+    if (shortcut) {
+      const { data } = await supabase
+        .from("response_assets")
+        .select("name, kind")
+        .eq("workspace_id", workspaceId)
+        .eq("shortcut", shortcut)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (data) {
+        return `El atajo ${shortcut} ya lo usa "${data.name}" (${ASSET_KIND_LABEL[data.kind as AssetKind].toLowerCase()}). Elegí uno distinto.`;
+      }
+    }
     return "Ya hay un recurso con ese atajo. Elegí uno distinto.";
   }
   return message ?? "error desconocido";
 }
 
-type FieldResult<T> = { ok: true; value: T } | { ok: false; error: string };
-
-function validateName(raw: string): FieldResult<string> {
-  const name = (raw ?? "").trim();
-  if (!name) return { ok: false, error: "Poné un nombre para el recurso" };
-  if (name.length > MAX_NAME) return { ok: false, error: `El nombre es muy largo (máximo ${MAX_NAME} caracteres)` };
-  return { ok: true, value: name };
-}
-
-function validateShortcut(raw: string | null | undefined): FieldResult<string | null> {
-  const shortcut = normalizeShortcut(raw);
-  if (!shortcut) return { ok: true, value: null };
-  if (shortcut.length > MAX_SHORTCUT + 1) {
-    return { ok: false, error: `El atajo es muy largo (máximo ${MAX_SHORTCUT} caracteres)` };
+/**
+ * Que el archivo que llega sea uno que firmo `requestAssetUpload` para ESTE
+ * workspace, y del tipo correcto. El mime lo decidio el servidor al firmar
+ * (por magic bytes); aca se comprueba que no lo hayan cambiado en el camino.
+ */
+function checkFile(kind: FileAssetKind, workspaceId: string, file: AssetFileInput | null | undefined): string | null {
+  if (!file) return "Falta el archivo";
+  if (!isSafeStoragePath(file.storagePath) || !file.storagePath.startsWith(`${workspaceId}/library/`)) {
+    return "Ese archivo no es de la banca de este negocio";
   }
-  if (!SHORTCUT_FORMAT.test(shortcut)) {
-    return { ok: false, error: "El atajo solo puede tener letras, números, guiones y guiones bajos. Por ejemplo: /precio" };
-  }
-  return { ok: true, value: shortcut };
-}
-
-/** `required` es true para un audio (la IA la necesita), opcional para un texto. */
-function validateDescription(raw: string | null | undefined, required: boolean): FieldResult<string | null> {
-  const description = (raw ?? "").trim();
-  if (!description) {
-    if (required) {
-      return { ok: false, error: "La descripción es obligatoria: es lo que la IA lee para decidir cuándo usar este audio" };
+  if (!mimeMatchesKind(kind, file.mimeType)) return "El archivo no corresponde a este tipo de recurso";
+  if (!file.storagePath.endsWith(`.${extensionForMime(file.mimeType)}`)) return "El archivo no corresponde a este tipo de recurso";
+  if (file.source === "recorded" && kind !== "audio") return "Solo un audio se graba en el navegador";
+  if (file.previewPath) {
+    if (kind !== "video") return "Solo un video tiene miniatura";
+    if (!isSafeStoragePath(file.previewPath) || !file.previewPath.startsWith(`${workspaceId}/library/`)) {
+      return "Esa miniatura no es de la banca de este negocio";
     }
-    return { ok: true, value: null };
   }
-  if (description.length > MAX_DESCRIPTION) {
-    return { ok: false, error: `La descripción es muy larga (máximo ${MAX_DESCRIPTION} caracteres)` };
-  }
-  return { ok: true, value: description };
+  return null;
 }
 
-/** Solo kind='text'. Una variable inventada no rompe nada, pero casi siempre es un error de tipeo. */
-function validateContent(raw: string): FieldResult<string> {
-  const content = (raw ?? "").trim();
-  if (!content) return { ok: false, error: "El texto no puede quedar vacío" };
-  if (content.length > MAX_CONTENT) return { ok: false, error: `El texto es muy largo (máximo ${MAX_CONTENT} caracteres)` };
-
-  const { unknown } = usedVariables(content);
-  if (unknown.length > 0) {
-    return {
-      ok: false,
-      error: `Esta variable no existe: {{${unknown[0]}}}. Usá el listado de variables disponibles.`,
-    };
-  }
-  return { ok: true, value: content };
+/** Las columnas que cambian segun el tipo, a partir de los campos ya validados. */
+function shapeColumns(fields: AssetFields) {
+  return {
+    name: fields.name,
+    shortcut: fields.shortcut,
+    description: fields.description,
+    tags: fields.tags,
+    content: fields.content,
+    url: fields.url,
+    link_kind: fields.linkKind,
+    caption: fields.caption,
+  };
 }
 
-/** Recorta, descarta vacias y duplicadas, y respeta el tope de la base (response_assets_tags_sane). */
-function validateTags(raw: string[] | undefined): FieldResult<string[]> {
-  const tags = Array.from(new Set((raw ?? []).map((t) => t.trim()).filter(Boolean)));
-  if (tags.length > MAX_TAGS) return { ok: false, error: `Como mucho ${MAX_TAGS} etiquetas por recurso` };
-  return { ok: true, value: tags };
-}
-
-/** Autoriza la subida de un audio a la banca. Solo Owner/Admin: mismo guardia que el resto de esta accion. */
+/**
+ * Autoriza la subida de un archivo a la banca. Decide el tipo por el
+ * CONTENIDO (magic bytes), nunca por la extension declarada: `declaredMime`
+ * solo desempata lo que los bytes no alcanzan a decir (Office, WebM).
+ */
 export async function requestAssetUpload(input: {
+  kind: AssetKind;
   sizeBytes: number;
   headBase64: string;
   declaredMime?: string;
 }): Promise<{ ok: true; ticket: AssetUploadTicket } | { ok: false; error: string }> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden administrar la banca de recursos" };
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
 
-  if (input.sizeBytes <= 0) return { ok: false, error: "El archivo está vacío" };
-  if (input.sizeBytes > MAX_CHAT_UPLOAD_BYTES) {
-    const mb = (input.sizeBytes / (1024 * 1024)).toFixed(1);
-    return { ok: false, error: `El archivo pesa ${mb} MB y el máximo es 16 MB` };
+  if (!isAssetKind(input.kind) || !isFileAssetKind(input.kind)) {
+    return { ok: false, error: "Ese tipo de recurso no lleva archivo" };
   }
 
-  const mime = sniffMime(new Uint8Array(Buffer.from(input.headBase64, "base64")));
-  if (!mime || !mime.startsWith("audio/")) {
-    return { ok: false, error: "Ese archivo no es un audio reconocible" };
-  }
+  const mime = sniffUploadMime(new Uint8Array(Buffer.from(input.headBase64, "base64")), input.declaredMime);
+  const rejection = fileRejection(input.kind, mime, input.sizeBytes);
+  if (rejection || !mime) return { ok: false, error: rejection ?? "No reconozco ese archivo" };
 
   const path = `${ctx.workspace.id}/library/${randomUUID()}.${extensionForMime(mime)}`;
   const service = await createServiceClient();
@@ -192,13 +198,39 @@ export async function requestAssetUpload(input: {
 
   if (error || !data) {
     console.error("[response-assets] no pude firmar la subida:", error?.message);
-    return { ok: false, error: "No pude preparar la subida" };
+    return { ok: false, error: "No pude preparar la subida. Probá de nuevo." };
   }
 
   return { ok: true, ticket: { path, mime, token: data.token } };
 }
 
-/** Encola la transcripcion, igual que afterMediaStored para un mensaje (F7). Solo para kind='audio'. */
+/**
+ * Autoriza la subida de la miniatura de un video (un jpg que saca el
+ * navegador del primer fotograma). Si esto falla, el alta sigue igual: la
+ * pantalla muestra el icono del tipo.
+ */
+export async function requestAssetPreviewUpload(input: {
+  sizeBytes: number;
+  headBase64: string;
+}): Promise<{ ok: true; ticket: AssetUploadTicket } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+
+  if (input.sizeBytes <= 0 || input.sizeBytes > MAX_PREVIEW_BYTES) return { ok: false, error: "Miniatura inválida" };
+  const mime = sniffUploadMime(new Uint8Array(Buffer.from(input.headBase64, "base64")), "image/jpeg");
+  if (mime !== "image/jpeg") return { ok: false, error: "Miniatura inválida" };
+
+  const path = `${ctx.workspace.id}/library/${randomUUID()}-preview.jpg`;
+  const service = await createServiceClient();
+  const { data, error } = await service.storage.from(CHAT_MEDIA_BUCKET).createSignedUploadUrl(path);
+  if (error || !data) {
+    console.error("[response-assets] no pude firmar la miniatura:", error?.message);
+    return { ok: false, error: "No pude preparar la miniatura" };
+  }
+  return { ok: true, ticket: { path, mime, token: data.token } };
+}
+
+/** Encola la transcripcion, igual que afterMediaStored para un mensaje (F7). Solo audio y video con voz. */
 async function enqueueTranscription(supabase: Awaited<ReturnType<typeof createServiceClient>>, assetId: string): Promise<void> {
   try {
     await scheduleJob(supabase, TRANSCRIBE_AUDIO_JOB, { assetId }, new Date(), transcribeAssetDedupeKey(assetId));
@@ -210,86 +242,67 @@ async function enqueueTranscription(supabase: Awaited<ReturnType<typeof createSe
   }
 }
 
-export async function createAsset(input: CreateAssetInput): Promise<AssetActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden crear recursos" };
+/** Borra archivos del bucket con el service client (no hay policies de escritura). Nunca lanza. */
+async function removeFiles(paths: Array<string | null | undefined>): Promise<void> {
+  const clean = paths.filter((p): p is string => typeof p === "string" && p.length > 0);
+  if (clean.length === 0) return;
+  const service = await createServiceClient();
+  const { error } = await service.storage.from(CHAT_MEDIA_BUCKET).remove(clean);
+  // Si falla, no se reintenta aca: lib/response-assets/cleanup.ts es la red
+  // de seguridad a los 28 dias.
+  if (error) console.error("[response-assets] no pude borrar archivos del bucket:", error.message);
+}
 
+export async function createAsset(input: CreateAssetInput): Promise<AssetActionResult> {
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { workspace, supabase, user } = ctx;
 
-  const name = validateName(input.name);
-  if (!name.ok) return name;
-  const shortcut = validateShortcut(input.shortcut);
-  if (!shortcut.ok) return shortcut;
-  const tags = validateTags(input.tags);
-  if (!tags.ok) return tags;
+  if (!isAssetKind(input.kind)) return { ok: false, error: "Ese tipo de recurso no existe" };
+  const kind = input.kind;
 
-  type AssetInsertValues =
-    | { kind: "text"; name: string; shortcut: string | null; description: string | null; tags: string[]; content: string }
-    | {
-        kind: "audio";
-        name: string;
-        shortcut: string | null;
-        description: string;
-        tags: string[];
-        storage_path: string;
-        mime_type: string;
-        duration_seconds: number | null;
-        size_bytes: number | null;
-        source: "recorded" | "uploaded" | "synthesized";
-      };
+  const validation = validateAssetFields(kind, { ...input, storagePath: input.file?.storagePath ?? null });
+  if (!validation.ok) return { ok: false, error: validation.error };
 
-  let insertValues: AssetInsertValues;
+  const insert: Record<string, unknown> = {
+    workspace_id: workspace.id,
+    kind,
+    ...shapeColumns(validation.value),
+    created_by: user.id,
+  };
 
-  if (input.kind === "text") {
-    const description = validateDescription(input.description, false);
-    if (!description.ok) return description;
-    const content = validateContent(input.content);
-    if (!content.ok) return content;
-
-    insertValues = {
-      kind: "text",
-      name: name.value,
-      shortcut: shortcut.value,
-      description: description.value,
-      tags: tags.value,
-      content: content.value,
-    };
-  } else {
-    const description = validateDescription(input.description, true);
-    if (!description.ok) return description;
-
-    insertValues = {
-      kind: "audio",
-      name: name.value,
-      shortcut: shortcut.value,
-      // required=true en validateDescription: si llego aca, no es null.
-      description: description.value as string,
-      tags: tags.value,
-      storage_path: input.storagePath,
-      mime_type: input.mimeType,
-      duration_seconds: input.durationSeconds ?? null,
-      size_bytes: input.sizeBytes ?? null,
-      source: input.source,
-    };
+  let transcribe = false;
+  if (isFileAssetKind(kind)) {
+    const problem = checkFile(kind, workspace.id, input.file);
+    if (problem) return { ok: false, error: problem };
+    const file = input.file!;
+    insert.storage_path = file.storagePath;
+    insert.mime_type = file.mimeType;
+    insert.size_bytes = file.sizeBytes ?? null;
+    insert.duration_seconds = isTranscribableKind(kind) ? (file.durationSeconds ?? null) : null;
+    insert.source = kind === "audio" ? (file.source ?? "uploaded") : "uploaded";
+    insert.preview_path = kind === "video" ? (file.previewPath ?? null) : null;
+    // Un video "sin voz" queda en 'none' y no se encola: no hay nada que
+    // transcribir ni que cobrar, y el agente lo puede usar por su descripcion.
+    transcribe = kind === "audio" || (kind === "video" && input.hasVoice !== false);
   }
 
-  const { data, error } = await supabase
-    .from("response_assets")
-    .insert({ workspace_id: workspace.id, ...insertValues, created_by: user.id })
-    .select("id")
-    .single();
+  const { data, error } = await supabase.from("response_assets").insert(insert as never).select("id").single();
 
   if (error || !data) {
     console.error("[response-assets] alta fallida:", error?.message);
-    return { ok: false, error: `No pude crear el recurso: ${describeError(error?.message)}` };
+    return {
+      ok: false,
+      error: `No pude crear el recurso: ${await describeError(supabase, workspace.id, validation.value.shortcut, error?.message)}`,
+    };
   }
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "response_asset", entityId: data.id,
-    action: "create", metadata: { name: name.value, kind: input.kind }, performedBy: user.id,
+    action: "create", metadata: { name: validation.value.name, kind }, performedBy: user.id,
   });
 
-  if (input.kind === "audio") {
+  if (transcribe) {
     const service = await createServiceClient();
     await enqueueTranscription(service, data.id);
   }
@@ -299,14 +312,13 @@ export async function createAsset(input: CreateAssetInput): Promise<AssetActionR
 }
 
 export async function updateAsset(assetId: string, input: UpdateAssetInput): Promise<AssetActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden editar recursos" };
-
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { workspace, supabase, user } = ctx;
 
   const { data: before } = await supabase
     .from("response_assets")
-    .select("id, kind, name, description, shortcut, tags, content, storage_path, agent_enabled, is_active")
+    .select("id, kind, name, description, shortcut, tags, content, url, link_kind, caption, storage_path, preview_path, agent_enabled, is_active")
     .eq("id", assetId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -315,55 +327,66 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
   if (!before) return { ok: false, error: "No encontré ese recurso" };
 
   const kind = before.kind as AssetKind;
-  // Se saca una copia antes de armar el patch: el objeto de arriba viene tal
-  // cual lo devolvio la base, y diffFields (y el borrado del archivo viejo,
-  // mas abajo) necesitan el valor de ANTES de la edicion.
+  // Se saca una copia antes de armar el patch: diffFields (y el borrado del
+  // archivo viejo, mas abajo) necesitan el valor de ANTES de la edicion.
   const beforeSnapshot = { ...before };
-  const oldStoragePath = before.storage_path;
+  const replacement = input.replacement ?? null;
 
-  const name = validateName(input.name);
-  if (!name.ok) return name;
-  const shortcut = validateShortcut(input.shortcut);
-  if (!shortcut.ok) return shortcut;
-  const tags = validateTags(input.tags);
-  if (!tags.ok) return tags;
-  const description = validateDescription(input.description, kind === "audio");
-  if (!description.ok) return description;
+  const validation = validateAssetFields(kind, {
+    ...input,
+    storagePath: replacement?.storagePath ?? before.storage_path,
+  });
+  if (!validation.ok) return { ok: false, error: validation.error };
 
   const patch: Record<string, unknown> = {
-    name: name.value,
-    shortcut: shortcut.value,
-    description: description.value,
-    tags: tags.value,
+    ...shapeColumns(validation.value),
     ...(input.agentEnabled !== undefined ? { agent_enabled: input.agentEnabled } : {}),
     ...(input.isActive !== undefined ? { is_active: input.isActive } : {}),
   };
 
-  if (kind === "text") {
-    const content = validateContent(input.content ?? "");
-    if (!content.ok) return content;
-    patch.content = content.value;
-  } else if (input.replacement) {
-    patch.storage_path = input.replacement.storagePath;
-    patch.mime_type = input.replacement.mimeType;
-    patch.duration_seconds = input.replacement.durationSeconds ?? null;
-    patch.size_bytes = input.replacement.sizeBytes ?? null;
-    // Se descarta la transcripcion anterior: el archivo nuevo dice otra cosa.
-    patch.transcript = null;
-    patch.transcript_status = "none";
-    patch.transcript_error = null;
-    patch.transcript_source = "auto";
+  let transcribe = false;
+  const oldFiles: Array<string | null> = [];
+  if (replacement) {
+    if (!isFileAssetKind(kind)) return { ok: false, error: "Este tipo de recurso no tiene archivo" };
+    const problem = checkFile(kind, workspace.id, replacement);
+    if (problem) return { ok: false, error: problem };
+
+    patch.storage_path = replacement.storagePath;
+    patch.mime_type = replacement.mimeType;
+    patch.size_bytes = replacement.sizeBytes ?? null;
+    patch.duration_seconds = isTranscribableKind(kind) ? (replacement.durationSeconds ?? null) : null;
+    if (kind === "audio") patch.source = replacement.source ?? "uploaded";
+    if (kind === "video") patch.preview_path = replacement.previewPath ?? null;
+    if (isTranscribableKind(kind)) {
+      // Se descarta la transcripcion anterior: el archivo nuevo dice otra cosa.
+      patch.transcript = null;
+      patch.transcript_status = "none";
+      patch.transcript_error = null;
+      patch.transcript_source = "auto";
+      patch.transcript_started_at = null;
+      transcribe = kind === "audio" || replacement.hasVoice !== false;
+    }
+    // El archivo VIEJO ya no lo referencia nadie: la fila apunta al nuevo, y
+    // una conversacion que lo mando se quedo con su propia COPIA
+    // (lib/response-assets/send-copy.ts). Igual la miniatura vieja.
+    if (before.storage_path !== replacement.storagePath) oldFiles.push(before.storage_path);
+    if (kind === "video" && before.preview_path && before.preview_path !== replacement.previewPath) {
+      oldFiles.push(before.preview_path);
+    }
   }
 
   const { error } = await supabase
     .from("response_assets")
-    .update(patch)
+    .update(patch as never)
     .eq("id", assetId)
     .eq("workspace_id", workspace.id);
 
   if (error) {
     console.error("[response-assets] edicion fallida:", error.message);
-    return { ok: false, error: `No pude guardar el recurso: ${describeError(error.message)}` };
+    return {
+      ok: false,
+      error: `No pude guardar el recurso: ${await describeError(supabase, workspace.id, validation.value.shortcut, error.message)}`,
+    };
   }
 
   const changes = diffFields(beforeSnapshot, patch);
@@ -374,38 +397,67 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
     });
   }
 
-  if (kind === "audio" && input.replacement) {
+  if (transcribe) {
     const service = await createServiceClient();
     await enqueueTranscription(service, assetId);
-
-    // El archivo VIEJO ya no lo referencia nadie (la fila apunta al nuevo, y
-    // una conversacion que lo mando se quedo con su propia COPIA,
-    // lib/response-assets/send-copy.ts): se borra en el momento. El bucket
-    // no tiene policies de escritura, asi que esto es con el service client.
-    // Si falla, no se reintenta aca: lib/response-assets/cleanup.ts es la
-    // red de seguridad a los 28 dias.
-    if (oldStoragePath && oldStoragePath !== input.replacement.storagePath) {
-      const { error: storageError } = await service.storage.from(CHAT_MEDIA_BUCKET).remove([oldStoragePath]);
-      if (storageError) {
-        console.error("[response-assets] no pude borrar el archivo viejo del bucket:", storageError.message);
-      }
-    }
   }
+  await removeFiles(oldFiles);
 
   revalidatePath(LIST_PATH);
   return { ok: true, assetId };
 }
 
-/** Borrado logico: el recurso deja de aparecer y a los 30 dias se purga. */
-export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden eliminar recursos" };
-
+/**
+ * Prende o apaga un recurso para el agente, sin pasar por el formulario. Un
+ * audio, o un video con voz, necesita la transcripcion lista: es lo unico que
+ * el agente puede "escuchar".
+ */
+export async function setAssetAgentEnabled(assetId: string, enabled: boolean): Promise<AssetActionResult> {
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { workspace, supabase, user } = ctx;
 
   const { data: before } = await supabase
     .from("response_assets")
-    .select("id, name, kind, storage_path")
+    .select("id, kind, transcript_status, agent_enabled")
+    .eq("id", assetId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "No encontré ese recurso" };
+
+  if (enabled && !agentUsable({ kind: before.kind as AssetKind, transcriptStatus: before.transcript_status as TranscriptStatus })) {
+    return { ok: false, error: "El asistente solo puede usar un audio o un video con voz cuando su transcripción está lista" };
+  }
+
+  const { error } = await supabase
+    .from("response_assets")
+    .update({ agent_enabled: enabled })
+    .eq("id", assetId)
+    .eq("workspace_id", workspace.id);
+  if (error) {
+    console.error("[response-assets] no pude cambiar el asistente:", error.message);
+    return { ok: false, error: `No pude guardar el cambio: ${error.message}` };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "response_asset", entityId: assetId,
+    action: "update", changes: { agent_enabled: { old: before.agent_enabled, new: enabled } }, performedBy: user.id,
+  });
+
+  revalidatePath(LIST_PATH);
+  return { ok: true, assetId };
+}
+
+/** Borrado logico: el recurso deja de aparecer y a los 30 dias se purga. Su archivo se borra ya. */
+export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { workspace, supabase, user } = ctx;
+
+  const { data: before } = await supabase
+    .from("response_assets")
+    .select("id, name, kind, storage_path, preview_path")
     .eq("id", assetId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -424,18 +476,9 @@ export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
     return { ok: false, error: `No pude eliminar el recurso: ${error.message}` };
   }
 
-  // Nadie mas referencia el archivo de un audio (una conversacion que lo
-  // mando se quedo con su propia COPIA, lib/response-assets/send-copy.ts):
-  // se borra en el momento, con el service client porque el bucket no tiene
-  // policies de escritura. Si falla, no se reintenta aca:
-  // lib/response-assets/cleanup.ts es la red de seguridad a los 28 dias.
-  if (before.kind === "audio" && before.storage_path) {
-    const service = await createServiceClient();
-    const { error: storageError } = await service.storage.from(CHAT_MEDIA_BUCKET).remove([before.storage_path]);
-    if (storageError) {
-      console.error("[response-assets] no pude borrar el archivo del bucket:", storageError.message);
-    }
-  }
+  // Nadie mas referencia estos archivos (una conversacion que lo mando se
+  // quedo con su propia COPIA): se borran en el momento.
+  if (hasFile(before.kind as AssetKind)) await removeFiles([before.storage_path, before.preview_path]);
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "response_asset", entityId: assetId,
@@ -446,12 +489,15 @@ export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
   return { ok: true, assetId };
 }
 
-/** Corrige la transcripcion a mano: un audio mal transcripto le miente al agente. Solo kind='audio'. */
+/**
+ * Corrige la transcripcion a mano: un audio o un video mal transcripto le
+ * miente al agente. Una correccion manual no la pisa ningun reintento.
+ */
 export async function correctTranscript(assetId: string, text: string): Promise<AssetActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden corregir la transcripción" };
-
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { workspace, supabase, user } = ctx;
+
   const trimmed = text.trim();
   if (!trimmed) return { ok: false, error: "La transcripción no puede quedar vacía" };
 
@@ -464,12 +510,12 @@ export async function correctTranscript(assetId: string, text: string): Promise<
     .maybeSingle();
 
   if (!before) return { ok: false, error: "No encontré ese recurso" };
-  if (before.kind !== "audio") return { ok: false, error: "Solo un audio tiene transcripción" };
+  if (!isTranscribableKind(before.kind as AssetKind)) return { ok: false, error: "Solo un audio o un video tiene transcripción" };
   const oldTranscript = before.transcript;
 
   const { error } = await supabase
     .from("response_assets")
-    .update({ transcript: trimmed, transcript_status: "ready", transcript_error: null, transcript_source: "manual" })
+    .update({ transcript: trimmed, transcript_status: "ready", transcript_error: null, transcript_source: "manual", transcript_started_at: null })
     .eq("id", assetId)
     .eq("workspace_id", workspace.id);
 
@@ -487,18 +533,46 @@ export async function correctTranscript(assetId: string, text: string): Promise<
   return { ok: true, assetId };
 }
 
-/** La banca completa, para la pantalla de administracion. */
+/** "Reintentar" una transcripcion que fallo: la vuelve a encolar. */
+export async function retryTranscription(assetId: string): Promise<AssetActionResult> {
+  const ctx = await getPermissionAction(MANAGE);
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { workspace, supabase } = ctx;
+
+  const { data: asset } = await supabase
+    .from("response_assets")
+    .select("id, kind, transcript_status, transcript_source")
+    .eq("id", assetId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!asset) return { ok: false, error: "No encontré ese recurso" };
+  if (!isTranscribableKind(asset.kind as AssetKind)) return { ok: false, error: "Solo un audio o un video tiene transcripción" };
+  if (asset.transcript_status !== "failed") return { ok: false, error: "Esa transcripción no falló" };
+
+  const service = await createServiceClient();
+  await enqueueTranscription(service, assetId);
+  revalidatePath(LIST_PATH);
+  return { ok: true, assetId };
+}
+
+const LIST_COLUMNS =
+  "id, kind, name, shortcut, description, tags, content, url, link_kind, caption, storage_path, preview_path, mime_type, size_bytes, duration_seconds, transcript, transcript_status, transcript_error, agent_enabled, is_active, source, usage_count, last_used_at, created_at";
+
+/** La banca completa, para la pantalla de gestion. Cualquier miembro. */
 export async function listAssets() {
   const { workspace, supabase } = await getWorkspace();
 
   const { data, error } = await supabase
     .from("response_assets")
-    .select(
-      "id, kind, name, shortcut, description, tags, content, storage_path, mime_type, duration_seconds, transcript, transcript_status, agent_enabled, is_active, source",
-    )
+    .select(LIST_COLUMNS)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
-    .order("name");
+    .order("usage_count", { ascending: false })
+    .order("created_at", { ascending: false })
+    // Un techo, no una pagina: la pantalla pagina en memoria (mismo ranking que
+    // el widget del chat y conteos exactos). A esta escala sobra.
+    .limit(1000);
 
   if (error) {
     console.error("[response-assets] listado fallido:", error.message);
@@ -509,14 +583,14 @@ export async function listAssets() {
 }
 
 /**
- * Prepara el envio de un audio de la banca desde el picker "/" de la
- * bandeja: copia el archivo a la conversacion (lib/response-assets/send-copy.ts)
- * y devuelve lo que necesita `POST /api/v1/messages`, igual que si el
- * archivo se acabara de subir desde el disco.
+ * Prepara el envio de un recurso de la banca desde la bandeja: copia el
+ * archivo a la conversacion (lib/response-assets/send-copy.ts) y devuelve lo
+ * que necesita `POST /api/v1/messages`, igual que si el archivo se acabara de
+ * subir desde el disco.
  *
  * Cualquier miembro puede mandar un mensaje, asi que esto usa getWorkspace()
- * y no getAdminContext(): el cliente de usuario que devuelve respeta el
- * scope de leads, asi que un Member sin acceso a esa conversacion no puede
+ * y no el permiso de administrar: el cliente de usuario que devuelve respeta
+ * el scope de leads, asi que un Member sin acceso a esa conversacion no puede
  * dispararle una copia.
  */
 export async function prepareAssetSend(
@@ -539,4 +613,23 @@ export async function prepareAssetSend(
   if (!result.ok) return result;
 
   return { ok: true, copy: result.copy };
+}
+
+/**
+ * Suma un uso al recurso que se acaba de mandar (para que el widget ponga
+ * arriba lo que de verdad se usa). Pasa por touch_response_asset (00132):
+ * cualquier miembro la puede llamar sin tener escritura sobre la tabla, y
+ * solo cuenta recursos de su workspace.
+ *
+ * **Nunca falla hacia afuera.** El contador es un lujo, el mensaje es el
+ * trabajo: se llama DESPUES de mandar, y si esto falla, se loguea y listo.
+ */
+export async function markAssetUsed(assetId: string): Promise<void> {
+  try {
+    const { supabase } = await getWorkspace();
+    const { error } = await supabase.rpc("touch_response_asset", { p_asset_id: assetId });
+    if (error) console.error("[response-assets] no pude contar el uso:", error.message);
+  } catch (err) {
+    console.error("[response-assets] no pude contar el uso:", err instanceof Error ? err.message : err);
+  }
 }

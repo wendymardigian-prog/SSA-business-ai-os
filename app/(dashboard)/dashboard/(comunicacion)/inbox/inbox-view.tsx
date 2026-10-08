@@ -22,6 +22,7 @@ export function InboxView({
   conversations,
   workspaceId,
   assets,
+  canManageAssets = false,
   workspaceName,
   selected,
   total,
@@ -40,8 +41,10 @@ export function InboxView({
 }: {
   conversations: Conversation[];
   workspaceId: string;
-  /** La banca de recursos del workspace (textos y audios), para el selector "/" del composer. */
+  /** La banca de recursos del workspace (los seis tipos), para el widget del composer. */
   assets: InboxAsset[];
+  /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
+  canManageAssets?: boolean;
   workspaceName: string;
   /** La conversacion abierta, resuelta en el servidor desde ?c= (F16). */
   selected: Conversation | null;
@@ -54,7 +57,7 @@ export function InboxView({
   members: { userId: string; label: string }[];
   /** Por canal: si el agente de IA lo atiende y por que no (Fase 3). */
   agentByChannel: Record<string, ChannelAgentInfo>;
-  /** Por canal: su `provider` (evolution/zernio/resend), para saber si el picker puede ofrecer audios. */
+  /** Por canal: su `provider` (evolution/zernio/resend), para saber que tipos de recurso se pueden mandar. */
   providerByChannel: Record<string, string>;
   /** Para el panel del contacto (Bloque 2c): editar setter y vendedor. */
   currentUserId: string;
@@ -241,6 +244,7 @@ export function InboxView({
               conversation={selected}
               messages={messages}
               assets={assets}
+              canManageAssets={canManageAssets}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}

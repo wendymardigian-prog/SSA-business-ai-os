@@ -9,10 +9,10 @@ import { applyManualReply } from "@/lib/agent/manual-reply";
 import { mergeThreadWithLocal, platformIdsOf, type LocalMessageMedia } from "@/lib/zernio-message-merge";
 import { sendChannelMessage, type SendContext, type OutboundMedia } from "@/lib/flow-engine/send";
 import { CHAT_MEDIA_BUCKET, isSafeStoragePath } from "@/lib/chat-media/bucket";
-import { sniffMime } from "@/lib/content/media";
+import { sniffUploadMime } from "@/lib/content/media";
 import { attachmentLabel, emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
-import { channelAcceptsMedia } from "@/lib/channels/media";
+import { assetKindForAttachment, channelAccepts } from "@/lib/channels/media";
 
 /**
  * Cuantos mensajes trae el hilo. Es el maximo que acepta Zernio, y alcanza
@@ -202,7 +202,10 @@ async function validateOutboundMedia(
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const sniffed = sniffMime(bytes);
+  // sniffUploadMime y no sniffMime: un .docx o un video .webm (de la banca de
+  // recursos o del clip) se reconocen por su contenedor + lo declarado, igual
+  // que en la subida (lib/content/media.ts).
+  const sniffed = sniffUploadMime(bytes, args.media.mime ?? null);
   const family = EXPECTED_MIME_FAMILY[kind as AttachmentKind];
   if (!sniffed || (family && !sniffed.startsWith(family))) {
     return { ok: false, status: 400, error: "El archivo no se pudo reconocer." };
@@ -300,11 +303,15 @@ export async function POST(request: NextRequest) {
   // Rama explicita por proveedor y no un `else`: un canal nuevo que caiga
   // por default en Zernio manda el mensaje al lugar equivocado sin avisar.
   if (outChannel.provider === "resend") {
-    // El email no admite adjuntos. channelAcceptsMedia (lib/channels/media.ts)
-    // es el unico lugar que decide esto, para que el picker de la bandeja, el
+    // El email no admite adjuntos. channelAccepts (lib/channels/media.ts) es
+    // el unico lugar que decide esto, para que el widget de la bandeja, el
     // agente y esta ruta digan lo mismo.
-    if (incomingMedia && !channelAcceptsMedia(outChannel.provider)) {
-      return NextResponse.json({ error: "El email no admite adjuntos todavía." }, { status: 400 });
+    if (incomingMedia) {
+      const acceptance = channelAccepts(outChannel.provider, "file");
+      return NextResponse.json(
+        { error: acceptance.ok ? "El email no admite adjuntos todavía." : acceptance.reason },
+        { status: 400 },
+      );
     }
     return sendViaResendChannel({
       supabase,
@@ -325,6 +332,16 @@ export async function POST(request: NextRequest) {
     });
     if (!validated.ok) {
       return NextResponse.json({ error: validated.error }, { status: validated.status });
+    }
+    // Que el canal acepte ESTE adjunto (un archivo por Instagram, un audio en
+    // un formato que Instagram rechaza), antes de mandar nada.
+    const acceptance = channelAccepts(
+      outChannel.provider,
+      assetKindForAttachment(validated.media.kind),
+      validated.media.mime,
+    );
+    if (!acceptance.ok) {
+      return NextResponse.json({ error: acceptance.reason }, { status: 400 });
     }
     media = validated.media;
   }

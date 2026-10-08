@@ -112,6 +112,69 @@ export function sniffMime(bytes: Uint8Array): SniffedMime | null {
   return null;
 }
 
+/** Los documentos de Office modernos: un ZIP por dentro. */
+const OFFICE_ZIP_MIMES = new Set([
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+
+/** Los documentos de Office viejos (97-2003): un contenedor OLE por dentro. */
+const OFFICE_OLE_MIMES = new Set([
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+]);
+
+/** Marcas `ftyp` de HEIC/HEIF: la foto por defecto de un iPhone. */
+const HEIF_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"]);
+
+/**
+ * El tipo real de un archivo que se SUBE (el clip del composer, la banca de
+ * recursos, la API de envio), refinando a `sniffMime` donde los bytes solos
+ * no alcanzan para decidir.
+ *
+ * `sniffMime` queda tal cual porque la usa tambien el pipeline de contenido,
+ * que no admite nada de lo que se suma aca. Lo que se refina:
+ *
+ *  - **Office** (docx, xlsx, pptx y sus versiones 97-2003). Por dentro son un
+ *    ZIP o un contenedor OLE, y lo que distingue un Word de un Excel esta
+ *    mucho mas adentro que los primeros bytes. Regla: los bytes tienen que
+ *    probar el CONTENEDOR, y recien ahi se cree el subtipo declarado. Un
+ *    `.exe` renombrado a `.docx` no es un ZIP y no pasa; un `.zip` declarado
+ *    como zip tampoco (no esta en la lista).
+ *  - **WebM**. Audio y video comparten la cabecera EBML y `sniffMime` asume
+ *    audio. Si quien sube dice que es un video, es un video.
+ *  - **HEIC** y **3GP**. Comparten la caja `ftyp` del MP4 y `sniffMime` los
+ *    llamaria `video/mp4`, que es falso: una foto de iPhone no es un video.
+ *
+ * Devuelve null si no lo reconoce, igual que `sniffMime`.
+ */
+export function sniffUploadMime(bytes: Uint8Array, declaredMime?: string | null): string | null {
+  if (bytes.length < 12) return null;
+  const declared = (declaredMime ?? "").split(";")[0].trim().toLowerCase();
+
+  // ZIP: PK 03 04
+  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
+    return OFFICE_ZIP_MIMES.has(declared) ? declared : null;
+  }
+
+  // OLE (Compound File Binary): D0 CF 11 E0 A1 B1 1A E1
+  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    return OFFICE_OLE_MIMES.has(declared) ? declared : null;
+  }
+
+  if (startsWith(bytes, [0x66, 0x74, 0x79, 0x70], 4)) {
+    const brand = String.fromCharCode(...bytes.slice(8, 12));
+    if (HEIF_BRANDS.has(brand)) return "image/heic";
+    if (brand.startsWith("3gp") || brand.startsWith("3g2")) return "video/3gpp";
+  }
+
+  const base = sniffMime(bytes);
+  if (base === "audio/webm" && declared.startsWith("video/")) return "video/webm";
+  return base;
+}
+
 export interface MediaCandidate {
   fileName: string;
   sizeBytes: number;

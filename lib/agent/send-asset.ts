@@ -2,20 +2,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { sendChannelMessage, type SendOutcome } from "@/lib/flow-engine/send";
 import { outboundMessageRow } from "@/lib/messages/outbound";
-import { emptyAttachment, toAttachmentsColumn } from "@/lib/messages/attachments";
+import { attachmentLabel, emptyAttachment, toAttachmentsColumn } from "@/lib/messages/attachments";
 import { messagePreview } from "@/lib/message-preview";
 import { logAudit } from "@/lib/audit";
 import { copyAssetToChat } from "@/lib/response-assets/send-copy";
+import { touchAssetUsage } from "@/lib/response-assets/usage";
 import type { AgentSendContext } from "./send";
 
 /**
- * Manda un audio de la banca que el agente eligio con usar_recurso.
+ * Manda un recurso con archivo de la banca (audio, video, imagen o archivo)
+ * que el agente eligio con usar_recurso.
  *
  * Mismo camino que sendAgentParts: sendChannelMessage, un mensaje en
- * `messages` con la autoria del agente, y conversations.last_message_at. Dos
- * diferencias con un texto: va DESPUES (el runner lo llama una sola vez, al
- * final, si usar_recurso dejo algo en turn.memo) y la fila lleva la
- * transcripcion ya lista en `text` -- no hay nada que volver a transcribir.
+ * `messages` con la autoria del agente, y conversations.last_message_at. Va
+ * DESPUES del texto (el runner lo llama una sola vez, al final, si
+ * usar_recurso dejo algo en turn.memo). El texto del mensaje es:
+ *   - en un audio, la transcripcion ya lista (no hay nada que volver a
+ *     transcribir) -- como siempre;
+ *   - en un video, una imagen o un archivo, su caption (el texto que lo
+ *     acompaña), si tiene.
  *
  * Antes de mandar, copia el archivo de la biblioteca a la conversacion
  * (lib/response-assets/send-copy.ts): el path de biblioteca no pasa el guard
@@ -33,7 +38,10 @@ export interface AgentAssetToSend {
   storagePath: string;
   mimeType: string;
   durationSeconds: number | null;
-  transcript: string;
+  /** La transcripcion de un audio (o de un video con voz). */
+  transcript: string | null;
+  /** El texto que acompaña a una imagen, un video o un archivo. */
+  caption?: string | null;
 }
 
 export interface AgentAssetSendResult {
@@ -54,11 +62,13 @@ export async function sendAgentAsset(
   });
 
   if (!copied.ok) {
-    console.error("[agent-send-asset] no pude copiar el audio a la conversacion:", copied.error);
+    console.error("[agent-send-asset] no pude copiar el recurso a la conversacion:", copied.error);
     return { ok: false, messageId: null, failure: { kind: "unknown", message: copied.error, retryable: true } };
   }
 
-  const { storagePath, mime, filename, durationSeconds } = copied.copy;
+  const { kind, storagePath, mime, filename, durationSeconds, sizeBytes } = copied.copy;
+  // Un audio lleva su transcripcion como texto; lo demas, su caption.
+  const text = (kind === "audio" ? asset.transcript : (asset.caption ?? copied.copy.caption)) ?? "";
 
   const outcome = await sendChannelMessage(
     supabase,
@@ -71,13 +81,13 @@ export async function sendAgentAsset(
       flowId: null,
     },
     {
-      text: asset.transcript,
-      media: { kind: "audio", storagePath, mime, filename, durationSeconds },
+      text,
+      media: { kind, storagePath, mime, filename, durationSeconds },
     },
   );
 
   const attachmentsColumn = toAttachmentsColumn([
-    emptyAttachment("audio", { storagePath, mime, filename, durationSeconds, status: "ready" }),
+    emptyAttachment(kind, { storagePath, mime, filename, durationSeconds, sizeBytes, status: "ready" }),
   ]);
 
   const { data: stored, error } = await supabase
@@ -86,7 +96,7 @@ export async function sendAgentAsset(
       outboundMessageRow({
         conversationId: ctx.conversationId,
         origin: "agent",
-        text: outcome.ok ? asset.transcript : (outcome.failure?.message ?? asset.transcript),
+        text: outcome.ok ? text : (outcome.failure?.message ?? text),
         attachments: attachmentsColumn,
         sentByAgentId: ctx.agentId,
         sentByUserId: ctx.sentByUserId ?? null,
@@ -108,7 +118,7 @@ export async function sendAgentAsset(
     .from("conversations")
     .update({
       last_message_at: new Date().toISOString(),
-      last_message_preview: messagePreview(asset.transcript) || `🎤 ${asset.name}`,
+      last_message_preview: messagePreview(text) || `${attachmentLabel(kind)} · ${asset.name}`,
     })
     .eq("id", ctx.conversationId);
 
@@ -118,9 +128,12 @@ export async function sendAgentAsset(
     entityType: "response_asset",
     entityId: asset.assetId,
     action: "agent_asset_sent",
-    metadata: { conversation_id: ctx.conversationId, message_id: stored?.id ?? null },
+    metadata: { conversation_id: ctx.conversationId, message_id: stored?.id ?? null, kind },
     performedByAgentId: ctx.agentId,
   });
+
+  // Despues de mandar y sin poder frenarlo: el contador es un lujo.
+  await touchAssetUsage(supabase, asset.assetId);
 
   return { ok: true, messageId: stored?.id ?? null, failure: null };
 }
