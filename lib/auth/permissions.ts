@@ -83,7 +83,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "sequences.view", module: "sequences", label: "Ver secuencias", description: "" },
   { key: "sequences.edit", module: "sequences", label: "Editar secuencias", description: "" },
   { key: "broadcasts.manage", module: "broadcasts", label: "Enviar broadcasts", description: "Mensajes a muchos contactos a la vez." },
-  { key: "templates.manage", module: "templates", label: "Administrar plantillas", description: "" },
+  // La clave conserva su nombre de cuando eran plantillas: un rol que ya la
+  // tenia marcada sigue teniendo sentido, y renombrarla dejaria la vieja
+  // colgada en los jsonb de los roles (banca v2, F4).
+  { key: "templates.manage", module: "templates", label: "Administrar la banca de recursos", description: "Crear, editar y borrar textos, audios, videos, imágenes, archivos y enlaces. Verlos y usarlos puede cualquiera." },
 
   // ── Agente de IA ────────────────────────────────────────────────────────
   { key: "agents.view", module: "agents", label: "Ver el agente", description: "Su configuracion y lo que hizo." },

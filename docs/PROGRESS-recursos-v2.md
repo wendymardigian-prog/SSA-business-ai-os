@@ -22,10 +22,10 @@ corrida one-shot desde el 8/10/2026.
 - [x] F2 Tipos y reglas puras (`kind.ts`, `shape.ts`, `files.ts`, `sniffUploadMime`, `search.ts`)
 
 ## R2 — La gestion
-- [ ] F3 Recursos en el menu lateral (misma ruta, la pestaña se queda)
-- [ ] F4 Permisos (`templates.manage` relabelado, acciones por permiso)
-- [ ] F5 La lista (filtros por tipo y etiqueta, conteos, paginacion, estado vacio)
-- [ ] F6 Alta y edicion por tipo
+- [x] F3 Recursos en el menu lateral (misma ruta, la pestaña se queda; tests de menu y pestaña)
+- [x] F4 Permisos (`templates.manage` relabelado, acciones y pagina por permiso, member-baseline actualizado)
+- [x] F5 La lista (filtros por tipo y etiqueta, conteos, paginacion, estado vacio) — falta revision visual (necesita sesion)
+- [x] F6 Alta y edicion por tipo — falta revision visual (necesita sesion)
 
 ## R3 — El chat
 - [ ] F7 El boton en el composer y el atajo de teclado

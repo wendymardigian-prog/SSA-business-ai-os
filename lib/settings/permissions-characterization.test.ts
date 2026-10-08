@@ -23,7 +23,9 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   team: { file: "team/page.tsx", guardMarker: "requireWorkspaceAdmin" },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
   "custom-fields": { file: "custom-fields/page.tsx", guardMarker: "requireWorkspaceAdmin" },
-  recursos: { file: "recursos/page.tsx", guardMarker: "getWorkspace" },
+  // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
+  // con los permisos resueltos para decidir si ofrece crear y editar.
+  recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
   // Contenido es la unica pestaña que pide un permiso fino y no un cargo
   // (F89): un rol personalizado con `settings.manage` entra, un admin al que
   // se lo sacaron no.

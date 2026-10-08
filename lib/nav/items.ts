@@ -79,6 +79,14 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false, group: "automatizacion" },
   { name: "Agentes", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },
   { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", adminOnly: true, group: "automatizacion" },
+  // Recursos (banca v2, F3): la MISMA pantalla que la pestaña "Recursos" de
+  // Ajustes, con un segundo camino para llegar. Es el patron de Integraciones
+  // (una pantalla, dos caminos), pero visible para todos: un Member la usa
+  // todos los dias desde la bandeja y tiene que poder leer y escuchar cada
+  // recurso. Crear y editar lo decide `templates.manage`, no el menu. Gana
+  // sobre Ajustes en su ruta por ser el candidato mas largo (N4).
+  // alsoActiveOn: las dos rutas viejas, igual que la pestaña (lib/settings/tabs.ts).
+  { name: "Recursos", href: "/dashboard/settings/recursos", icon: "Library", adminOnly: false, group: "automatizacion", alsoActiveOn: ["/dashboard/settings/templates", "/dashboard/settings/audios"] },
 
   // Integraciones (nuevo, N1): es sub-ruta de Ajustes (gana por ser el
   // candidato mas largo, N4), y ademas deja marcado a Channels: esa pantalla

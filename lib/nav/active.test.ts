@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isNavItemActive, activeNavHref } from "./active";
 import { NAV_ITEMS, visibleNavItems } from "./items";
 import { PAGE_META } from "./page-actions";
+import { activeSettingsTab } from "@/lib/settings/tabs";
 
 /**
  * La regla de HOY (bloque N, N4): gana, entre todos los items, el candidato
@@ -41,6 +42,14 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
 
   it("Ajustes queda activo, e Integraciones no, en el resto de settings", () => {
     expect(activeNavHref("/dashboard/settings/team", NAV_ITEMS)).toBe("/dashboard/settings");
+  });
+
+  it("Recursos (banca v2, F3) le gana a Ajustes en su ruta y en las dos viejas, igual que la pestaña", () => {
+    for (const pathname of ["/dashboard/settings/recursos", "/dashboard/settings/templates", "/dashboard/settings/audios"]) {
+      expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/settings/recursos");
+      // Una pantalla, dos caminos: el menu lateral y la pestaña marcan lo mismo.
+      expect(activeSettingsTab(pathname), pathname).toBe("/dashboard/settings/recursos");
+    }
   });
 
   it("/dashboard/channels deja marcado Integraciones (D3: la pantalla se conserva, el item no)", () => {

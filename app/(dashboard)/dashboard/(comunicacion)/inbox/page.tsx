@@ -174,6 +174,8 @@ export default async function InboxPage({
       .eq("workspace_id", workspace.id)
       .eq("is_active", true)
       .is("deleted_at", null)
+      // Hasta que el widget sepa mandar los seis tipos (R3 de la banca v2).
+      .in("kind", ["text", "audio"])
       .order("name"),
     // Bloque 2d: el valor inicial de la pestana "Borradores (N)". Despues lo
     // mantiene al dia Realtime (useDraftCounts).

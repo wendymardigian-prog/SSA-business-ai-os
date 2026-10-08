@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Blocks,
   BookOpen,
+  Library,
   Bot,
   Settings,
   CalendarDays,
@@ -55,7 +56,7 @@ interface WorkspaceItem {
 // Integraciones, que es la que trae a Blocks de vuelta al mapa.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Blocks, Bot, BookOpen, Settings,
-  Clapperboard, Grid3x3, CalendarDays,
+  Clapperboard, Grid3x3, CalendarDays, Library,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({

@@ -68,6 +68,12 @@ describe("acciones de la barra", () => {
     });
   });
 
+  it("Nuevo recurso es por permiso, no por cargo (banca v2, F4)", () => {
+    expect(pageActions("/dashboard/settings/recursos", member)).toEqual([]);
+    expect(pageActions("/dashboard/settings/recursos", { isAdmin: false, permissionKeys: ["templates.manage"] }).map((a) => a.id)).toEqual(["new"]);
+    expect(pageActions("/dashboard/settings/recursos", admin).map((a) => a.id)).toEqual(["new"]);
+  });
+
   it("los links traen a donde van", () => {
     const templates = pageActions("/dashboard/flows", admin).find((a) => a.id === "templates");
     expect(templates?.href).toBe("/dashboard/flows/templates");
