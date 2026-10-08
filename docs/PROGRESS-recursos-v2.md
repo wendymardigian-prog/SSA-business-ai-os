@@ -39,5 +39,5 @@ corrida one-shot desde el 8/10/2026.
 - [x] F13 La limpieza (28 dias cubre los 4 tipos + miniatura; test que fija que la del chat nunca toca library/)
 
 ## Cierre
-- [ ] CLAUDE.md, docs/PENDIENTE.md
+- [x] CLAUDE.md, docs/PENDIENTE.md (revision visual y pruebas en vivo anotadas como pendientes)
 - [ ] PR contra main

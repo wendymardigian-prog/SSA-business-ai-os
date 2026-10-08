@@ -848,3 +848,69 @@ cómo se detectó, cómo se restauró y cómo se corrigió antes de reaplicar.
 - **Qué hacer:** levantar `npm run dev`, iniciar sesión como Wendy, y
   recorrer las cuatro pantallas de la sección 11 del documento
   (`requerimientos-contenido-v4.md`) contra `docs/referencia/prototipo-ssa-baios.html`.
+
+## Banca de recursos ampliada v2 (8/10/2026, rama `oneshot-recursos-v2`)
+
+Seis tipos (texto, audio, video, imagen, archivo, enlace), Recursos en el menú
+lateral, el widget del chat (botón, "/" y ⌘/Ctrl + /) y el agente con los seis
+tipos. Avance completo en `docs/PROGRESS-recursos-v2.md`.
+
+### ~~Migraciones~~ — APLICADAS y registradas el 8/10/2026
+`00131_response_assets_six_kinds` y `00132_touch_response_asset` (el plano las
+numeraba 00125/00126, que ya estaban ocupadas). Ensayadas antes en una
+transacción que se deshace sola; verificadas con `verify-chat-media.mjs`
+(sección D), `verify-rls.mjs` y `verify-roles.mjs`, los tres en verde. Se
+aplicaron ANTES del deploy, como pide el plano: el código viejo funciona igual
+contra la base nueva.
+
+### La revisión visual, sin hacer (pide sesión)
+No la pude hacer: entrar pasa por Supabase Auth en la nube y eso no lo hago
+yo. Con alguien logueado en `localhost:3000`, revisar:
+- `/dashboard/settings/recursos` como Admin: estado vacío con los seis botones;
+  alta de cada tipo con un archivo chico real; la miniatura de un mp4, un webm y
+  un .mov (en Chrome un .mov HEVC no saca miniatura y tiene que quedar el
+  ícono); filtros por tipo y etiqueta; "Ver" de cada tipo; Reintentar.
+- La misma pantalla como Member: lista completa, "Ver", copiar un texto, sin
+  botones de alta ni edición. Y como un rol personalizado con
+  `templates.manage`: con los botones.
+- El ítem "Recursos" del menú lateral queda marcado, y la pestaña también.
+- La bandeja: el botón de la biblioteca, "/" y ⌘/Ctrl + / abren el mismo
+  widget; se abre con la banca vacía; Escape después de "/" devuelve la barra;
+  en un email los cuatro tipos con archivo quedan deshabilitados con el motivo;
+  en Instagram, el archivo. **Sin apretar Enviar en una conversación real.**
+
+### Pruebas en vivo que solo se pueden hacer mandando de verdad
+- **Media por WhatsApp**: en producción NUNCA salió un adjunto por Evolution
+  (0 filas), y `lib/evolution-client.ts` dice que el body de
+  `/message/sendMedia` no quedó verificado contra Evolution 2.3.7. Mandar una
+  imagen, un video y un PDF a un número propio.
+- **Video por Instagram**: los 3 videos que se mandaron por Instagram el
+  2/10/2026 quedaron `failed`, sin motivo guardado. Wendy decidió ofrecerlo
+  igual; la causa se investiga aparte (tarea abierta al cierre de esta corrida).
+- **Transcripción de un video real** (mp4 con voz) contra Groq.
+
+### Decisiones tomadas en la corrida (documentadas)
+- **Archivos por Instagram no se ofrecen**: los tipos de `@zernio/node` aceptan
+  `attachmentType: 'file'` para cualquier plataforma, pero nada confirma que
+  Instagram entregue un PDF por DM. `channelAccepts` lo bloquea también en la
+  API, así que el clip ya no manda documentos por Instagram (en producción hubo
+  0 envíos de documentos).
+- **HEIC se rechaza en la banca** con un mensaje que dice cómo resolverlo
+  (convertir a JPG/PNG). Antes, `sniffMime` llamaba `video/mp4` a una foto HEIC.
+- **txt y csv no entran como archivo**: no tienen firma en sus bytes. Se sacó
+  `.txt` del clip, que lo ofrecía y después lo rechazaba.
+- **La lista pagina en memoria** (de a 25, hasta 1000 recursos): mismo ranking
+  que el widget y conteos exactos. A la escala de un workspace sobra.
+- **Un video "sin voz"** (`transcript_status = 'none'`) lo usa el agente por su
+  descripción. Un video con voz pasa por `none` el minuto que tarda la cola en
+  reclamarlo: en esa ventana el agente podría ofrecerlo por su descripción. Es
+  aceptable (la descripción es obligatoria y el interruptor del agente arranca
+  apagado), pero queda anotado.
+- **El caso del rol personalizado** se prueba en `verify-chat-media.mjs`
+  (sección D) y no en `verify-roles.mjs`: es donde vive toda la cobertura de
+  `response_assets`.
+
+### Errores de lint que no son de esta fase
+`npm run lint` da 4 errores en `components/agents/ai-dashboard/*` y
+`components/settings/integrations/onboarding-banner.tsx`, que esta corrida no
+tocó. El build pasa igual.
