@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { BookingStatus } from "@/lib/scheduling/types";
+import type { BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 
 type Db = SupabaseClient<Database>;
@@ -43,16 +43,31 @@ export interface BookingListItem {
 /** Cuántas agendas trae una página (F33). */
 export const PAGE_SIZE = 50;
 
+/** Solo ids de verdad: ni un apóstrofe ni una coma se cuelan en un filtro armado a mano. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export interface BookingQuery {
-  /** Rango por fecha de inicio. El calendario lo usa; la lista no. */
+  /** Rango por fecha de inicio. Lo usa el calendario, que navega por ancla. */
   from?: string | null;
   to?: string | null;
+  /**
+   * Rango por fecha de FIN: lo usan "Próximas" y "Sin resultado". Es el mismo
+   * corte que `needsOutcome` (bookings-view.ts): una reunión en curso tiene
+   * `start_at` pasado pero `end_at` futuro, y tiene que caer del mismo lado
+   * acá que en los contadores, o aparece en una pastilla y se cuenta en otra.
+   */
+  endFrom?: string | null;
+  endTo?: string | null;
   statuses?: BookingStatus[] | null;
   statusGroups?: Database["public"]["Tables"]["bookings"]["Row"]["status_group"][] | null;
-  hostUserId?: string | null;
-  eventTypeId?: string | null;
-  /** Ids de área y tipo, ya expandidos. Se compara contra el snapshot. */
+  hostUserIds?: string[] | null;
+  eventTypeIds?: string[] | null;
+  /** Ids de área y tipo, ya expandidos (`expandCategoryFilter`). Compara contra el snapshot congelado. */
   categoryIds?: string[] | null;
+  origins?: BookingOrigin[] | null;
+  utmSources?: string[] | null;
+  utmMediums?: string[] | null;
+  utmCampaigns?: string[] | null;
   search?: string | null;
   contactId?: string | null;
   page?: number;
@@ -76,14 +91,32 @@ export async function listBookings(
 
   if (query.from) q = q.gte("start_at", query.from);
   if (query.to) q = q.lt("start_at", query.to);
+  if (query.endFrom) q = q.gt("end_at", query.endFrom);
+  if (query.endTo) q = q.lte("end_at", query.endTo);
   if (query.statuses?.length) q = q.in("status", query.statuses);
   if (query.statusGroups?.length) q = q.in("status_group", query.statusGroups);
-  if (query.hostUserId) q = q.eq("host_user_id", query.hostUserId);
-  if (query.eventTypeId) q = q.eq("event_type_id", query.eventTypeId);
+  if (query.hostUserIds?.length) q = q.in("host_user_id", query.hostUserIds);
+  if (query.eventTypeIds?.length) q = q.in("event_type_id", query.eventTypeIds);
   if (query.contactId) q = q.eq("contact_id", query.contactId);
+  if (query.origins?.length) q = q.in("origin", query.origins);
+  if (query.utmSources?.length) q = q.in("utm->>utm_source", query.utmSources);
+  if (query.utmMediums?.length) q = q.in("utm->>utm_medium", query.utmMediums);
+  if (query.utmCampaigns?.length) q = q.in("utm->>utm_campaign", query.utmCampaigns);
   if (query.search?.trim()) {
     const needle = `%${query.search.trim().replace(/[%_]/g, "")}%`;
     q = q.or(`booker_name.ilike.${needle},booker_email.ilike.${needle},booker_phone.ilike.${needle}`);
+  }
+
+  // El área y el tipo viven adentro del snapshot jsonb, no en una columna: se
+  // compara con `->>` en vez de `.in()`. Va DENTRO de la consulta (antes de
+  // `.range()`), no en memoria después: si no, el total y la paginación
+  // cuentan filas que después se descartan.
+  if (query.categoryIds?.length) {
+    const ids = query.categoryIds.filter((id) => UUID_RE.test(id));
+    if (ids.length) {
+      const list = ids.join(",");
+      q = q.or(`category_snapshot->>area_id.in.(${list}),category_snapshot->>type_id.in.(${list})`);
+    }
   }
 
   q = q.order("start_at", { ascending: query.ascending ?? false }).range((page - 1) * size, page * size - 1);
@@ -94,17 +127,7 @@ export async function listBookings(
     return { items: [], total: 0 };
   }
 
-  let rows = (data ?? []) as unknown as Array<BookingRow & { event_types: { color: string | null } | null; contacts: { display_name: string | null } | null }>;
-
-  // El filtro por categoría va en memoria: está dentro del snapshot jsonb y
-  // PostgREST no sabe preguntar "alguno de estos ids está en estas dos claves".
-  if (query.categoryIds?.length) {
-    const wanted = new Set(query.categoryIds);
-    rows = rows.filter((r) => {
-      const snap = r.category_snapshot as { area_id?: string | null; type_id?: string | null } | null;
-      return Boolean((snap?.area_id && wanted.has(snap.area_id)) || (snap?.type_id && wanted.has(snap.type_id)));
-    });
-  }
+  const rows = (data ?? []) as unknown as Array<BookingRow & { event_types: { color: string | null } | null; contacts: { display_name: string | null } | null }>;
 
   return {
     items: rows.map((r) => ({

@@ -7,6 +7,7 @@ import { getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
+import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { statusesInGroup } from "@/lib/scheduling/booking-status";
 import { publicBaseUrl, bookingPublicUrl } from "@/lib/scheduling/public-url";
 import { dateInTz } from "@/lib/scheduling/time/tz";
@@ -158,7 +159,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               locationType: detail.booking.location_type,
               locationText: detail.booking.location_text,
               meetUrl: detail.booking.meet_url,
-              origin: ORIGIN_LABEL[detail.booking.origin] ?? detail.booking.origin,
+              origin: ORIGIN_LABELS[detail.booking.origin as keyof typeof ORIGIN_LABELS] ?? detail.booking.origin,
               categoryId: detail.booking.category_id,
               categoryLabel: snapshotLabel(detail.booking.category_snapshot),
               syncStatus: detail.booking.google_sync_status,
@@ -183,14 +184,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     />
   );
 }
-
-const ORIGIN_LABEL: Record<string, string> = {
-  public_page: "Link público",
-  embed: "Embed",
-  manual: "A mano",
-  agent: "Agente de IA",
-  api: "API",
-};
 
 function snapshotLabel(snapshot: unknown): string {
   const snap = snapshot as { area_name?: string | null; type_name?: string | null } | null;
@@ -226,7 +219,7 @@ function historyText(entry: { action: string; metadata: unknown; changes: unknow
 
   switch (entry.action) {
     case "booking.created":
-      return `Se agendó (${ORIGIN_LABEL[String(meta.origin ?? "")] ?? meta.origin ?? "origen desconocido"})`;
+      return `Se agendó (${ORIGIN_LABELS[meta.origin as keyof typeof ORIGIN_LABELS] ?? meta.origin ?? "origen desconocido"})`;
     case "booking.rescheduled":
       return `${who} cambió la fecha`;
     case "booking.cancelled":

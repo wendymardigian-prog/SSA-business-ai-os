@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popover";
 import { parsePeriodFilter, periodFilterToParams } from "@/lib/agent/ai-dashboard/url-state";
-import type { PeriodPreset } from "@/lib/dashboards/period";
+import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 
 /**
  * El filtro de período del mini dashboard de IA (A2), en el `filters` de
@@ -33,7 +33,7 @@ export function AiPeriodControl({ timezone }: { timezone: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <PeriodPopover preset={filter.period} from={filter.from} to={filter.to} timezone={timezone} onApply={onApply} />
+      <PeriodPopover preset={filter.period} presets={PERIOD_PRESETS} labels={PERIOD_LABELS} from={filter.from} to={filter.to} timezone={timezone} onApply={onApply} />
       {pending && (
         <span className="text-xs text-muted-foreground" role="status">
           Actualizando…

@@ -8,16 +8,9 @@
 
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
+import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { NeedsOutcomeChip, StatusChip } from "./status-chip";
-
-const ORIGIN_LABEL: Record<string, string> = {
-  public_page: "Link público",
-  embed: "Embed",
-  manual: "A mano",
-  agent: "Agente",
-  api: "API",
-};
 
 function categoryText(item: BookingListItem): string {
   const snap = item.categorySnapshot as { area_name?: string | null; type_name?: string | null } | null;
@@ -90,7 +83,7 @@ export function BookingsList({
                   {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
                 </span>
               </td>
-              <td className="px-4 py-2.5 text-muted-foreground">{ORIGIN_LABEL[item.origin] ?? item.origin}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{ORIGIN_LABELS[item.origin as keyof typeof ORIGIN_LABELS] ?? item.origin}</td>
             </tr>
           ))}
         </tbody>
