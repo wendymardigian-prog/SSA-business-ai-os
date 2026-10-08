@@ -1,0 +1,43 @@
+# Avance — Banca de recursos ampliada (v2.1)
+
+Plano: `requerimientos-banca-recursos-v2.md` (v2.1, 7/10/2026). Rama `oneshot-recursos-v2`,
+corrida one-shot desde el 8/10/2026.
+
+## Correcciones al plano (aprobadas antes de construir)
+
+- Las migraciones son **00131** y **00132** (la 00125-00130 ya estaban ocupadas).
+- Los CHECK de forma que se reemplazan son **cuatro** (`kind_check`, `text_shape`,
+  `text_no_transcript`, `audio_shape`), y se conservan sus exigencias actuales.
+- La 00131 amplia ademas las policies de escritura a
+  `is_workspace_admin OR has_permission(ws, 'templates.manage')` (decision de Wendy).
+- Magic bytes: `sniffUploadMime` refina a `sniffMime` para Office, HEIC y WebM de video.
+- Miniaturas de la lista: lazy, como las imagenes de la bandeja.
+- Video: `.mp4` y `.webm` se transcriben; `.mov` y `.3gp` quedan en `failed` sin cobrar.
+- Instagram: archivos no (dudoso en el SDK). Video si (decision de Wendy), aunque los
+  3 envios de video de produccion fallaron: se investiga aparte.
+- Un video "sin voz" lo puede usar el agente con su descripcion (decision de Wendy).
+
+## R1 — El modelo
+- [ ] F1 Migraciones 00131 y 00132, aplicadas, registradas y verificadas
+- [ ] F2 Tipos y reglas puras (`kind.ts`, `shape.ts`, `sniff`, `search.ts`)
+
+## R2 — La gestion
+- [ ] F3 Recursos en el menu lateral (misma ruta, la pestaña se queda)
+- [ ] F4 Permisos (`templates.manage` relabelado, acciones por permiso)
+- [ ] F5 La lista (filtros por tipo y etiqueta, conteos, paginacion, estado vacio)
+- [ ] F6 Alta y edicion por tipo
+
+## R3 — El chat
+- [ ] F7 El boton en el composer y el atajo de teclado
+- [ ] F8 El widget (se abre siempre, buscador, chips, teclado)
+- [ ] F9 Revisar el recurso antes de mandarlo (preview por tipo)
+- [ ] F10 Que acepta cada canal (`channelAccepts`)
+
+## R4 — El agente y la cañeria
+- [ ] F11 Las herramientas del agente con seis tipos
+- [ ] F12 Transcripcion de video
+- [ ] F13 La limpieza
+
+## Cierre
+- [ ] CLAUDE.md, docs/PENDIENTE.md
+- [ ] PR contra main
