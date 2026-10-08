@@ -206,7 +206,15 @@ toque de atribucion falso `web/booking` que pisaria el real, suma
 `bookings.utm` y la funcion `booking_utm_options` (SECURITY INVOKER) para
 las opciones del filtro de UTM de Agenda. La firma vieja (24 parametros, sin
 `p_landing_page`) se borro en la misma migracion: no queda una sobrecarga
-colgada. **La proxima migracion disponible es la `00130`.**
+colgada.
+
+`00130` (liberar espacio) tambien esta **aplicada**: `slot_released_at`/
+`slot_released_by` en `bookings`, la exclusion `bookings_no_overlap` recreada
+para que una agenda liberada no bloquee el horario, y
+`google_host_connection_id`/`google_host_calendar_id` (sin usar todavia,
+quedan listas para reasignar anfitrion). Verificado con
+`verify-scheduling.mjs` y el caso nuevo de `verify-booking-concurrency.mjs`.
+**La proxima migracion disponible es la `00131`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas

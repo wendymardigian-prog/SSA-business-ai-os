@@ -64,6 +64,22 @@ export interface UpdateEventInput {
   timeZone?: string;
   description?: string;
   locationText?: string | null;
+  /**
+   * Agenda v2 (liberar espacio y reasignar). "transparent" = "Disponible":
+   * freeBusy.query deja de verlo como ocupado. "opaque" = "Ocupado", el
+   * default de Google si nunca se toca.
+   */
+  transparency?: "opaque" | "transparent";
+  /** Agenda v2 (reasignar): reemplaza la lista de invitados del evento. */
+  attendees?: Array<{ email: string; displayName?: string; responseStatus?: "accepted" | "declined" | "needsAction" | "tentative" }>;
+  /** Agenda v2 (reasignar): deja que un invitado sume o saque invitados del evento. */
+  guestsCanModify?: boolean;
+  /**
+   * A quién le avisa Google. Default "all", como siempre. "none" es para
+   * liberar espacio o reasignar sin que el invitado se entere del cambio
+   * interno.
+   */
+  sendUpdates?: "all" | "none" | "externalOnly";
 }
 
 async function call(
@@ -244,12 +260,15 @@ export async function updateEvent(
   if (input.endUtc) body.end = { dateTime: input.endUtc, timeZone: input.timeZone };
   if (input.description !== undefined) body.description = input.description;
   if (input.locationText !== undefined) body.location = input.locationText ?? "";
+  if (input.transparency) body.transparency = input.transparency;
+  if (input.attendees) body.attendees = input.attendees.map((a) => ({ email: a.email, ...(a.displayName ? { displayName: a.displayName } : {}), ...(a.responseStatus ? { responseStatus: a.responseStatus } : {}) }));
+  if (input.guestsCanModify !== undefined) body.guestsCanModify = input.guestsCanModify;
   const { json } = await call(
     deps,
     connectionId,
     "PATCH",
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-    { query: { sendUpdates: "all" }, body, fallback: "No pude actualizar el evento en Google Calendar" },
+    { query: { sendUpdates: input.sendUpdates ?? "all" }, body, fallback: "No pude actualizar el evento en Google Calendar" },
   );
   const ev = json as { hangoutLink?: string };
   return { meetUrl: ev.hangoutLink ?? null };

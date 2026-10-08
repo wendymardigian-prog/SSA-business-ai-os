@@ -181,6 +181,28 @@ describe("eventos", () => {
     expect(JSON.parse(calls[0].init.body as string)).toEqual({ start: { dateTime: "2026-10-07T18:00:00.000Z", timeZone: "UTC" }, end: { dateTime: "2026-10-07T18:30:00.000Z", timeZone: "UTC" } });
   });
 
+  it("updateEvent: liberar espacio (Agenda v2) manda transparency sin avisarle al invitado", async () => {
+    const database = db();
+    const { fetchImpl, calls } = fakeFetch(() => ({ status: 200, body: { id: "ev-1" } }));
+    await updateEvent({ supabase: database.client, fetchImpl, now: () => NOW }, CONN, "cal-a", "ev-1", { transparency: "transparent", sendUpdates: "none" });
+    expect(new URL(calls[0].url).searchParams.get("sendUpdates")).toBe("none");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ transparency: "transparent" });
+  });
+
+  it("updateEvent: reasignar (Agenda v2) manda los invitados y guestsCanModify", async () => {
+    const database = db();
+    const { fetchImpl, calls } = fakeFetch(() => ({ status: 200, body: { id: "ev-1" } }));
+    await updateEvent({ supabase: database.client, fetchImpl, now: () => NOW }, CONN, "cal-a", "ev-1", {
+      attendees: [{ email: "invitado@ejemplo.com" }, { email: "nuevo@ejemplo.com", displayName: "Ana", responseStatus: "accepted" }],
+      guestsCanModify: true,
+      sendUpdates: "none",
+    });
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      attendees: [{ email: "invitado@ejemplo.com" }, { email: "nuevo@ejemplo.com", displayName: "Ana", responseStatus: "accepted" }],
+      guestsCanModify: true,
+    });
+  });
+
   it("listCalendars recorre todas las paginas", async () => {
     const database = db();
     const { fetchImpl } = fakeFetch((url) => {

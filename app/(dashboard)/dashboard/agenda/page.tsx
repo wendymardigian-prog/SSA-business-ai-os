@@ -272,6 +272,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               rescheduleUrl: `${bookingPublicUrl(publicBase, detail.booking.uid)}/reagendar`,
               history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
               attribution: attributionOf((detail.booking as unknown as { utm?: unknown; referrer_url?: string | null }).utm, detail.booking.referrer_url),
+              slotReleasedAt: detail.booking.slot_released_at,
             }
           : null
       }
@@ -357,6 +358,12 @@ function historyText(entry: { action: string; metadata: unknown; changes: unknow
       return "Google Calendar quedó al día";
     case "booking.sync_failed":
       return `No se pudo sincronizar con Google${meta.error ? `: ${meta.error}` : ""}`;
+    case "booking.slot_released":
+      return `${who} liberó el espacio: otro lead puede agendar este horario`;
+    case "booking.slot_occupied":
+      return `${who} volvió a ocupar el espacio`;
+    case "booking.host_changed":
+      return `${who} reasignó el anfitrión`;
     default:
       return entry.action;
   }

@@ -74,6 +74,9 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.status_changed": "cambió el estado de una agenda",
   "booking.sync_ok": "sincronizó la agenda con Google",
   "booking.sync_failed": "no pudo sincronizar la agenda con Google",
+  "booking.slot_released": "liberó el espacio de una agenda",
+  "booking.slot_occupied": "volvió a ocupar el espacio de una agenda",
+  "booking.host_changed": "reasignó el anfitrión de una agenda",
   agent_asset_sent: "mandó un recurso de audio de la banca",
 };
 

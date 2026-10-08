@@ -60,3 +60,12 @@ export function NeedsOutcomeChip() {
     </span>
   );
 }
+
+/** Su horario dejó de contar como ocupado: el lugar está libre para otro lead (Agenda v2). */
+export function SlotReleasedChip() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-dashed border-violet-400 bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-600 dark:text-violet-300">
+      Espacio liberado
+    </span>
+  );
+}

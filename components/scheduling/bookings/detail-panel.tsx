@@ -15,12 +15,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { BookingStatus } from "@/lib/scheduling/types";
-import { BOOKING_STATUSES, evaluateTransition, groupOf, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
+import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
-import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
-import { StatusChip, statusDotClass } from "./status-chip";
+import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
+import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 
 export interface BookingDetailData {
   id: string;
@@ -50,6 +50,8 @@ export interface BookingDetailData {
   history: Array<{ id: string; text: string; at: string }>;
   /** De dónde vino el lead que agendó (Agenda v2). `null`: agendada a mano o por el agente, sin UTM que mostrar. */
   attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
+  /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
+  slotReleasedAt: string | null;
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -318,7 +320,26 @@ export function BookingDetailPanel({
                 Copiar Meet
               </button>
             )}
+            {canManage && isActive(booking.status) && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  booking.slotReleasedAt
+                    ? run(() => occupyBookingSlotAsHost({ bookingId: booking.id }), "El espacio vuelve a estar ocupado")
+                    : run(() => releaseBookingSlotAsHost({ bookingId: booking.id }), "El espacio quedó libre para otra agenda")
+                }
+                className="rounded-lg border border-dashed border-violet-400 px-3 py-1.5 text-xs text-violet-600 hover:bg-violet-500/10 disabled:opacity-60 dark:text-violet-300"
+              >
+                {booking.slotReleasedAt ? "Volver a ocupar el espacio" : "Liberar espacio"}
+              </button>
+            )}
           </div>
+          {booking.slotReleasedAt && (
+            <p className="text-xs text-muted-foreground">
+              <SlotReleasedChip /> desde el {formatDateTimeWithZone(booking.slotReleasedAt, timezone, timeFormat)}: otro lead puede agendar este mismo horario.
+            </p>
+          )}
 
           {booking.responses.length > 0 && (
             <section className="rounded-lg border border-border p-3">

@@ -23,7 +23,7 @@ vi.mock("@/lib/auth/guards", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 
-const { changeBookingStatus, cancelBookingAsHost, updateBookingDetails, fixBookingCategory, retryBookingSync, bookManually } = await import("./bookings");
+const { changeBookingStatus, cancelBookingAsHost, updateBookingDetails, fixBookingCategory, retryBookingSync, bookManually, releaseBookingSlotAsHost, occupyBookingSlotAsHost } = await import("./bookings");
 
 const NOW = new Date("2026-09-30T16:00:00.000Z");
 const START = "2026-10-01T16:00:00.000Z";
@@ -192,6 +192,29 @@ describe("retryBookingSync", () => {
     expect(db.rows("bookings")[0].google_sync_status).toBe("pending");
     expect(db.rows("bookings")[0].google_sync_error).toBeNull();
     expect(db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync")?.payload).toMatchObject({ action: "update" });
+  });
+});
+
+describe("releaseBookingSlotAsHost / occupyBookingSlotAsHost (Agenda v2)", () => {
+  it("libera el espacio y encola el job de Google", async () => {
+    const result = await releaseBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(true);
+    expect(db.rows("bookings")[0].slot_released_at).toBeTruthy();
+    expect(db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync")?.payload).toMatchObject({ action: "release" });
+  });
+
+  it("vuelve a ocupar", async () => {
+    seed({ slot_released_at: "2026-09-30T00:00:00.000Z", slot_released_by: HOST });
+    const result = await occupyBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(true);
+    expect(db.rows("bookings")[0].slot_released_at).toBeNull();
+  });
+
+  it("sin permiso no pasa nada", async () => {
+    allowed = false;
+    const result = await releaseBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(false);
+    expect(db.rows("bookings")[0].slot_released_at).toBeFalsy();
   });
 });
 

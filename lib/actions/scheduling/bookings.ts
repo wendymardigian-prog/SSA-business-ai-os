@@ -10,6 +10,7 @@ import { evaluateTransition, groupOf, isBookingStatus, TRANSITION_REASON_TEXT } 
 import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cancel";
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { createBooking } from "@/lib/scheduling/booking/create";
+import { occupyBookingSlot, releaseBookingSlot } from "@/lib/scheduling/booking/release";
 import { getPublicSlots } from "@/lib/scheduling/slots-service";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
@@ -141,6 +142,35 @@ export async function rescheduleAsHost(input: {
   if (!result.ok) return { ok: false, error: result.message ?? "No pude reagendar." };
   revalidatePath(PATH);
   return { ok: true, data: { startUtc: result.startUtc, endUtc: result.endUtc } };
+}
+
+/**
+ * Liberar y volver a ocupar el espacio de una agenda (Agenda v2).
+ *
+ * La agenda sigue activa; solo su horario deja (o vuelve) a contar como
+ * ocupado, para que el equipo pueda ofrecer el mismo lugar a otro lead
+ * mientras este no se confirma.
+ */
+export async function releaseBookingSlotAsHost(input: { bookingId: string }): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+
+  const result = await releaseBookingSlot(await createServiceClient(), booking.id, ctx.user.id);
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
+}
+
+export async function occupyBookingSlotAsHost(input: { bookingId: string }): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+
+  const result = await occupyBookingSlot(await createServiceClient(), booking.id, ctx.user.id);
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
 }
 
 /** Editar ubicación y notas internas (F36). */

@@ -86,6 +86,30 @@ perdida.
 - Un 403 por cuota es temporal y se reintenta; un 403 por permisos es
   permanente y no. Eso sale de la documentación, no del plano.
 
+## Liberar espacio (Agenda v2)
+
+La agenda sigue existiendo, activa, con su lead y su link de Meet; lo único
+que cambia es que su horario deja de contar como ocupado, para que el equipo
+pueda ofrecer ese mismo lugar a otro lead mientras este no se confirma (por
+ejemplo, mientras se espera saber si descalifica). Volver a ocupar lo
+revierte.
+
+- `bookings.slot_released_at`/`slot_released_by` (00130). La exclusión
+  `bookings_no_overlap` se recreó con `AND slot_released_at IS NULL`: una
+  agenda liberada no bloquea el horario para una nueva reserva, pero volver a
+  ocuparla choca (23P01) si alguien ya lo tomó mientras tanto —
+  `lib/scheduling/booking/release.ts`.
+- `lib/scheduling/data/slots-input.ts` saca las liberadas tanto del chequeo de
+  conflicto como de los topes por día/semana del evento.
+- En Google, el evento pasa a **"Disponible"** (`transparency: "transparent"`)
+  con `sendUpdates: "none"`: el invitado no se entera, y `freeBusy.query` deja
+  de verlo como ocupado. Job `booking_google_sync`, acciones `release`/
+  `occupy` (`lib/jobs/handlers/booking-sync.ts`). Si todavía no hay evento
+  sincronizado, no hay nada que tocar en Google — el efecto real ya lo tiene
+  la base.
+- Botón en el panel de detalle, visible solo con `bookings.manage` sobre una
+  agenda activa.
+
 ## Los reintentos de sincronización
 
 Los agenda **el handler**, no la cola: 1, 5 y 15 minutos. La cola reintenta a

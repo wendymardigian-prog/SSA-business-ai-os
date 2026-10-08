@@ -38,6 +38,8 @@ export interface BookingListItem {
   meetUrl: string | null;
   timezone: string | null;
   syncStatus: string;
+  /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
+  slotReleasedAt: string | null;
 }
 
 /** Cuántas agendas trae una página (F33). */
@@ -77,7 +79,7 @@ export interface BookingQuery {
 }
 
 const SELECT =
-  "id, uid, title, start_at, end_at, status, status_group, host_user_id, contact_id, booker_name, booker_email, booker_phone, event_type_id, category_snapshot, origin, location_type, location_text, meet_url, booker_timezone, google_sync_status, event_types!inner(color), contacts!inner(display_name)";
+  "id, uid, title, start_at, end_at, status, status_group, host_user_id, contact_id, booker_name, booker_email, booker_phone, event_type_id, category_snapshot, origin, location_type, location_text, meet_url, booker_timezone, google_sync_status, slot_released_at, event_types!inner(color), contacts!inner(display_name)";
 
 export async function listBookings(
   supabase: Db,
@@ -153,6 +155,7 @@ export async function listBookings(
       meetUrl: r.meet_url,
       timezone: r.booker_timezone,
       syncStatus: r.google_sync_status,
+      slotReleasedAt: r.slot_released_at,
     })),
     total: count ?? rows.length,
   };

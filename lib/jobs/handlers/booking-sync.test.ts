@@ -245,6 +245,34 @@ describe("handleBookingGoogleSync · mover y borrar", () => {
   });
 });
 
+describe("handleBookingGoogleSync · liberar espacio (Agenda v2)", () => {
+  it("release manda transparency=transparent y sendUpdates=none", async () => {
+    const db = world({ google_event_id: "gev-1", google_connection_id: "conn-1", google_calendar_id: "cal-1" });
+    updateEvent.mockResolvedValue({ meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "release" }));
+
+    expect(updateEvent).toHaveBeenCalledWith(expect.anything(), "conn-1", "ana@ejemplo.com", "gev-1", { transparency: "transparent", sendUpdates: "none" });
+    expect(db.rows("bookings")[0].google_sync_status).toBe("synced");
+  });
+
+  it("occupy manda transparency=opaque", async () => {
+    const db = world({ google_event_id: "gev-1", google_connection_id: "conn-1", google_calendar_id: "cal-1" });
+    updateEvent.mockResolvedValue({ meetUrl: null });
+
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "occupy" }));
+
+    expect(updateEvent).toHaveBeenCalledWith(expect.anything(), "conn-1", "ana@ejemplo.com", "gev-1", { transparency: "opaque", sendUpdates: "none" });
+  });
+
+  it("liberar sin evento en Google no llama a updateEvent: el efecto ya lo tiene la base", async () => {
+    const db = world();
+    await handleBookingGoogleSync(ctx(db, { booking_id: "bk-1", action: "release" }));
+    expect(updateEvent).not.toHaveBeenCalled();
+    expect(db.rows("bookings")[0].google_sync_status).toBe("synced");
+  });
+});
+
 describe("handleBookingEnded", () => {
   it("emite booking_ended con el evento y el anfitrion", async () => {
     const db = world();

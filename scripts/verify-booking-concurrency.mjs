@@ -147,6 +147,20 @@ try {
     const errores = results.filter((r) => r.error).map((r) => `${r.error.code}: ${r.error.message}`);
     check(errores.length === 0, "la exclusion es por anfitrion, no por horario global", errores.join(" | ") || undefined);
   }
+
+  console.log("\n— Liberar espacio (Agenda v2): el horario vuelve a estar libre —");
+  {
+    const start = "2030-10-01T15:00:00.000Z";
+    const end = "2030-10-01T15:30:00.000Z";
+    const { data: r1 } = await svc.rpc("create_booking", args(start, end));
+    await svc.from("bookings").update({ slot_released_at: new Date().toISOString(), slot_released_by: host }).eq("id", r1.booking_id);
+
+    const { error: eSegunda } = await svc.rpc("create_booking", args(start, end));
+    check(!eSegunda, "con la primera liberada, la segunda agenda entra en el mismo horario", eSegunda?.message);
+
+    const { error: eOcupar } = await svc.from("bookings").update({ slot_released_at: null, slot_released_by: null }).eq("id", r1.booking_id);
+    check(eOcupar?.code === "23P01", "volver a ocupar la primera choca con la segunda, que ya tomó el lugar", eOcupar?.message);
+  }
 } catch (err) {
   fail(`error inesperado: ${err.message}`);
 } finally {

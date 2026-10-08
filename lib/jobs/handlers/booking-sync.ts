@@ -29,7 +29,8 @@ export const MAX_SYNC_ATTEMPTS = SYNC_RETRY_MINUTES.length + 1;
 
 export interface SyncPayload {
   booking_id: string;
-  action: "create" | "update" | "delete";
+  /** "release"/"occupy" (Agenda v2): transparency del evento, sin avisar al invitado. */
+  action: "create" | "update" | "delete" | "release" | "occupy";
   attempt?: number;
 }
 
@@ -137,6 +138,19 @@ export async function handleBookingGoogleSync(ctx: JobContext): Promise<void> {
         .from("bookings")
         .update({ google_sync_status: "synced", google_sync_error: null, meet_url: updated.meetUrl ?? booking.meet_url })
         .eq("id", booking.id);
+    } else if (payload.action === "release" || payload.action === "occupy") {
+      // Liberar espacio (Agenda v2): "Disponible" en Google, sin avisar al
+      // invitado. Si todavía no hay evento sincronizado no hay nada que
+      // tocar allá — el efecto de verdad ya lo tiene la base.
+      if (booking.google_event_id && booking.google_connection_id && booking.google_calendar_id) {
+        const { data: cal } = await service.from("calendars").select("external_calendar_id").eq("id", booking.google_calendar_id).maybeSingle();
+        if (!cal) throw new GoogleCalendarError("El calendario ya no existe", "permanent", null, "no_calendar");
+        await updateEvent({ supabase: service }, booking.google_connection_id, cal.external_calendar_id, booking.google_event_id, {
+          transparency: payload.action === "release" ? "transparent" : "opaque",
+          sendUpdates: "none",
+        });
+      }
+      await service.from("bookings").update({ google_sync_status: "synced", google_sync_error: null }).eq("id", booking.id);
     } else {
       const destination = await destinationFor(service, booking);
       if (!destination) {

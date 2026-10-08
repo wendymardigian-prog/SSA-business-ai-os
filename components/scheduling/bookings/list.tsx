@@ -10,7 +10,7 @@ import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { ORIGIN_LABELS } from "@/lib/scheduling/agenda-filters";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
-import { NeedsOutcomeChip, StatusChip } from "./status-chip";
+import { NeedsOutcomeChip, SlotReleasedChip, StatusChip } from "./status-chip";
 
 function categoryText(item: BookingListItem): string {
   const snap = item.categorySnapshot as { area_name?: string | null; type_name?: string | null } | null;
@@ -81,6 +81,7 @@ export function BookingsList({
                 <span className="inline-flex flex-wrap items-center gap-1.5">
                   <StatusChip status={item.status} />
                   {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
+                  {item.slotReleasedAt && <SlotReleasedChip />}
                 </span>
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{ORIGIN_LABELS[item.origin as keyof typeof ORIGIN_LABELS] ?? item.origin}</td>
@@ -102,6 +103,7 @@ export function BookingsList({
               <span className="flex flex-wrap items-center gap-1.5">
                 <StatusChip status={item.status} />
                 {needsOutcome({ status: item.status, end_at: item.endAt }, now) && <NeedsOutcomeChip />}
+                {item.slotReleasedAt && <SlotReleasedChip />}
               </span>
             </button>
           </li>
