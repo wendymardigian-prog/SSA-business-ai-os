@@ -48,6 +48,8 @@ export interface BookingDetailData {
   syncError: string | null;
   rescheduleUrl: string;
   history: Array<{ id: string; text: string; at: string }>;
+  /** De dónde vino el lead que agendó (Agenda v2). `null`: agendada a mano o por el agente, sin UTM que mostrar. */
+  attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -331,6 +333,56 @@ export function BookingDetailPanel({
               </dl>
             </section>
           )}
+
+          <section className="rounded-lg border border-border p-3">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
+            {booking.attribution ? (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                {booking.attribution.source && (
+                  <>
+                    <dt className="text-muted-foreground">Fuente</dt>
+                    <dd>{booking.attribution.source}</dd>
+                  </>
+                )}
+                {booking.attribution.medium && (
+                  <>
+                    <dt className="text-muted-foreground">Medio</dt>
+                    <dd>{booking.attribution.medium}</dd>
+                  </>
+                )}
+                {booking.attribution.campaign && (
+                  <>
+                    <dt className="text-muted-foreground">Campaña</dt>
+                    <dd>{booking.attribution.campaign}</dd>
+                  </>
+                )}
+                {booking.attribution.content && (
+                  <>
+                    <dt className="text-muted-foreground">Contenido</dt>
+                    <dd>{booking.attribution.content}</dd>
+                  </>
+                )}
+                {booking.attribution.term && (
+                  <>
+                    <dt className="text-muted-foreground">Término</dt>
+                    <dd>{booking.attribution.term}</dd>
+                  </>
+                )}
+                {booking.attribution.referrerUrl && (
+                  <>
+                    <dt className="text-muted-foreground">Página de origen</dt>
+                    <dd className="truncate" title={booking.attribution.referrerUrl}>
+                      {booking.attribution.referrerUrl}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Sin datos de atribución ({booking.origin === "A mano" || booking.origin === "Agente de IA" ? "agendada a mano o por el agente" : "no llegó ningún UTM"}).
+              </p>
+            )}
+          </section>
 
           {canManage && (
             <section className="rounded-lg border border-border p-3">

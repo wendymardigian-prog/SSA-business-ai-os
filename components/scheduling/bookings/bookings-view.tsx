@@ -1,17 +1,21 @@
 "use client";
 
 /**
- * La pantalla de Agendas (F33 a F37): lista, kanban y calendario sobre los
- * mismos datos, con los filtros arriba.
+ * La pantalla de Agendas (F33 a F37, revisión Agenda v2): lista, kanban y
+ * calendario sobre los mismos datos, con los filtros arriba.
  *
  * Los filtros viven en la URL: así se comparte un link con lo que uno está
  * mirando y el botón de atrás hace lo que se espera. La vista elegida también.
+ *
+ * La barra superior sigue la misma convención que el resto del dashboard
+ * (`PageHeader`, slot `filters`): vista, período, filtros y buscador van ahí,
+ * no sueltos en el contenido como antes.
  */
 
-import { useCallback, useMemo, useState, useTransition } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CalendarDays, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
 import { BookingsList } from "./list";
@@ -19,16 +23,28 @@ import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
 import { BookingDetailPanel, type BookingDetailData } from "./detail-panel";
 import { BookManualDialog, type ManualEventOption } from "./book-manual-dialog";
+import { AgendaFiltersMenu } from "./agenda-filters-menu";
+import { AgendaFilterSummary } from "./agenda-filter-summary";
+import { AgendaEmptyFiltered, AgendaEmptyWorkspace } from "./agenda-empty-state";
+import { ShareLinksMenu, type ShareableEvent } from "./share-links-menu";
+import { useAgendaUrl } from "./use-agenda-url";
 import type { BookingListItem } from "@/lib/scheduling/data/bookings";
 import type { BookingStatus, SlotsByDate } from "@/lib/scheduling/types";
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
 import type { CategoryRow } from "@/lib/scheduling/categories";
-import { categoryTree } from "@/lib/scheduling/categories";
 import { QUICK_FILTER_LABELS, type QuickFilter } from "@/lib/scheduling/bookings-view";
+import type { AgendaFilters } from "@/lib/scheduling/agenda-filters";
+import { AGENDA_PERIODS, AGENDA_PERIOD_LABELS, type AgendaPeriod } from "@/lib/scheduling/agenda-period";
+import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popover";
 import { gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking, slotsForManualBooking } from "@/lib/actions/scheduling/bookings";
 
-const QUICK_ORDER: QuickFilter[] = ["upcoming", "needs_outcome", "with_outcome", "cancelled"];
+/** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
+export type QuickPick = QuickFilter | "all";
+
+const QUICK_PICK_LABELS: Record<QuickPick, string> = { all: "Todas", ...QUICK_FILTER_LABELS };
+const QUICK_PICK_ORDER: QuickPick[] = ["all", "upcoming", "needs_outcome", "with_outcome", "cancelled"];
+
 const VIEWS: Array<{ key: "list" | "kanban" | "calendar"; label: string }> = [
   { key: "list", label: "Lista" },
   { key: "kanban", label: "Kanban" },
@@ -43,12 +59,19 @@ export function BookingsScreen({
   hostNames,
   categories,
   events,
+  eventOptions,
+  shareableEvents,
+  hasEverBooked,
+  hasCalendar,
   detail,
   view,
   quick,
   calendarView,
   calendarAnchor,
+  period,
+  customRange,
   filters,
+  search,
   timezone,
   timeFormat,
   scopeAll,
@@ -60,16 +83,27 @@ export function BookingsScreen({
   items: BookingListItem[];
   total: number;
   page: number;
-  counts: Record<QuickFilter, number>;
+  counts: Record<QuickPick, number>;
   hostNames: Record<string, string>;
   categories: CategoryRow[];
   events: ManualEventOption[];
+  /** Los eventos para el filtro ("Evento"): id y título nomás. */
+  eventOptions: Array<{ id: string; title: string }>;
+  /** Los eventos activos, para "Compartir" y para el estado vacío del workspace. */
+  shareableEvents: ShareableEvent[];
+  /** false: el workspace no tiene NINGUNA agenda todavía (sin importar filtros). */
+  hasEverBooked: boolean;
+  hasCalendar: boolean;
   detail: BookingDetailData | null;
   view: "list" | "kanban" | "calendar";
-  quick: QuickFilter;
+  quick: QuickPick;
   calendarView: CalendarView;
   calendarAnchor: string;
-  filters: { categoryId: string | null; hostUserId: string | null; search: string };
+  period: AgendaPeriod;
+  /** Un rango a medida, si lo hay: gana sobre `period`. */
+  customRange: { from: string; to: string } | null;
+  filters: AgendaFilters;
+  search: string;
   timezone: string;
   timeFormat: "12h" | "24h";
   scopeAll: boolean;
@@ -79,8 +113,7 @@ export function BookingsScreen({
   needsProfile: boolean;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
+  const { setParam, setPeriod, clearAll } = useAgendaUrl();
   const [manualOpen, setManualOpen] = useState(false);
   const [cancelDrop, setCancelDrop] = useState<{ id: string; status: BookingStatus } | null>(null);
   const [reason, setReason] = useState("");
@@ -88,24 +121,14 @@ export function BookingsScreen({
   const [pending, start] = useTransition();
 
   const now = useMemo(() => new Date(), []);
-
-  const setParam = useCallback(
-    (patch: Record<string, string | null>) => {
-      const next = new URLSearchParams(params.toString());
-      for (const [key, value] of Object.entries(patch)) {
-        if (value === null || value === "") next.delete(key);
-        else next.set(key, value);
-      }
-      // Cambiar de filtro vuelve a la primera página: quedarse en la 3 de una
-      // lista que ahora tiene una página es una pantalla vacía sin motivo.
-      if (!("pagina" in patch)) next.delete("pagina");
-      router.push(`${pathname}?${next.toString()}`);
-    },
-    [params, pathname, router],
+  const hostOptions = useMemo(() => Object.entries(hostNames).map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label)), [hostNames]);
+  const catalog = useMemo(
+    () => ({ categories, events: new Map(eventOptions.map((e) => [e.id, e.title])), hosts: new Map(hostOptions.map((h) => [h.userId, h.label])) }),
+    [categories, eventOptions, hostOptions],
   );
 
-  const openDetail = (id: string) => setParam({ agenda: id });
-  const closeDetail = () => setParam({ agenda: null });
+  const openDetail = (id: string) => setParam("agenda", id);
+  const closeDetail = () => setParam("agenda", null);
 
   function move(id: string, status: BookingStatus) {
     setError(null);
@@ -131,6 +154,10 @@ export function BookingsScreen({
   }
 
   const pages = Math.max(1, Math.ceil(total / 50));
+  // "Todavía no hay NINGUNA agenda" (en todo el workspace) es un cartel
+  // distinto de "ninguna con estos filtros" (F33, Agenda v2).
+  const isEmpty = items.length === 0 && view !== "calendar";
+  const isEmptyWorkspace = isEmpty && !hasEverBooked;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -138,6 +165,7 @@ export function BookingsScreen({
         route="/dashboard/agenda"
         right={
           <div className="flex items-center gap-2">
+            <ShareLinksMenu events={shareableEvents} />
             {canManage && (
               <button
                 type="button"
@@ -159,17 +187,61 @@ export function BookingsScreen({
             )}
           </div>
         }
+        filters={
+          <>
+            <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
+              {VIEWS.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  aria-pressed={view === v.key}
+                  onClick={() => setParam("vista", v.key === "list" ? null : v.key)}
+                  className={view === v.key ? "rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground" : "rounded-md px-3 py-1 text-xs text-muted-foreground hover:bg-muted"}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
+            {view !== "calendar" && (
+              <PeriodPopover
+                preset={period}
+                presets={AGENDA_PERIODS}
+                labels={AGENDA_PERIOD_LABELS}
+                from={customRange?.from ?? null}
+                to={customRange?.to ?? null}
+                timezone={timezone}
+                allowFuture
+                onApply={setPeriod}
+              />
+            )}
+
+            <AgendaFiltersMenu filters={filters} categories={categories} events={eventOptions} hosts={scopeAll ? hostOptions : null} utmOptions={{ sources: [], mediums: [], campaigns: [] }} />
+
+            <input
+              defaultValue={search}
+              onBlur={(e) => setParam("q", e.target.value || null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") setParam("q", (e.target as HTMLInputElement).value || null);
+              }}
+              placeholder="Buscar contacto"
+              aria-label="Buscar contacto"
+              className="h-8 w-40 rounded-lg border border-input bg-background px-2 text-xs"
+            />
+
+            <Link
+              href="/dashboard/agenda/configuracion/ajustes"
+              className="flex h-8 items-center whitespace-nowrap rounded-lg border border-border px-2.5 text-xs text-muted-foreground hover:bg-muted"
+            >
+              {timezoneCityLabel(timezone)} ({gmtOffsetLabel(now, timezone)})
+            </Link>
+          </>
+        }
       />
       <ReconnectBanner accounts={brokenAccounts} />
+      <AgendaFilterSummary filters={filters} catalog={catalog} />
 
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-muted-foreground md:px-6">
-        <span className="rounded-full border border-border px-2.5 py-0.5">{scopeAll ? "Todas las agendas del equipo" : "Solo tus agendas"}</span>
-        <Link href="/dashboard/agenda/configuracion/ajustes" className="rounded-full border border-border px-2.5 py-0.5 hover:bg-muted">
-          Hora de {timezoneCityLabel(timezone)} ({gmtOffsetLabel(now, timezone)})
-        </Link>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 md:px-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6 pt-3 md:px-6">
         {needsProfile && (
           <p className="rounded-xl border border-border bg-muted/50 p-3 text-sm">
             Todavía no configuraste tu agenda.{" "}
@@ -186,109 +258,28 @@ export function BookingsScreen({
           </p>
         )}
 
-        {/* Vista y filtros */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
-            {VIEWS.map((v) => (
-              <button
-                key={v.key}
-                type="button"
-                aria-pressed={view === v.key}
-                onClick={() => setParam({ vista: v.key === "list" ? null : v.key })}
-                className={view === v.key ? "rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground" : "rounded-md px-3 py-1 text-xs text-muted-foreground hover:bg-muted"}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-
-          <select
-            aria-label="Área o tipo"
-            value={filters.categoryId ?? ""}
-            onChange={(e) => setParam({ categoria: e.target.value || null })}
-            className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
-          >
-            <option value="">Todas las áreas</option>
-            {categoryTree(categories).map(({ area, types }) => (
-              <optgroup key={area.id} label={area.name}>
-                <option value={area.id}>{area.name} (todo)</option>
-                {types.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-
-          {scopeAll && (
-            <select
-              aria-label="Anfitrión"
-              value={filters.hostUserId ?? ""}
-              onChange={(e) => setParam({ anfitrion: e.target.value || null })}
-              className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+        <div className="flex flex-wrap gap-1.5">
+          {QUICK_PICK_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={quick === key}
+              onClick={() => setParam("filtro", key === "all" ? null : key)}
+              className={
+                quick === key
+                  ? "rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
+                  : "rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+              }
             >
-              <option value="">Todos los anfitriones</option>
-              {Object.entries(hostNames).map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <input
-            defaultValue={filters.search}
-            onBlur={(e) => setParam({ q: e.target.value || null })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setParam({ q: (e.target as HTMLInputElement).value || null });
-            }}
-            placeholder="Buscar contacto"
-            aria-label="Buscar contacto"
-            className="h-8 w-40 rounded-lg border border-input bg-background px-2 text-xs"
-          />
+              {QUICK_PICK_LABELS[key]} · <span className="tabular-nums">{counts[key]}</span>
+            </button>
+          ))}
         </div>
 
-        {view === "list" && (
-          <div className="flex flex-wrap gap-1.5">
-            {QUICK_ORDER.map((key) => (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={quick === key}
-                onClick={() => setParam({ filtro: key === "upcoming" ? null : key })}
-                className={
-                  quick === key
-                    ? "rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
-                    : "rounded-full border border-border px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
-                }
-              >
-                {QUICK_FILTER_LABELS[key]} · <span className="tabular-nums">{counts[key]}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {items.length === 0 && view !== "calendar" ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-border p-10 text-center">
-            <span aria-hidden className="grid h-12 w-12 place-items-center rounded-full bg-muted text-muted-foreground">
-              <CalendarDays className="h-6 w-6" />
-            </span>
-            <h2 className="text-base font-semibold">Todavía no hay agendas</h2>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Compartí el link de un evento o agendá a mano. Si todavía no conectaste tu Google Calendar, empezá por la configuración.
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Link href="/dashboard/agenda/configuracion/calendarios" className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                Conectar Google Calendar
-              </Link>
-              {canManage && (
-                <button type="button" onClick={() => setManualOpen(true)} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-                  + Agendar
-                </button>
-              )}
-            </div>
-          </div>
+        {isEmptyWorkspace ? (
+          <AgendaEmptyWorkspace events={shareableEvents} hasCalendar={hasCalendar} canManage={canManage} onBookManually={() => setManualOpen(true)} />
+        ) : isEmpty ? (
+          <AgendaEmptyFiltered onClearFilters={clearAll} onShowAll={() => setPeriod({ preset: "todo", from: null, to: null })} />
         ) : view === "list" ? (
           <>
             <BookingsList items={items} hostNames={hostNames} timezone={timezone} timeFormat={timeFormat} now={now} onOpen={openDetail} />
@@ -298,10 +289,20 @@ export function BookingsScreen({
                   {total} agendas · página {page} de {pages}
                 </span>
                 <span className="flex gap-2">
-                  <button type="button" disabled={page <= 1} onClick={() => setParam({ pagina: String(page - 1) })} className="rounded-lg border border-border px-2 py-1 disabled:opacity-40">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setParam("pagina", String(page - 1), { keepPage: true })}
+                    className="rounded-lg border border-border px-2 py-1 disabled:opacity-40"
+                  >
                     Anterior
                   </button>
-                  <button type="button" disabled={page >= pages} onClick={() => setParam({ pagina: String(page + 1) })} className="rounded-lg border border-border px-2 py-1 disabled:opacity-40">
+                  <button
+                    type="button"
+                    disabled={page >= pages}
+                    onClick={() => setParam("pagina", String(page + 1), { keepPage: true })}
+                    className="rounded-lg border border-border px-2 py-1 disabled:opacity-40"
+                  >
                     Siguiente
                   </button>
                 </span>
@@ -326,8 +327,8 @@ export function BookingsScreen({
             timeFormat={timeFormat}
             view={calendarView}
             anchor={calendarAnchor}
-            onView={(v) => setParam({ cal: v })}
-            onAnchor={(d) => setParam({ dia: d })}
+            onView={(v) => setParam("cal", v)}
+            onAnchor={(d) => setParam("dia", d)}
             onOpen={openDetail}
           />
         )}
