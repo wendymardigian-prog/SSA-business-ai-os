@@ -18,8 +18,8 @@ corrida one-shot desde el 8/10/2026.
 - Un video "sin voz" lo puede usar el agente con su descripcion (decision de Wendy).
 
 ## R1 — El modelo
-- [ ] F1 Migraciones 00131 y 00132, aplicadas, registradas y verificadas
-- [ ] F2 Tipos y reglas puras (`kind.ts`, `shape.ts`, `sniff`, `search.ts`)
+- [x] F1 Migraciones 00131 y 00132, aplicadas, registradas y verificadas (ensayo en transaccion: 6 tipos validos entran, 10 formas invalidas rechazadas, touch suma desde el servidor y no desde otro workspace)
+- [x] F2 Tipos y reglas puras (`kind.ts`, `shape.ts`, `files.ts`, `sniffUploadMime`, `search.ts`)
 
 ## R2 — La gestion
 - [ ] F3 Recursos en el menu lateral (misma ruta, la pestaña se queda)

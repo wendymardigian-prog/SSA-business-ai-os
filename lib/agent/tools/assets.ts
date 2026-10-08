@@ -82,13 +82,16 @@ async function loadEligibleAssets(supabase: Db, workspaceId: string, channelId: 
     .eq("agent_enabled", true)
     .eq("is_active", true)
     .is("deleted_at", null)
+    // Hasta que el agente sepa usar los seis tipos (R4 de la banca v2), ve
+    // solo los dos que ya sabia.
+    .in("kind", ["text", "audio"])
     .order("name");
   if (error) {
     console.error("[agent-tools/assets] no pude leer la banca:", error.message);
     return [];
   }
 
-  const rows = data ?? [];
+  const rows = (data ?? []) as EligibleAssetRow[];
   const texts = rows.filter((r) => r.kind === "text");
 
   const audioRows = rows.filter(

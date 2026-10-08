@@ -11,8 +11,8 @@ const assets = [
 const ids = (list: { id: string }[]) => list.map((a) => a.id);
 
 describe("filterAssets", () => {
-  it("sin busqueda devuelve todos", () => {
-    expect(ids(filterAssets(assets, ""))).toEqual(["1", "2", "3", "4"]);
+  it("sin busqueda devuelve todos; sin usos, por nombre", () => {
+    expect(ids(filterAssets(assets, ""))).toEqual(["3", "2", "1", "4"]);
   });
 
   it("encuentra por nombre y por atajo, de los dos tipos", () => {
@@ -50,5 +50,63 @@ describe("filterAssets", () => {
 
   it("un texto y un audio con el mismo atajo literal no pueden coexistir en los datos, pero la busqueda no asume eso", () => {
     expect(filterAssets([], "cualquier cosa")).toEqual([]);
+  });
+
+  describe("los seis tipos", () => {
+    const seis = [
+      { id: "t", kind: "text" as const, name: "Bienvenida", shortcut: null, content: "Hola {{contact.display_name}}", transcript: null },
+      { id: "v", kind: "video" as const, name: "Testimonio Ana", shortcut: "/ana", content: null, transcript: "subi las ventas un treinta por ciento", description: "Clienta de estetica" },
+      { id: "i", kind: "image" as const, name: "Flyer", shortcut: null, content: null, transcript: null, description: "Captura del panel de resultados" },
+      { id: "f", kind: "file" as const, name: "Propuesta", shortcut: null, content: null, transcript: null, description: "PDF con los planes y precios" },
+      { id: "l", kind: "link" as const, name: "Agenda", shortcut: "/agenda", content: null, transcript: null, url: "https://calendly.com/wendy", description: "Para reservar la llamada" },
+    ];
+
+    it("un video se busca por su transcripcion", () => {
+      expect(ids(filterAssets(seis, "treinta por ciento"))).toEqual(["v"]);
+    });
+
+    it("una imagen y un archivo se buscan por su descripcion", () => {
+      expect(ids(filterAssets(seis, "panel de resultados"))).toEqual(["i"]);
+      expect(ids(filterAssets(seis, "planes"))).toEqual(["f"]);
+    });
+
+    it("un enlace se busca por la URL y por la descripcion", () => {
+      expect(ids(filterAssets(seis, "calendly"))).toEqual(["l"]);
+      expect(ids(filterAssets(seis, "reservar"))).toEqual(["l"]);
+    });
+
+    it("la descripcion de un video tambien cuenta", () => {
+      expect(ids(filterAssets(seis, "estetica"))).toEqual(["v"]);
+    });
+
+    it("devuelve el recurso original, no el adaptado para buscar", () => {
+      const [video] = filterAssets(seis, "treinta");
+      expect(video.content).toBeNull();
+    });
+  });
+
+  describe("el orden por uso", () => {
+    const usados = [
+      { id: "a", kind: "text" as const, name: "Precio A", shortcut: null, content: "x", transcript: null, usageCount: 1 },
+      { id: "b", kind: "text" as const, name: "Precio B", shortcut: null, content: "x", transcript: null, usageCount: 9 },
+      { id: "c", kind: "text" as const, name: "Precio C", shortcut: null, content: "x", transcript: null, usageCount: 0, createdAt: "2026-10-08T10:00:00Z" },
+      { id: "d", kind: "text" as const, name: "Precio D", shortcut: null, content: "x", transcript: null, usageCount: 0, createdAt: "2026-10-01T10:00:00Z" },
+    ];
+
+    it("sin busqueda: los mas usados primero, despues los mas nuevos", () => {
+      expect(ids(filterAssets(usados, ""))).toEqual(["b", "a", "c", "d"]);
+    });
+
+    it("con busqueda, entre dos igual de relevantes gana el mas usado", () => {
+      expect(ids(filterAssets(usados, "precio"))).toEqual(["b", "a", "c", "d"]);
+    });
+
+    it("la relevancia le gana al uso", () => {
+      const lista = [
+        { id: "x", kind: "text" as const, name: "Otra cosa", shortcut: null, content: "habla del precio", transcript: null, usageCount: 50 },
+        { id: "y", kind: "text" as const, name: "Precio", shortcut: null, content: "x", transcript: null, usageCount: 0 },
+      ];
+      expect(ids(filterAssets(lista, "precio"))).toEqual(["y", "x"]);
+    });
   });
 });

@@ -2275,12 +2275,12 @@ export interface Database {
           },
         ];
       };
-      /** La banca de recursos: textos y audios en una sola tabla (migracion 00105/00106). Distinguidos por `kind`; el atajo es unico entre los dos tipos. */
+      /** La banca de recursos: textos, audios, videos, imagenes, archivos y enlaces en una sola tabla (migraciones 00105/00106/00131). Distinguidos por `kind`; el atajo es unico entre todos los tipos. */
       response_assets: {
         Row: {
           id: string;
           workspace_id: string;
-          kind: "text" | "audio";
+          kind: "text" | "audio" | "video" | "image" | "file" | "link";
           name: string;
           shortcut: string | null;
           description: string | null;
@@ -2296,6 +2296,12 @@ export interface Database {
           transcript_source: "auto" | "manual";
           transcript_started_at: string | null;
           source: "recorded" | "uploaded" | "synthesized" | null;
+          url: string | null;
+          link_kind: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          preview_path: string | null;
+          caption: string | null;
+          usage_count: number;
+          last_used_at: string | null;
           agent_enabled: boolean;
           is_active: boolean;
           created_by: string | null;
@@ -2306,7 +2312,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          kind: "text" | "audio";
+          kind: "text" | "audio" | "video" | "image" | "file" | "link";
           name: string;
           shortcut?: string | null;
           description?: string | null;
@@ -2322,6 +2328,12 @@ export interface Database {
           transcript_source?: "auto" | "manual";
           transcript_started_at?: string | null;
           source?: "recorded" | "uploaded" | "synthesized" | null;
+          url?: string | null;
+          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          preview_path?: string | null;
+          caption?: string | null;
+          usage_count?: number;
+          last_used_at?: string | null;
           agent_enabled?: boolean;
           is_active?: boolean;
           created_by?: string | null;
@@ -2345,6 +2357,12 @@ export interface Database {
           transcript_source?: "auto" | "manual";
           transcript_started_at?: string | null;
           source?: "recorded" | "uploaded" | "synthesized" | null;
+          url?: string | null;
+          link_kind?: "video" | "imagen" | "testimonio" | "articulo" | "landing" | "formulario" | "agenda" | "pago" | "otro" | null;
+          preview_path?: string | null;
+          caption?: string | null;
+          usage_count?: number;
+          last_used_at?: string | null;
           agent_enabled?: boolean;
           is_active?: boolean;
           updated_at?: string;
@@ -4295,6 +4313,11 @@ export interface Database {
        * Registra un toque de atribucion y recalcula el primero y el ultimo
        * (migracion 00114). Solo service_role. Idempotente por `dedupe_key`.
        */
+      /** Suma un uso a un recurso de la banca (00132). No revela si existe. */
+      touch_response_asset: {
+        Args: { p_asset_id: string };
+        Returns: undefined;
+      };
       record_contact_touch: {
         Args: {
           p_workspace_id: string;
