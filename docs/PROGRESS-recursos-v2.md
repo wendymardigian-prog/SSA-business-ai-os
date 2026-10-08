@@ -34,9 +34,9 @@ corrida one-shot desde el 8/10/2026.
 - [x] F10 Que acepta cada canal (`channelAccepts`, matriz entera en test; la API de envio lo aplica)
 
 ## R4 — El agente y la cañeria
-- [ ] F11 Las herramientas del agente con seis tipos
-- [ ] F12 Transcripcion de video
-- [ ] F13 La limpieza
+- [x] F11 Las herramientas del agente con seis tipos (filtro por tipo y etiqueta, solo lo que el canal acepta, video sin voz por descripcion, uno por respuesta, borrador y aprobacion, touch al usar)
+- [x] F12 Transcripcion de video (mp4 y webm por la misma puerta; mov y 3gp quedan en failed sin llamar al proveedor)
+- [x] F13 La limpieza (28 dias cubre los 4 tipos + miniatura; test que fija que la del chat nunca toca library/)
 
 ## Cierre
 - [ ] CLAUDE.md, docs/PENDIENTE.md

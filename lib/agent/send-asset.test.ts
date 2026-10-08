@@ -62,7 +62,16 @@ beforeEach(() => {
   sendChannelMessage.mockResolvedValue({ ok: true, platformMessageId: "plat-1" });
   copyAssetToChat.mockResolvedValue({
     ok: true,
-    copy: { storagePath: COPIED_PATH, mime: "audio/mp4", filename: "Precio.m4a", durationSeconds: 8 },
+    copy: {
+      assetKind: "audio",
+      kind: "audio",
+      storagePath: COPIED_PATH,
+      mime: "audio/mp4",
+      filename: "Precio.m4a",
+      durationSeconds: 8,
+      sizeBytes: 1000,
+      caption: null,
+    },
   });
 });
 
@@ -158,5 +167,71 @@ describe("sendAgentAsset: cuando falla la copia", () => {
     expect(sendChannelMessage).not.toHaveBeenCalled();
     expect(db.rows("messages")).toHaveLength(0);
     expect(db.rows("audit_log")).toHaveLength(0);
+  });
+});
+
+describe("sendAgentAsset: los tipos nuevos (banca v2)", () => {
+  it("un video sale como video, con su caption como texto y no la transcripcion", async () => {
+    const db = world();
+    copyAssetToChat.mockResolvedValue({
+      ok: true,
+      copy: {
+        assetKind: "video", kind: "video", storagePath: `${WS}/cv-1/library-v.mp4`, mime: "video/mp4",
+        filename: "Testimonio.mp4", durationSeconds: 30, sizeBytes: 5000, caption: "Mirá lo que logró Ana",
+      },
+    });
+
+    const result = await sendAgentAsset(db.client, ctx(), {
+      assetId: "v-1", name: "Testimonio", storagePath: `${WS}/library/v.mp4`, mimeType: "video/mp4",
+      durationSeconds: 30, transcript: "hola soy ana", caption: "Mirá lo que logró Ana",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sendChannelMessage).toHaveBeenCalledWith(
+      db.client,
+      expect.anything(),
+      expect.objectContaining({
+        text: "Mirá lo que logró Ana",
+        media: expect.objectContaining({ kind: "video", storagePath: `${WS}/cv-1/library-v.mp4` }),
+      }),
+    );
+    const row = db.rows("messages")[0];
+    expect(row).toMatchObject({ origin: "agent", text: "Mirá lo que logró Ana", status: "sent" });
+  });
+
+  it("un archivo sale como documento; sin caption, sin texto", async () => {
+    const db = world();
+    copyAssetToChat.mockResolvedValue({
+      ok: true,
+      copy: {
+        assetKind: "file", kind: "document", storagePath: `${WS}/cv-1/library-p.pdf`, mime: "application/pdf",
+        filename: "Propuesta.pdf", durationSeconds: null, sizeBytes: 2000, caption: null,
+      },
+    });
+
+    await sendAgentAsset(db.client, ctx(), {
+      assetId: "f-1", name: "Propuesta", storagePath: `${WS}/library/p.pdf`, mimeType: "application/pdf",
+      durationSeconds: null, transcript: null,
+    });
+
+    expect(sendChannelMessage).toHaveBeenCalledWith(
+      db.client,
+      expect.anything(),
+      expect.objectContaining({ text: "", media: expect.objectContaining({ kind: "document", filename: "Propuesta.pdf" }) }),
+    );
+    expect(db.rows("conversations")[0].last_message_preview).toMatch(/Propuesta/);
+  });
+
+  it("al salir bien, cuenta el uso por la funcion de la base", async () => {
+    const db = world();
+    await sendAgentAsset(db.client, ctx(), ASSET);
+    expect(db.rpcCalls).toContainEqual({ name: "touch_response_asset", args: { p_asset_id: "a-1" } });
+  });
+
+  it("si el envio falla, no cuenta el uso", async () => {
+    const db = world();
+    sendChannelMessage.mockResolvedValue({ ok: false, failure: { kind: "unknown", message: "boom", retryable: true } });
+    await sendAgentAsset(db.client, ctx(), ASSET);
+    expect(db.rpcCalls.find((c) => c.name === "touch_response_asset")).toBeUndefined();
   });
 });

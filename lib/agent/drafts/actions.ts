@@ -13,6 +13,8 @@ import { AUTO_DISCARD, DECIDABLE_DRAFT_STATUSES, hasGuardrailReview, parseSugges
 import { findWhatsappLinkForRun } from "../tools/whatsapp-link";
 import { recordWhatsappHandoff } from "../whatsapp-handoff";
 import { sendAgentAsset } from "../send-asset";
+import { agentUsable, type TranscriptStatus } from "@/lib/response-assets/list";
+import type { AssetKind } from "@/lib/response-assets/kind";
 
 /**
  * Las decisiones sobre un borrador (Bloque 2c): enviar (tal cual o editado),
@@ -347,17 +349,29 @@ async function applySuggestions(
           { minutes: s.minutes, reason: s.reason, now },
         );
       } else if (s.type === "send_asset") {
-        // Se relee el audio en vez de confiar en lo que dejo la sugerencia:
+        // Se relee el recurso en vez de confiar en lo que dejo la sugerencia:
         // entre que el agente lo eligio y que Ana aprueba puede haberse
         // dado de baja, apagado para el agente, o perdido la transcripcion.
+        // Misma regla que la herramienta (agentUsable): un audio o un video
+        // con voz necesitan la transcripcion lista; un video sin voz, una
+        // imagen o un archivo, no.
         const { data: asset } = await service
           .from("response_assets")
-          .select("id, name, storage_path, mime_type, duration_seconds, transcript, transcript_status, agent_enabled, is_active, deleted_at")
+          .select("id, kind, name, storage_path, mime_type, duration_seconds, transcript, transcript_status, caption, agent_enabled, is_active, deleted_at")
           .eq("id", s.assetId)
           .eq("workspace_id", draft.workspace_id)
-          .eq("kind", "audio")
+          .in("kind", ["audio", "video", "image", "file"])
           .maybeSingle();
-        if (asset && asset.is_active && !asset.deleted_at && asset.agent_enabled && asset.transcript_status === "ready" && asset.transcript && asset.storage_path && asset.mime_type) {
+        const usable =
+          asset &&
+          asset.is_active &&
+          !asset.deleted_at &&
+          asset.agent_enabled &&
+          asset.storage_path &&
+          asset.mime_type &&
+          agentUsable({ kind: asset.kind as AssetKind, transcriptStatus: asset.transcript_status as TranscriptStatus }) &&
+          (asset.transcript_status !== "ready" || Boolean(asset.transcript));
+        if (asset && usable && asset.storage_path && asset.mime_type) {
           await sendAgentAsset(
             service,
             {
@@ -376,11 +390,12 @@ async function applySuggestions(
               storagePath: asset.storage_path,
               mimeType: asset.mime_type,
               durationSeconds: asset.duration_seconds,
-              transcript: asset.transcript,
+              transcript: asset.transcript_status === "ready" ? asset.transcript : null,
+              caption: asset.caption,
             },
           );
         } else {
-          console.error("[drafts] el audio sugerido ya no esta disponible para el agente:", s.assetId);
+          console.error("[drafts] el recurso sugerido ya no esta disponible para el agente:", s.assetId);
         }
       }
     } catch (err) {

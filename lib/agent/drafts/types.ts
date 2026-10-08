@@ -20,9 +20,11 @@ export type SuggestedAction =
    */
   | { type: "guardrail_review"; hits: Array<{ rule: string; text: string }> }
   /**
-   * usar_recurso con un audio, en modo borrador: el audio de la banca que el
-   * agente eligio no se manda solo, queda anotado para que la bandeja lo
-   * muestre con su reproductor y se mande recien al aprobar el borrador.
+   * usar_recurso con un recurso con archivo (audio, video, imagen o archivo),
+   * en modo borrador: lo que el agente eligio no se manda solo, queda anotado
+   * para que la bandeja lo muestre (reproductor, imagen o archivo) y se mande
+   * recien al aprobar el borrador. `kind` falta en las sugerencias de antes
+   * de la banca v2: esas son audios.
    * Lleva el archivo (no solo el id) para que la tarjeta lo reproduzca sin
    * una consulta aparte; al aprobar, applySuggestions vuelve a leer la base
    * por las dudas de que haya cambiado entre que se sugirio y que se aprobo.
@@ -30,6 +32,7 @@ export type SuggestedAction =
   | {
       type: "send_asset";
       assetId: string;
+      kind?: "audio" | "video" | "image" | "file";
       name: string;
       storagePath: string;
       mimeType: string;

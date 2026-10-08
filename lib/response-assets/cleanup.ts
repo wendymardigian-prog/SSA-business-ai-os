@@ -1,6 +1,7 @@
 /**
- * Red de seguridad: borra el archivo de un recurso de audio dado de baja
- * hace mas de 28 dias, por si el borrado inmediato fallo.
+ * Red de seguridad: borra los archivos de un recurso dado de baja hace mas de
+ * 28 dias (el archivo de un audio, un video, una imagen o un documento, y la
+ * miniatura de un video), por si el borrado inmediato fallo.
  *
  * `deleteAsset` y el reemplazo de `updateAsset`
  * (lib/actions/response-assets.ts) ya borran el archivo del bucket EN EL
@@ -11,8 +12,8 @@
  *
  * 28 dias y no 30: deja un margen antes de que `purge_soft_deleted` (00106)
  * se lleve la fila entera. No se escribe nada en la base: `storage_path`
- * sigue NOT NULL para un audio (CHECK `response_assets_audio_shape`, que no
- * exime a una fila borrada), asi que la unica forma idempotente de barrer es
+ * sigue NOT NULL para los tipos con archivo (CHECK `response_assets_file_shape`,
+ * 00131, que no exime a una fila borrada), asi que la unica forma idempotente de barrer es
  * reintentar el borrado del archivo sin tocar la fila -- borrar un objeto
  * que ya no esta no da error, asi que reintentar los dos dias que faltan
  * hasta la purga no tiene costo.
@@ -25,6 +26,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+import { FILE_KINDS } from "./kind";
 
 type Db = SupabaseClient<Database>;
 
@@ -35,6 +37,8 @@ const BATCH = 200;
 export interface AssetToCleanStorage {
   id: string;
   storage_path: string | null;
+  /** La miniatura de un video. */
+  preview_path?: string | null;
 }
 
 export interface AssetCleanupPlan {
@@ -42,12 +46,12 @@ export interface AssetCleanupPlan {
   path: string;
 }
 
-/** Que archivos reintentar: los de un recurso de audio con storage_path todavia escrito. */
+/** Que archivos reintentar: el archivo y la miniatura de cada recurso, los que esten escritos. */
 export function planAssetStorageCleanup(args: { assets: AssetToCleanStorage[] }): AssetCleanupPlan[] {
   const plans: AssetCleanupPlan[] = [];
   for (const asset of args.assets) {
-    if (!asset.storage_path) continue;
-    plans.push({ assetId: asset.id, path: asset.storage_path });
+    if (asset.storage_path) plans.push({ assetId: asset.id, path: asset.storage_path });
+    if (asset.preview_path) plans.push({ assetId: asset.id, path: asset.preview_path });
   }
   return plans;
 }
@@ -60,8 +64,8 @@ export async function cleanupOrphanedAssetFiles(
 
   const { data: assets, error } = await supabase
     .from("response_assets")
-    .select("id, storage_path")
-    .eq("kind", "audio")
+    .select("id, storage_path, preview_path")
+    .in("kind", [...FILE_KINDS])
     .not("deleted_at", "is", null)
     .lt("deleted_at", cutoff)
     .not("storage_path", "is", null)

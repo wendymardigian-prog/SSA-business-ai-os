@@ -21,6 +21,11 @@
  *   C. La foto de un contacto copiada a Storage (F16) sigue el path
  *      `avatars/<ws>/contacts/<id>.jpg` (bucket publico, migracion 00095,
  *      ya aplicada).
+ *   D. La banca de seis tipos (00131/00132, banca v2): la base acepta la
+ *      forma valida de cada tipo y rechaza las invalidas (no solo la
+ *      pantalla), un rol personalizado con `templates.manage` escribe y un
+ *      Member no, y `touch_response_asset` cuenta los usos de tu workspace
+ *      sin revelar ni tocar los de otro.
  *
  * Crea y borra todo lo suyo (prefijo zz-test-), DB y Storage. Una limpieza
  * que falla es una prueba que falla. No correr en simultaneo con otro
@@ -175,6 +180,76 @@ try {
         check(Boolean(clashErr), "un audio no puede compartir atajo con un texto ya existente");
       }
     }
+  }
+
+  console.log("\n— D. La banca de seis tipos (00131/00132) —");
+  {
+    const lib = (name) => `${wsA.id}/library/zz-test-${name}`;
+    const valid = [
+      { kind: "text", name: "zz-test v2 texto", content: "Hola" },
+      { kind: "audio", name: "zz-test v2 audio", description: "d", storage_path: lib("a.m4a"), mime_type: "audio/mp4", source: "recorded" },
+      { kind: "video", name: "zz-test v2 video", description: "d", storage_path: lib("v.mp4"), mime_type: "video/mp4", source: "uploaded", preview_path: lib("v-preview.jpg"), caption: "Mirá" },
+      { kind: "image", name: "zz-test v2 imagen", description: "d", storage_path: lib("i.png"), mime_type: "image/png", source: "uploaded" },
+      { kind: "file", name: "zz-test v2 archivo", description: "d", storage_path: lib("f.pdf"), mime_type: "application/pdf", source: "uploaded" },
+      { kind: "link", name: "zz-test v2 enlace", description: "d", url: "https://example.test/agenda", link_kind: "agenda" },
+    ];
+    for (const row of valid) {
+      const { error } = await svc.from("response_assets").insert({ workspace_id: wsA.id, ...row });
+      check(!error, `la base acepta un ${row.kind} con su forma valida`, error?.message);
+    }
+
+    const invalid = [
+      ["un septimo tipo", { kind: "gif", name: "zz-test v2 gif", content: "x" }],
+      ["un enlace sin url", { kind: "link", name: "zz-test v2 l1", description: "d", link_kind: "otro" }],
+      ["un enlace con url que no es http", { kind: "link", name: "zz-test v2 l2", description: "d", url: "javascript:alert(1)", link_kind: "otro" }],
+      ["una clase de enlace fuera de la lista", { kind: "link", name: "zz-test v2 l3", description: "d", url: "https://x.test", link_kind: "testimonios" }],
+      ["un texto con clase de enlace", { kind: "text", name: "zz-test v2 t1", content: "x", link_kind: "otro" }],
+      ["una imagen sin descripcion", { kind: "image", name: "zz-test v2 i1", storage_path: lib("i1.png"), mime_type: "image/png", source: "uploaded" }],
+      ["una miniatura en algo que no es video", { kind: "image", name: "zz-test v2 i2", description: "d", storage_path: lib("i2.png"), mime_type: "image/png", source: "uploaded", preview_path: lib("x.jpg") }],
+      ["un archivo transcribiendose", { kind: "file", name: "zz-test v2 f1", description: "d", storage_path: lib("f1.pdf"), mime_type: "application/pdf", source: "uploaded", transcript_status: "pending" }],
+      ["un video grabado en el navegador", { kind: "video", name: "zz-test v2 v1", description: "d", storage_path: lib("v1.mp4"), mime_type: "video/mp4", source: "recorded" }],
+    ];
+    for (const [label, row] of invalid) {
+      const { error } = await svc.from("response_assets").insert({ workspace_id: wsA.id, ...row });
+      check(Boolean(error), `la base rechaza ${label} (no solo la pantalla)`);
+    }
+
+    // Un rol personalizado con templates.manage escribe; el Member de sistema no.
+    const { data: rol, error: rolErr } = await svc.from("workspace_roles").insert({
+      workspace_id: wsA.id,
+      name: "zz-test Editor de recursos",
+      description: "Solo administra la banca",
+      permissions: { keys: ["templates.manage"], scopes: { leads: "own", conversations: "own" } },
+    }).select("id").single();
+    if (rolErr) {
+      fail("no pude crear el rol personalizado (precondicion)", rolErr.message);
+    } else {
+      const editor = await makeUser("cm-editor");
+      await svc.from("workspace_members").insert({ workspace_id: wsA.id, user_id: editor.id, role: "member", role_id: rol.id });
+      const { error: eEditor } = await editor.client.from("response_assets")
+        .insert({ workspace_id: wsA.id, kind: "text", name: "zz-test v2 desde el editor", content: "hola" });
+      check(!eEditor, "un rol personalizado con templates.manage SI puede crear un recurso", eEditor?.message);
+      const { error: eMember } = await member.client.from("response_assets")
+        .insert({ workspace_id: wsA.id, kind: "text", name: "zz-test v2 desde el member", content: "hola" });
+      check(Boolean(eMember), "el Member de sistema sigue sin poder crear");
+    }
+
+    // touch_response_asset: cuenta lo propio, no toca ni revela lo ajeno.
+    const { data: target } = await svc.from("response_assets")
+      .select("id, usage_count").eq("workspace_id", wsA.id).eq("name", "zz-test v2 texto").single();
+    const { error: eTouch } = await member.client.rpc("touch_response_asset", { p_asset_id: target.id });
+    const { data: afterMember } = await svc.from("response_assets").select("usage_count, last_used_at").eq("id", target.id).single();
+    check(!eTouch && afterMember.usage_count === target.usage_count + 1 && afterMember.last_used_at,
+      "un Member (sin escritura sobre la tabla) cuenta el uso de un recurso de su workspace", eTouch?.message);
+
+    const { error: eAjenoTouch } = await ajeno.client.rpc("touch_response_asset", { p_asset_id: target.id });
+    const { data: afterAjeno } = await svc.from("response_assets").select("usage_count").eq("id", target.id).single();
+    check(!eAjenoTouch && afterAjeno.usage_count === afterMember.usage_count,
+      "uno de otro workspace no lo cuenta, y la funcion no le dice que existe (sin error)");
+
+    const { error: eSvcTouch } = await svc.rpc("touch_response_asset", { p_asset_id: target.id });
+    const { data: afterSvc } = await svc.from("response_assets").select("usage_count").eq("id", target.id).single();
+    check(!eSvcTouch && afterSvc.usage_count === afterMember.usage_count + 1, "el servidor (el agente) tambien cuenta", eSvcTouch?.message);
   }
 
   console.log("\n— C. La foto de un contacto en avatars/<ws>/contacts/<id>.jpg (F16) —");

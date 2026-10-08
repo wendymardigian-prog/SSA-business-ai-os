@@ -128,3 +128,28 @@ describe("planChatMediaCleanup (F5)", () => {
       .toEqual([]);
   });
 });
+
+describe("la banca de recursos nunca entra en esta limpieza (banca v2, F13)", () => {
+  it("de un recurso mandado se borra la COPIA de la conversacion, nunca el archivo de library/", () => {
+    // Asi queda un mensaje que mando un recurso de cada tipo con archivo: la
+    // copia vive en <ws>/<conversacion>/library-<uuid>.<ext>
+    // (lib/response-assets/send-copy.ts), nunca en <ws>/library/.
+    const sent = [
+      emptyAttachment("audio", { status: "ready", storagePath: "ws-1/cv-1/library-a.m4a", mime: "audio/mp4" }),
+      emptyAttachment("video", { status: "ready", storagePath: "ws-1/cv-1/library-v.mp4", mime: "video/mp4" }),
+      emptyAttachment("image", { status: "ready", storagePath: "ws-1/cv-1/library-i.png", mime: "image/png" }),
+      emptyAttachment("document", { status: "ready", storagePath: "ws-1/cv-1/library-f.pdf", mime: "application/pdf" }),
+    ];
+    const plans = planChatMediaCleanup({
+      messages: [message({ attachments: { v: 2, items: sent } })],
+      retentionDays: 180,
+      now: NOW,
+    });
+
+    const paths = plans.flatMap((p) => p.paths);
+    expect(paths).toHaveLength(4);
+    expect(paths.every((path) => path.startsWith("ws-1/cv-1/"))).toBe(true);
+    expect(paths.some((path) => path.startsWith("ws-1/library/"))).toBe(false);
+  });
+});
+
