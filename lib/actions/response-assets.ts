@@ -614,3 +614,22 @@ export async function prepareAssetSend(
 
   return { ok: true, copy: result.copy };
 }
+
+/**
+ * Suma un uso al recurso que se acaba de mandar (para que el widget ponga
+ * arriba lo que de verdad se usa). Pasa por touch_response_asset (00132):
+ * cualquier miembro la puede llamar sin tener escritura sobre la tabla, y
+ * solo cuenta recursos de su workspace.
+ *
+ * **Nunca falla hacia afuera.** El contador es un lujo, el mensaje es el
+ * trabajo: se llama DESPUES de mandar, y si esto falla, se loguea y listo.
+ */
+export async function markAssetUsed(assetId: string): Promise<void> {
+  try {
+    const { supabase } = await getWorkspace();
+    const { error } = await supabase.rpc("touch_response_asset", { p_asset_id: assetId });
+    if (error) console.error("[response-assets] no pude contar el uso:", error.message);
+  } catch (err) {
+    console.error("[response-assets] no pude contar el uso:", err instanceof Error ? err.message : err);
+  }
+}

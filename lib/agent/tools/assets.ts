@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
-import { channelAcceptsMedia } from "@/lib/channels/media";
+import { channelAccepts as channelAcceptsKind } from "@/lib/channels/media";
 import type { AgentToolDefinition } from "./types";
 
 /**
@@ -70,7 +70,7 @@ async function channelAccepts(supabase: Db, channelId: string | null): Promise<b
   if (!channelId) return false;
   const { data, error } = await supabase.from("channels").select("provider").eq("id", channelId).maybeSingle();
   if (error || !data) return false;
-  return channelAcceptsMedia(data.provider);
+  return channelAcceptsKind(data.provider, "audio").ok;
 }
 
 /** Los recursos que el agente puede usar: habilitados y activos; un audio ademas con transcripcion lista. */

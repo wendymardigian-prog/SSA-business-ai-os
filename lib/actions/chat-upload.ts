@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { sniffMime } from "@/lib/content/media";
+import { sniffUploadMime } from "@/lib/content/media";
 import { CHAT_MEDIA_BUCKET, MAX_CHAT_UPLOAD_BYTES, extensionForMime } from "@/lib/chat-media/bucket";
 import type { AttachmentKind } from "@/lib/messages/attachments";
 
@@ -63,7 +63,10 @@ export async function requestChatUpload(input: {
     return { ok: false, error: `El archivo pesa ${mb} MB y el máximo es 16 MB` };
   }
 
-  const mime = sniffMime(new Uint8Array(Buffer.from(input.headBase64, "base64")));
+  // sniffUploadMime: reconoce tambien un Word/Excel/PowerPoint (por su
+  // contenedor + lo declarado), una foto HEIC y un video WebM, que sniffMime
+  // solo no distingue (banca v2).
+  const mime = sniffUploadMime(new Uint8Array(Buffer.from(input.headBase64, "base64")), input.declaredMime);
   if (!mime) {
     return {
       ok: false,

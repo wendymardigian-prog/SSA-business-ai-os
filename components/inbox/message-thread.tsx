@@ -1,17 +1,23 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useReducer } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Trash2 } from "lucide-react";
+import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
 import { createClient } from "@/lib/supabase/client";
 import { AssetPicker } from "@/components/inbox/asset-picker";
-import { filterAssets } from "@/lib/response-assets/search";
-import type { AssetKind } from "@/lib/response-assets/kind";
-import { interpolateTemplate } from "@/lib/templates/interpolate";
-import { channelAcceptsMedia } from "@/lib/channels/media";
-import { prepareAssetSend } from "@/lib/actions/response-assets";
+import type { BankAsset } from "@/lib/response-assets/list";
+import {
+  CLOSED_WIDGET,
+  isWidgetShortcut,
+  opensBySlash,
+  textToRestoreOnClose,
+  widgetReducer,
+  widgetShortcutLabel,
+} from "@/lib/inbox/asset-widget";
+import { markAssetUsed, prepareAssetSend } from "@/lib/actions/response-assets";
+import type { AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -35,11 +41,6 @@ import { headBase64Of } from "@/lib/content/media";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 type Conversation = ConversationRow;
-
-/** Misma ruta firmada que usa cualquier adjunto del hilo (F2): nunca una URL publica. */
-function audioUrlFor(storagePath: string): string {
-  return `/api/v1/chat-media?path=${encodeURIComponent(storagePath)}`;
-}
 
 function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -182,35 +183,23 @@ function StaleConversationNotice({ days }: { days: number }) {
 }
 
 /**
- * Un recurso de la banca (texto o audio), lo que necesita el picker "/" para
- * listarlo y mandarlo. Un texto trae `content`; un audio trae `transcript` y
- * los campos de archivo. Nunca los dos (lo garantiza el CHECK de la tabla).
+ * Un recurso de la banca, como lo usa el widget de la bandeja: el mismo tipo
+ * que la pantalla de gestion (lib/response-assets/list.ts), los seis tipos.
  */
-export interface InboxAsset {
-  id: string;
-  kind: AssetKind;
-  name: string;
-  shortcut: string | null;
-  content: string | null;
-  transcript: string | null;
-  tags: string[];
-  storagePath: string | null;
-  mimeType: string | null;
-  durationSeconds: number | null;
-}
+export type InboxAsset = BankAsset;
 
-/** Lo que devuelve prepareAssetSend: el archivo ya copiado a la conversacion. */
-interface PreparedAudioCopy {
-  storagePath: string;
-  mime: string;
-  filename: string;
-  durationSeconds: number | null;
+/** Un recurso con archivo ya copiado a la conversacion, esperando salir. */
+interface PreparedAssetSend {
+  assetId: string;
+  copy: AssetChatCopy;
+  caption: string;
 }
 
 export function MessageThread({
   conversation,
   messages: initialMessages,
   assets = [],
+  canManageAssets = false,
   workspaceName = "",
   agentInfo = null,
   channelProvider = null,
@@ -219,15 +208,17 @@ export function MessageThread({
 }: {
   conversation: Conversation | null;
   messages: Message[];
-  /** La banca de recursos del workspace (textos y audios), para el selector "/". */
+  /** La banca de recursos del workspace (los seis tipos), para el widget de recursos. */
   assets?: InboxAsset[];
+  /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
+  canManageAssets?: boolean;
   workspaceName?: string;
   /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
   agentInfo?: ChannelAgentInfo | null;
   /**
    * El `provider` del canal de esta conversacion (evolution/zernio/resend).
-   * Decide si el picker ofrece audios: un email no los puede mandar
-   * (lib/channels/media.ts).
+   * Decide que tipos de recurso se pueden mandar aca (lib/channels/media.ts):
+   * los que no, el widget los muestra deshabilitados con el motivo.
    */
   channelProvider?: string | null;
   /** Telefono (Bloque 2d): el hilo ocupa la pantalla y se vuelve a la lista. */
@@ -240,27 +231,29 @@ export function MessageThread({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
-  // El selector se cierra con Escape aunque el texto siga arrancando con "/",
-  // porque hay quien de verdad quiere escribir una barra.
-  const [pickerDismissed, setPickerDismissed] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  // El widget de recursos guardados (banca v2): se abre con "/", con el boton
+  // de la biblioteca o con ⌘/Ctrl + /. Su estado vive en un reducer puro.
+  const [widget, dispatchWidget] = useReducer(widgetReducer, CLOSED_WIDGET);
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl + /");
   const [confirmingDoNotContact, setConfirmingDoNotContact] = useState(false);
   // F18/F19: grabar y adjuntar. recording y attachedFile son excluyentes
   // entre si y con escribir texto (el mic solo se ve con el textarea vacio).
   const [recording, setRecording] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
-  // El elegido con "/" queda en preview (reproductor + Enviar) antes de
-  // mandarse de verdad. Solo aplica a un audio: un texto se inserta directo.
-  const [assetPreview, setAssetPreview] = useState<InboxAsset | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** El envio de media que quedo esperando la confirmacion de "no contactar". */
   const pendingMediaRef = useRef<{ file: File; filename: string; durationSeconds: number | null; isRecording: boolean } | null>(null);
-  /** Un audio de la banca ya copiado a la conversacion, esperando esa misma confirmacion. */
-  const pendingAssetCopyRef = useRef<PreparedAudioCopy | null>(null);
+  /** Un recurso de la banca ya copiado a la conversacion, esperando esa misma confirmacion. */
+  const pendingAssetCopyRef = useRef<PreparedAssetSend | null>(null);
+  /**
+   * El texto o enlace de la banca que se inserto en el composer: si sale, se
+   * cuenta su uso. Se olvida si el composer queda vacio.
+   */
+  const insertedAssetIdRef = useRef<string | null>(null);
 
   // Dias sin respuesta del lead. Sale de contacts.last_interaction_at y no del
   // ultimo mensaje del hilo: es el dato que marcan los dos receptores al
@@ -289,42 +282,55 @@ export function MessageThread({
     }
   }, [conversation, statusUpdating, router]);
 
-  // Un email no puede mandar un audio (lib/channels/media.ts): el picker no
-  // se lo ofrece, en vez de dejarlo elegir algo que despues el servidor
-  // rechaza.
-  const visibleAssets = channelAcceptsMedia(channelProvider) ? assets : assets.filter((a) => a.kind === "text");
+  const templateContext = { contact: conversation?.contacts ?? null, workspace: { name: workspaceName } };
 
-  // El selector se abre cuando el texto arranca con "/", que es exactamente lo
-  // que queda al escribir la barra en un campo vacio. Pegar una URL no lo
-  // abre: "https://..." no empieza con barra.
-  const pickerOpen = !pickerDismissed && visibleAssets.length > 0 && input.startsWith("/");
-  const assetMatches = pickerOpen ? filterAssets(visibleAssets, input.slice(1)) : [];
+  const openWidget = useCallback((bySlash: boolean, query = "") => {
+    setMediaError(null);
+    dispatchWidget({ type: "open", bySlash, query });
+  }, []);
 
   /**
-   * Elegir un recurso del picker: un texto se inserta interpolado y editable
-   * (igual que antes); un audio abre un preview con reproductor y Enviar, y
-   * no manda nada todavia -- nadie manda un audio sin poder escucharlo antes.
+   * Cerrar el widget. Con Escape desde la lista, si se habia abierto con "/",
+   * la barra (y lo buscado) vuelven al composer: hay quien de verdad quiere
+   * escribir una barra.
    */
-  function pickAsset(asset: InboxAsset) {
-    if (asset.kind === "audio") {
-      setAssetPreview(asset);
-      setInput("");
-      setPickerDismissed(true);
-      setMediaError(null);
-      return;
-    }
-    setInput(
-      interpolateTemplate(asset.content ?? "", {
-        contact: conversation?.contacts ?? null,
-        workspace: { name: workspaceName },
-      }),
-    );
-    setPickerDismissed(true);
+  const closeWidget = useCallback((restore: boolean) => {
+    const text = restore ? textToRestoreOnClose(widget) : null;
+    dispatchWidget({ type: "close" });
+    if (text !== null) setInput(text);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [widget]);
+
+  /** Un texto o un enlace de la banca: se inserta editable, nunca se manda solo. */
+  function insertAsset(text: string, asset: InboxAsset) {
+    setInput(text);
+    insertedAssetIdRef.current = asset.id;
+    dispatchWidget({ type: "close" });
     textareaRef.current?.focus();
     // El textarea creció de una linea a varias: hay que remedirlo despues de
     // que React pinte el valor nuevo.
     requestAnimationFrame(autoResize);
   }
+
+  // ⌘/Ctrl + / abre el widget desde cualquier lugar de la conversacion.
+  useEffect(() => {
+    setShortcutLabel(widgetShortcutLabel(typeof navigator !== "undefined" ? navigator.platform : null));
+    const onKey = (event: KeyboardEvent) => {
+      if (!isWidgetShortcut(event)) return;
+      event.preventDefault();
+      dispatchWidget(
+        widget.view === "closed" ? { type: "open", bySlash: false } : { type: "close" },
+      );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [widget.view]);
+
+  // Cambiar de conversacion cierra el widget: lo que se miraba era para otra.
+  useEffect(() => {
+    dispatchWidget({ type: "close" });
+    insertedAssetIdRef.current = null;
+  }, [conversation?.id]);
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current;
@@ -473,6 +479,12 @@ export function MessageThread({
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticId ? confirmedMessage : m))
       );
+      // Si salio un texto o un enlace de la banca, cuenta como uso. Despues de
+      // mandar y sin esperar: el contador nunca puede frenar un mensaje.
+      if (insertedAssetIdRef.current) {
+        void markAssetUsed(insertedAssetIdRef.current);
+        insertedAssetIdRef.current = null;
+      }
       // Responder a mano apaga el agente de la conversacion (lo hace el
       // servidor): se refresca para que el toggle lo muestre.
       if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
@@ -565,7 +577,6 @@ export function MessageThread({
       setInput("");
       setRecording(false);
       setAttachedFile(null);
-      setAssetPreview(null);
       if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
     } catch (err) {
       console.error("Failed to send media:", err);
@@ -576,16 +587,17 @@ export function MessageThread({
   }
 
   /**
-   * Manda un audio ya copiado a la conversacion (prepareAssetSend). Analogo
-   * a sendMediaFile, pero sin pasos de subida: la copia server-side
-   * (lib/response-assets/send-copy.ts) ya dejo el archivo en destino, asi
-   * que solo queda pedirle a sendChannelMessage que lo mande.
+   * Manda un recurso con archivo ya copiado a la conversacion
+   * (prepareAssetSend). Analogo a sendMediaFile, pero sin pasos de subida: la
+   * copia server-side (lib/response-assets/send-copy.ts) ya dejo el archivo
+   * en destino, asi que solo queda pedirle a sendChannelMessage que lo mande.
+   * El texto que lo acompaña es el caption del preview.
    */
-  async function sendPreparedAudio(copy: PreparedAudioCopy, confirmedDoNotContact: boolean) {
+  async function sendPreparedAsset(prepared: PreparedAssetSend, confirmedDoNotContact: boolean) {
     if (!conversation) return;
     setSending(true);
     setMediaError(null);
-    const caption = input.trim();
+    const { copy, caption, assetId } = prepared;
 
     try {
       const res = await fetch("/api/v1/messages", {
@@ -593,8 +605,8 @@ export function MessageThread({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: conversation.id,
-          text: caption || undefined,
-          media: { storagePath: copy.storagePath, kind: "audio", mime: copy.mime, filename: copy.filename, durationSeconds: copy.durationSeconds },
+          text: caption.trim() || undefined,
+          media: { storagePath: copy.storagePath, kind: copy.kind, mime: copy.mime, filename: copy.filename, durationSeconds: copy.durationSeconds },
           confirmedDoNotContact,
         }),
       });
@@ -607,11 +619,12 @@ export function MessageThread({
 
       const confirmedMessage: Message = await res.json();
       setMessages((prev) => [...prev, confirmedMessage]);
-      setInput("");
-      setAssetPreview(null);
+      dispatchWidget({ type: "close" });
+      // Despues de mandar y sin esperar: el contador nunca frena un envio.
+      void markAssetUsed(assetId);
       if (conversation.agent_enabled || conversation.last_agent_error_at) router.refresh();
     } catch (err) {
-      console.error("Failed to send prepared audio:", err);
+      console.error("Failed to send library asset:", err);
       setMediaError("No se pudo enviar el archivo. Probá de nuevo.");
     } finally {
       setSending(false);
@@ -619,41 +632,43 @@ export function MessageThread({
   }
 
   /**
-   * Manda un audio de la banca elegido con "/": copia el archivo a la
-   * conversacion del lado del servidor (lib/actions/response-assets.ts,
-   * prepareAssetSend) y lo manda por sendPreparedAudio, por el mismo camino
+   * Manda un recurso con archivo de la banca, desde el preview del widget:
+   * copia el archivo a la conversacion del lado del servidor
+   * (prepareAssetSend) y lo manda por sendPreparedAsset, por el mismo camino
    * que cualquier adjunto (Bloque 5/F19). No hay un envio paralelo para "un
-   * audio de la biblioteca".
+   * recurso de la biblioteca", y nunca se manda el archivo de la biblioteca
+   * directo: el barrido de 180 dias del chat se llevaria el recurso entero.
    *
-   * El chequeo de Instagram va ANTES de copiar nada: subir un archivo que el
-   * servidor va a terminar rechazando es trabajo de mas.
+   * Que el canal lo acepte ya lo chequeo el widget (channelAccepts) antes de
+   * habilitar Enviar; la API lo vuelve a chequear.
    */
-  async function sendLibraryAudio(asset: InboxAsset, confirmedDoNotContact = false) {
-    if (!conversation || sending || asset.kind !== "audio" || !asset.mimeType) return;
+  async function sendLibraryAsset(asset: InboxAsset, caption: string) {
+    if (!conversation || sending) return;
     setMediaError(null);
-
-    if (conversation.platform === "instagram" && !instagramAcceptsAudio(asset.mimeType)) {
-      setMediaError(INSTAGRAM_AUDIO_REJECTED_MESSAGE);
-      return;
-    }
+    setSending(true);
 
     try {
       const prepared = await prepareAssetSend(conversation.id, asset.id);
       if (!prepared.ok) {
         setMediaError(prepared.error);
+        setSending(false);
         return;
       }
 
-      if (conversation.contacts?.do_not_contact && !confirmedDoNotContact) {
-        pendingAssetCopyRef.current = prepared.copy;
+      const pending: PreparedAssetSend = { assetId: asset.id, copy: prepared.copy, caption };
+      if (conversation.contacts?.do_not_contact) {
+        pendingAssetCopyRef.current = pending;
+        setSending(false);
         setConfirmingDoNotContact(true);
         return;
       }
 
-      await sendPreparedAudio(prepared.copy, confirmedDoNotContact);
+      setSending(false);
+      await sendPreparedAsset(pending, false);
     } catch (err) {
-      console.error("Failed to prepare library audio:", err);
-      setMediaError("No pude preparar ese audio. Probá de nuevo.");
+      console.error("Failed to prepare library asset:", err);
+      setMediaError("No pude preparar ese recurso. Probá de nuevo.");
+      setSending(false);
     }
   }
 
@@ -847,39 +862,25 @@ export function MessageThread({
 
       {/* Composer */}
       <div className="border-t border-border p-3 md:p-4">
-        <div className="mx-auto max-w-2xl">
+        <div className="relative mx-auto max-w-2xl">
           <ActionError message={mediaError} />
 
-          {assetPreview ? (
-            // Preview de un audio de la banca elegido con "/": reemplaza al
-            // composer entero, igual que grabar o un adjunto.
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2">
-              <audio
-                controls
-                preload="none"
-                src={audioUrlFor(assetPreview.storagePath ?? "")}
-                className="h-9 flex-1 dark:[color-scheme:dark]"
-              />
-              <button
-                type="button"
-                onClick={() => setAssetPreview(null)}
-                disabled={sending}
-                aria-label="Descartar"
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent disabled:opacity-50"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => sendLibraryAudio(assetPreview)}
-                disabled={sending}
-                aria-label="Enviar"
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
-            </div>
-          ) : recording ? (
+          {/* El widget de recursos guardados: el mismo para "/", el boton y el atajo. */}
+          <AssetPicker
+            state={widget}
+            dispatch={dispatchWidget}
+            assets={assets}
+            provider={channelProvider}
+            context={templateContext}
+            canManage={canManageAssets}
+            sending={sending}
+            shortcutLabel={shortcutLabel}
+            onInsert={insertAsset}
+            onSend={(asset, caption) => void sendLibraryAsset(asset, caption)}
+            onClose={closeWidget}
+          />
+
+          {recording ? (
             // Estado grabando (F18): reemplaza al composer entero.
             <VoiceRecorder
               onCancel={() => setRecording(false)}
@@ -930,52 +931,23 @@ export function MessageThread({
                 </div>
               ) : (
                 <div className="relative flex-1">
-                  {pickerOpen && (
-                    <AssetPicker
-                      matches={assetMatches}
-                      activeIndex={activeIndex}
-                      onPick={pickAsset}
-                      onHover={setActiveIndex}
-                    />
-                  )}
                   <textarea
                     ref={textareaRef}
                     value={input}
                     onChange={(e) => {
                       const value = e.target.value;
+                      // Escribir "/" al principio abre el widget, y lo que venga
+                      // despues de la barra (si se pego) pasa a su buscador.
+                      if (opensBySlash(input, value) && widget.view === "closed") {
+                        setInput("");
+                        openWidget(true, value.slice(1));
+                        return;
+                      }
                       setInput(value);
-                      // Volver a escribir una barra desde cero reabre el selector que
-                      // se habia cerrado con Escape.
-                      if (!value.startsWith("/")) setPickerDismissed(false);
-                      setActiveIndex(0);
+                      if (!value.trim()) insertedAssetIdRef.current = null;
                       autoResize();
                     }}
                     onKeyDown={(e) => {
-                      // Con el selector abierto, las flechas y el Enter son suyos:
-                      // si no, Enter manda "/pre" como mensaje al lead.
-                      if (pickerOpen) {
-                        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                          e.preventDefault();
-                          if (assetMatches.length === 0) return;
-                          const step = e.key === "ArrowDown" ? 1 : -1;
-                          setActiveIndex(
-                            (prev) =>
-                              (prev + step + assetMatches.length) % assetMatches.length,
-                          );
-                          return;
-                        }
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          const chosen = assetMatches[activeIndex];
-                          if (chosen) pickAsset(chosen);
-                          return;
-                        }
-                        if (e.key === "Escape") {
-                          e.preventDefault();
-                          setPickerDismissed(true);
-                          return;
-                        }
-                      }
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSendClick();
@@ -992,7 +964,8 @@ export function MessageThread({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                // Sin .txt: no tiene firma en sus bytes y la subida lo rechazaria.
+                accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -1002,6 +975,23 @@ export function MessageThread({
                   setAttachedFile(file);
                 }}
               />
+              {!attachedFile && (
+                <button
+                  type="button"
+                  data-asset-widget-toggle
+                  onClick={() => (widget.view === "closed" ? openWidget(false) : closeWidget(false))}
+                  aria-label="Recursos guardados"
+                  aria-expanded={widget.view !== "closed"}
+                  aria-haspopup="dialog"
+                  title={`Recursos guardados (${shortcutLabel} o escribí /)`}
+                  className={cn(
+                    "flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent",
+                    widget.view !== "closed" && "bg-accent text-foreground",
+                  )}
+                >
+                  <Library className="h-4 w-4" />
+                </button>
+              )}
               {!attachedFile && (
                 <button
                   type="button"
@@ -1059,7 +1049,7 @@ export function MessageThread({
           const pendingCopy = pendingAssetCopyRef.current;
           if (pendingCopy) {
             pendingAssetCopyRef.current = null;
-            sendPreparedAudio(pendingCopy, true);
+            void sendPreparedAsset(pendingCopy, true);
             return;
           }
           const pending = pendingMediaRef.current;

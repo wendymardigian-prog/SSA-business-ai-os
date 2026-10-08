@@ -28,10 +28,10 @@ corrida one-shot desde el 8/10/2026.
 - [x] F6 Alta y edicion por tipo — falta revision visual (necesita sesion)
 
 ## R3 — El chat
-- [ ] F7 El boton en el composer y el atajo de teclado
-- [ ] F8 El widget (se abre siempre, buscador, chips, teclado)
-- [ ] F9 Revisar el recurso antes de mandarlo (preview por tipo)
-- [ ] F10 Que acepta cada canal (`channelAccepts`)
+- [x] F7 El boton en el composer y el atajo de teclado (⌘/Ctrl + /) — falta revision visual
+- [x] F8 El widget (se abre siempre, buscador, chips, teclado; reducer puro con tests) — falta revision visual
+- [x] F9 Revisar el recurso antes de mandarlo (preview por tipo, reusa MediaAttachment; copyAssetToChat para los 4 tipos; touch al mandar) — falta revision visual
+- [x] F10 Que acepta cada canal (`channelAccepts`, matriz entera en test; la API de envio lo aplica)
 
 ## R4 — El agente y la cañeria
 - [ ] F11 Las herramientas del agente con seis tipos

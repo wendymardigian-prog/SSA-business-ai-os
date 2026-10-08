@@ -44,6 +44,7 @@ import {
   prepareAssetSend,
   setAssetAgentEnabled,
   retryTranscription,
+  markAssetUsed,
 } from "./response-assets";
 
 const WS = "ws-1";
@@ -595,5 +596,21 @@ describe("prepareAssetSend", () => {
     const result = await prepareAssetSend("c-inexistente", "a-1");
 
     expect(result).toEqual({ ok: false, error: "No encontré esa conversación" });
+  });
+});
+
+describe("markAssetUsed", () => {
+  it("cuenta el uso por la funcion de la base, con el cliente del usuario", async () => {
+    const rpc = vi.fn(async () => ({ error: null }));
+    getWorkspace.mockResolvedValue({ workspace: { id: WS }, supabase: { rpc } });
+    await markAssetUsed("a-1");
+    expect(rpc).toHaveBeenCalledWith("touch_response_asset", { p_asset_id: "a-1" });
+  });
+
+  it("si la base falla, no lanza: el envio ya salio", async () => {
+    getWorkspace.mockResolvedValue({ workspace: { id: WS }, supabase: { rpc: async () => ({ error: { message: "boom" } }) } });
+    await expect(markAssetUsed("a-1")).resolves.toBeUndefined();
+    getWorkspace.mockRejectedValue(new Error("sin sesion"));
+    await expect(markAssetUsed("a-1")).resolves.toBeUndefined();
   });
 });
