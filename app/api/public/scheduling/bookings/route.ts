@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     origin: originFrom({ embed: typeof body.embed === "string" ? body.embed : body.embed ? "1" : null }),
     utm: pickUtm((body.utm as Record<string, string>) ?? {}),
     referrerUrl: safeReferrer(body.referrer),
+    landingPage: safeReferrer(body.landingPage),
     honeypot: body.website,
     ip: clientIp(request.headers),
   });

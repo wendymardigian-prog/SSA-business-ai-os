@@ -4244,12 +4244,19 @@ export interface Database {
           p_created_by?: string | null;
           p_contact_id?: string | null;
           p_metadata?: Json;
+          /** Agenda v2 (00129): la página donde se reservó, para el toque de atribución. */
+          p_landing_page?: string | null;
         };
         Returns: Json;
       };
       bump_rate_limit: {
         Args: { p_key: string; p_window_start: string };
         Returns: number;
+      };
+      /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
+      booking_utm_options: {
+        Args: { p_workspace_id: string };
+        Returns: Json;
       };
       purge_rate_limits: { Args: Record<string, never>; Returns: number };
       /** Marca un horario por defecto en una transaccion (00096). */

@@ -196,7 +196,17 @@ perdida de datos antes de reaplicar; detalle en `docs/PENDIENTE.md`) y
 `00127` (`content_post_versions` suma `updated_at` y el CHECK de `reason`
 admite `edit`/`approve`). La `00128` (borra `material_status` y la clave
 `options.contentType`) esta **escrita y sin aplicar**, anotada en
-`docs/PENDIENTE.md`. **La proxima migracion disponible es la `00129`.**
+`docs/PENDIENTE.md`.
+
+**Agenda v2 (8/10/2026).** `00129` esta **aplicada** y registrada:
+reescribe `create_booking` (ahora con 25 parametros, `p_landing_page` nuevo
+al final con default) para que una reserva `manual` o `agent` NO deje un
+toque de atribucion falso `web/booking` que pisaria el real, suma
+`ttclid`/`li_fat_id`/`landing_page` al toque, dos indices sobre
+`bookings.utm` y la funcion `booking_utm_options` (SECURITY INVOKER) para
+las opciones del filtro de UTM de Agenda. La firma vieja (24 parametros, sin
+`p_landing_page`) se borro en la misma migracion: no queda una sobrecarga
+colgada. **La proxima migracion disponible es la `00130`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas

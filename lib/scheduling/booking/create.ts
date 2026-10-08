@@ -42,6 +42,8 @@ export interface CreateBookingInput {
   origin: "public_page" | "embed" | "manual" | "agent" | "api";
   utm?: Record<string, string>;
   referrerUrl?: string | null;
+  /** La página donde se reservó: el booker la manda (Agenda v2); sin ella, no se guarda landing page. */
+  landingPage?: string | null;
   /** El campo trampa del formulario publico. */
   honeypot?: unknown;
   /** La IP, para el tope. Solo en lo publico. */
@@ -148,6 +150,7 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
     p_origin: input.origin,
     p_utm: (input.utm ?? {}) as unknown as Json,
     p_referrer_url: input.referrerUrl ?? null,
+    p_landing_page: input.landingPage ?? null,
     p_uid: uid,
     p_category_id: event.category_id,
     p_category_snapshot: categorySnapshot(event.category_id, categories) as unknown as Json,

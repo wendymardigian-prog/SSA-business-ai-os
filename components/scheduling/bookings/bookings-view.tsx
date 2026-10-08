@@ -63,6 +63,7 @@ export function BookingsScreen({
   shareableEvents,
   hasEverBooked,
   hasCalendar,
+  utmOptions,
   detail,
   view,
   quick,
@@ -94,6 +95,8 @@ export function BookingsScreen({
   /** false: el workspace no tiene NINGUNA agenda todavía (sin importar filtros). */
   hasEverBooked: boolean;
   hasCalendar: boolean;
+  /** Fuente/medio/campaña que de verdad existen en el workspace, para el grupo "UTM" del widget de filtros. */
+  utmOptions: { sources: string[]; mediums: string[]; campaigns: string[] };
   detail: BookingDetailData | null;
   view: "list" | "kanban" | "calendar";
   quick: QuickPick;
@@ -216,7 +219,7 @@ export function BookingsScreen({
               />
             )}
 
-            <AgendaFiltersMenu filters={filters} categories={categories} events={eventOptions} hosts={scopeAll ? hostOptions : null} utmOptions={{ sources: [], mediums: [], campaigns: [] }} />
+            <AgendaFiltersMenu filters={filters} categories={categories} events={eventOptions} hosts={scopeAll ? hostOptions : null} utmOptions={utmOptions} />
 
             <input
               defaultValue={search}

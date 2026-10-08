@@ -4,7 +4,7 @@ import { canOpenConfig } from "@/lib/scheduling/config-sections";
 import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
-import { getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
+import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
@@ -194,7 +194,10 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
   // Google Calendar", aunque ya estuviera conectado.
-  const { count: everCount } = await ctx.supabase.from("bookings").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id);
+  const [{ count: everCount }, utmOptions] = await Promise.all([
+    ctx.supabase.from("bookings").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id),
+    bookingUtmOptions(ctx.supabase, ctx.workspace.id),
+  ]);
 
   // El link público de cada evento necesita el usuario de su dueño.
   const { data: profileRows } = await ctx.supabase.from("scheduling_profiles").select("user_id, username").eq("workspace_id", ctx.workspace.id);
@@ -239,6 +242,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       shareableEvents={shareableEvents}
       hasEverBooked={(everCount ?? 0) > 0}
       hasCalendar={defaults?.hasCalendar ?? false}
+      utmOptions={utmOptions}
       detail={
         detail
           ? {

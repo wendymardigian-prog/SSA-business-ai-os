@@ -24,6 +24,22 @@ describe("parseEmbedParams (F25, F39)", () => {
     expect(p.prefill.answers).toEqual({ otra: "y" });
   });
 
+  it("tambien captura ttclid (TikTok) y li_fat_id (LinkedIn)", () => {
+    const p = parseEmbedParams({ ttclid: "tt1", li_fat_id: "li1" });
+    expect(p.clickIds).toEqual({ ttclid: "tt1", li_fat_id: "li1" });
+  });
+
+  it("el referrer del embed (la pagina donde vive, Agenda v2) se lee como landingPage, no como pregunta", () => {
+    const p = parseEmbedParams({ referrer: "https://cliente.com/landing?utm_source=x" });
+    expect(p.landingPage).toBe("https://cliente.com/landing?utm_source=x");
+    expect(p.prefill.answers).toEqual({});
+  });
+
+  it("un referrer invalido (no http/https) se descarta", () => {
+    expect(parseEmbedParams({ referrer: "javascript:alert(1)" }).landingPage).toBeNull();
+    expect(parseEmbedParams({}).landingPage).toBeNull();
+  });
+
   it("ignora claves que no son identificadores válidos y recorta textos largos", () => {
     const p = parseEmbedParams({ "Mal Formada": "x", "1abc": "y", ok_1: "z".repeat(600) });
     expect(Object.keys(p.prefill.answers)).toEqual(["ok_1"]);

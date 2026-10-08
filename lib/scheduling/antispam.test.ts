@@ -50,6 +50,10 @@ describe("atribucion (F29)", () => {
     const params = new URLSearchParams("utm_source=ig&utm_medium=bio&fbclid=abc&email=a@b.com&otra=x");
     expect(pickUtm(params)).toEqual({ utm_source: "ig", utm_medium: "bio", fbclid: "abc" });
   });
+  it("tambien toma ttclid (TikTok) y li_fat_id (LinkedIn)", () => {
+    const params = new URLSearchParams("ttclid=tt1&li_fat_id=li1");
+    expect(pickUtm(params)).toEqual({ ttclid: "tt1", li_fat_id: "li1" });
+  });
   it("el origen es embed solo si lo dice", () => {
     expect(originFrom(new URLSearchParams("embed=1"))).toBe("embed");
     expect(originFrom(new URLSearchParams(""))).toBe("public_page");

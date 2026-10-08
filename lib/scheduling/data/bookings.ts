@@ -159,6 +159,24 @@ export async function listBookings(
 }
 
 /**
+ * Las fuentes, medios y campañas de UTM que de verdad existen en el
+ * workspace, para las opciones del filtro "UTM" (Agenda v2, 00129).
+ *
+ * La RPC es `SECURITY INVOKER`: lee `bookings` con el cliente de quien llama,
+ * así que un Member con alcance propio solo ve los UTM de sus propias
+ * agendas, igual que en la lista.
+ */
+export async function bookingUtmOptions(supabase: Db, workspaceId: string): Promise<{ sources: string[]; mediums: string[]; campaigns: string[] }> {
+  const { data, error } = await supabase.rpc("booking_utm_options", { p_workspace_id: workspaceId });
+  if (error) {
+    console.error("[agenda] no pude leer las opciones de UTM:", error.message);
+    return { sources: [], mediums: [], campaigns: [] };
+  }
+  const row = (data ?? {}) as { sources?: string[]; mediums?: string[]; campaigns?: string[] };
+  return { sources: row.sources ?? [], mediums: row.mediums ?? [], campaigns: row.campaigns ?? [] };
+}
+
+/**
  * Los nombres de los anfitriones, para la lista y el filtro.
  *
  * Los nombres viven en `auth.users`, que no se lee por RLS: el camino ya
