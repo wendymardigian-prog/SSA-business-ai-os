@@ -132,6 +132,9 @@ export async function buildSlotsInput(
     .select("id, start_at, end_at, event_type_id, event_types!inner(before_buffer_minutes, after_buffer_minutes)")
     .eq("host_user_id", hostId)
     .eq("status_group", "active")
+    // Liberar espacio (Agenda v2) la saca de acá: es justo el efecto buscado,
+    // que el equipo pueda ofrecer ese mismo horario de nuevo.
+    .is("slot_released_at", null)
     .lt("start_at", new Date(new Date(options.to).getTime() + margin).toISOString())
     .gt("end_at", new Date(new Date(options.from).getTime() - margin).toISOString());
 
@@ -154,7 +157,8 @@ export async function buildSlotsInput(
     .from("bookings")
     .select("start_at")
     .eq("event_type_id", event.id)
-    .eq("status_group", "active");
+    .eq("status_group", "active")
+    .is("slot_released_at", null);
   const counts = countBookings((countRows ?? []) as Array<{ start_at: string }>, schedule.timezone);
 
   // El ocupado de Google. Un error temporal corta: no se ofrecen horarios.

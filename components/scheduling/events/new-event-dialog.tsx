@@ -20,6 +20,8 @@ export function NewEventDialog({
   username,
   defaults,
   forUserId,
+  forUserLabel,
+  canManageOthers,
   onClose,
 }: {
   categories: CategoryRow[];
@@ -27,6 +29,10 @@ export function NewEventDialog({
   username: string;
   defaults: { scheduleName: string | null; destinationCalendar: string | null; conflictCount: number; autoFlows: boolean };
   forUserId?: string | null;
+  /** El nombre de `forUserId`, para mostrarlo (Agenda v2: antes el diálogo no decía para quién creaba). */
+  forUserLabel?: string | null;
+  /** Hay más de una persona en juego: sin esto, no hace falta aclarar "para vos". */
+  canManageOthers?: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -169,6 +175,13 @@ export function NewEventDialog({
             <input value={locationText} onChange={(e) => setLocationText(e.target.value)} maxLength={500} className={`${inputClass} mt-2`} placeholder="Av. Siempre Viva 123, piso 3" />
           )}
         </div>
+
+        {canManageOthers && (
+          <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Se crea para <strong className="text-foreground">{forUserLabel ?? "vos"}</strong>.
+            {!forUserId && " Para crearlo a nombre de otra persona, elegila primero en \"Persona\", arriba de la lista."}
+          </p>
+        )}
 
         <div className="rounded-lg border border-border bg-muted/40 p-3">
           <p className="text-xs font-semibold">Se crea con lo que ya tenés configurado</p>

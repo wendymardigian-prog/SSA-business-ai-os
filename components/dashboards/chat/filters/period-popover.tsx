@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import {
   WEEKDAYS_SHORT, civilRangeToIso, compareCivil, formatMonth, formatRange, isoRangeToCivil,
   monthGrid, nextMonth, periodButtonLabel, pickDay, previousMonth, sameCivil, todayIn,
@@ -11,32 +10,46 @@ import {
 } from "@/lib/dashboards/chat/date-range";
 
 /**
- * El período: los once atajos y un calendario de dos meses.
+ * El período: los atajos del que llama y un calendario de dos meses.
+ * Genérico en `P`, el tipo del atajo: el dashboard de Chat pasa `PeriodPreset`
+ * (`lib/dashboards/period.ts`), Agenda pasa `AgendaPeriod`
+ * (`lib/scheduling/agenda-period.ts`). Este componente no sabe nada de ninguno
+ * de los dos catálogos: `presets` y `labels` son del que llama.
  *
  * Lo que hace distinto a un `<select>` de atajos:
  *
  *   - Se puede elegir un rango a mano, en cualquier orden.
- *   - Los días futuros están bloqueados: no hay datos del futuro.
- *   - Nada se aplica hasta tocar "Aplicar": mientras se elige el rango, el
- *     dashboard no se recarga tres veces.
+ *   - Los días futuros están bloqueados por defecto (no hay datos del
+ *     futuro); `allowFuture` lo saca para una pantalla que sí mira adelante
+ *     (Agenda: una reunión se agenda antes de que pase).
+ *   - Nada se aplica hasta tocar "Aplicar": mientras se elige el rango, la
+ *     pantalla no se recarga tres veces.
  *
- * Los días se cortan en la zona del negocio (`workspaces.timezone`), no en la
- * del navegador.
+ * Los días se cortan en la zona que pasa el que llama (`workspaces.timezone`
+ * para el dashboard; la de la pantalla para Agenda), no en la del navegador.
  */
 
-export function PeriodPopover({
+export function PeriodPopover<P extends string>({
   preset,
+  presets,
+  labels,
   from,
   to,
   timezone,
+  allowFuture,
   onApply,
 }: {
-  preset: PeriodPreset;
+  preset: P;
+  /** Los atajos a mostrar, en el orden en que se dibujan. */
+  presets: readonly P[];
+  labels: Record<P, string>;
   /** El rango a medida que vino de la URL, si hay. */
   from: string | null;
   to: string | null;
   timezone: string;
-  onApply: (next: { preset: PeriodPreset | null; from: string | null; to: string | null }) => void;
+  /** true: el calendario no bloquea los días futuros. Default false. */
+  allowFuture?: boolean;
+  onApply: (next: { preset: P | null; from: string | null; to: string | null }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const today = todayIn(timezone);
@@ -55,15 +68,18 @@ export function PeriodPopover({
         )}
       >
         <Calendar className="h-4 w-4" aria-hidden />
-        {periodButtonLabel(urlCivil ? null : PERIOD_LABELS[preset], urlCivil)}
+        {periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}
       </button>
 
       {open && (
         <PeriodPanel
           preset={preset}
+          presets={presets}
+          labels={labels}
           initial={urlCivil}
           today={today}
           timezone={timezone}
+          allowFuture={allowFuture ?? false}
           onClose={() => setOpen(false)}
           onApply={(next) => {
             setOpen(false);
@@ -75,24 +91,30 @@ export function PeriodPopover({
   );
 }
 
-function PeriodPanel({
+function PeriodPanel<P extends string>({
   preset,
+  presets,
+  labels,
   initial,
   today,
   timezone,
+  allowFuture,
   onClose,
   onApply,
 }: {
-  preset: PeriodPreset;
+  preset: P;
+  presets: readonly P[];
+  labels: Record<P, string>;
   initial: { from: CivilDate; to: CivilDate } | null;
   today: CivilDate;
   timezone: string;
+  allowFuture: boolean;
   onClose: () => void;
-  onApply: (next: { preset: PeriodPreset | null; from: string | null; to: string | null }) => void;
+  onApply: (next: { preset: P | null; from: string | null; to: string | null }) => void;
 }) {
   // Lo elegido vive aca hasta que se aplica: el dashboard no se recarga
   // mientras se prueba un rango.
-  const [draftPreset, setDraftPreset] = useState<PeriodPreset | null>(initial ? null : preset);
+  const [draftPreset, setDraftPreset] = useState<P | null>(initial ? null : preset);
   const [draftRange, setDraftRange] = useState<CivilRange | null>(initial ? { from: initial.from, to: initial.to } : null);
   const [base, setBase] = useState(() => previousMonth(today.year, today.month));
 
@@ -123,9 +145,9 @@ function PeriodPanel({
       }}
       className="fixed inset-x-4 top-28 z-50 max-h-[75vh] overflow-auto rounded-xl border border-border bg-popover shadow-lg topbar:absolute topbar:inset-x-auto topbar:right-0 topbar:top-full topbar:mt-2 topbar:grid topbar:w-max topbar:max-w-[calc(100vw-2rem)] topbar:grid-cols-[170px_auto]"
     >
-      {/* Los once atajos */}
+      {/* Los atajos */}
       <div className="flex flex-wrap gap-1 border-b border-border p-2.5 topbar:flex-col topbar:flex-nowrap topbar:gap-px topbar:border-b-0 topbar:border-r">
-        {PERIOD_PRESETS.map((p) => (
+        {presets.map((p) => (
           <button
             key={p}
             type="button"
@@ -139,7 +161,7 @@ function PeriodPanel({
               draftPreset === p && "bg-accent",
             )}
           >
-            {PERIOD_LABELS[p]}
+            {labels[p]}
           </button>
         ))}
       </div>
@@ -173,6 +195,7 @@ function PeriodPanel({
             month={base.month}
             today={today}
             range={draftRange}
+            allowFuture={allowFuture}
             onPick={(d) => {
               setDraftRange((r) => pickDay(r, d));
               setDraftPreset(null);
@@ -185,6 +208,7 @@ function PeriodPanel({
               month={right.month}
               today={today}
               range={draftRange}
+              allowFuture={allowFuture}
               onPick={(d) => {
                 setDraftRange((r) => pickDay(r, d));
                 setDraftPreset(null);
@@ -211,12 +235,14 @@ function MonthCalendar({
   month,
   today,
   range,
+  allowFuture,
   onPick,
 }: {
   year: number;
   month: number;
   today: CivilDate;
   range: CivilRange | null;
+  allowFuture: boolean;
   onPick: (day: CivilDate) => void;
 }) {
   const cells = monthGrid(year, month, today);
@@ -239,7 +265,7 @@ function MonthCalendar({
               </span>
             );
           }
-          if (cell.isFuture) {
+          if (cell.isFuture && !allowFuture) {
             return (
               <span
                 key={cell.key}

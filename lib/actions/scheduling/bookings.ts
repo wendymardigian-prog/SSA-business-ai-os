@@ -10,6 +10,9 @@ import { evaluateTransition, groupOf, isBookingStatus, TRANSITION_REASON_TEXT } 
 import { cancelBooking, type CancelStatus } from "@/lib/scheduling/booking/cancel";
 import { rescheduleBooking } from "@/lib/scheduling/booking/reschedule";
 import { createBooking } from "@/lib/scheduling/booking/create";
+import { occupyBookingSlot, releaseBookingSlot } from "@/lib/scheduling/booking/release";
+import { reassignBookingHost } from "@/lib/scheduling/booking/reassign";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { getPublicSlots } from "@/lib/scheduling/slots-service";
 import { notifyBooking } from "@/lib/scheduling/notifications";
 import { BOOKING_GOOGLE_SYNC_JOB } from "@/lib/jobs/handlers/booking-sync";
@@ -69,14 +72,21 @@ export async function changeBookingStatus(input: { bookingId: string; status: st
     return { ok: true };
   }
 
-  const { error } = await ctx.supabase
+  // `bookings` solo tiene policy de SELECT (escribir es del servidor): el
+  // cliente del usuario no puede hacer este UPDATE. `.select("id")` detecta
+  // el caso silencioso (0 filas, sin error) en vez de festejar un cambio que
+  // nunca se guardó.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service
     .from("bookings")
     .update({ status: input.status, status_changed_at: now.toISOString(), status_changed_by: ctx.user.id })
-    .eq("id", booking.id);
+    .eq("id", booking.id)
+    .select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar el cambio de estado." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,
@@ -86,7 +96,6 @@ export async function changeBookingStatus(input: { bookingId: string; status: st
     performedBy: ctx.user.id,
   });
 
-  const service = await createServiceClient();
   await service.from("automation_events").insert({
     workspace_id: booking.workspace_id,
     event_type: "booking_status_changed",
@@ -137,6 +146,68 @@ export async function rescheduleAsHost(input: {
   return { ok: true, data: { startUtc: result.startUtc, endUtc: result.endUtc } };
 }
 
+/**
+ * Liberar y volver a ocupar el espacio de una agenda (Agenda v2).
+ *
+ * La agenda sigue activa; solo su horario deja (o vuelve) a contar como
+ * ocupado, para que el equipo pueda ofrecer el mismo lugar a otro lead
+ * mientras este no se confirma.
+ */
+export async function releaseBookingSlotAsHost(input: { bookingId: string }): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+
+  const result = await releaseBookingSlot(await createServiceClient(), booking.id, ctx.user.id);
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
+}
+
+export async function occupyBookingSlotAsHost(input: { bookingId: string }): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+
+  const result = await occupyBookingSlot(await createServiceClient(), booking.id, ctx.user.id);
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
+}
+
+/**
+ * Reasignar el anfitrión de una agenda (Agenda v2), sin avisarle al invitado.
+ *
+ * Alcance total nomás (Owner/Admin): reasignar es tocar la agenda de otra
+ * persona, no solo la propia.
+ */
+export async function reassignBookingHostAsHost(input: {
+  bookingId: string;
+  newHostUserId: string;
+  transferAssignment?: boolean;
+}): Promise<BookingActionResult> {
+  const found = await visibleBooking(input.bookingId);
+  if (found.error !== undefined) return { ok: false, error: found.error };
+  const { ctx, booking } = found;
+  if (ctx.scope("bookings") !== "all") return { ok: false, error: "No tenés permiso para reasignar agendas." };
+
+  const members = await getWorkspaceMembers(booking.workspace_id);
+  const newHost = members.find((m) => m.userId === input.newHostUserId);
+  if (!newHost) return { ok: false, error: "No encontré a esa persona en el equipo." };
+
+  const result = await reassignBookingHost(await createServiceClient(), {
+    bookingId: booking.id,
+    newHostUserId: input.newHostUserId,
+    newHostEmail: newHost.email || null,
+    newHostName: newHost.name,
+    actorUserId: ctx.user.id,
+    transferAssignment: input.transferAssignment,
+  });
+  if (!result.ok) return { ok: false, error: result.message };
+  revalidatePath(PATH);
+  return { ok: true };
+}
+
 /** Editar ubicación y notas internas (F36). */
 export async function updateBookingDetails(input: {
   bookingId: string;
@@ -152,11 +223,15 @@ export async function updateBookingDetails(input: {
   if (input.internalNotes !== undefined) patch.internal_notes = input.internalNotes?.trim() || null;
   if (Object.keys(patch).length === 0) return { ok: true };
 
-  const { error } = await ctx.supabase.from("bookings").update(patch).eq("id", booking.id);
+  // Escribir es del servidor: `bookings` no tiene policy de UPDATE para el
+  // usuario logueado.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service.from("bookings").update(patch).eq("id", booking.id).select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar los cambios." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,
@@ -168,7 +243,6 @@ export async function updateBookingDetails(input: {
     performedBy: ctx.user.id,
   });
 
-  const service = await createServiceClient();
   await service.from("automation_events").insert({
     workspace_id: booking.workspace_id,
     event_type: "booking_updated",
@@ -207,14 +281,19 @@ export async function fixBookingCategory(input: { bookingId: string; categoryId:
   // cuatro campos vienen en null. Eso es lo que hay que rechazar.
   if (!snapshot.area_id && !snapshot.type_id) return { ok: false, error: "Esa categoría no existe." };
 
-  const { error } = await ctx.supabase
+  // Escribir es del servidor: `bookings` no tiene policy de UPDATE para el
+  // usuario logueado.
+  const service = await createServiceClient();
+  const { data: updated, error } = await service
     .from("bookings")
     .update({ category_id: input.categoryId, category_snapshot: snapshot as unknown as Json })
-    .eq("id", booking.id);
+    .eq("id", booking.id)
+    .select("id");
   if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+  if (!updated?.length) return { ok: false, error: "No pude guardar la categoría." };
 
   await logAudit({
-    supabase: ctx.supabase,
+    supabase: service,
     workspaceId: booking.workspace_id,
     entityType: "booking",
     entityId: booking.id,

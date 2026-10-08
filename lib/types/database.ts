@@ -247,6 +247,11 @@ export type AuditAction =
   | "booking.status_changed"
   | "booking.sync_ok"
   | "booking.sync_failed"
+  /** Agenda v2 (00130): su horario dejó/volvió a contar como ocupado. */
+  | "booking.slot_released"
+  | "booking.slot_occupied"
+  /** Agenda v2: cambió de anfitrión. */
+  | "booking.host_changed"
   /** El agente mando un recurso de audio de la banca. performed_by_agent_id, entity response_asset. */
   | "agent_asset_sent";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -4143,6 +4148,12 @@ export interface Database {
           ical_uid: string | null;
           google_event_deleted_at: string | null;
           is_do_not_contact_at_booking: boolean;
+          /** Agenda v2 (00130): el horario dejó de contar como ocupado. null = nunca se liberó. */
+          slot_released_at: string | null;
+          slot_released_by: string | null;
+          /** Agenda v2 (00130, reasignar): a nombre de quién está sincronizado el evento hoy. */
+          google_host_connection_id: string | null;
+          google_host_calendar_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -4203,6 +4214,12 @@ export interface Database {
           google_event_deleted_at?: string | null;
           metadata?: Json;
           updated_at?: string;
+          slot_released_at?: string | null;
+          slot_released_by?: string | null;
+          host_user_id?: string;
+          host_timezone?: string | null;
+          google_host_connection_id?: string | null;
+          google_host_calendar_id?: string | null;
         };
         Relationships: [];
       };
@@ -4244,12 +4261,19 @@ export interface Database {
           p_created_by?: string | null;
           p_contact_id?: string | null;
           p_metadata?: Json;
+          /** Agenda v2 (00129): la página donde se reservó, para el toque de atribución. */
+          p_landing_page?: string | null;
         };
         Returns: Json;
       };
       bump_rate_limit: {
         Args: { p_key: string; p_window_start: string };
         Returns: number;
+      };
+      /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
+      booking_utm_options: {
+        Args: { p_workspace_id: string };
+        Returns: Json;
       };
       purge_rate_limits: { Args: Record<string, never>; Returns: number };
       /** Marca un horario por defecto en una transaccion (00096). */

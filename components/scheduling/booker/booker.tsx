@@ -215,6 +215,10 @@ export function Booker({
           embed: embed.embed ? "1" : null,
           utm: { ...embed.utm, ...embed.clickIds },
           referrer: typeof document !== "undefined" ? document.referrer || null : null,
+          // La página donde se reservó (Agenda v2): en el embed, la página del
+          // cliente donde vive el widget (`embed.landingPage`, la manda el
+          // script); en la página pública directa, ella misma.
+          landingPage: embed.landingPage ?? (typeof window !== "undefined" ? window.location.href : null),
         };
 
     try {

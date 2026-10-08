@@ -67,7 +67,8 @@ borran** (la base mezcla con `||`).
 | Alguien comenta una publicación | Sí, si es (o pasa a ser) contacto (abajo) | `comment:<id del comentario>` |
 | Alta a mano | Sí | `manual:<contacto>` |
 | Importación de CSV | Solo a los contactos **nuevos** | `import:<importación>:<contacto>` |
-| Reserva desde la página de agenda | Sí (lo hace `create_booking`, también para un contacto que ya existía) | `booking:<reserva>` |
+| Reserva desde la página pública o el embed | Sí (lo hace `create_booking`, también para un contacto que ya existía) | `booking:<reserva>` |
+| Reserva a mano o por el agente de IA | **No** (Agenda v2, 00129): no hay forma de saber de dónde vino el lead, y un toque inventado `web/booking` pisaría el toque real (el DM o el comentario que lo trajo) | — |
 | Los contactos de antes de este bloque | Un toque por su evento de alta, solo donde la atribución estaba vacía (backfill de la 00115) | `event:<evento>` |
 
 ### De los mensajes, solo lo que suma

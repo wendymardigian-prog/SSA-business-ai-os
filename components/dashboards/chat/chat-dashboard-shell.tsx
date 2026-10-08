@@ -7,7 +7,7 @@ import { BarChart3, Eye, Plug } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "@/components/dashboards/dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
-import { PERIOD_LABELS, type PeriodPreset } from "@/lib/dashboards/period";
+import { PERIOD_LABELS, PERIOD_PRESETS, type PeriodPreset } from "@/lib/dashboards/period";
 import { dashboardFiltersToParams, type DashboardFilters } from "@/lib/dashboards/url-state";
 import { formatAgo } from "@/lib/dashboards/chat/comparisons";
 import { formatCivil, isoRangeToCivil } from "@/lib/dashboards/chat/date-range";
@@ -121,6 +121,8 @@ export function ChatDashboardShell({
             <AuthorMenu members={members} value={filters.author} onChange={(author) => setFilter({ author })} />
             <PeriodPopover
               preset={filters.period as PeriodPreset}
+              presets={PERIOD_PRESETS}
+              labels={PERIOD_LABELS}
               from={filters.from}
               to={filters.to}
               timezone={timezone}

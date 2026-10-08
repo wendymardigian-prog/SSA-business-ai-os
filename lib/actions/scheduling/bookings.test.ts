@@ -15,15 +15,33 @@ import { groupOf } from "@/lib/scheduling/booking-status";
 
 let db: ReturnType<typeof schedulingWorld>;
 let allowed = true;
+let scopeAll = true;
 const OTRO = "user-2";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/guards", () => ({
-  getPermissionAction: async (key: string) => (allowed ? { user: { id: HOST }, workspace: { id: WS }, supabase: db.client, can: () => true, scope: () => "all", key } : null),
+  getPermissionAction: async (key: string) =>
+    allowed ? { user: { id: HOST }, workspace: { id: WS }, supabase: db.client, can: () => true, scope: () => (scopeAll ? "all" : "own"), key } : null,
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
+vi.mock("@/lib/workspace-members", () => ({
+  getWorkspaceMembers: async () => [
+    { userId: HOST, role: "owner", name: "Ana", email: "ana@ejemplo.com" },
+    { userId: OTRO, role: "member", name: "Lucía", email: "lucia@ejemplo.com" },
+  ],
+}));
 
-const { changeBookingStatus, cancelBookingAsHost, updateBookingDetails, fixBookingCategory, retryBookingSync, bookManually } = await import("./bookings");
+const {
+  changeBookingStatus,
+  cancelBookingAsHost,
+  updateBookingDetails,
+  fixBookingCategory,
+  retryBookingSync,
+  bookManually,
+  releaseBookingSlotAsHost,
+  occupyBookingSlotAsHost,
+  reassignBookingHostAsHost,
+} = await import("./bookings");
 
 const NOW = new Date("2026-09-30T16:00:00.000Z");
 const START = "2026-10-01T16:00:00.000Z";
@@ -67,6 +85,7 @@ function seed(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   allowed = true;
+  scopeAll = true;
   vi.setSystemTime(NOW);
   seed();
 });
@@ -192,6 +211,56 @@ describe("retryBookingSync", () => {
     expect(db.rows("bookings")[0].google_sync_status).toBe("pending");
     expect(db.rows("bookings")[0].google_sync_error).toBeNull();
     expect(db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync")?.payload).toMatchObject({ action: "update" });
+  });
+});
+
+describe("releaseBookingSlotAsHost / occupyBookingSlotAsHost (Agenda v2)", () => {
+  it("libera el espacio y encola el job de Google", async () => {
+    const result = await releaseBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(true);
+    expect(db.rows("bookings")[0].slot_released_at).toBeTruthy();
+    expect(db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync")?.payload).toMatchObject({ action: "release" });
+  });
+
+  it("vuelve a ocupar", async () => {
+    seed({ slot_released_at: "2026-09-30T00:00:00.000Z", slot_released_by: HOST });
+    const result = await occupyBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(true);
+    expect(db.rows("bookings")[0].slot_released_at).toBeNull();
+  });
+
+  it("sin permiso no pasa nada", async () => {
+    allowed = false;
+    const result = await releaseBookingSlotAsHost({ bookingId: "bk-1" });
+    expect(result.ok).toBe(false);
+    expect(db.rows("bookings")[0].slot_released_at).toBeFalsy();
+  });
+});
+
+describe("reassignBookingHostAsHost (Agenda v2)", () => {
+  beforeEach(() => {
+    db.tables.scheduling_profiles.push({ id: "prof-2", workspace_id: WS, user_id: OTRO, username: "lucia", display_name: "Lucía", is_active: true, timezone: "America/Mexico_City" });
+  });
+
+  it("reasigna, con el email y el nombre resueltos del equipo", async () => {
+    const result = await reassignBookingHostAsHost({ bookingId: "bk-1", newHostUserId: OTRO });
+    expect(result.ok).toBe(true);
+    expect(db.rows("bookings")[0].host_user_id).toBe(OTRO);
+    const job = db.rows("scheduled_jobs").find((j) => j.type === "booking_google_sync");
+    expect(job?.payload).toMatchObject({ action: "reassign", new_host_email: "lucia@ejemplo.com", new_host_name: "Lucía" });
+  });
+
+  it("sin alcance total (Member) no se puede reasignar", async () => {
+    scopeAll = false;
+    const result = await reassignBookingHostAsHost({ bookingId: "bk-1", newHostUserId: OTRO });
+    expect(result.ok).toBe(false);
+    expect(db.rows("bookings")[0].host_user_id).toBe(HOST);
+  });
+
+  it("sin permiso no pasa nada", async () => {
+    allowed = false;
+    const result = await reassignBookingHostAsHost({ bookingId: "bk-1", newHostUserId: OTRO });
+    expect(result.ok).toBe(false);
   });
 });
 

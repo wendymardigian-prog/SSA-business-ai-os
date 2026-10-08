@@ -16,7 +16,8 @@ export const BOOKER_THEMES: BookerTheme[] = ["light", "dark", "auto"];
 
 export const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
 export type UtmKey = (typeof UTM_KEYS)[number];
-export const CLICK_ID_KEYS = ["fbclid", "gclid"] as const;
+/** `ttclid` (TikTok) y `li_fat_id` (LinkedIn) se suman en Agenda v2. */
+export const CLICK_ID_KEYS = ["fbclid", "gclid", "ttclid", "li_fat_id"] as const;
 export type ClickIdKey = (typeof CLICK_ID_KEYS)[number];
 
 export const HEX_COLOR_RE = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i;
@@ -37,6 +38,11 @@ export const RESERVED_PARAMS = new Set<string>([
   "slot",
   "rescheduleUid",
   "website",
+  // El embed manda la URL de la página donde vive (lib/embed/url.ts) con este
+  // nombre. Antes no estaba acá: pasaba el filtro de identificador y quedaba
+  // precargada como respuesta de formulario en vez de leerse como la landing
+  // page (Agenda v2).
+  "referrer",
   ...UTM_KEYS,
   ...CLICK_ID_KEYS,
 ]);
@@ -59,6 +65,26 @@ export interface EmbedParams {
   };
   utm: Partial<Record<UtmKey, string>>;
   clickIds: Partial<Record<ClickIdKey, string>>;
+  /**
+   * La página donde vive el embed (su propio `location.href`, Agenda v2): el
+   * embed la manda como `referrer` (lib/embed/url.ts); acá se lee con su
+   * nombre real, validada como URL http(s). En la página pública directa
+   * siempre es null: ahí la landing page es la propia página de reserva, que
+   * ya se sabe sin necesidad de un parámetro.
+   */
+  landingPage: string | null;
+}
+
+/** Una URL http(s) válida, o null. Recortada a 500 caracteres. */
+function safeUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString().slice(0, MAX_TEXT);
+  } catch {
+    return null;
+  }
 }
 
 export type ParamsSource = URLSearchParams | Record<string, string | string[] | undefined>;
@@ -137,5 +163,6 @@ export function parseEmbedParams(source: ParamsSource): EmbedParams {
     prefill,
     utm,
     clickIds,
+    landingPage: safeUrl(first(source, "referrer")),
   };
 }

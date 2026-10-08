@@ -15,12 +15,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { BookingStatus } from "@/lib/scheduling/types";
-import { BOOKING_STATUSES, evaluateTransition, groupOf, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
+import { BOOKING_STATUSES, evaluateTransition, groupOf, isActive, statusDef, TRANSITION_REASON_TEXT } from "@/lib/scheduling/booking-status";
 import { needsOutcome } from "@/lib/scheduling/bookings-view";
 import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/format";
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
-import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
-import { StatusChip, statusDotClass } from "./status-chip";
+import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
+import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 
 export interface BookingDetailData {
   id: string;
@@ -29,6 +29,7 @@ export interface BookingDetailData {
   startAt: string;
   endAt: string;
   status: BookingStatus;
+  hostUserId: string;
   hostName: string;
   hostTimezone: string;
   inviteeTimezone: string;
@@ -48,6 +49,10 @@ export interface BookingDetailData {
   syncError: string | null;
   rescheduleUrl: string;
   history: Array<{ id: string; text: string; at: string }>;
+  /** De dónde vino el lead que agendó (Agenda v2). `null`: agendada a mano o por el agente, sin UTM que mostrar. */
+  attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
+  /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
+  slotReleasedAt: string | null;
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -58,6 +63,8 @@ export function BookingDetailPanel({
   timezone,
   timeFormat,
   canManage,
+  canReassign,
+  hostOptions,
   onClose,
 }: {
   booking: BookingDetailData;
@@ -65,11 +72,18 @@ export function BookingDetailPanel({
   timezone: string;
   timeFormat: "12h" | "24h";
   canManage: boolean;
+  /** Owner/Admin con alcance total (Agenda v2): solo ellos pueden reasignar. */
+  canReassign: boolean;
+  /** Quién tiene perfil de agenda, para elegir a quién reasignar. Sin el anfitrión actual. */
+  hostOptions: Array<{ userId: string; label: string; hasGoogle: boolean }>;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cancelFor, setCancelFor] = useState<BookingStatus | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [newHostId, setNewHostId] = useState("");
+  const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState(booking.internalNotes ?? "");
   const [location, setLocation] = useState(booking.locationText ?? "");
@@ -100,6 +114,7 @@ export function BookingDetailPanel({
       setToast(done);
       setMenuOpen(false);
       setCancelFor(null);
+      setReassignOpen(false);
       router.refresh();
     });
   }
@@ -199,6 +214,49 @@ export function BookingDetailPanel({
             </div>
           )}
 
+          {reassignOpen && (
+            <div className="rounded-lg border border-border p-3">
+              <p className="font-medium">Reasignar anfitrión</p>
+              <label htmlFor="reassign-host" className="mt-2 block text-xs text-muted-foreground">
+                Nueva persona
+              </label>
+              <select
+                id="reassign-host"
+                value={newHostId}
+                onChange={(e) => setNewHostId(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
+              >
+                <option value="">Elegir…</option>
+                {hostOptions.map((h) => (
+                  <option key={h.userId} value={h.userId}>
+                    {h.label}
+                    {h.hasGoogle ? "" : " (sin Google Calendar conectado)"}
+                  </option>
+                ))}
+              </select>
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={transferAssignment} onChange={(e) => setTransferAssignment(e.target.checked)} />
+                También pasarle los leads asignados (si el closer o el setter era {booking.hostName})
+              </label>
+              <p className="mt-2 text-xs text-muted-foreground">
+                El invitado no se entera: sigue viendo el mismo link de Meet. La nueva persona aparece confirmada en su calendario.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => setReassignOpen(false)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">
+                  Volver
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !newHostId}
+                  onClick={() => run(() => reassignBookingHostAsHost({ bookingId: booking.id, newHostUserId: newHostId, transferAssignment }), "Agenda reasignada")}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                >
+                  {pending ? "Reasignando…" : "Reasignar"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {pendingOutcome && canManage && !cancelFor && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
               <p className="font-medium">La llamada ya pasó. ¿Cómo resultó?</p>
@@ -250,7 +308,14 @@ export function BookingDetailPanel({
               )}
             </dd>
             <dt className="text-muted-foreground">Anfitrión</dt>
-            <dd>{booking.hostName}</dd>
+            <dd className="flex flex-wrap items-center gap-2">
+              {booking.hostName}
+              {canReassign && isActive(booking.status) && hostOptions.length > 0 && !reassignOpen && (
+                <button type="button" onClick={() => setReassignOpen(true)} className="text-xs text-primary underline">
+                  Reasignar
+                </button>
+              )}
+            </dd>
             <dt className="text-muted-foreground">Dónde</dt>
             <dd>
               {booking.locationType === "google_meet" ? (
@@ -316,7 +381,26 @@ export function BookingDetailPanel({
                 Copiar Meet
               </button>
             )}
+            {canManage && isActive(booking.status) && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  booking.slotReleasedAt
+                    ? run(() => occupyBookingSlotAsHost({ bookingId: booking.id }), "El espacio vuelve a estar ocupado")
+                    : run(() => releaseBookingSlotAsHost({ bookingId: booking.id }), "El espacio quedó libre para otra agenda")
+                }
+                className="rounded-lg border border-dashed border-violet-400 px-3 py-1.5 text-xs text-violet-600 hover:bg-violet-500/10 disabled:opacity-60 dark:text-violet-300"
+              >
+                {booking.slotReleasedAt ? "Volver a ocupar el espacio" : "Liberar espacio"}
+              </button>
+            )}
           </div>
+          {booking.slotReleasedAt && (
+            <p className="text-xs text-muted-foreground">
+              <SlotReleasedChip /> desde el {formatDateTimeWithZone(booking.slotReleasedAt, timezone, timeFormat)}: otro lead puede agendar este mismo horario.
+            </p>
+          )}
 
           {booking.responses.length > 0 && (
             <section className="rounded-lg border border-border p-3">
@@ -331,6 +415,56 @@ export function BookingDetailPanel({
               </dl>
             </section>
           )}
+
+          <section className="rounded-lg border border-border p-3">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Atribución</h3>
+            {booking.attribution ? (
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                {booking.attribution.source && (
+                  <>
+                    <dt className="text-muted-foreground">Fuente</dt>
+                    <dd>{booking.attribution.source}</dd>
+                  </>
+                )}
+                {booking.attribution.medium && (
+                  <>
+                    <dt className="text-muted-foreground">Medio</dt>
+                    <dd>{booking.attribution.medium}</dd>
+                  </>
+                )}
+                {booking.attribution.campaign && (
+                  <>
+                    <dt className="text-muted-foreground">Campaña</dt>
+                    <dd>{booking.attribution.campaign}</dd>
+                  </>
+                )}
+                {booking.attribution.content && (
+                  <>
+                    <dt className="text-muted-foreground">Contenido</dt>
+                    <dd>{booking.attribution.content}</dd>
+                  </>
+                )}
+                {booking.attribution.term && (
+                  <>
+                    <dt className="text-muted-foreground">Término</dt>
+                    <dd>{booking.attribution.term}</dd>
+                  </>
+                )}
+                {booking.attribution.referrerUrl && (
+                  <>
+                    <dt className="text-muted-foreground">Página de origen</dt>
+                    <dd className="truncate" title={booking.attribution.referrerUrl}>
+                      {booking.attribution.referrerUrl}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Sin datos de atribución ({booking.origin === "A mano" || booking.origin === "Agente de IA" ? "agendada a mano o por el agente" : "no llegó ningún UTM"}).
+              </p>
+            )}
+          </section>
 
           {canManage && (
             <section className="rounded-lg border border-border p-3">

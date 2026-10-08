@@ -90,8 +90,13 @@ export async function checkRateLimit(
   return { allowed: count <= LIMITS[action].max, count, max: LIMITS[action].max };
 }
 
-/** Los UTM y los click ids que se guardan en la agenda y en el contacto. */
-export const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"] as const;
+/**
+ * Los UTM y los click ids que se guardan en la agenda y en el contacto.
+ *
+ * `ttclid` (TikTok) y `li_fat_id` (LinkedIn) se suman en Agenda v2:
+ * `contact_touches` ya tenía las columnas, pero nada los leía de la URL.
+ */
+export const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid", "ttclid", "li_fat_id"] as const;
 
 export function pickUtm(params: Record<string, string | undefined> | URLSearchParams): Record<string, string> {
   const get = (k: string) => (params instanceof URLSearchParams ? params.get(k) : params[k]);

@@ -52,7 +52,7 @@ export function EventsView({
   hasCalendar: boolean;
   username: string;
   defaults: { scheduleName: string | null; destinationCalendar: string | null; conflictCount: number; autoFlows: boolean };
-  members: Array<{ userId: string; label: string }>;
+  members: Array<{ userId: string; label: string; hasGoogle?: boolean }>;
   targetUserId: string | null;
   canManageOthers: boolean;
 }) {
@@ -118,7 +118,10 @@ export function EventsView({
               <select aria-label="Persona" value={targetUserId ?? ""} onChange={(e) => router.push(`/dashboard/agenda/configuracion/eventos${e.target.value ? `?persona=${e.target.value}` : ""}`)} className="h-8 rounded-lg border border-input bg-background px-2 text-sm text-foreground">
                 <option value="">Todo el equipo</option>
                 {members.map((m) => (
-                  <option key={m.userId} value={m.userId}>{m.label}</option>
+                  <option key={m.userId} value={m.userId}>
+                    {m.label}
+                    {m.hasGoogle === false ? " (sin Google Calendar)" : ""}
+                  </option>
                 ))}
               </select>
             </label>
@@ -203,6 +206,8 @@ export function EventsView({
           username={username}
           defaults={defaults}
           forUserId={targetUserId}
+          forUserLabel={targetUserId ? members.find((m) => m.userId === targetUserId)?.label ?? null : null}
+          canManageOthers={canManageOthers}
           onClose={() => setShowNew(false)}
         />
       )}
