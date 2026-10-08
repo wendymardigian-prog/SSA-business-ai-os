@@ -15,16 +15,23 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
   // Sin manage_others solo se ven los propios; con el permiso, "Todo el equipo".
   const targetUserId = canManageOthers ? (params.persona ?? null) : ctx.user.id;
 
-  const [categories, events, defaults, members, profiles] = await Promise.all([
+  const [categories, events, defaults, members, profiles, googleRows] = await Promise.all([
     listCategories(ctx.supabase, ctx.workspace.id),
     listEventTypes(ctx.supabase, ctx.workspace.id, { ownerUserId: targetUserId }),
-    eventDefaults(ctx.supabase, ctx.workspace as { id: string; scheduling_auto_create_flows?: boolean }, ctx.user.id),
+    // Creando para otra persona (manage_others), el diálogo tiene que mostrar
+    // SU horario, SU calendario y SU usuario por defecto, no los de quien
+    // está mirando. Con "Todo el equipo" (targetUserId null) cae en uno mismo.
+    eventDefaults(ctx.supabase, ctx.workspace as { id: string; scheduling_auto_create_flows?: boolean }, targetUserId ?? ctx.user.id),
     canManageOthers ? getWorkspaceMembers(ctx.workspace.id) : Promise.resolve([]),
     ctx.supabase.from("scheduling_profiles").select("user_id, username, display_name").eq("workspace_id", ctx.workspace.id),
+    canManageOthers
+      ? ctx.supabase.from("oauth_connections").select("user_id").eq("workspace_id", ctx.workspace.id).eq("provider", "google_calendar").eq("status", "active")
+      : Promise.resolve({ data: [] }),
   ]);
 
   const byUser = new Map((profiles.data ?? []).map((p) => [p.user_id, p]));
   const memberLabel = new Map(members.map((m) => [m.userId, m.name || m.email]));
+  const hasGoogleByUser = new Set((googleRows.data ?? []).map((c) => c.user_id));
 
   const cards: EventCard[] = events.map((e) => ({
     id: e.id,
@@ -50,7 +57,7 @@ export default async function AgendaEventosPage({ searchParams }: { searchParams
       hasCalendar={defaults.hasCalendar}
       username={defaults.username ?? ""}
       defaults={defaults}
-      members={members.map((m) => ({ userId: m.userId, label: m.name || m.email }))}
+      members={members.map((m) => ({ userId: m.userId, label: m.name || m.email, hasGoogle: hasGoogleByUser.has(m.userId) }))}
       targetUserId={targetUserId}
       canManageOthers={canManageOthers}
     />
