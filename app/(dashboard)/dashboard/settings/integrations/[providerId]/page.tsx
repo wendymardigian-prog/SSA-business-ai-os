@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import { requireWorkspaceAdmin } from "@/lib/auth/guards";
-import { getVisibleProvider } from "@/lib/integrations/providers";
+import { getVisibleProvider, serializableProvider } from "@/lib/integrations/providers";
 import { loadIntegrations } from "@/lib/integrations/load";
 import { publisherIdFor } from "@/lib/integrations/provider-publisher";
 import { parsePublishers } from "@/lib/social/accounts-schema";
 import { activityActionLabel } from "@/lib/integrations/activity";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { IntegrationDetail } from "@/components/settings/integrations/integration-detail";
-import type { EvolutionChannelInfo } from "@/components/settings/integrations/accounts-tab";
+import type { Channel } from "@/components/channels/channels-panel";
 import type { SocialAccountRow } from "@/components/settings/integrations/publisher-defaults";
 import type { AuditAction } from "@/lib/types/database";
 
@@ -53,23 +53,17 @@ export default async function IntegrationDetailPage({
     actorLabel: row.performed_by ? (labels.get(row.performed_by) ?? "Alguien del equipo") : "El sistema",
   }));
 
-  // Cuentas (G6): el canal de Evolution, con el mismo connection_status y
-  // last_error que muestra /dashboard/channels.
-  let evolutionChannel: EvolutionChannelInfo | null = null;
-  if (provider.id === "evolution") {
-    const { data: channel } = await supabase
+  // Cuentas: los canales conectados (las filas completas), los mismos que se
+  // ven en /dashboard/channels. "Cuentas" y "canales" son lo mismo: el panel de
+  // la pestaña filtra por proveedor (Zernio o Evolution).
+  let channels: Channel[] = [];
+  if (provider.id === "zernio" || provider.id === "evolution") {
+    const { data } = await supabase
       .from("channels")
-      .select("connection_status, last_error, display_name, username")
+      .select("*")
       .eq("workspace_id", workspace.id)
-      .eq("provider", "evolution")
-      .maybeSingle();
-    evolutionChannel = channel
-      ? {
-          connectionStatus: channel.connection_status,
-          lastError: channel.last_error,
-          label: channel.display_name || channel.username,
-        }
-      : null;
+      .order("created_at", { ascending: false });
+    channels = data ?? [];
   }
 
   // Cuentas (G7): las cuentas sociales que tienen ESTE publicador entre sus
@@ -100,14 +94,13 @@ export default async function IntegrationDetailPage({
 
   return (
     <IntegrationDetail
-      provider={provider}
+      provider={serializableProvider(provider)}
       data={data}
       webhookUrl={loaded.webhookUrls[provider.id] ?? null}
-      channelsSummary={loaded.channelsSummary}
+      channels={channels}
       metaAccounts={loaded.metaAccounts}
       metaIgUsername={loaded.metaIgUsername}
       youtubeVerifiedAt={loaded.youtubeVerifiedAt}
-      evolutionChannel={evolutionChannel}
       socialAccounts={socialAccounts}
       activityEntries={activityEntries}
     />
