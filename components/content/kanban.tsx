@@ -447,11 +447,11 @@ export function NewContentButtons({
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={() => setDialog("idea")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
         >
           <Plus className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">Nueva idea</span>
@@ -459,7 +459,7 @@ export function NewContentButtons({
         <button
           type="button"
           onClick={() => setDialog("post")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
         >
           <Plus className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">Nuevo post</span>

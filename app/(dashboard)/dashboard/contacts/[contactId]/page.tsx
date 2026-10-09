@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Globe, Calendar, CalendarClock } from "lucide-react";
+import { ArrowLeft, Calendar, CalendarClock } from "lucide-react";
 
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
@@ -19,7 +19,10 @@ import {
   formatDateTime,
   formatRelative,
 } from "@/components/contacts/ui";
-import { ContactEditor } from "@/components/contacts/contact-editor";
+import { ContactActions } from "@/components/contacts/contact-actions";
+import { ContactDataSection } from "@/components/contacts/contact-data-section";
+import { InlineField } from "@/components/contacts/inline-field";
+import { TemperatureField } from "@/components/contacts/temperature-field";
 import { AssignmentFields } from "@/components/contacts/assignment-fields";
 import { NotesSection } from "@/components/contacts/notes-section";
 import { FollowupField } from "@/components/contacts/followup-field";
@@ -256,42 +259,21 @@ export default async function ContactDetailPage({
             <div className="flex-shrink-0">
               <ContactAvatar avatarUrl={contact.avatar_url} displayName={contact.display_name} className="h-12 w-12 text-lg" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold">{contact.display_name ?? "Sin nombre"}</h2>
+                {/* El nombre se edita con un clic. */}
+                <InlineField
+                  contactId={contact.id}
+                  field="display_name"
+                  value={contact.display_name ?? ""}
+                  label="Nombre"
+                  placeholder="Sin nombre"
+                  variant="title"
+                />
                 <TemperatureBadge value={temperature} />
                 {contact.do_not_contact && <DoNotContactBadge />}
               </div>
-              {/* F17: antes el @ de Instagram solo se veia dentro del formulario de edicion. */}
-              {handles.instagramUsername && (
-                <a
-                  href={handles.instagramUrl ?? undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-0.5 inline-block text-sm text-primary hover:underline"
-                >
-                  @{handles.instagramUsername}
-                </a>
-              )}
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                {contact.email && (
-                  <span className="flex items-center gap-1">
-                    <Mail className="h-3 w-3" />
-                    {contact.email}
-                  </span>
-                )}
-                {contact.phone && (
-                  <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    {contact.phone}
-                  </span>
-                )}
-                {contact.country && (
-                  <span className="flex items-center gap-1">
-                    <Globe className="h-3 w-3" />
-                    {contact.country}
-                  </span>
-                )}
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
                   Última interacción: {formatRelative(contact.last_interaction_at)}
@@ -302,28 +284,11 @@ export default async function ContactDetailPage({
         </div>
 
         <div className="mt-4">
-          <ContactEditor
+          <ContactActions
             contactId={contact.id}
             isAdmin={isAdmin}
             doNotContact={contact.do_not_contact}
             doNotContactReason={contact.do_not_contact_reason}
-            initial={{
-              display_name: contact.display_name ?? "",
-              email: contact.email ?? "",
-              secondary_email: contact.secondary_email ?? "",
-              phone: contact.phone ?? "",
-              whatsapp_phone: contact.whatsapp_phone ?? "",
-              country: contact.country ?? "",
-              instagram_username: contact.instagram_username ?? "",
-              tiktok_username: contact.tiktok_username ?? "",
-              twitter_username: contact.twitter_username ?? "",
-              facebook_id: contact.facebook_id ?? "",
-              youtube_channel_id: contact.youtube_channel_id ?? "",
-              linkedin_profile_url: contact.linkedin_profile_url ?? "",
-              lead_temperature: contact.lead_temperature ?? "",
-              next_followup_date: contact.next_followup_date ?? "",
-              ai_conversation_summary: contact.ai_conversation_summary ?? "",
-            }}
           />
         </div>
       </header>
@@ -342,6 +307,27 @@ export default async function ContactDetailPage({
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           {/* Columna principal */}
           <div className="space-y-8">
+            <NotesSection contactId={contact.id} notes={contact.notes} />
+
+            <ContactDataSection
+              contactId={contact.id}
+              canEdit
+              values={{
+                email: contact.email ?? "",
+                secondary_email: contact.secondary_email ?? "",
+                phone: contact.phone ?? "",
+                whatsapp_phone: contact.whatsapp_phone ?? "",
+                country: contact.country ?? "",
+                instagram_username: contact.instagram_username ?? "",
+                tiktok_username: contact.tiktok_username ?? "",
+                twitter_username: contact.twitter_username ?? "",
+                facebook_id: contact.facebook_id ?? "",
+                youtube_channel_id: contact.youtube_channel_id ?? "",
+                linkedin_profile_url: contact.linkedin_profile_url ?? "",
+                ai_conversation_summary: contact.ai_conversation_summary ?? "",
+              }}
+            />
+
             <Section title="Conversaciones">
               {conversations.length === 0 ? (
                 <EmptyHint>
@@ -396,8 +382,6 @@ export default async function ContactDetailPage({
 
             <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
 
-            <NotesSection contactId={contact.id} notes={contact.notes} />
-
             <AttributionSection view={attributionView} />
 
             <HistorySection entries={history} />
@@ -417,9 +401,20 @@ export default async function ContactDetailPage({
             </Section>
 
             <Section title="Seguimiento">
-              <FollowupField
+              <div className="space-y-3">
+                <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
+                <FollowupField
+                  contactId={contact.id}
+                  value={contact.next_followup_date}
+                />
+              </div>
+            </Section>
+
+            <Section title="Tags">
+              <TagsEditor
                 contactId={contact.id}
-                value={contact.next_followup_date}
+                allTags={tagOptions}
+                assignedIds={assignedTagIds}
               />
             </Section>
 
@@ -433,14 +428,6 @@ export default async function ContactDetailPage({
                 />
               </Section>
             )}
-
-            <Section title="Tags">
-              <TagsEditor
-                contactId={contact.id}
-                allTags={tagOptions}
-                assignedIds={assignedTagIds}
-              />
-            </Section>
 
             <Section title="Campos personalizados">
               <CustomFieldsEditor
