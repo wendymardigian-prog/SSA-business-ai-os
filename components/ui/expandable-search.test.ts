@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ExpandableSearch } from "./expandable-search";
 import { FilterMenu } from "./filter-menu";
@@ -43,13 +43,11 @@ describe("ExpandableSearch", () => {
 describe("FilterMenu compacto", () => {
   const menu = (badge: number) =>
     renderToStaticMarkup(
-      createElement(FilterMenu, {
-        label: "Filtros",
-        compact: true,
-        badge,
-        active: badge > 0,
-        children: createElement("p", null, "x"),
-      }),
+      createElement(
+        FilterMenu,
+        { label: "Filtros", compact: true, badge, active: badge > 0 } as ComponentProps<typeof FilterMenu>,
+        createElement("p", null, "x"),
+      ),
     );
 
   it("es un boton de solo icono: sin texto, sin chevron, con su nombre accesible", () => {
