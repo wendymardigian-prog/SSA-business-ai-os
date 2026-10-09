@@ -41,14 +41,28 @@ export function FilterMenu({
   children,
   align = "right",
   menuClassName = "topbar:w-[300px]",
+  compact = false,
+  badge = 0,
 }: {
   /** El nombre del filtro, en gris ("Canal:"). Se esconde en pantallas chicas. */
   label: string;
-  /** Lo elegido, en negro. */
-  value: ReactNode;
+  /** Lo elegido, en negro. En `compact` no se dibuja. */
+  value?: ReactNode;
   /** Hay un filtro puesto: el boton se resalta. */
   active: boolean;
   icon?: ReactNode;
+  /**
+   * Un boton de SOLO icono, cuadrado, sin chevron ni texto: ocupa 32 px en la
+   * barra en vez de 150. El nombre queda para el lector de pantalla y el
+   * tooltip nativo. Lo usan Agenda y Contactos, que juntan muchos filtros en un
+   * solo menu.
+   */
+  compact?: boolean;
+  /**
+   * Cuantos filtros hay puestos, como globito sobre el icono (solo en
+   * `compact`). 0 no dibuja nada.
+   */
+  badge?: number;
   children: ReactNode;
   align?: "left" | "right";
   /**
@@ -122,6 +136,8 @@ export function FilterMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
+        aria-label={compact ? (badge > 0 ? `${label}, ${badge} ${badge === 1 ? "activo" : "activos"}` : label) : undefined}
+        title={compact ? label : undefined}
         onClick={() => (open ? close(false) : setOpen(true))}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -130,14 +146,28 @@ export function FilterMenu({
           }
         }}
         className={cn(
-          "flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border px-2.5 text-[13px] font-medium transition-colors",
+          "flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border text-[13px] font-medium transition-colors",
+          compact ? "relative w-8 justify-center" : "gap-2 px-2.5",
           active ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
         )}
       >
         {icon}
-        <span className="hidden font-normal text-muted-foreground md:inline">{label}:</span>
-        <span>{value}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        {compact ? (
+          badge > 0 && (
+            <span
+              aria-hidden
+              className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground"
+            >
+              {badge}
+            </span>
+          )
+        ) : (
+          <>
+            <span className="hidden font-normal text-muted-foreground md:inline">{label}:</span>
+            <span>{value}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          </>
+        )}
       </button>
 
       {open && (

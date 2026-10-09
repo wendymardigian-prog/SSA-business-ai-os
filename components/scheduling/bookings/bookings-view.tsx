@@ -15,7 +15,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Settings } from "lucide-react";
+import { Plus, Settings } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ReconnectBanner } from "../reconnect-banner";
 import { BookingsList } from "./list";
@@ -36,6 +36,8 @@ import { QUICK_FILTER_LABELS, type QuickFilter } from "@/lib/scheduling/bookings
 import type { AgendaFilters } from "@/lib/scheduling/agenda-filters";
 import { AGENDA_PERIODS, AGENDA_PERIOD_LABELS, type AgendaPeriod } from "@/lib/scheduling/agenda-period";
 import { PeriodPopover } from "@/components/dashboards/chat/filters/period-popover";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import { agendaSearchHint } from "@/lib/scheduling/agenda-search-hint";
 import { gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking, slotsForManualBooking } from "@/lib/actions/scheduling/bookings";
 
@@ -172,24 +174,28 @@ export function BookingsScreen({
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/agenda"
+        filtersBreakpoint="wide"
         right={
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <ShareLinksMenu events={shareableEvents} />
             {canManage && (
               <button
                 type="button"
                 onClick={() => setManualOpen(true)}
-                className="inline-flex h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+                aria-label="Agendar una reunión"
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3"
               >
-                + Agendar
+                <Plus className="h-4 w-4" aria-hidden />
+                {/* En el telefono, solo el "+": la barra tiene que dejar lugar al titulo y a la campana. */}
+                <span className="hidden sm:inline">Agendar</span>
               </button>
             )}
             {showConfig && (
               <Link
                 href="/dashboard/agenda/configuracion"
-                aria-label="Configuración de agenda"
-                title="Configuración de agenda"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={`Configuración de agenda. Hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
+                title={`Configuración de agenda · hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <Settings className="h-4 w-4" />
               </Link>
@@ -198,7 +204,7 @@ export function BookingsScreen({
         }
         filters={
           <>
-            <div className="flex rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
+            <div className="flex shrink-0 rounded-lg border border-border p-0.5" role="group" aria-label="Vista">
               {VIEWS.map((v) => (
                 <button
                   key={v.key}
@@ -227,23 +233,14 @@ export function BookingsScreen({
 
             <AgendaFiltersMenu filters={filters} categories={categories} events={eventOptions} hosts={scopeAll ? hostOptions : null} utmOptions={utmOptions} />
 
-            <input
-              defaultValue={search}
-              onBlur={(e) => setParam("q", e.target.value || null)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") setParam("q", (e.target as HTMLInputElement).value || null);
-              }}
+            <ExpandableSearch
+              value={search}
+              onCommit={(next) => setParam("q", next || null)}
+              label="Buscar contacto"
               placeholder="Buscar contacto"
-              aria-label="Buscar contacto"
-              className="h-8 w-40 rounded-lg border border-input bg-background px-2 text-xs"
+              hint={agendaSearchHint({ view, period, customRange, timezone })}
+              hintAlign="right"
             />
-
-            <Link
-              href="/dashboard/agenda/configuracion/ajustes"
-              className="flex h-8 items-center whitespace-nowrap rounded-lg border border-border px-2.5 text-xs text-muted-foreground hover:bg-muted"
-            >
-              {timezoneCityLabel(timezone)} ({gmtOffsetLabel(now, timezone)})
-            </Link>
           </>
         }
       />

@@ -37,10 +37,13 @@ export function ShareLinksMenu({ events }: { events: ShareableEvent[] }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-muted"
+        aria-label="Compartir los links de los eventos"
+        title="Compartir los links de los eventos"
+        className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-2.5 text-sm hover:bg-muted xl:px-3"
       >
         <Share2 className="h-4 w-4" aria-hidden />
-        Compartir
+        {/* Con poco ancho queda solo el icono: la barra de Agenda tiene siete controles. */}
+        <span className="hidden xl:inline">Compartir</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
       </button>
 

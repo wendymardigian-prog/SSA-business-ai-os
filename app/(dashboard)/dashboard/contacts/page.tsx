@@ -5,6 +5,7 @@ import { ContactsView, type ContactRow } from "./contacts-view";
 import type { LeadTemperature } from "@/lib/types/database";
 import { isSupportedPlatform, platformLabel } from "@/lib/platforms";
 import { LEAD_TEMPERATURES } from "@/lib/contacts/fields";
+import { contactOrderClauses, parseContactSort } from "@/lib/contacts/sort";
 import { firstParam, pickEnum, pickPage, sanitizeSearch } from "@/lib/url-params";
 
 /**
@@ -51,6 +52,8 @@ export default async function ContactsPage({
   // persona responda. "1" los muestra, "solo" deja unicamente esos.
   const anon = pickEnum(params.anon, ANON_FILTER_VALUES);
   const page = pickPage(params.page);
+  // El orden de la lista (`?orden=`): una lista cerrada, con el de siempre por defecto.
+  const sort = parseContactSort(params.orden);
   // Por PRIMER toque (F88): quien lo trajo, no lo ultimo que hizo. Los valores
   // se validan contra la taxonomia; uno inventado se ignora.
   const attribution = parseAttributionFilters(params);
@@ -106,9 +109,11 @@ export default async function ContactsPage({
     .eq("is_anonymous", true);
 
   const [contactsRes, tagsRes, channelsRes, members, anonymousRes] = await Promise.all([
-    query
-      .order("last_interaction_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
+    contactOrderClauses(sort)
+      .reduce(
+        (q, clause) => q.order(clause.column, { ascending: clause.ascending, nullsFirst: clause.nullsFirst }),
+        query,
+      )
       .range(from, from + PAGE_SIZE - 1),
     supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
     supabase
@@ -166,6 +171,7 @@ export default async function ContactsPage({
       members={members.map((m) => ({ userId: m.userId, label: m.name }))}
       filters={{ search, tagId, setterId, vendedorId, temperature, platform, anon, source: attribution.source, medium: attribution.medium }}
       anonymousCount={anonymousRes.count ?? 0}
+      sort={sort}
     />
   );
 }

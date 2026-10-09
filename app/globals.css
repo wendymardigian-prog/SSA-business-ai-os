@@ -39,6 +39,12 @@
    * lado del titulo y bajan a una franja propia, como en el prototipo.
    */
   --breakpoint-topbar: 860px;
+  /*
+   * Para las pantallas con una barra muy cargada (Agenda: vistas, periodo,
+   * filtros, buscador y tres botones): abajo de 1080 px los filtros bajan a su
+   * franja, igual que abajo de 860 en el resto. Variante `topbar-wide:`.
+   */
+  --breakpoint-topbar-wide: 1080px;
 
   /*
    * Colores de serie del dashboard de Chat. Son estables por autor: el agente
