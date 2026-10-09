@@ -914,3 +914,92 @@ yo. Con alguien logueado en `localhost:3000`, revisar:
 `npm run lint` da 4 errores en `components/agents/ai-dashboard/*` y
 `components/settings/integrations/onboarding-banner.tsx`, que esta corrida no
 tocó. El build pasa igual.
+
+## Revision de octubre (9/10/2026, rama `feat/revision-octubre`)
+
+Plan y recorrido: `docs/revision-octubre/PLAN.md` y `recorrido.md`. Lo que quedo
+afuera, o a medias, o por hacer despues:
+
+### Migracion `00136` (alcance de leads por rol): escrita, ensayada, SIN aplicar
+- Se aplica **despues del merge y del deploy** (con el codigo nuevo y la funcion
+  vieja, `own_unassigned` se comporta como `own`: no abre nada de mas).
+- Ya hecho: respaldo (`docs/revision-octubre/respaldo-00136.json`) y ensayo en una
+  transaccion que se deshace sola (`docs/revision-octubre/ensayo-00136.sql`;
+  correrlo con `supabase db query --linked -f ...` termina en un error a
+  proposito: asi nada se confirma). Resultado del ensayo: Member de sistema ve 1,
+  `own` ve 1, `own_unassigned` ve 2 (lo suyo + el libre, no el de otro), `all` ve
+  3, y con `own` los interruptores viejos prendidos ya no abren nada.
+- Aplicar: `supabase db query --linked -f supabase/migrations/00136_lead_scope_by_role.sql`,
+  registrar en `supabase_migrations.schema_migrations` (version = timestamp UTC),
+  y despues `node scripts/verify-rls.mjs --despues-de-00136` y
+  `node scripts/verify-roles.mjs --despues-de-00136` (de a uno).
+- Efecto real hoy: **ninguno**. En produccion hay un solo rol personalizado
+  (Content Manager, `leads: all`) y solo Owners como miembros. Lo que cambia a
+  proposito: el Member de sistema pasa a ver solo lo asignado aun en el workspace
+  que tenia "sin asignar visibles" prendido; para otro comportamiento se crea un
+  rol con "Los suyos + los sin asignar".
+
+### Columnas que quedaron sin uso (borrar mas adelante)
+Orden de siempre: primero el codigo desplegado sin leerlas, despues las consultas
+de seguridad, un respaldo, y recien ahi la migracion que borra.
+- `workspaces.persist_zernio_inbound` (el guardado de mensajes es siempre).
+- `workspaces.lead_scope_enabled` y `workspaces.unassigned_leads_visible_to_members`
+  (desde la 00136; los scripts `verify-*` todavia las escriben a proposito para
+  poder correr antes y despues de la 00136: sacarlas ahi tambien).
+- `workspaces.agent_escalate_on_unreadable` **no** se borra todavia: los flows y
+  las secuencias, que no tienen agente, la siguen leyendo.
+
+### Gmail multicuenta (punto 4: no se construyo, hallazgos para el plano)
+Hace falta su propio documento de requerimientos (skill `metodo-builder:05-requerimientos`).
+- **Se reutiliza:** el cliente OAuth de Google que ya esta en Vault, los
+  adaptadores (`lib/oauth/registry.ts`), el modelo multicuenta de Calendar
+  (conexion por persona, `oauth_connections` con dos unicos parciales) y el canal
+  de email (`lib/email/*`, entra por `channels`/`conversations`/`messages`).
+- **Falta:**
+  - `gmail` en los CHECK de `oauth_connections` y de `channels`;
+  - aflojar `uq_channels_email_per_workspace` (hoy un solo canal de email);
+  - `channels.oauth_connection_id`;
+  - recepcion: `users.watch` con Pub/Sub, o lectura periodica;
+  - envio MIME con `threadId` para no romper el hilo;
+  - la rama `gmail` explicita en los dos caminos de envio (nunca un `else`).
+- **Decisiones abiertas:** si las cuentas son del negocio o de cada persona, y si
+  se pasa la verificacion CASA de Google o se queda en modo prueba (tokens de 7
+  dias, que obliga a reconectar cada semana).
+- La integracion de YouTube no alcanza sola: es otro alcance (scope) de OAuth y
+  otra pantalla de consentimiento.
+
+### Centro de notificaciones
+Hoy no existe un lugar de ajustes de notificaciones. Regla para cuando se
+construya: el aviso de gasto de IA (`ai_spend_threshold`) tiene que aparecer ahi
+enlazado a la tarjeta de topes de Agentes. El dato (el porcentaje) tiene una sola
+fuente; son dos pantallas sobre el mismo valor.
+
+### Adjuntos en emails de automatizaciones
+"Insertar recurso" en un email solo mete texto y enlace. Adjuntar un archivo
+exige sumar adjuntos a `SendEmailParams` y cambiar la regla de `channelAccepts`
+para email (hoy: texto y enlace nada mas).
+
+### Renombre de `content_offers`
+La tabla sigue llamandose `content_offers` y la pantalla dice "Productos". Cuando
+llegue Ventas (Etapa 4, snapshot de precio por venta) conviene renombrarla a
+`products` en una migracion aparte, junto con `archived_at`/`status`.
+
+### No se pudo verificar en vivo (sin datos o sin canal real)
+- Paso "Recurso" en el editor de secuencias y "Insertar recurso" en el editor de
+  flujos de Agenda: probados con tests y typecheck, no en pantalla (no hay
+  secuencias ni reuniones con automatizacion de prueba, y crearlas ensuciaba la
+  base real).
+- Envio de un audio real por Zernio (Instagram) y por Evolution (WhatsApp) desde
+  la bandeja: el contrato (`channelAccepts`, formatos) esta probado; falta
+  mandar uno de verdad.
+- Dashboard de Agenda con volumen: hoy la base real tiene una sola reunion.
+  Techo de lectura: 20.000 agendas por periodo (avisa si lo pasa).
+- La barra de Agenda por debajo de ~950 px: se ajusto con puntos de quiebre y se
+  vio en 800 px y movil, pero conviene un vistazo en una tablet real.
+
+### Datos de prueba que quedaron en la base real
+- Recurso `zz-test-audio-grabado` (borrado, o sea soft-delete: lo purga el cron a
+  los 30 dias).
+- 6 entradas de `audit_log` en el contacto Andrew Kroeze: se edito el pais a
+  `zz-test-pais` y se restauro a vacio.
+- Los topes de IA del workspace se tocaron y se restauraron a sin tope.

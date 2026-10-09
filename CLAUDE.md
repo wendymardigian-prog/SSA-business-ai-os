@@ -116,7 +116,7 @@ El sistema se duplica por cliente: cada clon es su propia copia, con su propia b
 - Contacto como entidad central. Deduplicacion por telefono o email, nunca solo por nombre.
 - Identificacion cross-canal: si el mismo telefono/email aparece por dos canales, se unifica en un contacto, pero cada conversacion se mantiene separada por canal.
 - Doble asignacion: cada lead tiene setter (quien contacta) y vendedor/closer (quien cierra). Ambos campos opcionales e independientes.
-- Scope de leads (Etapa 1, restriccion dura por RLS): un Member solo ve/edita contactos y conversaciones donde es setter, vendedor o agente asignado. Owner y Admin ven todo.
+- Scope de leads (Etapa 1, restriccion dura por RLS): un Member solo ve/edita contactos y conversaciones donde es setter, vendedor o agente asignado. Owner y Admin ven todo. **Desde la 00136 el alcance sale del ROL** (no de interruptores del workspace): `own` (lo asignado), `own_unassigned` (lo asignado + lo que no tiene a nadie) o `all`; el Member de sistema es `own`.
 - Soft delete: nada se borra de verdad, se marca con `deleted_at`. Retencion 30 dias, luego purga por cron.
 - Marca "no contactar": detectada automaticamente o manual; pausa secuencias del contacto.
 - Snapshot de precio (Etapa 4): al registrar una venta se guarda el precio de ese momento.
@@ -220,7 +220,8 @@ reglas de forma y la escritura con `templates.manage`) y `00132`
 (`touch_response_asset`) estan **aplicadas** y registradas. El plano las
 numeraba 00125/00126, que ya estaban ocupadas. La cabecera de la 00131 tiene
 los cuatro CHECK y las tres policies viejas letra por letra, para volver atras.
-**La proxima migracion disponible es la `00133`.**
+**Revision de octubre (9/10/2026): la proxima migracion disponible es la `00137`**
+(ver "Revision de octubre" mas abajo; confirmar con `list_migrations`).
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -682,6 +683,45 @@ en `docs/contenido.md`, `docs/publicacion.md` y `docs/atribucion.md`.
 
 - `LINKEDIN_API_VERSION` es `202609`; LinkedIn retira cada version a los ~12
   meses: revisarla antes de septiembre de 2027.
+
+# Revision de octubre (9/10/2026, rama `feat/revision-octubre`)
+
+Quince puntos de una revision de punta a punta. Plan en
+`docs/revision-octubre/PLAN.md`, pendientes en `docs/PENDIENTE.md`
+("Revision de octubre").
+
+- **Migraciones `00133` a `00136`.** `00133` (topes de gasto de IA con accion y
+  aviso previo), `00134` (precio y estado de los productos) y `00135`
+  (`email_log.contact_id`) estan **aplicadas y registradas**. La **`00136`**
+  (alcance de leads por rol: reescribe `can_see_contact`, copia de la 00089 con
+  la definicion vieja completa en su cabecera) esta **escrita y ensayada en una
+  transaccion que se deshace sola, SIN aplicar a proposito**: se aplica despues
+  del merge y del deploy (respaldo en `docs/revision-octubre/respaldo-00136.json`,
+  ensayo en `ensayo-00136.sql`). Hasta entonces `own_unassigned` se comporta como
+  `own`: no abre nada de mas. Despues de aplicarla: `verify-rls.mjs` y
+  `verify-roles.mjs` con `--despues-de-00136`.
+- **Productos = `content_offers`.** La tabla no se renombro: la pantalla dice
+  "Productos" (`/dashboard/settings/productos`), con precio en USD (siempre USD)
+  y estado activo / inactivo / discontinuado, que se guarda en `archived_at` +
+  `status` (la base rechaza combinaciones incoherentes). Los pilares viven en
+  Contenido (engranaje).
+- **El guardado de mensajes es siempre.** No hay interruptor; el escalado por
+  mensaje sin entender es una opcion de CADA agente (`escalation.onUnreadable`).
+- **Topes de gasto de IA** en Agentes (`lib/ai/spend.ts`, `spend-limits-card`):
+  cada tope elige cortar o solo avisar, y hay un aviso previo al X %.
+- **Recursos en automatizaciones.** Un solo camino de envio (`deliverAsset`,
+  `lib/response-assets/deliver.ts`) para el nodo "Enviar recurso" de los flows y
+  el paso "Recurso" de las secuencias; "Insertar recurso" mete texto o enlace en
+  emails y mensajes, y sus variables (`{{contact.*}}`, `{{workspace.name}}`) se
+  resuelven al enviar (`lib/response-assets/bank-variables.ts`).
+- **El historial del contacto** (`lib/contacts/history.ts`) muestra lo
+  automatico (automatizaciones, secuencias, emails) y no los mensajes del chat.
+- **Dashboard de Agenda** (`/dashboard/dashboards/agenda`, permiso
+  `dashboards.agenda.view`): cuentas puras en `lib/dashboards/agenda.ts`, lee con
+  el cliente del usuario (la RLS decide que ve cada quien). "Gasto de IA" ya no
+  esta en el selector.
+- **Ficha del contacto**: los datos se editan en el lugar (`InlineField`); el
+  orden es Notas, datos por seccion, Seguimiento, Tags, Acciones rapidas.
 
 # Seguridad
 
