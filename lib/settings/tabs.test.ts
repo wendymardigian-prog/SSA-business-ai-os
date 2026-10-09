@@ -8,7 +8,7 @@ describe("SETTINGS_TABS", () => {
       "Equipo y roles",
       "Campos personalizados",
       "Recursos",
-      "Contenido",
+      "Productos",
       "Integraciones",
       "Tareas",
     ]);
@@ -47,9 +47,12 @@ describe("activeSettingsTab", () => {
     );
   });
 
-  it("marca Contenido en /contenido", () => {
+  it("marca Productos en /productos y en la ruta vieja /contenido (que redirige)", () => {
+    expect(activeSettingsTab("/dashboard/settings/productos")).toBe(
+      "/dashboard/settings/productos",
+    );
     expect(activeSettingsTab("/dashboard/settings/contenido")).toBe(
-      "/dashboard/settings/contenido",
+      "/dashboard/settings/productos",
     );
   });
 

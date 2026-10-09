@@ -256,7 +256,7 @@ function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
         {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground">“{excerpt}”</span>}
 
         {idea.offer && (
-          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Oferta">
+          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Producto">
             {idea.offer.name}
           </span>
         )}

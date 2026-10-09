@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createOffer, createPillar } from "@/lib/actions/content-taxonomy";
+import { createPillar } from "@/lib/actions/content-taxonomy";
 import { FORMAT_SUGGESTIONS } from "@/lib/content/ideas";
 import { FUNNEL_STAGES, funnelStageInfo } from "@/lib/content/classification";
 import { selectableItems, TAXONOMY_NAME_MAX, type TaxonomyItem } from "@/lib/content/taxonomy";
@@ -17,10 +17,14 @@ import { NetworkBadge } from "./network-badge";
  * proposito: lo usa el dialogo de la idea y el editor de la pieza, y lo van a
  * usar los drawers de B13 sin reescribirlo.
  *
- * Los selectores de pilar y oferta terminan en "+ Crear": cargar una idea no
- * se frena por un pilar que falta. Solo aparece para quien puede cambiar la
- * configuracion (`settings.manage`); para el resto el selector ofrece lo que
- * hay y nada mas.
+ * El selector de pilar termina en "+ Crear": cargar una idea no se frena por
+ * un pilar que falta. Solo aparece para quien puede cambiar la configuracion
+ * (`settings.manage`); para el resto el selector ofrece lo que hay y nada mas.
+ *
+ * El de PRODUCTO (las ofertas de antes) no se crea desde aca: un producto lleva
+ * precio y estado, y se carga en Ajustes -> Productos. Solo se ofrecen los
+ * activos (inactivo y discontinuado son archivados), mas el que la pieza ya
+ * tiene.
  */
 
 export interface ClassificationValue {
@@ -81,6 +85,7 @@ function TaxonomySelect({
   canCreate,
   disabled,
   create,
+  hint,
   onChange,
 }: {
   label: string;
@@ -89,11 +94,13 @@ function TaxonomySelect({
   feminine: boolean;
   items: TaxonomyItem[];
   value: string;
+  /** Si ofrece "+ Crear" al final. Sin `create`, no se ofrece aunque sea true. */
   canCreate: boolean;
   disabled?: boolean;
-  create: (name: string) => Promise<
+  create?: (name: string) => Promise<
     { ok: true; data: { id: string; name: string; color?: string | null } } | { ok: false; error: string }
   >;
+  hint?: string;
   onChange: (id: string) => void;
 }) {
   // Lo recien creado se ve ya, sin esperar a que la pagina vuelva a leer.
@@ -107,6 +114,7 @@ function TaxonomySelect({
   const options = selectableItems(all, value);
 
   function submit() {
+    if (!create) return;
     setError(null);
     start(async () => {
       const result = await create(name);
@@ -123,7 +131,7 @@ function TaxonomySelect({
 
   return (
     <div className="space-y-1">
-      <DialogField label={label}>
+      <DialogField label={label} hint={hint}>
         <select
           value={creating ? NEW : value}
           disabled={disabled}
@@ -144,7 +152,7 @@ function TaxonomySelect({
               {item.archivedAt ? " (archivad" + (feminine ? "a)" : "o)") : ""}
             </option>
           ))}
-          {canCreate && <option value={NEW}>+ Crear {singular}…</option>}
+          {canCreate && create && <option value={NEW}>+ Crear {singular}…</option>}
         </select>
       </DialogField>
 
@@ -240,15 +248,15 @@ export function ClassificationFields({
           onChange={(pillarId) => onChange({ pillarId })}
         />
         <TaxonomySelect
-          label="Oferta"
-          none="Sin oferta"
-          singular="oferta"
-          feminine
+          label="Producto"
+          none="Sin producto"
+          singular="producto"
+          feminine={false}
           items={taxonomy.offers}
           value={value.offerId}
-          canCreate={taxonomy.canCreate}
+          canCreate={false}
           disabled={disabled}
-          create={(name) => createOffer({ name })}
+          hint="Se cargan, con su precio, en Ajustes → Productos."
           onChange={(offerId) => onChange({ offerId })}
         />
         <div className="space-y-1">

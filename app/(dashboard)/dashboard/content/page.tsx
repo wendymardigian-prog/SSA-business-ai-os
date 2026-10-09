@@ -5,6 +5,7 @@ import { ContentCalendar } from "@/components/content/calendar-view";
 import { ContentList, type ListRow } from "@/components/content/list-view";
 import { ContentViewSwitcher, CountModeSwitcher, PlatformFilter } from "@/components/content/view-switcher";
 import { ContentShell } from "@/components/content/drawer/content-shell";
+import { ContentSettingsButton } from "@/components/content/content-settings-button";
 import { parseContentFilters, matchesPlatform } from "@/lib/content/filters";
 import { parseDrawer } from "@/lib/content/drawer-url";
 import { loadPiece, type PieceData } from "@/lib/content/load-piece";
@@ -14,7 +15,7 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { attributedContactsFor, countByPiece, type BoardIdea, type BoardPost } from "@/lib/content/board";
 import { authorshipLine } from "@/lib/content/classification";
-import { tagFor } from "@/lib/content/taxonomy";
+import { countUsage, tagFor } from "@/lib/content/taxonomy";
 import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -251,6 +252,16 @@ export default async function ContentPage({
         : undefined,
   };
 
+  // Los pilares para el dialogo de ajustes (⚙️), con cuantas piezas usa cada uno.
+  const pillarUse = countUsage((postsRes.data ?? []).map((p) => p.pillar_id));
+  const pillarRows = taxonomy.pillars.map((p) => ({
+    id: p.id,
+    name: p.name,
+    color: p.color ?? null,
+    archived: p.archivedAt !== null,
+    pieces: pillarUse.get(p.id) ?? 0,
+  }));
+
   const crear = {
     canCreate: true,
     ideas: ideas.map((i) => ({ id: i.id, title: i.title })),
@@ -337,7 +348,13 @@ export default async function ContentPage({
             {filters.view === "calendar" && <CountModeSwitcher current={filters.count} />}
           </>
         }
-        right={<NewContentButtons {...crear} />}
+        right={
+          <>
+            {/* Los pilares (y lo que se sume en el futuro): solo para quien puede cambiar la configuracion. */}
+            {can("settings.manage") && <ContentSettingsButton pillars={pillarRows} />}
+            <NewContentButtons {...crear} />
+          </>
+        }
       />
 
       {filters.view === "kanban" && (

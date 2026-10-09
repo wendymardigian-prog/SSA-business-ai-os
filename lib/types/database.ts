@@ -3236,11 +3236,15 @@ export interface Database {
       };
 
       /** Ofertas a las que apunta una idea o pieza (00116). Se archivan, no se borran. */
+      // El catalogo de PRODUCTOS (antes "ofertas"; 00134 suma precio y estado).
       content_offers: {
         Row: {
           id: string;
           workspace_id: string;
           name: string;
+          /** USD. NULL solo en filas anteriores a la 00134. */
+          price_usd: number | null;
+          status: "active" | "inactive" | "discontinued";
           archived_at: string | null;
           created_by: string | null;
           created_at: string;
@@ -3250,11 +3254,15 @@ export interface Database {
           id?: string;
           workspace_id: string;
           name: string;
+          price_usd?: number | null;
+          status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
           created_by?: string | null;
         };
         Update: {
           name?: string;
+          price_usd?: number | null;
+          status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
         };
         Relationships: [];

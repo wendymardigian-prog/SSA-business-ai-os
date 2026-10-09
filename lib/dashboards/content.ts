@@ -563,7 +563,7 @@ export type GroupDimension = "piece" | "offer" | "pillar" | "funnel" | "platform
 
 export const GROUP_DIMENSIONS: Array<{ value: GroupDimension; label: string }> = [
   { value: "piece", label: "Pieza" },
-  { value: "offer", label: "Oferta" },
+  { value: "offer", label: "Producto" },
   { value: "pillar", label: "Pilar" },
   { value: "funnel", label: "Etapa del embudo" },
   { value: "platform", label: "Red" },
@@ -607,7 +607,7 @@ function dimensionOf(
     case "piece":
       return piece ? { key: piece.id, label: piece.title.trim() || "Sin título" } : none;
     case "offer":
-      return piece?.offerId ? { key: piece.offerId, label: piece.offerName ?? "Oferta archivada" } : none;
+      return piece?.offerId ? { key: piece.offerId, label: piece.offerName ?? "Producto archivado" } : none;
     case "pillar":
       return piece?.pillarId ? { key: piece.pillarId, label: piece.pillarName ?? "Pilar archivado" } : none;
     case "funnel": {

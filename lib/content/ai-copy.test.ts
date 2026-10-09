@@ -72,7 +72,7 @@ describe("armar el pedido (F29)", () => {
     expect(prompt).toContain("Desde la objecion mas comun");
   });
 
-  it("F94: la clasificacion entra al pedido: pilar, oferta, etapa del embudo y referencia", () => {
+  it("F94: la clasificacion entra al pedido: pilar, producto, etapa del embudo y referencia", () => {
     const prompt = buildPrompt({
       title: "x",
       platforms: [],
@@ -85,7 +85,7 @@ describe("armar el pedido (F29)", () => {
     });
 
     expect(prompt).toContain("Pilar: Educativo");
-    expect(prompt).toContain("Oferta: Mentoria 1:1");
+    expect(prompt).toContain("Producto: Mentoria 1:1");
     // La etapa va con su descripcion: tofu/mofu/bofu no le dice nada a un modelo.
     expect(prompt).toContain("Etapa del embudo: Consideración");
     expect(prompt).toContain("Le habla a quien ya sabe que tiene el problema");
@@ -96,7 +96,7 @@ describe("armar el pedido (F29)", () => {
     const prompt = buildPrompt({ title: "x", platforms: [], classification: { pillar: null, offer: "  " } });
 
     expect(prompt).not.toContain("Pilar:");
-    expect(prompt).not.toContain("Oferta:");
+    expect(prompt).not.toContain("Producto:");
     expect(prompt).not.toContain("Etapa del embudo");
   });
 

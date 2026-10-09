@@ -17,8 +17,8 @@ export const SETTINGS_EMPTY_STATES = {
   recursosMember: "Cuando alguien con permiso cargue el primero, lo vas a poder usar desde la bandeja con un clic.",
   contentPillars:
     "Un pilar es un gran tema de tu contenido: educativo, casos de éxito, autoridad. Creá el primero y vas a poder elegirlo al cargar una idea.",
-  contentOffers:
-    "Una oferta es lo que vendés: una mentoría, un servicio, un curso. Creá la primera y vas a poder ver qué contenido empuja cada una.",
+  contentProducts:
+    "Un producto es lo que vendés: una mentoría, un servicio, un curso. Cargá el primero con su precio y vas a poder ver qué contenido empuja cada uno.",
   integrations: "Ninguna integración está conectada todavía.",
   background: "Cuando el sistema empiece a registrar tareas, las vas a ver acá.",
 } as const;

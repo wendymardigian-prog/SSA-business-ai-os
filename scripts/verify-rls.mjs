@@ -1342,7 +1342,7 @@ try {
       workspace_id: ws.id, user_id: gestor.id, role: "member", role_id: rolGestor.id,
     });
 
-    for (const [tabla, singular, un, el] of [["content_pillars", "pilar", "un", "el"], ["content_offers", "oferta", "una", "la"]]) {
+    for (const [tabla, singular, un, el] of [["content_pillars", "pilar", "un", "el"], ["content_offers", "producto", "un", "el"]]) {
       const { data: fila, error: eAlta } = await admin.client.from(tabla)
         .insert({ workspace_id: ws.id, name: "zz-test Educativo" }).select("id").single();
       check(!eAlta && !!fila, `un Admin crea ${un} ${singular}`, eAlta?.message);
@@ -1363,9 +1363,12 @@ try {
           .insert({ workspace_id: ws.id, name: "zz-test Del gestor" }).select("id").single();
         check(!error && !!creada, `un rol personalizado con settings.manage SI crea ${un} ${singular}`, error?.message); }
 
-      // Archivar es un UPDATE, y es la unica forma de sacarla de circulacion.
-      { const { data: arch } = await admin.client.from(tabla)
-          .update({ archived_at: new Date().toISOString() }).eq("id", fila.id).select("id");
+      // Archivar es un UPDATE, y es la unica forma de sacarlo de circulacion. En un
+      // producto (00134) estado y archivado van juntos: archivar es dejarlo discontinuado.
+      { const patch = tabla === "content_offers"
+          ? { archived_at: new Date().toISOString(), status: "discontinued" }
+          : { archived_at: new Date().toISOString() };
+        const { data: arch } = await admin.client.from(tabla).update(patch).eq("id", fila.id).select("id");
         check((arch ?? []).length === 1, `un Admin archiva ${el} ${singular}`); }
 
       // Sin policy de DELETE: PostgREST no devuelve error, simplemente no borra.
@@ -1379,6 +1382,20 @@ try {
       { const { error } = await svc.from(tabla).insert({ workspace_id: ws.id, name: "  ZZ-TEST EDUCATIVO" });
         check(!error, `${el === "el" ? "un" : "una"} ${singular} archivad${el === "el" ? "o" : "a"} libera su nombre`, error?.message); }
     }
+
+    // Productos (00134): precio y estado los hace cumplir la base, no solo la pantalla.
+    check(!!(await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test Precio malo", price_usd: -1 })).error,
+      "la base rechaza un producto con precio negativo");
+    check(!!(await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test Estado malo", status: "pausado" })).error,
+      "la base rechaza un estado que no es activo/inactivo/discontinuado");
+    check(!!(await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test Incoherente", status: "inactive" })).error,
+      "la base rechaza un producto inactivo que no esta archivado (estado y archivado van juntos)");
+    check(!!(await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test Incoherente 2", archived_at: new Date().toISOString() })).error,
+      "la base rechaza un producto activo que esta archivado");
+    { const { data: p, error } = await svc.from("content_offers")
+        .insert({ workspace_id: ws.id, name: "zz-test Con precio", price_usd: 1500.5 }).select("price_usd, status, archived_at").single();
+      check(!error && Number(p?.price_usd) === 1500.5 && p?.status === "active" && p?.archived_at === null,
+        "un producto con precio entra activo y sin archivar", error?.message); }
 
     // Un color que no es #rrggbb lo rechaza la base, no solo la pantalla.
     check(!!(await svc.from("content_pillars").insert({ workspace_id: ws.id, name: "zz-test Color malo", color: "rojo" })).error,
