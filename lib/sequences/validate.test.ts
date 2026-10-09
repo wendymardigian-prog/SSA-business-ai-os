@@ -57,6 +57,31 @@ describe("validateSequenceSteps", () => {
   });
 });
 
+describe("validateSequenceSteps: el paso 'Recurso'", () => {
+  it("pide el recurso: sin uno el paso no manda nada", () => {
+    expect(validateSequenceSteps([{ type: "asset" }])).toMatchObject({ ok: false, error: expect.stringContaining("paso 1") });
+    expect(validateSequenceSteps([{ type: "asset", assetId: "   " }])).toMatchObject({ ok: false });
+  });
+
+  it("guarda el id, el nombre (solo para mostrar) y el texto, sin campos de otro tipo de paso", () => {
+    const r = validateSequenceSteps([
+      { type: "asset", assetId: " a-1 ", assetName: " Precio ", caption: " Hola ", content: "sobra", delayMinutes: 5 },
+    ]);
+    expect(r).toEqual({ ok: true, value: [{ type: "asset", assetId: "a-1", assetName: "Precio", caption: "Hola" }] });
+  });
+
+  it("el texto y el nombre son opcionales; uno desmedido se rechaza o se recorta", () => {
+    expect(validateSequenceSteps([{ type: "asset", assetId: "a-1" }])).toEqual({ ok: true, value: [{ type: "asset", assetId: "a-1" }] });
+    expect(validateSequenceSteps([{ type: "asset", assetId: "a-1", caption: "x".repeat(2001) }])).toMatchObject({ ok: false });
+    const long = validateSequenceSteps([{ type: "asset", assetId: "a-1", assetName: "n".repeat(500) }]);
+    expect(long.ok && long.value[0].assetName?.length).toBe(120);
+  });
+
+  it("un paso Recurso alcanza para activar, igual que uno de mensaje", () => {
+    expect(canActivate([{ type: "asset", assetId: "a-1" }])).toEqual({ ok: true, value: true });
+  });
+});
+
 describe("canActivate", () => {
   it("no deja activar una secuencia sin pasos", () => {
     expect(canActivate([])).toMatchObject({ ok: false });

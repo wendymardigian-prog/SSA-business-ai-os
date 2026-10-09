@@ -35,13 +35,16 @@ const NODOS_DE_ACCION = [
   "send_email",
   "cancel_booking",
   "set_booking_status",
+  // Banca de recursos en las automatizaciones.
+  "sendAsset",
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 22 tipos ejecutables", () => {
+  it("tiene los 23 tipos ejecutables", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
-    // + enviar email y las dos acciones de agenda (Etapa 4).
-    expect(listNodes()).toHaveLength(22);
+    // + enviar email y las dos acciones de agenda (Etapa 4),
+    // + enviar un recurso de la banca.
+    expect(listNodes()).toHaveLength(23);
   });
 
   it.each(NODOS_DE_ACCION)(

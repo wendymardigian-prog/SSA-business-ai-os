@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { Notice } from "@/components/agents/fields";
+import { InsertAssetButton } from "@/components/response-assets/insert-asset-button";
 import { PageHeader } from "@/components/page-header";
 import { describeStep, type LinearFlow, type LinearStep } from "@/lib/scheduling/automation/linear-flow";
 import { describeTrigger, type BookingTriggerConfig } from "@/lib/scheduling/automation/triggers";
@@ -163,9 +164,17 @@ export function LinearFlowEditor({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label htmlFor={`s-${i}-body`} className="text-xs text-muted-foreground">
-                    Texto
-                  </label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor={`s-${i}-body`} className="text-xs text-muted-foreground">
+                      Texto
+                    </label>
+                    <InsertAssetButton
+                      targetId={`s-${i}-body`}
+                      value={step.body}
+                      disabled={readOnly}
+                      onChange={(body) => update(i, { body })}
+                    />
+                  </div>
                   <textarea
                     id={`s-${i}-body`}
                     value={step.body}
@@ -179,14 +188,25 @@ export function LinearFlowEditor({
             )}
 
             {step.kind === "whatsapp" && (
-              <textarea
-                aria-label="Mensaje de WhatsApp"
-                value={step.text}
-                disabled={readOnly}
-                rows={5}
-                onChange={(e) => update(i, { text: e.target.value })}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-              />
+              <div className="space-y-1">
+                <div className="flex justify-end">
+                  <InsertAssetButton
+                    targetId={`s-${i}-text`}
+                    value={step.text}
+                    disabled={readOnly}
+                    onChange={(text) => update(i, { text })}
+                  />
+                </div>
+                <textarea
+                  id={`s-${i}-text`}
+                  aria-label="Mensaje de WhatsApp"
+                  value={step.text}
+                  disabled={readOnly}
+                  rows={5}
+                  onChange={(e) => update(i, { text: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
             )}
 
             {step.kind === "delay" && (

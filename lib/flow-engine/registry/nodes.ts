@@ -21,9 +21,12 @@ import { aiResponseNode } from "../nodes/ai-response";
 import { enrollSequenceNode } from "../nodes/enroll-sequence";
 import { pauseAgentNode, resumeAgentNode } from "../nodes/agent-toggle";
 import { sendEmailNode } from "../nodes/send-email";
+import { sendAssetNode } from "../nodes/send-asset";
 import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
 
 registerNode(sendMessageNode);
+// Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
+registerNode(sendAssetNode);
 registerNode(aiResponseNode);
 registerNode(conditionNode);
 registerNode(delayNode);

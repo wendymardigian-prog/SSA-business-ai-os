@@ -19,6 +19,7 @@ import { interpolateVariables } from "../interpolate";
 import { sendTransactionalEmail } from "@/lib/email/send";
 import { computeQuota } from "@/lib/email/quota";
 import { createNotification } from "@/lib/notifications/create";
+import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
 
 export interface SendEmailNodeData {
@@ -38,8 +39,16 @@ export function bodyToHtml(body: string): string {
 }
 
 async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendEmailNodeData>) {
-  const subject = interpolateVariables(data.subject ?? "", context.variables ?? {}).trim();
-  const body = interpolateVariables(data.body ?? "", context.variables ?? {}).trim();
+  const interpolated = {
+    subject: interpolateVariables(data.subject ?? "", context.variables ?? {}).trim(),
+    body: interpolateVariables(data.body ?? "", context.variables ?? {}).trim(),
+  };
+  // Un texto de la banca insertado en el email trae sus variables
+  // ({{contact.display_name}}...): las que quedaron sin resolver se completan
+  // con los datos reales (lib/response-assets/bank-variables.ts).
+  const [subject, body] = (
+    await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId }, [interpolated.subject, interpolated.body])
+  ).map((text) => text.trim());
   if (!subject && !body) return;
 
   const { data: contact } = await supabase

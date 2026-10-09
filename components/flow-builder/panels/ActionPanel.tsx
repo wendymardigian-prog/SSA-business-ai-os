@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
+import { SendAssetPanel } from "./SendAssetPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -63,6 +64,8 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <SmartDelayConfig data={data} onChange={onChange} />;
     case "enrollSequence":
       return <EnrollSequencePanel data={rawData} onChange={onChange} />;
+    case "sendAsset":
+      return <SendAssetPanel data={rawData} onChange={onChange} />;
     case "pauseAgent":
       return <PauseAgentConfig data={data} onChange={onChange} />;
     case "resumeAgent":

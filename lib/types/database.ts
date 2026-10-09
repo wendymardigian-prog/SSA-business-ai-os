@@ -381,6 +381,8 @@ export type NodeType =
   | "smartDelay"
   | "aiResponse"
   | "enrollSequence"
+  /** Mandar un recurso de la banca (texto, audio, video, imagen, archivo o enlace). */
+  | "sendAsset"
   /** Pausar / reanudar el agente de IA en la conversacion (Fase 3). */
   | "pauseAgent"
   | "resumeAgent";
@@ -422,7 +424,7 @@ export type SequenceCollisionResolution =
   | "removed_this";
 
 export interface SequenceStep {
-  type: "message" | "delay" | "aiMessage";
+  type: "message" | "delay" | "aiMessage" | "asset";
   /** Texto del paso de mensaje. Admite {{variables}} del contacto. */
   content?: string;
   /** Espera del paso de delay, en minutos. */
@@ -443,6 +445,16 @@ export interface SequenceStep {
   maxTokens?: number;
   /** Cuantos mensajes del hilo se le pasan al modelo como contexto. */
   contextMessages?: number;
+  /**
+   * Paso "Recurso": un recurso de la banca (texto, audio, video, imagen,
+   * archivo o enlace), por el mismo camino que usan los flows
+   * (lib/response-assets/deliver.ts). `assetId` es lo que manda; `assetName`
+   * es solo para mostrarlo sin leer la banca.
+   */
+  assetId?: string;
+  assetName?: string;
+  /** Un texto propio que acompaña al recurso: reemplaza al del recurso. */
+  caption?: string;
 }
 
 export interface Database {

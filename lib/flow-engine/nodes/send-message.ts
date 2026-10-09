@@ -7,6 +7,7 @@ import { interpolateVariables } from "../interpolate";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { sendChannelMessage, recordSend } from "../send";
+import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { outboundMessageRow } from "@/lib/messages/outbound";
 import { emptyAttachment, toAttachmentsColumn, type AttachmentKind } from "@/lib/messages/attachments";
 
@@ -54,7 +55,12 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
 
     for (const msg of data.messages) {
       const adapted = adaptMessage(msg, context.platform!);
-      const text = interpolateVariables(adapted.text, context.variables || {});
+      // Un texto de la banca pegado en el mensaje trae sus variables
+      // ({{contact.display_name}}...): las que quedaron sin resolver se completan
+      // con los datos reales. Solo consulta la base si las trae.
+      const [text] = await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId }, [
+        interpolateVariables(adapted.text, context.variables || {}),
+      ]);
 
       // El multimedia no depende de la plataforma, asi que se lee del mensaje
       // crudo. mediaUrl + mediaType reemplazan al viejo imageUrl.

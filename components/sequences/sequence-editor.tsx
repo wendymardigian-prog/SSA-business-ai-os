@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Clock,
   Sparkles,
+  Library,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -16,6 +17,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { updateSequence, deleteSequence } from "@/lib/actions/sequences";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { AssetSelect } from "@/components/response-assets/asset-select";
+import type { AssetKind } from "@/lib/response-assets/kind";
 import { canActivate } from "@/lib/sequences/validate";
 import { sequenceStatusStyle } from "@/lib/sequences/labels";
 import { sequenceFingerprint } from "@/lib/unsaved-changes";
@@ -325,6 +328,8 @@ function StepCard({
       <MessageSquare className="h-4 w-4 text-muted-foreground" />
     ) : step.type === "aiMessage" ? (
       <Sparkles className="h-4 w-4 text-muted-foreground" />
+    ) : step.type === "asset" ? (
+      <Library className="h-4 w-4 text-muted-foreground" />
     ) : (
       <Clock className="h-4 w-4 text-muted-foreground" />
     );
@@ -381,6 +386,8 @@ function StepCard({
         </>
       )}
 
+      {step.type === "asset" && <AssetStepFields step={step} index={index} canEdit={canEdit} onChange={onChange} />}
+
       {step.type === "aiMessage" && (
         <AiStepFields
           step={step}
@@ -398,6 +405,57 @@ function StepCard({
           canEdit={canEdit}
           onChange={(delayMinutes) => onChange({ delayMinutes })}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * El paso "Recurso": un recurso de la banca (texto, audio, video, imagen,
+ * archivo o enlace). Se manda por el mismo camino que el nodo de los flows: si
+ * el canal de la conversacion no lo acepta, el paso se saltea y la secuencia
+ * sigue.
+ */
+function AssetStepFields({
+  step,
+  index,
+  canEdit,
+  onChange,
+}: {
+  step: SequenceStep;
+  index: number;
+  canEdit: boolean;
+  onChange: (patch: Partial<SequenceStep>) => void;
+}) {
+  const [kind, setKind] = useState<AssetKind | null>(null);
+  // Un audio sale solo, y un texto ya es el mensaje: el resto admite un texto propio.
+  const acceptsCaption = kind !== null && kind !== "audio" && kind !== "text";
+
+  return (
+    <div className="mt-3 space-y-3">
+      <AssetSelect
+        label={`Recurso del paso ${index + 1}`}
+        value={step.assetId}
+        valueName={step.assetName}
+        disabled={!canEdit}
+        onKnownKind={setKind}
+        onPick={(option) => onChange({ assetId: option?.id, assetName: option?.name })}
+      />
+      {acceptsCaption && (
+        <div>
+          <label htmlFor={`step-${index}-caption`} className="mb-1 block text-xs font-medium text-muted-foreground">
+            Texto que lo acompaña (opcional)
+          </label>
+          <textarea
+            id={`step-${index}-caption`}
+            value={step.caption || ""}
+            onChange={(e) => onChange({ caption: e.target.value || undefined })}
+            disabled={!canEdit}
+            rows={2}
+            placeholder="Si lo dejás vacío, va el texto que ya tiene el recurso. Podés usar {{contact.display_name}}."
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-default disabled:opacity-70"
+          />
+        </div>
       )}
     </div>
   );
@@ -578,6 +636,11 @@ function AddStepButton({
       label: "Mensaje con IA",
       icon: <Sparkles className="h-3.5 w-3.5" />,
       step: { type: "aiMessage", prompt: "" },
+    },
+    {
+      label: "Recurso",
+      icon: <Library className="h-3.5 w-3.5" />,
+      step: { type: "asset" },
     },
     {
       label: "Espera",

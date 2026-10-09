@@ -13,6 +13,8 @@ import type { SequenceStep } from "@/lib/types/database";
 export const MAX_SEQUENCE_NAME = 80;
 export const MAX_STEP_CONTENT = 2000;
 export const MAX_STEP_PROMPT = 2000;
+/** El nombre del recurso que se guarda en el paso, solo para mostrarlo. */
+export const MAX_ASSET_NAME = 120;
 export const MAX_STEPS = 50;
 /** Un año. Mas que eso es casi seguro un error de unidad. */
 export const MAX_DELAY_MINUTES = 525_600;
@@ -113,6 +115,28 @@ export function validateSequenceSteps(raw: unknown): Validated<SequenceStep[]> {
       continue;
     }
 
+    if (step.type === "asset") {
+      const assetId = typeof step.assetId === "string" ? step.assetId.trim() : "";
+      if (!assetId) {
+        return { ok: false, error: `Elegí el recurso del paso ${position}` };
+      }
+      const clean: SequenceStep = { type: "asset", assetId };
+      const name = typeof step.assetName === "string" ? step.assetName.trim() : "";
+      if (name) clean.assetName = name.slice(0, MAX_ASSET_NAME);
+      const caption = typeof step.caption === "string" ? step.caption.trim() : "";
+      if (caption) {
+        if (caption.length > MAX_STEP_CONTENT) {
+          return {
+            ok: false,
+            error: `El texto del paso ${position} es muy largo (máximo ${MAX_STEP_CONTENT} caracteres)`,
+          };
+        }
+        clean.caption = caption;
+      }
+      steps.push(clean);
+      continue;
+    }
+
     return { ok: false, error: `El paso ${position} tiene un tipo que no conozco` };
   }
 
@@ -129,7 +153,7 @@ export function canActivate(steps: SequenceStep[]): Validated<true> {
   if (steps.length === 0) {
     return { ok: false, error: "Agregá al menos un paso antes de activar la secuencia" };
   }
-  const sends = steps.some((s) => s.type === "message" || s.type === "aiMessage");
+  const sends = steps.some((s) => s.type === "message" || s.type === "aiMessage" || s.type === "asset");
   if (!sends) {
     return {
       ok: false,
