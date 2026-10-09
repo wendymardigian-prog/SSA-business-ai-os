@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Trash2 } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   applyFilters,
   contextLine,
   hasActiveFilters,
+  isTranscribing,
   kindCounts,
   NO_FILTERS,
   paginate,
@@ -66,6 +67,24 @@ export function RecursosView({
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
   const router = useRouter();
+
+  // Un audio se transcribe al guardar y tarda unos segundos: mientras haya
+  // alguno en camino, la lista se actualiza sola (cada 4 s, hasta ~2 minutos
+  // por tanda) para que la transcripcion aparezca sin recargar a mano.
+  const transcribingKey = assets.filter(isTranscribing).map((a) => a.id).sort().join(",");
+  useEffect(() => {
+    if (!transcribingKey) return;
+    let ticks = 0;
+    const timer = setInterval(() => {
+      ticks += 1;
+      if (ticks > 30) {
+        clearInterval(timer);
+        return;
+      }
+      router.refresh();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [transcribingKey, router]);
 
   const results = useMemo(() => applyFilters(assets, filters), [assets, filters]);
   const counts = useMemo(() => kindCounts(assets, filters), [assets, filters]);

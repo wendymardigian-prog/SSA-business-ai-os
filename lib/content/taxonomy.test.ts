@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  NO_OFFER_LABEL,
+  NO_PRODUCT_LABEL,
   NO_PILLAR_LABEL,
   PILLAR_COLORS,
+  PRODUCT_STATUSES,
+  archivedAtFor,
   checkName,
+  checkPrice,
+  formatPriceUsd,
+  isProductStatus,
   countUsage,
   groupByTaxonomy,
   isValidColor,
@@ -115,7 +120,7 @@ describe("labelFor", () => {
 
   it("sin id o con un id desconocido es 'Sin ...'", () => {
     expect(labelFor(items, null, NO_PILLAR_LABEL)).toEqual({ label: "Sin pilar", archived: false });
-    expect(labelFor(items, "x", NO_OFFER_LABEL)).toEqual({ label: "Sin oferta", archived: false });
+    expect(labelFor(items, "x", NO_PRODUCT_LABEL)).toEqual({ label: "Sin producto", archived: false });
   });
 });
 
@@ -182,5 +187,58 @@ describe("tagFor", () => {
   it("sin id o con un id que ya no existe es null, no un hueco", () => {
     expect(tagFor(items, null)).toBeNull();
     expect(tagFor(items, "x")).toBeNull();
+  });
+});
+
+describe("productos: precio y estado (00134)", () => {
+  it("los tres estados, y solo esos", () => {
+    expect([...PRODUCT_STATUSES]).toEqual(["active", "inactive", "discontinued"]);
+    expect(isProductStatus("inactive")).toBe(true);
+    expect(isProductStatus("archived")).toBe(false);
+    expect(isProductStatus(null)).toBe(false);
+  });
+
+  describe("checkPrice", () => {
+    it("acepta un numero o un texto, con hasta dos decimales", () => {
+      expect(checkPrice(1500)).toEqual({ ok: true, price: 1500 });
+      expect(checkPrice("1500")).toEqual({ ok: true, price: 1500 });
+      expect(checkPrice("1500,5")).toEqual({ ok: true, price: 1500.5 });
+      expect(checkPrice("49.999")).toEqual({ ok: true, price: 50 });
+      expect(checkPrice(0)).toEqual({ ok: true, price: 0 });
+    });
+
+    it("el precio es obligatorio", () => {
+      expect(checkPrice(null)).toMatchObject({ ok: false, error: "Falta el precio" });
+      expect(checkPrice(undefined)).toMatchObject({ ok: false });
+      expect(checkPrice("   ")).toMatchObject({ ok: false });
+    });
+
+    it("rechaza lo que no es un numero, lo negativo y lo desmedido", () => {
+      expect(checkPrice("mil")).toMatchObject({ ok: false });
+      expect(checkPrice(Number.NaN)).toMatchObject({ ok: false });
+      expect(checkPrice(-1)).toMatchObject({ ok: false });
+      expect(checkPrice(10_000_001)).toMatchObject({ ok: false });
+      expect(checkPrice(10_000_000)).toMatchObject({ ok: true });
+    });
+  });
+
+  it("formatPriceUsd: en dolares, y 'Sin precio' para uno anterior a la 00134", () => {
+    expect(formatPriceUsd(1500)).toBe("USD 1.500,00");
+    expect(formatPriceUsd(0)).toBe("USD 0,00");
+    expect(formatPriceUsd(null)).toBe("Sin precio");
+  });
+
+  describe("archivedAtFor: estado y archivado van juntos", () => {
+    const now = new Date("2026-10-09T12:00:00Z");
+    it("activo no tiene archivado", () => {
+      expect(archivedAtFor("active", "2026-09-01T00:00:00Z", now)).toBeNull();
+    });
+    it("inactivo y discontinuado quedan archivados desde ahora", () => {
+      expect(archivedAtFor("inactive", null, now)).toBe("2026-10-09T12:00:00.000Z");
+      expect(archivedAtFor("discontinued", null, now)).toBe("2026-10-09T12:00:00.000Z");
+    });
+    it("pasar de inactivo a discontinuado conserva cuando salio de circulacion", () => {
+      expect(archivedAtFor("discontinued", "2026-09-01T00:00:00Z", now)).toBe("2026-09-01T00:00:00Z");
+    });
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { CHANNELS_RETURN_KEY, returnTargetOrDefault } from "@/lib/channels/return-to";
 
 export default function ChannelCallbackPage() {
   const router = useRouter();
@@ -11,13 +12,23 @@ export default function ChannelCallbackPage() {
   const [message, setMessage] = useState("Sincronizando tu nuevo canal...");
 
   useEffect(() => {
+    // A donde volver: el lugar desde donde se salio a conectar (la pestaña
+    // Cuentas de Zernio, por ejemplo), o la pagina de canales.
+    let target = returnTargetOrDefault(null);
+    try {
+      target = returnTargetOrDefault(window.sessionStorage.getItem(CHANNELS_RETURN_KEY));
+      window.sessionStorage.removeItem(CHANNELS_RETURN_KEY);
+    } catch {
+      // Sin sessionStorage: la pagina de canales.
+    }
+
     async function syncAndRedirect() {
       const connected = searchParams.get("connected");
 
       if (!connected) {
         setStatus("error");
         setMessage("La conexión se canceló o falló.");
-        setTimeout(() => router.push("/dashboard/channels"), 2000);
+        setTimeout(() => router.push(target), 2000);
         return;
       }
 
@@ -28,7 +39,7 @@ export default function ChannelCallbackPage() {
         if (!res.ok || data.error) {
           setStatus("error");
           setMessage(data.error || "No pude sincronizar los canales.");
-          setTimeout(() => router.push("/dashboard/channels"), 2000);
+          setTimeout(() => router.push(target), 2000);
           return;
         }
 
@@ -39,11 +50,11 @@ export default function ChannelCallbackPage() {
             ? `¡Cuenta de ${connected} conectada con éxito!`
             : "¡Cuenta conectada! El canal ya estaba sincronizado."
         );
-        setTimeout(() => router.push("/dashboard/channels"), 1500);
+        setTimeout(() => router.push(target), 1500);
       } catch {
         setStatus("error");
         setMessage("No pude sincronizar. Podés intentarlo a mano.");
-        setTimeout(() => router.push("/dashboard/channels"), 2000);
+        setTimeout(() => router.push(target), 2000);
       }
     }
 

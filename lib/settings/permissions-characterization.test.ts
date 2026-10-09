@@ -17,7 +17,7 @@ import { can, systemRolePermissions, type RolePermissions } from "@/lib/auth/per
 
 const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
-/** Las ocho pestañas (Contenido se sumó con F89), con el archivo que resuelve la ruta y el guard que usa hoy. */
+/** Las ocho pestañas (Contenido se sumó con F89 y hoy es Productos), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
   general: { file: "page.tsx", guardMarker: "requireWorkspaceAdmin" },
   team: { file: "team/page.tsx", guardMarker: "requireWorkspaceAdmin" },
@@ -26,10 +26,10 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
   // con los permisos resueltos para decidir si ofrece crear y editar.
   recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
-  // Contenido es la unica pestaña que pide un permiso fino y no un cargo
-  // (F89): un rol personalizado con `settings.manage` entra, un admin al que
-  // se lo sacaron no.
-  contenido: { file: "contenido/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
+  // Productos (antes Contenido) es la unica pestaña que pide un permiso fino y
+  // no un cargo (F89): un rol personalizado con `settings.manage` entra, un
+  // admin al que se lo sacaron no.
+  productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
   integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
   background: { file: "background/page.tsx", guardMarker: "requireWorkspaceAdmin" },
 };
@@ -57,7 +57,7 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
     roles: can(permissions, "roles.manage"),
     "custom-fields": admin,
     recursos: true,
-    contenido: can(permissions, "settings.manage"),
+    productos: can(permissions, "settings.manage"),
     integrations: admin,
     background: admin,
   };
@@ -69,7 +69,7 @@ const ALL_VISIBLE = {
   roles: true,
   "custom-fields": true,
   recursos: true,
-  contenido: true,
+  productos: true,
   integrations: true,
   background: true,
 };
@@ -90,7 +90,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       roles: false,
       "custom-fields": false,
       recursos: true,
-      contenido: false,
+      productos: false,
       integrations: false,
       background: false,
     });
@@ -114,7 +114,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       roles: true,
       "custom-fields": false,
       recursos: true,
-      contenido: false,
+      productos: false,
       integrations: false,
       background: false,
     });
@@ -132,7 +132,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       roles: false,
       "custom-fields": false,
       recursos: true,
-      contenido: true,
+      productos: true,
       integrations: false,
       background: false,
     });

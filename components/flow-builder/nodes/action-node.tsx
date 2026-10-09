@@ -13,6 +13,7 @@ import {
   Cog,
   PauseCircle,
   PlayCircle,
+  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -31,6 +32,9 @@ export interface ActionNodeProps {
   paths?: Array<{ name: string; weight: number }>;
   timeout?: number;
   timeoutUnit?: string;
+  /** "Enviar recurso": el recurso elegido y su nombre (para mostrarlo sin leer la banca). */
+  assetId?: string;
+  assetName?: string;
 }
 
 const actionConfig: Record<
@@ -107,6 +111,11 @@ const actionConfig: Record<
     label: "Reanudar agente IA",
     color: "bg-gray-500",
   },
+  sendAsset: {
+    icon: Library,
+    label: "Enviar recurso",
+    color: "bg-gray-500",
+  },
 };
 
 function getSummary(nodeData: ActionNodeProps): string | null {
@@ -143,6 +152,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return nodeData.timeout
         ? `Wait up to ${nodeData.timeout} ${nodeData.timeoutUnit || "minutes"}`
         : null;
+    case "sendAsset":
+      return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
     default:
       return null;
   }

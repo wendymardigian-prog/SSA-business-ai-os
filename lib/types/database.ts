@@ -381,6 +381,8 @@ export type NodeType =
   | "smartDelay"
   | "aiResponse"
   | "enrollSequence"
+  /** Mandar un recurso de la banca (texto, audio, video, imagen, archivo o enlace). */
+  | "sendAsset"
   /** Pausar / reanudar el agente de IA en la conversacion (Fase 3). */
   | "pauseAgent"
   | "resumeAgent";
@@ -422,7 +424,7 @@ export type SequenceCollisionResolution =
   | "removed_this";
 
 export interface SequenceStep {
-  type: "message" | "delay" | "aiMessage";
+  type: "message" | "delay" | "aiMessage" | "asset";
   /** Texto del paso de mensaje. Admite {{variables}} del contacto. */
   content?: string;
   /** Espera del paso de delay, en minutos. */
@@ -443,6 +445,16 @@ export interface SequenceStep {
   maxTokens?: number;
   /** Cuantos mensajes del hilo se le pasan al modelo como contexto. */
   contextMessages?: number;
+  /**
+   * Paso "Recurso": un recurso de la banca (texto, audio, video, imagen,
+   * archivo o enlace), por el mismo camino que usan los flows
+   * (lib/response-assets/deliver.ts). `assetId` es lo que manda; `assetName`
+   * es solo para mostrarlo sin leer la banca.
+   */
+  assetId?: string;
+  assetName?: string;
+  /** Un texto propio que acompaña al recurso: reemplaza al del recurso. */
+  caption?: string;
 }
 
 export interface Database {
@@ -585,6 +597,9 @@ export interface Database {
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
+          ai_daily_limit_action: CostLimitAction;
+          ai_monthly_limit_action: CostLimitAction;
+          ai_spend_alert_pct: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -610,6 +625,9 @@ export interface Database {
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
+          ai_daily_limit_action?: CostLimitAction;
+          ai_monthly_limit_action?: CostLimitAction;
+          ai_spend_alert_pct?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -635,6 +653,9 @@ export interface Database {
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
+          ai_daily_limit_action?: CostLimitAction;
+          ai_monthly_limit_action?: CostLimitAction;
+          ai_spend_alert_pct?: number | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -2104,6 +2125,8 @@ export interface Database {
           last_error: string | null;
           related_entity_type: string | null;
           related_entity_id: string | null;
+          /** El contacto al que se refiere el email (00135). NULL en los del sistema y en los anteriores. */
+          contact_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -2119,6 +2142,7 @@ export interface Database {
           last_error?: string | null;
           related_entity_type?: string | null;
           related_entity_id?: string | null;
+          contact_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -3227,11 +3251,15 @@ export interface Database {
       };
 
       /** Ofertas a las que apunta una idea o pieza (00116). Se archivan, no se borran. */
+      // El catalogo de PRODUCTOS (antes "ofertas"; 00134 suma precio y estado).
       content_offers: {
         Row: {
           id: string;
           workspace_id: string;
           name: string;
+          /** USD. NULL solo en filas anteriores a la 00134. */
+          price_usd: number | null;
+          status: "active" | "inactive" | "discontinued";
           archived_at: string | null;
           created_by: string | null;
           created_at: string;
@@ -3241,11 +3269,15 @@ export interface Database {
           id?: string;
           workspace_id: string;
           name: string;
+          price_usd?: number | null;
+          status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
           created_by?: string | null;
         };
         Update: {
           name?: string;
+          price_usd?: number | null;
+          status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
         };
         Relationships: [];

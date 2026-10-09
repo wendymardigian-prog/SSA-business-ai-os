@@ -12,6 +12,8 @@ import {
   PERMISSION_MODULES,
   permissionsOfModule,
   SCOPE_LABELS,
+  scopeOptionsFor,
+  type ScopedModule,
   type PermissionModule,
   type PermissionScope,
 } from "@/lib/auth/permissions";
@@ -301,16 +303,20 @@ export function RolesView({
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <ScopeField
                 label="Que leads ve"
+                module="leads"
+                hint="«Sin asignar» son los leads que todavía no tienen setter, vendedor ni agente."
                 value={draft.leadsScope}
                 onChange={(leadsScope) => setDraft({ ...draft, leadsScope })}
               />
               <ScopeField
                 label="Que conversaciones ve"
+                module="conversations"
                 value={draft.conversationsScope}
                 onChange={(conversationsScope) => setDraft({ ...draft, conversationsScope })}
               />
               <ScopeField
                 label="Que agendas ve"
+                module="bookings"
                 value={draft.bookingsScope}
                 onChange={(bookingsScope) => setDraft({ ...draft, bookingsScope })}
               />
@@ -404,10 +410,15 @@ export function RolesView({
 
 function ScopeField({
   label,
+  module,
+  hint,
   value,
   onChange,
 }: {
   label: string;
+  module: ScopedModule;
+  /** Una linea que aclara que significa la opcion, si hace falta. */
+  hint?: string;
   value: PermissionScope;
   onChange: (value: PermissionScope) => void;
 }) {
@@ -419,12 +430,13 @@ function ScopeField({
         onChange={(e) => onChange(e.target.value as PermissionScope)}
         className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
       >
-        {(["own", "all"] as const).map((scope) => (
+        {scopeOptionsFor(module).map((scope) => (
           <option key={scope} value={scope}>
             {SCOPE_LABELS[scope]}
           </option>
         ))}
       </select>
+      {hint && <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>}
     </label>
   );
 }

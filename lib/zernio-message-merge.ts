@@ -53,9 +53,9 @@ export type MergedInboxMessage = Omit<InboxMessage, "attachments"> & {
  *   - No cambia el orden ni agrega mensajes. Si un mensaje esta en nuestra tabla
  *     y no en el hilo de Zernio, no se muestra: el hilo lo manda Zernio, y meter
  *     filas sueltas dejaria la conversacion en un orden que no es el real.
- *   - No borra los adjuntos de Zernio cuando no hay fila local. Con
- *     `persist_zernio_inbound` apagado no hay ninguna fila, y la bandeja tiene
- *     que seguir mostrando lo que trae Zernio (aunque el link este vencido, la
+ *   - No borra los adjuntos de Zernio cuando no hay fila local. Una
+ *     conversacion anterior al guardado (o un mensaje que no se pudo guardar) no
+ *     tiene fila, y la bandeja tiene que seguir mostrando lo que trae Zernio (aunque el link este vencido, la
  *     burbuja al menos dice que llego un adjunto).
  */
 export function mergeThreadWithLocal(

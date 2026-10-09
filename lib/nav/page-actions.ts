@@ -55,6 +55,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "Como rinden tus anuncios de Meta: gasto, clics, leads y que campaña los trae.",
   },
+  "/dashboard/dashboards/agenda": {
+    title: "Dashboards",
+    tooltip: "Las reuniones del periodo: cuántas se agendaron, quién las pide, de dónde vienen y cómo terminaron.",
+  },
   "/dashboard/dashboards/unified": {
     title: "Dashboards",
     tooltip: "Lo organico y lo pago del mismo periodo, uno al lado del otro.",
@@ -219,9 +223,9 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Banca de recursos",
     tooltip: "Textos, audios, videos, imágenes, archivos y enlaces guardados para mandar desde la bandeja con un clic, o para que el asistente los use solo.",
   },
-  "/dashboard/settings/contenido": {
-    title: "Contenido",
-    tooltip: "Los pilares y las ofertas con los que clasificas tus ideas y piezas. Se archivan, no se borran.",
+  "/dashboard/settings/productos": {
+    title: "Productos",
+    tooltip: "Lo que vendes, con su precio en dolares y su estado. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
   "/dashboard/settings/background": {
     title: "Tareas en segundo plano",
@@ -243,6 +247,8 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
   "/dashboard/settings/audios":
     "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
+  "/dashboard/settings/contenido":
+    "Solo redirige a Productos (/dashboard/settings/productos); los pilares se mudaron a la pagina de Contenido.",
   "/dashboard/content/[postId]":
     "Solo redirige al tablero con el drawer de esa pieza abierto (F99); nunca se dibuja.",
   "/dashboard/content/[postId]/edit":

@@ -108,6 +108,10 @@ export function AssetFormDialog({
 
   const [transcript, setTranscript] = useState(existing?.transcript ?? "");
   const [editingTranscript, setEditingTranscript] = useState(false);
+  // La transcripcion escrita a mano al CREAR o al reemplazar el archivo. Va
+  // aparte de `transcript` (la de un recurso ya guardado): al reemplazar, la
+  // vieja ya no corresponde al archivo nuevo.
+  const [draftTranscript, setDraftTranscript] = useState("");
 
   const [fieldError, setFieldError] = useState<{ field: AssetField; error: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -294,8 +298,11 @@ export function AssetFormDialog({
         const common = { name, shortcut, description, tags: fields.tags, content, url, linkKind, caption };
 
         const result = existing
-          ? await updateAsset(existing.id, { ...common, replacement: file ? { ...file, hasVoice } : null })
-          : await createAsset({ kind, ...common, file, hasVoice });
+          ? await updateAsset(existing.id, {
+              ...common,
+              replacement: file ? { ...file, hasVoice, transcript: draftTranscript } : null,
+            })
+          : await createAsset({ kind, ...common, file, hasVoice, transcript: draftTranscript });
 
         if (!result.ok) {
           setError(result.error);
@@ -324,10 +331,15 @@ export function AssetFormDialog({
 
   function retry() {
     if (!existing) return;
+    setError(null);
+    setNotice(null);
     start(async () => {
       const result = await retryTranscription(existing.id);
-      if (!result.ok) setError(result.error);
-      else setNotice("Listo: la transcripción se vuelve a intentar en menos de un minuto.");
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setNotice(TRANSCRIBE_OUTCOME_NOTICE[result.outcome]);
     });
   }
 
@@ -541,6 +553,24 @@ export function AssetFormDialog({
         />
       </Field>
 
+      {/* Al crear (o al reemplazar el archivo): se puede escribir la transcripcion. Vacia, se transcribe sola al guardar. */}
+      {isTranscribableKind(kind) && (!existing || picked) && (kind === "audio" || hasVoice) && (
+        <Field
+          label="Transcripción"
+          htmlFor="asset-draft-transcript"
+          hint="Si la dejás vacía, se transcribe sola con IA apenas guardás (tarda unos segundos; guardar no espera). Si la escribís vos, queda lista al instante y no se usa IA. El asistente solo puede usar este recurso cuando la transcripción está lista."
+        >
+          <textarea
+            id="asset-draft-transcript"
+            value={draftTranscript}
+            onChange={(e) => setDraftTranscript(e.target.value)}
+            rows={3}
+            placeholder="Lo que se dice en el audio, tal cual"
+            className={cn(inputClass, "resize-y")}
+          />
+        </Field>
+      )}
+
       {existing && isTranscribableKind(kind) && !picked && (
         <div className="rounded-lg border border-border p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -612,6 +642,14 @@ export function AssetFormDialog({
     </Shell>
   );
 }
+
+/** Lo que se le dice a la persona despues de "Transcribir con IA", segun como terminó. */
+const TRANSCRIBE_OUTCOME_NOTICE = {
+  done: "Listo: la transcripción está lista.",
+  queued: "El servicio de transcripción no respondió. Se reintenta solo en unos minutos.",
+  failed: "No se pudo transcribir. El motivo está más arriba; podés escribirla a mano.",
+  skipped: "Ya la estaba tomando otro proceso. Se actualiza en unos segundos.",
+} as const;
 
 const NAME_PLACEHOLDER: Record<AssetKind, string> = {
   text: "Precio del servicio",

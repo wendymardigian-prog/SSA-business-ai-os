@@ -63,21 +63,24 @@ a tener en cuenta: el hilo de Zernio trae los salientes mandados **desde
 cualquier lado** (incluida la app de Instagram en el teléfono), mientras que la
 tabla local solo tiene los que salieron por el sistema.
 
-## El interruptor
+## El guardado es siempre (ya no hay interruptor)
 
-`workspaces.persist_zernio_inbound` (Ajustes → Guardado de mensajes) prende y
-apaga el guardado de los entrantes **de los canales de Zernio**.
+Los entrantes de **todos los canales conectados** (Instagram por Zernio,
+WhatsApp por Evolution y los que vengan) se guardan siempre en `messages`. Los
+comentarios, también (`social_post_comments`). No hay nada que prender ni apagar
+en Ajustes.
 
-Existe porque queda por confirmar si persistir el contenido de los DMs entra
-dentro de los términos de Zernio y de Meta para este tipo de cuenta. Por eso es
-una fila en la base y no una variable de entorno: apagarlo no puede depender de
-un deploy.
+Hasta octubre de 2026 existía `workspaces.persist_zernio_inbound` (Ajustes →
+Guardado de mensajes) para apagar el guardado de Instagram mientras se confirmaba
+si persistir el contenido de los DMs entraba en los términos de Zernio y de Meta.
+Se decidió guardar siempre: el agente lee el historial de esta tabla y los
+dashboards cuentan sobre ella.
 
-- **Apagado**, el sistema se comporta exactamente como antes de la Fase 3.
-- **No afecta a WhatsApp**: ahí `messages` es la única fuente del hilo, apagarlo
-  vaciaría la bandeja.
-- **Apagarlo no borra lo ya guardado.** Para eso está
-  `scripts/purge-zernio-inbound.mjs`, que es la otra mitad del interruptor.
+- La columna `persist_zernio_inbound` **sigue en la base y ya nadie la lee**. Se
+  borra más adelante, con el orden de siempre (primero el código desplegado).
+- `scripts/purge-zernio-inbound.mjs` sigue sirviendo para borrar a mano lo
+  guardado de Zernio si algún día hiciera falta.
+- La retención de 12 meses (`purge_old_messages`) vale para todos los canales.
 
 ## Retención
 

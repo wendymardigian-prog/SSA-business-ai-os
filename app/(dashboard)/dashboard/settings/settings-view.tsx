@@ -3,16 +3,13 @@
 import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
-import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
-import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
-import { AiLimitsSettings } from "@/components/settings/ai-limits-settings";
-import { EscalationSettings } from "@/components/settings/escalation-settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
+import Link from "next/link";
 import { AiRunsLink } from "@/components/settings/ai-runs-link";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
@@ -21,15 +18,9 @@ interface WorkspaceSettings {
   name: string;
   globalKeywords: string[];
   optOutPhrases: string[];
-  leadScopeEnabled: boolean;
-  unassignedVisibleToMembers: boolean;
-  persistZernioInbound: boolean;
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
-  aiDailyLimitUsd: number | null;
-  aiMonthlyLimitUsd: number | null;
-  escalateOnUnreadable: boolean;
 }
 
 /**
@@ -172,14 +163,13 @@ export function SettingsView({
 
             {/* Conversaciones */}
             <section id="conversaciones" className="scroll-mt-20 space-y-6">
-              <LeadScopeSettings
-                leadScopeEnabled={workspace.leadScopeEnabled}
-                unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
-              />
-
-              <hr className="border-border" />
-
-              <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
+              <p className="text-xs text-muted-foreground">
+                Quién ve qué leads se define por rol, en{" "}
+                <Link href="/dashboard/settings/roles" className="text-primary underline underline-offset-2">
+                  Ajustes → Roles
+                </Link>
+                .
+              </p>
 
               <hr className="border-border" />
 
@@ -266,16 +256,13 @@ export function SettingsView({
 
             {/* IA */}
             <section id="ia" className="scroll-mt-20 space-y-6">
-              <AiLimitsSettings
-                dailyUsd={workspace.aiDailyLimitUsd}
-                monthlyUsd={workspace.aiMonthlyLimitUsd}
-              />
-
-              <hr className="border-border" />
-
-              <EscalationSettings enabled={workspace.escalateOnUnreadable} />
-
-              {canViewAiCosts && <hr className="border-border" />}
+              <p className="text-sm text-muted-foreground">
+                Los topes de gasto de IA y sus avisos se configuran en{" "}
+                <Link href="/dashboard/agents" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Agentes → Gasto de IA
+                </Link>
+                .
+              </p>
               <AiRunsLink canView={canViewAiCosts} />
             </section>
           </div>

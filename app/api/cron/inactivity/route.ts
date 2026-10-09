@@ -27,10 +27,10 @@ import { executeFlow } from "@/lib/flow-engine/engine";
  *   1. Mide lo que el trigger pregunta —cuando interactuo el lead por ultima
  *      vez—, no "cuando entro el ultimo mensaje", que se le parece pero no es
  *      lo mismo.
- *   2. Lo llenan los dos receptores aunque el guardado de mensajes este
- *      apagado (workspaces.persist_zernio_inbound). Si este cron contara
- *      mensajes, apagar ese interruptor romperia una automatizacion que hoy
- *      funciona, y no tienen por que estar atados.
+ *   2. Lo llenan los dos receptores directamente, sin depender de la tabla
+ *      de mensajes. Si este cron contara mensajes, cualquier cambio en como
+ *      se guardan romperia una automatizacion que hoy funciona, y no tienen
+ *      por que estar atados.
  *   3. Es una columna indexada de contacts; contar mensajes es mas caro y no
  *      responde mejor.
  *

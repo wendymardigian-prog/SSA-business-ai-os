@@ -396,6 +396,18 @@ export function simulateFlow(
         break;
       }
 
+      // Banca de recursos: en la simulación no sale nada, se muestra qué haría.
+      case "sendAsset": {
+        const name = (data.assetName as string) || (data.assetId ? "un recurso" : "(sin recurso elegido)");
+        steps.push({
+          nodeId: node.id,
+          nodeType: "sendAsset",
+          nodeLabel: label,
+          result: { type: "action", actionType: "sendAsset", detail: `Manda el recurso «${name}»` },
+        });
+        break;
+      }
+
       case "pauseAgent":
       case "resumeAgent": {
         steps.push({

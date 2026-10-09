@@ -20,6 +20,7 @@ import {
   Mail,
   CalendarX,
   CalendarCheck,
+  Library,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -57,6 +58,14 @@ const categories: PaletteCategory[] = [
         nodeType: "aiResponse",
         label: "AI Response",
         icon: Sparkles,
+      },
+      // Un recurso de la banca (texto, audio, video, imagen, archivo o enlace).
+      {
+        type: "action",
+        nodeType: "sendAsset",
+        label: "Enviar recurso",
+        icon: Library,
+        actionType: "sendAsset",
       },
     ],
   },

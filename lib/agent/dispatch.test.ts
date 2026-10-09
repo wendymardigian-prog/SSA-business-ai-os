@@ -10,7 +10,7 @@ import { agentRow } from "./testing/fixtures";
 
 const NOW = new Date("2026-09-15T16:00:00.000Z");
 
-function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabled?: boolean | null; paused?: string | null; persist?: boolean } = {}) {
+function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabled?: boolean | null; paused?: string | null} = {}) {
   return memoryDb(
     {
       agents: opts.agent === null ? [] : [agentRow({ enabled_channel_ids: ["ch-1"], ...opts.agent })],
@@ -18,7 +18,7 @@ function world(opts: { agent?: Parameters<typeof agentRow>[0] | null; agentEnabl
         { id: "cv-1", agent_enabled: opts.agentEnabled === undefined ? true : opts.agentEnabled, agent_paused_until: opts.paused ?? null },
       ],
       agent_runs: [],
-      channels: [{ id: "ch-1", provider: "zernio", workspaces: { persist_zernio_inbound: opts.persist ?? true } }],
+      channels: [{ id: "ch-1", provider: "zernio" }],
     },
     {
       now: () => NOW,
@@ -96,13 +96,6 @@ describe("las palancas", () => {
     const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
     expect(outcome).toMatchObject({ scheduled: false, reason: "paused" });
     expect(db.rows("agent_runs")[0]).toMatchObject({ status: "skipped", status_detail: "paused" });
-  });
-
-  it("con el guardado de entrantes de Instagram apagado, no agenda (el turno no tendria que leer) y deja el motivo", async () => {
-    const db = world({ persist: false });
-    const outcome = await maybeScheduleAgentTurn(db.client, { ...base, automation: { claimed: false, reason: "no_trigger" } });
-    expect(outcome).toMatchObject({ scheduled: false, reason: "message_persistence_off" });
-    expect(db.rows("agent_runs")[0]).toMatchObject({ status: "skipped", status_detail: "message_persistence_off" });
   });
 
   it("forzado apagado en la conversacion: no agenda y NO deja run", async () => {

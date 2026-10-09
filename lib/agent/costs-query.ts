@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { WorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import type { Database } from "@/lib/types/database";
 import { DATE_PRESETS, DATE_PRESET_LABELS, resolveDateRange, startOfZonedDay, startOfZonedMonth, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, type SearchParams } from "@/lib/url-params";
@@ -92,7 +93,8 @@ export async function loadCostsTab(
     agent: AgentConfig;
     filters: CostFilters;
     agentNames: Map<string, string>;
-    workspaceLimits: { daily: number | null; monthly: number | null };
+    /** Los topes del workspace (con lo que hacen al llegar y el aviso previo). */
+    workspaceSettings: WorkspaceSpendSettings;
     canEditPricing: boolean;
     timeZone: string;
     now?: Date;
@@ -167,8 +169,7 @@ export async function loadCostsTab(
       agentDailyAction: args.agent.dailyCostLimitAction,
       agentMonthlyUsd: args.agent.monthlyCostLimitUsd,
       agentMonthlyAction: args.agent.monthlyCostLimitAction,
-      workspaceDailyUsd: args.workspaceLimits.daily,
-      workspaceMonthlyUsd: args.workspaceLimits.monthly,
+      workspace: args.workspaceSettings,
     },
     pricing: (pricingRes.data ?? []).map((p) => ({
       id: p.id,

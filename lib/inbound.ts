@@ -281,38 +281,31 @@ export async function insertMessage({
 }
 
 /**
- * Guarda un mensaje ENTRANTE, si para ese canal esta permitido guardarlo.
+ * Guarda un mensaje ENTRANTE. Siempre: de todos los canales conectados.
  *
  * Es la unica puerta por la que pasan los entrantes de los receptores, y existe
- * por tres motivos que no conviene repetir en cada webhook:
+ * por dos motivos que no conviene repetir en cada webhook:
  *
- * 1. **El interruptor.** Los entrantes de los canales de Zernio (Instagram) se
- *    guardan solo si `workspaces.persist_zernio_inbound` esta prendido. Es un
- *    registro en la base y no una variable de entorno justamente para poder
- *    apagarlo sin un deploy, mientras se confirman los terminos de Zernio y
- *    Meta para persistir el contenido de los DMs. Apagado, el sistema se
- *    comporta igual que antes de la Fase 3.
- *
- *    Los canales de Evolution (WhatsApp) NO dependen del interruptor: para
- *    ellos esta tabla es la unica fuente del hilo, asi que apagarlo no seria
- *    "no guardar", seria vaciar la bandeja.
- *
- *    Se lee en cada mensaje, sin cachear a proposito. Es un SELECT por clave
- *    primaria sobre una tabla de una fila, al lado de las otras seis consultas
- *    que ya hace un entrante; y un interruptor que existe por una duda legal
- *    tiene que apagar en el momento en que se lo apaga, no cuando venza un TTL.
- *
- * 2. **No puede tumbar el webhook.** Envuelve todo en try/catch: si el guardado
+ * 1. **No puede tumbar el webhook.** Envuelve todo en try/catch: si el guardado
  *    falla, se loguea y el receptor sigue su curso. Un mensaje que no se pudo
  *    guardar es un problema; un webhook que devuelve 500 y hace que el proveedor
  *    reintente y vuelva a disparar los flows es un problema peor.
  *
- * 3. Deja un solo lugar donde mirar cuando alguien pregunte por que un mensaje
+ * 2. Deja un solo lugar donde mirar cuando alguien pregunte por que un mensaje
  *    no quedo guardado.
  *
+ * **Ya no hay interruptor.** Los entrantes de Instagram (Zernio) se guardaban
+ * solo si `workspaces.persist_zernio_inbound` estaba prendido, para poder
+ * apagarlo sin deploy mientras se confirmaban los terminos de Zernio y Meta.
+ * Se decidio que todo mensaje de todo canal conectado se guarda siempre: el
+ * agente lee el historial de esta tabla y los dashboards cuentan sobre ella.
+ * La columna sigue en la base sin leerse (se borra mas adelante) y
+ * `scripts/purge-zernio-inbound.mjs` sigue sirviendo para borrar lo guardado
+ * de Zernio si algun dia hiciera falta.
+ *
  * Devuelve `true` solo si la fila quedo escrita ahora. `false` puede ser
- * "estaba apagado", "ya estaba" o "fallo": ningun llamador necesita
- * distinguirlos, y los tres significan lo mismo para el receptor (seguir).
+ * "ya estaba" o "fallo": ningun llamador necesita distinguirlos, y los dos
+ * significan lo mismo para el receptor (seguir).
  */
 export async function persistInboundMessage({
   supabase,
@@ -340,20 +333,6 @@ export async function persistInboundMessage({
   platformNativeMessageId?: string | null;
 }): Promise<InsertedMessage> {
   try {
-    if (channel.provider === "zernio") {
-      const { data: workspace, error } = await supabase
-        .from("workspaces")
-        .select("persist_zernio_inbound")
-        .eq("id", channel.workspace_id)
-        .single();
-
-      if (error) {
-        console.error("[inbound] no pude leer el interruptor de guardado:", error.message);
-        return { stored: false, id: null };
-      }
-      if (!workspace?.persist_zernio_inbound) return { stored: false, id: null };
-    }
-
     return await insertMessage({
       supabase,
       conversationId,

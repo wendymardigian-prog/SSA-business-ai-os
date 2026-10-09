@@ -110,7 +110,7 @@ export function buildPrompt(request: CopyRequest): string {
     const stage = funnelStageInfo(classification.funnelStage);
     const lines = [
       classification.pillar?.trim() && `Pilar: ${classification.pillar.trim()}`,
-      classification.offer?.trim() && `Oferta: ${classification.offer.trim()}`,
+      classification.offer?.trim() && `Producto: ${classification.offer.trim()}`,
       // La etapa con su descripcion: tofu/mofu/bofu no le dicen nada a un modelo.
       stage && `Etapa del embudo: ${stage.label} (${stage.description})`,
       // La de la idea ya va en "La idea de origen"; aca solo si es otra.

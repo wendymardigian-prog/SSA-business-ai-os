@@ -8,7 +8,8 @@ import { CHIP_LABELS, chipsOf, type ProviderDefinition } from "@/lib/integration
 import { formatLastRefreshed, formatLongDate, formatOAuthExpiry } from "@/lib/integrations/format";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CredentialsForm } from "./credentials-form";
-import { AccountsTab, hasAccountsTab, type EvolutionChannelInfo } from "./accounts-tab";
+import { AccountsTab, hasAccountsTab } from "./accounts-tab";
+import type { Channel } from "@/components/channels/channels-panel";
 import type { SocialAccountRow } from "./publisher-defaults";
 import type { IntegrationCardData } from "./types";
 import type { AdAccount } from "@/lib/meta/accounts";
@@ -32,22 +33,20 @@ export function IntegrationDetail({
   provider,
   data,
   webhookUrl,
-  channelsSummary,
+  channels,
   metaAccounts,
   metaIgUsername,
   youtubeVerifiedAt,
-  evolutionChannel,
   socialAccounts,
   activityEntries,
 }: {
   provider: ProviderDefinition;
   data: IntegrationCardData;
   webhookUrl: string | null;
-  channelsSummary: Array<{ id: string; label: string; platform: string }>;
+  channels: Channel[];
   metaAccounts: AdAccount[];
   metaIgUsername: string | null;
   youtubeVerifiedAt: string | null;
-  evolutionChannel: EvolutionChannelInfo | null;
   socialAccounts: SocialAccountRow[];
   activityEntries: ActivityEntry[];
 }) {
@@ -123,13 +122,12 @@ export function IntegrationDetail({
         {activeTab === "cuentas" && showAccounts && (
           <AccountsTab
             provider={provider}
-            channelsSummary={channelsSummary}
+            channels={channels}
             metaAccounts={metaAccounts}
             metaIgUsername={metaIgUsername}
             youtubeVerifiedAt={youtubeVerifiedAt}
             calendarPeople={data.calendarPeople ?? 0}
             youtubeConnected={Boolean(data.oauth)}
-            evolutionChannel={evolutionChannel}
             socialAccounts={socialAccounts}
           />
         )}

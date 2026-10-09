@@ -19722,3 +19722,402 @@ COMMENT ON FUNCTION public.touch_response_asset(uuid) IS
 
 REVOKE ALL ON FUNCTION public.touch_response_asset(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.touch_response_asset(uuid) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 133: AI SPEND ACTIONS
+-- ============================================================
+-- ============================================================
+-- 00133_ai_spend_actions.sql
+--
+-- Topes de gasto de IA del workspace: que hacen al llegar, y un aviso antes.
+--
+-- Hasta ahora los dos topes del workspace (ai_daily_cost_limit_usd y
+-- ai_monthly_cost_limit_usd, 00058) siempre CORTABAN: el diario frena la IA
+-- hasta la medianoche local y el mensual apaga el agente. La accion estaba
+-- fija en el codigo (lib/ai/spend.ts) y la pantalla de Ajustes decia, mal,
+-- que el diario "avisa".
+--
+-- Ahora cada tope elige:
+--   - 'disable' (el comportamiento de siempre): frena / apaga.
+--   - 'notify': solo avisa, no frena nada.
+-- Y un aviso opcional ANTES de llegar: al pasar ai_spend_alert_pct % de
+-- cualquiera de los dos topes se crea una notificacion (una por periodo).
+--
+-- Aditiva y sin riesgo: los defaults dejan todo exactamente como esta hoy
+-- ('disable' en los dos, sin aviso).
+-- ============================================================
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS ai_daily_limit_action text NOT NULL DEFAULT 'disable',
+  ADD COLUMN IF NOT EXISTS ai_monthly_limit_action text NOT NULL DEFAULT 'disable',
+  ADD COLUMN IF NOT EXISTS ai_spend_alert_pct smallint;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_ai_daily_limit_action_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_ai_daily_limit_action_check
+      CHECK (ai_daily_limit_action IN ('disable', 'notify'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_ai_monthly_limit_action_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_ai_monthly_limit_action_check
+      CHECK (ai_monthly_limit_action IN ('disable', 'notify'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_ai_spend_alert_pct_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_ai_spend_alert_pct_check
+      CHECK (ai_spend_alert_pct IS NULL OR (ai_spend_alert_pct BETWEEN 1 AND 99));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.ai_daily_limit_action IS
+  'Que pasa al llegar al tope diario de IA: disable = frena la IA hasta la medianoche local; notify = solo avisa.';
+COMMENT ON COLUMN public.workspaces.ai_monthly_limit_action IS
+  'Que pasa al llegar al tope mensual de IA: disable = apaga el agente; notify = solo avisa.';
+COMMENT ON COLUMN public.workspaces.ai_spend_alert_pct IS
+  'Avisar al llegar a este % de cualquiera de los dos topes (1 a 99). NULL = sin aviso previo. Una notificacion por tope y periodo.';
+
+-- ============================================================
+-- MIGRATION 134: PRODUCTS PRICE STATUS
+-- ============================================================
+-- ============================================================
+-- 00134_products_price_status.sql
+--
+-- Las "ofertas" de contenido pasan a ser PRODUCTOS: cada uno con precio y
+-- estado (activo, inactivo o discontinuado).
+--
+-- Se suma a `content_offers` y NO se renombra la tabla: renombrarla obligaria
+-- a tocar `offer_id` en ideas y piezas, la funcion approve_content_idea_v2, los
+-- indices y las policies de un saque, por un cambio de nombre que el usuario ve
+-- en la pantalla y no en la base. En el codigo y en la documentacion
+-- `content_offers` ES el catalogo de productos; el renombre de la tabla queda
+-- para cuando se construya Ventas (Etapa 5), que es quien la va a usar.
+--
+-- Aditiva e idempotente. Hoy la tabla esta vacia en produccion: no hay nada
+-- que migrar, pero el backfill de abajo cubre un clon con datos.
+--
+-- Precio: siempre en USD. Puede ser NULL en la base (filas anteriores a esta
+-- migracion), pero la accion y el formulario lo exigen para los nuevos.
+--
+-- Estado y archivado van juntos: un producto "inactivo" o "discontinuado" es
+-- uno que ya no se ofrece al clasificar, que es justo lo que ya significaba
+-- `archived_at` (sale del selector, libera el nombre, se sigue mostrando en lo
+-- ya clasificado). El CHECK lo hace cumplir: no puede haber un producto activo
+-- archivado ni uno inactivo sin archivar.
+-- ============================================================
+
+ALTER TABLE public.content_offers
+  ADD COLUMN IF NOT EXISTS price_usd numeric(12,2),
+  ADD COLUMN IF NOT EXISTS status    text NOT NULL DEFAULT 'active';
+
+-- Backfill ANTES del CHECK de coherencia: lo que ya estaba archivado queda discontinuado.
+UPDATE public.content_offers
+   SET status = 'discontinued'
+ WHERE archived_at IS NOT NULL
+   AND status = 'active';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_offers_price_check') THEN
+    ALTER TABLE public.content_offers ADD CONSTRAINT content_offers_price_check
+      CHECK (price_usd IS NULL OR price_usd >= 0);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_offers_status_check') THEN
+    ALTER TABLE public.content_offers ADD CONSTRAINT content_offers_status_check
+      CHECK (status IN ('active', 'inactive', 'discontinued'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'content_offers_status_archived_check') THEN
+    ALTER TABLE public.content_offers ADD CONSTRAINT content_offers_status_archived_check
+      CHECK ((status = 'active') = (archived_at IS NULL));
+  END IF;
+END $$;
+
+COMMENT ON TABLE public.content_offers IS
+  'Catalogo de PRODUCTOS (lo que se vende) a los que apunta una idea o una pieza. Se llamaba "ofertas". Un producto no se borra: se pone inactivo o discontinuado.';
+COMMENT ON COLUMN public.content_offers.price_usd IS
+  'Precio del producto, siempre en USD. NULL solo en filas anteriores a la 00134.';
+COMMENT ON COLUMN public.content_offers.status IS
+  'active = se ofrece al clasificar; inactive = pausado; discontinued = dejo de venderse. Distinto de active <=> archived_at no es NULL (CHECK).';
+
+-- ============================================================
+-- MIGRATION 135: EMAIL LOG CONTACT
+-- ============================================================
+-- ============================================================
+-- 00135_email_log_contact.sql
+--
+-- Los emails que manda una automatizacion al (o sobre el) contacto tienen que
+-- aparecer en su historial. `email_log` no sabia de que contacto era cada email:
+-- solo guardaba la direccion de destino, el asunto y la entidad relacionada (el
+-- flow). Sin eso, un email de confirmacion de reunion que mando un flow no
+-- dejaba rastro en la ficha de nadie.
+--
+-- 1. `contact_id` (nullable: los emails del sistema -invitaciones, avisos de
+--    canal- no son de ningun contacto). ON DELETE SET NULL: el registro del
+--    envio sobrevive al contacto, que se purga a los 30 dias.
+-- 2. Una policy de lectura por contacto. Hoy `email_log` la leen solo Owner y
+--    Admin (`email_log_select`); un Member que ve a SU lead tiene que ver los
+--    emails de ese lead, y solo los de los leads que puede ver
+--    (`can_see_contact`, el mismo scope de siempre). Las dos policies se suman:
+--    Owner/Admin siguen viendo todo.
+--
+-- Aditiva e idempotente. Los registros anteriores quedan con `contact_id` en
+-- NULL: no se puede saber de que contacto eran.
+-- ============================================================
+
+ALTER TABLE public.email_log
+  ADD COLUMN IF NOT EXISTS contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_email_log_contact
+  ON public.email_log (contact_id, created_at DESC)
+  WHERE contact_id IS NOT NULL;
+
+COMMENT ON COLUMN public.email_log.contact_id IS
+  'El contacto al que se refiere el email (el que lo recibe, o sobre quien trata un aviso al equipo). NULL en los emails del sistema y en los anteriores a la 00135.';
+
+DROP POLICY IF EXISTS "email_log_select_contact" ON public.email_log;
+CREATE POLICY "email_log_select_contact" ON public.email_log
+  FOR SELECT USING (
+    contact_id IS NOT NULL
+    AND public.is_workspace_member(workspace_id)
+    AND EXISTS (
+      SELECT 1 FROM public.contacts c
+      WHERE c.id = email_log.contact_id
+        AND public.can_see_contact(c.*)
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 136: LEAD SCOPE BY ROLE
+-- ============================================================
+-- ============================================================
+-- 00136_lead_scope_by_role.sql
+--
+-- La visibilidad de los leads sale del ROL, no de dos interruptores del
+-- workspace.
+--
+-- Hasta ahora `can_see_contact` miraba dos columnas de `workspaces`
+-- (`lead_scope_enabled` y `unassigned_leads_visible_to_members`), que
+-- Ajustes -> General exponia como dos checkboxes. Eso dejaba a la persona que
+-- arma los equipos eligiendo en dos lugares distintos (Roles y Ajustes) una
+-- sola cosa: que ve cada quien.
+--
+-- Ahora el alcance de `leads` de cada rol tiene TRES valores:
+--   - 'own'            solo los asignados a la persona (setter, vendedor o una
+--                      conversacion suya).
+--   - 'own_unassigned' los asignados + los que no tienen a nadie asignado.
+--   - 'all'            todos (como siempre; Owner y Admin siempre ven todo).
+-- Las conversaciones siguen a los contactos (`can_see_conversation` delega en
+-- `can_see_contact`) y Agenda no cambia.
+--
+-- QUE HACE ESTA MIGRACION
+--   1. Pasa lo que hay hoy al modelo nuevo SIN ganar ni perder accesos por
+--      accidente: en un workspace con "sin asignar visibles" prendido, un rol
+--      PERSONALIZADO con alcance 'own' pasa a 'own_unassigned'; en uno con el
+--      alcance de leads APAGADO (todos veian todo), pasa a 'all'. Se hace una
+--      sola vez: una segunda corrida lo reconoce por el COMENTARIO de la
+--      funcion y no toca nada (si no, pisaria un alcance 'own' que alguien
+--      puso a proposito despues).
+--   2. Reescribe `can_see_contact`. Es la copia de la 00089 con dos cambios:
+--      deja de leer los dos interruptores y suma el valor 'own_unassigned'.
+--      La firma, los GRANT y las policies que la llaman no cambian.
+--
+-- LO QUE SI CAMBIA, A PROPOSITO
+--   El rol de sistema Member vive en el codigo con alcance 'own'. Donde hoy
+--   estaba prendido "sin asignar visibles", los Members dejan de ver los leads
+--   sin asignar. Es lo que se eligio ("Member por defecto ve solo los
+--   asignados"). Para otro comportamiento se crea un rol con "Asignados + sin
+--   asignar".
+--
+-- LAS DOS COLUMNAS QUEDAN, SIN USO. Borrarlas es una migracion aparte, mas
+-- adelante (docs/PENDIENTE.md): una migracion que borra se aplica despues del
+-- codigo desplegado.
+--
+-- ORDEN DE APLICACION: despues del merge y del deploy. Con el codigo nuevo y
+-- la funcion vieja, 'own_unassigned' se comporta como 'own' (la funcion vieja
+-- solo pregunta por 'all'): no abre nada de mas.
+--
+-- PARA VOLVER ATRAS: la definicion anterior de `can_see_contact`, completa
+-- (la de la 00089), esta aca abajo. Se pega, y los roles que pasaron a
+-- 'own_unassigned' vuelven a 'own' con:
+--   UPDATE public.workspace_roles
+--      SET permissions = jsonb_set(permissions, '{scopes,leads}', '"own"')
+--    WHERE permissions #>> '{scopes,leads}' = 'own_unassigned';
+--
+-- CREATE OR REPLACE FUNCTION public.can_see_contact(c public.contacts)
+-- RETURNS boolean
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- STABLE
+-- SET search_path = ''
+-- AS $$
+-- DECLARE
+--   v_scoped              boolean;
+--   v_unassigned_visible  boolean;
+--   v_has_assignee        boolean;
+-- BEGIN
+--   IF NOT public.is_workspace_member(c.workspace_id) THEN
+--     RETURN false;
+--   END IF;
+--
+--   IF public.is_workspace_admin(c.workspace_id) THEN
+--     RETURN true;
+--   END IF;
+--
+--   -- LO NUEVO (00089): un rol personalizado con alcance `all` en leads ve
+--   -- todo, igual que un Admin. Es el unico agregado de esta migracion.
+--   IF public.permission_scope(c.workspace_id, 'leads') = 'all' THEN
+--     RETURN true;
+--   END IF;
+--
+--   SELECT w.lead_scope_enabled, w.unassigned_leads_visible_to_members
+--     INTO v_scoped, v_unassigned_visible
+--   FROM public.workspaces w
+--   WHERE w.id = c.workspace_id;
+--
+--   IF NOT COALESCE(v_scoped, false) THEN
+--     RETURN true;
+--   END IF;
+--
+--   -- Asignado a mi, por cualquiera de las tres vias.
+--   IF c.setter_id = auth.uid() OR c.vendedor_id = auth.uid() THEN
+--     RETURN true;
+--   END IF;
+--
+--   IF EXISTS (
+--     SELECT 1 FROM public.conversations conv
+--     WHERE conv.contact_id = c.id AND conv.assigned_to = auth.uid()
+--   ) THEN
+--     RETURN true;
+--   END IF;
+--
+--   -- Sin asignar: lo decide el flag del workspace. "Asignado" incluye tener
+--   -- setter o vendedor, aunque ninguna conversacion tenga agente.
+--   v_has_assignee := c.setter_id IS NOT NULL OR c.vendedor_id IS NOT NULL;
+--
+--   IF NOT v_has_assignee THEN
+--     SELECT EXISTS (
+--       SELECT 1 FROM public.conversations conv
+--       WHERE conv.contact_id = c.id AND conv.assigned_to IS NOT NULL
+--     ) INTO v_has_assignee;
+--   END IF;
+--
+--   IF NOT v_has_assignee THEN
+--     RETURN COALESCE(v_unassigned_visible, false);
+--   END IF;
+--
+--   RETURN false;
+-- END;
+-- $$;
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. Pasar lo que hay al modelo nuevo (una sola vez)
+-- ------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_already boolean;
+BEGIN
+  SELECT COALESCE(obj_description('public.can_see_contact(public.contacts)'::regprocedure, 'pg_proc') LIKE '%00136%', false)
+    INTO v_already;
+
+  IF NOT v_already THEN
+    -- Alcance de leads APAGADO: todos veian todo. Un rol personalizado en 'own'
+    -- seguiria viendo todo, asi que pasa a 'all'.
+    UPDATE public.workspace_roles r
+       SET permissions = jsonb_set(r.permissions, '{scopes,leads}', '"all"')
+      FROM public.workspaces w
+     WHERE w.id = r.workspace_id
+       AND r.system_role IS NULL
+       AND NOT w.lead_scope_enabled
+       AND r.permissions #>> '{scopes,leads}' = 'own';
+
+    -- "Sin asignar visibles" prendido: un rol personalizado en 'own' veia los
+    -- sin asignar, asi que pasa a 'own_unassigned'.
+    UPDATE public.workspace_roles r
+       SET permissions = jsonb_set(r.permissions, '{scopes,leads}', '"own_unassigned"')
+      FROM public.workspaces w
+     WHERE w.id = r.workspace_id
+       AND r.system_role IS NULL
+       AND w.lead_scope_enabled
+       AND w.unassigned_leads_visible_to_members
+       AND r.permissions #>> '{scopes,leads}' = 'own';
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. can_see_contact
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.can_see_contact(c public.contacts)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_scope         text;
+  v_has_assignee  boolean;
+BEGIN
+  IF NOT public.is_workspace_member(c.workspace_id) THEN
+    RETURN false;
+  END IF;
+
+  IF public.is_workspace_admin(c.workspace_id) THEN
+    RETURN true;
+  END IF;
+
+  -- El alcance de leads de MI rol. Un valor que no conoce se trata como 'own':
+  -- ante la duda, lo mas angosto.
+  v_scope := public.permission_scope(c.workspace_id, 'leads');
+
+  IF v_scope = 'all' THEN
+    RETURN true;
+  END IF;
+
+  -- Asignado a mi, por cualquiera de las tres vias.
+  IF c.setter_id = auth.uid() OR c.vendedor_id = auth.uid() THEN
+    RETURN true;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.conversations conv
+    WHERE conv.contact_id = c.id AND conv.assigned_to = auth.uid()
+  ) THEN
+    RETURN true;
+  END IF;
+
+  -- Sin asignar: lo decide el rol. "Asignado" incluye tener setter o vendedor,
+  -- aunque ninguna conversacion tenga agente.
+  IF v_scope = 'own_unassigned' THEN
+    v_has_assignee := c.setter_id IS NOT NULL OR c.vendedor_id IS NOT NULL;
+
+    IF NOT v_has_assignee THEN
+      SELECT EXISTS (
+        SELECT 1 FROM public.conversations conv
+        WHERE conv.contact_id = c.id AND conv.assigned_to IS NOT NULL
+      ) INTO v_has_assignee;
+    END IF;
+
+    IF NOT v_has_assignee THEN
+      RETURN true;
+    END IF;
+  END IF;
+
+  RETURN false;
+END;
+$$;
+
+COMMENT ON FUNCTION public.can_see_contact(public.contacts) IS
+  'Se ve un contacto si es del workspace y: sos Admin, o tu rol tiene alcance leads=all, o es tuyo (setter, vendedor o conversacion asignada), o tu rol tiene leads=own_unassigned y nadie lo tiene asignado. Sale del ROL, ya no de los interruptores del workspace (00136).';
+
+REVOKE ALL ON FUNCTION public.can_see_contact(public.contacts) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_contact(public.contacts) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 3. Las dos columnas quedan sin uso
+-- ------------------------------------------------------------
+
+COMMENT ON COLUMN public.workspaces.lead_scope_enabled IS
+  'SIN USO desde la 00136: el alcance de leads sale del rol (workspace_roles.permissions.scopes.leads). Se borra en una migracion aparte.';
+COMMENT ON COLUMN public.workspaces.unassigned_leads_visible_to_members IS
+  'SIN USO desde la 00136: lo reemplaza el alcance leads=own_unassigned del rol. Se borra en una migracion aparte.';

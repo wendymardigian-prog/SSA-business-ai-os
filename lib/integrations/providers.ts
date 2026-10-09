@@ -697,6 +697,27 @@ export function getVisibleProvider(id: string): ProviderDefinition | undefined {
 }
 
 /**
+ * La definicion SIN funciones, para pasarsela a un Client Component.
+ *
+ * Los `validate` de los campos (Evolution, Resend) son funciones, y React no
+ * puede mandar una funcion del servidor al cliente: la pagina de detalle de
+ * Evolution reventaba con "Functions cannot be passed directly to Client
+ * Components". El cliente no las usa (la validacion corre en el servidor,
+ * `validateConfig`), asi que se sacan antes de cruzar la frontera.
+ */
+export function serializableProvider(provider: ProviderDefinition): ProviderDefinition {
+  if (!provider.configFields) return provider;
+  return {
+    ...provider,
+    configFields: provider.configFields.map((field) => {
+      const { validate: _validate, ...rest } = field;
+      void _validate;
+      return rest;
+    }),
+  };
+}
+
+/**
  * Las integraciones VISIBLES de un tipo. Lo visible importa: `email_provider`
  * son dos (Resend saliente y Resend entrante) y el entrante recien se muestra
  * en el bloque 8, asi que hasta entonces esta funcion sigue devolviendo lo

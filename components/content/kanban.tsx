@@ -256,7 +256,7 @@ function IdeaCard({ idea, href }: { idea: BoardIdea; href: string }) {
         {excerpt && <span className="mt-1 block text-xs italic text-muted-foreground">“{excerpt}”</span>}
 
         {idea.offer && (
-          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Oferta">
+          <span className="mt-1.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Producto">
             {idea.offer.name}
           </span>
         )}
@@ -447,11 +447,11 @@ export function NewContentButtons({
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={() => setDialog("idea")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent"
         >
           <Plus className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">Nueva idea</span>
@@ -459,7 +459,7 @@ export function NewContentButtons({
         <button
           type="button"
           onClick={() => setDialog("post")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground"
         >
           <Plus className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">Nuevo post</span>

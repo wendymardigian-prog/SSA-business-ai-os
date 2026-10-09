@@ -38,23 +38,18 @@ export function AgendaFiltersMenu({
   const count = countActiveAgendaFilters(filters);
 
   return (
+    // Solo icono, con un globito con la cantidad de filtros puestos (Agenda v2): ocupa
+    // 32 px de la barra en vez de 150. Es el mismo boton que usa Contactos.
     <FilterMenu
       label="Filtros"
+      compact
+      badge={count}
       active={count > 0}
       icon={
         pending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />
         ) : (
           <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        )
-      }
-      value={
-        count > 0 ? (
-          <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-            {count}
-          </span>
-        ) : (
-          <span className="font-normal text-muted-foreground">ninguno</span>
         )
       }
       menuClassName="topbar:w-[340px]"

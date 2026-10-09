@@ -91,7 +91,8 @@ describe("sendAgentAsset: cuando sale bien", () => {
       db.client,
       expect.objectContaining({ workspaceId: WS, channelId: "ch-1", conversationId: "cv-1", lateConversationId: "late-1" }),
       expect.objectContaining({
-        text: "Cuesta tanto por mes",
+        // Un audio sale solo: su transcripcion es para el historial, no para el contacto.
+        text: "",
         media: expect.objectContaining({ kind: "audio", storagePath: COPIED_PATH, mime: "audio/mp4" }),
       }),
     );

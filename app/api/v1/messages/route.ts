@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
@@ -424,10 +424,18 @@ export async function POST(request: NextRequest) {
   });
 
   // El audio propio tambien se transcribe (F19): asi el agente sabe que dijo
-  // la persona si despues alguien lee el historial. Nunca hace fallar la
-  // respuesta: corre despues de que el 201 ya esta armado.
+  // la persona si despues alguien lee el historial. Va en el after(): la
+  // respuesta sale primero y la transcripcion no demora el envio ni la
+  // pantalla. Nunca hace fallar la respuesta (afterMediaStored no lanza).
+  // Sin un request en curso (un test) no hay donde colgarlo y se espera aca.
   if (media && stored) {
-    await afterMediaStored({ supabase, messageId: stored.id, items: toAttachmentsColumn([attachmentsColumn!.items[0]])!.items });
+    const transcribeSentMedia = () =>
+      afterMediaStored({ supabase, messageId: stored.id, items: toAttachmentsColumn([attachmentsColumn!.items[0]])!.items });
+    try {
+      after(transcribeSentMedia);
+    } catch {
+      await transcribeSentMedia();
+    }
   }
 
   return NextResponse.json(

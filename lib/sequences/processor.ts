@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
+import { deliverAsset } from "@/lib/response-assets/deliver";
 import { sendChannelMessage, recordSend } from "@/lib/flow-engine/send";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { generateAiReply } from "@/lib/ai/generate-reply";
@@ -193,6 +194,13 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
     return "advanced";
   }
 
+  if (delivery === "skipped") {
+    // Un recurso que no existe o que el canal no acepta: no mejora con un
+    // reintento. Se saltea y el motivo queda en la inscripcion.
+    await advance(supabase, enrollment.id, steps, index);
+    return "advanced";
+  }
+
   if (delivery === "retry") {
     // El tope horario no es culpa del paso: se reprograma sin gastar intento.
     await reschedule(supabase, enrollment.id, nextAttemptAt(1));
@@ -226,7 +234,12 @@ async function processEnrollment(supabase: Db, enrollment: Enrollment): Promise<
   return "sent";
 }
 
-type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable";
+/**
+ * `skipped`: el paso no se pudo mandar y no va a poder (un recurso que ya no
+ * existe o que el canal no acepta). Se saltea y queda el motivo anotado, como
+ * `unreadable`: reintentar no lo arregla.
+ */
+type DeliveryOutcome = "sent" | "failed" | "retry" | "no_conversation" | "unreadable" | "skipped";
 
 async function deliverStep(
   supabase: Db,
@@ -245,6 +258,18 @@ async function deliverStep(
     .maybeSingle();
 
   const variables = stepVariables(contact ?? {});
+
+  // El paso "Recurso": un recurso de la banca, por el mismo camino que el nodo
+  // de los flows. Lo que el canal no acepta (un archivo por Instagram, un audio
+  // por email) se saltea con su motivo en vez de salir roto.
+  if (step.type === "asset") {
+    const result = await deliverAsset(supabase, { assetId: step.assetId ?? "", caption: step.caption ?? null, context });
+    if (result.ok) return "sent";
+
+    await supabase.from("sequence_enrollments").update({ last_error: result.reason }).eq("id", enrollment.id);
+    if (result.status === "skipped") return "skipped";
+    return result.retryable ? "retry" : "failed";
+  }
 
   let text: string;
 

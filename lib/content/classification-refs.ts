@@ -18,7 +18,7 @@ export type RefsCheck = { ok: true } | { ok: false; error: string };
 
 const TABLES = [
   { key: "pillar_id", table: "content_pillars", label: "pilar", article: "ese", fem: false },
-  { key: "offer_id", table: "content_offers", label: "oferta", article: "esa", fem: true },
+  { key: "offer_id", table: "content_offers", label: "producto", article: "ese", fem: false },
 ] as const;
 
 export async function checkTaxonomyRefs(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +27,19 @@ import {
  *
  * Los días se cortan en la zona que pasa el que llama (`workspaces.timezone`
  * para el dashboard; la de la pantalla para Agenda), no en la del navegador.
+ *
+ * Se cierra solo al hacer clic afuera y con Esc (desde donde este el foco).
+ *
+ * En la computadora el panel va `fixed` y su posicion se calcula al abrir, no
+ * `absolute` pegado al boton: son ~790 px de ancho y el boton esta a la
+ * izquierda de la barra, asi que anclarlo a su borde derecho lo sacaba por la
+ * izquierda de la pantalla y las columnas del calendario se apretaban hasta
+ * quedar sin espacio.
  */
+
+/** El ancho del panel en la computadora: 170 de atajos + dos meses de 266 + el relleno. Fijo, asi la posicion se calcula sin medirlo. */
+const PANEL_WIDTH = 790;
+const EDGE_GAP = 16;
 
 export function PeriodPopover<P extends string>({
   preset,
@@ -52,23 +64,66 @@ export function PeriodPopover<P extends string>({
   onApply: (next: { preset: P | null; from: string | null; to: string | null }) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Donde cae el panel en la computadora (en el telefono es una hoja `fixed inset-x-4`).
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const today = todayIn(timezone);
   const urlCivil = isoRangeToCivil(from, to, timezone);
 
+  // Clic afuera, Esc y cambio de tamaño cierran el panel.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onResize = () => setOpen(false);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open]);
+
+  function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Alineado a la izquierda del boton, pero sin salirse de la pantalla por ningun lado.
+      const left = Math.max(EDGE_GAP, Math.min(rect.left, window.innerWidth - PANEL_WIDTH - EDGE_GAP));
+      setPos({ left, top: rect.bottom + 8 });
+    }
+    setOpen(true);
+  }
+
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <button
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className={cn(
           "flex h-8 items-center gap-2 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors",
           urlCivil ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60",
         )}
       >
-        <Calendar className="h-4 w-4" aria-hidden />
-        {periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}
+        <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+        {/* Con un tope: "Ultimos 7 + proximos 30 dias" mide 190 px y la barra de
+            Agenda no tiene de sobra. El texto completo queda en el tooltip. */}
+        <span className="max-w-[10.5rem] truncate xl:max-w-[14rem]" title={periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}>
+          {periodButtonLabel(urlCivil ? null : labels[preset], urlCivil)}
+        </span>
       </button>
 
       {open && (
@@ -80,6 +135,7 @@ export function PeriodPopover<P extends string>({
           today={today}
           timezone={timezone}
           allowFuture={allowFuture ?? false}
+          pos={pos}
           onClose={() => setOpen(false)}
           onApply={(next) => {
             setOpen(false);
@@ -99,6 +155,7 @@ function PeriodPanel<P extends string>({
   today,
   timezone,
   allowFuture,
+  pos,
   onClose,
   onApply,
 }: {
@@ -109,6 +166,7 @@ function PeriodPanel<P extends string>({
   today: CivilDate;
   timezone: string;
   allowFuture: boolean;
+  pos: { left: number; top: number } | null;
   onClose: () => void;
   onApply: (next: { preset: P | null; from: string | null; to: string | null }) => void;
 }) {
@@ -143,7 +201,10 @@ function PeriodPanel<P extends string>({
           onClose();
         }
       }}
-      className="fixed inset-x-4 top-28 z-50 max-h-[75vh] overflow-auto rounded-xl border border-border bg-popover shadow-lg topbar:absolute topbar:inset-x-auto topbar:right-0 topbar:top-full topbar:mt-2 topbar:grid topbar:w-max topbar:max-w-[calc(100vw-2rem)] topbar:grid-cols-[170px_auto]"
+      // En la computadora: `fixed` en la posicion calculada al abrir (`pos`), de ancho
+      // fijo. En el telefono: una hoja de lado a lado, que ignora `pos`.
+      style={pos ? ({ "--panel-left": `${pos.left}px`, "--panel-top": `${pos.top}px` } as React.CSSProperties) : undefined}
+      className="fixed inset-x-4 top-28 z-50 max-h-[75vh] overflow-auto rounded-xl border border-border bg-popover shadow-lg topbar:inset-x-auto topbar:left-[var(--panel-left,1rem)] topbar:top-[var(--panel-top,7rem)] topbar:grid topbar:w-[790px] topbar:grid-cols-[170px_1fr]"
     >
       {/* Los atajos */}
       <div className="flex flex-wrap gap-1 border-b border-border p-2.5 topbar:flex-col topbar:flex-nowrap topbar:gap-px topbar:border-b-0 topbar:border-r">
@@ -249,7 +310,9 @@ function MonthCalendar({
   const end = range?.to ?? range?.from ?? null;
 
   return (
-    <div>
+    // Ancho fijo en la computadora (7 columnas de 38 px): sin esto cada columna
+    // medía lo que su numero y el calendario quedaba apretado.
+    <div className="w-full topbar:w-[266px]">
       <p className="mb-1.5 flex h-[30px] items-center justify-center font-semibold">{formatMonth(year, month)}</p>
       <div className="grid grid-cols-7 gap-y-1">
         {WEEKDAYS_SHORT.map((d) => (

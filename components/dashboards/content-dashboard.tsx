@@ -142,7 +142,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
       }),
     [props.posts, latestByPost, pieces, leadsByPost, props.group],
   );
-  const groupLabel = GROUP_DIMENSIONS.find((d) => d.value === props.group)?.label ?? "Oferta";
+  const groupLabel = GROUP_DIMENSIONS.find((d) => d.value === props.group)?.label ?? "Producto";
   const hasClassificationFilter = Object.values(props.filters).some(Boolean);
   const selectedGroup = selectedFor(props.group, props.filters, props.platform);
 
@@ -315,7 +315,7 @@ export function ContentDashboard(props: ContentDashboardProps) {
         {/* Filtros por la clasificacion de la pieza (F105) */}
         <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filtros de contenido">
           <FilterSelect
-            label="Oferta"
+            label="Producto"
             value={props.filters.offer ?? ""}
             options={props.filterOptions.offers.map((o) => ({ value: o.id, label: o.name }))}
             onChange={(v) => setParam("oferta", v)}

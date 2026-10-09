@@ -9,10 +9,12 @@ vi.mock("@/lib/flow-engine/send", () => ({
   recordSend: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/ai/generate-reply", () => ({ generateAiReply: vi.fn() }));
+vi.mock("@/lib/response-assets/deliver", () => ({ deliverAsset: vi.fn() }));
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendChannelMessage } from "@/lib/flow-engine/send";
 import { generateAiReply } from "@/lib/ai/generate-reply";
+import { deliverAsset } from "@/lib/response-assets/deliver";
 import { processSequenceSteps } from "./processor";
 
 const WS = "11111111-1111-1111-1111-111111111111";
@@ -391,5 +393,69 @@ describe("processSequenceSteps", () => {
     const result = await processSequenceSteps();
     expect(result).toEqual({ processed: 0, failed: 0, paused: 0, skipped: 0, total: 0 });
     expect(sendChannelMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("el paso 'Recurso' (banca en las automatizaciones)", () => {
+  const twoSteps = {
+    id: "seq-1",
+    workspace_id: WS,
+    status: "active",
+    steps: [{ type: "asset", assetId: "a-1", caption: "Mirá esto" }, { type: "message", content: "hola" }],
+  };
+
+  it("manda el recurso por deliverAsset, con el texto del paso, y avanza al siguiente", async () => {
+    vi.mocked(deliverAsset).mockResolvedValue({ ok: true, kind: "image" });
+    const { lastPatch } = fakeClient({ sequence: twoSteps });
+
+    const result = await processSequenceSteps();
+
+    expect(deliverAsset).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ assetId: "a-1", caption: "Mirá esto" }));
+    // No se manda como un mensaje de texto aparte.
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+    expect(result.processed).toBe(1);
+    expect(lastPatch()).toMatchObject({ current_step_index: 1 });
+  });
+
+  it("un recurso que el canal no acepta (o que ya no existe) se saltea y deja el motivo: reintentar no lo arregla", async () => {
+    vi.mocked(deliverAsset).mockResolvedValue({ ok: false, status: "skipped", reason: "Instagram no acepta archivos." });
+    const { updates } = fakeClient({ sequence: twoSteps });
+
+    const result = await processSequenceSteps();
+
+    expect(result.failed).toBe(0);
+    expect(updates.some((u) => u.patch.last_error === "Instagram no acepta archivos.")).toBe(true);
+    // La secuencia sigue: avanza al paso que sigue, sin gastar intentos.
+    expect(updates.at(-1)!.patch).toMatchObject({ current_step_index: 1 });
+    expect(updates.at(-1)!.patch.attempt_count).toBe(0);
+  });
+
+  it("si el canal esta frenado por el tope de la hora, se reprograma sin gastar intento", async () => {
+    vi.mocked(deliverAsset).mockResolvedValue({ ok: false, status: "failed", reason: "tope", retryable: true });
+    const { updates } = fakeClient({ sequence: twoSteps });
+
+    const result = await processSequenceSteps();
+
+    expect(result.failed).toBe(1);
+    expect(updates.at(-1)!.patch.next_step_at).toBeTruthy();
+    expect(updates.at(-1)!.patch.attempt_count).toBeUndefined();
+  });
+
+  it("un fallo comun suma un intento, como cualquier otro paso", async () => {
+    vi.mocked(deliverAsset).mockResolvedValue({ ok: false, status: "failed", reason: "se cayo", retryable: false });
+    const { updates } = fakeClient({ sequence: twoSteps });
+
+    await processSequenceSteps();
+
+    expect(updates.at(-1)!.patch.attempt_count).toBe(1);
+  });
+
+  it("un contacto 'no contactar' no recibe el recurso", async () => {
+    const { lastPatch } = fakeClient({ sequence: twoSteps, contacts: [{ id: "con-1", do_not_contact: true, deleted_at: null }] });
+
+    await processSequenceSteps();
+
+    expect(deliverAsset).not.toHaveBeenCalled();
+    expect(lastPatch()).toMatchObject({ status: "paused", paused_reason: "opt_out" });
   });
 });

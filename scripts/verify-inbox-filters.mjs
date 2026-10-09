@@ -20,6 +20,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { leadScopeHelper } from "./lead-scope-helper.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -185,13 +186,14 @@ try {
       "una combinacion sin resultados devuelve vacio y no ignora un filtro", vacio.nombres.join(", "));
   }
 
-  console.log("\n— Con el scope apagado el Member ve todo —");
+  console.log("\n— Con alcance `all` en su rol, el Member ve todo —");
   {
-    await svc.from("workspaces").update({ lead_scope_enabled: false }).eq("id", ws.id);
+    const alcance = leadScopeHelper(svc);
+    await alcance.apply(ws.id, "all");
     const m = await consultar(member.client);
     check(m.nombres.length === 5,
-      `sin scope, el Member ve las cinco abiertas (dio ${m.nombres.length})`, m.nombres.join(", "));
-    await svc.from("workspaces").update({ lead_scope_enabled: true }).eq("id", ws.id);
+      `con alcance all, el Member ve las cinco abiertas (dio ${m.nombres.length})`, m.nombres.join(", "));
+    await alcance.apply(ws.id, "own");
   }
 
   console.log("\n— Un contacto borrado desaparece de la bandeja —");

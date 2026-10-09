@@ -69,6 +69,12 @@ export async function sendAgentAsset(
   const { kind, storagePath, mime, filename, durationSeconds, sizeBytes } = copied.copy;
   // Un audio lleva su transcripcion como texto; lo demas, su caption.
   const text = (kind === "audio" ? asset.transcript : (asset.caption ?? copied.copy.caption)) ?? "";
+  // Pero esa transcripcion es para NUESTRO historial (que el agente y el equipo
+  // sepan que dijo el audio), no para el contacto: un audio no lleva texto.
+  // WhatsApp ya lo descarta solo (una nota de voz no tiene caption); Instagram
+  // lo mandaria como un mensaje aparte pegado al audio. Por el canal sale solo
+  // el audio.
+  const wireText = kind === "audio" ? "" : text;
 
   const outcome = await sendChannelMessage(
     supabase,
@@ -81,7 +87,7 @@ export async function sendAgentAsset(
       flowId: null,
     },
     {
-      text,
+      text: wireText,
       media: { kind, storagePath, mime, filename, durationSeconds },
     },
   );

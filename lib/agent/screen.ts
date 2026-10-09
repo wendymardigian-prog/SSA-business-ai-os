@@ -1,4 +1,5 @@
 import type { AgentConfig } from "./config";
+import type { WorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import type { Guardrails, OutputFormat } from "./schemas";
 import type { Json } from "@/lib/types/database";
 import type { DatePreset } from "@/lib/dates";
@@ -202,8 +203,8 @@ export interface CostsTabData {
     agentDailyAction: "notify" | "disable";
     agentMonthlyUsd: number | null;
     agentMonthlyAction: "notify" | "disable";
-    workspaceDailyUsd: number | null;
-    workspaceMonthlyUsd: number | null;
+    /** Los topes del workspace: se editan en la tarjeta "Topes y avisos". */
+    workspace: WorkspaceSpendSettings;
   };
   pricing: Array<{ id: string; provider: string; model: string; inputPerMtok: number; outputPerMtok: number; cachedInputPerMtok: number; validFrom: string; note: string | null }>;
   /** Solo Owner edita la tabla de precios. */
@@ -320,8 +321,6 @@ export interface AgentScreenData {
   knowledgeDocs: Array<{ id: string; title: string; tags: string[]; internalOnly: boolean; status: string }>;
   /** Flows publicados con trigger por defecto sin la puerta "solo si el agente esta apagado". */
   flowsCapturingAll: Array<{ id: string; name: string }>;
-  /** Si se guardan los entrantes de Zernio: sin eso el agente no tiene que leer (00053). */
-  persistZernioInbound: boolean;
 }
 
 export function toScreenAgent(agent: AgentConfig): AgentScreenData["agent"] {

@@ -3,10 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
-import { checkName, isValidColor, nextColor, type TaxonomyItem } from "@/lib/content/taxonomy";
+import {
+  archivedAtFor,
+  checkName,
+  checkPrice,
+  isProductStatus,
+  isValidColor,
+  nextColor,
+  type TaxonomyItem,
+} from "@/lib/content/taxonomy";
 
 /**
- * Pilares y ofertas (F89).
+ * Pilares y productos (F89; las "ofertas" pasaron a ser productos con precio y
+ * estado en la 00134, pero la tabla sigue siendo `content_offers`).
  *
  * Todo pide `settings.manage`, y ademas lo aplica la RLS de la 00116: la
  * pantalla decide que botones muestra, la barrera es la base.
@@ -21,10 +30,10 @@ import { checkName, isValidColor, nextColor, type TaxonomyItem } from "@/lib/con
  * no ve el "+ Crear" (y si llamara igual, la accion lo rechaza).
  */
 
-const SETTINGS_PATH = "/dashboard/settings/contenido";
+const SETTINGS_PATH = "/dashboard/settings/productos";
 const CONTENT_PATH = "/dashboard/content";
 
-const NO_PERMISSION = "Solo quien puede cambiar la configuracion maneja los pilares y las ofertas";
+const NO_PERMISSION = "Solo quien puede cambiar la configuracion maneja los pilares y los productos";
 
 export type TaxonomyResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
@@ -32,10 +41,12 @@ export type TaxonomyResult<T = undefined> =
 
 type Table = "content_pillars" | "content_offers";
 
-// El genero importa para los mensajes: "el pilar" / "la oferta".
+// Para los mensajes: "el pilar" / "el producto". Los productos tienen sus propias
+// acciones (createProduct / updateProduct, mas abajo): precio y estado no
+// entran en las genericas de pilares.
 const KIND: Record<Table, { label: string; audit: string; the: string; that: string; it: string }> = {
   content_pillars: { label: "pilar", audit: "content_pillar", the: "el", that: "ese", it: "o" },
-  content_offers: { label: "oferta", audit: "content_offer", the: "la", that: "esa", it: "a" },
+  content_offers: { label: "producto", audit: "content_offer", the: "el", that: "ese", it: "o" },
 };
 
 async function manageContext() {
@@ -226,18 +237,151 @@ export async function restorePillar(input: { id: string }) {
   return setArchived("content_pillars", input.id, false);
 }
 
-export async function createOffer(input: { name: string }) {
-  return create("content_offers", input.name);
+// ---------------------------------------------------------------------------
+// Productos (lo que se vende): precio y estado (00134)
+// ---------------------------------------------------------------------------
+
+export interface ProductData {
+  id: string;
+  name: string;
+  priceUsd: number;
+  status: "active" | "inactive" | "discontinued";
 }
 
-export async function renameOffer(input: { id: string; name: string }) {
-  return rename("content_offers", input.id, input.name);
+/**
+ * Crea un producto. El precio (siempre en USD) es obligatorio: un producto sin
+ * precio no sirve para medir que contenido empuja cuanto. Nace activo.
+ */
+export async function createProduct(input: { name: string; priceUsd: unknown }): Promise<TaxonomyResult<ProductData>> {
+  const ctx = await manageContext();
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { workspace, supabase, user } = ctx;
+
+  const items = await loadItems(supabase, "content_offers", workspace.id);
+  const name = checkName(input.name, items);
+  if (!name.ok) return name;
+  const price = checkPrice(input.priceUsd);
+  if (!price.ok) return price;
+
+  const { data, error } = await supabase
+    .from("content_offers")
+    .insert({
+      workspace_id: workspace.id,
+      name: name.name,
+      price_usd: price.price,
+      status: "active",
+      created_by: user.id,
+    } as never)
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    if (error && uniqueViolation(error)) return { ok: false, error: `Ya existe "${name.name}"` };
+    console.error("[content-taxonomy] no pude crear el producto:", error?.message);
+    return { ok: false, error: "No pude crear el producto" };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id,
+    action: "create",
+    metadata: { section: KIND.content_offers.audit, name: name.name, price_usd: price.price },
+    performedBy: user.id,
+  });
+
+  revalidatePath(SETTINGS_PATH);
+  revalidatePath(CONTENT_PATH);
+  return { ok: true, data: { id: data.id, name: name.name, priceUsd: price.price, status: "active" } };
 }
 
-export async function archiveOffer(input: { id: string }) {
-  return setArchived("content_offers", input.id, true);
-}
+/**
+ * Edita un producto: nombre, precio y/o estado (lo que no viene no se toca).
+ *
+ * El estado y el archivado van juntos (CHECK de la 00134): activo = sin
+ * archivar; inactivo o discontinuado = archivado, es decir, ya no se ofrece al
+ * clasificar pero lo ya clasificado lo sigue mostrando. Nunca se borra.
+ * Volver a activo vuelve a ocupar el nombre: si mientras tanto se creo otro
+ * activo con el mismo, se avisa en vez de chocar con el indice unico.
+ */
+export async function updateProduct(input: {
+  id: string;
+  name?: string;
+  priceUsd?: unknown;
+  status?: unknown;
+}): Promise<TaxonomyResult> {
+  const ctx = await manageContext();
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const { workspace, supabase, user } = ctx;
 
-export async function restoreOffer(input: { id: string }) {
-  return setArchived("content_offers", input.id, false);
+  const { data: before } = await supabase
+    .from("content_offers")
+    .select("id, name, price_usd, status, archived_at")
+    .eq("id", input.id)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "No encontre ese producto" };
+
+  const items = await loadItems(supabase, "content_offers", workspace.id);
+  const patch: Record<string, unknown> = {};
+  const changes: Record<string, { old: string | number | null; new: string | number | null }> = {};
+
+  let name = before.name;
+  if (input.name !== undefined) {
+    const checked = checkName(input.name, items, input.id);
+    if (!checked.ok) return checked;
+    name = checked.name;
+    if (name !== before.name) {
+      patch.name = name;
+      changes.name = { old: before.name, new: name };
+    }
+  }
+
+  if (input.priceUsd !== undefined) {
+    const price = checkPrice(input.priceUsd);
+    if (!price.ok) return price;
+    const old = before.price_usd === null || before.price_usd === undefined ? null : Number(before.price_usd);
+    if (price.price !== old) {
+      patch.price_usd = price.price;
+      changes.price_usd = { old, new: price.price };
+    }
+  }
+
+  if (input.status !== undefined) {
+    if (!isProductStatus(input.status)) return { ok: false, error: "Ese estado no es valido" };
+    if (input.status !== before.status) {
+      // Volver a activo ocupa el nombre de nuevo: se valida contra los activos.
+      if (input.status === "active") {
+        const clash = checkName(name, items, input.id);
+        if (!clash.ok) return { ok: false, error: `${clash.error}. Renombra uno de los dos antes de reactivarlo.` };
+      }
+      patch.status = input.status;
+      patch.archived_at = archivedAtFor(input.status, before.archived_at ?? null, new Date());
+      changes.status = { old: before.status, new: input.status };
+    }
+  }
+
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { error } = await supabase
+    .from("content_offers")
+    .update(patch as never)
+    .eq("id", input.id)
+    .eq("workspace_id", workspace.id);
+
+  if (error) {
+    if (uniqueViolation(error)) return { ok: false, error: `Ya existe "${name}"` };
+    console.error("[content-taxonomy] no pude guardar el producto:", error.message);
+    return { ok: false, error: "No pude guardar el producto" };
+  }
+
+  await logAudit({
+    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id,
+    action: "update",
+    metadata: { section: KIND.content_offers.audit, id: input.id },
+    changes,
+    performedBy: user.id,
+  });
+
+  revalidatePath(SETTINGS_PATH);
+  revalidatePath(CONTENT_PATH);
+  return { ok: true };
 }

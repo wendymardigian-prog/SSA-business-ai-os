@@ -11,9 +11,8 @@
  * tambien se guarda una copia, porque el agente de IA lee el historial de la
  * base y los dashboards se arman sobre la tabla local.
  *
- * El guardado se puede apagar sin deploy con workspaces.persist_zernio_inbound,
- * mientras se confirman los terminos de Zernio y Meta (ver persistInboundMessage
- * en lib/inbound.ts).
+ * El guardado es siempre: ya no hay interruptor (ver persistInboundMessage en
+ * lib/inbound.ts).
  */
 
 import { NextRequest, NextResponse } from "next/server";

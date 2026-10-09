@@ -10,6 +10,7 @@ import {
   isTranscriptionProvider,
   providersBySection,
   getVisibleProvider,
+  serializableProvider,
   secretFieldsOf,
   configProviderOf,
   providerForConfigRow,
@@ -297,5 +298,44 @@ describe("catalogo extendido (F1)", () => {
     for (const id of ["openai", "anthropic", "google_ai", "voyage", "groq"]) {
       expect(chipsOf(getProvider(id)!), id).toEqual([]);
     }
+  });
+});
+
+describe("serializableProvider (la pagina de detalle no puede mandar funciones al cliente)", () => {
+  /** Si en algun punto hay una funcion, React no la puede serializar. */
+  function functionsIn(value: unknown, path = "$"): string[] {
+    if (typeof value === "function") return [path];
+    if (Array.isArray(value)) return value.flatMap((v, i) => functionsIn(v, `${path}[${i}]`));
+    if (value && typeof value === "object") {
+      return Object.entries(value).flatMap(([k, v]) => functionsIn(v, `${path}.${k}`));
+    }
+    return [];
+  }
+
+  it("ninguna integracion visible llega al cliente con funciones adentro", () => {
+    const visible = PROVIDERS.filter((p) => p.visible);
+    expect(visible.length).toBeGreaterThan(0);
+    for (const provider of visible) {
+      expect(functionsIn(serializableProvider(provider)), provider.id).toEqual([]);
+    }
+  });
+
+  it("sin el arreglo, las definiciones de Evolution y Resend SI traen funciones (el bug de la pagina de detalle)", () => {
+    const withFunctions = PROVIDERS.filter((p) => p.visible && functionsIn(p).length > 0).map((p) => p.id);
+    expect(withFunctions).toContain("evolution");
+  });
+
+  it("conserva todo lo demas de los campos: etiqueta, ayuda, requerido", () => {
+    const evolution = getProvider("evolution")!;
+    const clean = serializableProvider(evolution);
+    const original = evolution.configFields!.find((f) => f.key === "api_url")!;
+    const sent = clean.configFields!.find((f) => f.key === "api_url")!;
+    expect(sent).toMatchObject({ key: "api_url", label: original.label, hint: original.hint, required: true });
+    expect("validate" in sent).toBe(false);
+  });
+
+  it("una integracion sin campos de configuracion pasa tal cual", () => {
+    const zernio = getProvider("zernio")!;
+    expect(serializableProvider(zernio)).toEqual(zernio);
   });
 });

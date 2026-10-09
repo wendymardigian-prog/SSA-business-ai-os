@@ -19,6 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { evaluateSpend, isTemporaryBlock, workspaceSpendCandidates } from "@/lib/ai/spend";
+import { approachingThresholds, notifySpendApproaching } from "@/lib/ai/spend-alerts";
 
 type Db = SupabaseClient<Database>;
 
@@ -50,7 +51,7 @@ export async function withinWorkspaceBudget(
 ): Promise<BudgetDecision> {
   const { data: workspace, error } = await supabase
     .from("workspaces")
-    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, timezone")
+    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, ai_daily_limit_action, ai_monthly_limit_action, ai_spend_alert_pct, timezone")
     .eq("id", workspaceId)
     .maybeSingle();
   if (error) {
@@ -61,6 +62,8 @@ export async function withinWorkspaceBudget(
   const candidates = workspaceSpendCandidates({
     dailyUsd: workspace?.ai_daily_cost_limit_usd,
     monthlyUsd: workspace?.ai_monthly_cost_limit_usd,
+    dailyAction: workspace?.ai_daily_limit_action,
+    monthlyAction: workspace?.ai_monthly_limit_action,
     now,
     timeZone: workspace?.timezone || "UTC",
   });
@@ -69,6 +72,15 @@ export async function withinWorkspaceBudget(
 
   const spent = await Promise.all(candidates.map((c) => sumSpend(supabase, workspaceId, c.since)));
   if (spent.some((s) => s === null)) return { allowed: false, message: READ_ERROR_MESSAGE };
+
+  // El aviso previo (ai_spend_alert_pct), con la suma que ya se hizo. Nunca lanza.
+  await notifySpendApproaching(supabase, {
+    workspaceId,
+    approaching: approachingThresholds(
+      candidates.map((c, i) => ({ scope: c.scope, limitUsd: c.limitUsd, spentUsd: spent[i] as number, since: c.since })),
+      workspace?.ai_spend_alert_pct,
+    ),
+  });
 
   const check = evaluateSpend(
     candidates.map((c, i) => ({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: spent[i] as number })),

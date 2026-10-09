@@ -1,0 +1,148 @@
+{
+  "nota": "Respaldo previo a aplicar la 00136 (visibilidad de leads por rol). Sin secretos: roles, permisos y los dos interruptores del workspace.",
+  "fecha": "2026-10-09",
+  "workspaces": [
+    {
+      "id": "d248fd4d-3a95-4766-9f38-f6cf865c9ee7",
+      "lead_scope_enabled": true,
+      "name": "Paula Diaz's Workspace",
+      "unassigned_leads_visible_to_members": false
+    },
+    {
+      "id": "280223ad-6bbc-4620-8c65-20f302a7c249",
+      "lead_scope_enabled": true,
+      "name": "Wendy's Workspace",
+      "unassigned_leads_visible_to_members": true
+    }
+  ],
+  "workspace_roles": [
+    {
+      "id": "5e6ef4ad-f6c3-481f-a16d-8f095ca61c9a",
+      "name": "Admin",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "admin",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "id": "7a187bff-a102-476c-818d-f4008d0b3110",
+      "name": "Content Manager",
+      "permissions": {
+        "keys": [
+          "dashboards.chat.view",
+          "dashboards.content.view",
+          "social.view",
+          "inbox.instagram.view",
+          "inbox.instagram.reply",
+          "inbox.whatsapp.view",
+          "inbox.whatsapp.reply",
+          "inbox.email.view",
+          "inbox.email.reply",
+          "contacts.view",
+          "contacts.edit",
+          "flows.view",
+          "flows.edit",
+          "agents.view",
+          "ai_costs.view",
+          "knowledge.view",
+          "content.view",
+          "content.create",
+          "content.approve",
+          "content.publish",
+          "content.ai"
+        ],
+        "scopes": {
+          "bookings": "own",
+          "conversations": "all",
+          "leads": "all"
+        }
+      },
+      "system_role": null,
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "id": "1cef1cf2-b87f-4b09-9784-ac3b44b93a5f",
+      "name": "Member",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "member",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "id": "fd554a20-7ce9-4d51-b609-c62617026a39",
+      "name": "Owner",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "owner",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "id": "de15a2e6-5679-4b94-a6ab-0fe221f8caf5",
+      "name": "Admin",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "admin",
+      "workspace_id": "d248fd4d-3a95-4766-9f38-f6cf865c9ee7"
+    },
+    {
+      "id": "f1397ad9-d9db-4466-bafc-19a90d3f4d5e",
+      "name": "Member",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "member",
+      "workspace_id": "d248fd4d-3a95-4766-9f38-f6cf865c9ee7"
+    },
+    {
+      "id": "24b0fe5a-12f7-4a17-a367-6ea535c87f79",
+      "name": "Owner",
+      "permissions": {
+        "keys": [],
+        "scopes": {
+          "conversations": "own",
+          "leads": "own"
+        }
+      },
+      "system_role": "owner",
+      "workspace_id": "d248fd4d-3a95-4766-9f38-f6cf865c9ee7"
+    }
+  ],
+  "workspace_members": [
+    {
+      "role": "owner",
+      "role_id": "fd554a20-7ce9-4d51-b609-c62617026a39",
+      "user_id": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "role": "owner",
+      "role_id": null,
+      "user_id": "04185143-a333-4ebd-ba0f-1b183c6561ce",
+      "workspace_id": "d248fd4d-3a95-4766-9f38-f6cf865c9ee7"
+    }
+  ]
+}

@@ -19,6 +19,8 @@ export const NOTIFICATION_TYPES = [
   "sequence_collision",
   "agent_error",
   "agent_spend_limit",
+  /** Se esta por llegar a un tope de gasto de IA: paso el % que eligio el usuario. */
+  "ai_spend_threshold",
   "agent_output_blocked",
   "draft_window",
   "refresh_health",
@@ -110,6 +112,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
   agent_spend_limit: {
     type: "agent_spend_limit",
     label: "Tope de gasto de IA",
+    tone: "warning",
+  },
+  /** Se paso el porcentaje de aviso de un tope de gasto de IA, sin haber llegado al tope todavia. */
+  ai_spend_threshold: {
+    type: "ai_spend_threshold",
+    label: "Gasto de IA cerca del tope",
     tone: "warning",
   },
   /** El guardarrail de salida freno un mensaje en envio directo (el lead no lo vio). */

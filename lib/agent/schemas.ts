@@ -131,6 +131,17 @@ export const guardrailsSchema = z.object({
       frustrationPhrases: z.array(z.string().min(2).max(80)).max(100).default(DEFAULT_FRUSTRATION_PHRASES),
       urgency: z.boolean().default(true),
       urgencyPhrases: z.array(z.string().min(2).max(80)).max(100).default(DEFAULT_URGENCY_PHRASES),
+      /**
+       * Si no puede interpretar un mensaje de la rafaga (una nota de voz que
+       * todavia no se transcribio, una imagen sin describir), avisa a una
+       * persona y se apaga para esa conversacion, en vez de responder a
+       * ciegas. Prendido es el comportamiento correcto; se apaga si genera mas
+       * escalado del que el equipo puede atender. Antes vivia en Ajustes
+       * generales (`workspaces.agent_escalate_on_unreadable`): es del agente de
+       * chat, asi que se movio aca. Los flows y las secuencias, que no tienen
+       * agente, siguen leyendo la columna del workspace.
+       */
+      onUnreadable: z.boolean().default(true),
     })
     .default({
       maxUnresolvedTurns: 6,
@@ -139,6 +150,7 @@ export const guardrailsSchema = z.object({
       frustrationPhrases: DEFAULT_FRUSTRATION_PHRASES,
       urgency: true,
       urgencyPhrases: DEFAULT_URGENCY_PHRASES,
+      onUnreadable: true,
     }),
   /**
    * Lista blanca de links que el agente puede mandar. VACIA = el guardarrail de

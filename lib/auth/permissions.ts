@@ -59,6 +59,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "dashboards.chat.view", module: "dashboards", label: "Ver el dashboard de chat", description: "Cuanto se responde, que tan rapido y quien." },
   { key: "dashboards.content.view", module: "dashboards", label: "Ver el dashboard de contenido", description: "Seguidores, alcance y engagement de lo que se publica." },
   { key: "dashboards.ads.view", module: "dashboards", label: "Ver el dashboard de anuncios", description: "Gasto, clics y leads de Meta Ads. Incluye los montos." },
+  { key: "dashboards.agenda.view", module: "dashboards", label: "Ver el dashboard de agenda", description: "Reuniones agendadas, quien las pide y de donde vienen. Se ven solo las que el alcance de agenda permite." },
 
   // ── Social ──────────────────────────────────────────────────────────────
   { key: "social.view", module: "social", label: "Ver la pagina Social", description: "El perfil de cada red y sus publicaciones." },
@@ -134,13 +135,28 @@ export function permissionLabel(key: string): string {
 export const SCOPED_MODULES = ["leads", "conversations", "bookings"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
-/** `own` = solo donde esta asignado. `all` = todo el workspace. */
-export type PermissionScope = "own" | "all";
+/**
+ * `own` = solo donde esta asignado. `all` = todo el workspace.
+ * `own_unassigned` = lo suyo + lo que no tiene a nadie asignado: solo existe
+ * para los leads (00136); en conversaciones y agendas no significa nada.
+ */
+export type PermissionScope = "own" | "own_unassigned" | "all";
 
 export const SCOPE_LABELS: Record<PermissionScope, string> = {
   own: "Solo los suyos",
+  own_unassigned: "Los suyos + los sin asignar",
   all: "Todos los del negocio",
 };
+
+/** Los alcances que se pueden elegir para cada modulo. */
+export function scopeOptionsFor(module: ScopedModule): readonly PermissionScope[] {
+  return module === "leads" ? (["own", "own_unassigned", "all"] as const) : (["own", "all"] as const);
+}
+
+/** Un valor guardado, validado para ese modulo: lo que no conoce es `own`, lo mas angosto. */
+export function normalizeScope(module: ScopedModule, value: unknown): PermissionScope {
+  return scopeOptionsFor(module).includes(value as PermissionScope) ? (value as PermissionScope) : "own";
+}
 
 // ── Los tres roles de sistema ─────────────────────────────────────────────
 
@@ -258,8 +274,7 @@ export function parsePermissions(value: unknown): RolePermissions {
   const record = (value ?? {}) as { keys?: unknown; scopes?: unknown };
   const scopes = (record.scopes ?? {}) as Record<string, unknown>;
 
-  const scope = (module: ScopedModule): PermissionScope =>
-    scopes[module] === "all" ? "all" : "own";
+  const scope = (module: ScopedModule): PermissionScope => normalizeScope(module, scopes[module]);
 
   return {
     keys: Array.isArray(record.keys)

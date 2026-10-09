@@ -1,5 +1,9 @@
 /**
- * Pilares y ofertas: las reglas puras (F89).
+ * Pilares y productos: las reglas puras (F89).
+ *
+ * Los PRODUCTOS (lo que se vende) se llamaban "ofertas": la tabla sigue siendo
+ * `content_offers` (00134 les suma precio y estado) y las columnas `offer_id`.
+ * Todo lo que ve el usuario dice "producto".
  *
  * Son listas del negocio que se configuran en Ajustes y se eligen al cargar
  * una idea o una pieza. Tres reglas que el resto del modulo da por hechas:
@@ -18,7 +22,7 @@
 export const TAXONOMY_NAME_MAX = 60;
 
 export const NO_PILLAR_LABEL = "Sin pilar";
-export const NO_OFFER_LABEL = "Sin oferta";
+export const NO_PRODUCT_LABEL = "Sin producto";
 
 /** Colores de pilar que se ofrecen. Es lo unico que acepta `isValidColor`. */
 export const PILLAR_COLORS = [
@@ -187,4 +191,62 @@ export function groupByTaxonomy<T>(
   }
 
   return groups;
+}
+
+// ---------------------------------------------------------------------------
+// Productos: precio y estado (00134)
+// ---------------------------------------------------------------------------
+
+/** active = se ofrece al clasificar; inactive = pausado; discontinued = dejo de venderse. */
+export const PRODUCT_STATUSES = ["active", "inactive", "discontinued"] as const;
+export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export const PRODUCT_STATUS_LABEL: Record<ProductStatus, string> = {
+  active: "Activo",
+  inactive: "Inactivo",
+  discontinued: "Discontinuado",
+};
+
+export function isProductStatus(value: unknown): value is ProductStatus {
+  return typeof value === "string" && (PRODUCT_STATUSES as readonly string[]).includes(value);
+}
+
+/** El tope del precio: el de la columna (numeric(12,2)) con holgura. */
+export const MAX_PRODUCT_PRICE_USD = 10_000_000;
+
+export type PriceCheck = { ok: true; price: number } | { ok: false; error: string };
+
+/**
+ * Valida el precio de un producto: siempre en USD, obligatorio, de 0 a
+ * 10.000.000, con hasta dos decimales. Acepta un numero o un texto ("1500",
+ * "1500,50", "1.500,50" no: el punto y la coma de miles se confunden, asi que
+ * solo se acepta UN separador decimal).
+ */
+export function checkPrice(raw: unknown): PriceCheck {
+  if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "")) {
+    return { ok: false, error: "Falta el precio" };
+  }
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim().replace(",", "."));
+  if (!Number.isFinite(n)) return { ok: false, error: "El precio tiene que ser un numero" };
+  if (n < 0) return { ok: false, error: "El precio no puede ser negativo" };
+  if (n > MAX_PRODUCT_PRICE_USD) return { ok: false, error: "El precio es demasiado alto" };
+  // Dos decimales: lo que la base guarda, sin sorpresas de redondeo.
+  return { ok: true, price: Math.round(n * 100) / 100 };
+}
+
+/** "USD 1.500,00", o "Sin precio" para un producto anterior a la 00134. */
+export function formatPriceUsd(price: number | null | undefined): string {
+  if (price === null || price === undefined) return "Sin precio";
+  return `USD ${price.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * El `archived_at` que le toca a un estado. Estado y archivado van juntos
+ * (CHECK de la 00134): activo = sin archivar; inactivo o discontinuado =
+ * archivado. Pasar de uno archivado a otro archivado conserva la fecha
+ * original (cuando salio de circulacion), no la reinicia.
+ */
+export function archivedAtFor(status: ProductStatus, currentArchivedAt: string | null, now: Date): string | null {
+  if (status === "active") return null;
+  return currentArchivedAt ?? now.toISOString();
 }

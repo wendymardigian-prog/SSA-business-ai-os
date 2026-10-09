@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ExternalLink, Loader2, RotateCcw } from "lucide-react";
+import { ExternalLink, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import { MediaAttachment } from "@/components/inbox/media-attachment";
 import { assetAttachment, assetOpenUrl } from "@/lib/response-assets/preview";
 import { transcriptStatusLabel, type BankAsset } from "@/lib/response-assets/list";
@@ -161,9 +161,23 @@ export function TranscriptBlock({
   }
 
   return (
-    <p className="text-xs italic text-muted-foreground">
-      {asset.transcriptStatus === "pending" && <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden />}
-      {transcriptStatusLabel(asset.kind, asset.transcriptStatus)}
-    </p>
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="text-xs italic text-muted-foreground">
+        {asset.transcriptStatus === "pending" && <Loader2 className="mr-1 inline h-3 w-3 animate-spin" aria-hidden />}
+        {transcriptStatusLabel(asset.kind, asset.transcriptStatus)}
+      </p>
+      {/* Todavia no hay transcripcion: se puede pedir ya, sin esperar a la cola. */}
+      {asset.transcriptStatus === "none" && onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+        >
+          {retrying ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Sparkles className="h-3 w-3" aria-hidden />}
+          Transcribir con IA
+        </button>
+      )}
+    </div>
   );
 }

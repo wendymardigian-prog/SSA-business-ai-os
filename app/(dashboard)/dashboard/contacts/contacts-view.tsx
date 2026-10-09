@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Search, Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag } from "lucide-react";
+import { Users, X, Plus, Upload, Loader2, ChevronLeft, ChevronRight, Tag, SlidersHorizontal, ArrowUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +20,15 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BULK_TAG_LIMIT, describeEffect, hasEffect, sortEffectFirst } from "@/lib/tags/effects";
 import type { LeadTemperature } from "@/lib/types/database";
 import { PageHeader } from "@/components/page-header";
+import { FilterMenu, MenuGroupLabel, MenuOption } from "@/components/ui/filter-menu";
+import { ExpandableSearch } from "@/components/ui/expandable-search";
+import {
+  CONTACT_SORTS,
+  CONTACT_SORT_HINTS,
+  CONTACT_SORT_LABELS,
+  DEFAULT_CONTACT_SORT,
+  type ContactSort,
+} from "@/lib/contacts/sort";
 
 /**
  * Lista de contactos.
@@ -66,6 +75,7 @@ export function ContactsView({
   members,
   filters,
   anonymousCount,
+  sort,
 }: {
   contacts: ContactRow[];
   total: number;
@@ -77,12 +87,13 @@ export function ContactsView({
   filters: Filters;
   /** Cuantos contactos hay sin datos, esten o no en la lista. */
   anonymousCount: number;
+  /** El orden de la lista (`?orden=`). */
+  sort: ContactSort;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
-  const [searchDraft, setSearchDraft] = useState(filters.search);
   const [creating, setCreating] = useState(false);
 
   const memberLabel = new Map(members.map((m) => [m.userId, m.label]));
@@ -106,7 +117,10 @@ export function ContactsView({
   function togglePage() {
     setPicked(allOnPage ? new Set() : new Set(pageIds));
   }
+  // Los filtros puestos. La busqueda cuenta aparte (tiene su propio indicador en
+  // la lupa): el globito del boton de filtros es solo de lo que esta adentro del menu.
   const activeCount = Object.entries(filters).filter(([, v]) => v).length;
+  const menuFilterCount = Object.entries(filters).filter(([key, v]) => key !== "search" && v).length;
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
 
   /** Escribe un parametro en la URL. Cualquier cambio de filtro vuelve a la pagina 1. */
@@ -119,8 +133,15 @@ export function ContactsView({
   }
 
   function clearAll() {
-    setSearchDraft("");
     start(() => router.replace(pathname));
+  }
+
+  /** Quita los filtros del menu y deja la busqueda y el orden como estan. */
+  function clearMenuFilters() {
+    const next = new URLSearchParams(searchParams.toString());
+    for (const key of ["tag", "setter", "vendedor", "temp", "fuente", "medio", "canal", "anon", "page"]) next.delete(key);
+    const query = next.toString();
+    start(() => router.replace(query ? `${pathname}?${query}` : pathname));
   }
 
   return (
@@ -141,18 +162,142 @@ export function ContactsView({
             )}
           </span>
         }
+        filters={
+          <>
+            <ExpandableSearch
+              value={filters.search}
+              onCommit={(next) => setParam("q", next)}
+              label="Buscar contactos"
+              placeholder="Nombre, email, teléfono o usuario…"
+              pending={pending}
+            />
+            <FilterMenu
+              label="Filtros"
+              compact
+              badge={menuFilterCount}
+              active={menuFilterCount > 0}
+              icon={<SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+              menuClassName="topbar:w-[340px]"
+            >
+              <div className="space-y-2 px-2.5 pb-2">
+                <MenuGroupLabel>Asignación y etiquetas</MenuGroupLabel>
+                <MenuField
+                  label="Tag"
+                  value={filters.tagId}
+                  onChange={(v) => setParam("tag", v)}
+                  options={tags.map((t) => ({ value: t.id, label: t.name }))}
+                />
+                <MenuField
+                  label="Setter"
+                  value={filters.setterId}
+                  onChange={(v) => setParam("setter", v)}
+                  options={members.map((m) => ({ value: m.userId, label: m.label }))}
+                />
+                <MenuField
+                  label="Vendedor"
+                  value={filters.vendedorId}
+                  onChange={(v) => setParam("vendedor", v)}
+                  options={members.map((m) => ({ value: m.userId, label: m.label }))}
+                />
+                <MenuField
+                  label="Temperatura"
+                  value={filters.temperature}
+                  onChange={(v) => setParam("temp", v)}
+                  options={LEAD_TEMPERATURES.map((t) => ({ value: t, label: LEAD_TEMPERATURE_LABELS[t] }))}
+                />
+
+                {/* Por el PRIMER toque, y el nombre lo dice: "entraron por un comentario"
+                    no es "alguna vez comentaron". */}
+                <MenuGroupLabel>De dónde vinieron</MenuGroupLabel>
+                <MenuField
+                  label="Origen (1.er toque)"
+                  value={filters.source}
+                  onChange={(v) => setParam("fuente", v)}
+                  options={SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }))}
+                />
+                <MenuField
+                  label="Medio (1.er toque)"
+                  value={filters.medium}
+                  onChange={(v) => setParam("medio", v)}
+                  options={MEDIUMS.map((m) => ({ value: m, label: MEDIUM_LABELS[m] }))}
+                />
+                <MenuField label="Canal" value={filters.platform} onChange={(v) => setParam("canal", v)} options={platforms} />
+
+                {/* Los contactos sin datos se ocultan por defecto, asi que este
+                    selector no arranca vacio como los otros: su opcion neutra ya es
+                    una decision. */}
+                {anonymousCount > 0 && (
+                  <>
+                    <MenuGroupLabel>Contactos sin datos</MenuGroupLabel>
+                    <label className="block">
+                      <span className="sr-only">Contactos sin datos</span>
+                      <select
+                        value={filters.anon}
+                        onChange={(e) => setParam("anon", e.target.value)}
+                        className={cn(
+                          "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring",
+                          filters.anon ? "border-primary" : "border-input",
+                        )}
+                      >
+                        <option value="">Ocultos</option>
+                        <option value="1">Incluidos</option>
+                        <option value="solo">Solo esos</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+
+                {menuFilterCount > 0 && (
+                  <div className="flex items-center justify-between border-t border-border pt-2">
+                    <span className="text-xs text-muted-foreground">
+                      {menuFilterCount === 1 ? "1 filtro activo" : `${menuFilterCount} filtros activos`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={clearMenuFilters}
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" aria-hidden />
+                      Limpiar filtros
+                    </button>
+                  </div>
+                )}
+              </div>
+            </FilterMenu>
+
+            {/* Los ajustes de la tabla: hoy, el orden. */}
+            <FilterMenu
+              label="Ordenar por"
+              compact
+              active={sort !== DEFAULT_CONTACT_SORT}
+              icon={<ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
+              menuClassName="topbar:w-[260px]"
+            >
+              <MenuGroupLabel>Ordenar por</MenuGroupLabel>
+              {CONTACT_SORTS.map((option) => (
+                <MenuOption
+                  key={option}
+                  checked={sort === option}
+                  onSelect={() => setParam("orden", option === DEFAULT_CONTACT_SORT ? "" : option)}
+                  title={CONTACT_SORT_LABELS[option]}
+                  description={CONTACT_SORT_HINTS[option]}
+                />
+              ))}
+            </FilterMenu>
+          </>
+        }
         right={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 gap-2">
             <Link
               href="/dashboard/contacts/import"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent"
+              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-border px-3 text-sm font-medium transition-colors hover:bg-accent"
             >
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">Importar CSV</span>
             </Link>
             <button
               onClick={() => setCreating(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Nuevo contacto</span>
@@ -160,109 +305,6 @@ export function ContactsView({
           </div>
         }
       />
-
-      <div className="border-b border-border px-4 py-3 md:px-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setParam("q", searchDraft);
-            }}
-            className="relative min-w-[240px] flex-1 sm:max-w-sm"
-          >
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              placeholder="Nombre, email, teléfono o usuario…"
-              aria-label="Buscar contactos"
-              className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </form>
-
-          <FilterSelect
-            label="Tag"
-            value={filters.tagId}
-            onChange={(v) => setParam("tag", v)}
-            options={tags.map((t) => ({ value: t.id, label: t.name }))}
-          />
-          <FilterSelect
-            label="Setter"
-            value={filters.setterId}
-            onChange={(v) => setParam("setter", v)}
-            options={members.map((m) => ({ value: m.userId, label: m.label }))}
-          />
-          <FilterSelect
-            label="Vendedor"
-            value={filters.vendedorId}
-            onChange={(v) => setParam("vendedor", v)}
-            options={members.map((m) => ({ value: m.userId, label: m.label }))}
-          />
-          <FilterSelect
-            label="Temperatura"
-            value={filters.temperature}
-            onChange={(v) => setParam("temp", v)}
-            options={LEAD_TEMPERATURES.map((t) => ({
-              value: t,
-              label: LEAD_TEMPERATURE_LABELS[t],
-            }))}
-          />
-          {/* Por el PRIMER toque, y el nombre lo dice: "entraron por un comentario"
-              no es "alguna vez comentaron". */}
-          <FilterSelect
-            label="Origen (1.er toque)"
-            value={filters.source}
-            onChange={(v) => setParam("fuente", v)}
-            options={SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] }))}
-          />
-          <FilterSelect
-            label="Medio (1.er toque)"
-            value={filters.medium}
-            onChange={(v) => setParam("medio", v)}
-            options={MEDIUMS.map((m) => ({ value: m, label: MEDIUM_LABELS[m] }))}
-          />
-          {platforms.length > 0 && (
-            <FilterSelect
-              label="Canal"
-              value={filters.platform}
-              onChange={(v) => setParam("canal", v)}
-              options={platforms}
-            />
-          )}
-
-          {/* Los contactos sin datos se ocultan por defecto, asi que este
-              selector no arranca vacio como los otros: su opcion neutra ya es
-              una decision. */}
-          {anonymousCount > 0 && (
-            <select
-              value={filters.anon}
-              onChange={(e) => setParam("anon", e.target.value)}
-              aria-label="Contactos sin datos"
-              className={cn(
-                "rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring",
-                filters.anon ? "border-primary" : "border-input",
-              )}
-            >
-              <option value="">Sin datos: ocultos</option>
-              <option value="1">Sin datos: incluidos</option>
-              <option value="solo">Sin datos: solo esos</option>
-            </select>
-          )}
-
-          {activeCount > 0 && (
-            <button
-              onClick={clearAll}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-              Limpiar {activeCount} {activeCount === 1 ? "filtro" : "filtros"}
-            </button>
-          )}
-
-          {pending && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-      </div>
 
       {bulkNotice && (
         <div role="status" className="flex items-center justify-between gap-2 border-b border-border bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 md:px-8">
@@ -399,7 +441,8 @@ export function ContactsView({
   );
 }
 
-function FilterSelect({
+/** Un filtro dentro del menu: su nombre arriba y un selector que ocupa el ancho. Sin opciones, no se dibuja. */
+function MenuField({
   label,
   value,
   onChange,
@@ -412,22 +455,24 @@ function FilterSelect({
 }) {
   if (options.length === 0) return null;
   return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        "rounded-lg border bg-background px-3 py-2 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-ring",
-        value ? "border-primary text-foreground" : "border-input text-muted-foreground",
-      )}
-    >
-      <option value="">{label}: todos</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <label className="block">
+      <span className="mb-0.5 block text-xs text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-ring",
+          value ? "border-primary text-foreground" : "border-input text-muted-foreground",
+        )}
+      >
+        <option value="">Todos</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

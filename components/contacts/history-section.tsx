@@ -1,23 +1,29 @@
+"use client";
+
+import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
+import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
 import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
- * Historial de cambios del contacto: las ultimas entradas del audit_log.
+ * Historial del contacto: todo lo que le paso, en un solo orden.
  *
- * Ojo con lo que se ve aca: la RLS de audit_log deja que un Member lea solo
- * sus propias acciones. O sea, un Member ve su historial y un Owner/Admin ve
- * el de todos. No es un bug de la pantalla.
+ * Junta lo que el sistema anota del contacto (el `audit_log`) con lo
+ * AUTOMATICO: las automatizaciones que corrieron (con su nombre), las
+ * secuencias en las que lo inscribieron y los emails automaticos que le
+ * salieron. Los mensajes de chat no van: ya estan en Conversaciones. Como se
+ * arma, en `lib/contacts/history.ts`.
+ *
+ * Ojo con lo del audit: la RLS de audit_log deja que un Member lea solo sus
+ * propias acciones. O sea, un Member ve su historial y un Owner/Admin ve el de
+ * todos. No es un bug de la pantalla.
  */
 
-export interface HistoryEntry {
-  id: string;
-  action: AuditAction;
-  changes: Json | null;
-  metadata: Json | null;
-  performedAt: string;
-  actorLabel: string;
-}
+/** Cuantas entradas se ven de entrada; el resto, con "Ver más". */
+const INITIAL_VISIBLE = 15;
+
+type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   create: "creó el contacto",
@@ -89,31 +95,62 @@ const FIELD_LABELS: Record<string, string> = {
   tags: "Tags",
 };
 
-export function HistorySection({ entries }: { entries: HistoryEntry[] }) {
+export function HistorySection({ items }: { items: HistoryItem[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? items : items.slice(0, INITIAL_VISIBLE);
+  const hidden = items.length - shown.length;
+
   return (
-    <Section title="Historial de cambios">
-      {entries.length === 0 ? (
-        <EmptyHint>Todavía no hay cambios registrados en este contacto.</EmptyHint>
+    <Section title="Historial">
+      {items.length === 0 ? (
+        <EmptyHint>
+          Todavía no hay nada en el historial de este contacto: ni cambios, ni automatizaciones, ni emails automáticos.
+        </EmptyHint>
       ) : (
-        <ol className="space-y-2">
-          {entries.map((entry) => (
-            <li key={entry.id} className="rounded-lg border border-border p-3">
-              <p className="text-sm">
-                <span className="font-medium">{entry.actorLabel}</span>{" "}
-                {ACTION_LABELS[entry.action] ?? entry.action}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {formatDateTime(entry.performedAt)}
-              </p>
-              {renderChanges(entry.changes)}
-              {renderLinkNote(entry)}
-              {renderTagEffectNote(entry)}
-            </li>
-          ))}
-        </ol>
+        <>
+          <ol className="space-y-2">
+            {shown.map((item) =>
+              item.source === "audit" ? (
+                <li key={item.id} className="rounded-lg border border-border p-3">
+                  <p className="text-sm">
+                    <span className="font-medium">{item.actorLabel}</span> {auditText(item)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                  {renderChanges(item.changes)}
+                  {renderLinkNote(item)}
+                  {renderTagEffectNote(item)}
+                </li>
+              ) : (
+                <li key={item.id} className="rounded-lg border border-border p-3">
+                  <p className="text-sm">
+                    <span className="font-medium">{describeHistoryItem(item).actor}</span> {describeHistoryItem(item).text}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(item.at)}</p>
+                </li>
+              ),
+            )}
+          </ol>
+          {hidden > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="mt-3 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Ver más ({hidden})
+            </button>
+          )}
+        </>
       )}
     </Section>
   );
+}
+
+/** Lo que hizo una entrada del audit; una automatizacion dice cual (por su nombre). */
+function auditText(entry: HistoryEntry): string {
+  if (entry.action === "automation_triggered" && entry.flowName) {
+    return `disparó la automatización «${entry.flowName}»`;
+  }
+  return ACTION_LABELS[entry.action as AuditAction] ?? entry.action;
 }
 
 function renderChanges(changes: Json | null) {

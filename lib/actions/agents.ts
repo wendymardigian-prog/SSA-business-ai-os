@@ -592,8 +592,24 @@ export async function updateAgentTools(
   return { ok: true, agentId: agent.id };
 }
 
-/** Topes globales de gasto de IA del workspace (F29). Owner/Admin. */
-export async function updateWorkspaceAiLimits(input: { dailyUsd: number | null; monthlyUsd: number | null }): Promise<AgentActionResult> {
+/**
+ * Topes globales de gasto de IA del workspace (F29). Owner/Admin.
+ *
+ * Cada tope elige que hace al llegar (`dailyAction` / `monthlyAction`:
+ * 'disable' frena o apaga, 'notify' solo avisa) y, aparte, un aviso ANTES de
+ * llegar (`alertPct`: 1 a 99, o null para no avisar antes). Lo que no viene
+ * (undefined) no se toca.
+ *
+ * Se valida aca y no solo en la pantalla: la accion es una puerta publica, y
+ * los CHECK de la base devolverian un error crudo de Postgres.
+ */
+export async function updateWorkspaceAiLimits(input: {
+  dailyUsd: number | null;
+  monthlyUsd: number | null;
+  dailyAction?: "notify" | "disable";
+  monthlyAction?: "notify" | "disable";
+  alertPct?: number | null;
+}): Promise<AgentActionResult> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
@@ -601,15 +617,29 @@ export async function updateWorkspaceAiLimits(input: { dailyUsd: number | null; 
   const valid = (v: unknown) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1_000_000);
   if (!valid(input?.dailyUsd) || !valid(input?.monthlyUsd)) return { ok: false, error: "Los topes tienen que ser numeros positivos (o vacios)." };
 
-  const { error } = await supabase
-    .from("workspaces")
-    .update({ ai_daily_cost_limit_usd: input.dailyUsd, ai_monthly_cost_limit_usd: input.monthlyUsd })
-    .eq("id", workspace.id);
+  const validAction = (v: unknown) => v === undefined || v === "notify" || v === "disable";
+  if (!validAction(input.dailyAction) || !validAction(input.monthlyAction)) {
+    return { ok: false, error: "Elegí qué hace cada tope al llegar: frenar o solo avisar." };
+  }
+  if (input.alertPct !== undefined && input.alertPct !== null && !(Number.isInteger(input.alertPct) && input.alertPct >= 1 && input.alertPct <= 99)) {
+    return { ok: false, error: "El aviso previo tiene que ser un porcentaje entero entre 1 y 99 (o vacío para no avisar antes)." };
+  }
+
+  const patch: Record<string, unknown> = {
+    ai_daily_cost_limit_usd: input.dailyUsd,
+    ai_monthly_cost_limit_usd: input.monthlyUsd,
+    ...(input.dailyAction !== undefined ? { ai_daily_limit_action: input.dailyAction } : {}),
+    ...(input.monthlyAction !== undefined ? { ai_monthly_limit_action: input.monthlyAction } : {}),
+    ...(input.alertPct !== undefined ? { ai_spend_alert_pct: input.alertPct } : {}),
+  };
+
+  const { error } = await supabase.from("workspaces").update(patch as never).eq("id", workspace.id);
   if (error) {
     console.error("[agents] no pude guardar los topes del workspace:", error.message);
     return { ok: false, error: "No pude guardar los topes del workspace." };
   }
 
+  const before = workspace as unknown as Record<string, unknown>;
   await logAudit({
     supabase,
     workspaceId: workspace.id,
@@ -617,8 +647,8 @@ export async function updateWorkspaceAiLimits(input: { dailyUsd: number | null; 
     entityId: workspace.id,
     action: "update",
     changes: diffFields(
-      { ai_daily_cost_limit_usd: workspace.ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd: workspace.ai_monthly_cost_limit_usd },
-      { ai_daily_cost_limit_usd: input.dailyUsd, ai_monthly_cost_limit_usd: input.monthlyUsd },
+      Object.fromEntries(Object.keys(patch).map((key) => [key, before[key] ?? null])),
+      patch,
     ),
     metadata: { section: "ai_limits" },
     performedBy: user.id,

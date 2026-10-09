@@ -74,6 +74,7 @@ const STEP_LABELS: Record<string, string> = {
   message: "Mensaje",
   delay: "Espera",
   aiMessage: "Mensaje con IA",
+  asset: "Recurso",
 };
 
 export function stepTypeLabel(type: string): string {

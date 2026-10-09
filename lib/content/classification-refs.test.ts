@@ -46,7 +46,7 @@ describe("checkTaxonomyRefs (F91)", () => {
     const oferta = await checkTaxonomyRefs(db.client as never, WS, { offer_id: "o-arch" });
 
     expect(pilar).toMatchObject({ ok: false, error: expect.stringContaining("archivado") });
-    expect(oferta).toMatchObject({ ok: false, error: expect.stringContaining("archivada") });
+    expect(oferta).toMatchObject({ ok: false, error: expect.stringContaining("archivado") });
   });
 
   it("pero acepta el archivado que la fila YA tenia: guardar una pieza vieja no falla", async () => {
