@@ -106,7 +106,7 @@ export async function runCopywriter(
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("content_copy_settings, ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, timezone")
+    .select("content_copy_settings, ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, ai_daily_limit_action, ai_monthly_limit_action, ai_spend_alert_pct, timezone")
     .eq("id", agent.workspace_id)
     .maybeSingle();
 
@@ -125,7 +125,10 @@ export async function runCopywriter(
       agentMonthlyUsd: agent.monthly_cost_limit_usd,
       agentMonthlyAction: agent.monthly_cost_limit_action,
       workspaceDailyUsd: workspace?.ai_daily_cost_limit_usd ?? null,
+      workspaceDailyAction: workspace?.ai_daily_limit_action,
       workspaceMonthlyUsd: workspace?.ai_monthly_cost_limit_usd ?? null,
+      workspaceMonthlyAction: workspace?.ai_monthly_limit_action,
+      alertPct: workspace?.ai_spend_alert_pct ?? null,
     },
     timeZone: workspace?.timezone ?? undefined,
   });

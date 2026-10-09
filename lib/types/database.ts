@@ -585,6 +585,9 @@ export interface Database {
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
           ai_monthly_cost_limit_usd: number | null;
+          ai_daily_limit_action: CostLimitAction;
+          ai_monthly_limit_action: CostLimitAction;
+          ai_spend_alert_pct: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -610,6 +613,9 @@ export interface Database {
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
+          ai_daily_limit_action?: CostLimitAction;
+          ai_monthly_limit_action?: CostLimitAction;
+          ai_spend_alert_pct?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -635,6 +641,9 @@ export interface Database {
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
+          ai_daily_limit_action?: CostLimitAction;
+          ai_monthly_limit_action?: CostLimitAction;
+          ai_spend_alert_pct?: number | null;
           updated_at?: string;
         };
         Relationships: [];

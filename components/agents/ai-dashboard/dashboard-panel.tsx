@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiKpiCards } from "./kpi-cards";
@@ -35,6 +35,7 @@ export function AiDashboardPanel({
   timeZone,
   range,
   hasAnyRuns,
+  limitsCard,
 }: {
   cards: AiKpiCardsData;
   systemStatus: SystemStatus;
@@ -45,6 +46,8 @@ export function AiDashboardPanel({
   range: { from: string | null; to: string | null };
   /** Para el estado vacio: con cero corridas, las tarjetas muestran — y no se dibuja un grafico con ejes. */
   hasAnyRuns: boolean;
+  /** La tarjeta "Topes y avisos": llega ya armada del servidor. */
+  limitsCard?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -100,6 +103,7 @@ export function AiDashboardPanel({
               </div>
             </div>
           )}
+          {limitsCard}
         </div>
       )}
     </section>

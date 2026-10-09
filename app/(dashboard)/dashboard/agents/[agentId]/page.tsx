@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { readWorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -174,10 +175,7 @@ export default async function AgentDetailPage({
   let costs: CostsTabData | undefined;
   let kpis: HeaderKpis | undefined;
   if (isAdmin) {
-    const workspaceLimits = {
-      daily: workspace.ai_daily_cost_limit_usd === null || workspace.ai_daily_cost_limit_usd === undefined ? null : Number(workspace.ai_daily_cost_limit_usd),
-      monthly: workspace.ai_monthly_cost_limit_usd === null || workspace.ai_monthly_cost_limit_usd === undefined ? null : Number(workspace.ai_monthly_cost_limit_usd),
-    };
+    const workspaceSettings = readWorkspaceSpendSettings(workspace);
     [kpis, costs] = await Promise.all([
       loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id, timeZone: workspace.timezone }),
       tab === "costs"
@@ -186,7 +184,7 @@ export default async function AgentDetailPage({
             agent,
             filters: parseCostFilters(query),
             agentNames: new Map(agents.map((a) => [a.id, a.name])),
-            workspaceLimits,
+            workspaceSettings,
             canEditPricing: isOwnerRole(role),
             timeZone: workspace.timezone,
           })

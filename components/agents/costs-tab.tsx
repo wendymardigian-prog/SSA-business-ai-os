@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Coins } from "lucide-react";
 import type { AgentScreenData } from "@/lib/agent/screen";
-import { addModelPrice, updateWorkspaceAiLimits } from "@/lib/actions/agents";
+import { addModelPrice } from "@/lib/actions/agents";
+import { SpendLimitsCard } from "./ai-dashboard/spend-limits-card";
 import { formatDateTime } from "@/components/contacts/ui";
 import { Field, NumberInput, Notice, Section, inputClass } from "./fields";
 import { DateFilter, FilterBar, formatUsd, useUrlFilters } from "./filters";
@@ -168,12 +169,6 @@ function Breakdown({ rows }: { rows: Array<{ key: string; label: string; runs: n
 }
 
 function LimitsSection({ limits, agentId }: { limits: NonNullable<AgentScreenData["costs"]>["limits"]; agentId: string }) {
-  const router = useRouter();
-  const [daily, setDaily] = useState<number | null>(limits.workspaceDailyUsd);
-  const [monthly, setMonthly] = useState<number | null>(limits.workspaceMonthlyUsd);
-  const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
-  const [pending, start] = useTransition();
-  const dirty = daily !== limits.workspaceDailyUsd || monthly !== limits.workspaceMonthlyUsd;
   // Un diario que corta lo hace hasta la medianoche; un mensual apaga el agente.
   const action = (a: "notify" | "disable", window: "daily" | "monthly") =>
     a === "notify" ? "avisa" : window === "daily" ? "corta hasta mañana" : "apaga el agente";
@@ -190,36 +185,8 @@ function LimitsSection({ limits, agentId }: { limits: NonNullable<AgentScreenDat
           .
         </p>
       </div>
-      <div className="rounded-lg border border-border p-3">
-        <p className="text-sm font-medium">Del workspace (todo el gasto de IA)</p>
-        <p className="text-xs text-muted-foreground">El diario corta todo el gasto de IA hasta mañana; el mensual además apaga el agente. Vacío: sin tope global.</p>
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <Field label="Diario (USD)">{(id) => <NumberInput id={id} value={daily} min={0} step={0.5} allowEmpty onChange={(v) => { setMessage(null); setDaily(v); }} />}</Field>
-          <Field label="Mensual (USD)">{(id) => <NumberInput id={id} value={monthly} min={0} step={1} allowEmpty onChange={(v) => { setMessage(null); setMonthly(v); }} />}</Field>
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={!dirty || pending}
-            onClick={() =>
-              start(async () => {
-                const r = await updateWorkspaceAiLimits({ dailyUsd: daily, monthlyUsd: monthly });
-                if (!r.ok) return setMessage({ tone: "error", text: r.error });
-                setMessage({ tone: "success", text: "Topes del workspace guardados." });
-                router.refresh();
-              })
-            }
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            Guardar topes
-          </button>
-          {message && (
-            <span role={message.tone === "error" ? "alert" : "status"} className={message.tone === "error" ? "text-xs text-red-700 dark:text-red-400" : "text-xs text-emerald-700 dark:text-emerald-400"}>
-              {message.text}
-            </span>
-          )}
-        </div>
-      </div>
+      {/* Los del workspace (todo el gasto de IA): la misma tarjeta que en la pagina de Agentes. */}
+      <SpendLimitsCard settings={limits.workspace} canEdit />
     </Section>
   );
 }

@@ -1095,7 +1095,7 @@ async function discardStale(
 async function spendLimitsFor(supabase: Db, agent: AgentConfig) {
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd")
+    .select("ai_daily_cost_limit_usd, ai_monthly_cost_limit_usd, ai_daily_limit_action, ai_monthly_limit_action, ai_spend_alert_pct")
     .eq("id", agent.workspaceId)
     .maybeSingle();
   return {
@@ -1105,6 +1105,9 @@ async function spendLimitsFor(supabase: Db, agent: AgentConfig) {
     agentMonthlyAction: agent.monthlyCostLimitAction,
     workspaceDailyUsd: workspace?.ai_daily_cost_limit_usd === null || workspace?.ai_daily_cost_limit_usd === undefined ? null : Number(workspace.ai_daily_cost_limit_usd),
     workspaceMonthlyUsd: workspace?.ai_monthly_cost_limit_usd === null || workspace?.ai_monthly_cost_limit_usd === undefined ? null : Number(workspace.ai_monthly_cost_limit_usd),
+    workspaceDailyAction: workspace?.ai_daily_limit_action,
+    workspaceMonthlyAction: workspace?.ai_monthly_limit_action,
+    alertPct: workspace?.ai_spend_alert_pct ?? null,
   };
 }
 

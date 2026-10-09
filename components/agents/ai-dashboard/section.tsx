@@ -4,7 +4,9 @@ import { buildAiKpiCards } from "@/lib/agent/ai-dashboard/kpis";
 import { computeSystemStatus } from "@/lib/agent/ai-dashboard/system-status";
 import { loadIntegrations } from "@/lib/integrations/load";
 import { periodFilterToParams, type PeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
+import { readWorkspaceSpendSettings, SPEND_SETTINGS_COLUMNS } from "@/lib/ai/spend-settings";
 import { AiDashboardPanel } from "./dashboard-panel";
+import { SpendLimitsCard } from "./spend-limits-card";
 
 /**
  * El lado servidor del mini dashboard (A1-A5): todo lo que toca costo o
@@ -18,20 +20,24 @@ export async function AiDashboardSection({
   timeZone,
   filter,
   firstAgentId,
+  canEditLimits,
 }: {
   workspaceId: string;
   timeZone: string;
   filter: PeriodFilter;
   firstAgentId: string | null;
+  /** Owner/Admin: pueden guardar los topes. El resto los ve y nada mas. */
+  canEditLimits: boolean;
 }) {
   const service = await createServiceClient();
 
   // La señal de integraciones (A5) consume el estado que G3 ya resuelve:
   // no se recalculan vencimientos ni scopes aca.
-  const [data, counts, integrations] = await Promise.all([
+  const [data, counts, integrations, workspaceRow] = await Promise.all([
     loadAiDashboardData(service, { workspaceId, filter, timeZone }),
     loadRunCounts24h(service, { workspaceId }),
     loadIntegrations(service, workspaceId),
+    service.from("workspaces").select(SPEND_SETTINGS_COLUMNS).eq("id", workspaceId).maybeSingle(),
   ]);
 
   const cards = buildAiKpiCards({
@@ -58,6 +64,7 @@ export async function AiDashboardSection({
       timeZone={timeZone}
       range={data.range}
       hasAnyRuns={data.totals.runs > 0}
+      limitsCard={<SpendLimitsCard settings={readWorkspaceSpendSettings(workspaceRow.data)} canEdit={canEditLimits} />}
     />
   );
 }

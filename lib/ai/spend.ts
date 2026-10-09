@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CostLimitAction, Database } from "@/lib/types/database";
 import { startOfZonedDay, startOfZonedMonth } from "@/lib/dates";
+import { approachingThresholds, notifySpendApproaching } from "@/lib/ai/spend-alerts";
 
 /**
  * Topes de gasto de IA (F25/F29), evaluados ANTES de cada llamada al modelo.
@@ -39,7 +40,13 @@ export interface SpendLimits {
   agentMonthlyUsd: number | null;
   agentMonthlyAction: CostLimitAction;
   workspaceDailyUsd: number | null;
+  /** Que hace el tope diario del workspace al llegar: frena (default) o solo avisa. */
+  workspaceDailyAction?: CostLimitAction;
   workspaceMonthlyUsd: number | null;
+  /** Que hace el tope mensual del workspace al llegar: apaga (default) o solo avisa. */
+  workspaceMonthlyAction?: CostLimitAction;
+  /** Avisar al llegar a este % de cualquiera de los dos topes del workspace. null = sin aviso previo. */
+  alertPct?: number | null;
 }
 
 export interface SpendBreach {
@@ -84,6 +91,9 @@ function toLimit(value: number | string | null | undefined): number | null {
 export function workspaceSpendCandidates(args: {
   dailyUsd: number | string | null | undefined;
   monthlyUsd: number | string | null | undefined;
+  /** Default 'disable': el tope del workspace siempre corto, y asi sigue si nadie elige otra cosa. */
+  dailyAction?: CostLimitAction | null;
+  monthlyAction?: CostLimitAction | null;
   now: Date;
   timeZone: string;
 }): Array<{ scope: "workspace_daily" | "workspace_monthly"; limitUsd: number; action: CostLimitAction; since: Date }> {
@@ -91,12 +101,17 @@ export function workspaceSpendCandidates(args: {
   const daily = toLimit(args.dailyUsd);
   const monthly = toLimit(args.monthlyUsd);
   if (daily !== null) {
-    out.push({ scope: "workspace_daily", limitUsd: daily, action: "disable", since: startOfZonedDay(args.now, args.timeZone) });
+    out.push({ scope: "workspace_daily", limitUsd: daily, action: toAction(args.dailyAction), since: startOfZonedDay(args.now, args.timeZone) });
   }
   if (monthly !== null) {
-    out.push({ scope: "workspace_monthly", limitUsd: monthly, action: "disable", since: startOfZonedMonth(args.now, args.timeZone) });
+    out.push({ scope: "workspace_monthly", limitUsd: monthly, action: toAction(args.monthlyAction), since: startOfZonedMonth(args.now, args.timeZone) });
   }
   return out;
+}
+
+/** La accion de un tope de la base: 'notify' solo si lo dice expresamente; ante la duda, corta. */
+function toAction(value: CostLimitAction | string | null | undefined): CostLimitAction {
+  return value === "notify" ? "notify" : "disable";
 }
 
 /**
@@ -136,9 +151,14 @@ export async function checkSpendLimits(
       { scope: "agent_daily", limitUsd: l.agentDailyUsd, action: l.agentDailyAction, since: dayStart, agentId: args.agentId },
       { scope: "agent_monthly", limitUsd: l.agentMonthlyUsd, action: l.agentMonthlyAction, since: monthStart, agentId: args.agentId },
     ] as Candidate[]).filter((c) => c.limitUsd !== null),
-    ...workspaceSpendCandidates({ dailyUsd: l.workspaceDailyUsd, monthlyUsd: l.workspaceMonthlyUsd, now, timeZone: tz }).map(
-      (c) => ({ ...c, agentId: null }),
-    ),
+    ...workspaceSpendCandidates({
+      dailyUsd: l.workspaceDailyUsd,
+      monthlyUsd: l.workspaceMonthlyUsd,
+      dailyAction: l.workspaceDailyAction,
+      monthlyAction: l.workspaceMonthlyAction,
+      now,
+      timeZone: tz,
+    }).map((c) => ({ ...c, agentId: null })),
   ];
 
   if (candidates.length === 0) return { allowed: true, warnings: [] };
@@ -154,8 +174,17 @@ export async function checkSpendLimits(
       console.error("[ai-spend] no pude sumar el gasto:", error.message);
       return { allowed: false, blocking: null, warnings: [], readError: error.message };
     }
-    entries.push({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: Number(data ?? 0) });
+    entries.push({ scope: c.scope, limitUsd: c.limitUsd, action: c.action, spentUsd: Number(data ?? 0), since: c.since });
   }
+
+  // El aviso previo (ai_spend_alert_pct): con la suma que ya se hizo, sin otra consulta.
+  await notifySpendApproaching(supabase, {
+    workspaceId: args.workspaceId,
+    approaching: approachingThresholds(
+      entries.map((e) => ({ scope: e.scope, limitUsd: e.limitUsd, spentUsd: e.spentUsd, since: e.since })),
+      l.alertPct,
+    ),
+  });
 
   return evaluateSpend(entries);
 }

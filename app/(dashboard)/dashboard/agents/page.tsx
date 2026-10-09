@@ -57,7 +57,7 @@ export default async function AgentsPage({
       <div className="flex-1 overflow-auto px-8 py-6">
         {canViewCosts && filter && (
           <Suspense fallback={<AiDashboardSkeleton />}>
-            <AiDashboardSection workspaceId={workspace.id} timeZone={timeZone} filter={filter} firstAgentId={agents[0]?.id ?? null} />
+            <AiDashboardSection workspaceId={workspace.id} timeZone={timeZone} filter={filter} firstAgentId={agents[0]?.id ?? null} canEditLimits={isAdmin} />
           </Suspense>
         )}
 

@@ -7,10 +7,10 @@ import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
-import { AiLimitsSettings } from "@/components/settings/ai-limits-settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
+import Link from "next/link";
 import { AiRunsLink } from "@/components/settings/ai-runs-link";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
@@ -24,8 +24,6 @@ interface WorkspaceSettings {
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
-  aiDailyLimitUsd: number | null;
-  aiMonthlyLimitUsd: number | null;
 }
 
 /**
@@ -258,12 +256,13 @@ export function SettingsView({
 
             {/* IA */}
             <section id="ia" className="scroll-mt-20 space-y-6">
-              <AiLimitsSettings
-                dailyUsd={workspace.aiDailyLimitUsd}
-                monthlyUsd={workspace.aiMonthlyLimitUsd}
-              />
-
-              {canViewAiCosts && <hr className="border-border" />}
+              <p className="text-sm text-muted-foreground">
+                Los topes de gasto de IA y sus avisos se configuran en{" "}
+                <Link href="/dashboard/agents" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Agentes → Gasto de IA
+                </Link>
+                .
+              </p>
               <AiRunsLink canView={canViewAiCosts} />
             </section>
           </div>

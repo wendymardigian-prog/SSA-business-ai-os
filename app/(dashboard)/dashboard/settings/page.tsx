@@ -26,14 +26,6 @@ export default async function SettingsPage() {
         persistChatMedia: workspace.persist_chat_media ?? true,
         chatMediaRetentionDays: workspace.chat_media_retention_days ?? 180,
         timezone: (workspace as { timezone?: string }).timezone ?? "UTC",
-        aiDailyLimitUsd:
-          workspace.ai_daily_cost_limit_usd === null || workspace.ai_daily_cost_limit_usd === undefined
-            ? null
-            : Number(workspace.ai_daily_cost_limit_usd),
-        aiMonthlyLimitUsd:
-          workspace.ai_monthly_cost_limit_usd === null || workspace.ai_monthly_cost_limit_usd === undefined
-            ? null
-            : Number(workspace.ai_monthly_cost_limit_usd),
       }}
       canViewAiCosts={canViewAiCosts}
     />

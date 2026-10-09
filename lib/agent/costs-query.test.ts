@@ -47,7 +47,7 @@ describe("loadCostsTab", () => {
       agent,
       filters: parseCostFilters({}),
       agentNames: new Map([["agent-1", "Asistente"]]),
-      workspaceLimits: { daily: null, monthly: 200 },
+      workspaceSettings: { dailyUsd: null, dailyAction: "disable", monthlyUsd: 200, monthlyAction: "disable", alertPct: null },
       canEditPricing: true,
       timeZone: "America/Costa_Rica",
     });
@@ -57,14 +57,14 @@ describe("loadCostsTab", () => {
     expect(data.report.byAgent[0]).toMatchObject({ name: "Asistente" });
     expect(data.report.topConversations[0]).toMatchObject({ contactName: "Ana", costUsd: 0.07 });
     expect(data.pricing[0]).toMatchObject({ inputPerMtok: 3, outputPerMtok: 15, cachedInputPerMtok: 0.3 });
-    expect(data.limits).toMatchObject({ agentDailyUsd: 5, workspaceMonthlyUsd: 200 });
+    expect(data.limits).toMatchObject({ agentDailyUsd: 5, workspace: { monthlyUsd: 200 } });
     const call = db.rpcCalls.find((c) => c.name === "ai_cost_report");
     expect(call?.args).toMatchObject({ p_workspace_id: "ws-1" });
   });
 
   it("sin runs, los promedios son null y nada explota", async () => {
     const db = world({ totals: { runs: 0, cost_usd: 0, conversations: 0, escalations: 0, responded: 0, missing_pricing: 0, input_tokens: 0, output_tokens: 0, cached_tokens: 0, embedding_tokens: 0 }, by_source: [], by_agent: [], by_model: [], top_conversations: [] });
-    const data = await loadCostsTab(db.client, { workspaceId: "ws-1", agent, filters: parseCostFilters({}), agentNames: new Map(), workspaceLimits: { daily: null, monthly: null }, canEditPricing: false, timeZone: "America/Costa_Rica" });
+    const data = await loadCostsTab(db.client, { workspaceId: "ws-1", agent, filters: parseCostFilters({}), agentNames: new Map(), workspaceSettings: { dailyUsd: null, dailyAction: "disable", monthlyUsd: null, monthlyAction: "disable", alertPct: null }, canEditPricing: false, timeZone: "America/Costa_Rica" });
     expect(data.averages).toEqual({ perRun: null, perConversation: null, perEscalation: null, escalationRatePct: null });
     expect(data.report.topConversations).toEqual([]);
   });
@@ -85,7 +85,7 @@ describe("borradores en Costos (Bloque 2c)", () => {
       agent,
       filters: parseCostFilters({}),
       agentNames: new Map(),
-      workspaceLimits: { daily: null, monthly: null },
+      workspaceSettings: { dailyUsd: null, dailyAction: "disable", monthlyUsd: null, monthlyAction: "disable", alertPct: null },
       canEditPricing: false,
       timeZone: "America/Costa_Rica",
     });
