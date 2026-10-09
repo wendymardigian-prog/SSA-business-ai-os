@@ -172,6 +172,11 @@ export function sniffUploadMime(bytes: Uint8Array, declaredMime?: string | null)
 
   const base = sniffMime(bytes);
   if (base === "audio/webm" && declared.startsWith("video/")) return "video/webm";
+  // Un audio grabado por el navegador (audio/mp4) usa marcas genericas como
+  // `isom` o `iso5`, no `M4A `, y `sniffMime` lo llamaria video. Los bytes ya
+  // probaron que es un MP4 comun (no QuickTime, HEIC ni 3GP, que salieron
+  // arriba): si quien sube dice que es un audio, es un audio.
+  if (base === "video/mp4" && declared.startsWith("audio/")) return "audio/mp4";
   return base;
 }
 

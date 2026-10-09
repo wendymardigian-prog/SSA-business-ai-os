@@ -48,6 +48,20 @@ describe("sniffUploadMime", () => {
     expect(sniffUploadMime(EBML, null)).toBe("audio/webm");
   });
 
+  it("un audio grabado por el navegador (MP4 con marca generica) es audio/mp4, no video", () => {
+    // Chrome y Safari graban audio/mp4 con marcas `isom` o `iso5`, no `M4A `.
+    expect(sniffMime(ftyp("isom"))).toBe("video/mp4");
+    expect(sniffUploadMime(ftyp("isom"), "audio/mp4")).toBe("audio/mp4");
+    expect(sniffUploadMime(ftyp("iso5"), "audio/mp4;codecs=mp4a.40.2")).toBe("audio/mp4");
+    // Sin declarar, o declarado como video, sigue siendo video.
+    expect(sniffUploadMime(ftyp("isom"), null)).toBe("video/mp4");
+    expect(sniffUploadMime(ftyp("isom"), "video/mp4")).toBe("video/mp4");
+    // QuickTime, HEIC y 3GP no se convierten en audio por declarar audio/*.
+    expect(sniffUploadMime(ftyp("qt  "), "audio/mp4")).toBe("video/quicktime");
+    expect(sniffUploadMime(ftyp("heic"), "audio/mp4")).toBe("image/heic");
+    expect(sniffUploadMime(ftyp("3gp4"), "audio/mp4")).toBe("video/3gpp");
+  });
+
   it("una foto HEIC de iPhone no es un video (sniffMime la llamaba video/mp4)", () => {
     expect(sniffMime(ftyp("heic"))).toBe("video/mp4");
     expect(sniffUploadMime(ftyp("heic"), "image/heic")).toBe("image/heic");

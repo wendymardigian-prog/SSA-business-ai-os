@@ -267,6 +267,17 @@ export function transcriptStatusLabel(kind: AssetKind, status: TranscriptStatus)
 }
 
 /**
+ * Si la transcripcion esta por llegar: la pantalla se actualiza sola mientras
+ * haya alguna. Un audio en `none` esta esperando (se transcribe al guardar y
+ * la cola es el respaldo); un video en `none` es un video SIN voz y no espera
+ * nada, asi que no cuenta.
+ */
+export function isTranscribing(asset: Pick<BankAsset, "kind" | "transcriptStatus">): boolean {
+  if (asset.transcriptStatus === "pending") return true;
+  return asset.kind === "audio" && asset.transcriptStatus === "none";
+}
+
+/**
  * Si el asistente lo puede usar, segun su transcripcion (la misma regla que
  * `setAssetAgentEnabled` y la herramienta del agente): un audio necesita la
  * transcripcion lista; un video, lista o ninguna (sin voz).

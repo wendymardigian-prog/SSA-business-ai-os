@@ -8,8 +8,7 @@ import { logAudit, diffFields } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sniffUploadMime } from "@/lib/content/media";
 import { CHAT_MEDIA_BUCKET, extensionForMime, isSafeStoragePath } from "@/lib/chat-media/bucket";
-import { scheduleJob } from "@/lib/scheduler";
-import { TRANSCRIBE_AUDIO_JOB, transcribeAssetDedupeKey } from "@/lib/jobs/handlers/transcribe-audio";
+import { transcribeAssetNow, transcribeAssetSoon } from "@/lib/response-assets/transcribe-now";
 import { copyAssetToChat, type AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { validateAssetFields, type AssetFields } from "@/lib/response-assets/shape";
 import { fileRejection, isFileAssetKind, mimeMatchesKind, type FileAssetKind } from "@/lib/response-assets/files";
@@ -92,6 +91,11 @@ export interface CreateAssetInput {
   file?: AssetFileInput | null;
   /** Solo video: false = "este video no tiene voz" (no se transcribe ni se cobra). */
   hasVoice?: boolean;
+  /**
+   * Audio, y video con voz: la transcripcion escrita a mano al crear. Si viene,
+   * queda como manual y no se llama a la IA (ni se cobra).
+   */
+  transcript?: string | null;
 }
 
 export interface UpdateAssetInput {
@@ -106,7 +110,18 @@ export interface UpdateAssetInput {
   agentEnabled?: boolean;
   isActive?: boolean;
   /** Reemplazar el archivo: descarta la transcripcion y la miniatura anteriores. */
-  replacement?: (AssetFileInput & { hasVoice?: boolean }) | null;
+  replacement?: (AssetFileInput & { hasVoice?: boolean; transcript?: string | null }) | null;
+}
+
+/** Las columnas de una transcripcion escrita a mano: lista, y ningun reintento automatico la pisa. */
+function manualTranscriptColumns(text: string) {
+  return {
+    transcript: text,
+    transcript_status: "ready",
+    transcript_error: null,
+    transcript_source: "manual",
+    transcript_started_at: null,
+  };
 }
 
 /** El error del indice unico del atajo, dicho en castellano: es unico ENTRE TODOS los tipos. */
@@ -230,18 +245,6 @@ export async function requestAssetPreviewUpload(input: {
   return { ok: true, ticket: { path, mime, token: data.token } };
 }
 
-/** Encola la transcripcion, igual que afterMediaStored para un mensaje (F7). Solo audio y video con voz. */
-async function enqueueTranscription(supabase: Awaited<ReturnType<typeof createServiceClient>>, assetId: string): Promise<void> {
-  try {
-    await scheduleJob(supabase, TRANSCRIBE_AUDIO_JOB, { assetId }, new Date(), transcribeAssetDedupeKey(assetId));
-  } catch (err) {
-    const code = (err as { code?: string } | null)?.code;
-    if (code !== "23505") {
-      console.error("[response-assets] no pude encolar la transcripcion:", err instanceof Error ? err.message : err);
-    }
-  }
-}
-
 /** Borra archivos del bucket con el service client (no hay policies de escritura). Nunca lanza. */
 async function removeFiles(paths: Array<string | null | undefined>): Promise<void> {
   const clean = paths.filter((p): p is string => typeof p === "string" && p.length > 0);
@@ -285,6 +288,14 @@ export async function createAsset(input: CreateAssetInput): Promise<AssetActionR
     // Un video "sin voz" queda en 'none' y no se encola: no hay nada que
     // transcribir ni que cobrar, y el agente lo puede usar por su descripcion.
     transcribe = kind === "audio" || (kind === "video" && input.hasVoice !== false);
+
+    // Una transcripcion escrita a mano gana: queda lista, sin llamar a la IA.
+    // Un video "sin voz" no tiene nada que transcribir, la ignora.
+    const manual = (input.transcript ?? "").trim();
+    if (transcribe && manual) {
+      Object.assign(insert, manualTranscriptColumns(manual));
+      transcribe = false;
+    }
   }
 
   const { data, error } = await supabase.from("response_assets").insert(insert as never).select("id").single();
@@ -302,9 +313,10 @@ export async function createAsset(input: CreateAssetInput): Promise<AssetActionR
     action: "create", metadata: { name: validation.value.name, kind }, performedBy: user.id,
   });
 
+  // En el momento, despues de responder: guardar nunca espera a la transcripcion.
   if (transcribe) {
     const service = await createServiceClient();
-    await enqueueTranscription(service, data.id);
+    await transcribeAssetSoon(service, data.id);
   }
 
   revalidatePath(LIST_PATH);
@@ -365,6 +377,11 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
       patch.transcript_source = "auto";
       patch.transcript_started_at = null;
       transcribe = kind === "audio" || replacement.hasVoice !== false;
+      const manual = (replacement.transcript ?? "").trim();
+      if (transcribe && manual) {
+        Object.assign(patch, manualTranscriptColumns(manual));
+        transcribe = false;
+      }
     }
     // El archivo VIEJO ya no lo referencia nadie: la fila apunta al nuevo, y
     // una conversacion que lo mando se quedo con su propia COPIA
@@ -399,7 +416,7 @@ export async function updateAsset(assetId: string, input: UpdateAssetInput): Pro
 
   if (transcribe) {
     const service = await createServiceClient();
-    await enqueueTranscription(service, assetId);
+    await transcribeAssetSoon(service, assetId);
   }
   await removeFiles(oldFiles);
 
@@ -465,7 +482,14 @@ export async function deleteAsset(assetId: string): Promise<AssetActionResult> {
 
   if (!before) return { ok: false, error: "No encontré ese recurso" };
 
-  const { error } = await supabase
+  // Con el cliente de SERVIDOR, no el del usuario: la policy de lectura
+  // (`deleted_at IS NULL`) tambien le exige a la fila NUEVA de un UPDATE que
+  // se pueda leer, y una fila recien marcada como borrada no pasa. Con el
+  // cliente del usuario la base rechazaba TODO borrado ("new row violates
+  // row-level security policy"). El permiso y el workspace ya se comprobaron
+  // arriba (`getPermissionAction` y la lectura de `before`).
+  const service = await createServiceClient();
+  const { error } = await service
     .from("response_assets")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", assetId)
@@ -533,8 +557,21 @@ export async function correctTranscript(assetId: string, text: string): Promise<
   return { ok: true, assetId };
 }
 
-/** "Reintentar" una transcripcion que fallo: la vuelve a encolar. */
-export async function retryTranscription(assetId: string): Promise<AssetActionResult> {
+/**
+ * "Transcribir con IA" (y "Reintentar" si fallo): transcribe ahora y espera el
+ * resultado, porque la persona apreto un boton y mira la pantalla.
+ *
+ * Sirve cuando todavia no hay transcripcion (`none`: por ejemplo, un audio que
+ * no llego a transcribirse) o cuando fallo. Si ya esta lista, se corrige a
+ * mano (`correctTranscript`): transcribir de nuevo la pisaria y cobraria otra
+ * vez. Un fallo transitorio queda encolado y se reintenta solo.
+ */
+export async function retryTranscription(
+  assetId: string,
+): Promise<
+  | { ok: true; assetId: string; outcome: "done" | "queued" | "failed" | "skipped" }
+  | { ok: false; error: string }
+> {
   const ctx = await getPermissionAction(MANAGE);
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const { workspace, supabase } = ctx;
@@ -548,12 +585,17 @@ export async function retryTranscription(assetId: string): Promise<AssetActionRe
     .maybeSingle();
   if (!asset) return { ok: false, error: "No encontré ese recurso" };
   if (!isTranscribableKind(asset.kind as AssetKind)) return { ok: false, error: "Solo un audio o un video tiene transcripción" };
-  if (asset.transcript_status !== "failed") return { ok: false, error: "Esa transcripción no falló" };
+  if (asset.transcript_status === "pending") return { ok: false, error: "Ya se está transcribiendo. Esperá unos segundos." };
+  if (asset.transcript_status === "ready") {
+    return { ok: false, error: "Ya tiene transcripción. Si no es correcta, corregila a mano." };
+  }
 
   const service = await createServiceClient();
-  await enqueueTranscription(service, assetId);
+  const result = await transcribeAssetNow(service, assetId);
   revalidatePath(LIST_PATH);
-  return { ok: true, assetId };
+
+  const outcome = result.kind === "done" ? "done" : result.kind === "retry" ? "queued" : result.kind;
+  return { ok: true, assetId, outcome };
 }
 
 const LIST_COLUMNS =

@@ -33,6 +33,17 @@ vi.mock("@/lib/scheduler", async (importOriginal) => {
 });
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Sin un request en curso `after()` lanza: el modulo cae al respaldo (encolar).
+// Las pruebas de ese camino viven en lib/response-assets/transcribe-now.test.ts.
+vi.mock("next/server", () => ({
+  after: () => {
+    throw new Error("`after` was called outside a request scope");
+  },
+}));
+const { transcribeAsset } = vi.hoisted(() => ({
+  transcribeAsset: vi.fn(async () => ({ kind: "done", text: "hola" }) as { kind: string; text?: string; reason?: string }),
+}));
+vi.mock("@/lib/response-assets/transcribe", () => ({ transcribeAsset }));
 
 import {
   createAsset,
@@ -130,6 +141,40 @@ describe("createAsset: audio", () => {
       expect.any(Date),
       `transcribe-asset:${row(db).id}`,
     );
+  });
+
+  it("con la transcripcion escrita a mano: queda lista, manual, y no se llama a la IA", async () => {
+    const db = admin();
+
+    const result = await createAsset({
+      kind: "audio",
+      name: "Bienvenida",
+      description: "Cuando escriben por primera vez",
+      file: file("b.m4a", "audio/mp4", { durationSeconds: 8, source: "recorded" }),
+      transcript: "  Hola, contame de vos y a que te dedicas  ",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(row(db)).toMatchObject({
+      transcript: "Hola, contame de vos y a que te dedicas",
+      transcript_status: "ready",
+      transcript_source: "manual",
+    });
+    expect(scheduleJob).not.toHaveBeenCalled();
+    expect(transcribeAsset).not.toHaveBeenCalled();
+  });
+
+  it("una transcripcion en blanco no cuenta: se transcribe sola", async () => {
+    const db = admin();
+    await createAsset({
+      kind: "audio",
+      name: "X",
+      description: "d",
+      file: file("x.m4a", "audio/mp4"),
+      transcript: "   ",
+    });
+    expect(row(db)).not.toHaveProperty("transcript_source", "manual");
+    expect(scheduleJob).toHaveBeenCalledTimes(1);
   });
 
   it("sin descripcion, se rechaza: es obligatoria para la IA", async () => {
@@ -364,6 +409,24 @@ describe("deleteAsset", () => {
     expect(row(db, "a-1").deleted_at).toBeTruthy();
   });
 
+  it("el borrado logico lo hace el cliente de servidor: la policy de lectura rechaza el UPDATE del usuario", async () => {
+    // La policy `response_assets_select` pide `deleted_at IS NULL`, y para un
+    // UPDATE la fila NUEVA tambien tiene que pasarla: marcarla como borrada
+    // con el cliente del usuario falla con "new row violates row-level
+    // security policy" (el bug que nunca dejo borrar un recurso).
+    const seed = { response_assets: [{ id: "a-1", workspace_id: WS, kind: "text", name: "X", content: "c", shortcut: null, deleted_at: null }] };
+    const userDb = memoryDb(structuredClone(seed));
+    const serviceDb = memoryDb(structuredClone(seed));
+    getPermissionAction.mockResolvedValue({ workspace: { id: WS }, supabase: userDb.client, user: { id: USER } });
+    createServiceClient.mockResolvedValue(serviceDb.client);
+
+    const result = await deleteAsset("a-1");
+
+    expect(result.ok).toBe(true);
+    expect(serviceDb.rows("response_assets")[0].deleted_at).toBeTruthy();
+    expect(userDb.rows("response_assets")[0].deleted_at).toBeNull();
+  });
+
   it("sin templates.manage no se da de baja", async () => {
     getPermissionAction.mockResolvedValue(null);
     expect(await deleteAsset("a-1")).toEqual({ ok: false, error: NO_PERMISSION });
@@ -481,17 +544,56 @@ describe("setAssetAgentEnabled", () => {
   });
 });
 
-describe("retryTranscription", () => {
-  it("vuelve a encolar una transcripcion fallida", async () => {
+describe("retryTranscription (\"Transcribir con IA\")", () => {
+  it("transcribe ahora una transcripcion fallida y espera el resultado", async () => {
     const db = admin({ response_assets: [{ id: "v-1", workspace_id: WS, kind: "video", transcript_status: "failed" }] });
-    expect((await retryTranscription("v-1")).ok).toBe(true);
-    expect(scheduleJob).toHaveBeenCalledWith(db.client, "transcribe_audio", { assetId: "v-1" }, expect.any(Date), "transcribe-asset:v-1");
+    const result = await retryTranscription("v-1");
+    expect(result).toEqual({ ok: true, assetId: "v-1", outcome: "done" });
+    expect(transcribeAsset).toHaveBeenCalledWith(db.client, "v-1");
+    expect(scheduleJob).not.toHaveBeenCalled();
   });
 
-  it("una que no fallo, no", async () => {
-    admin({ response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", transcript_status: "ready" }] });
-    expect((await retryTranscription("a-1")).ok).toBe(false);
+  it("sirve tambien para un audio que todavia no se transcribio (none)", async () => {
+    admin({ response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", transcript_status: "none" }] });
+    expect(await retryTranscription("a-1")).toMatchObject({ ok: true, outcome: "done" });
+    expect(transcribeAsset).toHaveBeenCalledTimes(1);
+  });
+
+  it("un fallo transitorio queda encolado para que la cola lo reintente", async () => {
+    const db = admin({ response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", transcript_status: "failed" }] });
+    transcribeAsset.mockResolvedValueOnce({ kind: "retry", reason: "429" });
+    expect(await retryTranscription("a-1")).toMatchObject({ ok: true, outcome: "queued" });
+    expect(scheduleJob).toHaveBeenCalledWith(db.client, "transcribe_audio", { assetId: "a-1" }, expect.any(Date), "transcribe-asset:a-1");
+  });
+
+  it("un fallo permanente no se encola: el motivo ya quedo escrito en la fila", async () => {
+    admin({ response_assets: [{ id: "a-1", workspace_id: WS, kind: "audio", transcript_status: "none" }] });
+    transcribeAsset.mockResolvedValueOnce({ kind: "failed", reason: "formato no soportado" });
+    expect(await retryTranscription("a-1")).toMatchObject({ ok: true, outcome: "failed" });
     expect(scheduleJob).not.toHaveBeenCalled();
+  });
+
+  it("una lista no se vuelve a transcribir (se corrige a mano), ni una en curso", async () => {
+    admin({
+      response_assets: [
+        { id: "a-1", workspace_id: WS, kind: "audio", transcript_status: "ready" },
+        { id: "a-2", workspace_id: WS, kind: "audio", transcript_status: "pending" },
+      ],
+    });
+    expect(await retryTranscription("a-1")).toMatchObject({ ok: false, error: expect.stringContaining("corregila a mano") });
+    expect(await retryTranscription("a-2")).toMatchObject({ ok: false, error: expect.stringContaining("Ya se está transcribiendo") });
+    expect(transcribeAsset).not.toHaveBeenCalled();
+  });
+
+  it("un texto no tiene transcripcion", async () => {
+    admin({ response_assets: [{ id: "t-1", workspace_id: WS, kind: "text", transcript_status: "none" }] });
+    expect((await retryTranscription("t-1")).ok).toBe(false);
+    expect(transcribeAsset).not.toHaveBeenCalled();
+  });
+
+  it("sin el permiso de administrar, no", async () => {
+    getPermissionAction.mockResolvedValue(null);
+    expect(await retryTranscription("a-1")).toEqual({ ok: false, error: NO_PERMISSION });
   });
 });
 
@@ -529,6 +631,24 @@ describe("requestAssetUpload", () => {
       expect(result.ticket.path).toMatch(new RegExp(`^${WS}/library/[0-9a-f-]+\\.m4a$`));
       expect(result.ticket.mime).toBe("audio/mp4");
     }
+  });
+
+  it("una grabacion del navegador (MP4 con marca isom) entra como audio, no se rechaza", async () => {
+    const db = admin();
+    (db.client as unknown as { storage: unknown }).storage = {
+      from: () => ({ createSignedUploadUrl: async () => ({ data: { token: "tok-1" }, error: null }) }),
+    };
+    // Lo que graba Chrome/Safari: `ftyp` con marca generica, no `M4A `.
+    const isomHead = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]).toString("base64");
+
+    const result = await requestAssetUpload({ kind: "audio", sizeBytes: 56_000, headBase64: isomHead, declaredMime: "audio/mp4" });
+
+    expect(result).toMatchObject({ ok: true, ticket: { mime: "audio/mp4" } });
+    if (result.ok) expect(result.ticket.path).toMatch(/\.m4a$/);
+
+    // Un video MP4 declarado como video sigue sin pasar por audio.
+    const asVideo = await requestAssetUpload({ kind: "audio", sizeBytes: 56_000, headBase64: isomHead, declaredMime: "video/mp4" });
+    expect(asVideo).toMatchObject({ ok: false, error: expect.stringContaining("no es un audio reconocible") });
   });
 
   it("un archivo que no es del tipo elegido se rechaza, por su contenido", async () => {

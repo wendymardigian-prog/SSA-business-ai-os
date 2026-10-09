@@ -88,6 +88,22 @@ describe("requestChatUpload (F19)", () => {
     expect(attached).toMatchObject({ kind: "audio" });
   });
 
+  it("una grabacion del navegador (MP4 con marca isom) queda como voz, no como video", async () => {
+    setup({ conversation: { id: "cv-1", workspace_id: "ws-1" } });
+    // Lo que graba Chrome/Safari: `ftyp` con marca generica, no `M4A `.
+    const isomHead = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]).toString("base64");
+
+    const recorded = await requestChatUpload({
+      conversationId: "cv-1",
+      sizeBytes: 56_000,
+      headBase64: isomHead,
+      declaredMime: "audio/mp4",
+      isRecording: true,
+    });
+
+    expect(recorded).toMatchObject({ ok: true, kind: "voice", mime: "audio/mp4" });
+  });
+
   it("mas de 16 MB se rechaza sin firmar", async () => {
     const { createSignedUploadUrl } = setup({ conversation: { id: "cv-1", workspace_id: "ws-1" } });
     const result = await requestChatUpload({

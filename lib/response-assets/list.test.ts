@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   agentUsable,
+  isTranscribing,
   applyFilters,
   contextLine,
   hasActiveFilters,
@@ -162,5 +163,22 @@ describe("toBankAsset y hasActiveFilters", () => {
   it("detecta si hay algun filtro puesto", () => {
     expect(hasActiveFilters(NO_FILTERS)).toBe(false);
     expect(hasActiveFilters({ ...NO_FILTERS, query: " x " })).toBe(true);
+  });
+});
+
+describe("isTranscribing", () => {
+  it("una transcripcion en curso cuenta, sea audio o video", () => {
+    expect(isTranscribing({ kind: "audio", transcriptStatus: "pending" })).toBe(true);
+    expect(isTranscribing({ kind: "video", transcriptStatus: "pending" })).toBe(true);
+  });
+
+  it("un audio que todavia no empezo (none) esta por llegar; un video en none es un video SIN voz", () => {
+    expect(isTranscribing({ kind: "audio", transcriptStatus: "none" })).toBe(true);
+    expect(isTranscribing({ kind: "video", transcriptStatus: "none" })).toBe(false);
+  });
+
+  it("lista o fallida: no hay nada por llegar", () => {
+    expect(isTranscribing({ kind: "audio", transcriptStatus: "ready" })).toBe(false);
+    expect(isTranscribing({ kind: "audio", transcriptStatus: "failed" })).toBe(false);
   });
 });
