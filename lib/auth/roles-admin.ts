@@ -210,7 +210,12 @@ export function describeRole(role: RoleRow): string {
   if (role.systemRole === "admin") return "Puede todo menos transferir la propiedad.";
 
   const count = role.permissions.keys.length;
-  const scope = role.permissions.scopes.leads === "all" ? "todos los leads" : "solo sus leads";
+  const scope =
+    role.permissions.scopes.leads === "all"
+      ? "todos los leads"
+      : role.permissions.scopes.leads === "own_unassigned"
+        ? "sus leads y los sin asignar"
+        : "solo sus leads";
 
   if (count === 0) return "Sin permisos.";
   return `${count} ${count === 1 ? "permiso" : "permisos"} · ${scope}`;

@@ -20,6 +20,7 @@ import {
   permissionLabel,
   permissionsOfModule,
   scopeFor,
+  scopeOptionsFor,
   SYSTEM_ROLE_PERMISSIONS,
   systemRolePermissions,
 } from "./permissions";
@@ -213,6 +214,21 @@ describe("leer un rol guardado (F68)", () => {
   it("un alcance invalido cae al mas restrictivo", () => {
     expect(parsePermissions({ scopes: { leads: "todos" } }).scopes.leads).toBe("own");
     expect(parsePermissions({ scopes: { leads: "all" } }).scopes.leads).toBe("all");
+  });
+
+  it("'own_unassigned' (los suyos + los sin asignar) solo existe para los leads (00136)", () => {
+    const parsed = parsePermissions({ scopes: { leads: "own_unassigned", conversations: "own_unassigned", bookings: "own_unassigned" } });
+    expect(parsed.scopes.leads).toBe("own_unassigned");
+    // En conversaciones y agendas no significa nada: se trata como 'own', lo mas angosto.
+    expect(parsed.scopes.conversations).toBe("own");
+    expect(parsed.scopes.bookings).toBe("own");
+    expect(scopeOptionsFor("leads")).toEqual(["own", "own_unassigned", "all"]);
+    expect(scopeOptionsFor("conversations")).toEqual(["own", "all"]);
+    expect(scopeOptionsFor("bookings")).toEqual(["own", "all"]);
+  });
+
+  it("el Member de sistema ve solo los suyos: los sin asignar son una decision del rol, no del Member", () => {
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes.leads).toBe("own");
   });
 
   it("lo que no tiene la forma esperada da un rol vacio, no un error", () => {

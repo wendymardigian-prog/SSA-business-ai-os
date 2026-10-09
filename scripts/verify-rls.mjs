@@ -19,6 +19,7 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
+import { leadScopeHelper } from "./lead-scope-helper.mjs";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8").split("\n")
@@ -43,7 +44,24 @@ async function makeUser(tag) {
   if (e) throw new Error(`no pude loguear ${tag}: ${e.message}`);
   return { id: data.user.id, client };
 }
-const setFlags = (wsId, flags) => svc.from("workspaces").update(flags).eq("id", wsId);
+// Desde la 00136 el alcance de leads sale del ROL, no de los interruptores del
+// workspace. Cada caso de este script se arma con "prendo/apago el scope" y
+// "los sin asignar son visibles": `setFlags` conserva esa forma y la traduce a
+// roles (leadScopeHelper). Ademas escribe las columnas viejas, que la funcion
+// anterior a la 00136 todavia lee: asi el script sirve ANTES de aplicarla (para
+// probar que el codigo nuevo no rompe nada) y DESPUES.
+const POST_00136 = process.argv.includes("--despues-de-00136");
+const leadScope = leadScopeHelper(svc);
+const flagState = new Map();
+async function setFlags(wsId, flags) {
+  const st = { scope: true, unassigned: false, ...(flagState.get(wsId) ?? {}) };
+  if ("lead_scope_enabled" in flags) st.scope = flags.lead_scope_enabled;
+  if ("unassigned_leads_visible_to_members" in flags) st.unassigned = flags.unassigned_leads_visible_to_members;
+  flagState.set(wsId, st);
+  const res = await svc.from("workspaces").update(flags).eq("id", wsId);
+  await leadScope.apply(wsId, st.scope ? (st.unassigned ? "own_unassigned" : "own") : "all");
+  return res;
+}
 
 try {
   const { data: ws } = await svc.from("workspaces")
@@ -81,15 +99,13 @@ try {
     workspace_id: ws.id, email: "x@example.test", role: "owner", invited_by: admin.id })).error,
     "no se puede invitar a alguien como owner");
 
-  console.log("\n— El scope viene prendido de fabrica —");
-  { const { data } = await svc.from("workspaces")
-      .select("lead_scope_enabled, unassigned_leads_visible_to_members").eq("id", ws.id).single();
-    check(data.lead_scope_enabled === true,
-      "un workspace nuevo arranca con el scope de leads prendido");
-    check(data.unassigned_leads_visible_to_members === false,
-      "y con los leads sin asignar solo para Owner/Admin"); }
+  console.log("\n— El alcance viene acotado de fabrica —");
+  // El Member de sistema vive en el codigo con alcance `own`: un workspace
+  // nuevo no necesita ningun ajuste para que un Member vea solo lo suyo.
+  check(!(await seesContact(member)).seen,
+    "un Member nuevo NO ve un lead sin asignar (alcance own por defecto)");
 
-  console.log("\n— Scope APAGADO a mano: vuelve a verse todo —");
+  console.log("\n— Alcance `all` en el rol: vuelve a verse todo —");
   await setFlags(ws.id, { lead_scope_enabled: false });
   for (const [who, c] of [["Admin", admin], ["Member", member]]) {
     const r = await seesContact(c);
@@ -97,7 +113,7 @@ try {
   }
   { const r = await seesConv(member); check(r.seen, "el Member ve la conversacion", r.error); }
 
-  console.log("\n— Scope PRENDIDO, lead sin asignar —");
+  console.log("\n— Alcance `own`, lead sin asignar —");
   await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
   { const r = await seesContact(admin); check(r.seen, "el Admin sigue viendo todo", r.error); }
   check(!(await seesContact(member)).seen, "el Member NO ve un contacto que no tiene asignado");
@@ -105,9 +121,30 @@ try {
   { const { data: m } = await member.client.from("messages").select("id").eq("conversation_id", conv.id);
     check((m ?? []).length === 0, "los mensajes de esa conversacion tampoco le llegan"); }
 
-  console.log("\n— Scope PRENDIDO, leads sin asignar visibles —");
+  console.log("\n— Alcance `own_unassigned` (los suyos + los sin asignar) —");
   await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
-  { const r = await seesContact(member); check(r.seen, "con el flag prendido, el Member ve los leads sin asignar", r.error); }
+  { const r = await seesContact(member); check(r.seen, "con ese alcance, el Member ve los leads sin asignar", r.error); }
+  {
+    // Los sin asignar NO son los de otra persona: un lead que tiene setter, aunque
+    // no sea el Member, sigue fuera.
+    const { data: ajeno } = await svc.from("contacts")
+      .insert({ workspace_id: ws.id, display_name: "zz-test lead de otro", setter_id: admin.id }).select("id").single();
+    check(!(await sees(member, "contacts", ajeno.id)).seen,
+      "pero NO ve un lead que tiene a otra persona asignada");
+    await svc.from("contacts").delete().eq("id", ajeno.id);
+  }
+  if (POST_00136) {
+    // Despues de la 00136 los interruptores viejos no cuentan: manda el rol.
+    await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    await svc.from("workspaces").update({ unassigned_leads_visible_to_members: true }).eq("id", ws.id);
+    check(!(await seesContact(member)).seen,
+      "con alcance own, prender 'sin asignar visibles' en el workspace ya NO le abre nada");
+    await svc.from("workspaces").update({ lead_scope_enabled: false }).eq("id", ws.id);
+    check(!(await seesContact(member)).seen,
+      "ni apagar el alcance de leads del workspace: manda el rol");
+    await svc.from("workspaces").update({ lead_scope_enabled: true, unassigned_leads_visible_to_members: false }).eq("id", ws.id);
+    await setFlags(ws.id, { unassigned_leads_visible_to_members: true });
+  }
 
   console.log("\n— Scope PRENDIDO, lead asignado al Member —");
   await setFlags(ws.id, { unassigned_leads_visible_to_members: false });

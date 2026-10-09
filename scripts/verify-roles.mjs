@@ -14,7 +14,8 @@
  *
  * Crea y borra todo lo suyo. Una limpieza que falla es una prueba que falla.
  *
- *   node scripts/verify-roles.mjs
+ *   node scripts/verify-roles.mjs                      # antes de aplicar la 00136
+ *   node scripts/verify-roles.mjs --despues-de-00136   # y despues: suma el alcance own_unassigned
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -56,11 +57,9 @@ try {
   const { data: ws } = await svc.from("workspaces")
     .insert({ name: "zz-test-roles-v", slug: `zz-test-rolesv-${Date.now()}` }).select("id").single();
 
-  // El scope de leads tiene que estar prendido: es la condicion bajo la cual
-  // el alcance del rol significa algo.
-  await svc.from("workspaces")
-    .update({ lead_scope_enabled: true, unassigned_leads_visible_to_members: false })
-    .eq("id", ws.id);
+  // Un workspace nuevo ya nace con el scope de leads prendido y los sin asignar
+  // cerrados (lo que fijan las columnas por defecto hasta la 00136, y despues
+  // el Member de sistema con alcance `own`): no hace falta forzar nada.
 
   const admin = await makeUser("roles-admin");
   const acotado = await makeUser("roles-acotado");
@@ -145,6 +144,35 @@ try {
 
     check(await contactCount(amplio, ws.id) === 0,
       "sin leads asignados y con alcance `own`, no ve ninguno");
+  }
+
+  if (process.argv.includes("--despues-de-00136")) {
+    console.log("\n— Alcance `own_unassigned`: los suyos + los sin asignar (00136) —");
+    {
+      const { data: libre } = await svc.from("contacts").insert({
+        workspace_id: ws.id, display_name: "zz-test lead sin asignar",
+      }).select("id").single();
+
+      await svc.from("workspace_roles").update({
+        permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own" } },
+      }).eq("id", rolAmplio.id);
+
+      // Hay tres leads: el del acotado, el de otra persona (admin) y el libre.
+      check(await contactCount(amplio, ws.id) === 1,
+        "ve el que no tiene a nadie asignado, y NO los que tienen a otra persona");
+
+      // Si se lo asignan a el, lo sigue viendo; si se lo asignan a otro, deja de verlo.
+      await svc.from("contacts").update({ setter_id: amplio.id }).eq("id", libre.id);
+      check(await contactCount(amplio, ws.id) === 1, "asignado a el, lo sigue viendo");
+      await svc.from("contacts").update({ setter_id: acotado.id }).eq("id", libre.id);
+      check(await contactCount(amplio, ws.id) === 0, "asignado a otra persona, deja de verlo");
+      await svc.from("contacts").update({ setter_id: null }).eq("id", libre.id);
+      check(await contactCount(amplio, ws.id) === 1, "y al quedar libre, vuelve a verlo");
+
+      // El Member sin rol personalizado no gana nada por esto.
+      check(await contactCount(acotado, ws.id) === 1,
+        "el Member de sistema (alcance own) NO ve el lead sin asignar");
+    }
   }
 
   console.log("\n— Los roles de sistema no se tocan —");

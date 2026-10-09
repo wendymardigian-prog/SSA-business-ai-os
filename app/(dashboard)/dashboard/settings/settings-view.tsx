@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
-import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
@@ -19,8 +18,6 @@ interface WorkspaceSettings {
   name: string;
   globalKeywords: string[];
   optOutPhrases: string[];
-  leadScopeEnabled: boolean;
-  unassignedVisibleToMembers: boolean;
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
@@ -166,10 +163,13 @@ export function SettingsView({
 
             {/* Conversaciones */}
             <section id="conversaciones" className="scroll-mt-20 space-y-6">
-              <LeadScopeSettings
-                leadScopeEnabled={workspace.leadScopeEnabled}
-                unassignedVisibleToMembers={workspace.unassignedVisibleToMembers}
-              />
+              <p className="text-xs text-muted-foreground">
+                Quién ve qué leads se define por rol, en{" "}
+                <Link href="/dashboard/settings/roles" className="text-primary underline underline-offset-2">
+                  Ajustes → Roles
+                </Link>
+                .
+              </p>
 
               <hr className="border-border" />
 

@@ -182,6 +182,14 @@ describe("como se muestran (F71)", () => {
     ).toBe("2 permisos · todos los leads");
   });
 
+  it("el alcance 'los suyos + los sin asignar' se nombra", () => {
+    expect(
+      describeRole(
+        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own" } } }),
+      ),
+    ).toBe("1 permiso · sus leads y los sin asignar");
+  });
+
   it("los de sistema se describen por lo que son", () => {
     expect(describeRole(role({ systemRole: "owner" }))).toContain("Puede todo.");
     expect(describeRole(role({ systemRole: "admin" }))).toContain("menos transferir");
