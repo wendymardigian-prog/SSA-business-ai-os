@@ -59,6 +59,7 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "dashboards.chat.view", module: "dashboards", label: "Ver el dashboard de chat", description: "Cuanto se responde, que tan rapido y quien." },
   { key: "dashboards.content.view", module: "dashboards", label: "Ver el dashboard de contenido", description: "Seguidores, alcance y engagement de lo que se publica." },
   { key: "dashboards.ads.view", module: "dashboards", label: "Ver el dashboard de anuncios", description: "Gasto, clics y leads de Meta Ads. Incluye los montos." },
+  { key: "dashboards.agenda.view", module: "dashboards", label: "Ver el dashboard de agenda", description: "Reuniones agendadas, quien las pide y de donde vienen. Se ven solo las que el alcance de agenda permite." },
 
   // ── Social ──────────────────────────────────────────────────────────────
   { key: "social.view", module: "social", label: "Ver la pagina Social", description: "El perfil de cada red y sus publicaciones." },

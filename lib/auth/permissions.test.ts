@@ -101,7 +101,7 @@ describe("el Member es exactamente el de hoy (F68)", () => {
 
   it("ve el dashboard de chat y ninguno de los otros dos", () => {
     expect(can(member, "dashboards.chat.view")).toBe(true);
-    expect(canAny(member, ["dashboards.content.view", "dashboards.ads.view"])).toBe(false);
+    expect(canAny(member, ["dashboards.content.view", "dashboards.ads.view", "dashboards.agenda.view"])).toBe(false);
   });
 
   it("en contenido crea lo suyo, pero no aprueba ni programa ni usa la IA", () => {

@@ -6,13 +6,19 @@ const nada = () => false;
 const solo = (...keys: string[]) => (p: string) => keys.includes(p);
 
 describe("B3 · que dashboards se ven", () => {
-  it("con todos los permisos se ven los cuatro", () => {
+  it("con todos los permisos se ven los cinco", () => {
     expect(availableDashboards(todo).map((d) => d.key)).toEqual([
       "chat",
       "content",
+      "agenda",
       "ads",
       "unified",
     ]);
+  });
+
+  it("Agenda sale de su propio permiso", () => {
+    expect(availableDashboards(solo("dashboards.agenda.view")).map((d) => d.key)).toEqual(["agenda"]);
+    expect(availableDashboards(solo("dashboards.chat.view")).map((d) => d.key)).not.toContain("agenda");
   });
 
   it("Meta Ads y Unificado aparecen SIEMPRE para quien tiene el permiso", () => {
@@ -59,19 +65,13 @@ describe("cual esta abierto", () => {
 });
 
 describe("lo que todavia no existe", () => {
-  it("Gasto de IA no se puede abrir", () => {
-    expect(availableDashboards(todo).map((d) => d.key)).not.toContain("ai-spend");
+  // El mecanismo de "Proximamente" queda para el proximo dashboard que se anuncie
+  // antes de existir; hoy ninguno esta en ese estado.
+  it("ningun dashboard esta anunciado como Proximamente", () => {
+    expect(comingSoonDashboards(todo)).toEqual([]);
   });
 
-  it("pero se anuncia como Proximamente", () => {
-    expect(comingSoonDashboards(todo).map((d) => d.key)).toEqual(["ai-spend"]);
-  });
-
-  it("sin el permiso de Chat, no se anuncia", () => {
-    expect(comingSoonDashboards(nada)).toEqual([]);
-  });
-
-  it("y no marca el selector aunque comparta la ruta de Chat", () => {
-    expect(activeDashboard("/dashboard/dashboards/chat")?.key).toBe("chat");
+  it("Gasto de IA ya no esta en el selector: los topes viven en Agentes", () => {
+    expect(DASHBOARDS.map((d) => d.key)).not.toContain("ai-spend");
   });
 });

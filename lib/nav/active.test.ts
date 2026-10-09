@@ -69,6 +69,7 @@ describe("activeNavHref: gana el candidato mas largo (N4)", () => {
       "/dashboard/dashboards/ads",
       "/dashboard/dashboards/content",
       "/dashboard/dashboards/unified",
+      "/dashboard/dashboards/agenda",
       "/dashboard/dashboards/ads/campaigns/abc",
     ]) {
       expect(activeNavHref(pathname, NAV_ITEMS), pathname).toBe("/dashboard/dashboards/chat");

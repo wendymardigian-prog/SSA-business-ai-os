@@ -163,6 +163,7 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
 const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/social/page.tsx", "social.view"],
   ["app/(dashboard)/dashboard/dashboards/content/page.tsx", "dashboards.content.view"],
+  ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
 ] as const;
 
 describe("caracterizacion: las paginas que piden un permiso (F78)", () => {

@@ -50,6 +50,13 @@ export const DASHBOARDS: DashboardOption[] = [
     permission: "dashboards.content.view",
   },
   {
+    key: "agenda",
+    label: "Agenda",
+    description: "Reuniones, quién agenda y de dónde viene",
+    href: "/dashboard/dashboards/agenda",
+    permission: "dashboards.agenda.view",
+  },
+  {
     key: "ads",
     // "Meta Ads" y no "Anuncios": es el nombre del producto y es lo que se
     // busca cuando algo no cuadra.
@@ -65,14 +72,6 @@ export const DASHBOARDS: DashboardOption[] = [
     href: "/dashboard/dashboards/unified",
     // El unificado cruza organico y pagado: quien lo ve, ve los montos.
     permission: "dashboards.ads.view",
-  },
-  {
-    key: "ai-spend",
-    label: "Gasto de IA",
-    description: "Costos del agente en el período",
-    href: "/dashboard/dashboards/chat",
-    permission: "dashboards.chat.view",
-    comingSoon: true,
   },
 ];
 
