@@ -2113,6 +2113,8 @@ export interface Database {
           last_error: string | null;
           related_entity_type: string | null;
           related_entity_id: string | null;
+          /** El contacto al que se refiere el email (00135). NULL en los del sistema y en los anteriores. */
+          contact_id: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -2128,6 +2130,7 @@ export interface Database {
           last_error?: string | null;
           related_entity_type?: string | null;
           related_entity_id?: string | null;
+          contact_id?: string | null;
           created_by?: string | null;
           created_at?: string;
         };

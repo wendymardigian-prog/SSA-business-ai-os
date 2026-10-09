@@ -30,7 +30,8 @@ import { TagsEditor } from "@/components/contacts/tags-editor";
 import { QuickTagActions } from "@/components/contacts/quick-tag-actions";
 import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
-import { HistorySection, type HistoryEntry } from "@/components/contacts/history-section";
+import { HistorySection } from "@/components/contacts/history-section";
+import { buildContactHistory } from "@/lib/contacts/history";
 import {
   ContactSequencesSection,
   type ContactEnrollment,
@@ -55,6 +56,10 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
  * chequear el rol aca — lo decide can_see_contact en la base (migracion 00024).
  */
 
+/** Cuantas filas se leen de cada fuente del historial, y cuantas entradas se arman en total. */
+const HISTORY_FETCH = 60;
+const HISTORY_LIMIT = 80;
+
 export default async function ContactDetailPage({
   params,
 }: {
@@ -76,6 +81,8 @@ export default async function ContactDetailPage({
     activeSequencesRes,
     bookingsRes,
     touchesRes,
+    flowEventsRes,
+    emailLogRes,
   ] = await Promise.all([
       supabase
         .from("contacts")
@@ -111,7 +118,7 @@ export default async function ContactDetailPage({
         .eq("entity_type", "contact")
         .eq("entity_id", contactId)
         .order("performed_at", { ascending: false })
-        .limit(20),
+        .limit(HISTORY_FETCH),
       // Todas las secuencias por las que paso, no solo las que corren: saber
       // que ya recibio una bienvenida cambia lo que se le escribe hoy.
       supabase
@@ -146,6 +153,25 @@ export default async function ContactDetailPage({
         .eq("workspace_id", workspace.id)
         .order("occurred_at", { ascending: true })
         .limit(100),
+      // El historial junta todo lo automatico (migracion 00135 para los emails):
+      // las automatizaciones que corrieron sobre este contacto...
+      supabase
+        .from("analytics_events")
+        .select("id, event_type, flow_id, created_at")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .in("event_type", ["flow_started", "flow_completed"])
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_FETCH),
+      // ...y los emails automaticos que salieron para el. La RLS de email_log
+      // (por contacto) hace que cada persona vea solo los de los leads que puede ver.
+      supabase
+        .from("email_log")
+        .select("id, to_email, subject, status, related_entity_type, related_entity_id, created_at")
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("created_at", { ascending: false })
+        .limit(HISTORY_FETCH),
     ]);
 
   const contact = contactRes.data;
@@ -190,14 +216,6 @@ export default async function ContactDetailPage({
     (fieldValuesRes.data ?? []).map((v) => [v.field_id, v.value]),
   );
 
-  const history: HistoryEntry[] = (auditRes.data ?? []).map((a) => ({
-    id: a.id,
-    action: a.action as AuditAction,
-    changes: a.changes as Json | null,
-    metadata: a.metadata as Json | null,
-    performedAt: a.performed_at,
-    actorLabel: a.performed_by ? (labels.get(a.performed_by) ?? "Alguien del equipo") : "El sistema",
-  }));
 
   const suggestions = await loadSuggestions(supabase, workspace.id, contact.metadata);
 
@@ -225,6 +243,43 @@ export default async function ContactDetailPage({
       enrolledAt: e.enrolled_at,
       completedAt: e.completed_at,
     };
+  });
+
+  // Los nombres de las automatizaciones que aparecen en el historial (las del
+  // audit, las del motor y las de los emails).
+  const flowIds = new Set<string>();
+  for (const e of flowEventsRes.data ?? []) if (e.flow_id) flowIds.add(e.flow_id);
+  for (const a of auditRes.data ?? []) {
+    const meta = a.metadata as Record<string, unknown> | null;
+    if (a.action === "automation_triggered" && typeof meta?.flow_id === "string") flowIds.add(meta.flow_id);
+  }
+  for (const m of emailLogRes.data ?? []) if (m.related_entity_type === "flow" && m.related_entity_id) flowIds.add(m.related_entity_id);
+  const { data: flowRows } = flowIds.size
+    ? await supabase.from("flows").select("id, name").eq("workspace_id", workspace.id).in("id", [...flowIds])
+    : { data: [] as Array<{ id: string; name: string }> };
+
+  const history = buildContactHistory({
+    audit: (auditRes.data ?? []).map((a) => ({
+      id: a.id,
+      action: a.action as AuditAction,
+      changes: a.changes as Json | null,
+      metadata: a.metadata as Json | null,
+      performedAt: a.performed_at,
+      actorLabel: a.performed_by ? (labels.get(a.performed_by) ?? "Alguien del equipo") : "El sistema",
+    })),
+    flowEvents: (flowEventsRes.data ?? []).map((e) => ({ id: e.id, eventType: e.event_type, flowId: e.flow_id, createdAt: e.created_at })),
+    enrollments: enrollments.map((e) => ({ id: e.id, sequenceName: e.sequenceName, enrolledAt: e.enrolledAt, completedAt: e.completedAt })),
+    emails: (emailLogRes.data ?? []).map((m) => ({
+      id: m.id,
+      toEmail: m.to_email,
+      subject: m.subject,
+      status: m.status,
+      relatedEntityType: m.related_entity_type,
+      relatedEntityId: m.related_entity_id,
+      createdAt: m.created_at,
+    })),
+    flowNames: new Map((flowRows ?? []).map((f) => [f.id, f.name])),
+    limit: HISTORY_LIMIT,
   });
 
   // Solo se puede inscribir por un canal donde ya haya una conversacion: sin
@@ -384,7 +439,7 @@ export default async function ContactDetailPage({
 
             <AttributionSection view={attributionView} />
 
-            <HistorySection entries={history} />
+            <HistorySection items={history} />
           </div>
 
           {/* Barra lateral */}

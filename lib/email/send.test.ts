@@ -231,3 +231,31 @@ describe("la API key nunca se filtra", () => {
     expect(errors.join(" ")).not.toContain(KEY);
   });
 });
+
+describe("sendTransactionalEmail: el contacto del email (00135)", () => {
+  const CONTACT = "22222222-2222-2222-2222-222222222222";
+
+  it("con contactId, el registro lo lleva: asi el email aparece en el historial del contacto", async () => {
+    const { client, logged } = fakeClient({ integration: null });
+    await sendTransactionalEmail({ ...baseParams(client), kind: "flow", contactId: CONTACT });
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ contact_id: CONTACT, kind: "flow" });
+  });
+
+  it("tambien cuando el envio sale bien", async () => {
+    const { client, logged } = fakeClient({ integration: CONNECTED, secret: KEY });
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { id: "msg-1" })) as unknown as typeof fetch;
+    const res = await sendTransactionalEmail({ ...baseParams(client, fetchImpl), kind: "flow", contactId: CONTACT });
+
+    expect(res.ok).toBe(true);
+    expect(logged[0]).toMatchObject({ status: "sent", contact_id: CONTACT });
+  });
+
+  it("los emails del sistema (invitaciones, avisos) no son de ningun contacto: contact_id queda en null", async () => {
+    const { client, logged } = fakeClient({ integration: null });
+    await sendTransactionalEmail(baseParams(client));
+
+    expect(logged[0]).toMatchObject({ contact_id: null });
+  });
+});

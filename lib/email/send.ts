@@ -34,6 +34,12 @@ export interface SendEmailParams {
   kind: EmailKind;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /**
+   * El contacto al que se refiere el email (00135): el que lo recibe, o sobre
+   * quien trata un aviso al equipo. Es lo que lo hace aparecer en el historial
+   * de su ficha. Omitido en los emails del sistema (invitaciones, avisos de canal).
+   */
+  contactId?: string | null;
   /** Quien lo disparo. Null/omitido = el sistema. */
   createdBy?: string | null;
   /** Inyeccion para tests. En produccion no se pasa. */
@@ -83,6 +89,7 @@ async function logEmail(
     last_error: row.last_error ?? null,
     related_entity_type: params.relatedEntityType ?? null,
     related_entity_id: params.relatedEntityId ?? null,
+    contact_id: params.contactId ?? null,
     created_by: params.createdBy ?? null,
   });
 

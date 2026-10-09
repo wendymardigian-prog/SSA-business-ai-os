@@ -1410,6 +1410,55 @@ try {
         "y acepta las validas"); }
   }
 
+  console.log("\n— Historial del contacto: emails automaticos por contacto (00135) —");
+  { // Antes email_log solo la leian Owner y Admin. Ahora un Member ve los emails
+    // de los leads que PUEDE ver (el mismo scope de siempre), y de ningun otro.
+    await setFlags(ws.id, { lead_scope_enabled: true, unassigned_leads_visible_to_members: false });
+    const { data: cMio } = await svc.from("contacts")
+      .insert({ workspace_id: ws.id, display_name: "zz-test email mio", setter_id: member.id }).select("id").single();
+    const { data: cAjeno } = await svc.from("contacts")
+      .insert({ workspace_id: ws.id, display_name: "zz-test email ajeno" }).select("id").single();
+    const row = (contactId, subject) => ({
+      workspace_id: ws.id, to_email: "zz-test@example.test", subject, kind: "flow",
+      status: "sent", contact_id: contactId,
+    });
+    await svc.from("email_log").insert([
+      row(cMio.id, "zz-test-email-del-lead-mio"),
+      row(cAjeno.id, "zz-test-email-del-lead-ajeno"),
+      row(null, "zz-test-email-del-sistema"),
+    ]);
+    const subjects = async (c) => {
+      const { data } = await c.client.from("email_log").select("subject").like("subject", "zz-test-email-%");
+      return new Set((data ?? []).map((r) => r.subject));
+    };
+
+    const delAdmin = await subjects(admin);
+    check(delAdmin.size === 3, "el Admin sigue viendo todos los emails (la policy de siempre)");
+    const delMember = await subjects(member);
+    check(delMember.has("zz-test-email-del-lead-mio"), "el Member ve los emails de SU lead (aparecen en su historial)");
+    check(!delMember.has("zz-test-email-del-lead-ajeno"), "el Member NO ve los emails de un lead que no puede ver");
+    check(!delMember.has("zz-test-email-del-sistema"), "ni los emails del sistema, que no son de ningun contacto");
+
+    // Otro workspace: nada, ni siquiera los de contactos que sabe que existen.
+    const otro = await makeUser("otro-email-log");
+    const { data: wsOtroLog } = await svc.from("workspaces")
+      .insert({ name: "zz-test-emaillog-ws", slug: `zz-test-emaillog-${Date.now()}` }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: wsOtroLog.id, user_id: otro.id, role: "owner" });
+    check((await subjects(otro)).size === 0, "otro workspace NO ve ningun email de este");
+
+    // Nadie escribe con su sesion: el envio siempre pasa por el servidor.
+    check(!!(await member.client.from("email_log").insert(row(cMio.id, "zz-test-email-colado"))).error,
+      "un Member NO puede inventar un registro de email");
+    check(!!(await admin.client.from("email_log").insert(row(cMio.id, "zz-test-email-colado-admin"))).error,
+      "ni un Admin: sin policy de INSERT");
+
+    // El registro sobrevive al contacto (que se purga a los 30 dias).
+    await svc.from("contacts").delete().eq("id", cAjeno.id);
+    { const { data: queda } = await svc.from("email_log").select("contact_id").eq("subject", "zz-test-email-del-lead-ajeno");
+      check((queda ?? []).length === 1 && queda[0].contact_id === null,
+        "borrar el contacto NO borra el registro del email: queda sin contacto"); }
+  }
+
   console.log("\n— Aislamiento entre workspaces —");
   { // el usuario de prueba tambien tiene el workspace propio que le crea el
     // trigger on_auth_user_created, asi que lo correcto es que vea exactamente

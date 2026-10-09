@@ -97,6 +97,9 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     kind: "flow",
     relatedEntityType: "flow",
     relatedEntityId: context.flowId,
+    // Para que el email aparezca en el historial del contacto (00135), vaya a
+    // quien vaya: el contacto, el anfitrion o una direccion fija.
+    contactId: context.contactId,
     deps: { supabase },
   });
 }
