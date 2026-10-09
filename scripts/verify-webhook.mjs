@@ -405,7 +405,7 @@ try {
     // guardaba y la unica fuente era Zernio. Desde el dual-write SI se
     // guarda —el agente lee el historial de la base y los dashboards se
     // arman sobre la tabla local— y la bandeja sigue pidiendole el hilo a
-    // Zernio. Se apaga con `workspaces.persist_zernio_inbound`.
+    // Zernio. Se guarda siempre.
     const msgs = await waitFor(
       async () => {
         const { data } = await svc.from("messages").select("id").eq("conversation_id", conv.id);

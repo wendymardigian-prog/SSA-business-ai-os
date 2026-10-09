@@ -54,7 +54,7 @@ export function turnWorld(
           id: "ws-1",
           ai_daily_cost_limit_usd: null,
           ai_monthly_cost_limit_usd: null,
-          // La compuerta de interpretabilidad arranca prendida (F10).
+          // Solo la leen los flows y las secuencias (el agente de chat usa su guardarrail).
           agent_escalate_on_unreadable: true,
           ...opts.workspace,
         },

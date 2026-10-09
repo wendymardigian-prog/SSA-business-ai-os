@@ -23,7 +23,6 @@ export default async function SettingsPage() {
         unassignedVisibleToMembers: Boolean(
           workspace.unassigned_leads_visible_to_members,
         ),
-        persistZernioInbound: Boolean(workspace.persist_zernio_inbound),
         persistChatMedia: workspace.persist_chat_media ?? true,
         chatMediaRetentionDays: workspace.chat_media_retention_days ?? 180,
         timezone: (workspace as { timezone?: string }).timezone ?? "UTC",
@@ -35,7 +34,6 @@ export default async function SettingsPage() {
           workspace.ai_monthly_cost_limit_usd === null || workspace.ai_monthly_cost_limit_usd === undefined
             ? null
             : Number(workspace.ai_monthly_cost_limit_usd),
-        escalateOnUnreadable: workspace.agent_escalate_on_unreadable ?? true,
       }}
       canViewAiCosts={canViewAiCosts}
     />

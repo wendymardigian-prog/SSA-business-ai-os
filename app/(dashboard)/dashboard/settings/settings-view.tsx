@@ -4,12 +4,10 @@ import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { LeadScopeSettings } from "@/components/settings/lead-scope-settings";
-import { MessagePersistenceSettings } from "@/components/settings/message-persistence-settings";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
 import { AiLimitsSettings } from "@/components/settings/ai-limits-settings";
-import { EscalationSettings } from "@/components/settings/escalation-settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
@@ -23,13 +21,11 @@ interface WorkspaceSettings {
   optOutPhrases: string[];
   leadScopeEnabled: boolean;
   unassignedVisibleToMembers: boolean;
-  persistZernioInbound: boolean;
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
   aiDailyLimitUsd: number | null;
   aiMonthlyLimitUsd: number | null;
-  escalateOnUnreadable: boolean;
 }
 
 /**
@@ -179,10 +175,6 @@ export function SettingsView({
 
               <hr className="border-border" />
 
-              <MessagePersistenceSettings enabled={workspace.persistZernioInbound} />
-
-              <hr className="border-border" />
-
               {/* Frases de "no contactar" (F18). Se guardan aparte del resto: son
                   las unicas que cambian como reacciona el sistema a un mensaje
                   entrante, y por eso llevan su propio registro en el audit log. */}
@@ -270,10 +262,6 @@ export function SettingsView({
                 dailyUsd={workspace.aiDailyLimitUsd}
                 monthlyUsd={workspace.aiMonthlyLimitUsd}
               />
-
-              <hr className="border-border" />
-
-              <EscalationSettings enabled={workspace.escalateOnUnreadable} />
 
               {canViewAiCosts && <hr className="border-border" />}
               <AiRunsLink canView={canViewAiCosts} />

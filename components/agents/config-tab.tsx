@@ -350,6 +350,12 @@ function GuardrailsSection({ form, set }: SectionProps) {
             {(id) => <textarea id={id} rows={3} value={g.escalation.frustrationPhrases.join("\n")} onChange={(e) => patch({ escalation: { ...g.escalation, frustrationPhrases: linesToList(e.target.value) } })} className={`${inputClass} text-xs`} />}
           </Field>
         )}
+        <Checkbox
+          checked={g.escalation.onUnreadable}
+          onChange={(onUnreadable) => patch({ escalation: { ...g.escalation, onUnreadable } })}
+          label="Derivar si no entiende un audio o una imagen"
+          description="Si no puede interpretar un mensaje (por ejemplo, una nota de voz que todavía no se transcribió), avisa a una persona y se apaga para esa conversación en vez de contestar a ciegas. Apagarlo hace que siga de largo con lo que sí pudo interpretar."
+        />
         <Checkbox checked={g.escalation.urgency} onChange={(urgency) => patch({ escalation: { ...g.escalation, urgency } })} label="Derivar si detecta urgencia" />
         {g.escalation.urgency && (
           <Field label="Señales de urgencia (una por línea)">

@@ -301,9 +301,9 @@ describe("mientras la transcripcion esta en camino, el turno espera (F10)", () =
   });
 });
 
-describe("el interruptor de la compuerta (F10)", () => {
-  it("apagado, el agente vuelve a responder a ciegas (que es el problema, pero es la decision de quien lo apaga)", async () => {
-    const w = turnWorld({ workspace: { agent_escalate_on_unreadable: false } });
+describe("el interruptor de la compuerta (F10): ahora es del agente", () => {
+  it("apagado en el agente, vuelve a responder a ciegas (que es el problema, pero es la decision de quien lo apaga)", async () => {
+    const w = turnWorld({ agent: { guardrails: { escalation: { onUnreadable: false } } } });
     w.addInbound(null, 0, voice());
     w.clock.ms = T0 + 75_000;
 
@@ -313,8 +313,32 @@ describe("el interruptor de la compuerta (F10)", () => {
     expect(conversation(w).needs_human).toBe(false);
   });
 
-  it("ante la duda esta PRENDIDO: si no se puede leer el flag, se escala igual", async () => {
-    const w = turnWorld({ workspace: { agent_escalate_on_unreadable: null } });
+  it("prendido por defecto: un agente que nunca guardo la opcion escala", async () => {
+    const w = turnWorld();
+    w.addInbound(null, 0, voice());
+    w.clock.ms = T0 + 75_000;
+
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(w.modelCalls).toHaveLength(0);
+    expect(conversation(w).needs_human).toBe(true);
+  });
+
+  it("la columna vieja del workspace ya no manda sobre el agente de chat", async () => {
+    // Antes `workspaces.agent_escalate_on_unreadable = false` apagaba la
+    // compuerta. Ahora la columna solo la leen los flows y las secuencias.
+    const w = turnWorld({ workspace: { agent_escalate_on_unreadable: false } });
+    w.addInbound(null, 0, voice());
+    w.clock.ms = T0 + 75_000;
+
+    await runAgentTurn(w.db.client, w.payload, w.deps);
+
+    expect(w.modelCalls).toHaveLength(0);
+    expect(conversation(w).needs_human).toBe(true);
+  });
+
+  it("ante la duda esta PRENDIDO: un guardarrail ilegible en la base no apaga la compuerta", async () => {
+    const w = turnWorld({ agent: { guardrails: { escalation: { onUnreadable: "quizas" } } } });
     w.addInbound(null, 0, voice());
     w.clock.ms = T0 + 75_000;
 

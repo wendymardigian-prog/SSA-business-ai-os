@@ -11,13 +11,10 @@
  * inyectar mensajes falsos en la bandeja.
  *
  * Desde la Fase 3 los mensajes de todos los canales se guardan en la tabla
- * local. Lo que sigue distinguiendo a WhatsApp es de donde se LEE: Evolution no
- * tiene una API donde vivan los mensajes, asi que nuestra base es la fuente de
- * verdad del hilo (en Instagram la bandeja se lo sigue pidiendo a Zernio).
- *
- * Por eso mismo el guardado de WhatsApp no pasa por el interruptor
- * persist_zernio_inbound: apagarlo aca no seria "no guardar", seria vaciar la
- * bandeja.
+ * local, siempre (ya no hay interruptor). Lo que sigue distinguiendo a WhatsApp
+ * es de donde se LEE: Evolution no tiene una API donde vivan los mensajes, asi
+ * que nuestra base es la fuente de verdad del hilo (en Instagram la bandeja se
+ * lo sigue pidiendo a Zernio).
  */
 
 import { NextRequest, NextResponse } from "next/server";

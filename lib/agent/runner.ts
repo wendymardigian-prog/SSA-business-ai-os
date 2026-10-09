@@ -448,6 +448,7 @@ async function continueTurn(
   // `m.text ?? ""`, asi que una rafaga que es solo un audio les llega como texto
   // vacio y ninguno la frena.
   const gate = await checkInterpretability(supabase, {
+    agent,
     conversation,
     burst,
     now: deps.now(),
@@ -1219,24 +1220,23 @@ export const MEDIA_RETRY_SECONDS = 20;
 /**
  * La compuerta, con su interruptor.
  *
- * El flag `agent_escalate_on_unreadable` arranca PRENDIDO: es el arreglo, no una
- * opcion. Apagado, el agente vuelve a responder a ciegas, que es exactamente el
- * problema; existe igual porque los primeros dias puede generar mas escalado del
- * que el equipo puede atender, y apagarlo tiene que poder hacerse sin un deploy.
+ * El interruptor es `guardrails.escalation.onUnreadable` del AGENTE (pestana
+ * Configuracion). Arranca PRENDIDO: es el arreglo, no una opcion. Apagado, el
+ * agente vuelve a responder a ciegas, que es exactamente el problema; existe
+ * igual porque los primeros dias puede generar mas escalado del que el equipo
+ * puede atender, y apagarlo tiene que poder hacerse sin un deploy.
+ *
+ * Antes era `workspaces.agent_escalate_on_unreadable`, en Ajustes generales. Es
+ * del agente de chat, asi que se movio a su configuracion; la columna del
+ * workspace queda solo para los flows y las secuencias (que no tienen agente).
  */
 async function checkInterpretability(
   supabase: Db,
-  args: { conversation: TurnConversation; burst: StoredMessage[]; now: Date; payload: AgentBurstPayload },
+  args: { agent: AgentConfig; conversation: TurnConversation; burst: StoredMessage[]; now: Date; payload: AgentBurstPayload },
 ): Promise<{ action: "continue" } | { action: "wait" } | { action: "escalate"; reason: string }> {
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("agent_escalate_on_unreadable")
-    .eq("id", args.conversation.workspace_id)
-    .maybeSingle();
-
-  // Ante la duda de si esta prendido, se asume que SI: es el comportamiento
-  // correcto, y el que quiera apagarlo lo apaga a mano.
-  if (workspace?.agent_escalate_on_unreadable === false) return { action: "continue" };
+  // `onUnreadable` tiene default `true` en el schema: un agente que nunca lo
+  // guardo (o con un JSON ilegible) escala, que es lo correcto ante la duda.
+  if (args.agent.guardrails.escalation.onUnreadable === false) return { action: "continue" };
 
   // FA4: un mensaje con transcript_status='failed' puede ser un fallo
   // DEFINITIVO (sin clave, audio invalido) o uno TRANSITORIO (un 429 del proveedor)

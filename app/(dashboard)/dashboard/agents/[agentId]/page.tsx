@@ -274,7 +274,6 @@ export default async function AgentDetailPage({
       status: d.status,
     })),
     flowsCapturingAll: [...flowsCapturingAll].map(([id, name]) => ({ id, name })),
-    persistZernioInbound: workspace.persist_zernio_inbound !== false,
   };
 
   return <AgentDetailView data={data} typeDef={typeDef} tab={tab} />;

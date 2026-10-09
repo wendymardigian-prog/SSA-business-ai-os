@@ -44,7 +44,7 @@ export type AgentDispatchOutcome =
   | { scheduled: true; jobId: string; runAt: string; created: boolean }
   | {
       scheduled: false;
-      reason: AgentAvailability["state"] | "automation_claimed" | "not_enabled_here" | "message_persistence_off" | "error";
+      reason: AgentAvailability["state"] | "automation_claimed" | "not_enabled_here" | "error";
       runId?: string | null;
     };
 
@@ -106,25 +106,6 @@ export async function maybeScheduleAgentTurn(
         statusDetail: args.automation.by,
       });
       return { scheduled: false, reason: "automation_claimed", runId };
-    }
-
-    // El turno lee la rafaga de messages. Si el guardado de entrantes de Zernio
-    // esta apagado (Ajustes, 00053), no hay nada que leer y el agente quedaria
-    // mudo sin explicacion: se deja el motivo escrito en vez de agendar.
-    const { data: channelRow } = await supabase
-      .from("channels")
-      .select("provider, workspaces(persist_zernio_inbound)")
-      .eq("id", args.channelId)
-      .maybeSingle();
-    const ws = channelRow?.workspaces as { persist_zernio_inbound: boolean } | { persist_zernio_inbound: boolean }[] | null | undefined;
-    const persist = Array.isArray(ws) ? ws[0]?.persist_zernio_inbound : ws?.persist_zernio_inbound;
-    if (channelRow?.provider === "zernio" && persist === false) {
-      const runId = await recordRunOutcome(supabase, {
-        ...runBase,
-        status: "skipped",
-        statusDetail: "message_persistence_off",
-      });
-      return { scheduled: false, reason: "message_persistence_off", runId };
     }
 
     const agent = state.agent;

@@ -220,10 +220,8 @@ describe("persistInboundMessage", () => {
     createdAt: "2026-09-11T10:00:00Z",
   };
 
-  it("guarda el entrante de Zernio cuando el interruptor esta prendido", async () => {
-    const { client, calls } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: true } },
-    });
+  it("guarda el entrante de Zernio, siempre", async () => {
+    const { client, calls } = fakeDb({});
 
     await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: true });
     expect(calls.inserts).toHaveLength(1);
@@ -235,19 +233,20 @@ describe("persistInboundMessage", () => {
     });
   });
 
-  it("con el interruptor apagado no guarda nada: el sistema queda como antes", async () => {
-    const { client, calls } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: false } },
-    });
+  it("ya no hay interruptor: ni siquiera lee la configuracion del workspace", async () => {
+    // Antes se leia `workspaces.persist_zernio_inbound` en cada mensaje. La
+    // columna sigue en la base, pero guardar ya no depende de ella: aunque diga
+    // false, el entrante se guarda. Si alguien vuelve a leerla, esto se pone rojo.
+    const { client, calls } = fakeDb({ select: { workspaces: { persist_zernio_inbound: false } } });
+    const from = vi.spyOn(client, "from");
 
-    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
-    expect(calls.inserts).toHaveLength(0);
+    await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: true });
+    expect(calls.inserts).toHaveLength(1);
+    expect(from.mock.calls.map(([table]) => table)).not.toContain("workspaces");
   });
 
-  it("WhatsApp no depende del interruptor: esta tabla es su unica fuente del hilo", async () => {
-    const { client, calls } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: false } },
-    });
+  it("WhatsApp se guarda igual que Instagram: esta tabla es la fuente del hilo", async () => {
+    const { client, calls } = fakeDb({});
 
     await expect(
       persistInboundMessage({ supabase: client, channel: evolution, ...base }),
@@ -257,7 +256,6 @@ describe("persistInboundMessage", () => {
 
   it("un duplicado no es un error: lo frena el indice unico y el receptor sigue", async () => {
     const { client } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: true } },
       insertError: { code: "23505", message: "duplicate key" },
     });
 
@@ -267,14 +265,13 @@ describe("persistInboundMessage", () => {
   it("si el insert falla, no lanza: guardar no puede tumbar la recepcion", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { client } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: true } },
       insertError: { code: "42501", message: "permission denied" },
     });
 
     await expect(persistInboundMessage({ supabase: client, channel: zernio, ...base })).resolves.toMatchObject({ stored: false });
   });
 
-  it("si la base explota al leer el interruptor tampoco lanza", async () => {
+  it("si la base explota, tampoco lanza: guardar no puede tumbar la recepcion", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const client = {
       from() {
@@ -286,9 +283,7 @@ describe("persistInboundMessage", () => {
   });
 
   it("guarda los dos ids: el de Zernio deduplica, el nativo es el handle contra Meta", async () => {
-    const { client, calls } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: true } },
-    });
+    const { client, calls } = fakeDb({});
 
     await persistInboundMessage({
       supabase: client,
@@ -304,9 +299,7 @@ describe("persistInboundMessage", () => {
   });
 
   it("guarda el link de la media, no el archivo", async () => {
-    const { client, calls } = fakeDb({
-      select: { workspaces: { persist_zernio_inbound: true } },
-    });
+    const { client, calls } = fakeDb({});
     const attachments = [{ type: "image", url: "https://cdn.example/foto.jpg" }];
 
     await persistInboundMessage({ supabase: client, channel: zernio, ...base, attachments });
