@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { BarChart2, Activity } from "lucide-react";
+import { BarChart2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
-import { DailyEvolutionChart } from "./ads/charts-lazy";
+import { EvolutionCard } from "./ads/evolution-card";
+import { buildKpiItems } from "./ads/kpi-items";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
 import { AudienceCard } from "./ads/audience-card";
 import { ComparisonCards } from "./ads/comparison-cards";
@@ -15,23 +15,11 @@ import { DailyTableCard } from "./ads/daily-table";
 import { HierarchyCard, type UniqueReach } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, VideoCard, type Live } from "./ads/insight-cards";
 import type { BreakdownRow } from "@/lib/meta/live";
-import { KpiRow, type KpiItem } from "./ads/kpi-row";
-import { LEFT_OPTIONS, METRIC_LABELS, RIGHT_OPTIONS, type ChartMetric } from "./ads/formatters";
+import { KpiRow } from "./ads/kpi-row";
+import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { AdsAiPanel } from "./ads-ai-panel";
 import type { PeriodPreset } from "@/lib/dashboards/period";
-import {
-  computeTotals,
-  count,
-  ctrTone,
-  dailySeries,
-  groupByObject,
-  leadsTone,
-  money,
-  percent,
-  statusLabel,
-  type AdsRow,
-} from "@/lib/dashboards/ads";
-import { kpiDelta } from "@/lib/dashboards/ads-view";
+import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
 
 /**
  * El dashboard de Meta Ads: la réplica del panel de Ads de wendymardigian.
@@ -66,19 +54,12 @@ export interface AdsDashboardProps {
   dashboards: DashboardOption[];
 }
 
-const CARD = "rounded-xl border border-border bg-card p-3";
 const SECTION_LABEL = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
 
 export function AdsDashboard(props: AdsDashboardProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { pending, navigate, refresh } = useAdsNavigation();
 
   const [aiOpen, setAiOpen] = useState(false);
-  const [leftMetric, setLeftMetric] = useState<ChartMetric>("spend");
-  const [rightMetric, setRightMetric] = useState<ChartMetric>("ctr");
-
   const accountRows = useMemo(() => props.rows.filter((r) => r.level === "account"), [props.rows]);
 
   const totals = useMemo(
@@ -95,25 +76,6 @@ export function AdsDashboard(props: AdsDashboardProps) {
     [props.previousRows, props.previousUniqueReach],
   );
 
-
-  const chartData = useMemo(() => {
-    const left = new Map(dailySeries(accountRows, leftMetric).map((p) => [p.bucket, p.value]));
-    const right = new Map(dailySeries(accountRows, rightMetric).map((p) => [p.bucket, p.value]));
-    return [...new Set([...left.keys(), ...right.keys()])]
-      .sort()
-      .map((bucket) => ({ date: bucket.slice(5), left: left.get(bucket) ?? null, right: right.get(bucket) ?? null }));
-  }, [accountRows, leftMetric, rightMetric]);
-
-  /** Cambiar la cuenta o el periodo viaja en la URL, como siempre. */
-  function navigate(params: { cuenta?: string; periodo?: string }) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(params)) if (value) next.set(key, value);
-    startTransition(() => router.push(`${pathname}?${next.toString()}`));
-  }
-
-  function refresh() {
-    startTransition(() => router.refresh());
-  }
 
   if (props.accounts.length === 0) {
     return (
@@ -143,18 +105,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
     );
   }
 
-  const money$ = (value: number | null) => money(value, props.currency, { narrow: true });
-
-  const kpis: KpiItem[] = [
-    { key: "spend", label: "Gasto total", value: money$(totals.spend), sub: "presupuesto usado", delta: kpiDelta(totals.spend, previousTotals.spend) },
-    { key: "impressions", label: "Impresiones", value: count(totals.impressions), sub: "total de vistas", delta: kpiDelta(totals.impressions, previousTotals.impressions) },
-    { key: "reach", label: "Alcance", value: count(totals.reach), sub: "cuentas únicas", delta: kpiDelta(totals.reach, previousTotals.reach) },
-    { key: "frequency", label: "Frecuencia", value: totals.frequency?.toFixed(2) ?? "—", sub: "imp / persona", delta: null },
-    { key: "clicks", label: "Clics", value: count(totals.clicks), sub: `CTR: ${percent(totals.ctr)}`, delta: kpiDelta(totals.clicks, previousTotals.clicks) },
-    { key: "cpm", label: "CPM", value: money$(totals.cpm), sub: "por mil impr.", delta: kpiDelta(totals.cpm, previousTotals.cpm, { invert: true }) },
-    { key: "cpc", label: "CPC", value: money$(totals.cpc), sub: "por clic", delta: kpiDelta(totals.cpc, previousTotals.cpc, { invert: true }) },
-    { key: "leads", label: "Leads", value: count(totals.leads), sub: `CPL: ${money$(totals.cpl)}`, delta: kpiDelta(totals.leads, previousTotals.leads) },
-  ];
+  const kpis = buildKpiItems({ totals, previous: previousTotals, currency: props.currency });
 
   return (
     <div className="flex h-full flex-col">
@@ -201,59 +152,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
           <KpiRow items={kpis} />
         </section>
 
-        <section className={`${CARD} space-y-3`} aria-label="Evolución diaria">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <Activity className="h-4 w-4 text-primary" aria-hidden /> Evolución diaria
-            </h3>
-            <div className="flex flex-wrap items-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5">
-                <span className="inline-block h-3 w-3 rounded-sm bg-primary" aria-hidden />
-                <span className="text-muted-foreground">Eje izq:</span>
-                <select
-                  value={leftMetric}
-                  onChange={(e) => setLeftMetric(e.target.value as ChartMetric)}
-                  className="cursor-pointer rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-foreground"
-                >
-                  {LEFT_OPTIONS.map((key) => (
-                    <option key={key} value={key}>
-                      {METRIC_LABELS[key]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-1.5">
-                <span className="inline-block h-0.5 w-5 rounded bg-[#ec4899]" aria-hidden />
-                <span className="text-muted-foreground">Eje der:</span>
-                <select
-                  value={rightMetric}
-                  onChange={(e) => setRightMetric(e.target.value as ChartMetric)}
-                  className="cursor-pointer rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-foreground"
-                >
-                  {RIGHT_OPTIONS.map((key) => (
-                    <option key={key} value={key}>
-                      {METRIC_LABELS[key]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-          <div className="h-72">
-            {chartData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Sin datos para el período seleccionado
-              </div>
-            ) : (
-              <DailyEvolutionChart
-                data={chartData}
-                leftMetric={leftMetric}
-                rightMetric={rightMetric}
-                currency={props.currency}
-              />
-            )}
-          </div>
-        </section>
+        <EvolutionCard rows={accountRows} currency={props.currency} />
 
         <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.reach.ad} />
 

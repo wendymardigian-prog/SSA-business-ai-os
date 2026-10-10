@@ -68,6 +68,21 @@ export function HeaderFilters({
   );
 }
 
+export function RefreshButton({ refreshing, onRefresh }: { refreshing: boolean; onRefresh: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={refreshing}
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent disabled:opacity-60"
+    >
+      <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+      <span className="hidden sm:inline">Actualizar</span>
+      <span className="sr-only sm:hidden">Actualizar</span>
+    </button>
+  );
+}
+
 export function HeaderActions({
   refreshing,
   onRefresh,
@@ -83,16 +98,7 @@ export function HeaderActions({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors hover:bg-accent disabled:opacity-60"
-      >
-        <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
-        <span className="hidden sm:inline">Actualizar</span>
-        <span className="sr-only sm:hidden">Actualizar</span>
-      </button>
+      <RefreshButton refreshing={refreshing} onRefresh={onRefresh} />
 
       <Tip content="Analizar con IA" side="bottom">
         <button type="button" onClick={onOpenAi} aria-label="Analizar con IA" className={ICON_BUTTON}>
