@@ -1003,3 +1003,39 @@ llegue Ventas (Etapa 4, snapshot de precio por venta) conviene renombrarla a
 - 6 entradas de `audit_log` en el contacto Andrew Kroeze: se edito el pais a
   `zz-test-pais` y se restauro a vacio.
 - Los topes de IA del workspace se tocaron y se restauraron a sin tope.
+
+## Aislamiento entre workspaces (10/10/2026, rama `fix/aislamiento-workspaces`)
+
+Revision de si un workspace puede ver o usar las integraciones de otro. La
+boveda y `integration_configs` estan aisladas de verdad (lo prueba
+`scripts/verify-workspace-isolation.mjs`). Se arreglo: Evolution ya no manda la
+clave del entorno a una direccion cargada desde la pantalla, conectar y borrar
+canales exige admin, y se saco "Crear workspace" (fallaba siempre: no hay policy
+de INSERT en `workspaces`, y el modelo es una copia por cliente).
+
+Queda pendiente, a proposito:
+- **Un Admin lee en texto plano todas las claves de SU workspace** llamando a
+  `read_secret` directo desde el navegador (la RPC esta concedida a
+  `authenticated` y solo pide owner/admin). Incluye los tokens de Google
+  Calendar de OTRAS personas (`oauth_google_calendar_<connectionId>_*`), lo que
+  contradice la regla de `lib/actions/scheduling/calendars.ts`. Cerrarlo es
+  mover las lecturas a service role y sacarle el GRANT a `authenticated`: hay
+  que revisar cada llamada con el cliente del usuario.
+- **Registro publico abierto en el Supabase hospedado.** Cualquiera con la anon
+  key puede crearse una cuenta y el trigger le arma un workspace vacio (no ve
+  nada ajeno). Se apaga desde el panel: Authentication → Sign In / Providers →
+  "Allow new users to sign up". `supabase/config.toml` solo cubre local.
+- **Rutas con su propio `getWorkspace` y `.limit(1)`** (`app/api/v1/{channels,
+  flows, broadcasts, contacts}`) y el respaldo sin ORDER BY de
+  `lib/workspace.ts`: con varios workspaces por usuario actuan sobre "el
+  primero". Solo importa si algun dia hay mas de un workspace por instalacion.
+- `acceptInvite` (cuenta ya existente) no deja la cookie en el workspace de la
+  invitacion; nombres de instancia de Evolution con solo 8 caracteres del id;
+  webhooks que buscan la cuenta o la direccion sin filtrar por workspace (con
+  la misma cuenta en dos workspaces se pierden mensajes, no se cruzan).
+- **Workspace "Paula Diaz's Workspace"** (2/10/2026): la cuenta se creo un
+  minuto despues de la invitacion, sin `invite_id` (por el `/register` publico
+  de antes del white label), asi que el trigger viejo le armo un workspace
+  propio y nunca se sumo al de Wendy. La invitacion vencio el 9/10 sin
+  aceptarse. Desde la 00119 + `registerFromInvite` esto ya no pasa.
+

@@ -2,7 +2,10 @@
 -- 00090: borrar las columnas de secretos viejas
 -- ============================================================
 --
--- ⛔ ESTA MIGRACION NO ESTA APLICADA, Y NO HAY QUE APLICARLA TODAVIA.
+-- ✅ APLICADA el 26/9/2026 (commit d988e32), despues de mover los secretos a
+-- Vault y comprobar por huella sha256 que la copia era identica. Las tres
+-- columnas ya no existen (comprobado otra vez el 10/10/2026). El texto de
+-- abajo es el de antes de aplicarla y queda como registro de como se hizo.
 --
 -- Borra las tres columnas donde vivian los secretos antes de Vault:
 --
