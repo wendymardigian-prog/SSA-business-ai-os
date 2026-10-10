@@ -88,7 +88,7 @@ export async function handleBgTask(context: JobContext): Promise<void> {
   const run = HANDLERS[task as BackgroundTask];
   if (!run) {
     throw new Error(
-      `[bg_task] la tarea "${task}" está configurada en modo Económico pero todavía no tiene implementación por lote. Ponela en Inmediato en Ajustes → Tareas en segundo plano.`,
+      `[bg_task] la tarea "${task}" está configurada en modo Económico pero todavía no tiene implementación por lote. Ponela en Inmediato en Agentes IA → ${task}.`,
     );
   }
 

@@ -1,231 +1,26 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { Check, Loader2, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoTooltip } from "@/components/ui/tooltip";
-import { PageHeader } from "@/components/page-header";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Sparkline } from "@/components/dashboards/chat/sparkline";
-import { updateBackgroundSettings } from "@/lib/actions/workspace";
 import { addButtonTextAction, confirmTextAction, moveTextAction, removeButtonTextAction } from "@/lib/actions/patterns";
-import { BACKGROUND_TASKS, type BackgroundSettings, type BackgroundTask, type TaskFrequency, type TaskMode } from "@/lib/background/settings";
-import { FREQUENCY_LABELS, MODE_LABELS, estimatedSavings, formatSpend, lastRunLabel, taskRows } from "@/lib/background/screen";
 import type { BackgroundScreenData } from "@/lib/background/screen-data";
-import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 /**
- * Settings › Tareas en segundo plano (F23, F25).
+ * La calidad del clasificador de mensajes (F19, F25): los cuatro indicadores,
+ * la revision rapida y los textos de boton conocidos.
  *
- * Tres cosas en una pantalla porque se miran juntas: cuándo corre cada tarea de
- * IA, cuánto sale, y si la clasificación está clasificando bien. Solo Owner y
- * Admin: los costos se leen en el servidor detrás de ese guard.
- *
- * El modo es un grupo de botones y no un desplegable: son tres opciones y la
- * elegida se tiene que ver de un vistazo en cuatro filas.
+ * Antes vivian en Ajustes - Tareas (components/settings/background-tasks-view.tsx,
+ * borrado). Ahora son parte de la pestana Configuracion de la tarea
+ * "Clasificacion de mensajes" en Agentes IA (unica tarea que los usa: las
+ * demas no clasifican texto libre).
  */
 
-const MODES: TaskMode[] = ["now", "batch", "off"];
 const ACCURACY_REFERENCE = 90;
 
-export function BackgroundTasksView({
-  settings: initial,
-  data,
-  categories,
-}: {
-  settings: BackgroundSettings;
-  data: BackgroundScreenData;
-  /** Las categorías activas, para "Cambiar a…" de la revisión rápida. */
-  categories: Array<{ id: string; name: string; direction: string }>;
-}) {
-  const [settings, setSettings] = useState<BackgroundSettings>(initial);
-  const [dirty, setDirty] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [pending, start] = useTransition();
-
-  const rows = taskRows(settings, data.runs);
-  // Sin API por lote en uso no se promete un descuento: el modo económico
-  // agrupa pedidos, que ya ahorra, pero el descuento del proveedor no se aplica.
-  const savings = estimatedSavings(rows, data.provider.batchApiInUse ? 0.5 : 0);
-
-  function patch(task: BackgroundTask, next: Partial<BackgroundSettings[BackgroundTask]>) {
-    setSettings((s) => ({ ...s, [task]: { ...s[task], ...next } }));
-    setDirty(true);
-    setSaved(false);
-  }
-
-  function save() {
-    setError(null);
-    start(async () => {
-      const result = await updateBackgroundSettings(settings);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setSaved(true);
-      setDirty(false);
-    });
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      <PageHeader route="/dashboard/settings/background" />
-      <SettingsTabs />
-
-      <div className="flex-1 overflow-auto px-4 py-6 md:px-6">
-        <div className="mx-auto flex max-w-[1100px] flex-col gap-4">
-          {/* Cuándo corre cada tarea */}
-          <section className="rounded-[14px] border border-border bg-card">
-            <header className="px-[18px] pb-1.5 pt-4">
-              <h2 className="text-[15px] font-semibold">Cuándo corren las tareas de IA</h2>
-              <p className="text-xs text-muted-foreground">
-                Las respuestas del agente siempre son inmediatas y no aparecen acá.
-              </p>
-            </header>
-
-            <div className="mx-[18px] mb-2.5 mt-1 flex flex-wrap gap-x-3.5 gap-y-1 rounded-[10px] border border-good/30 bg-good/10 px-3 py-2.5 text-[13px]">
-              <b className="font-semibold tabular-nums">
-                {savings.savedUsd === null
-                  ? "Todavía no hay un ahorro para estimar"
-                  : `Ahorro estimado este mes: ${formatSpend(savings.savedUsd)}`}
-              </b>
-              <span className="text-muted-foreground">
-                {data.provider.label ? `Proveedor: ${data.provider.label}` : "Sin proveedor de IA conectado"}
-                {" · "}
-                {data.provider.batchApiInUse
-                  ? "soporta procesamiento por lote con descuento"
-                  : "el modo económico agrupa los pedidos; el lote con descuento del proveedor todavía no está en uso"}
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-[13px]">
-                <thead>
-                  <tr className="border-y border-border text-left text-[11.5px] font-semibold text-muted-foreground">
-                    <th scope="col" className="px-[18px] py-2.5">Tarea</th>
-                    <th scope="col" className="px-3 py-2.5">Modo</th>
-                    <th scope="col" className="px-3 py-2.5">Frecuencia</th>
-                    <th scope="col" className="px-3 py-2.5">Hora</th>
-                    <th scope="col" className="px-3 py-2.5">Última corrida</th>
-                    <th scope="col" className="px-3 py-2.5">Gasto del mes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.task} className="border-b border-border align-top last:border-b-0">
-                      <th scope="row" className="px-[18px] py-3 text-left font-normal">
-                        <span className="block font-medium">{row.name}</span>
-                        <span className="mt-0.5 block max-w-[320px] text-xs text-muted-foreground">{row.description}</span>
-                        {row.batchWarning && row.mode === "batch" && (
-                          <span className="mt-1 block max-w-[340px] text-xs text-warn">⚠ {row.batchWarning}</span>
-                        )}
-                      </th>
-                      <td className="px-3 py-3">
-                        <div role="group" aria-label={`Modo de ${row.name}`} className="inline-flex gap-0.5 rounded-[9px] border border-border bg-background p-[3px]">
-                          {MODES.map((mode) => {
-                            const disabled = (mode === "off" && !row.canTurnOff) || (mode === "batch" && !row.canBatch);
-                            return (
-                              <button
-                                key={mode}
-                                type="button"
-                                aria-pressed={row.mode === mode}
-                                disabled={disabled}
-                                title={disabled ? "El agente necesita los documentos indexados" : undefined}
-                                onClick={() => patch(row.task, { mode })}
-                                className={cn(
-                                  "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                                  row.mode === mode ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-                                  disabled && "cursor-not-allowed opacity-40",
-                                )}
-                              >
-                                {MODE_LABELS[mode]}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        {row.mode === "batch" ? (
-                          <label>
-                            <span className="sr-only">Frecuencia de {row.name}</span>
-                            <select
-                              value={row.frequency}
-                              onChange={(e) => patch(row.task, { frequency: e.target.value as TaskFrequency })}
-                              className="rounded-[7px] border border-input bg-background px-1.5 py-1 text-xs"
-                            >
-                              {(Object.keys(FREQUENCY_LABELS) as TaskFrequency[]).map((f) => (
-                                <option key={f} value={f}>{FREQUENCY_LABELS[f]}</option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3">
-                        {row.mode === "batch" ? (
-                          <label>
-                            <span className="sr-only">Hora de {row.name}</span>
-                            <input
-                              type="time"
-                              value={row.hour}
-                              onChange={(e) => patch(row.task, { hour: e.target.value })}
-                              className="rounded-[7px] border border-input bg-background px-1.5 py-1 text-xs"
-                            />
-                          </label>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-muted-foreground">
-                        {row.mode === "off"
-                          ? "Apagada"
-                          : row.lastRun
-                            ? lastRunLabel(row.lastRun.at)
-                            : "Sin corridas propias todavía"}
-                      </td>
-                      <td className="px-3 py-3 tabular-nums">{formatSpend(row.lastRun?.monthSpendUsd ?? null)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-[18px] py-3 text-xs text-muted-foreground">
-              <span>
-                Si una corrida por lote falla o tarda más de 24 h, se reintenta y después corre en modo normal. Todas
-                respetan los topes de gasto.
-              </span>
-              <span className="flex items-center gap-2">
-                {error && <span className="text-bad">{error}</span>}
-                {saved && !dirty && <span className="text-good">Guardado.</span>}
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={pending || !dirty}
-                  className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50"
-                >
-                  {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
-                  Guardar cambios
-                </button>
-              </span>
-            </footer>
-          </section>
-
-          <QualityPanel data={data} categories={categories} />
-          <VersionsPanel data={data} />
-          <RecentRunsPanel data={data} />
-          <ButtonTextsPanel buttonTexts={data.buttonTexts} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Los cuatro indicadores, la precisión por semana, lo más corregido y la calibración. */
-function QualityPanel({
+export function QualityPanel({
   data,
   categories,
 }: {
@@ -493,86 +288,6 @@ function ReviewCard({
   );
 }
 
-/**
- * Las versiones del clasificador.
- *
- * Solo lectura: la versión activa sale de una constante del clasificador
- * (`PROMPT_VERSION`), no de la base, así que no hay nada que activar ni a qué
- * volver. Evaluar una versión nueva además necesita llamar al proveedor.
- */
-function VersionsPanel({ data }: { data: BackgroundScreenData }) {
-  return (
-    <section className="rounded-[14px] border border-border bg-card">
-      <header className="px-[18px] pb-1.5 pt-4">
-        <h2 className="text-[15px] font-semibold">Versiones del clasificador</h2>
-        <p className="text-xs text-muted-foreground">Con qué instrucciones se clasificó cada texto</p>
-      </header>
-      <div className="px-[18px] pb-4 pt-1 text-[13px]">
-        <p>
-          Versión activa:{" "}
-          <b className="font-semibold tabular-nums">v{data.classification.activePromptVersion ?? 1}</b>
-          {" · "}
-          <span className="text-muted-foreground tabular-nums">
-            set de control: {data.classification.controlSetSize} textos revisados o corregidos
-          </span>
-        </p>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          El set de control se arma solo con lo que revisás acá. Probar una versión nueva contra él, activarla y volver
-          a la anterior todavía no está: la versión vive en el código del clasificador y evaluarla necesita llamar al
-          proveedor de IA.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function RecentRunsPanel({ data }: { data: BackgroundScreenData }) {
-  return (
-    <section className="rounded-[14px] border border-border bg-card">
-      <header className="px-[18px] pb-1.5 pt-4">
-        <h2 className="text-[15px] font-semibold">Últimas corridas</h2>
-        <p className="text-xs text-muted-foreground">De la clasificación de mensajes</p>
-      </header>
-      {data.recentRuns.length === 0 ? (
-        <p className="px-[18px] pb-4 pt-1 text-[13px] text-muted-foreground">
-          {SETTINGS_EMPTY_STATES.background}
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-[13px]">
-            <thead>
-              <tr className="border-y border-border text-left text-[11.5px] font-semibold text-muted-foreground">
-                <th scope="col" className="px-[18px] py-2.5">Cuándo</th>
-                <th scope="col" className="px-3 py-2.5">Modelo</th>
-                <th scope="col" className="px-3 py-2.5">Costo</th>
-                <th scope="col" className="px-3 py-2.5">Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recentRuns.map((run, i) => (
-                <tr key={`${run.at}-${i}`} className="border-b border-border last:border-b-0">
-                  <td className="px-[18px] py-2.5">{run.at ? new Date(run.at).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{run.model ?? "—"}</td>
-                  <td className="px-3 py-2.5 tabular-nums">{formatSpend(run.costUsd)}</td>
-                  <td className="px-3 py-2.5">
-                    {run.status === "completed" ? (
-                      <span className="text-good">Terminó bien</span>
-                    ) : (
-                      <span className="text-warn">
-                        {run.status === "blocked_guardrail" ? "No arrancó" : "Falló"}
-                        {run.detail ? ` · ${run.detail}` : ""}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}
 
 /**
  * Los textos de botón conocidos (F19).
@@ -581,7 +296,7 @@ function RecentRunsPanel({ data }: { data: BackgroundScreenData }) {
  * mirar**. Que un clic en un botón es un clic en un botón no es una
  * interpretación, y pagarle a un modelo para que lo decida es tirar plata.
  */
-function ButtonTextsPanel({ buttonTexts }: { buttonTexts: BackgroundScreenData["buttonTexts"] }) {
+export function ButtonTextsPanel({ buttonTexts }: { buttonTexts: BackgroundScreenData["buttonTexts"] }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();

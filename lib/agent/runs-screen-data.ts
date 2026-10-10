@@ -24,8 +24,10 @@ export async function loadRunsScreenInputs(args: {
   includeCost: boolean;
   searchParams: URLSearchParams;
   rawParams: Record<string, string | string[] | undefined>;
-  /** La pestaña Runs de un agente o de una tarea (Bloque Agentes IA): ese es "el de la pestaña". null en la pantalla global. */
+  /** La pestaña Runs de un agente (Bloque Agentes IA): ese es "el de la pestaña". null en el resto. */
   currentAgentId?: string | null;
+  /** La pestaña Runs de una tarea: idem, pero de Origen. null en el resto. */
+  currentOrigen?: string | null;
 }): Promise<{
   filters: RunFilters;
   dateRange: { from: string | null; to: string | null };
@@ -82,6 +84,7 @@ export async function loadRunsScreenInputs(args: {
     allowCost: args.includeCost,
     ruleIds: ruleList.map((r) => r.id),
     sources: sourcesWithTasks,
+    currentOrigen: args.currentOrigen ?? null,
   });
 
   return {

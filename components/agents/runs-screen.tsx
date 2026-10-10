@@ -28,6 +28,8 @@ export function RunsScreen({
   showCost,
   isAdmin,
   options,
+  currentAgentId = null,
+  currentOrigen = null,
 }: {
   rows: RunRow[];
   total: number;
@@ -36,9 +38,13 @@ export function RunsScreen({
   showCost: boolean;
   isAdmin: boolean;
   options: RunsScreenOptions;
+  /** El agente de la pestaña (Bloque Agentes IA): no cuenta como filtro activo. null en la pantalla global. */
+  currentAgentId?: string | null;
+  /** El origen de la pestaña de una tarea: idem, para "todos" no contar. */
+  currentOrigen?: string | null;
 }) {
   const { pending, setParam, setPage, clearAll, search } = useUrlFilters();
-  const activeCount = countActiveRunFilters(filters, null);
+  const activeCount = countActiveRunFilters(filters, currentAgentId, currentOrigen);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (

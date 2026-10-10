@@ -37,13 +37,13 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  * y estan en `PERMISSION_PAGES`, mas abajo.
  */
 const ADMIN_PAGES = [
+  "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
   "app/(dashboard)/dashboard/channels/page.tsx",
   "app/(dashboard)/dashboard/dashboards/ads/page.tsx",
   "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
   "app/(dashboard)/dashboard/knowledge/page.tsx",
   "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
   "app/(dashboard)/dashboard/settings/page.tsx",
-  "app/(dashboard)/dashboard/settings/background/page.tsx",
   "app/(dashboard)/dashboard/settings/custom-fields/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
@@ -292,7 +292,7 @@ describe("caracterizacion: el menu (F68)", () => {
     // scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
     expect(visible).toEqual([
       "Agenda",
-      "Agentes",
+      "Agentes IA",
       "Automatizaciones",
       "Bandeja",
       "Contactos",

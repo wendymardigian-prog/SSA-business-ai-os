@@ -31,7 +31,7 @@ const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: Agen
   tools: (p) => <ToolsTab {...p} />,
   // Runs (D8, revertido): la pestaña embebe la pantalla de Corridas con el
   // filtro de este agente ya puesto, en vez de mandar a la pantalla global.
-  runs: (p) => (p.data.runs ? <RunsScreen {...p.data.runs} /> : null),
+  runs: (p) => (p.data.runs ? <RunsScreen {...p.data.runs} currentAgentId={p.data.agent.id} /> : null),
   actions: (p) => <ActionsTab {...p} />,
   costs: (p) => <CostsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,

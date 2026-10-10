@@ -298,3 +298,17 @@ describe("orderColumn", () => {
     expect(orderColumn("baratas", false)).toEqual({ col: "created_at", ascending: false });
   });
 });
+
+describe("parseRunFilters / countActiveRunFilters: currentOrigen (pestaña de una tarea)", () => {
+  it("sin origen en la URL, usa el de la tarea; no cuenta como filtro activo", () => {
+    const f = parseRunFilters({}, { ...known, currentOrigen: "message_classification" });
+    expect(f.origen).toBe("message_classification");
+    expect(countActiveRunFilters(f, known.currentAgentId, "message_classification")).toBe(0);
+  });
+
+  it("un origen distinto puesto a mano SI cuenta como filtro activo", () => {
+    const f = parseRunFilters({ origen: "agent" }, { ...known, sources: ["agent"], currentOrigen: "message_classification" });
+    expect(f.origen).toBe("agent");
+    expect(countActiveRunFilters(f, known.currentAgentId, "message_classification")).toBe(1);
+  });
+});

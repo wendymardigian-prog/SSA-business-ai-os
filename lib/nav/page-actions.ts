@@ -142,16 +142,20 @@ export const PAGE_META: Record<string, PageMeta> = {
     tooltip: "Las cuentas conectadas por las que entran y salen los mensajes.",
   },
   "/dashboard/agents": {
-    title: "Agentes",
-    tooltip: "El agente de IA: que sabe, que puede hacer y que hizo.",
+    title: "Agentes IA",
+    tooltip: "Los agentes y las tareas de IA del negocio: que saben, que pueden hacer y que hicieron.",
   },
   "/dashboard/agents/[agentId]": {
     title: "Agente",
     tooltip: "Configuracion, herramientas, historial y costos de este agente.",
   },
+  "/dashboard/agents/tareas/[task]": {
+    title: "Tarea de IA",
+    tooltip: "Cuando corre, sus instrucciones (si las tiene) y sus corridas.",
+  },
   "/dashboard/agents/runs": {
     title: "Corridas",
-    tooltip: "Todas las corridas de IA del workspace, de cualquier agente y cualquier origen.",
+    tooltip: "Todas las corridas de IA del workspace, de cualquier agente, tarea u origen.",
   },
   "/dashboard/agents/runs/[runId]": {
     title: "Turno del agente",
@@ -227,10 +231,6 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Productos",
     tooltip: "Lo que vendes, con su precio en dolares y su estado. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
   },
-  "/dashboard/settings/background": {
-    title: "Tareas en segundo plano",
-    tooltip: "Que trabajos de IA corren solos, cuando y con que modelo.",
-  },
 };
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */
@@ -249,6 +249,8 @@ export const PAGES_WITHOUT_HEADER: Record<string, string> = {
     "Solo redirige a la banca de recursos unificada (/dashboard/settings/recursos); nunca se dibuja.",
   "/dashboard/settings/contenido":
     "Solo redirige a Productos (/dashboard/settings/productos); los pilares se mudaron a la pagina de Contenido.",
+  "/dashboard/settings/background":
+    "Solo redirige a Agentes IA (/dashboard/agents); las tareas de IA se mudaron ahi.",
   "/dashboard/content/[postId]":
     "Solo redirige al tablero con el drawer de esa pieza abierto (F99); nunca se dibuja.",
   "/dashboard/content/[postId]/edit":

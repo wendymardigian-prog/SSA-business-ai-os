@@ -77,7 +77,7 @@ export const NAV_ITEMS: NavItemMeta[] = [
   { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", adminOnly: false, permissions: ["scheduling.use", "bookings.view"], group: "ventas" },
 
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false, group: "automatizacion" },
-  { name: "Agentes", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },
+  { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },
   { name: "Conocimiento", href: "/dashboard/knowledge", icon: "BookOpen", adminOnly: true, group: "automatizacion" },
   // Recursos (banca v2, F3): la MISMA pantalla que la pestaña "Recursos" de
   // Ajustes, con un segundo camino para llegar. Es el patron de Integraciones

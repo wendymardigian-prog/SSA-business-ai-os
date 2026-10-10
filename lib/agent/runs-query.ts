@@ -62,6 +62,8 @@ export function parseRunFilters(
     ruleIds?: string[];
     /** Los `source` con al menos una corrida en el periodo (R1: desde los datos, no del CHECK). */
     sources?: string[];
+    /** La pestaña Runs de una tarea (Bloque Agentes IA): ese es "el origen de la pestaña". null en el resto. */
+    currentOrigen?: string | null;
   },
 ): RunFilters {
   const agenteRaw = firstParam(params.agente);
@@ -73,6 +75,9 @@ export function parseRunFilters(
         ? agenteRaw
         : defaultAgente;
   const canal = pickEnum(params.canal, known.channelIds);
+  const origenOptions = [...(known.sources ?? []), CLOSE_CLASSIFICATION.id];
+  const origenRaw = firstParam(params.origen);
+  const origen = origenRaw ? pickEnum(params.origen, origenOptions) || (known.currentOrigen ?? "") : (known.currentOrigen ?? "");
   const num = (v: string): number | null => {
     if (!v) return null;
     const n = Number(v);
@@ -95,7 +100,7 @@ export function parseRunFilters(
     detalle: isRunDetailFilter(firstParam(params.detalle)) ? firstParam(params.detalle) : "",
     costoMin: known.allowCost ? num(firstParam(params.costo_min)) : null,
     costoMax: known.allowCost ? num(firstParam(params.costo_max)) : null,
-    origen: pickEnum(params.origen, [...(known.sources ?? []), CLOSE_CLASSIFICATION.id]),
+    origen,
     sinPrecio: known.allowCost && firstParam(params.sin_precio) === "1",
     masLentas: firstParam(params.lentas) === "1",
     orden: pickOrden(params, known.allowCost),
@@ -119,7 +124,7 @@ function pickOrden(params: SearchParams, allowCost: boolean): RunOrder {
 }
 
 /** `currentAgentId` null (Corridas): el agente puesto a mano siempre cuenta, no hay "el de la pestaña". */
-export function countActiveRunFilters(f: RunFilters, currentAgentId: string | null): number {
+export function countActiveRunFilters(f: RunFilters, currentAgentId: string | null, currentOrigen: string | null = null): number {
   let n = 0;
   if (f.datePreset) n++;
   if (f.agente !== (currentAgentId ?? AGENT_FILTER_ALL)) n++;
@@ -128,7 +133,7 @@ export function countActiveRunFilters(f: RunFilters, currentAgentId: string | nu
   if (f.resultado) n++;
   if (f.modelo) n++;
   if (f.accion) n++;
-  if (f.origen) n++;
+  if (f.origen !== (currentOrigen ?? "")) n++;
   n += countNewRunFilters(f.detalle, f.regla);
   if (f.costoMin !== null || f.costoMax !== null) n++;
   if (f.sinPrecio) n++;
