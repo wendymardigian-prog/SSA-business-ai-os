@@ -84,17 +84,38 @@ describe("de donde sale la configuracion de Evolution", () => {
     });
   });
 
-  it("se puede tener la direccion guardada y la clave todavia en el entorno", async () => {
-    // Es el estado intermedio de la migracion, y tiene que funcionar.
+  it("con direccion propia y sin clave en Vault devuelve null: la del entorno no viaja", async () => {
+    // CAMBIO DOCUMENTADO. Antes esto armaba "direccion del workspace + clave
+    // del entorno", y asi un admin podia hacer que el sistema le mandara la
+    // clave global del Evolution compartido a un servidor suyo. La pantalla
+    // pide direccion y clave juntas, asi que por ahi nunca se llega aca.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     const config = await getEvolutionConfig(
-      db({ config: { api_url: "https://evolution-del-negocio.test" } }),
+      db({ config: { api_url: "https://servidor-de-otro.test" } }),
       WS,
     );
 
-    expect(config).toMatchObject({
-      baseUrl: "https://evolution-del-negocio.test",
+    expect(config).toBeNull();
+  });
+
+  it("con direccion propia, la clave sale solo de Vault", async () => {
+    vault({ evolution_api_key: "clave-de-vault" });
+    const config = await getEvolutionConfig(db({ config: { api_url: "https://x.test" } }), WS);
+
+    expect(config?.apiKey).toBe("clave-de-vault");
+    expect(config?.apiKey).not.toBe("clave-del-entorno");
+  });
+
+  it("una clave en Vault sin direccion propia no se mezcla con la direccion del entorno", async () => {
+    vault({ evolution_api_key: "clave-de-vault" });
+    const config = await getEvolutionConfig(db({ config: { instance_prefix: "ssa2" } }), WS);
+
+    expect(config).toEqual({
+      baseUrl: "https://evolution-del-entorno.test",
       apiKey: "clave-del-entorno",
+      instancePrefix: "ssa2",
     });
+    expect(readSecret).not.toHaveBeenCalled();
   });
 
   it("una integracion desactivada no se usa: manda el entorno", async () => {
@@ -123,16 +144,20 @@ describe("de donde sale la configuracion de Evolution", () => {
     expect(await getEvolutionConfig(db(), WS)).toBeNull();
   });
 
-  it("si Vault falla, no se cae: usa el entorno", async () => {
-    // readSecret lanza cuando la RPC falla. Que WhatsApp deje de mandar
-    // mensajes porque Vault tuvo un mal momento seria mucho peor.
+  it("si Vault falla con direccion propia, no se cae pero tampoco usa el entorno", async () => {
+    // CAMBIO DOCUMENTADO. readSecret lanza cuando la RPC falla. Antes se caia
+    // al entorno, y eso era mandar la clave global a la direccion del
+    // workspace. Ahora es null: "WhatsApp no esta configurado" hasta que Vault
+    // vuelva, que es mejor que filtrar la clave.
+    vi.spyOn(console, "error").mockImplementation(() => {});
     readSecret.mockRejectedValue(new Error("vault caido"));
     const config = await getEvolutionConfig(db({ config: { api_url: "https://x.test" } }), WS);
 
-    expect(config).toMatchObject({ apiKey: "clave-del-entorno" });
+    expect(config).toBeNull();
   });
 
   it("la direccion se guarda sin la barra final", async () => {
+    vault({ evolution_api_key: "clave-de-vault" });
     const config = await getEvolutionConfig(db({ config: { api_url: "https://x.test/" } }), WS);
 
     expect(config?.baseUrl).toBe("https://x.test");

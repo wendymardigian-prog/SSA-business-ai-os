@@ -1,25 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getAdminContext } from "@/lib/auth/guards";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { PLATFORMS, isSupportedPlatform } from "@/lib/platforms";
-
-async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, workspaces(*)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.workspaces) return null;
-  return membership.workspaces;
-}
 
 /**
  * POST /api/v1/channels/connect
@@ -29,10 +12,17 @@ async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) 
  * and redirects back to our callback URL when done.
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const workspace = await getWorkspace(supabase);
-  if (!workspace)
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  // Conectar una cuenta es cosa de Owner y Admin, igual que en las otras
+  // rutas de canales: la key de Zernio se lee con el service role, asi que la
+  // RLS no frenaria a un Member.
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Solo Owner y Admin pueden conectar canales" },
+      { status: 403 },
+    );
+  }
+  const { workspace } = ctx;
 
   const apiKey = await getZernioApiKey(workspace.id);
   if (!apiKey) {
