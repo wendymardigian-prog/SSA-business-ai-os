@@ -28,6 +28,7 @@ import {
   placementSummary,
   rankingTone,
   sortRows,
+  syncedLabel,
 } from "./ads-view";
 
 const row = (over: Partial<AdsRow> & { date: string }): AdsRow => ({
@@ -112,6 +113,21 @@ describe("la ultima sincronizacion", () => {
 
   it("sin filas, null", () => {
     expect(lastSyncedAt([])).toBeNull();
+  });
+});
+
+describe("el texto de la ultima sincronizacion", () => {
+  const now = new Date("2026-10-10T15:00:00Z");
+
+  it("hoy, ayer o la fecha, en la zona de quien mira", () => {
+    expect(syncedLabel("2026-10-10T12:32:00Z", now, "America/Argentina/Buenos_Aires")).toBe("hoy 09:32");
+    expect(syncedLabel("2026-10-09T22:10:00Z", now, "America/Argentina/Buenos_Aires")).toBe("ayer 19:10");
+    expect(syncedLabel("2026-10-05T12:00:00Z", now, "America/Argentina/Buenos_Aires")).toBe("05/10 09:00");
+  });
+
+  it("sin fecha, o con una fecha rota, no hay texto", () => {
+    expect(syncedLabel(null, now, "UTC")).toBeNull();
+    expect(syncedLabel("no es una fecha", now, "UTC")).toBeNull();
   });
 });
 

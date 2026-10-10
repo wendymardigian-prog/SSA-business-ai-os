@@ -7,6 +7,7 @@ import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
 import { fetchUniqueReach } from "@/lib/meta/live";
+import { lastSyncedAt, syncedLabel } from "@/lib/dashboards/ads-view";
 import { isoToDateInput } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -49,15 +50,18 @@ export default async function AdsDashboardPage({
   if (!resolved.ok) {
     return (
       <AdsDashboard
-      dashboards={dashboards}
+        dashboards={dashboards}
         rows={[]}
         previousRows={[]}
         accounts={[]}
+        account={null}
         adAccountId=""
         currency={null}
         period={period}
         uniqueReach={null}
+        previousUniqueReach={null}
         liveError={null}
+        syncedLabel={null}
       />
     );
   }
@@ -72,18 +76,29 @@ export default async function AdsDashboardPage({
 
   const token = await getMetaToken(supabase, workspace.id);
 
-  const [rows, previousRows, live] = await Promise.all([
+  const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
+  const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);
+
+  const [rows, previousRows, live, previousLive] = await Promise.all([
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
     token && range.from
-      ? fetchUniqueReach({
-          token,
-          adAccountId,
-          since: isoToDateInput(range.from, timeZone),
-          until: range.to ? isoToDateInput(range.to, timeZone) : isoToDateInput(now.toISOString(), timeZone),
-        })
+      ? fetchUniqueReach({ token, adAccountId, since: sinceOf(range) as string, until: untilOf(range) })
+      : Promise.resolve(null),
+    // El alcance unico del periodo anterior, para que la variacion compare
+    // lo mismo con lo mismo: el actual es unico y el anterior, sumado por
+    // dia, seria otro numero.
+    token && before.from
+      ? fetchUniqueReach({ token, adAccountId, since: sinceOf(before) as string, until: untilOf(before) })
       : Promise.resolve(null),
   ]);
+
+  // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
+  // comparar un alcance unico contra uno sumado inventaria una variacion.
+  const bothReach = live?.ok && previousLive?.ok;
+
+  const syncedAt =
+    lastSyncedAt(rows.filter((r) => r.level === "account")) ?? account?.last_synced_at ?? null;
 
   return (
     <AdsDashboard
@@ -91,11 +106,18 @@ export default async function AdsDashboardPage({
       rows={rows}
       previousRows={previousRows}
       accounts={accounts.map((a) => ({ id: a.ad_account_id, name: a.name, currency: a.currency }))}
+      account={
+        account
+          ? { id: account.ad_account_id, name: account.name, currency: account.currency, lastError: account.last_error }
+          : null
+      }
       adAccountId={adAccountId}
       currency={account?.currency ?? null}
       period={period}
-      uniqueReach={live?.ok ? live.data.reach : null}
+      uniqueReach={bothReach ? live.data.reach : null}
+      previousUniqueReach={bothReach ? previousLive.data.reach : null}
       liveError={live && !live.ok ? live.error : null}
+      syncedLabel={syncedLabel(syncedAt, now, timeZone)}
     />
   );
 }

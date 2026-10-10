@@ -80,6 +80,30 @@ export function lastSyncedAt(rows: AdsRow[]): string | null {
   return latest;
 }
 
+/**
+ * "Sincronizado hoy 14:32" / "ayer 22:10" / "08/10 09:00".
+ *
+ * Se arma en el servidor y viaja como texto: calcularlo en el navegador da
+ * un texto distinto al del primer pintado (hora y zona de cada uno) y React
+ * lo marca como error de hidratacion.
+ */
+export function syncedLabel(iso: string | null, now: Date, timeZone: string): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+
+  const day = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const clock = new Intl.DateTimeFormat("es-AR", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(at);
+
+  const today = day(now);
+  const yesterday = day(new Date(now.getTime() - 86_400_000));
+  const when = day(at);
+  if (when === today) return `hoy ${clock}`;
+  if (when === yesterday) return `ayer ${clock}`;
+  const [, month, dom] = when.split("-");
+  return `${dom}/${month} ${clock}`;
+}
+
 // ── Acciones generadas ───────────────────────────────────────────────────
 
 export const ACTION_LABELS: Record<string, string> = {

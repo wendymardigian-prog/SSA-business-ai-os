@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Sparkles, X } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
+import { Sheet } from "@/components/ui/sheet";
 import { analyzeAdsWithAi } from "@/lib/actions/ads-analysis";
 import type { PeriodPreset } from "@/lib/dashboards/period";
 
@@ -39,23 +40,7 @@ export function AdsAiPanel({
   }
 
   return (
-    <aside
-      role="dialog"
-      aria-label="Analisis con IA"
-      className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l border-border bg-background shadow-xl sm:max-w-md"
-    >
-      <header className="sticky top-0 flex items-center gap-2 border-b border-border bg-background px-4 py-3">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Cerrar"
-          className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-accent"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
-        <h2 className="flex-1 text-sm font-semibold">Analizar con IA</h2>
-      </header>
-
+    <Sheet title="Analizar con IA" onClose={onClose}>
       <div className="space-y-4 p-4">
         <p className="text-sm text-muted-foreground">
           Le paso los numeros de esta cuenta y este periodo, y le pido que diga que esta funcionando,
@@ -109,6 +94,6 @@ export function AdsAiPanel({
           </div>
         )}
       </div>
-    </aside>
+    </Sheet>
   );
 }
