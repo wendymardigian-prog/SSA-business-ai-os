@@ -310,6 +310,7 @@ node scripts/verify-inbox-filters.mjs
 node scripts/verify-dashboards.mjs
 node scripts/verify-publishing.mjs # publicar de punta a punta, proveedores simulados
 node scripts/verify-attribution.mjs # toques, primer/ultimo toque, reserva (Contenido v3)
+node scripts/verify-workspace-isolation.mjs # secretos e integraciones entre workspaces, alta por invitacion
 ```
 
 No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpieza.
