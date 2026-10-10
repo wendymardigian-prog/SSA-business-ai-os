@@ -247,11 +247,12 @@ de la funcion). `system_config` queda solo con `draft_alerts_since`. La `00138`
 `00142` (CHECK de `ai_task_prompt_versions.task` suma `close_classification`)
 estan **aplicadas** y registradas.
 
-**`read_secret` solo para el servidor (10/10/2026, rama
-`fix/read-secret-service-only`).** La `00143` le saca a `authenticated` el
-permiso de ejecutar `read_secret`: **escrita, sin aplicar**. Se aplica DESPUES
-de desplegar el codigo que lee las claves con el cliente de servicio (ver
-"Integraciones y secretos"). **La proxima migracion disponible es la
+**`read_secret` solo para el servidor (10/10/2026, PR #38).** La `00143` le
+saca a `authenticated` el permiso de ejecutar `read_secret`: **aplicada y
+registrada** (version `20261010211554`), despues de desplegar el codigo que lee
+las claves con el cliente de servicio (ver "Integraciones y secretos").
+`verify-rls.mjs` y `verify-workspace-isolation.mjs` con `--despues-de-00143`
+en verde. **La proxima migracion disponible es la
 `00144`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
