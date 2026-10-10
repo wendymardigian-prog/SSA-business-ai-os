@@ -45,7 +45,7 @@ const BANK = [
   asset({ id: "t2", kind: "text", name: "Bienvenida", content: "Hola", tags: ["saludos"] }),
   asset({ id: "a1", kind: "audio", name: "Precio en audio", transcript: "cuesta cien", transcriptStatus: "ready", tags: ["Precios", "objeciones"], usageCount: 2 }),
   asset({ id: "v1", kind: "video", name: "Testimonio Ana", description: "Ana cuenta su caso", tags: ["testimonios"] }),
-  asset({ id: "l1", kind: "link", name: "Agenda", url: "https://www.calendly.com/wendy", description: "Reservar llamada", tags: ["precios"] }),
+  asset({ id: "l1", kind: "link", name: "Agenda", url: "https://www.calendly.com/demo", description: "Reservar llamada", tags: ["precios"] }),
 ];
 
 const ids = (list: { id: string }[]) => list.map((a) => a.id);

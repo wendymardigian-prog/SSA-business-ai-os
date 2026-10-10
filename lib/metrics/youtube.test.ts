@@ -285,8 +285,8 @@ describe("leer el canal entero (F44)", () => {
           items: [
             {
               snippet: {
-                title: "Wendy Mardigian",
-                customUrl: "@wendymardigian",
+                title: "Cuenta Demo",
+                customUrl: "@cuenta_demo",
                 description: "Sistemas para negocios",
                 thumbnails: { default: { url: "https://yt3/88" }, high: { url: "https://yt3/800" } },
               },
@@ -300,11 +300,11 @@ describe("leer el canal entero (F44)", () => {
     const result = await readYouTubeMetrics({ ...params, fetchImpl });
 
     expect(result.profile).toEqual({
-      username: "wendymardigian",
-      displayName: "Wendy Mardigian",
+      username: "cuenta_demo",
+      displayName: "Cuenta Demo",
       avatarUrl: "https://yt3/800",
       bio: "Sistemas para negocios",
-      profileUrl: "https://www.youtube.com/@wendymardigian",
+      profileUrl: "https://www.youtube.com/@cuenta_demo",
     });
   });
 

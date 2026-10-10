@@ -22,7 +22,7 @@ import type { PeriodPreset } from "@/lib/dashboards/period";
 import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
 
 /**
- * El dashboard de Meta Ads: la réplica del panel de Ads de wendymardigian.
+ * El dashboard de Meta Ads: la réplica de un panel de Ads de referencia.
  *
  * Todas las cuentas salen de `lib/dashboards/ads.ts` y `ads-view.ts`, que
  * son puros y estan probados; este componente solo las pinta. La regla que

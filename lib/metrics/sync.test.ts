@@ -532,16 +532,16 @@ describe("el perfil de la cuenta (F75)", () => {
     await persistAccountProfile(memory.client, {
       socialAccountId: ACC,
       profile: {
-        username: "wendymardigian",
-        displayName: "Wendy Mardigian",
+        username: "cuenta_demo",
+        displayName: "Cuenta Demo",
         avatarUrl: "https://yt3/800",
         bio: null,
-        profileUrl: "https://www.youtube.com/@wendymardigian",
+        profileUrl: "https://www.youtube.com/@cuenta_demo",
       },
     });
 
     expect(memory.rows("social_accounts")[0]).toMatchObject({
-      username: "wendymardigian",
+      username: "cuenta_demo",
       avatar_url: "https://yt3/800",
       bio: "La bio de antes",
     });

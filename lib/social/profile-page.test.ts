@@ -420,25 +420,25 @@ describe("las pestañas de contenido de YouTube", () => {
 
 describe("el link al perfil en la red", () => {
   it("usa la direccion que guardo la sincronizacion", () => {
-    expect(profileLink("youtube", "wenmardigian", "https://www.youtube.com/@wenmardigian")).toBe(
-      "https://www.youtube.com/@wenmardigian",
+    expect(profileLink("youtube", "cuenta_demo", "https://www.youtube.com/@cuenta_demo")).toBe(
+      "https://www.youtube.com/@cuenta_demo",
     );
   });
 
   it("sin direccion guardada, la arma con el usuario segun la red", () => {
-    expect(profileLink("instagram", "wenmardigian", null)).toBe("https://www.instagram.com/wenmardigian");
-    expect(profileLink("tiktok", "@wenmardigian", null)).toBe("https://www.tiktok.com/@wenmardigian");
-    expect(profileLink("youtube", "wenmardigian", null)).toBe("https://www.youtube.com/@wenmardigian");
-    expect(profileLink("threads", "wenmardigian", null)).toBe("https://www.threads.net/@wenmardigian");
+    expect(profileLink("instagram", "cuenta_demo", null)).toBe("https://www.instagram.com/cuenta_demo");
+    expect(profileLink("tiktok", "@cuenta_demo", null)).toBe("https://www.tiktok.com/@cuenta_demo");
+    expect(profileLink("youtube", "cuenta_demo", null)).toBe("https://www.youtube.com/@cuenta_demo");
+    expect(profileLink("threads", "cuenta_demo", null)).toBe("https://www.threads.net/@cuenta_demo");
   });
 
   it("nunca un link que no sea https: la direccion viene de afuera", () => {
     expect(profileLink("instagram", null, "javascript:alert(1)")).toBeNull();
-    expect(profileLink("instagram", "wenmardigian", "http://instagram.com/x")).toBe("https://www.instagram.com/wenmardigian");
+    expect(profileLink("instagram", "cuenta_demo", "http://instagram.com/x")).toBe("https://www.instagram.com/cuenta_demo");
   });
 
   it("LinkedIn sin direccion guardada, o sin usuario, no tiene link", () => {
-    expect(profileLink("linkedin", "wendy", null)).toBeNull();
+    expect(profileLink("linkedin", "demo", null)).toBeNull();
     expect(profileLink("instagram", null, null)).toBeNull();
     expect(profileLink("instagram", "con espacio", null)).toBeNull();
   });

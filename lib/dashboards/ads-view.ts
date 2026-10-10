@@ -1,6 +1,6 @@
 /**
- * Lo que arma el dashboard de anuncios para dibujar (réplica del panel de
- * wendymardigian).
+ * Lo que arma el dashboard de anuncios para dibujar (réplica de un panel
+ * de referencia).
  *
  * Todo puro y probado: la pantalla solo pinta lo que sale de acá. Dos reglas
  * que valen para todo el archivo, las mismas de `ads.ts`:

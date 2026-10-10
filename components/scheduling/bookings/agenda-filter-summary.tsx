@@ -8,7 +8,7 @@ import { agendaFilterChips, type AgendaFilterCatalog, type AgendaFilters } from 
  * La línea "Filtrando: …" debajo de la barra superior (F33, Agenda v2).
  *
  * A diferencia de la Bandeja (una sola `×` limpia todo), cada chip tiene la
- * suya: Wendy pidió que no sea fácil perder de vista una agenda por quedarse
+ * suya: se pidió que no sea fácil perder de vista una agenda por quedarse
  * con un filtro puesto sin darse cuenta, y un chip que se saca de a uno hace
  * visible exactamente qué está filtrando.
  */

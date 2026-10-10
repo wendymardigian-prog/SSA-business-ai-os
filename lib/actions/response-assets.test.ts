@@ -232,9 +232,9 @@ describe("createAsset: los tipos nuevos", () => {
 
   it("un enlace guarda la URL normalizada y su clase, sin archivo", async () => {
     const db = admin();
-    const result = await createAsset({ kind: "link", name: "Agenda", description: "Reservar", url: "calendly.com/wendy", linkKind: "agenda" });
+    const result = await createAsset({ kind: "link", name: "Agenda", description: "Reservar", url: "calendly.com/demo", linkKind: "agenda" });
     expect(result.ok).toBe(true);
-    expect(row(db)).toMatchObject({ kind: "link", url: "https://calendly.com/wendy", link_kind: "agenda" });
+    expect(row(db)).toMatchObject({ kind: "link", url: "https://calendly.com/demo", link_kind: "agenda" });
     expect(row(db).storage_path).toBeUndefined();
   });
 
