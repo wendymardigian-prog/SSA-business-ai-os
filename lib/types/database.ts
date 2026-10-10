@@ -97,8 +97,6 @@ export type ContentPostStatus =
   | "published"
   | "partially_published"
   | "failed";
-/** Como viene la grabacion del material (00083). */
-export type MaterialStatus = "pendiente" | "grabado" | "editado" | "listo";
 /** Quien escribio el copy (00083). */
 export type CopySource = "manual" | "ai" | "mixed";
 /** Estado de una publicacion en una red (00083). Null en las externas. */
@@ -3193,8 +3191,6 @@ export interface Database {
           /** Lo propio de cada red, incluida su fecha tentativa. */
           networks: Json;
           media: Json;
-          /** Sin uso desde Contenido v4 (el dropdown de estado lo reemplaza). La 00128 la borra. */
-          material_status: MaterialStatus;
           copy_source: CopySource;
           /** Si el copywriter esta escribiendo esta pieza (E6). */
           copy_status: "idle" | "generating" | "failed";

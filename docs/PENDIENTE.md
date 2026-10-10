@@ -800,37 +800,29 @@ verificadas; esto es lo que queda, no lo ya hecho.
   red va a aparecer con la verificación en rojo ("Elegí el formato") hasta
   que alguien lo complete a mano.
 
-### Contenido v4 · La 00128 (destructiva) está escrita y NO se aplicó
+### Contenido v4 · La 00128 (destructiva): APLICADA el 10/10/2026
 
-- **Qué es:** borra `content_posts.material_status` y la clave
+- **Qué borró:** `content_posts.material_status` y la clave
   `options.contentType` de adentro de cada entrada de `networks[]`
   (`supabase/migrations/00128_drop_material_and_content_type.sql`).
-- **Por qué no se aplicó:** borra datos. El código ya no lee ni escribe
-  ninguna de las dos (grep limpio en `lib/` y `app/`, salvo el comentario del
-  tipo de la base y el campo propio que el *body* de Zernio le manda a
-  Zernio, que se llama igual por casualidad), así que aplicarla no rompe
-  nada funcionando — pero no tiene vuelta atrás.
-- **Cuándo aplicarla:** después de ver la v4 funcionando en producción (ver
-  §16 del documento, "Verificación en vivo"). Antes, correr la consulta C de
-  la cabecera de la migración (tiene que dar 0) y guardar el respaldo de la
-  consulta D (`material_status` y `networks` de toda `content_posts`).
+- **Cómo se aplicó, en orden:**
+  1. La consulta C daba 1: la red de Instagram de la pieza "Prueba 1" (de
+     prueba, sin archivos) tenía `format: null` y solo el `contentType: 'feed'`
+     viejo. Con el OK de Wendy se le puso `format: 'image'` (lo que hubiera
+     hecho la 00126 con un archivo), sin tocar nada más. La C pasó a 0.
+  2. A y B sobre el commit desplegado (`2c55d0e`): ningún uso, salvo el tipo
+     de la base y un comentario.
+  3. Ninguna función, vista ni trigger de la base usaba `material_status`.
+  4. Respaldo de la consulta D (todas las piezas, también las borradas) en
+     `docs/contenido-v4/respaldo-00128.json`.
+  5. Aplicada con la CLI y registrada como `20261010201712`. Después:
+     `verify-content.mjs` en verde, y se sacaron `material_status` y
+     `MaterialStatus` de `lib/types/database.ts` (typecheck y tests en verde).
 - **Para tener en cuenta:** igual que la 00118 de Contenido v3,
   `supabase/migrations/ALL_MIGRATIONS.sql` la incluye (un test exige que el
   bundle tenga todas las migraciones) — ese archivo es para una instalación
   NUEVA, donde la base está vacía y no hay nada que perder. No correrlo sobre
   producción.
-
-### Contenido v4 · Una red queda con `format: null` después de la 00126
-
-- **Qué es:** la única pieza de producción tiene una red de Instagram con
-  `options.contentType: 'feed'` pero **0 archivos**. La migración 00126
-  (backfill de formato) no adivina un formato sin archivos (regla del
-  documento, §17), así que esa red quedó con `format: null`.
-- **Qué se ve:** en el drawer, esa tarjeta de red aparece con la
-  verificación en rojo ("Elegí un formato") hasta que alguien lo complete a
-  mano. No bloquea nada más de la pieza.
-- **Qué hacer:** abrir la pieza, elegir el formato de esa red (y los
-  archivos, si corresponde) la próxima vez que se trabaje con ella.
 
 ### Contenido v4 · Incidente durante la 00126, corregido en el momento (sin pérdida de datos)
 
@@ -920,7 +912,14 @@ tocó. El build pasa igual.
 Plan y recorrido: `docs/revision-octubre/PLAN.md` y `recorrido.md`. Lo que quedo
 afuera, o a medias, o por hacer despues:
 
-### Migracion `00136` (alcance de leads por rol): escrita, ensayada, SIN aplicar
+### Migracion `00136` (alcance de leads por rol): APLICADA el 10/10/2026
+- **Hecho:** aplicada con la CLI despues de comprobar que produccion corria
+  `2c55d0e` (el codigo nuevo), registrada como `20261010195152`, y
+  `verify-rls.mjs --despues-de-00136` (294 ok) y `verify-roles.mjs
+  --despues-de-00136` en verde. Antes de aplicar se comprobo que la funcion en
+  la base era la de la cabecera (vuelta atras posible) y que el unico rol
+  personalizado (Content Manager) ya estaba en `all`: no cambio ningun dato.
+  Lo de abajo queda como registro de como se preparo.
 - Se aplica **despues del merge y del deploy** (con el codigo nuevo y la funcion
   vieja, `own_unassigned` se comporta como `own`: no abre nada de mas).
 - Ya hecho: respaldo (`docs/revision-octubre/respaldo-00136.json`) y ensayo en una
