@@ -9,7 +9,10 @@ import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
 import { DailyEvolutionChart } from "./ads/charts-lazy";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
+import { AudienceCard } from "./ads/audience-card";
 import { ComparisonCards } from "./ads/comparison-cards";
+import { ActionsCard, DeviceCard, PlacementCard, VideoCard, type Live } from "./ads/insight-cards";
+import type { BreakdownRow } from "@/lib/meta/live";
 import { KpiRow, type KpiItem } from "./ads/kpi-row";
 import { LEFT_OPTIONS, METRIC_LABELS, RIGHT_OPTIONS, type ChartMetric } from "./ads/formatters";
 import { AdsAiPanel } from "./ads-ai-panel";
@@ -24,8 +27,6 @@ import {
   money,
   percent,
   statusLabel,
-  videoRetention,
-  videoTotals,
   type AdsRow,
 } from "@/lib/dashboards/ads";
 import { kpiDelta } from "@/lib/dashboards/ads-view";
@@ -53,6 +54,8 @@ export interface AdsDashboardProps {
   /** El del periodo anterior; solo viene si el de este llego tambien. */
   previousUniqueReach: number | null;
   liveError: string | null;
+  /** Los desgloses que se piden a Meta en vivo, cada uno por su cuenta. */
+  live: { placement: Live<BreakdownRow[]>; device: Live<BreakdownRow[]>; audience: Live<BreakdownRow[]> };
   /** Alcance unico de cada anuncio (en vivo). Null si Meta no respondio. */
   adReach: Record<string, number> | null;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. Armado en el servidor. */
@@ -106,7 +109,6 @@ export function AdsDashboard(props: AdsDashboardProps) {
   );
 
   const grouped = useMemo(() => groupByObject(props.rows, tab), [props.rows, tab]);
-  const retention = useMemo(() => videoRetention(videoTotals(accountRows)), [accountRows]);
 
   const chartData = useMemo(() => {
     const left = new Map(dailySeries(accountRows, leftMetric).map((p) => [p.bucket, p.value]));
@@ -269,21 +271,14 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
         <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.adReach} />
 
-        {retention.length > 0 && (
-          <section className="mt-3">
-            <h2 className="mb-2 text-sm font-semibold">Retencion de video</h2>
-            <ul className="flex gap-3 rounded-xl border border-border p-3">
-              {retention.map((point) => (
-                <li key={point.label} className="flex-1 text-center">
-                  <p className="text-xs text-muted-foreground">{point.label}</p>
-                  <p className="text-base font-semibold tabular-nums">
-                    {point.percent === null ? "—" : `${point.percent}%`}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ActionsCard rows={accountRows} />
+          <PlacementCard result={props.live.placement} currency={props.currency} />
+          <DeviceCard result={props.live.device} currency={props.currency} />
+          <VideoCard rows={accountRows} />
+        </div>
+
+        <AudienceCard result={props.live.audience} />
 
         <section className="mt-3">
           <div className="mb-2 flex gap-1" role="tablist" aria-label="Desglose">

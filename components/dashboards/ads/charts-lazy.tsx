@@ -30,3 +30,23 @@ export const CostLinesChart = dynamic(
   () => import("./ads-charts").then((m) => m.CostLinesChart),
   { ssr: false, loading: () => <ChartSkeleton height="h-56" /> },
 );
+
+export const AudienceStackChart = dynamic(
+  () => import("./ads-charts").then((m) => m.AudienceStackChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-48" /> },
+);
+
+export const CtrByAgeChart = dynamic(
+  () => import("./ads-charts").then((m) => m.CtrByAgeChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-40" /> },
+);
+
+export const GenderDonut = dynamic(
+  () => import("./ads-charts").then((m) => m.GenderDonut),
+  { ssr: false, loading: () => <ChartSkeleton height="h-44" /> },
+);
+
+export const HourlyChart = dynamic(
+  () => import("./ads-charts").then((m) => m.HourlyChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-44" /> },
+);

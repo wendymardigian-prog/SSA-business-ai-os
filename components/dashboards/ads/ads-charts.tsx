@@ -28,13 +28,15 @@ import {
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import type { Series } from "@/lib/dashboards/ads-view";
-import { axisValue, tooltipValue, METRIC_LABELS, type ChartMetric } from "./formatters";
+import { GENDER_COLOR, GENDER_LABEL, type Gender, type HourPoint, type Series } from "@/lib/dashboards/ads-view";
+import { axisValue, compact, tooltipValue, METRIC_LABELS, type ChartMetric } from "./formatters";
 
 export const TICK = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
 
@@ -266,6 +268,119 @@ export function CostLinesChart({
           />
         ))}
       </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Alcance (o leads) por franja de edad, apilado por genero. */
+export function AudienceStackChart({ rows, genders, metric }: { rows: Row[]; genders: Gender[]; metric: "reach" | "leads" }) {
+  const label = metric === "reach" ? "Alcance" : "Leads";
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <BarChart data={rows} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="age" tick={TICK} axisLine={false} tickLine={false} />
+        <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={(v: number) => compact(Math.round(v))} width={36} />
+        <Tooltip
+          contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
+          cursor={CURSOR}
+          formatter={(value, name) => [typeof value === "number" ? compact(Math.round(value)) : "—", `${GENDER_LABEL[name as Gender] ?? name} · ${label}`]}
+        />
+        <Legend formatter={(value) => GENDER_LABEL[value as Gender] ?? value} wrapperStyle={{ fontSize: 12 }} />
+        {genders.map((g, i) => (
+          <Bar
+            key={g}
+            dataKey={g}
+            stackId="audience"
+            fill={GENDER_COLOR[g]}
+            opacity={0.85}
+            radius={i === genders.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+            maxBarSize={48}
+          />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** El CTR de cada franja de edad, una linea por genero. */
+export function CtrByAgeChart({ rows, genders }: { rows: Row[]; genders: Gender[] }) {
+  return (
+    <ResponsiveContainer width="100%" height={160}>
+      <LineChart data={rows} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="age" tick={{ ...TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ ...TICK, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${v}%`} width={32} />
+        <Tooltip
+          contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
+          formatter={(value, name) => [typeof value === "number" ? `${value.toFixed(2)}%` : "—", GENDER_LABEL[name as Gender] ?? String(name)]}
+        />
+        {genders.map((g) => (
+          <Line
+            key={g}
+            type="monotone"
+            dataKey={g}
+            stroke={GENDER_COLOR[g]}
+            strokeWidth={2}
+            dot={{ r: 3, fill: GENDER_COLOR[g] }}
+            activeDot={{ r: 4 }}
+            connectNulls={false}
+          />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** La dona del alcance por genero. */
+export function GenderDonut({ totals }: { totals: Array<{ gender: Gender; name: string; value: number; color: string }> }) {
+  return (
+    <ResponsiveContainer width="100%" height={180}>
+      <PieChart>
+        <Pie data={totals} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name" strokeWidth={2} stroke="var(--background)">
+          {totals.map((entry) => (
+            <Cell key={entry.gender} fill={entry.color} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
+          formatter={(value, name) => [typeof value === "number" ? compact(Math.round(value)) : "—", String(name)]}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
+/**
+ * El rendimiento por hora del dia. La intensidad de cada barra es su valor
+ * contra el maximo. Una hora sin entrega no dibuja barra (null, no cero).
+ */
+export function HourlyChart({ data, metric, currency }: { data: HourPoint[]; metric: "spend" | "ctr" | "clicks"; currency: string | null }) {
+  const max = Math.max(...data.map((d) => d[metric] ?? 0), 0);
+  return (
+    <ResponsiveContainer width="100%" height={180}>
+      <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+        <XAxis dataKey="label" tick={{ ...TICK, fontSize: 10 }} interval={2} axisLine={false} tickLine={false} />
+        <YAxis
+          tick={{ ...TICK, fontSize: 10 }}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(v: number) => axisValue(metric, v, currency)}
+          width={44}
+        />
+        <Tooltip
+          contentStyle={{ ...TOOLTIP_STYLE, borderRadius: 8 }}
+          cursor={CURSOR}
+          formatter={(value) => [typeof value === "number" ? tooltipValue(metric, value, currency) : "—", METRIC_LABELS[metric]]}
+          labelFormatter={(label) => `Hora: ${label}`}
+        />
+        <Bar dataKey={metric} radius={[2, 2, 0, 0]} maxBarSize={24}>
+          {data.map((entry) => (
+            <Cell key={entry.hour} fill="var(--primary)" fillOpacity={max > 0 ? 0.25 + ((entry[metric] ?? 0) / max) * 0.75 : 0.25} />
+          ))}
+        </Bar>
+      </BarChart>
     </ResponsiveContainer>
   );
 }

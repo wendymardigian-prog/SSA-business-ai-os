@@ -6,7 +6,7 @@ import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
-import { fetchReachByLevel, fetchUniqueReach } from "@/lib/meta/live";
+import { fetchBreakdown, fetchReachByLevel, fetchUniqueReach } from "@/lib/meta/live";
 import { lastSyncedAt, syncedLabel } from "@/lib/dashboards/ads-view";
 import { isoToDateInput } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -61,6 +61,7 @@ export default async function AdsDashboardPage({
         uniqueReach={null}
         previousUniqueReach={null}
         adReach={null}
+        live={{ placement: null, device: null, audience: null }}
         liveError={null}
         syncedLabel={null}
       />
@@ -80,7 +81,7 @@ export default async function AdsDashboardPage({
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);
 
-  const [rows, previousRows, live, previousLive, adReachLive] = await Promise.all([
+  const [rows, previousRows, live, previousLive, adReachLive, placementLive, deviceLive, audienceLive] = await Promise.all([
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: range, timeZone }),
     loadAdsInsights(supabase, { workspaceId: workspace.id, adAccountId, period: before, timeZone }),
     token && range.from
@@ -96,6 +97,13 @@ export default async function AdsDashboardPage({
     token && range.from
       ? fetchReachByLevel({ token, adAccountId, level: "ad", since: sinceOf(range) as string, until: untilOf(range) })
       : Promise.resolve(null),
+    // Los desgloses, cada uno por su cuenta: si uno falla, esa tarjeta sola
+    // lo dice y el resto de la pantalla se ve igual.
+    ...(["publisher_platform,platform_position", "device_platform", "age,gender"] as const).map((breakdown) =>
+      token && range.from
+        ? fetchBreakdown({ token, adAccountId, breakdown, since: sinceOf(range) as string, until: untilOf(range) })
+        : Promise.resolve(null),
+    ),
   ]);
 
   // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
@@ -122,6 +130,7 @@ export default async function AdsDashboardPage({
       uniqueReach={bothReach ? live.data.reach : null}
       previousUniqueReach={bothReach ? previousLive.data.reach : null}
       adReach={adReachLive?.ok ? adReachLive.data : null}
+      live={{ placement: placementLive, device: deviceLive, audience: audienceLive }}
       liveError={live && !live.ok ? live.error : null}
       syncedLabel={syncedLabel(syncedAt, now, timeZone)}
     />
