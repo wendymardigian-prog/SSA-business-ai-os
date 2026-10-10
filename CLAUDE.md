@@ -196,8 +196,9 @@ tuvo un bug de `jsonb_set` con un valor `NULL`, corregido en el momento sin
 perdida de datos antes de reaplicar; detalle en `docs/PENDIENTE.md`) y
 `00127` (`content_post_versions` suma `updated_at` y el CHECK de `reason`
 admite `edit`/`approve`). La `00128` (borra `material_status` y la clave
-`options.contentType`) esta **escrita y sin aplicar**, anotada en
-`docs/PENDIENTE.md`.
+`options.contentType`) tambien esta **aplicada** (10/10/2026, version
+`20261010201712`), con su respaldo en `docs/contenido-v4/respaldo-00128.json`;
+el detalle del orden en `docs/PENDIENTE.md`.
 
 **Agenda v2 (8/10/2026).** `00129` esta **aplicada** y registrada:
 reescribe `create_booking` (ahora con 25 parametros, `p_landing_page` nuevo
@@ -719,12 +720,10 @@ Quince puntos de una revision de punta a punta. Plan en
   aviso previo), `00134` (precio y estado de los productos) y `00135`
   (`email_log.contact_id`) estan **aplicadas y registradas**. La **`00136`**
   (alcance de leads por rol: reescribe `can_see_contact`, copia de la 00089 con
-  la definicion vieja completa en su cabecera) esta **escrita y ensayada en una
-  transaccion que se deshace sola, SIN aplicar a proposito**: se aplica despues
-  del merge y del deploy (respaldo en `docs/revision-octubre/respaldo-00136.json`,
-  ensayo en `ensayo-00136.sql`). Hasta entonces `own_unassigned` se comporta como
-  `own`: no abre nada de mas. Despues de aplicarla: `verify-rls.mjs` y
-  `verify-roles.mjs` con `--despues-de-00136`.
+  la definicion vieja completa en su cabecera) tambien esta **aplicada y
+  registrada** (10/10/2026, version `20261010195152`, con el codigo ya
+  desplegado), con `verify-rls.mjs` y `verify-roles.mjs --despues-de-00136` en
+  verde. No cambio ningun dato: el unico rol personalizado ya estaba en `all`.
 - **Productos = `content_offers`.** La tabla no se renombro: la pantalla dice
   "Productos" (`/dashboard/settings/productos`), con precio en USD (siempre USD)
   y estado activo / inactivo / discontinuado, que se guarda en `archived_at` +

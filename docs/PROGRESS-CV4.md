@@ -29,7 +29,7 @@ Esquema real que el plano no tenía en cuenta:
 
 ## Decisiones tomadas con Wendy (7/10, antes de construir)
 
-1. **Migraciones renumeradas**: `00125_social_posts_origin_manual`, `00126_networks_format_backfill`, `00127_content_versions_session` (nueva, aditiva: `updated_at` y los motivos `edit` y `approve`), `00128_drop_material_and_content_type` (escrita, **sin aplicar**; solo `material_status` y `options.contentType`).
+1. **Migraciones renumeradas**: `00125_social_posts_origin_manual`, `00126_networks_format_backfill`, `00127_content_versions_session` (nueva, aditiva: `updated_at` y los motivos `edit` y `approve`), `00128_drop_material_and_content_type` (**aplicada el 10/10/2026**, ver `docs/PENDIENTE.md`; solo `material_status` y `options.contentType`).
 2. **Member con dropdown limitado**: elige Borrador / En producción / En revisión en sus piezas, como hoy. Aprobado y los derivados, bloqueados.
 3. **"Marcar como publicado" en cualquier estado.** Al deshacer, la pieza vuelve al estado manual que tenía (`status_before_manual` en la red).
 4. **El bug de reprogramar en Zernio se arregla en B15** (`lib/publishing/reschedule.ts`).
