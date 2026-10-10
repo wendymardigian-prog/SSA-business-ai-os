@@ -49,6 +49,7 @@ export function NumberInput({
   allowEmpty = false,
   placeholder,
   className,
+  disabled,
 }: {
   id: string;
   value: number | null;
@@ -59,6 +60,7 @@ export function NumberInput({
   allowEmpty?: boolean;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <input
@@ -70,13 +72,14 @@ export function NumberInput({
       step={step}
       placeholder={placeholder}
       value={value ?? ""}
+      disabled={disabled}
       onChange={(e) => {
         const raw = e.target.value;
         if (raw === "") return onChange(allowEmpty ? null : (min ?? 0));
         const parsed = Number(raw);
         if (Number.isFinite(parsed)) onChange(parsed);
       }}
-      className={cn(inputClass, className)}
+      className={cn(inputClass, className, disabled && "cursor-not-allowed opacity-60")}
     />
   );
 }

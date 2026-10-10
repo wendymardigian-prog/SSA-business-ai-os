@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Coins } from "lucide-react";
+import { ChevronDown, Coins } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { updateWorkspaceAiLimits } from "@/lib/actions/agents";
 import type { WorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import { Field, NumberInput, inputClass } from "@/components/agents/fields";
+import { formatUsd } from "@/components/agents/filters";
 
 /**
  * "Topes y avisos": los topes de gasto de TODA la IA del negocio (el agente,
@@ -19,6 +21,11 @@ import { Field, NumberInput, inputClass } from "@/components/agents/fields";
  * Los avisos llegan a la campana de notificaciones. Cuando haya un centro de
  * ajustes de notificaciones, el aviso tiene que aparecer ahi enlazado a esta
  * tarjeta (ver `lib/ai/spend-alerts.ts`).
+ *
+ * Colapsable (Bloque Agentes IA): arranca cerrada, en una sola linea, para no
+ * ocupar tanto alto arriba de la lista de agentes. "Sin topes" si no hay
+ * ninguno cargado; si hay, un resumen en chico. El editor completo de siempre
+ * aparece solo al expandir.
  */
 export function SpendLimitsCard({
   settings,
@@ -29,6 +36,7 @@ export function SpendLimitsCard({
   canEdit: boolean;
 }) {
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
   const [daily, setDaily] = useState<number | null>(settings.dailyUsd);
   const [dailyAction, setDailyAction] = useState(settings.dailyAction);
   const [monthly, setMonthly] = useState<number | null>(settings.monthlyUsd);
@@ -72,99 +80,113 @@ export function SpendLimitsCard({
     });
   }
 
+  // El resumen en una linea, para cuando esta colapsada.
+  const summaryParts: string[] = [];
+  if (daily !== null) summaryParts.push(`Diario ${formatUsd(daily)} · ${dailyAction === "disable" ? "frena" : "avisa"}`);
+  if (monthly !== null) summaryParts.push(`Mensual ${formatUsd(monthly)} · ${monthlyAction === "disable" ? "apaga" : "avisa"}`);
+  if (alertPct !== null) summaryParts.push(`aviso al ${alertPct} %`);
+  const summary = summaryParts.length > 0 ? summaryParts.join(" · ") : "Sin topes";
+
   return (
-    <section className="rounded-xl border border-border bg-card p-4" aria-labelledby="spend-limits-title">
-      <div className="flex items-center gap-2">
-        <Coins className="h-4 w-4 text-muted-foreground" aria-hidden />
-        <h3 id="spend-limits-title" className="text-sm font-semibold">
+    <section className="rounded-xl border border-border bg-card" aria-labelledby="spend-limits-title">
+      <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="flex w-full items-center gap-2 p-4 text-left">
+        <Coins className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <h3 id="spend-limits-title" className="shrink-0 text-sm font-semibold">
           Topes y avisos
         </h3>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Un tope es lo máximo que se gasta en IA (todo: el agente, el copywriter y lo demás). Se evalúa antes de cada
-        llamada al modelo, en la zona del negocio, y los montos son estimados según los precios cargados. Vacío: sin tope.
-      </p>
+        {!expanded && <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>}
+        <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
+      </button>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Field label="Tope diario (USD)">
-            {(id) => <NumberInput id={id} value={daily} min={0} step={0.5} allowEmpty onChange={touch(setDaily)} />}
-          </Field>
-          <Field label="Al llegar al tope diario">
-            {(id) => (
-              <select
-                id={id}
-                value={dailyAction}
-                disabled={!canEdit}
-                onChange={(e) => touch(setDailyAction)(e.target.value as "notify" | "disable")}
-                className={inputClass}
-              >
-                <option value="disable">Frenar la IA hasta mañana</option>
-                <option value="notify">Solo avisarme</option>
-              </select>
-            )}
-          </Field>
-        </div>
+      {expanded && (
+        <div className="px-4 pb-4">
+          <p className="text-xs text-muted-foreground">
+            Un tope es lo máximo que se gasta en IA (todo: el agente, el copywriter y lo demás). Se evalúa antes de cada
+            llamada al modelo, en la zona del negocio, y los montos son estimados según los precios cargados. Vacío: sin tope.
+          </p>
 
-        <div className="space-y-2">
-          <Field label="Tope mensual (USD)">
-            {(id) => <NumberInput id={id} value={monthly} min={0} step={1} allowEmpty onChange={touch(setMonthly)} />}
-          </Field>
-          <Field label="Al llegar al tope mensual">
-            {(id) => (
-              <select
-                id={id}
-                value={monthlyAction}
-                disabled={!canEdit}
-                onChange={(e) => touch(setMonthlyAction)(e.target.value as "notify" | "disable")}
-                className={inputClass}
-              >
-                <option value="disable">Apagar el agente</option>
-                <option value="notify">Solo avisarme</option>
-              </select>
-            )}
-          </Field>
-        </div>
-      </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Field label="Tope diario (USD)">
+                {(id) => <NumberInput id={id} value={daily} min={0} step={0.5} allowEmpty disabled={!canEdit} onChange={touch(setDaily)} />}
+              </Field>
+              <Field label="Al llegar al tope diario">
+                {(id) => (
+                  <select
+                    id={id}
+                    value={dailyAction}
+                    disabled={!canEdit}
+                    onChange={(e) => touch(setDailyAction)(e.target.value as "notify" | "disable")}
+                    className={inputClass}
+                  >
+                    <option value="disable">Frenar la IA hasta mañana</option>
+                    <option value="notify">Solo avisarme</option>
+                  </select>
+                )}
+              </Field>
+            </div>
 
-      <div className="mt-4 max-w-xs">
-        <Field
-          label="Avisarme antes, al llegar al (%)"
-          hint={
-            alertWithoutLimit ? (
-              <span className="text-amber-700 dark:text-amber-300">Cargá al menos un tope para que el aviso tenga contra qué medir.</span>
-            ) : (
-              "De cualquiera de los dos topes. Llega a la campana de notificaciones, una vez por día o por mes. Vacío: sin aviso previo."
-            )
-          }
-        >
-          {(id) => (
-            <NumberInput id={id} value={alertPct} min={1} max={99} step={1} allowEmpty placeholder="Ej: 80" onChange={touch(setAlertPct)} />
-          )}
-        </Field>
-      </div>
+            <div className="space-y-2">
+              <Field label="Tope mensual (USD)">
+                {(id) => <NumberInput id={id} value={monthly} min={0} step={1} allowEmpty disabled={!canEdit} onChange={touch(setMonthly)} />}
+              </Field>
+              <Field label="Al llegar al tope mensual">
+                {(id) => (
+                  <select
+                    id={id}
+                    value={monthlyAction}
+                    disabled={!canEdit}
+                    onChange={(e) => touch(setMonthlyAction)(e.target.value as "notify" | "disable")}
+                    className={inputClass}
+                  >
+                    <option value="disable">Apagar el agente</option>
+                    <option value="notify">Solo avisarme</option>
+                  </select>
+                )}
+              </Field>
+            </div>
+          </div>
 
-      {canEdit ? (
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            disabled={!dirty || pending}
-            onClick={save}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            Guardar topes y avisos
-          </button>
-          {message && (
-            <span
-              role={message.tone === "error" ? "alert" : "status"}
-              className={message.tone === "error" ? "text-xs text-red-700 dark:text-red-400" : "text-xs text-emerald-700 dark:text-emerald-400"}
+          <div className="mt-4 max-w-xs">
+            <Field
+              label="Avisarme antes, al llegar al (%)"
+              hint={
+                alertWithoutLimit ? (
+                  <span className="text-amber-700 dark:text-amber-300">Cargá al menos un tope para que el aviso tenga contra qué medir.</span>
+                ) : (
+                  "De cualquiera de los dos topes. Llega a la campana de notificaciones, una vez por día o por mes. Vacío: sin aviso previo."
+                )
+              }
             >
-              {message.text}
-            </span>
+              {(id) => (
+                <NumberInput id={id} value={alertPct} min={1} max={99} step={1} allowEmpty disabled={!canEdit} placeholder="Ej: 80" onChange={touch(setAlertPct)} />
+              )}
+            </Field>
+          </div>
+
+          {canEdit ? (
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                disabled={!dirty || pending}
+                onClick={save}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                Guardar topes y avisos
+              </button>
+              {message && (
+                <span
+                  role={message.tone === "error" ? "alert" : "status"}
+                  className={message.tone === "error" ? "text-xs text-red-700 dark:text-red-400" : "text-xs text-emerald-700 dark:text-emerald-400"}
+                >
+                  {message.text}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-4 text-xs text-muted-foreground">Solo Owner y Admin pueden cambiar los topes.</p>
           )}
         </div>
-      ) : (
-        <p className="mt-4 text-xs text-muted-foreground">Solo Owner y Admin pueden cambiar los topes.</p>
       )}
     </section>
   );

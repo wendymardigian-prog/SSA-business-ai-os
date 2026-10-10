@@ -143,7 +143,6 @@ export function countActiveRunFilters(f: RunFilters, currentAgentId: string | nu
  * `status_detail LIKE '%classified%'`. Cualquier otro valor es un `source` de
  * verdad y se filtra por igualdad, como siempre.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applyOrigenFilter<Q extends { eq: (...a: any[]) => Q; like: (...a: any[]) => Q }>(query: Q, origen: string): Q {
   if (origen === CLOSE_CLASSIFICATION.id) {
     return query.eq("source", CLOSE_CLASSIFICATION.source).like("status_detail", CLOSE_CLASSIFICATION.detailLike as string);

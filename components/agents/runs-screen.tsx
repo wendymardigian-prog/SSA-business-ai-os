@@ -289,11 +289,13 @@ function SortHeader({
   const active = orden === asc || orden === desc;
   const next = orden === desc ? asc : desc;
   return (
-    <th className={cn("px-3 py-2 font-medium", align === "right" && "text-right")}>
+    <th
+      className={cn("px-3 py-2 font-medium", align === "right" && "text-right")}
+      aria-sort={active ? (orden === asc ? "ascending" : "descending") : "none"}
+    >
       <button
         type="button"
         onClick={() => setParam("orden", next)}
-        aria-sort={active ? (orden === asc ? "ascending" : "descending") : "none"}
         className={cn(
           "inline-flex items-center gap-1 hover:text-foreground",
           align === "right" && "flex-row-reverse",
