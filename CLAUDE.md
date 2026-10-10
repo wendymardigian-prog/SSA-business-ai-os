@@ -79,8 +79,9 @@ El sistema se duplica por cliente: cada clon es su propia copia, con su propia b
 - Como habla el agente en espanol: `AI_LANGUAGE_STYLE` (ver `lib/ai/language-style.ts`). Sin configurar, "espanol neutro, directo y sin relleno".
 - Alta solo por invitacion: no hay registro publico. `scripts/create-owner.mjs` crea el primer Owner de un clon nuevo (cuenta + workspace + zona horaria del negocio).
 - Zona horaria por USUARIO, no por workspace: se detecta del navegador en el primer ingreso y se guarda en `user_preferences` (00121); editable desde el menu de perfil. `workspaces.timezone` sigue existiendo aparte, para las reglas que no pueden depender de quien mira (horario de atencion del agente, topes de gasto, hora de las tareas programadas) — ver `lib/dates.ts` y `lib/user-timezone.ts`.
-- `private.system_config` necesita `app_url` y `cron_secret` propios por clon — el paso a paso completo (con el `INSERT` exacto) esta en el comentario de `CRON_SECRET` en `.env.example`, no en un doc aparte.
+- Cada clon necesita `app_url` y `cron_secret` propios en Supabase Vault (`system:app_url` / `system:cron_secret`, desde la 00139): `select private.set_system_secret('cron_secret', '...')`, el mismo valor que `CRON_SECRET` en Railway. `private.system_secrets_status()` dice si estan cargados y cuantos cron dieron 200/401, sin mostrar el secreto. Detalle en el comentario de `CRON_SECRET` en `.env.example`.
 - `scripts/export-template.mjs` corta una copia limpia del repo (sin docs internos, sin `.env`, con su propio `git init`) como punto de partida para un cliente nuevo.
+- `/setup` (`.claude/commands/setup.md`) guia en Claude Code el arranque obligatorio de un clon nuevo: Supabase y migraciones, Railway y variables, los secretos del cron, las URLs de Auth y el `.env` local. Nunca pide claves por chat.
 
 # Comandos
 
@@ -228,7 +229,18 @@ los cuatro CHECK y las tres policies viejas letra por letra, para volver atras.
 inmutable de instrucciones de tarea, mismo patron que `agent_prompt_versions`)
 y `workspaces.ai_task_prompt_active jsonb default '{}'`. Aditiva: sin version
 activa, cada tarea sigue usando el texto del sistema que ya tenia en el
-codigo. **La proxima migracion disponible es la `00138`.**
+codigo.
+
+**Secretos del cron en Vault (10/10/2026).** `00139` y `00140` estan
+**aplicadas** y registradas. `app_url` y `cron_secret` pasaron de
+`private.system_config` (texto plano) a Vault (`system:app_url`,
+`system:cron_secret`). Se cargan con `private.set_system_secret` y se
+comprueban con `private.system_secrets_status()`, que nunca muestra el secreto.
+`call_app_cron` lee de Vault; `lib/cron-config.test.ts` falla si la definicion
+vigente vuelve a leer la tabla (pasa si un cron nuevo copia una version vieja
+de la funcion). `system_config` queda solo con `draft_alerts_since`. La `00138`
+(`ai_task_models`) esta aplicada pero vive en la rama
+`feature/ads-analysis-tarea`. **La proxima migracion disponible es la `00141`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas

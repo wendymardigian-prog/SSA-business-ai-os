@@ -86,7 +86,7 @@ protection". Va en el checklist de despliegue, no en el código.
 
 ## Checklist de despliegue (lo que no vive en el repo)
 
-- [ ] `CRON_SECRET` en Railway **y** en `private.system_config` con el mismo valor
+- [ ] `CRON_SECRET` en Railway **y** en Supabase Vault (`system:cron_secret`, con `private.set_system_secret`) con el mismo valor. `select * from private.system_secrets_status()` lo confirma: 0 en `calls_401_15m`
 - [ ] El secreto del cron viaja solo por header `Authorization: Bearer`. Si hay
       algún monitor externo hecho a mano con `?key=` en la URL, reconfigurarlo
 - [ ] Decidir sobre leaked password protection (punto 5)
