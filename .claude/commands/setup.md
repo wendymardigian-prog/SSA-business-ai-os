@@ -83,16 +83,23 @@ Explicale PARA QUÉ es: las tareas automáticas (secuencias, recordatorios, publ
 1. **La dirección (no es secreta, la cargás vos)** con el conector:
    `select private.set_system_secret('app_url', 'https://<el dominio del paso 2>');`
    Tiene que devolver "listo: app_url guardado en Vault".
-2. **El `CRON_SECRET` lo carga la persona**, porque es secreto. Que abra Supabase → SQL Editor → New query, pegue esta línea poniendo su valor entre las comillas, y la ejecute con Run:
+2. **El `CRON_SECRET` lo carga la persona**, porque es secreto. La forma más amigable es el formulario de Vault:
+   - Supabase → **Integrations → Vault → Secrets → Add new secret**.
+   - **Name:** `system:cron_secret`, exactamente así (con los dos puntos). Es el nombre con el que la base lo busca.
+   - **Description:** puede quedar vacía.
+   - **Secret value:** el mismo valor que puso en `CRON_SECRET` en Railway.
+   - Clic en **Add secret**.
+
+   Si prefiere SQL, o si ya existía un `system:cron_secret` y hay que cambiarlo (el formulario no deja crear dos con el mismo nombre), que pegue esta línea en Supabase → SQL Editor, con su valor entre las comillas, y la ejecute con Run:
    `select private.set_system_secret('cron_secret', 'EL-MISMO-VALOR-QUE-EN-RAILWAY');`
-   Tiene que ver "listo: cron_secret guardado en Vault".
 3. **Comprobalo vos**, sin ver el secreto:
    `select * from private.system_secrets_status();`
    - `app_url` tiene que ser el dominio y `cron_secret_set` tiene que dar `true`.
    - Esperá 1-2 minutos y volvé a correrlo. `calls_ok_15m` tiene que empezar a subir, y `calls_401_15m` tiene que quedar en 0.
-   - Si aparecen 401, el `CRON_SECRET` de Railway y el de Supabase no son iguales (un espacio de más, un carácter distinto): que repita la línea del punto 2 copiando exactamente el mismo valor.
+   - Si `cron_secret_set` da `false`, lo más probable es un nombre mal escrito en el formulario: que revise en la lista de Vault que diga exactamente `system:cron_secret`.
+   - Si aparecen 401, el `CRON_SECRET` de Railway y el de Supabase no son iguales (un carácter distinto, algo que se cortó al copiar): que lo vuelva a cargar con la línea de SQL del punto 2, copiando exactamente el mismo valor.
 
-Si más adelante cambia de dominio o de `CRON_SECRET`, se usa la misma línea con el valor nuevo.
+Si más adelante cambia de dominio o de `CRON_SECRET`, se usa la línea `set_system_secret` con el valor nuevo: actualiza el secreto existente sin duplicarlo.
 
 ## Paso 4 — Links de autenticación (Supabase Auth → URL Configuration)
 
