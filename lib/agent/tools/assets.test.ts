@@ -271,7 +271,7 @@ describe("banca v2: los seis tipos para el agente", () => {
     });
   }
   function linkRow(over: Record<string, unknown> = {}) {
-    return textRow({ id: "l-1", kind: "link", name: "Agenda", description: "Para reservar", content: null, url: "https://cal.com/wendy", tags: ["agenda"], ...over });
+    return textRow({ id: "l-1", kind: "link", name: "Agenda", description: "Para reservar", content: null, url: "https://cal.com/demo", tags: ["agenda"], ...over });
   }
 
   it("un video con voz necesita la transcripcion lista; uno sin voz se ofrece por su descripcion", async () => {
@@ -316,7 +316,7 @@ describe("banca v2: los seis tipos para el agente", () => {
     const ctx = ctxFor(db);
     const result = await usarRecursoTool.execute({ input: { recurso_id: "l-1" }, config: {}, ctx });
     expect(result.ok).toBe(true);
-    expect(result.forModel).toContain("https://cal.com/wendy");
+    expect(result.forModel).toContain("https://cal.com/demo");
     expect(ctx.turn!.memo.size).toBe(0);
     expect(db.rpcCalls).toContainEqual({ name: "touch_response_asset", args: { p_asset_id: "l-1" } });
   });

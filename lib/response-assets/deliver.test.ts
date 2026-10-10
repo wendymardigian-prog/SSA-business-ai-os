@@ -175,12 +175,12 @@ describe("deliverAsset: con archivo", () => {
 
   it("un audio sale SOLO por el canal; su transcripcion queda guardada como texto del mensaje", async () => {
     copyAssetToChat.mockResolvedValue(copy("audio", "audio"));
-    const db = world("evolution", [asset({ kind: "audio", mime_type: "audio/mp4", transcript: "Hola, soy Wendy", transcript_status: "ready" })]);
+    const db = world("evolution", [asset({ kind: "audio", mime_type: "audio/mp4", transcript: "Hola, soy Ana", transcript_status: "ready" })]);
 
     await deliverAsset(db.client, { assetId: "a-1", context: CONTEXT });
 
     expect(sendChannelMessage).toHaveBeenCalledWith(db.client, expect.anything(), expect.objectContaining({ text: "" }));
-    expect(recordSend).toHaveBeenCalledWith(db.client, expect.anything(), "Hola, soy Wendy", expect.anything(), expect.anything());
+    expect(recordSend).toHaveBeenCalledWith(db.client, expect.anything(), "Hola, soy Ana", expect.anything(), expect.anything());
   });
 
   it("si no se pudo copiar el archivo, falla (reintentable) y no manda nada", async () => {

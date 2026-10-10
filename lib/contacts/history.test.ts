@@ -11,7 +11,7 @@ const base = (over: Partial<BuildHistoryInput> = {}): BuildHistoryInput => ({
 });
 
 const audit = (id: string, at: string, action = "update", metadata: Record<string, unknown> | null = null) => ({
-  id, action: action as never, changes: null, metadata: metadata as never, performedAt: at, actorLabel: "Wendy",
+  id, action: action as never, changes: null, metadata: metadata as never, performedAt: at, actorLabel: "Ana",
 });
 
 describe("buildContactHistory", () => {

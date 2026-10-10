@@ -18,7 +18,7 @@ const VALID: Record<AssetKind, AssetFieldsInput> = {
   video: { name: "Testimonio", description: "Ana cuenta su resultado", storagePath: PATH, caption: "Mirá lo que logró Ana" },
   image: { name: "Flyer", description: "El flyer del lanzamiento", storagePath: PATH },
   file: { name: "Propuesta", description: "PDF con los planes", storagePath: PATH, caption: "Te paso la propuesta" },
-  link: { name: "Agenda", description: "Para reservar la llamada", url: "calendly.com/wendy", linkKind: "agenda" },
+  link: { name: "Agenda", description: "Para reservar la llamada", url: "calendly.com/demo", linkKind: "agenda" },
 };
 
 describe("validateAssetFields — una forma valida por tipo", () => {
@@ -36,7 +36,7 @@ describe("validateAssetFields — una forma valida por tipo", () => {
 
   it("un enlace sin esquema se guarda con https", () => {
     const result = validateAssetFields("link", VALID.link);
-    expect(result).toMatchObject({ ok: true, value: { url: "https://calendly.com/wendy", linkKind: "agenda" } });
+    expect(result).toMatchObject({ ok: true, value: { url: "https://calendly.com/demo", linkKind: "agenda" } });
   });
 });
 
@@ -104,20 +104,20 @@ describe("KIND_SHAPE", () => {
 
 describe("normalizeUrl", () => {
   it("acepta http y https, y completa el esquema", () => {
-    expect(normalizeUrl("https://wendy.com/a?b=1")).toEqual({ ok: true, value: "https://wendy.com/a?b=1" });
-    expect(normalizeUrl("http://wendy.com")).toEqual({ ok: true, value: "http://wendy.com/" });
-    expect(normalizeUrl("  wendy.com/agenda  ")).toEqual({ ok: true, value: "https://wendy.com/agenda" });
+    expect(normalizeUrl("https://ejemplo.com/a?b=1")).toEqual({ ok: true, value: "https://ejemplo.com/a?b=1" });
+    expect(normalizeUrl("http://ejemplo.com")).toEqual({ ok: true, value: "http://ejemplo.com/" });
+    expect(normalizeUrl("  ejemplo.com/agenda  ")).toEqual({ ok: true, value: "https://ejemplo.com/agenda" });
   });
 
   it("rechaza otros esquemas, espacios y hosts incompletos", () => {
-    expect(normalizeUrl("ftp://wendy.com").ok).toBe(false);
+    expect(normalizeUrl("ftp://ejemplo.com").ok).toBe(false);
     expect(normalizeUrl("file:///etc/passwd").ok).toBe(false);
     expect(normalizeUrl("https://wen dy.com").ok).toBe(false);
     expect(normalizeUrl("hola").ok).toBe(false);
   });
 
   it("el dominio para mostrar", () => {
-    expect(urlDomain("https://www.calendly.com/wendy")).toBe("calendly.com");
+    expect(urlDomain("https://www.calendly.com/demo")).toBe("calendly.com");
     expect(urlDomain(null)).toBe("");
   });
 });

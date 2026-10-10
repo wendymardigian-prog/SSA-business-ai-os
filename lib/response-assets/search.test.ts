@@ -58,7 +58,7 @@ describe("filterAssets", () => {
       { id: "v", kind: "video" as const, name: "Testimonio Ana", shortcut: "/ana", content: null, transcript: "subi las ventas un treinta por ciento", description: "Clienta de estetica" },
       { id: "i", kind: "image" as const, name: "Flyer", shortcut: null, content: null, transcript: null, description: "Captura del panel de resultados" },
       { id: "f", kind: "file" as const, name: "Propuesta", shortcut: null, content: null, transcript: null, description: "PDF con los planes y precios" },
-      { id: "l", kind: "link" as const, name: "Agenda", shortcut: "/agenda", content: null, transcript: null, url: "https://calendly.com/wendy", description: "Para reservar la llamada" },
+      { id: "l", kind: "link" as const, name: "Agenda", shortcut: "/agenda", content: null, transcript: null, url: "https://calendly.com/demo", description: "Para reservar la llamada" },
     ];
 
     it("un video se busca por su transcripcion", () => {
