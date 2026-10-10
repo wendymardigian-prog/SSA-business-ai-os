@@ -245,8 +245,11 @@ export interface AgentScreenData {
   viewer: { isAdmin: boolean };
   /** Solo cuando la pestana activa es Etiquetas (y solo Owner/Admin). */
   tags?: TagsTabData;
-  /** Solo Owner/Admin. */
-  kpis?: HeaderKpis;
+  /**
+   * Solo Owner/Admin. Es una PROMESA: la pagina no la espera, la vista la
+   * muestra cuando llega (el reporte del mes es lo mas pesado de la cabecera).
+   */
+  kpis?: Promise<HeaderKpis>;
   /** Solo cuando la pestana activa es Costos (y solo Owner/Admin). */
   costs?: CostsTabData;
   /** Solo cuando la pestana activa es Runs. */

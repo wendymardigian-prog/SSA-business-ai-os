@@ -40,6 +40,7 @@ import { ExpandableSearch } from "@/components/ui/expandable-search";
 import { agendaSearchHint } from "@/lib/scheduling/agenda-search-hint";
 import { gmtOffsetLabel, timezoneCityLabel } from "@/lib/scheduling/booker/format";
 import { changeBookingStatus, cancelBookingAsHost, searchContactsForBooking, slotsForManualBooking } from "@/lib/actions/scheduling/bookings";
+import { DEFAULT_CONFIG_SECTION } from "@/lib/scheduling/config-sections";
 
 /** La pastilla rápida de la lista: los cuatro de siempre, más "Todas" (ahora el default). */
 export type QuickPick = QuickFilter | "all";
@@ -192,7 +193,7 @@ export function BookingsScreen({
             )}
             {showConfig && (
               <Link
-                href="/dashboard/agenda/configuracion"
+                href={DEFAULT_CONFIG_SECTION.href}
                 aria-label={`Configuración de agenda. Hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
                 title={`Configuración de agenda · hora de ${timezoneCityLabel(timezone)} (${gmtOffsetLabel(now, timezone)})`}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"

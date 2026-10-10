@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LinkPending } from "@/components/ui/link-pending";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -257,6 +258,7 @@ export function NavLinks({
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   <span className="collapsed:hidden">{item.name}</span>
+                  <LinkPending className="ml-auto collapsed:hidden" />
                 </Link>
                 {badge && <DraftBadge counts={badge} onNavigate={onNavigate} />}
               </div>

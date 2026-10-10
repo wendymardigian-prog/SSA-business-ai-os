@@ -65,24 +65,39 @@ export async function fetchCostReport(service: Db, args: { workspaceId: string; 
   return (data as unknown as RawReport | null) ?? null;
 }
 
-/** Los indicadores de la cabecera del agente: runs de hoy, gasto del mes, % de derivaciones. */
+/**
+ * Los indicadores de la cabecera del agente: runs de hoy, gasto del mes, % de
+ * derivaciones. Todos DE ESTE AGENTE: antes el gasto, las derivaciones y los
+ * runs sin precio salian de los totales del workspace entero, y la cabecera
+ * de cada agente mostraba lo mismo.
+ *
+ * El gasto sale de `by_agent` del reporte (la suma la hace la base; contar
+ * filas aca chocaria con el tope de 1000 de PostgREST). Lo demas son conteos.
+ * La pagina lo carga en paralelo y lo muestra cuando llega: no frena la
+ * pantalla.
+ */
 export async function loadHeaderKpis(service: Db, args: { workspaceId: string; agentId: string; timeZone: string; now?: Date }): Promise<HeaderKpis> {
   const now = args.now ?? new Date();
-  const dayStart = startOfZonedDay(now, args.timeZone);
+  const dayStart = startOfZonedDay(now, args.timeZone).toISOString();
   const monthStart = startOfZonedMonth(now, args.timeZone);
   const soon = new Date(now.getTime() + 60_000);
+  const agentRuns = () =>
+    service.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", args.workspaceId).eq("agent_id", args.agentId);
 
-  const [{ count: runsToday }, month] = await Promise.all([
-    service.from("agent_runs").select("id", { count: "exact", head: true }).eq("workspace_id", args.workspaceId).eq("agent_id", args.agentId).gte("created_at", dayStart.toISOString()),
+  const [{ count: runsToday }, month, { count: escalations }, { count: responded }, { count: missingPricing }] = await Promise.all([
+    agentRuns().gte("created_at", dayStart),
     fetchCostReport(service, { workspaceId: args.workspaceId, from: monthStart, to: soon }),
+    agentRuns().gte("created_at", monthStart.toISOString()).eq("status", "escalated"),
+    agentRuns().gte("created_at", monthStart.toISOString()).eq("status", "responded"),
+    agentRuns().gte("created_at", monthStart.toISOString()).is("cost_usd", null).gt("input_tokens", 0),
   ]);
-  const totals = month?.totals;
-  const decided = (totals?.responded ?? 0) + (totals?.escalations ?? 0);
+  const decided = (responded ?? 0) + (escalations ?? 0);
+  const mine = month?.by_agent.find((a) => a.agent_id === args.agentId);
   return {
     runsToday: runsToday ?? 0,
-    monthCostUsd: totals ? n(totals.cost_usd) : null,
-    escalationRatePct: decided > 0 ? Math.round(((totals?.escalations ?? 0) / decided) * 100) : null,
-    missingPricing: totals?.missing_pricing ?? 0,
+    monthCostUsd: month ? n(mine?.cost_usd) : null,
+    escalationRatePct: decided > 0 ? Math.round(((escalations ?? 0) / decided) * 100) : null,
+    missingPricing: missingPricing ?? 0,
   };
 }
 

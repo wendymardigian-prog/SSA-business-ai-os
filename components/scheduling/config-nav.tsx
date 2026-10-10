@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { LinkPending } from "@/components/ui/link-pending";
 import { CONFIG_SECTIONS } from "@/lib/scheduling/config-sections";
 
 /**
@@ -27,6 +28,7 @@ export function ConfigNav() {
                 )}
               >
                 {section.label}
+                <LinkPending className="ml-2 align-middle" />
               </Link>
             </li>
           );

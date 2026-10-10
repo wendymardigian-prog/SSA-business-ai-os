@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { loadTaskRunSummary } from "./task-run-summary";
-import { AI_TASKS } from "./catalog";
+import { loadTaskRunSummaries, loadTaskRunSummary } from "./task-run-summary";
+import { AI_TASKS, ALL_AI_TASKS } from "./catalog";
 
 function fakeClient(opts: { lastRun?: { status: string; status_detail: string | null; completed_at: string | null; created_at: string } | null; bySource?: Array<{ source: string; cost_usd: number }> }) {
   return {
@@ -43,5 +43,17 @@ describe("loadTaskRunSummary", () => {
     const client = fakeClient({ lastRun: null, bySource: [{ source: "conversation_summary", cost_usd: 5 }] });
     const got = await loadTaskRunSummary(client, "ws-1", AI_TASKS.close_classification);
     expect(got.monthSpendUsd).toBeNull();
+  });
+});
+
+describe("loadTaskRunSummaries", () => {
+  it("pide el reporte de costos UNA vez para todas las tareas", async () => {
+    let rpcCalls = 0;
+    const base = fakeClient({ lastRun: null, bySource: [{ source: "message_classification", cost_usd: 2 }] }) as unknown as { from: unknown; rpc: () => Promise<unknown> };
+    const client = { from: base.from, rpc: async () => (rpcCalls++, base.rpc()) } as never;
+    const got = await loadTaskRunSummaries(client, "ws-1", ALL_AI_TASKS);
+    expect(rpcCalls).toBe(1);
+    expect(got).toHaveLength(ALL_AI_TASKS.length);
+    expect(got[ALL_AI_TASKS.findIndex((t) => t.id === "message_classification")].monthSpendUsd).toBe(2);
   });
 });
