@@ -10,6 +10,7 @@ import { resolveBackgroundSettings } from "@/lib/background/settings";
 import { getProvider, isTextProvider } from "@/lib/integrations/providers";
 import { selectPending, applyClassification, CLASSIFIER_BATCH, MAX_NEW_CATEGORIES, type PendingText } from "./classifier";
 import { buildSystemPrompt, buildBatchPrompt, parseClassifierOutput, MAX_CORRECTIONS, type CategoryForPrompt, type CorrectionForPrompt } from "./prompt";
+import { loadTaskInstructions } from "@/lib/ai-tasks/store";
 
 type Db = SupabaseClient<Database>;
 
@@ -148,6 +149,11 @@ export async function runMessageClassification(
   });
   out.runId = run.runId;
 
+  // Las instrucciones editables de la tarea (Agentes IA): si no hay version
+  // activa, o si algo falla al leerla, se usa el texto del sistema. Se carga
+  // una sola vez por corrida, no por lote.
+  const instructions = await loadTaskInstructions(supabase, args.workspaceId, "message_classification");
+
   let failure: string | null = null;
 
   try {
@@ -167,6 +173,7 @@ export async function runMessageClassification(
           pending,
           run,
           generate,
+          instructions: instructions.text,
           model: resolved.model,
           nonce: makeNonce(),
           now: clock,
@@ -256,6 +263,8 @@ async function classifyBatch(
     pending: PendingText[];
     run: Awaited<ReturnType<typeof openAiRun>>;
     generate: typeof generateText;
+    /** La parte editable del prompt (Agentes IA), ya resuelta antes del lote. */
+    instructions: string;
     model: NonNullable<Awaited<ReturnType<typeof getWorkspaceModel>>["model"]>;
     nonce: string;
     now: () => Date;
@@ -305,7 +314,7 @@ async function classifyBatch(
 
   const result = await args.generate({
     model: args.model,
-    system: buildSystemPrompt(request),
+    system: buildSystemPrompt(request, args.instructions),
     prompt: buildBatchPrompt(request),
     temperature: 0,
     maxOutputTokens: 8_000,
