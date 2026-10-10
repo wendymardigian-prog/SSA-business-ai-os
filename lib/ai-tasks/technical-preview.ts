@@ -18,6 +18,11 @@ export function technicalPreviewFor(task: AiTaskId): string {
       return buildClassifyTechnicalPrompt({ direction: "inbound", nonce: "a1b2c3" });
     case "conversation_summary":
       return buildSummaryTechnicalPrompt("a1b2c3", ["Interesado", "Precio"], true);
+    // La misma parte fija que el Resumen (es la misma llamada): la lista de
+    // etiquetas permitidas, los valores de temperatura y el formato. Los
+    // criterios editables van despues, con este encabezado.
+    case "close_classification":
+      return `${buildSummaryTechnicalPrompt("a1b2c3", ["Interesado", "Precio"], true)}\n\nCriterios del negocio para la clasificacion:\n(lo que escribas arriba)`;
     default:
       return "";
   }

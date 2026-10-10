@@ -22,4 +22,13 @@ describe("planDispatch (F24)", () => {
     const b = planDispatch("ws-1", DEFAULT_BACKGROUND_SETTINGS, new Date("2026-09-16T10:14:00Z"), TZ);
     expect(a[0].dedupeKey).toBe(b[0].dedupeKey);
   });
+  it("una tarea sin implementacion por lote no se encola aunque este guardada en Económico", () => {
+    // El Resumen en Económico encolaba un job que fallaba a proposito.
+    const s = {
+      ...DEFAULT_BACKGROUND_SETTINGS,
+      conversation_summary: { mode: "batch" as const, frequency: "daily" as const, hour: "03:00" },
+      close_classification: { mode: "batch" as const, frequency: "daily" as const, hour: "03:00" },
+    };
+    expect(planDispatch("ws-1", s, now, TZ).map((d) => d.task)).toEqual(["message_classification"]);
+  });
 });

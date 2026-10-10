@@ -3,13 +3,13 @@ import { ChevronRight } from "lucide-react";
 import { TaskIcon } from "./task-icon";
 import { MODE_LABELS, formatSpend, lastRunLabel, type TaskRunInfo } from "@/lib/background/screen";
 import type { TaskMode } from "@/lib/background/settings";
-import type { AiTaskDef } from "@/lib/ai-tasks/catalog";
+import { controlLabel, type AiTaskDef } from "@/lib/ai-tasks/catalog";
 
 /**
  * La card de una tarea de IA en Agentes IA: más baja que la de un agente
  * (una sola línea de datos, sin el badge de encendido/apagado — "Apagada" ya
- * sale en el modo), con otro ícono por tarea. Clic lleva a su configuración,
- * instrucciones (si las tiene) y corridas.
+ * sale en el modo), con otro ícono por tarea. Clic lleva a sus cinco pestañas
+ * (Cómo funciona, Configuración, Instrucciones, Corridas y Costos).
  */
 export function TaskCard({ task, mode, lastRun }: { task: AiTaskDef; mode: TaskMode | null; lastRun: TaskRunInfo | null }) {
   return (
@@ -23,7 +23,7 @@ export function TaskCard({ task, mode, lastRun }: { task: AiTaskDef; mode: TaskM
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{task.name}</p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {mode ? MODE_LABELS[mode] : task.onDemand ? "Bajo demanda" : "Siempre inmediata"}
+          {mode ? MODE_LABELS[mode] : controlLabel(task)}
           {" · "}
           {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at) : "Sin corridas propias todavía"}
           {" · "}

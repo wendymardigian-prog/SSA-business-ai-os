@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import { LinkPending } from "@/components/ui/link-pending";
 import { AiPeriodControl } from "@/components/agents/ai-dashboard/period-control";
 import { RunsScreen } from "@/components/agents/runs-screen";
 import { TaskIcon } from "./task-icon";
@@ -11,24 +12,23 @@ import { TaskModeEditor } from "./task-mode-editor";
 import { TaskInstructionsPanel } from "./task-instructions-panel";
 import { TaskModelPanel } from "./task-model-panel";
 import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
+import { AgentCloseTable, HowItWorks } from "./how-it-works";
 import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
+import { controlLabel } from "@/lib/ai-tasks/catalog";
+import { TASK_TABS, resolveTaskTab } from "@/lib/ai-tasks/tabs";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
 
-const TABS = [
-  { key: "config", label: "Configuración" },
-  { key: "instrucciones", label: "Instrucciones" },
-  { key: "runs", label: "Corridas" },
-] as const;
-
 /**
- * El detalle de una tarea de IA (Bloque Agentes IA): configuración,
- * instrucciones (si las tiene) y sus corridas, sin salir de acá. Mismo
- * patrón de pestañas por `?tab=` que el detalle de un agente.
+ * El detalle de una tarea de IA (Bloque Agentes IA). Las mismas cinco
+ * pestañas para todas (`TASK_TABS`): lo que cambia entre una tarea y otra sale
+ * del catálogo (`task.control`, `task.instructions`, `task.modelSource`), no
+ * de un `if` por tarea. La única tarea con paneles propios es la
+ * clasificación de mensajes (calidad y textos de botón), en Configuración.
  */
 export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; tab: string; timeZone: string }) {
   const { task } = data;
-  const tabs = TABS.filter((t) => t.key !== "instrucciones" || task.hasInstructions);
-  const activeTab = tabs.some((t) => t.key === tab) ? tab : "config";
+  const activeTab = resolveTaskTab(tab);
+  const mode = data.settings && task.backgroundTask ? data.settings[task.backgroundTask].mode : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -55,34 +55,18 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
           <div className="min-w-0">
             <h2 className="sr-only">{task.name}</h2>
             <p className="text-sm text-muted-foreground">{task.description}</p>
-            {!data.settings && task.onDemand && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Bajo demanda
-                {" · "}
-                Última corrida: {data.lastRun?.at ? lastRunLabel(data.lastRun.at) : "Sin corridas todavía"}
-                {" · "}
-                Gasto del mes: {formatSpend(data.lastRun?.monthSpendUsd ?? null)}
-              </p>
-            )}
-            {data.settings && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {MODE_LABELS[data.settings[task.backgroundTask!].mode]}
-                {" · "}
-                Última corrida:{" "}
-                {data.settings[task.backgroundTask!].mode === "off"
-                  ? "Apagada"
-                  : data.lastRun
-                    ? lastRunLabel(data.lastRun.at)
-                    : "Sin corridas propias todavía"}
-                {" · "}
-                Gasto del mes: {formatSpend(data.lastRun?.monthSpendUsd ?? null)}
-              </p>
-            )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {mode ? MODE_LABELS[mode] : controlLabel(task)}
+              {" · "}
+              Última corrida: {mode === "off" ? "Apagada" : data.lastRun?.at ? lastRunLabel(data.lastRun.at) : "Sin corridas todavía"}
+              {" · "}
+              Gasto del mes: {formatSpend(data.lastRun?.monthSpendUsd ?? null)}
+            </p>
           </div>
         </div>
 
         <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones de la tarea">
-          {tabs.map((t) => (
+          {TASK_TABS.map((t) => (
             <Link
               key={t.key}
               href={`/dashboard/agents/tareas/${task.id}?tab=${t.key}`}
@@ -93,6 +77,7 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
               )}
             >
               {t.label}
+              <LinkPending className="ml-1.5 align-middle" />
             </Link>
           ))}
         </nav>
@@ -100,55 +85,143 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
 
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
         <div className={cn("mx-auto space-y-6", activeTab === "runs" ? "max-w-5xl" : "max-w-3xl")}>
-          {activeTab === "config" && (
-            <>
-              {data.model ? (
-                <TaskModelPanel
+          {activeTab === "como" && <HowItWorks task={task} about={data.about} agentClose={data.agentClose} />}
+
+          {activeTab === "config" && <ConfigTab data={data} />}
+
+          {activeTab === "instrucciones" &&
+            (task.instructions.editable ? (
+              data.instructions && (
+                <TaskInstructionsPanel
                   taskId={task.id}
                   taskName={task.name}
-                  current={data.model.current}
-                  picker={data.model.picker}
-                  runsWhen="cuando alguien aprieta “Analizar con IA” en el dashboard de Meta Ads"
+                  defaultText={data.instructions.defaultText}
+                  activeVersion={data.instructions.activeVersion}
+                  activeText={data.instructions.activeText}
+                  versions={data.instructions.versions}
+                  technical={data.instructions.technical}
+                  variables={task.instructions.variables}
                 />
-              ) : data.settings && task.backgroundTask ? (
-                <TaskModeEditor
-                  task={task.backgroundTask}
-                  settings={data.settings}
-                  canTurnOff={data.canTurnOff}
-                  canBatch={data.canBatch}
-                  batchWarning={data.batchWarning}
-                  lastRun={data.lastRun}
-                />
-              ) : (
-                <section className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
-                  Esta tarea no tiene modo propio: corre apenas hace falta. El proveedor que la resuelve se elige en{" "}
-                  <Link href="/dashboard/settings/integrations" className="underline underline-offset-2">
-                    Ajustes → Integraciones
-                  </Link>
-                  .
-                </section>
-              )}
-              {data.quality && <QualityPanel data={data.quality} categories={data.categories ?? []} />}
-              {data.quality && <ButtonTextsPanel buttonTexts={data.quality.buttonTexts} />}
-            </>
-          )}
-
-          {activeTab === "instrucciones" && data.instructions && (
-            <TaskInstructionsPanel
-              taskId={task.id}
-              taskName={task.name}
-              defaultText={data.instructions.defaultText}
-              activeVersion={data.instructions.activeVersion}
-              activeText={data.instructions.activeText}
-              versions={data.instructions.versions}
-              technical={data.instructions.technical}
-              variables={task.variables}
-            />
-          )}
+              )
+            ) : (
+              <Notice title="Esta tarea no usa instrucciones">{task.instructions.whyNot}</Notice>
+            ))}
 
           {activeTab === "runs" && data.runs && <RunsScreen {...data.runs} currentOrigen={task.id} />}
+
+          {activeTab === "costos" && <CostsTab data={data} />}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Configuración: dónde se prende y se ajusta de verdad (`task.control`), y de
+ * dónde sale el modelo. Una sola fuente: si la tarea se controla desde cada
+ * agente, se muestra cómo está cada uno, no un selector propio.
+ */
+function ConfigTab({ data }: { data: TaskScreenData }) {
+  const { task } = data;
+  const control = task.control;
+  return (
+    <>
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cuándo corre y dónde se prende</h3>
+        {control.kind === "task" && data.settings && task.backgroundTask && (
+          <TaskModeEditor
+            task={task.backgroundTask}
+            settings={data.settings}
+            canTurnOff={data.canTurnOff}
+            canBatch={data.canBatch}
+            batchWarning={data.batchWarning}
+            lastRun={data.lastRun}
+          />
+        )}
+        {control.kind === "agent" && (
+          <>
+            <Notice>
+              Se prende y se apaga desde cada agente (pestaña Configuración, sección “Cierre de la conversación y memoria”), porque corre cuando ese agente cierra
+              una conversación de su canal. No tiene modo propio: no hay un segundo interruptor que pueda contradecir al del agente.
+            </Notice>
+            {data.agentClose && <AgentCloseTable task={task} rows={data.agentClose} />}
+          </>
+        )}
+        {control.kind === "integration" && (
+          <Notice>
+            Corre siempre, apenas hace falta: no se apaga ni se pasa a económico. El proveedor que la resuelve se elige en{" "}
+            <Link href={control.href} className="underline underline-offset-2">
+              {control.label}
+            </Link>
+            .
+          </Notice>
+        )}
+        {control.kind === "on_demand" && <Notice>Corre solo {control.where}. Nunca corre sola.</Notice>}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Modelo</h3>
+        {data.model ? (
+          <TaskModelPanel
+            taskId={task.id}
+            taskName={task.name}
+            current={data.model.current}
+            picker={data.model.picker}
+            runsWhen={control.kind === "on_demand" ? control.where : "cuando corre"}
+          />
+        ) : (
+          <Notice>{task.modelSource}</Notice>
+        )}
+      </section>
+
+      {data.quality && <QualityPanel data={data.quality} categories={data.categories ?? []} />}
+      {data.quality && <ButtonTextsPanel buttonTexts={data.quality.buttonTexts} />}
+    </>
+  );
+}
+
+/** Costos: lo del mes en curso, y cómo se calcula. */
+function CostsTab({ data }: { data: TaskScreenData }) {
+  const runs = data.lastRun?.monthRuns ?? null;
+  const spend = data.lastRun?.monthSpendUsd ?? null;
+  const average = runs && spend !== null ? spend / runs : null;
+  return (
+    <>
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Gasto del mes" value={formatSpend(spend)} />
+        <Stat label="Corridas del mes" value={runs === null ? "—" : runs.toLocaleString("es")} />
+        <Stat label="Promedio por corrida" value={formatSpend(average)} />
+      </dl>
+      <Notice title="Cómo se calcula">{data.about.cost}</Notice>
+      <p className="text-xs text-muted-foreground">
+        El mes cuenta desde el día 1 (UTC). El detalle de cada corrida, con su costo, está en la pestaña{" "}
+        <Link href={`/dashboard/agents/tareas/${data.task.id}?tab=runs`} className="underline underline-offset-2">
+          Corridas
+        </Link>
+        ; los topes de gasto de IA del negocio, en{" "}
+        <Link href="/dashboard/agents" className="underline underline-offset-2">
+          Agentes IA
+        </Link>
+        .
+      </p>
+    </>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-lg font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function Notice({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+      {title && <h3 className="mb-1 font-medium text-foreground">{title}</h3>}
+      {children}
+    </section>
   );
 }

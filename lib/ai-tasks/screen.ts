@@ -5,12 +5,22 @@ import type { BackgroundScreenData } from "@/lib/background/screen-data";
 import type { TaskPromptVersion } from "./store";
 import type { RunsTabData } from "@/lib/agent/screen";
 import type { TaskModelChoice } from "./model";
+import type { TaskAbout } from "./about";
+import type { AgentCloseSettings } from "./agent-close-settings";
 
 /** Lo que la pantalla de una tarea (Agentes IA) necesita, ya aplanado. */
 export interface TaskScreenData {
   task: AiTaskDef;
+  /** Pestaña "Cómo funciona": la misma estructura para todas (lib/ai-tasks/about.ts). */
+  about: TaskAbout;
+  /** Corridas y gasto del mes (cabecera y pestaña Costos). */
   lastRun: TaskRunInfo | null;
-  /** Solo para las tareas configurables (`task.configurable`). */
+  /**
+   * Las tareas que se controlan desde cada agente (`control.kind === "agent"`):
+   * cómo está cada uno. Pestañas Cómo funciona y Configuración.
+   */
+  agentClose?: AgentCloseSettings[];
+  /** Solo para las tareas con modo propio (`task.configurable`). */
   settings: BackgroundSettings | null;
   canTurnOff: boolean;
   canBatch: boolean;
@@ -18,7 +28,7 @@ export interface TaskScreenData {
   /** Calidad, revisión rápida y textos de botón. Solo message_classification. */
   quality?: BackgroundScreenData;
   categories?: Array<{ id: string; name: string; direction: string }>;
-  /** Solo si `task.hasInstructions`. */
+  /** Solo si la tarea tiene instrucciones editables, en la pestaña Instrucciones. */
   instructions?: {
     activeVersion: number | null;
     activeText: string;

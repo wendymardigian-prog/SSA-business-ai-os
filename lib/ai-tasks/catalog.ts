@@ -25,25 +25,46 @@ export type AiTaskId = (typeof AI_TASK_IDS)[number];
 /** Nombre de ícono de lucide-react (el mapa a componente vive en la UI, cliente). */
 export type AiTaskIcon = "ListFilter" | "NotebookText" | "Thermometer" | "BookOpenCheck" | "AudioLines" | "ImageIcon" | "BarChart3";
 
+/**
+ * Donde se prende, se apaga o se ajusta de verdad cada tarea. Es lo que
+ * muestra la pestaña Configuración, y una sola fuente: una tarea que se
+ * controla desde cada agente no tiene ademas un selector propio que no hace
+ * nada (antes Resumen y Clasificación al cierre tenían uno que nadie leía).
+ */
+export type AiTaskControl =
+  /** Modo propio (Inmediato / Económico / Apagado) en la pestaña Configuración. */
+  | { kind: "task" }
+  /** Lo decide cada agente, en su pestaña Configuración. */
+  | { kind: "agent"; flag: "summaryOnClose" | "classifyOnClose" }
+  /** Corre siempre que hace falta; el proveedor se elige en Integraciones. */
+  | { kind: "integration"; href: string; label: string }
+  /** Corre cuando alguien aprieta un botón. */
+  | { kind: "on_demand"; where: string };
+
+/** Las instrucciones de la tarea: editables y versionadas, o por qué no las tiene. */
+export type AiTaskInstructions =
+  | { editable: true; variables: Array<{ name: string; description: string }> }
+  | { editable: false; whyNot: string };
+
 export interface AiTaskDef {
   id: AiTaskId;
   name: string;
   description: string;
   icon: AiTaskIcon;
-  /** Tiene fila en `BACKGROUND_TASKS`: modo, frecuencia y hora configurables. */
+  /** Tiene modo propio editable (fila en `BACKGROUND_TASKS` con selector). Hoy solo la clasificación de mensajes. */
   configurable: boolean;
-  /** Se puede apagar o pasar a económico. La indexación y las dos de sistema no. */
+  /** Se puede apagar o pasar a económico desde su pantalla. */
   canTurnOff: boolean;
-  /** Tiene instrucciones versionables (la parte editable de su prompt). */
-  hasInstructions: boolean;
+  control: AiTaskControl;
+  instructions: AiTaskInstructions;
+  /** De dónde sale el modelo, en una frase para la pestaña Configuración. */
+  modelSource: string;
   /**
    * El negocio puede elegir su modelo (proveedor + modelo) en la pantalla de la
    * tarea (`workspaces.ai_task_models`, 00138). Sin eleccion, usa el modelo por
    * defecto del negocio. Hoy solo el analisis de anuncios.
    */
   hasModelPicker?: boolean;
-  /** Las `{{variables}}` que se pueden usar en sus instrucciones (se muestran de ayuda). */
-  variables?: Array<{ name: string; description: string }>;
   /** No corre sola ni por lote: corre cuando alguien aprieta un boton. */
   onDemand?: boolean;
   /** El `agent_runs.source` de sus corridas. */
@@ -53,9 +74,16 @@ export interface AiTaskDef {
    * run de `conversation_summary`), así que además filtra por `status_detail`.
    */
   detailLike?: string;
-  /** La clave en `BackgroundSettings`, cuando `configurable` es true. */
+  /** La clave en `BackgroundSettings`, solo cuando `configurable` es true. */
   backgroundTask?: BackgroundTask;
 }
+
+/** Atajo: la tarea tiene instrucciones editables (pestaña Instrucciones con editor). */
+export function hasEditableInstructions(task: AiTaskDef): boolean {
+  return task.instructions.editable;
+}
+
+const ESTILO = { name: "estilo", description: "cómo habla la IA en este negocio; por defecto, español neutro, directo y sin relleno" };
 
 export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
   message_classification: {
@@ -65,7 +93,15 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     icon: "ListFilter",
     configurable: true,
     canTurnOff: true,
-    hasInstructions: true,
+    control: { kind: "task" },
+    instructions: {
+      editable: true,
+      variables: [
+        { name: "direccion", description: "“que escriben los contactos” o “que envía el negocio a sus contactos”, según el lote" },
+        { name: "max_nuevas_categorias", description: "cuántas categorías nuevas puede proponer por lote" },
+      ],
+    },
+    modelSource: "El modelo con precio cargado más barato entre los proveedores de IA conectados.",
     source: "message_classification",
     backgroundTask: "message_classification",
   },
@@ -74,34 +110,46 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     name: "Resumen de conversación",
     description: "La memoria del agente sobre cada contacto.",
     icon: "NotebookText",
-    configurable: true,
-    canTurnOff: true,
-    hasInstructions: true,
+    configurable: false,
+    canTurnOff: false,
+    control: { kind: "agent", flag: "summaryOnClose" },
+    instructions: {
+      editable: true,
+      variables: [
+        ESTILO,
+        { name: "largo_maximo", description: "el largo máximo del resumen, en caracteres" },
+      ],
+    },
+    modelSource: "El modelo del agente que atiende el canal de la conversación (y su respaldo si falla).",
     source: "conversation_summary",
-    backgroundTask: "conversation_summary",
   },
   close_classification: {
     id: "close_classification",
     name: "Clasificación al cierre",
     description: "Tags, temperatura y seguimiento al cerrar una conversación.",
     icon: "Thermometer",
-    configurable: true,
-    canTurnOff: true,
-    hasInstructions: false,
+    configurable: false,
+    canTurnOff: false,
+    control: { kind: "agent", flag: "classifyOnClose" },
+    instructions: { editable: true, variables: [] },
+    modelSource: "El del agente del canal, en la misma llamada que el Resumen de conversación (una sola lectura, un solo costo).",
     source: "conversation_summary",
     detailLike: "%classified%",
-    backgroundTask: "close_classification",
   },
   knowledge_indexing: {
     id: "knowledge_indexing",
     name: "Indexación de Conocimiento",
     description: "Prepara los documentos que subís para que el agente los use.",
     icon: "BookOpenCheck",
-    configurable: true,
+    configurable: false,
     canTurnOff: false,
-    hasInstructions: false,
+    control: { kind: "integration", href: "/dashboard/settings/integrations/voyage", label: "Ajustes → Integraciones → Voyage" },
+    instructions: {
+      editable: false,
+      whyNot: "No le escribe a un modelo de lenguaje: parte cada documento en pedazos y los convierte en vectores (embeddings) para poder buscarlos. No hay texto que interpretar ni criterio que darle.",
+    },
+    modelSource: "Voyage AI, con el modelo de embeddings elegido en su integración.",
     source: "kb_indexing",
-    backgroundTask: "knowledge_indexing",
   },
   audio_transcription: {
     id: "audio_transcription",
@@ -110,7 +158,12 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     icon: "AudioLines",
     configurable: false,
     canTurnOff: false,
-    hasInstructions: false,
+    control: { kind: "integration", href: "/dashboard/settings/integrations", label: "Ajustes → Integraciones" },
+    instructions: {
+      editable: false,
+      whyNot: "Usa un modelo de voz a texto (Whisper), que transcribe lo que se dice tal cual: no recibe instrucciones. Se le pasa solo el idioma (español).",
+    },
+    modelSource: "Un modelo de voz a texto (Whisper) del proveedor de transcripción conectado en Integraciones; si hay más de uno, el preferido y después el otro. El modelo se puede cambiar en la integración.",
     source: "audio_transcription",
   },
   media_description: {
@@ -120,7 +173,9 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     icon: "ImageIcon",
     configurable: false,
     canTurnOff: false,
-    hasInstructions: true,
+    control: { kind: "integration", href: "/dashboard/settings/integrations", label: "Ajustes → Integraciones (OpenAI, Google o Anthropic)" },
+    instructions: { editable: true, variables: [] },
+    modelSource: "El primer proveedor con visión conectado, en este orden: OpenAI, Google, Anthropic, con su modelo por defecto.",
     source: "media_description",
   },
   ads_analysis: {
@@ -130,19 +185,34 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     icon: "BarChart3",
     configurable: false,
     canTurnOff: false,
-    hasInstructions: true,
+    control: { kind: "on_demand", where: "cuando alguien aprieta “Analizar con IA” en el dashboard de Meta Ads" },
+    instructions: { editable: true, variables: [ESTILO] },
+    modelSource: "El que elijas acá; sin elección, el modelo por defecto del negocio.",
     hasModelPicker: true,
     onDemand: true,
-    variables: [{ name: "estilo", description: "cómo habla la IA en este negocio; por defecto, español neutro, directo y sin relleno" }],
     source: "ads_analysis",
   },
 };
+
+/** La etiqueta corta de cómo corre, para la tarjeta de la lista. */
+export function controlLabel(task: AiTaskDef): string {
+  switch (task.control.kind) {
+    case "task":
+      return "Modo propio";
+    case "agent":
+      return "Según cada agente";
+    case "integration":
+      return "Siempre inmediata";
+    case "on_demand":
+      return "Bajo demanda";
+  }
+}
 
 export function getAiTask(id: string): AiTaskDef | null {
   return (AI_TASKS as Record<string, AiTaskDef>)[id] ?? null;
 }
 
-/** Las tareas con fila propia en `BACKGROUND_TASKS` (F23), en su orden de siempre. */
+/** Las tareas con modo propio editable, en su orden de siempre. */
 export const CONFIGURABLE_AI_TASKS: AiTaskDef[] = AI_TASK_IDS.map((id) => AI_TASKS[id]).filter((t) => t.configurable);
 
 /** Todas, en el orden de la pantalla: primero las configurables, después las de sistema. */

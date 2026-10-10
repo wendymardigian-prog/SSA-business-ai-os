@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AI_TASKS, AI_TASK_IDS, ALL_AI_TASKS, CONFIGURABLE_AI_TASKS, getAiTask } from "./catalog";
+import { AI_TASKS, AI_TASK_IDS, ALL_AI_TASKS, CONFIGURABLE_AI_TASKS, controlLabel, getAiTask, hasEditableInstructions } from "./catalog";
 
 describe("catalogo de tareas de IA", () => {
   it("tiene las siete tareas, sin repetir id", () => {
@@ -8,15 +8,32 @@ describe("catalogo de tareas de IA", () => {
     expect(ALL_AI_TASKS).toHaveLength(7);
   });
 
-  it("las cuatro configurables son las de BACKGROUND_TASKS", () => {
-    expect(CONFIGURABLE_AI_TASKS.map((t) => t.id).sort()).toEqual(
-      ["message_classification", "conversation_summary", "close_classification", "knowledge_indexing"].sort(),
-    );
+  it("solo la clasificacion de mensajes tiene modo propio (las demas no tienen modo económico implementado)", () => {
+    expect(CONFIGURABLE_AI_TASKS.map((t) => t.id)).toEqual(["message_classification"]);
+    expect(AI_TASKS.message_classification.control.kind).toBe("task");
+    for (const t of ALL_AI_TASKS) expect(t.configurable).toBe(t.control.kind === "task");
   });
 
-  it("solo las que admite el CHECK de 00137/00138 tienen instrucciones", () => {
-    const withInstructions = AI_TASK_IDS.filter((id) => AI_TASKS[id].hasInstructions);
-    expect(withInstructions.sort()).toEqual(["message_classification", "conversation_summary", "media_description", "ads_analysis"].sort());
+  it("Resumen y Clasificacion al cierre se controlan desde cada agente, sin selector propio", () => {
+    expect(AI_TASKS.conversation_summary.control).toEqual({ kind: "agent", flag: "summaryOnClose" });
+    expect(AI_TASKS.close_classification.control).toEqual({ kind: "agent", flag: "classifyOnClose" });
+    expect(AI_TASKS.conversation_summary.backgroundTask).toBeUndefined();
+    expect(AI_TASKS.close_classification.backgroundTask).toBeUndefined();
+  });
+
+  it("instrucciones: cinco editables; las otras dicen por que no tienen", () => {
+    const editable = AI_TASK_IDS.filter((id) => hasEditableInstructions(AI_TASKS[id]));
+    expect(editable.sort()).toEqual(["ads_analysis", "close_classification", "conversation_summary", "media_description", "message_classification"]);
+    for (const t of ALL_AI_TASKS) {
+      if (!t.instructions.editable) expect(t.instructions.whyNot.length).toBeGreaterThan(20);
+    }
+  });
+
+  it("todas declaran de donde sale su modelo y una etiqueta de como corren", () => {
+    for (const t of ALL_AI_TASKS) {
+      expect(t.modelSource.length).toBeGreaterThan(10);
+      expect(controlLabel(t)).toBeTruthy();
+    }
   });
 
   it("el analisis de anuncios corre bajo demanda: sin modo propio, con modelo elegible", () => {

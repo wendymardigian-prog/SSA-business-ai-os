@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@/lib/patterns/prompt";
 import { buildSummarySystemPrompt } from "@/lib/agent/summary";
-import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "./instructions";
+import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "./instructions";
 import { buildAnalysisSystemPrompt, SYSTEM_PROMPT } from "@/lib/meta/ai-analysis";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
 import { interpolate, assembleTaskPrompt } from "./instructions";
@@ -74,6 +74,40 @@ describe("buildSummarySystemPrompt (resumen) — con el texto por defecto, idén
   it("no puede clasificar: la ultima linea cambia", () => {
     const got = buildSummarySystemPrompt("n1", [], false);
     expect(got.split("\n").at(-1)).toBe("La clasificacion no esta habilitada: deja las listas vacias, temperatura null y seguimiento_dias null.");
+  });
+});
+
+describe("clasificación al cierre — criterios editables en la misma llamada que el resumen", () => {
+  const base = buildSummarySystemPrompt("n1", ["Interesado"], true);
+
+  it("con los criterios, el prompt es el de antes mas el bloque de criterios al final", () => {
+    const got = buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS);
+    expect(got).toBe(`${base}\n\nCriterios del negocio para la clasificacion:\n${CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS}`);
+  });
+
+  it("sin clasificacion habilitada, los criterios no viajan", () => {
+    const got = buildSummarySystemPrompt("n1", [], false, undefined, "Etiquetas: lo que sea");
+    expect(got).not.toContain("Criterios del negocio");
+    expect(got).toBe(buildSummarySystemPrompt("n1", [], false));
+  });
+
+  it("criterios vacios: no se agrega un encabezado sin contenido", () => {
+    expect(buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, "   ")).toBe(base);
+  });
+
+  it("una herramienta apagada en el agente: ese campo va siempre en null", () => {
+    const got = buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, undefined, { temperature: false, followup: true });
+    expect(got).toContain("temperatura: siempre null");
+    expect(got).not.toContain('"hot" (listo para avanzar)');
+    expect(got).toContain("seguimiento_dias: en cuantos dias");
+    const sinSeguimiento = buildSummarySystemPrompt("n1", ["Interesado"], true, undefined, undefined, { temperature: true, followup: false });
+    expect(sinSeguimiento).toContain("seguimiento_dias: siempre null");
+  });
+
+  it("el texto por defecto habla de las tres partes", () => {
+    expect(CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS).toMatch(/^Etiquetas:/m);
+    expect(CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS).toMatch(/^Temperatura:/m);
+    expect(CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS).toMatch(/^Seguimiento:/m);
   });
 });
 

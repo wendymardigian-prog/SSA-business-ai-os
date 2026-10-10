@@ -2759,7 +2759,7 @@ export interface Database {
         Row: {
           id: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
           version: number;
           instructions: string;
           note: string | null;
@@ -2769,7 +2769,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
           version: number;
           instructions: string;
           note?: string | null;

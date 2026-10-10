@@ -1,22 +1,35 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { AI_TASKS, type AiTaskId } from "./catalog";
-import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLASSIFY_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS, SUMMARY_DEFAULT_INSTRUCTIONS } from "./instructions";
+import {
+  ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  CLASSIFY_DEFAULT_INSTRUCTIONS,
+  CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
+  MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
+  SUMMARY_DEFAULT_INSTRUCTIONS,
+} from "./instructions";
 
 type Db = SupabaseClient<Database>;
 
-/** Las tareas que de verdad guardan versiones (00137 y 00138: el CHECK solo admite estas cuatro). */
-export type VersionedTask = "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
+/**
+ * Las tareas que de verdad guardan versiones: las que el CHECK de
+ * `ai_task_prompt_versions.task` admite (00137, 00138, 00142). Tienen que ser
+ * exactamente las del catalogo con `instructions.editable`: `store.test.ts`
+ * compara las tres listas (catalogo, este mapa y la ultima migracion).
+ */
+export type VersionedTask = "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
 
-const DEFAULT_TEXT: Record<VersionedTask, string> = {
+export const DEFAULT_TEXT: Record<VersionedTask, string> = {
   message_classification: CLASSIFY_DEFAULT_INSTRUCTIONS,
   conversation_summary: SUMMARY_DEFAULT_INSTRUCTIONS,
+  close_classification: CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
   media_description: MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
   ads_analysis: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
 };
 
+/** La fuente es el catalogo (`instructions.editable`); `DEFAULT_TEXT` tiene que cubrirlas a todas (lo fija store.test.ts). */
 function isVersioned(task: AiTaskId): task is VersionedTask {
-  return task in DEFAULT_TEXT;
+  return Boolean(AI_TASKS[task]?.instructions.editable) && task in DEFAULT_TEXT;
 }
 
 export interface TaskInstructions {

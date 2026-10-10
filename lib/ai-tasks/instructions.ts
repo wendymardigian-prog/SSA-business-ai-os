@@ -83,3 +83,28 @@ Reglas:
 - Priorizá: tres o cuatro cosas concretas, no una lista de veinte.
 - Cada recomendacion tiene que decir sobre QUE objeto (campaña, conjunto o anuncio) y POR QUE, con el numero que lo justifica.
 - Si algo no se puede concluir con estos datos, decilo en vez de suponer.`;
+
+// ---------------------------------------------------------------------------
+// Clasificación al cierre (lib/agent/summary.ts, buildSummarySystemPrompt)
+// ---------------------------------------------------------------------------
+
+/**
+ * Los criterios del negocio para clasificar al cerrar una conversación: cuándo
+ * poner o quitar una etiqueta, qué es frío / tibio / caliente, cuándo agendar
+ * seguimiento. Viaja en la MISMA llamada que el resumen (una sola lectura de
+ * la conversación), pegado después de la parte técnica.
+ *
+ * Lo que NO está acá y no se edita: qué etiquetas existen (la lista permitida
+ * de la herramienta `etiquetar_contacto` del agente), los valores posibles de
+ * temperatura y el formato JSON. Y lo que el código hace después con la
+ * propuesta tampoco: si una herramienta está apagada para el agente, esa parte
+ * no se aplica, y los topes (quitar tags, bajar la temperatura, días máximos,
+ * pisar una fecha puesta a mano) son los de cada herramienta.
+ *
+ * El texto por defecto dice en voz alta lo que antes era implícito.
+ */
+export const CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS = [
+  "Etiquetas: agrega una etiqueta solo si la conversacion lo muestra con claridad. Quita una solo si quedo claro que ya no aplica. Ante la duda, no toques las etiquetas.",
+  'Temperatura: "cold" si no mostro interes o dejo de responder; "warm" si esta interesado pero sin decision ni fecha; "hot" si esta listo para avanzar (pidio precio, un link de pago o una reunion). Si la conversacion no cambia lo que ya se sabia, deja null.',
+  'Seguimiento: propone volver a contactar solo si quedo algo pendiente (una respuesta, una decision, una fecha que dio el lead). Los dias salen de lo hablado: si dijo "la semana que viene", 7. Si no queda nada pendiente, null.',
+].join("\n");
