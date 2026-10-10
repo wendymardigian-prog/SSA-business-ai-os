@@ -39,51 +39,10 @@ export async function switchWorkspace(workspaceId: string) {
   return { ok: true };
 }
 
-export async function createWorkspace(name: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "Not authenticated" };
-
-  const trimmed = name.trim();
-  if (!trimmed) return { error: "Name is required" };
-
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-
-  const { data: workspace, error } = await supabase
-    .from("workspaces")
-    .insert({ name: trimmed, slug })
-    .select("id")
-    .single();
-
-  if (error || !workspace) {
-    return { error: error?.message || "Failed to create workspace" };
-  }
-
-  // Add user as owner
-  await supabase.from("workspace_members").insert({
-    workspace_id: workspace.id,
-    user_id: user.id,
-    role: "owner",
-  });
-
-  // Switch to new workspace
-  const cookieStore = await cookies();
-  cookieStore.set(WORKSPACE_COOKIE, workspace.id, {
-    path: "/",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-  });
-
-  return { ok: true, workspaceId: workspace.id };
-}
+// No hay `createWorkspace`: el modelo es una copia del sistema por cliente
+// (white label), y el primer Owner de una copia nueva lo crea
+// scripts/create-owner.mjs. La accion que habia fallaba igual: no existe una
+// policy de INSERT sobre `workspaces`.
 
 /**
  * La media del chat: si se guarda y cuanto se conserva (F2, F5).
