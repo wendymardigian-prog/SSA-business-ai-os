@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Circle } from "lucide-react";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/page-header";
@@ -41,13 +41,17 @@ export function EditorShell({
   onSave: (() => void) | null;
   children: ReactNode;
 }) {
-  const router = useRouter();
   const params = useSearchParams();
 
+  // Cambiar de seccion NO va al servidor: la pagina ya trajo los datos de las
+  // siete, y antes cada clic volvia a correr toda la carga del evento (unas
+  // doce consultas) para mostrar otro panel. `replaceState` actualiza la URL
+  // (el link sigue sirviendo para compartir o recargar) y Next mantiene
+  // `useSearchParams` al dia, que es de donde la vista lee la seccion.
   function go(next: EditorSection) {
     const query = new URLSearchParams(params.toString());
     query.set("seccion", next);
-    router.replace(`/dashboard/agenda/configuracion/eventos/${eventId}?${query.toString()}`, { scroll: false });
+    window.history.replaceState(null, "", `/dashboard/agenda/configuracion/eventos/${eventId}?${query.toString()}`);
   }
 
   return (

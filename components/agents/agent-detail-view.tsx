@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, use, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { setAgentEnabled } from "@/lib/actions/agents";
 import { tabsForViewer, type AgentTypeDefinition } from "@/lib/agent/agent-types";
-import type { AgentScreenData } from "@/lib/agent/screen";
+import type { AgentScreenData, HeaderKpis } from "@/lib/agent/screen";
 import { ConfigTab } from "./config-tab";
 import { KnowledgeTab } from "./knowledge-tab";
 import { ChannelsTab } from "./channels-tab";
@@ -20,6 +20,7 @@ import { RunsScreen } from "./runs-screen";
 import { AiPeriodControl } from "./ai-dashboard/period-control";
 import { formatUsd } from "./filters";
 import { PageHeader } from "@/components/page-header";
+import { LinkPending } from "@/components/ui/link-pending";
 
 /**
  * Detalle de un agente. Las pestanas salen del registro de tipos: la vista no
@@ -128,28 +129,9 @@ export function AgentDetailView({
         </div>
 
         {data.kpis && (
-          <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-            <div>
-              <dt className="inline">Runs de hoy: </dt>
-              <dd className="inline font-medium text-foreground">{data.kpis.runsToday}</dd>
-            </div>
-            <div>
-              <dt className="inline">Gasto del mes: </dt>
-              <dd className="inline font-medium text-foreground">{formatUsd(data.kpis.monthCostUsd)}</dd>
-              <span> (estimado)</span>
-            </div>
-            {typeDef.conversational && (
-              <div>
-                <dt className="inline">Derivaciones: </dt>
-                <dd className="inline font-medium text-foreground">{data.kpis.escalationRatePct === null ? "—" : `${data.kpis.escalationRatePct}%`}</dd>
-              </div>
-            )}
-            {data.kpis.missingPricing > 0 && (
-              <div className="text-amber-700 dark:text-amber-400">
-                {data.kpis.missingPricing} run{data.kpis.missingPricing === 1 ? "" : "s"} sin precio cargado
-              </div>
-            )}
-          </dl>
+          <Suspense fallback={<div className="mt-4 h-4 w-72 animate-pulse rounded bg-muted" aria-hidden />}>
+            <HeaderKpiRow kpis={data.kpis} conversational={typeDef.conversational} />
+          </Suspense>
         )}
 
         <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Secciones del agente">
@@ -165,6 +147,7 @@ export function AgentDetailView({
                 )}
               >
                 {t.label}
+                <LinkPending className="ml-1.5 align-middle" />
               </Link>
             ) : (
               <span
@@ -185,5 +168,34 @@ export function AgentDetailView({
         </div>
       </div>
     </div>
+  );
+}
+
+/** La fila de indicadores de la cabecera. Llega despues que el resto: ver `loadHeaderKpis`. */
+function HeaderKpiRow({ kpis: promise, conversational }: { kpis: Promise<HeaderKpis>; conversational: boolean }) {
+  const kpis = use(promise);
+  return (
+    <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+      <div>
+        <dt className="inline">Runs de hoy: </dt>
+        <dd className="inline font-medium text-foreground">{kpis.runsToday}</dd>
+      </div>
+      <div>
+        <dt className="inline">Gasto del mes: </dt>
+        <dd className="inline font-medium text-foreground">{formatUsd(kpis.monthCostUsd)}</dd>
+        <span> (estimado)</span>
+      </div>
+      {conversational && (
+        <div>
+          <dt className="inline">Derivaciones: </dt>
+          <dd className="inline font-medium text-foreground">{kpis.escalationRatePct === null ? "—" : `${kpis.escalationRatePct}%`}</dd>
+        </div>
+      )}
+      {kpis.missingPricing > 0 && (
+        <div className="text-amber-700 dark:text-amber-400">
+          {kpis.missingPricing} run{kpis.missingPricing === 1 ? "" : "s"} sin precio cargado
+        </div>
+      )}
+    </dl>
   );
 }

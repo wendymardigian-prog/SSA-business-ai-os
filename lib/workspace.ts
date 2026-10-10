@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/auth-user";
 import { redirect } from "next/navigation";
 
 export const WORKSPACE_COOKIE = "workspace_id";
@@ -10,10 +10,8 @@ export const WORKSPACE_COOKIE = "workspace_id";
  * Reads workspace ID from cookie if set; falls back to first workspace.
  */
 export const getWorkspace = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Sin viaje a Supabase Auth: ver `getAuthUser`.
+  const { supabase, user } = await getAuthUser();
 
   if (!user) redirect("/login");
 

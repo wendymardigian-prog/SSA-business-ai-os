@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/auth-user";
 import { isValidTimeZone } from "@/lib/timezone";
 
 /**
@@ -10,10 +10,8 @@ import { isValidTimeZone } from "@/lib/timezone";
  * mismo render sin pegarle dos veces a la base, igual que `getWorkspace`.
  */
 export const getSavedViewerTimezone = cache(async (): Promise<string | null> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // El mismo usuario y cliente que ya resolvio `getWorkspace` en este request.
+  const { supabase, user } = await getAuthUser();
   if (!user) return null;
 
   const { data } = await supabase

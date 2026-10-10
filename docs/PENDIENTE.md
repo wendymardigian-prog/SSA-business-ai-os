@@ -1044,3 +1044,37 @@ Queda pendiente, a proposito:
   arreglo que una invitacion vencida (sigue en `pending`) bloqueara reinvitar
   (`inviteTeamMember`, `lib/actions/team.ts`).
 
+
+## Auditoria de velocidad (10/10/2026, rama `perf/navegacion`)
+
+Medido con un build de produccion local (desde Costa Rica contra Supabase en
+Oregon, asi que los numeros absolutos son mas altos que en Railway): el detalle
+de un agente paso de ~2,0 s a ~1,1 s, la lista de Agentes IA de ~1,8 s a
+~0,9 s, cada seccion de Agenda > Configuracion de ~1,1 s a ~0,6 s y la bandeja
+de ~1,8 s a ~1,1 s. Lo que mas se nota no es eso sino que ahora cada clic
+responde al instante (esqueleto, item marcado, puntito de "cargando").
+
+Lo que NO se hizo, a proposito:
+
+- **Abrir una pieza de Contenido (`?piece=`) sigue re-ejecutando la pagina.**
+  El drawer necesita datos del servidor (`loadPiece`); pasarlo a una accion
+  que los traiga al abrir es un cambio mas grande. Con 4 ideas y 2 piezas no
+  se siente; revisarlo cuando el tablero crezca.
+- **`staleTimes` (cache del router en el navegador) sigue en 0.** Con 30 s,
+  volver a la bandeja dentro de ese tiempo mostraria la lista de antes (el
+  realtime solo trae lo que llega DESPUES de montar). El costo no compensa.
+- **Quedan ~100 `router.refresh()` despues de acciones que ya hacen
+  `revalidatePath`** (recargan dos veces). Se saco el de la ficha del
+  contacto (el mas frecuente); el resto hay que revisarlo uno por uno, porque
+  en varios casos la accion revalida OTRA ruta y el refresh si hace falta.
+- **Consultas que crecen con los datos**: `loadActiveSources` (hasta 5000
+  filas de `agent_runs` para listar origenes), `categoryUsage` (todas las
+  reservas para contarlas), la lista de flows (trae `nodes`/`edges`), la banca
+  de recursos de la bandeja (1000 filas). Hoy son 160 corridas, 1 reserva, 17
+  flows y 0 recursos: no pesan. Pasarlas a conteos en la base cuando crezcan.
+- **`middleware.ts` -> `proxy.ts`**: Next 16 lo deprecó; sigue andando.
+
+Ojo al probar en el panel del navegador de Claude Code con el panel OCULTO:
+React muestra lo que llega por streaming con `requestAnimationFrame`, que no
+corre si la pestaña no se pinta. La pagina parece quedarse en el esqueleto;
+en un navegador visible anda normal.

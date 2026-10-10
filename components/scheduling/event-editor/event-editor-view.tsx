@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { EditorShell } from "./editor-shell";
 import { FormBuilder } from "../form-builder/form-builder";
 import { UnavailableEditor } from "./unavailable-editor";
@@ -28,6 +28,7 @@ import { summarizeSchedule } from "@/lib/scheduling/schedules";
 import { RESOLVE_WARNING_TEXT } from "@/lib/scheduling/resolve-calendars";
 import type { BookingField, EventType, WeeklyHours } from "@/lib/scheduling/types";
 import type { ChecklistItem, EditorSection } from "@/lib/scheduling/event-validation";
+import { isEditorSection } from "@/lib/scheduling/editor-sections";
 import {
   saveEventAvailability,
   saveEventDetails,
@@ -52,7 +53,7 @@ const PERIOD_LABELS: Record<string, string> = {
  */
 export function EventEditorView({
   event,
-  section,
+  section: initialSection,
   categories,
   schedules,
   calendars,
@@ -89,6 +90,10 @@ export function EventEditorView({
   /** Los flujos del evento (F48). */
   flows: EventFlowRow[];
 }) {
+  // La seccion sale de la URL del NAVEGADOR: cambiar de seccion ya no va al
+  // servidor (ver `EditorShell.go`), porque todos los datos estan aca.
+  const seccion = useSearchParams().get("seccion");
+  const section: EditorSection = isEditorSection(seccion) ? seccion : initialSection;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);

@@ -4392,6 +4392,19 @@ export interface Database {
         Args: { p_asset_id: string };
         Returns: undefined;
       };
+      /** Miembros con email y nombre de auth.users, en una consulta (00141). Solo service_role. */
+      workspace_member_profiles: {
+        Args: { p_workspace_id: string };
+        Returns: {
+          user_id: string;
+          role: string;
+          role_id: string | null;
+          joined_at: string;
+          email: string | null;
+          full_name: string | null;
+          meta_name: string | null;
+        }[];
+      };
       record_contact_touch: {
         Args: {
           p_workspace_id: string;

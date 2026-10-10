@@ -71,10 +71,31 @@ describe("loadCostsTab", () => {
 });
 
 describe("loadHeaderKpis", () => {
-  it("runs de hoy, gasto del mes y % de derivaciones", async () => {
-    const db = world();
-    const kpis = await loadHeaderKpis(db.client, { workspaceId: "ws-1", agentId: "agent-1", timeZone: "America/Costa_Rica", now: new Date("2026-09-24T18:00:00Z") });
-    expect(kpis).toEqual({ runsToday: 1, monthCostUsd: 0.08, escalationRatePct: 25, missingPricing: 1 });
+  const now = new Date("2026-09-24T18:00:00Z");
+  const run = (id: string, extra: Record<string, unknown>) => ({ id, workspace_id: "ws-1", agent_id: "agent-1", created_at: "2026-09-10T14:00:00Z", status: "responded", cost_usd: "0.01", input_tokens: 100, ...extra });
+
+  it("runs de hoy, gasto del mes y % de derivaciones de ESTE agente", async () => {
+    const db = memoryDb(
+      {
+        agent_runs: [
+          run("r-1", { created_at: "2026-09-24T14:00:00Z" }),
+          run("r-2", {}),
+          run("r-3", { status: "escalated" }),
+          run("r-4", { cost_usd: null }),
+          // Otro agente: no cuenta en nada.
+          run("r-5", { agent_id: "agent-2", status: "escalated" }),
+          run("r-6", { agent_id: "agent-2", status: "escalated" }),
+        ],
+      },
+      { rpc: { ai_cost_report: () => ({ ...rpcReport, by_agent: [{ agent_id: "agent-2", runs: 2, cost_usd: "0.50" }, { agent_id: "agent-1", runs: 4, cost_usd: "0.04" }] }) } },
+    );
+    const kpis = await loadHeaderKpis(db.client, { workspaceId: "ws-1", agentId: "agent-1", timeZone: "America/Costa_Rica", now });
+    expect(kpis).toEqual({ runsToday: 1, monthCostUsd: 0.04, escalationRatePct: 25, missingPricing: 1 });
+  });
+
+  it("un agente sin runs en el mes gasta 0, no el total del workspace", async () => {
+    const kpis = await loadHeaderKpis(world().client, { workspaceId: "ws-1", agentId: "agent-9", timeZone: "America/Costa_Rica", now });
+    expect(kpis).toEqual({ runsToday: 0, monthCostUsd: 0, escalationRatePct: null, missingPricing: 0 });
   });
 });
 

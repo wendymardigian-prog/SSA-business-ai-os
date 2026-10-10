@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, useRef, useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Loader2, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { updateContact } from "@/lib/actions/contacts";
@@ -58,7 +57,6 @@ export function InlineField({
   /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
 }) {
-  const router = useRouter();
   const timeZone = useViewerTimezone();
   const [editing, setEditing] = useState(false);
   // Lo que se muestra. Arranca en lo guardado (`value`) y, al guardar, pasa al valor
@@ -117,7 +115,9 @@ export function InlineField({
       }
       setShownValue(plan.normalized);
       setEditing(false);
-      router.refresh();
+      // Sin router.refresh(): `updateContact` ya revalida la ficha
+      // (revalidatePath) y la respuesta de la accion trae la pagina al dia.
+      // Con los dos, cada dato editado recargaba la ficha entera dos veces.
       onSaved?.();
     });
   }

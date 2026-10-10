@@ -35,44 +35,40 @@ export default async function TaskDetailPage({
   const task = getAiTask(taskParam);
   if (!task) notFound();
 
-  const { workspace, supabase } = await requireWorkspaceAdmin();
-  const service = await createServiceClient();
-  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const tab = typeof query.tab === "string" ? query.tab : "config";
+  const [{ workspace, supabase }, service] = await Promise.all([requireWorkspaceAdmin(), createServiceClient()]);
+  // Una pestaña que no existe (o Instrucciones en una tarea sin instrucciones)
+  // cae en Configuración, igual que la vista: asi se cargan sus datos.
+  const requested = typeof query.tab === "string" ? query.tab : "config";
+  const tab = requested === "runs" || (requested === "instrucciones" && task.hasInstructions) ? requested : "config";
 
   const settings = task.configurable ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
 
-  const [lastRun, backgroundScreen] = await Promise.all([
-    loadTaskRunSummary(service, workspace.id, task),
-    task.id === "message_classification" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
-  ]);
-
-  let instructions: TaskScreenData["instructions"];
-  if (taskIsVersioned(task.id)) {
+  // Solo lo que usa la pestaña abierta, y todo en paralelo: antes era una
+  // cadena de seis esperas una detras de otra en cada clic de pestaña.
+  const loadInstructions = async (): Promise<TaskScreenData["instructions"]> => {
     const [active, members] = await Promise.all([
       loadTaskInstructions(service, workspace.id, task.id),
       getWorkspaceMembers(workspace.id),
     ]);
     const memberNames = new Map(members.map((m) => [m.userId, m.name]));
     const versions = await loadTaskPromptVersions(supabase, workspace.id, task.id, memberNames);
-    instructions = {
+    return {
       activeVersion: active.version,
       activeText: active.text,
       defaultText: defaultInstructionsFor(task.id),
       versions,
       technical: technicalPreviewFor(task.id),
     };
-  }
+  };
 
   // El selector de modelo (solo las tareas que lo tienen): lo guardado, los
   // proveedores de texto conectados y que modelos tienen precio cargado.
-  let model: TaskScreenData["model"];
-  if (task.hasModelPicker) {
+  const loadModel = async (): Promise<TaskScreenData["model"]> => {
     const [providers, pricing] = await Promise.all([
       listConnectedAiProviders(workspace.id, service),
       supabase.from("model_pricing").select("provider, model").eq("workspace_id", workspace.id),
     ]);
-    model = {
+    return {
       current: taskModelOf((workspace as { ai_task_models?: unknown }).ai_task_models, task.id),
       picker: {
         providers,
@@ -80,10 +76,9 @@ export default async function TaskDetailPage({
         pricedModels: ((pricing.data ?? []) as Array<{ provider: string; model: string }>).map((p) => `${p.provider}/${p.model}`),
       },
     };
-  }
+  };
 
-  let runs: TaskScreenData["runs"];
-  if (tab === "runs") {
+  const loadRunsTab = async (viewerTimezone: string): Promise<TaskScreenData["runs"]> => {
     const permissions = await getPermissionContext();
     const includeCost = permissions.can("ai_costs.view");
     const sp = new URLSearchParams();
@@ -106,10 +101,19 @@ export default async function TaskDetailPage({
       channelLabels: new Map(channels.map((c) => [c.id, c.label])),
       dateRange,
     });
-    runs = { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, options };
-  }
+    return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, options };
+  };
 
-  const categories = task.id === "message_classification" ? await loadReviewCategories(workspace.id) : undefined;
+  const isClassification = task.id === "message_classification";
+  const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
+  const [lastRun, backgroundScreen, instructions, model, runs, categories] = await Promise.all([
+    loadTaskRunSummary(service, workspace.id, task),
+    isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
+    taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
+    task.hasModelPicker && tab === "config" ? loadModel() : Promise.resolve(undefined),
+    tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
+    isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
+  ]);
 
   const data: TaskScreenData = {
     task,

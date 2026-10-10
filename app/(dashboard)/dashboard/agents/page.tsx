@@ -15,7 +15,7 @@ import { AiDashboardSection } from "@/components/agents/ai-dashboard/section";
 import { parsePeriodFilter } from "@/lib/agent/ai-dashboard/url-state";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { ALL_AI_TASKS } from "@/lib/ai-tasks/catalog";
-import { loadTaskRunSummary } from "@/lib/ai-tasks/task-run-summary";
+import { loadTaskRunSummaries } from "@/lib/ai-tasks/task-run-summary";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
 
 /**
@@ -41,12 +41,14 @@ export default async function AgentsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { workspace, role } = await getWorkspace();
+  const [{ workspace, role }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
   const isAdmin = isAdminRole(role);
-  const service = await createServiceClient();
-  const [agents, permissions] = await Promise.all([loadWorkspaceAgents(service, workspace.id), getPermissionContext()]);
+  const [agents, permissions, timeZone] = await Promise.all([
+    loadWorkspaceAgents(service, workspace.id),
+    getPermissionContext(),
+    resolveViewerTimezone(workspace.timezone),
+  ]);
   const canViewCosts = permissions.can("ai_costs.view");
-  const timeZone = await resolveViewerTimezone(workspace.timezone);
 
   let filter = null;
   if (canViewCosts) {
@@ -57,7 +59,6 @@ export default async function AgentsPage({
   }
 
   const settings = isAdmin ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
-  const taskRuns = isAdmin ? await Promise.all(ALL_AI_TASKS.map((t) => loadTaskRunSummary(service, workspace.id, t))) : [];
 
   return (
     <div className="flex h-full flex-col">
@@ -99,16 +100,45 @@ export default async function AgentsPage({
         {isAdmin && settings && (
           <section className="mt-8">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tareas</h2>
-            <ul className="space-y-2">
-              {ALL_AI_TASKS.map((task, i) => (
-                <li key={task.id}>
-                  <TaskCard task={task} mode={task.backgroundTask ? settings[task.backgroundTask].mode : null} lastRun={taskRuns[i] ?? null} />
-                </li>
-              ))}
-            </ul>
+            {/* En su propio Suspense: la ultima corrida y el gasto del mes de
+                cada tarea no frenan la lista de agentes. */}
+            <Suspense fallback={<TaskListSkeleton />}>
+              <TaskList service={service} workspaceId={workspace.id} settings={settings} />
+            </Suspense>
           </section>
         )}
       </div>
     </div>
+  );
+}
+
+async function TaskList({
+  service,
+  workspaceId,
+  settings,
+}: {
+  service: Awaited<ReturnType<typeof createServiceClient>>;
+  workspaceId: string;
+  settings: ReturnType<typeof resolveBackgroundSettings>;
+}) {
+  const taskRuns = await loadTaskRunSummaries(service, workspaceId, ALL_AI_TASKS);
+  return (
+    <ul className="space-y-2">
+      {ALL_AI_TASKS.map((task, i) => (
+        <li key={task.id}>
+          <TaskCard task={task} mode={task.backgroundTask ? settings[task.backgroundTask].mode : null} lastRun={taskRuns[i] ?? null} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TaskListSkeleton() {
+  return (
+    <ul className="space-y-2" aria-busy="true">
+      {ALL_AI_TASKS.map((task) => (
+        <li key={task.id} className="h-16 animate-pulse rounded-xl border border-border bg-muted/50" />
+      ))}
+    </ul>
   );
 }
