@@ -24,6 +24,8 @@ export interface ProfileSummary {
   bio: string | null;
   website: string | null;
   avatarUrl: string | null;
+  /** El perfil en la red, para abrirlo en otra pestaña. Null si no se sabe. */
+  profileLink: string | null;
   stats: ProfileStat[];
   /** De donde salen los datos y cuando se leyeron. */
   sourceLabel: string;
@@ -38,6 +40,8 @@ export interface ProfileSource {
   bio: string | null;
   website: string | null;
   avatarUrl: string | null;
+  /** La direccion del perfil que guardo la sincronizacion, si la dio la red. */
+  profileUrl?: string | null;
   followers: number | null;
   following: number | null;
   posts: number | null;
@@ -79,6 +83,7 @@ export function buildProfile(source: ProfileSource): ProfileSummary {
     bio: source.bio,
     website: source.website,
     avatarUrl: source.avatarUrl,
+    profileLink: profileLink(source.platform, source.username, source.profileUrl ?? null),
     stats,
     sourceLabel: when
       ? `Datos de ${SOURCE_LABELS[source.platform] ?? "la red"}, leidos el ${when}.`
@@ -88,6 +93,38 @@ export function buildProfile(source: ProfileSource): ProfileSummary {
       ? `La última lectura del perfil falló (${source.syncError}). Se muestran los últimos datos que se leyeron.`
       : null,
   };
+}
+
+/** Como arma cada red la direccion de un perfil a partir del usuario. */
+const PROFILE_URL_BY_HANDLE: Record<string, (handle: string) => string> = {
+  instagram: (h) => `https://www.instagram.com/${h}`,
+  tiktok: (h) => `https://www.tiktok.com/@${h}`,
+  youtube: (h) => `https://www.youtube.com/@${h}`,
+  threads: (h) => `https://www.threads.net/@${h}`,
+};
+
+/**
+ * El link al perfil en la red: el que guardo la sincronizacion, y si no hay,
+ * el que se arma con el usuario.
+ *
+ * Solo `https`: la direccion viene de afuera (la red, Zernio) y un
+ * `javascript:` en un href se ejecutaria al hacer clic. LinkedIn no tiene
+ * usuario publico armable: sin la direccion guardada, no hay link.
+ */
+export function profileLink(platform: string, username: string | null, profileUrl: string | null): string | null {
+  if (profileUrl) {
+    try {
+      const url = new URL(profileUrl);
+      if (url.protocol === "https:") return url.toString();
+    } catch {
+      // Una direccion rota no es un link: se prueba con el usuario.
+    }
+  }
+
+  const handle = username?.trim().replace(/^@/, "");
+  if (!handle || !/^[\w.-]+$/.test(handle)) return null;
+  const build = PROFILE_URL_BY_HANDLE[platform];
+  return build ? build(encodeURIComponent(handle)) : null;
 }
 
 /** Las cifras de cada red, con el nombre que usa esa red. */

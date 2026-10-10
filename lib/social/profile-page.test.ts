@@ -15,6 +15,7 @@ import {
   latestProfileStats,
   linkedinRows,
   networkTabs,
+  profileLink,
   statsFor,
   tabRatio,
   type ProfileSource,
@@ -414,5 +415,37 @@ describe("las pestañas de contenido de YouTube", () => {
     expect(tabRatio("youtube", "short")).toBe("9 / 16");
     expect(tabRatio("youtube", "video")).toBe("16 / 9");
     expect(tabRatio("instagram", null)).toBe("3 / 4");
+  });
+});
+
+describe("el link al perfil en la red", () => {
+  it("usa la direccion que guardo la sincronizacion", () => {
+    expect(profileLink("youtube", "wenmardigian", "https://www.youtube.com/@wenmardigian")).toBe(
+      "https://www.youtube.com/@wenmardigian",
+    );
+  });
+
+  it("sin direccion guardada, la arma con el usuario segun la red", () => {
+    expect(profileLink("instagram", "wenmardigian", null)).toBe("https://www.instagram.com/wenmardigian");
+    expect(profileLink("tiktok", "@wenmardigian", null)).toBe("https://www.tiktok.com/@wenmardigian");
+    expect(profileLink("youtube", "wenmardigian", null)).toBe("https://www.youtube.com/@wenmardigian");
+    expect(profileLink("threads", "wenmardigian", null)).toBe("https://www.threads.net/@wenmardigian");
+  });
+
+  it("nunca un link que no sea https: la direccion viene de afuera", () => {
+    expect(profileLink("instagram", null, "javascript:alert(1)")).toBeNull();
+    expect(profileLink("instagram", "wenmardigian", "http://instagram.com/x")).toBe("https://www.instagram.com/wenmardigian");
+  });
+
+  it("LinkedIn sin direccion guardada, o sin usuario, no tiene link", () => {
+    expect(profileLink("linkedin", "wendy", null)).toBeNull();
+    expect(profileLink("instagram", null, null)).toBeNull();
+    expect(profileLink("instagram", "con espacio", null)).toBeNull();
+  });
+
+  it("llega al resumen del perfil", () => {
+    expect(buildProfile(source({ profileUrl: "https://instagram.com/minegocio" })).profileLink).toBe(
+      "https://instagram.com/minegocio",
+    );
   });
 });

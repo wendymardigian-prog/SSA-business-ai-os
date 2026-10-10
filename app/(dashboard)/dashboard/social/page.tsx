@@ -33,7 +33,7 @@ export default async function SocialPage() {
 
   const { data: accounts } = await supabase
     .from("social_accounts")
-    .select("id, platform, username, display_name, bio, website, avatar_url, profile_synced_at, profile_sync_error")
+    .select("id, platform, username, display_name, bio, website, avatar_url, profile_url, profile_synced_at, profile_sync_error")
     .eq("workspace_id", workspace.id)
     .eq("is_active", true)
     .order("platform");
@@ -121,6 +121,7 @@ export default async function SocialPage() {
       bio: account.bio,
       website: account.website,
       avatarUrl: account.avatar_url,
+      profileUrl: account.profile_url,
       followers: lastFollowers,
       // Lo que la red dio de verdad. Lo que no dio queda en null y se muestra
       // como "—": un cero diria que la cuenta no tiene nada.
