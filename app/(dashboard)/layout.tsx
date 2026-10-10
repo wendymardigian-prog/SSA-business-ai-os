@@ -61,7 +61,15 @@ export default async function DashboardLayout({
           unreadNotifications={unreadNotifications}
           draftCounts={draftCounts}
         />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
+        {/*
+          `relative` no es decoracion. Los textos solo para lectores de
+          pantalla (`sr-only`) son `position: absolute`; sin un ancestro
+          posicionado se ubican respecto de la pagina entera, en el lugar
+          donde caerian dentro del contenido largo, y estiran el documento:
+          la pagina completa scrollea y deja un espacio vacio abajo. Con
+          `relative` quedan adentro de <main>, que ya recorta lo que se sale.
+        */}
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
       </div>
     </DashboardChromeProvider>
   );
