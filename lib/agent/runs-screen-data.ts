@@ -74,6 +74,11 @@ export async function loadRunsScreenInputs(args: {
   const sourcesWithTasks = sources.includes(AI_TASKS.close_classification.source)
     ? [...sources, AI_TASKS.close_classification.id]
     : sources;
+  // La tarea de la pestaña siempre es una opción, tenga o no corridas en el
+  // período: si no, el <select> queda sin su <option> y el navegador lo
+  // muestra como "todos" aunque el filtro (correcto) ya la tenga puesta.
+  const sourcesForOptions =
+    args.currentOrigen && !sourcesWithTasks.includes(args.currentOrigen) ? [...sourcesWithTasks, args.currentOrigen] : sourcesWithTasks;
 
   const filters = parseRunFilters(args.rawParams, {
     currentAgentId: args.currentAgentId ?? null,
@@ -83,7 +88,7 @@ export async function loadRunsScreenInputs(args: {
     models,
     allowCost: args.includeCost,
     ruleIds: ruleList.map((r) => r.id),
-    sources: sourcesWithTasks,
+    sources: sourcesForOptions,
     currentOrigen: args.currentOrigen ?? null,
   });
 
@@ -93,6 +98,6 @@ export async function loadRunsScreenInputs(args: {
     client,
     agents,
     channels,
-    options: { agents, channels, models, tools, sources: sourcesWithTasks, rules: ruleFilterOptions(ruleList) },
+    options: { agents, channels, models, tools, sources: sourcesForOptions, rules: ruleFilterOptions(ruleList) },
   };
 }
