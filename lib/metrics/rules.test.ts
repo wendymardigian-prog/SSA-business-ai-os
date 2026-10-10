@@ -166,6 +166,27 @@ describe("engagement comparable a 7 dias (F45)", () => {
     expect(result).toMatchObject({ interactions: 25, engagement: null });
   });
 
+  it("hasta 7 dias tarde todavia sirve: la fila del dia 14", () => {
+    const result = computeD7({
+      publishedAt: "2026-09-01T12:00:00Z",
+      daily: [daily({ date: "2026-09-15", likes: 20, reach: 200 })],
+      now: new Date("2026-10-01T00:00:00Z"),
+    });
+
+    expect(result?.interactions).toBe(20);
+  });
+
+  it("un post importado a los 95 dias no congela su total de hoy como d7", () => {
+    // La primera fila es el acumulado de cuatro meses: no es un numero a 7 dias.
+    expect(
+      computeD7({
+        publishedAt: "2026-07-07T12:00:00Z",
+        daily: [daily({ date: "2026-10-10", likes: 300, views: 9000 })],
+        now: new Date("2026-10-10T12:00:00Z"),
+      }),
+    ).toBeNull();
+  });
+
   it("sin ninguna fila del dia 7 en adelante, todavia no se puede", () => {
     expect(
       computeD7({
@@ -297,16 +318,32 @@ describe("de lo que devuelve la red, que se guarda hoy (F79)", () => {
     expect(ids(selectPostsToPersist([post], viejo, now))).toEqual(["a"]);
   });
 
-  it("uno de 100 dias no se guarda nunca, ni la primera vez", () => {
-    expect(selectPostsToPersist([fromNetwork("a", "2026-06-23T12:00:00Z")], [], now)).toEqual([]);
+  // Una cuenta que ya tiene algo guardado: la primera importacion ya paso.
+  const yaImportada = [{ externalPostId: "otro", publishedAt: "2026-09-25T12:00:00Z", lastSyncedAt: "2026-10-01T05:00:00Z" }];
+
+  it("uno de 100 dias no se guarda en una cuenta que ya se importo", () => {
+    expect(selectPostsToPersist([fromNetwork("a", "2026-06-23T12:00:00Z")], yaImportada, now)).toEqual([]);
+  });
+
+  it("la primera importacion guarda todo, aunque tenga mas de 90 dias", () => {
+    // Un canal cuyo ultimo video tiene cuatro meses quedaba vacio para siempre.
+    const posts = [
+      fromNetwork("julio", "2026-07-07T12:00:00Z"),
+      fromNetwork("2025", "2025-08-30T12:00:00Z"),
+      fromNetwork("reciente", "2026-09-25T12:00:00Z"),
+    ];
+
+    expect(ids(selectPostsToPersist(posts, [], now))).toEqual(["julio", "2025", "reciente"]);
   });
 
   it("uno que todavia no tenemos y esta dentro de 90 dias entra", () => {
-    expect(ids(selectPostsToPersist([fromNetwork("nuevo", "2026-08-17T12:00:00Z")], [], now))).toEqual(["nuevo"]);
+    expect(ids(selectPostsToPersist([fromNetwork("nuevo", "2026-08-17T12:00:00Z")], yaImportada, now))).toEqual([
+      "nuevo",
+    ]);
   });
 
   it("uno sin fecha de publicacion se guarda: sin fecha no hay regla", () => {
-    expect(ids(selectPostsToPersist([fromNetwork("sin-fecha", null)], [], now))).toEqual(["sin-fecha"]);
+    expect(ids(selectPostsToPersist([fromNetwork("sin-fecha", null)], yaImportada, now))).toEqual(["sin-fecha"]);
   });
 
   it("usa la fecha que ya teniamos guardada cuando la red no la trae", () => {

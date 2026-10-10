@@ -3,7 +3,16 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { isShort, parseIsoDuration, readYouTubeMetrics, rowToMetrics, youtubeMediaType } from "./youtube";
+import {
+  count,
+  isShort,
+  parseIsoDuration,
+  readYouTubeMetrics,
+  reportStartDate,
+  rowToMetrics,
+  statisticsToMetrics,
+  youtubeMediaType,
+} from "./youtube";
 
 function routed(routes: Array<[RegExp, unknown]>) {
   return vi.fn(async (url: string | URL | Request) => {
@@ -100,6 +109,7 @@ describe("leer el canal entero (F44)", () => {
               id: "v1",
               snippet: { title: "Un video", publishedAt: "2026-09-20T10:00:00Z", thumbnails: { high: { url: "https://t/1" } } },
               contentDetails: { duration: "PT10M" },
+              statistics: { viewCount: "999" },
             },
             {
               id: "v2",
@@ -167,6 +177,85 @@ describe("leer el canal entero (F44)", () => {
     expect(result.warnings[0]).toContain("quotaExceeded");
   });
 
+  it("el encabezado recibe la cantidad de videos y las vistas del canal", async () => {
+    const fetchImpl = routed([
+      [
+        /\/channels\?/,
+        {
+          items: [
+            {
+              statistics: { subscriberCount: "413", videoCount: "27", viewCount: "15800" },
+              contentDetails: { relatedPlaylists: { uploads: "UU123" } },
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
+
+    expect(result.accountDaily[0]).toMatchObject({
+      followers: 413,
+      extra: { profile: { videos: 27, views: 15800 } },
+    });
+  });
+
+  it("a Analytics le pide desde el video mas viejo, no desde la ventana", async () => {
+    // La fila del dia es acumulada: con la ventana, un video de julio quedaba
+    // con las vistas de los ultimos 30 dias como si fueran su total.
+    const fetchImpl = routed([
+      [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
+      [/playlistItems/, { items: [{ contentDetails: { videoId: "v1" } }, { contentDetails: { videoId: "v2" } }] }],
+      [
+        /\/videos\?/,
+        {
+          items: [
+            { id: "v1", snippet: { publishedAt: "2026-07-07T18:00:00Z" } },
+            { id: "v2", snippet: { publishedAt: "2025-05-24T10:00:00Z" } },
+          ],
+        },
+      ],
+    ]);
+
+    await readYouTubeMetrics({ ...params, fetchImpl });
+
+    const analytics = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
+      String(c[0]).includes("youtubeanalytics"),
+    );
+    expect(String(analytics?.[0])).toContain("startDate=2025-05-24");
+  });
+
+  it("un video sin fila en Analytics toma los totales de la Data API", async () => {
+    // Analytics tarda dias en tener un video nuevo.
+    const fetchImpl = routed([
+      [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
+      [/playlistItems/, { items: [{ contentDetails: { videoId: "v1" } }] }],
+      [
+        /\/videos\?/,
+        {
+          items: [
+            {
+              id: "v1",
+              snippet: { publishedAt: "2026-07-07T18:00:00Z" },
+              statistics: { viewCount: "1200", likeCount: "48", commentCount: "12" },
+            },
+          ],
+        },
+      ],
+      [/youtubeanalytics/, { columnHeaders: [{ name: "video" }, { name: "views" }], rows: [] }],
+    ]);
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
+
+    expect(result.posts[0].metrics).toMatchObject({ views: 1200, likes: 48, comments: 12, engagementRate: 5 });
+  });
+
+  it("si Analytics tiene la fila, manda Analytics", async () => {
+    const result = await readYouTubeMetrics({ ...params, fetchImpl: impl() });
+
+    expect(result.posts[0].metrics.views).toBe(500);
+  });
+
   it("si falla el canal, lo avisa sin romper", async () => {
     const fetchImpl = routed([[/\/channels\?/, { error: { message: "sin permiso" } }]]);
 
@@ -174,5 +263,48 @@ describe("leer el canal entero (F44)", () => {
 
     expect(result.posts).toEqual([]);
     expect(result.warnings[0]).toContain("sin permiso");
+  });
+});
+
+describe("los totales de la Data API (F44)", () => {
+  it("los contadores vienen como texto y se leen como numero", () => {
+    expect(count("413")).toBe(413);
+    expect(count(7)).toBe(7);
+  });
+
+  it("uno que no vino queda en null, no en cero", () => {
+    expect(count(undefined)).toBeNull();
+    expect(count("")).toBeNull();
+    expect(count("oculto")).toBeNull();
+  });
+
+  it("me gusta ocultos: null, no cero", () => {
+    expect(statisticsToMetrics({ viewCount: "100", commentCount: "3" })).toMatchObject({
+      views: 100,
+      likes: null,
+      comments: 3,
+      engagementRate: 3,
+    });
+  });
+
+  it("sin estadisticas no hay ningun numero", () => {
+    expect(statisticsToMetrics(undefined)).toMatchObject({ views: null, likes: null, comments: null, engagementRate: null });
+  });
+});
+
+describe("desde cuando pedirle a Analytics (F44)", () => {
+  const details = (...dates: Array<string | null>) =>
+    new Map(dates.map((publishedAt, i) => [`v${i}`, { publishedAt }]));
+
+  it("el dia del video mas viejo", () => {
+    expect(reportStartDate("2026-09-10", details("2026-07-07T18:00:00Z", "2025-05-24T10:00:00Z"))).toBe("2025-05-24");
+  });
+
+  it("si todos son mas nuevos que la ventana, la ventana", () => {
+    expect(reportStartDate("2026-09-10", details("2026-09-20T10:00:00Z"))).toBe("2026-09-10");
+  });
+
+  it("una fecha que falta o no se entiende no mueve nada", () => {
+    expect(reportStartDate("2026-09-10", details(null, "mañana"))).toBe("2026-09-10");
   });
 });
