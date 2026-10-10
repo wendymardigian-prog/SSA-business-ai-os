@@ -3,8 +3,9 @@ import type { AgentRunSource } from "@/lib/types/database";
 
 /**
  * El catálogo único de tareas de IA del sistema (no conversacionales): las
- * cuatro de "Tareas en segundo plano" (F23) más las dos que ya gastan IA pero
- * nunca tuvieron pantalla propia (transcripción, descripción de imagen).
+ * cuatro de "Tareas en segundo plano" (F23), las dos que ya gastan IA pero
+ * nunca tuvieron pantalla propia (transcripción, descripción de imagen) y el
+ * análisis de anuncios, que corre bajo demanda al apretar un botón.
  *
  * Vive en Agentes IA, agrupadas debajo de los agentes (D-agentes-ia). Puro:
  * sin dependencias de servidor, lo importan tanto el servidor como la UI.
@@ -16,12 +17,13 @@ export const AI_TASK_IDS = [
   "knowledge_indexing",
   "audio_transcription",
   "media_description",
+  "ads_analysis",
 ] as const;
 
 export type AiTaskId = (typeof AI_TASK_IDS)[number];
 
 /** Nombre de ícono de lucide-react (el mapa a componente vive en la UI, cliente). */
-export type AiTaskIcon = "ListFilter" | "NotebookText" | "Thermometer" | "BookOpenCheck" | "AudioLines" | "ImageIcon";
+export type AiTaskIcon = "ListFilter" | "NotebookText" | "Thermometer" | "BookOpenCheck" | "AudioLines" | "ImageIcon" | "BarChart3";
 
 export interface AiTaskDef {
   id: AiTaskId;
@@ -34,6 +36,16 @@ export interface AiTaskDef {
   canTurnOff: boolean;
   /** Tiene instrucciones versionables (la parte editable de su prompt). */
   hasInstructions: boolean;
+  /**
+   * El negocio puede elegir su modelo (proveedor + modelo) en la pantalla de la
+   * tarea (`workspaces.ai_task_models`, 00138). Sin eleccion, usa el modelo por
+   * defecto del negocio. Hoy solo el analisis de anuncios.
+   */
+  hasModelPicker?: boolean;
+  /** Las `{{variables}}` que se pueden usar en sus instrucciones (se muestran de ayuda). */
+  variables?: Array<{ name: string; description: string }>;
+  /** No corre sola ni por lote: corre cuando alguien aprieta un boton. */
+  onDemand?: boolean;
   /** El `agent_runs.source` de sus corridas. */
   source: AgentRunSource;
   /**
@@ -110,6 +122,19 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     canTurnOff: false,
     hasInstructions: true,
     source: "media_description",
+  },
+  ads_analysis: {
+    id: "ads_analysis",
+    name: "Análisis de anuncios",
+    description: "Lee los números de tu cuenta de Meta Ads y dice qué funciona, qué no y qué conviene hacer.",
+    icon: "BarChart3",
+    configurable: false,
+    canTurnOff: false,
+    hasInstructions: true,
+    hasModelPicker: true,
+    onDemand: true,
+    variables: [{ name: "estilo", description: "cómo habla la IA en este negocio; por defecto, español neutro, directo y sin relleno" }],
+    source: "ads_analysis",
   },
 };
 

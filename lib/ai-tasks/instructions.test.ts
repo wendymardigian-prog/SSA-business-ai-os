@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@/lib/patterns/prompt";
 import { buildSummarySystemPrompt } from "@/lib/agent/summary";
-import { MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "./instructions";
+import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "./instructions";
+import { buildAnalysisSystemPrompt, SYSTEM_PROMPT } from "@/lib/meta/ai-analysis";
+import { aiLanguageStyle } from "@/lib/ai/language-style";
 import { interpolate, assembleTaskPrompt } from "./instructions";
 
 /**
@@ -80,6 +82,39 @@ describe("descripción de imágenes — el texto por defecto es el de siempre", 
     expect(MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS).toBe(
       "Describí esta imagen en español, en una sola frase de máximo 300 caracteres. Decí qué se ve y, si la imagen tiene texto (por ejemplo una captura de pantalla), transcribí lo que dice el texto, que es lo más importante. No interpretes ni opines: describí.",
     );
+  });
+});
+
+describe("análisis de anuncios — el texto por defecto es el de siempre", () => {
+  // Copiado tal cual del SYSTEM_PROMPT de lib/meta/ai-analysis.ts antes de
+  // volverlo editable (con ${aiLanguageStyle()} donde iba la llamada).
+  const legacy = () => `Sos un analista de medios pagos que trabaja para este negocio.
+
+Te paso los numeros reales de una cuenta de Meta Ads. Tu trabajo es decir que esta funcionando, que no, y que conviene hacer.
+
+Reglas:
+- Hablá en ${aiLanguageStyle()}, simple y directo.
+- No inventes numeros: usá solo los que te paso. Si falta un dato, decilo.
+- Priorizá: tres o cuatro cosas concretas, no una lista de veinte.
+- Cada recomendacion tiene que decir sobre QUE objeto (campaña, conjunto o anuncio) y POR QUE, con el numero que lo justifica.
+- Si algo no se puede concluir con estos datos, decilo en vez de suponer.`;
+
+  it("con el texto por defecto, el prompt queda byte a byte igual al de antes", () => {
+    expect(buildAnalysisSystemPrompt(ADS_ANALYSIS_DEFAULT_INSTRUCTIONS)).toBe(legacy());
+    expect(SYSTEM_PROMPT()).toBe(legacy());
+  });
+
+  it("sin pasar nada, usa el texto por defecto", () => {
+    expect(buildAnalysisSystemPrompt()).toBe(legacy());
+  });
+
+  it("unas instrucciones editadas reemplazan todo, y {{estilo}} sigue funcionando", () => {
+    const prompt = buildAnalysisSystemPrompt("Resumí en 3 puntos. Hablá en {{estilo}}.");
+    expect(prompt).toBe(`Resumí en 3 puntos. Hablá en ${aiLanguageStyle()}.`);
+  });
+
+  it("una variable que no existe se deja tal cual, no lanza", () => {
+    expect(buildAnalysisSystemPrompt("Hola {{no_existe}}")).toBe("Hola {{no_existe}}");
   });
 });
 

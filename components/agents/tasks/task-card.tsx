@@ -23,7 +23,7 @@ export function TaskCard({ task, mode, lastRun }: { task: AiTaskDef; mode: TaskM
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{task.name}</p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {mode ? MODE_LABELS[mode] : "Siempre inmediata"}
+          {mode ? MODE_LABELS[mode] : task.onDemand ? "Bajo demanda" : "Siempre inmediata"}
           {" · "}
           {mode === "off" ? "Apagada" : lastRun ? lastRunLabel(lastRun.at) : "Sin corridas propias todavía"}
           {" · "}

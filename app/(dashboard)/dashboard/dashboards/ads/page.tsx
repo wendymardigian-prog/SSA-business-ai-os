@@ -8,6 +8,8 @@ import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/met
 import { getMetaToken } from "@/lib/meta/token";
 import { fetchBreakdown, fetchReachByLevel, fetchUniqueReach, type BreakdownKind } from "@/lib/meta/live";
 import { lastSyncedAt, syncedLabel } from "@/lib/dashboards/ads-view";
+import { loadTaskModel } from "@/lib/ai-tasks/model";
+import { createServiceClient } from "@/lib/supabase/server";
 import { isoToDateInput } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -61,6 +63,7 @@ export default async function AdsDashboardPage({
         uniqueReach={null}
         previousUniqueReach={null}
         reach={{ campaign: null, adset: null, ad: null }}
+        aiModel={null}
         live={{ placement: null, device: null, audience: null }}
         liveError={null}
         syncedLabel={null}
@@ -77,6 +80,7 @@ export default async function AdsDashboardPage({
   const before = previousPeriod(range, now);
 
   const token = await getMetaToken(supabase, workspace.id);
+  const aiChoice = await loadTaskModel(await createServiceClient(), workspace.id, "ads_analysis");
 
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);
@@ -144,6 +148,7 @@ export default async function AdsDashboardPage({
       }}
       live={{ placement: placementLive, device: deviceLive, audience: audienceLive }}
       liveError={live && !live.ok ? live.error : null}
+      aiModel={aiChoice ? `${aiChoice.provider}/${aiChoice.model}` : null}
       syncedLabel={syncedLabel(syncedAt, now, timeZone)}
     />
   );

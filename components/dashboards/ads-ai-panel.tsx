@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Loader2, Sparkles } from "lucide-react";
 import { Sheet } from "@/components/ui/sheet";
 import { analyzeAdsWithAi } from "@/lib/actions/ads-analysis";
@@ -19,22 +20,25 @@ import type { PeriodPreset } from "@/lib/dashboards/period";
 export function AdsAiPanel({
   period,
   adAccountId,
+  chosenModel,
   onClose,
 }: {
   period: PeriodPreset;
   adAccountId: string;
+  /** "proveedor/modelo" elegido en la tarea, o null si usa el modelo del negocio. */
+  chosenModel: string | null;
   onClose: () => void;
 }) {
   const [pending, start] = useTransition();
   const [question, setQuestion] = useState("");
-  const [result, setResult] = useState<{ text: string; costUsd: number | null } | null>(null);
+  const [result, setResult] = useState<{ text: string; costUsd: number | null; model: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function analyze() {
     setError(null);
     start(async () => {
       const outcome = await analyzeAdsWithAi({ period, adAccountId, question: question || undefined });
-      if (outcome.ok) setResult({ text: outcome.text, costUsd: outcome.costUsd });
+      if (outcome.ok) setResult({ text: outcome.text, costUsd: outcome.costUsd, model: outcome.model });
       else setError(outcome.error);
     });
   }
@@ -45,6 +49,13 @@ export function AdsAiPanel({
         <p className="text-sm text-muted-foreground">
           Le paso los numeros de esta cuenta y este periodo, y le pido que diga que esta funcionando,
           que no, y que conviene hacer. No ve nada mas que esos numeros.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Modelo: <span className="font-medium text-foreground">{chosenModel ?? "el del negocio (por defecto)"}</span>
+          {" · "}
+          <Link href="/dashboard/agents/tareas/ads_analysis" className="underline underline-offset-2 hover:text-foreground">
+            Configurar modelo e instrucciones
+          </Link>
         </p>
 
         <div>
@@ -86,11 +97,10 @@ export function AdsAiPanel({
             <p className="whitespace-pre-wrap rounded-lg border border-border p-3 text-sm">
               {result.text}
             </p>
-            {result.costUsd !== null && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Este analisis costo USD {result.costUsd.toFixed(4)}.
-              </p>
-            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Analizado con {result.model}
+              {result.costUsd !== null && <> · costó USD {result.costUsd.toFixed(4)}</>}.
+            </p>
           </div>
         )}
       </div>
