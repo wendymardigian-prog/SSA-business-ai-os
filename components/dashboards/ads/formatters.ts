@@ -58,7 +58,12 @@ const MONEY_METRICS: ChartMetric[] = ["spend", "cpm", "cpc", "cpl"];
 
 /** El valor de una metrica para el eje (corto). */
 export function axisValue(metric: ChartMetric, value: number, currency: string | null): string {
-  if (MONEY_METRICS.includes(metric)) return `${currencySymbol(currency)}${compact(value)}`;
+  if (MONEY_METRICS.includes(metric)) {
+    // Un CPC de centavos con un decimal ("$0,1") no dice nada: dos decimales
+    // cuando el monto no es entero y todavia entra en el eje.
+    const short = Math.abs(value) < 1_000 && !Number.isInteger(value) ? value.toFixed(2).replace(".", ",") : compact(value);
+    return `${currencySymbol(currency)}${short}`;
+  }
   if (metric === "ctr") return `${compact(value)}%`;
   return compact(Math.round(value));
 }

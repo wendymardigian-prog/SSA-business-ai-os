@@ -9,6 +9,7 @@ import { DashboardSwitcher } from "./dashboard-switcher";
 import type { DashboardOption } from "@/lib/dashboards/available";
 import { DailyEvolutionChart } from "./ads/charts-lazy";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
+import { ComparisonCards } from "./ads/comparison-cards";
 import { KpiRow, type KpiItem } from "./ads/kpi-row";
 import { LEFT_OPTIONS, METRIC_LABELS, RIGHT_OPTIONS, type ChartMetric } from "./ads/formatters";
 import { AdsAiPanel } from "./ads-ai-panel";
@@ -52,6 +53,8 @@ export interface AdsDashboardProps {
   /** El del periodo anterior; solo viene si el de este llego tambien. */
   previousUniqueReach: number | null;
   liveError: string | null;
+  /** Alcance unico de cada anuncio (en vivo). Null si Meta no respondio. */
+  adReach: Record<string, number> | null;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. Armado en el servidor. */
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
@@ -263,6 +266,8 @@ export function AdsDashboard(props: AdsDashboardProps) {
             )}
           </div>
         </section>
+
+        <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.adReach} />
 
         {retention.length > 0 && (
           <section className="mt-3">

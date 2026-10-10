@@ -15,3 +15,18 @@ export const DailyEvolutionChart = dynamic(
   () => import("./ads-charts").then((m) => m.DailyEvolutionChart),
   { ssr: false, loading: () => <ChartSkeleton height="h-full" /> },
 );
+
+export const StackedCampaignChart = dynamic(
+  () => import("./ads-charts").then((m) => m.StackedCampaignChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-60" /> },
+);
+
+export const AdComparisonChart = dynamic(
+  () => import("./ads-charts").then((m) => m.AdComparisonChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-60" /> },
+);
+
+export const CostLinesChart = dynamic(
+  () => import("./ads-charts").then((m) => m.CostLinesChart),
+  { ssr: false, loading: () => <ChartSkeleton height="h-56" /> },
+);
