@@ -7,6 +7,7 @@ import { AGENT_FILTER_ALL, loadActiveSources, parseRunFilters } from "./runs-que
 import { resolvePeriod } from "@/lib/dashboards/period";
 import { parsePeriodFilter } from "./ai-dashboard/url-state";
 import type { RunFilters, RunsScreenOptions } from "./screen";
+import { AI_TASKS } from "@/lib/ai-tasks/catalog";
 
 type Db = SupabaseClient<Database>;
 
@@ -23,6 +24,8 @@ export async function loadRunsScreenInputs(args: {
   includeCost: boolean;
   searchParams: URLSearchParams;
   rawParams: Record<string, string | string[] | undefined>;
+  /** La pestaña Runs de un agente o de una tarea (Bloque Agentes IA): ese es "el de la pestaña". null en la pantalla global. */
+  currentAgentId?: string | null;
 }): Promise<{
   filters: RunFilters;
   dateRange: { from: string | null; to: string | null };
@@ -63,15 +66,22 @@ export async function loadRunsScreenInputs(args: {
 
   const agents = agentConfigs.map((a) => ({ id: a.id, name: a.name }));
 
+  // "Clasificación al cierre" (Bloque Agentes IA) no tiene `source` propio: se
+  // ofrece en Origen solo si su tarea hermana (conversation_summary) tuvo
+  // alguna corrida en el período, para no ofrecer un filtro que nunca trae nada.
+  const sourcesWithTasks = sources.includes(AI_TASKS.close_classification.source)
+    ? [...sources, AI_TASKS.close_classification.id]
+    : sources;
+
   const filters = parseRunFilters(args.rawParams, {
-    currentAgentId: null,
+    currentAgentId: args.currentAgentId ?? null,
     agentIds: agents.map((a) => a.id),
     channelIds: channels.map((c) => c.id),
     toolNames: tools.map((t) => t.name),
     models,
     allowCost: args.includeCost,
     ruleIds: ruleList.map((r) => r.id),
-    sources,
+    sources: sourcesWithTasks,
   });
 
   return {
@@ -80,6 +90,6 @@ export async function loadRunsScreenInputs(args: {
     client,
     agents,
     channels,
-    options: { agents, channels, models, tools, sources, rules: ruleFilterOptions(ruleList) },
+    options: { agents, channels, models, tools, sources: sourcesWithTasks, rules: ruleFilterOptions(ruleList) },
   };
 }

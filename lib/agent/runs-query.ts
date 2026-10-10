@@ -4,8 +4,17 @@ import { DATE_PRESETS, type DatePreset } from "@/lib/dates";
 import { firstParam, pickEnum, pickPage, sanitizeSearch, type SearchParams } from "@/lib/url-params";
 import { AGENT_RUN_PUBLIC_COLUMNS } from "./public";
 import { RUN_STATUS_LABELS } from "./run-labels";
-import type { RunFilters, RunRow, RunStepRow } from "./screen";
+import { RUN_ORDERS, type RunFilters, type RunOrder, type RunRow, type RunStepRow } from "./screen";
 import { countNewRunFilters, isRunDetailFilter, pickRuleFilter, runDetailQuery } from "./runs-filters";
+import { AI_TASKS } from "@/lib/ai-tasks/catalog";
+
+/**
+ * "Clasificación al cierre" (Bloque Agentes IA) no tiene `source` propio: es
+ * el mismo run de `conversation_summary` con `status_detail` que incluye
+ * "classified". El filtro de Origen la ofrece como un valor mas, y acá se
+ * traduce a las dos condiciones reales.
+ */
+const CLOSE_CLASSIFICATION = AI_TASKS.close_classification;
 
 /**
  * La pestana Runs de un agente (F28) Y la pantalla global de Corridas
@@ -86,11 +95,27 @@ export function parseRunFilters(
     detalle: isRunDetailFilter(firstParam(params.detalle)) ? firstParam(params.detalle) : "",
     costoMin: known.allowCost ? num(firstParam(params.costo_min)) : null,
     costoMax: known.allowCost ? num(firstParam(params.costo_max)) : null,
-    origen: pickEnum(params.origen, known.sources ?? []),
+    origen: pickEnum(params.origen, [...(known.sources ?? []), CLOSE_CLASSIFICATION.id]),
     sinPrecio: known.allowCost && firstParam(params.sin_precio) === "1",
     masLentas: firstParam(params.lentas) === "1",
-    masCaras: known.allowCost && firstParam(params.caras) === "1",
+    orden: pickOrden(params, known.allowCost),
   };
+}
+
+/**
+ * `orden` nuevo, o el atajo viejo `caras=1` si no vino ninguno (compatibilidad
+ * con los links guardados de antes de este Bloque). "caras"/"baratas" solo
+ * valen con permiso de costo.
+ */
+function pickOrden(params: SearchParams, allowCost: boolean): RunOrder {
+  const raw = firstParam(params.orden);
+  if ((RUN_ORDERS as readonly string[]).includes(raw)) {
+    const orden = raw as RunOrder;
+    if ((orden === "caras" || orden === "baratas") && !allowCost) return "recientes";
+    return orden;
+  }
+  if (allowCost && firstParam(params.caras) === "1") return "caras";
+  return "recientes";
 }
 
 /** `currentAgentId` null (Corridas): el agente puesto a mano siempre cuenta, no hay "el de la pestaña". */
@@ -108,8 +133,40 @@ export function countActiveRunFilters(f: RunFilters, currentAgentId: string | nu
   if (f.costoMin !== null || f.costoMax !== null) n++;
   if (f.sinPrecio) n++;
   if (f.masLentas) n++;
-  if (f.masCaras) n++;
+  if (f.orden !== "recientes") n++;
   return n;
+}
+
+/**
+ * El filtro de Origen admite el pseudo-valor "close_classification" (no es un
+ * `agent_runs.source` real): se traduce a `source = conversation_summary` más
+ * `status_detail LIKE '%classified%'`. Cualquier otro valor es un `source` de
+ * verdad y se filtra por igualdad, como siempre.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function applyOrigenFilter<Q extends { eq: (...a: any[]) => Q; like: (...a: any[]) => Q }>(query: Q, origen: string): Q {
+  if (origen === CLOSE_CLASSIFICATION.id) {
+    return query.eq("source", CLOSE_CLASSIFICATION.source).like("status_detail", CLOSE_CLASSIFICATION.detailLike as string);
+  }
+  return query.eq("source", origen as AgentRunSource);
+}
+
+/** La columna y el sentido del `ORDER BY`, segun `orden` (Bloque Agentes IA). "caras"/"baratas" sin permiso de costo caen a "recientes". */
+export function orderColumn(orden: RunOrder | undefined, includeCost: boolean): { col: "created_at" | "cost_usd" | "latency_ms"; ascending: boolean } {
+  switch (orden) {
+    case "antiguas":
+      return { col: "created_at", ascending: true };
+    case "caras":
+      return includeCost ? { col: "cost_usd", ascending: false } : { col: "created_at", ascending: false };
+    case "baratas":
+      return includeCost ? { col: "cost_usd", ascending: true } : { col: "created_at", ascending: false };
+    case "lentas":
+      return { col: "latency_ms", ascending: false };
+    case "rapidas":
+      return { col: "latency_ms", ascending: true };
+    default:
+      return { col: "created_at", ascending: false };
+  }
 }
 
 const COST_COLUMNS = "input_tokens, output_tokens, cached_tokens, embedding_tokens, cost_usd";
@@ -197,7 +254,7 @@ export async function loadRuns(
   if (f.q) query = query.ilike("contacts.display_name", `%${f.q}%`);
   if (f.resultado) query = query.eq("status", f.resultado as AgentRunStatus);
   if (f.modelo) query = query.eq("model", f.modelo);
-  if (f.origen) query = query.eq("source", f.origen as AgentRunSource);
+  if (f.origen) query = applyOrigenFilter(query, f.origen);
   if (f.accion) query = query.eq("agent_run_steps.kind", "tool_call").eq("agent_run_steps.name", f.accion);
 
   // Regla y detalle (§15.4). El detalle se busca con `like`: `status_detail`
@@ -218,8 +275,8 @@ export async function loadRuns(
 
   const pageSize = args.pageSize ?? RUNS_PAGE_SIZE;
   const from = (f.page - 1) * pageSize;
-  const orderCol = args.includeCost && f.masCaras ? "cost_usd" : "created_at";
-  const { data, count, error } = await query.order(orderCol, { ascending: false }).range(from, from + pageSize - 1);
+  const { col: orderCol, ascending } = orderColumn(f.orden, args.includeCost);
+  const { data, count, error } = await query.order(orderCol, { ascending }).range(from, from + pageSize - 1);
   if (error) {
     console.error("[runs] no pude leer los runs:", error.message);
     return { rows: [], total: 0 };
@@ -325,7 +382,7 @@ export async function findAdjacentRun(
   if (f.q) query = query.ilike("contacts.display_name", `%${f.q}%`);
   if (f.resultado) query = query.eq("status", f.resultado as AgentRunStatus);
   if (f.modelo) query = query.eq("model", f.modelo);
-  if (f.origen) query = query.eq("source", f.origen as AgentRunSource);
+  if (f.origen) query = applyOrigenFilter(query, f.origen);
   if (f.accion) query = query.eq("agent_run_steps.kind", "tool_call").eq("agent_run_steps.name", f.accion);
   const detail = runDetailQuery(f.detalle, f.regla);
   if (detail.statusDetailLike) query = query.like("status_detail", detail.statusDetailLike);

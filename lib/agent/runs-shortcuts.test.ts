@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { isShortcutActive, RUN_SHORTCUTS, shortcutParams } from "./runs-shortcuts";
 
-const current = (patch: Partial<{ resultado: string; sinPrecio: boolean; masLentas: boolean; masCaras: boolean }> = {}) => ({
-  resultado: "", sinPrecio: false, masLentas: false, masCaras: false, ...patch,
+const current = (patch: Partial<{ resultado: string; sinPrecio: boolean; masLentas: boolean; orden: string }> = {}) => ({
+  resultado: "", sinPrecio: false, masLentas: false, orden: "recientes", ...patch,
 });
 
 describe("RUN_SHORTCUTS", () => {
@@ -21,10 +21,13 @@ describe("shortcutParams", () => {
     expect(shortcutParams("escaladas")).toEqual({ resultado: "escalated" });
   });
 
-  it("sin_precio, lentas y caras son flags propios", () => {
+  it("sin_precio y lentas son flags propios", () => {
     expect(shortcutParams("sin_precio")).toEqual({ sin_precio: "1" });
     expect(shortcutParams("lentas")).toEqual({ lentas: "1" });
-    expect(shortcutParams("caras")).toEqual({ caras: "1" });
+  });
+
+  it("caras pone el orden directo (Bloque Agentes IA)", () => {
+    expect(shortcutParams("caras")).toEqual({ orden: "caras" });
   });
 });
 
@@ -37,7 +40,8 @@ describe("isShortcutActive", () => {
   it("los flags propios reflejan su campo", () => {
     expect(isShortcutActive("sin_precio", current({ sinPrecio: true }))).toBe(true);
     expect(isShortcutActive("lentas", current({ masLentas: true }))).toBe(true);
-    expect(isShortcutActive("caras", current({ masCaras: true }))).toBe(true);
+    expect(isShortcutActive("caras", current({ orden: "caras" }))).toBe(true);
+    expect(isShortcutActive("caras", current({ orden: "baratas" }))).toBe(false);
   });
 
   it("nada activo por defecto", () => {

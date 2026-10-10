@@ -36,14 +36,17 @@ export function shortcutParams(key: RunShortcutKey): Record<string, string> {
     case "lentas":
       return { lentas: "1" };
     case "caras":
-      return { caras: "1" };
+      // Antes "caras=1"; ahora es un valor de orden como cualquier otro
+      // (Bloque Agentes IA). "caras=1" solo se sigue leyendo de links viejos
+      // (parseRunFilters).
+      return { orden: "caras" };
   }
 }
 
 /** Si ESTE atajo es el que esta activo ahora mismo, para resaltarlo. */
 export function isShortcutActive(
   key: RunShortcutKey,
-  current: { resultado: string; sinPrecio: boolean; masLentas: boolean; masCaras: boolean },
+  current: { resultado: string; sinPrecio: boolean; masLentas: boolean; orden: string },
 ): boolean {
   switch (key) {
     case "errores":
@@ -55,6 +58,6 @@ export function isShortcutActive(
     case "lentas":
       return current.masLentas;
     case "caras":
-      return current.masCaras;
+      return current.orden === "caras";
   }
 }

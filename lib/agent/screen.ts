@@ -11,6 +11,10 @@ import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
  * dependencias de servidor: lo importan los componentes cliente.
  */
 
+/** Orden de la tabla de Corridas (Bloque Agentes IA). "recientes" es el default. */
+export const RUN_ORDERS = ["recientes", "antiguas", "caras", "baratas", "lentas", "rapidas"] as const;
+export type RunOrder = (typeof RUN_ORDERS)[number];
+
 /** Filtros de la pestana Runs, ya validados contra lo que existe. */
 export interface RunFilters {
   page: number;
@@ -38,8 +42,12 @@ export interface RunFilters {
   sinPrecio: boolean;
   /** Atajo "Más lentas de 30 s" (R2). */
   masLentas: boolean;
-  /** Atajo "Más caras" (R2): ordena por cost_usd descendente en vez de por fecha. Solo con permiso de costo. */
-  masCaras: boolean;
+  /**
+   * Orden de la tabla (Bloque Agentes IA). "caras"/"baratas" solo valen con
+   * permiso de costo; sin el, se cae a "recientes". Reemplaza al viejo
+   * `masCaras`: el atajo "Más caras" ahora pone `orden=caras` directo.
+   */
+  orden: RunOrder;
 }
 
 export interface RunStepRow {

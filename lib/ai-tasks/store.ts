@@ -97,6 +97,6 @@ export function defaultInstructionsFor(task: AiTaskId): string {
   return isVersioned(task) ? DEFAULT_TEXT[task] : "";
 }
 
-export function taskIsVersioned(task: AiTaskId): boolean {
+export function taskIsVersioned(task: AiTaskId): task is VersionedTask {
   return isVersioned(task);
 }

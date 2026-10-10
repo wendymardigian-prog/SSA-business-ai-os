@@ -2,10 +2,11 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import { Activity, ChevronDown, Download, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ChevronDown, Download, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RunFilters, RunRow, RunsScreenOptions } from "@/lib/agent/screen";
 import { RUN_SOURCE_LABELS, RUN_STATUS_LABELS, TRIGGER_LABELS, describeModelError, describeRunDetail } from "@/lib/agent/run-labels";
+import { getAiTask } from "@/lib/ai-tasks/catalog";
 import { AGENT_FILTER_ALL, AGENT_FILTER_NONE, countActiveRunFilters } from "@/lib/agent/runs-query";
 import { RUN_DETAIL_FILTERS } from "@/lib/agent/runs-filters";
 import { RUN_SHORTCUTS, isShortcutActive, shortcutParams } from "@/lib/agent/runs-shortcuts";
@@ -36,7 +37,7 @@ export function RunsScreen({
   isAdmin: boolean;
   options: RunsScreenOptions;
 }) {
-  const { pending, setParam, setPage, clearAll } = useUrlFilters();
+  const { pending, setParam, setPage, clearAll, search } = useUrlFilters();
   const activeCount = countActiveRunFilters(filters, null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -51,7 +52,7 @@ export function RunsScreen({
       {/* Atajos de un clic (R2) */}
       <div className="flex flex-wrap gap-2">
         {RUN_SHORTCUTS.filter((s) => !s.needsCost || showCost).map((s) => {
-          const active = isShortcutActive(s.key, { resultado: filters.resultado, sinPrecio: filters.sinPrecio, masLentas: filters.masLentas, masCaras: filters.masCaras });
+          const active = isShortcutActive(s.key, { resultado: filters.resultado, sinPrecio: filters.sinPrecio, masLentas: filters.masLentas, orden: filters.orden });
           return (
             <button
               key={s.key}
@@ -99,7 +100,7 @@ export function RunsScreen({
             <div>
               <MenuGroupLabel>Qué fue</MenuGroupLabel>
               <div className="flex flex-col gap-2 px-1">
-                <FilterSelect label="Origen" value={filters.origen} onChange={(v) => setParam("origen", v)} options={options.sources.map((s) => ({ value: s, label: RUN_SOURCE_LABELS[s] ?? s }))} />
+                <FilterSelect label="Origen" value={filters.origen} onChange={(v) => setParam("origen", v)} options={options.sources.map((s) => ({ value: s, label: originLabel(s) }))} />
                 <FilterSelect
                   label="Resultado"
                   value={filters.resultado}
@@ -149,8 +150,15 @@ export function RunsScreen({
         )}
         {pending && <span className="text-xs text-muted-foreground">Actualizando…</span>}
 
+        {/*
+          R3, arreglado: antes reconstruía la URL a mano con las claves
+          internas de RunFilters ("sinPrecio", "costoMin"…), que no son las
+          que lee la ruta de export ("sin_precio", "costo_min"…) ni llevaban
+          el período (range/from/to). El export siempre traía los últimos 30
+          días e ignoraba esos filtros. Ahora manda la URL real.
+        */}
         <a
-          href={`/api/v1/agent-runs/export?${new URLSearchParams(Object.fromEntries(Object.entries({ ...filters }).filter(([, v]) => v !== "" && v !== null && v !== false).map(([k, v]) => [k, String(v)]))).toString()}`}
+          href={`/api/v1/agent-runs/export?${search}`}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
         >
           <Download className="h-3.5 w-3.5" aria-hidden />
@@ -172,7 +180,7 @@ export function RunsScreen({
             <table className="w-full min-w-[920px] text-left text-sm">
               <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Cuándo</th>
+                  <SortHeader label="Cuándo" asc="antiguas" desc="recientes" orden={filters.orden} setParam={setParam} />
                   <th className="px-3 py-2 font-medium">Origen</th>
                   <th className="px-3 py-2 font-medium">Disparador</th>
                   <th className="px-3 py-2 font-medium">Contacto</th>
@@ -181,9 +189,9 @@ export function RunsScreen({
                   <th className="px-3 py-2 font-medium">Estado</th>
                   <th className="px-3 py-2 font-medium">Motivo</th>
                   <th className="px-3 py-2 text-right font-medium">Pasos</th>
-                  <th className="px-3 py-2 text-right font-medium">Duración</th>
+                  <SortHeader label="Duración" align="right" asc="rapidas" desc="lentas" orden={filters.orden} setParam={setParam} />
                   {showCost && <th className="px-3 py-2 text-right font-medium">Tokens</th>}
-                  {showCost && <th className="px-3 py-2 text-right font-medium">Costo</th>}
+                  {showCost && <SortHeader label="Costo" align="right" asc="baratas" desc="caras" orden={filters.orden} setParam={setParam} />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -255,4 +263,61 @@ export function RunsScreen({
       )}
     </div>
   );
+}
+
+/**
+ * Un encabezado de columna ordenable (Bloque Agentes IA): un clic alterna
+ * entre el sentido ascendente y descendente de esa columna; un clic desde
+ * otra columna u "recientes" arranca por `desc` (el sentido mas util: mas
+ * cara, mas lenta, mas reciente primero).
+ */
+function SortHeader({
+  label,
+  align,
+  asc,
+  desc,
+  orden,
+  setParam,
+}: {
+  label: string;
+  align?: "right";
+  asc: string;
+  desc: string;
+  orden: string;
+  setParam: (key: string, value: string) => void;
+}) {
+  const active = orden === asc || orden === desc;
+  const next = orden === desc ? asc : desc;
+  return (
+    <th className={cn("px-3 py-2 font-medium", align === "right" && "text-right")}>
+      <button
+        type="button"
+        onClick={() => setParam("orden", next)}
+        aria-sort={active ? (orden === asc ? "ascending" : "descending") : "none"}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-foreground",
+          align === "right" && "flex-row-reverse",
+          active ? "text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {label}
+        {active ? (
+          orden === asc ? (
+            <ArrowUp className="h-3 w-3" aria-hidden />
+          ) : (
+            <ArrowDown className="h-3 w-3" aria-hidden />
+          )
+        ) : null}
+      </button>
+    </th>
+  );
+}
+
+/**
+ * El nombre de un valor de Origen. "close_classification" es un pseudo-valor
+ * (no es un `agent_runs.source` real, ver runs-query.ts); su nombre sale del
+ * catálogo de tareas, no de RUN_SOURCE_LABELS.
+ */
+function originLabel(source: string): string {
+  return RUN_SOURCE_LABELS[source] ?? getAiTask(source)?.name ?? source;
 }

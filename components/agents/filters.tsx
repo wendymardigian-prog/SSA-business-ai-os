@@ -43,7 +43,15 @@ export function useUrlFilters() {
     }
     apply(next);
   }
-  return { pending, setParam, setPage, clearAll, get: (key: string) => searchParams.get(key) ?? "" };
+  return {
+    pending,
+    setParam,
+    setPage,
+    clearAll,
+    get: (key: string) => searchParams.get(key) ?? "",
+    /** La URL tal cual está ahora (R3): lo que usa el link de "Exportar CSV", para mandar los filtros reales en vez de reconstruirlos. */
+    search: searchParams.toString(),
+  };
 }
 
 export function FilterSelect({
