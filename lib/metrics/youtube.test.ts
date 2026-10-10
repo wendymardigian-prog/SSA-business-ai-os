@@ -7,8 +7,9 @@ import {
   channelProfile,
   count,
   isShort,
+  checkIsShort,
   isVisibleOnChannel,
-  mediaTypeFromContentType,
+  mediaTypeFromFlag,
   parseIsoDuration,
   plainError,
   readYouTubeMetrics,
@@ -19,9 +20,23 @@ import {
   youtubeMediaType,
 } from "./youtube";
 
-function routed(routes: Array<[RegExp, unknown]>) {
+/**
+ * Las APIs simuladas. `youtube.com/shorts/<id>` responde como YouTube: 200 si
+ * el id esta en `shorts`, 303 a /watch si no.
+ */
+function routed(routes: Array<[RegExp, unknown]>, shorts: string[] = []) {
   return vi.fn(async (url: string | URL | Request) => {
     const href = String(url);
+    if (href.startsWith("https://www.youtube.com/shorts/")) {
+      const id = href.split("/").pop() ?? "";
+      const isShortVideo = shorts.includes(id);
+      return {
+        ok: isShortVideo,
+        status: isShortVideo ? 200 : 303,
+        headers: new Headers(isShortVideo ? {} : { location: `https://www.youtube.com/watch?v=${id}` }),
+        json: async () => ({}),
+      };
+    }
     const hit = routes.find(([pattern]) => pattern.test(href));
     return { ok: true, status: 200, json: async () => hit?.[1] ?? { items: [] } };
   }) as unknown as typeof fetch;
@@ -135,7 +150,7 @@ describe("leer el canal entero (F44)", () => {
           ],
         },
       ],
-    ]);
+    ], ["v2"]);
 
   const params = { token: "t", channelId: "UC1", startDate: "2026-09-01", endDate: "2026-10-01" };
 
@@ -303,47 +318,50 @@ describe("leer el canal entero (F44)", () => {
     expect(String(videos?.[0])).toContain("fileDetails");
   });
 
-  it("el tipo lo dice YouTube (creatorContentType), no el tamaño del archivo", async () => {
-    // Un Short sin fileDetails quedaba como video.
-    const fetchImpl = routed([
-      [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
-      [/playlistItems/, { items: [{ contentDetails: { videoId: "s1" } }, { contentDetails: { videoId: "v1" } }] }],
+  it("el tipo lo dice YouTube (la direccion /shorts/), no el tamaño del archivo", async () => {
+    // Sin fileDetails, un Short quedaba como video.
+    const fetchImpl = routed(
       [
-        /\/videos\?/,
-        {
-          items: [
-            { id: "s1", snippet: { publishedAt: "2025-08-30T01:59:13Z" }, contentDetails: { duration: "PT40S" } },
-            { id: "v1", snippet: { publishedAt: "2026-06-22T23:00:36Z" }, contentDetails: { duration: "PT20M" } },
-          ],
-        },
+        [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
+        [/playlistItems/, { items: [{ contentDetails: { videoId: "s1" } }, { contentDetails: { videoId: "c1" } }, { contentDetails: { videoId: "v1" } }] }],
+        [
+          /\/videos\?/,
+          {
+            items: [
+              { id: "s1", snippet: { publishedAt: "2025-08-30T01:59:13Z" }, contentDetails: { duration: "PT40S" } },
+              { id: "c1", snippet: { publishedAt: "2025-08-01T01:59:13Z" }, contentDetails: { duration: "PT50S" } },
+              { id: "v1", snippet: { publishedAt: "2026-06-22T23:00:36Z" }, contentDetails: { duration: "PT20M" } },
+            ],
+          },
+        ],
       ],
-      [
-        /creatorContentType/,
-        {
-          columnHeaders: [{ name: "video" }, { name: "creatorContentType" }, { name: "views" }],
-          rows: [
-            ["s1", "SHORTS", 1891],
-            ["v1", "VIDEO_ON_DEMAND", 257],
-          ],
-        },
-      ],
-    ]);
+      ["s1"],
+    );
 
     const result = await readYouTubeMetrics({ ...params, fetchImpl });
 
     expect(result.posts.map((p) => [p.externalPostId, p.mediaType])).toEqual([
       ["s1", "short"],
+      // Corto pero no es Short (un video horizontal de 50 segundos): manda YouTube.
+      ["c1", "video"],
       ["v1", "video"],
     ]);
-    const typeCall = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls
+    // Uno de 20 minutos no puede ser Short: no se pregunta.
+    const checked = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls
       .map((c) => String(c[0]))
-      .find((u) => u.includes("creatorContentType"));
-    expect(typeCall).toContain("sort=-views");
-    expect(typeCall).toContain("maxResults=200");
+      .filter((u) => u.includes("/shorts/"));
+    expect(checked).toEqual(["https://www.youtube.com/shorts/s1", "https://www.youtube.com/shorts/c1"]);
   });
 
-  it("si Analytics no da el tipo, decide el archivo: vertical y corto es Short", async () => {
-    const result = await readYouTubeMetrics({ ...params, fetchImpl: impl() });
+  it("si YouTube no lo dice, decide el archivo: vertical y corto es Short", async () => {
+    const base = impl();
+    // La direccion /shorts/ no responde (la red caida, por ejemplo).
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes("/shorts/")) throw new Error("sin red");
+      return base(url, init);
+    }) as unknown as typeof fetch;
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
 
     expect(result.posts.find((p) => p.externalPostId === "v2")?.mediaType).toBe("short");
   });
@@ -480,16 +498,26 @@ describe("que se ve en el canal", () => {
   });
 });
 
-describe("el tipo de contenido de YouTube", () => {
-  it("Shorts es short; video y transmision son video", () => {
-    expect(mediaTypeFromContentType("SHORTS")).toBe("short");
-    expect(mediaTypeFromContentType("VIDEO_ON_DEMAND")).toBe("video");
-    expect(mediaTypeFromContentType("LIVE_STREAM")).toBe("video");
+describe("si es un Short, segun YouTube", () => {
+  const respond = (status: number, location?: string) =>
+    vi.fn(async () => ({ status, headers: new Headers(location ? { location } : {}) })) as unknown as typeof fetch;
+
+  it("200 en /shorts/ es un Short", async () => {
+    expect(await checkIsShort("a", respond(200))).toBe(true);
   });
 
-  it("lo que no sabe (o una historia) no decide: decide el archivo", () => {
-    expect(mediaTypeFromContentType("UNSPECIFIED")).toBeNull();
-    expect(mediaTypeFromContentType("STORY")).toBeNull();
-    expect(mediaTypeFromContentType(undefined)).toBeNull();
+  it("una redireccion a /watch es un video", async () => {
+    expect(await checkIsShort("a", respond(303, "https://www.youtube.com/watch?v=a"))).toBe(false);
+  });
+
+  it("una redireccion a otro lado (consentimiento) o un error no dice nada", async () => {
+    expect(await checkIsShort("a", respond(302, "https://consent.youtube.com/m"))).toBeNull();
+    expect(await checkIsShort("a", respond(429))).toBeNull();
+  });
+
+  it("lo que no se supo, lo decide el archivo", () => {
+    expect(mediaTypeFromFlag(true, "video")).toBe("short");
+    expect(mediaTypeFromFlag(false, "short")).toBe("video");
+    expect(mediaTypeFromFlag(undefined, "short")).toBe("short");
   });
 });
