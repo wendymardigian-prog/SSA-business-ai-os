@@ -168,6 +168,33 @@ describe("YouTube (F46)", () => {
     expect(result.comments[1].isOwn).toBe(true);
   });
 
+  it("un video con los comentarios desactivados no es una falla", async () => {
+    // Antes la card del perfil decia que la lectura de toda la cuenta fallo.
+    const result = await readYouTubeComments({
+      token: "t",
+      videoId: "v1",
+      fetchImpl: respond({
+        error: {
+          code: 403,
+          message: "The video identified by the <code>videoId</code> parameter has disabled comments.",
+          errors: [{ reason: "commentsDisabled" }],
+        },
+      }),
+    });
+
+    expect(result).toEqual({ comments: [], warnings: [] });
+  });
+
+  it("otro error se avisa, sin las etiquetas HTML de Google", async () => {
+    const result = await readYouTubeComments({
+      token: "t",
+      videoId: "v1",
+      fetchImpl: respond({ error: { message: "The <code>videoId</code> is wrong.", errors: [{ reason: "videoNotFound" }] } }),
+    });
+
+    expect(result.warnings).toEqual(["Comentarios de YouTube: The videoId is wrong."]);
+  });
+
   it("sin saber cual es nuestro canal, ninguno se marca como propio", async () => {
     // Marcar de mas escondería comentarios reales del hilo.
     const result = await readYouTubeComments({ token: "t", videoId: "v1", fetchImpl: respond(body) });

@@ -4,13 +4,16 @@
 
 import { describe, it, expect, vi } from "vitest";
 import {
+  channelProfile,
   count,
   isShort,
   parseIsoDuration,
+  plainError,
   readYouTubeMetrics,
   reportStartDate,
   rowToMetrics,
   statisticsToMetrics,
+  streamSize,
   youtubeMediaType,
 } from "./youtube";
 
@@ -256,6 +259,47 @@ describe("leer el canal entero (F44)", () => {
     expect(result.posts[0].metrics.views).toBe(500);
   });
 
+  it("trae el perfil del canal: foto, @ y nombre", async () => {
+    const fetchImpl = routed([
+      [
+        /\/channels\?/,
+        {
+          items: [
+            {
+              snippet: {
+                title: "Wendy Mardigian",
+                customUrl: "@wendymardigian",
+                description: "Sistemas para negocios",
+                thumbnails: { default: { url: "https://yt3/88" }, high: { url: "https://yt3/800" } },
+              },
+              statistics: { subscriberCount: "413" },
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
+
+    expect(result.profile).toEqual({
+      username: "wendymardigian",
+      displayName: "Wendy Mardigian",
+      avatarUrl: "https://yt3/800",
+      bio: "Sistemas para negocios",
+      profileUrl: "https://www.youtube.com/@wendymardigian",
+    });
+  });
+
+  it("pide el ancho y el alto de cada video (fileDetails): sin eso ningun Short se reconoce", async () => {
+    const fetchImpl = impl();
+    await readYouTubeMetrics({ ...params, fetchImpl });
+
+    const videos = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
+      String(c[0]).includes("/videos?"),
+    );
+    expect(String(videos?.[0])).toContain("fileDetails");
+  });
+
   it("si falla el canal, lo avisa sin romper", async () => {
     const fetchImpl = routed([[/\/channels\?/, { error: { message: "sin permiso" } }]]);
 
@@ -306,5 +350,43 @@ describe("desde cuando pedirle a Analytics (F44)", () => {
 
   it("una fecha que falta o no se entiende no mueve nada", () => {
     expect(reportStartDate("2026-09-10", details(null, "mañana"))).toBe("2026-09-10");
+  });
+});
+
+describe("el perfil del canal (F44)", () => {
+  it("sin @ usa el link por id", () => {
+    expect(channelProfile("UC1", { title: "Canal" })).toMatchObject({
+      username: null,
+      avatarUrl: null,
+      profileUrl: "https://www.youtube.com/channel/UC1",
+    });
+  });
+});
+
+describe("el tamaño del video (F44)", () => {
+  it("un video de celular marcado como rotado se gira", () => {
+    // Grabado apaisado con marca de rotacion: se ve vertical.
+    expect(streamSize({ widthPixels: 1920, heightPixels: 1080, rotation: "clockwise" })).toEqual({
+      width: 1080,
+      height: 1920,
+    });
+  });
+
+  it("sin rotacion queda como vino", () => {
+    expect(streamSize({ widthPixels: 1080, heightPixels: 1920, rotation: "none" })).toEqual({ width: 1080, height: 1920 });
+  });
+
+  it("sin datos, null", () => {
+    expect(streamSize(undefined)).toEqual({ width: null, height: null });
+  });
+
+  it("un video cuadrado y corto es Short", () => {
+    expect(isShort({ durationSeconds: 50, width: 1080, height: 1080 })).toBe(true);
+  });
+});
+
+describe("los errores de Google (F44)", () => {
+  it("sin etiquetas HTML", () => {
+    expect(plainError('The <code><a href="/x">videoId</a></code> parameter')).toBe("The videoId parameter");
   });
 });

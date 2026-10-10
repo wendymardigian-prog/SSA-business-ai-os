@@ -6,14 +6,17 @@ import { describe, it, expect } from "vitest";
 import {
   buildProfile,
   buildUpcoming,
+  contentTabs,
   defaultPlatform,
   followerTrend,
   formatFilters,
   gridRatio,
+  inContentTab,
   latestProfileStats,
   linkedinRows,
   networkTabs,
   statsFor,
+  tabRatio,
   type ProfileSource,
 } from "./profile-page";
 
@@ -91,8 +94,11 @@ describe("la forma de la grilla (F54)", () => {
 
 describe("los filtros de formato (F54)", () => {
   it("son los de esa red", () => {
-    expect(formatFilters("youtube").map((f) => f.value)).toEqual(["video", "short"]);
     expect(formatFilters("instagram").map((f) => f.value)).toContain("reel");
+  });
+
+  it("YouTube no tiene filtro: tiene pestañas", () => {
+    expect(formatFilters("youtube")).toEqual([]);
   });
 
   it("una red sin formatos no muestra el filtro", () => {
@@ -380,5 +386,33 @@ describe("LinkedIn como lista (F100)", () => {
 
   it("sin texto tiene un titulo igual", () => {
     expect(linkedinRows([item({ caption: null })])[0].title).toBe("Publicación sin texto");
+  });
+});
+
+describe("las pestañas de contenido de YouTube", () => {
+  it("Videos y Shorts, como en el canal", () => {
+    expect(contentTabs("youtube").map((t) => t.label)).toEqual(["Videos", "Shorts"]);
+    expect(contentTabs("instagram")).toEqual([]);
+  });
+
+  it("cada publicacion va en su pestaña", () => {
+    expect(inContentTab("youtube", "short", "short")).toBe(true);
+    expect(inContentTab("youtube", "video", "short")).toBe(false);
+    expect(inContentTab("youtube", "video", "video")).toBe(true);
+  });
+
+  it("una sin formato conocido va en Videos, no se pierde", () => {
+    expect(inContentTab("youtube", "video", null)).toBe(true);
+    expect(inContentTab("youtube", "short", null)).toBe(false);
+  });
+
+  it("una red sin pestañas muestra todo", () => {
+    expect(inContentTab("instagram", "video", "reel")).toBe(true);
+  });
+
+  it("los Shorts son verticales y los videos apaisados", () => {
+    expect(tabRatio("youtube", "short")).toBe("9 / 16");
+    expect(tabRatio("youtube", "video")).toBe("16 / 9");
+    expect(tabRatio("instagram", null)).toBe("3 / 4");
   });
 });

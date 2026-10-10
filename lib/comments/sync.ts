@@ -13,6 +13,7 @@
 
 import type { createZernioClient } from "@/lib/zernio-client";
 import { THREADS_API } from "@/lib/metrics/threads";
+import { plainError } from "@/lib/metrics/youtube";
 import type { IncomingComment } from "./store";
 
 /** Las redes de las que se pueden releer comentarios. */
@@ -180,11 +181,17 @@ export async function readYouTubeComments(params: {
           };
         };
       }>;
-      error?: { message?: string };
+      error?: { message?: string; errors?: Array<{ reason?: string }> };
     };
 
     if (body.error) {
-      return { comments: [], warnings: [`Comentarios de YouTube: ${body.error.message ?? "error"}`] };
+      // Un video con los comentarios desactivados no tiene nada que leer: no es
+      // una falla. Antes se avisaba y la card del perfil decia que la lectura
+      // de TODA la cuenta habia fallado.
+      if (body.error.errors?.some((e) => e.reason === "commentsDisabled")) {
+        return { comments: [], warnings: [] };
+      }
+      return { comments: [], warnings: [`Comentarios de YouTube: ${plainError(body.error.message) ?? "error"}`] };
     }
 
     return {

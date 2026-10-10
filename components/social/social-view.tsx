@@ -9,12 +9,14 @@ import { refreshMetricsNow } from "@/lib/actions/metrics";
 import { platformLabel } from "@/lib/platforms";
 import {
   buildProfile,
+  contentTabs,
   defaultPlatform,
   followerTrend,
   formatFilters,
-  gridRatio,
+  inContentTab,
   linkedinRows,
   networkTabs,
+  tabRatio,
   type LinkedinSource,
   type ProfileSource,
   type UpcomingItem,
@@ -85,6 +87,8 @@ export function SocialView({
 }) {
   const [platform, setPlatform] = useState(defaultPlatform(platforms));
   const [format, setFormat] = useState<string | null>(null);
+  // La pestaña de contenido (YouTube: Videos / Shorts). Null = la primera.
+  const [tab, setTab] = useState<string | null>(null);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [notice, setNotice] = useState<string | null>(null);
@@ -99,13 +103,19 @@ export function SocialView({
     [followerPoints, platform],
   );
 
-  const visible = useMemo(
-    () =>
-      tiles.filter(
-        (tile) => tile.platform === platform && (!format || tile.mediaType === format),
-      ),
-    [tiles, platform, format],
+  const tabs = contentTabs(platform);
+  const activeTab = tab ?? tabs[0]?.value ?? null;
+
+  // Sin useMemo: son a lo sumo 120 baldosas, y filtrarlas es mas barato que
+  // lo que el compilador de React pierde al no poder conservar la memoria.
+  const ofPlatform = tiles.filter((tile) => tile.platform === platform);
+  const visible = ofPlatform.filter(
+    (tile) =>
+      (!format || tile.mediaType === format) &&
+      (!activeTab || inContentTab(platform, activeTab, tile.mediaType)),
   );
+
+  const isVertical = tabRatio(platform, activeTab) === "9 / 16";
 
   const openIndex = openPostId ? visible.findIndex((t) => t.socialPostId === openPostId) : -1;
 
@@ -125,6 +135,7 @@ export function SocialView({
               onChange={(e) => {
                 setPlatform(e.target.value);
                 setFormat(null);
+                setTab(null);
                 // El aviso era de la red anterior.
                 setNotice(null);
               }}
@@ -323,21 +334,56 @@ export function SocialView({
 
         {connected && platform !== "linkedin" && (
           <>
-            {next.length > 0 && visible.length > 0 && <h2 className="mb-2 text-sm font-semibold">Publicadas</h2>}
+            {next.length > 0 && visible.length > 0 && tabs.length === 0 && (
+              <h2 className="mb-2 text-sm font-semibold">Publicadas</h2>
+            )}
+            {tabs.length > 0 && (
+              <div role="tablist" aria-label="Tipo de contenido" className="mb-3 flex gap-1 border-b border-border">
+                {tabs.map((t) => {
+                  const selected = t.value === activeTab;
+                  const count = ofPlatform.filter((tile) => inContentTab(platform, t.value, tile.mediaType)).length;
+                  return (
+                    <button
+                      key={t.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setTab(t.value)}
+                      className={cn(
+                        "-mb-px border-b-2 px-3 py-1.5 text-sm",
+                        selected
+                          ? "border-foreground font-medium text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {t.label} <span className="text-xs text-muted-foreground tabular-nums">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {visible.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Todavia no hay publicaciones de esta red guardadas. Aparecen despues de la primera
-                actualizacion.
+                {ofPlatform.length > 0 && tabs.length > 0
+                  ? `Todavia no hay ${tabs.find((t) => t.value === activeTab)?.label.toLowerCase() ?? "publicaciones"} guardados.`
+                  : "Todavia no hay publicaciones de esta red guardadas. Aparecen despues de la primera actualizacion."}
               </p>
             ) : (
-              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              <ul
+                className={cn(
+                  "grid gap-2",
+                  isVertical
+                    ? "grid-cols-3 sm:grid-cols-4 lg:grid-cols-6"
+                    : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+                )}
+              >
                 {visible.map((tile) => (
                   <li key={tile.socialPostId}>
                     <button
                       type="button"
                       onClick={() => setOpenPostId(tile.socialPostId)}
                       className="group relative block w-full overflow-hidden rounded-lg border border-border text-left"
-                      style={{ aspectRatio: gridRatio(platform) }}
+                      style={{ aspectRatio: tabRatio(platform, activeTab) }}
                     >
                       {tile.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -354,7 +400,8 @@ export function SocialView({
                       )}
 
                       <span className="absolute left-1 top-1 flex gap-1">
-                        {tile.mediaType && (
+                        {/* Con pestañas el formato ya se sabe: la etiqueta seria ruido. */}
+                        {tile.mediaType && tabs.length === 0 && (
                           <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                             {tile.mediaType}
                           </span>

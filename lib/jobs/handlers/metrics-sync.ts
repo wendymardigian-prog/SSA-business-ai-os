@@ -22,7 +22,9 @@ import { parseMetaConfig } from "@/lib/meta/accounts";
 import {
   markAccountSync,
   persistAccountMetrics,
+  persistAccountProfile,
   persistPosts,
+  refreshPostDetails,
   storedPosts,
   syncDate,
 } from "@/lib/metrics/sync";
@@ -273,7 +275,19 @@ async function handleMetricsSync({ supabase, job }: JobContext): Promise<void> {
 
   // De lo que la red devolvio, solo lo que toca hoy: a uno de 45 dias leido
   // hace tres dias no se le vuelve a pedir nada hasta que pase la semana.
-  result.posts = selectPostsToPersist(result.posts, stored, now);
+  // A los demas se les actualiza lo descriptivo (formato, miniatura), que ya
+  // vino en la misma lectura.
+  const selected = selectPostsToPersist(result.posts, stored, now);
+  const selectedIds = new Set(selected.map((p) => p.externalPostId));
+  await refreshPostDetails(supabase, {
+    socialAccountId: account.id,
+    posts: result.posts.filter((p) => !selectedIds.has(p.externalPostId)),
+  });
+  result.posts = selected;
+
+  if (result.profile) {
+    await persistAccountProfile(supabase, { socialAccountId: account.id, profile: result.profile });
+  }
 
   if (account.platform === "instagram") {
     await enrichInstagramReach(supabase, account.workspace_id, result);

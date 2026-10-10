@@ -17,6 +17,7 @@
 import {
   EMPTY_POST_METRICS,
   num,
+  type AccountProfile,
   type AccountSnapshot,
   type PostMetrics,
   type PostSnapshot,
@@ -57,12 +58,28 @@ export function isShort(params: {
   if (params.creatorContentType) {
     return params.creatorContentType.toUpperCase() === "SHORTS";
   }
+  // Cuadrado tambien cuenta: YouTube acepta Shorts 1:1.
   const vertical =
     typeof params.width === "number" &&
     typeof params.height === "number" &&
-    params.height > params.width;
+    params.height >= params.width;
   const short = typeof params.durationSeconds === "number" && params.durationSeconds <= SHORT_MAX_SECONDS;
   return vertical && short;
+}
+
+/**
+ * El ancho y el alto como se VE el video.
+ *
+ * Un video de celular puede venir grabado apaisado con una marca de rotacion:
+ * sin girarlo, un Short vertical se leia como horizontal.
+ */
+export function streamSize(
+  stream: { widthPixels?: number; heightPixels?: number; rotation?: string } | undefined,
+): { width: number | null; height: number | null } {
+  const width = typeof stream?.widthPixels === "number" ? stream.widthPixels : null;
+  const height = typeof stream?.heightPixels === "number" ? stream.heightPixels : null;
+  const turned = stream?.rotation === "clockwise" || stream?.rotation === "counterClockwise";
+  return turned ? { width: height, height: width } : { width, height };
 }
 
 /** `PT1M30S` a segundos. Null si no se entiende. */
@@ -123,6 +140,34 @@ export function rowToMetrics(headers: string[], row: unknown[]): PostMetrics {
 }
 
 /**
+ * El perfil del canal, con lo que dio `channels.list` (parte `snippet`).
+ *
+ * El @ de YouTube (`customUrl`) viene con la arroba incluida: se guarda sin
+ * ella, porque la pantalla la agrega.
+ */
+export function channelProfile(
+  channelId: string,
+  snippet: {
+    title?: string;
+    description?: string;
+    customUrl?: string;
+    thumbnails?: Record<string, { url?: string }>;
+  },
+): AccountProfile {
+  const handle = snippet.customUrl?.trim().replace(/^@/, "") || null;
+  return {
+    username: handle,
+    displayName: snippet.title?.trim() || null,
+    avatarUrl:
+      snippet.thumbnails?.high?.url ?? snippet.thumbnails?.medium?.url ?? snippet.thumbnails?.default?.url ?? null,
+    bio: snippet.description?.trim() || null,
+    profileUrl: handle
+      ? `https://www.youtube.com/@${handle}`
+      : `https://www.youtube.com/channel/${channelId}`,
+  };
+}
+
+/**
  * Un contador de la Data API. Vienen como texto ("413"); uno que falta o no
  * es un numero queda en null, nunca en cero.
  */
@@ -177,6 +222,16 @@ export function reportStartDate(
   return oldest;
 }
 
+/**
+ * Los mensajes de error de Google traen HTML (`<code><a href=...>`). En la
+ * pantalla se veian las etiquetas crudas.
+ */
+export function plainError(message: string | null | undefined): string | null {
+  if (!message) return null;
+  const text = message.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
 interface ReportResponse {
   columnHeaders?: Array<{ name?: string }>;
   rows?: unknown[][];
@@ -192,7 +247,7 @@ async function apiGet<T>(
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     const body = (await res.json()) as T & { error?: { message?: string } };
     if (body?.error) {
-      return { ok: false, error: body.error.message ?? "YouTube rechazo el pedido", status: res.status };
+      return { ok: false, error: plainError(body.error.message) ?? "YouTube rechazo el pedido", status: res.status };
     }
     if (!res.ok) return { ok: false, error: `YouTube respondio ${res.status}`, status: res.status };
     return { ok: true, data: body as T };
@@ -225,36 +280,46 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
   const posts: PostSnapshot[] = [];
   const accountDaily: AccountSnapshot[] = [];
 
-  // 1. El canal: suscriptores y la lista de subidas.
+  // 1. El canal: perfil, suscriptores y la lista de subidas. Las tres partes
+  // en el mismo pedido cuestan lo mismo que una.
   const channel = await apiGet<{
     items?: Array<{
+      id?: string;
+      snippet?: {
+        title?: string;
+        description?: string;
+        customUrl?: string;
+        thumbnails?: Record<string, { url?: string }>;
+      };
       statistics?: { subscriberCount?: string; viewCount?: string; videoCount?: string };
       contentDetails?: { relatedPlaylists?: { uploads?: string } };
     }>;
   }>(
-    `${DATA_API}/channels?part=statistics,contentDetails&id=${encodeURIComponent(params.channelId)}`,
+    `${DATA_API}/channels?part=snippet,statistics,contentDetails&id=${encodeURIComponent(params.channelId)}`,
     params.token,
     fetchImpl,
   );
 
   let uploadsPlaylist: string | null = null;
+  let profile: AccountProfile | undefined;
 
   if (!channel.ok) {
     warnings.push(`YouTube (canal): ${channel.error}`);
   } else {
     const item = channel.data.items?.[0];
     uploadsPlaylist = item?.contentDetails?.relatedPlaylists?.uploads ?? null;
+    if (item?.snippet) profile = channelProfile(params.channelId, item.snippet);
     // Los tres vienen como texto; uno que no vino queda en null, no en cero.
     const subscribers = count(item?.statistics?.subscriberCount);
     const videos = count(item?.statistics?.videoCount);
     const views = count(item?.statistics?.viewCount);
     // `profile` es lo que lee el encabezado de Social ("Videos", "Vistas"):
     // la misma forma que deja el lector de Zernio.
-    const profile = {
+    const figures = {
       ...(videos !== null ? { videos } : {}),
       ...(views !== null ? { views } : {}),
     };
-    if (subscribers !== null || Object.keys(profile).length > 0) {
+    if (subscribers !== null || Object.keys(figures).length > 0) {
       accountDaily.push({
         date: "",
         followers: subscribers,
@@ -263,7 +328,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
         impressions: null,
         reach: null,
         profileViews: null,
-        extra: Object.keys(profile).length > 0 ? { profile } : {},
+        extra: Object.keys(figures).length > 0 ? { profile: figures } : {},
       });
     }
   }
@@ -307,10 +372,15 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
         snippet?: { title?: string; publishedAt?: string; thumbnails?: Record<string, { url?: string }> };
         contentDetails?: { duration?: string };
         statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
-        fileDetails?: { videoStreams?: Array<{ widthPixels?: number; heightPixels?: number }> };
+        fileDetails?: {
+          videoStreams?: Array<{ widthPixels?: number; heightPixels?: number; rotation?: string }>;
+        };
       }>;
     }>(
-      `${DATA_API}/videos?part=snippet,contentDetails,statistics&id=${videoIds.join(",")}`,
+      // `fileDetails` trae el ancho y el alto: sin eso no hay forma de saber si
+      // un video es vertical, y todos los Shorts quedaban como "video". Solo lo
+      // da al dueño del canal, que es quien conecta.
+      `${DATA_API}/videos?part=snippet,contentDetails,statistics,fileDetails&id=${videoIds.join(",")}`,
       params.token,
       fetchImpl,
     );
@@ -319,7 +389,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
       for (const video of videos.data.items ?? []) {
         if (!video.id) continue;
         const duration = parseIsoDuration(video.contentDetails?.duration);
-        const stream = video.fileDetails?.videoStreams?.[0];
+        const stream = streamSize(video.fileDetails?.videoStreams?.[0]);
         details.set(video.id, {
           title: video.snippet?.title ?? null,
           publishedAt: video.snippet?.publishedAt ?? null,
@@ -327,8 +397,8 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
             video.snippet?.thumbnails?.high?.url ?? video.snippet?.thumbnails?.default?.url ?? null,
           mediaType: youtubeMediaType({
             durationSeconds: duration,
-            width: stream?.widthPixels ?? null,
-            height: stream?.heightPixels ?? null,
+            width: stream.width,
+            height: stream.height,
           }),
           totals: statisticsToMetrics(video.statistics),
         });
@@ -382,5 +452,5 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     });
   }
 
-  return { posts, accountDaily, warnings };
+  return { posts, accountDaily, warnings, ...(profile ? { profile } : {}) };
 }
