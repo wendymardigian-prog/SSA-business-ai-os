@@ -221,7 +221,22 @@ export function SocialView({
 
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold">
-                {profile.username ? `@${profile.username}` : platformLabel(platform)}
+                {profile.profileLink ? (
+                  <a
+                    href={profile.profileLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 hover:underline hover:underline-offset-2"
+                    aria-label={`Abrir el perfil de ${platformLabel(platform)} en una pestaña nueva`}
+                  >
+                    {profile.username ? `@${profile.username}` : platformLabel(platform)}
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                  </a>
+                ) : profile.username ? (
+                  `@${profile.username}`
+                ) : (
+                  platformLabel(platform)
+                )}
               </p>
               {profile.displayName && <p className="text-sm">{profile.displayName}</p>}
               {profile.bio && <p className="mt-1 text-sm text-muted-foreground">{profile.bio}</p>}
