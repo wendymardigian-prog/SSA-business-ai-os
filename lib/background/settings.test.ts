@@ -21,6 +21,9 @@ describe("configuración de tareas en segundo plano (F23)", () => {
   it("validar: modo económico exige frecuencia", () => {
     expect(validateBackgroundSettings({ message_classification: { mode: "batch" } }).ok).toBe(false);
     expect(validateBackgroundSettings({ message_classification: { mode: "batch", frequency: "daily", hour: "03:00" } }).ok).toBe(true);
+    // Sin implementacion por lote: no se puede elegir Económico.
+    expect(validateBackgroundSettings({ conversation_summary: { mode: "batch", frequency: "daily", hour: "03:00" } }).ok).toBe(false);
+    expect(validateBackgroundSettings({ close_classification: { mode: "batch", frequency: "daily", hour: "03:00" } }).ok).toBe(false);
   });
   it("validar: hora inválida", () => {
     expect(validateBackgroundSettings({ message_classification: { mode: "batch", frequency: "daily", hour: "25:99" } }).ok).toBe(false);

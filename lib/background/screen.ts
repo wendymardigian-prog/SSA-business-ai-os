@@ -6,29 +6,23 @@
  * probar, no cuentas escondidas en el JSX.
  */
 
+import { AI_TASKS } from "@/lib/ai-tasks/catalog";
 import { BACKGROUND_TASKS, type BackgroundSettings, type BackgroundTask, type TaskFrequency, type TaskMode } from "./settings";
 
-export const TASK_LABELS: Record<BackgroundTask, { name: string; description: string; batchWarning?: string }> = {
-  message_classification: {
-    name: "Clasificación de mensajes",
-    description: "Agrupa los mensajes por intención para el dashboard.",
-  },
-  conversation_summary: {
-    name: "Resumen de conversación",
-    description: "La memoria del agente sobre cada contacto.",
-    batchWarning:
-      "En modo económico, si el contacto vuelve a escribir antes de la corrida, el agente no tiene la memoria actualizada.",
-  },
-  close_classification: {
-    name: "Clasificación al cierre",
-    description: "Tags, temperatura y seguimiento al cerrar una conversación.",
-    batchWarning: "En modo económico, un lead que se calentó hoy aparece como caliente recién mañana.",
-  },
-  knowledge_indexing: {
-    name: "Indexación de Conocimiento",
-    description: "Prepara los documentos que subís para que el agente los use.",
-  },
+/**
+ * Nombre y descripcion salen del catalogo de Agentes IA (`AI_TASKS`): antes
+ * eran una segunda copia que se podia desincronizar. Aca queda solo lo propio
+ * de esta pantalla: el aviso de pasar a Económico.
+ */
+const BATCH_WARNINGS: Partial<Record<BackgroundTask, string>> = {
+  conversation_summary:
+    "En modo económico, si el contacto vuelve a escribir antes de la corrida, el agente no tiene la memoria actualizada.",
+  close_classification: "En modo económico, un lead que se calentó hoy aparece como caliente recién mañana.",
 };
+
+export const TASK_LABELS: Record<BackgroundTask, { name: string; description: string; batchWarning?: string }> = Object.fromEntries(
+  BACKGROUND_TASKS.map((task) => [task, { name: AI_TASKS[task].name, description: AI_TASKS[task].description, batchWarning: BATCH_WARNINGS[task] }]),
+) as Record<BackgroundTask, { name: string; description: string; batchWarning?: string }>;
 
 export const MODE_LABELS: Record<TaskMode, string> = { now: "Inmediato", batch: "Económico", off: "Apagado" };
 export const FREQUENCY_LABELS: Record<TaskFrequency, string> = {
@@ -44,8 +38,10 @@ export const ALWAYS_ON: BackgroundTask = "knowledge_indexing";
 /**
  * El `source` de `agent_runs` de cada tarea, para encontrar su ultima corrida.
  *
- * `close_classification` todavia no deja un run propio: su ultima corrida no se
- * puede mostrar y la pantalla lo dice en vez de inventar una fecha.
+ * `close_classification` no tiene `source` propio: corre adentro del run de
+ * `conversation_summary`. Agentes IA la encuentra filtrando por
+ * `status_detail` (`AI_TASKS.close_classification.detailLike`); esta tabla,
+ * que solo usa la pantalla de calidad de la clasificacion, la deja afuera.
  */
 export const TASK_RUN_SOURCES = {
   message_classification: "message_classification",
@@ -66,6 +62,8 @@ export interface TaskRunInfo {
   detail: string | null;
   /** Gasto del mes de esa tarea, en USD. null = no se sabe. */
   monthSpendUsd: number | null;
+  /** Corridas del mes. null = no se sabe. Solo lo llena el resumen de Agentes IA. */
+  monthRuns?: number | null;
 }
 
 export interface TaskRow {

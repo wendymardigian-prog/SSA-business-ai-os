@@ -1,5 +1,5 @@
 import { dueWindow, dispatchDedupeKey } from "./dispatch";
-import type { BackgroundSettings, BackgroundTask } from "./settings";
+import { BATCH_CAPABLE_TASKS, type BackgroundSettings, type BackgroundTask } from "./settings";
 
 export interface PlannedDispatch {
   task: BackgroundTask;
@@ -17,6 +17,8 @@ export function planDispatch(workspaceId: string, settings: BackgroundSettings, 
   for (const task of Object.keys(settings) as BackgroundTask[]) {
     const cfg = settings[task];
     if (cfg.mode !== "batch" || !cfg.frequency) continue;
+    // Una tarea sin implementacion por lote no se encola: el job fallaria.
+    if (!BATCH_CAPABLE_TASKS.includes(task)) continue;
     const window = dueWindow(cfg.frequency, cfg.hour ?? "03:00", now, timeZone);
     if (!window) continue;
     out.push({ task, window, dedupeKey: dispatchDedupeKey(workspaceId, task, window) });

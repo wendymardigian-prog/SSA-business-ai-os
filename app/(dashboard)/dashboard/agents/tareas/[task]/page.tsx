@@ -5,11 +5,13 @@ import { getAiTask } from "@/lib/ai-tasks/catalog";
 import { loadTaskRunSummary } from "@/lib/ai-tasks/task-run-summary";
 import { loadTaskInstructions, loadTaskPromptVersions, defaultInstructionsFor, taskIsVersioned } from "@/lib/ai-tasks/store";
 import { technicalPreviewFor } from "@/lib/ai-tasks/technical-preview";
+import { taskAbout } from "@/lib/ai-tasks/about";
+import { loadAgentCloseSettings } from "@/lib/ai-tasks/agent-close-settings";
+import { resolveTaskTab } from "@/lib/ai-tasks/tabs";
 import { taskModelOf } from "@/lib/ai-tasks/model";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
-import { TASK_LABELS } from "@/lib/background/screen";
 import { loadBackgroundScreen, loadReviewCategories } from "@/lib/background/screen-data";
 import { loadRuns, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
@@ -19,9 +21,11 @@ import type { TaskScreenData } from "@/lib/ai-tasks/screen";
 import { TaskDetailView } from "@/components/agents/tasks/task-detail-view";
 
 /**
- * El detalle de una tarea de IA (Bloque Agentes IA): configuración,
- * instrucciones y corridas, sin tab repartida en Ajustes. Solo Owner/Admin,
- * igual que antes el tab de Ajustes → Tareas.
+ * El detalle de una tarea de IA (Bloque Agentes IA). Las mismas cinco
+ * pestañas para todas (lib/ai-tasks/tabs.ts): Cómo funciona, Configuración,
+ * Instrucciones, Corridas y Costos. Qué muestra cada una sale del catálogo
+ * (`AI_TASKS`), no de un `if` por tarea. Solo Owner/Admin, igual que antes el
+ * tab de Ajustes → Tareas.
  */
 export default async function TaskDetailPage({
   params,
@@ -36,10 +40,9 @@ export default async function TaskDetailPage({
   if (!task) notFound();
 
   const [{ workspace, supabase }, service] = await Promise.all([requireWorkspaceAdmin(), createServiceClient()]);
-  // Una pestaña que no existe (o Instrucciones en una tarea sin instrucciones)
-  // cae en Configuración, igual que la vista: asi se cargan sus datos.
-  const requested = typeof query.tab === "string" ? query.tab : "config";
-  const tab = requested === "runs" || (requested === "instrucciones" && task.hasInstructions) ? requested : "config";
+  // Una pestaña que no existe cae en la primera, igual que la vista: asi se
+  // cargan sus datos.
+  const tab = resolveTaskTab(query.tab);
 
   const settings = task.configurable ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
 
@@ -105,23 +108,27 @@ export default async function TaskDetailPage({
   };
 
   const isClassification = task.id === "message_classification";
+  const byAgent = task.control.kind === "agent";
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const [lastRun, backgroundScreen, instructions, model, runs, categories] = await Promise.all([
+  const [lastRun, backgroundScreen, instructions, model, runs, categories, agentClose] = await Promise.all([
     loadTaskRunSummary(service, workspace.id, task),
     isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
     taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
     task.hasModelPicker && tab === "config" ? loadModel() : Promise.resolve(undefined),
     tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
     isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
+    byAgent && (tab === "como" || tab === "config") ? loadAgentCloseSettings(service, workspace.id) : Promise.resolve(undefined),
   ]);
 
   const data: TaskScreenData = {
     task,
+    about: taskAbout(task.id),
     lastRun,
+    agentClose,
     settings,
     canTurnOff: task.canTurnOff,
     canBatch: task.canTurnOff,
-    batchWarning: task.backgroundTask ? (TASK_LABELS[task.backgroundTask].batchWarning ?? null) : null,
+    batchWarning: null,
     quality: backgroundScreen ?? undefined,
     categories,
     instructions,

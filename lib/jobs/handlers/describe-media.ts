@@ -41,7 +41,8 @@ export function describeDedupeKey(messageId: string): string {
 const IMAGE_KINDS = ["image"];
 
 /** El techo de la descripcion. Es contexto para el agente, no un informe. */
-const MAX_CHARS = 300;
+export const MEDIA_DESCRIPTION_MAX_CHARS = 300;
+const MAX_CHARS = MEDIA_DESCRIPTION_MAX_CHARS;
 
 /**
  * Los proveedores con vision, en orden de preferencia.

@@ -8,6 +8,15 @@ import { z } from "zod";
 export const BACKGROUND_TASKS = ["message_classification", "conversation_summary", "close_classification", "knowledge_indexing"] as const;
 export type BackgroundTask = (typeof BACKGROUND_TASKS)[number];
 
+/**
+ * Las tareas que de verdad saben correr por lote (tienen handler en
+ * `lib/jobs/handlers/bg-task.ts`). El modo Económico de las demas nunca se
+ * implemento: el cron encolaba trabajos que fallaban a proposito. Ahora ni se
+ * encolan ni se pueden elegir. El Resumen y la Clasificacion al cierre se
+ * controlan desde cada agente (Agentes IA).
+ */
+export const BATCH_CAPABLE_TASKS: readonly BackgroundTask[] = ["message_classification"];
+
 export type TaskMode = "now" | "batch" | "off";
 export type TaskFrequency = "daily" | "every6h" | "hourly" | "weekly";
 
@@ -68,6 +77,9 @@ export function validateBackgroundSettings(raw: unknown): ValidateResult {
     if (input[task] === undefined) continue;
     const parsed = taskSchema.safeParse(input[task]);
     if (!parsed.success) return { ok: false, error: `${task}: ${parsed.error.issues[0]?.message ?? "inválido"}` };
+    if (parsed.data.mode === "batch" && !BATCH_CAPABLE_TASKS.includes(task)) {
+      return { ok: false, error: `${task}: esta tarea no tiene modo económico` };
+    }
     if (parsed.data.mode === "batch" && !parsed.data.frequency) {
       return { ok: false, error: `${task}: el modo económico necesita una frecuencia` };
     }
