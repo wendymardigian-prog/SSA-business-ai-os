@@ -48,3 +48,11 @@ docs/referencia/
 
 # Worktrees de sesiones de Claude Code en paralelo: nunca se commitean.
 .claude/worktrees/
+
+# Documentos de trabajo del Metodo Builder (planos, prompts, reportes de estado).
+# Viven en el proyecto de Claude; aca quedan solo como copia local para las
+# corridas de Claude Code. Nunca se commitean.
+claude/
+
+# Ajustes locales de Claude Code: son de esta copia, no del template.
+.claude/settings.local.json
