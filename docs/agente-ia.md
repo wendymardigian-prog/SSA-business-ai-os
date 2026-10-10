@@ -231,8 +231,16 @@ devuelve el resumen integrado del contacto y una propuesta de clasificación:
   `conversations.summarized_at`, no se llama al modelo ni se abre run.
 - **Clasificación.** Tags (solo la lista blanca), temperatura y seguimiento se
   aplican con los mismos ejecutores y límites de las herramientas; una
-  herramienta apagada para el agente no aplica esa parte. Todo con
-  `origin: close_classification`, en el run y en Acciones.
+  herramienta apagada para el agente no aplica esa parte, y desde el
+  10/10/2026 tampoco se le pide (el campo va "siempre null" en el prompt).
+  Todo con `origin: close_classification`, en el run y en Acciones.
+- **Criterios editables (10/10/2026).** Cuándo poner o quitar un tag, qué es
+  frío / tibio / caliente y cuándo agendar seguimiento son instrucciones
+  versionadas de la tarea `close_classification`
+  (`CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS`, migración 00142). Viajan en la
+  MISMA llamada que el resumen, al final, después de la parte técnica, con el
+  encabezado "Criterios del negocio para la clasificacion". Solo si la
+  clasificación está habilitada.
 - Pasa por `openAiRun` con `source = conversation_summary`: su costo entra al
   total. Un entrante reabre la conversación (`increment_unread`); si el job la
   encuentra abierta, no hace nada.
@@ -946,3 +954,33 @@ mirar el run. Ahora dice qué pasó.
 - **Modelo:** el del negocio (Ajustes → Integraciones) o uno propio de la tarea (`workspaces.ai_task_models`, 00138; `lib/ai-tasks/model.ts`). Un modelo elegido a mano es estricto: sin ese proveedor conectado, falla avisando.
 - **Instrucciones:** el system prompt completo, versionado como el de las otras tareas. `{{estilo}}` es `AI_LANGUAGE_STYLE`. Sin versión activa se usa el texto del sistema (`ADS_ANALYSIS_DEFAULT_INSTRUCTIONS`).
 - Cada corrida guarda con qué versión de las instrucciones salió (`agent_runs.prompt_version`).
+
+## Un estándar para las tareas (10/10/2026)
+
+Las siete tareas de Agentes IA tienen las MISMAS cinco pestañas
+(`lib/ai-tasks/tabs.ts`): **Cómo funciona**, **Configuración**,
+**Instrucciones**, **Corridas** y **Costos**. Lo que cambia entre una y otra sale
+del catálogo (`lib/ai-tasks/catalog.ts`), no de un `if` por tarea:
+
+- `control`: dónde se prende de verdad. `task` (modo propio: hoy solo la
+  clasificación de mensajes), `agent` (Resumen y Clasificación al cierre: lo
+  decide cada agente, y la pantalla muestra cómo está cada uno con sus límites
+  reales, `lib/ai-tasks/agent-close-settings.ts`), `integration` (indexación,
+  transcripción, descripción de imágenes) u `on_demand` (análisis de anuncios).
+- `instructions`: editables (con sus `{{variables}}`) o `whyNot`, que la
+  pestaña muestra en vez de esconderse.
+- `modelSource`: de dónde sale el modelo, en una frase.
+
+"Cómo funciona" (`lib/ai-tasks/about.ts`, solo servidor) lee los topes de las
+constantes reales del código (tamaño de lote, largo máximo, días...), así que
+no puede quedar desactualizado.
+
+Las tareas con instrucciones son las mismas en tres lugares: el catálogo,
+`DEFAULT_TEXT` (`lib/ai-tasks/store.ts`) y el CHECK de
+`ai_task_prompt_versions.task`. `store.test.ts` compara las tres.
+
+El modo Económico solo existe donde hay handler por lote
+(`BATCH_CAPABLE_TASKS`, `lib/background/settings.ts`): antes Resumen y
+Clasificación al cierre mostraban un selector que nadie leía y "Económico"
+encolaba jobs que fallaban a propósito.
+

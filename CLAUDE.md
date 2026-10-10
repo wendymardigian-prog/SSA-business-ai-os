@@ -239,8 +239,13 @@ comprueban con `private.system_secrets_status()`, que nunca muestra el secreto.
 `call_app_cron` lee de Vault; `lib/cron-config.test.ts` falla si la definicion
 vigente vuelve a leer la tabla (pasa si un cron nuevo copia una version vieja
 de la funcion). `system_config` queda solo con `draft_alerts_since`. La `00138`
-(`ai_task_models`) tambien esta aplicada. **La proxima migracion disponible es
-la `00141`.**
+(`ai_task_models`) tambien esta aplicada.
+
+**Auditoria de velocidad y estandar de tareas (10/10/2026).** `00141`
+(`workspace_member_profiles`: el equipo en una consulta, solo service_role) y
+`00142` (CHECK de `ai_task_prompt_versions.task` suma `close_classification`)
+estan **aplicadas** y registradas. **La proxima migracion disponible es la
+`00143`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -858,6 +863,16 @@ Tareas, que ahora solo redirige). Rama `feat/agentes-ia-tareas`.
 - **"Topes y avisos" arranca colapsada**, en una linea ("Sin topes" o un
   resumen chico). Mismo componente en Agentes IA y en la pestaña Costos de
   un agente.
+- **Las siete tareas tienen las mismas cinco pestañas** (Cómo funciona,
+  Configuración, Instrucciones, Corridas, Costos; `lib/ai-tasks/tabs.ts`). Lo
+  propio de cada una lo declara el catálogo (`control`, `instructions`,
+  `modelSource`); "Cómo funciona" lee los topes de las constantes reales
+  (`lib/ai-tasks/about.ts`). Resumen y Clasificación al cierre se controlan
+  desde cada agente: NO tienen modo propio. Clasificación al cierre tiene
+  criterios editables (00142) que viajan en la misma llamada que el resumen.
+- **Catálogo, `DEFAULT_TEXT` y el CHECK de `ai_task_prompt_versions.task`
+  listan las mismas tareas** (`store.test.ts` lo fija): sumar instrucciones a
+  una tarea es tocar los tres, con su migración.
 
 # Buenas practicas de desarrollo
 

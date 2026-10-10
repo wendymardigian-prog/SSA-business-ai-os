@@ -1078,3 +1078,26 @@ Ojo al probar en el panel del navegador de Claude Code con el panel OCULTO:
 React muestra lo que llega por streaming con `requestAnimationFrame`, que no
 corre si la pestaña no se pinta. La pagina parece quedarse en el esqueleto;
 en un navegador visible anda normal.
+
+## Estándar de tareas de IA (10/10/2026, rama `feat/tareas-ia-estandar`)
+
+Las siete tareas tienen las mismas cinco pestañas y Clasificación al cierre
+tiene criterios editables (00142, aplicada). Quedó afuera, a propósito:
+
+- **Clasificación al cierre sigue sin `agent_runs.source` propio.** Comparte la
+  llamada con el Resumen; su gasto se suma de las corridas con
+  `status_detail LIKE '%classified%'`, que es el costo de la llamada completa
+  (resumen + clasificación). Separarlo de verdad pediría dos llamadas, que
+  cuestan el doble.
+- **`settings.message_classification.model` no tiene pantalla.** Si alguien lo
+  escribiera a mano en `ai_background_settings`, la clasificación usaría ese
+  modelo en vez del más barato. Si hace falta elegirlo, sumar la tarea al
+  selector de modelo (`hasModelPicker`, como el análisis de anuncios).
+- **Las claves `conversation_summary` y `close_classification` siguen en
+  `BackgroundSettings`** (el jsonb `ai_background_settings`): ya no se muestran
+  ni se encolan, pero sacarlas del tipo toca la pantalla vieja de calidad y sus
+  tests. Hoy ningún workspace las tiene guardadas.
+- **No se probó un cierre real con criterios editados** (cuesta una llamada al
+  modelo en producción). Lo cubren los tests del prompt; la primera vez que se
+  guarde una versión, mirar en Corridas que el run de `conversation_summary`
+  diga `classified`.
