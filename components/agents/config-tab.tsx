@@ -6,6 +6,7 @@ import { updateAgentConfig } from "@/lib/actions/agents";
 import { validateAgentConfig, expectedResponseSeconds, type AgentConfigInput } from "@/lib/agent/validate";
 import type { AgentConfigSection, AgentTypeDefinition } from "@/lib/agent/agent-types";
 import type { AgentScreenData } from "@/lib/agent/screen";
+import { ModelPicker } from "./model-picker";
 import { PromptSection } from "./prompt-section";
 import { CopywriterSection } from "./copywriter-section";
 import { Checkbox, Field, Notice, NumberInput, Section, inputClass, linesToList } from "./fields";
@@ -58,92 +59,6 @@ function IdentitySection({ form, set }: SectionProps) {
     <Section title="Identidad">
       <Field label="Nombre">{(id) => <input id={id} value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={80} className={inputClass} />}</Field>
     </Section>
-  );
-}
-
-function ModelPicker({
-  label,
-  provider,
-  model,
-  onChange,
-  data,
-  optional,
-}: {
-  label: string;
-  provider: string | null;
-  model: string | null;
-  onChange: (provider: string | null, model: string | null) => void;
-  data: AgentScreenData;
-  optional?: boolean;
-}) {
-  const connected = data.providers.find((p) => p.provider === provider);
-  const unavailable = provider !== null && !connected;
-  const models = connected?.models ?? [];
-  const priced = provider && model ? data.pricedModels.includes(`${provider}/${model}`) : true;
-
-  return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <Field label={`${label}: proveedor`}>
-        {(id) => (
-          <select
-            id={id}
-            value={provider ?? ""}
-            onChange={(e) => {
-              const next = e.target.value || null;
-              const def = data.providers.find((p) => p.provider === next);
-              onChange(next, next ? def?.defaultModel || null : null);
-            }}
-            className={`${inputClass} ${unavailable ? "border-red-500 text-red-700 dark:text-red-400" : ""}`}
-            aria-invalid={unavailable || undefined}
-          >
-            {optional && <option value="">Sin respaldo</option>}
-            {!optional && provider === null && <option value="">Elegí un proveedor</option>}
-            {unavailable && (
-              <option value={provider ?? ""}>
-                {data.providerLabels[provider ?? ""] ?? provider} (no conectado)
-              </option>
-            )}
-            {data.providers.map((p) => (
-              <option key={p.provider} value={p.provider}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-      <Field label={`${label}: modelo`}>
-        {(id) => (
-          <select
-            id={id}
-            value={model ?? ""}
-            onChange={(e) => onChange(provider, e.target.value || null)}
-            disabled={!provider || unavailable}
-            className={inputClass}
-          >
-            {model && !models.includes(model) && <option value={model}>{model}</option>}
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        )}
-      </Field>
-      {unavailable && (
-        <div className="md:col-span-2">
-          <Notice tone="error">
-            El proveedor configurado ya no está conectado. El agente no va a poder usarlo: conectalo en Integraciones o elegí otro.
-          </Notice>
-        </div>
-      )}
-      {!unavailable && !priced && (
-        <div className="md:col-span-2">
-          <Notice tone="warning">
-            Este modelo no tiene precio cargado: los runs se van a guardar con el costo sin calcular. Hay que sumarlo a la tabla de precios.
-          </Notice>
-        </div>
-      )}
-    </div>
   );
 }
 

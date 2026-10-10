@@ -9,6 +9,7 @@ import { RunsScreen } from "@/components/agents/runs-screen";
 import { TaskIcon } from "./task-icon";
 import { TaskModeEditor } from "./task-mode-editor";
 import { TaskInstructionsPanel } from "./task-instructions-panel";
+import { TaskModelPanel } from "./task-model-panel";
 import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
 import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
@@ -54,6 +55,15 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
           <div className="min-w-0">
             <h2 className="sr-only">{task.name}</h2>
             <p className="text-sm text-muted-foreground">{task.description}</p>
+            {!data.settings && task.onDemand && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Bajo demanda
+                {" · "}
+                Última corrida: {data.lastRun?.at ? lastRunLabel(data.lastRun.at) : "Sin corridas todavía"}
+                {" · "}
+                Gasto del mes: {formatSpend(data.lastRun?.monthSpendUsd ?? null)}
+              </p>
+            )}
             {data.settings && (
               <p className="mt-1 text-xs text-muted-foreground">
                 {MODE_LABELS[data.settings[task.backgroundTask!].mode]}
@@ -92,7 +102,15 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
         <div className={cn("mx-auto space-y-6", activeTab === "runs" ? "max-w-5xl" : "max-w-3xl")}>
           {activeTab === "config" && (
             <>
-              {data.settings && task.backgroundTask ? (
+              {data.model ? (
+                <TaskModelPanel
+                  taskId={task.id}
+                  taskName={task.name}
+                  current={data.model.current}
+                  picker={data.model.picker}
+                  runsWhen="cuando alguien aprieta “Analizar con IA” en el dashboard de Meta Ads"
+                />
+              ) : data.settings && task.backgroundTask ? (
                 <TaskModeEditor
                   task={task.backgroundTask}
                   settings={data.settings}
@@ -124,6 +142,7 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
               activeText={data.instructions.activeText}
               versions={data.instructions.versions}
               technical={data.instructions.technical}
+              variables={task.variables}
             />
           )}
 
