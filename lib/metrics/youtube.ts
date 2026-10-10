@@ -360,10 +360,13 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
       title: string | null;
       publishedAt: string | null;
       thumbnail: string | null;
-      mediaType: string;
+      /** Lo que se deduce del archivo, si Analytics no dice que es. */
+      guessedType: "short" | "video";
       totals: PostMetrics;
     }
   >();
+  // Lo que el canal no muestra: privados y transmisiones que nunca salieron.
+  const hiddenPostIds: string[] = [];
 
   if (videoIds.length > 0) {
     const videos = await apiGet<{
@@ -372,15 +375,18 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
         snippet?: { title?: string; publishedAt?: string; thumbnails?: Record<string, { url?: string }> };
         contentDetails?: { duration?: string };
         statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
+        status?: { privacyStatus?: string };
+        liveStreamingDetails?: { actualStartTime?: string };
         fileDetails?: {
           videoStreams?: Array<{ widthPixels?: number; heightPixels?: number; rotation?: string }>;
         };
       }>;
     }>(
-      // `fileDetails` trae el ancho y el alto: sin eso no hay forma de saber si
-      // un video es vertical, y todos los Shorts quedaban como "video". Solo lo
-      // da al dueño del canal, que es quien conecta.
-      `${DATA_API}/videos?part=snippet,contentDetails,statistics,fileDetails&id=${videoIds.join(",")}`,
+      // `fileDetails` trae el ancho y el alto (solo al dueño del canal): es el
+      // respaldo para decidir si es un Short cuando Analytics no lo dice.
+      // `status` y `liveStreamingDetails` dicen que no se muestra. Todas las
+      // partes juntas cuestan lo mismo que una.
+      `${DATA_API}/videos?part=snippet,contentDetails,statistics,status,liveStreamingDetails,fileDetails&id=${videoIds.join(",")}`,
       params.token,
       fetchImpl,
     );
@@ -388,6 +394,10 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     if (videos.ok) {
       for (const video of videos.data.items ?? []) {
         if (!video.id) continue;
+        if (!isVisibleOnChannel(video)) {
+          hiddenPostIds.push(video.id);
+          continue;
+        }
         const duration = parseIsoDuration(video.contentDetails?.duration);
         const stream = streamSize(video.fileDetails?.videoStreams?.[0]);
         details.set(video.id, {
@@ -395,7 +405,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
           publishedAt: video.snippet?.publishedAt ?? null,
           thumbnail:
             video.snippet?.thumbnails?.high?.url ?? video.snippet?.thumbnails?.default?.url ?? null,
-          mediaType: youtubeMediaType({
+          guessedType: youtubeMediaType({
             durationSeconds: duration,
             width: stream.width,
             height: stream.height,
@@ -435,15 +445,29 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     }
   }
 
+  // 5. Que es cada video, segun YouTube. Es la misma clasificacion de las
+  // pestañas del canal: no se adivina por el tamaño ni la duracion.
+  const contentTypes = details.size > 0
+    ? await readContentTypes({
+        token: params.token,
+        channelId: params.channelId,
+        startDate: reportStartDate(params.startDate, details),
+        endDate: params.endDate,
+        fetchImpl,
+      })
+    : new Map<string, string>();
+
   for (const id of videoIds) {
     const detail = details.get(id);
+    // Lo oculto no se devuelve: no tiene que aparecer en la grilla.
+    if (hiddenPostIds.includes(id)) continue;
     posts.push({
       platform: "youtube",
       externalPostId: id,
       publisherRef: null,
       url: `https://www.youtube.com/watch?v=${id}`,
       caption: detail?.title ?? null,
-      mediaType: detail?.mediaType ?? null,
+      mediaType: detail ? (mediaTypeFromContentType(contentTypes.get(id)) ?? detail.guessedType) : null,
       thumbnailUrl: detail?.thumbnail ?? null,
       publishedAt: detail?.publishedAt ?? null,
       // Analytics tarda dos o tres dias en tener un video nuevo: mientras
@@ -452,5 +476,92 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     });
   }
 
-  return { posts, accountDaily, warnings, ...(profile ? { profile } : {}) };
+  return {
+    posts,
+    accountDaily,
+    warnings,
+    ...(profile ? { profile } : {}),
+    ...(hiddenPostIds.length > 0 ? { hiddenPostIds } : {}),
+  };
+}
+
+/**
+ * Si el video se ve en el canal.
+ *
+ * La lista de subidas, leida por su dueño, trae tambien lo privado y las
+ * transmisiones programadas que nunca salieron al aire (con la portada del
+ * canal como miniatura). Ninguna de las dos esta en el canal publico.
+ * "No listado" si entra: es un video real, solo que sin buscador.
+ */
+export function isVisibleOnChannel(video: {
+  status?: { privacyStatus?: string };
+  liveStreamingDetails?: { actualStartTime?: string };
+}): boolean {
+  if (video.status?.privacyStatus === "private") return false;
+  if (video.liveStreamingDetails && !video.liveStreamingDetails.actualStartTime) return false;
+  return true;
+}
+
+/**
+ * El tipo de contenido de YouTube (`creatorContentType`) en nuestro
+ * vocabulario. Null cuando no lo sabe: ahi decide el tamaño del archivo.
+ *
+ * Una transmision que ya salio queda como video: la base no tiene un tipo
+ * "en vivo", y en el canal se ve como un video mas.
+ */
+export function mediaTypeFromContentType(value: string | undefined): "short" | "video" | null {
+  switch (value) {
+    case "SHORTS":
+      return "short";
+    case "VIDEO_ON_DEMAND":
+    case "LIVE_STREAM":
+      return "video";
+    default:
+      return null;
+  }
+}
+
+/**
+ * El tipo de cada video del canal, segun Analytics.
+ *
+ * Es el reporte de "Top videos" (`dimensions=video,creatorContentType`), el
+ * unico que da el tipo por video: exige `sort` y un tope de 200, y no admite
+ * filtrar por id. Por eso trae los 200 mas vistos del periodo; uno sin vistas
+ * no aparece y cae al respaldo por tamaño.
+ *
+ * Nunca lanza ni avisa en pantalla: si falla, cada video se clasifica por su
+ * archivo, que es como funcionaba antes. Se loguea para poder verlo.
+ */
+export async function readContentTypes(params: {
+  token: string;
+  channelId: string;
+  startDate: string;
+  endDate: string;
+  fetchImpl: typeof fetch;
+}): Promise<Map<string, string>> {
+  const types = new Map<string, string>();
+  const report = await apiGet<ReportResponse>(
+    `${ANALYTICS_API}/reports?ids=channel==${encodeURIComponent(params.channelId)}` +
+      `&startDate=${params.startDate}&endDate=${params.endDate}` +
+      `&metrics=views&dimensions=video,creatorContentType&sort=-views&maxResults=200`,
+    params.token,
+    params.fetchImpl,
+  );
+
+  if (!report.ok) {
+    console.error(`[metricas] YouTube no dio el tipo de los videos: ${report.error}`);
+    return types;
+  }
+
+  const headers = (report.data.columnHeaders ?? []).map((h) => h.name ?? "");
+  const videoIndex = headers.indexOf("video");
+  const typeIndex = headers.indexOf("creatorContentType");
+  if (videoIndex < 0 || typeIndex < 0) return types;
+
+  for (const row of report.data.rows ?? []) {
+    const id = row[videoIndex];
+    const type = row[typeIndex];
+    if (typeof id === "string" && typeof type === "string") types.set(id, type);
+  }
+  return types;
 }

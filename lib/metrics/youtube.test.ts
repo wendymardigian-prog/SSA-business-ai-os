@@ -7,6 +7,8 @@ import {
   channelProfile,
   count,
   isShort,
+  isVisibleOnChannel,
+  mediaTypeFromContentType,
   parseIsoDuration,
   plainError,
   readYouTubeMetrics,
@@ -157,8 +159,9 @@ describe("leer el canal entero (F44)", () => {
     const fetchImpl = impl();
     await readYouTubeMetrics({ ...params, fetchImpl });
 
-    const analytics = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
-      String(c[0]).includes("youtubeanalytics"),
+    // La otra llamada a Analytics es la del tipo de cada video (una sola, para todos).
+    const analytics = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => String(c[0]).includes("youtubeanalytics") && !String(c[0]).includes("creatorContentType"),
     );
     expect(analytics).toHaveLength(1);
     expect(String(analytics[0][0])).toContain("video==v1,v2");
@@ -300,6 +303,82 @@ describe("leer el canal entero (F44)", () => {
     expect(String(videos?.[0])).toContain("fileDetails");
   });
 
+  it("el tipo lo dice YouTube (creatorContentType), no el tamaño del archivo", async () => {
+    // Un Short sin fileDetails quedaba como video.
+    const fetchImpl = routed([
+      [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
+      [/playlistItems/, { items: [{ contentDetails: { videoId: "s1" } }, { contentDetails: { videoId: "v1" } }] }],
+      [
+        /\/videos\?/,
+        {
+          items: [
+            { id: "s1", snippet: { publishedAt: "2025-08-30T01:59:13Z" }, contentDetails: { duration: "PT40S" } },
+            { id: "v1", snippet: { publishedAt: "2026-06-22T23:00:36Z" }, contentDetails: { duration: "PT20M" } },
+          ],
+        },
+      ],
+      [
+        /creatorContentType/,
+        {
+          columnHeaders: [{ name: "video" }, { name: "creatorContentType" }, { name: "views" }],
+          rows: [
+            ["s1", "SHORTS", 1891],
+            ["v1", "VIDEO_ON_DEMAND", 257],
+          ],
+        },
+      ],
+    ]);
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
+
+    expect(result.posts.map((p) => [p.externalPostId, p.mediaType])).toEqual([
+      ["s1", "short"],
+      ["v1", "video"],
+    ]);
+    const typeCall = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => String(c[0]))
+      .find((u) => u.includes("creatorContentType"));
+    expect(typeCall).toContain("sort=-views");
+    expect(typeCall).toContain("maxResults=200");
+  });
+
+  it("si Analytics no da el tipo, decide el archivo: vertical y corto es Short", async () => {
+    const result = await readYouTubeMetrics({ ...params, fetchImpl: impl() });
+
+    expect(result.posts.find((p) => p.externalPostId === "v2")?.mediaType).toBe("short");
+  });
+
+  it("una transmision que nunca salio al aire y un video privado no se devuelven: se ocultan", async () => {
+    const fetchImpl = routed([
+      [/\/channels\?/, { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU123" } } }] }],
+      [
+        /playlistItems/,
+        {
+          items: [
+            { contentDetails: { videoId: "vivo" } },
+            { contentDetails: { videoId: "privado" } },
+            { contentDetails: { videoId: "v1" } },
+          ],
+        },
+      ],
+      [
+        /\/videos\?/,
+        {
+          items: [
+            { id: "vivo", snippet: { title: "Transmision en vivo" }, liveStreamingDetails: { scheduledStartTime: "2026-07-07T22:00:00Z" } },
+            { id: "privado", status: { privacyStatus: "private" } },
+            { id: "v1", status: { privacyStatus: "public" } },
+          ],
+        },
+      ],
+    ]);
+
+    const result = await readYouTubeMetrics({ ...params, fetchImpl });
+
+    expect(result.posts.map((p) => p.externalPostId)).toEqual(["v1"]);
+    expect(result.hiddenPostIds).toEqual(["vivo", "privado"]);
+  });
+
   it("si falla el canal, lo avisa sin romper", async () => {
     const fetchImpl = routed([[/\/channels\?/, { error: { message: "sin permiso" } }]]);
 
@@ -388,5 +467,29 @@ describe("el tamaño del video (F44)", () => {
 describe("los errores de Google (F44)", () => {
   it("sin etiquetas HTML", () => {
     expect(plainError('The <code><a href="/x">videoId</a></code> parameter')).toBe("The videoId parameter");
+  });
+});
+
+describe("que se ve en el canal", () => {
+  it("una transmision que salio al aire si", () => {
+    expect(isVisibleOnChannel({ liveStreamingDetails: { actualStartTime: "2026-07-07T22:05:00Z" } })).toBe(true);
+  });
+
+  it("un no listado si: es un video real", () => {
+    expect(isVisibleOnChannel({ status: { privacyStatus: "unlisted" } })).toBe(true);
+  });
+});
+
+describe("el tipo de contenido de YouTube", () => {
+  it("Shorts es short; video y transmision son video", () => {
+    expect(mediaTypeFromContentType("SHORTS")).toBe("short");
+    expect(mediaTypeFromContentType("VIDEO_ON_DEMAND")).toBe("video");
+    expect(mediaTypeFromContentType("LIVE_STREAM")).toBe("video");
+  });
+
+  it("lo que no sabe (o una historia) no decide: decide el archivo", () => {
+    expect(mediaTypeFromContentType("UNSPECIFIED")).toBeNull();
+    expect(mediaTypeFromContentType("STORY")).toBeNull();
+    expect(mediaTypeFromContentType(undefined)).toBeNull();
   });
 });
