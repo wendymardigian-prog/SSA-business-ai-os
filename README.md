@@ -39,6 +39,8 @@ Después de eso, el resto del equipo entra por invitación (`Ajustes → Equipo`
 
 ## Puesta en marcha
 
+> **¿Estás levantando un clon nuevo para un cliente?** Abrí el repo en Claude Code y corré `/setup`: te guía paso a paso por Supabase, las migraciones, Railway, las variables y la conexión de los cron. Lo que sigue es la puesta en marcha manual para desarrollo local.
+
 ### Requisitos
 
 - Node.js 18+
