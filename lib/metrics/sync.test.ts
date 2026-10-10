@@ -15,6 +15,7 @@ import {
   postsDueForSync,
   refreshPostDetails,
   syncDate,
+  syncExternalVisibility,
 } from "./sync";
 
 const WS = "ws-1";
@@ -544,5 +545,31 @@ describe("el perfil de la cuenta (F75)", () => {
       avatar_url: "https://yt3/800",
       bio: "La bio de antes",
     });
+  });
+});
+
+describe("lo que el perfil no muestra", () => {
+  const rows = () => [
+    { id: "a", social_account_id: ACC, external_post_id: "vivo", origin: "external", content_post_id: null, deleted_at: null },
+    { id: "b", social_account_id: ACC, external_post_id: "pieza", origin: "external", content_post_id: "cp-1", deleted_at: null },
+    { id: "c", social_account_id: ACC, external_post_id: "volvio", origin: "external", content_post_id: null, deleted_at: "2026-09-01T00:00:00Z" },
+  ];
+
+  it("oculta la fila suelta, nunca una con pieza", async () => {
+    const memory = db({ social_posts: rows() });
+
+    await syncExternalVisibility(memory.client, { socialAccountId: ACC, hidden: ["vivo", "pieza"], visible: [], now: NOW });
+
+    const byId = Object.fromEntries(memory.rows("social_posts").map((r) => [r.id, r.deleted_at]));
+    expect(byId.a).toBe(NOW.toISOString());
+    expect(byId.b).toBeNull();
+  });
+
+  it("si la red la vuelve a mostrar, vuelve", async () => {
+    const memory = db({ social_posts: rows() });
+
+    await syncExternalVisibility(memory.client, { socialAccountId: ACC, hidden: [], visible: ["volvio"], now: NOW });
+
+    expect(memory.rows("social_posts").find((r) => r.id === "c")?.deleted_at).toBeNull();
   });
 });

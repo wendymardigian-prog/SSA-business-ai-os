@@ -26,6 +26,7 @@ import {
   persistPosts,
   refreshPostDetails,
   storedPosts,
+  syncExternalVisibility,
   syncDate,
 } from "@/lib/metrics/sync";
 import { readWindowStart, selectPostsToPersist } from "@/lib/metrics/rules";
@@ -277,6 +278,13 @@ async function handleMetricsSync({ supabase, job }: JobContext): Promise<void> {
   // hace tres dias no se le vuelve a pedir nada hasta que pase la semana.
   // A los demas se les actualiza lo descriptivo (formato, miniatura), que ya
   // vino en la misma lectura.
+  await syncExternalVisibility(supabase, {
+    socialAccountId: account.id,
+    hidden: result.hiddenPostIds ?? [],
+    visible: result.posts.map((p) => p.externalPostId),
+    now,
+  });
+
   const selected = selectPostsToPersist(result.posts, stored, now);
   const selectedIds = new Set(selected.map((p) => p.externalPostId));
   await refreshPostDetails(supabase, {

@@ -289,6 +289,45 @@ export async function refreshPostDetails(
 }
 
 /**
+ * Oculta las publicaciones que la red dice que no se ven en el perfil (un
+ * video privado, una transmision que nunca salio al aire), y vuelve a mostrar
+ * las que ahora si se ven.
+ *
+ * Solo toca filas sueltas (`external`, sin pieza): lo que tiene una pieza de
+ * Contenido lo maneja Contenido. Es borrado logico: si el video se hace
+ * publico, la siguiente lectura lo devuelve y la fila vuelve tal cual. Nunca
+ * lanza.
+ */
+export async function syncExternalVisibility(
+  supabase: Db,
+  params: { socialAccountId: string; hidden: string[]; visible: string[]; now: Date },
+): Promise<void> {
+  if (params.hidden.length > 0) {
+    const { error } = await supabase
+      .from("social_posts")
+      .update({ deleted_at: params.now.toISOString() })
+      .eq("social_account_id", params.socialAccountId)
+      .eq("origin", "external")
+      .is("content_post_id", null)
+      .is("deleted_at", null)
+      .in("external_post_id", params.hidden);
+    if (error) console.error("[metricas] no pude ocultar publicaciones que no se ven:", error.message);
+  }
+
+  if (params.visible.length > 0) {
+    const { error } = await supabase
+      .from("social_posts")
+      .update({ deleted_at: null })
+      .eq("social_account_id", params.socialAccountId)
+      .eq("origin", "external")
+      .is("content_post_id", null)
+      .not("deleted_at", "is", null)
+      .in("external_post_id", params.visible);
+    if (error) console.error("[metricas] no pude volver a mostrar publicaciones:", error.message);
+  }
+}
+
+/**
  * El perfil de la cuenta (foto, usuario, nombre, bio) segun el lector.
  *
  * Solo lo que la red dio: un campo en null no borra lo que habia. Nunca

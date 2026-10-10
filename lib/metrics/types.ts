@@ -85,6 +85,12 @@ export interface ReaderResult {
    * y no se pisa lo que habia.
    */
   profile?: AccountProfile;
+  /**
+   * Publicaciones que la red devolvio pero que no se muestran en el perfil
+   * publico (un video privado, una transmision que nunca salio). Si ya
+   * estaban guardadas, se ocultan.
+   */
+  hiddenPostIds?: string[];
 }
 
 export interface AccountProfile {
