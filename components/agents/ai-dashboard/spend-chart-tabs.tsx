@@ -39,6 +39,11 @@ export function SpendChartTabs({
 
   const { points, series, days } = useMemo(() => buildSpendSeries(spendByDay), [spendByDay]);
 
+  // "Ahora" se fija una vez al montar (el render tiene que ser puro). Alcanza:
+  // el panel le pone un `key` por rango, asi que cambiar de periodo monta un
+  // grafico nuevo con su propio "ahora".
+  const [nowMs] = useState(() => Date.now());
+
   function goToTab(next: Tab) {
     setTab(next);
     if (next === "puntos" && scatter === null) {
@@ -54,12 +59,12 @@ export function SpendChartTabs({
   // la misma historia. Una punta abierta (historico, o "hasta ahora") cae en
   // los datos: el primer dia de la serie, o el momento actual.
   const domain = useMemo(() => {
-    const firstDay = days[0] ? new Date(`${days[0]}T00:00:00Z`).getTime() : Date.now() - 86_400_000;
+    const firstDay = days[0] ? new Date(`${days[0]}T00:00:00Z`).getTime() : nowMs - 86_400_000;
     return {
       fromMs: range.from ? new Date(range.from).getTime() : firstDay,
-      toMs: range.to ? new Date(range.to).getTime() : Date.now(),
+      toMs: range.to ? new Date(range.to).getTime() : nowMs,
     };
-  }, [range, days]);
+  }, [range, days, nowMs]);
 
   /**
    * Un dia entero del dashboard, en la zona del workspace: no UTC, para que

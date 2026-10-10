@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { X } from "lucide-react";
 import { shouldShowBanner, type MissingEssential } from "@/lib/integrations/onboarding";
 
@@ -30,14 +30,21 @@ function writeDismissedAt(iso: string) {
   }
 }
 
+function readCanShow(): boolean {
+  return shouldShowBanner(readDismissedAt());
+}
+
+// El descarte de esta pestaña lo maneja el estado del componente: no hace
+// falta suscribirse a cambios de localStorage.
+const noSubscription = () => () => {};
+
 export function OnboardingBanner({ missing }: { missing: MissingEssential[] }) {
-  const [visible, setVisible] = useState(false);
+  // En el servidor no hay localStorage: la franja arranca oculta y aparece
+  // recien al montar, igual que antes, sin error de hidratacion.
+  const canShow = useSyncExternalStore(noSubscription, readCanShow, () => false);
+  const [dismissed, setDismissed] = useState(false);
 
-  useEffect(() => {
-    setVisible(missing.length > 0 && shouldShowBanner(readDismissedAt()));
-  }, [missing]);
-
-  if (!visible) return null;
+  if (dismissed || missing.length === 0 || !canShow) return null;
 
   return (
     <div className="mx-4 mt-4 flex items-start justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 md:mx-6">
@@ -55,7 +62,7 @@ export function OnboardingBanner({ missing }: { missing: MissingEssential[] }) {
         type="button"
         onClick={() => {
           writeDismissedAt(new Date().toISOString());
-          setVisible(false);
+          setDismissed(true);
         }}
         aria-label="Descartar"
         className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg hover:bg-accent"
