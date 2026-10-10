@@ -14,6 +14,13 @@
  * como hoy. Cuando no hay nada en ningun lado, el error es el mismo de antes
  * (null, y la pantalla dice "WhatsApp no esta configurado").
  *
+ * **La direccion y la clave salen siempre de la misma fuente.** Si el
+ * workspace guardo su propia direccion, la clave tiene que estar en SU Vault:
+ * la del entorno nunca viaja a una direccion que cargo alguien desde la
+ * pantalla. Si no, un admin podia guardar la URL de un servidor propio, sin
+ * clave, y el sistema le mandaba la clave global del Evolution compartido
+ * (que controla todas las instancias) en cada pedido.
+ *
  * La caracterizacion de ese comportamiento esta en
  * `app/api/webhooks/evolution/route.test.ts` y en `lib/evolution-config.test.ts`.
  */
@@ -41,11 +48,13 @@ export function evolutionEnvConfig(): Partial<EvolutionConfig> {
 /**
  * La configuracion de Evolution de un workspace.
  *
- * Orden: lo guardado en el workspace primero, las variables de entorno despues,
- * campo por campo. Asi se puede tener la direccion en la pantalla y la clave
- * todavia en el entorno, que es como va a quedar durante la migracion.
+ * Dos fuentes, nunca mezcladas: si la integracion esta activa y tiene
+ * direccion propia, direccion Y clave del workspace (la clave, de Vault); si
+ * no, direccion y clave del entorno. El prefijo si puede venir de cualquiera.
  *
- * Devuelve null si falta la direccion o la clave, igual que antes.
+ * Devuelve null si falta la direccion o la clave, igual que antes. Con
+ * direccion propia, una falla leyendo Vault tambien es null: caer al entorno
+ * ahi seria justo mandar la clave global a esa direccion.
  */
 export async function getEvolutionConfig(
   supabase: SupabaseClient<Database>,
@@ -63,13 +72,22 @@ export async function getEvolutionConfig(
 
   const stored = (row?.is_active ? ((row.config ?? {}) as EvolutionStoredConfig) : {}) ?? {};
 
-  const baseUrl = (stored.api_url?.trim().replace(/\/$/, "") || env.baseUrl) ?? null;
-  // La clave solo se busca en Vault si la integracion esta activa: una lectura
-  // por cada mensaje que sale no vale la pena cuando no hay nada guardado.
-  const apiKey =
-    (row?.is_active ? await readSecretSafe(supabase, workspaceId, SECRET_NAMES.evolutionApiKey) : null) ||
-    env.apiKey ||
-    null;
+  const ownUrl = stored.api_url?.trim().replace(/\/$/, "") || null;
+
+  let baseUrl: string | null;
+  let apiKey: string | null;
+  if (ownUrl) {
+    baseUrl = ownUrl;
+    apiKey = await readSecretSafe(supabase, workspaceId, SECRET_NAMES.evolutionApiKey);
+    if (!apiKey) {
+      console.error("[evolution] el workspace tiene direccion propia pero no su clave en Vault");
+    }
+  } else {
+    // Sin direccion propia no se lee Vault: una lectura por cada mensaje que
+    // sale no vale la pena, y una clave guardada sin su direccion no se usa.
+    baseUrl = env.baseUrl ?? null;
+    apiKey = env.apiKey ?? null;
+  }
 
   if (!baseUrl || !apiKey) return null;
 
