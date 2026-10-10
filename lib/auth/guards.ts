@@ -10,6 +10,7 @@
  * para que tambien los pueda usar un Client Component.
  */
 
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
@@ -76,8 +77,11 @@ export interface PermissionContext {
  * Los de Owner y Admin salen de `SYSTEM_ROLE_PERMISSIONS` y no de la base:
  * son la fuente, y leer el jsonb para ellos daria dos lugares donde definir
  * lo mismo. Solo un `member` con `role_id` lee su fila.
+ *
+ * `cache()`: el layout, la pagina y los layouts intermedios lo piden en el
+ * mismo render; se resuelve una vez por request.
  */
-export async function getPermissionContext(): Promise<PermissionContext> {
+export const getPermissionContext = cache(async (): Promise<PermissionContext> => {
   const ctx = await getWorkspace();
 
   let permissions = systemRolePermissions(ctx.role);
@@ -106,7 +110,7 @@ export async function getPermissionContext(): Promise<PermissionContext> {
     can: (key: string) => can(resolved, key),
     scope: (module: ScopedModule) => scopeFor(resolved, module),
   };
-}
+});
 
 /**
  * Para paginas: exige un permiso, o manda al dashboard.

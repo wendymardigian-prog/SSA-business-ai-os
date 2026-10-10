@@ -25,10 +25,6 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
 
   const isAuthPage = pathname === "/login";
@@ -36,10 +32,21 @@ export async function updateSession(request: NextRequest) {
   const isDashboard = pathname.startsWith("/dashboard");
   const isApiRoute = pathname.startsWith("/api/");
 
-  // Auth callback and API routes (including webhooks) always pass through
+  // Auth callback and API routes (including webhooks) always pass through.
+  // Salen ANTES de mirar la sesion: los webhooks y los cron no traen cookie,
+  // y las rutas de la API que si la usan la resuelven ellas mismas (un Route
+  // Handler puede renovar el token y escribir la cookie, un Server Component
+  // no). Antes pagaban un viaje a Supabase Auth que despues se ignoraba.
   if (isAuthCallback || isApiRoute) {
     return supabaseResponse;
   }
+
+  // getClaims y no getUser: verifica la firma del token aca, con la clave
+  // publica del proyecto, sin ir a Supabase Auth en cada navegacion (ver
+  // lib/supabase/auth-user.ts). Igual que getUser, si el token vencio lo
+  // renueva y la cookie nueva sale por `setAll`.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const user = claimsData?.claims?.sub ? claimsData.claims : null;
 
   // El registro publico no existe mas: solo por invitacion. Un link viejo a
   // /register (favoritos, un email ya mandado) va al login en vez de 404.
