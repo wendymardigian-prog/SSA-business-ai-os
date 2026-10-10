@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadTaskInstructions } from "./store";
-import { CLASSIFY_DEFAULT_INSTRUCTIONS } from "./instructions";
+import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLASSIFY_DEFAULT_INSTRUCTIONS } from "./instructions";
 
 /**
  * `loadTaskInstructions` nunca frena una tarea: ante cualquier problema (sin
@@ -37,6 +37,22 @@ function fakeClient(opts: { active?: Record<string, number>; versionRow?: { vers
     },
   } as never;
 }
+
+describe("loadTaskInstructions (analisis de anuncios)", () => {
+  it("sin version activa, el texto del sistema", async () => {
+    const got = await loadTaskInstructions(fakeClient({ active: {} }), "ws-1", "ads_analysis");
+    expect(got).toEqual({ version: null, text: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS });
+  });
+
+  it("con version activa, el texto de esa version", async () => {
+    const got = await loadTaskInstructions(
+      fakeClient({ active: { ads_analysis: 2 }, versionRow: { version: 2, instructions: "Resumí en tres puntos." } }),
+      "ws-1",
+      "ads_analysis",
+    );
+    expect(got).toEqual({ version: 2, text: "Resumí en tres puntos." });
+  });
+});
 
 describe("loadTaskInstructions", () => {
   it("una tarea sin instrucciones (close_classification) devuelve texto vacio, version null", async () => {

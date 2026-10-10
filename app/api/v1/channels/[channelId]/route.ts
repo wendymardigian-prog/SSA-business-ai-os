@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getAdminContext } from "@/lib/auth/guards";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
@@ -7,23 +7,6 @@ import {
   logoutInstance,
 } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
-
-async function getWorkspace(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: membership } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, workspaces(*)")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-
-  if (!membership?.workspaces) return null;
-  return membership.workspaces;
-}
 
 /**
  * DELETE /api/v1/channels/[channelId]
@@ -43,10 +26,17 @@ export async function DELETE(
   { params }: { params: Promise<{ channelId: string }> }
 ) {
   const { channelId } = await params;
-  const supabase = await createClient();
-  const workspace = await getWorkspace(supabase);
-  if (!workspace)
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  // Solo Owner y Admin. Antes un Member pasaba: la cuenta se desconectaba en
+  // Zernio o Evolution, la RLS despues rechazaba el borrado sin dar error, y
+  // la ruta respondia ok con el canal muerto pero todavia en la lista.
+  const ctx = await getAdminContext();
+  if (!ctx) {
+    return NextResponse.json(
+      { error: "Solo Owner y Admin pueden borrar canales" },
+      { status: 403 },
+    );
+  }
+  const { workspace, supabase } = ctx;
 
   const { data: channel } = await supabase
     .from("channels")

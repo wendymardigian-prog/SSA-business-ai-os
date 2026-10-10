@@ -239,8 +239,8 @@ comprueban con `private.system_secrets_status()`, que nunca muestra el secreto.
 `call_app_cron` lee de Vault; `lib/cron-config.test.ts` falla si la definicion
 vigente vuelve a leer la tabla (pasa si un cron nuevo copia una version vieja
 de la funcion). `system_config` queda solo con `draft_alerts_since`. La `00138`
-(`ai_task_models`) esta aplicada pero vive en la rama
-`feature/ads-analysis-tarea`. **La proxima migracion disponible es la `00141`.**
+(`ai_task_models`) tambien esta aplicada. **La proxima migracion disponible es
+la `00141`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -322,6 +322,7 @@ node scripts/verify-inbox-filters.mjs
 node scripts/verify-dashboards.mjs
 node scripts/verify-publishing.mjs # publicar de punta a punta, proveedores simulados
 node scripts/verify-attribution.mjs # toques, primer/ultimo toque, reserva (Contenido v3)
+node scripts/verify-workspace-isolation.mjs # secretos e integraciones entre workspaces, alta por invitacion
 ```
 
 No correr dos en simultaneo: comparten el prefijo `zz-test-` y se pisan la limpieza.

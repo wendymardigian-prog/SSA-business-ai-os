@@ -36,7 +36,7 @@ export async function loadAdsInsights(
     .from("meta_ads_insights_daily")
     // En una sola linea a proposito: partido en varias, el tipado de
     // PostgREST no infiere las columnas y todo vuelve como `unknown`.
-    .select("level, object_id, object_name, parent_name, campaign_id, adset_id, date, spend, impressions, reach, clicks, outbound_clicks, link_clicks, leads, purchases, purchase_value, status, effective_status, quality_ranking, engagement_ranking, conversion_ranking, video_p25, video_p50, video_p75, video_p95, video_p100, thruplays")
+    .select("level, object_id, object_name, parent_name, campaign_id, adset_id, date, spend, impressions, reach, clicks, outbound_clicks, link_clicks, leads, purchases, purchase_value, status, effective_status, quality_ranking, engagement_ranking, conversion_ranking, video_p25, video_p50, video_p75, video_p95, video_p100, thruplays, video_avg_time_seconds, actions, updated_at")
     .eq("workspace_id", params.workspaceId)
     .eq("ad_account_id", params.adAccountId);
 
@@ -78,5 +78,24 @@ export async function loadAdsInsights(
     videoP95: row.video_p95,
     videoP100: row.video_p100,
     thruplays: row.thruplays,
+    videoAvgTimeSeconds: row.video_avg_time_seconds,
+    actions: parseActions(row.actions),
+    updatedAt: row.updated_at,
   }));
+}
+
+/**
+ * Las acciones guardadas, como `{ tipo: cantidad }`.
+ *
+ * Es un jsonb que escribe el sync, pero se lee sin confiar: cualquier cosa
+ * que no sea un numero se descarta en vez de romper la pantalla.
+ */
+export function parseActions(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, number> = {};
+  for (const [type, raw] of Object.entries(value as Record<string, unknown>)) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(n)) out[type] = n;
+  }
+  return out;
 }

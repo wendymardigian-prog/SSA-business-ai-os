@@ -1365,3 +1365,64 @@ Los tipos sin las columnas borradas; la campana, la ficha del contacto y el pane
 ### Lo que sigue abierto
 
 En `docs/PENDIENTE.md`: verificar con cuentas conectadas (índice con métricas reales, datos de anuncio, webhook de Zernio, versión de LinkedIn), el pie del drawer a 390 px (decisión de diseño) y la carrera de dos comentarios simultáneos de TikTok (arreglarla de verdad pide un único en la base).
+
+---
+## Dashboard de Meta Ads — réplica del panel de wendymardigian
+
+**Fecha:** 10 de octubre de 2026
+**Rama:** `feature/ads-dashboard-replica` (sin mergear). El arreglo del scroll salió aparte en `fix/scroll-dashboards`.
+**Migraciones:** ninguna.
+
+### Qué se hizo
+
+El dashboard de Meta Ads (`/dashboard/dashboards/ads` y las tres pantallas de detalle) se rehízo para verse y usarse igual que el panel de Ads de wendymardigian: encabezado con la pill "Sincronizado", ocho KPIs en una tarjeta con variación contra el periodo anterior, evolución diaria de dos ejes, comparativa y costo por campaña, grilla de cuatro tarjetas (Acciones, Placement, Dispositivo, Video), audiencia por edad y género, desglose jerárquico con encabezados que explican cada cifra y métricas por día ordenables. Los detalles de campaña, conjunto y anuncio siguen la misma estructura.
+
+**La capa de datos no se tocó en lo esencial:** el sync sigue escribiendo `meta_ads_insights_daily`, las fórmulas siguen siendo sobre totales del periodo, una división por cero sigue siendo "—" y el alcance único sigue pidiéndose en vivo (ahora también por campaña, conjunto y anuncio, y para el periodo anterior, para que la variación compare lo mismo con lo mismo).
+
+### Decisiones que conviene recordar
+
+- **recharts es la excepción a la regla de `components/dashboards/charts.tsx`** (SVG a mano, que siguen usando Contenido y Chat). Vive en un solo archivo (`components/dashboards/ads/ads-charts.tsx`) y solo se carga con `next/dynamic` desde las pantallas de ads: queda en un chunk aparte que ninguna otra ruta referencia.
+- **Colores:** la interfaz usa los tokens de SSA (respeta el color de marca y el modo oscuro); las series de los gráficos usan la paleta fija de la referencia. El `dark:` de Tailwind acá compila a `prefers-color-scheme` y el tema va por la clase `.dark`, así que las piezas nuevas evitan `dark:`.
+- **Variación de KPIs:** contra el periodo anterior (no primera mitad contra segunda). En CPM, CPC y CPL subir es malo y sale en rojo. El alcance solo se compara si los dos periodos salen de la misma fuente (los dos únicos o los dos sumados por día).
+- **Un hueco no es un cero:** el CPC o CPL de un día sin clics o sin leads corta la línea. Las secciones sin datos muestran su título y el vacío.
+- **"Conv." en la tabla de campañas son las compras.** En la referencia esa columna repetía los leads.
+- **Moneda con símbolo corto** (`$ 1.234,56`) en estas pantallas.
+- **Placement, dispositivo, audiencia y horario se piden a Meta en vivo, en paralelo, cada uno por su cuenta:** si uno falla, solo esa tarjeta avisa "No se pudo leer de Meta: …".
+- **Migas de pan en todos los tamaños:** desde cualquier detalle se vuelve a cada nivel de arriba y al dashboard general, con la cuenta y el periodo conservados.
+
+### Dos bugs que aparecieron en el camino
+
+- **El sync de video guardaba mal.** La columna `thruplays` recibía las reproducciones iniciadas (`video_play_actions`), no los ThruPlays, y `video_avg_time_seconds` no se escribía nunca. Ahora se piden los campos correctos en los cuatro niveles y la retención se calcula sobre las vistas de 3 segundos. **Las filas viejas quedan con el dato anterior hasta volver a leerlas** (ver "Lo que queda").
+- **La página entera scrolleaba en los dashboards.** Los textos `sr-only` (`position: absolute`) no tenían ningún ancestro posicionado y estiraban el documento hasta donde caían en el contenido largo. Un `relative` en el `<main>` del layout lo resuelve para todas las pantallas (`fix/scroll-dashboards`).
+
+### Lo que queda
+
+- Después del deploy, y con visto bueno: **volver a leer los últimos 90 días de la cuenta** para que ThruPlays y tiempo promedio de las fechas viejas sean los reales.
+- Borrar `docs/referencia-ads-wendymardigian/` cuando se apruebe el resultado (commit aparte).
+- El lint de `main` tiene 4 errores de las reglas de React que no son de este trabajo (Agentes IA); hay una tarea aparte para arreglarlos.
+
+---
+## Análisis de anuncios como tarea de Agentes IA (modelo e instrucciones configurables)
+
+**Fecha:** 10 de octubre de 2026
+**Rama:** `feature/ads-analysis-tarea` (apilada sobre `feature/ads-dashboard-replica`)
+**Migración:** 00138 aplicada y registrada (aditiva, idempotente).
+
+### Qué había
+
+"Analizar con IA" del dashboard de Ads era una acción suelta (`analyzeAdsWithAi`): ni agente ni tarea, sin pantalla en Agentes IA, con el prompt fijo en el código y el modelo por defecto del negocio (hoy `claude-sonnet-5` de Anthropic). Nunca había corrido ("Sin corridas todavía").
+
+### Qué se hizo
+
+- **Es una tarea** (`ads_analysis`, "Análisis de anuncios", bajo demanda) en TAREAS de Agentes IA, con Configuración (modelo), Instrucciones (system prompt versionado, con historial y vuelta al texto del sistema) y Corridas.
+- **El system prompt sale de las instrucciones activas.** El texto por defecto es byte a byte el de antes (test de caracterización); `{{estilo}}` se reemplaza por `AI_LANGUAGE_STYLE`. La corrida guarda con qué versión salió.
+- **Modelo propio por tarea** (`workspaces.ai_task_models`, 00138): el del negocio o uno elegido. Un modelo elegido es **estricto**: si ese proveedor se desconecta, falla con un mensaje claro y no cambia de modelo en silencio. Hoy solo esta tarea tiene selector (decisión de Wendy); el `ModelPicker` se extrajo a un componente compartido con el agente de chat.
+- El panel "Analizar con IA" del dashboard muestra con qué modelo corre, un link a la configuración y, después, con qué modelo salió cada análisis.
+
+### Un bug que ya estaba
+
+**La auditoría de las tareas nunca se escribió** (0 filas en `audit_log` con `entity_type = 'ai_task'`): `audit_log.entity_id` es un uuid y se le pasaba el id de la tarea ("message_classification"…), así que el insert fallaba en silencio (`logAudit` solo loguea). Afectaba también a guardar y restaurar instrucciones (PR #23). Ahora la entidad auditada es el workspace y la tarea va en `metadata.task`; hay un test que fija que el id sea un uuid.
+
+### Lo que queda
+
+- Aplicar el mismo patrón de modelo elegible al resto de las tareas, si se quiere (el `ai_task_models` ya está pensado para eso).

@@ -39,6 +39,9 @@ const row = (over: Partial<AdsRow> & { level: string; objectId: string; date: st
   videoP95: null,
   videoP100: null,
   thruplays: null,
+  videoAvgTimeSeconds: null,
+  actions: {},
+  updatedAt: null,
   ...over,
 });
 

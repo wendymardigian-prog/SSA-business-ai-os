@@ -29,6 +29,37 @@ Hay un test que lo hace cumplir (`lib/vault-boundary.test.ts`): recorre los
 imports reales desde cada componente de navegador y falla si alguno llega al
 módulo que lee Vault. No es un comentario que pide buena voluntad.
 
+## Aislamiento entre workspaces
+
+Cada workspace tiene sus propias claves, y no puede ver ni usar las de otro.
+Lo garantiza la base, no la pantalla:
+
+- El nombre real de cada secreto es `ws:<workspace>:<nombre>`, y ese prefijo lo
+  arma la base (`vault_secret_key`, migración 00017). El nombre que llega de
+  afuera no puede tener `:`, así que no hay forma de apuntar a otro workspace.
+- `store_secret`, `read_secret`, `delete_secret` y `list_secret_names` comprueban
+  con `auth.uid()` que quien llama es Owner o Admin de **ese** workspace. Si no,
+  responden `forbidden`. Solo el service role (webhooks, cron) pasa sin ese
+  chequeo, y siempre usa el workspace de la fila que está procesando.
+- `integration_configs` es una fila por workspace y proveedor, y su RLS solo
+  deja verla y tocarla a los admins del propio workspace.
+- Las acciones de Integraciones toman el workspace de la sesión del servidor,
+  nunca de lo que manda el navegador.
+
+**La única integración con respaldo en el entorno es Evolution**
+(`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_TOKEN`). Regla: la
+dirección y la clave salen **de la misma fuente**. Si el workspace guardó su
+propia dirección, la clave tiene que estar en su Vault; la del entorno nunca
+viaja a una dirección cargada desde la pantalla (`lib/evolution-config.ts`).
+
+Lo prueba `node scripts/verify-workspace-isolation.mjs` contra la base real: dos
+workspaces, y el Admin de uno intentando leer, pisar, borrar y listar los
+secretos y las integraciones del otro.
+
+Lo que **no** cubre: dentro de un mismo workspace, un Admin puede leer en texto
+plano cualquier clave de ese workspace llamando a `read_secret` directo (ver
+`docs/PENDIENTE.md`).
+
 ## "Probar y guardar"
 
 El botón no es "guardar". Antes de escribir nada en Vault, el sistema usa la
@@ -50,9 +81,9 @@ probar: la prueba es conectar.
 ### Mensajería
 
 **Zernio** conecta Instagram: mensajes directos, comentarios y respuestas a
-historias. También publica en Instagram y TikTok, y trae sus métricas. Es la
-única integración cuya clave todavía puede estar en una columna vieja de la
-base en vez de en Vault; la tarjeta lo avisa y ofrece **"Migrar a Vault"**.
+historias. También publica en Instagram y TikTok, y trae sus métricas. Su
+clave vive solo en Vault: las columnas viejas donde estaba se borraron con la
+migración 00090 (26/9/2026).
 
 **Evolution API** conecta WhatsApp por código QR. La instancia corre aparte,
 en su propio proyecto de Railway, así que se comunican por dominio público.

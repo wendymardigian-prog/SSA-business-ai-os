@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { getAiTask, type AiTaskId } from "@/lib/ai-tasks/catalog";
-import { loadTaskInstructions, taskIsVersioned } from "@/lib/ai-tasks/store";
+import { loadTaskInstructions, taskIsVersioned, type VersionedTask } from "@/lib/ai-tasks/store";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { parseTaskModels } from "@/lib/ai-tasks/model";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -16,6 +18,10 @@ import type { Json } from "@/lib/types/database";
  */
 
 const TASKS_PATH = "/dashboard/agents/tareas";
+// OJO con la auditoria: `audit_log.entity_id` es un uuid. Una tarea se identifica
+// con un texto ("ads_analysis"), asi que la entidad auditada es el workspace y la
+// tarea va en `metadata.task`. Pasar el id de la tarea hacia que el insert fallara
+// en silencio (logAudit solo loguea el error) y no quedara ningun registro.
 const NOT_ADMIN = "Solo Owner y Admin pueden editar las instrucciones de una tarea.";
 /** Mismo tope que el prompt de un agente (lib/agent/validate.ts). */
 const MAX_INSTRUCTIONS_CHARS = 32_000;
@@ -55,7 +61,7 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
 
   const { error: versionError } = await supabase.from("ai_task_prompt_versions").insert({
     workspace_id: workspace.id,
-    task: task.id as "message_classification" | "conversation_summary" | "media_description",
+    task: task.id as VersionedTask,
     version,
     instructions,
     note,
@@ -81,10 +87,10 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
     supabase,
     workspaceId: workspace.id,
     entityType: "ai_task",
-    entityId: task.id,
+    entityId: workspace.id,
     action: "prompt_version",
     changes: { active_version: { old: null, new: version } },
-    metadata: { note, chars: instructions.length },
+    metadata: { task: task.id, note, chars: instructions.length },
     performedBy: user.id,
   });
 
@@ -129,10 +135,66 @@ export async function restoreTaskInstructions(taskId: string, version: number | 
     supabase,
     workspaceId: workspace.id,
     entityType: "ai_task",
-    entityId: task.id,
+    entityId: workspace.id,
     action: "prompt_version",
     changes: { active_version: { old: current[task.id] ?? null, new: version } },
-    metadata: { restored: true },
+    metadata: { task: task.id, restored: true },
+    performedBy: user.id,
+  });
+
+  revalidate(task.id);
+  return { ok: true };
+}
+
+/** Mas largo que cualquier identificador de modelo real: es un tope contra basura. */
+const MAX_MODEL_ID_CHARS = 200;
+
+/**
+ * El modelo de una tarea (00138). `provider` y `model` en null = "usar el modelo
+ * del negocio" (se saca la entrada). Con valores, el proveedor tiene que estar
+ * conectado y generar texto: guardar uno que no corre dejaria la tarea fallando
+ * hasta que alguien lo note.
+ */
+export async function saveTaskModel(taskId: string, provider: string | null, model: string | null): Promise<AiTaskActionResult> {
+  const ctx = await getAdminContext();
+  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden elegir el modelo de una tarea." };
+  const { workspace, supabase, user } = ctx;
+
+  const task = getAiTask(taskId);
+  if (!task || !task.hasModelPicker) return { ok: false, error: "Esa tarea no permite elegir el modelo." };
+
+  const current = parseTaskModels((workspace as unknown as { ai_task_models?: Json }).ai_task_models);
+  const next = { ...current };
+
+  const cleanProvider = typeof provider === "string" ? provider.trim() : "";
+  const cleanModel = typeof model === "string" ? model.trim() : "";
+
+  if (!cleanProvider && !cleanModel) {
+    delete next[task.id];
+  } else {
+    if (!cleanProvider || !cleanModel) return { ok: false, error: "Elegí un proveedor y un modelo." };
+    if (cleanModel.length > MAX_MODEL_ID_CHARS) return { ok: false, error: "El nombre del modelo es demasiado largo." };
+    const connected = await listConnectedAiProviders(workspace.id);
+    if (!connected.some((p) => p.provider === cleanProvider)) {
+      return { ok: false, error: "Ese proveedor no está conectado. Conectalo en Ajustes → Integraciones." };
+    }
+    next[task.id] = { provider: cleanProvider, model: cleanModel };
+  }
+
+  const { error } = await supabase.from("workspaces").update({ ai_task_models: next as unknown as Json }).eq("id", workspace.id);
+  if (error) {
+    console.error(`[ai-tasks] no pude guardar el modelo de ${task.id}:`, error.message);
+    return { ok: false, error: "No pude guardar el modelo." };
+  }
+
+  await logAudit({
+    supabase,
+    workspaceId: workspace.id,
+    entityType: "ai_task",
+    entityId: workspace.id,
+    action: "model_changed",
+    changes: { model: { old: current[task.id] ? `${current[task.id].provider}/${current[task.id].model}` : null, new: next[task.id] ? `${next[task.id].provider}/${next[task.id].model}` : null } },
+    metadata: { task: task.id },
     performedBy: user.id,
   });
 

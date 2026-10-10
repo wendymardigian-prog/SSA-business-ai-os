@@ -938,3 +938,11 @@ administra.
 
 **Lo que hay que recordar:** si el agente deja de contestar, lo primero es
 mirar el run. Ahora dice qué pasó.
+
+## El análisis de anuncios es una tarea (10/10/2026)
+
+"Analizar con IA" del dashboard de Meta Ads es la tarea `ads_analysis` de Agentes IA (`lib/ai-tasks/catalog.ts`): bajo demanda, sin modo ni horario. Se configura en `/dashboard/agents/tareas/ads_analysis`:
+
+- **Modelo:** el del negocio (Ajustes → Integraciones) o uno propio de la tarea (`workspaces.ai_task_models`, 00138; `lib/ai-tasks/model.ts`). Un modelo elegido a mano es estricto: sin ese proveedor conectado, falla avisando.
+- **Instrucciones:** el system prompt completo, versionado como el de las otras tareas. `{{estilo}}` es `AI_LANGUAGE_STYLE`. Sin versión activa se usa el texto del sistema (`ADS_ANALYSIS_DEFAULT_INSTRUCTIONS`).
+- Cada corrida guarda con qué versión de las instrucciones salió (`agent_runs.prompt_version`).

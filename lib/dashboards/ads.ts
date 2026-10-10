@@ -39,6 +39,12 @@ export interface AdsRow {
   videoP95: number | null;
   videoP100: number | null;
   thruplays: number | null;
+  /** Segundos promedio de reproduccion de ese dia. */
+  videoAvgTimeSeconds: number | null;
+  /** Las acciones crudas de Meta, `{ tipo: cantidad }`. */
+  actions: Record<string, number>;
+  /** Cuando la escribio el sync por ultima vez. */
+  updatedAt: string | null;
 }
 
 export interface AdsTotals {
@@ -131,12 +137,24 @@ export function leadsTone(leads: number | null): Tone {
 // ── Formato ──────────────────────────────────────────────────────────────
 
 /** Un monto en la moneda de la cuenta. */
-export function money(value: number | null, currency: string | null): string {
+export function money(
+  value: number | null,
+  currency: string | null,
+  options: {
+    /**
+     * Simbolo corto ("$ 1.234,56", "€ 1.234,56") en vez del codigo
+     * ("US$ 1.234,56"). Lo usa el dashboard de anuncios, donde toda la
+     * pantalla es de una sola cuenta y la moneda completa esta en el popover.
+     */
+    narrow?: boolean;
+  } = {},
+): string {
   if (value === null) return "—";
   try {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: currency || "USD",
+      currencyDisplay: options.narrow ? "narrowSymbol" : "symbol",
       maximumFractionDigits: 2,
     }).format(value);
   } catch {
@@ -164,8 +182,17 @@ export interface GroupedRow extends AdsTotals {
   status: string | null;
 }
 
-/** Las filas de un nivel, sumadas por objeto. */
-export function groupByObject(rows: AdsRow[], level: string): GroupedRow[] {
+/**
+ * Las filas de un nivel, sumadas por objeto.
+ *
+ * `uniqueReach` (de la consulta en vivo, por objeto) pisa la suma de los
+ * alcances diarios, con la misma regla que `computeTotals`.
+ */
+export function groupByObject(
+  rows: AdsRow[],
+  level: string,
+  uniqueReach?: Record<string, number> | null,
+): GroupedRow[] {
   const byObject = new Map<string, AdsRow[]>();
   for (const row of rows) {
     if (row.level !== level) continue;
@@ -186,16 +213,19 @@ export function groupByObject(rows: AdsRow[], level: string): GroupedRow[] {
         campaignId: latest.campaignId,
         adsetId: latest.adsetId,
         status: latest.effectiveStatus ?? latest.status,
-        ...computeTotals(group),
+        ...computeTotals(group, uniqueReach?.[objectId] ?? null),
       };
     })
     .sort((a, b) => (b.spend ?? 0) - (a.spend ?? 0));
 }
 
+/** Las metricas de AdsTotals que se pueden graficar por dia. */
+export type DailyMetric = keyof AdsTotals;
+
 /** La serie diaria de una metrica. */
 export function dailySeries(
   rows: AdsRow[],
-  metric: "spend" | "impressions" | "clicks" | "reach" | "leads" | "cpm" | "cpc" | "ctr",
+  metric: DailyMetric,
 ): Array<{ bucket: string; value: number | null }> {
   const byDate = new Map<string, AdsRow[]>();
   for (const row of rows) {
@@ -220,28 +250,68 @@ export interface RetentionPoint {
   percent: number | null;
 }
 
-/**
- * La retencion de video.
- *
- * Se calcula sobre las REPRODUCCIONES, no sobre las impresiones: la
- * retencion contesta "de los que empezaron a verlo, cuantos siguieron".
- * Sobre impresiones estaria mezclando eso con cuanta gente decidio verlo.
- */
-export function videoRetention(totals: {
-  thruplays: number | null;
+export interface VideoTotals {
+  /** Vistas de 3 segundos (`video_view` en las acciones). */
+  videoViews: number | null;
   videoP25: number | null;
   videoP50: number | null;
   videoP75: number | null;
   videoP95: number | null;
   videoP100: number | null;
-}): RetentionPoint[] {
-  const base = totals.thruplays ?? totals.videoP25;
+  /** ThruPlays: 15 segundos o el video entero. */
+  thruplays: number | null;
+  /** Segundos promedio de reproduccion del periodo. */
+  avgTimeSeconds: number | null;
+}
+
+/**
+ * El video del periodo, sobre las filas de UN objeto.
+ *
+ * El tiempo promedio no se suma: es el promedio de cada dia pesado por las
+ * vistas de ese dia. Un dia con dos vistas no puede pesar lo mismo que uno
+ * con dos mil.
+ */
+export function videoTotals(rows: AdsRow[]): VideoTotals {
+  const views = (row: AdsRow) => row.actions?.video_view ?? null;
+
+  let weighted = 0;
+  let weight = 0;
+  for (const row of rows) {
+    const v = views(row);
+    if (row.videoAvgTimeSeconds === null || v === null || v === 0) continue;
+    weighted += row.videoAvgTimeSeconds * v;
+    weight += v;
+  }
+
+  return {
+    videoViews: sum(rows.map(views)),
+    videoP25: sum(rows.map((r) => r.videoP25)),
+    videoP50: sum(rows.map((r) => r.videoP50)),
+    videoP75: sum(rows.map((r) => r.videoP75)),
+    videoP95: sum(rows.map((r) => r.videoP95)),
+    videoP100: sum(rows.map((r) => r.videoP100)),
+    thruplays: sum(rows.map((r) => r.thruplays)),
+    avgTimeSeconds: weight > 0 ? Number((weighted / weight).toFixed(1)) : null,
+  };
+}
+
+/**
+ * La retencion de video.
+ *
+ * Se calcula sobre las REPRODUCCIONES (las vistas de 3 segundos), no sobre
+ * las impresiones: la retencion contesta "de los que empezaron a verlo,
+ * cuantos siguieron". Sobre impresiones estaria mezclando eso con cuanta
+ * gente decidio verlo. Sin vistas de 3 segundos, la base es el 25%.
+ */
+export function videoRetention(totals: Omit<VideoTotals, "thruplays" | "avgTimeSeconds">): RetentionPoint[] {
+  const base = totals.videoViews ?? totals.videoP25;
   if (base === null || base === 0) return [];
 
   const at = (value: number | null) =>
     value === null ? null : Number(((value / base) * 100).toFixed(1));
 
   return [
+    { label: "3 seg", percent: at(totals.videoViews) },
     { label: "25%", percent: at(totals.videoP25) },
     { label: "50%", percent: at(totals.videoP50) },
     { label: "75%", percent: at(totals.videoP75) },

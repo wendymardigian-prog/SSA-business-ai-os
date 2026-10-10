@@ -5,6 +5,9 @@ import { getAiTask } from "@/lib/ai-tasks/catalog";
 import { loadTaskRunSummary } from "@/lib/ai-tasks/task-run-summary";
 import { loadTaskInstructions, loadTaskPromptVersions, defaultInstructionsFor, taskIsVersioned } from "@/lib/ai-tasks/store";
 import { technicalPreviewFor } from "@/lib/ai-tasks/technical-preview";
+import { taskModelOf } from "@/lib/ai-tasks/model";
+import { listConnectedAiProviders } from "@/lib/ai/provider";
+import { PROVIDERS } from "@/lib/integrations/providers";
 import { resolveBackgroundSettings } from "@/lib/background/settings";
 import { TASK_LABELS } from "@/lib/background/screen";
 import { loadBackgroundScreen, loadReviewCategories } from "@/lib/background/screen-data";
@@ -61,6 +64,24 @@ export default async function TaskDetailPage({
     };
   }
 
+  // El selector de modelo (solo las tareas que lo tienen): lo guardado, los
+  // proveedores de texto conectados y que modelos tienen precio cargado.
+  let model: TaskScreenData["model"];
+  if (task.hasModelPicker) {
+    const [providers, pricing] = await Promise.all([
+      listConnectedAiProviders(workspace.id, service),
+      supabase.from("model_pricing").select("provider, model").eq("workspace_id", workspace.id),
+    ]);
+    model = {
+      current: taskModelOf((workspace as { ai_task_models?: unknown }).ai_task_models, task.id),
+      picker: {
+        providers,
+        providerLabels: Object.fromEntries(PROVIDERS.map((p) => [p.id, p.label])),
+        pricedModels: ((pricing.data ?? []) as Array<{ provider: string; model: string }>).map((p) => `${p.provider}/${p.model}`),
+      },
+    };
+  }
+
   let runs: TaskScreenData["runs"];
   if (tab === "runs") {
     const permissions = await getPermissionContext();
@@ -100,6 +121,7 @@ export default async function TaskDetailPage({
     quality: backgroundScreen ?? undefined,
     categories,
     instructions,
+    model,
     runs,
   };
 

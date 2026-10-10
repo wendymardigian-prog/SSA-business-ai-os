@@ -30,6 +30,7 @@ export function TaskInstructionsPanel({
   activeText,
   versions,
   technical,
+  variables = [],
 }: {
   taskId: string;
   taskName: string;
@@ -39,6 +40,8 @@ export function TaskInstructionsPanel({
   activeText: string;
   versions: TaskPromptVersion[];
   technical: string;
+  /** Las `{{variables}}` que esta tarea reemplaza en sus instrucciones. */
+  variables?: Array<{ name: string; description: string }>;
 }) {
   const router = useRouter();
   const [text, setText] = useState(activeText);
@@ -77,7 +80,11 @@ export function TaskInstructionsPanel({
   return (
     <Section
       title="Instrucciones"
-      description={`Qué hacer y con qué criterio para "${taskName}". Lo técnico (seguridad y el formato de salida que el código lee después) nunca se edita acá: queda siempre fijo, abajo.`}
+      description={
+        technical
+          ? `Qué hacer y con qué criterio para "${taskName}". Lo técnico (seguridad y el formato de salida que el código lee después) nunca se edita acá: queda siempre fijo, abajo.`
+          : `Qué hacer y con qué criterio para "${taskName}". Es el prompt de sistema completo: la salida es texto libre y no hay una parte técnica fija.`
+      }
     >
       <Field
         label={`Instrucciones (versión activa: ${activeVersion ?? "texto del sistema"})`}
@@ -98,6 +105,18 @@ export function TaskInstructionsPanel({
           />
         )}
       </Field>
+      {variables.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          Podés usar{" "}
+          {variables.map((v, i) => (
+            <span key={v.name}>
+              {i > 0 && ", "}
+              <code className="rounded bg-muted px-1 py-0.5">{`{{${v.name}}}`}</code> ({v.description})
+            </span>
+          ))}
+          : se reemplaza solo en cada análisis.
+        </p>
+      )}
       <Field label="Qué cambiaste (opcional)">
         {(id) => <input id={id} value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} placeholder="Ej: que agrupe por urgencia" className={inputClass} />}
       </Field>
@@ -192,12 +211,14 @@ export function TaskInstructionsPanel({
         )}
       </div>
 
-      <div>
-        <h3 className="text-xs font-semibold text-muted-foreground">Parte técnica (fija, no se edita)</h3>
-        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-dashed border-border bg-muted/40 p-3 text-[11px] text-muted-foreground">
-          {technical}
-        </pre>
-      </div>
+      {technical && (
+        <div>
+          <h3 className="text-xs font-semibold text-muted-foreground">Parte técnica (fija, no se edita)</h3>
+          <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-dashed border-border bg-muted/40 p-3 text-[11px] text-muted-foreground">
+            {technical}
+          </pre>
+        </div>
+      )}
     </Section>
   );
 }

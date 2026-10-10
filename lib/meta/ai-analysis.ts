@@ -15,23 +15,26 @@
 import { computeTotals, money, percent, type AdsRow, type GroupedRow } from "@/lib/dashboards/ads";
 import { groupByObject } from "@/lib/dashboards/ads";
 import { aiLanguageStyle } from "@/lib/ai/language-style";
+import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, interpolate } from "@/lib/ai-tasks/instructions";
 
 export const MAX_CAMPAIGNS = 10;
 export const MAX_ADSETS = 15;
 export const MAX_ADS = 15;
 
-/** Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE, lib/ai/language-style.ts). */
+/**
+ * El prompt de sistema del analisis, con las instrucciones que se le pasen
+ * (las activas de la tarea, o el texto del sistema) y el estilo del cliente.
+ *
+ * Por cliente: forma de hablar de la IA (AI_LANGUAGE_STYLE,
+ * lib/ai/language-style.ts).
+ */
+export function buildAnalysisSystemPrompt(instructions: string = ADS_ANALYSIS_DEFAULT_INSTRUCTIONS): string {
+  return interpolate(instructions, { estilo: aiLanguageStyle() });
+}
+
+/** El prompt por defecto: lo que se usa mientras nadie edite las instrucciones. */
 export function SYSTEM_PROMPT(): string {
-  return `Sos un analista de medios pagos que trabaja para este negocio.
-
-Te paso los numeros reales de una cuenta de Meta Ads. Tu trabajo es decir que esta funcionando, que no, y que conviene hacer.
-
-Reglas:
-- Hablá en ${aiLanguageStyle()}, simple y directo.
-- No inventes numeros: usá solo los que te paso. Si falta un dato, decilo.
-- Priorizá: tres o cuatro cosas concretas, no una lista de veinte.
-- Cada recomendacion tiene que decir sobre QUE objeto (campaña, conjunto o anuncio) y POR QUE, con el numero que lo justifica.
-- Si algo no se puede concluir con estos datos, decilo en vez de suponer.`;
+  return buildAnalysisSystemPrompt();
 }
 
 export interface AnalysisContext {
