@@ -298,6 +298,8 @@ describe("caracterizacion: el menu (F68)", () => {
       "Contactos",
       "Contenido",
       "Dashboards",
+      // Llamadas (decision 152): el Member de sistema tiene calls.view.
+      "Llamadas",
       // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",

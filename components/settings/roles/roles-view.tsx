@@ -43,6 +43,7 @@ const MODULE_LABELS: Record<PermissionModule, string> = {
   knowledge: "Base de conocimiento",
   content: "Contenido",
   scheduling: "Agenda",
+  calls: "Llamadas",
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuracion",
@@ -56,6 +57,7 @@ interface Draft {
   leadsScope: PermissionScope;
   conversationsScope: PermissionScope;
   bookingsScope: PermissionScope;
+  callsScope: PermissionScope;
 }
 
 const emptyDraft = (): Draft => ({
@@ -66,6 +68,7 @@ const emptyDraft = (): Draft => ({
   leadsScope: "own",
   conversationsScope: "own",
   bookingsScope: "own",
+  callsScope: "own",
 });
 
 export function RolesView({
@@ -100,6 +103,7 @@ export function RolesView({
       leadsScope: role.permissions.scopes.leads,
       conversationsScope: role.permissions.scopes.conversations,
       bookingsScope: role.permissions.scopes.bookings,
+      callsScope: role.permissions.scopes.calls,
     });
     setError(null);
     setWarnings([]);
@@ -117,6 +121,7 @@ export function RolesView({
         leadsScope: draft.leadsScope,
         conversationsScope: draft.conversationsScope,
         bookingsScope: draft.bookingsScope,
+        callsScope: draft.callsScope,
       };
 
       const result = draft.id ? await updateRole(draft.id, input) : await createRole(input);
@@ -300,7 +305,7 @@ export function RolesView({
               </label>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <ScopeField
                 label="Que leads ve"
                 module="leads"
@@ -319,6 +324,13 @@ export function RolesView({
                 module="bookings"
                 value={draft.bookingsScope}
                 onChange={(bookingsScope) => setDraft({ ...draft, bookingsScope })}
+              />
+              <ScopeField
+                label="Que llamadas ve"
+                module="calls"
+                hint="Las que grabó o las de contactos que puede ver."
+                value={draft.callsScope}
+                onChange={(callsScope) => setDraft({ ...draft, callsScope })}
               />
             </div>
 

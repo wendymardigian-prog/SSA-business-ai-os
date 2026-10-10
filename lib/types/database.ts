@@ -165,7 +165,9 @@ export type AuditEntityType =
   /** La banca de recursos: textos y audios en una sola tabla (migracion 00105/00106). */
   | "response_asset"
   /** Cambiar el publicador por defecto de una cuenta social (Bloque G, G7). */
-  | "social_account";
+  | "social_account"
+  /** Una llamada de venta (Llamadas, 00145). La configuracion de sus tareas se audita sobre "workspace". */
+  | "call";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -255,7 +257,21 @@ export type AuditAction =
   /** Agenda v2: cambió de anfitrión. */
   | "booking.host_changed"
   /** El agente mando un recurso de audio de la banca. performed_by_agent_id, entity response_asset. */
-  | "agent_asset_sent";
+  | "agent_asset_sent"
+  /** Llamadas (modulo Fathom + analizador). entity call, salvo que se aclare. */
+  | "call.ingested"
+  | "call.imported"
+  | "call.linked"
+  | "call.unlinked"
+  | "call.type_changed"
+  | "call.analyzed"
+  | "call.section_edited"
+  | "call.regenerated"
+  | "call.objection"
+  | "call.objection_resolved"
+  | "call.archived";
+/** Quien hizo la accion (migracion 00144). */
+export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -2233,6 +2249,10 @@ export interface Database {
           /** Marca de reversion desde la pestana Acciones (migracion 00068). */
           reverted_at: string | null;
           reverted_by_audit_id: string | null;
+          /** Quien hizo la accion (00144). Las filas viejas dicen "user": leer con effectiveActorType(). */
+          actor_type: AuditActorType;
+          /** Nombre legible de un actor que no es una persona (00144). */
+          actor_label: string | null;
         };
         Insert: {
           id?: string;
@@ -2247,6 +2267,8 @@ export interface Database {
           performed_at?: string;
           reverted_at?: string | null;
           reverted_by_audit_id?: string | null;
+          actor_type?: AuditActorType;
+          actor_label?: string | null;
         };
         // Inmutable para los usuarios (sin UPDATE ni DELETE en la RLS). Solo el
         // service role marca la reversion.
