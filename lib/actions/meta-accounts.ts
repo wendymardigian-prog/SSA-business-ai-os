@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import {
   applySelection,
@@ -76,7 +77,9 @@ export async function refreshMetaAccounts(): Promise<MetaActionResult<{ accounts
   if (!loaded) return { ok: false, error: "Solo Owner y Admin pueden configurar integraciones" };
 
   const { ctx, config } = loaded;
-  const token = await getMetaToken(ctx.supabase, ctx.workspace.id);
+  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+  // servidor. El workspace sale del guard de Admin, no del pedido.
+  const token = await getMetaToken(await createServiceClient(), ctx.workspace.id);
   if (!token) return { ok: false, error: "Todavia no hay un token de Meta guardado" };
 
   const fetched = await fetchAdAccounts(token);

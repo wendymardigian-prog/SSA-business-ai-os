@@ -245,8 +245,14 @@ de la funcion). `system_config` queda solo con `draft_alerts_since`. La `00138`
 **Auditoria de velocidad y estandar de tareas (10/10/2026).** `00141`
 (`workspace_member_profiles`: el equipo en una consulta, solo service_role) y
 `00142` (CHECK de `ai_task_prompt_versions.task` suma `close_classification`)
-estan **aplicadas** y registradas. **La proxima migracion disponible es la
-`00143`.**
+estan **aplicadas** y registradas.
+
+**`read_secret` solo para el servidor (10/10/2026, rama
+`fix/read-secret-service-only`).** La `00143` le saca a `authenticated` el
+permiso de ejecutar `read_secret`: **escrita, sin aplicar**. Se aplica DESPUES
+de desplegar el codigo que lee las claves con el cliente de servicio (ver
+"Integraciones y secretos"). **La proxima migracion disponible es la
+`00144`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -284,6 +290,7 @@ Todos los secretos viven en **Supabase Vault**, nunca en el `.env` ni en el codi
 - El catalogo de proveedores esta en `lib/integrations/providers.ts`; los nombres de los secretos, en `lib/secret-names.ts`, que **no importa nada** a proposito.
 - `lib/vault-boundary.test.ts` recorre los imports reales desde cada Client Component y falla si alguno llega a `lib/vault.ts` o a `lib/supabase/server.ts`. Ya atajo dos fugas; si aparece un modulo nuevo que no puede ir al navegador, sumarlo ahi.
 - "Probar y guardar" usa la clave contra el proveedor ANTES de escribirla. Una clave revocada guardada deja la card en verde.
+- **`readSecret` siempre con el cliente de servicio** (`createServiceClient`). Desde la 00143 `read_secret` solo la ejecuta `service_role`: ni el Owner lee una clave desde el navegador. Quien puede USAR una clave lo decide el que llama (el guard de Admin, la RLS de la conversacion), y el workspace sale siempre de la sesion, nunca del pedido. La bandeja manda con el cliente del usuario y pasa el de servicio solo para las claves (`sendChannelMessage(..., { secrets })`). Guardar, borrar y listar siguen con la sesion (ninguna devuelve un valor).
 - Doc: `docs/integraciones.md`.
 
 ## Contenido y publicacion

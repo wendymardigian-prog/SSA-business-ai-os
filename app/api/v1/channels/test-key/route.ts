@@ -97,7 +97,9 @@ export async function POST(request: NextRequest) {
   // messages/comments reach the Inbox. Best-effort: a failure here must not
   // block saving the key or syncing channels.
   try {
-    const secret = await getOrCreateWorkspaceWebhookSecret(supabase, workspaceId);
+    // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+    // servidor. El workspace sale de la sesion (getAdminContext).
+    const secret = await getOrCreateWorkspaceWebhookSecret(await createServiceClient(), workspaceId);
     const zernio = createZernioClient(apiKey.trim());
     await ensureWebhookRegistered(zernio, {
       url: channelWebhookUrl("zernio"),

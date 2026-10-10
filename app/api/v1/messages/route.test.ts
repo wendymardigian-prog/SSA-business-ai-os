@@ -24,8 +24,14 @@ vi.mock("@/lib/agent/manual-reply", () => ({ applyManualReply }));
 const { afterMediaStored } = vi.hoisted(() => ({ afterMediaStored: vi.fn(async () => ({})) }));
 vi.mock("@/lib/chat-media/after-stored", () => ({ afterMediaStored }));
 
-const { createClient } = vi.hoisted(() => ({ createClient: vi.fn() }));
-vi.mock("@/lib/supabase/server", () => ({ createClient }));
+// El cliente de servicio es un objeto marcado: solo sirve para comprobar QUE
+// cliente recibe cada llamada (las claves se leen con el, desde la 00143).
+const SERVICE = { __service: true };
+const { createClient, createServiceClient } = vi.hoisted(() => ({
+  createClient: vi.fn(),
+  createServiceClient: vi.fn(),
+}));
+vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 
 import { POST } from "./route";
 
@@ -107,6 +113,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   sendChannelMessage.mockResolvedValue({ ok: true, platformMessageId: "pm-1" });
+  createServiceClient.mockResolvedValue(SERVICE);
 });
 
 describe("POST /api/v1/messages: texto sin media (no-regresion)", () => {
@@ -156,6 +163,8 @@ describe("POST /api/v1/messages: texto sin media (no-regresion)", () => {
       client,
       expect.objectContaining({ workspaceId: WS, channelId: "ch-1", conversationId: CONV }),
       { text: "hola, como estas", media: undefined },
+      // Manda con el cliente del usuario; las claves, con el de servicio.
+      { secrets: SERVICE },
     );
     const inserted = inserts.find((i) => i.table === "messages");
     expect(inserted?.row).toMatchObject({ origin: "user", status: "sent", text: "hola, como estas" });
@@ -179,6 +188,7 @@ describe("POST /api/v1/messages: texto sin media (no-regresion)", () => {
       client,
       expect.objectContaining({ channelId: "ch-ig", lateConversationId: "late-cv-1", lateAccountId: "acc-1" }),
       { text: "hola", media: undefined },
+      { secrets: SERVICE },
     );
   });
 
@@ -219,7 +229,8 @@ describe("POST /api/v1/messages: con media (F19)", () => {
     expect(attachments.items[0]).toMatchObject({ kind: "voice", status: "ready" });
 
     expect(afterMediaStored).toHaveBeenCalledWith(
-      expect.objectContaining({ supabase: client, messageId: "msg-out-1" }),
+      // Como en los webhooks: transcribir lee la key y puede encolar.
+      expect.objectContaining({ supabase: SERVICE, messageId: "msg-out-1" }),
     );
   });
 

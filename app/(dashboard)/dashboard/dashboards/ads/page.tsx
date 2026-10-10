@@ -79,8 +79,11 @@ export default async function AdsDashboardPage({
   const range = resolvePeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
 
-  const token = await getMetaToken(supabase, workspace.id);
-  const aiChoice = await loadTaskModel(await createServiceClient(), workspace.id, "ads_analysis");
+  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+  // servidor. El workspace sale del guard de Admin, no del pedido.
+  const service = await createServiceClient();
+  const token = await getMetaToken(service, workspace.id);
+  const aiChoice = await loadTaskModel(service, workspace.id, "ads_analysis");
 
   const sinceOf = (period: { from: string | null }) => (period.from ? isoToDateInput(period.from, timeZone) : null);
   const untilOf = (period: { to: string | null }) => isoToDateInput(period.to ?? now.toISOString(), timeZone);

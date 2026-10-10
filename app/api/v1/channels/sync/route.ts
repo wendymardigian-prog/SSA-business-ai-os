@@ -139,7 +139,9 @@ export async function POST() {
     // se lo decia a quien tocaba el boton.
     let webhook: { url?: string; action?: string; error?: string };
     try {
-      const secret = await getOrCreateWorkspaceWebhookSecret(supabase, workspace.id);
+      // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+      // servidor. El workspace sale de la sesion (getAdminContext).
+      const secret = await getOrCreateWorkspaceWebhookSecret(await createServiceClient(), workspace.id);
       const url = channelWebhookUrl("zernio");
       const { action } = await ensureWebhookRegistered(zernio, {
         url,

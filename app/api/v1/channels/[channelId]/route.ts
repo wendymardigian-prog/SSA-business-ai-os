@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
@@ -54,7 +55,9 @@ export async function DELETE(
     channel.provider === "evolution" ? null : await getZernioApiKey(workspace.id);
 
   if (channel.provider === "evolution") {
-    const config = await getEvolutionConfig(supabase, workspace.id);
+    // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+    // servidor. El workspace sale del guard de Admin, no del pedido.
+    const config = await getEvolutionConfig(await createServiceClient(), workspace.id);
     if (config && channel.evolution_instance) {
       try {
         await logoutInstance(config, channel.evolution_instance);

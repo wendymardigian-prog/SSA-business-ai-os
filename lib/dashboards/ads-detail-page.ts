@@ -12,6 +12,7 @@ import { previousPeriod, isPeriodPreset, resolvePeriod, type PeriodPreset } from
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
 import { getMetaToken } from "@/lib/meta/token";
+import { createServiceClient } from "@/lib/supabase/server";
 import {
   fetchBreakdown,
   fetchObjectMeta,
@@ -103,7 +104,9 @@ export async function loadDetailPage(params: {
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const range = resolvePeriod(period, now, timeZone);
   const before = previousPeriod(range, now);
-  const token = await getMetaToken(supabase, workspace.id);
+  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+  // servidor. El workspace sale del guard de Admin, no del pedido.
+  const token = await getMetaToken(await createServiceClient(), workspace.id);
 
   const sinceOf = (p: { from: string | null }) => (p.from ? isoToDateInput(p.from, timeZone) : null);
   const untilOf = (p: { to: string | null }) => isoToDateInput(p.to ?? now.toISOString(), timeZone);

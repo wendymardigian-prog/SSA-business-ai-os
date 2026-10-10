@@ -18,6 +18,7 @@
  * se corre en simultaneo con otro.
  *
  *   node scripts/verify-workspace-isolation.mjs
+ *   node scripts/verify-workspace-isolation.mjs --despues-de-00143   # read_secret solo para el servidor
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -61,6 +62,10 @@ async function makeWorkspace(tag, adminId) {
 }
 
 const SECRET = "zz_test_iso";
+// Desde la 00143 `read_secret` solo la ejecuta service_role. Los valores se
+// comprueban con el service role (sirve antes y despues); lo que cambia es si
+// el Admin todavia puede leer el SUYO con su sesion.
+const POST_00143 = process.argv.includes("--despues-de-00143");
 // Los secretos no se van con el workspace (viven en vault.secrets), asi que
 // se anotan aca y se borran en el finally, antes de la limpieza general.
 const secretsToDelete = [];
@@ -80,10 +85,19 @@ try {
       { secret_name: SECRET, secret_value: "valor-de-B", workspace_id: wsB });
     check(!eB, "el Admin de B guarda uno con el MISMO nombre en B", eB?.message);
 
-    const { data: leeA } = await adminA.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
-    const { data: leeB } = await adminB.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsB });
-    check(leeA === "valor-de-A", "A lee su valor");
-    check(leeB === "valor-de-B", "B lee el suyo: no se pisaron"); }
+    const { data: leeA } = await svc.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
+    const { data: leeB } = await svc.rpc("read_secret", { secret_name: SECRET, workspace_id: wsB });
+    check(leeA === "valor-de-A", "A tiene su valor");
+    check(leeB === "valor-de-B", "B tiene el suyo: no se pisaron"); }
+
+  console.log("\n— Leer una clave con la sesion —");
+  { const { data, error } = await adminA.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
+    if (POST_00143) {
+      check(!!error && /permission denied/.test(error.message) && data == null,
+        "el Admin de A NO puede leer ni la suya desde el navegador (00143)", error?.message ?? `devolvio: ${data}`);
+    } else {
+      check(data === "valor-de-A", "el Admin de A todavia lee la suya (antes de la 00143)", error?.message);
+    } }
 
   console.log("\n— El Admin de B no puede tocar los secretos de A —");
   { const { data, error } = await adminB.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
@@ -91,7 +105,7 @@ try {
   { const { error } = await adminB.client.rpc("store_secret",
       { secret_name: SECRET, secret_value: "pisado-por-B", workspace_id: wsA });
     check(forbidden(error), "no puede pisarlo", error?.message);
-    const { data } = await adminA.client.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
+    const { data } = await svc.rpc("read_secret", { secret_name: SECRET, workspace_id: wsA });
     check(data === "valor-de-A", "y el valor de A sigue intacto"); }
   { const { error } = await adminB.client.rpc("store_secret",
       { secret_name: "zz_test_iso_nuevo", secret_value: "x", workspace_id: wsA });
@@ -107,7 +121,9 @@ try {
       "su propia lista no trae nada de A", `vio: ${JSON.stringify(nombres)}`); }
 
   console.log("\n— El nombre no se puede usar para salirse del prefijo —");
-  { const { error } = await adminB.client.rpc("read_secret",
+  // Con el service role: se saltea el chequeo de Admin, asi que lo unico que
+  // lo frena es la validacion del nombre (vault_secret_key).
+  { const { error } = await svc.rpc("read_secret",
       { secret_name: `ws:${wsA}:${SECRET}`, workspace_id: wsB });
     check(!!error, "un nombre con ':' (ws:<A>:...) se rechaza", "la base lo acepto"); }
 

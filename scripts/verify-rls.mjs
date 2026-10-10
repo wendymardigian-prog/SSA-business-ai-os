@@ -13,6 +13,7 @@
  * FUNCIONES: la pasada de hardening (00045-00047) toca grants, no policies.
  *
  *   node scripts/verify-rls.mjs
+ *   node scripts/verify-rls.mjs --despues-de-00143   # read_secret solo para el servidor
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -51,6 +52,9 @@ async function makeUser(tag) {
 // anterior a la 00136 todavia lee: asi el script sirve ANTES de aplicarla (para
 // probar que el codigo nuevo no rompe nada) y DESPUES.
 const POST_00136 = process.argv.includes("--despues-de-00136");
+// Desde la 00143 `read_secret` solo la ejecuta service_role: ni el Owner lee
+// una clave con su sesion. Antes de aplicarla, el Admin todavia la lee.
+const POST_00143 = process.argv.includes("--despues-de-00143");
 const leadScope = leadScopeHelper(svc);
 const flagState = new Map();
 async function setFlags(wsId, flags) {
@@ -373,10 +377,24 @@ try {
   { const { error } = await admin.client.rpc("store_secret",
       { secret_name: "zz_test", secret_value: "abc123", workspace_id: ws.id });
     check(!error, "el Admin puede guardar un secret", error?.message);
-    const { data } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
-    check(data === "abc123", "y leerlo");
+    const { data: leido } = await svc.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
+    check(leido === "abc123", "el servidor (service role) lo lee");
+    if (POST_00143) {
+      const { data, error } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
+      check(!!error && /permission denied/.test(error.message) && data == null,
+        "el Admin NO puede leerlo con su sesion (00143)", error?.message ?? "lo leyo");
+      // El permiso es de la funcion, no del rol: se prueba igual con un Owner.
+      await svc.from("workspace_members").update({ role: "owner" }).eq("workspace_id", ws.id).eq("user_id", admin.id);
+      const { data: dOwner, error: eOwner } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
+      await svc.from("workspace_members").update({ role: "admin" }).eq("workspace_id", ws.id).eq("user_id", admin.id);
+      check(!!eOwner && /permission denied/.test(eOwner.message) && dOwner == null,
+        "ni el Owner (00143)", eOwner?.message ?? "lo leyo");
+    } else {
+      const { data } = await admin.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
+      check(data === "abc123", "el Admin todavia lo lee con su sesion (antes de la 00143)");
+    }
     const { error: e1 } = await member.client.rpc("read_secret", { secret_name: "zz_test", workspace_id: ws.id });
-    check(!!e1 && /forbidden/.test(e1.message), "el Member no puede leer secrets");
+    check(!!e1 && /forbidden|permission denied/.test(e1.message), "el Member no puede leer secrets");
     const { error: e2 } = await member.client.rpc("store_secret",
       { secret_name: "zz_test2", secret_value: "x", workspace_id: ws.id });
     check(!!e2 && /forbidden/.test(e2.message), "ni guardarlos");

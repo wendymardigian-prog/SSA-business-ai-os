@@ -64,6 +64,19 @@ describe("vault", () => {
     await expect(readSecret(client, WS, "k")).rejects.toThrow(/forbidden/);
   });
 
+  it("readSecret con la sesion del usuario (sin EXECUTE desde la 00143) dice que hay que usar el de servicio", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient({ error: { message: "permission denied for function read_secret" } });
+    await expect(readSecret(client, WS, "k")).rejects.toThrow(/createServiceClient/);
+    expect(spy.mock.calls.flat().join(" ")).toContain("createServiceClient");
+  });
+
+  it("un forbidden comun no trae la pista del cliente de servicio", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = fakeClient({ error: { message: "forbidden" } });
+    await expect(readSecret(client, WS, "k")).rejects.not.toThrow(/createServiceClient/);
+  });
+
   it("deleteSecret distingue borrado real de inexistente, y ninguno es error", async () => {
     const borrado = fakeClient({ data: true });
     await expect(deleteSecret(borrado.client, WS, "k")).resolves.toEqual({ ok: true, deleted: true });

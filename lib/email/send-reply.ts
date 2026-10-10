@@ -72,6 +72,12 @@ export async function sendEmailReply(
     /** Sobrescribe el asunto. Sin esto, se deriva del hilo. */
     subject?: string | null;
     fetchImpl?: typeof fetch;
+    /**
+     * Cliente con el que se lee la key de Resend. Por defecto `supabase`. La
+     * bandeja, que manda con el cliente del usuario, pasa el de servicio:
+     * desde la 00143 `read_secret` solo la ejecuta el servidor.
+     */
+    secrets?: Db;
   },
 ): Promise<EmailSendResult> {
   const last = await lastInboundEmail(supabase, params.conversationId);
@@ -97,7 +103,7 @@ export async function sendEmailReply(
     };
   }
 
-  const apiKey = await readSecret(supabase, params.workspaceId, SECRET_NAMES.resendApiKey);
+  const apiKey = await readSecret(params.secrets ?? supabase, params.workspaceId, SECRET_NAMES.resendApiKey);
   if (!apiKey) {
     return {
       ok: false,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { getAdminContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getConnectionState } from "@/lib/evolution-client";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 
@@ -22,7 +23,9 @@ export async function GET(
     return NextResponse.json({ error: "Solo Owner y Admin" }, { status: 403 });
   }
 
-  const config = await getEvolutionConfig(ctx.supabase, ctx.workspace.id);
+  // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
+  // servidor. El workspace sale del guard de Admin, no del pedido.
+  const config = await getEvolutionConfig(await createServiceClient(), ctx.workspace.id);
   if (!config) {
     return NextResponse.json({ error: "WhatsApp no esta configurado" }, { status: 400 });
   }
