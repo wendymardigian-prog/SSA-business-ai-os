@@ -24,7 +24,7 @@ export function InboxView({
   assets,
   canManageAssets = false,
   workspaceName,
-  selected,
+  selected: selectedFromServer,
   total,
   page,
   pageSize,
@@ -46,7 +46,11 @@ export function InboxView({
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
   workspaceName: string;
-  /** La conversacion abierta, resuelta en el servidor desde ?c= (F16). */
+  /**
+   * La conversacion de ?c= resuelta en el servidor al cargar la pagina (F16).
+   * Hace falta solo para un link a una conversacion que no esta en la pagina
+   * de la lista; la que se muestra se decide abajo, en el navegador.
+   */
   selected: Conversation | null;
   total: number;
   page: number;
@@ -110,18 +114,37 @@ export function InboxView({
 
   /**
    * Abrir una conversacion cambia la URL en vez de guardar la fila en un
-   * estado local. Asi el hilo sobrevive a un refresh, el link se puede
-   * compartir, y la conversacion que se muestra es siempre la que el servidor
-   * acaba de traer (antes era una copia congelada al momento del clic, y
-   * despues de un cambio por realtime el encabezado mostraba datos viejos).
+   * estado local. Asi el hilo sobrevive a un refresh y el link se puede
+   * compartir.
+   *
+   * Pero NO va al servidor: la fila ya esta en `conversations`, que es lo que
+   * el servidor acaba de traer (y que el realtime refresca), asi que la que se
+   * muestra nunca es una copia congelada. Antes cada clic volvia a correr la
+   * pagina entera de la bandeja (filtros, miembros, agentes, la banca de
+   * recursos, borradores...) para pintar el mismo listado con otra fila
+   * marcada. `replaceState` actualiza la URL y Next mantiene
+   * `useSearchParams` al dia.
    */
+  const selectedId = searchParams.get("c");
+  const selected = selectedId
+    ? (conversations.find((c) => c.id === selectedId) ?? (selectedFromServer?.id === selectedId ? selectedFromServer : null))
+    : null;
+
+  const replaceQuery = useCallback(
+    (next: URLSearchParams) => {
+      const query = next.toString();
+      window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+    },
+    [pathname],
+  );
+
   const handleSelect = useCallback(
     (c: Conversation) => {
       const next = new URLSearchParams(searchParams.toString());
       next.set("c", c.id);
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      replaceQuery(next);
     },
-    [router, pathname, searchParams],
+    [replaceQuery, searchParams],
   );
 
   /** Telefono: volver del hilo a la lista (saca ?c= de la URL). */
@@ -129,8 +152,8 @@ export function InboxView({
     const next = new URLSearchParams(searchParams.toString());
     next.delete("c");
     setContactSheetOpen(false);
-    router.replace(`${pathname}${next.toString() ? `?${next.toString()}` : ""}`, { scroll: false });
-  }, [router, pathname, searchParams]);
+    replaceQuery(next);
+  }, [replaceQuery, searchParams]);
 
   // Load messages when a conversation is selected
   useEffect(() => {
