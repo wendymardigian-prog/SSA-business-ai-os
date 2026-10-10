@@ -220,8 +220,15 @@ reglas de forma y la escritura con `templates.manage`) y `00132`
 (`touch_response_asset`) estan **aplicadas** y registradas. El plano las
 numeraba 00125/00126, que ya estaban ocupadas. La cabecera de la 00131 tiene
 los cuatro CHECK y las tres policies viejas letra por letra, para volver atras.
-**Revision de octubre (9/10/2026): la proxima migracion disponible es la `00137`**
+**Revision de octubre (9/10/2026): la proxima migracion disponible era la `00137`**
 (ver "Revision de octubre" mas abajo; confirmar con `list_migrations`).
+
+**Agentes IA, instrucciones versionadas (10/10/2026).** `00137` esta
+**aplicada** y registrada: tabla `ai_task_prompt_versions` (historial
+inmutable de instrucciones de tarea, mismo patron que `agent_prompt_versions`)
+y `workspaces.ai_task_prompt_active jsonb default '{}'`. Aditiva: sin version
+activa, cada tarea sigue usando el texto del sistema que ya tenia en el
+codigo. **La proxima migracion disponible es la `00138`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -799,6 +806,45 @@ completo en `docs/PROGRESS-CV4.md`.
 - **`networks[].publisher` no se escribe mas**: el publicador efectivo es
   siempre el `default_publisher` de la cuenta (F13), nunca algo elegido por
   pieza.
+
+# Agentes IA (Bloque Agentes IA, 10/10/2026)
+
+El menu "Agentes" paso a llamarse **Agentes IA** y junta en una sola pantalla
+los agentes y las tareas de IA del sistema (antes repartidas en Ajustes →
+Tareas, que ahora solo redirige). Rama `feat/agentes-ia-tareas`.
+
+## Lo que no se puede romper
+
+- **El catalogo unico de tareas es `lib/ai-tasks/catalog.ts`.** Seis tareas:
+  las cuatro de `BACKGROUND_TASKS` (clasificacion de mensajes, resumen,
+  clasificacion al cierre, indexacion) mas transcripcion de audio y
+  descripcion de imagenes, que gastan IA pero nunca tuvieron pantalla propia.
+  Sumar una tarea es una entrada ahi, no una pantalla nueva.
+- **"Clasificacion al cierre" no tiene `agent_runs.source` propio**: corre
+  adentro del run de `conversation_summary`. El filtro de Origen de Corridas
+  la ofrece como un pseudo-valor que `applyOrigenFilter`
+  (`lib/agent/runs-query.ts`) traduce a `source=conversation_summary` +
+  `status_detail LIKE '%classified%'`, y solo si esa tarea hermana tuvo
+  corridas en el periodo.
+- **Solo se versiona la parte EDITABLE del prompt de una tarea**, nunca la
+  tecnica (anti-inyeccion, el formato de salida que el codigo despues
+  parsea). `lib/ai-tasks/instructions.ts` las separa; con el texto por
+  defecto, el prompt final es byte a byte el mismo de siempre
+  (`instructions.test.ts` lo fija). **Sin version activa, la tarea usa el
+  texto del sistema** (migracion `00137`): no aplicar ninguna version nunca
+  frena una tarea (`loadTaskInstructions`, `lib/ai-tasks/store.ts`, cae al
+  texto del sistema ante cualquier error).
+- **La pestaña Runs de un agente o de una tarea ya NO redirige** a la
+  pantalla global de Corridas (D8, revertida): embebe `<RunsScreen>` con el
+  agente o la tarea como filtro por defecto (`currentAgentId`/`currentOrigen`
+  en `countActiveRunFilters`/`parseRunFilters`) — default, no candado: se
+  puede cambiar desde el mismo menu de Filtros.
+- **El orden de Corridas (`orden` en la URL) reemplaza al viejo `masCaras`.**
+  El atajo "Mas caras" ahora pone `orden=caras`; el link viejo `caras=1`
+  se sigue leyendo (compatibilidad).
+- **"Topes y avisos" arranca colapsada**, en una linea ("Sin topes" o un
+  resumen chico). Mismo componente en Agentes IA y en la pestaña Costos de
+  un agente.
 
 # Buenas practicas de desarrollo
 

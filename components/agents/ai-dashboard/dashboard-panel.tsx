@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiKpiCards } from "./kpi-cards";
 import { SpendChartTabs } from "./spend-chart-tabs";
@@ -71,15 +72,19 @@ export function AiDashboardPanel({
 
   return (
     <section className="mb-6 rounded-xl border border-border">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={!collapsed}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-sm font-medium"
-      >
-        <span>Gasto de IA</span>
-        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", collapsed && "-rotate-90")} aria-hidden />
-      </button>
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button type="button" onClick={toggle} aria-expanded={!collapsed} className="flex flex-1 items-center justify-between gap-2 text-sm font-medium">
+          <span>Gasto de IA</span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", collapsed && "-rotate-90")} aria-hidden />
+        </button>
+        <Link
+          href={`/dashboard/agents/runs${periodQuery ? `?${periodQuery}` : ""}`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ListFilter className="h-3.5 w-3.5" aria-hidden />
+          Ver corridas
+        </Link>
+      </div>
 
       {!collapsed && (
         <div className="space-y-4 border-t border-border p-4">

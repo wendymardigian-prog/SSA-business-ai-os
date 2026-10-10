@@ -40,7 +40,8 @@ export const SETTINGS_TABS: SettingsTab[] = [
     also: ["/dashboard/settings/contenido"],
   },
   { name: "Integraciones", href: "/dashboard/settings/integrations" },
-  { name: "Tareas", href: "/dashboard/settings/background" },
+  // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background
+  // ahora solo redirige, ya no es una pestana de Ajustes.
 ];
 
 /**

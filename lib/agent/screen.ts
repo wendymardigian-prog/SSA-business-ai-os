@@ -11,6 +11,10 @@ import type { ToolConfigOption, ToolOptionSource } from "./tools/types";
  * dependencias de servidor: lo importan los componentes cliente.
  */
 
+/** Orden de la tabla de Corridas (Bloque Agentes IA). "recientes" es el default. */
+export const RUN_ORDERS = ["recientes", "antiguas", "caras", "baratas", "lentas", "rapidas"] as const;
+export type RunOrder = (typeof RUN_ORDERS)[number];
+
 /** Filtros de la pestana Runs, ya validados contra lo que existe. */
 export interface RunFilters {
   page: number;
@@ -38,8 +42,12 @@ export interface RunFilters {
   sinPrecio: boolean;
   /** Atajo "Más lentas de 30 s" (R2). */
   masLentas: boolean;
-  /** Atajo "Más caras" (R2): ordena por cost_usd descendente en vez de por fecha. Solo con permiso de costo. */
-  masCaras: boolean;
+  /**
+   * Orden de la tabla (Bloque Agentes IA). "caras"/"baratas" solo valen con
+   * permiso de costo; sin el, se cae a "recientes". Reemplaza al viejo
+   * `masCaras`: el atajo "Más caras" ahora pone `orden=caras` directo.
+   */
+  orden: RunOrder;
 }
 
 export interface RunStepRow {
@@ -96,24 +104,20 @@ export interface RunsScreenOptions {
   rules: Array<{ value: string; label: string }>;
 }
 
+/**
+ * Lo que necesita `<RunsScreen>` (Bloque Agentes IA): la pestaña Runs de un
+ * agente o de una tarea embebe la misma pantalla que Corridas, con el filtro
+ * de ese agente/tarea ya puesto y sin salir de las pestañas (reemplaza el
+ * redirect viejo, D8).
+ */
 export interface RunsTabData {
-  filters: RunFilters;
   rows: RunRow[];
   total: number;
   pageSize: number;
-  /** Si el workspace tiene algun run (para distinguir "vacio" de "el filtro no encontro"). */
-  anyRuns: boolean;
-  /** Salud del refresco contra Zernio en 7 días (F12). */
-  refreshHealth: { total: number; failedPct: number };
-  options: {
-    agents: Array<{ id: string; name: string }>;
-    channels: Array<{ id: string; label: string }>;
-    models: string[];
-    tools: Array<{ name: string; label: string }>;
-    /** Las reglas de respuesta, ya con nombre legible (§15.4). */
-    rules: Array<{ value: string; label: string }>;
-  };
+  filters: RunFilters;
   showCost: boolean;
+  isAdmin: boolean;
+  options: RunsScreenOptions;
 }
 
 export interface ActionFilters {

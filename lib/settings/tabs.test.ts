@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { activeSettingsTab, SETTINGS_TABS } from "./tabs";
 
 describe("SETTINGS_TABS", () => {
-  it("tiene las siete pestañas en orden", () => {
+  it("tiene las seis pestañas en orden (Tareas se mudo a Agentes IA)", () => {
     expect(SETTINGS_TABS.map((t) => t.name)).toEqual([
       "General",
       "Equipo y roles",
@@ -10,7 +10,6 @@ describe("SETTINGS_TABS", () => {
       "Recursos",
       "Productos",
       "Integraciones",
-      "Tareas",
     ]);
   });
 });
@@ -62,10 +61,8 @@ describe("activeSettingsTab", () => {
     );
   });
 
-  it("marca Tareas en /background", () => {
-    expect(activeSettingsTab("/dashboard/settings/background")).toBe(
-      "/dashboard/settings/background",
-    );
+  it("/background ya no marca ninguna pestaña de Ajustes (ahora solo redirige a Agentes IA)", () => {
+    expect(activeSettingsTab("/dashboard/settings/background")).toBe("");
   });
 
   it("no marca ninguna pestaña fuera de Ajustes", () => {

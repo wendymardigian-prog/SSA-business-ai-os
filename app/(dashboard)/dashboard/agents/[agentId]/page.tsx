@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { readWorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
@@ -9,11 +9,14 @@ import { listConnectedAiProviders } from "@/lib/ai/provider";
 import { PROVIDERS } from "@/lib/integrations/providers";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { platformLabel } from "@/lib/platforms";
-import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type TagsTabData } from "@/lib/agent/screen";
+import { toScreenAgent, type ActionsTabData, type AgentScreenData, type CostsTabData, type HeaderKpis, type RunsTabData, type TagsTabData } from "@/lib/agent/screen";
 import { agentUsableTagIds } from "@/lib/tags/effects";
 import { serializeSkillsForScreen, serializeToolsForScreen } from "@/lib/agent/tools/config";
 import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/actions-query";
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
+import { loadRuns, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
+import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
+import { getPermissionContext } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
@@ -48,9 +51,6 @@ export default async function AgentDetailPage({
 
   const { tabs, defaultTab } = tabsForViewer(typeDef, isAdmin);
   const requested = typeof query.tab === "string" ? query.tab : defaultTab;
-  // Runs ya no es una pestaña propia (D8): un link viejo a ?tab=runs va a la
-  // pantalla global de Corridas, con este agente como filtro.
-  if (requested === "runs") redirect(`/dashboard/agents/runs?agente=${agent.id}`);
   const tab = tabs.find((t) => t.key === requested && t.available)?.key ?? defaultTab;
 
   const [versionsRes, providers, pricingRes, channelsRes, docsRes, triggersRes, members, tagsRes] = await Promise.all([
@@ -113,6 +113,37 @@ export default async function AgentDetailPage({
     screenAgent.monthlyCostLimitUsd = null;
     screenAgent.systemPrompt = "";
     screenAgent.toolsConfig = {};
+  }
+
+  // Runs (D8, revertido): la pestaña ya no redirige a la pantalla global de
+  // Corridas, la embebe. Mismo camino que esa pantalla (loadRunsScreenInputs
+  // + loadRuns), con este agente fijo (currentAgentId): no cuenta como
+  // filtro activo y el selector de Agente arranca en el.
+  let runs: RunsTabData | undefined;
+  if (tab === "runs") {
+    const permissions = await getPermissionContext();
+    const includeCost = permissions.can("ai_costs.view");
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) if (typeof v === "string") sp.set(k, v);
+    const { filters, dateRange, client, agents: runAgents, channels: runChannels, options } = await loadRunsScreenInputs({
+      workspaceId: workspace.id,
+      timeZone: viewerTimezone,
+      service,
+      userClient: supabase,
+      includeCost,
+      searchParams: sp,
+      rawParams: query,
+      currentAgentId: agent.id,
+    });
+    const { rows, total } = await loadRuns(client, {
+      workspaceId: workspace.id,
+      filters,
+      includeCost,
+      agentNames: new Map(runAgents.map((a) => [a.id, a.name])),
+      channelLabels: new Map(runChannels.map((c) => [c.id, c.label])),
+      dateRange,
+    });
+    runs = { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin, options };
   }
 
   let actions: ActionsTabData | undefined;
@@ -241,6 +272,7 @@ export default async function AgentDetailPage({
     kpis,
     costs,
     actions,
+    runs,
     tags,
     agent: screenAgent,
     tools: serializeToolsForScreen(),
@@ -274,5 +306,5 @@ export default async function AgentDetailPage({
     flowsCapturingAll: [...flowsCapturingAll].map(([id, name]) => ({ id, name })),
   };
 
-  return <AgentDetailView data={data} typeDef={typeDef} tab={tab} />;
+  return <AgentDetailView data={data} typeDef={typeDef} tab={tab} timeZone={viewerTimezone} />;
 }

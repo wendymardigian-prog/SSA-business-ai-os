@@ -148,6 +148,8 @@ export type AuditEntityType =
   | "sequence_enrollment"
   /** Configuracion de un agente de IA (Fase 3). */
   | "agent"
+  /** Instrucciones de una tarea de IA, no un agente (migracion 00137). */
+  | "ai_task"
   /** Una etiqueta del workspace: su efecto sobre el agente (Bloque 2d-A). */
   | "tag"
   /** Patrones de mensajes (Bloque 4): categorías y textos. */
@@ -600,6 +602,8 @@ export interface Database {
           ai_daily_limit_action: CostLimitAction;
           ai_monthly_limit_action: CostLimitAction;
           ai_spend_alert_pct: number | null;
+          /** Version activa de las instrucciones de cada tarea de IA (migracion 00137). {} = todas en el texto del sistema. */
+          ai_task_prompt_active: Json;
           created_at: string;
           updated_at: string;
         };
@@ -628,6 +632,7 @@ export interface Database {
           ai_daily_limit_action?: CostLimitAction;
           ai_monthly_limit_action?: CostLimitAction;
           ai_spend_alert_pct?: number | null;
+          ai_task_prompt_active?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -656,6 +661,7 @@ export interface Database {
           ai_daily_limit_action?: CostLimitAction;
           ai_monthly_limit_action?: CostLimitAction;
           ai_spend_alert_pct?: number | null;
+          ai_task_prompt_active?: Json;
           updated_at?: string;
         };
         Relationships: [];
@@ -2730,6 +2736,36 @@ export interface Database {
           agent_id: string;
           version: number;
           system_prompt: string;
+          note?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        // Inmutable: sin UPDATE en la RLS.
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      /**
+       * Historial de instrucciones (la parte editable del prompt) de las
+       * tareas de IA, mismo patron que agent_prompt_versions (migracion
+       * 00137). Solo Owner/Admin; nadie actualiza ni borra una version.
+       */
+      ai_task_prompt_versions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          task: "message_classification" | "conversation_summary" | "media_description";
+          version: number;
+          instructions: string;
+          note: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          task: "message_classification" | "conversation_summary" | "media_description";
+          version: number;
+          instructions: string;
           note?: string | null;
           created_by?: string | null;
           created_at?: string;

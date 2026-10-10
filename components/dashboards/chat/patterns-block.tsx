@@ -466,7 +466,7 @@ export function QualityLineRow({
         <b className="font-semibold text-foreground">{unclassifiedPending}</b> sin clasificar
         {classifiedToday > 0 && <span> · {classifiedToday} clasificados hoy</span>}
       </span>
-      <Link href="/dashboard/settings/background" className="ml-auto font-medium text-primary underline-offset-2 hover:underline">
+      <Link href="/dashboard/agents/tareas/message_classification" className="ml-auto font-medium text-primary underline-offset-2 hover:underline">
         Ver calidad y configuración →
       </Link>
     </div>

@@ -17,7 +17,7 @@ import { can, systemRolePermissions, type RolePermissions } from "@/lib/auth/per
 
 const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
-/** Las ocho pestañas (Contenido se sumó con F89 y hoy es Productos), con el archivo que resuelve la ruta y el guard que usa hoy. */
+/** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
   general: { file: "page.tsx", guardMarker: "requireWorkspaceAdmin" },
   team: { file: "team/page.tsx", guardMarker: "requireWorkspaceAdmin" },
@@ -31,7 +31,6 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   // admin al que se lo sacaron no.
   productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
   integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
-  background: { file: "background/page.tsx", guardMarker: "requireWorkspaceAdmin" },
 };
 
 describe("Bloque S — guard de cada pestaña (no cambia en S1-S7)", () => {
@@ -59,7 +58,6 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
     recursos: true,
     productos: can(permissions, "settings.manage"),
     integrations: admin,
-    background: admin,
   };
 }
 
@@ -71,15 +69,14 @@ const ALL_VISIBLE = {
   recursos: true,
   productos: true,
   integrations: true,
-  background: true,
 };
 
 describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
-  it("Owner ve las ocho", () => {
+  it("Owner ve las siete", () => {
     expect(visibleTabs("owner", systemRolePermissions("owner")!)).toEqual(ALL_VISIBLE);
   });
 
-  it("Admin ve las ocho", () => {
+  it("Admin ve las siete", () => {
     expect(visibleTabs("admin", systemRolePermissions("admin")!)).toEqual(ALL_VISIBLE);
   });
 
@@ -92,7 +89,6 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       recursos: true,
       productos: false,
       integrations: false,
-      background: false,
     });
   });
 
@@ -116,7 +112,6 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       recursos: true,
       productos: false,
       integrations: false,
-      background: false,
     });
   });
 
@@ -134,7 +129,6 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       recursos: true,
       productos: true,
       integrations: false,
-      background: false,
     });
   });
 });

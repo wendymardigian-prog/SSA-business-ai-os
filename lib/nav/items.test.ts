@@ -116,7 +116,7 @@ describe("Agenda en el menu (F8)", () => {
     // Los nombres cambiaron (bloque N) y el orden ahora sigue a los grupos.
     const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] }).map((i) => i.name);
     // Recursos (banca v2, F3) es visible para todos.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Automatizaciones", "Agentes", "Recursos"]);
+    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Automatizaciones", "Agentes IA", "Recursos"]);
   });
 });
 

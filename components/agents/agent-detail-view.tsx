@@ -16,6 +16,8 @@ import { ToolsTab } from "./tools-tab";
 import { ActionsTab } from "./actions-tab";
 import { CostsTab } from "./costs-tab";
 import { TagsTab } from "./tags-tab";
+import { RunsScreen } from "./runs-screen";
+import { AiPeriodControl } from "./ai-dashboard/period-control";
 import { formatUsd } from "./filters";
 import { PageHeader } from "@/components/page-header";
 
@@ -27,6 +29,9 @@ import { PageHeader } from "@/components/page-header";
 const TAB_CONTENT: Record<string, (props: { data: AgentScreenData; typeDef: AgentTypeDefinition }) => React.ReactNode> = {
   config: (p) => <ConfigTab {...p} />,
   tools: (p) => <ToolsTab {...p} />,
+  // Runs (D8, revertido): la pestaña embebe la pantalla de Corridas con el
+  // filtro de este agente ya puesto, en vez de mandar a la pantalla global.
+  runs: (p) => (p.data.runs ? <RunsScreen {...p.data.runs} currentAgentId={p.data.agent.id} /> : null),
   actions: (p) => <ActionsTab {...p} />,
   costs: (p) => <CostsTab {...p} />,
   knowledge: (p) => <KnowledgeTab {...p} />,
@@ -38,10 +43,13 @@ export function AgentDetailView({
   data,
   typeDef,
   tab,
+  timeZone,
 }: {
   data: AgentScreenData;
   typeDef: AgentTypeDefinition;
   tab: string;
+  /** Para el selector de período de la pestaña Runs (Bloque Agentes IA). */
+  timeZone: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -80,6 +88,7 @@ export function AgentDetailView({
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Link>
         }
+        filters={tab === "runs" ? <AiPeriodControl timezone={timeZone} /> : undefined}
       />
       <div className="border-b border-border px-4 pt-4 md:px-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -148,9 +157,7 @@ export function AgentDetailView({
             t.available ? (
               <Link
                 key={t.key}
-                // Runs (D8): ya no es una pestaña propia, es la pantalla
-                // global de Corridas con el filtro de este agente puesto.
-                href={t.key === "runs" ? `/dashboard/agents/runs?agente=${agent.id}` : `/dashboard/agents/${agent.id}?tab=${t.key}`}
+                href={`/dashboard/agents/${agent.id}?tab=${t.key}`}
                 aria-current={tab === t.key ? "page" : undefined}
                 className={cn(
                   "whitespace-nowrap border-b-2 px-3 pb-3 text-sm font-medium transition-colors",

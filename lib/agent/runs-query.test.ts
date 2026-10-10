@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countActiveRunFilters, loadRuns, parseRunFilters, RUNS_PAGE_SIZE } from "./runs-query";
+import { applyOrigenFilter, countActiveRunFilters, loadRuns, orderColumn, parseRunFilters, RUNS_PAGE_SIZE } from "./runs-query";
 import type { RunFilters } from "./screen";
 
 /**
@@ -216,5 +216,99 @@ describe("parseRunFilters", () => {
   it("cuenta los filtros activos (el agente de la pestana no cuenta)", () => {
     const f = parseRunFilters({ agente: "todos", resultado: "responded", fecha: "hoy" }, known);
     expect(countActiveRunFilters(f, "agent-1")).toBe(3);
+  });
+
+  it("orden: sin nada en la URL, 'recientes'", () => {
+    expect(parseRunFilters({}, known).orden).toBe("recientes");
+  });
+
+  it("orden: un valor valido pasa tal cual", () => {
+    expect(parseRunFilters({ orden: "lentas" }, known).orden).toBe("lentas");
+    expect(parseRunFilters({ orden: "antiguas" }, known).orden).toBe("antiguas");
+  });
+
+  it("orden: un valor inventado cae a 'recientes'", () => {
+    expect(parseRunFilters({ orden: "al-azar" }, known).orden).toBe("recientes");
+  });
+
+  it("orden: 'caras'/'baratas' sin permiso de costo caen a 'recientes'", () => {
+    expect(parseRunFilters({ orden: "caras" }, { ...known, allowCost: false }).orden).toBe("recientes");
+    expect(parseRunFilters({ orden: "baratas" }, { ...known, allowCost: false }).orden).toBe("recientes");
+  });
+
+  it("compatibilidad: el link viejo 'caras=1' sigue poniendo orden=caras", () => {
+    expect(parseRunFilters({ caras: "1" }, known).orden).toBe("caras");
+    expect(parseRunFilters({ caras: "1" }, { ...known, allowCost: false }).orden).toBe("recientes");
+  });
+
+  it("origen admite siempre el pseudo-valor close_classification (no es un source real): quien decide si ofrecerlo como opcion es runs-screen-data.ts", () => {
+    const f = parseRunFilters({ origen: "close_classification" }, { ...known, sources: ["agent"] });
+    expect(f.origen).toBe("close_classification");
+  });
+});
+
+describe("applyOrigenFilter", () => {
+  function fakeQuery() {
+    const calls: Array<{ fn: string; args: unknown[] }> = [];
+    const chain = {
+      eq: (...args: unknown[]) => {
+        calls.push({ fn: "eq", args });
+        return chain;
+      },
+      like: (...args: unknown[]) => {
+        calls.push({ fn: "like", args });
+        return chain;
+      },
+    };
+    return { chain, calls };
+  }
+
+  it("un source real: un solo eq", () => {
+    const { chain, calls } = fakeQuery();
+    applyOrigenFilter(chain, "agent");
+    expect(calls).toEqual([{ fn: "eq", args: ["source", "agent"] }]);
+  });
+
+  it("close_classification: source=conversation_summary y status_detail LIKE %classified%", () => {
+    const { chain, calls } = fakeQuery();
+    applyOrigenFilter(chain, "close_classification");
+    expect(calls).toEqual([
+      { fn: "eq", args: ["source", "conversation_summary"] },
+      { fn: "like", args: ["status_detail", "%classified%"] },
+    ]);
+  });
+});
+
+describe("orderColumn", () => {
+  it("default y 'recientes': created_at descendente", () => {
+    expect(orderColumn(undefined, true)).toEqual({ col: "created_at", ascending: false });
+    expect(orderColumn("recientes", true)).toEqual({ col: "created_at", ascending: false });
+  });
+  it("antiguas: created_at ascendente", () => {
+    expect(orderColumn("antiguas", true)).toEqual({ col: "created_at", ascending: true });
+  });
+  it("lentas/rapidas: latency_ms", () => {
+    expect(orderColumn("lentas", true)).toEqual({ col: "latency_ms", ascending: false });
+    expect(orderColumn("rapidas", true)).toEqual({ col: "latency_ms", ascending: true });
+  });
+  it("caras/baratas: cost_usd, solo con permiso de costo", () => {
+    expect(orderColumn("caras", true)).toEqual({ col: "cost_usd", ascending: false });
+    expect(orderColumn("baratas", true)).toEqual({ col: "cost_usd", ascending: true });
+    expect(orderColumn("caras", false)).toEqual({ col: "created_at", ascending: false });
+    expect(orderColumn("baratas", false)).toEqual({ col: "created_at", ascending: false });
+  });
+});
+
+describe("parseRunFilters / countActiveRunFilters: currentOrigen (pestaña de una tarea)", () => {
+  it("sin origen en la URL, usa el de la tarea; no cuenta como filtro activo", () => {
+    const f = parseRunFilters({}, { ...known, currentOrigen: "message_classification" });
+    expect(f.origen).toBe("message_classification");
+    expect(countActiveRunFilters(f, known.currentAgentId, "message_classification")).toBe(0);
+  });
+
+  it("un origen distinto puesto a mano SI cuenta como filtro activo", () => {
+    const f = parseRunFilters({ origen: "agent" }, { ...known, sources: ["agent"], currentOrigen: "message_classification" });
+    expect(f.origen).toBe("agent");
+    expect(countActiveRunFilters(f, known.currentAgentId, "message_classification")).toBe(1);
   });
 });

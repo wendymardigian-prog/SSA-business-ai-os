@@ -6,6 +6,8 @@ import { getWorkspaceModel } from "@/lib/ai/provider";
 import { openAiRun } from "@/lib/ai/run";
 import { parseAttachments } from "@/lib/messages/attachments";
 import { CHAT_MEDIA_BUCKET } from "@/lib/chat-media/bucket";
+import { MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS } from "@/lib/ai-tasks/instructions";
+import { loadTaskInstructions } from "@/lib/ai-tasks/store";
 
 type Db = SupabaseClient<Database>;
 
@@ -49,12 +51,8 @@ const MAX_CHARS = 300;
  */
 const VISION_PROVIDERS = ["openai", "google_ai", "anthropic"];
 
-const PROMPT = [
-  "Describí esta imagen en español, en una sola frase de máximo 300 caracteres.",
-  "Decí qué se ve y, si la imagen tiene texto (por ejemplo una captura de pantalla),",
-  "transcribí lo que dice el texto, que es lo más importante.",
-  "No interpretes ni opines: describí.",
-].join(" ");
+/** El texto de siempre, igual a `MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS` (Agentes IA). */
+const PROMPT = MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS;
 
 /**
  * La descripcion de la imagen de un mensaje. Nunca lanza para lo permanente.
@@ -148,6 +146,10 @@ export async function describeMessageMedia(
     model: resolved.modelId ?? null,
   });
 
+  // Las instrucciones editables de la tarea (Agentes IA): sin version activa,
+  // o si algo falla al leerla, se usa PROMPT (el texto del sistema).
+  const instructions = await loadTaskInstructions(supabase, claimed.workspace_id, "media_description");
+
   let text: string;
   try {
     const result = await generateText({
@@ -156,7 +158,7 @@ export async function describeMessageMedia(
         {
           role: "user",
           content: [
-            { type: "text", text: PROMPT },
+            { type: "text", text: instructions.text || PROMPT },
             { type: "image", image: bytes, mediaType: image.mime ?? "image/jpeg" },
           ],
         },
