@@ -1,0 +1,160 @@
+
+.glow-border-card.glow-active .fc-dim-text {
+  color: rgb(255, 255, 255);
+}
+
+/* ─── Admin Shell: lavender light theme ─────────────────────────── */
+.admin-shell {
+  --admin-bg: 250 60% 97%;
+  --admin-surface: 0 0% 100%;
+  --admin-border: 258 60% 93%;
+  --admin-border-strong: 258 40% 88%;
+  --admin-muted: 240 12% 48%;
+  --admin-strong: 240 30% 14%;
+  --admin-soft: 260 70% 98%;
+  --admin-accent: 262 83% 58%;
+  --admin-accent-pink: 330 81% 60%;
+
+  /* Override semantic tokens locally so existing components adopt the theme */
+  --background: var(--admin-bg);
+  --foreground: var(--admin-strong);
+  --card: var(--admin-surface);
+  --card-foreground: var(--admin-strong);
+  --popover: var(--admin-surface);
+  --popover-foreground: var(--admin-strong);
+  --primary: var(--admin-accent);
+  --primary-foreground: 0 0% 100%;
+  --secondary: 260 50% 96%;
+  --secondary-foreground: var(--admin-strong);
+  --muted: 260 40% 96%;
+  --muted-foreground: var(--admin-muted);
+  --accent: 260 60% 95%;
+  --accent-foreground: var(--admin-accent);
+  --border: var(--admin-border);
+  --input: var(--admin-border);
+  --ring: var(--admin-accent);
+
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: var(--admin-strong);
+  --sidebar-primary: var(--admin-accent);
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 260 60% 96%;
+  --sidebar-accent-foreground: var(--admin-accent);
+  --sidebar-border: var(--admin-border);
+  --sidebar-ring: var(--admin-accent);
+
+  background: hsl(var(--admin-bg));
+  color: hsl(var(--admin-strong));
+}
+
+.admin-shell .bg-admin-grad {
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+}
+.admin-shell .bg-admin-grad-soft {
+  background: linear-gradient(135deg, #faf5ff 0%, #fdf2f8 100%);
+}
+.admin-shell .text-admin-grad {
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.admin-shell .admin-card {
+  background: hsl(var(--admin-surface));
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.04), 0 1px 0 rgba(255,255,255,0.6) inset;
+}
+
+.admin-shell .admin-kpi {
+  position: relative;
+  background: hsl(var(--admin-surface));
+  border: 1px solid hsl(var(--admin-border));
+  border-radius: 16px;
+  padding: 14px 16px 14px 18px;
+  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.04);
+}
+.admin-shell .admin-kpi::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 14px; bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #a855f7 0%, #ec4899 100%);
+}
+.admin-shell .admin-kpi-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--admin-muted));
+  font-weight: 500;
+}
+.admin-shell .admin-kpi-value {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: hsl(var(--admin-strong));
+  margin-top: 4px;
+  letter-spacing: -0.01em;
+}
+.admin-shell .admin-kpi-sub {
+  font-size: 11px;
+  margin-top: 4px;
+  color: hsl(var(--admin-muted));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.admin-shell .admin-delta-up { color: #16a34a; font-weight: 600; }
+.admin-shell .admin-delta-down { color: #dc2626; font-weight: 600; }
+
+.admin-shell .admin-pill-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  border: 1px solid #d1fae5;
+  font-size: 11px; font-weight: 500;
+  color: #047857;
+}
+.admin-shell .admin-pill-live::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.18);
+}
+
+.admin-shell .admin-section-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--admin-muted));
+  font-weight: 500;
+}
+
+.admin-shell .admin-table thead th {
+  background: hsl(var(--admin-soft));
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: hsl(var(--admin-muted));
+  font-weight: 500;
+  padding: 10px 12px;
+}
+.admin-shell .admin-table tbody tr {
+  border-top: 1px solid hsl(var(--admin-border));
+}
+.admin-shell .admin-table tbody tr:hover {
+  background: hsl(var(--admin-soft));
+}
+
+/* Soft scrollbar inside admin */
+.admin-shell ::-webkit-scrollbar { width: 10px; height: 10px; }
+.admin-shell ::-webkit-scrollbar-thumb {
+  background: hsl(258 30% 85%);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.admin-shell ::-webkit-scrollbar-thumb:hover { background-color: hsl(258 40% 75%); background-clip: content-box; }

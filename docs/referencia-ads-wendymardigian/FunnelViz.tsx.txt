@@ -1,0 +1,92 @@
+// Shared funnel visualization + conversion helpers
+
+export const getRoas = (purchaseRoas: any[] | undefined): number =>
+  Number(purchaseRoas?.find((r: any) =>
+    r.action_type === "omni_purchase" || r.action_type === "purchase"
+  )?.value ?? 0);
+
+export const getConversionValue = (actionValues: any[] | undefined): number =>
+  actionValues?.reduce((sum: number, a: any) =>
+    a.action_type === "omni_purchase" || a.action_type === "purchase"
+      ? sum + Number(a.value ?? 0)
+      : sum
+  , 0) ?? 0;
+
+export const getPurchases = (actions: any[] | undefined): number =>
+  Number(actions?.find((a: any) =>
+    a.action_type === "omni_purchase" || a.action_type === "purchase"
+  )?.value ?? 0);
+
+export const getLeadsFromActions = (actions: any[] | undefined): number =>
+  actions?.filter((a: any) =>
+    a.action_type === "lead" ||
+    a.action_type.includes("lead") ||
+    a.action_type.includes("complete_registration")
+  ).reduce((acc: number, a: any) => acc + Number(a.value ?? 0), 0) ?? 0;
+
+export function FunnelViz({
+  steps,
+  roas,
+  convValue,
+}: {
+  steps: { label: string; value: number; pct: number; fmt: string }[];
+  roas: number;
+  convValue: number;
+}) {
+  const maxWidth = 100;
+  const widths = steps.map((_, i) =>
+    Math.max(maxWidth - i * (maxWidth / steps.length) * 0.4, 20)
+  );
+
+  return (
+    <div className="space-y-1">
+      {steps.map((step, i) => (
+        <div key={step.label} className="flex flex-col items-center gap-0.5">
+          <div className="w-full flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-24 text-right shrink-0">
+              {step.label}
+            </span>
+            <div className="flex-1 flex justify-center">
+              <div
+                className="h-8 rounded flex items-center justify-center transition-all"
+                style={{
+                  width: `${widths[i]}%`,
+                  backgroundColor: `hsl(${262 - i * 20} 80% ${45 + i * 8}%)`,
+                }}
+              >
+                <span className="text-xs font-medium text-white">{step.fmt}</span>
+              </div>
+            </div>
+            <span className="text-xs text-muted-foreground w-14 shrink-0">
+              {i === 0 ? "100%" : `${step.pct.toFixed(1)}%`}
+            </span>
+          </div>
+
+          {i < steps.length - 1 && (
+            <div className="flex items-center gap-3 w-full py-0.5">
+              <div className="w-24" />
+              <div className="flex-1 flex justify-center">
+                <span className="text-xs text-muted-foreground">
+                  ↓ {(100 - steps[i + 1].pct).toFixed(1)}% drop-off
+                </span>
+              </div>
+              <div className="w-14" />
+            </div>
+          )}
+        </div>
+      ))}
+
+      {roas > 0 && (
+        <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">ROAS total</span>
+          <div className="text-right">
+            <span className="text-sm font-bold text-emerald-500">{roas.toFixed(2)}x</span>
+            <span className="text-xs text-muted-foreground ml-2">
+              (${convValue.toFixed(2)} en ventas)
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

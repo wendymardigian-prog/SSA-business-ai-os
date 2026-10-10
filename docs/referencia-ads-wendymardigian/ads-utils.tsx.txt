@@ -1,0 +1,67 @@
+import { Loader2, Target } from "lucide-react";
+
+const fmt = (n: string | number | undefined, decimals = 0) =>
+  Number(n ?? 0).toLocaleString("es-AR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+export const fmtMoney = (n: string | number | undefined) => `$${fmt(n, 2)}`;
+
+export function PlacementCard({ placements, loading }: { placements: any[]; loading: boolean }) {
+  const agg = placements.map((p: any) => ({
+    name: `${(p.publisher_platform ?? "?").replace(/_/g, " ")} · ${(p.platform_position ?? "?").replace(/_/g, " ")}`,
+    spend: Number(p.spend ?? 0),
+    impressions: Number(p.impressions ?? 0),
+    clicks: Number(p.clicks ?? 0),
+    ctr: Number(p.ctr ?? 0),
+  }));
+  const totalSpend = agg.reduce((acc, p) => acc + p.spend, 0);
+  const sorted = [...agg].sort((a, b) => b.spend - a.spend);
+  const best = [...agg].filter(p => p.impressions > 0).sort((a, b) => b.ctr - a.ctr)[0];
+  const worst = [...agg].filter(p => p.impressions > 0).sort((a, b) => a.ctr - b.ctr)[0];
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
+        <Target className="w-3.5 h-3.5" /> Gasto por placement
+      </p>
+
+      {loading ? (
+        <div className="py-8 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : agg.length === 0 ? (
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Sin datos de placement
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {sorted.slice(0, 6).map((p, i) => {
+              const pct = totalSpend > 0 ? (p.spend / totalSpend) * 100 : 0;
+              return (
+                <div key={i} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-xs">
+                  <p className="truncate text-foreground capitalize" title={p.name}>{p.name}</p>
+                  <div className="w-24 h-1.5 bg-muted rounded overflow-hidden">
+                    <div className="h-full bg-primary rounded" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-foreground font-medium tabular-nums w-16 text-right">{fmtMoney(p.spend)}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {best && (
+            <div className="pt-3 border-t border-border/50 space-y-1 text-[11px]">
+              <p className="text-green-600">▲ Mejor CTR: <span className="capitalize">{best.name}</span> — {best.ctr.toFixed(2)}%</p>
+              {worst && worst.name !== best.name && (
+                <p className="text-destructive">▼ Peor CTR: <span className="capitalize">{worst.name}</span> — {worst.ctr.toFixed(2)}%</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

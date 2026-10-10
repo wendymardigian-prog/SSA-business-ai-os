@@ -1,0 +1,45 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
+/**
+ * Shared skeletons for the admin Ads dashboards.
+ * Visual-only — no logic.
+ */
+
+export function KpiSkeleton({ cols = 8 }: { cols?: number }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-3">
+      <div className="grid grid-cols-4 lg:grid-cols-8 gap-3 divide-x divide-border/60">
+        {Array.from({ length: cols }).map((_, i) => (
+          <div key={i} className={`px-3 ${i === 0 ? "pl-0" : ""} space-y-2`}>
+            <Skeleton className="h-3 w-14" />
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-3 w-10" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ChartSkeleton({ height = "h-48" }: { height?: string }) {
+  return <Skeleton className={`w-full ${height} rounded-lg`} />;
+}
+
+export function SectionSkeleton({ rows = 4, height = "h-4" }: { rows?: number; height?: string }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className={`w-full ${height} rounded-md`} />
+      ))}
+    </div>
+  );
+}
+
+export function CardSkeleton({ height = "h-40" }: { height?: string }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 space-y-3">
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className={`w-full ${height} rounded-md`} />
+    </div>
+  );
+}
