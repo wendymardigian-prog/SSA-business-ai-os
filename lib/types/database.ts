@@ -59,7 +59,107 @@ export type IntegrationType =
   | "meta";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
-export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar";
+export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom";
+
+// ── Llamadas (00145) ──────────────────────────────────────────────────────
+export type CallSource = "fathom" | "manual";
+export type CallLinkMethod = "auto_email" | "auto_booking" | "auto_email_booking" | "manual" | "none";
+export type CallTypeSource = "rule" | "ai" | "human";
+export type CallAnalysisStatus =
+  | "classifying"
+  | "needs_review"
+  | "pending"
+  | "analyzing"
+  | "analyzed"
+  | "not_applicable"
+  | "error";
+export type CallLeadQualification = "calificado" | "con_reservas" | "no_calificado";
+
+/** Una linea de la transcripcion (Fathom o importada). */
+export interface CallTranscriptLine {
+  speaker: { display_name: string };
+  text: string;
+  /** "HH:MM:SS" o "MM:SS". Vacio en una transcripcion importada sin tiempos. */
+  timestamp: string;
+}
+
+/** Un invitado de la reunion (`calendar_invitees` de Fathom). */
+export interface CallAttendee {
+  name: string | null;
+  email: string | null;
+  is_external: boolean | null;
+}
+
+export type CallRow = {
+  id: string;
+  workspace_id: string;
+  source: CallSource;
+  external_id: string | null;
+  connection_id: string | null;
+  title: string;
+  fathom_url: string | null;
+  share_url: string | null;
+  recorded_at: string;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  duration_seconds: number | null;
+  recorded_by_email: string | null;
+  recorded_by_user_id: string | null;
+  attendees: CallAttendee[];
+  transcript: CallTranscriptLine[];
+  transcript_language: string | null;
+  participants_count: number | null;
+  speakers_count: number | null;
+  people_count: number | null;
+  contact_id: string | null;
+  booking_id: string | null;
+  link_method: CallLinkMethod;
+  linked_by: string | null;
+  linked_at: string | null;
+  call_type: string | null;
+  call_type_source: CallTypeSource | null;
+  call_type_rule: string | null;
+  call_type_confidence: number | null;
+  call_type_alternative: string | null;
+  call_type_proposed: string | null;
+  analysis_status: CallAnalysisStatus;
+  analysis_status_reason: string | null;
+  analysis_error: string | null;
+  /** Lo que dijo la IA. Inmutable salvo corrida nueva. */
+  analysis_ai: Json | null;
+  /** Lo vigente (corregible). */
+  analysis: Json | null;
+  analysis_edited: boolean;
+  closer_score: number | null;
+  lead_score: number | null;
+  lead_qualification: CallLeadQualification | null;
+  outcome: string | null;
+  main_objection: string | null;
+  followup_at: string | null;
+  has_open_alerts: boolean;
+  quotes_total: number | null;
+  quotes_verified: number | null;
+  analysis_prompt_version: number | null;
+  rubric_snapshot: Json | null;
+  rubric_version: number | null;
+  analysis_model: string | null;
+  analysis_run_id: string | null;
+  analyzed_at: string | null;
+  summary: Json | null;
+  summary_status: "none" | "pending" | "done" | "error";
+  memory_status: "none" | "applied" | "conflict" | "skipped";
+  memory_applied_at: string | null;
+  ideas_created_at: string | null;
+  knowledge_document_id: string | null;
+  objections: Json;
+  raw_payload: Json | null;
+  created_by: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** En que estado esta una conexion OAuth (00082). */
 export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
 
@@ -686,6 +786,18 @@ export interface Database {
         };
         Relationships: [];
       };
+      calls: {
+        Row: CallRow;
+        Insert: Partial<Omit<CallRow, "id" | "workspace_id" | "source" | "title" | "recorded_at">> & {
+          id?: string;
+          workspace_id: string;
+          source: CallSource;
+          title: string;
+          recorded_at: string;
+        };
+        Update: Partial<Omit<CallRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
       workspace_roles: {
         Row: {
           id: string;
@@ -730,6 +842,10 @@ export interface Database {
            */
           role_id: string | null;
           created_at: string;
+          /** Graba llamadas de venta (00145). */
+          is_closer: boolean;
+          /** Correos alternos con los que graba en Fathom o Zoom (00145). */
+          closer_emails: string[];
         };
         Insert: {
           workspace_id: string;
@@ -737,10 +853,14 @@ export interface Database {
           role?: string;
           role_id?: string | null;
           created_at?: string;
+          is_closer?: boolean;
+          closer_emails?: string[];
         };
         Update: {
           role?: string;
           role_id?: string | null;
+          is_closer?: boolean;
+          closer_emails?: string[];
         };
         Relationships: [
           {
@@ -3094,6 +3214,13 @@ export interface Database {
           vault_secret_prefix: string;
           created_at: string;
           updated_at: string;
+          /** Sincronizacion con la fuente (Fathom, 00145). */
+          last_synced_at: string | null;
+          sync_watermark: string | null;
+          sync_cursor: string | null;
+          sync_last_error: string | null;
+          /** Candado de renovacion del refresh token (claim_oauth_refresh). */
+          refresh_locked_until: string | null;
         };
         Insert: {
           id?: string;
@@ -3123,6 +3250,11 @@ export interface Database {
           last_refreshed_at?: string | null;
           vault_secret_prefix?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
+          sync_watermark?: string | null;
+          sync_cursor?: string | null;
+          sync_last_error?: string | null;
+          refresh_locked_until?: string | null;
         };
         Relationships: [];
       };

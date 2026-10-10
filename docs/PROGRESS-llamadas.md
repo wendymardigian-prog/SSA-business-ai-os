@@ -25,7 +25,7 @@ Pendientes y decisiones: [PENDIENTE-llamadas.md](PENDIENTE-llamadas.md).
 | Número real | Número del plano | Qué hace | Estado |
 |---|---|---|---|
 | 00144 | 00143 | `audit_log.actor_type`, `actor_label`, índice | **aplicada y registrada** (actor_type sin nulos) |
-| 00145 | 00144 | `calls`, `can_see_call`, CHECK provider, sync, closer, candado de refresh | pendiente |
+| 00145 | 00144 | `calls`, `can_see_call`, CHECK provider, sync, closer, candado de refresh | **aplicada y registrada** (`verify-calls`, `verify-rls`, `verify-roles` en verde) |
 | 00146 | 00145 | `private.enqueue_fathom_sync()` + cron `fathom-sync` | pendiente |
 | 00147 | 00146 | política `audit_log_select_calls` | pendiente |
 | 00148 | 00147 | CHECK `agent_runs.source` / `ai_task_prompt_versions.task`, `set_ai_background_task_settings` | pendiente |
