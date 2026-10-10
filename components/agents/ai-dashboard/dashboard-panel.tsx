@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ListFilter } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,10 @@ function readCollapsed(): boolean {
     return false;
   }
 }
+
+// localStorage no avisa cambios hechos en esta misma pestaña: el toggle guarda
+// su propio estado aparte, asi que no hace falta suscribirse a nada.
+const noSubscription = () => () => {};
 
 /**
  * El mini dashboard entero (A6): plegable por navegador, nunca por la base.
@@ -50,19 +54,18 @@ export function AiDashboardPanel({
   /** La tarjeta "Topes y avisos": llega ya armada del servidor. */
   limitsCard?: ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
-
-  // El primer render (servidor y cliente) es siempre desplegado, para que no
-  // haya un salto de layout por hidratacion. Si la preferencia guardada es
-  // "plegado", se pliega apenas monta: un parpadeo mucho mas chico que dejar
-  // la seccion en blanco hasta leer localStorage.
-  useEffect(() => {
-    if (readCollapsed()) setCollapsed(true);
-  }, []);
+  // El primer render (servidor e hidratacion) es siempre desplegado, para que
+  // no haya un error de hidratacion. Si la preferencia guardada es "plegado",
+  // useSyncExternalStore re-renderiza apenas monta con el valor del navegador:
+  // un parpadeo mucho mas chico que dejar la seccion en blanco hasta leer
+  // localStorage. Una vez que la persona toca el boton, manda su eleccion.
+  const stored = useSyncExternalStore(noSubscription, readCollapsed, () => false);
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const collapsed = choice ?? stored;
 
   function toggle() {
     const next = !collapsed;
-    setCollapsed(next);
+    setChoice(next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
     } catch {
