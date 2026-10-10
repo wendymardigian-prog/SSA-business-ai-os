@@ -122,6 +122,61 @@ export function rowToMetrics(headers: string[], row: unknown[]): PostMetrics {
   };
 }
 
+/**
+ * Un contador de la Data API. Vienen como texto ("413"); uno que falta o no
+ * es un numero queda en null, nunca en cero.
+ */
+export function count(value: string | number | undefined | null): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Los totales de un video segun la Data API (`videos.list`, parte
+ * `statistics`): vistas, me gusta y comentarios de toda su vida.
+ *
+ * Es el respaldo de Analytics, que da mas columnas pero tarda dias en tener
+ * un video nuevo. Lo que no vino queda en null: un video con los me gusta
+ * ocultos no tiene cero me gusta.
+ */
+export function statisticsToMetrics(
+  statistics: { viewCount?: string; likeCount?: string; commentCount?: string } | undefined,
+): PostMetrics {
+  const views = count(statistics?.viewCount);
+  const likes = count(statistics?.likeCount);
+  const comments = count(statistics?.commentCount);
+  const interactions = [likes, comments].filter((v): v is number => v !== null);
+
+  return {
+    ...EMPTY_POST_METRICS,
+    views,
+    likes,
+    comments,
+    engagementRate:
+      interactions.length > 0 && views !== null && views > 0
+        ? Number(((interactions.reduce((a, b) => a + b, 0) / views) * 100).toFixed(2))
+        : null,
+    extra: {},
+  };
+}
+
+/**
+ * Desde cuando pedirle a Analytics: el dia en que salio el video mas viejo
+ * de la lista, o la ventana si es anterior o si no hay ninguna fecha.
+ */
+export function reportStartDate(
+  windowStart: string,
+  details: Map<string, { publishedAt: string | null }>,
+): string {
+  let oldest = windowStart;
+  for (const detail of details.values()) {
+    const day = detail.publishedAt?.slice(0, 10);
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && day < oldest) oldest = day;
+  }
+  return oldest;
+}
+
 interface ReportResponse {
   columnHeaders?: Array<{ name?: string }>;
   rows?: unknown[][];
@@ -173,7 +228,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
   // 1. El canal: suscriptores y la lista de subidas.
   const channel = await apiGet<{
     items?: Array<{
-      statistics?: { subscriberCount?: string; viewCount?: string };
+      statistics?: { subscriberCount?: string; viewCount?: string; videoCount?: string };
       contentDetails?: { relatedPlaylists?: { uploads?: string } };
     }>;
   }>(
@@ -189,8 +244,17 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
   } else {
     const item = channel.data.items?.[0];
     uploadsPlaylist = item?.contentDetails?.relatedPlaylists?.uploads ?? null;
-    const subscribers = Number(item?.statistics?.subscriberCount);
-    if (Number.isFinite(subscribers)) {
+    // Los tres vienen como texto; uno que no vino queda en null, no en cero.
+    const subscribers = count(item?.statistics?.subscriberCount);
+    const videos = count(item?.statistics?.videoCount);
+    const views = count(item?.statistics?.viewCount);
+    // `profile` es lo que lee el encabezado de Social ("Videos", "Vistas"):
+    // la misma forma que deja el lector de Zernio.
+    const profile = {
+      ...(videos !== null ? { videos } : {}),
+      ...(views !== null ? { views } : {}),
+    };
+    if (subscribers !== null || Object.keys(profile).length > 0) {
       accountDaily.push({
         date: "",
         followers: subscribers,
@@ -199,7 +263,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
         impressions: null,
         reach: null,
         profileViews: null,
-        extra: {},
+        extra: Object.keys(profile).length > 0 ? { profile } : {},
       });
     }
   }
@@ -227,7 +291,13 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
   // 3. Los datos de cada video, en un solo pedido.
   const details = new Map<
     string,
-    { title: string | null; publishedAt: string | null; thumbnail: string | null; mediaType: string }
+    {
+      title: string | null;
+      publishedAt: string | null;
+      thumbnail: string | null;
+      mediaType: string;
+      totals: PostMetrics;
+    }
   >();
 
   if (videoIds.length > 0) {
@@ -236,10 +306,11 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
         id?: string;
         snippet?: { title?: string; publishedAt?: string; thumbnails?: Record<string, { url?: string }> };
         contentDetails?: { duration?: string };
+        statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
         fileDetails?: { videoStreams?: Array<{ widthPixels?: number; heightPixels?: number }> };
       }>;
     }>(
-      `${DATA_API}/videos?part=snippet,contentDetails&id=${videoIds.join(",")}`,
+      `${DATA_API}/videos?part=snippet,contentDetails,statistics&id=${videoIds.join(",")}`,
       params.token,
       fetchImpl,
     );
@@ -259,6 +330,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
             width: stream?.widthPixels ?? null,
             height: stream?.heightPixels ?? null,
           }),
+          totals: statisticsToMetrics(video.statistics),
         });
       }
     } else {
@@ -266,12 +338,15 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     }
   }
 
-  // 4. Las metricas, en UNA llamada para todos los videos.
+  // 4. Las metricas, en UNA llamada para todos los videos. Desde el dia en
+  // que salio el mas viejo de la lista, no desde el inicio de la ventana: la
+  // fila del dia guarda valores ACUMULADOS, y con la ventana un video de 60
+  // dias quedaba con las vistas de los ultimos 30 como si fueran su total.
   const metricsByVideo = new Map<string, PostMetrics>();
   if (videoIds.length > 0) {
     const report = await apiGet<ReportResponse>(
       `${ANALYTICS_API}/reports?ids=channel==${encodeURIComponent(params.channelId)}` +
-        `&startDate=${params.startDate}&endDate=${params.endDate}` +
+        `&startDate=${reportStartDate(params.startDate, details)}&endDate=${params.endDate}` +
         `&metrics=${VIDEO_METRICS.join(",")}&dimensions=video` +
         `&filters=video==${videoIds.join(",")}&maxResults=200`,
       params.token,
@@ -301,7 +376,9 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
       mediaType: detail?.mediaType ?? null,
       thumbnailUrl: detail?.thumbnail ?? null,
       publishedAt: detail?.publishedAt ?? null,
-      metrics: metricsByVideo.get(id) ?? { ...EMPTY_POST_METRICS },
+      // Analytics tarda dos o tres dias en tener un video nuevo: mientras
+      // tanto, los totales de la Data API.
+      metrics: metricsByVideo.get(id) ?? detail?.totals ?? { ...EMPTY_POST_METRICS },
     });
   }
 

@@ -24,6 +24,15 @@ export const WEEKLY_UNTIL_DAYS = 90;
 /** A los cuantos dias se congela el engagement comparable. */
 export const D7_DAYS = 7;
 
+/**
+ * Hasta cuantos dias despues del dia 7 sirve una fila para congelarlo.
+ *
+ * Mas tarde ya no es "el numero a 7 dias": un post importado a los cuatro
+ * meses tiene como primera fila su total de hoy, y congelarlo como d7 lo
+ * compararia con posts medidos de verdad a la semana.
+ */
+export const D7_MAX_LAG_DAYS = 7;
+
 /** Los dos ultimos dias de Instagram todavia pueden subir. */
 export const INSTAGRAM_LAG_DAYS = 2;
 
@@ -115,15 +124,22 @@ export function readWindowStart(now: Date, stored: StoredPost[]): string {
  *
  * - Hasta 30 dias: siempre, como siempre. "Actualizar ahora" depende de esto.
  * - De 31 a 90: solo si ya paso una semana desde la ultima lectura.
- * - Mas de 90: no, ni la primera vez.
+ * - Mas de 90: no.
  * - Uno que todavia no tenemos entra si cae dentro de esas reglas.
  * - Uno sin fecha de publicacion se guarda: sin fecha no hay regla que aplicar.
+ * - **La primera importacion de una cuenta guarda todo lo que trajo la red**,
+ *   sin importar la antiguedad. Un canal cuyo ultimo video tiene cuatro
+ *   meses quedaba vacio para siempre: la red ya los habia devuelto (la
+ *   lectura ya estaba pagada) y se descartaban. Despues de esa vez, un post
+ *   de mas de 90 dias no se vuelve a leer.
  */
 export function selectPostsToPersist<T extends { externalPostId: string; publishedAt: string | null }>(
   posts: T[],
   stored: StoredPost[],
   now: Date,
 ): T[] {
+  if (stored.length === 0) return posts;
+
   const byId = new Map(stored.map((s) => [s.externalPostId, s]));
 
   return posts.filter((post) => {
@@ -205,7 +221,8 @@ export interface D7Result {
  *
  * Se toma la fila del dia 7, o la primera posterior si ese dia no hay: una
  * red que fallo un dia no puede dejar al post sin numero comparable para
- * siempre. Se usa la POSTERIOR y no la anterior porque las metricas son
+ * siempre. Pero no cualquier posterior: pasados `D7_MAX_LAG_DAYS` ya no es
+ * un numero a 7 dias y no se congela nada. Se usa la POSTERIOR y no la anterior porque las metricas son
  * acumuladas: la del dia 8 incluye los 7 primeros dias.
  *
  * El denominador es el alcance, y si no hay, las vistas. Sin ninguno de los
@@ -231,6 +248,7 @@ export function computeD7(params: {
     .sort((a, b) => a.date.localeCompare(b.date))[0];
 
   if (!point) return null;
+  if (daysBetween(cutoff, point.date) > D7_MAX_LAG_DAYS) return null;
 
   const parts = [point.likes, point.comments, point.shares, point.saves].filter(
     (v): v is number => typeof v === "number",
