@@ -11,6 +11,8 @@ import { DailyEvolutionChart } from "./ads/charts-lazy";
 import { HeaderActions, HeaderFilters, SyncedPill } from "./ads/header-controls";
 import { AudienceCard } from "./ads/audience-card";
 import { ComparisonCards } from "./ads/comparison-cards";
+import { DailyTableCard } from "./ads/daily-table";
+import { HierarchyCard, type UniqueReach } from "./ads/hierarchy-tables";
 import { ActionsCard, DeviceCard, PlacementCard, VideoCard, type Live } from "./ads/insight-cards";
 import type { BreakdownRow } from "@/lib/meta/live";
 import { KpiRow, type KpiItem } from "./ads/kpi-row";
@@ -56,27 +58,13 @@ export interface AdsDashboardProps {
   liveError: string | null;
   /** Los desgloses que se piden a Meta en vivo, cada uno por su cuenta. */
   live: { placement: Live<BreakdownRow[]>; device: Live<BreakdownRow[]>; audience: Live<BreakdownRow[]> };
-  /** Alcance unico de cada anuncio (en vivo). Null si Meta no respondio. */
-  adReach: Record<string, number> | null;
+  /** Alcance unico de cada campaña, conjunto y anuncio (en vivo). Null si Meta no respondio. */
+  reach: UniqueReach;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. Armado en el servidor. */
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
 }
-
-type Tab = "campaign" | "adset" | "ad";
-
-const TAB_LABELS: Record<Tab, string> = {
-  campaign: "Campañas",
-  adset: "Conjuntos",
-  ad: "Anuncios",
-};
-
-const TONE_CLASS = {
-  good: "text-emerald-600 dark:text-emerald-400",
-  bad: "text-destructive font-semibold",
-  neutral: "",
-} as const;
 
 const CARD = "rounded-xl border border-border bg-card p-3";
 const SECTION_LABEL = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
@@ -87,7 +75,6 @@ export function AdsDashboard(props: AdsDashboardProps) {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  const [tab, setTab] = useState<Tab>("campaign");
   const [aiOpen, setAiOpen] = useState(false);
   const [leftMetric, setLeftMetric] = useState<ChartMetric>("spend");
   const [rightMetric, setRightMetric] = useState<ChartMetric>("ctr");
@@ -108,7 +95,6 @@ export function AdsDashboard(props: AdsDashboardProps) {
     [props.previousRows, props.previousUniqueReach],
   );
 
-  const grouped = useMemo(() => groupByObject(props.rows, tab), [props.rows, tab]);
 
   const chartData = useMemo(() => {
     const left = new Map(dailySeries(accountRows, leftMetric).map((p) => [p.bucket, p.value]));
@@ -269,7 +255,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
           </div>
         </section>
 
-        <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.adReach} />
+        <ComparisonCards variant="campaigns" rows={props.rows} currency={props.currency} adReach={props.reach.ad} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionsCard rows={accountRows} />
@@ -280,90 +266,17 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
         <AudienceCard result={props.live.audience} />
 
-        <section className="mt-3">
-          <div className="mb-2 flex gap-1" role="tablist" aria-label="Desglose">
-            {(Object.keys(TAB_LABELS) as Tab[]).map((option) => (
-              <button
-                key={option}
-                type="button"
-                role="tab"
-                aria-selected={tab === option}
-                onClick={() => setTab(option)}
-                className={
-                  tab === option
-                    ? "rounded-md bg-accent px-2.5 py-1 text-xs font-medium"
-                    : "rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent/50"
-                }
-              >
-                {TAB_LABELS[option]}
-              </button>
-            ))}
-          </div>
+        <HierarchyCard
+          levels={["campaign", "adset", "ad"]}
+          rows={props.rows}
+          totals={totals}
+          uniqueReach={props.reach}
+          currency={props.currency}
+          adAccountId={props.adAccountId}
+          period={props.period}
+        />
 
-          {grouped.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-              No hay {TAB_LABELS[tab].toLowerCase()} con datos en este periodo.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th scope="col" className="p-2 font-medium">Nombre</th>
-                    <th scope="col" className="p-2 font-medium">Estado</th>
-                    <th scope="col" className="p-2 text-right font-medium">Gasto</th>
-                    <th scope="col" className="p-2 text-right font-medium" title="Impresiones ÷ alcance">Frec.</th>
-                    <th scope="col" className="p-2 text-right font-medium">Clics</th>
-                    <th scope="col" className="p-2 text-right font-medium" title="Clics ÷ impresiones × 100">CTR</th>
-                    <th scope="col" className="p-2 text-right font-medium" title="Gasto ÷ clics">CPC</th>
-                    <th scope="col" className="p-2 text-right font-medium">Leads</th>
-                    <th scope="col" className="p-2 text-right font-medium" title="Gasto ÷ leads">CPL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {grouped.map((group) => (
-                    <tr key={group.objectId} className="border-b border-border last:border-0">
-                      <td className="p-2">
-                        <Link
-                          href={detailHref(tab, group.objectId, props.adAccountId, props.period)}
-                          className="hover:underline"
-                        >
-                          {group.objectName || group.objectId}
-                        </Link>
-                        {group.parentName && (
-                          <span className="block text-[11px] text-muted-foreground">{group.parentName}</span>
-                        )}
-                      </td>
-                      <td className="p-2 text-xs text-muted-foreground">{statusLabel(group.status)}</td>
-                      <td className="p-2 text-right tabular-nums">{money(group.spend, props.currency)}</td>
-                      <td className="p-2 text-right tabular-nums">{group.frequency?.toFixed(2) ?? "—"}</td>
-                      <td className="p-2 text-right tabular-nums">{count(group.clicks)}</td>
-                      <td className={`p-2 text-right tabular-nums ${TONE_CLASS[ctrTone(group.ctr)]}`}>
-                        {percent(group.ctr)}
-                      </td>
-                      <td className="p-2 text-right tabular-nums">{money(group.cpc, props.currency)}</td>
-                      <td className={`p-2 text-right tabular-nums ${TONE_CLASS[leadsTone(group.leads)]}`}>
-                        {count(group.leads)}
-                      </td>
-                      <td className="p-2 text-right tabular-nums">{money(group.cpl, props.currency)}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-muted/50 font-medium">
-                    <td className="p-2">Total</td>
-                    <td className="p-2" />
-                    <td className="p-2 text-right tabular-nums">{money(totals.spend, props.currency)}</td>
-                    <td className="p-2 text-right tabular-nums">{totals.frequency?.toFixed(2) ?? "—"}</td>
-                    <td className="p-2 text-right tabular-nums">{count(totals.clicks)}</td>
-                    <td className="p-2 text-right tabular-nums">{percent(totals.ctr)}</td>
-                    <td className="p-2 text-right tabular-nums">{money(totals.cpc, props.currency)}</td>
-                    <td className="p-2 text-right tabular-nums">{count(totals.leads)}</td>
-                    <td className="p-2 text-right tabular-nums">{money(totals.cpl, props.currency)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <DailyTableCard rows={accountRows} totals={totals} currency={props.currency} />
       </div>
 
       {aiOpen && (
@@ -375,10 +288,4 @@ export function AdsDashboard(props: AdsDashboardProps) {
       )}
     </div>
   );
-}
-
-/** La cuenta elegida y el periodo viajan a todos los niveles. */
-function detailHref(tab: Tab, objectId: string, adAccountId: string, period: PeriodPreset): string {
-  const segment = tab === "campaign" ? "campaigns" : tab === "adset" ? "adsets" : "ads";
-  return `/dashboard/dashboards/ads/${segment}/${objectId}?cuenta=${adAccountId}&periodo=${period}`;
 }
