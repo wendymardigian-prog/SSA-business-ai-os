@@ -45,6 +45,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   agent_paused: "pausó el agente de IA",
   agent_resumed: "reanudó el agente de IA",
   prompt_version: "cambió el prompt del agente",
+  model_changed: "cambió el modelo de una tarea de IA",
   tag: "etiquetó el contacto",
   temperature: "cambió la temperatura del lead",
   followup: "programó el próximo seguimiento",

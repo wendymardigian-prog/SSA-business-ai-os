@@ -200,6 +200,8 @@ export type AuditAction =
   | "agent_resumed"
   /** Se guardo o se restauro una version del system prompt. */
   | "prompt_version"
+  /** Se eligio (o se saco) el modelo de una tarea de IA (00138). changes.model {old,new}. */
+  | "model_changed"
   /** El agente etiqueto un contacto (Fase 3, Bloque 2b). changes.tags {old,new}. */
   | "tag"
   /** El agente cambio la temperatura del lead. */
@@ -604,6 +606,8 @@ export interface Database {
           ai_spend_alert_pct: number | null;
           /** Version activa de las instrucciones de cada tarea de IA (migracion 00137). {} = todas en el texto del sistema. */
           ai_task_prompt_active: Json;
+          /** 00138: el modelo elegido por tarea de IA. */
+          ai_task_models: Json;
           created_at: string;
           updated_at: string;
         };
@@ -633,6 +637,7 @@ export interface Database {
           ai_monthly_limit_action?: CostLimitAction;
           ai_spend_alert_pct?: number | null;
           ai_task_prompt_active?: Json;
+          ai_task_models?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -662,6 +667,7 @@ export interface Database {
           ai_monthly_limit_action?: CostLimitAction;
           ai_spend_alert_pct?: number | null;
           ai_task_prompt_active?: Json;
+          ai_task_models?: Json;
           updated_at?: string;
         };
         Relationships: [];
@@ -2753,7 +2759,7 @@ export interface Database {
         Row: {
           id: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "media_description";
+          task: "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
           version: number;
           instructions: string;
           note: string | null;
@@ -2763,7 +2769,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "media_description";
+          task: "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
           version: number;
           instructions: string;
           note?: string | null;

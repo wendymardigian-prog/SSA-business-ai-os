@@ -1,17 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { AI_TASKS, type AiTaskId } from "./catalog";
-import { CLASSIFY_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS, SUMMARY_DEFAULT_INSTRUCTIONS } from "./instructions";
+import { ADS_ANALYSIS_DEFAULT_INSTRUCTIONS, CLASSIFY_DEFAULT_INSTRUCTIONS, MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS, SUMMARY_DEFAULT_INSTRUCTIONS } from "./instructions";
 
 type Db = SupabaseClient<Database>;
 
-/** Las tareas que de verdad guardan versiones (00137: el CHECK solo admite estas tres). */
-type VersionedTask = "message_classification" | "conversation_summary" | "media_description";
+/** Las tareas que de verdad guardan versiones (00137 y 00138: el CHECK solo admite estas cuatro). */
+export type VersionedTask = "message_classification" | "conversation_summary" | "media_description" | "ads_analysis";
 
 const DEFAULT_TEXT: Record<VersionedTask, string> = {
   message_classification: CLASSIFY_DEFAULT_INSTRUCTIONS,
   conversation_summary: SUMMARY_DEFAULT_INSTRUCTIONS,
   media_description: MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
+  ads_analysis: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
 };
 
 function isVersioned(task: AiTaskId): task is VersionedTask {
