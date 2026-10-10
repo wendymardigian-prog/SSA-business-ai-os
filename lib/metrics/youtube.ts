@@ -360,8 +360,9 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
       title: string | null;
       publishedAt: string | null;
       thumbnail: string | null;
-      /** Lo que se deduce del archivo, si Analytics no dice que es. */
+      /** Lo que se deduce del archivo, si YouTube no dice que es. */
       guessedType: "short" | "video";
+      durationSeconds: number | null;
       totals: PostMetrics;
     }
   >();
@@ -411,6 +412,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
             height: stream.height,
           }),
           totals: statisticsToMetrics(video.statistics),
+          durationSeconds: duration,
         });
       }
     } else {
@@ -445,17 +447,13 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
     }
   }
 
-  // 5. Que es cada video, segun YouTube. Es la misma clasificacion de las
-  // pestañas del canal: no se adivina por el tamaño ni la duracion.
-  const contentTypes = details.size > 0
-    ? await readContentTypes({
-        token: params.token,
-        channelId: params.channelId,
-        startDate: reportStartDate(params.startDate, details),
-        endDate: params.endDate,
-        fetchImpl,
-      })
-    : new Map<string, string>();
+  // 5. Que es cada video, segun YouTube: la misma clasificacion de las
+  // pestañas del canal. Solo se pregunta por los de hasta 3 minutos: uno mas
+  // largo no puede ser un Short.
+  const candidates = [...details.entries()]
+    .filter(([, d]) => d.durationSeconds === null || d.durationSeconds <= SHORT_MAX_SECONDS)
+    .map(([id]) => id);
+  const shortFlags = await readShortFlags(candidates, fetchImpl);
 
   for (const id of videoIds) {
     const detail = details.get(id);
@@ -467,7 +465,7 @@ export async function readYouTubeMetrics(params: YouTubeReaderParams): Promise<R
       publisherRef: null,
       url: `https://www.youtube.com/watch?v=${id}`,
       caption: detail?.title ?? null,
-      mediaType: detail ? (mediaTypeFromContentType(contentTypes.get(id)) ?? detail.guessedType) : null,
+      mediaType: detail ? mediaTypeFromFlag(shortFlags.get(id), detail.guessedType) : null,
       thumbnailUrl: detail?.thumbnail ?? null,
       publishedAt: detail?.publishedAt ?? null,
       // Analytics tarda dos o tres dias en tener un video nuevo: mientras
@@ -502,66 +500,60 @@ export function isVisibleOnChannel(video: {
   return true;
 }
 
+/** La direccion de un Short. Es la que usa YouTube en la app y en el canal. */
+export const SHORTS_URL = "https://www.youtube.com/shorts/";
+
 /**
- * El tipo de contenido de YouTube (`creatorContentType`) en nuestro
- * vocabulario. Null cuando no lo sabe: ahi decide el tamaño del archivo.
+ * Si un video es un Short, segun YouTube.
  *
- * Una transmision que ya salio queda como video: la base no tiene un tipo
- * "en vivo", y en el canal se ve como un video mas.
+ * Ninguna API oficial lo dice por video: la Data API no tiene el campo, y el
+ * reporte de Analytics con `creatorContentType` por video responde "The query
+ * is not supported" (probado contra la API real el 10/10/2026, aunque la
+ * documentacion lo lista). Lo que si lo dice es la direccion del Short:
+ * `youtube.com/shorts/<id>` abre (200) si es un Short y redirige a
+ * `/watch?v=` (303) si no lo es. No gasta cuota ni usa el token.
+ *
+ * Cualquier otra respuesta (una pagina de consentimiento, un error, la red
+ * caida) es "no se sabe" (null): ahi decide el tamaño del archivo. Nunca
+ * lanza.
  */
-export function mediaTypeFromContentType(value: string | undefined): "short" | "video" | null {
-  switch (value) {
-    case "SHORTS":
-      return "short";
-    case "VIDEO_ON_DEMAND":
-    case "LIVE_STREAM":
-      return "video";
-    default:
-      return null;
+export async function checkIsShort(videoId: string, fetchImpl: typeof fetch): Promise<boolean | null> {
+  try {
+    const res = await fetchImpl(`${SHORTS_URL}${encodeURIComponent(videoId)}`, {
+      method: "HEAD",
+      redirect: "manual",
+    });
+    if (res.status === 200) return true;
+    if (res.status >= 300 && res.status < 400 && (res.headers?.get("location") ?? "").includes("/watch")) {
+      return false;
+    }
+    return null;
+  } catch (err) {
+    console.error(`[metricas] no pude saber si ${videoId} es un Short:`, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
-/**
- * El tipo de cada video del canal, segun Analytics.
- *
- * Es el reporte de "Top videos" (`dimensions=video,creatorContentType`), el
- * unico que da el tipo por video: exige `sort` y un tope de 200, y no admite
- * filtrar por id. Por eso trae los 200 mas vistos del periodo; uno sin vistas
- * no aparece y cae al respaldo por tamaño.
- *
- * Nunca lanza ni avisa en pantalla: si falla, cada video se clasifica por su
- * archivo, que es como funcionaba antes. Se loguea para poder verlo.
- */
-export async function readContentTypes(params: {
-  token: string;
-  channelId: string;
-  startDate: string;
-  endDate: string;
-  fetchImpl: typeof fetch;
-}): Promise<Map<string, string>> {
-  const types = new Map<string, string>();
-  const report = await apiGet<ReportResponse>(
-    `${ANALYTICS_API}/reports?ids=channel==${encodeURIComponent(params.channelId)}` +
-      `&startDate=${params.startDate}&endDate=${params.endDate}` +
-      `&metrics=views&dimensions=video,creatorContentType&sort=-views&maxResults=200`,
-    params.token,
-    params.fetchImpl,
-  );
+/** Cuantos videos se consultan a la vez: YouTube corta si son muchos juntos. */
+const SHORTS_CHECK_CONCURRENCY = 5;
 
-  if (!report.ok) {
-    console.error(`[metricas] YouTube no dio el tipo de los videos: ${report.error}`);
-    return types;
+/** Si es un Short, para cada video. Los que no se pudieron saber no estan. */
+export async function readShortFlags(videoIds: string[], fetchImpl: typeof fetch): Promise<Map<string, boolean>> {
+  const flags = new Map<string, boolean>();
+  for (let i = 0; i < videoIds.length; i += SHORTS_CHECK_CONCURRENCY) {
+    const batch = videoIds.slice(i, i + SHORTS_CHECK_CONCURRENCY);
+    const results = await Promise.all(batch.map((id) => checkIsShort(id, fetchImpl)));
+    batch.forEach((id, index) => {
+      const result = results[index];
+      if (result !== null) flags.set(id, result);
+    });
   }
+  return flags;
+}
 
-  const headers = (report.data.columnHeaders ?? []).map((h) => h.name ?? "");
-  const videoIndex = headers.indexOf("video");
-  const typeIndex = headers.indexOf("creatorContentType");
-  if (videoIndex < 0 || typeIndex < 0) return types;
-
-  for (const row of report.data.rows ?? []) {
-    const id = row[videoIndex];
-    const type = row[typeIndex];
-    if (typeof id === "string" && typeof type === "string") types.set(id, type);
-  }
-  return types;
+/** Lo que dijo YouTube, y si no se supo, lo que se deduce del archivo. */
+export function mediaTypeFromFlag(isShortFlag: boolean | undefined, guessed: "short" | "video"): "short" | "video" {
+  if (isShortFlag === true) return "short";
+  if (isShortFlag === false) return "video";
+  return guessed;
 }
