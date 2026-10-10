@@ -5,7 +5,7 @@
  *
  * Este repo tiene su historia interna (docs/, BITACORA.md), carpetas propias
  * de la sesion de Claude Code (claude/, .claude/worktrees/) y secretos
- * locales (.env*, supabase/.temp/, .mcp.json). Nada de eso tiene que viajar
+ * locales (.env* salvo .env.example, supabase/.temp/, .mcp.json). Nada de eso tiene que viajar
  * al clon de un cliente: este script copia todo lo demas tal cual, le
  * arma una historia de git nueva (un solo commit, sin rastro del historial de
  * este repo) y al final corre un grep de control que busca nombres y
@@ -58,7 +58,9 @@ function isExcluded(relPath) {
   if (relPath === "node_modules" || relPath.startsWith("node_modules/") || /(^|\/)node_modules(\/|$)/.test(relPath)) return true;
   if (relPath === ".next" || relPath.startsWith(".next/") || /(^|\/)\.next(\/|$)/.test(relPath)) return true;
   if (relPath === ".git" || relPath.startsWith(".git/")) return true;
-  if (/^\.env/.test(basename(relPath))) return true;
+  // `.env.example` es la plantilla sin valores: la necesitan /setup y la guia
+  // de instalacion. Cualquier otro `.env*` puede tener claves reales.
+  if (/^\.env/.test(basename(relPath)) && basename(relPath) !== ".env.example") return true;
   return false;
 }
 
