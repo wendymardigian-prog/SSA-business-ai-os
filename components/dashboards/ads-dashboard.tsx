@@ -48,6 +48,8 @@ export interface AdsDashboardProps {
   live: { placement: Live<BreakdownRow[]>; device: Live<BreakdownRow[]>; audience: Live<BreakdownRow[]> };
   /** Alcance unico de cada campaña, conjunto y anuncio (en vivo). Null si Meta no respondio. */
   reach: UniqueReach;
+  /** El modelo elegido para el analisis de IA ("proveedor/modelo"); null = el del negocio. */
+  aiModel: string | null;
   /** "hoy 14:32": cuando escribio el sync por ultima vez. Armado en el servidor. */
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
@@ -182,6 +184,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
         <AdsAiPanel
           period={props.period}
           adAccountId={props.adAccountId}
+          chosenModel={props.aiModel}
           onClose={() => setAiOpen(false)}
         />
       )}

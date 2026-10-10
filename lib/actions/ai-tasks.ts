@@ -18,6 +18,10 @@ import type { Json } from "@/lib/types/database";
  */
 
 const TASKS_PATH = "/dashboard/agents/tareas";
+// OJO con la auditoria: `audit_log.entity_id` es un uuid. Una tarea se identifica
+// con un texto ("ads_analysis"), asi que la entidad auditada es el workspace y la
+// tarea va en `metadata.task`. Pasar el id de la tarea hacia que el insert fallara
+// en silencio (logAudit solo loguea el error) y no quedara ningun registro.
 const NOT_ADMIN = "Solo Owner y Admin pueden editar las instrucciones de una tarea.";
 /** Mismo tope que el prompt de un agente (lib/agent/validate.ts). */
 const MAX_INSTRUCTIONS_CHARS = 32_000;
@@ -83,10 +87,10 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
     supabase,
     workspaceId: workspace.id,
     entityType: "ai_task",
-    entityId: task.id,
+    entityId: workspace.id,
     action: "prompt_version",
     changes: { active_version: { old: null, new: version } },
-    metadata: { note, chars: instructions.length },
+    metadata: { task: task.id, note, chars: instructions.length },
     performedBy: user.id,
   });
 
@@ -131,10 +135,10 @@ export async function restoreTaskInstructions(taskId: string, version: number | 
     supabase,
     workspaceId: workspace.id,
     entityType: "ai_task",
-    entityId: task.id,
+    entityId: workspace.id,
     action: "prompt_version",
     changes: { active_version: { old: current[task.id] ?? null, new: version } },
-    metadata: { restored: true },
+    metadata: { task: task.id, restored: true },
     performedBy: user.id,
   });
 
@@ -187,10 +191,10 @@ export async function saveTaskModel(taskId: string, provider: string | null, mod
     supabase,
     workspaceId: workspace.id,
     entityType: "ai_task",
-    entityId: task.id,
+    entityId: workspace.id,
     action: "model_changed",
     changes: { model: { old: current[task.id] ? `${current[task.id].provider}/${current[task.id].model}` : null, new: next[task.id] ? `${next[task.id].provider}/${next[task.id].model}` : null } },
-    metadata: {},
+    metadata: { task: task.id },
     performedBy: user.id,
   });
 

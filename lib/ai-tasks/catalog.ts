@@ -133,7 +133,7 @@ export const AI_TASKS: Record<AiTaskId, AiTaskDef> = {
     hasInstructions: true,
     hasModelPicker: true,
     onDemand: true,
-    variables: [{ name: "estilo", description: "cómo habla la IA en este negocio (por defecto, español neutro, directo y sin relleno)" }],
+    variables: [{ name: "estilo", description: "cómo habla la IA en este negocio; por defecto, español neutro, directo y sin relleno" }],
     source: "ads_analysis",
   },
 };

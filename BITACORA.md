@@ -1400,3 +1400,29 @@ El dashboard de Meta Ads (`/dashboard/dashboards/ads` y las tres pantallas de de
 - Después del deploy, y con visto bueno: **volver a leer los últimos 90 días de la cuenta** para que ThruPlays y tiempo promedio de las fechas viejas sean los reales.
 - Borrar `docs/referencia-ads-wendymardigian/` cuando se apruebe el resultado (commit aparte).
 - El lint de `main` tiene 4 errores de las reglas de React que no son de este trabajo (Agentes IA); hay una tarea aparte para arreglarlos.
+
+---
+## Análisis de anuncios como tarea de Agentes IA (modelo e instrucciones configurables)
+
+**Fecha:** 10 de octubre de 2026
+**Rama:** `feature/ads-analysis-tarea` (apilada sobre `feature/ads-dashboard-replica`)
+**Migración:** 00138 aplicada y registrada (aditiva, idempotente).
+
+### Qué había
+
+"Analizar con IA" del dashboard de Ads era una acción suelta (`analyzeAdsWithAi`): ni agente ni tarea, sin pantalla en Agentes IA, con el prompt fijo en el código y el modelo por defecto del negocio (hoy `claude-sonnet-5` de Anthropic). Nunca había corrido ("Sin corridas todavía").
+
+### Qué se hizo
+
+- **Es una tarea** (`ads_analysis`, "Análisis de anuncios", bajo demanda) en TAREAS de Agentes IA, con Configuración (modelo), Instrucciones (system prompt versionado, con historial y vuelta al texto del sistema) y Corridas.
+- **El system prompt sale de las instrucciones activas.** El texto por defecto es byte a byte el de antes (test de caracterización); `{{estilo}}` se reemplaza por `AI_LANGUAGE_STYLE`. La corrida guarda con qué versión salió.
+- **Modelo propio por tarea** (`workspaces.ai_task_models`, 00138): el del negocio o uno elegido. Un modelo elegido es **estricto**: si ese proveedor se desconecta, falla con un mensaje claro y no cambia de modelo en silencio. Hoy solo esta tarea tiene selector (decisión de Wendy); el `ModelPicker` se extrajo a un componente compartido con el agente de chat.
+- El panel "Analizar con IA" del dashboard muestra con qué modelo corre, un link a la configuración y, después, con qué modelo salió cada análisis.
+
+### Un bug que ya estaba
+
+**La auditoría de las tareas nunca se escribió** (0 filas en `audit_log` con `entity_type = 'ai_task'`): `audit_log.entity_id` es un uuid y se le pasaba el id de la tarea ("message_classification"…), así que el insert fallaba en silencio (`logAudit` solo loguea). Afectaba también a guardar y restaurar instrucciones (PR #23). Ahora la entidad auditada es el workspace y la tarea va en `metadata.task`; hay un test que fija que el id sea un uuid.
+
+### Lo que queda
+
+- Aplicar el mismo patrón de modelo elegible al resto de las tareas, si se quiere (el `ai_task_models` ya está pensado para eso).
