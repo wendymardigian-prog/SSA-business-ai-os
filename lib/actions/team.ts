@@ -66,6 +66,9 @@ export async function inviteTeamMember(
       .eq("workspace_id", workspaceId)
       .eq("email", trimmedEmail)
       .eq("status", "pending")
+      // Una vencida no cuenta: sigue en 'pending' (nada la pasa a otro
+      // estado), y sin este filtro bloqueaba volver a invitar a esa persona.
+      .gt("expires_at", new Date().toISOString())
       .single();
 
     if (existingInvite) {
