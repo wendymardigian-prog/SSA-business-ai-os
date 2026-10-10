@@ -41,6 +41,13 @@ export const NOTIFICATION_TYPES = [
   "email_quota_reached",
   /** El asistente no pudo interpretar un mensaje y derivó la conversación (F10). */
   "needs_human",
+  // Llamadas (Fathom + analizador).
+  /** Se cayó la conexión de Fathom de una persona: hay que reconectar. Va SOLO a esa persona. */
+  "fathom_connection_error",
+  /** El tope de gasto de IA frenó el análisis de llamadas. Va a quien configura el análisis. */
+  "call_analysis_budget",
+  /** El closer no está de acuerdo con una sección del análisis. Va a quienes editan llamadas. */
+  "call_objection",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -55,7 +62,9 @@ export type NotificationEntity =
   | "integration"
   | "content_post"
   | "booking"
-  | "flow";
+  | "flow"
+  | "fathom"
+  | "call";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -253,6 +262,25 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "booking",
   },
+  /** La conexion de Fathom dejo de dar acceso: sin reconectar no entran llamadas nuevas. */
+  fathom_connection_error: {
+    type: "fathom_connection_error",
+    label: "Reconectá tu Fathom",
+    tone: "warning",
+    entity: "fathom",
+  },
+  /** El tope de gasto de IA dejo llamadas sin analizar. */
+  call_analysis_budget: {
+    type: "call_analysis_budget",
+    label: "Llamadas sin analizar por el tope de gasto",
+    tone: "warning",
+  },
+  call_objection: {
+    type: "call_objection",
+    label: "Objeción a un análisis de llamada",
+    tone: "info",
+    entity: "call",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -303,6 +331,14 @@ export function linkFor(
     // El flujo que no pudo mandar: se abre en el editor.
     case "flow":
       return entityId ? `/dashboard/flows/${entityId}` : "/dashboard/flows";
+
+    // Llamadas: la conexion de Fathom se arregla en su pantalla (la ve cualquier
+    // miembro; Integraciones es solo de admins), y una llamada abre su ficha.
+    case "fathom":
+      return "/dashboard/llamadas/mi-fathom";
+
+    case "call":
+      return entityId ? `/dashboard/llamadas/${entityId}` : "/dashboard/llamadas";
 
     case "integration":
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:

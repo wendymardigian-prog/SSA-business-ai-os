@@ -96,3 +96,18 @@ describe("avisos de ventana de borradores (Bloque 2c)", () => {
     expect(linkFor("draft_queue", null, { unassigned: true })).toBe("/dashboard/drafts?quien=sin-asignar&ventana=por-vencer");
   });
 });
+
+describe("avisos de Llamadas", () => {
+  it("la conexion de Fathom lleva a Mi Fathom, no a Integraciones (un Member no entra ahi)", () => {
+    expect(linkFor("fathom", null)).toBe("/dashboard/llamadas/mi-fathom");
+  });
+  it("una objecion abre la llamada; sin id, la lista", () => {
+    expect(linkFor("call", "call-1")).toBe("/dashboard/llamadas/call-1");
+    expect(linkFor("call", null)).toBe("/dashboard/llamadas");
+  });
+  it("son warning o info segun corresponde", () => {
+    expect(toneFor("fathom_connection_error")).toBe("warning");
+    expect(toneFor("call_analysis_budget")).toBe("warning");
+    expect(toneFor("call_objection")).toBe("info");
+  });
+});

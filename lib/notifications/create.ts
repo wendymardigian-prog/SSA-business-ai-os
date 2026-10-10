@@ -80,9 +80,17 @@ export async function createNotification(args: CreateNotificationArgs): Promise<
  * vuelve a pasar, eso SI es noticia nueva.
  */
 export async function createNotificationOnce(
-  args: CreateNotificationArgs & { withinMinutes?: number },
+  args: CreateNotificationArgs & {
+    withinMinutes?: number;
+    /**
+     * Distingue por destinatario: un aviso para cada persona de una lista (el
+     * tope de gasto avisa a todos los que configuran el analisis), no solo al
+     * primero. Sin esto la regla es la de siempre: una por tipo y entidad.
+     */
+    perRecipient?: boolean;
+  },
 ): Promise<boolean> {
-  const { supabase, workspaceId, type, entityId, withinMinutes = 60 } = args;
+  const { supabase, workspaceId, type, entityId, recipientId, withinMinutes = 60, perRecipient = false } = args;
 
   try {
     const since = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
@@ -97,6 +105,7 @@ export async function createNotificationOnce(
       .limit(1);
 
     query = entityId ? query.eq("entity_id", entityId) : query.is("entity_id", null);
+    if (perRecipient) query = recipientId ? query.eq("recipient_id", recipientId) : query.is("recipient_id", null);
 
     const { data, error } = await query;
 

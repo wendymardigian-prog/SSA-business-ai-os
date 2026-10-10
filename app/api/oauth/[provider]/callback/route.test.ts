@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 const guards = vi.hoisted(() => ({
   getAdminContext: vi.fn(),
   getPermissionAction: vi.fn(),
+  getMemberAction: vi.fn(),
 }));
 vi.mock("@/lib/auth/guards", () => guards);
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => ({}) }));
@@ -23,6 +24,8 @@ vi.mock("@/lib/social/sync-hook", () => ({ queueFirstRead }));
 const syncCalendars = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/scheduling/data/calendars", () => ({ syncCalendars }));
 vi.mock("@/lib/app-url", () => ({ appUrl: () => "https://app.test" }));
+const queueFathomSyncNow = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/fathom/queue", () => ({ queueFathomSyncNow }));
 
 import { GET } from "./route";
 
@@ -36,6 +39,8 @@ beforeEach(() => {
   completeOAuth.mockResolvedValue({ ok: true, connectionId: "conn-1", redirectTo: "/dashboard/settings/integrations" });
   syncSocialAccounts.mockResolvedValue({ newAccountIds: ["a1"] });
   syncCalendars.mockResolvedValue(undefined);
+  guards.getMemberAction.mockResolvedValue(memberCtx);
+  queueFathomSyncNow.mockResolvedValue({ queued: true });
   queueFirstRead.mockResolvedValue(undefined);
 });
 
@@ -105,5 +110,34 @@ describe("retorno OAuth: una conexion por persona (Google Calendar)", () => {
     const res = await call("google_calendar");
     expect(res.status).toBe(307);
     spy.mockRestore();
+  });
+});
+
+describe("retorno OAuth: Fathom (una conexion por persona, sin permiso)", () => {
+  it("la completa cualquier miembro, encola la primera consulta y vuelve a Mi Fathom", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
+    completeOAuth.mockResolvedValue({ ok: true, connectionId: "conn-9", redirectTo: "/dashboard/settings/integrations" });
+    const res = await call("fathom");
+    expect(queueFathomSyncNow).toHaveBeenCalledWith({}, "conn-9");
+    expect(syncCalendars).not.toHaveBeenCalled();
+    expect(syncSocialAccounts).not.toHaveBeenCalled();
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/dashboard/llamadas/mi-fathom");
+    expect(location.searchParams.get("connected")).toBe("1");
+    expect(completeOAuth.mock.calls[0][0]).toMatchObject({ userId: "member-1", workspaceId: "ws-1" });
+  });
+
+  it("si falla vuelve a Mi Fathom con ?error= (un Member no entra a Integraciones)", async () => {
+    completeOAuth.mockResolvedValue({ ok: false, error: "Fathom rechazo el codigo", redirectTo: "/dashboard/settings/integrations" });
+    const res = await call("fathom");
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe("/dashboard/llamadas/mi-fathom");
+    expect(location.searchParams.get("error")).toBe("Fathom rechazo el codigo");
+    expect(queueFathomSyncNow).not.toHaveBeenCalled();
+  });
+
+  it("sin sesion da 403", async () => {
+    guards.getMemberAction.mockResolvedValue(null);
+    expect((await call("fathom")).status).toBe(403);
   });
 });

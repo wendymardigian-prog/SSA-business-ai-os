@@ -4512,6 +4512,15 @@ export interface Database {
         Args: { p_key: string; p_window_start: string };
         Returns: number;
       };
+      /** Llamadas (00145): toma el candado de renovacion del refresh token de Fathom. Solo service_role. */
+      claim_oauth_refresh: {
+        Args: { p_connection_id: string; p_seconds: number };
+        Returns: boolean;
+      };
+      release_oauth_refresh: {
+        Args: { p_connection_id: string };
+        Returns: undefined;
+      };
       /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
       booking_utm_options: {
         Args: { p_workspace_id: string };
