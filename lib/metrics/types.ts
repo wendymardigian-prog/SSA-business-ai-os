@@ -79,6 +79,20 @@ export interface ReaderResult {
    * seguidores, y eso no es "fallo la sincronizacion".
    */
   warnings: string[];
+  /**
+   * Lo que el lector supo del perfil de la cuenta (foto, usuario, nombre,
+   * bio). Ausente = el lector no lo lee; un campo en null = la red no lo dio
+   * y no se pisa lo que habia.
+   */
+  profile?: AccountProfile;
+}
+
+export interface AccountProfile {
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  profileUrl: string | null;
 }
 
 export const EMPTY_READER_RESULT: ReaderResult = { posts: [], accountDaily: [], warnings: [] };

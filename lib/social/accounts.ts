@@ -304,7 +304,9 @@ export function computeAccounts(sources: AccountSources): ComputedAccounts {
   if (youtube.length > 0) {
     finish("youtube", youtube, {
       externalId: sources.google?.external_account_id ?? null,
-      username: null,
+      // El @ lo escribe la lectura de metricas (lo trae la API del canal):
+      // recalcular las cuentas no lo borra.
+      username: sources.existing.find((e) => e.platform === "youtube")?.username ?? null,
       displayName: sources.google?.account_label ?? "YouTube",
       channelId: null,
     });

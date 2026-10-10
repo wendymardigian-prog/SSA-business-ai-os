@@ -19,7 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, SocialPlatform, SocialPostMediaType } from "@/lib/types/database";
 import { computeD7, shouldCollect, workspaceDate, type DailyPoint, type StoredPost } from "./rules";
-import type { AccountSnapshot, PostMetrics, PostSnapshot } from "./types";
+import type { AccountProfile, AccountSnapshot, PostMetrics, PostSnapshot } from "./types";
 import { findManualMatch } from "./adopt-manual";
 
 type Db = SupabaseClient<Database>;
@@ -254,6 +254,62 @@ export async function persistPosts(
   }
 
   return { publications: params.posts.length, metricRows, created, warnings };
+}
+
+/**
+ * Actualiza lo descriptivo (formato, miniatura, texto, link) de publicaciones
+ * que la red devolvio pero que hoy no tocaba guardar (F79).
+ *
+ * La lectura ya estaba hecha: no cuesta cuota. Sin esto, un post viejo
+ * quedaba para siempre con lo que se supo la primera vez (un Short importado
+ * como "video" no se corregia nunca). Solo actualiza filas que ya existen y
+ * no toca `last_synced_at`: la frecuencia de lectura de metricas sigue igual.
+ * Nunca lanza.
+ */
+export async function refreshPostDetails(
+  supabase: Db,
+  params: { socialAccountId: string; posts: PostSnapshot[] },
+): Promise<void> {
+  for (const post of params.posts) {
+    const descriptive = defined({
+      caption: post.caption,
+      media_type: post.mediaType as SocialPostMediaType | null,
+      thumbnail_url: post.thumbnailUrl,
+      url: post.url,
+    });
+    if (Object.keys(descriptive).length === 0) continue;
+
+    const { error } = await supabase
+      .from("social_posts")
+      .update(descriptive)
+      .eq("social_account_id", params.socialAccountId)
+      .eq("external_post_id", post.externalPostId);
+    if (error) console.error("[metricas] no pude actualizar los datos de una publicacion:", error.message);
+  }
+}
+
+/**
+ * El perfil de la cuenta (foto, usuario, nombre, bio) segun el lector.
+ *
+ * Solo lo que la red dio: un campo en null no borra lo que habia. Nunca
+ * lanza: una foto que no se pudo guardar no tumba la sincronizacion.
+ */
+export async function persistAccountProfile(
+  supabase: Db,
+  params: { socialAccountId: string; profile: AccountProfile },
+): Promise<void> {
+  const values = defined({
+    username: params.profile.username,
+    handle: params.profile.username,
+    display_name: params.profile.displayName,
+    avatar_url: params.profile.avatarUrl,
+    bio: params.profile.bio,
+    profile_url: params.profile.profileUrl,
+  });
+  if (Object.keys(values).length === 0) return;
+
+  const { error } = await supabase.from("social_accounts").update(values).eq("id", params.socialAccountId);
+  if (error) console.error("[metricas] no pude guardar el perfil de la cuenta:", error.message);
 }
 
 /** La fila del dia. Vacia no se escribe: no hay dato que guardar. */

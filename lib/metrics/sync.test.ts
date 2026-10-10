@@ -9,9 +9,11 @@ import {
   canRefreshNow,
   maybeComputeD7,
   persistAccountMetrics,
+  persistAccountProfile,
   persistPostMetrics,
   persistPosts,
   postsDueForSync,
+  refreshPostDetails,
   syncDate,
 } from "./sync";
 
@@ -481,5 +483,66 @@ describe("congelar el engagement a 7 dias (F47)", () => {
 describe("la fecha del workspace (F47)", () => {
   it("sin zona configurada cae a UTC (respaldo neutro, no la de ningun negocio en particular)", () => {
     expect(syncDate(new Date("2026-10-01T02:00:00Z"), null)).toBe("2026-10-01");
+  });
+});
+
+describe("lo descriptivo de lo que hoy no toca guardar (F79)", () => {
+  it("un video importado como 'video' pasa a 'short' sin tocar su ultima lectura", async () => {
+    const memory = db({
+      social_posts: [
+        {
+          id: "sp-1",
+          social_account_id: ACC,
+          external_post_id: "yt-1",
+          media_type: "video",
+          caption: "Viejo",
+          last_synced_at: "2026-09-01T06:00:00Z",
+        },
+      ],
+    });
+
+    await refreshPostDetails(memory.client, {
+      socialAccountId: ACC,
+      posts: [snapshot({ externalPostId: "yt-1", mediaType: "short", caption: "Nuevo", thumbnailUrl: null })],
+    });
+
+    expect(memory.rows("social_posts")[0]).toMatchObject({
+      media_type: "short",
+      caption: "Nuevo",
+      last_synced_at: "2026-09-01T06:00:00Z",
+    });
+  });
+
+  it("no crea filas: uno que no tenemos no se agrega por esta via", async () => {
+    const memory = db();
+
+    await refreshPostDetails(memory.client, { socialAccountId: ACC, posts: [snapshot()] });
+
+    expect(memory.rows("social_posts")).toHaveLength(0);
+  });
+});
+
+describe("el perfil de la cuenta (F75)", () => {
+  it("guarda la foto, el @ y el nombre; lo que vino en null no pisa lo que habia", async () => {
+    const memory = db({
+      social_accounts: [{ id: ACC, workspace_id: WS, bio: "La bio de antes", avatar_url: null }],
+    });
+
+    await persistAccountProfile(memory.client, {
+      socialAccountId: ACC,
+      profile: {
+        username: "wendymardigian",
+        displayName: "Wendy Mardigian",
+        avatarUrl: "https://yt3/800",
+        bio: null,
+        profileUrl: "https://www.youtube.com/@wendymardigian",
+      },
+    });
+
+    expect(memory.rows("social_accounts")[0]).toMatchObject({
+      username: "wendymardigian",
+      avatar_url: "https://yt3/800",
+      bio: "La bio de antes",
+    });
   });
 });

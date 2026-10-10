@@ -133,6 +133,40 @@ export function gridRatio(platform: string): string {
   return GRID_RATIO[platform] ?? "1 / 1";
 }
 
+/**
+ * Las pestañas de contenido de una red, como las tiene la red misma.
+ *
+ * YouTube separa "Videos" y "Shorts" en el canal, y no se miran igual: un
+ * Short es vertical y un video es apaisado. En una sola grilla de 16:9 la
+ * portada de un Short quedaba con franjas negras a los costados.
+ */
+export const CONTENT_TABS: Record<string, Array<{ value: string; label: string; ratio: string }>> = {
+  youtube: [
+    { value: "video", label: "Videos", ratio: "16 / 9" },
+    { value: "short", label: "Shorts", ratio: "9 / 16" },
+  ],
+};
+
+export function contentTabs(platform: string): Array<{ value: string; label: string; ratio: string }> {
+  return CONTENT_TABS[platform] ?? [];
+}
+
+/**
+ * Si una publicacion va en la pestaña. Una sin formato conocido va en la
+ * primera (en YouTube, "Videos"): no puede quedar fuera de todas.
+ */
+export function inContentTab(platform: string, tab: string, mediaType: string | null): boolean {
+  const tabs = contentTabs(platform);
+  if (tabs.length === 0) return true;
+  const known = tabs.some((t) => t.value === mediaType);
+  return known ? mediaType === tab : tab === tabs[0].value;
+}
+
+/** La forma de la baldosa: la de la pestaña si la red las tiene, si no la de la red. */
+export function tabRatio(platform: string, tab: string | null): string {
+  return contentTabs(platform).find((t) => t.value === tab)?.ratio ?? gridRatio(platform);
+}
+
 /** Los formatos que se pueden filtrar en cada red. */
 export const FORMAT_FILTERS: Record<string, Array<{ value: string; label: string }>> = {
   instagram: [
@@ -142,10 +176,7 @@ export const FORMAT_FILTERS: Record<string, Array<{ value: string; label: string
     { value: "story", label: "Stories" },
   ],
   tiktok: [{ value: "video", label: "Videos" }],
-  youtube: [
-    { value: "video", label: "Videos" },
-    { value: "short", label: "Shorts" },
-  ],
+  // YouTube no tiene filtro: tiene pestañas (CONTENT_TABS).
   threads: [
     { value: "text", label: "Texto" },
     { value: "image", label: "Con imagen" },
