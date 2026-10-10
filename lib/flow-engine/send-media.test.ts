@@ -35,7 +35,12 @@ vi.mock("@/lib/evolution-config", () => ({ getEvolutionConfig }));
 
 const zernioClient = { messages: { sendInboxMessage, uploadMediaDirect } };
 vi.mock("@/lib/zernio-client", () => ({ createZernioClient: () => zernioClient }));
-vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioApiKey: async () => "api-key-1" }));
+const { getZernioApiKey, sendEmailReply } = vi.hoisted(() => ({
+  getZernioApiKey: vi.fn(async () => "api-key-1"),
+  sendEmailReply: vi.fn(async () => ({ ok: true, messageId: "m-1", providerId: "re-1", error: null, retryable: false })),
+}));
+vi.mock("@/lib/integrations/zernio-key", () => ({ getZernioApiKey }));
+vi.mock("@/lib/email/send-reply", () => ({ sendEmailReply }));
 
 import { sendChannelMessage, type SendContext } from "./send";
 
@@ -48,7 +53,9 @@ function db(overrides: Parameters<typeof memoryDb>[0] = {}) {
     channels: [
       { id: "ch-wa", workspace_id: WS, provider: "evolution", platform: "whatsapp", evolution_instance: "ssa-1", is_active: true },
       { id: "ch-ig", workspace_id: WS, provider: "late", platform: "instagram", late_account_id: "acc-1", is_active: true },
+      { id: "ch-mail", workspace_id: WS, provider: "resend", platform: "email", email_address: "hola@x.test", is_active: true },
     ],
+    contacts: [{ id: "c-1", email: "lead@x.test", do_not_contact: false }],
     contact_channels: [
       { channel_id: "ch-wa", contact_id: "c-1", platform_sender_id: "5491122334455" },
       { channel_id: "ch-ig", contact_id: "c-1", platform_sender_id: "ig-sender-1" },
@@ -213,5 +220,39 @@ describe("el bug arreglado: un flow con media por Evolution ahora SI se manda", 
       fileName: undefined,
       caption: "mirá la promo",
     });
+  });
+});
+
+describe("las claves se leen con el cliente de servicio (00143)", () => {
+  // La bandeja manda con el cliente del usuario y pasa el de servicio solo
+  // para leer claves: desde la 00143 `read_secret` no la ejecuta un usuario.
+  const service = { __service: true } as never;
+
+  it("sin `secrets`, las lee con el mismo cliente del envio (flows, secuencias, agente)", async () => {
+    const { memory } = db();
+    await sendChannelMessage(memory.client, waContext, { text: "hola" });
+    await sendChannelMessage(memory.client, igContext, { text: "hola" });
+
+    expect(getEvolutionConfig).toHaveBeenCalledWith(memory.client, WS);
+    expect(getZernioApiKey).toHaveBeenCalledWith(WS, { supabase: memory.client });
+  });
+
+  it("WhatsApp: con `secrets`, la config de Evolution sale de ese cliente", async () => {
+    const { memory } = db();
+    await sendChannelMessage(memory.client, waContext, { text: "hola" }, { secrets: service });
+    expect(getEvolutionConfig).toHaveBeenCalledWith(service, WS);
+  });
+
+  it("Instagram: con `secrets`, la key de Zernio sale de ese cliente", async () => {
+    const { memory } = db();
+    await sendChannelMessage(memory.client, igContext, { text: "hola" }, { secrets: service });
+    expect(getZernioApiKey).toHaveBeenCalledWith(WS, { supabase: service });
+  });
+
+  it("Email: con `secrets`, sendEmailReply lo recibe para leer la key de Resend", async () => {
+    const { memory } = db();
+    const mailContext: SendContext = { ...waContext, channelId: "ch-mail" };
+    await sendChannelMessage(memory.client, mailContext, { text: "hola" }, { secrets: service });
+    expect(sendEmailReply).toHaveBeenCalledWith(memory.client, expect.objectContaining({ secrets: service }));
   });
 });

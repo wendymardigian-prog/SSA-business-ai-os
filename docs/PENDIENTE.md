@@ -1013,13 +1013,22 @@ canales exige admin, y se saco "Crear workspace" (fallaba siempre: no hay policy
 de INSERT en `workspaces`, y el modelo es una copia por cliente).
 
 Queda pendiente, a proposito:
-- **Un Admin lee en texto plano todas las claves de SU workspace** llamando a
-  `read_secret` directo desde el navegador (la RPC esta concedida a
-  `authenticated` y solo pide owner/admin). Incluye los tokens de Google
-  Calendar de OTRAS personas (`oauth_google_calendar_<connectionId>_*`), lo que
-  contradice la regla de `lib/actions/scheduling/calendars.ts`. Cerrarlo es
-  mover las lecturas a service role y sacarle el GRANT a `authenticated`: hay
-  que revisar cada llamada con el cliente del usuario.
+- ~~**Un Admin lee en texto plano todas las claves de SU workspace**~~ —
+  **arreglado en codigo** (rama `fix/read-secret-service-only`, 10/10/2026).
+  No eran 27 lugares: casi todo (cron, webhooks, colas, agente, OAuth, Google
+  Calendar, publicar) ya leia con service role. Los que pasaban la sesion del
+  usuario eran la bandeja (`app/api/v1/messages` POST), las rutas de canales
+  (test-key, sync, WhatsApp, borrar canal) y Ads/Meta (`dashboards/ads`, las
+  tres paginas de detalle, `refreshMetaAccounts`); ahora leen con el de
+  servicio, con el workspace del guard o de la conversacion cargada con RLS.
+  **De paso arregla un bug vivo**: un Member no podia responder desde la
+  bandeja (`read_secret` lo rechazaba: en Instagram veia "la cuenta no esta
+  conectada", el email daba error, y sus audios/imagenes no se transcribian ni
+  describian). **Falta**: desplegar, probar en vivo (DM de Instagram, WhatsApp
+  y email desde la bandeja, idealmente con un Member; Ads; QR de WhatsApp;
+  "Actualizar cuentas" de Meta), aplicar la `00143` (saca el GRANT a
+  `authenticated`) con OK explicito, y correr `verify-rls.mjs` y
+  `verify-workspace-isolation.mjs` con `--despues-de-00143`, uno por vez.
 - **Registro publico abierto en el Supabase hospedado.** Cualquiera con la anon
   key puede crearse una cuenta y el trigger le arma un workspace vacio (no ve
   nada ajeno). Se apaga desde el panel: Authentication → Sign In / Providers →

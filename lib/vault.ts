@@ -6,6 +6,14 @@
  * real, asi que aca solo se pasa el nombre "limpio" (ej: "zernio_api_key").
  *
  * Reglas:
+ * - **`readSecret` siempre con el cliente de servicio** (`createServiceClient`).
+ *   Desde la 00143, `read_secret` solo la puede ejecutar `service_role`: antes
+ *   estaba concedida a `authenticated`, y un Admin podia leer cualquier clave
+ *   en texto plano desde la consola del navegador. QUIEN puede usar una clave
+ *   lo decide el que llama (el guard de Admin, la RLS de la conversacion), y
+ *   el workspace sale siempre de la sesion, nunca del pedido.
+ *   `storeSecret`, `deleteSecret` y `listSecretNames` siguen con el cliente
+ *   del usuario: ninguna devuelve un valor.
  * - Solo desde el servidor. Nunca importar esto en un Client Component: lo
  *   verifica lib/vault-boundary.test.ts siguiendo los imports.
  * - El valor del secret nunca se loguea ni se mete en un mensaje de error:
@@ -21,6 +29,14 @@ export { SECRET_NAMES, ALL_SECRET_NAMES, oauthSecretName } from "@/lib/secret-na
 export type { SecretName } from "@/lib/secret-names";
 
 import type { SecretName } from "@/lib/secret-names";
+
+/**
+ * El error de Postgres cuando un rol sin EXECUTE llama a `read_secret` (desde
+ * la 00143, cualquiera que no sea `service_role`).
+ */
+export function isReadWithUserSession(message: string): boolean {
+  return message.includes("permission denied for function read_secret");
+}
 
 /** Mensaje de la RPC cuando el usuario no es owner/admin del workspace. */
 export function isForbiddenSecretError(message: string): boolean {
@@ -54,9 +70,10 @@ export async function storeSecret(
 }
 
 /**
- * Lee un secret. Devuelve null si no existe.
- * Lanza si el usuario no tiene permiso, porque un null silencioso ahi se
- * confunde con "no configurado" y manda a reconfigurar algo que ya estaba.
+ * Lee un secret. Devuelve null si no existe. `supabase` tiene que ser el
+ * cliente de servicio (ver la cabecera).
+ * Lanza si no hay permiso, porque un null silencioso ahi se confunde con "no
+ * configurado" y manda a reconfigurar algo que ya estaba.
  */
 export async function readSecret(
   supabase: SupabaseClient,
@@ -69,8 +86,13 @@ export async function readSecret(
   });
 
   if (error) {
-    console.error(`[vault] read_secret "${name}" failed:`, error.message);
-    throw new Error(`No se pudo leer el secret "${name}": ${error.message}`);
+    // "permission denied" es casi siempre un llamador que paso el cliente del
+    // usuario: se dice en el log para que no se lea como "no configurado".
+    const hint = isReadWithUserSession(error.message)
+      ? " (read_secret solo la ejecuta el servidor desde la 00143: pasar createServiceClient())"
+      : "";
+    console.error(`[vault] read_secret "${name}" failed:`, error.message + hint);
+    throw new Error(`No se pudo leer el secret "${name}": ${error.message}${hint}`);
   }
   return (data as string | null) ?? null;
 }

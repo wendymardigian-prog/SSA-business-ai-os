@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { getAdminContext } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { channelWebhookUrl } from "@/lib/webhook-url";
 import {
   EvolutionError,
@@ -29,7 +30,10 @@ export async function POST() {
     );
   }
 
-  const config = await getEvolutionConfig(ctx.supabase, ctx.workspace.id);
+  // Las claves se leen con el de servicio: desde la 00143 `read_secret` solo
+  // la ejecuta el servidor. El workspace sale del guard de Admin, no del pedido.
+  const service = await createServiceClient();
+  const config = await getEvolutionConfig(service, ctx.workspace.id);
   if (!config) {
     return NextResponse.json(
       {
@@ -42,7 +46,7 @@ export async function POST() {
 
   // El token sale de Vault y, si no hay, del entorno (F4): es el mismo que
   // despues valida el receptor.
-  const webhookToken = await getEvolutionWebhookToken(ctx.supabase, ctx.workspace.id);
+  const webhookToken = await getEvolutionWebhookToken(service, ctx.workspace.id);
   if (!webhookToken) {
     return NextResponse.json(
       {

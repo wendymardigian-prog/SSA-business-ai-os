@@ -80,6 +80,20 @@ export interface OutboundMessage {
   replyMarkup?: unknown;
 }
 
+/**
+ * Opciones del envio.
+ *
+ * `secrets` es el cliente con el que se leen las claves del proveedor (Zernio,
+ * Evolution, Resend). Por defecto es el mismo `supabase` del envio, que en los
+ * flows, las secuencias y el agente ya es el de servicio. La bandeja manda con
+ * el cliente del usuario (asi la RLS decide que conversacion ve y el tope de
+ * envios automaticos no le aplica), y pasa aca el de servicio: desde la 00143
+ * `read_secret` solo la puede ejecutar el servidor.
+ */
+export interface SendOptions {
+  secrets?: SupabaseClient<Database>;
+}
+
 export interface SendOutcome {
   ok: boolean;
   platformMessageId?: string | null;
@@ -108,8 +122,10 @@ interface ChannelRow {
 export async function sendChannelMessage(
   supabase: SupabaseClient<Database>,
   context: SendContext,
-  message: OutboundMessage
+  message: OutboundMessage,
+  options: SendOptions = {},
 ): Promise<SendOutcome> {
+  const secrets = options.secrets ?? supabase;
   const channel = await loadChannel(supabase, context.channelId);
   if (!channel) {
     return {
@@ -128,14 +144,14 @@ export async function sendChannelMessage(
   }
 
   if (channel.provider === "evolution") {
-    return sendViaEvolution(supabase, context, channel, message);
+    return sendViaEvolution(supabase, secrets, context, channel, message);
   }
   // Rama explicita y no un `else`: un canal nuevo que caiga por default en
   // Zernio manda un mensaje al lugar equivocado sin avisar.
   if (channel.provider === "resend") {
-    return sendViaResendChannel(supabase, context, channel, message);
+    return sendViaResendChannel(supabase, secrets, context, channel, message);
   }
-  return sendViaZernio(supabase, context, channel, message);
+  return sendViaZernio(supabase, secrets, context, channel, message);
 }
 
 async function loadChannel(
@@ -185,6 +201,7 @@ async function claimSend(
  */
 async function sendViaResendChannel(
   supabase: SupabaseClient<Database>,
+  secrets: SupabaseClient<Database>,
   context: SendContext,
   channel: ChannelRow,
   message: OutboundMessage
@@ -220,6 +237,7 @@ async function sendViaResendChannel(
     toAddress: contact?.email ?? null,
     text,
     contactOptedOut: contact?.do_not_contact === true,
+    secrets,
   });
 
   if (!result.ok) {
@@ -278,11 +296,12 @@ async function uploadToZernioDirect(
 
 async function sendViaZernio(
   supabase: SupabaseClient<Database>,
+  secrets: SupabaseClient<Database>,
   context: SendContext,
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
-  const apiKey = await getZernioApiKey(context.workspaceId, { supabase });
+  const apiKey = await getZernioApiKey(context.workspaceId, { supabase: secrets });
   if (!apiKey) {
     return {
       ok: false,
@@ -401,11 +420,12 @@ async function sendEvolutionMediaMessage(
  */
 async function sendViaEvolution(
   supabase: SupabaseClient<Database>,
+  secrets: SupabaseClient<Database>,
   context: SendContext,
   channel: ChannelRow,
   message: OutboundMessage
 ): Promise<SendOutcome> {
-  const config = await getEvolutionConfig(supabase, channel.workspace_id);
+  const config = await getEvolutionConfig(secrets, channel.workspace_id);
   if (!config || !channel.evolution_instance) {
     return {
       ok: false,

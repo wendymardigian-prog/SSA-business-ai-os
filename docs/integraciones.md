@@ -37,10 +37,16 @@ Lo garantiza la base, no la pantalla:
 - El nombre real de cada secreto es `ws:<workspace>:<nombre>`, y ese prefijo lo
   arma la base (`vault_secret_key`, migración 00017). El nombre que llega de
   afuera no puede tener `:`, así que no hay forma de apuntar a otro workspace.
-- `store_secret`, `read_secret`, `delete_secret` y `list_secret_names` comprueban
-  con `auth.uid()` que quien llama es Owner o Admin de **ese** workspace. Si no,
+- `store_secret`, `delete_secret` y `list_secret_names` comprueban con
+  `auth.uid()` que quien llama es Owner o Admin de **ese** workspace. Si no,
   responden `forbidden`. Solo el service role (webhooks, cron) pasa sin ese
   chequeo, y siempre usa el workspace de la fila que está procesando.
+- `read_secret`, la única que devuelve un valor, **solo la ejecuta el service
+  role** (migración 00143). Ningún usuario, tampoco el Owner, puede leer una
+  clave con su sesión. El servidor la lee con `createServiceClient()`, después
+  de que el que llama ya decidió si se puede usar (el guard de Admin de la
+  ruta, o la RLS de la conversación en la bandeja), y con el workspace de la
+  sesión, nunca del pedido.
 - `integration_configs` es una fila por workspace y proveedor, y su RLS solo
   deja verla y tocarla a los admins del propio workspace.
 - Las acciones de Integraciones toman el workspace de la sesión del servidor,
@@ -56,9 +62,11 @@ Lo prueba `node scripts/verify-workspace-isolation.mjs` contra la base real: dos
 workspaces, y el Admin de uno intentando leer, pisar, borrar y listar los
 secretos y las integraciones del otro.
 
-Lo que **no** cubre: dentro de un mismo workspace, un Admin puede leer en texto
-plano cualquier clave de ese workspace llamando a `read_secret` directo (ver
-`docs/PENDIENTE.md`).
+Dentro de un mismo workspace, hasta la 00143 un Admin podía leer en texto plano
+cualquier clave llamando a `read_secret` directo desde el navegador (incluidos
+los tokens de Google Calendar de otra persona). Desde la 00143 no: lo prueban
+`verify-rls.mjs --despues-de-00143` y
+`verify-workspace-isolation.mjs --despues-de-00143`.
 
 ## "Probar y guardar"
 

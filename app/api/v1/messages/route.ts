@@ -1,5 +1,5 @@
 import { after, NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { toInboxThread } from "@/lib/zernio-message";
@@ -300,6 +300,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Channel not found" }, { status: 404 });
   }
 
+  // La conversacion ya se cargo con el cliente del usuario: si llego hasta
+  // aca, la RLS dejo que la vea. Las claves del proveedor se leen con el de
+  // servicio porque desde la 00143 `read_secret` solo la ejecuta el servidor
+  // (antes, un Member no podia responder: la RPC solo dejaba a Owner/Admin).
+  const service = await createServiceClient();
+
   // Rama explicita por proveedor y no un `else`: un canal nuevo que caiga
   // por default en Zernio manda el mensaje al lugar equivocado sin avisar.
   if (outChannel.provider === "resend") {
@@ -315,6 +321,7 @@ export async function POST(request: NextRequest) {
     }
     return sendViaResendChannel({
       supabase,
+      secrets: service,
       conversationId,
       channel: outChannel,
       contact,
@@ -357,10 +364,12 @@ export async function POST(request: NextRequest) {
     lateAccountId: outChannel.late_account_id ?? undefined,
   };
 
-  const outcome = await sendChannelMessage(supabase, context, {
-    text: text ?? "",
-    media: media ?? undefined,
-  });
+  const outcome = await sendChannelMessage(
+    supabase,
+    context,
+    { text: text ?? "", media: media ?? undefined },
+    { secrets: service },
+  );
 
   const now = new Date().toISOString();
   const attachmentsColumn = media
@@ -430,7 +439,9 @@ export async function POST(request: NextRequest) {
   // Sin un request en curso (un test) no hay donde colgarlo y se espera aca.
   if (media && stored) {
     const transcribeSentMedia = () =>
-      afterMediaStored({ supabase, messageId: stored.id, items: toAttachmentsColumn([attachmentsColumn!.items[0]])!.items });
+      // Con el de servicio, como en los dos webhooks: transcribir lee la
+      // key del proveedor, reclama la fila y puede encolar un reintento.
+      afterMediaStored({ supabase: service, messageId: stored.id, items: toAttachmentsColumn([attachmentsColumn!.items[0]])!.items });
     try {
       after(transcribeSentMedia);
     } catch {
@@ -462,6 +473,7 @@ export async function POST(request: NextRequest) {
  */
 async function sendViaResendChannel({
   supabase,
+  secrets,
   conversationId,
   channel,
   contact,
@@ -469,6 +481,8 @@ async function sendViaResendChannel({
   userId,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
+  /** Solo para leer la key de Resend (ver el comentario en POST). */
+  secrets: Awaited<ReturnType<typeof createServiceClient>>;
   conversationId: string;
   channel: {
     workspace_id: string;
@@ -495,6 +509,7 @@ async function sendViaResendChannel({
     // El chequeo de "no contactar" ya corrio arriba y pidio confirmacion;
     // aca se pasa en false para no volver a frenarlo.
     contactOptedOut: false,
+    secrets,
   });
 
   if (!result.ok) {
