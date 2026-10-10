@@ -1038,4 +1038,9 @@ Queda pendiente, a proposito:
   de antes del white label), asi que el trigger viejo le armo un workspace
   propio y nunca se sumo al de Wendy. La invitacion vencio el 9/10 sin
   aceptarse. Desde la 00119 + `registerFromInvite` esto ya no pasa.
+  **Resuelto el 10/10/2026**: con el OK de Wendy se borraron la cuenta (nunca
+  inicio sesion) y el workspace vacio, y la invitacion vencida se marco
+  `revoked`. Falta que Wendy la vuelva a invitar desde Equipo. De paso se
+  arreglo que una invitacion vencida (sigue en `pending`) bloqueara reinvitar
+  (`inviteTeamMember`, `lib/actions/team.ts`).
 
