@@ -15,6 +15,7 @@ import {
   percent,
   statusLabel,
   videoRetention,
+  videoTotals,
   type AdsRow,
   type GroupedRow,
 } from "@/lib/dashboards/ads";
@@ -126,17 +127,7 @@ export function AdsDetailView({
     { key: "ctr", label: "CTR", color: "#f59e0b", points: dailySeries(detail.daily, "ctr") },
   ];
 
-  const retention = videoRetention(detail.daily.reduce(
-    (acc, row) => ({
-      thruplays: add(acc.thruplays, row.thruplays),
-      videoP25: add(acc.videoP25, row.videoP25),
-      videoP50: add(acc.videoP50, row.videoP50),
-      videoP75: add(acc.videoP75, row.videoP75),
-      videoP95: add(acc.videoP95, row.videoP95),
-      videoP100: add(acc.videoP100, row.videoP100),
-    }),
-    { thruplays: null as number | null, videoP25: null as number | null, videoP50: null as number | null, videoP75: null as number | null, videoP95: null as number | null, videoP100: null as number | null },
-  ));
+  const retention = videoRetention(videoTotals(detail.daily));
 
   const rankings = detail.daily[0];
 
@@ -335,11 +326,6 @@ export function AdsDetailView({
       </div>
     </div>
   );
-}
-
-function add(a: number | null, b: number | null): number | null {
-  if (a === null && b === null) return null;
-  return (a ?? 0) + (b ?? 0);
 }
 
 function Kpi({

@@ -16,6 +16,7 @@ import {
   ratio,
   statusLabel,
   videoRetention,
+  videoTotals,
   type AdsRow,
 } from "./ads";
 
@@ -46,6 +47,9 @@ const row = (over: Partial<AdsRow> & { date: string }): AdsRow => ({
   videoP95: null,
   videoP100: null,
   thruplays: null,
+  videoAvgTimeSeconds: null,
+  actions: {},
+  updatedAt: null,
   ...over,
 });
 
@@ -132,6 +136,12 @@ describe("como se muestran los numeros (F56)", () => {
 
   it("sin dato, una raya", () => {
     expect(money(null, "ARS")).toBe("—");
+  });
+
+  it("con el simbolo corto, un dolar es $ y no US$", () => {
+    expect(money(1500, "USD", { narrow: true })).not.toContain("US");
+    expect(money(1500, "USD", { narrow: true })).toContain("$");
+    expect(money(1500, "EUR", { narrow: true })).toContain("€");
     expect(percent(null)).toBe("—");
   });
 });
@@ -194,12 +204,33 @@ describe("la serie diaria (F56)", () => {
   });
 });
 
+describe("agrupar con el alcance unico", () => {
+  it("el alcance de cada objeto es el unico, no la suma de los dias", () => {
+    const grouped = groupByObject(
+      [
+        row({ date: "2026-10-01", reach: 100, impressions: 300 }),
+        row({ date: "2026-10-02", reach: 100, impressions: 300 }),
+      ],
+      "campaign",
+      { c1: 150 },
+    );
+
+    expect(grouped[0].reach).toBe(150);
+    expect(grouped[0].frequency).toBe(4);
+  });
+
+  it("sin el dato en vivo, queda la suma de los dias", () => {
+    const grouped = groupByObject([row({ date: "2026-10-01", reach: 100 }), row({ date: "2026-10-02", reach: 50 })], "campaign");
+    expect(grouped[0].reach).toBe(150);
+  });
+});
+
 describe("la retencion de video (F56)", () => {
-  it("se calcula sobre las reproducciones, no sobre las impresiones", () => {
+  it("se calcula sobre las vistas de 3 segundos, no sobre las impresiones", () => {
     // Sobre impresiones estaria mezclando retencion con cuanta gente
     // decidio ver el video.
     const retention = videoRetention({
-      thruplays: 1000,
+      videoViews: 1000,
       videoP25: 800,
       videoP50: 500,
       videoP75: 300,
@@ -207,14 +238,29 @@ describe("la retencion de video (F56)", () => {
       videoP100: 120,
     });
 
-    expect(retention[0]).toEqual({ label: "25%", percent: 80 });
-    expect(retention[4]).toEqual({ label: "100%", percent: 12 });
+    expect(retention[0]).toEqual({ label: "3 seg", percent: 100 });
+    expect(retention[1]).toEqual({ label: "25%", percent: 80 });
+    expect(retention[5]).toEqual({ label: "100%", percent: 12 });
+  });
+
+  it("sin vistas de 3 segundos, la base es el 25%", () => {
+    const retention = videoRetention({
+      videoViews: null,
+      videoP25: 400,
+      videoP50: 200,
+      videoP75: null,
+      videoP95: null,
+      videoP100: null,
+    });
+
+    expect(retention[0].percent).toBeNull();
+    expect(retention[2]).toEqual({ label: "50%", percent: 50 });
   });
 
   it("sin reproducciones no hay curva", () => {
     expect(
       videoRetention({
-        thruplays: null,
+        videoViews: null,
         videoP25: null,
         videoP50: null,
         videoP75: null,
@@ -222,6 +268,28 @@ describe("la retencion de video (F56)", () => {
         videoP100: null,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("los totales de video (F56)", () => {
+  it("el tiempo promedio se pesa por las vistas de cada dia", () => {
+    // Un dia con 10 vistas a 2 s y otro con 90 a 12 s: el promedio es 11 s,
+    // no los 7 s de promediar los dos dias como si pesaran lo mismo.
+    const totals = videoTotals([
+      row({ date: "2026-10-01", videoAvgTimeSeconds: 2, actions: { video_view: 10 }, thruplays: 3 }),
+      row({ date: "2026-10-02", videoAvgTimeSeconds: 12, actions: { video_view: 90 }, thruplays: 40 }),
+    ]);
+
+    expect(totals.avgTimeSeconds).toBe(11);
+    expect(totals.videoViews).toBe(100);
+    expect(totals.thruplays).toBe(43);
+  });
+
+  it("sin video, todo queda en null y no en cero", () => {
+    const totals = videoTotals([row({ date: "2026-10-01" })]);
+    expect(totals.avgTimeSeconds).toBeNull();
+    expect(totals.videoViews).toBeNull();
+    expect(totals.thruplays).toBeNull();
   });
 });
 

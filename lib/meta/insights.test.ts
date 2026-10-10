@@ -119,6 +119,26 @@ describe("normalizar una fila (F55)", () => {
     });
   });
 
+  it("el ThruPlay es el ThruPlay, no las reproducciones iniciadas", () => {
+    const row = normalizeInsight(
+      {
+        ...raw,
+        video_play_actions: [{ action_type: "video_view", value: "900" }],
+        video_thruplay_watched_actions: [{ action_type: "video_view", value: "240" }],
+        video_avg_time_watched_actions: [{ action_type: "video_view", value: "7.4" }],
+      },
+      "campaign",
+      "act_1",
+    );
+
+    expect(row?.thruplays).toBe(240);
+    expect(row?.videoAvgTimeSeconds).toBe(7.4);
+  });
+
+  it("sin video, el tiempo promedio queda en null y no en cero", () => {
+    expect(normalizeInsight(raw, "campaign", "act_1")?.videoAvgTimeSeconds).toBeNull();
+  });
+
   it("una fila sin fecha se descarta: no hay donde guardarla", () => {
     expect(normalizeInsight({ campaign_id: "c1" }, "campaign", "act_1")).toBeNull();
   });

@@ -63,6 +63,7 @@ export async function persistInsights(
     video_p95: row.videoP95,
     video_p100: row.videoP100,
     thruplays: row.thruplays,
+    video_avg_time_seconds: row.videoAvgTimeSeconds,
     quality_ranking: row.qualityRanking,
     engagement_ranking: row.engagementRanking,
     conversion_ranking: row.conversionRanking,

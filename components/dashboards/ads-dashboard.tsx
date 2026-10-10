@@ -21,6 +21,7 @@ import {
   percent,
   statusLabel,
   videoRetention,
+  videoTotals,
   type AdsRow,
 } from "@/lib/dashboards/ads";
 
@@ -83,18 +84,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
 
   const grouped = useMemo(() => groupByObject(props.rows, tab), [props.rows, tab]);
   const steps = useMemo(() => funnel(totals), [totals]);
-  const retention = useMemo(
-    () =>
-      videoRetention({
-        thruplays: sumOf(accountRows, "thruplays"),
-        videoP25: sumOf(accountRows, "videoP25"),
-        videoP50: sumOf(accountRows, "videoP50"),
-        videoP75: sumOf(accountRows, "videoP75"),
-        videoP95: sumOf(accountRows, "videoP95"),
-        videoP100: sumOf(accountRows, "videoP100"),
-      }),
-    [accountRows],
-  );
+  const retention = useMemo(() => videoRetention(videoTotals(accountRows)), [accountRows]);
 
   if (props.accounts.length === 0) {
     return (
@@ -388,11 +378,6 @@ const METRIC_LABELS: Record<string, string> = {
   cpc: "CPC",
   cpm: "CPM",
 };
-
-function sumOf(rows: AdsRow[], key: keyof AdsRow): number | null {
-  const values = rows.map((r) => r[key]).filter((v): v is number => typeof v === "number");
-  return values.length > 0 ? values.reduce((a, b) => a + b, 0) : null;
-}
 
 function Delta({ now, previous }: { now: number | null; previous: number | null }) {
   if (now === null || previous === null || previous === 0) return null;
