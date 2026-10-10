@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Info } from "lucide-react";
 
 /**
@@ -39,4 +39,85 @@ export function InfoTooltip({ text, label = "Más información" }: { text: strin
 
 export function TooltipText({ children }: { children: ReactNode }) {
   return <span className="text-xs text-muted-foreground">{children}</span>;
+}
+
+/**
+ * Un tooltip para cualquier elemento (un boton de icono, el encabezado de una
+ * tabla). Abre con hover y con foco de teclado, cierra con Esc y cuando la
+ * pagina se desplaza.
+ *
+ * Se posiciona con `fixed` a partir de donde esta el disparador y no con
+ * `absolute`: adentro de una tabla con `overflow-x-auto` un panel absoluto
+ * queda recortado. Por eso mismo no puede ser el `InfoTooltip` de arriba, que
+ * cuelga de su propio contenedor.
+ */
+export function Tip({
+  content,
+  side = "top",
+  align = "center",
+  className = "",
+  children,
+}: {
+  content: ReactNode;
+  side?: "top" | "bottom";
+  align?: "start" | "center";
+  /** Clases del envoltorio del disparador (por ejemplo `w-full`). */
+  className?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+
+  const show = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPos({
+      x: align === "start" ? rect.left : rect.left + rect.width / 2,
+      y: side === "top" ? rect.top - 8 : rect.bottom + 8,
+    });
+  }, [align, side]);
+
+  const hide = useCallback(() => setPos(null), []);
+
+  useEffect(() => {
+    if (!pos) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    window.addEventListener("keydown", onKey);
+    // Capture: el scroll de un contenedor interno no burbujea hasta window.
+    window.addEventListener("scroll", hide, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", hide, true);
+    };
+  }, [pos, hide]);
+
+  const transform = `translate(${align === "start" ? "0" : "-50%"}, ${side === "top" ? "-100%" : "0"})`;
+
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      aria-describedby={pos ? id : undefined}
+      className={`inline-flex ${className}`}
+    >
+      {children}
+      {pos && (
+        <span
+          id={id}
+          role="tooltip"
+          style={{ left: pos.x, top: pos.y, transform }}
+          className="pointer-events-none fixed z-[60] max-w-xs rounded-lg border border-border bg-popover px-3 py-2 text-left text-xs font-normal normal-case leading-relaxed tracking-normal text-popover-foreground shadow-lg"
+        >
+          {content}
+        </span>
+      )}
+    </span>
+  );
 }

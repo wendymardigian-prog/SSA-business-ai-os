@@ -29,12 +29,22 @@ export const BACKFILL_DAYS = 90;
 const MAX_PAGES = 50;
 const PAGE_SIZE = 500;
 
+/**
+ * El video, en los cuatro niveles.
+ *
+ * Cada nivel trae el suyo: el tiempo promedio de reproduccion es un promedio
+ * y no se puede rearmar sumando el de los anuncios. `video_thruplay_watched_actions`
+ * es el ThruPlay (15 segundos o el video entero); `video_play_actions` son las
+ * reproducciones iniciadas, que es otra cosa y no se guarda como ThruPlay.
+ */
+const VIDEO_FIELDS = ["video_p25_watched_actions", "video_p50_watched_actions", "video_p75_watched_actions", "video_p95_watched_actions", "video_p100_watched_actions", "video_thruplay_watched_actions", "video_avg_time_watched_actions"];
+
 /** Los campos que se piden en cada nivel. */
 const FIELDS: Record<AdsLevel, string[]> = {
-  account: ["spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "video_play_actions", "video_p25_watched_actions", "video_p50_watched_actions", "video_p75_watched_actions", "video_p95_watched_actions", "video_p100_watched_actions", "outbound_clicks"],
-  campaign: ["campaign_id", "campaign_name", "objective", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks"],
-  adset: ["adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks"],
-  ad: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", "video_play_actions", "video_p25_watched_actions", "video_p50_watched_actions", "video_p75_watched_actions", "video_p95_watched_actions", "video_p100_watched_actions"],
+  account: ["spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
+  campaign: ["campaign_id", "campaign_name", "objective", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
+  adset: ["adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", ...VIDEO_FIELDS],
+  ad: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "cpm", "actions", "action_values", "outbound_clicks", "quality_ranking", "engagement_rate_ranking", "conversion_rate_ranking", ...VIDEO_FIELDS],
 };
 
 interface ActionEntry {
@@ -67,7 +77,10 @@ export interface InsightRow {
   videoP75: number | null;
   videoP95: number | null;
   videoP100: number | null;
+  /** ThruPlays: reproducciones de 15 segundos o del video entero. */
   thruplays: number | null;
+  /** Segundos promedio de reproduccion. */
+  videoAvgTimeSeconds: number | null;
   qualityRanking: string | null;
   engagementRanking: string | null;
   conversionRanking: string | null;
@@ -142,6 +155,8 @@ interface RawInsight {
   video_p75_watched_actions?: ActionEntry[];
   video_p95_watched_actions?: ActionEntry[];
   video_p100_watched_actions?: ActionEntry[];
+  video_thruplay_watched_actions?: ActionEntry[];
+  video_avg_time_watched_actions?: ActionEntry[];
 }
 
 /** Que objeto es cada fila, segun el nivel. */
@@ -209,7 +224,8 @@ export function normalizeInsight(
     videoP75: first(raw.video_p75_watched_actions),
     videoP95: first(raw.video_p95_watched_actions),
     videoP100: first(raw.video_p100_watched_actions),
-    thruplays: first(raw.video_play_actions),
+    thruplays: first(raw.video_thruplay_watched_actions),
+    videoAvgTimeSeconds: first(raw.video_avg_time_watched_actions),
     qualityRanking: raw.quality_ranking ?? null,
     engagementRanking: raw.engagement_rate_ranking ?? null,
     conversionRanking: raw.conversion_rate_ranking ?? null,

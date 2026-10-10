@@ -8,8 +8,10 @@ import {
   cacheKey,
   clearLiveCache,
   fetchBreakdown,
+  fetchReachByLevel,
   fetchUniqueReach,
   liveQuery,
+  parseHour,
   readCache,
   writeCache,
 } from "./live";
@@ -137,6 +139,75 @@ describe("los desgloses (F58)", () => {
     expect(result.ok && result.data[0]).toMatchObject({ key: "instagram", spend: 100, ctr: 3.2 });
   });
 
+  it("placement y posicion van juntos, y cada dimension en su campo", async () => {
+    const result = await fetchBreakdown({
+      token: "t",
+      adAccountId: "act_1",
+      breakdown: "publisher_platform,platform_position",
+      since: "a",
+      until: "b",
+      fetchImpl: respond({
+        data: [{ publisher_platform: "instagram", platform_position: "feed", spend: "10", reach: "800" }],
+      }),
+    });
+
+    expect(result.ok && result.data[0]).toMatchObject({
+      key: "instagram · feed",
+      platform: "instagram",
+      position: "feed",
+      reach: 800,
+    });
+  });
+
+  it("los leads por segmento salen de las acciones, con la regla del sync", async () => {
+    const result = await fetchBreakdown({
+      token: "t",
+      adAccountId: "act_1",
+      breakdown: "age,gender",
+      since: "a",
+      until: "b",
+      fetchImpl: respond({
+        data: [
+          {
+            age: "25-34",
+            gender: "female",
+            actions: [
+              { action_type: "lead", value: "3" },
+              { action_type: "onsite_conversion.lead_grouped", value: "2" },
+              { action_type: "link_click", value: "40" },
+            ],
+          },
+          { age: "35-44", gender: "male" },
+        ],
+      }),
+    });
+
+    expect(result.ok && result.data[0]).toMatchObject({ age: "25-34", gender: "female", leads: 5 });
+    expect(result.ok && result.data[0].actions.link_click).toBe(40);
+    // Sin acciones no hay leads que contar: null, no cero.
+    expect(result.ok && result.data[1].leads).toBeNull();
+  });
+
+  it("el dispositivo sale de device_platform", async () => {
+    const result = await fetchBreakdown({
+      token: "t",
+      adAccountId: "act_1",
+      breakdown: "device_platform",
+      since: "a",
+      until: "b",
+      fetchImpl: respond({ data: [{ device_platform: "mobile_app", spend: "5" }] }),
+    });
+
+    expect(result.ok && result.data[0]).toMatchObject({ key: "mobile_app", device: "mobile_app" });
+  });
+
+  it("la hora se lee del texto que manda Meta", () => {
+    expect(parseHour("14:00:00 - 14:59:59")).toBe(14);
+    expect(parseHour("00:00:00 - 00:59:59")).toBe(0);
+    expect(parseHour("cualquier cosa")).toBeNull();
+    expect(parseHour(undefined)).toBeNull();
+  });
+
   it("si un desglose falla, devuelve el error y no rompe a los demas", async () => {
     const result = await fetchBreakdown({
       token: "t",
@@ -148,5 +219,30 @@ describe("los desgloses (F58)", () => {
     });
 
     expect(result).toMatchObject({ ok: false });
+  });
+});
+
+describe("el alcance unico por objeto", () => {
+  it("se pide con level y vuelve como mapa id → alcance", async () => {
+    const fetchImpl = respond({
+      data: [
+        { campaign_id: "c1", reach: "1200" },
+        { campaign_id: "c2", reach: "300" },
+        { campaign_id: "c3" },
+      ],
+    });
+    const result = await fetchReachByLevel({
+      token: "t",
+      adAccountId: "act_1",
+      level: "campaign",
+      since: "2026-10-01",
+      until: "2026-10-07",
+      fetchImpl,
+    });
+
+    expect(result.ok && result.data).toEqual({ c1: 1200, c2: 300 });
+    const url = new URL((fetchImpl as unknown as { mock: { calls: string[][] } }).mock.calls[0][0]);
+    expect(url.searchParams.get("level")).toBe("campaign");
+    expect(url.searchParams.get("time_increment")).toBeNull();
   });
 });

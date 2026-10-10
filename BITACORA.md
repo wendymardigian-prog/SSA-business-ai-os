@@ -1365,3 +1365,38 @@ Los tipos sin las columnas borradas; la campana, la ficha del contacto y el pane
 ### Lo que sigue abierto
 
 En `docs/PENDIENTE.md`: verificar con cuentas conectadas (índice con métricas reales, datos de anuncio, webhook de Zernio, versión de LinkedIn), el pie del drawer a 390 px (decisión de diseño) y la carrera de dos comentarios simultáneos de TikTok (arreglarla de verdad pide un único en la base).
+
+---
+## Dashboard de Meta Ads — réplica del panel de wendymardigian
+
+**Fecha:** 10 de octubre de 2026
+**Rama:** `feature/ads-dashboard-replica` (sin mergear). El arreglo del scroll salió aparte en `fix/scroll-dashboards`.
+**Migraciones:** ninguna.
+
+### Qué se hizo
+
+El dashboard de Meta Ads (`/dashboard/dashboards/ads` y las tres pantallas de detalle) se rehízo para verse y usarse igual que el panel de Ads de wendymardigian: encabezado con la pill "Sincronizado", ocho KPIs en una tarjeta con variación contra el periodo anterior, evolución diaria de dos ejes, comparativa y costo por campaña, grilla de cuatro tarjetas (Acciones, Placement, Dispositivo, Video), audiencia por edad y género, desglose jerárquico con encabezados que explican cada cifra y métricas por día ordenables. Los detalles de campaña, conjunto y anuncio siguen la misma estructura.
+
+**La capa de datos no se tocó en lo esencial:** el sync sigue escribiendo `meta_ads_insights_daily`, las fórmulas siguen siendo sobre totales del periodo, una división por cero sigue siendo "—" y el alcance único sigue pidiéndose en vivo (ahora también por campaña, conjunto y anuncio, y para el periodo anterior, para que la variación compare lo mismo con lo mismo).
+
+### Decisiones que conviene recordar
+
+- **recharts es la excepción a la regla de `components/dashboards/charts.tsx`** (SVG a mano, que siguen usando Contenido y Chat). Vive en un solo archivo (`components/dashboards/ads/ads-charts.tsx`) y solo se carga con `next/dynamic` desde las pantallas de ads: queda en un chunk aparte que ninguna otra ruta referencia.
+- **Colores:** la interfaz usa los tokens de SSA (respeta el color de marca y el modo oscuro); las series de los gráficos usan la paleta fija de la referencia. El `dark:` de Tailwind acá compila a `prefers-color-scheme` y el tema va por la clase `.dark`, así que las piezas nuevas evitan `dark:`.
+- **Variación de KPIs:** contra el periodo anterior (no primera mitad contra segunda). En CPM, CPC y CPL subir es malo y sale en rojo. El alcance solo se compara si los dos periodos salen de la misma fuente (los dos únicos o los dos sumados por día).
+- **Un hueco no es un cero:** el CPC o CPL de un día sin clics o sin leads corta la línea. Las secciones sin datos muestran su título y el vacío.
+- **"Conv." en la tabla de campañas son las compras.** En la referencia esa columna repetía los leads.
+- **Moneda con símbolo corto** (`$ 1.234,56`) en estas pantallas.
+- **Placement, dispositivo, audiencia y horario se piden a Meta en vivo, en paralelo, cada uno por su cuenta:** si uno falla, solo esa tarjeta avisa "No se pudo leer de Meta: …".
+- **Migas de pan en todos los tamaños:** desde cualquier detalle se vuelve a cada nivel de arriba y al dashboard general, con la cuenta y el periodo conservados.
+
+### Dos bugs que aparecieron en el camino
+
+- **El sync de video guardaba mal.** La columna `thruplays` recibía las reproducciones iniciadas (`video_play_actions`), no los ThruPlays, y `video_avg_time_seconds` no se escribía nunca. Ahora se piden los campos correctos en los cuatro niveles y la retención se calcula sobre las vistas de 3 segundos. **Las filas viejas quedan con el dato anterior hasta volver a leerlas** (ver "Lo que queda").
+- **La página entera scrolleaba en los dashboards.** Los textos `sr-only` (`position: absolute`) no tenían ningún ancestro posicionado y estiraban el documento hasta donde caían en el contenido largo. Un `relative` en el `<main>` del layout lo resuelve para todas las pantallas (`fix/scroll-dashboards`).
+
+### Lo que queda
+
+- Después del deploy, y con visto bueno: **volver a leer los últimos 90 días de la cuenta** para que ThruPlays y tiempo promedio de las fechas viejas sean los reales.
+- Borrar `docs/referencia-ads-wendymardigian/` cuando se apruebe el resultado (commit aparte).
+- El lint de `main` tiene 4 errores de las reglas de React que no son de este trabajo (Agentes IA); hay una tarea aparte para arreglarlos.
