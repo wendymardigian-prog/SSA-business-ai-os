@@ -177,6 +177,21 @@ describe("runCallClassification", () => {
     expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
   });
 
+  it("una respuesta que no cumple el esquema queda por revisar con ese motivo, sin reintentar", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }) });
+    const err = Object.assign(new Error("No object generated"), { name: "AI_NoObjectGeneratedError" });
+    const r = await runCallClassification({ db: db.client, now: NOW, generate: vi.fn().mockRejectedValue(err) }, "c1");
+    expect(r.outcome).toBe("failed");
+    expect(db.writesTo("calls")[0].values).toMatchObject({ analysis_status: "needs_review", analysis_status_reason: "schema" });
+    expect(db.writesTo("scheduled_jobs")).toHaveLength(0);
+  });
+
+  it("el run queda atado a la llamada (threadId)", async () => {
+    const db = setup({ settings: settingsWith({ rules: [] }) });
+    await runCallClassification({ db: db.client, now: NOW, generate: generateOk({ tipo: "cierre", confianza: 0.9, motivo: "x" }) }, "c1");
+    expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ threadId: "c1" });
+  });
+
   it("sin proveedor de IA conectado queda por revisar, no explota", async () => {
     mocks.model.mockResolvedValue({ ok: false, model: null, message: "No hay un proveedor de IA conectado", chosen: false });
     const db = setup({ settings: settingsWith({ rules: [] }) });

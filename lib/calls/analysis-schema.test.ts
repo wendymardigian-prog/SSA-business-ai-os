@@ -17,7 +17,7 @@ describe("esquema del analisis de una llamada", () => {
   it("acepta el analisis completo del SPSP, con los campos extra de la pantalla", () => {
     const full = {
       ...MINIMO,
-      resultado: { categoria: "seguimiento", fecha: "2026-10-20", proximo_paso: "Llamar el martes", agendada_en_llamada: true },
+      resultado: { categoria: "seguimiento_con_fecha", fecha: "2026-10-20", proximo_paso: "Llamar el martes", agendada_en_llamada: true },
       temperatura: 8,
       dolor: { texto: "No tiene leads", categoria: "falta_de_leads", cita: "no me llegan clientes", timestamp: "00:12:30", profundidad: "cuantificado", propuesta: false },
       deseo: { texto: "Duplicar ventas", categoria: "crecer" },
@@ -53,7 +53,19 @@ describe("esquema del analisis de una llamada", () => {
     expect(Object.keys(analysisSchema.shape)).not.toContain("lead_score");
   });
 
-  it("la temperatura tiene que estar entre 1 y 10", () => {
+  it("el resultado y el estado de las creencias tienen valores cerrados", () => {
+    expect(parseAnalysis({ ...MINIMO, resultado: { categoria: "se_vendio_todo" } }).ok).toBe(false);
+    const lead = { ...MINIMO.lead, creencias: [{ codigo: "u", nombre: "U", estado: "Quizás" }] };
+    expect(parseAnalysis({ ...MINIMO, lead }).ok).toBe(false);
+  });
+
+  it("los textos y las citas pueden venir vacios", () => {
+    const vacio = { ...MINIMO, resumen: "", rubrica: [{ ...MINIMO.rubrica[0], cita: "", justificacion: "" }] };
+    expect(parseAnalysis(vacio).ok).toBe(true);
+  });
+
+  it("la temperatura tiene que estar entre 1 y 10, entera", () => {
+    expect(parseAnalysis({ ...MINIMO, temperatura: 7.5 }).ok).toBe(false);
     expect(parseAnalysis({ ...MINIMO, temperatura: 11 }).ok).toBe(false);
     expect(parseAnalysis({ ...MINIMO, temperatura: 0 }).ok).toBe(false);
   });

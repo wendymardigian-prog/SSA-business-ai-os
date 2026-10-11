@@ -13,19 +13,23 @@
  * Los puntajes finales (closer y lead) NO estan: los calcula el codigo.
  */
 import { z } from "zod";
+import { OUTCOME_CATEGORIES } from "./rubric";
+
+/** Los estados de una creencia del lead (los que entiende `beliefValue`). */
+export const BELIEF_STATES = ["Firme", "Parcial", "Débil", "No explorado"] as const;
 
 const text = z.string().nullish();
 const proposable = { propuesta: z.boolean().nullish() };
 
 export const analysisSchema = z.object({
   resultado: z.object({
-    categoria: z.string(),
+    categoria: z.enum(OUTCOME_CATEGORIES),
     fecha: text,
     proximo_paso: text,
     agendada_en_llamada: z.boolean().nullish(),
   }),
   resumen: z.string(),
-  temperatura: z.number().min(1).max(10).nullish(),
+  temperatura: z.number().int().min(1).max(10).nullish(),
   dolor: z.object({
     texto: z.string(),
     categoria: z.string(),
@@ -67,7 +71,7 @@ export const analysisSchema = z.object({
     creencias: z.array(z.object({
       codigo: z.string(),
       nombre: z.string(),
-      estado: z.string(),
+      estado: z.enum(BELIEF_STATES),
       evidencia: text,
     })),
     dolores: z.array(z.string()).nullish(),

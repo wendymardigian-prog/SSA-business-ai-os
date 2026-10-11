@@ -120,6 +120,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     trigger: payload.manual ? "manual" : "job",
     promptVersion: instructions.version,
     contactId: call.contact_id,
+    threadId: call.id,
   });
   if (model.provider && model.modelId) run.setModel(model.provider, model.modelId);
   const generate = deps.generate ?? aiSdkGenerate(model.model!);
@@ -211,7 +212,7 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
     workspaceId,
     entityType: "call" as const,
     entityId: callId,
-    action: payload.reason ? ("call.regenerated" as const) : ("call.analyzed" as const),
+    action: "call.analyzed" as const,
     changes: {
       analysis_status: { old: call.analysis_status, new: "analyzed" },
       closer_score: { old: call.closer_score, new: result.scores.closer_score },

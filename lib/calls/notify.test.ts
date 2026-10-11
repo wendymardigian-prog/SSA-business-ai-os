@@ -4,7 +4,7 @@ import { fakeDb } from "@/lib/testing/fake-db";
 const once = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/notifications/create", () => ({ createNotificationOnce: once }));
 
-import { membersWithPermission, notifyBudgetBlocked } from "./notify";
+import { membersWithPermission, notifyBudgetBlocked, notifyObjection } from "./notify";
 
 const members = [
   { user_id: "owner", role: "owner", role_id: null },
@@ -59,5 +59,31 @@ describe("notifyBudgetBlocked", () => {
     once.mockResolvedValueOnce(false).mockResolvedValue(true);
     const db = fakeDb({ "workspace_members:select": { data: members }, "workspace_roles:select": { data: roles } });
     expect(await notifyBudgetBlocked(db.client, "ws1", "c1")).toBe(2);
+  });
+});
+
+describe("alcance y objeciones", () => {
+  const scoped = [
+    { id: "r-all", system_role: null, permissions: { keys: ["calls.edit"], scopes: { calls: "all" } } },
+    { id: "r-own", system_role: null, permissions: { keys: ["calls.edit"], scopes: { calls: "own" } } },
+  ];
+  const people = [
+    { user_id: "owner", role: "owner", role_id: null },
+    { user_id: "ed-all", role: "member", role_id: "r-all" },
+    { user_id: "ed-own", role: "member", role_id: "r-own" },
+  ];
+
+  it("con scope all solo quedan quienes ven todas las llamadas", async () => {
+    const db = fakeDb({ "workspace_members:select": { data: people }, "workspace_roles:select": { data: scoped } });
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit", { scope: "all" })).sort()).toEqual(["ed-all", "owner"]);
+    expect((await membersWithPermission(db.client, "ws1", "calls.edit")).sort()).toEqual(["ed-all", "ed-own", "owner"]);
+  });
+
+  it("la objecion avisa a los editores con alcance all y NUNCA al closer", async () => {
+    const db = fakeDb({ "workspace_members:select": { data: people }, "workspace_roles:select": { data: scoped } });
+    const n = await notifyObjection(db.client, { workspaceId: "ws1", callId: "c1", closerId: "ed-all", callTitle: "Llamada con Ana" });
+    expect(n).toBe(1);
+    expect(once).toHaveBeenCalledTimes(1);
+    expect(once.mock.calls[0][0]).toMatchObject({ type: "call_objection", recipientId: "owner", entityType: "call", entityId: "c1", perRecipient: true });
   });
 });

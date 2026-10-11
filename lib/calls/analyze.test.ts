@@ -93,6 +93,14 @@ describe("runCallAnalysis", () => {
     expect(generate.mock.calls[0][0].prompt).toContain("parte central omitida");
   });
 
+  it("con las categorias nuevas apagadas, una categoria fuera de la lista pasa a otra y no es propuesta", async () => {
+    const generate = vi.fn().mockResolvedValue({ object: analysis({ objecion: { dijo: "x", categoria: "algo raro", propuesta: true } }) });
+    const off = await runCallAnalysis(input(generate, { allowNewCategories: false }));
+    expect(off.ok && off.analysis.objecion).toMatchObject({ categoria: "otra", propuesta: false });
+    const on = await runCallAnalysis(input(generate, { allowNewCategories: true }));
+    expect(on.ok && on.analysis.objecion).toMatchObject({ categoria: "algo raro", propuesta: true });
+  });
+
   it("una respuesta cortada por largo se distingue y no es reintentable como error de red", async () => {
     const r = await runCallAnalysis(input(vi.fn().mockRejectedValue(new TruncatedOutputError())));
     expect(r).toMatchObject({ ok: false, kind: "truncated" });

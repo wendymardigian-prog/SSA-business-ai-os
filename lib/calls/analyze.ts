@@ -15,6 +15,7 @@ import { isTruncated } from "./ai-retry";
 import type { GenerateFn } from "./ai-generate";
 import { analysisSchema, type CallAnalysis } from "./analysis-schema";
 import { analyzerCallType } from "./analysis-store";
+import { sanitizeAnalysisCategories } from "./categories";
 import { buildAnalysisTechnical, type CallCategories, type Rubric } from "./rubric";
 import { computeScoresWithRubric, type AnalysisScores } from "./scoring";
 import { transcriptText } from "./transcript-text";
@@ -87,7 +88,8 @@ export async function runCallAnalysis(input: RunAnalysisInput): Promise<RunAnaly
 
   try {
     const result = await input.generate({ system, prompt, schema: analysisSchema, maxOutputTokens: ANALYZER_MAX_TOKENS });
-    const analysis = result.object;
+    // Con las categorias nuevas apagadas, lo que no esta en la lista pasa a "otra".
+    const analysis = sanitizeAnalysisCategories(result.object, input.categories, input.allowNewCategories);
     const scores = computeScoresWithRubric(analysis, input.rubric, callType);
     return { ok: true, analysis, scores, transcriptText: fullText, system, usage: result.usage };
   } catch (error) {

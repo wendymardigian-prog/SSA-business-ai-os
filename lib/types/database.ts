@@ -4527,6 +4527,11 @@ export interface Database {
         Args: { p_connection_id: string };
         Returns: undefined;
       };
+      /** Llamadas (00148): escribe la configuracion de UNA tarea de llamadas y devuelve la anterior. Solo service_role. */
+      set_ai_background_task_settings: {
+        Args: { p_workspace_id: string; p_task: string; p_value: Json };
+        Returns: Json;
+      };
       /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
       booking_utm_options: {
         Args: { p_workspace_id: string };

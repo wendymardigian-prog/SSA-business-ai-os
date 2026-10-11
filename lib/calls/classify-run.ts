@@ -121,6 +121,7 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
       trigger: "job",
       promptVersion: instructions.version,
       contactId: call.contact_id,
+      threadId: call.id,
     });
     if (model.provider && model.modelId) run.setModel(model.provider, model.modelId);
     const generate = deps.generate ?? aiSdkGenerate(model.model!);
@@ -129,6 +130,11 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
     const result = await classifyCallWithAi({ call, settings: classification, instructions: instructions.text, generate });
     if (!result.ok) {
       await run.close({ status: "error", statusDetail: "generation_failed", error: result.error.slice(0, 300) });
+      // Una respuesta que no cumple el esquema no se arregla reintentando: la decide una persona.
+      if (isSchemaError(result.cause)) {
+        await db.from("calls").update({ analysis_status: "needs_review", analysis_status_reason: "schema", analysis_error: result.error.slice(0, 300) }).eq("id", callId).eq("analysis_status", "classifying");
+        return { outcome: "failed" };
+      }
       const decision = decideAiFailure(result.cause, retry);
       return handleFailure(deps, call.id, result.error, retry, decision);
     }
@@ -175,6 +181,11 @@ export async function runCallClassification(deps: ClassifyDeps, callId: string, 
     .eq("id", callId)
     .eq("analysis_status", "classifying");
   return { outcome: "no_decision" };
+}
+
+function isSchemaError(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name;
+  return name === "AI_NoObjectGeneratedError" || name === "AI_TypeValidationError" || name === "AI_JSONParseError";
 }
 
 async function handleFailure(

@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import { can, parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
+import { can, parsePermissions, scopeFor, systemRolePermissions } from "@/lib/auth/permissions";
 import { createNotificationOnce } from "@/lib/notifications/create";
 
 type Db = SupabaseClient<Database>;
@@ -15,7 +15,13 @@ type Db = SupabaseClient<Database>;
  * tabla de TypeScript (la fuente); un `member` con rol personalizado, de su
  * fila. Necesita el cliente de servicio.
  */
-export async function membersWithPermission(db: Db, workspaceId: string, key: string): Promise<string[]> {
+export async function membersWithPermission(
+  db: Db,
+  workspaceId: string,
+  key: string,
+  /** `scope: "all"`: solo quienes ven TODAS las llamadas (el alcance del modulo `calls`). */
+  opts: { scope?: "all" } = {},
+): Promise<string[]> {
   try {
     const [{ data: members }, { data: roles }] = await Promise.all([
       db.from("workspace_members").select("user_id, role, role_id").eq("workspace_id", workspaceId),
@@ -29,7 +35,9 @@ export async function membersWithPermission(db: Db, workspaceId: string, key: st
           const row = rolesById.get(m.role_id);
           if (row && !row.system_role) permissions = parsePermissions(row.permissions);
         }
-        return can(permissions ?? systemRolePermissions("member"), key);
+        const resolved = permissions ?? systemRolePermissions("member");
+        if (!can(resolved, key)) return false;
+        return opts.scope === "all" ? scopeFor(resolved, "calls") === "all" : true;
       })
       .map((m) => m.user_id);
   } catch (err) {
@@ -52,6 +60,29 @@ export async function notifyBudgetBlocked(db: Db, workspaceId: string, callId: s
       recipientId,
       metadata: { callId },
       withinMinutes: 24 * 60,
+      perRecipient: true,
+    });
+    if (created) sent += 1;
+  }
+  return sent;
+}
+
+/** El closer objeto un analisis: avisa a quienes editan TODAS las llamadas (nunca al propio closer). */
+export async function notifyObjection(db: Db, args: { workspaceId: string; callId: string; closerId: string; callTitle: string }): Promise<number> {
+  const editors = (await membersWithPermission(db, args.workspaceId, "calls.edit", { scope: "all" })).filter((id) => id !== args.closerId);
+  let sent = 0;
+  for (const recipientId of editors) {
+    const created = await createNotificationOnce({
+      supabase: db,
+      workspaceId: args.workspaceId,
+      type: "call_objection",
+      title: "El closer no está de acuerdo con un análisis",
+      body: `Objetó el análisis de “${args.callTitle.slice(0, 80)}”. Revisalo y marcá la objeción como resuelta.`,
+      entityType: "call",
+      entityId: args.callId,
+      recipientId,
+      metadata: { callId: args.callId },
+      withinMinutes: 60,
       perRecipient: true,
     });
     if (created) sent += 1;

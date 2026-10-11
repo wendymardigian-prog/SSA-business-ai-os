@@ -167,12 +167,12 @@ describe("runCallAnalysisJob", () => {
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
-  it("regenerar con motivo: pasa el contexto como dato y audita call.regenerated con el motivo", async () => {
+  it("regenerar con motivo: pasa el contexto como dato; la foto del anterior la guarda la accion, el job audita call.analyzed con el motivo", async () => {
     const generate = ok();
     const db = setup();
     await runCallAnalysisJob(deps(db, generate), { callId: "c1", manual: true, requestedBy: "u1", reason: "falta_contexto", extraContext: "Era un reagendo" });
     expect(generate.mock.calls[0][0].prompt).toContain("Era un reagendo");
-    expect(mocks.logAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.regenerated", metadata: expect.objectContaining({ reason: "falta_contexto" }) }));
+    expect(mocks.logAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.analyzed", metadata: expect.objectContaining({ reason: "falta_contexto" }) }));
   });
 
   it("encola el resumen solo si hay quien lo ejecute (y lo deja marcado pendiente)", async () => {
