@@ -106,3 +106,29 @@ describe("describeStep", () => {
     expect(describeStep({ kind: "cancel_booking", status: "cancelled_other" })).toBe("Cancelar la reunión");
   });
 });
+
+describe("un email a una dirección fija sobrevive al guardado (D-11)", () => {
+  it("conserva to y fixedEmail en la ida y vuelta, y los emails de siempre no ganan campos", () => {
+    const linear = {
+      trigger: { type: "form_submitted", config: { form_ids: ["f1"] } },
+      conditions: [],
+      steps: [
+        { kind: "email" as const, to: "fixed", subject: "Nueva respuesta: {{form.name}}", body: "{{submission.url}}", fixedEmail: "yo@ejemplo.com" },
+        { kind: "email" as const, to: "contact", subject: "Gracias", body: "Hola" },
+      ],
+    };
+    const back = linearToFlow(linear);
+    const emailNode = back.nodes.find((n) => n.id === "step-1");
+    expect(emailNode?.data).toMatchObject({ actionType: "send_email", to: "fixed", fixedEmail: "yo@ejemplo.com" });
+    expect(back.nodes.find((n) => n.id === "step-2")?.data).not.toHaveProperty("fixedEmail");
+    // Ida y vuelta: los pasos, las condiciones y el trigger son los mismos. (`config` del trigger
+    // trae ademas `triggerType`, como siempre: es el `data` del nodo entero.)
+    const again = flowToLinear(back.nodes, back.edges)!;
+    expect(again.steps).toEqual(linear.steps);
+    expect(again.conditions).toEqual(linear.conditions);
+    expect(again.trigger.type).toBe("form_submitted");
+    expect(again.trigger.config).toMatchObject({ form_ids: ["f1"] });
+    // Y volver a convertir no cambia el grafo.
+    expect(linearToFlow(again)).toEqual(back);
+  });
+});

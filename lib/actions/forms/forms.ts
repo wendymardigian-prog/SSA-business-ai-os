@@ -9,6 +9,7 @@ import { validateDraftShape } from "@/lib/forms/definition-schema";
 import { normalizeContractText } from "@/lib/forms/contract-text";
 import { FORM_TYPES, type FormStatus, type FormType } from "@/lib/forms/fields";
 import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } from "@/lib/forms/list";
+import { DEFAULT_CONTACT_CONFIG, suggestContactMap } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
 import { isTurnstileConfigured } from "@/lib/forms/server-ports";
@@ -71,6 +72,8 @@ export async function createForm(input: { name: string; type: FormType }): Promi
         design: parts.design as unknown as Json,
         survey_config: parts.surveyConfig as unknown as Json,
         contract_config: parts.contractConfig as unknown as Json,
+        // Los campos de email y teléfono se mapean solos al contacto (F15).
+        contact_config: { ...DEFAULT_CONTACT_CONFIG, map: suggestContactMap(parts.definition.fields) } as unknown as Json,
         notify_user_ids: [ctx.user.id],
         created_by: ctx.user.id,
         updated_by: ctx.user.id,

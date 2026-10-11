@@ -56,3 +56,15 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **`Popover` suma la opción `closeOnSelect`** (apagada por defecto; no cambia a ningún otro uso): el menú de acciones y el selector de tipos de campo tienen que cerrarse al elegir.
 - **Falta (llega en los bloques siguientes):** las pestañas Contacto y Automatizaciones (FO2), Encuesta y Contrato (FO3), y en Publicar el "link firmado para un contacto" (F22) y la tarjeta "Usar en una página del sitio" y los parámetros de URL (F32). El `Historial` del detalle de una respuesta se ve solo para Owner/Admin (no se toca `audit_log_select`).
 - **La card de Turnstile se verificó por las pruebas (`providers.test.ts`, `test-connection.ts`) y por el catálogo**, pero no se guardó una clave real: la clave de Cloudflare real la carga Wendy en la verificación en vivo (§18 del plano).
+
+## Bloque FO2 · decisiones y pendientes
+
+- **El link "Ya respondiste" de una encuesta con `?c=` válido llega en FO3** (F22): hoy `oncePerContact` lo hace cumplir la base (la RPC devuelve `already_answered` ANTES de tocar el contacto), pero la página pública todavía no muestra "Ya respondiste" antes del formulario. Se hace junto con la pestaña de la encuesta, que es donde se prende esa opción.
+- **Vincular a mano una respuesta NO anota un toque de atribución.** La respuesta puede tener días y un toque nuevo sería "ahora": pisaría el último toque real del contacto con uno atrasado. Si se quiere, es una mejora aparte (anotarlo con `occurredAt` = fecha de la respuesta).
+- **Una respuesta marcada como spam no avisa a la campana** (aunque se haya guardado); el aviso de una respuesta normal llega siempre, incluso con el contacto en "no contactar" (no pasa por el motor de flows).
+- **El aviso va a Owner y Admin si no se elige a nadie** (`recipient_id` vacío, como el resto de los avisos del sistema). Un formulario nuevo nace con quien lo creó elegido.
+- **`{{form_link.<slug>}}` solo se resuelve para formularios publicados**; para uno en borrador, pausado o archivado el token queda tal cual (como pide el plano para uno inexistente). Quien arma el mensaje lo ve en la prueba por email.
+- **Las plantillas "Mandarle un mensaje de gracias" usan `{{contact.display_name}}`**, no `first_name`: `contact.first_name` no se resuelve en ningún lado del motor (las plantillas de la Agenda lo usan y salen con la llave cruda; no es de este módulo, se anota para revisar la Agenda aparte).
+- **`flowToLinear` devuelve el `triggerType` dentro de `trigger.config`** (siempre lo hizo: es el `data` del nodo entero). La ida y vuelta de un flujo de formulario conserva pasos, condiciones y tipo de trigger; el test fija eso y que reconvertir no cambia el grafo.
+- **El panel de triggers lee los formularios del lado del navegador** con la sesión (la RLS decide cuáles ve cada quien), igual que el panel de secuencias.
+- **`verify-rls` se cortó una vez con un error de Node al final de una corrida** y a la siguiente dio "Todo verde" (exit 0). Parece un corte de red al limpiar; si se repite, mirar `scripts/verify-rls.mjs`.

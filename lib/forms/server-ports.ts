@@ -11,6 +11,11 @@ import { checkLimit, formsKeys } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
 import { verifyTurnstile } from "./turnstile";
 import { validateSuccess, DEFAULT_SUCCESS } from "./success";
+import { parseStoredContactConfig, isCustomTarget, customSlugOf, type CustomFieldDef } from "./contact-config";
+import { verifyFormLink } from "./signed-link";
+import { notifyRecipients, contactOutcome, notificationContent } from "./notify";
+import { recordFormTouch } from "@/lib/contacts/touch-entry";
+import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
 import type { FormField, FormType } from "./fields";
 import type { BeaconPorts } from "./beacon";
@@ -31,7 +36,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
 
   const { data: form } = await service
     .from("forms")
-    .select("id, workspace_id, name, type, slug, status, success, current_version_id")
+    .select("id, workspace_id, name, type, slug, status, success, current_version_id, contact_config, notify_enabled, notify_user_ids")
     .ilike("slug", slug)
     .eq("status", "published")
     .not("current_version_id", "is", null)
@@ -45,6 +50,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
   if (!version) return null;
 
   const success = validateSuccess(form.success);
+  const contactConfig = parseStoredContactConfig(form.contact_config);
   return {
     id: form.id,
     workspaceId: form.workspace_id,
@@ -56,7 +62,19 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     fields: fieldsOf(version.definition),
     success: success.ok ? success.success : DEFAULT_SUCCESS,
     workspaceTimezone: workspace?.timezone ?? "UTC",
+    contactConfig,
+    customFields: await loadCustomFields(service, form.workspace_id, contactConfig.map.map((m) => m.target)),
+    notifyEnabled: form.notify_enabled,
+    notifyUserIds: form.notify_user_ids ?? [],
   };
+}
+
+/** Los campos personalizados que el mapeo nombra (si no nombra ninguno, ni se consulta). */
+async function loadCustomFields(service: Db, workspaceId: string, targets: string[]): Promise<CustomFieldDef[]> {
+  const slugs = targets.filter(isCustomTarget).map(customSlugOf);
+  if (slugs.length === 0) return [];
+  const { data } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspaceId).in("slug", slugs);
+  return (data ?? []) as CustomFieldDef[];
 }
 
 export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fetch } = {}): SubmitPorts {
@@ -119,7 +137,7 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
         p_answers: input.answers as unknown as Json,
         p_attribution: input.attribution as unknown as Json,
         p_meta: input.meta as unknown as Json,
-        p_contact_hint: {},
+        p_contact_hint: input.contactHint as unknown as Json,
         p_extra: input.uploadPrefix ? { upload_prefix: input.uploadPrefix } : {},
       });
       if (error) {
@@ -131,7 +149,49 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
         return { ok: false, error: "failed" };
       }
       if (!data || data.ok !== true) return { ok: false, error: data?.error === "already_answered" ? "already_answered" : "failed" };
-      return { ok: true, duplicate: data.duplicate === true, submissionId: data.submission_id, status: data.status };
+      return {
+        ok: true,
+        duplicate: data.duplicate === true,
+        submissionId: data.submission_id,
+        status: data.status,
+        contactId: data.contact_id ?? null,
+        contactCreated: data.contact_created === true,
+        matchedBy: data.matched_by ?? null,
+        conflictContactId: data.conflict_contact_id ?? null,
+      };
+    },
+
+    async verifyLink(form, token) {
+      const result = await verifyFormLink(service, token, { workspaceId: form.workspaceId, formId: form.id });
+      return result.ok ? { contactId: result.contactId, serviceId: result.serviceId, saleId: result.saleId } : null;
+    },
+
+    async recordTouch({ form, submissionId, contactId, attribution }) {
+      await recordFormTouch(service, {
+        workspaceId: form.workspaceId,
+        contactId,
+        submissionId,
+        formId: form.id,
+        formName: form.name,
+        attribution,
+      });
+    },
+
+    async notify({ form, submissionId, contactId, contactCreated }) {
+      const { title, body } = notificationContent({ formName: form.name, type: form.type, outcome: contactOutcome({ contactId, contactCreated }) });
+      for (const recipientId of notifyRecipients({ notifyEnabled: form.notifyEnabled, notifyUserIds: form.notifyUserIds })) {
+        await createNotification({
+          supabase: service,
+          workspaceId: form.workspaceId,
+          type: "form_submitted",
+          title,
+          body,
+          entityType: "form_submission",
+          entityId: submissionId,
+          recipientId,
+          metadata: { form_id: form.id },
+        });
+      }
     },
 
     newId: () => randomUUID(),

@@ -58,7 +58,7 @@ export const sendMessageNode: NodeDefinition<SendMessageNodeData> = {
       // Un texto de la banca pegado en el mensaje trae sus variables
       // ({{contact.display_name}}...): las que quedaron sin resolver se completan
       // con los datos reales. Solo consulta la base si las trae.
-      const [text] = await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId }, [
+      const [text] = await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [
         interpolateVariables(adapted.text, context.variables || {}),
       ]);
 

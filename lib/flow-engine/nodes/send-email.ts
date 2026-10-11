@@ -47,7 +47,7 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
   // ({{contact.display_name}}...): las que quedaron sin resolver se completan
   // con los datos reales (lib/response-assets/bank-variables.ts).
   const [subject, body] = (
-    await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId }, [interpolated.subject, interpolated.body])
+    await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [interpolated.subject, interpolated.body])
   ).map((text) => text.trim());
   if (!subject && !body) return;
 

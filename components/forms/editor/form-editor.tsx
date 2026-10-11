@@ -14,9 +14,11 @@ import { checkPublishable, hasUnpublishedChanges } from "@/lib/forms/publish";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
 import { cn } from "@/lib/utils";
+import { AutomationsTab } from "./automations-tab";
+import { ContactTab } from "./contact-tab";
 import { FieldsTab } from "./fields-tab";
 import { PublishTab } from "./publish-tab";
-import type { Draft, EditorForm, EditorVersion } from "./types";
+import type { Draft, EditorExtras, EditorForm, EditorVersion } from "./types";
 
 /**
  * El editor de un formulario (F4, F8). Carcasa: encabezado con el nombre, el
@@ -27,7 +29,7 @@ import type { Draft, EditorForm, EditorVersion } from "./types";
  * pisa lo de otra persona sin que lo sepa.
  */
 
-type Section = "campos" | "publicar";
+type Section = "campos" | "contacto" | "automatizaciones" | "publicar";
 type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -45,6 +47,7 @@ export function FormEditor({
   turnstileConfigured,
   appUrl,
   timeZone,
+  extras,
 }: {
   form: EditorForm;
   versions: EditorVersion[];
@@ -52,6 +55,7 @@ export function FormEditor({
   turnstileConfigured: boolean;
   appUrl: string;
   timeZone: string;
+  extras: EditorExtras;
 }) {
   const router = useRouter();
   const [section, setSection] = useState<Section>("campos");
@@ -276,12 +280,18 @@ export function FormEditor({
           onChange={setSection}
           tabs={[
             { value: "campos", label: "Campos" },
+            { value: "contacto", label: "Contacto" },
+            { value: "automatizaciones", label: "Automatizaciones" },
             { value: "publicar", label: "Publicar" },
           ]}
         >
           <div className="pt-4">
             {section === "campos" ? (
               <FieldsTab draft={draft} onChange={setDraft} disabled={disabled} neverPublished={neverPublished} slug={slug} type={form.type} />
+            ) : section === "contacto" ? (
+              <ContactTab form={form} draft={draft} extras={extras} canManage={canManage} />
+            ) : section === "automatizaciones" ? (
+              <AutomationsTab form={form} extras={extras} canManage={canManage} />
             ) : (
               <PublishTab
                 form={{ ...form, slug, status }}

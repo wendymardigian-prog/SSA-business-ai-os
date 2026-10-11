@@ -1,6 +1,8 @@
 import type { FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import type { SuccessConfig } from "@/lib/forms/success";
+import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
+import type { FormFlowRow } from "@/lib/forms/data/form-flows";
 
 /** Lo que el servidor le pasa al editor de un formulario. */
 export interface EditorForm {
@@ -15,6 +17,21 @@ export interface EditorForm {
   success: SuccessConfig;
   /** Lo último que se publicó (con el texto del contrato), o null si nunca se publicó. */
   publishedSnapshot: FormDefinition | null;
+  /** Cómo la respuesta se vuelve un contacto (no se versiona: vale desde que se guarda). */
+  contactConfig: ContactConfig;
+  tagsOnSubmit: string[];
+  notifyEnabled: boolean;
+  notifyUserIds: string[];
+}
+
+/** Lo que las pestañas Contacto y Automatizaciones necesitan además del formulario. */
+export interface EditorExtras {
+  customFields: CustomFieldDef[];
+  tags: Array<{ id: string; name: string }>;
+  members: Array<{ userId: string; name: string }>;
+  flows: FormFlowRow[];
+  /** `flows.edit`: sin eso no se ofrecen las automatizaciones. */
+  canFlows: boolean;
 }
 
 export interface EditorVersion {

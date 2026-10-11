@@ -111,3 +111,17 @@ describe("avisos de Llamadas", () => {
     expect(toneFor("call_objection")).toBe("info");
   });
 });
+
+describe("Formularios: form_submitted", () => {
+  it("es un tipo conocido, con tono info y entidad form_submission", () => {
+    expect(isNotificationType("form_submitted")).toBe(true);
+    expect(toneFor("form_submitted")).toBe("info");
+    expect(NOTIFICATION_DEFINITIONS.form_submitted.entity).toBe("form_submission");
+  });
+
+  it("el link lleva al detalle de la respuesta, con el id del formulario de la metadata", () => {
+    expect(linkFor("form_submission", "sub-1", { form_id: "form-1" })).toBe("/dashboard/formularios/form-1/respuestas/sub-1");
+    expect(linkFor("form_submission", null, { form_id: "form-1" })).toBe("/dashboard/formularios/form-1/respuestas");
+    expect(linkFor("form_submission", "sub-1", {})).toBe("/dashboard/formularios");
+  });
+});

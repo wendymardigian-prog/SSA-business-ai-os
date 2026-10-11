@@ -586,7 +586,11 @@ export type TriggerType =
   // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda
   // analizada, o se vincula un contacto a una llamada.
   | "call_analyzed"
-  | "call_linked";
+  | "call_linked"
+  // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.
+  | "form_submitted"
+  | "survey_answered"
+  | "contract_signed";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1435,6 +1439,8 @@ export interface Database {
           /** El evento de agenda al que pertenece este flujo (Etapa 4). */
           event_type_id?: string | null;
           template_key?: string | null;
+          /** El formulario desde cuya pestaña Automatizaciones se creó (Formularios, 00155). */
+          form_id?: string | null;
           id: string;
           workspace_id: string;
           name: string;
@@ -1449,6 +1455,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          form_id?: string | null;
           id?: string;
           workspace_id: string;
           name: string;
@@ -4746,6 +4753,8 @@ export interface Database {
           status: FormSubmissionStatus;
           contact_id: string | null;
           contact_created: boolean;
+          matched_by?: string | null;
+          conflict_contact_id?: string | null;
           error?: string;
         };
       };

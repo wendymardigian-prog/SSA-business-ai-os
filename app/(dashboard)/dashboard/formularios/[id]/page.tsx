@@ -4,7 +4,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { FormEditor } from "@/components/forms/editor/form-editor";
-import type { EditorForm, EditorVersion } from "@/components/forms/editor/types";
+import type { EditorExtras, EditorForm, EditorVersion } from "@/components/forms/editor/types";
+import { flowsForForm } from "@/lib/forms/data/form-flows";
+import { parseStoredContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { defaultDesign, type FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import { DEFAULT_SUCCESS, validateSuccess } from "@/lib/forms/success";
@@ -35,7 +37,12 @@ export default async function FormularioEditorPage({ params }: { params: Promise
   ]);
 
   const service = await createServiceClient();
-  const turnstileConfigured = await isTurnstileConfigured(service, workspace.id);
+  const [turnstileConfigured, { data: customRows }, { data: tagRows }, flows] = await Promise.all([
+    isTurnstileConfigured(service, workspace.id),
+    supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
+    supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
+    flowsForForm(supabase, id, { [id]: form.name }),
+  ]);
 
   const names = new Map(members.map((m) => [m.userId, m.name]));
   const versions: EditorVersion[] = (versionRows ?? []).map((v) => ({
@@ -64,6 +71,18 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     design,
     success: success.ok ? success.success : DEFAULT_SUCCESS,
     publishedSnapshot: published,
+    contactConfig: parseStoredContactConfig(form.contact_config),
+    tagsOnSubmit: form.tags_on_submit ?? [],
+    notifyEnabled: form.notify_enabled,
+    notifyUserIds: form.notify_user_ids ?? [],
+  };
+
+  const extras: EditorExtras = {
+    customFields: (customRows ?? []) as CustomFieldDef[],
+    tags: tagRows ?? [],
+    members: members.map((m) => ({ userId: m.userId, name: m.name })),
+    flows,
+    canFlows: ctx.can("flows.edit"),
   };
 
   return (
@@ -74,6 +93,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
       turnstileConfigured={turnstileConfigured}
       appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
       timeZone={timeZone}
+      extras={extras}
     />
   );
 }

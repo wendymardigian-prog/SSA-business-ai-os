@@ -20,8 +20,11 @@
  *      opciones, rangos). Lo oculto por condición se descarta.
  *   9. Archivos por su tipo REAL, a un bucket privado.
  *  10. Ocultos `fixed`: los pone el servidor.
- *  11. Guardar con la RPC (idempotente por índice único).
- *  12. Responder con la pantalla de éxito ya armada.
+ *  11. Guardar con la RPC (idempotente por índice único). La RPC resuelve el
+ *      contacto (el del link firmado, o el que coincide por teléfono/email).
+ *  12. Con el commit hecho: el toque de atribución y el aviso. Si fallan, la
+ *      respuesta ya está guardada y el envío sigue siendo un éxito.
+ *  13. Responder con la pantalla de éxito ya armada.
  *
  * Todo lo que tiene que ver con la base, el captcha y el almacenamiento entra
  * por `SubmitPorts`: así el orden se prueba entero sin tocar nada real, y
@@ -42,6 +45,8 @@ import type { TurnstileResult } from "./turnstile";
 import { renderSuccess, type SuccessConfig } from "./success";
 import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./submission-schema";
 import { answerToText } from "./responses";
+import { applyContactMapping } from "./contact-mapping";
+import type { ContactConfig, CustomFieldDef } from "./contact-config";
 
 // ── Lo que el servidor necesita de afuera ────────────────────────────────────
 
@@ -57,6 +62,13 @@ export interface LoadedForm {
   fields: FormField[];
   success: SuccessConfig;
   workspaceTimezone: string;
+  /** Cómo la respuesta se vuelve un contacto (F15). */
+  contactConfig: ContactConfig;
+  /** Los campos personalizados del workspace (para el mapeo). */
+  customFields: CustomFieldDef[];
+  /** Avisar a alguien de cada respuesta nueva (F18). */
+  notifyEnabled: boolean;
+  notifyUserIds: string[];
 }
 
 export interface ExistingSubmission {
@@ -74,11 +86,27 @@ export interface SaveInput {
   attribution: Record<string, unknown>;
   meta: Record<string, unknown>;
   uploadPrefix: string | null;
+  /** Lo que la base necesita para crear o vincular el contacto, más los ids de un link firmado válido. */
+  contactHint: Record<string, unknown>;
+}
+
+export interface SavedContact {
+  contactId: string | null;
+  contactCreated: boolean;
+  matchedBy: string | null;
+  conflictContactId: string | null;
 }
 
 export type SaveResult =
-  | { ok: true; duplicate: boolean; submissionId: string; status: string }
+  | ({ ok: true; duplicate: boolean; submissionId: string; status: string } & SavedContact)
   | { ok: false; error: "already_answered" | "failed" };
+
+/** Un link firmado verificado: el contacto al que pertenece y, si los trae, sus ids de servicio y venta. */
+export interface VerifiedLink {
+  contactId: string;
+  serviceId: string | null;
+  saleId: string | null;
+}
 
 export interface SubmitPorts {
   limit(spec: LimitSpec): Promise<LimitResult>;
@@ -94,6 +122,22 @@ export interface SubmitPorts {
   recordRejected(input: { workspaceId: string; formId: string; versionId: string; reason: "captcha" | "honeypot" }): Promise<void>;
   upload(path: string, bytes: Uint8Array, mime: string): Promise<boolean>;
   save(input: SaveInput): Promise<SaveResult>;
+  /** Verifica el link firmado de la persona (formato, firma, vencimiento, formulario, contacto). `null` = se ignora. */
+  verifyLink(form: LoadedForm, token: string): Promise<VerifiedLink | null>;
+  /** Anota el toque de atribución del contacto. No lanza hacia afuera: `submit` igual lo envuelve. */
+  recordTouch(input: {
+    form: LoadedForm;
+    submissionId: string;
+    contactId: string;
+    attribution: Record<string, unknown>;
+  }): Promise<void>;
+  /** Avisa de la respuesta nueva a quien corresponda. */
+  notify(input: {
+    form: LoadedForm;
+    submissionId: string;
+    contactId: string | null;
+    contactCreated: boolean;
+  }): Promise<void>;
   newId(): string;
 }
 
@@ -363,7 +407,17 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
   for (const [key, list] of Object.entries(stored)) values[key] = list;
 
-  // 11. Guardar.
+  // 11. Guardar. El contacto sale del mapeo (con las respuestas ya validadas) o del link firmado.
+  const contactHint: Record<string, unknown> = { ...applyContactMapping(form.fields, form.contactConfig, values, form.customFields) };
+  if (payload.link_token) {
+    const link = await ports.verifyLink(form, payload.link_token);
+    if (link) {
+      contactHint.signed_contact_id = link.contactId;
+      if (link.serviceId) contactHint.signed_service_id = link.serviceId;
+      if (link.saleId) contactHint.signed_sale_id = link.saleId;
+    }
+  }
+
   const saved = await ports.save({
     form,
     idempotencyKey: payload.idempotency_key,
@@ -371,6 +425,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     attribution,
     meta: buildMeta(ports, input, payload),
     uploadPrefix: pendingUploads.length > 0 ? uploadPrefix : null,
+    contactHint,
   });
 
   if (!saved.ok) {
@@ -379,7 +434,10 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     return fail(500, "server_error", { message: "No pudimos guardar tu respuesta. Probá de nuevo." });
   }
 
-  // 12. Responder.
+  // 12. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
+  if (!saved.duplicate) await afterSave(ports, form, saved, attribution);
+
+  // 13. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
   return {
     status: 200,
@@ -393,6 +451,29 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
 }
 
 // ── Piezas ───────────────────────────────────────────────────────────────────
+
+async function afterSave(
+  ports: SubmitPorts,
+  form: LoadedForm,
+  saved: Extract<SaveResult, { ok: true }>,
+  attribution: Record<string, unknown>,
+): Promise<void> {
+  if (saved.contactId) {
+    try {
+      await ports.recordTouch({ form, submissionId: saved.submissionId, contactId: saved.contactId, attribution });
+    } catch {
+      // Sin detalles: el error podría traer datos de la persona.
+      console.error(`[forms] no pude anotar el toque (form=${form.id}, submission=${saved.submissionId})`);
+    }
+  }
+  // Una respuesta marcada como spam no avisa a nadie.
+  if (saved.status === "spam") return;
+  try {
+    await ports.notify({ form, submissionId: saved.submissionId, contactId: saved.contactId, contactCreated: saved.contactCreated });
+  } catch {
+    console.error(`[forms] no pude avisar de la respuesta (form=${form.id}, submission=${saved.submissionId})`);
+  }
+}
 
 /** La atribución de la visita, vuelta a sanear: el navegador no es de fiar. */
 export function buildAttribution(payload: SubmitPayload, cookieHeader: string | null): Record<string, unknown> {

@@ -141,7 +141,8 @@ describe("los tres tipos nuevos estan registrados", () => {
     // `email_received` (etapa 2) es de evento: lo dispara el receptor de
     // Resend, no el matcher de la bandeja ni un cron. Los seis de agenda
     // (etapa 4) tambien son de evento: nacen de la cola de automation_events, y
-    // los dos de Llamadas (call_analyzed, call_linked) tambien.
+    // los dos de Llamadas (call_analyzed, call_linked) y los tres de Formularios
+    // (form_submitted, survey_answered, contract_signed) tambien.
     expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
       "booking_cancelled",
       "booking_created",
@@ -151,9 +152,12 @@ describe("los tres tipos nuevos estan registrados", () => {
       "booking_updated",
       "call_analyzed",
       "call_linked",
+      "contract_signed",
       "crm_event",
       "email_received",
+      "form_submitted",
       "new_contact",
+      "survey_answered",
     ]);
     // Los tres relativos de agenda los agenda un job, igual que inactividad.
     expect(listTriggers("scheduled").map((t) => t.type).sort()).toEqual([

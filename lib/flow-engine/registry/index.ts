@@ -17,6 +17,7 @@ import "./call-conditions";
 import "./triggers";
 import "./booking-triggers";
 import "./call-triggers";
+import "./form-triggers";
 import "./guards";
 
 export * from "./registry";

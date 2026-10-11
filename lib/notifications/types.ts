@@ -48,6 +48,9 @@ export const NOTIFICATION_TYPES = [
   "call_analysis_budget",
   /** El closer no está de acuerdo con una sección del análisis. Va a quienes editan llamadas. */
   "call_objection",
+  // Formularios.
+  /** Alguien respondió un formulario. Va a quienes eligió el formulario (por defecto, Owner y Admin). */
+  "form_submitted",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -64,7 +67,8 @@ export type NotificationEntity =
   | "booking"
   | "flow"
   | "fathom"
-  | "call";
+  | "call"
+  | "form_submission";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -281,6 +285,13 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "info",
     entity: "call",
   },
+  /** Una respuesta nueva. No pasa por el motor de flows: llega aunque el contacto esté en "no contactar". */
+  form_submitted: {
+    type: "form_submitted",
+    label: "Nueva respuesta en un formulario",
+    tone: "info",
+    entity: "form_submission",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -339,6 +350,13 @@ export function linkFor(
 
     case "call":
       return entityId ? `/dashboard/llamadas/${entityId}` : "/dashboard/llamadas";
+
+    // Formularios: la respuesta abre su detalle (necesita el id del formulario, que viaja en la metadata).
+    case "form_submission": {
+      const formId = metadata?.form_id;
+      if (typeof formId !== "string") return "/dashboard/formularios";
+      return entityId ? `/dashboard/formularios/${formId}/respuestas/${entityId}` : `/dashboard/formularios/${formId}/respuestas`;
+    }
 
     case "integration":
       // Todas llevan a la pantalla de integraciones, con el filtro puesto:

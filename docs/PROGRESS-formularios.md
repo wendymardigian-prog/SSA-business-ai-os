@@ -56,8 +56,8 @@ CHECK vivos al empezar: `triggers_type_check` con 21 tipos (incluye `call_analyz
 | 00152 | 00152 | `get_public_form`, `publish_form_version`, `form_metrics_daily`, `submit_form_response` v1 | **aplicada y registrada** (`verify-forms`: lista blanca, huella, concurrencia, métricas en zona horaria) |
 | 00153 | 00153 | buckets privados `form-uploads` y `contracts` | **aplicada y registrada** (buckets privados, sin policies) |
 | 00154 | 00154 | CHECK de `integration_configs.type` suma `captcha` | **aplicada y registrada** (el CHECK contiene los 7 tipos de antes + `captcha`) |
-| 00155 | 00155 | `flows.form_id` + CHECK de `triggers.type` suma 3 | pendiente |
-| 00156 | 00156 | `find_contact_by_phone_or_email` + `submit_form_response` v2 | pendiente |
+| 00155 | 00155 | `flows.form_id` + CHECK de `triggers.type` suma 3 | **aplicada y registrada** (el CHECK contiene los 21 de antes + los 3 nuevos; `flows.form_id` e `idx_flows_form` parcial) |
+| 00156 | 00156 | `find_contact_by_phone_or_email` + `submit_form_response` v2 | **aplicada y registrada** (`verify-forms`: los casos de contacto, toque, aviso y la concurrencia) |
 | 00157 | 00157 | `contract_signatures`, `record_contract_signature`, `submit_form_response` v3 | pendiente |
 
 Próxima libre al cerrar: **00158**.
@@ -84,14 +84,20 @@ Lo que se verificó al cerrarlo:
 - `verify-rls`, `verify-scheduling` y `verify-roles` en 0. `verify-attribution` sigue con su única falla de antes (backfill de contactos; no es del módulo).
 - Revisión visual (navegador integrado, con la sesión de Wendy; datos `zz-test` creados y borrados): lista, editor de tres columnas con vista previa en vivo, publicar, respuestas, detalle y métricas a 1440 px; la página pública a 1440 y a 390 px en claro y oscuro; editor, respuestas, métricas y lista a 390 px sin scroll horizontal.
 
-## Bloque FO2 · Contacto, atribución y automatizaciones
-- [ ] F15 Pestaña Contacto
-- [ ] F16 Resolución del contacto y deduplicación
-- [ ] F17 Atribución por toque
-- [ ] F18 Etiquetas al enviar y aviso al equipo
-- [ ] F19 Triggers de formulario
-- [ ] F20 Variables de formulario
-- [ ] F21 Automatizaciones desde el formulario
+## Bloque FO2 · Contacto, atribución y automatizaciones — **cerrado** (migraciones 00155–00156 aplicadas)
+- [x] F15 Pestaña Contacto
+- [x] F16 Resolución del contacto y deduplicación
+- [x] F17 Atribución por toque
+- [x] F18 Etiquetas al enviar y aviso al equipo
+- [x] F19 Triggers de formulario
+- [x] F20 Variables de formulario
+- [x] F21 Automatizaciones desde el formulario
+
+Lo que se verificó al cerrarlo:
+- `npx vitest run`: 595 archivos, 7.386 tests, todo en verde. `npm run lint`: 0 errores, 36 avisos (los mismos). `npm run build`: compila.
+- `verify-forms.mjs` (ahora con los casos de FO2 contra la base real): el CHECK de `triggers` (los 21 de antes + 3), `flows.form_id`; contacto nuevo (nombre, email normalizado, teléfono, campo personalizado, etiqueta, historial como sistema "Formulario: <nombre>"); evento con payload de solo escalares y sin `booking_id`; un formulario común no emite eventos de encuesta ni de contrato; vincular por teléfono con `conflict_contact_id`; email secundario en mayúsculas; sin email ni teléfono (sin contacto, sin evento, pero con aviso); `link_only`; `fill_empty` y `overwrite` (nunca borra con un vacío); 5 respuestas simultáneas con el mismo teléfono = 1 contacto; primer toque que no cambia y último que sí; el mismo envío dos veces = 1 toque; contacto sin toques previos; link firmado (válido, firma alterada, otro formulario, vencido, contacto borrado, otro workspace) y `service_id`/`sale_id` solo desde la firma; el trigger y sus variables contra la base real; `{{form_link.<slug>}}`; aviso apagado. Las tres huellas md5 siguen iguales.
+- `verify-rls` y `verify-scheduling` en 0. `verify-attribution` con su única falla de antes, con la misma cantidad de contactos sin `first_touch` (59), no peor.
+- El editor lineal de la Agenda es ahora un envoltorio del compartido; sus tests (`lib/scheduling/automation/*`) siguen en verde.
 
 ## Bloque FO3 · Encuesta/NPS y contrato
 - [ ] F22 Tipo encuesta y "una vez por contacto"

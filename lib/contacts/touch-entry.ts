@@ -89,3 +89,82 @@ export async function recordImportTouches(
     );
   }
 }
+
+// ── Formularios (F17, F33) ───────────────────────────────────────────────────
+
+/** Los datos de atribución que NO tienen columna propia en `contact_touches`: van a `raw`. */
+const FORM_RAW_EXTRA_KEYS = [
+  "utm_id", "gbraid", "wbraid", "msclkid", "twclid", "sccid", "epik", "rdt_cid", "placement",
+  "fbp", "fbc", "ga_client_id", "page_url",
+] as const;
+
+const str = (value: unknown): string | null => (typeof value === "string" && value.trim() !== "" ? value : null);
+
+/**
+ * El toque de un envío de formulario: UNO por envío.
+ *
+ * - `medium` es SIEMPRE "form" (como la Agenda fuerza "booking"); el `utm_medium`
+ *   original queda en `raw.utm`.
+ * - `content` es el `utm_content` si vino; si no, el NOMBRE DEL FORMULARIO (el
+ *   formulario como contenido).
+ * - NO lleva `occurredAt`: la base pone `now()` del servidor. Una fecha mandada por
+ *   el navegador podría volver un envío nuevo el "primer toque".
+ * - La atribución es la EFECTIVA de la visita (la de la URL o, si no trajo nada, la
+ *   última guardada). Los ids de clic y de anuncio con columna propia van a ella;
+ *   el resto, a `raw` (que `sanitizeRaw` recorta a su lista blanca).
+ *
+ * La regla del primer y último toque es de `record_contact_touch`: un contacto
+ * nuevo tiene este toque como primero y último; uno existente lo pasa a último y
+ * su primero no cambia.
+ */
+export function formTouch(input: {
+  submissionId: string;
+  formId: string;
+  formName: string;
+  attribution: Record<string, unknown>;
+}): TouchInput {
+  const a = input.attribution;
+  const utm: Record<string, string> = {};
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
+    const value = str(a[key]);
+    if (value) utm[key] = value;
+  }
+
+  const extras: Record<string, string> = {};
+  for (const key of FORM_RAW_EXTRA_KEYS) {
+    const value = str(a[key]);
+    if (value) extras[key] = value;
+  }
+
+  return {
+    source: normalizeSource(str(a.utm_source)) ?? "web",
+    medium: "form",
+    campaign: str(a.utm_campaign),
+    term: str(a.utm_term),
+    content: str(a.utm_content) ?? input.formName,
+    adId: str(a.ad_id),
+    adsetId: str(a.adset_id),
+    campaignId: str(a.campaign_id),
+    fbclid: str(a.fbclid),
+    gclid: str(a.gclid),
+    ttclid: str(a.ttclid),
+    liFatId: str(a.li_fat_id),
+    referrerUrl: str(a.referrer_url),
+    landingPage: str(a.landing_page),
+    origin: "form",
+    dedupeKey: `form:${input.submissionId}`,
+    raw: { utm, source_type: "form", source_id: input.formId, ...extras },
+  };
+}
+
+/** Anota el toque de un envío. `supabase` es el cliente de servicio. Nunca lanza. */
+export async function recordFormTouch(
+  supabase: Db,
+  params: { workspaceId: string; contactId: string; submissionId: string; formId: string; formName: string; attribution: Record<string, unknown> },
+): Promise<void> {
+  await recordTouch(supabase, {
+    workspaceId: params.workspaceId,
+    contactId: params.contactId,
+    touch: formTouch({ submissionId: params.submissionId, formId: params.formId, formName: params.formName, attribution: params.attribution }),
+  });
+}

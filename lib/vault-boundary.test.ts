@@ -116,6 +116,9 @@ const SERVER_ONLY = [
   { label: "lib/forms/turnstile.ts", file: join(ROOT, "lib/forms/turnstile.ts") },
   { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") },
   { label: "lib/antispam/rate-limit.ts", file: join(ROOT, "lib/antispam/rate-limit.ts") },
+  { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") },
+  { label: "lib/forms/submit.ts", file: join(ROOT, "lib/forms/submit.ts") },
+  { label: "lib/forms/server-ports.ts", file: join(ROOT, "lib/forms/server-ports.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {

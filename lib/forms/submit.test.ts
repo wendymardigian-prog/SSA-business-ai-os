@@ -22,9 +22,15 @@ function makeForm(fields: FormField[], over: Partial<LoadedForm> = {}): LoadedFo
     fields,
     success: { mode: "message", title: "Gracias {{answer.nombre}}", body: "Listo" },
     workspaceTimezone: "America/Costa_Rica",
+    contactConfig: { mode: "create_or_link", update: "fill_empty", map: [] },
+    customFields: [],
+    notifyEnabled: true,
+    notifyUserIds: [],
     ...over,
   };
 }
+
+const NO_CONTACT = { contactId: null, contactCreated: false, matchedBy: null, conflictContactId: null };
 
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]);
 const EXE = new Uint8Array([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0xff, 0xff]);
@@ -51,8 +57,11 @@ function makePorts(form: LoadedForm | null, over: Partial<SubmitPorts> = {}) {
     }),
     save: vi.fn(async (input) => {
       saves.push(input);
-      return { ok: true as const, duplicate: false, submissionId: "sub-1", status: "no_contact" };
+      return { ok: true as const, duplicate: false, submissionId: "sub-1", status: "no_contact", ...NO_CONTACT };
     }),
+    verifyLink: vi.fn(async () => null),
+    recordTouch: vi.fn(async () => undefined),
+    notify: vi.fn(async () => undefined),
     newId: () => `id-${++n}`,
     ...over,
   };
@@ -162,7 +171,7 @@ describe("submitForm: idempotencia", () => {
 
   it("la RPC puede devolver duplicado (carrera real) y se responde 200 igual", async () => {
     const { ports } = makePorts(makeForm([]), {
-      save: vi.fn(async () => ({ ok: true as const, duplicate: true, submissionId: "sub-7", status: "no_contact" })),
+      save: vi.fn(async () => ({ ok: true as const, duplicate: true, submissionId: "sub-7", status: "no_contact", ...NO_CONTACT })),
     });
     const out = await submitForm(ports, baseInput({}));
     expect(out.status).toBe(200);
@@ -377,5 +386,104 @@ describe("buildAttribution y safeFileName", () => {
     expect(safeFileName("C:\\Users\\ana\\cv.pdf")).toBe("cv.pdf");
     expect(safeFileName("a\u0000b.pdf")).toBe("ab.pdf");
     expect(safeFileName("")).toBe("archivo");
+  });
+});
+
+describe("submitForm: contacto, toque y aviso (FO2)", () => {
+  const mapped = () =>
+    makeForm([field("short_text", "nombre"), field("email", "email"), field("phone", "tel")], {
+      contactConfig: {
+        mode: "create_or_link",
+        update: "fill_empty",
+        map: [
+          { fieldKey: "nombre", target: "contact.display_name" },
+          { fieldKey: "email", target: "contact.email" },
+        ],
+      },
+    });
+
+  const withContact = (over: Partial<{ contactId: string | null; contactCreated: boolean; duplicate: boolean; status: string }> = {}) =>
+    vi.fn(async (input: SaveInput) => {
+      void input;
+      return {
+        ok: true as const,
+        duplicate: over.duplicate ?? false,
+        submissionId: "sub-1",
+        status: over.status ?? "received",
+        contactId: over.contactId === undefined ? "contact-1" : over.contactId,
+        contactCreated: over.contactCreated ?? true,
+        matchedBy: null,
+        conflictContactId: null,
+      };
+    });
+
+  it("le pasa a la base el contacto armado con el mapeo, sin ids firmados", async () => {
+    const { ports } = makePorts(mapped(), { save: withContact() });
+    await submitForm(ports, baseInput({ answers: { nombre: "Ana Pérez", email: "ANA@x.com" } }));
+    const sent = (ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent.contactHint).toEqual({ display_name: "Ana Pérez", email: "ana@x.com", custom: {} });
+    expect(ports.verifyLink).not.toHaveBeenCalled();
+  });
+
+  it("con un link firmado válido manda los ids; con uno inválido los ignora", async () => {
+    const valid = makePorts(mapped(), {
+      save: withContact(),
+      verifyLink: vi.fn(async () => ({ contactId: "c-9", serviceId: "s-1", saleId: null })),
+    });
+    await submitForm(valid.ports, baseInput({ answers: { nombre: "Ana" }, link_token: "tok.firma" }));
+    const sent = (valid.ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent.contactHint).toMatchObject({ signed_contact_id: "c-9", signed_service_id: "s-1" });
+    expect(sent.contactHint).not.toHaveProperty("signed_sale_id");
+
+    const invalid = makePorts(mapped(), { save: withContact() });
+    await submitForm(invalid.ports, baseInput({ answers: { nombre: "Ana" }, link_token: "falso" }));
+    const sent2 = (invalid.ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent2.contactHint).not.toHaveProperty("signed_contact_id");
+  });
+
+  it("con contacto: anota el toque y avisa", async () => {
+    const { ports } = makePorts(mapped(), { save: withContact() });
+    const out = await submitForm(ports, baseInput({ answers: { email: "a@x.com" }, attribution: { utm_source: "meta" } }));
+    expect(out.status).toBe(200);
+    expect(ports.recordTouch).toHaveBeenCalledWith(expect.objectContaining({ submissionId: "sub-1", contactId: "contact-1", attribution: { utm_source: "meta" } }));
+    expect(ports.notify).toHaveBeenCalledWith(expect.objectContaining({ submissionId: "sub-1", contactId: "contact-1", contactCreated: true }));
+  });
+
+  it("sin contacto: no anota toque, pero igual avisa", async () => {
+    const { ports } = makePorts(mapped(), { save: withContact({ contactId: null, contactCreated: false, status: "no_contact" }) });
+    await submitForm(ports, baseInput({}));
+    expect(ports.recordTouch).not.toHaveBeenCalled();
+    expect(ports.notify).toHaveBeenCalledWith(expect.objectContaining({ contactId: null }));
+  });
+
+  it("un envío repetido (duplicado) no vuelve a anotar toque ni a avisar", async () => {
+    const { ports } = makePorts(mapped(), { save: withContact({ duplicate: true }) });
+    await submitForm(ports, baseInput({}));
+    expect(ports.recordTouch).not.toHaveBeenCalled();
+    expect(ports.notify).not.toHaveBeenCalled();
+  });
+
+  it("una respuesta marcada como spam no avisa", async () => {
+    const { ports } = makePorts(mapped(), { save: withContact({ status: "spam" }) });
+    await submitForm(ports, baseInput({}));
+    expect(ports.notify).not.toHaveBeenCalled();
+  });
+
+  it("si el toque o el aviso fallan, el envío sigue siendo un éxito y el log no lleva datos", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { ports } = makePorts(mapped(), {
+      save: withContact(),
+      recordTouch: vi.fn(async () => {
+        throw new Error("ana@x.com se cayó");
+      }),
+      notify: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    });
+    const out = await submitForm(ports, baseInput({ answers: { email: "ana@x.com" } }));
+    expect(out.status).toBe(200);
+    expect(out.body).toMatchObject({ ok: true, submission_id: "sub-1" });
+    expect(JSON.stringify(errors.mock.calls)).not.toMatch(/ana@x\.com/);
+    errors.mockRestore();
   });
 });

@@ -25,6 +25,11 @@ import { findForbiddenKeys, containsText } from "../lib/forms/public-definition"
 import { newField, type FormField } from "../lib/forms/fields";
 import { hashIp } from "../lib/scheduling/antispam";
 import { deleteSecret, storeSecret } from "../lib/vault";
+import { signFormLink, verifyFormLink, createToken, getOrCreateLinkSecret } from "../lib/forms/signed-link";
+import { recordTouch } from "../lib/contacts/touch";
+import { resolveBankVariables } from "../lib/response-assets/bank-variables";
+import { getTrigger } from "../lib/flow-engine/registry";
+import { createNotification } from "../lib/notifications/create";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -420,7 +425,7 @@ try {
   check((saved.attribution as Record<string, string>).utm_campaign === "octubre" && (saved.attribution as Record<string, string>).fbclid === "abc123", "la atribucion de la visita queda en la respuesta");
   check(!JSON.stringify(saved.meta).includes("203.0.113"), "la IP no se guarda en claro en meta");
   check(String((saved.meta as { ip_hash?: string }).ip_hash ?? "").length > 8, "meta guarda el hash de la IP");
-  check(saved.status === "no_contact", "en FO1 la respuesta queda sin contacto (el contacto llega en FO2)");
+  check(saved.status === "received", "con email mapeado, la respuesta crea el contacto y queda 'received' (FO2)");
   const afterConcurrent = turnstileCalls.length;
   const again = await submitForm(ports(ws.id), input(publicSlug, basePayload(key1, { nombre: "Ana", email: "ana@example.test", plan: "A" })));
   check(again.body.duplicate === true && turnstileCalls.length === afterConcurrent, "un reintento con la misma clave no vuelve a verificar Turnstile");
@@ -556,6 +561,246 @@ try {
   const anyFormEvents = (await svc.from("analytics_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).like("event_type", "form\\_%")).count ?? 0;
   check(anyFormEvents > 0 && (historyQuery.data ?? []).length === 0, "hay eventos form_* en el workspace y ninguno aparece en la consulta del historial del contacto", `form_*: ${anyFormEvents}`);
 
+
+  // ── FO2: contacto, atribucion y automatizaciones ───────────────────────────
+  console.log("\n— 00155: flows.form_id y el CHECK de triggers —");
+  const triggerCheck = String(sql("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'triggers_type_check'")[0]?.d);
+  for (const t of [
+    "keyword", "postback", "quick_reply", "welcome", "default", "comment_keyword", "new_contact", "crm_event", "inactivity", "email_received",
+    "booking_created", "booking_rescheduled", "booking_cancelled", "booking_updated", "booking_ended", "booking_status_changed",
+    "booking_before_start", "booking_after_end", "booking_after_created", "call_analyzed", "call_linked",
+    "form_submitted", "survey_answered", "contract_signed",
+  ]) {
+    check(triggerCheck.includes(`'${t}'`), `el CHECK de triggers.type incluye '${t}'`);
+  }
+  const formIdColumn = sql("select count(*)::int as n from information_schema.columns where table_schema='public' and table_name='flows' and column_name='form_id'");
+  check(formIdColumn[0]?.n === 1, "flows tiene la columna form_id");
+  const formIdIndex = sql("select indexdef from pg_indexes where indexname='idx_flows_form'");
+  check(String(formIdIndex[0]?.indexdef ?? "").includes("WHERE (form_id IS NOT NULL)"), "idx_flows_form es parcial (solo flows con formulario)");
+
+  console.log("\n— F16/F17/F18: el contacto, el toque y el aviso (codigo real, Turnstile simulado) —");
+  const { data: tag } = await svc.from("tags").insert({ workspace_id: ws.id, name: "zz-test calificado" }).select("id").single();
+  const { data: customDef } = await svc.from("custom_field_definitions").insert({ workspace_id: ws.id, name: "zz-test empresa", slug: "zz_test_empresa", type: "text" }).select("id").single();
+  const fo2Slug = `zz-test-fo2-${Date.now()}`;
+  const fo2Fields: FormField[] = [
+    field("short_text", "nombre", { required: true, label: "Nombre" }),
+    field("email", "email", { label: "Email" }),
+    field("phone", "tel", { label: "Telefono" }),
+    field("short_text", "empresa", { label: "Empresa" }),
+  ];
+  const contactConfig = (over: Record<string, unknown> = {}) => ({
+    mode: "create_or_link",
+    update: "fill_empty",
+    map: [
+      { fieldKey: "nombre", target: "contact.display_name" },
+      { fieldKey: "email", target: "contact.email" },
+      { fieldKey: "tel", target: "contact.phone" },
+      { fieldKey: "empresa", target: "contact.custom.zz_test_empresa" },
+    ],
+    ...over,
+  });
+  const { data: fo2 } = await svc
+    .from("forms")
+    .insert({
+      workspace_id: ws.id, name: "zz-test FO2", type: "custom", slug: fo2Slug,
+      draft_definition: { fields: fo2Fields } as unknown as Json,
+      contact_config: contactConfig() as unknown as Json,
+      tags_on_submit: [tag!.id], notify_enabled: true, notify_user_ids: [owner.id],
+    })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: fo2!.id, p_actor: owner.id });
+  const { data: fo2Pub } = await svc.from("forms").select("current_version_id").eq("id", fo2!.id).single();
+  await svc.from("forms").update({ status: "published" }).eq("id", fo2!.id);
+
+  const fo2Payload = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    idempotency_key: randomUUID(),
+    turnstile_token: "token-de-prueba",
+    version_id: fo2Pub!.current_version_id,
+    answers,
+    honeypot: "",
+    attribution: { utm_source: "facebook", utm_campaign: "octubre", ad_id: "123" },
+    client_meta: { timezone: "America/Costa_Rica" },
+    origin: "public_page",
+    ...extra,
+  });
+  const send = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => submitForm(ports(ws.id), input(fo2Slug, fo2Payload(answers, extra)));
+  const rowOf = async (submissionId: unknown) => (await svc.from("form_submissions").select("*").eq("id", String(submissionId)).single()).data!;
+
+  // 1. Contacto nuevo.
+  const first = await send({ nombre: "Ana Nueva", email: "Ana.Nueva@Example.test", tel: "+50688881234", empresa: "Acme" });
+  check(first.status === 200, "un envio con email y telefono responde 200", JSON.stringify(first.body));
+  const firstRow = await rowOf(first.body.submission_id);
+  check(firstRow.status === "received" && !!firstRow.contact_id && firstRow.contact_created === true, "crea el contacto y la respuesta queda 'received' con contact_created");
+  const { data: c1 } = await svc.from("contacts").select("*").eq("id", firstRow.contact_id!).single();
+  check(c1?.display_name === "Ana Nueva" && c1?.email === "ana.nueva@example.test" && c1?.phone === "+50688881234", "el contacto tiene el nombre, el email normalizado y el telefono", `${c1?.display_name} ${c1?.email} ${c1?.phone}`);
+  const { data: cf } = await svc.from("contact_custom_fields").select("value").eq("contact_id", firstRow.contact_id!).eq("field_id", customDef!.id);
+  check(cf?.[0]?.value === "Acme", "el campo personalizado mapeado se guarda");
+  const { data: ct } = await svc.from("contact_tags").select("tag_id").eq("contact_id", firstRow.contact_id!);
+  check((ct ?? []).some((t) => t.tag_id === tag!.id), "la etiqueta del formulario queda puesta");
+  const { data: audit1 } = await svc.from("audit_log").select("action, actor_type, actor_label, performed_by").eq("entity_type", "contact").eq("entity_id", firstRow.contact_id!).eq("action", "contact.created");
+  check(audit1?.length === 1 && audit1[0].actor_type === "system" && audit1[0].actor_label === "Formulario: zz-test FO2" && audit1[0].performed_by === null, "el historial dice contact.created por el sistema 'Formulario: <nombre>'", JSON.stringify(audit1));
+
+  // 2. El evento de automatizacion: solo escalares, sin booking_id.
+  const { data: evs } = await svc.from("automation_events").select("event_type, contact_id, payload").eq("contact_id", firstRow.contact_id!);
+  const ev = (evs ?? []).find((e) => e.event_type === "form_submitted");
+  check(!!ev, "se emite un evento form_submitted para el contacto");
+  const payload = (ev?.payload ?? {}) as Record<string, unknown>;
+  check(Object.values(payload).every((v) => ["string", "number"].includes(typeof v)), "el payload del evento tiene solo escalares", JSON.stringify(payload));
+  check(!("booking_id" in payload) && payload.submission_id === firstRow.id && payload.form_id === fo2!.id, "...sin booking_id y con submission_id y form_id");
+  check((evs ?? []).filter((e) => e.event_type === "survey_answered" || e.event_type === "contract_signed").length === 0, "un formulario comun NO emite eventos de encuesta ni de contrato");
+
+  // 3. El toque: contacto nuevo => primero y ultimo.
+  const { data: attr1 } = await svc.from("contacts").select("attribution").eq("id", firstRow.contact_id!).single();
+  const a1 = attr1?.attribution as { first_touch?: { campaign?: string; medium?: string; source?: string }; last_touch?: { campaign?: string } };
+  check(a1?.first_touch?.campaign === "octubre" && a1?.last_touch?.campaign === "octubre" && a1?.first_touch?.medium === "form" && a1?.first_touch?.source === "facebook", "contacto nuevo: el toque del formulario es su primero y su ultimo (medium 'form')", JSON.stringify(a1));
+  const { data: touches1 } = await svc.from("contact_touches").select("origin, dedupe_key, content_label, ad_id").eq("contact_id", firstRow.contact_id!);
+  check(touches1?.length === 1 && touches1[0].origin === "form" && touches1[0].dedupe_key === `form:${firstRow.id}` && touches1[0].ad_id === "123", "queda UNA fila en contact_touches con origin 'form' y la clave form:<respuesta>", JSON.stringify(touches1));
+  check(touches1?.[0].content_label === "zz-test FO2", "sin utm_content, la pieza es el nombre del formulario");
+
+  // 4. El aviso de la campana.
+  const { data: notes } = await svc.from("notifications").select("type, entity_type, entity_id, recipient_id, metadata, body").eq("workspace_id", ws.id).eq("type", "form_submitted").eq("entity_id", firstRow.id);
+  check(notes?.length === 1 && notes[0].recipient_id === owner.id && notes[0].entity_type === "form_submission" && (notes[0].metadata as { form_id?: string }).form_id === fo2!.id, "queda un aviso form_submitted para quien eligio el formulario, con el form_id en la metadata", JSON.stringify(notes));
+  check(!JSON.stringify(notes).includes("ana.nueva") && !JSON.stringify(notes).includes("50688881234"), "el aviso no lleva el email ni el telefono de la persona");
+
+  // 5. Un contacto que ya existe: por telefono (con otro email), y el email choca con otro contacto.
+  const { data: dupPhone } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Telefono Viejo", phone: "+50670000001" }).select("id").single();
+  const { data: dupEmail } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Email Otro", email: "otro.zz@example.test" }).select("id").single();
+  const byPhone = await rowOf((await send({ nombre: "X", email: "otro.zz@example.test", tel: "+50670000001" })).body.submission_id);
+  check(byPhone.contact_id === dupPhone!.id && byPhone.contact_created === false, "con el mismo telefono se vincula al contacto existente aunque el email sea de otro");
+  check((byPhone.dedupe as { matched_by?: string; conflict_contact_id?: string }).matched_by === "phone" && (byPhone.dedupe as { conflict_contact_id?: string }).conflict_contact_id === dupEmail!.id, "matched_by = phone y conflict_contact_id = el otro contacto", JSON.stringify(byPhone.dedupe));
+
+  // 6. Email secundario, con mayusculas.
+  const { data: secondary } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Secundario", email: "principal.zz@example.test", secondary_email: "sec.zz@example.test" }).select("id").single();
+  const bySecondary = await rowOf((await send({ nombre: "Y", email: "SEC.ZZ@Example.test" })).body.submission_id);
+  check(bySecondary.contact_id === secondary!.id && (bySecondary.dedupe as { matched_by?: string }).matched_by === "email", "el email (en mayusculas) encuentra el email secundario");
+
+  // 7. Sin email ni telefono: no se crea nada y no hay evento.
+  const eventsBefore = (await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+  const anon1 = await rowOf((await send({ nombre: "Anonimo" })).body.submission_id);
+  check(anon1.contact_id === null && anon1.status === "no_contact", "sin email ni telefono: no hay contacto y la respuesta queda 'no_contact'");
+  check(((await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === eventsBefore, "...y no se emite ningun automation_event");
+  const { data: anonNote } = await svc.from("notifications").select("id").eq("workspace_id", ws.id).eq("type", "form_submitted").eq("entity_id", anon1.id);
+  check((anonNote ?? []).length === 1, "...pero el aviso al equipo llega igual");
+
+  // 8. link_only.
+  await svc.from("forms").update({ contact_config: contactConfig({ mode: "link_only" }) as unknown as Json }).eq("id", fo2!.id);
+  const contactsBefore = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+  const linkOnlyNew = await rowOf((await send({ nombre: "Nadie", email: "nadie.zz@example.test" })).body.submission_id);
+  check(linkOnlyNew.contact_id === null && linkOnlyNew.status === "no_contact", "link_only con un contacto que no existe: no se crea y queda 'no_contact'");
+  check(((await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === contactsBefore, "...y no aparecio ningun contacto");
+  const linkOnlyExisting = await rowOf((await send({ nombre: "Ana", email: "ana.nueva@example.test" })).body.submission_id);
+  check(linkOnlyExisting.contact_id === firstRow.contact_id, "link_only con un contacto que existe: lo vincula");
+
+  // 9. fill_empty / overwrite.
+  await svc.from("forms").update({ contact_config: contactConfig() as unknown as Json }).eq("id", fo2!.id);
+  await send({ nombre: "Ana Maria Nueva", email: "ana.nueva@example.test", empresa: "Otra" });
+  const { data: keep } = await svc.from("contacts").select("display_name").eq("id", firstRow.contact_id!).single();
+  check(keep?.display_name === "Ana Nueva", "fill_empty: un nombre que ya estaba NO cambia");
+  const { data: keepCf } = await svc.from("contact_custom_fields").select("value").eq("contact_id", firstRow.contact_id!).eq("field_id", customDef!.id);
+  check(keepCf?.[0]?.value === "Acme", "fill_empty: el campo personalizado que ya tenia valor NO cambia");
+  await svc.from("forms").update({ contact_config: contactConfig({ update: "overwrite" }) as unknown as Json }).eq("id", fo2!.id);
+  await send({ nombre: "Ana Maria Nueva", email: "ana.nueva@example.test", empresa: "Otra" });
+  const { data: over } = await svc.from("contacts").select("display_name").eq("id", firstRow.contact_id!).single();
+  check(over?.display_name === "Ana Maria Nueva", "overwrite: el nombre cambia");
+  const { data: overCf } = await svc.from("contact_custom_fields").select("value").eq("contact_id", firstRow.contact_id!).eq("field_id", customDef!.id);
+  check(overCf?.[0]?.value === "Otra", "overwrite: el campo personalizado cambia");
+  await send({ nombre: "", email: "ana.nueva@example.test", tel: "" });
+  const { data: notBlank } = await svc.from("contacts").select("display_name, phone").eq("id", firstRow.contact_id!).single();
+  check(notBlank?.display_name === "Ana Maria Nueva" && notBlank?.phone === "+50688881234", "overwrite con un campo vacio: NUNCA borra un dato");
+  await svc.from("forms").update({ contact_config: contactConfig() as unknown as Json }).eq("id", fo2!.id);
+
+  // 10. Concurrencia: cinco respuestas distintas con el mismo telefono nuevo => UN contacto.
+  const racePhone = "+50670000999";
+  const race = await Promise.all(Array.from({ length: 5 }, (_, i) => send({ nombre: `Carrera ${i}`, tel: racePhone })));
+  check(race.every((r) => r.status === 200), "5 respuestas simultaneas con el mismo telefono nuevo responden 200", race.map((r) => r.status).join(","));
+  const { data: raceContacts } = await svc.from("contacts").select("id").eq("workspace_id", ws.id).eq("phone", racePhone);
+  check(raceContacts?.length === 1, "...y queda UN solo contacto", `hay ${raceContacts?.length}`);
+
+  // 11. Primer y ultimo toque de un contacto que ya tenia historia.
+  const { data: veteran } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Veterano", email: "veterano.zz@example.test" }).select("id").single();
+  await recordTouch(svc, {
+    workspaceId: ws.id, contactId: veteran!.id,
+    touch: { source: "instagram", medium: "dm", origin: "dm", dedupeKey: "zz-prev-dm", occurredAt: new Date(Date.now() - 86_400_000) },
+  });
+  const vet = await rowOf((await send({ nombre: "Veterano", email: "veterano.zz@example.test" }, { attribution: { utm_source: "facebook", utm_campaign: "noviembre" } })).body.submission_id);
+  const { data: vetAttr } = await svc.from("contacts").select("attribution").eq("id", veteran!.id).single();
+  const av = vetAttr?.attribution as { first_touch?: { source?: string }; last_touch?: { campaign?: string; medium?: string } };
+  check(av?.first_touch?.source === "instagram", "contacto con historia: el PRIMER toque no cambia (instagram)", JSON.stringify(av));
+  check(av?.last_touch?.campaign === "noviembre" && av?.last_touch?.medium === "form", "...y el ULTIMO es el del formulario", JSON.stringify(av));
+  const replay = await recordTouch(svc, {
+    workspaceId: ws.id, contactId: veteran!.id,
+    touch: { source: "facebook", medium: "form", origin: "form", dedupeKey: `form:${vet.id}`, campaign: "noviembre" },
+  });
+  const { data: vetTouches } = await svc.from("contact_touches").select("id").eq("contact_id", veteran!.id).eq("dedupe_key", `form:${vet.id}`);
+  check(vetTouches?.length === 1 && replay.recorded === false, "procesar dos veces el mismo envio deja UNA fila en contact_touches");
+  const { data: noPrior } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Sin Historia", email: "sinhistoria.zz@example.test", attribution: {} }).select("id").single();
+  await svc.from("contact_touches").delete().eq("contact_id", noPrior!.id);
+  await send({ nombre: "Sin Historia", email: "sinhistoria.zz@example.test" }, { attribution: { utm_source: "google", utm_campaign: "tardio" } });
+  const { data: npAttr } = await svc.from("contacts").select("attribution").eq("id", noPrior!.id).single();
+  const np = npAttr?.attribution as { first_touch?: { campaign?: string }; last_touch?: { campaign?: string } };
+  check(np?.first_touch?.campaign === "tardio" && np?.last_touch?.campaign === "tardio", "contacto existente SIN toques: el del formulario queda como primero y ultimo");
+
+  console.log("\n— F20: el link firmado por contacto —");
+  const signedUrl = await signFormLink(svc, { workspaceId: ws.id, formId: fo2!.id, slug: fo2Slug, contactId: veteran!.id, serviceId: randomUUID(), saleId: randomUUID(), baseUrl: "https://app.ejemplo.test" });
+  const token = new globalThis.URL(signedUrl).searchParams.get("c")!;
+  const okLink = await verifyFormLink(svc, token, { workspaceId: ws.id, formId: fo2!.id });
+  check(okLink.ok && okLink.contactId === veteran!.id && !!okLink.serviceId && !!okLink.saleId, "un link firmado valido se verifica con su contacto, servicio y venta");
+  check(!signedUrl.includes(okLink.ok ? okLink.serviceId ?? "x" : "x"), "los ids de servicio y venta no aparecen en claro en la URL");
+  const tampered = token.slice(0, -2) + (token.endsWith("AA") ? "BB" : "AA");
+  check(!(await verifyFormLink(svc, tampered, { workspaceId: ws.id, formId: fo2!.id })).ok, "la firma alterada se rechaza");
+  const secret = await getOrCreateLinkSecret(svc, ws.id);
+  const otherContact = createToken({ formId: randomUUID(), contactId: veteran!.id }, secret);
+  check(!(await verifyFormLink(svc, otherContact, { workspaceId: ws.id, formId: fo2!.id })).ok, "un token de otro formulario se rechaza");
+  const expired = createToken({ formId: fo2!.id, contactId: veteran!.id, ttlDays: 1, now: Date.now() - 3 * 86_400_000 }, secret);
+  check(!(await verifyFormLink(svc, expired, { workspaceId: ws.id, formId: fo2!.id })).ok, "un token vencido se rechaza");
+  const { data: gone } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Borrado", deleted_at: new Date().toISOString() }).select("id").single();
+  const goneToken = createToken({ formId: fo2!.id, contactId: gone!.id }, secret);
+  check(!(await verifyFormLink(svc, goneToken, { workspaceId: ws.id, formId: fo2!.id })).ok, "un contacto borrado se rechaza");
+  const otherWsToken = createToken({ formId: fo2!.id, contactId: randomUUID() }, secret);
+  check(!(await verifyFormLink(svc, otherWsToken, { workspaceId: ws.id, formId: fo2!.id })).ok, "un contacto que no es de este workspace se rechaza");
+
+  const serviceId = randomUUID();
+  const saleId = randomUUID();
+  const withLink = await signFormLink(svc, { workspaceId: ws.id, formId: fo2!.id, slug: fo2Slug, contactId: veteran!.id, serviceId, saleId, baseUrl: "https://app.ejemplo.test" });
+  const linked = await rowOf((await send({ nombre: "Otro Nombre", email: "completamente.otro@example.test" }, { link_token: new globalThis.URL(withLink).searchParams.get("c") })).body.submission_id);
+  check(linked.contact_id === veteran!.id && linked.contact_created === false, "con un link valido la respuesta va al contacto del link, sin deduplicar por el email que escribio");
+  check(linked.service_id === serviceId && linked.sale_id === saleId, "...y guarda el service_id y el sale_id de la firma (sin tablas de servicios ni ventas)");
+  const looseIds = await rowOf((await send({ nombre: "Suelto", email: "suelto.zz@example.test" }, { service_id: randomUUID(), sale_id: randomUUID() })).body.submission_id);
+  check(looseIds.service_id === null && looseIds.sale_id === null, "un service_id o sale_id suelto en el cuerpo del envio se ignora");
+  const badLink = await rowOf((await send({ nombre: "Token Roto", email: "tokenroto.zz@example.test" }, { link_token: tampered })).body.submission_id);
+  check(badLink.status === "received" && badLink.contact_id !== veteran!.id && badLink.service_id === null, "con un token invalido el envio se guarda igual y se resuelve por email");
+
+  console.log("\n— F19/F20: los triggers y las variables contra la base —");
+  const formTrigger = getTrigger("form_submitted")!;
+  const fakeEvent = (submissionId: string) => ({ id: randomUUID(), workspace_id: ws.id, event_type: "form_submitted", contact_id: firstRow.contact_id!, payload: { submission_id: submissionId, form_id: fo2!.id, form_type: "custom" } });
+  const triggerArgs = (submissionId: string, config: Record<string, unknown>) => ({ supabase: svc, event: fakeEvent(submissionId), config, trigger: { id: randomUUID() } }) as never;
+  check((await formTrigger.eventMatches!(triggerArgs(String(first.body.submission_id), { form_ids: [fo2!.id] }))) === true, "el trigger coincide con el formulario elegido");
+  check((await formTrigger.eventMatches!(triggerArgs(String(first.body.submission_id), { form_ids: [randomUUID()] }))) === false, "...y no coincide con otro");
+  check((await formTrigger.eventMatches!(triggerArgs(String(first.body.submission_id), { answer_conditions: { rootConjunction: "and", conditions: [{ fieldKey: "empresa", operator: "is", value: "Acme" }], groups: [] } }))) === true, "las condiciones sobre las respuestas leen la respuesta guardada");
+  check((await formTrigger.eventMatches!(triggerArgs(randomUUID(), {}))) === false, "una respuesta que no existe no dispara");
+  const vars = (await formTrigger.variablesFor!(triggerArgs(String(first.body.submission_id), {}))) as { form?: { name?: string; url?: string }; answer?: Record<string, string>; submission?: { url?: string } };
+  check(vars.form?.name === "zz-test FO2" && vars.answer?.nombre === "Ana Nueva" && String(vars.submission?.url).endsWith(`/dashboard/formularios/${fo2!.id}/respuestas/${firstRow.id}`), "variablesFor arma form.*, answer.* y submission.url con la respuesta real", JSON.stringify(vars));
+  check(formTrigger.dedupeKeyFor!(triggerArgs("sub-1", {})) === "form:form_submitted:sub-1", "la clave de idempotencia es form:<tipo>:<respuesta>");
+
+  const [withToken, withoutToken] = await resolveBankVariables(svc, { workspaceId: ws.id, contactId: veteran!.id, variables: { service: { id: serviceId } } }, [`Respondé: {{form_link.${fo2Slug.replace(/-/g, "_")}}}`, "Hola {{contact.display_name}}"]);
+  const resolvedUrl = withToken.replace("Respondé: ", "");
+  check(/\/f\/zz-test-fo2-\d+\?c=/.test(resolvedUrl), "{{form_link.<slug>}} se reemplaza por el link firmado", resolvedUrl);
+  const resolvedToken = new globalThis.URL(resolvedUrl).searchParams.get("c");
+  const verifiedFromText = await verifyFormLink(svc, resolvedToken, { workspaceId: ws.id, formId: fo2!.id });
+  check(verifiedFromText.ok && verifiedFromText.contactId === veteran!.id && verifiedFromText.serviceId === serviceId, "...con un token valido para ese contacto y el service.id del flujo");
+  check(!resolvedUrl.includes(serviceId), "...y el service_id no esta en claro en la URL");
+  check(withoutToken === "Hola zz-test Veterano", "la variable de la banca se resuelve en el mismo pase");
+  const [missing] = await resolveBankVariables(svc, { workspaceId: ws.id, contactId: veteran!.id }, ["{{form_link.no_existe_zz}}"]);
+  check(missing === "{{form_link.no_existe_zz}}", "un formulario que no existe deja el token tal cual");
+
+  // Un aviso apagado no escribe nada.
+  await svc.from("forms").update({ notify_enabled: false }).eq("id", fo2!.id);
+  const quiet = await rowOf((await send({ nombre: "Callado", email: "callado.zz@example.test" })).body.submission_id);
+  const { data: quietNotes } = await svc.from("notifications").select("id").eq("entity_id", quiet.id).eq("type", "form_submitted");
+  check((quietNotes ?? []).length === 0, "con notify_enabled = false no se crea ninguna notificacion");
+  void createNotification;
+
   // ── Buckets ────────────────────────────────────────────────────────────────
   console.log("\n— 00153: buckets privados —");
   const buckets = sql("select id, public from storage.buckets where id in ('form-uploads','contracts')");
@@ -569,10 +814,12 @@ try {
   // Limpieza: el secreto de prueba, los archivos subidos, los topes por IP y los datos de prueba.
   const { data: testWorkspaces } = await svc.from("workspaces").select("id").like("name", "zz-test-%");
   for (const w of testWorkspaces ?? []) {
-    try {
-      await deleteSecret(svc, w.id, "turnstile_secret_key");
-    } catch {
-      // sin secreto no hay nada que borrar
+    for (const name of ["turnstile_secret_key", "forms_link_secret"]) {
+      try {
+        await deleteSecret(svc, w.id, name);
+      } catch {
+        // sin secreto no hay nada que borrar
+      }
     }
   }
   if (uploaded.length > 0) await svc.storage.from("form-uploads").remove(uploaded);

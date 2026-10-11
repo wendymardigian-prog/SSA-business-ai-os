@@ -179,3 +179,50 @@ puras viven en `lib/calls/automation/triggers.ts`; el registro solo declara.
 - **Dónde se emite**: `call_analyzed` al terminar `runCallAnalysisJob`;
   `call_linked` en la ingesta (`onLinked`), al importar con contacto y al
   vincular a mano.
+
+## Formularios: los triggers `form_submitted`, `survey_answered` y `contract_signed`
+
+Tres tipos de trigger (`lib/flow-engine/registry/form-triggers.ts`), `scope: "event"`,
+prioridad 45. Las reglas puras viven en `lib/forms/automation/triggers.ts` y la
+validación de la configuración en `lib/forms/automation/trigger-config.ts`; el
+registro solo declara.
+
+| Trigger | Cuándo | Filtros (`triggers.config`) |
+|---|---|---|
+| `form_submitted` | Se envía un formulario **personalizado** y la respuesta tiene contacto | `form_ids[]`, `answer_conditions` |
+| `survey_answered` | Se responde una **encuesta** y la respuesta tiene contacto | `form_ids[]`, `score {operator: lte\|gte\|eq, value}`, `nps_categories[]`, `survey_categories[]`, `answer_conditions` |
+| `contract_signed` | Se firma un **contrato** (cuando la firma quedó guardada; no espera al PDF) | `form_ids[]` |
+
+- **Un solo evento por respuesta**, según el tipo del formulario: así un mismo envío
+  no dispara dos flujos. Los emite `submit_form_response` (00156; el de contrato lo
+  emite la 00157 al registrar la firma).
+- **Vacío significa "cualquiera"**, nunca "ninguno". **Una configuración rota no
+  dispara para nadie** (al revés que un vacío): es más seguro que mandar a todos.
+- **El evento** va a `automation_events` con `contact_id` y un payload de **solo
+  escalares**: `{ submission_id, form_id, form_type, score?, nps_category? }`. Nunca
+  lleva `booking_id` (el cron trata como "reserva" cualquier payload con `booking_id`
+  y se saltearía la marca "no contactar") ni las respuestas: el trigger las lee de
+  `form_submissions` para filtrar y para armar las variables.
+- **Una respuesta sin contacto no emite nada** (`automation_events.contact_id` es
+  obligatorio). Si después se vincula a mano desde su detalle, la casilla "Disparar
+  ahora las automatizaciones" emite el mismo evento; tildarla dos veces dispara una
+  sola vez porque la clave de idempotencia es la misma.
+- **Idempotencia** (`dedupeKeyFor`, `trigger_fires`): `form:<tipo>:<respuesta>`.
+- **Variables** (`lib/forms/automation/variables.ts`, todo texto; lo que falta queda
+  vacío): `{{form.name}}`, `{{form.url}}`, `{{form.type}}`, `{{form.slug}}`,
+  `{{form.category}}`, `{{answer.<clave>}}` (las múltiples, unidas por `, `; las claves
+  con guion pasan a guion bajo; un archivo sale como su nombre), `{{submission.url}}`
+  (pide sesión: sirve para avisos al equipo, no para el contacto), `{{submission.id}}`,
+  `{{submission.created_at}}`, `{{submission.score}}`, `{{submission.nps_category}}`,
+  `{{submission.contact_created}}`.
+- **`{{form_link.<slug_con_guion_bajo>}}`** en cualquier email o mensaje: el link
+  firmado para el contacto del flujo, con `service.id` y `sale.id` si el flujo los
+  trae. Se resuelve en un segundo pase dentro de `resolveBankVariables` y **solo si el
+  texto trae el token** (`lib/response-assets/bank-variables.ts`); si el formulario no
+  existe o no está publicado, el token queda tal cual.
+- En el editor (`TriggerPanel` → `FormTriggerPanel`) se eligen los formularios, el
+  puntaje y las condiciones. Con varios formularios, las condiciones ofrecen solo los
+  campos que tienen la misma clave y el mismo tipo en todos.
+- Los flujos creados desde la pestaña **Automatizaciones** de un formulario llevan
+  `flows.form_id` (00155) y se editan en el editor lineal compartido
+  (`components/automations/linear-flow-editor.tsx`, que usa también la Agenda).
