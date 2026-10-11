@@ -298,7 +298,7 @@ export function FormEditor({
         >
           <div className="pt-4">
             {section === "campos" ? (
-              <FieldsTab draft={draft} onChange={setDraft} disabled={disabled} neverPublished={neverPublished} slug={slug} type={form.type} />
+              <FieldsTab draft={draft} onChange={setDraft} disabled={disabled} neverPublished={neverPublished} slug={slug} type={form.type} contract={contractConfig} />
             ) : section === "encuesta" && form.type === "survey" ? (
               <SurveyTab form={form} draft={draft} config={surveyConfig} onSaved={setSurveyConfig} canManage={canManage} />
             ) : section === "contrato" && form.type === "contract" && contractConfig ? (

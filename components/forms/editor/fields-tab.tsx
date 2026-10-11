@@ -28,6 +28,7 @@ export function FieldsTab({
   neverPublished,
   slug,
   type,
+  contract,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
@@ -35,6 +36,8 @@ export function FieldsTab({
   neverPublished: boolean;
   slug: string;
   type: "custom" | "survey" | "contract";
+  /** Solo un contrato: lo que la vista previa necesita para mostrar el texto y la firma. */
+  contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
 }) {
   const fields = draft.definition.fields;
   const [selected, setSelected] = useState<number>(fields.length > 0 ? 0 : -1);
@@ -59,8 +62,8 @@ export function FieldsTab({
     version_id: "preview",
     design: draft.design,
     fields: toPublicFields(fields),
-    contract: null,
-    signature_required: false,
+    contract: type === "contract" && contract ? { text: draft.definition.contractText ?? "", version_number: 0, title: contract.title, accept_label: contract.acceptLabel } : null,
+    signature_required: type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: null,
     turnstile_site_key: null,
   };
