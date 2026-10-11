@@ -40,3 +40,15 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 - **Revisión visual limitada**: el panel del navegador de esta corrida mide ~800×512 px (y el modo celular de 375 px para la configuración), en oscuro y claro. No se revisó la ficha a 1440 px ni a 390 px en claro después de sumar las herramientas de sección; la estructura es la misma de L1.
 - **Verificación en vivo pendiente (no se llama a IA real):** un análisis con el SPSP, una corrección con IA, una prueba del borrador y una clasificación con IA contra el proveedor de verdad. Todo está probado con el modelo simulado (`generate` inyectado).
 - **Hallazgo ajeno (sin tocar):** ver más arriba, `analyzeAdsWithAi` abre la corrida con el cliente del usuario.
+
+
+## Bloque L3 · decisiones y pendientes
+
+- **Dashboard: el selector de closer sale de `workspace_members.is_closer`.** Un closer que grabó llamadas pero no está marcado en Equipo no aparece en el filtro (sus llamadas sí cuentan en los números del equipo). Si se prefiere, el selector puede armarse con quienes grabaron llamadas analizadas del período.
+- **Dashboard: las semanas se agrupan por la fecha de la llamada** (`recorded_at`), no por la del análisis, y empiezan el lunes en la zona horaria de quien mira. "Llamadas analizadas" cuenta las que tienen el análisis terminado en ese período de llamada.
+- **`call_summary` con el tope alcanzado** deja `summary_status = 'error'` (no hay un estado "esperando presupuesto" en ese campo). El botón "Resumir" lo reintenta; el aviso al equipo lo da el análisis, no el resumen.
+- **El filtro `closer_ids` de los triggers** existe en el motor y en `triggers.config`, pero el panel del editor de flujos todavía no tiene un selector de closers (hace falta pasarle la lista de miembros). Se puede cargar a mano en la configuración del trigger.
+- **Conocimiento**: el pedazo indexado lleva el minuto adelante (`[00:12:30 – 00:14:10]`) porque `knowledge_chunks` no tiene columnas de hablante ni de tiempo; el hablante ya va dentro del texto de cada turno.
+- **`verify-knowledge.mjs` llama a Voyage de verdad** (embeddings, centavos del free tier): es el script de siempre y hace falta para su definición de listo. Se corrió dos veces en esta corrida (una vez para ver el fallo de antes y una al final). Corre contra el primer workspace, que tiene un documento real: por eso se corrigió el caso que fallaba.
+- **Verificación en vivo pendiente** (no se llamó a ningún proveedor real): un resumen con IA, la integración de la memoria contra un cierre de conversación real, la indexación con Voyage de una llamada, y un flujo real que dispare `call_analyzed`.
+- **Cuidado al probar a mano en producción:** "Resumir" y "Mandar a Conocimiento" encolan un job. Mientras el código de esta rama no esté desplegado, el runner de producción no conoce esos tipos y los marca fallidos.

@@ -264,7 +264,9 @@ try {
       p_match_count: 10,
       p_min_similarity: 0,
     });
-    check((data ?? []).length === 0, "un documento eliminado desaparece de la busqueda");
+    // Se mira que NO salga el documento de prueba, no que la lista este vacia: el
+    // script corre contra el primer workspace, que puede tener documentos reales.
+    check(!(data ?? []).some((r) => r.document_id === documentoId), "un documento eliminado desaparece de la busqueda");
 
     await svc.from("knowledge_base").update({ deleted_at: null }).eq("id", documentoId); }
 } catch (err) {
