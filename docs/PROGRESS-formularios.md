@@ -132,5 +132,15 @@ Lo que se verificó al cerrarlo:
 - `scripts/export-template.mjs` en una carpeta temporal: **pasa el control de nombres** (se arreglaron los 12 restos en tests de Llamadas) y deja `app/(sitio)/` con solo `layout.tsx` y `page.tsx` iguales a `scripts/template-files/sitio/`, sin `public/sitio/` propio ni `app/page.tsx`.
 - Revisión visual (navegador integrado, con la sesión de Wendy): una página del sitio con el layout, dos `<Formulario>` de un formulario que no existe (cada uno muestra su aviso y la página carga) y uno publicado con `prefill={{plan:"pro"}}` y la URL `?plan=basic` (queda en `pro`); la cookie `ssa_attr` se escribe con la última visita y solo las claves de atribución de la URL.
 
-## Definición de listo — corrida final
-(se completa al cerrar)
+## Definición de listo — corrida final (11/10/2026)
+
+- **Funcionalidades**: FO1 a FO4, F1 a F33 marcadas. F18 y las plantillas de F21 se construyeron (no se recortó nada); `pdf-lib` se instaló, así que F27 está completo.
+- `npx vitest run`: 619 archivos, 7.641 tests, en verde. `npm run build`: compila con la versión por defecto del sitio. `npm run lint`: 0 errores, 36 avisos (los mismos del punto de partida).
+- **Verificaciones contra la base real, de a una, todas en 0**: `verify-forms` (con los casos de FO1 a FO4), `verify-rls --despues-de-00143`, `verify-roles --despues-de-00136`, `verify-scheduling`, `verify-booking-concurrency`, `verify-crm`, `verify-content`, `verify-dashboards`, `verify-calls`, `verify-audit-visibility --despues-de-00147`, `verify-workspace-isolation --despues-de-00143`, `verify-inbox-filters`, `verify-publishing`, `verify-optout`, `verify-csv-import`, `verify-enrichment`, `verify-chat-media` y `verify-message-persistence`.
+- **`verify-attribution`**: sigue con su única falla de antes del módulo ("todos los contactos reales tienen first_touch", 734 de 793; eran 732 de 791: los mismos 59 contactos sin `first_touch`, no empeoró). Es un dato de backfill de la 00115, no de Formularios.
+- **No se corrieron** (decidido con Wendy): `verify-knowledge` (llama a Voyage de verdad) y `verify-webhook` (necesita la app en local). Formularios no toca Conocimiento ni los webhooks.
+- **Lo que no cambia** (§4.2): las huellas md5 de `find_or_link_contact`, `create_booking` y `record_contact_touch` son iguales a las del punto de partida (las compara `verify-forms`); los tests previos de Agenda, embed, headers, touch y atribución siguen en verde.
+- **Migraciones** 00150 a 00158 aplicadas y registradas; `ALL_MIGRATIONS.sql` regenerado.
+- **Documentos**: `docs/formularios.md`, `docs/sitio.md`, `docs/flow-registry.md`, el comentario de `.env.example`, `CLAUDE.md` (secciones "Formularios" y "Sitio público" y la próxima migración libre, 00159) y `BITACORA.md`.
+- `export-template.mjs` en una carpeta temporal: pasa el control de nombres y deja `app/(sitio)/` con la versión por defecto.
+- **Revisión visual** hecha por bloque (ver cada uno). La verificación en vivo con las claves reales de Turnstile y de Resend queda para Wendy (§18 del plano; ver PENDIENTE).
