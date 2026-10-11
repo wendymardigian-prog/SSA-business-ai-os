@@ -29,6 +29,8 @@ import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify";
 import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
 import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary";
 import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge";
+import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf";
+import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -102,6 +104,10 @@ export function registerPublishing(): void {
   registerCallAnalyzeHandler();
   registerCallSummaryHandler();
   registerCallIndexKnowledgeHandler();
+
+  // Formularios: el PDF firmado de un contrato y su copia por email (F27, F28).
+  registerContractPdfHandler();
+  registerContractEmailHandler();
 }
 
 /** Para los tests. */

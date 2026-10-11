@@ -7,6 +7,8 @@ import { FormEditor } from "@/components/forms/editor/form-editor";
 import type { EditorExtras, EditorForm, EditorVersion } from "@/components/forms/editor/types";
 import { flowsForForm } from "@/lib/forms/data/form-flows";
 import { parseStoredContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
+import { parseStoredSurveyConfig } from "@/lib/forms/survey";
+import { parseStoredContractConfig } from "@/lib/forms/contract/config";
 import { defaultDesign, type FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import { DEFAULT_SUCCESS, validateSuccess } from "@/lib/forms/success";
@@ -75,6 +77,8 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     tagsOnSubmit: form.tags_on_submit ?? [],
     notifyEnabled: form.notify_enabled,
     notifyUserIds: form.notify_user_ids ?? [],
+    surveyConfig: form.type === "survey" ? parseStoredSurveyConfig(form.survey_config) : null,
+    contractConfig: form.type === "contract" ? parseStoredContractConfig(form.contract_config, form.name) : null,
   };
 
   const extras: EditorExtras = {

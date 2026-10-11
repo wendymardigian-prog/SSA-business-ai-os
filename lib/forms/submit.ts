@@ -22,6 +22,10 @@
  *  10. Ocultos `fixed`: los pone el servidor.
  *  11. Guardar con la RPC (idempotente por índice único). La RPC resuelve el
  *      contacto (el del link firmado, o el que coincide por teléfono/email).
+ *  11b. Contrato: casilla aceptada, firma válida (PNG real, ≤ 200 KB, con
+ *      trazos), email del firmante. La imagen va a un bucket privado ANTES de la
+ *      RPC; la huella la calcula la base sobre el texto GUARDADO de la versión
+ *      (el navegador no manda el texto: nada de lo suyo entra en la huella).
  *  12. Con el commit hecho: el toque de atribución y el aviso. Si fallan, la
  *      respuesta ya está guardada y el envío sigue siendo un éxito.
  *  13. Responder con la pantalla de éxito ya armada.
@@ -47,6 +51,11 @@ import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./su
 import { answerToText } from "./responses";
 import { applyContactMapping } from "./contact-mapping";
 import type { ContactConfig, CustomFieldDef } from "./contact-config";
+import type { ContractConfig } from "./defaults";
+import { validateSignature } from "./contract/signature";
+import { buildLegal } from "./contract/legal";
+import { signerEmailField, signerNameFromAnswers } from "./contract/config";
+import { contractSuccess } from "./contract/success";
 
 // ── Lo que el servidor necesita de afuera ────────────────────────────────────
 
@@ -69,6 +78,8 @@ export interface LoadedForm {
   /** Avisar a alguien de cada respuesta nueva (F18). */
   notifyEnabled: boolean;
   notifyUserIds: string[];
+  /** Solo en un contrato: título, casilla, firma y copias. */
+  contract: ContractConfig | null;
 }
 
 export interface ExistingSubmission {
@@ -88,6 +99,8 @@ export interface SaveInput {
   uploadPrefix: string | null;
   /** Lo que la base necesita para crear o vincular el contacto, más los ids de un link firmado válido. */
   contactHint: Record<string, unknown>;
+  /** Solo en un contrato: lo que `record_contract_signature` guarda junto con la respuesta. */
+  contract: { signaturePath: string | null; legal: Record<string, unknown>; signerName: string; signerEmail: string } | null;
 }
 
 export interface SavedContact {
@@ -98,7 +111,7 @@ export interface SavedContact {
 }
 
 export type SaveResult =
-  | ({ ok: true; duplicate: boolean; submissionId: string; status: string } & SavedContact)
+  | ({ ok: true; duplicate: boolean; submissionId: string; status: string; signatureId?: string | null } & SavedContact)
   | { ok: false; error: "already_answered" | "failed" };
 
 /** Un link firmado verificado: el contacto al que pertenece y, si los trae, sus ids de servicio y venta. */
@@ -121,6 +134,10 @@ export interface SubmitPorts {
   verifyTurnstile(input: { secret: string; token: string; ip: string; idempotencyKey: string }): Promise<TurnstileResult>;
   recordRejected(input: { workspaceId: string; formId: string; versionId: string; reason: "captcha" | "honeypot" }): Promise<void>;
   upload(path: string, bytes: Uint8Array, mime: string): Promise<boolean>;
+  /** La imagen de la firma, al bucket privado de contratos. */
+  uploadContractFile(path: string, bytes: Uint8Array, mime: string): Promise<boolean>;
+  /** Borra la imagen de la firma si la respuesta no se pudo guardar (mejor esfuerzo). */
+  discardContractFile(path: string): Promise<void>;
   save(input: SaveInput): Promise<SaveResult>;
   /** Verifica el link firmado de la persona (formato, firma, vencimiento, formulario, contacto). `null` = se ignora. */
   verifyLink(form: LoadedForm, token: string): Promise<VerifiedLink | null>;
@@ -214,8 +231,11 @@ export function safeFileName(name: string): string {
 function successBody(form: LoadedForm, submissionId: string, values: Record<string, unknown>, attribution: Record<string, unknown>) {
   const texts: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) texts[key] = answerToText(value);
+  // Un contrato dice a dónde va la copia firmada (si la persona no escribió su propio mensaje).
+  const emailField = form.type === "contract" ? signerEmailField(form.fields) : undefined;
+  const success = form.type === "contract" ? contractSuccess(form.success, emailField ? texts[emailField.key] ?? "" : "") : form.success;
   return renderSuccess(
-    form.success,
+    success,
     {
       formName: form.name,
       answers: texts,
@@ -389,12 +409,58 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     return fail(400, "invalid", { fields: errors, message: "Revisá los campos marcados." });
   }
 
+  // 11b. Contrato: aceptación, firma y firmante, ANTES de subir nada.
+  let signature: { bytes: Uint8Array; path: string } | null = null;
+  let contractSave: SaveInput["contract"] = null;
+  if (form.type === "contract") {
+    if (payload.accepted !== true) return fail(400, "accept_required", { message: "Tenés que aceptar el contrato para poder firmarlo." });
+    const config = form.contract;
+    const checked = validateSignature({ signature: payload.signature, strokes: payload.signature_strokes, required: config?.signatureRequired ?? true });
+    if (!checked.ok) {
+      return fail(400, checked.error, {
+        message: checked.error === "signature_required" ? "Falta tu firma. Dibujala en el recuadro." : "La firma no es válida. Volvé a dibujarla.",
+      });
+    }
+    const emailField = signerEmailField(form.fields);
+    const signerEmail = emailField ? String(result.values[emailField.key] ?? "").trim().toLowerCase() : "";
+    if (!emailField || !signerEmail) {
+      return fail(400, "invalid", {
+        fields: { [emailField?.key ?? "email"]: "Escribí tu email: ahí te mandamos la copia firmada" },
+        message: "Revisá los campos marcados.",
+      });
+    }
+    if (checked.bytes) signature = { bytes: checked.bytes, path: `${form.workspaceId}/${form.id}/${payload.idempotency_key}/signature.png` };
+    contractSave = {
+      signaturePath: signature?.path ?? null,
+      legal: buildLegal({
+        ip: input.ip,
+        userAgent: input.userAgent,
+        timezone: payload.client_meta?.timezone,
+        locale: payload.client_meta?.locale,
+        attribution,
+        acceptedLabel: config?.acceptLabel ?? "",
+        signatureStrokes: payload.signature_strokes ?? 0,
+      }),
+      signerName: signerNameFromAnswers(form.fields, result.values),
+      signerEmail,
+    };
+  }
+
   // Recién acá se sube nada: un envío inválido no deja archivos sueltos.
   for (const upload of pendingUploads) {
     const ok = await ports.upload(upload.path, upload.bytes, upload.mime);
     if (!ok) {
       logResult(form.id, "upload_failed");
       return fail(500, "upload_failed", { message: "No pudimos guardar el archivo. Probá de nuevo." });
+    }
+  }
+
+  // La imagen de la firma, antes de la RPC: si la RPC falla se descarta.
+  if (signature) {
+    const stored = await ports.uploadContractFile(signature.path, signature.bytes, "image/png");
+    if (!stored) {
+      logResult(form.id, "signature_upload_failed");
+      return fail(500, "upload_failed", { message: "No pudimos guardar tu firma. Probá de nuevo." });
     }
   }
 
@@ -426,9 +492,11 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     meta: buildMeta(ports, input, payload),
     uploadPrefix: pendingUploads.length > 0 ? uploadPrefix : null,
     contactHint,
+    contract: contractSave,
   });
 
   if (!saved.ok) {
+    if (signature) await ports.discardContractFile(signature.path).catch(() => undefined);
     if (saved.error === "already_answered") return fail(409, "already_answered", { message: "Ya respondiste, ¡gracias!" });
     logResult(form.id, "save_failed");
     return fail(500, "server_error", { message: "No pudimos guardar tu respuesta. Probá de nuevo." });

@@ -5,6 +5,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { SubmissionDetail } from "@/components/forms/responses/submission-detail";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import type { StoredAnswer } from "@/lib/forms/responses";
+import type { ContractView } from "@/components/forms/responses/contract-panel";
 import type { SubmissionStatus } from "@/lib/forms/responses";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,36 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
   ]);
   if (!form) notFound();
 
+  // La firma de un contrato (con la sesión de quien mira: la RLS decide).
+  let contract: ContractView | null = null;
+  if (form.type === "contract") {
+    const { data: sig } = await supabase.from("contract_signatures").select("*").eq("submission_id", submissionId).maybeSingle();
+    if (sig) {
+      const legal = (sig.legal ?? {}) as Record<string, unknown>;
+      const text = (key: string) => (typeof legal[key] === "string" ? (legal[key] as string) : null);
+      const { data: sigVersion } = await supabase.from("form_versions").select("version_number").eq("id", sig.form_version_id).maybeSingle();
+      contract = {
+        signedAt: sig.signed_at,
+        signerName: sig.signer_name,
+        signerEmail: sig.signer_email,
+        versionNumber: sigVersion?.version_number ?? null,
+        sha256: sig.text_sha256,
+        hasSignatureImage: !!sig.signature_path,
+        pdfStatus: sig.pdf_status,
+        pdfAttempts: sig.pdf_attempts,
+        emailStatus: sig.email_status,
+        emailAttempts: sig.email_attempts,
+        emailNextRetryAt: sig.email_next_retry_at,
+        emailSentAt: sig.email_sent_at,
+        emailLastError: sig.email_last_error,
+        device: text("device"),
+        os: text("os"),
+        browser: text("browser"),
+        ip: text("ip"),
+      };
+    }
+  }
+
   const meta = (submission.meta ?? {}) as Record<string, unknown>;
   const dedupe = (submission.dedupe ?? {}) as { matched_by?: string | null; conflict_contact_id?: string | null };
 
@@ -70,6 +101,7 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
       showHistory={isAdminRole(ctx.role)}
       names={Object.fromEntries(members.map((m) => [m.userId, m.name]))}
       timeZone={timeZone}
+      contract={contract}
     />
   );
 }

@@ -22,6 +22,8 @@ import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import { useEmbedBridge } from "@/components/scheduling/booker/use-embed-bridge";
 import { FIELD_RENDERERS } from "./fields/registry";
 import { TurnstileWidget } from "./turnstile-widget";
+import { ContractReader, ContractSigning } from "./contract-block";
+import { canSign } from "@/lib/forms/contract/signature-input";
 
 /**
  * El formulario público (F9). Se usa igual en `/f/[slug]`, dentro de un embed y
@@ -110,6 +112,11 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
   const [captchaReset, setCaptchaReset] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
   const [honeypot, setHoneypot] = useState("");
+  // Contrato: la casilla de aceptación y la firma dibujada.
+  const [accepted, setAccepted] = useState(false);
+  const [signature, setSignature] = useState<{ dataUrl: string | null; strokes: number }>({ dataUrl: null, strokes: 0 });
+  const isContract = form.type === "contract";
+  const contractReady = !isContract || canSign({ accepted, signatureRequired: form.signature_required, drawn: !!signature.dataUrl });
 
   const idempotencyKey = useRef<string>(newUuid());
   const sid = useRef<string | null>(null);
@@ -199,6 +206,10 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       if (first) formRef.current?.querySelector<HTMLElement>(`[data-field="${first.key}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
       return;
     }
+    if (isContract && !contractReady) {
+      setGlobalError(!accepted ? "Tenés que aceptar el contrato para poder firmarlo." : "Falta tu firma. Dibujala en el recuadro.");
+      return;
+    }
     if (!token) {
       setGlobalError("Esperá un momento a que termine la verificación e intentá de nuevo.");
       return;
@@ -219,6 +230,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         origin: mode,
         sitePath,
         linkToken,
+        ...(isContract ? { accepted, signature: signature.dataUrl ?? undefined, signatureStrokes: signature.strokes } : {}),
       });
       const response = await fetch(`/api/public/forms/${encodeURIComponent(form.slug)}/submit`, {
         method: "POST",
@@ -323,6 +335,8 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         </p>
       )}
 
+      {isContract && form.contract && <ContractReader title={form.contract.title} text={form.contract.text ?? ""} />}
+
       <div className="space-y-5">
         {fields.map((field) => {
           const Renderer = FIELD_RENDERERS[field.type];
@@ -343,6 +357,23 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
           );
         })}
       </div>
+
+      {isContract && form.contract && (
+        <ContractSigning
+          acceptLabel={form.contract.accept_label || "Leí y acepto el contrato"}
+          signatureRequired={form.signature_required}
+          accepted={accepted}
+          onAccepted={(value) => {
+            setAccepted(value);
+            onInteract();
+          }}
+          onSignature={(dataUrl, strokes) => {
+            setSignature({ dataUrl, strokes });
+            onInteract();
+          }}
+          disabled={submitting}
+        />
+      )}
 
       {/* Campo trampa: una persona no lo ve ni lo llena; un bot sí. */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
@@ -369,7 +400,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
 
       <button
         type="submit"
-        disabled={submitting || preview}
+        disabled={submitting || preview || (isContract && !contractReady)}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
       >
         {submitting ? (

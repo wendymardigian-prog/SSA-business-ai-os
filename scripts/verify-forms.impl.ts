@@ -30,6 +30,11 @@ import { recordTouch } from "../lib/contacts/touch";
 import { resolveBankVariables } from "../lib/response-assets/bank-variables";
 import { getTrigger } from "../lib/flow-engine/registry";
 import { createNotification } from "../lib/notifications/create";
+import { extractText, getDocumentProxy } from "unpdf";
+import { isAlreadyAnswered } from "../lib/forms/public-load";
+import { npsCategory } from "../lib/forms/survey";
+import { runContractPdf } from "../lib/forms/contract/pdf-run";
+import { runContractEmail } from "../lib/forms/contract/email-run";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -801,6 +806,313 @@ try {
   check((quietNotes ?? []).length === 0, "con notify_enabled = false no se crea ninguna notificacion");
   void createNotification;
 
+
+  // ── FO3: encuesta/NPS y contrato ───────────────────────────────────────────
+  console.log("\n— 00157: contract_signatures —");
+  const csProtect = sql("select count(*)::int as n from pg_trigger where tgname='contract_signatures_protect'");
+  check(csProtect[0]?.n === 1, "existe el trigger que protege la evidencia de una firma");
+  const csRls = sql("select relrowsecurity as on from pg_class where relname='contract_signatures'");
+  check(csRls[0]?.on === true, "contract_signatures tiene RLS");
+  const csOneIndex = sql("select count(*)::int as n from pg_constraint where conname='contract_signatures_one_per_submission'");
+  check(csOneIndex[0]?.n === 1, "una sola firma por respuesta (unico)");
+
+  const jobIds: string[] = [];
+  const contractFiles: string[] = [];
+  const ctPorts = () => {
+    const base = ports(ws.id);
+    return {
+      ...base,
+      uploadContractFile: async (path: string, bytes: Uint8Array, mime: string) => {
+        const done = await base.uploadContractFile(path, bytes, mime);
+        if (done) contractFiles.push(path);
+        return done;
+      },
+    };
+  };
+
+  // 1. Encuesta: NPS, estrellas, una vez por contacto.
+  console.log("\n— F22: encuesta, NPS y una vez por contacto —");
+  const surveySlug = `zz-test-enc-${Date.now()}`;
+  const surveyFields: FormField[] = [field("nps", "nps", { required: true, label: "NPS" }), field("long_text", "porque", { label: "Por que" }), field("email", "email", { label: "Email" })];
+  const surveyContact = { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "email", target: "contact.email" }] };
+  const { data: sForm } = await svc
+    .from("forms")
+    .insert({
+      workspace_id: ws.id, name: "zz-test encuesta", type: "survey", slug: surveySlug,
+      draft_definition: { fields: surveyFields } as unknown as Json,
+      survey_config: { scoreFieldKey: "nps", category: "servicio", oncePerContact: true } as unknown as Json,
+      contact_config: surveyContact as unknown as Json,
+      notify_enabled: false,
+    })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: sForm!.id, p_actor: owner.id });
+  await svc.from("forms").update({ status: "published" }).eq("id", sForm!.id);
+  const { data: sVer } = await svc.from("forms").select("current_version_id").eq("id", sForm!.id).single();
+  const sendSurvey = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    submitForm(ports(ws.id), input(surveySlug, {
+      idempotency_key: randomUUID(), turnstile_token: "t", version_id: sVer!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page", ...extra,
+    }));
+  const rowById = async (id: unknown) => (await svc.from("form_submissions").select("*").eq("id", String(id)).single()).data!;
+
+  const parity: Array<[number, string | null]> = [];
+  for (const score of [0, 6, 7, 8, 9, 10]) {
+    const out = await sendSurvey({ nps: score });
+    parity.push([score, (await rowById(out.body.submission_id)).nps_category]);
+  }
+  check(parity.every(([score, category]) => category === npsCategory(score)), "paridad: la categoria NPS que calcula la RPC es la de npsCategory() para 0, 6, 7, 8, 9 y 10", JSON.stringify(parity));
+  const nineRow = await rowById((await sendSurvey({ nps: 9 })).body.submission_id);
+  check(nineRow.score === 9 && nineRow.nps_category === "promoter", "un 9 guarda score 9 y promotor");
+
+  // Estrellas: score sin categoria.
+  const starsSlug = `zz-test-est-${Date.now()}`;
+  const { data: stForm } = await svc
+    .from("forms")
+    .insert({
+      workspace_id: ws.id, name: "zz-test estrellas", type: "survey", slug: starsSlug,
+      draft_definition: { fields: [field("rating", "estrellas", { required: true, label: "Estrellas" })] } as unknown as Json,
+      survey_config: { scoreFieldKey: "estrellas", category: "general", oncePerContact: false } as unknown as Json,
+      notify_enabled: false,
+    })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: stForm!.id, p_actor: owner.id });
+  await svc.from("forms").update({ status: "published" }).eq("id", stForm!.id);
+  const { data: stVer } = await svc.from("forms").select("current_version_id").eq("id", stForm!.id).single();
+  const starsOut = await submitForm(ports(ws.id), input(starsSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: stVer!.current_version_id, answers: { estrellas: 4 }, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page" }));
+  const starsRow = await rowById(starsOut.body.submission_id);
+  check(starsRow.score === 4 && starsRow.nps_category === null, "estrellas: guarda el puntaje y NO una categoria NPS");
+
+  // Una vez por contacto, por email.
+  const once1 = await sendSurvey({ nps: 8, email: "unavez.zz@example.test" });
+  check(once1.status === 200, "la primera respuesta de un contacto se guarda");
+  const once2 = await sendSurvey({ nps: 3, email: "unavez.zz@example.test" });
+  check(once2.status === 409 && once2.body.error === "already_answered", "la segunda del mismo contacto da 409 already_answered");
+  const { data: onceRows } = await svc.from("form_submissions").select("id, once_key").eq("form_id", sForm!.id).like("once_key", "contact:%");
+  check((onceRows ?? []).length === 1, "y NO se guardo", `hay ${onceRows?.length}`);
+  const anon2 = [await sendSurvey({ nps: 5 }), await sendSurvey({ nps: 6 })];
+  check(anon2.every((r) => r.status === 200), "las respuestas anonimas (sin email ni link) no se pueden limitar");
+
+  // Una respuesta marcada spam no cuenta: esa persona puede responder de nuevo.
+  await svc.from("form_submissions").update({ status: "spam" }).eq("id", String(once1.body.submission_id));
+  const afterSpam = await sendSurvey({ nps: 9, email: "unavez.zz@example.test" });
+  check(afterSpam.status === 200, "con la anterior marcada spam, el contacto puede responder de nuevo");
+
+  // Link firmado: la clave es el contacto del link.
+  const { data: linkContact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Con Link", email: "conlink.zz@example.test" }).select("id").single();
+  const surveyLink = await signFormLink(svc, { workspaceId: ws.id, formId: sForm!.id, slug: surveySlug, contactId: linkContact!.id, baseUrl: "https://app.ejemplo.test" });
+  const linkToken = new globalThis.URL(surveyLink).searchParams.get("c")!;
+  check(!(await isAlreadyAnswered(svc, surveySlug, linkToken)), "antes de responder, la pagina NO dice 'Ya respondiste'");
+  const withLink1 = await sendSurvey({ nps: 10 }, { link_token: linkToken });
+  const withLinkRow = await rowById(withLink1.body.submission_id);
+  check(withLink1.status === 200 && withLinkRow.contact_id === linkContact!.id && withLinkRow.once_key === `contact:${linkContact!.id}`, "con el link firmado la respuesta va al contacto del link y la clave es contact:<id>");
+  check(await isAlreadyAnswered(svc, surveySlug, linkToken), "despues de responder, la pagina dice 'Ya respondiste' antes del formulario");
+  const withLink2 = await sendSurvey({ nps: 2 }, { link_token: linkToken });
+  check(withLink2.status === 409, "responder otra vez con el mismo link da 409");
+  const tamperedToken = linkToken.slice(0, -2) + (linkToken.endsWith("AA") ? "BB" : "AA");
+  check(!(await isAlreadyAnswered(svc, surveySlug, tamperedToken)), "con un token alterado la pagina funciona como si no hubiera c (no da error)");
+  const { data: surveyEvents } = await svc.from("automation_events").select("event_type, payload").eq("contact_id", linkContact!.id);
+  const surveyEvent = (surveyEvents ?? []).find((e) => e.event_type === "survey_answered");
+  check(!!surveyEvent && (surveyEvent.payload as { score?: unknown; nps_category?: unknown }).score === 10 && (surveyEvent.payload as { nps_category?: unknown }).nps_category === "promoter", "una encuesta emite survey_answered con el puntaje y la categoria (y NO form_submitted)", JSON.stringify(surveyEvents));
+  check(!(surveyEvents ?? []).some((e) => e.event_type === "form_submitted"), "una encuesta no emite form_submitted (un evento por respuesta)");
+
+  // 2. Contrato.
+  console.log("\n— F24-F28: contrato, firma, huella, PDF y email —");
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64");
+  const pngUrl = `data:image/png;base64,${PNG.toString("base64")}`;
+  const contractSlug = `zz-test-contrato2-${Date.now()}`;
+  const contractText1 = hashContractText("# Acuerdo de servicios\n\nEl cliente acepta las condiciones.\n\n- Primera clausula\n- Segunda clausula con ñ y ¿acentos?");
+  const contractFields: FormField[] = [field("short_text", "nombre", { required: true, label: "Nombre del firmante" }), field("email", "email", { required: true, label: "Email" })];
+  const { data: kForm } = await svc
+    .from("forms")
+    .insert({
+      workspace_id: ws.id, name: "zz-test firma", type: "contract", slug: contractSlug,
+      draft_definition: { fields: contractFields, contractText: contractText1.text } as unknown as Json,
+      contract_config: { title: "Acuerdo de servicios", signatureRequired: true, acceptLabel: "Leí y acepto", ccEmails: [] } as unknown as Json,
+      contact_config: { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "nombre", target: "contact.display_name" }, { fieldKey: "email", target: "contact.email" }] } as unknown as Json,
+      notify_enabled: false,
+    })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: kForm!.id, p_actor: owner.id });
+  await svc.from("forms").update({ status: "published" }).eq("id", kForm!.id);
+  const { data: kVer1 } = await svc.from("forms").select("current_version_id").eq("id", kForm!.id).single();
+  const v1Id = kVer1!.current_version_id!;
+  const sendContract = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}, versionId = v1Id, ip = nextIp()) =>
+    submitForm(ctPorts(), { ...input(contractSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: versionId, answers, honeypot: "", attribution: { utm_source: "meta" }, client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, origin: "public_page", ...extra }, [], ip), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
+  const sig = (over: Record<string, unknown> = {}) => ({ accepted: true, signature: pngUrl, signature_strokes: 3, ...over });
+  const ana = { nombre: "Ana Firma", email: "Ana.Firma@Example.test" };
+
+  const noAccept = await sendContract(ana, sig({ accepted: false }));
+  check(noAccept.status === 400, "sin aceptar la casilla: 400");
+  const noSig = await sendContract(ana, sig({ signature: "", signature_strokes: 0 }));
+  check(noSig.status === 400 && noSig.body.error === "signature_required", "sin firma (obligatoria): 400 signature_required");
+  const fakePng = await sendContract(ana, sig({ signature: `data:image/png;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a]).toString("base64")}` }));
+  check(fakePng.status === 400 && fakePng.body.error === "signature_invalid", "un 'PNG' que en realidad es un JPEG: 400 signature_invalid");
+  const bigPng = await sendContract(ana, sig({ signature: `data:image/png;base64,${Buffer.concat([PNG, Buffer.alloc(250 * 1024, 1)]).toString("base64")}` }));
+  check(bigPng.status === 400, "una firma de 250 KB: 400");
+  const { count: noRows } = await svc.from("form_submissions").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id);
+  check(noRows === 0, "ninguno de esos envios dejo una respuesta");
+  const { count: noSigs } = await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id);
+  check(noSigs === 0, "...ni una firma");
+
+  const signedOk = await sendContract(ana, sig({ contract_text: "TEXTO QUE MANDA EL NAVEGADOR", contract_html: "<b>x</b>", signed_at: "2000-01-01T00:00:00Z" }));
+  check(signedOk.status === 200, "un envio valido se firma", JSON.stringify(signedOk.body));
+  check(String((signedOk.body.success as { body?: string })?.body).includes("ana.firma@example.test"), "la pantalla de exito dice a que email va la copia");
+  const { data: sig1 } = await svc.from("contract_signatures").select("*").eq("submission_id", String(signedOk.body.submission_id)).single();
+  check(sig1?.text_sha256 === contractText1.sha256, "la huella es el SHA-256 del texto GUARDADO (el texto del navegador se ignora)", `${sig1?.text_sha256} vs ${contractText1.sha256}`);
+  check(sig1?.form_version_id === v1Id, "la firma queda con la version 1");
+  check(sig1?.signer_email === "ana.firma@example.test" && sig1?.signer_name === "Ana Firma", "guarda el firmante (email normalizado)");
+  const legal1 = (sig1?.legal ?? {}) as Record<string, unknown>;
+  check(typeof legal1.ip === "string" && String(legal1.ip).startsWith("203.0.113.") && legal1.device === "mobile" && legal1.os === "iOS" && legal1.browser === "Safari", "la metadata legal sale del servidor: IP en claro, dispositivo, sistema y navegador", JSON.stringify(legal1));
+  check(legal1.timezone === "America/Costa_Rica" && legal1.accepted_label === "Leí y acepto" && legal1.signature_strokes === 3, "la zona la declara el navegador y la casilla queda guardada");
+  check(Math.abs(Date.now() - new Date(String(sig1?.signed_at)).getTime()) < 120_000, "signed_at es la hora del servidor aunque el navegador mande otra");
+  check(sig1?.pdf_status === "pending" && sig1?.email_status === "pending", "arranca con pdf_status y email_status 'pending'");
+  const { data: subMeta } = await svc.from("form_submissions").select("meta").eq("id", String(signedOk.body.submission_id)).single();
+  check(!JSON.stringify(subMeta?.meta).includes("203.0.113"), "la IP en claro esta SOLO en la firma: en la respuesta va hasheada");
+  const { data: storedSig } = await svc.storage.from("contracts").download(String(sig1?.signature_path));
+  check(!!storedSig && (await storedSig.arrayBuffer()).byteLength === PNG.byteLength, "la imagen de la firma esta en el bucket privado de contratos");
+
+  const { data: pdfJob } = await svc.from("scheduled_jobs").select("id, type, dedupe_key, status, payload").eq("dedupe_key", `contract_pdf:${sig1!.id}`);
+  check(pdfJob?.length === 1 && pdfJob[0].type === "contract_pdf" && pdfJob[0].status === "pending" && (pdfJob[0].payload as { signatureId?: string }).signatureId === sig1!.id, "la RPC encolo el job contract_pdf en la misma transaccion");
+  for (const j of pdfJob ?? []) jobIds.push(j.id);
+  const { data: contractEvents } = await svc.from("automation_events").select("event_type, payload").eq("contact_id", String(sig1?.contact_id));
+  check((contractEvents ?? []).some((e) => e.event_type === "contract_signed"), "se emite contract_signed (no espera al PDF)");
+  check(!(contractEvents ?? []).some((e) => e.event_type === "form_submitted" || e.event_type === "survey_answered"), "un contrato no emite los eventos de los otros tipos");
+
+  // La evidencia no se toca.
+  const { error: evErr1 } = await svc.from("contract_signatures").update({ text_sha256: "f".repeat(64) }).eq("id", sig1!.id);
+  const { error: evErr2 } = await svc.from("contract_signatures").update({ legal: { ip: "1.1.1.1" } as unknown as Json }).eq("id", sig1!.id);
+  const { error: evErr3 } = await svc.from("contract_signatures").update({ signed_at: "2000-01-01T00:00:00Z" }).eq("id", sig1!.id);
+  check(!!evErr1 && !!evErr2 && !!evErr3, "ni con el service role se puede cambiar la huella, la metadata legal ni la hora de una firma");
+  const { error: stateOk } = await svc.from("contract_signatures").update({ pdf_attempts: 0 }).eq("id", sig1!.id);
+  check(!stateOk, "pero el estado del PDF y del email si se actualiza");
+  const dupSig = await svc.rpc("record_contract_signature", { p_submission_id: String(signedOk.body.submission_id), p_signature_path: null, p_legal: {}, p_signer_name: "x", p_signer_email: "x@example.test" });
+  check(!dupSig.error && dupSig.data === sig1!.id, "record_contract_signature es idempotente: devuelve la misma firma");
+  const { error: anonRecord } = await anon.rpc("record_contract_signature", { p_submission_id: String(signedOk.body.submission_id), p_signature_path: null, p_legal: {} });
+  const { error: userRecord } = await admin.client.rpc("record_contract_signature", { p_submission_id: String(signedOk.body.submission_id), p_signature_path: null, p_legal: {} });
+  check(!!anonRecord && !!userRecord, "ni anon ni un Admin desde el navegador pueden llamar a record_contract_signature");
+
+  // RLS de las firmas.
+  const sigRows = async (u: TestUser) => (await u.client.from("contract_signatures").select("id").eq("workspace_id", ws.id)).data ?? [];
+  check((await sigRows(owner)).length >= 1 && (await sigRows(admin)).length >= 1, "Owner y Admin ven las firmas");
+  check((await sigRows(member)).length === 0, "un Member NO ve la firma de un contacto que no es suyo");
+  check((await sigRows(blind)).length === 0 && (await sigRows(outsider)).length === 0, "sin forms.view y otro workspace no ven ninguna");
+  const { data: anonSigs } = await anon.from("contract_signatures").select("id");
+  check((anonSigs ?? []).length === 0, "anon no lee firmas");
+  const { error: memberInsertSig } = await member.client.from("contract_signatures").insert({ workspace_id: ws.id, submission_id: String(signedOk.body.submission_id), form_id: kForm!.id, form_version_id: v1Id, text_sha256: "a".repeat(64), signer_email: "x@example.test", legal: {} as unknown as Json });
+  const { data: ownerDeleteSig } = await owner.client.from("contract_signatures").delete().eq("id", sig1!.id).select("id");
+  check(!!memberInsertSig && (ownerDeleteSig ?? []).length === 0, "nadie puede insertar ni borrar una firma desde el navegador");
+  // Un contrato firmado por un contacto visible para el Member: sí lo ve.
+  const memberLink = await signFormLink(svc, { workspaceId: ws.id, formId: kForm!.id, slug: contractSlug, contactId: contactVisible, baseUrl: "https://app.ejemplo.test" });
+  const memberSigned = await sendContract({ nombre: "Del Member", email: "delmember.zz@example.test" }, sig({ link_token: new globalThis.URL(memberLink).searchParams.get("c") }));
+  check(memberSigned.status === 200, "se firma un contrato con el link de un contacto del Member");
+  check((await sigRows(member)).length === 1, "...y ESE si lo ve el Member (la RLS sigue a la respuesta)");
+
+  // Versiones: publicar la 2 no toca la firma de la 1.
+  const contractText2 = hashContractText("# Acuerdo de servicios\n\nTEXTO NUEVO de la version dos.");
+  await svc.from("forms").update({ draft_definition: { fields: contractFields, contractText: contractText2.text } as unknown as Json }).eq("id", kForm!.id);
+  await svc.rpc("publish_form_version", { p_form_id: kForm!.id, p_actor: owner.id });
+  const { data: kVer2 } = await svc.from("forms").select("current_version_id").eq("id", kForm!.id).single();
+  const v2Id = kVer2!.current_version_id!;
+  const signedV2 = await sendContract({ nombre: "Beto Dos", email: "beto.zz@example.test" }, sig(), v2Id);
+  const { data: sig2 } = await svc.from("contract_signatures").select("*").eq("submission_id", String(signedV2.body.submission_id)).single();
+  check(sig2?.form_version_id === v2Id && sig2?.text_sha256 === contractText2.sha256, "una firma nueva toma la version 2 y su huella");
+  const { data: sig1Again } = await svc.from("contract_signatures").select("form_version_id, text_sha256").eq("id", sig1!.id).single();
+  check(sig1Again?.form_version_id === v1Id && sig1Again?.text_sha256 === contractText1.sha256, "la firma de la version 1 sigue con su version y su huella");
+  const { data: sig2Job } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_pdf:${sig2!.id}`);
+  for (const j of sig2Job ?? []) jobIds.push(j.id);
+
+  // Huella corrupta: la firma falla y no queda NADA.
+  await svc.from("form_versions").update({ contract_text: "texto adulterado" } as never).eq("id", v2Id);
+  const beforeContacts = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+  const beforeSigs = (await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0;
+  const corruptKey = randomUUID();
+  const errorsMute = console.error;
+  console.error = () => undefined;
+  const corrupt = await sendContract({ nombre: "Carlos Corrupto", email: "corrupto.zz@example.test" }, sig({ idempotency_key: corruptKey }), v2Id);
+  console.error = errorsMute;
+  check(corrupt.status === 500, "con el texto de la version alterado, la firma falla (500 sin detalles)", String(corrupt.status));
+  const { data: corruptRows } = await svc.from("form_submissions").select("id").eq("form_id", kForm!.id).eq("idempotency_key", corruptKey);
+  check((corruptRows ?? []).length === 0, "...y la respuesta NO queda guardada");
+  check(((await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === beforeContacts, "...ni se crea el contacto");
+  check(((await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0) === beforeSigs, "...ni la firma ni su job (todo en la misma transaccion)");
+  const { data: leftover } = await svc.storage.from("contracts").download(`${ws.id}/${kForm!.id}/${corruptKey}/signature.png`);
+  check(!leftover, "...y la imagen de la firma que se habia subido se descarta");
+  await svc.from("form_versions").update({ contract_text: contractText2.text } as never).eq("id", v2Id);
+
+  // El PDF, de verdad: con la base y el bucket reales, sin proveedores.
+  console.log("\n— F27-F28: el PDF y el email (base y Storage reales; Resend simulado) —");
+  const pdfDeps = { db: svc, businessName: () => "zz-test negocio" };
+  const pdfResult = await runContractPdf(pdfDeps, sig1!.id);
+  check(pdfResult === "generated", "el job genera el PDF de la firma", pdfResult);
+  const { data: sig1Pdf } = await svc.from("contract_signatures").select("pdf_path, pdf_status, email_status").eq("id", sig1!.id).single();
+  check(sig1Pdf?.pdf_status === "generated" && sig1Pdf?.pdf_path === `${ws.id}/${kForm!.id}/${sig1!.id}/contrato-v1.pdf`, "queda generated con la ruta contratos/{ws}/{form}/{firma}/contrato-v1.pdf", sig1Pdf?.pdf_path ?? "");
+  if (sig1Pdf?.pdf_path) contractFiles.push(sig1Pdf.pdf_path);
+  const { data: pdfBlob } = await svc.storage.from("contracts").download(String(sig1Pdf?.pdf_path));
+  const pdfBytes = pdfBlob ? new Uint8Array(await pdfBlob.arrayBuffer()) : new Uint8Array();
+  const pdfDoc = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const { text: pdfPages } = await extractText(pdfDoc, { mergePages: true });
+  const pdfText = String(pdfPages);
+  check(pdfText.includes("Acuerdo de servicios") && pdfText.includes("Ana Firma") && pdfText.includes(contractText1.sha256) && pdfText.includes("Versión 1"), "el PDF trae el titulo, el firmante, la huella del texto y 'Versión 1'");
+  check(pdfText.includes("Segunda clausula con ñ y ¿acentos?") && pdfText.includes("203.0.113."), "...el texto con ñ y ¿, y los datos de aceptacion (con la IP)");
+  const { data: emailJob } = await svc.from("scheduled_jobs").select("id, type, status").eq("dedupe_key", `contract_email:${sig1!.id}:0`);
+  check(emailJob?.length === 1 && emailJob[0].type === "contract_email", "al generarse el PDF se encola contract_email");
+  for (const j of emailJob ?? []) jobIds.push(j.id);
+  const pdfAgain = await runContractPdf(pdfDeps, sig1!.id);
+  check(pdfAgain === "already", "generar dos veces el PDF de una firma no lo repite");
+
+  // Email simulado: el adjunto es el PDF.
+  const sent: Array<Record<string, unknown>> = [];
+  const okSend = async (params: Record<string, unknown>) => {
+    sent.push(params);
+    return { ok: true as const, id: "msg" };
+  };
+  const emailResult = await runContractEmail({ db: svc, send: okSend as never }, { signatureId: sig1!.id });
+  check(emailResult === "sent", "el job de email manda la copia", emailResult);
+  const attached = (sent[0]?.attachments as Array<{ filename: string; content: string }> | undefined)?.[0];
+  check(!!attached && attached.filename === "contrato-acuerdo-de-servicios-v1.pdf" && Buffer.from(attached.content, "base64").equals(Buffer.from(pdfBytes)), "el adjunto es exactamente el PDF guardado");
+  check(sent[0]?.to === "ana.firma@example.test" && sent[0]?.kind === "contract_copy" && sent[0]?.relatedEntityId === sig1!.id, "va al firmante, con kind contract_copy y la firma como entidad");
+  const { data: sentRow } = await svc.from("contract_signatures").select("email_status, email_sent_at").eq("id", sig1!.id).single();
+  check(sentRow?.email_status === "sent" && !!sentRow?.email_sent_at, "queda 'sent' con la hora");
+  const resentAfter = await runContractEmail({ db: svc, send: okSend as never }, { signatureId: sig1!.id, attempt: 1 });
+  check(resentAfter === "already" && sent.length === 1, "un reintento viejo no vuelve a mandar lo que ya salio");
+
+  // Reintentos con la cola real: un fallo transitorio agenda el siguiente a +5 minutos.
+  const secondPdf = await runContractPdf(pdfDeps, sig2!.id);
+  check(secondPdf === "generated", "se genera tambien el PDF de la firma de la version 2");
+  const { data: sig2Pdf } = await svc.from("contract_signatures").select("pdf_path").eq("id", sig2!.id).single();
+  if (sig2Pdf?.pdf_path) contractFiles.push(sig2Pdf.pdf_path);
+  const { data: sig2EmailJob } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_email:${sig2!.id}:0`);
+  for (const j of sig2EmailJob ?? []) jobIds.push(j.id);
+  const failing = async () => ({ ok: false as const, reason: "failed" as const, error: "Resend respondio 503: unavailable" });
+  const retry1 = await runContractEmail({ db: svc, send: failing as never }, { signatureId: sig2!.id, attempt: 0 });
+  const { data: retryRow } = await svc.from("contract_signatures").select("email_status, email_attempts, email_next_retry_at").eq("id", sig2!.id).single();
+  check(retry1 === "retry_scheduled" && retryRow?.email_status === "retrying" && retryRow?.email_attempts === 1, "un fallo transitorio deja 'retrying' con un intento", JSON.stringify(retryRow));
+  const minutes = (new Date(String(retryRow?.email_next_retry_at)).getTime() - Date.now()) / 60_000;
+  check(minutes > 4 && minutes < 6, "el siguiente intento es en unos 5 minutos", String(minutes));
+  const { data: retryJob } = await svc.from("scheduled_jobs").select("id, run_at, payload").eq("dedupe_key", `contract_email:${sig2!.id}:1`);
+  check(retryJob?.length === 1 && (retryJob[0].payload as { attempt?: number }).attempt === 1, "existe el job de reintento con su clave y el numero de intento");
+  for (const j of retryJob ?? []) jobIds.push(j.id);
+  const permanent = async () => ({ ok: false as const, reason: "failed" as const, error: "Resend respondio 422: invalid to" });
+  const retry2 = await runContractEmail({ db: svc, send: permanent as never }, { signatureId: sig2!.id, attempt: 1 });
+  const { data: permRow } = await svc.from("contract_signatures").select("email_status, email_last_error").eq("id", sig2!.id).single();
+  check(retry2 === "not_sent" && permRow?.email_status === "not_sent", "un fallo permanente queda 'not_sent' sin otro reintento");
+  const { data: noMoreJobs } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_email:${sig2!.id}:2`);
+  check((noMoreJobs ?? []).length === 0, "...y no se agenda ningun intento mas");
+
+  // Ver el PDF con la sesion de quien mira: la RLS decide.
+  const { data: ownerSees } = await owner.client.from("contract_signatures").select("id, pdf_path").eq("submission_id", String(signedOk.body.submission_id)).maybeSingle();
+  const { data: blindSees } = await blind.client.from("contract_signatures").select("id").eq("submission_id", String(signedOk.body.submission_id)).maybeSingle();
+  check(!!ownerSees?.pdf_path && !blindSees, "quien ve la respuesta obtiene la firma (y el link de su PDF); quien no la ve, nada");
+  const { data: directPdf } = await member.client.storage.from("contracts").download(String(ownerSees?.pdf_path));
+  check(!directPdf, "nadie baja un PDF directo del bucket (privado, sin policies)");
+
+  // Limpieza propia de FO3: jobs de la cola y archivos del bucket.
+  const oursByKey = await svc.from("scheduled_jobs").delete().or(`dedupe_key.like.contract_pdf:%,dedupe_key.like.contract_email:%`).in("id", jobIds).select("id");
+  void oursByKey;
+  if (contractFiles.length > 0) await svc.storage.from("contracts").remove(contractFiles);
+
   // ── Buckets ────────────────────────────────────────────────────────────────
   console.log("\n— 00153: buckets privados —");
   const buckets = sql("select id, public from storage.buckets where id in ('form-uploads','contracts')");
@@ -827,6 +1139,13 @@ try {
   void hashIp;
   const clean = await runCleanup(svc);
   if (!clean) failures++;
+  // Los jobs de contratos que dejaron las firmas de prueba (su workspace ya no existe): se sacan de la cola.
+  try {
+    sql("delete from public.scheduled_jobs j where j.type in ('contract_pdf', 'contract_email') and not exists (select 1 from public.contract_signatures c where c.id::text = j.payload ->> 'signatureId')");
+  } catch (error) {
+    console.error("  no pude limpiar los jobs de contratos:", error instanceof Error ? error.message : error);
+    failures++;
+  }
 }
 
 console.log(failures === 0 ? "\nTodo en orden." : `\n${failures} falla(s)`);

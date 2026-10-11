@@ -58,9 +58,10 @@ CHECK vivos al empezar: `triggers_type_check` con 21 tipos (incluye `call_analyz
 | 00154 | 00154 | CHECK de `integration_configs.type` suma `captcha` | **aplicada y registrada** (el CHECK contiene los 7 tipos de antes + `captcha`) |
 | 00155 | 00155 | `flows.form_id` + CHECK de `triggers.type` suma 3 | **aplicada y registrada** (el CHECK contiene los 21 de antes + los 3 nuevos; `flows.form_id` e `idx_flows_form` parcial) |
 | 00156 | 00156 | `find_contact_by_phone_or_email` + `submit_form_response` v2 | **aplicada y registrada** (`verify-forms`: los casos de contacto, toque, aviso y la concurrencia) |
-| 00157 | 00157 | `contract_signatures`, `record_contract_signature`, `submit_form_response` v3 | pendiente |
+| 00157 | 00157 | `contract_signatures`, `record_contract_signature`, `submit_form_response` v3 | **aplicada y registrada** (aplicada dos veces: idempotente; `verify-forms`: huella, versión, firma, transacción, RLS, evidencia protegida) |
+| 00158 | (extra, no estaba en el plano) | corrige `submit_form_response`: "una vez por contacto" detecta la segunda respuesta de alguien que se creó con la primera | **aplicada y registrada** (la encontró `verify-forms` al sumar los casos de la encuesta; ver PENDIENTE) |
 
-Próxima libre al cerrar: **00158**.
+Próxima libre al cerrar: **00159**.
 
 ## Bloque FO1 · Builder, publicación y envío — **cerrado** (migraciones 00150–00154 aplicadas)
 - [x] F1 Tablas base, RLS y script de verificación
@@ -99,14 +100,23 @@ Lo que se verificó al cerrarlo:
 - `verify-rls` y `verify-scheduling` en 0. `verify-attribution` con su única falla de antes, con la misma cantidad de contactos sin `first_touch` (59), no peor.
 - El editor lineal de la Agenda es ahora un envoltorio del compartido; sus tests (`lib/scheduling/automation/*`) siguen en verde.
 
-## Bloque FO3 · Encuesta/NPS y contrato
-- [ ] F22 Tipo encuesta y "una vez por contacto"
-- [ ] F23 Panel de la encuesta
-- [ ] F24 Tipo contrato
-- [ ] F25 Firma dibujada
-- [ ] F26 Registro de la firma, metadata legal y huella
-- [ ] F27 PDF firmado
-- [ ] F28 Copia por email con reintentos, ver y reenviar
+## Bloque FO3 · Encuesta/NPS y contrato — **cerrado** (migraciones 00157–00158 aplicadas)
+- [x] F22 Tipo encuesta y "una vez por contacto"
+- [x] F23 Panel de la encuesta
+- [x] F24 Tipo contrato
+- [x] F25 Firma dibujada
+- [x] F26 Registro de la firma, metadata legal y huella
+- [x] F27 PDF firmado
+- [x] F28 Copia por email con reintentos, ver y reenviar
+
+Lo que se verificó al cerrarlo:
+- `npx vitest run`: 614 archivos, 7.551 tests, todo en verde. `npm run lint`: 0 errores, 36 avisos (los mismos). `npm run build`: compila. `pdf-lib@1.17.1` exacta (la única dependencia nueva del módulo); `contract_pdf` y `contract_email` están en `registeredJobTypes()`.
+- `verify-forms.mjs` con los casos de FO3 contra la base y el Storage reales (Turnstile y Resend simulados):
+  - **Encuesta**: la categoría NPS que calcula la RPC es la de `npsCategory()` para 0, 6, 7, 8, 9 y 10 (paridad); estrellas guardan el puntaje sin categoría; "una vez por contacto" da 409 a la segunda respuesta y no la guarda; las anónimas no se limitan; una respuesta marcada spam no cuenta; con el link firmado la clave es `contact:<id>` y la página dice "Ya respondiste" antes del formulario; un token alterado se ignora sin error; emite `survey_answered` y no `form_submitted`.
+  - **Contrato**: sin casilla, sin firma, un "PNG" que es un JPEG y una firma de 250 KB dan 400 y no dejan nada; el texto o el HTML que mande el navegador se ignoran y la huella es la del texto guardado; la metadata legal sale del servidor (IP en claro solo en la firma, dispositivo, sistema, navegador) y `signed_at` es la hora del servidor; el job `contract_pdf` se encola en la misma transacción y `contract_signed` se emite sin esperar al PDF; publicar la versión 2 no toca la firma de la 1; con el texto de la versión alterado la firma falla y no queda ni respuesta, ni contacto, ni firma, ni job, ni imagen; la evidencia no se puede cambiar ni con el service role.
+  - **PDF y email**: el PDF real (título, firmante, huella, "Versión 1", ñ y ¿, datos de aceptación) se genera en el bucket privado y se lee con `unpdf`; el adjunto del email es exactamente ese PDF; un fallo transitorio deja `retrying` con el job a +5 minutos; uno permanente, `not_sent` sin otro intento; quien ve la respuesta obtiene la firma, quien no, nada, y nadie baja el PDF directo del bucket.
+  - **RLS de las firmas**: Owner y Admin las ven; un Member solo las de sus contactos; sin `forms.view`, otro workspace y `anon`, ninguna; nadie inserta ni borra desde el navegador.
+- Las huellas md5 de `find_or_link_contact`, `create_booking` y `record_contact_touch` siguen iguales.
 
 ## Bloque FO4 · Sitio público y atribución completa
 - [ ] F29 Atribución persistente entre páginas

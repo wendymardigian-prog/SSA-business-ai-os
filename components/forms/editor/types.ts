@@ -2,6 +2,7 @@ import type { FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import type { SuccessConfig } from "@/lib/forms/success";
 import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
+import type { ContractConfig, SurveyConfig } from "@/lib/forms/defaults";
 import type { FormFlowRow } from "@/lib/forms/data/form-flows";
 
 /** Lo que el servidor le pasa al editor de un formulario. */
@@ -22,6 +23,10 @@ export interface EditorForm {
   tagsOnSubmit: string[];
   notifyEnabled: boolean;
   notifyUserIds: string[];
+  /** Solo una encuesta (F22). */
+  surveyConfig: SurveyConfig | null;
+  /** Solo un contrato (F24). */
+  contractConfig: ContractConfig | null;
 }
 
 /** Lo que las pestañas Contacto y Automatizaciones necesitan además del formulario. */

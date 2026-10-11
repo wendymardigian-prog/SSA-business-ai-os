@@ -26,6 +26,7 @@ function makeForm(fields: FormField[], over: Partial<LoadedForm> = {}): LoadedFo
     customFields: [],
     notifyEnabled: true,
     notifyUserIds: [],
+    contract: null,
     ...over,
   };
 }
@@ -59,6 +60,8 @@ function makePorts(form: LoadedForm | null, over: Partial<SubmitPorts> = {}) {
       saves.push(input);
       return { ok: true as const, duplicate: false, submissionId: "sub-1", status: "no_contact", ...NO_CONTACT };
     }),
+    uploadContractFile: vi.fn(async () => true),
+    discardContractFile: vi.fn(async () => undefined),
     verifyLink: vi.fn(async () => null),
     recordTouch: vi.fn(async () => undefined),
     notify: vi.fn(async () => undefined),
@@ -485,5 +488,115 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
     expect(out.body).toMatchObject({ ok: true, submission_id: "sub-1" });
     expect(JSON.stringify(errors.mock.calls)).not.toMatch(/ana@x\.com/);
     errors.mockRestore();
+  });
+});
+
+describe("submitForm: contratos (FO3)", () => {
+  const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const goodSignature = `data:image/png;base64,${Buffer.from([...PNG_HEAD, 1, 2, 3, 4]).toString("base64")}`;
+  const contractForm = (over: Partial<LoadedForm> = {}) =>
+    makeForm([{ ...field("short_text", "nombre", { required: true, label: "Nombre del firmante" }) }, { ...field("email", "email", { required: true, label: "Email" }) }], {
+      type: "contract",
+      contract: { title: "Acuerdo", signatureRequired: true, acceptLabel: "Leí y acepto el contrato", ccEmails: [] },
+      success: { mode: "message", title: "¡Gracias!", body: "Recibimos tu respuesta." },
+      ...over,
+    });
+  const signed = (extra: Record<string, unknown> = {}) => ({
+    answers: { nombre: "Ana Pérez", email: "ANA@x.com" },
+    accepted: true,
+    signature: goodSignature,
+    signature_strokes: 3,
+    ...extra,
+  });
+
+  it("sin aceptar la casilla: 400 y no guarda ni sube nada", async () => {
+    const { ports, saves } = makePorts(contractForm());
+    const out = await submitForm(ports, baseInput(signed({ accepted: false })));
+    expect(out.status).toBe(400);
+    expect(out.body.error).toBe("accept_required");
+    expect(saves).toHaveLength(0);
+    expect(ports.uploadContractFile).not.toHaveBeenCalled();
+  });
+
+  it("sin el campo accepted tampoco", async () => {
+    const { ports } = makePorts(contractForm());
+    const body = signed();
+    delete (body as Record<string, unknown>).accepted;
+    expect((await submitForm(ports, baseInput(body))).body.error).toBe("accept_required");
+  });
+
+  it("firma obligatoria vacía o sin trazos: 400 signature_required (aunque el navegador la dejó pasar)", async () => {
+    for (const bad of [{ signature: "" }, { signature: undefined }, { signature_strokes: 0 }]) {
+      const { ports, saves } = makePorts(contractForm());
+      const out = await submitForm(ports, baseInput(signed(bad)));
+      expect(out.status).toBe(400);
+      expect(out.body.error).toBe("signature_required");
+      expect(saves).toHaveLength(0);
+    }
+  });
+
+  it("un data URL que dice PNG pero es otra cosa, o que pesa de más: signature_invalid", async () => {
+    const jpeg = `data:image/png;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]).toString("base64")}`;
+    const big = `data:image/png;base64,${Buffer.from([...PNG_HEAD, ...new Array(250 * 1024).fill(1)]).toString("base64")}`;
+    for (const signature of [jpeg, big]) {
+      const { ports } = makePorts(contractForm());
+      const out = await submitForm(ports, baseInput(signed({ signature })));
+      expect(out.status).toBe(400);
+      expect(out.body.error).toBe("signature_invalid");
+    }
+  });
+
+  it("firma opcional y sin dibujar: se firma sin imagen", async () => {
+    const form = contractForm({ contract: { title: "A", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [] } });
+    const { ports, saves } = makePorts(form);
+    const out = await submitForm(ports, baseInput(signed({ signature: undefined, signature_strokes: undefined })));
+    expect(out.status).toBe(200);
+    expect(ports.uploadContractFile).not.toHaveBeenCalled();
+    expect(saves[0].contract?.signaturePath).toBeNull();
+  });
+
+  it("el camino feliz: sube la firma al bucket de contratos y la guarda con la metadata legal del servidor", async () => {
+    const { ports, saves } = makePorts(contractForm());
+    const out = await submitForm(ports, { ...baseInput(signed({ client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, attribution: { utm_source: "meta" } })), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
+    expect(out.status).toBe(200);
+    expect(ports.uploadContractFile).toHaveBeenCalledWith(`ws-1/form-1/${KEY}/signature.png`, expect.any(Uint8Array), "image/png");
+    const contract = saves[0].contract!;
+    expect(contract.signaturePath).toBe(`ws-1/form-1/${KEY}/signature.png`);
+    expect(contract.signerEmail).toBe("ana@x.com");
+    expect(contract.signerName).toBe("Ana Pérez");
+    expect(contract.legal).toMatchObject({ ip: "203.0.113.9", device: "mobile", os: "iOS", browser: "Safari", timezone: "America/Costa_Rica", locale: "es-CR", accepted_label: "Leí y acepto el contrato", signature_strokes: 3, utm: { utm_source: "meta" } });
+  });
+
+  it("el navegador no puede meter su propio texto del contrato: ni se mira", async () => {
+    const { ports, saves } = makePorts(contractForm());
+    await submitForm(ports, baseInput(signed({ contract_text: "OTRO TEXTO", contract_html: "<b>x</b>" })));
+    expect(JSON.stringify(saves[0])).not.toContain("OTRO TEXTO");
+    expect(JSON.stringify(saves[0])).not.toContain("<b>x</b>");
+  });
+
+  it("la pantalla de éxito dice a dónde va la copia", async () => {
+    const { ports } = makePorts(contractForm());
+    const out = await submitForm(ports, baseInput(signed()));
+    expect(out.body.success).toMatchObject({ title: "Listo", body: "Te mandamos la copia firmada a ana@x.com en unos minutos." });
+  });
+
+  it("si la RPC falla, la imagen de la firma se descarta y responde 500 sin detalles", async () => {
+    const { ports } = makePorts(contractForm(), { save: vi.fn(async () => ({ ok: false as const, error: "failed" as const })) });
+    const out = await submitForm(ports, baseInput(signed()));
+    expect(out.status).toBe(500);
+    expect(ports.discardContractFile).toHaveBeenCalledWith(`ws-1/form-1/${KEY}/signature.png`);
+  });
+
+  it("si la imagen no se puede subir, no se guarda la respuesta", async () => {
+    const { ports, saves } = makePorts(contractForm(), { uploadContractFile: vi.fn(async () => false) });
+    expect((await submitForm(ports, baseInput(signed()))).status).toBe(500);
+    expect(saves).toHaveLength(0);
+  });
+
+  it("un formulario común ignora lo de la firma", async () => {
+    const { ports, saves } = makePorts(makeForm([field("short_text", "nombre")]));
+    await submitForm(ports, baseInput({ answers: { nombre: "Ana" }, signature: goodSignature, signature_strokes: 3, accepted: true }));
+    expect(saves[0].contract).toBeNull();
+    expect(ports.uploadContractFile).not.toHaveBeenCalled();
   });
 });

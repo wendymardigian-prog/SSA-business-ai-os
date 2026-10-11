@@ -259,3 +259,40 @@ describe("sendTransactionalEmail: el contacto del email (00135)", () => {
     expect(logged[0]).toMatchObject({ contact_id: null });
   });
 });
+
+describe("sendTransactionalEmail con adjuntos (copia firmada de un contrato)", () => {
+  it("manda los adjuntos en base64 dentro del cuerpo que va a Resend", async () => {
+    const { client } = fakeClient({ integration: CONNECTED, secret: KEY });
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { id: "msg_pdf" }));
+    const pdfBase64 = Buffer.from("%PDF-1.7 de prueba").toString("base64");
+
+    const res = await sendTransactionalEmail({
+      ...baseParams(client, fetchImpl as unknown as typeof fetch),
+      kind: "contract_copy",
+      attachments: [{ filename: "contrato-acuerdo-v1.pdf", content: pdfBase64 }],
+    });
+
+    expect(res).toEqual({ ok: true, id: "msg_pdf" });
+    const body = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(body.attachments).toEqual([{ filename: "contrato-acuerdo-v1.pdf", content: pdfBase64 }]);
+  });
+
+  it("sin adjuntos, el cuerpo NO trae la clave attachments (sale igual que siempre)", async () => {
+    const { client } = fakeClient({ integration: CONNECTED, secret: KEY });
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse(200, { id: "msg_1" }));
+    await sendTransactionalEmail(baseParams(client, fetchImpl as unknown as typeof fetch));
+    const body = JSON.parse(String((fetchImpl.mock.calls[0][1] as RequestInit).body));
+    expect(Object.keys(body).sort()).toEqual(["from", "html", "subject", "to"]);
+    // Y una lista vacía tampoco cuenta como adjuntos.
+    await sendTransactionalEmail({ ...baseParams(client, fetchImpl as unknown as typeof fetch), attachments: [] });
+    const body2 = JSON.parse(String((fetchImpl.mock.calls[1][1] as RequestInit).body));
+    expect(body2).not.toHaveProperty("attachments");
+  });
+
+  it("el adjunto no se escribe en email_log ni en los logs", async () => {
+    const { client, logged } = fakeClient({ integration: CONNECTED, secret: KEY });
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { id: "msg_2" }));
+    await sendTransactionalEmail({ ...baseParams(client, fetchImpl as unknown as typeof fetch), attachments: [{ filename: "a.pdf", content: "QUJD" }] });
+    expect(JSON.stringify(logged)).not.toContain("QUJD");
+  });
+});

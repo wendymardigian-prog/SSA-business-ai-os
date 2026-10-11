@@ -119,6 +119,12 @@ const SERVER_ONLY = [
   { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") },
   { label: "lib/forms/submit.ts", file: join(ROOT, "lib/forms/submit.ts") },
   { label: "lib/forms/server-ports.ts", file: join(ROOT, "lib/forms/server-ports.ts") },
+  // Contratos: generan el PDF (pdf-lib, que pesa y es solo de servidor), leen y escriben el
+  // bucket privado y mandan el email con el adjunto.
+  { label: "lib/forms/contract/pdf.ts", file: join(ROOT, "lib/forms/contract/pdf.ts") },
+  { label: "lib/forms/contract/pdf-run.ts", file: join(ROOT, "lib/forms/contract/pdf-run.ts") },
+  { label: "lib/forms/contract/email-run.ts", file: join(ROOT, "lib/forms/contract/email-run.ts") },
+  { label: "lib/forms/contract/storage.ts", file: join(ROOT, "lib/forms/contract/storage.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {

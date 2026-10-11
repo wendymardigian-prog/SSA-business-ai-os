@@ -9,6 +9,7 @@ import { BackLink } from "@/components/forms/back-link";
 import { Historial } from "@/components/historial/historial";
 import { Notice } from "@/components/agents/fields";
 import { LinkContact } from "./link-contact";
+import { ContractPanel, type ContractView } from "./contract-panel";
 import { getSubmissionFileUrl } from "@/lib/actions/forms/responses";
 import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
@@ -47,6 +48,7 @@ export function SubmissionDetail({
   showHistory,
   names,
   timeZone,
+  contract,
 }: {
   formId: string;
   formName: string;
@@ -59,6 +61,8 @@ export function SubmissionDetail({
   showHistory: boolean;
   names: Record<string, string>;
   timeZone: string;
+  /** Solo en la respuesta de un contrato: su firma. */
+  contract?: ContractView | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -166,6 +170,8 @@ export function SubmissionDetail({
               </div>
             )}
           </section>
+
+          {contract && <ContractPanel submissionId={submission.id} contract={contract} canManage={canManage} timeZone={timeZone} />}
 
           {canManage && !contact && submission.status !== "spam" && <LinkContact submissionId={submission.id} />}
 

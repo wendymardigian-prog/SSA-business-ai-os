@@ -34,6 +34,11 @@ export interface ResendMessage {
    * correo suelto y el cliente de la otra persona la muestra fuera del hilo.
    */
   headers?: Record<string, string>;
+  /**
+   * Adjuntos (el PDF firmado de un contrato, F28). `content` va en base64. Solo
+   * se mandan si vienen: un email sin adjuntos sale exactamente igual que antes.
+   */
+  attachments?: Array<{ filename: string; content: string }>;
 }
 
 export type ResendResult =

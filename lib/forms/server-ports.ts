@@ -14,6 +14,8 @@ import { validateSuccess, DEFAULT_SUCCESS } from "./success";
 import { parseStoredContactConfig, isCustomTarget, customSlugOf, type CustomFieldDef } from "./contact-config";
 import { verifyFormLink } from "./signed-link";
 import { notifyRecipients, contactOutcome, notificationContent } from "./notify";
+import { parseStoredContractConfig } from "./contract/config";
+import { CONTRACTS_BUCKET } from "./contract/storage";
 import { recordFormTouch } from "@/lib/contacts/touch-entry";
 import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
@@ -24,6 +26,7 @@ import type { ExistingSubmission, LoadedForm, SaveInput, SaveResult, SubmitPorts
 type Db = SupabaseClient<Database>;
 
 export const UPLOADS_BUCKET = "form-uploads";
+export { CONTRACTS_BUCKET };
 
 /** Los campos de una definición guardada (jsonb) como `FormField[]`. */
 export function fieldsOf(definition: Json | null | undefined): FormField[] {
@@ -36,7 +39,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
 
   const { data: form } = await service
     .from("forms")
-    .select("id, workspace_id, name, type, slug, status, success, current_version_id, contact_config, notify_enabled, notify_user_ids")
+    .select("id, workspace_id, name, type, slug, status, success, current_version_id, contact_config, notify_enabled, notify_user_ids, contract_config")
     .ilike("slug", slug)
     .eq("status", "published")
     .not("current_version_id", "is", null)
@@ -66,6 +69,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     customFields: await loadCustomFields(service, form.workspace_id, contactConfig.map.map((m) => m.target)),
     notifyEnabled: form.notify_enabled,
     notifyUserIds: form.notify_user_ids ?? [],
+    contract: form.type === "contract" ? parseStoredContractConfig(form.contract_config, form.name) : null,
   };
 }
 
@@ -129,6 +133,17 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
       return !error;
     },
 
+    async uploadContractFile(path, bytes, mime) {
+      const { error } = await service.storage.from(CONTRACTS_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+      if (error) console.error("[forms] no pude subir la firma:", error.message);
+      return !error;
+    },
+
+    async discardContractFile(path) {
+      const { error } = await service.storage.from(CONTRACTS_BUCKET).remove([path]);
+      if (error) console.error("[forms] no pude borrar una firma que quedo sin respuesta:", error.message);
+    },
+
     async save(input: SaveInput): Promise<SaveResult> {
       const { data, error } = await service.rpc("submit_form_response", {
         p_form_id: input.form.id,
@@ -138,7 +153,18 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
         p_attribution: input.attribution as unknown as Json,
         p_meta: input.meta as unknown as Json,
         p_contact_hint: input.contactHint as unknown as Json,
-        p_extra: input.uploadPrefix ? { upload_prefix: input.uploadPrefix } : {},
+        p_extra: {
+          ...(input.uploadPrefix ? { upload_prefix: input.uploadPrefix } : {}),
+          // Contrato: lo que `record_contract_signature` guarda. El texto NO viaja: la base usa el de la version.
+          ...(input.contract
+            ? {
+                signature_path: input.contract.signaturePath,
+                legal: input.contract.legal,
+                signer_name: input.contract.signerName,
+                signer_email: input.contract.signerEmail,
+              }
+            : {}),
+        } as unknown as Json,
       });
       if (error) {
         if (error.code === "23505" && /uq_form_submissions_once/.test(error.message)) {
@@ -158,6 +184,7 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
         contactCreated: data.contact_created === true,
         matchedBy: data.matched_by ?? null,
         conflictContactId: data.conflict_contact_id ?? null,
+        signatureId: data.signature_id ?? null,
       };
     },
 

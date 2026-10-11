@@ -11,6 +11,7 @@ import type { Database } from "@/lib/types/database";
 import { SLUG_PATTERN } from "./list";
 import { fieldsOf } from "./server-ports";
 import { toPublicFields } from "./public-definition";
+import { verifyFormLink } from "./signed-link";
 import type { PublicFormData, PublicFormResult } from "./public-client";
 
 type Db = SupabaseClient<Database>;
@@ -57,4 +58,43 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
     survey: form.type === "survey" ? { scoreFieldKey: (form.survey_config as { scoreFieldKey?: string } | null)?.scoreFieldKey ?? null } : null,
     turnstile_site_key: null,
   };
+}
+
+/**
+ * "Ya respondiste" ANTES de mostrar la encuesta (F22): con un link firmado válido
+ * (`?c=`) de una encuesta con "una vez por contacto", si ese contacto ya respondió
+ * (y la respuesta no es spam), la página lo dice sin armar el formulario.
+ *
+ * Con el cliente de servicio: la persona no tiene sesión. Un token inválido, vencido o
+ * de otro formulario se ignora y la página funciona como si no hubiera `c`: nunca da error.
+ */
+export async function isAlreadyAnswered(
+  service: Db,
+  slug: string,
+  token: string | null | undefined,
+  verify: typeof verifyFormLink = verifyFormLink,
+): Promise<boolean> {
+  if (!token || !SLUG_PATTERN.test(slug)) return false;
+
+  const { data: form } = await service
+    .from("forms")
+    .select("id, workspace_id, type, status, survey_config")
+    .ilike("slug", slug)
+    .eq("status", "published")
+    .maybeSingle();
+  if (!form || form.type !== "survey") return false;
+  if ((form.survey_config as { oncePerContact?: boolean } | null)?.oncePerContact !== true) return false;
+
+  const link = await verify(service, token, { workspaceId: form.workspace_id, formId: form.id });
+  if (!link.ok) return false;
+
+  const { data: existing } = await service
+    .from("form_submissions")
+    .select("id")
+    .eq("form_id", form.id)
+    .eq("once_key", `contact:${link.contactId}`)
+    .neq("status", "spam")
+    .limit(1)
+    .maybeSingle();
+  return !!existing;
 }

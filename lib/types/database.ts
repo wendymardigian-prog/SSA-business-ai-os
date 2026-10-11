@@ -164,6 +164,38 @@ export type FormSubmissionRow = {
   updated_at: string;
 };
 
+export type ContractPdfStatus = "pending" | "generated" | "failed";
+export type ContractEmailStatus = "pending" | "sent" | "retrying" | "not_sent";
+
+/** Firma de un contrato (migracion 00157). La evidencia no se puede cambiar. */
+export type ContractSignatureRow = {
+  id: string;
+  workspace_id: string;
+  submission_id: string;
+  form_id: string;
+  form_version_id: string;
+  text_sha256: string;
+  signer_name: string;
+  signer_email: string;
+  contact_id: string | null;
+  signature_path: string | null;
+  signed_at: string;
+  /** Metadata legal (la IP va en claro solo aca). */
+  legal: Json;
+  pdf_path: string | null;
+  pdf_status: ContractPdfStatus;
+  pdf_attempts: number;
+  email_status: ContractEmailStatus;
+  email_attempts: number;
+  email_next_retry_at: string | null;
+  email_sent_at: string | null;
+  email_last_error: string | null;
+  sale_id: string | null;
+  service_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CallRow = {
   id: string;
   workspace_id: string;
@@ -925,6 +957,20 @@ export interface Database {
           answers: Json;
         };
         Update: Partial<Omit<FormSubmissionRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
+      contract_signatures: {
+        Row: ContractSignatureRow;
+        Insert: Partial<ContractSignatureRow> & {
+          workspace_id: string;
+          submission_id: string;
+          form_id: string;
+          form_version_id: string;
+          text_sha256: string;
+          signer_email: string;
+          legal: Json;
+        };
+        Update: Partial<Omit<ContractSignatureRow, "id" | "workspace_id">>;
         Relationships: [];
       };
       calls: {
@@ -4755,8 +4801,14 @@ export interface Database {
           contact_created: boolean;
           matched_by?: string | null;
           conflict_contact_id?: string | null;
+          /** La firma, si el formulario es un contrato (00157). */
+          signature_id?: string | null;
           error?: string;
         };
+      };
+      record_contract_signature: {
+        Args: { p_submission_id: string; p_signature_path: string | null; p_legal: Json; p_signer_name?: string; p_signer_email?: string | null };
+        Returns: string;
       };
       record_contact_touch: {
         Args: {

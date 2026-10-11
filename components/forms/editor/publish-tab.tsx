@@ -8,6 +8,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { changeFormSlug } from "@/lib/actions/forms/forms";
 import { generateFormEmbedCode } from "@/lib/embed/code";
+import { ContactLinkCard } from "./contact-link-card";
 import type { EditorForm, EditorVersion } from "./types";
 
 /**
@@ -126,6 +127,8 @@ export function PublishTab({
           </div>
         )}
       </section>
+
+      {canManage && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
         <h2 id="embed" className="text-sm font-semibold">

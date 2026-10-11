@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { CheckCircle2 } from "lucide-react";
 import { brandLogoUrl, brandName } from "@/lib/brand";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { PublicForm } from "@/components/forms/public/public-form";
-import { loadPreviewFormData, loadPublicFormData } from "@/lib/forms/public-load";
+import { isAlreadyAnswered, loadPreviewFormData, loadPublicFormData } from "@/lib/forms/public-load";
 import { isAvailable } from "@/lib/forms/public-client";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,18 @@ export default async function PublicFormPage({
     return (
       <main className="flex min-h-dvh items-center justify-center px-4">
         <p className="text-center text-muted-foreground">Este formulario no está disponible.</p>
+      </main>
+    );
+  }
+
+  // Una encuesta de "una vez por contacto" con el link firmado de quien ya respondió: se dice antes del formulario.
+  if (!preview && form.type === "survey" && query.c && (await isAlreadyAnswered(service, slug, query.c))) {
+    return (
+      <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
+        <div className="mx-auto w-full max-w-[640px] py-10 text-center">
+          <CheckCircle2 className="mx-auto h-12 w-12 text-green-500" aria-hidden="true" />
+          <h1 className="mt-3 text-xl font-semibold">Ya respondiste, ¡gracias!</h1>
+        </div>
       </main>
     );
   }

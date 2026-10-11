@@ -15,6 +15,8 @@ import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
 import { cn } from "@/lib/utils";
 import { AutomationsTab } from "./automations-tab";
+import { ContractEditor } from "./contract-editor";
+import { SurveyTab } from "./survey-tab";
 import { ContactTab } from "./contact-tab";
 import { FieldsTab } from "./fields-tab";
 import { PublishTab } from "./publish-tab";
@@ -29,7 +31,7 @@ import type { Draft, EditorExtras, EditorForm, EditorVersion } from "./types";
  * pisa lo de otra persona sin que lo sepa.
  */
 
-type Section = "campos" | "contacto" | "automatizaciones" | "publicar";
+type Section = "campos" | "encuesta" | "contrato" | "contacto" | "automatizaciones" | "publicar";
 type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -60,6 +62,8 @@ export function FormEditor({
   const router = useRouter();
   const [section, setSection] = useState<Section>("campos");
   const [draft, setDraft] = useState<Draft>({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success });
+  const [surveyConfig, setSurveyConfig] = useState(form.surveyConfig);
+  const [contractConfig, setContractConfig] = useState(form.contractConfig);
   const [slug, setSlug] = useState(form.slug);
   const [status, setStatus] = useState(form.status);
   const [snapshot, setSnapshot] = useState(form.publishedSnapshot);
@@ -137,9 +141,9 @@ export function FormEditor({
         slug,
         definition: draft.definition,
         turnstileConfigured,
-        extraChecks: typeChecks(form.type, { surveyConfig: null, contractConfig: null }),
+        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig }),
       }),
-    [form.type, slug, draft.definition, turnstileConfigured],
+    [form.type, slug, draft.definition, turnstileConfigured, surveyConfig, contractConfig],
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
@@ -238,6 +242,11 @@ export function FormEditor({
             <Link href={`/dashboard/formularios/${form.id}/respuestas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
               <Inbox className="h-3.5 w-3.5" aria-hidden /> Respuestas
             </Link>
+            {form.type === "survey" && (
+              <Link href={`/dashboard/formularios/${form.id}/encuesta`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
+                <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Panel NPS
+              </Link>
+            )}
             <Link href={`/dashboard/formularios/${form.id}/metricas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
               <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Métricas
             </Link>
@@ -280,6 +289,8 @@ export function FormEditor({
           onChange={setSection}
           tabs={[
             { value: "campos", label: "Campos" },
+            ...(form.type === "survey" ? [{ value: "encuesta" as const, label: "Encuesta" }] : []),
+            ...(form.type === "contract" ? [{ value: "contrato" as const, label: "Contrato" }] : []),
             { value: "contacto", label: "Contacto" },
             { value: "automatizaciones", label: "Automatizaciones" },
             { value: "publicar", label: "Publicar" },
@@ -288,6 +299,10 @@ export function FormEditor({
           <div className="pt-4">
             {section === "campos" ? (
               <FieldsTab draft={draft} onChange={setDraft} disabled={disabled} neverPublished={neverPublished} slug={slug} type={form.type} />
+            ) : section === "encuesta" && form.type === "survey" ? (
+              <SurveyTab form={form} draft={draft} config={surveyConfig} onSaved={setSurveyConfig} canManage={canManage} />
+            ) : section === "contrato" && form.type === "contract" && contractConfig ? (
+              <ContractEditor form={form} draft={draft} onDraftChange={setDraft} config={contractConfig} onSaved={setContractConfig} canManage={canManage} />
             ) : section === "contacto" ? (
               <ContactTab form={form} draft={draft} extras={extras} canManage={canManage} />
             ) : section === "automatizaciones" ? (

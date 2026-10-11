@@ -2,6 +2,7 @@
  * Lo que trae un formulario recién creado, según su tipo. Puro.
  */
 import { defaultDefinition, type FormDefinition, type FormType } from "./fields";
+import type { SurveyCategory } from "./survey-categories";
 
 export interface FormDesign {
   title: string;
@@ -10,17 +11,9 @@ export interface FormDesign {
   showLogo: boolean;
 }
 
-export const SURVEY_CATEGORIES = [
-  { value: "servicio", label: "Servicio" },
-  { value: "llamada", label: "Llamada" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "cierre", label: "Cierre" },
-  { value: "general", label: "General" },
-] as const;
-
 export interface SurveyConfig {
   scoreFieldKey: string;
-  category: (typeof SURVEY_CATEGORIES)[number]["value"];
+  category: SurveyCategory;
   oncePerContact: boolean;
 }
 

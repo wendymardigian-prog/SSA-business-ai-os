@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 import { Checkbox, Notice, inputClass } from "@/components/agents/fields";
-import { linkSubmissionToContact, searchContactsForForm, type ContactOption } from "@/lib/actions/forms/contact";
+import { linkSubmissionToContact, type ContactOption } from "@/lib/actions/forms/contact";
+import { useContactSearch } from "@/components/forms/use-contact-search";
 
 /**
  * Vincular a mano una respuesta sin contacto (F16): se busca el contacto, se elige y
@@ -13,33 +14,11 @@ import { linkSubmissionToContact, searchContactsForForm, type ContactOption } fr
  */
 export function LinkContact({ submissionId }: { submissionId: string }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<ContactOption[]>([]);
-  const [searching, setSearching] = useState(false);
+  const { query, setQuery, options, searching } = useContactSearch();
   const [chosen, setChosen] = useState<ContactOption | null>(null);
   const [fire, setFire] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [pending, start] = useTransition();
-
-  useEffect(() => {
-    if (chosen || query.trim().length < 2) {
-      setOptions([]);
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    const timer = window.setTimeout(async () => {
-      const found = await searchContactsForForm(query);
-      if (!cancelled) {
-        setOptions(found);
-        setSearching(false);
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [query, chosen]);
 
   function confirm() {
     if (!chosen) return;
