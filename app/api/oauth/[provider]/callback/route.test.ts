@@ -24,6 +24,8 @@ vi.mock("@/lib/social/sync-hook", () => ({ queueFirstRead }));
 const syncCalendars = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/scheduling/data/calendars", () => ({ syncCalendars }));
 vi.mock("@/lib/app-url", () => ({ appUrl: () => "https://app.test" }));
+const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "a1") }));
+vi.mock("@/lib/audit", () => audit);
 const queueFathomSyncNow = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/fathom/queue", () => ({ queueFathomSyncNow }));
 
@@ -119,6 +121,7 @@ describe("retorno OAuth: Fathom (una conexion por persona, sin permiso)", () => 
     completeOAuth.mockResolvedValue({ ok: true, connectionId: "conn-9", redirectTo: "/dashboard/settings/integrations" });
     const res = await call("fathom");
     expect(queueFathomSyncNow).toHaveBeenCalledWith({}, "conn-9");
+    expect(audit.logAudit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "oauth_connection", entityId: "conn-9", action: "create", performedBy: "member-1" }));
     expect(syncCalendars).not.toHaveBeenCalled();
     expect(syncSocialAccounts).not.toHaveBeenCalled();
     const location = new URL(res.headers.get("location")!);

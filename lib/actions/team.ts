@@ -8,7 +8,11 @@ import { sendTransactionalEmail } from "@/lib/email/send";
 import { teamInviteEmail } from "@/lib/email/templates";
 import { inviteUrl } from "@/lib/app-url";
 import { logAudit } from "@/lib/audit";
+import type { Json } from "@/lib/types/database";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { validateCloserEmails } from "@/lib/fathom/closers";
+import { revokeFathomConnectionsOf } from "@/lib/fathom/revoke";
+import { memberDisplayName } from "@/lib/workspace-members";
 
 /**
  * Como termino el email de la invitacion.
@@ -171,6 +175,14 @@ export async function removeTeamMember(
     supabase, workspaceId, entityType: "workspace_member", entityId: userId,
     action: "delete", performedBy: user.id,
   });
+
+  // Llamadas: su Fathom se desconecta con la persona (sus llamadas quedan, son
+  // del negocio). Un paso posterior y aparte: si falla, salir del equipo ya paso.
+  try {
+    await revokeFathomConnectionsOf(await createServiceClient(), workspaceId, userId);
+  } catch (err) {
+    console.error("[equipo] no pude revocar el Fathom de quien salió:", err instanceof Error ? err.message : "error");
+  }
 
   return { ok: true };
 }
@@ -508,4 +520,73 @@ export async function setMemberRole(input: {
 
   revalidatePath("/dashboard/settings/team");
   return { ok: true };
+}
+
+/**
+ * Marcar a una persona como closer y cargar sus correos alternos (F4).
+ *
+ * Solo las llamadas de quien esta marcado entran desde Fathom. Un correo no
+ * puede ser de dos personas: ni el de la cuenta de otra ni un alterno de otra.
+ * Apagar la marca no toca las llamadas ya guardadas; solo frena las nuevas.
+ */
+export async function setMemberCloser(input: {
+  userId: string;
+  isCloser: boolean;
+  closerEmails: string[];
+}): Promise<{ ok: true; emails: string[] } | { ok: false; error: string }> {
+  const ctx = await getPermissionAction("team.manage");
+  if (!ctx) return { ok: false, error: "No tenes permiso para administrar el equipo" };
+
+  const service = await createServiceClient();
+  const [{ data: profiles }, { data: rows }] = await Promise.all([
+    service.rpc("workspace_member_profiles", { p_workspace_id: ctx.workspace.id }),
+    service.from("workspace_members").select("user_id, is_closer, closer_emails").eq("workspace_id", ctx.workspace.id),
+  ]);
+
+  const target = (rows ?? []).find((r) => r.user_id === input.userId);
+  if (!target) return { ok: false, error: "Esa persona no esta en el equipo" };
+
+  const byUser = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+  const others = (rows ?? []).map((r) => {
+    const p = byUser.get(r.user_id);
+    return {
+      userId: r.user_id,
+      name: memberDisplayName(p?.full_name, p?.meta_name, p?.email),
+      email: p?.email ?? null,
+      closerEmails: r.closer_emails ?? [],
+    };
+  });
+
+  const checked = validateCloserEmails(input.userId, input.closerEmails, others);
+  if (!checked.ok) return checked;
+
+  const { error } = await service
+    .from("workspace_members")
+    .update({ is_closer: input.isCloser, closer_emails: checked.emails })
+    .eq("workspace_id", ctx.workspace.id)
+    .eq("user_id", input.userId);
+  if (error) {
+    console.error("[equipo] no pude guardar la marca de closer:", error.message);
+    return { ok: false, error: "No pude guardar los cambios" };
+  }
+
+  const changes: Record<string, { old: Json; new: Json }> = {};
+  if (target.is_closer !== input.isCloser) changes.is_closer = { old: target.is_closer, new: input.isCloser };
+  const before = (target.closer_emails ?? []).join(",");
+  if (before !== checked.emails.join(",")) changes.closer_emails = { old: target.closer_emails ?? [], new: checked.emails };
+
+  if (Object.keys(changes).length > 0) {
+    await logAudit({
+      supabase: ctx.supabase,
+      workspaceId: ctx.workspace.id,
+      entityType: "workspace_member",
+      entityId: input.userId,
+      action: "update",
+      changes,
+      performedBy: ctx.user.id,
+    });
+  }
+
+  revalidatePath("/dashboard/settings/team");
+  return { ok: true, emails: checked.emails };
 }

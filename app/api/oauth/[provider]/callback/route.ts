@@ -21,6 +21,7 @@ import { queueFirstRead } from "@/lib/social/sync-hook";
 import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { appUrl } from "@/lib/app-url";
 import { queueFathomSyncNow } from "@/lib/fathom/queue";
+import { logAudit } from "@/lib/audit";
 
 const FALLBACK = "/dashboard/settings/integrations";
 
@@ -66,6 +67,15 @@ export async function GET(
       } else if (adapter.provider === "fathom") {
         // La primera consulta no espera a la vuelta del cron (F8): se encola ya.
         await queueFathomSyncNow(service, result.connectionId);
+        await logAudit({
+          supabase: service,
+          workspaceId: ctx.workspace.id,
+          entityType: "oauth_connection",
+          entityId: result.connectionId,
+          action: "create",
+          metadata: { provider: "fathom", kind: "connected" },
+          performedBy: ctx.user.id,
+        });
       } else if (!adapter.perUser) {
         const synced = await syncSocialAccounts(service, ctx.workspace.id);
         // Una red recien conectada se lee ya, no a las 3 AM. Nunca lanza.

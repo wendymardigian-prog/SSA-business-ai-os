@@ -31,8 +31,11 @@ const CHIP_COUNTS = countByChip(ALL_SECTIONS);
 
 export function IntegrationsGrid({
   integrations,
+  extra,
 }: {
   integrations: Record<string, IntegrationCardData>;
+  /** Cards propias que no pasan por el catalogo (Fathom): se muestran sin filtros activos. */
+  extra?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -141,6 +144,7 @@ export function IntegrationsGrid({
                 </div>
               </section>
             ))}
+            {extra && chip === null && !onlyAttention && <section aria-label="Llamadas">{extra}</section>}
           </div>
         )}
       </div>
