@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { BUILDER_TRIGGER_TYPES, buildDesiredTriggers } from "@/lib/flow-triggers";
+import { createServiceClient } from "@/lib/supabase/server";
+import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
+import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
 
 export async function POST(
   _request: NextRequest,
@@ -82,7 +85,8 @@ export async function POST(
     .delete()
     .eq("flow_id", flowId)
     .is("channel_id", null)
-    .in("type", [...BUILDER_TRIGGER_TYPES]);
+    // Los de Ventas tambien se reconcilian: republicar no duplica la fila (y un relativo duplicado mandaria dos recordatorios).
+    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
 
   if (desiredTriggers.length > 0) {
     const { error: insertError } = await supabase.from("triggers").insert(desiredTriggers);
@@ -96,6 +100,16 @@ export async function POST(
     .from("triggers")
     .update({ is_active: true })
     .eq("flow_id", flowId);
+
+  // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
+  // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
+  if (desiredTriggers.some((t) => isRelativeSalesTrigger(t.type))) {
+    try {
+      await backfillPaymentRelativeJobs(await createServiceClient(), membership.workspace_id);
+    } catch (backfillError) {
+      console.error("[publish] no pude agendar los recordatorios de pagos:", backfillError instanceof Error ? backfillError.message : "error");
+    }
+  }
 
   return NextResponse.json({ ...flow, version: newVersion });
 }

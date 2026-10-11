@@ -47,6 +47,7 @@ import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { snapshotText } from "@/lib/sales/sale-text";
+import { describePaymentHealth } from "@/lib/sales/payment-health";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { loadContactCalls } from "@/lib/calls/contact-section";
 import { PageHeader } from "@/components/page-header";
@@ -475,6 +476,7 @@ export default async function ContactDetailPage({
                 total={contactSales?.count ?? 0}
                 contact={{ id: contact.id, name: contact.display_name || contact.email || "Contacto" }}
                 wizard={salesWizard && salesWizard.catalog.length > 0 ? salesWizard : null}
+                paymentHealth={describePaymentHealth((contact as unknown as { payment_health?: Record<string, unknown> | null }).payment_health as never)}
               />
             )}
 

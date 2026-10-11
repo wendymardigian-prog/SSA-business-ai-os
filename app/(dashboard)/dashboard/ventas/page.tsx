@@ -5,6 +5,8 @@ import { PILL_STATUSES, SALES_PAGE_SIZE, parseSalesFilters, saleListRow, salesQu
 import { loadWizardConfig, hasSalesAllScope } from "@/lib/sales/wizard/load";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { sanitizeSearch } from "@/lib/url-params";
+import { ensureSalesTemplateFlows } from "@/lib/sales/automation/templates-run";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +25,10 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   const filters = parseSalesFilters(sp);
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const today = localToday(new Date(), workspace.timezone);
+
+  // Los cuatro flujos de cobranza (apagados) se crean la primera vez que un Owner o Admin abre Ventas; es idempotente
+  // y respeta la opcion de Ajustes. No hay backfill durante el deploy.
+  if (ctx.role === "owner" || ctx.role === "admin") await ensureSalesTemplateFlows(await createServiceClient(), workspace.id);
 
   // «Por cobrar esta semana»: ventas con algún pago programado que vence en los próximos 7 días.
   const weekEnd = addDays(today, 7);

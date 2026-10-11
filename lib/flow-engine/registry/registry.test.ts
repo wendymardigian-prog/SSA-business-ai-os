@@ -40,11 +40,12 @@ const NODOS_DE_ACCION = [
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 23 tipos ejecutables", () => {
+  it("tiene los 26 tipos ejecutables", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
     // + enviar email y las dos acciones de agenda (Etapa 4),
-    // + enviar un recurso de la banca.
-    expect(listNodes()).toHaveLength(23);
+    // + enviar un recurso de la banca,
+    // + las tres acciones de cobranza de Ventas (mark_payment_paid, reschedule_payment, set_sale_status).
+    expect(listNodes()).toHaveLength(26);
   });
 
   it.each(NODOS_DE_ACCION)(

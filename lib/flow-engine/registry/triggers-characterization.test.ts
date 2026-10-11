@@ -37,8 +37,8 @@ describe("triggers registrados", () => {
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
     }
-    // + los tres de Formularios (ver el test de abajo).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3);
+    // + los tres de Formularios y los seis de Ventas (ver los tests de abajo).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6);
   });
 
   it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {
@@ -49,6 +49,17 @@ describe("triggers registrados", () => {
       expect(t.scope).toBe("event");
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
+    }
+  });
+
+  it("Ventas suma exactamente seis triggers de prioridad 45: cuatro de evento y dos relativos (scheduled)", () => {
+    const byType = new Map(listTriggers().map((t) => [t.type, t]));
+    for (const type of ["sale_created", "sale_status_changed", "payment_created", "payment_status_changed", "payment_before_due", "payment_after_due"]) {
+      const t = byType.get(type)!;
+      expect(t, type).toBeDefined();
+      expect(t.priority).toBe(45);
+      expect(t.eventTypes).toEqual([type]);
+      expect(t.scope).toBe(type.endsWith("_due") ? "scheduled" : "event");
     }
   });
 

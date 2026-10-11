@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Send, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Send, Trash2 } from "lucide-react";
 import { createVersionDraft, deleteVersionDraft, publishVersion, updateVersionDraft } from "@/lib/actions/products";
 import { formatMoney } from "@/lib/sales/format";
 import { formatAmount } from "@/lib/sales/format";
 import { newVersionDraftFrom, priceHistory, type HistoryVersion } from "@/lib/sales/catalog/price-history";
 import { PLACEHOLDER_NOTE, resolveActiveVersion } from "@/lib/sales/catalog/versions";
 import { ActionError } from "@/components/contacts/ui";
+import { Historial } from "@/components/historial/historial";
 import { fieldInput } from "@/components/content/dialog";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,7 @@ export function VariantPriceTab({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [openVersion, setOpenVersion] = useState<string | null>(null);
 
   const active = resolveActiveVersion(versions);
   const draft = versions.find((v) => v.status === "draft") ?? null;
@@ -113,11 +115,13 @@ export function VariantPriceTab({
                   <th className="px-3 py-2 font-medium">Ventas</th>
                   <th className="px-3 py-2 font-medium">Notas</th>
                   <th className="w-10 px-3 py-2" />
+                  <th className="w-10 px-3 py-2"><span className="sr-only">Historial</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {history.map((row) => (
-                  <tr key={row.id}>
+                  <Fragment key={row.id}>
+                  <tr>
                     <td className="px-3 py-2 font-medium">v{row.number}</td>
                     <td className="px-3 py-2">{row.priceLabel}</td>
                     <td className="px-3 py-2">
@@ -143,7 +147,20 @@ export function VariantPriceTab({
                         </button>
                       )}
                     </td>
+                    <td className="px-3 py-2">
+                      <button type="button" onClick={() => setOpenVersion(openVersion === row.id ? null : row.id)} aria-expanded={openVersion === row.id} aria-label={`Historial de la versión ${row.number}`} className="rounded p-1 text-muted-foreground hover:bg-accent">
+                        {openVersion === row.id ? <ChevronDown className="h-3.5 w-3.5" aria-hidden /> : <ChevronRight className="h-3.5 w-3.5" aria-hidden />}
+                      </button>
+                    </td>
                   </tr>
+                  {openVersion === row.id && (
+                    <tr>
+                      <td colSpan={8} className="bg-muted/20 px-4 py-3">
+                        <Historial entityType="product_version" entityId={row.id} names={{ users: userNames }} timeZone={timeZone} pageSize={10} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

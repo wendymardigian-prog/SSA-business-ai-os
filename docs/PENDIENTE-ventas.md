@@ -91,3 +91,16 @@ Se escribe en `docs/pendientes/drop_content_offers.sql` al cerrar B4 y **no se a
 - **`versionSalesCounts` cuenta con el cliente de servicio** (todas las ventas del workspace, no solo las que ve quien mira): un rol con alcance `own` y `settings.manage` habría visto un número bajo.
 - **Revisión visual de B3**: lista, ficha y diálogo de edición con datos de ejemplo (una página temporal con fixtures, ya borrada: producción no tiene ventas y no se escribe nada real), asistente completo hasta el paso 3 contra el catálogo real (sin guardar), sección «Ventas» de un contacto real y el panel de la Agenda; a 1440 y 375 px, claro y oscuro. No se apretó «Guardar venta», «Cancelar» ni «Enviar contrato».
 
+
+## Bloque B4 · decisiones y pendientes
+
+- **Comisión de Whop: 0 %** hasta que Wendy confirme el porcentaje real (anotado con fecha en `lib/sales/payment-methods.ts`). El criterio del plano (`computeProviderFee(100,'whop') = 3.00`) se prueba pasando el método explícito `{pct: 3, fixed: 0}`. Whop como pasarela es Fase 2.
+- **Borrado de `content_offers` (IRREVERSIBLE, no aplicado)**: `docs/pendientes/drop_content_offers.sql`. Orden: (1) el código del B1 desplegado y comprobado; (2) `grep -rn "content_offers" app lib scripts` sin lecturas; (3) las consultas de seguridad de su cabecera en 0; (4) respaldo `docs/ventas/respaldo-content-offers.json`. Recién ahí.
+- **Cancelar como sistema no usa la RPC `cancel_sale`** (la RPC siempre escribe `actor_type 'user'`): se hace con sentencias directas y `auditAsSystem` con la etiqueta («Job de mora» / nombre del flow). Si más adelante la RPC acepta actor de sistema, se unifica.
+- **`total_paid` en `payment_health` es la cantidad de pagos cobrados**, no el monto (el nombre viene del plano). Los montos salen de `sales`.
+- **Republicar un flow desde el lienzo duplica las filas de trigger que no son del builder**: es anterior a Ventas y afecta a otros eventos; para los tipos de venta se corrigió en `app/api/v1/flows/[flowId]/publish/route.ts`. Los demás quedan igual a propósito.
+- **Los flujos de cobranza se crean al abrir Ventas por primera vez** (Owner/Admin) o al prender la opción: al desplegar, el primer ingreso escribe cuatro flows en borrador en el workspace real. Quedan apagados; no mandan nada hasta que se publiquen.
+- **`verify-rls` salió con código 1 una vez** y a la corrida siguiente dio 0 (el corte ocasional ya anotado en B1); no se reprodujo.
+- **No hay tests unitarios directos de `payments-core`**: lo cubren `lib/actions/payments.test.ts`, `sales-actions.test.ts` (nodos) y `verify-sales --block 4` contra la base real.
+- **Revisión visual de B4** (navegador integrado, sesión de Wendy): Pagos vacío, editor de flows con los 11 atajos y el panel de filtros, Ajustes > Actividad, Ajustes > General > Ventas. No se abrió `/dashboard/ventas` con el admin para no disparar la creación de los flows en el workspace real, ni se apretó ningún botón que escriba.
+- **Pendiente en vivo (§18 del plano)**: con la rama desplegada, cargar una venta de prueba con un pago programado vencido y comprobar que la mora y el flow de cobranza se disparan una sola vez.

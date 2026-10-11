@@ -23,6 +23,7 @@ import { pauseAgentNode, resumeAgentNode } from "../nodes/agent-toggle";
 import { sendEmailNode } from "../nodes/send-email";
 import { sendAssetNode } from "../nodes/send-asset";
 import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
+import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -50,3 +51,8 @@ registerNode(resumeAgentNode);
 registerNode(sendEmailNode);
 registerNode(cancelBookingNode);
 registerNode(setBookingStatusNode);
+
+// Ventas (F37): las tres acciones de cobranza. Pasan por el mismo nucleo que las Server Actions.
+registerNode(markPaymentPaidNode);
+registerNode(reschedulePaymentNode);
+registerNode(setSaleStatusNode);

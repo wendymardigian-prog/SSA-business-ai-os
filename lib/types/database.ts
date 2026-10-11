@@ -545,7 +545,8 @@ export type AuditAction =
   | "payment.restored"
   | "payment.cancelled"
   | "payment.overdue"
-  | "payment.refund";
+  | "payment.refund"
+  | "payment.receipt_uploaded";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -664,7 +665,14 @@ export type TriggerType =
   // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.
   | "form_submitted"
   | "survey_answered"
-  | "contract_signed";
+  | "contract_signed"
+  // Ventas (CHECK de la migracion 00166): un cambio de estado = un evento; los dos ultimos son relativos al vencimiento.
+  | "sale_created"
+  | "sale_status_changed"
+  | "payment_created"
+  | "payment_status_changed"
+  | "payment_before_due"
+  | "payment_after_due";
 export type FlowSessionStatus =
   | "active"
   | "completed"

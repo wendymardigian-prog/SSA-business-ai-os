@@ -32,12 +32,15 @@ export function ContactSalesSection({
   total,
   contact,
   wizard,
+  paymentHealth,
 }: {
   sales: ContactSaleRow[];
   total: number;
   contact: { id: string; name: string };
   /** Null si la persona no puede cargar ventas (sin `sales.manage`) o no hay catálogo. */
   wizard: WizardConfig | null;
+  /** «7 pagos: 5 puntuales, 2 tarde · promedio +3 días · sin mora activa», o null si no hay nada que decir. */
+  paymentHealth?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   if (sales.length === 0 && !wizard) return null;
@@ -50,6 +53,7 @@ export function ContactSalesSection({
           </button>
         </div>
       )}
+      {paymentHealth && <p className="mb-2 rounded-lg bg-muted/40 px-3 py-2 text-xs" title="Salud de pago">Salud de pago: {paymentHealth}</p>}
       {sales.length === 0 ? (
         <p className="text-sm text-muted-foreground">Este contacto todavía no tiene ventas.</p>
       ) : (

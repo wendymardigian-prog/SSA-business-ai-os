@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
+import { SalesViewToggle } from "@/components/sales/sales-view-toggle";
 import type { WizardConfig } from "@/components/sales/wizard/types";
 import { MEDIUMS, MEDIUM_LABELS, SOURCES, SOURCE_LABELS } from "@/lib/contacts/taxonomy";
 import { formatMoney } from "@/lib/sales/format";
@@ -62,6 +63,7 @@ export function SalesList({ data, wizard }: { data: SalesListData; wizard: Wizar
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/ventas"
+        left={<SalesViewToggle active="ventas" />}
         right={
           data.canManage && hasProducts ? (
             <button type="button" onClick={() => setWizardOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Nueva venta">

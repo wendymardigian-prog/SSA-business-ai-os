@@ -415,6 +415,8 @@ export async function cancelSale(input: { saleId: string; reason: string }): Pro
     console.error("[sales] cancel_sale falló:", error.message);
     return fail2("server", "No pude cancelar la venta");
   }
+  // Los recordatorios pendientes de los pagos anulados se cancelan.
+  await syncPaymentRelativeJobs(service, { saleId: sale.id });
   const paid = await supabase.from("payments").select("amount").eq("sale_id", sale.id).eq("status", "paid");
   const hadCollected = (paid.data ?? []).length > 0;
   revalidatePath("/dashboard/ventas");

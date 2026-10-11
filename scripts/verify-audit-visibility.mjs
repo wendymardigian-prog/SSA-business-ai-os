@@ -14,12 +14,19 @@
  *   node scripts/verify-audit-visibility.mjs --generar            # antes de la 00147: escribe el esperado
  *   node scripts/verify-audit-visibility.mjs                      # compara contra el esperado
  *   node scripts/verify-audit-visibility.mjs --despues-de-00147   # ademas prueba las filas de llamadas
+ *   node scripts/verify-audit-visibility.mjs --despues-de-00168   # ademas prueba las filas de ventas, pagos y catalogo (Ventas, F35)
+ *
+ * Ventas (00168): `audit_log_select_sales` es una politica ADICIONAL. El script comprueba que las
+ * definiciones de `audit_log_select` y `audit_log_select_calls` no cambiaron (md5 del `qual`, guardado en
+ * scripts/fixtures/audit-log-policies.before-00168.json) y que el resultado para TODOS los tipos que ya
+ * existian es el mismo antes y despues.
  *
  * Crea y borra todo lo suyo (prefijo zz-test-). Una limpieza que falla es una
  * prueba que falla.
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { runCleanup } from "./test-cleanup.mjs";
@@ -35,6 +42,14 @@ const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSe
 const FIXTURE = "scripts/fixtures/audit-visibility.expected.json";
 const GENERAR = process.argv.includes("--generar");
 const DESPUES_00147 = process.argv.includes("--despues-de-00147");
+const DESPUES_00168 = process.argv.includes("--despues-de-00168");
+const POLICIES_FIXTURE = "scripts/fixtures/audit-log-policies.before-00168.json";
+
+/** Consultas que la API no expone (pg_policies): con la CLI ya vinculada. */
+function sql(query) {
+  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  return JSON.parse(out).rows ?? [];
+}
 
 let failures = 0;
 const ok = (m) => console.log("  ok  ", m);
@@ -204,6 +219,72 @@ try {
     check(callSeen["call|ajena|por_sistema"]?.m2 !== true, "ni un Member sin relacion");
     check(callSeen["call|propia|por_sistema"]?.m2 !== true, "ni uno ajeno ve la llamada de otro");
     check(callSeen["call|ajena|por_sistema"]?.admin === true && callSeen["call|propia|por_sistema"]?.owner === true, "Owner y Admin ven todas");
+  }
+
+  // Las definiciones que NO se reescriben (Ventas, 00168): `audit_log_select` y la de Llamadas.
+  console.log("\n— Definiciones de las politicas de SELECT —");
+  const policies = sql(`select policyname, md5(coalesce(qual,'')) as qual_md5 from pg_policies where schemaname='public' and tablename='audit_log' and cmd='SELECT'`);
+  const policyHash = (name) => policies.find((p) => p.policyname === name)?.qual_md5;
+  if (existsSync(POLICIES_FIXTURE)) {
+    const before = JSON.parse(readFileSync(POLICIES_FIXTURE, "utf8"));
+    check(policyHash("audit_log_select") === before.audit_log_select, "audit_log_select es IDENTICA a como estaba antes de la 00168 (no se reescribe)");
+    check(policyHash("audit_log_select_calls") === before.audit_log_select_calls, "audit_log_select_calls tampoco cambio");
+  } else {
+    fail(`falta ${POLICIES_FIXTURE}`);
+  }
+
+  if (DESPUES_00168) {
+    console.log("\n— Filas de ventas, pagos y catalogo (00168) —");
+    check(!!policyHash("audit_log_select_sales"), "existe la politica adicional audit_log_select_sales");
+
+    // Catalogo + dos ventas: una de m1 (es su vendedor) y otra ajena (setter: el admin).
+    const { data: prod } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test av producto", product_type: "programa" }).select("id").single();
+    const { data: variant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar" }).select("id").single();
+    const { data: ver } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 500 }).select("id").single();
+    await svc.rpc("publish_product_version", { p_version_id: ver.id, p_actor_id: owner.id });
+    const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const snapshot = { product_id: prod.id, product_name: "zz-test av producto", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", version_id: ver.id, version_number: 1, price: 500, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+    const mkSale = async (contact, setter, vendedor) => {
+      const { data, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: {
+        workspace_id: ws.id, contact_id: contact, product_version_id: ver.id, product_snapshot: snapshot, base_amount: 500, discount_amount: 0,
+        financing_type: "full", sale_date: ayer, setter_id: setter, vendedor_id: vendedor, attribution: { mode: "last_touch" },
+        payments: [{ type: "full", amount: 500, status: "scheduled", due_date: "2031-05-15" }],
+      } });
+      if (error) throw new Error(`no pude crear la venta: ${error.message}`);
+      return data.sale_id;
+    };
+    const saleMine = await mkSale(cPropio, admin.id, m1.id);
+    const saleOther = await mkSale(cAjeno, admin.id, admin.id);
+    const payOf = async (sale) => (await svc.from("payments").select("id").eq("sale_id", sale).single()).data.id;
+    const payMine = await payOf(saleMine);
+    const payOther = await payOf(saleOther);
+
+    const ventas = [];
+    const add = (type, id, label) => {
+      for (const [variantName, who] of Object.entries(VARIANTS)) {
+        const actor = variantName === "por_sistema" ? { actor_type: "system", actor_label: "Job de mora" } : variantName === "por_agente" ? { actor_type: "agent", actor_label: null } : { actor_type: "user", actor_label: null };
+        ventas.push({ workspace_id: ws.id, entity_type: type, entity_id: id, action: "update", metadata: { case: `ventas|${type}|${label}|${variantName}` }, performed_by: null, performed_by_agent_id: null, ...who, ...actor });
+      }
+    };
+    add("sale", saleMine, "propia"); add("sale", saleOther, "ajena");
+    add("payment", payMine, "propio"); add("payment", payOther, "ajeno");
+    add("product", prod.id, "x"); add("product_variant", variant.id, "x"); add("product_version", ver.id, "x");
+    const { error: vErr } = await svc.from("audit_log").insert(ventas);
+    if (vErr) throw new Error(`no pude sembrar filas de ventas: ${vErr.message}`);
+    const vSeen = await readAll((k) => k.startsWith("ventas|"));
+
+    check(vSeen["ventas|sale|propia|por_sistema"]?.m1 === true, "el vendedor de una venta ve su historial completo, incluidas las filas del sistema");
+    check(vSeen["ventas|sale|propia|por_member"]?.m1 === true && vSeen["ventas|sale|propia|por_agente"]?.m1 === true, "...y las de una persona y las de un agente");
+    check(vSeen["ventas|payment|propio|por_sistema"]?.m1 === true, "y el historial de los pagos de esa venta");
+    // `por_member` queda afuera: lo escribio el propio m1 y la regla de siempre (un Member ve lo que escribio) se lo muestra.
+    check(["por_sistema", "por_admin", "por_agente"].every((v) => vSeen[`ventas|sale|ajena|${v}`]?.m1 !== true && vSeen[`ventas|payment|ajeno|${v}`]?.m1 !== true), "quien no es setter ni vendedor NO ve ninguna fila de esa venta ni de sus pagos (salvo lo que escribio el mismo)");
+    check(["por_sistema", "por_member", "por_admin"].every((v) => vSeen[`ventas|sale|propia|${v}`]?.m2 !== true && vSeen[`ventas|payment|propio|${v}`]?.m2 !== true), "un Member sin relacion no ve ni la venta de otro ni sus pagos");
+    check(Object.entries(vSeen).filter(([k]) => /\|(sale|payment)\|/.test(k)).every(([, v]) => v.owner && v.admin), "Owner y Admin ven todas las filas de ventas y pagos");
+    check(["product", "product_variant", "product_version"].every((t) => ["por_sistema", "por_member", "por_admin", "por_agente"].every((v) => vSeen[`ventas|${t}|x|${v}`]?.m1 === true && vSeen[`ventas|${t}|x|${v}`]?.m2 === true)), "el historial del catalogo lo ve cualquier miembro (el catalogo ya es legible por todos)");
+
+    // Lo previo no se movio: las filas `contact` que un Member no escribio siguen sin verse.
+    const again = await readAll((k) => k.startsWith("contact|"));
+    check(again["contact|ajeno|por_sistema"]?.m1 !== true && again["contact|propio|por_member"]?.m2 !== true, "las filas contact que un Member no escribio siguen sin verse");
   }
 } catch (e) {
   fail("el script fallo", e.message);

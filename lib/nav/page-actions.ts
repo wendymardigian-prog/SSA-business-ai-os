@@ -285,9 +285,17 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Reglas de asignación",
     tooltip: "Cómo se asignan solos el setter, el vendedor y el referido de un contacto, con probador y simulación en seco. Lo asignado a mano nunca se pisa.",
   },
+  "/dashboard/settings/actividad": {
+    title: "Actividad",
+    tooltip: "Todo lo que se hizo en el workspace: quién, qué y cuándo, con lo que cambió. Solo Owner y Admin.",
+  },
   "/dashboard/ventas": {
     title: "Ventas",
     tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",
+  },
+  "/dashboard/ventas/pagos": {
+    title: "Pagos",
+    tooltip: "Todos los pagos de las ventas: lo que vence, lo que está moroso y lo cobrado, con su método, comisión y desfase.",
   },
   "/dashboard/ventas/[id]": {
     title: "Venta",

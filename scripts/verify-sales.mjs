@@ -636,6 +636,112 @@ try {
     check(!!delVenta.error, "una venta con una firma no se puede borrar", delVenta.error?.message);
 
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bloque 4 · Comprobantes, mora, historial y triggers
+  // ─────────────────────────────────────────────────────────────────────────
+  if (MAX_BLOCK >= 4) {
+    console.log("\n— 00165: el bucket de comprobantes —");
+    const bucket = sql(`select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'payment-receipts'`)[0];
+    check(bucket && bucket.public === false && bucket.file_size_limit === 10485760, "payment-receipts existe, es PRIVADO y tiene tope de 10 MB");
+    check(JSON.stringify([...(bucket?.allowed_mime_types ?? [])].sort()) === JSON.stringify(["application/pdf", "image/jpeg", "image/png", "image/webp"]), "y solo acepta JPEG, PNG, WebP y PDF");
+    const policies = sql(`select count(*)::int as n from pg_policies where schemaname = 'storage' and tablename = 'objects' and (coalesce(qual,'') || coalesce(with_check,'')) ilike '%payment-receipts%'`)[0].n;
+    check(policies === 0, "ninguna policy de storage nombra el bucket (clientes sin acceso directo)");
+    const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64");
+    const storagePath = `${ws.id}/venta/pago/${randomUUID()}.png`;
+    const up = await svc.storage.from("payment-receipts").upload(storagePath, PNG, { contentType: "image/png" });
+    check(!up.error, "el servidor sube un comprobante valido", up.error?.message);
+    const big = await svc.storage.from("payment-receipts").upload(`${ws.id}/venta/pago/${randomUUID()}.png`, Buffer.alloc(12 * 1024 * 1024, 1), { contentType: "image/png" });
+    check(!!big.error, "un comprobante de 12 MB se rechaza", big.error ? undefined : "se subio");
+    const exe = await svc.storage.from("payment-receipts").upload(`${ws.id}/venta/pago/${randomUUID()}.exe`, Buffer.from("MZ"), { contentType: "application/x-msdownload" });
+    check(!!exe.error, "un .exe se rechaza", exe.error ? undefined : "se subio");
+    const memberRead = await member.client.storage.from("payment-receipts").createSignedUrl(storagePath, 60);
+    check(!!memberRead.error || !memberRead.data?.signedUrl, "un Member NO puede firmar un link del comprobante con su sesion (solo el servidor, tras comprobar la venta)");
+    const memberUp = await member.client.storage.from("payment-receipts").upload(`${ws.id}/x/${randomUUID()}.png`, PNG, { contentType: "image/png" });
+    check(!!memberUp.error, "ni subir");
+    const signed = await svc.storage.from("payment-receipts").createSignedUrl(storagePath, 1);
+    check(!!signed.data?.signedUrl, "el servidor firma un link");
+    await new Promise((r) => setTimeout(r, 2500));
+    const expired = await fetch(signed.data.signedUrl);
+    check(!expired.ok, "un link vencido NO sirve");
+    await svc.storage.from("payment-receipts").remove([storagePath]);
+
+    console.log("\n— 00166: los seis tipos de trigger —");
+    const flow4 = (await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test-flujo-ventas", status: "draft", nodes: [], edges: [] }).select("id").single()).data;
+    for (const type of ["sale_created", "sale_status_changed", "payment_created", "payment_status_changed", "payment_before_due", "payment_after_due"]) {
+      const r = await svc.from("triggers").insert({ flow_id: flow4.id, workspace_id: ws.id, type, config: {}, is_active: false });
+      check(!r.error, `triggers.type acepta '${type}'`, r.error?.message);
+    }
+    check(!!(await svc.from("triggers").insert({ flow_id: flow4.id, workspace_id: ws.id, type: "sale_settled", config: {}, is_active: false })).error, "y 'sale_settled' (que no existe: es un preset) se rechaza");
+    check(!!(await svc.from("triggers").insert({ flow_id: flow4.id, workspace_id: ws.id, type: "contract_signed", config: {}, is_active: false })).error === false, "los tipos de antes (contract_signed) siguen aceptados");
+
+    console.log("\n— 00167: el cron de la mora —");
+    const cron = sql(`select schedule, command from cron.job where jobname = 'payments-overdue-enqueue'`)[0];
+    check(cron?.schedule === "7 * * * *" && /enqueue_payments_overdue_sweep/.test(cron?.command ?? ""), "pg_cron tiene `payments-overdue-enqueue` en el minuto 7 de cada hora");
+    check(sql(`select has_function_privilege('authenticated', 'private.enqueue_payments_overdue_sweep()', 'EXECUTE') as x`)[0].x === false, "nadie con sesion puede ejecutar la funcion");
+
+    // Un workspace por caso, cada uno con su zona para que la hora local sea la que se quiere probar.
+    const utcHour = new Date().getUTCHours();
+    const zoneFor = (localHour) => {
+      let off = (localHour - utcHour) % 24;
+      if (off > 12) off -= 24;
+      if (off < -12) off += 24;
+      return off === 0 ? "UTC" : `Etc/GMT${off > 0 ? "-" : "+"}${Math.abs(off)}`;
+    };
+    const localDay = (tz) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const localHourOf = (tz) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+    const mkCandidate = async (name, tz, { due = "2020-01-15", saleStatus } = {}) => {
+      const { data: w } = await svc.from("workspaces").insert({ name: `zz-test-${name}`, slug: `zz-test-${name}-${Date.now()}`, timezone: tz }).select("id").single();
+      const { data: pr } = await svc.from("products").insert({ workspace_id: w.id, name: "zz-test mora", product_type: "programa" }).select("id").single();
+      const { data: va } = await svc.from("product_variants").insert({ workspace_id: w.id, product_id: pr.id, name: "Estandar" }).select("id").single();
+      const { data: ve } = await svc.from("product_versions").insert({ workspace_id: w.id, product_variant_id: va.id, price: 100 }).select("id").single();
+      await svc.rpc("publish_product_version", { p_version_id: ve.id, p_actor_id: owner.id });
+      const { data: c } = await svc.from("contacts").insert({ workspace_id: w.id, display_name: "zz-test mora lead" }).select("id").single();
+      const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      const snap = { product_id: pr.id, product_name: "zz-test mora", product_type: "programa", variant_id: va.id, variant_name: "Estandar", version_id: ve.id, version_number: 1, price: 100, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+      const { data: sale, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: { workspace_id: w.id, contact_id: c.id, product_version_id: ve.id, product_snapshot: snap, base_amount: 100, discount_amount: 0, financing_type: "full", sale_date: ayer, setter_id: null, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [{ type: "full", amount: 100, status: "scheduled", due_date: due }] } });
+      if (error) throw new Error(`no pude crear la venta de mora: ${error.message}`);
+      if (saleStatus) await svc.from("sales").update({ status: saleStatus }).eq("id", sale.sale_id);
+      return { id: w.id, tz, saleId: sale.sale_id };
+    };
+    const jobsOf = async (wsId) => (await svc.from("scheduled_jobs").select("id, dedupe_key, status, payload").eq("type", "payments_overdue_sweep").like("dedupe_key", `overdue:${wsId}:%`)).data ?? [];
+
+    const tzNoon = zoneFor(12);
+    const tzTwo = zoneFor(2);
+    const tzThree = zoneFor(3);
+    check(localHourOf(tzNoon) === 12 && localHourOf(tzTwo) === 2 && localHourOf(tzThree) === 3, "(preparacion) tres zonas con las 12:00, las 02:00 y las 03:00 locales", `${tzNoon}=${localHourOf(tzNoon)} ${tzTwo}=${localHourOf(tzTwo)} ${tzThree}=${localHourOf(tzThree)}`);
+    const wNoon = await mkCandidate("mora-mediodia", tzNoon);
+    const wTwo = await mkCandidate("mora-2am", tzTwo);
+    const wThree = await mkCandidate("mora-3am", tzThree);
+    const wNone = await mkCandidate("mora-sin-vencidos", tzNoon, { due: "2999-01-01" });
+    const wCancelled = await mkCandidate("mora-cancelada", tzNoon, { saleStatus: "cancelled" });
+
+    const first = sql(`select private.enqueue_payments_overdue_sweep() as n`)[0].n;
+    check(first >= 2, "la funcion encola por los workspaces con candidatos", `encolo ${first}`);
+    const jNoon = await jobsOf(wNoon.id);
+    check(jNoon.length === 1 && jNoon[0].dedupe_key === `overdue:${wNoon.id}:${localDay(tzNoon)}` && jNoon[0].payload.local_date === localDay(tzNoon) && jNoon[0].payload.workspace_id === wNoon.id, "a las 12:00 locales deja UN job con dedupe_key overdue:<ws>:<fecha local> y la fecha local en el payload");
+    check((await jobsOf(wTwo.id)).length === 0, "ANTES de las 03:00 locales (02:00) no encola nada (paridad con shouldEnqueueSweep)");
+    check((await jobsOf(wThree.id)).length === 1, "a las 03:00 locales en punto SI encola");
+    check((await jobsOf(wNone.id)).length === 0, "un workspace sin pagos vencidos no deja ningun job");
+    check((await jobsOf(wCancelled.id)).length === 0, "ni uno cuyo unico pago es de una venta cancelada");
+    sql(`select private.enqueue_payments_overdue_sweep()`);
+    check((await jobsOf(wNoon.id)).filter((j) => j.status === "pending").length === 1, "correrla dos veces el mismo dia local, con el job pendiente: sigue habiendo UNO por workspace");
+
+    // La transicion que hace el handler: UPDATE ... WHERE status = 'scheduled' (una vez por pago) y la venta pasa a overdue.
+    const { data: cand } = await svc.from("payments").select("id, status").eq("sale_id", wNoon.saleId).single();
+    const t1 = await svc.from("payments").update({ status: "overdue" }).eq("id", cand.id).eq("status", "scheduled").select("id");
+    const t2 = await svc.from("payments").update({ status: "overdue" }).eq("id", cand.id).eq("status", "scheduled").select("id");
+    check((t1.data ?? []).length === 1 && (t2.data ?? []).length === 0, "el UPDATE condicional marca el pago UNA sola vez (la segunda corrida no encuentra filas)");
+    check((await svc.from("sales").select("status").eq("id", wNoon.saleId).single()).data?.status === "overdue", "y la venta queda overdue");
+    const moraEvents = (await svc.from("automation_events").select("payload").eq("event_type", "payment_status_changed").eq("workspace_id", wNoon.id)).data ?? [];
+    check(moraEvents.filter((e) => e.payload.to_status === "overdue" && e.payload.from_status === "scheduled").length === 1, "con UN payment_status_changed scheduled → overdue");
+
+    console.log("\n— 00168: el historial de una venta —");
+    check(sql(`select count(*)::int as n from pg_policies where schemaname='public' and tablename='audit_log' and policyname='audit_log_select_sales'`)[0].n === 1, "existe audit_log_select_sales (los casos de lectura los prueba verify-audit-visibility --despues-de-00168)");
+
+    // Limpieza propia: la cola no cuelga de los workspaces.
+    for (const w of [wNoon, wTwo, wThree, wNone, wCancelled]) await svc.from("scheduled_jobs").delete().like("dedupe_key", `overdue:${w.id}:%`);
+  }
 } catch (e) {
   fail("el script fallo", e.message);
 } finally {

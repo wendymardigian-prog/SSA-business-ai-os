@@ -1,0 +1,5 @@
+{
+  "nota": "md5 del `qual` de las politicas de SELECT de audit_log ANTES de la 00168. La 00168 NO las reescribe: solo suma audit_log_select_sales.",
+  "audit_log_select": "5b4ffabd6da14a30309c552801302836",
+  "audit_log_select_calls": "a82fa6a162ab1430a71bd526463b0a6b"
+}

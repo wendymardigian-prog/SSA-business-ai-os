@@ -15,3 +15,22 @@ export function checkEnabledMethods(input: unknown): EnabledMethodsCheck {
   if (methods.length === 0) return { ok: false, error: "Dejá al menos un método de pago habilitado" };
   return { ok: true, methods };
 }
+
+export type NumberCheck<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/** El tope de descuento: vacío = sin tope; si no, un número de 0 a 100 (se guarda con hasta dos decimales). */
+export function checkMaxDiscountPercent(input: unknown): NumberCheck<number | null> {
+  if (input === null || input === undefined || input === "") return { ok: true, value: null };
+  const n = Number(input);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return { ok: false, error: "El tope de descuento tiene que ser un porcentaje de 0 a 100" };
+  return { ok: true, value: Math.round(n * 100) / 100 };
+}
+
+/** Los días de gracia antes de pasar un pago a moroso: entero de 0 a 60. */
+export function checkGraceDays(input: unknown): NumberCheck<number> {
+  const n = Number(input);
+  if (input === "" || input === null || input === undefined || !Number.isInteger(n) || n < 0 || n > 60) {
+    return { ok: false, error: "Los días de gracia tienen que ser un número entero de 0 a 60" };
+  }
+  return { ok: true, value: n };
+}

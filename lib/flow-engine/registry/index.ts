@@ -14,10 +14,12 @@ import "./nodes";
 import "./conditions";
 import "./booking-conditions";
 import "./call-conditions";
+import "./sales-conditions";
 import "./triggers";
 import "./booking-triggers";
 import "./call-triggers";
 import "./form-triggers";
+import "./sales-triggers";
 import "./guards";
 
 export * from "./registry";

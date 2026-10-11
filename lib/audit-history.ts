@@ -7,6 +7,8 @@
  * pasen. Con el cliente del usuario, la RLS decide que se ve.
  */
 
+import { paymentStatusLabel, saleStatusLabel } from "@/lib/sales/labels";
+import { applyAuditFilters, auditFilters } from "@/lib/audit-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditActorType, AuditAction, AuditEntityType, Json } from "@/lib/types/database";
 
@@ -84,6 +86,8 @@ const FIELD_LABELS: Record<string, string> = {
   amount: "Monto",
   payment_method: "Método de pago",
   paid_on: "Cobrado el",
+  reschedule_reason: "Motivo de la reprogramación",
+  provider_fee_amount: "Comisión",
   title: "Título",
   role: "Rol",
 };
@@ -124,13 +128,19 @@ export function readableValue(value: unknown): string {
 
 /** El cambio de un campo, con etiqueta, antes y despues legibles. */
 export function describeChange(entityType: AuditEntityType | string, field: string, oldValue: unknown, newValue: unknown): ChangeLine {
-  void entityType; // reservado: hoy el campo se explica igual en todas las entidades
   const key = field.includes(".") ? field.split(".").pop()! : field;
+  // El estado de una venta o de un pago se lee con su etiqueta («Pagada», «Moroso»), no con la clave interna.
+  const named = (value: unknown): unknown => {
+    if (key !== "status" || typeof value !== "string") return value;
+    if (entityType === "sale") return saleStatusLabel(value);
+    if (entityType === "payment") return paymentStatusLabel(value);
+    return value;
+  };
   return {
     field,
     label: FIELD_LABELS[field] ?? FIELD_LABELS[key] ?? field.replace(/_/g, " "),
-    before: readableValue(oldValue),
-    after: readableValue(newValue),
+    before: readableValue(named(oldValue)),
+    after: readableValue(named(newValue)),
   };
 }
 
@@ -181,14 +191,13 @@ export async function runHistoryQuery(
   supabase: SupabaseClient,
   spec: HistoryQuerySpec,
 ): Promise<{ ok: true; page: HistoryPage } | { ok: false; error: string }> {
-  let q = supabase
-    .from("audit_log")
-    .select(HISTORY_COLUMNS)
-    .eq("entity_type", spec.entityType)
-    .eq("entity_id", spec.entityId)
+  // Los filtros salen de la funcion compartida con la pantalla de Actividad (lib/audit-query.ts).
+  const q = applyAuditFilters(
+    supabase.from("audit_log").select(HISTORY_COLUMNS),
+    auditFilters({ entityType: spec.entityType, entityId: spec.entityId, cursor: spec.cursor }),
+  )
     .order("performed_at", { ascending: false })
     .limit(spec.limit);
-  if (spec.cursor) q = q.lt("performed_at", spec.cursor);
   const { data, error } = await q;
   if (error) return { ok: false, error: "No pude leer el historial" };
   const all = (data ?? []) as unknown as HistoryRow[];
@@ -284,4 +293,5 @@ export const SALE_ACTION_LABELS: Record<
   "payment.cancelled": "anuló el pago",
   "payment.overdue": "marcó el pago como moroso",
   "payment.refund": "registró un reembolso",
+  "payment.receipt_uploaded": "subió el comprobante del pago",
 };

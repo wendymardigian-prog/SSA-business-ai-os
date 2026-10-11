@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, ArrowLeft, Calendar, CreditCard, ExternalLink, Pencil, User } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Calendar, ExternalLink, Pencil, User } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Historial } from "@/components/historial/historial";
 import { CancelDialog, RebuildPlanDialog } from "@/components/sales/sale-action-dialogs";
@@ -14,8 +14,8 @@ import type { SaleNumbers } from "@/lib/sales/detail";
 import { isLockedForEdit } from "@/lib/sales/edit";
 import { formatMoney } from "@/lib/sales/format";
 import { ATTRIBUTION_TYPE_LABELS, FINANCING_TYPE_LABELS, PAYMENT_TYPE_LABELS, paymentStatusLabel, type AttributionType, type FinancingType, type PaymentType } from "@/lib/sales/labels";
-import { paymentMethodName } from "@/lib/sales/payment-methods";
-import { paymentStatusClasses } from "@/lib/sales/status-colors";
+import { PaymentPlan } from "@/components/sales/payment-plan";
+import type { TablePayment } from "@/lib/sales/payment-table";
 
 export interface SaleDetailData {
   sale: {
@@ -45,7 +45,7 @@ export interface SaleDetailData {
     updated_at: string;
     product: string;
   };
-  payments: Array<{ id: string; type: string; status: string; amount: unknown; due_date: string | null; paid_on: string | null; payment_method: string | null; notes: string | null }>;
+  payments: TablePayment[];
   numbers: SaleNumbers;
   contact: { id: string; name: string; email: string | null; phone: string | null } | null;
   booking: { id: string; startAt: string; title: string | null } | null;
@@ -55,6 +55,7 @@ export interface SaleDetailData {
   today: string;
   canManage: boolean;
   canManagePayments: boolean;
+  enabledMethods: string[];
 }
 
 function formatDate(date: string | null): string {
@@ -121,7 +122,7 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
+        <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
           <header className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -175,32 +176,19 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
             </dl>
           </Section>
 
-          <Section title="Plan de pagos" icon={<CreditCard className="h-4 w-4" aria-hidden />}>
-            {payments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Esta venta no tiene pagos cargados.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full min-w-[560px] text-sm">
-                  <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
-                    <tr>{["#", "Tipo", "Monto", "Estado", "Vence", "Cobrado el", "Método"].map((h, i) => <th key={h} scope="col" className={`px-3 py-2 font-medium ${i === 2 ? "text-right" : ""}`}>{h}</th>)}</tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {payments.map((p, i) => (
-                      <tr key={p.id}>
-                        <td className="px-3 py-2">{i + 1}</td>
-                        <td className="px-3 py-2">{PAYMENT_TYPE_LABELS[p.type as PaymentType] ?? p.type}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatMoney(p.amount)}</td>
-                        <td className="px-3 py-2"><span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusClasses(p.status)}`}>{paymentStatusLabel(p.status)}</span></td>
-                        <td className="whitespace-nowrap px-3 py-2">{formatDate(p.due_date)}</td>
-                        <td className="whitespace-nowrap px-3 py-2">{formatDate(p.paid_on)}</td>
-                        <td className="px-3 py-2">{p.payment_method ? paymentMethodName(p.payment_method) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Section>
+          <PaymentPlan
+            saleId={sale.id}
+            saleDate={sale.sale_date}
+            payments={payments}
+            finalAmount={numbers.total}
+            isSubscription={isSubscription}
+            saleStatus={sale.status}
+            canManage={data.canManagePayments}
+            enabledMethods={data.enabledMethods}
+            today={data.today}
+            timeZone={data.timeZone}
+            names={data.names}
+          />
 
           {contracts}
 

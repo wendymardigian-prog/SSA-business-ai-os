@@ -34,7 +34,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
   const service = await createServiceClient();
   const [payments, contact, members, timeZone, booking, wizard, contracts] = await Promise.all([
-    supabase.from("payments").select("id, type, status, amount, due_date, paid_on, payment_method, notes").eq("sale_id", id).order("due_date", { ascending: true }),
+    supabase.from("payments").select("id, type, status, amount, due_date, original_due_date, paid_on, delay_days, payment_method, provider_fee_amount, receipt_path, reschedule_count, notes").eq("sale_id", id).order("due_date", { ascending: true }).order("created_at", { ascending: true }),
     supabase.from("contacts").select("id, display_name, email, phone").eq("id", sale.contact_id).maybeSingle().then((r) => r.data),
     getWorkspaceMembers(workspace.id),
     resolveViewerTimezone(workspace.timezone),
@@ -58,6 +58,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
     today: wizard.today,
     canManage: ctx.can("sales.manage"),
     canManagePayments: ctx.can("payments.manage"),
+    enabledMethods: wizard.enabledMethods,
   };
 
   const closed = ["cancelled", "refunded", "subscription_cancelled"].includes(sale.status);

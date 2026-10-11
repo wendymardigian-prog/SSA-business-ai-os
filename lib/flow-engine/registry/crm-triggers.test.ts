@@ -142,7 +142,9 @@ describe("los tres tipos nuevos estan registrados", () => {
     // Resend, no el matcher de la bandeja ni un cron. Los seis de agenda
     // (etapa 4) tambien son de evento: nacen de la cola de automation_events, y
     // los dos de Llamadas (call_analyzed, call_linked) y los tres de Formularios
-    // (form_submitted, survey_answered, contract_signed) tambien.
+    // (form_submitted, survey_answered, contract_signed) tambien, y los cuatro
+    // inmediatos de Ventas (sale_created, sale_status_changed, payment_created,
+    // payment_status_changed).
     expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
       "booking_cancelled",
       "booking_created",
@@ -157,14 +159,21 @@ describe("los tres tipos nuevos estan registrados", () => {
       "email_received",
       "form_submitted",
       "new_contact",
+      "payment_created",
+      "payment_status_changed",
+      "sale_created",
+      "sale_status_changed",
       "survey_answered",
     ]);
-    // Los tres relativos de agenda los agenda un job, igual que inactividad.
+    // Los tres relativos de agenda y los dos de pagos (antes y despues del
+    // vencimiento) los agenda un job, igual que inactividad.
     expect(listTriggers("scheduled").map((t) => t.type).sort()).toEqual([
       "booking_after_created",
       "booking_after_end",
       "booking_before_start",
       "inactivity",
+      "payment_after_due",
+      "payment_before_due",
     ]);
   });
 

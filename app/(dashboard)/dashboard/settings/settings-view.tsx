@@ -26,6 +26,9 @@ interface WorkspaceSettings {
   enabledPaymentMethods: PaymentMethodKey[];
   /** Pagos programados o morosos por método de pago (para el aviso de apagar uno). */
   scheduledByMethod: Record<string, number>;
+  maxDiscountPercent: number | null;
+  overdueGraceDays: number;
+  salesAutoCreateFlows: boolean;
 }
 
 /**
@@ -264,7 +267,23 @@ export function SettingsView({
               <SalesSettings
                 enabledMethods={workspace.enabledPaymentMethods}
                 scheduledByMethod={workspace.scheduledByMethod}
+                maxDiscountPercent={workspace.maxDiscountPercent}
+                overdueGraceDays={workspace.overdueGraceDays}
+                autoCreateFlows={workspace.salesAutoCreateFlows}
               />
+            </section>
+
+            <hr className="border-border" />
+
+            {/* Actividad */}
+            <section id="actividad" className="scroll-mt-20 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Quién hizo qué y cuándo en todo el workspace:{" "}
+                <Link href="/dashboard/settings/actividad" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Ver la actividad
+                </Link>
+                .
+              </p>
             </section>
 
             <hr className="border-border" />

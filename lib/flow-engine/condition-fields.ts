@@ -102,6 +102,41 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     valueKind: "text",
     hint: "Por ejemplo: cierre, seguimiento, triaje.",
   },
+  // Ventas (F37): sobre las ventas y los pagos del contacto. Los de `sale_*` miran LA VENTA que
+  // disparo el flujo (o, sin ella, la ultima del contacto).
+  {
+    prefix: "has_active_sale:",
+    label: "Tiene una venta activa",
+    argument: "text",
+    argumentLabel: "Producto o variante (opcional)",
+    argumentPlaceholder: "id del producto",
+    valueKind: "boolean",
+    hint: "Activa = que no esta cancelada, reembolsada ni dada de baja. Sin elegir un producto, mira todas.",
+  },
+  { prefix: "last_sale_status", label: "Estado de su última venta", argument: "none", valueKind: "text", hint: "Por ejemplo: paid, overdue, reserved, cancelled." },
+  { prefix: "do_not_contact", label: "Está marcado como no contactar", argument: "none", valueKind: "boolean", hint: "Los flujos de cobranza lo usan como puerta." },
+  { prefix: "has_overdue_payments", label: "Tiene pagos morosos", argument: "none", valueKind: "boolean" },
+  {
+    prefix: "late_payments_count:",
+    label: "Pagos cobrados con atraso mayor a N días",
+    argument: "text",
+    argumentLabel: "Más de cuántos días",
+    argumentPlaceholder: "7",
+    valueKind: "text",
+    hint: "Devuelve una cantidad. Se compara con mayor o menor que.",
+  },
+  { prefix: "total_purchased", label: "Monto total comprado", argument: "none", valueKind: "text", hint: "Lo cobrado neto de todas sus ventas, en dólares. Se compara con mayor o menor que." },
+  {
+    prefix: "sale_utm:",
+    label: "UTM de la venta",
+    argument: "text",
+    argumentLabel: "Cuál: source, medium o campaign",
+    argumentPlaceholder: "source",
+    valueKind: "text",
+  },
+  { prefix: "sale_attribution_type", label: "Tipo de atribución de la venta", argument: "none", valueKind: "text", hint: "last_touch (último toque), manual o none (sin atribución)." },
+  { prefix: "sale_from_booking", label: "La venta vino de una agenda", argument: "none", valueKind: "boolean" },
+  { prefix: "sale_booking_event_type", label: "Tipo de evento de la agenda de la venta", argument: "none", valueKind: "text", hint: "El id del tipo de evento de agenda; vacío si la venta no vino de una agenda." },
   {
     // Sin prefijo: el campo es el slug del campo personalizado tal cual.
     prefix: "",

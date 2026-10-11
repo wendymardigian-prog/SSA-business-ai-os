@@ -70,6 +70,13 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <PauseAgentConfig data={data} onChange={onChange} />;
     case "resumeAgent":
       return <ResumeAgentConfig />;
+    // Ventas (F37): trabajan sobre el pago o la venta que disparo el flujo.
+    case "mark_payment_paid" as NodeType:
+      return <MarkPaymentPaidConfig data={data} onChange={onChange} />;
+    case "reschedule_payment" as NodeType:
+      return <ReschedulePaymentConfig data={data} onChange={onChange} />;
+    case "set_sale_status" as NodeType:
+      return <SetSaleStatusConfig data={data} onChange={onChange} />;
     default:
       return (
         <p className="text-sm text-muted-foreground">
@@ -623,6 +630,73 @@ function SmartDelayConfig({ data, onChange }: ActionSubPanelProps) {
           If the user does not respond within this time, the flow will continue.
         </p>
       </div>
+    </div>
+  );
+}
+
+/* ───────── Ventas (F37) ───────── */
+const salesInput = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+
+function MarkPaymentPaidConfig({ data, onChange }: ActionSubPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted p-4">
+        <p className="text-sm font-medium text-foreground">Marcar el pago como cobrado</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Cobra el pago que disparó el flujo, por su monto programado y con la fecha de hoy. No sube comprobante. Queda en el historial como una acción del flujo.
+        </p>
+      </div>
+      <div>
+        <label htmlFor="mpp-method" className="mb-2 block text-xs font-semibold text-foreground">Método de cobro</label>
+        <select id="mpp-method" value={(data.method as string | undefined) ?? ""} onChange={(e) => onChange({ ...data, method: e.target.value })} className={salesInput}>
+          <option value="">El primer método habilitado</option>
+          <option value="whop">Whop (registrado a mano)</option>
+          <option value="transferencia_cr">Transferencia CR</option>
+          <option value="transferencia_usa">Transferencia USA</option>
+          <option value="wise">Wise</option>
+          <option value="binance">Binance</option>
+        </select>
+      </div>
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-card p-3">
+        <input type="checkbox" checked={data.confirmed === true} onChange={(e) => onChange({ ...data, confirmed: e.target.checked })} className="mt-0.5 h-4 w-4 rounded border-input" />
+        <span className="text-sm text-foreground">Entiendo que esto marca el pago como cobrado sin comprobante. Sin esta confirmación el nodo no hace nada.</span>
+      </label>
+    </div>
+  );
+}
+
+function ReschedulePaymentConfig({ data, onChange }: ActionSubPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor="rp-days" className="mb-2 block text-xs font-semibold text-foreground">Días a sumar al vencimiento</label>
+        <input id="rp-days" type="number" min={1} max={90} value={typeof data.days === "number" ? data.days : ""} onChange={(e) => onChange({ ...data, days: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder="7" className={salesInput} />
+      </div>
+      <div>
+        <label htmlFor="rp-reason" className="mb-2 block text-xs font-semibold text-foreground">Motivo (queda en el historial)</label>
+        <input id="rp-reason" type="text" value={(data.reason as string | undefined) ?? ""} onChange={(e) => onChange({ ...data, reason: e.target.value })} placeholder="Reprogramado por una automatización" className={salesInput} />
+      </div>
+      <p className="text-xs text-muted-foreground">El vencimiento original no cambia: el desfase se mide contra él.</p>
+    </div>
+  );
+}
+
+function SetSaleStatusConfig({ data, onChange }: ActionSubPanelProps) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor="ss-status" className="mb-2 block text-xs font-semibold text-foreground">Pasar la venta a</label>
+        <select id="ss-status" value={(data.status as string | undefined) ?? ""} onChange={(e) => onChange({ ...data, status: e.target.value })} className={salesInput}>
+          <option value="">Elegí un estado</option>
+          <option value="cancelled">Cancelada</option>
+          <option value="subscription_cancelled">Suscripción dada de baja</option>
+        </select>
+      </div>
+      <div>
+        <label htmlFor="ss-reason" className="mb-2 block text-xs font-semibold text-foreground">Motivo</label>
+        <input id="ss-reason" type="text" value={(data.reason as string | undefined) ?? ""} onChange={(e) => onChange({ ...data, reason: e.target.value })} placeholder="Cambiado por una automatización" className={salesInput} />
+      </div>
+      <p className="text-xs text-muted-foreground">Cancelar es definitivo: no se vuelve atrás. Los pagos programados y morosos se anulan y lo ya cobrado se conserva.</p>
     </div>
   );
 }

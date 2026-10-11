@@ -11,6 +11,7 @@ import { archiveLeavesProductUnsellable, variantRow } from "@/lib/sales/catalog/
 import type { ProductDetailData, VariantWithVersions } from "@/lib/sales/catalog/load";
 import { ActionError } from "@/components/contacts/ui";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Historial } from "@/components/historial/historial";
 import { ContentDialog, fieldInput } from "@/components/content/dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
@@ -19,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { EMPTY_VARIANT_FORM, VariantDialog, type VariantFormValues } from "./variant-dialog";
 import { VariantPriceTab } from "./variant-price-tab";
 
-type VariantTab = "precio";
+type VariantTab = "precio" | "historial";
 
 function formFrom(v: VariantWithVersions): VariantFormValues {
   return {
@@ -268,19 +269,29 @@ export function ProductDetail({
           )}
         </section>
 
+        {/* Historial del producto */}
+        <section aria-label="Historial del producto" className="rounded-lg border border-border p-4">
+          <h3 className="mb-3 text-sm font-semibold">Historial del producto</h3>
+          <Historial entityType="product" entityId={product.id} names={{ users: userNames }} timeZone={timeZone} pageSize={10} />
+        </section>
+
         {/* Detalle de la variante, con pestañas */}
         {selected && (
           <section aria-label={`Detalle de ${selected.name}`} className="rounded-lg border border-border p-4">
             <h3 className="mb-3 text-sm font-semibold">{selected.name}</h3>
-            <Tabs tabs={[{ value: "precio", label: "Precio" }]} value={tab} onChange={setTab} label="Detalle de la variante">
-              <VariantPriceTab
-                key={selected.id}
-                variantId={selected.id}
-                versions={selected.versions}
-                salesByVersion={selected.salesByVersion}
-                userNames={userNames}
-                timeZone={timeZone}
-              />
+            <Tabs tabs={[{ value: "precio", label: "Precio" }, { value: "historial", label: "Historial" }]} value={tab} onChange={setTab} label="Detalle de la variante">
+              {tab === "historial" ? (
+                <Historial key={selected.id} entityType="product_variant" entityId={selected.id} names={{ users: userNames }} timeZone={timeZone} />
+              ) : (
+                <VariantPriceTab
+                  key={selected.id}
+                  variantId={selected.id}
+                  versions={selected.versions}
+                  salesByVersion={selected.salesByVersion}
+                  userNames={userNames}
+                  timeZone={timeZone}
+                />
+              )}
             </Tabs>
           </section>
         )}
