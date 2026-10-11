@@ -4,6 +4,61 @@ Registro de qué se construyó, qué se decidió y por qué. Se actualiza al cer
 cada bloque.
 
 ---
+## Formularios — personalizados, encuestas con NPS y contratos firmados (FO1 a FO4)
+
+**Fecha:** 11 de octubre de 2026
+**Rama:** `feat/formularios`
+**Migraciones:** 00150 a 00158, todas aplicadas y registradas. Aditivas, salvo que la
+00156, la 00157 y la 00158 reescriben `submit_form_response`, que es de este módulo.
+
+### Qué se construyó
+
+Treinta y tres funcionalidades en cuatro bloques:
+
+1. **FO1 · Builder, publicación y envío.** Editor de tres columnas con vista previa, campos
+   con condiciones, versiones inmutables, definición pública por una lista blanca, envío
+   seguro (tope por IP, idempotencia por índice único, Turnstile en el servidor, archivos por
+   su tipo real), respuestas, métricas y embed.
+2. **FO2 · Contacto, atribución y automatizaciones.** Resolución del contacto por teléfono y
+   después email, el toque de atribución, aviso al equipo, link firmado por contacto, tres
+   triggers nuevos con sus variables y las plantillas de un clic.
+3. **FO3 · Encuesta/NPS y contrato.** "Una vez por contacto", panel NPS, texto de contrato
+   versionado con su huella, firma dibujada, metadata legal, PDF firmado y copia por email con
+   reintentos.
+4. **FO4 · Sitio público y atribución completa.** Cookie `ssa_attr` y `localStorage` para no
+   perder de dónde vino la persona, el área `app/(sitio)/`, `<Formulario>`, parámetros y
+   links con prellenado, y todos los datos del anuncio en el toque.
+
+### Decisiones que conviene recordar
+
+- **La huella de un contrato sale del texto guardado y la calcula la base.** Lo que mande el
+  navegador no cuenta. Si la huella guardada no coincide con la recalculada, la firma falla y
+  no queda nada.
+- **Un solo lugar para las claves de atribución** (`lib/attribution/keys.ts`), superconjunto
+  de la de la Agenda, que no se tocó.
+- **Los jobs de contratos no lanzan por un fallo de un proveedor**: reagendan a +5, +15 y +30
+  minutos y después quedan visibles. La firma queda guardada igual.
+- **`pdf-lib@1.17.1` es la única dependencia nueva** (solo servidor, JS puro).
+- **El sitio público es de cada clon**: el export de plantilla deja solo la versión por defecto.
+- **Hubo una migración más que en el plano (00158):** `verify-forms` encontró que "una vez por
+  contacto" no detectaba la segunda respuesta de alguien que se creó con la primera.
+
+### Cómo se verificó
+
+`verify-forms.mjs` (nuevo) corre el envío real contra la base y el Storage reales con Turnstile
+y Resend simulados: RLS por rol, huella y versiones, la RPC y su concurrencia, el PDF leído con
+`unpdf`, los reintentos del email, la regla del primer y último toque y los datos del anuncio.
+Las huellas de `find_or_link_contact`, `create_booking` y `record_contact_touch` siguen
+iguales. Detalle en `docs/PROGRESS-formularios.md`.
+
+### Pendiente de este módulo
+
+La verificación en vivo con las claves reales de Turnstile y Resend (lo carga Wendy), la mejora
+de las variables `first_name`/`last_name` y un hallazgo fuera del módulo: la lista de flujos de
+un evento de la Agenda filtra por una columna que no existe. Todo en
+`docs/PENDIENTE-formularios.md`.
+
+---
 ## Etapa 4 — Agendamiento (Tanda B: la etapa completa)
 
 **Fecha:** 27 de septiembre de 2026

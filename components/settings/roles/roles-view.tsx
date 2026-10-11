@@ -44,6 +44,7 @@ const MODULE_LABELS: Record<PermissionModule, string> = {
   content: "Contenido",
   scheduling: "Agenda",
   calls: "Llamadas",
+  forms: "Formularios",
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuracion",

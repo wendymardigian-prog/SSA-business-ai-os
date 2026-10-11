@@ -8,7 +8,7 @@ import { chunkText, knowledgeEligibility, runCallKnowledgeJob } from "./knowledg
 
 const transcript = [
   { timestamp: "00:00:05", speaker: { display_name: "Ana" }, text: "No me llegan clientes y estoy desesperada, llevo tres meses así." },
-  { timestamp: "00:00:20", speaker: { display_name: "Wendy" }, text: "Contame un poco más de tu situación actual, así te oriento mejor." },
+  { timestamp: "00:00:20", speaker: { display_name: "Carla" }, text: "Contame un poco más de tu situación actual, así te oriento mejor." },
 ];
 const callRow = (over: Record<string, unknown> = {}) => ({
   id: "c1",
@@ -60,7 +60,7 @@ describe("runCallKnowledgeJob", () => {
       replaceDocumentId: null,
       createdBy: "u1",
     });
-    expect(arg.contentMd).toBe("Ana: No me llegan clientes y estoy desesperada, llevo tres meses así.\nWendy: Contame un poco más de tu situación actual, así te oriento mejor.");
+    expect(arg.contentMd).toBe("Ana: No me llegan clientes y estoy desesperada, llevo tres meses así.\nCarla: Contame un poco más de tu situación actual, así te oriento mejor.");
     expect(arg.chunks[0]).toMatch(/^\[00:00:05 – 00:00:20\]\nAna: /);
   });
 

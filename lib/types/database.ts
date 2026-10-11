@@ -56,7 +56,9 @@ export type IntegrationType =
   | "social_network"
   | "publishing_service"
   | "google"
-  | "meta";
+  | "meta"
+  // Formularios (migracion 00154): la card de Cloudflare Turnstile.
+  | "captcha";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
 export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom";
@@ -89,6 +91,110 @@ export interface CallAttendee {
   email: string | null;
   is_external: boolean | null;
 }
+
+/** Formularios (migracion 00150). Escribe solo el servidor. */
+export type FormRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  type: "custom" | "survey" | "contract";
+  status: "draft" | "published" | "paused" | "archived";
+  slug: string;
+  draft_definition: Json;
+  current_version_id: string | null;
+  design: Json;
+  success: Json;
+  contact_config: Json;
+  survey_config: Json | null;
+  contract_config: Json | null;
+  tags_on_submit: string[];
+  notify_enabled: boolean;
+  notify_user_ids: string[];
+  published_at: string | null;
+  archived_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Version publicada de un formulario: inmutable (migracion 00150). */
+export type FormVersionRow = {
+  id: string;
+  workspace_id: string;
+  form_id: string;
+  version_number: number;
+  definition: Json;
+  contract_text: string | null;
+  contract_text_sha256: string | null;
+  published_by: string | null;
+  published_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FormSubmissionStatus = "received" | "no_contact" | "spam";
+
+/** Respuesta de un formulario (migracion 00150). Nunca se borra. */
+export type FormSubmissionRow = {
+  id: string;
+  workspace_id: string;
+  form_id: string;
+  form_version_id: string;
+  idempotency_key: string;
+  status: FormSubmissionStatus;
+  answers: Json;
+  contact_id: string | null;
+  contact_created: boolean;
+  dedupe: Json;
+  score: number | null;
+  nps_category: "promoter" | "passive" | "detractor" | null;
+  once_key: string | null;
+  attribution: Json;
+  meta: Json;
+  upload_prefix: string | null;
+  linked_by: string | null;
+  linked_at: string | null;
+  marked_spam_by: string | null;
+  marked_spam_at: string | null;
+  /** Para Ventas y CX: sin FK todavia. */
+  sale_id: string | null;
+  service_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContractPdfStatus = "pending" | "generated" | "failed";
+export type ContractEmailStatus = "pending" | "sent" | "retrying" | "not_sent";
+
+/** Firma de un contrato (migracion 00157). La evidencia no se puede cambiar. */
+export type ContractSignatureRow = {
+  id: string;
+  workspace_id: string;
+  submission_id: string;
+  form_id: string;
+  form_version_id: string;
+  text_sha256: string;
+  signer_name: string;
+  signer_email: string;
+  contact_id: string | null;
+  signature_path: string | null;
+  signed_at: string;
+  /** Metadata legal (la IP va en claro solo aca). */
+  legal: Json;
+  pdf_path: string | null;
+  pdf_status: ContractPdfStatus;
+  pdf_attempts: number;
+  email_status: ContractEmailStatus;
+  email_attempts: number;
+  email_next_retry_at: string | null;
+  email_sent_at: string | null;
+  email_last_error: string | null;
+  sale_id: string | null;
+  service_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type CallRow = {
   id: string;
@@ -267,7 +373,11 @@ export type AuditEntityType =
   /** Cambiar el publicador por defecto de una cuenta social (Bloque G, G7). */
   | "social_account"
   /** Una llamada de venta (Llamadas, 00145). La configuracion de sus tareas se audita sobre "workspace". */
-  | "call";
+  | "call"
+  /** Formularios (00150): el formulario, una respuesta y la firma de un contrato. */
+  | "form"
+  | "form_submission"
+  | "contract_signature";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -369,7 +479,31 @@ export type AuditAction =
   | "call.regenerated"
   | "call.objection"
   | "call.objection_resolved"
-  | "call.archived";
+  | "call.archived"
+  /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
+  | "form.created"
+  | "form.updated"
+  | "form.published"
+  | "form.paused"
+  | "form.resumed"
+  | "form.archived"
+  | "form.restored"
+  | "form.duplicated"
+  | "form.slug_changed"
+  | "form.contact_config_changed"
+  | "form.flow_created"
+  | "form.flow_toggled"
+  | "form.flow_updated"
+  /** Entity form_submission. */
+  | "submission.linked"
+  | "submission.spam"
+  | "submission.unspam"
+  /** Entity contact: lo escribe la funcion SQL del envio (actor sistema, "Formulario: <nombre>"). */
+  | "contact.created"
+  | "contact.linked"
+  /** Entity contract_signature. */
+  | "contract.email_resent"
+  | "contract.pdf_regenerated";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -484,7 +618,11 @@ export type TriggerType =
   // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda
   // analizada, o se vincula un contacto a una llamada.
   | "call_analyzed"
-  | "call_linked";
+  | "call_linked"
+  // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.
+  | "form_submitted"
+  | "survey_answered"
+  | "contract_signed";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -794,6 +932,45 @@ export interface Database {
           ai_task_models?: Json;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      forms: {
+        Row: FormRow;
+        Insert: Partial<FormRow> & { workspace_id: string; name: string; type: FormRow["type"]; slug: string };
+        Update: Partial<Omit<FormRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
+      form_versions: {
+        Row: FormVersionRow;
+        Insert: Partial<FormVersionRow> & { workspace_id: string; form_id: string; version_number: number; definition: Json };
+        Update: never;
+        Relationships: [];
+      };
+      form_submissions: {
+        Row: FormSubmissionRow;
+        Insert: Partial<FormSubmissionRow> & {
+          workspace_id: string;
+          form_id: string;
+          form_version_id: string;
+          idempotency_key: string;
+          status: FormSubmissionStatus;
+          answers: Json;
+        };
+        Update: Partial<Omit<FormSubmissionRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
+      contract_signatures: {
+        Row: ContractSignatureRow;
+        Insert: Partial<ContractSignatureRow> & {
+          workspace_id: string;
+          submission_id: string;
+          form_id: string;
+          form_version_id: string;
+          text_sha256: string;
+          signer_email: string;
+          legal: Json;
+        };
+        Update: Partial<Omit<ContractSignatureRow, "id" | "workspace_id">>;
         Relationships: [];
       };
       calls: {
@@ -1308,6 +1485,8 @@ export interface Database {
           /** El evento de agenda al que pertenece este flujo (Etapa 4). */
           event_type_id?: string | null;
           template_key?: string | null;
+          /** El formulario desde cuya pestaña Automatizaciones se creó (Formularios, 00155). */
+          form_id?: string | null;
           id: string;
           workspace_id: string;
           name: string;
@@ -1322,6 +1501,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          form_id?: string | null;
           id?: string;
           workspace_id: string;
           name: string;
@@ -4581,6 +4761,54 @@ export interface Database {
           full_name: string | null;
           meta_name: string | null;
         }[];
+      };
+      get_public_form: {
+        Args: { p_slug: string };
+        Returns: Json;
+      };
+      publish_form_version: {
+        Args: { p_form_id: string; p_actor: string | null };
+        Returns: { changed: boolean; version_id: string; version_number: number };
+      };
+      form_metrics_daily: {
+        Args: { p_form_id: string; p_from: string; p_to: string };
+        Returns: {
+          day: string;
+          views: number;
+          starts: number;
+          submissions: number;
+          spam: number;
+          rejected: number;
+        }[];
+      };
+      submit_form_response: {
+        Args: {
+          p_form_id: string;
+          p_version_id: string;
+          p_idempotency_key: string;
+          p_answers: Json;
+          p_attribution: Json;
+          p_meta: Json;
+          p_contact_hint?: Json;
+          p_extra?: Json;
+        };
+        Returns: {
+          ok: boolean;
+          duplicate: boolean;
+          submission_id: string;
+          status: FormSubmissionStatus;
+          contact_id: string | null;
+          contact_created: boolean;
+          matched_by?: string | null;
+          conflict_contact_id?: string | null;
+          /** La firma, si el formulario es un contrato (00157). */
+          signature_id?: string | null;
+          error?: string;
+        };
+      };
+      record_contract_signature: {
+        Args: { p_submission_id: string; p_signature_path: string | null; p_legal: Json; p_signer_name?: string; p_signer_email?: string | null };
+        Returns: string;
       };
       record_contact_touch: {
         Args: {

@@ -2,9 +2,10 @@
  * Encabezados de seguridad por ruta (Etapa 4, §15).
  *
  * Hasta la Etapa 4 la app no mandaba ninguno. Ahora:
- *   - /calendario/* y /embed/*: se pueden embeber en cualquier sitio
- *     (`frame-ancestors *`). Es la pagina publica de reserva y el script del
- *     embed, que viven adentro de un iframe en la web de la persona.
+ *   - /calendario/*, /embed/* y /f/*: se pueden embeber en cualquier sitio
+ *     (`frame-ancestors *`). Es la pagina publica de reserva, el script del
+ *     embed y los formularios publicos (/f/<slug>), que viven adentro de un
+ *     iframe en la web de la persona.
  *   - el resto: no se embebe en ningun lado (`frame-ancestors 'none'` y
  *     `X-Frame-Options: DENY`), que es lo que cierra el clickjacking en las
  *     pantallas internas.
@@ -17,7 +18,7 @@ export interface SecurityHeader {
   value: string;
 }
 
-export const EMBEDDABLE_PREFIXES = ["/calendario", "/embed"] as const;
+export const EMBEDDABLE_PREFIXES = ["/calendario", "/embed", "/f"] as const;
 
 export function isEmbeddablePath(path: string): boolean {
   return EMBEDDABLE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
@@ -43,6 +44,8 @@ export function nextHeadersConfig(): Array<{ source: string; headers: SecurityHe
   return [
     { source: "/calendario/:path*", headers: securityHeadersFor("/calendario/x") },
     { source: "/embed/:path*", headers: securityHeadersFor("/embed/x") },
-    { source: "/((?!calendario|embed).*)", headers: securityHeadersFor("/dashboard") },
+    { source: "/f/:path*", headers: securityHeadersFor("/f/x") },
+    // `f/` con la barra: excluye solo /f/..., no a /favicon.ico ni a /formulario.
+    { source: "/((?!calendario|embed|f/).*)", headers: securityHeadersFor("/dashboard") },
   ];
 }

@@ -34,6 +34,7 @@ export const PERMISSION_MODULES = [
   "content",
   "scheduling",
   "calls",
+  "forms",
   "integrations",
   "team",
   "settings",
@@ -115,6 +116,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard de Llamadas, según el alcance." },
   { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." },
   { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." },
+
+  // ── Formularios (personalizado, encuesta/NPS y contrato) ────────────────
+  { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." },
+  { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." },
 
   // ── Configuracion ───────────────────────────────────────────────────────
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas y guardar claves." },
@@ -212,6 +217,9 @@ const MEMBER_KEYS = [
   // Llamadas (decision 152): un Member ve las llamadas que grabo y las de los
   // contactos que puede ver. NO edita ni configura.
   "calls.view",
+  // Formularios (alcance v7.1 §4.5): ve las respuestas de los contactos que ve
+  // (lo aplica la RLS). NO crea ni publica formularios.
+  "forms.view",
 ] as const;
 
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {

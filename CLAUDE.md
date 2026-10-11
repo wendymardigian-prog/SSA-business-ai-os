@@ -261,7 +261,16 @@ del refresh token), `00146` (el cron SQL `fathom-sync`), `00147` (la politica
 ADICIONAL `audit_log_select_calls`), `00148` (CHECK de `agent_runs.source` y
 `ai_task_prompt_versions.task`, `set_ai_background_task_settings`) y `00149`
 (CHECK de `triggers.type` y `content_ideas.source`, `content_ideas.call_id`).
-**La proxima migracion disponible es la `00150`.**
+**Despues de Formularios, la proxima libre es la `00159`** (ver mas abajo).
+
+**Formularios (11/10/2026).** `00150` a `00158` estan **aplicadas** y registradas:
+`00150` (tablas, `can_view_forms`, `can_see_form_submission`, RLS), `00151` (indice
+de metricas), `00152` (`get_public_form`, `publish_form_version`,
+`form_metrics_daily`, `submit_form_response` v1), `00153` (buckets privados),
+`00154` (`captcha` en integraciones), `00155` (`flows.form_id` y tres tipos de
+trigger), `00156` (`find_contact_by_phone_or_email` y `submit_form_response` v2),
+`00157` (`contract_signatures`, `record_contract_signature` y la v3) y `00158`
+(corrige "una vez por contacto"). **La proxima migracion disponible es la `00159`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -819,6 +828,70 @@ Quince puntos de una revision de punta a punta. Plan en
   esta en el selector.
 - **Ficha del contacto**: los datos se editan en el lugar (`InlineField`); el
   orden es Notas, datos por seccion, Seguimiento, Tags, Acciones rapidas.
+
+# Formularios (construido)
+
+Formularios personalizados, encuestas con NPS y contratos firmados: se arman con un
+editor, se publican con un link, se embeben en cualquier web o se ponen en una pagina del
+propio proyecto. Cada respuesta crea o vincula el contacto correcto con su atribucion
+completa y puede disparar automatizaciones. El resumen del modulo esta en
+[docs/formularios.md](docs/formularios.md); avance y decisiones en
+`docs/PROGRESS-formularios.md` y `docs/PENDIENTE-formularios.md`.
+
+## Lo que no se puede romper
+
+- **La definicion publica sale SOLO por `get_public_form`** (lista blanca en la base). Nunca
+  un `select` sobre `forms` con el cliente de servicio para armar lo que ve el publico. Nunca
+  salen: el valor de un oculto `fixed`, la configuracion de exito, el mapeo ni los avisos.
+- **La huella de un contrato es sobre el texto GUARDADO** (`form_versions.contract_text`), la
+  calcula la base y la RPC la vuelve a verificar al firmar. Nada de lo que manda el navegador
+  entra. Publicar una version nueva no toca las firmas de la anterior. La evidencia de una
+  firma no se puede cambiar (trigger, tambien para el service role).
+- **La idempotencia es un indice unico** `(form_id, idempotency_key)`, no una comprobacion
+  previa. "Una vez por contacto" es `(form_id, once_key)` y la clave guardada es `contact:<id>`.
+- **Turnstile se verifica en el servidor**, con la secret key en Vault. Si Cloudflare no
+  responde: 503; nunca se acepta sin verificar. Los tests no llaman a Cloudflare.
+- **Las claves de atribucion estan en UN solo lugar: `lib/attribution/keys.ts`.** Es un
+  superconjunto de la lista de la Agenda (que no se toca). Sumar una clave es sumarla ahi.
+- **`service_id` y `sale_id` solo viajan dentro de un link firmado valido** (`signed-link.ts`);
+  uno suelto en la URL o en el cuerpo se ignora.
+- **Los eventos de automatizacion llevan solo escalares y nunca `booking_id`** (el cron trata
+  como "reserva" cualquier payload con `booking_id` y se saltearia "no contactar").
+- **El toque, el aviso y el correo van DESPUES del commit y en `try/catch`**: nada de eso
+  tumba un envio. Los jobs de contratos no lanzan por un fallo de un proveedor: reagendan a
+  +5, +15 y +30 minutos con `scheduleJob` (la cola reintentaria a los 10 s encima).
+- **`find_or_link_contact`, `create_booking` y `record_contact_touch` no se modificaron.**
+  `verify-forms.mjs` compara su `md5(pg_get_functiondef(...))` con el del punto de partida.
+- **En un archivo `"use server"` todo lo exportado es una funcion asincronica** (los tipos
+  van en otro archivo). Hay un test que lo atrapa.
+- **`flows` no tiene `deleted_at`**: una consulta que lo filtre falla y la pantalla queda
+  vacia o da 404.
+
+## Scripts de verificacion
+
+```
+node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Turnstile y Resend simulados), el PDF y la atribucion
+```
+
+Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.
+
+# Sitio publico
+
+Las paginas publicas del propio proyecto viven en `app/(sitio)/` y se arman **a pedido con
+Claude Code** (no hay editor visual). Guia completa en [docs/sitio.md](docs/sitio.md).
+
+- La home (`app/(sitio)/page.tsx`) **por defecto redirige a `/login`**. Cada clon la reemplaza
+  por la suya.
+- Las paginas son **estaticas o con cache: no leen la sesion**. No pueden llamarse como una ruta
+  reservada: `dashboard`, `login`, `auth`, `invite`, `api`, `calendario`, `f`, `embed`.
+- Cada pagina nueva se suma a `lib/site/pages.ts` (sitemap y `robots`). `robots.txt` **sigue
+  bloqueando todo** salvo esas paginas.
+- Un formulario se pone con `<Formulario slug="…" />`: muestra siempre la version publicada
+  (cache por etiqueta `form:<slug>`; publicar, pausar, archivar o cambiar el link la invalidan).
+- **Son de cada clon**: `scripts/export-template.mjs` no copia `app/(sitio)/` ni `public/sitio/`;
+  copia la version por defecto de `scripts/template-files/sitio/`.
+- La atribucion viaja entre paginas: cookie `ssa_attr` en el sitio y `localStorage` en una web
+  externa con el mismo `embed.js` (modo `data-agenda-track`).
 
 # Seguridad
 

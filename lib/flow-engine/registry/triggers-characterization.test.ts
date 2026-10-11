@@ -37,7 +37,19 @@ describe("triggers registrados", () => {
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
     }
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2);
+    // + los tres de Formularios (ver el test de abajo).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3);
+  });
+
+  it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {
+    const byType = new Map(listTriggers().map((t) => [t.type, t]));
+    for (const type of ["form_submitted", "survey_answered", "contract_signed"]) {
+      const t = byType.get(type)!;
+      expect(t, type).toBeDefined();
+      expect(t.scope).toBe("event");
+      expect(t.priority).toBe(45);
+      expect(t.eventTypes).toEqual([type]);
+    }
   });
 
   it("el orden de prioridad de los de mensaje sigue igual", () => {

@@ -57,3 +57,39 @@ describe("generateEmbedCode (F40): 3 modos × HTML y React", () => {
     expect(generateEmbedCode("popup", { ...options, buttonText: undefined }, baseUrl).html).toContain(">Agendar una llamada</button>");
   });
 });
+
+import { formFallback, formPageSnippet, generateFormEmbedCode } from "./code";
+
+describe("código del embed de un formulario (F10, F32)", () => {
+  const base = "https://app.ejemplo.com";
+
+  it("inline: el calLink es f/<slug> y usa el mismo embed.js", () => {
+    const code = generateFormEmbedCode("inline", { slug: "aplicacion" }, base);
+    expect(code.html).toContain('"calLink":"f/aplicacion"');
+    expect(code.html).toContain("https://app.ejemplo.com/embed/embed.js");
+    expect(code.html).toContain('id="agenda-f-aplicacion"');
+    expect(code.react).toContain("f/aplicacion");
+  });
+
+  it("botón flotante con texto propio", () => {
+    const code = generateFormEmbedCode("floating", { slug: "aplicacion", buttonText: "Aplicar" }, base);
+    expect(code.html).toContain('"buttonText":"Aplicar"');
+    expect(code.html).toContain('"calLink":"f/aplicacion"');
+  });
+
+  it("el respaldo trae el link para abrirlo aparte", () => {
+    expect(formFallback("aplicacion", `${base}/`).cta).toEqual({ label: "Abrir el formulario", href: "https://app.ejemplo.com/f/aplicacion" });
+  });
+
+  it("el código de una página del sitio es exactamente <Formulario slug=\"apl\" />", () => {
+    expect(formPageSnippet("apl")).toBe('<Formulario slug="apl" />');
+  });
+});
+
+import { trackingSnippet } from "./code";
+
+describe("snippet de seguimiento en todo el sitio (F29, F32)", () => {
+  it("es el embed.js con data-agenda-track y async, sin la barra final de la base", () => {
+    expect(trackingSnippet("https://app.ejemplo.com/")).toBe('<script src="https://app.ejemplo.com/embed/embed.js" data-agenda-track async></script>');
+  });
+});

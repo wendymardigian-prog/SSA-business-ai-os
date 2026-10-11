@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { bootstrap, EmbedRuntime, FLOATING_BUTTON_ID, MODAL_ID, type EmbedDocument, type EmbedElement, type EmbedWindow, type AgendaGlobal } from "./embed-source";
+import { bootstrap, trackEmbedVisit, trackEnvOf, EmbedRuntime, FLOATING_BUTTON_ID, MODAL_ID, type EmbedDocument, type EmbedElement, type EmbedWindow, type AgendaGlobal } from "./embed-source";
+import { decodeAttr } from "@/lib/forms/embed-attr";
 import { embedMessage } from "./events";
 
 /** DOM de juguete suficiente para el runtime. */
@@ -60,6 +61,22 @@ class FakeEl implements EmbedElement {
   }
 }
 
+/** Un `localStorage` de juguete (o uno que lanza, para el navegador que lo bloquea). */
+function memoryStorage(blocked = false) {
+  const data = new Map<string, string>();
+  return {
+    data,
+    getItem: (k: string) => {
+      if (blocked) throw new Error("bloqueado");
+      return data.get(k) ?? null;
+    },
+    setItem: (k: string, v: string) => {
+      if (blocked) throw new Error("bloqueado");
+      data.set(k, v);
+    },
+  };
+}
+
 function makeEnv(search = "?utm_source=web") {
   const body = new FakeEl("body");
   const head = new FakeEl("head");
@@ -67,6 +84,7 @@ function makeEnv(search = "?utm_source=web") {
   const docListeners: Record<string, ((ev: any) => void)[]> = {};
   const winListeners: Record<string, ((ev: any) => void)[]> = {};
   const document: EmbedDocument = {
+    cookie: "",
     body,
     head,
     createElement: (tag) => new FakeEl(tag),
@@ -221,5 +239,140 @@ describe("runtime del embed (F39, F41, F58)", () => {
     rt.processQueue([["noExiste", {}], ["inline", { elementOrSelector: "#nada", calLink: "ana/llamada" }]]);
     expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
+  });
+});
+
+describe("embed de un formulario (F10)", () => {
+  it("carga /f/<slug>, pasa los parámetros de la página y la atribución, y NO los sensibles", () => {
+    const env = makeEnv("?utm_source=facebook&ad_id=123&email=ana%40x.com&token=secreto&msclkid=m1");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.processQueue([
+      ["init", { origin: ORIGIN }],
+      ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion", config: { prefill: { plan: "pro" } } }],
+    ]);
+    const u = new URL(container.find((e) => e.tag === "iframe")!.src!);
+    expect(u.pathname).toBe("/f/aplicacion");
+    const p = u.searchParams;
+    expect(p.get("embed")).toBe("1");
+    expect(p.get("utm_source")).toBe("facebook");
+    expect(p.get("ad_id")).toBe("123");
+    expect(p.get("msclkid")).toBe("m1");
+    expect(p.get("email")).toBe("ana@x.com");
+    expect(p.get("plan")).toBe("pro");
+    expect(p.has("token")).toBe(false);
+    expect(p.get("referrer")).toContain("https://mi-web.com/landing");
+  });
+
+  it("DADO un sitio con cookie _fbp, el iframe recibe attr con fbp", () => {
+    const env = makeEnv("");
+    env.document.cookie = "otra=1; _fbp=fb.1.1.2; _ga=GA1.1.111.222";
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr");
+    expect(attr).toBeTruthy();
+    expect(decodeAttr(attr)).toMatchObject({ fbp: "fb.1.1.2", ga_client_id: "111.222" });
+  });
+
+  it("un sitio sin cookies de anuncios no manda attr", () => {
+    const env = makeEnv("");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    expect(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.has("attr")).toBe(false);
+  });
+
+  it("reintentar un formulario que no cargó vuelve a crear el iframe de /f/<slug>", () => {
+    vi.useFakeTimers();
+    const env = makeEnv("");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.init({ origin: ORIGIN });
+    rt.inline({ elementOrSelector: "#f1", calLink: "f/aplicacion" });
+    vi.advanceTimersByTime(10_000);
+    container.find((e) => e.tag === "button")!.listeners.click[0]({});
+    const again = container.find((e) => e.tag === "iframe");
+    expect(new URL(again!.src!).pathname).toBe("/f/aplicacion");
+  });
+});
+
+describe("seguimiento de la atribución en la web que contiene el script (F29)", () => {
+  it("al cargarse guarda la visita con UTM en el localStorage de esa web, con la clave ssa_attr", () => {
+    const env = makeEnv("?utm_source=meta&utm_campaign=octubre");
+    const storage = memoryStorage();
+    env.window.localStorage = storage;
+    trackEmbedVisit(env);
+    expect(JSON.parse(storage.data.get("ssa_attr")!)).toMatchObject({ v: 1, first: { utm_campaign: "octubre" }, last: { utm_campaign: "octubre" } });
+  });
+
+  it("modo 'solo seguimiento': bootstrap sin window.Agenda igual guarda la visita y no rompe", () => {
+    const env = makeEnv("?gclid=g1");
+    const storage = memoryStorage();
+    env.window.localStorage = storage;
+    expect(bootstrap(env)).toBeNull();
+    expect(JSON.parse(storage.data.get("ssa_attr")!).last).toMatchObject({ gclid: "g1" });
+  });
+
+  it("DADO un document con ?utm_source=meta y un localStorage que tira error, NO lanza", () => {
+    const env = makeEnv("?utm_source=meta");
+    env.window.localStorage = memoryStorage(true);
+    expect(() => trackEmbedVisit(env)).not.toThrow();
+    expect(() => bootstrap(env)).not.toThrow();
+  });
+
+  it("sin localStorage (undefined) tampoco lanza", () => {
+    const env = makeEnv("?utm_source=meta");
+    expect(env.window.localStorage).toBeUndefined();
+    expect(() => trackEmbedVisit(env)).not.toThrow();
+  });
+
+  it("una visita sin UTM no escribe nada", () => {
+    const env = makeEnv("");
+    const storage = memoryStorage();
+    env.window.localStorage = storage;
+    trackEmbedVisit(env);
+    expect(storage.data.size).toBe(0);
+  });
+
+  it("cuando después se abre un embed de formulario, el iframe recibe la atribución GUARDADA aunque la página no traiga UTM", () => {
+    const first = makeEnv("?utm_source=meta&utm_campaign=octubre");
+    const storage = memoryStorage();
+    first.window.localStorage = storage;
+    trackEmbedVisit(first);
+
+    const later = makeEnv("");
+    later.window.localStorage = storage;
+    const container = later.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(later, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = decodeAttr(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr"));
+    expect(attr).toMatchObject({ utm_source: "meta", utm_campaign: "octubre", first_visit: { utm_campaign: "octubre" } });
+  });
+
+  it("con UTM nuevos en la URL, esos mandan y la primera visita viaja aparte", () => {
+    const env = makeEnv("?gclid=g2");
+    const storage = memoryStorage();
+    storage.data.set("ssa_attr", JSON.stringify({ v: 1, first: { utm_campaign: "octubre", ts: Date.now() }, last: { utm_campaign: "octubre", ts: Date.now() } }));
+    env.window.localStorage = storage;
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = decodeAttr(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr"));
+    expect(attr).toMatchObject({ gclid: "g2", first_visit: { utm_campaign: "octubre" } });
+    expect(attr).not.toHaveProperty("utm_campaign");
+  });
+
+  it("los embeds de AGENDA no cambian su URL por el seguimiento", () => {
+    const env = makeEnv("?utm_source=meta");
+    env.window.localStorage = memoryStorage();
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "a1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#a1", calLink: "ana/llamada" }]]);
+    const u = new URL(container.find((e) => e.tag === "iframe")!.src!);
+    expect(u.pathname).toBe("/calendario/ana/llamada");
+    expect(u.searchParams.has("attr")).toBe(false);
+    expect(u.searchParams.get("utm_source")).toBe("meta");
+  });
+
+  it("trackEnvOf toma el hostname del href si la ubicación no lo trae", () => {
+    const env = makeEnv("");
+    expect(trackEnvOf(env).hostname).toBe("mi-web.com");
   });
 });

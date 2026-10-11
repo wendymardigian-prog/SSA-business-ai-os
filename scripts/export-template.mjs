@@ -25,6 +25,7 @@ import {
   statSync,
   copyFileSync,
   readFileSync,
+  writeFileSync,
 } from "node:fs";
 import { join, dirname, resolve, relative, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +52,10 @@ function isExcluded(relPath) {
   if (relPath === ".claude/worktrees" || relPath.startsWith(".claude/worktrees/")) return true;
   if (relPath === "supabase/.temp" || relPath.startsWith("supabase/.temp/")) return true;
   if (relPath === ".mcp.json") return true;
+  // El sitio publico de cada clon es SUYO (Formularios, F30): ni sus paginas ni sus imagenes
+  // viajan. En su lugar se copia la version por defecto (ver `copySiteDefaults`).
+  if (relPath === "app/(sitio)" || relPath.startsWith("app/(sitio)/")) return true;
+  if (relPath === "public/sitio" || relPath.startsWith("public/sitio/")) return true;
   // Permisos locales de Claude Code: acumulan rutas de ESTA maquina (de quien
   // corre el export) en los comandos ya aprobados. Nunca es del repo: en
   // git, cada maquina lo tiene en su gitignore global, no en el del proyecto.
@@ -85,6 +90,24 @@ function copyTree(srcDir, destDir, relDir) {
       filesCopied += 1;
     }
   }
+}
+
+/**
+ * La version por defecto del sitio: `layout.tsx` y `page.tsx` (que redirige a /login) de
+ * `scripts/template-files/sitio/`, en `app/(sitio)/` de la copia, y la carpeta de imagenes
+ * vacia. Asi el clon arranca con una home que existe y deja de pisarse el sitio de nadie.
+ */
+function copySiteDefaults() {
+  const from = join(REPO_ROOT, "scripts/template-files/sitio");
+  const to = join(DEST, "app/(sitio)");
+  mkdirSync(to, { recursive: true });
+  for (const file of ["layout.tsx", "page.tsx"]) {
+    copyFileSync(join(from, file), join(to, file));
+    filesCopied += 1;
+  }
+  mkdirSync(join(DEST, "public/sitio"), { recursive: true });
+  writeFileSync(join(DEST, "public/sitio/.gitkeep"), "");
+  filesCopied += 1;
 }
 
 function run(cmd, args, cwd) {
@@ -153,6 +176,7 @@ function main() {
 
   console.log(`Exportando ${REPO_ROOT} -> ${DEST}`);
   copyTree(REPO_ROOT, DEST, "");
+  copySiteDefaults();
   console.log(`Copiados ${filesCopied} archivos.`);
 
   try {

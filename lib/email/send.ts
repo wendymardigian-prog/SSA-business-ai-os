@@ -42,6 +42,8 @@ export interface SendEmailParams {
   contactId?: string | null;
   /** Quien lo disparo. Null/omitido = el sistema. */
   createdBy?: string | null;
+  /** Adjuntos en base64 (la copia firmada de un contrato). Omitido = sin adjuntos, como siempre. */
+  attachments?: Array<{ filename: string; content: string }>;
   /** Inyeccion para tests. En produccion no se pasa. */
   deps?: {
     supabase?: SupabaseClient;
@@ -162,7 +164,13 @@ export async function sendTransactionalEmail(
 
   const result = await sendViaResend(
     apiKey,
-    { from, to: params.to, subject: params.subject, html: params.html },
+    {
+      from,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      ...(params.attachments && params.attachments.length > 0 ? { attachments: params.attachments } : {}),
+    },
     params.deps?.fetchImpl,
   );
 

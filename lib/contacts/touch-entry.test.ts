@@ -111,3 +111,55 @@ describe("escribir los toques (F87)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+import { formTouch } from "./touch-entry";
+
+describe("formTouch (F17, F33)", () => {
+  const base = { submissionId: "sub-1", formId: "form-1", formName: "Aplicación al programa" };
+
+  it("utm_source=facebook&utm_campaign=octubre&ad_id=123: fuente, medio form, campaña, anuncio, origen y clave", () => {
+    const touch = formTouch({ ...base, attribution: { utm_source: "facebook", utm_campaign: "octubre", ad_id: "123" } });
+    expect(touch).toMatchObject({ source: "facebook", medium: "form", campaign: "octubre", adId: "123", origin: "form", dedupeKey: "form:sub-1" });
+    expect(touch).not.toHaveProperty("occurredAt");
+  });
+
+  it("sin UTM: fuente web y el nombre del formulario como contenido", () => {
+    const touch = formTouch({ ...base, attribution: {} });
+    expect(touch.source).toBe("web");
+    expect(touch.content).toBe("Aplicación al programa");
+    expect(touch.medium).toBe("form");
+  });
+
+  it("si vino utm_content, gana sobre el nombre del formulario", () => {
+    expect(formTouch({ ...base, attribution: { utm_content: "video-1" } }).content).toBe("video-1");
+  });
+
+  it("el utm_medium original queda en raw.utm; el medio del toque sigue siendo form", () => {
+    const touch = formTouch({ ...base, attribution: { utm_source: "meta", utm_medium: "cpc" } });
+    expect(touch.medium).toBe("form");
+    expect((touch.raw as { utm: Record<string, string> }).utm).toEqual({ utm_source: "meta", utm_medium: "cpc" });
+    expect(touch.raw).toMatchObject({ source_type: "form", source_id: "form-1" });
+  });
+
+  it("msclkid=m1&fbclid=f1: fbclid va a su columna y msclkid a raw", () => {
+    const touch = formTouch({ ...base, attribution: { msclkid: "m1", fbclid: "f1" } });
+    expect(touch.fbclid).toBe("f1");
+    expect((touch.raw as Record<string, string>).msclkid).toBe("m1");
+  });
+
+  it("ids de clic con columna propia y datos de la visita", () => {
+    const touch = formTouch({
+      ...base,
+      attribution: { gclid: "g", ttclid: "t", li_fat_id: "l", referrer_url: "https://r.test/", landing_page: "https://s.test/p", fbp: "fb.1.2.3", fbc: "fb.1.4.5", page_url: "https://s.test/f" },
+    });
+    expect(touch).toMatchObject({ gclid: "g", ttclid: "t", liFatId: "l", referrerUrl: "https://r.test/", landingPage: "https://s.test/p" });
+    expect(touch.raw).toMatchObject({ fbp: "fb.1.2.3", fbc: "fb.1.4.5", page_url: "https://s.test/f" });
+  });
+
+  it("ignora valores vacíos y los que no son texto", () => {
+    const touch = formTouch({ ...base, attribution: { utm_source: "", utm_campaign: 5, fbclid: "  " } });
+    expect(touch.source).toBe("web");
+    expect(touch.campaign).toBeNull();
+    expect(touch.fbclid).toBeNull();
+  });
+});

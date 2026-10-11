@@ -29,7 +29,7 @@ export interface CanvasEdge {
 }
 
 export type LinearStep =
-  | { kind: "email"; to: string; subject: string; body: string }
+  | { kind: "email"; to: string; subject: string; body: string; /** Solo con `to: "fixed"`: la dirección. */ fixedEmail?: string }
   | { kind: "whatsapp"; text: string }
   | { kind: "delay"; duration: number; unit: string }
   | { kind: "tag"; action: string; tagName: string }
@@ -57,6 +57,8 @@ function toStep(node: CanvasNode): LinearStep {
         to: String(data.to ?? "contact"),
         subject: String(data.subject ?? ""),
         body: String(data.body ?? ""),
+        // Antes se perdía al guardar: un email a una dirección fija volvía a "contact" sin la dirección.
+        ...(data.to === "fixed" && typeof data.fixedEmail === "string" ? { fixedEmail: data.fixedEmail } : {}),
       };
     case "sendMessage": {
       const messages = Array.isArray(data.messages) ? (data.messages as Array<{ text?: string }>) : [];
@@ -164,7 +166,10 @@ export function linearToFlow(linear: LinearFlow): { nodes: CanvasNode[]; edges: 
 function nodeOf(step: LinearStep): { type: string; data: Record<string, unknown> } {
   switch (step.kind) {
     case "email":
-      return { type: "action", data: { actionType: "send_email", to: step.to, subject: step.subject, body: step.body } };
+      return {
+        type: "action",
+        data: { actionType: "send_email", to: step.to, subject: step.subject, body: step.body, ...(step.to === "fixed" && step.fixedEmail !== undefined ? { fixedEmail: step.fixedEmail } : {}) },
+      };
     case "whatsapp":
       return { type: "sendMessage", data: { messages: [{ text: step.text }] } };
     case "delay":

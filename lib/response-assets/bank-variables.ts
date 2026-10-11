@@ -18,6 +18,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { interpolateTemplate } from "@/lib/templates/interpolate";
+import { appUrl } from "@/lib/app-url";
+import { formLinkSlugs, hasFormLinkVariables, linkIdsFromVariables, replaceFormLinks } from "@/lib/forms/link-variables";
 
 type Db = SupabaseClient<Database>;
 
@@ -30,15 +32,73 @@ export function hasBankVariables(text: string): boolean {
 
 export async function resolveBankVariables(
   supabase: Db,
-  context: { workspaceId: string; contactId: string },
+  context: {
+    workspaceId: string;
+    contactId: string;
+    /** Las variables del flujo: de ahi salen `service.id` y `sale.id` para el link firmado. Opcional. */
+    variables?: Record<string, unknown>;
+  },
   texts: string[],
 ): Promise<string[]> {
-  if (!texts.some(hasBankVariables)) return texts;
+  const needsBank = texts.some(hasBankVariables);
+  const needsFormLink = texts.some(hasFormLinkVariables);
+  if (!needsBank && !needsFormLink) return texts;
 
-  const [{ data: contact }, { data: workspace }] = await Promise.all([
-    supabase.from("contacts").select("display_name, email, phone").eq("id", context.contactId).maybeSingle(),
-    supabase.from("workspaces").select("name").eq("id", context.workspaceId).maybeSingle(),
-  ]);
+  let resolved = texts;
+  if (needsBank) {
+    const [{ data: contact }, { data: workspace }] = await Promise.all([
+      supabase.from("contacts").select("display_name, email, phone").eq("id", context.contactId).maybeSingle(),
+      supabase.from("workspaces").select("name").eq("id", context.workspaceId).maybeSingle(),
+    ]);
+    resolved = resolved.map((text) => interpolateTemplate(text, { contact, workspace }));
+  }
 
-  return texts.map((text) => interpolateTemplate(text, { contact, workspace }));
+  // Segundo pase, solo si el texto trae `{{form_link.`: el link firmado para ESTE contacto.
+  if (needsFormLink) resolved = await resolveFormLinkVariables(supabase, context, resolved);
+  return resolved;
+}
+
+/**
+ * `{{form_link.<slug_con_guion_bajo>}}` → `<base>/f/<slug>?c=<token>`, firmado para
+ * el contacto del flujo (con `service.id` y `sale.id` si el flujo los trae). Un
+ * formulario que no existe o no esta publicado deja el token tal cual. Un fallo al
+ * firmar tambien: el mensaje sale igual, nunca se cae por esto.
+ */
+export async function resolveFormLinkVariables(
+  supabase: Db,
+  context: { workspaceId: string; contactId: string; variables?: Record<string, unknown> },
+  texts: string[],
+): Promise<string[]> {
+  const slugs = formLinkSlugs(texts);
+  if (slugs.length === 0) return texts;
+
+  const { data: forms } = await supabase
+    .from("forms")
+    .select("id, slug")
+    .eq("workspace_id", context.workspaceId)
+    .eq("status", "published")
+    .in("slug", slugs);
+  if (!forms || forms.length === 0) return texts;
+
+  const { serviceId, saleId } = linkIdsFromVariables(context.variables);
+  const links: Record<string, string> = {};
+  try {
+    // Import dinamico: firmar pide el Vault, y solo hace falta cuando hay un token.
+    const { signFormLink } = await import("@/lib/forms/signed-link");
+    for (const form of forms) {
+      links[form.slug.toLowerCase()] = await signFormLink(supabase, {
+        workspaceId: context.workspaceId,
+        formId: form.id,
+        slug: form.slug,
+        contactId: context.contactId,
+        serviceId,
+        saleId,
+        baseUrl: appUrl(),
+      });
+    }
+  } catch (error) {
+    console.error(`[forms] no pude firmar el link del formulario: ${error instanceof Error ? error.message : "error"}`);
+    return texts;
+  }
+  return texts.map((text) => replaceFormLinks(text, links));
 }

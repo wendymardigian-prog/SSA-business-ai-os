@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
 import { BASE_CALL_TYPES } from "@/lib/calls/classification";
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
+import { FormTriggerPanel } from "./FormTriggerPanel";
 
 interface Keyword {
   value: string;
@@ -63,6 +64,10 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   // Llamadas: solo se dispara si la llamada tiene contacto.
   { value: "call_analyzed", label: "Se analizo una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)" },
   { value: "call_linked", label: "Se vinculo una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano" },
+  // Formularios: solo se dispara si la respuesta tiene contacto.
+  { value: "form_submitted", label: "Se envio un formulario", description: "Cuando alguien envia un formulario personalizado" },
+  { value: "survey_answered", label: "Se respondio una encuesta", description: "Cuando alguien responde una encuesta, con su puntaje" },
+  { value: "contract_signed", label: "Se firmo un contrato", description: "Cuando alguien firma un contrato" },
 ];
 
 /** Los nueve de agenda, para mostrar sus filtros. */
@@ -80,6 +85,9 @@ const BOOKING_TRIGGERS = [
 
 /** Los dos de Llamadas, para mostrar sus filtros. */
 const CALL_TRIGGERS = ["call_analyzed", "call_linked"];
+
+/** Los tres de Formularios, para mostrar sus filtros. */
+const FORM_TRIGGERS = ["form_submitted", "survey_answered", "contract_signed"];
 
 const QUALIFICATIONS = [
   { value: "calificado", label: "Calificado" },
@@ -560,6 +568,9 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
           </p>
         </div>
       )}
+
+      {/* Formularios (F19): formularios, puntaje y condiciones sobre las respuestas */}
+      {FORM_TRIGGERS.includes(triggerType) && <FormTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
 
       {/* F5: ventana de inactividad */}
       {triggerType === "inactivity" && (

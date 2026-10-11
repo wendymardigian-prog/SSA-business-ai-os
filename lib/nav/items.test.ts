@@ -137,6 +137,29 @@ describe("Llamadas en el menu", () => {
   });
 });
 
+describe("Formularios en el menu", () => {
+  const formularios = NAV_ITEMS.find((i) => i.name === "Formularios");
+
+  it("va en Adquisicion, con el permiso forms.view y sin ser solo de admins", () => {
+    expect(formularios).toMatchObject({
+      href: "/dashboard/formularios",
+      icon: "ClipboardList",
+      group: "adquisicion",
+      adminOnly: false,
+      permissions: ["forms.view"],
+    });
+  });
+
+  it("aparece con forms.view y a nadie mas; un admin siempre lo ve", () => {
+    const names = (isAdmin: boolean, keys: string[]) =>
+      visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: keys }).map((i) => i.name);
+    expect(names(false, ["forms.view"])).toContain("Formularios");
+    expect(names(false, ["forms.manage"])).not.toContain("Formularios");
+    expect(names(false, [])).not.toContain("Formularios");
+    expect(names(true, [])).toContain("Formularios");
+  });
+});
+
 describe("Social en el menu (F78)", () => {
   const social = NAV_ITEMS.find((i) => i.name === "Social");
   const names = (isAdmin: boolean, keys: string[]) =>

@@ -143,6 +143,22 @@ describe("los tipos que no son de mensaje (arreglo colateral de la Etapa 4)", ()
     expect(rows[0].config).toEqual({});
   });
 
+  it("los tres triggers de Formularios guardan su configuracion entera (D-10)", () => {
+    const conditions = { rootConjunction: "and", conditions: [{ fieldKey: "facturacion", operator: "gt", value: "10000" }], groups: [] };
+    const rows = buildDesiredTriggers(
+      [
+        { type: "trigger", data: { triggerType: "form_submitted", form_ids: ["f1"], answer_conditions: conditions, label: "Aplicacion" } },
+        { type: "trigger", data: { triggerType: "survey_answered", form_ids: ["f2"], nps_categories: ["detractor"], score: { operator: "lte", value: 6 }, survey_categories: ["servicio"], answer_conditions: null } },
+        { type: "trigger", data: { triggerType: "contract_signed", form_ids: [] } },
+      ],
+      "flow-1",
+    );
+    expect(rows.map((r) => r.type)).toEqual(["form_submitted", "survey_answered", "contract_signed"]);
+    expect(rows[0].config).toEqual({ form_ids: ["f1"], answer_conditions: conditions });
+    expect(rows[1].config).toEqual({ form_ids: ["f2"], nps_categories: ["detractor"], score: { operator: "lte", value: 6 }, survey_categories: ["servicio"] });
+    expect(rows[2].config).toEqual({});
+  });
+
   it("un tipo que el registro no conoce se sigue descartando", () => {
     expect(buildDesiredTriggers([{ type: "trigger", data: { triggerType: "inventado" } }], "flow-1")).toEqual([]);
   });

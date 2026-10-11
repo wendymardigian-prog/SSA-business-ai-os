@@ -70,6 +70,10 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // `social.view` (F78): Owner y Admin lo tienen siempre, y un rol
   // personalizado se lo puede dar a un Member.
   { name: "Social", href: "/dashboard/social", icon: "Grid3x3", adminOnly: false, permissions: ["social.view"], group: "adquisicion" },
+  // Formularios (personalizado, encuesta y contrato): se ve con `forms.view`.
+  // El Member de sistema lo tiene (ve las respuestas de los contactos que ve);
+  // crear y publicar lo decide `forms.manage`, no el menu.
+  { name: "Formularios", href: "/dashboard/formularios", icon: "ClipboardList", adminOnly: false, permissions: ["forms.view"], group: "adquisicion" },
 
   { name: "Contactos", href: "/dashboard/contacts", icon: "Users", adminOnly: false, group: "ventas" },
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va

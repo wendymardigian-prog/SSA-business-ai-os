@@ -36,6 +36,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "content_publish",
       "content_publish_check",
       "content_upload",
+      "contract_email",
+      "contract_pdf",
       "describe_media",
       "fathom_sync",
       "meta_ads_sync",

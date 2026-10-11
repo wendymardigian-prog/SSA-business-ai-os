@@ -145,3 +145,59 @@ export default function AgendaEmbed() {
 
   return { html, react };
 }
+
+// ── Formularios (F10, F32) ───────────────────────────────────────────────────
+
+export const FORM_EMBED_MODES: EmbedMode[] = ["inline", "floating"];
+
+/** El mensaje de respaldo de un formulario que no carga: ya resuelto, con un link para abrirlo aparte. */
+export function formFallback(slug: string, baseUrl: string): FallbackPayload {
+  return {
+    title: "No pudimos cargar el formulario",
+    body: "Revisá tu conexión y probá de nuevo, o abrilo en otra pestaña.",
+    cta: { label: "Abrir el formulario", href: `${baseUrl.replace(/\/$/, "")}/f/${slug}` },
+  };
+}
+
+export interface FormEmbedOptions {
+  slug: string;
+  buttonText?: string;
+  buttonColor?: string | null;
+  buttonTextColor?: string | null;
+  buttonPosition?: ButtonPosition;
+}
+
+/**
+ * El código para pegar un formulario en una web: dentro de la página
+ * ("inline") o como botón flotante. Es el mismo `embed.js` de la Agenda con el
+ * link `f/<slug>`.
+ */
+export function generateFormEmbedCode(mode: "inline" | "floating", options: FormEmbedOptions, baseUrl: string): EmbedCode {
+  return generateEmbedCode(
+    mode,
+    {
+      calLink: `f/${options.slug}`,
+      buttonText: options.buttonText || "Completar el formulario",
+      buttonColor: options.buttonColor,
+      buttonTextColor: options.buttonTextColor,
+      buttonPosition: options.buttonPosition,
+      fallback: formFallback(options.slug, baseUrl),
+    },
+    baseUrl,
+  );
+}
+
+/** El snippet de una página del sitio propio (F31/F32): `<Formulario slug="…" />`. */
+export function formPageSnippet(slug: string): string {
+  return `<Formulario slug="${slug}" />`;
+}
+
+/**
+ * El snippet de "Seguimiento en todo el sitio" (F29, F32): el mismo `embed.js` en modo
+ * "solo seguimiento". Se pega UNA vez en el `<head>` de toda la web y solo guarda de dónde
+ * vino cada persona (UTM, ids de clic) en el `localStorage` de esa web, para que un
+ * formulario embebido en otra página conserve esos datos. No muestra nada ni hace pedidos.
+ */
+export function trackingSnippet(baseUrl: string): string {
+  return `<script src="${baseUrl.replace(/\/$/, "")}/embed/embed.js" data-agenda-track async></script>`;
+}
