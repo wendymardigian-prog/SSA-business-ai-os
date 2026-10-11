@@ -190,6 +190,12 @@ export function FormTriggerPanel({ triggerType, data, onChange }: { triggerType:
           <legend className="px-1 text-xs font-semibold text-foreground">Solo si las respuestas cumplen…</legend>
           {selectedForms.length === 0 ? (
             <p className="text-xs text-muted-foreground">Elegí un formulario para armar condiciones sobre sus campos.</p>
+          ) : sources.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {selectedForms.length === 1
+                ? "Este formulario todavía no tiene campos publicados: publicalo para armar condiciones sobre sus respuestas."
+                : "Los formularios elegidos no tienen campos publicados en común (misma clave y mismo tipo), así que no hay sobre qué armar condiciones."}
+            </p>
           ) : (
             <>
               <VisibilityRuleBuilder

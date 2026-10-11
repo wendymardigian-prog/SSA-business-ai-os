@@ -26,7 +26,6 @@ export async function flowsForForm(supabase: Db, formId: string, formNames: Reco
     .from("flows")
     .select("id, name, status")
     .eq("form_id", formId)
-    .is("deleted_at", null)
     .order("created_at", { ascending: true });
   if (!flows || flows.length === 0) return [];
 
@@ -53,7 +52,6 @@ export async function formFlowGraph(supabase: Db, flowId: string) {
     .from("flows")
     .select("id, name, status, form_id, workspace_id, nodes, edges")
     .eq("id", flowId)
-    .is("deleted_at", null)
     .maybeSingle();
   if (!flow) return null;
   const nodes = (Array.isArray(flow.nodes) ? flow.nodes : []) as unknown as CanvasNode[];

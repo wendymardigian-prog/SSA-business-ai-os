@@ -60,7 +60,7 @@ async function loadForm(ctx: PermissionContext, formId: string) {
 }
 
 async function namesTaken(ctx: PermissionContext, formId: string): Promise<string[]> {
-  const { data } = await ctx.supabase.from("flows").select("name").eq("form_id", formId).is("deleted_at", null);
+  const { data } = await ctx.supabase.from("flows").select("name").eq("form_id", formId);
   return (data ?? []).map((r) => r.name);
 }
 
