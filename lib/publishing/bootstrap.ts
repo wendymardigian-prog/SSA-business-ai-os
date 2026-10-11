@@ -24,6 +24,7 @@ import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-rela
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
+import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -90,6 +91,9 @@ export function registerPublishing(): void {
 
   // Y describir las imagenes, para que una captura no sea un mensaje vacio (F8).
   registerDescribeMediaHandler();
+
+  // Llamadas: la consulta a Fathom de una conexion (F8).
+  registerFathomSyncHandler();
 }
 
 /** Para los tests. */

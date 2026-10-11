@@ -103,6 +103,10 @@ export async function notifyFathomConnectionError(supabase: Db, connection: Fath
 }
 
 /** La conexion queda en `error` con el motivo en palabras, y se avisa a la persona. */
+export async function markFathomConnectionError(supabase: Db, connection: FathomConnection, reason: string): Promise<void> {
+  await markError(supabase, connection, reason);
+}
+
 async function markError(supabase: Db, connection: FathomConnection, reason: string): Promise<void> {
   await supabase.from("oauth_connections").update({ status: "error", last_error: reason }).eq("id", connection.id);
   await notifyFathomConnectionError(supabase, connection);
@@ -233,4 +237,15 @@ async function refreshAndStore(deps: FathomDeps, connection: FathomConnection, n
 
   cache.set(connection.id, { accessToken: tokens.accessToken, expiresAt });
   return tokens.accessToken;
+}
+
+/**
+ * Fathom contesto 401 con un token que creiamos vigente: se fuerza UNA
+ * renovacion (se vence el token guardado y se pide uno nuevo).
+ */
+export async function forceFathomRefresh(deps: FathomDeps, connectionId: string): Promise<string> {
+  cache.delete(connectionId);
+  const past = new Date(((deps.now ?? (() => new Date()))().getTime()) - 1000).toISOString();
+  await deps.supabase.from("oauth_connections").update({ token_expires_at: past }).eq("id", connectionId);
+  return getFathomAccessToken(deps, connectionId);
 }

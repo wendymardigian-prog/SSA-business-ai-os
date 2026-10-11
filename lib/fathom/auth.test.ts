@@ -29,7 +29,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 function makeWorld(over: { expiresAt?: string | null; status?: string } = {}) {
   const row = {
     id: CONN, workspace_id: WS, user_id: "user-ana", status: over.status ?? "active", vault_secret_prefix: PREFIX,
-    token_expires_at: over.expiresAt === undefined ? "2026-10-10T17:00:00.000Z" : over.expiresAt, account_label: "ana@negocio.io",
+    token_expires_at: (over.expiresAt === undefined ? "2026-10-10T17:00:00.000Z" : over.expiresAt) as string | null, account_label: "ana@negocio.io",
+    last_error: null as string | null,
   };
   let locked = false;
   const notifications: Array<Record<string, unknown>> = [];

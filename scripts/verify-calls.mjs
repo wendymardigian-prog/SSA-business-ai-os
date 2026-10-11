@@ -24,6 +24,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { runCleanup } from "./test-cleanup.mjs";
 
 const env = Object.fromEntries(
@@ -49,6 +50,17 @@ async function makeUser(tag) {
   if (e) throw new Error(`no pude loguear ${tag}: ${e.message}`);
   return { id: data.user.id, email, client };
 }
+
+/**
+ * `private.enqueue_fathom_sync()` no se expone por la API (esta en el esquema
+ * `private`): se llama con la CLI de Supabase, ya vinculada a este proyecto.
+ * Devuelve las filas de la consulta.
+ */
+function sql(query) {
+  const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  return JSON.parse(out).rows ?? [];
+}
+const slotNow = () => Math.floor(Date.now() / 1000 / 600); // la misma cuenta que lib/fathom/queue.ts
 
 const callRow = (wsId, extra = {}) => ({
   workspace_id: wsId, source: "manual", title: "zz-test llamada", recorded_at: new Date().toISOString(), ...extra,
@@ -190,6 +202,65 @@ try {
       status: "active", vault_secret_prefix: `oauth_fathom_zz-${randomUUID().slice(0, 8)}`,
     });
     check(!!otraConn, "la misma cuenta de Fathom de la misma persona no crea una segunda conexion");
+  }
+
+  console.log("\n— El cron de Fathom (private.enqueue_fathom_sync) —");
+  {
+    const mkConn = async (user, status, extra = {}) => {
+      const { data, error } = await svc.from("oauth_connections").insert({
+        workspace_id: ws.id, provider: "fathom", user_id: user.id, external_account_id: `zz-sync-${randomUUID().slice(0, 6)}`,
+        account_label: "zz", status, vault_secret_prefix: `oauth_fathom_zz-${randomUUID().slice(0, 8)}`, ...extra,
+      }).select("id").single();
+      if (error) throw new Error(`no pude crear la conexion: ${error.message}`);
+      return data.id;
+    };
+    const jobsOf = async (id) => (await svc.from("scheduled_jobs").select("id, status, dedupe_key, payload").eq("type", "fathom_sync").like("dedupe_key", `fathom_sync:${id}:%`)).data ?? [];
+
+    const activa = await mkConn(setter, "active");
+    const caida = await mkConn(otro, "error");
+    const revocada = await mkConn(supervisor, "revoked");
+    // Una persona que ya no esta en el workspace.
+    const ex = await makeUser("calls-ex");
+    const deLaIda = await mkConn(ex, "active"); // nunca fue miembro de este workspace
+
+    const slotAntes = slotNow();
+    const n1 = sql("select private.enqueue_fathom_sync() n")[0].n;
+    const n2 = sql("select private.enqueue_fathom_sync() n")[0].n;
+    const slotDespues = slotNow();
+
+    const mias = await jobsOf(activa);
+    check(mias.length === 1, "dos corridas seguidas dejan UN solo job pendiente por conexion activa", `hay ${mias.length}`);
+    check(n1 >= 1 && n2 === 0, "la segunda corrida no encola nada nuevo", `n1=${n1} n2=${n2}`);
+    check([slotAntes, slotDespues].some((slot) => mias[0]?.dedupe_key === `fathom_sync:${activa}:${slot}`), "la clave de dedupe es conexion + franja de 10 minutos (la misma que arma lib/fathom/queue.ts)", mias[0]?.dedupe_key);
+    check(mias[0]?.payload?.connectionId === activa, "el payload lleva la conexion");
+
+    check((await jobsOf(caida)).length === 0 && (await jobsOf(revocada)).length === 0, "una conexion en error o revocada no encola nada");
+    check((await jobsOf(deLaIda)).length === 0, "una conexion cuya persona ya no esta en el workspace no encola nada");
+
+    // Con uno `processing`, no encola otro.
+    await svc.from("scheduled_jobs").update({ status: "processing" }).eq("id", mias[0].id);
+    sql("select private.enqueue_fathom_sync()");
+    const trasProcesar = await jobsOf(activa);
+    check(trasProcesar.length === 1 && trasProcesar[0].status === "processing", "con uno `processing` no encola otro");
+
+    // El barrido de analisis trabados.
+    // El trigger de updated_at es BEFORE UPDATE: se inserta ya con la fecha vieja.
+    const hace16 = new Date(Date.now() - 16 * 60_000).toISOString();
+    const { data: trabada } = await svc.from("calls").insert(callRow(ws.id, { analysis_status: "analyzing", updated_at: hace16 })).select("id").single();
+    const { data: reciente } = await svc.from("calls").insert(callRow(ws.id, { analysis_status: "analyzing" })).select("id").single();
+    sql("select private.enqueue_fathom_sync()");
+    const { data: tras } = await svc.from("calls").select("id, analysis_status, analysis_status_reason").in("id", [trabada.id, reciente.id]);
+    const t = tras.find((x) => x.id === trabada.id), r = tras.find((x) => x.id === reciente.id);
+    check(t.analysis_status === "pending" && t.analysis_status_reason === "stuck", "un analisis `analyzing` hace 16 minutos vuelve a `pending` (motivo stuck)");
+    check(r.analysis_status === "analyzing", "uno de hace instantes no se toca");
+
+    const noEjecutable = await closer.client.rpc("enqueue_fathom_sync");
+    check(!!noEjecutable.error, "un usuario con sesion no puede ejecutar la funcion");
+
+    // Limpieza de los jobs en CUALQUIER estado (la cola no cuelga del workspace).
+    for (const id of [activa, caida, revocada, deLaIda]) await svc.from("scheduled_jobs").delete().like("dedupe_key", `fathom_sync:${id}:%`);
+    const { data: restos } = await svc.from("scheduled_jobs").select("id").eq("type", "fathom_sync").like("dedupe_key", `fathom_sync:${activa}:%`);
+    check((restos ?? []).length === 0, "los jobs de prueba quedaron limpios");
   }
 
   console.log("\n— Equipo: closer —");
