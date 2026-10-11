@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Filter, Link2, Loader2, Phone, Plus, RefreshCw, Search, Star, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Filter, Link2, Loader2, Phone, Plus, RefreshCw, Search, Settings, Sparkles, Star, X } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { ImportCallModal } from "@/components/calls/import-call-modal";
 import { AlertsChip, OutcomeChip, QualificationChip, ScoreCell, StatusChip, TypeChip } from "@/components/calls/call-chips";
 import { syncFathomNow } from "@/lib/actions/fathom";
+import { analyzePendingCalls } from "@/lib/actions/calls-edit";
+import { Popover } from "@/components/ui/popover";
 import { formatCallDate, formatDuration, humanize } from "@/lib/calls/format";
 import {
   ANALYSIS_STATUSES,
@@ -64,6 +66,10 @@ interface Props {
   currentUserId: string;
   workspaceId: string;
   canEdit: boolean;
+  /** Tiene `calls.configure`: ve el atajo a la configuracion de las dos tareas. */
+  canConfigure: boolean;
+  /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
+  pendingCount: number;
   scopeAll: boolean;
   hasAnyCall: boolean;
   workspaceHasConnections: boolean;
@@ -110,6 +116,7 @@ export function CallsList(props: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [syncing, startSync] = useTransition();
+  const [queueing, startQueue] = useTransition();
   const [naming, setNaming] = useState(false);
   const [viewName, setViewName] = useState("");
 
@@ -144,6 +151,15 @@ export function CallsList(props: Props) {
     setViewName("");
   }
 
+  function analyzePending() {
+    setSyncMessage(null);
+    startQueue(async () => {
+      const r = await analyzePendingCalls();
+      setSyncMessage(r.ok ? { ok: true, text: r.queued === 0 ? "No quedaba ninguna para analizar." : `Se van a analizar ${r.queued} ${r.queued === 1 ? "llamada" : "llamadas"}, una cada 30 segundos.` } : { ok: false, text: r.error });
+      router.refresh();
+    });
+  }
+
   function syncNow() {
     setSyncMessage(null);
     startSync(async () => {
@@ -166,6 +182,21 @@ export function CallsList(props: Props) {
                 {syncing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
                 <span className="hidden sm:inline">Sincronizar ahora</span>
               </button>
+            )}
+            {canEdit && props.pendingCount > 0 && (
+              <button type="button" onClick={analyzePending} disabled={queueing} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50" aria-label={`Analizar pendientes (${props.pendingCount})`}>
+                {queueing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Sparkles className="h-4 w-4" aria-hidden />}
+                <span className="hidden sm:inline">Analizar pendientes ({props.pendingCount})</span>
+              </button>
+            )}
+            {props.canConfigure && (
+              <Popover label="Configurar clasificación y análisis" trigger={<Settings className="h-4 w-4" aria-hidden />} panelClassName="w-64" triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-accent">
+                <p className="mb-2 text-xs font-semibold">Configuración de Llamadas</p>
+                <ul className="space-y-1 text-sm">
+                  <li><Link href="/dashboard/agents/tareas/call_classification?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Clasificación de llamadas</Link></li>
+                  <li><Link href="/dashboard/agents/tareas/call_analysis?tab=config" className="block rounded-md px-2 py-1.5 hover:bg-accent">Análisis de llamadas</Link></li>
+                </ul>
+              </Popover>
             )}
             {canEdit && (
               <button type="button" onClick={() => setImportOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 sm:px-3" aria-label="Importar una llamada">

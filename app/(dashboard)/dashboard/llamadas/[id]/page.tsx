@@ -6,6 +6,8 @@ import { canAnalyze } from "@/lib/calls/status";
 import { detailView } from "@/lib/calls/detail-view";
 import { readAnalysis } from "@/lib/calls/detail";
 import { createServiceClient } from "@/lib/supabase/server";
+import { resolveCallTaskSettings, validTypeKeys } from "@/lib/calls/task-settings";
+import type { CallObjection } from "@/components/calls/section-tools";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import type { CallAnalysisStatus, CallAttendee, CallTranscriptLine } from "@/lib/types/database";
@@ -24,11 +26,12 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const { workspace, supabase } = ctx;
+  const service = await createServiceClient();
 
   const { data: call } = await supabase
     .from("calls")
     .select(
-      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at",
+      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections",
     )
     .eq("id", id)
     .eq("workspace_id", workspace.id)
@@ -48,7 +51,6 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   // El costo es del permiso de costos de IA, y agent_runs no se lee con el cliente del usuario.
   let costUsd: number | null = null;
   if (call.analysis_run_id && ctx.can("ai_costs.view")) {
-    const service = await createServiceClient();
     const { data: run } = await service.from("agent_runs").select("cost_usd").eq("id", call.analysis_run_id).maybeSingle();
     costUsd = run?.cost_usd === null || run?.cost_usd === undefined ? null : Number(run.cost_usd);
   }
@@ -60,7 +62,12 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const analysis = readAnalysis(call.analysis);
   const canEdit = ctx.can("calls.edit");
 
-  const verdict = canAnalyze({ status, callType: call.call_type, analyzeTypes: ["cierre", "seguimiento"], hasTranscript: lines.length > 0, canEdit });
+  // Lo que se analiza lo decide la configuracion del negocio, no una lista fija.
+  const { data: wsRow } = await service.from("workspaces").select("ai_background_settings").eq("id", workspace.id).maybeSingle();
+  const taskSettings = resolveCallTaskSettings(wsRow?.ai_background_settings);
+  const analyzeTypes = taskSettings.call_analysis.analyze_types;
+
+  const verdict = canAnalyze({ status, callType: call.call_type, analyzeTypes, hasTranscript: lines.length > 0, canEdit });
   const view = detailView({
     status,
     reason: call.analysis_status_reason,
@@ -107,6 +114,12 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     names: { users: Object.fromEntries(members.map((m) => [m.userId, m.name])), agents: {} },
     timeZone,
     emptyMessage: view.emptyMessage,
+    analysisAi: call.analysis_ai,
+    objections: (Array.isArray(call.objections) ? call.objections : []) as unknown as CallObjection[],
+    isCloser: call.recorded_by_user_id === ctx.user.id,
+    types: validTypeKeys(taskSettings.call_classification.custom_types),
+    suggestions: Object.fromEntries(Object.entries(taskSettings.call_analysis.categories.accepted).map(([group, list]) => [group, list.filter((c) => !c.archivado)])),
+    analyzeDisabledReason: !verdict.ok ? (verdict.reason ?? null) : null,
   };
 
   return <CallDetail data={data} view={view} canEdit={canEdit} />;

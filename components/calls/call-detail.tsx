@@ -10,6 +10,9 @@ import { CallTranscript } from "@/components/calls/call-transcript";
 import { BookingLink, ContactLink } from "@/components/calls/link-popovers";
 import { CloserTab, LeadTab, SummaryTab, TechTab, type TabsData } from "@/components/calls/call-analysis-tabs";
 import { OutcomeChip, SourceChip, StatusChip, TypeChip } from "@/components/calls/call-chips";
+import { BannerActionButton, RegenerateButton, TypeSelect } from "@/components/calls/call-actions";
+import { CallEditProvider, type CallEditState, type CallObjection } from "@/components/calls/section-tools";
+import type { CategorySuggestions } from "@/components/calls/section-editor";
 import { readAnalysis } from "@/lib/calls/detail";
 import { formatCallDate, formatDuration } from "@/lib/calls/format";
 import { callBadgeClass, scoreBadgeTone } from "@/lib/calls/badges";
@@ -36,6 +39,16 @@ export interface CallDetailData extends TabsData {
   leadScore: number | null;
   temperature: number | null;
   needsReview: boolean;
+  /** Lo que dijo la IA, sin tocar (para ver que corrigio una persona). */
+  analysisAi: unknown;
+  objections: CallObjection[];
+  /** Es el closer de esta llamada: puede objetar su analisis. */
+  isCloser: boolean;
+  /** Los tipos validos (los del sistema y los propios) para elegir. */
+  types: string[];
+  suggestions: CategorySuggestions;
+  /** Por que el boton Analizar no se puede usar (null = se puede). */
+  analyzeDisabledReason: string | null;
 }
 
 const BANNER_TONE = {
@@ -89,8 +102,20 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
   };
 
   const heading = data.contact?.name ?? data.title;
+  const editState: CallEditState = {
+    callId: data.callId,
+    canEdit,
+    isCloser: data.isCloser,
+    suggestions: data.suggestions,
+    objections: data.objections,
+    analysisAi: data.analysisAi,
+    analysis: data.analysis,
+    names: data.names.users,
+  };
+  const canRegenerate = canEdit && (data.status === "analyzed" || data.status === "error");
 
   return (
+    <CallEditProvider value={editState}>
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader route="/dashboard/llamadas/[id]" title="Llamada" backHref={<BackToCalls />} />
       <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
@@ -110,6 +135,10 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                   <TypeChip type={data.callType} needsReview={data.needsReview} />
                 </span>
                 <StatusChip status={data.status} />
+                {canEdit && data.status !== "classifying" && data.status !== "analyzing" && data.callType && (
+                  <TypeSelect callId={data.callId} current={data.callType} types={data.types} label="Cambiar el tipo de llamada" />
+                )}
+                {canRegenerate && <RegenerateButton callId={data.callId} hasEdits={data.status === "analyzed" && JSON.stringify(data.analysis) !== JSON.stringify(data.analysisAi)} />}
                 <ContactLink callId={data.callId} contact={data.contact} canEdit={canEdit} />
                 <BookingLink callId={data.callId} booking={data.booking} canEdit={canEdit} />
                 {data.source === "fathom" && (data.shareUrl || data.fathomUrl) && (
@@ -126,6 +155,11 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
                 <div className="min-w-0 text-sm">
                   <p className="font-medium">{view.banner.title}</p>
                   <p className="text-muted-foreground">{view.banner.message}</p>
+                  {view.banner.action && (
+                    <div className="mt-2">
+                      <BannerActionButton action={view.banner.action} callId={data.callId} callType={data.callType} types={data.types} disabledReason={view.banner.actionDisabledReason} />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -170,6 +204,6 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
         </div>
       </div>
     </div>
+    </CallEditProvider>
   );
 }
-

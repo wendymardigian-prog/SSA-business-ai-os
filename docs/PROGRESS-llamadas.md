@@ -49,21 +49,21 @@ Próxima libre al cerrar: **00150**.
 - [x] F13 Ficha de la llamada y vincular a mano
 - [x] F14 Métricas de conversación
 
-## Bloque L2 · Clasificación y análisis
-- [ ] F15 CHECKs de IA y escritura de la configuración de una tarea
-- [ ] F16 Tres tareas de IA en el catálogo (+ SPSP v1)
-- [ ] F17 Clasificación por reglas
-- [ ] F18 Clasificación con IA y "por revisar"
-- [ ] F19 Configuración de las tareas
-- [ ] F20 El análisis (salida estructurada)
-- [ ] F21 Puntajes por código, citas verificadas, dos copias
-- [ ] F22 Automático o a mano, con el tope del workspace
-- [ ] F23 Corregir a mano
-- [ ] F24 Corregir con IA
-- [ ] F25 Regenerar con motivo
-- [ ] F26 Probar el borrador
-- [ ] F27 Propuestas de categoría
-- [ ] F28 El closer puede objetar
+## Bloque L2 · Clasificación y análisis — **cerrado** (migración 00148 aplicada; SPSP v10 cargado como versión 1)
+- [x] F15 CHECKs de IA y escritura de la configuración de una tarea
+- [x] F16 Tres tareas de IA en el catálogo (+ SPSP v1)
+- [x] F17 Clasificación por reglas
+- [x] F18 Clasificación con IA y "por revisar"
+- [x] F19 Configuración de las tareas
+- [x] F20 El análisis (salida estructurada)
+- [x] F21 Puntajes por código, citas verificadas, dos copias
+- [x] F22 Automático o a mano, con el tope del workspace
+- [x] F23 Corregir a mano
+- [x] F24 Corregir con IA
+- [x] F25 Regenerar con motivo
+- [x] F26 Probar el borrador
+- [x] F27 Propuestas de categoría
+- [x] F28 El closer puede objetar
 
 ## Bloque L3 · Uso de lo analizado
 - [ ] F29 Resumen, próximos pasos e ideas de contenido
@@ -77,6 +77,12 @@ Próxima libre al cerrar: **00150**.
 - [ ] docs/llamadas.md, flow-registry.md, CLAUDE.md, .env.example, BITACORA.md
 - [ ] Definición de listo (todos los verify, vitest, build, lint)
 - [ ] PR abierto (sin mergear)
+
+## Bloque L2 — lo que se verificó al cerrarlo
+- `npx vitest run` 529 archivos, 6.705 tests en verde · `npm run build` compila · `npm run lint` 0 errores y 36 avisos (los mismos del punto de partida).
+- `verify-calls` (ampliado: claim concurrente del análisis, objeciones, `set_ai_background_task_settings`, los CHECK nuevos), `verify-rls --despues-de-00143`, `verify-roles --despues-de-00136` y `verify-audit-visibility --despues-de-00147` en verde, de a uno.
+- **SPSP cargado** en el workspace de Wendy: `ai_task_prompt_versions` (`call_analysis`, versión 1, 13.543 caracteres) activa en `ai_task_prompt_active`; rúbrica con `version: 1` (closer 8 criterios = 100, lead 7 = 100) y 29 categorías aceptadas en `ai_background_settings.call_analysis`. El análisis automático **queda apagado** (`mode: off`): el primer gasto lo decide una persona. La carga dejó una fila de historial ("Carga inicial del SPSP"). Ni el prompt ni la rúbrica se commitean (`claude/` está en `.gitignore`).
+- Revisión visual: configuración de Clasificación y de Análisis (con el SPSP cargado), ficha con las herramientas de cada sección, editor de una sección (guardó, recalculó el puntaje y dejó auditoría sin tocar `analysis_ai`), cambio de tipo de una llamada por revisar. Se hizo con la sesión ya abierta y 4 llamadas de prueba (`zz-prueba visual L2…`) **borradas** al terminar. Ver el límite en PENDIENTE-llamadas.
 
 ## Bloque L1 — lo que se verificó al cerrarlo
 - `npx vitest run` 6.402 tests en verde · `npm run build` compila · `npm run lint` 0 errores y 36 avisos (los mismos del punto de partida).

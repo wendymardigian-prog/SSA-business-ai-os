@@ -21,8 +21,8 @@ import { headAndTail } from "./classification";
 import { validateSectionValue } from "./section-edit";
 import { getSection, isAnalysisSection, quoteInTranscript, SECTION_DEPENDENCIES, SECTION_LABELS, type AnalysisSection } from "./scoring";
 
-export const CORRECTION_MIN_INSTRUCTION = 3;
-export const CORRECTION_MAX_INSTRUCTION = 2000;
+export { CORRECTION_MAX_INSTRUCTION, CORRECTION_MIN_INSTRUCTION } from "./correction-limits";
+import { CORRECTION_MAX_INSTRUCTION, CORRECTION_MIN_INSTRUCTION } from "./correction-limits";
 export const CORRECTION_MAX_TRANSCRIPT = 120_000;
 export const CORRECTION_MAX_TOKENS = 3_000;
 

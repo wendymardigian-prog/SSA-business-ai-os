@@ -10,6 +10,8 @@ import {
 import { humanize } from "@/lib/calls/format";
 import { typeDeciderText } from "@/lib/calls/list";
 import type { CallAttendee } from "@/lib/types/database";
+import type { AnalysisSection } from "@/lib/calls/scoring";
+import { SectionTools } from "@/components/calls/section-tools";
 
 /**
  * Las pestañas del analisis de una llamada (F13, F14). Solo muestran: lo que
@@ -20,10 +22,11 @@ import type { CallAttendee } from "@/lib/types/database";
 
 const ROLE_LABEL = { closer: "Closer", lead: "Lead", equipo: "Equipo" } as const;
 
-function Card({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
+function Card({ title, children, className = "", section }: { title: string; children: React.ReactNode; className?: string; section?: AnalysisSection }) {
   return (
     <section className={`space-y-1.5 rounded-lg border border-border p-3 ${className}`}>
       <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
+      {section && <SectionTools section={section} />}
       {children}
     </section>
   );
@@ -101,25 +104,25 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
     <div className="space-y-4">
       {data.emptyMessage ? <Empty t={data.emptyMessage} /> : a.empty ? <Empty t="Esta llamada todavía no tiene análisis." /> : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Card title="Resultado y próximo paso">
+          <Card title="Resultado y próximo paso" section="resultado">
             <span className={callBadgeClass(outcomeBadgeTone(a.result.category))}>{a.result.category ? humanize(a.result.category) : "Sin resultado"}</span>
             {a.result.nextStep ? <p className="text-sm">{a.result.nextStep}</p> : <Empty t="Sin próximo paso." />}
             {followup && <p className="text-xs text-muted-foreground">Agendada en la llamada: {yn(a.result.scheduledInCall)}</p>}
           </Card>
-          <Card title="Momento de quiebre">
+          <Card title="Momento de quiebre" section="momento_quiebre">
             {a.breakpoint.text ? <p className="text-sm">{a.breakpoint.text}<Ts ts={a.breakpoint.timestamp} onJump={onJump} /></p> : <Empty />}
             {a.breakpoint.suggested && <p className="text-sm text-emerald-700 dark:text-emerald-300">«{a.breakpoint.suggested}»</p>}
           </Card>
-          <Card title="Dolor principal">
+          <Card title="Dolor principal" section="dolor">
             <CategoryChip c={a.pain} />
             {a.pain.text ? <p className="text-sm">{a.pain.text}<Ts ts={a.pain.timestamp} onJump={onJump} /></p> : <Empty />}
             {a.pain.depth && <span className={callBadgeClass("positive")}>Profundidad: {a.pain.depth}</span>}
           </Card>
-          <Card title="Deseo principal">
+          <Card title="Deseo principal" section="deseo">
             <CategoryChip c={a.desire} />
             {a.desire.text ? <p className="text-sm">{a.desire.text}<Ts ts={a.desire.timestamp} onJump={onJump} /></p> : <Empty />}
           </Card>
-          <Card title="Objeción principal" className="sm:col-span-2">
+          <Card title="Objeción principal" className="sm:col-span-2" section="objecion">
             <CategoryChip c={a.objection} tone="review" />
             {a.objection.said ? (
               <div className="grid grid-cols-2 gap-2 text-sm">
@@ -130,7 +133,7 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
               </div>
             ) : <Empty t="Sin objeción registrada." />}
           </Card>
-          <Card title="Resumen de la IA" className="sm:col-span-2">
+          <Card title="Resumen de la IA" className="sm:col-span-2" section="resumen">
             {a.summary ? <p className="whitespace-pre-line text-sm leading-relaxed">{a.summary}</p> : <Empty />}
           </Card>
           {a.alerts.length > 0 && (
@@ -195,6 +198,7 @@ export function CloserTab({ data, onJump }: { data: TabsData; onJump: (ts: strin
     <div className="space-y-4">
       <div>
         <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">Rúbrica</h3>
+        {a.rubric.length > 0 && <div className="mb-2"><SectionTools section="rubrica" /></div>}
         {a.rubric.length === 0 ? <Empty t="La rúbrica aparece cuando la llamada se analiza." /> : (
           <div className="divide-y divide-border rounded-lg border border-border">
             {a.rubric.map((r) => {
@@ -223,10 +227,10 @@ export function CloserTab({ data, onJump }: { data: TabsData; onJump: (ts: strin
       </div>
       <Card title="Foco para la próxima llamada">{a.feedback.focus ? <p className="text-sm">{a.feedback.focus}</p> : <Empty />}</Card>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Card title="Lo que funcionó">
+        <Card title="Lo que funcionó" section="feedback.funciono">
           {a.feedback.worked.length ? <ul className="list-disc space-y-1 pl-4 text-sm">{a.feedback.worked.map((w, i) => <li key={i}>{w}</li>)}</ul> : <Empty />}
         </Card>
-        <Card title="Qué mejorar">
+        <Card title="Qué mejorar" section="feedback.mejorar">
           {a.feedback.improve.length ? (
             <ul className="space-y-2 text-sm">{a.feedback.improve.map((w, i) => <li key={i}>{w.text}{w.suggested && <span className="block text-emerald-700 dark:text-emerald-300">«{w.suggested}»</span>}</li>)}</ul>
           ) : <Empty />}
@@ -246,7 +250,7 @@ export function LeadTab({ data }: { data: TabsData }) {
   ];
   return (
     <div className="space-y-4">
-      <Card title="Perfil del lead">
+      <Card title="Perfil del lead" section="lead.perfil">
         {L.profile ? <p className="text-sm leading-relaxed">{L.profile}</p> : <Empty />}
         <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-1.5 pt-2 text-sm">
           {fields.map(([k, v]) => (
@@ -257,9 +261,10 @@ export function LeadTab({ data }: { data: TabsData }) {
           ))}
         </dl>
       </Card>
-      <Card title="Tolerancia a su situación">{L.tolerance ? <p className="text-sm">{L.tolerance}</p> : <Empty />}</Card>
+      <Card title="Tolerancia a su situación" section="lead.tolerancia">{L.tolerance ? <p className="text-sm">{L.tolerance}</p> : <Empty />}</Card>
       <div>
         <h3 className="mb-1.5 text-xs font-medium text-muted-foreground">Creencias</h3>
+        {L.beliefs.length > 0 && <div className="mb-2"><SectionTools section="lead.creencias" /></div>}
         {L.beliefs.length === 0 ? <Empty t="Las creencias aparecen cuando la llamada se analiza." /> : (
           <>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

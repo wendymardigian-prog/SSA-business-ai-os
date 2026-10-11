@@ -81,13 +81,17 @@ export default async function LlamadasPage({
 
   // Para los estados vacios y el aviso de "conecta tu Fathom".
   const service = await createServiceClient();
-  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: me }, { data: outcomes }] = await Promise.all([
+  const [{ count: anyCall }, { data: workspaceConnections }, secretNames, { data: mine }, { data: me }, { data: outcomes }, { count: pendingCount }] = await Promise.all([
     supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).is("archived_at", null),
     service.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom").neq("status", "revoked"),
     listSecretNames(service, workspace.id),
     supabase.from("oauth_connections").select("id, status, account_label, last_synced_at, last_error, sync_last_error").eq("workspace_id", workspace.id).eq("provider", "fathom").eq("user_id", user.id),
     supabase.from("workspace_members").select("is_closer").eq("workspace_id", workspace.id).eq("user_id", user.id).maybeSingle(),
     supabase.from("calls").select("outcome").eq("workspace_id", workspace.id).not("outcome", "is", null).limit(1000),
+    // Las pendientes de analisis que esta persona ve (la RLS decide), para "Analizar pendientes".
+    ctx.can("calls.edit")
+      ? supabase.from("calls").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id).eq("analysis_status", "pending").is("archived_at", null)
+      : Promise.resolve({ count: 0 }),
   ]);
 
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
@@ -108,6 +112,8 @@ export default async function LlamadasPage({
       currentUserId={user.id}
       workspaceId={workspace.id}
       canEdit={ctx.can("calls.edit")}
+      canConfigure={ctx.can("calls.configure")}
+      pendingCount={pendingCount ?? 0}
       scopeAll={ctx.scope("calls") === "all" || ctx.role === "owner" || ctx.role === "admin"}
       hasAnyCall={(anyCall ?? 0) > 0}
       workspaceHasConnections={(workspaceConnections ?? []).length > 0}

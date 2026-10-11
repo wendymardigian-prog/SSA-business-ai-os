@@ -305,6 +305,25 @@ try {
     }
   }
 
+  console.log("\n— El claim del analisis (lo que hace el handler call_analyze) —");
+  {
+    const { data: objetivo } = await svc.from("calls").insert(callRow(ws.id, { analysis_status: "pending", call_type: "cierre" })).select("id").single();
+    // Diez procesos a la vez piden la misma llamada con el mismo UPDATE condicional: gana uno.
+    const resultados = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        svc.from("calls").update({ analysis_status: "analyzing" }).eq("id", objetivo.id).in("analysis_status", ["pending"]).select("id"),
+      ),
+    );
+    const ganadores = resultados.filter((r) => (r.data ?? []).length === 1).length;
+    check(ganadores === 1, "de diez claims a la vez, exactamente uno se queda con la llamada", `ganaron ${ganadores}`);
+    const { data: otra } = await svc.from("calls").update({ analysis_status: "analyzing" }).eq("id", objetivo.id).in("analysis_status", ["pending"]).select("id");
+    check((otra ?? []).length === 0, "con la llamada ya `analyzing`, otro claim no la toma");
+
+    // Una objecion se guarda en la columna y no toca ni analysis ni los puntajes.
+    const { error: obj } = await svc.from("calls").update({ objections: [{ id: randomUUID(), section: "rubrica", by: closer.id, at: new Date().toISOString(), note: "no estoy de acuerdo", resolved_at: null, resolved_by: null }] }).eq("id", objetivo.id);
+    check(!obj, "calls.objections guarda una objecion", obj?.message);
+  }
+
   console.log("\n— Equipo: closer —");
   {
     const { error: e } = await svc.from("workspace_members").update({ is_closer: true, closer_emails: ["ana.personal@gmail.com"] })
