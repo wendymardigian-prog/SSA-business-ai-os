@@ -142,6 +142,8 @@ export const ANALYSIS_STATUSES: readonly CallAnalysisStatus[] = [
 
 export interface CallFilters {
   closer: string;
+  /** Solo las llamadas de este contacto (el "Ver todas" de la ficha del contacto). */
+  contacto: string;
   tipo: string;
   resultado: string;
   estado: CallAnalysisStatus | "";
@@ -159,7 +161,7 @@ export interface CallFilters {
 }
 
 export const EMPTY_FILTERS: CallFilters = {
-  closer: "", tipo: "", resultado: "", estado: "", vinculo: "",
+  closer: "", contacto: "", tipo: "", resultado: "", estado: "", vinculo: "",
   closerMin: null, closerMax: null, leadMin: null, leadMax: null,
   desde: "", hasta: "", q: "", pagina: 1,
 };
@@ -172,6 +174,7 @@ export interface FilterContext {
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_PARAM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function score(value: string | string[] | undefined): number | null {
   const raw = firstParam(value);
@@ -197,6 +200,7 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
   const resultado = firstParam(sp.resultado);
   return {
     closer: closers.has(closer) ? closer : "",
+    contacto: UUID_PARAM.test(firstParam(sp.contacto)) ? firstParam(sp.contacto) : "",
     tipo: tipo && (!ctx.typeKeys?.length || ctx.typeKeys.includes(tipo)) && /^[a-z0-9_]{1,40}$/.test(tipo) ? tipo : "",
     resultado: /^[a-z0-9_]{1,60}$/.test(resultado) ? resultado : "",
     estado: pickEnum<CallAnalysisStatus, "">(sp.estado, ANALYSIS_STATUSES, ""),
@@ -215,7 +219,7 @@ export function parseCallFilters(sp: SearchParams, ctx: FilterContext): CallFilt
 /** Los filtros activos (sin contar la pagina), para el contador del boton. */
 export function countActiveCallFilters(f: CallFilters): number {
   return [
-    f.closer, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
+    f.closer, f.contacto, f.tipo, f.resultado, f.estado, f.vinculo, f.desde, f.hasta, f.q,
     f.closerMin, f.closerMax, f.leadMin, f.leadMax,
   ].filter((v) => v !== "" && v !== null).length;
 }
@@ -224,7 +228,7 @@ export function countActiveCallFilters(f: CallFilters): number {
 export function callFiltersToParams(f: CallFilters): URLSearchParams {
   const p = new URLSearchParams();
   const put = (k: string, v: string | number | null) => { if (v !== "" && v !== null) p.set(k, String(v)); };
-  put("closer", f.closer); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
+  put("closer", f.closer); put("contacto", f.contacto); put("tipo", f.tipo); put("resultado", f.resultado); put("estado", f.estado);
   put("vinculo", f.vinculo); put("cmin", f.closerMin); put("cmax", f.closerMax);
   put("lmin", f.leadMin); put("lmax", f.leadMax); put("desde", f.desde); put("hasta", f.hasta); put("q", f.q);
   if (f.pagina > 1) p.set("pagina", String(f.pagina));
@@ -254,6 +258,7 @@ export interface ApplyOptions {
 export function applyCallFilters<Q extends FilterableQuery<Q>>(query: Q, f: CallFilters, opts: ApplyOptions): Q {
   let q = query.is("archived_at", null);
   if (f.closer) q = q.eq("recorded_by_user_id", f.closer);
+  if (f.contacto) q = q.eq("contact_id", f.contacto);
   if (f.tipo) q = q.eq("call_type", f.tipo);
   if (f.resultado) q = q.eq("outcome", f.resultado);
   if (f.estado) q = q.eq("analysis_status", f.estado);

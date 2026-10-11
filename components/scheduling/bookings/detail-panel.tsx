@@ -21,6 +21,8 @@ import { capitalize, formatDateTimeWithZone } from "@/lib/scheduling/booker/form
 import { categoryTree, type CategoryRow } from "@/lib/scheduling/categories";
 import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBookingSlotAsHost, reassignBookingHostAsHost, releaseBookingSlotAsHost, retryBookingSync, updateBookingDetails } from "@/lib/actions/scheduling/bookings";
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
+import { CallSectionList } from "@/components/calls/call-section-list";
+import type { CallSectionRow } from "@/lib/calls/contact-section";
 
 export interface BookingDetailData {
   id: string;
@@ -53,6 +55,8 @@ export interface BookingDetailData {
   attribution: { source: string; medium: string; campaign: string; content: string; term: string; referrerUrl: string | null } | null;
   /** Agenda v2: su horario dejó de contar como ocupado. null = nunca se liberó. */
   slotReleasedAt: string | null;
+  /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */
+  calls: CallSectionRow[];
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -510,6 +514,15 @@ export function BookingDetailPanel({
               >
                 Guardar
               </button>
+            </section>
+          )}
+
+          {booking.calls.length > 0 && (
+            <section className="rounded-lg border border-border p-3">
+              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {booking.calls.length === 1 ? "Ver la llamada" : "Llamadas de esta reunión"}
+              </h3>
+              <CallSectionList rows={booking.calls} timeZone={timezone} compact />
             </section>
           )}
 

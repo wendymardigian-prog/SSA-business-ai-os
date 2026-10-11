@@ -8,6 +8,8 @@ const server = vi.hoisted(() => ({ service: null as unknown }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => server.service }));
 const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "a1") }));
 vi.mock("@/lib/audit", () => audit);
+const emit = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
 import { linkCallBooking, linkCallContact, searchContactsForCall, suggestBookingsForCall } from "./calls-link";
 
@@ -34,6 +36,18 @@ describe("linkCallContact", () => {
     expect(r).toEqual({ ok: true });
     expect(service.writesTo("calls")[0].values).toMatchObject({ contact_id: CONTACT, link_method: "manual", linked_by: ME });
     expect(audit.logAudit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "call", action: "call.linked", changes: { contact_id: { old: null, new: CONTACT } }, performedBy: ME }));
+  });
+
+  it("al vincular un contacto emite call_linked (una llamada analizada sin contacto dispara los flujos recien ahora)", async () => {
+    const { service } = setup();
+    await linkCallContact({ callId: CALL, contactId: CONTACT });
+    expect(emit).toHaveBeenCalledWith(service.client, "call_linked", CALL);
+  });
+
+  it("desvincular el contacto NO emite nada", async () => {
+    setup({ "calls:select": { data: { ...callRow, contact_id: CONTACT } } });
+    await linkCallContact({ callId: CALL, contactId: null });
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it("un contacto que quien vincula no ve (el id mandado a mano) se rechaza", async () => {

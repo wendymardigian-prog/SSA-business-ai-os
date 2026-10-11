@@ -480,7 +480,11 @@ export type TriggerType =
   | "booking_status_changed"
   | "booking_before_start"
   | "booking_after_end"
-  | "booking_after_created";
+  | "booking_after_created"
+  // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda
+  // analizada, o se vincula un contacto a una llamada.
+  | "call_analyzed"
+  | "call_linked";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -3281,7 +3285,9 @@ export interface Database {
           pillar_id: string | null;
           funnel_stage: FunnelStage | null;
           status: ContentIdeaStatus;
-          source: "manual" | "agent";
+          source: "manual" | "agent" | "call";
+          /** De que llamada salio la idea (00149), si source = 'call'. */
+          call_id: string | null;
           position: number;
           created_by: string | null;
           approved_by: string | null;
@@ -3307,7 +3313,8 @@ export interface Database {
           pillar_id?: string | null;
           funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
-          source?: "manual" | "agent";
+          source?: "manual" | "agent" | "call";
+          call_id?: string | null;
           position?: number;
           created_by?: string | null;
           created_at?: string;

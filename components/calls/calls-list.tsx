@@ -66,6 +66,8 @@ interface Props {
   currentUserId: string;
   workspaceId: string;
   canEdit: boolean;
+  /** El nombre del contacto cuando la lista viene filtrada por uno (el "Ver todas" de su ficha). */
+  contactFilterName: string | null;
   /** Tiene `calls.configure`: ve el atajo a la configuracion de las dos tareas. */
   canConfigure: boolean;
   /** Cuantas llamadas que ve estan pendientes de analisis (para "Analizar pendientes"). */
@@ -214,6 +216,12 @@ export function CallsList(props: Props) {
             <span>Todavía no conectaste tu Fathom: tus llamadas no entran solas.</span>
             <Link href="/dashboard/llamadas/mi-fathom" className="font-medium text-primary underline-offset-2 hover:underline">Conectá tu Fathom</Link>
           </div>
+        )}
+        {filters.contacto && (
+          <p role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 px-4 py-2 text-sm">
+            <span>Mostrando solo las llamadas de <strong>{props.contactFilterName ?? "este contacto"}</strong>.</span>
+            <button type="button" onClick={() => go({ contacto: "" })} className="font-medium text-primary underline-offset-2 hover:underline">Ver todas las llamadas</button>
+          </p>
         )}
         {syncMessage && (
           <p role={syncMessage.ok ? "status" : "alert"} className={`mb-4 rounded-lg px-3 py-2 text-sm ${syncMessage.ok ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-red-500/10 text-red-700 dark:text-red-300"}`}>

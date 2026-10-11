@@ -94,6 +94,13 @@ export default async function LlamadasPage({
       : Promise.resolve({ count: 0 }),
   ]);
 
+  // Si la lista viene filtrada por un contacto, su nombre (solo si quien mira lo ve).
+  let contactFilterName: string | null = null;
+  if (filters.contacto) {
+    const { data: filtered } = await supabase.from("contacts").select("display_name, email").eq("id", filters.contacto).eq("workspace_id", workspace.id).is("deleted_at", null).maybeSingle();
+    contactFilterName = filtered?.display_name || filtered?.email || null;
+  }
+
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const myConnection = pickConnection(mine ?? []);
   const hasLiveConnection = !!myConnection && (myConnection.status === "active" || myConnection.status === "attention");
@@ -112,6 +119,7 @@ export default async function LlamadasPage({
       currentUserId={user.id}
       workspaceId={workspace.id}
       canEdit={ctx.can("calls.edit")}
+      contactFilterName={contactFilterName}
       canConfigure={ctx.can("calls.configure")}
       pendingCount={pendingCount ?? 0}
       scopeAll={ctx.scope("calls") === "all" || ctx.role === "owner" || ctx.role === "admin"}

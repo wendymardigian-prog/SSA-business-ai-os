@@ -78,9 +78,9 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
   const jumpRef = useRef<((timestamp: string) => void) | null>(null);
   const a = readAnalysis(data.analysis);
   const quotes = a.quotes;
-  const busy = data.status === "analyzing" || data.status === "classifying";
+  const busy = data.status === "analyzing" || data.status === "classifying" || data.uses?.summaryStatus === "pending" || data.uses?.knowledge?.status === "processing";
 
-  // Mientras se clasifica o se analiza, la pantalla se actualiza sola.
+  // Mientras se clasifica, se analiza, se resume o se indexa, la pantalla se actualiza sola.
   useEffect(() => {
     if (!busy) return;
     const handle = setInterval(() => router.refresh(), 8000);

@@ -7,6 +7,9 @@ import { detailView } from "@/lib/calls/detail-view";
 import { readAnalysis } from "@/lib/calls/detail";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveCallTaskSettings, validTypeKeys } from "@/lib/calls/task-settings";
+import { knowledgeEligibility } from "@/lib/calls/knowledge-run";
+import { summaryEligibility } from "@/lib/calls/summary";
+import type { CallUsesData } from "@/components/calls/call-uses";
 import type { CallObjection } from "@/components/calls/section-tools";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -31,14 +34,14 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
   const { data: call } = await supabase
     .from("calls")
     .select(
-      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections",
+      "id, source, title, recorded_at, duration_seconds, fathom_url, share_url, recorded_by_user_id, recorded_by_email, attendees, transcript, contact_id, booking_id, call_type, call_type_source, call_type_rule, call_type_confidence, analysis_status, analysis_status_reason, analysis_error, analysis, closer_score, lead_score, outcome, analysis_model, analysis_prompt_version, rubric_version, analysis_run_id, analyzed_at, quotes_total, quotes_verified, archived_at, analysis_ai, objections, summary, summary_status, memory_status, knowledge_document_id",
     )
     .eq("id", id)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
   if (!call) notFound();
 
-  const [members, contact, booking] = await Promise.all([
+  const [members, contact, booking, ideasRes, knowledgeRes] = await Promise.all([
     getWorkspaceMembers(workspace.id),
     call.contact_id
       ? supabase.from("contacts").select("id, display_name, email").eq("id", call.contact_id).maybeSingle().then((r) => r.data)
@@ -46,6 +49,11 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     call.booking_id
       ? supabase.from("bookings").select("id, start_at").eq("id", call.booking_id).maybeSingle().then((r) => r.data)
       : Promise.resolve(null),
+    // Las ideas de contenido que salieron de esta llamada y el documento de Conocimiento: lo que la RLS deje ver.
+    supabase.from("content_ideas").select("id, title").eq("workspace_id", workspace.id).eq("call_id", id).is("deleted_at", null).order("position", { ascending: true }).limit(10),
+    call.knowledge_document_id
+      ? supabase.from("knowledge_base").select("id, status, error_detail").eq("id", call.knowledge_document_id).is("deleted_at", null).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   // El costo es del permiso de costos de IA, y agent_runs no se lee con el cliente del usuario.
@@ -77,6 +85,22 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     canConfigure: ctx.can("calls.configure"),
     analyze: verdict,
   });
+
+  const summaryCheck = summaryEligibility({ call_type: call.call_type, transcript: lines });
+  const knowledgeCheck = knowledgeEligibility({ call_type: call.call_type, transcript: lines });
+  const uses: CallUsesData = {
+    callId: call.id,
+    summary: (call.summary ?? null) as CallUsesData["summary"],
+    summaryStatus: call.summary_status,
+    memoryStatus: call.memory_status,
+    hasContact: !!call.contact_id,
+    ideas: (ideasRes.data ?? []).map((i) => ({ id: i.id, title: i.title })),
+    knowledge: knowledgeRes.data ? { id: knowledgeRes.data.id, status: knowledgeRes.data.status, errorDetail: knowledgeRes.data.error_detail } : null,
+    canSummarize: canEdit && summaryCheck.ok,
+    summarizeDisabledReason: null,
+    canKnowledge: canEdit && ctx.can("knowledge.edit") && knowledgeCheck.ok,
+    knowledgeDisabledReason: null,
+  };
 
   const data: CallDetailData = {
     callId: call.id,
@@ -120,6 +144,7 @@ export default async function LlamadaPage({ params }: { params: Promise<{ id: st
     types: validTypeKeys(taskSettings.call_classification.custom_types),
     suggestions: Object.fromEntries(Object.entries(taskSettings.call_analysis.categories.accepted).map(([group, list]) => [group, list.filter((c) => !c.archivado)])),
     analyzeDisabledReason: !verdict.ok ? (verdict.reason ?? null) : null,
+    uses: view.analysisAvailable ? uses : undefined,
   };
 
   return <CallDetail data={data} view={view} canEdit={canEdit} />;

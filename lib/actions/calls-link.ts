@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
+import { emitCallEvent } from "@/lib/calls/automation/emit";
 import { meetingPeople, meetingDayRange, suggestBookings, sanitizeTerm, type BookingSuggestion } from "@/lib/calls/booking-suggestions";
 import type { CallAttendee, CallTranscriptLine } from "@/lib/types/database";
 import { sanitizeSearch } from "@/lib/url-params";
@@ -83,6 +84,9 @@ export async function linkCallContact(input: { callId: string; contactId: string
     metadata: { what: "contact" },
     performedBy: ctx.user.id,
   });
+
+  // Quedo vinculada a un contacto: dispara los flujos de `call_linked`. Sacar el contacto no emite nada.
+  if (input.contactId) await emitCallEvent(service, "call_linked", call.id);
 
   revalidatePath(`/dashboard/llamadas/${call.id}`);
   revalidatePath("/dashboard/llamadas");

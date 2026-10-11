@@ -9,6 +9,7 @@ import { pickBooking, type BookingCandidate } from "@/lib/calls/linking";
 import { IMPORT_LIMIT_PER_HOUR, parseTranscriptText, validateImportFile, validateImportText } from "@/lib/calls/transcript-import";
 import { tsToSeconds } from "@/lib/calls/detail";
 import { enqueueClassify } from "@/lib/calls/queue";
+import { emitCallEvent } from "@/lib/calls/automation/emit";
 
 /**
  * Importar una llamada a mano (F11): pegar texto o subir un .vtt, .srt o .txt.
@@ -140,6 +141,9 @@ export async function importCall(formData: FormData): Promise<ImportResult> {
   } catch (err) {
     console.error("[llamadas] la llamada se guardó pero no se pudo encolar la clasificación:", err instanceof Error ? err.message : "error");
   }
+
+  // Importada con un contacto: se vincula, y eso dispara los flujos de `call_linked`.
+  if (contactId) await emitCallEvent(service, "call_linked", data.id);
 
   revalidatePath("/dashboard/llamadas");
   return { ok: true, id: data.id };

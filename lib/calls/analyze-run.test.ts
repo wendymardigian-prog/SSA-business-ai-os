@@ -23,6 +23,8 @@ vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
 vi.mock("@/lib/ai-tasks/store", () => ({ loadTaskInstructions: mocks.instructions }));
 vi.mock("@/lib/audit", () => ({ auditAsSystem: mocks.audit, logAudit: mocks.logAudit }));
 vi.mock("./notify", () => ({ notifyBudgetBlocked: mocks.notify }));
+const emit = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("./automation/emit", () => ({ emitCallEvent: emit }));
 
 import { registerJobHandler } from "@/lib/jobs/registry";
 import { runCallAnalysisJob } from "./analyze-run";
@@ -143,6 +145,19 @@ describe("runCallAnalysisJob", () => {
     expect(final.quotes_verified).toBe(final.quotes_total);
     expect(String(final.followup_at)).toContain("2026-10-20");
     expect(mocks.openAiRun.mock.calls[0][1]).toMatchObject({ source: "call_analysis", trigger: "job", promptVersion: 1 });
+  });
+
+  it("un analisis nuevo emite call_analyzed una vez; un fallo o un estado no reclamable, no", async () => {
+    const ok = setup();
+    await runCallAnalysisJob(deps(ok), { callId: "c1" });
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith(ok.client, "call_analyzed", "c1");
+
+    emit.mockClear();
+    const err = Object.assign(new Error("invalid key"), { statusCode: 401 });
+    await runCallAnalysisJob(deps(setup(), vi.fn().mockRejectedValue(err)), { callId: "c1" });
+    await runCallAnalysisJob(deps(setup({ claimed: [] })), { callId: "c1" });
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it("sin run registrado igual escribe un analysis_run_id nuevo (el trigger de la base lo exige)", async () => {

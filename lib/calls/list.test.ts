@@ -127,6 +127,18 @@ describe("applyCallFilters: se aplican en la consulta", () => {
     expect(calls).toContainEqual(["gte", "recorded_at", "2026-10-01T06:00:00.000Z"]);
     expect(calls).toContainEqual(["lte", "recorded_at", "2026-10-02T05:59:59.999Z"]);
   });
+  it("el filtro por contacto solo acepta un uuid y filtra la consulta; un valor raro se ignora", () => {
+    const CONTACT = "11111111-1111-4111-8111-111111111111";
+    expect(parseCallFilters({ contacto: CONTACT }, ctx).contacto).toBe(CONTACT);
+    expect(parseCallFilters({ contacto: "../../x" }, ctx).contacto).toBe("");
+    expect(parseCallFilters({ contacto: `${CONTACT}'--` }, ctx).contacto).toBe("");
+    expect(callFiltersToParams({ ...EMPTY_FILTERS, contacto: CONTACT }).get("contacto")).toBe(CONTACT);
+    expect(countActiveCallFilters({ ...EMPTY_FILTERS, contacto: CONTACT })).toBe(1);
+    const a = recorder();
+    applyCallFilters(a.q, { ...EMPTY_FILTERS, contacto: CONTACT }, { timeZone: "UTC" });
+    expect(a.calls).toContainEqual(["eq", "contact_id", CONTACT]);
+  });
+
   it("la busqueda mira el titulo y los contactos que coinciden", () => {
     const { q, calls } = recorder();
     applyCallFilters(q, { ...EMPTY_FILTERS, q: "ana" }, { timeZone: "UTC", searchContactIds: [CLOSER, "no-es-uuid"] });

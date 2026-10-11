@@ -27,6 +27,8 @@ import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync";
 import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify";
 import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
+import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary";
+import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -98,6 +100,8 @@ export function registerPublishing(): void {
   registerFathomSyncHandler();
   registerCallClassifyHandler();
   registerCallAnalyzeHandler();
+  registerCallSummaryHandler();
+  registerCallIndexKnowledgeHandler();
 }
 
 /** Para los tests. */

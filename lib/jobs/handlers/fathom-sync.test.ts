@@ -3,6 +3,8 @@ import { fakeDb } from "@/lib/testing/fake-db";
 
 const sync = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/fathom/ingest", () => ({ syncFathomConnection: sync }));
+const emit = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
 import { handleFathomSync } from "./fathom-sync";
 
@@ -20,6 +22,16 @@ describe("handleFathomSync", () => {
     const { ctx: c } = ctx({ connectionId: CONN });
     await handleFathomSync(c);
     expect(sync).toHaveBeenCalledWith(expect.objectContaining({ supabase: expect.anything() }), CONN);
+  });
+
+  it("una llamada nueva vinculada a un contacto dispara los flujos de call_linked", async () => {
+    sync.mockImplementation(async (deps: { onLinked: (i: { callId: string }) => Promise<void> }) => {
+      await deps.onLinked({ callId: "call-1" });
+      return { outcome: "complete", ingested: 1, skippedExisting: 0, skippedNotCloser: 0, requests: 1 };
+    });
+    const { ctx: c, db } = ctx({ connectionId: CONN });
+    await handleFathomSync(c);
+    expect(emit).toHaveBeenCalledWith(db.client, "call_linked", "call-1");
   });
 
   it("sin conexion en el payload no hace nada ni lanza", async () => {

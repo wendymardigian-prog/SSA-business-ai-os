@@ -26,6 +26,8 @@ vi.mock("@/lib/ai/run", () => ({ openAiRun: mocks.openAiRun }));
 vi.mock("@/lib/ai/workspace-budget", () => ({ withinWorkspaceBudget: mocks.budget }));
 vi.mock("@/lib/ai-tasks/model", () => ({ resolveTaskModel: mocks.model }));
 vi.mock("@/lib/calls/ai-generate", () => ({ aiSdkGenerate: () => mocks.generate }));
+const emit = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
 import { analyzeCall, analyzePendingCalls, changeCallType, proposeSectionCorrection, regenerateCall, saveCallSections } from "./calls-edit";
 import { DEFAULT_ANALYSIS, DEFAULT_CLASSIFICATION } from "@/lib/calls/task-settings";
@@ -207,6 +209,12 @@ describe("saveCallSections", () => {
     expect(values).not.toHaveProperty("analysis_ai");
     expect(values).not.toHaveProperty("rubric_snapshot");
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "call.section_edited", metadata: { origin: "manual" }, performedBy: "u1" }));
+  });
+
+  it("corregir una seccion NO emite call_analyzed (solo un analisis nuevo lo hace)", async () => {
+    setup({ call: { analysis_status: "analyzed" } });
+    await saveCallSections({ callId: CALL, edits: edit, origin: "manual" });
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it("guarda con la guarda de updated_at: si alguien edito en el medio, no pisa", async () => {

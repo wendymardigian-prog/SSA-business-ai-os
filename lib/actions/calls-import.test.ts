@@ -10,6 +10,8 @@ const audit = vi.hoisted(() => ({ logAudit: vi.fn(async () => "a1") }));
 vi.mock("@/lib/audit", () => audit);
 const queue = vi.hoisted(() => ({ enqueueClassify: vi.fn(async () => undefined) }));
 vi.mock("@/lib/calls/queue", () => queue);
+const emit = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/lib/calls/automation/emit", () => ({ emitCallEvent: emit }));
 
 import { importCall } from "./calls-import";
 import { IMPORT_LIMIT_PER_HOUR } from "@/lib/calls/transcript-import";
@@ -75,6 +77,16 @@ describe("importCall", () => {
     const insert = service.writesTo("calls")[0].values as Record<string, unknown>;
     expect(insert.duration_seconds).toBe(600);
     expect((insert.transcript as Array<{ speaker: { display_name: string } }>)[0].speaker.display_name).toBe("Ana");
+  });
+
+  it("importada con contacto emite call_linked; sin contacto no emite", async () => {
+    const withContact = setup();
+    await importCall(form({ contactId: CONTACT }));
+    expect(emit).toHaveBeenCalledWith(withContact.service.client, "call_linked", "call-1");
+    emit.mockClear();
+    setup();
+    await importCall(form());
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it("con contacto visible: queda vinculada a mano, con quien la vinculo", async () => {

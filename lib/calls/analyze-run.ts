@@ -26,6 +26,7 @@ import { aiSdkGenerate, type GenerateFn } from "./ai-generate";
 import { decideAiFailure } from "./ai-retry";
 import { runCallAnalysis } from "./analyze";
 import { buildStoredAnalysis } from "./analysis-store";
+import { emitCallEvent } from "./automation/emit";
 import { notifyBudgetBlocked } from "./notify";
 import { enqueueCallJob } from "./queue";
 import { resolveCallTaskSettings } from "./task-settings";
@@ -228,6 +229,9 @@ export async function runCallAnalysisJob(deps: AnalyzeDeps, payload: AnalyzeJobP
   };
   if (payload.requestedBy) await logAudit({ ...audit, performedBy: payload.requestedBy });
   else await auditAsSystem({ ...audit, label: "Análisis automático" });
+
+  // Un analisis nuevo o regenerado dispara los flujos de `call_analyzed` (una correccion a mano, no).
+  await emitCallEvent(db, "call_analyzed", callId);
 
   if (autoSummary) await enqueueCallJob(db, "call_summary", callId, now);
   if (settings.auto_knowledge && getJobHandler("call_index_knowledge")) await enqueueCallJob(db, "call_index_knowledge", callId, now);

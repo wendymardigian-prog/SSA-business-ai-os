@@ -324,6 +324,45 @@ try {
     check(!obj, "calls.objections guarda una objecion", obj?.message);
   }
 
+  console.log("\n— Lo que se hace con lo analizado (00149) —");
+  {
+    // Los dos triggers nuevos y el origen "call" de las ideas.
+    const defs = sql("select conname, pg_get_constraintdef(oid) as def from pg_constraint where conname in ('triggers_type_check','content_ideas_source_check')");
+    const t = defs.find((r) => r.conname === "triggers_type_check")?.def ?? "";
+    check(t.includes("call_analyzed") && t.includes("call_linked"), "triggers.type acepta call_analyzed y call_linked");
+    check(t.includes("booking_after_created") && t.includes("keyword"), "y conserva los de antes");
+    const src = defs.find((r) => r.conname === "content_ideas_source_check")?.def ?? "";
+    check(src.includes("'call'") && src.includes("'manual'") && src.includes("'agent'"), "content_ideas.source acepta 'call' y conserva manual y agent");
+
+    // Una idea que sale de una llamada: queda atada a ella, y borrar la llamada NO borra la idea.
+    const { data: llamada } = await svc.from("calls").insert(callRow(ws.id)).select("id").single();
+    const { data: idea, error: ideaErr } = await svc.from("content_ideas").insert({ workspace_id: ws.id, title: "zz-test idea de llamada", source: "call", call_id: llamada.id, status: "nueva" }).select("id").single();
+    check(!ideaErr && !!idea, "se puede crear una idea con source 'call' y su call_id", ideaErr?.message);
+    await svc.from("calls").delete().eq("id", llamada.id);
+    const { data: despues } = await svc.from("content_ideas").select("id, call_id").eq("id", idea.id).single();
+    check(despues?.call_id === null, "borrar la llamada deja la idea (call_id pasa a null)");
+    const { error: malOrigen } = await svc.from("content_ideas").insert({ workspace_id: ws.id, title: "zz-test x", source: "inventado" });
+    check(!!malOrigen, "un origen inventado sigue rechazado");
+
+    // El documento que sale de una llamada es interno: el agente de chat NUNCA lo recibe en su busqueda.
+    const vector = `[${["1", ...Array(1023).fill("0")].join(",")}]`;
+    const { data: doc } = await svc.from("knowledge_base").insert({ workspace_id: ws.id, title: "zz-test Llamada: ejemplo", tags: ["llamadas"], internal_only: true, status: "ready", source_mime: "text/markdown", source_filename: "llamada-x.md", content_md: "Ana: hola" }).select("id").single();
+    await svc.from("knowledge_chunks").insert({ workspace_id: ws.id, document_id: doc.id, chunk_index: 0, content: "Ana: hola, esto se dijo en una llamada", token_estimate: 10, embedding: vector });
+    const conAgente = await svc.rpc("match_knowledge_chunks_filtered", { p_workspace_id: ws.id, p_query_embedding: vector, p_match_count: 5, p_min_similarity: 0, p_tags: null, p_include_internal: false });
+    check(!conAgente.error && (conAgente.data ?? []).length === 0, "la busqueda del agente (p_include_internal = false) NO devuelve el documento de la llamada", conAgente.error?.message);
+    const conInterno = await svc.rpc("match_knowledge_chunks_filtered", { p_workspace_id: ws.id, p_query_embedding: vector, p_match_count: 5, p_min_similarity: 0, p_tags: null, p_include_internal: true });
+    check(!conInterno.error && (conInterno.data ?? []).length === 1, "y con p_include_internal = true si (el documento esta bien indexado)", conInterno.error?.message);
+    await svc.from("knowledge_base").delete().eq("id", doc.id);
+
+    // Visibilidad desde el contacto: quien ve el contacto (es su setter) ve la llamada de ese contacto; quien no, no.
+    const { data: lead } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test lead del setter L3", setter_id: setter.id }).select("id").single();
+    const { data: delLead } = await svc.from("calls").insert(callRow(ws.id, { contact_id: lead.id })).select("id").single();
+    const verSetter = await setter.client.from("calls").select("id").eq("contact_id", lead.id);
+    check((verSetter.data ?? []).some((r) => r.id === delLead.id), "desde la ficha del contacto: su setter ve la llamada");
+    const verOtro = await otro.client.from("calls").select("id").eq("contact_id", lead.id);
+    check((verOtro.data ?? []).length === 0, "y un Member sin relacion no ve ninguna de ese contacto");
+  }
+
   console.log("\n— Equipo: closer —");
   {
     const { error: e } = await svc.from("workspace_members").update({ is_closer: true, closer_emails: ["ana.personal@gmail.com"] })

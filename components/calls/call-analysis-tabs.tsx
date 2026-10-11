@@ -12,6 +12,7 @@ import { typeDeciderText } from "@/lib/calls/list";
 import type { CallAttendee } from "@/lib/types/database";
 import type { AnalysisSection } from "@/lib/calls/scoring";
 import { SectionTools } from "@/components/calls/section-tools";
+import { CallUsesCard, type CallUsesData } from "@/components/calls/call-uses";
 
 /**
  * Las pestañas del analisis de una llamada (F13, F14). Solo muestran: lo que
@@ -77,6 +78,8 @@ export interface TabsData {
   names: { users: Record<string, string>; agents: Record<string, string> };
   timeZone: string;
   emptyMessage: string | null;
+  /** El resumen, las ideas, la memoria y Conocimiento (L3). Solo si la llamada ya se analizo. */
+  uses?: CallUsesData;
 }
 
 export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: string) => void }) {
@@ -150,6 +153,8 @@ export function SummaryTab({ data, onJump }: { data: TabsData; onJump: (ts: stri
           )}
         </div>
       )}
+
+      {data.uses && !data.emptyMessage && <CallUsesCard data={data.uses} />}
 
       {data.lines.length > 0 && (
         <section aria-labelledby="metricas-title">

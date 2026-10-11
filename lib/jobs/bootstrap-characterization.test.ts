@@ -29,6 +29,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "booking_relative_trigger",
       "call_analyze",
       "call_classify",
+      "call_index_knowledge",
+      "call_summary",
       "content_copy",
       "content_provider_schedule",
       "content_publish",

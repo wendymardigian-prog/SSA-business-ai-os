@@ -18,6 +18,7 @@ import type { Database } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { syncFathomConnection } from "@/lib/fathom/ingest";
 import { FATHOM_SYNC_JOB } from "@/lib/fathom/queue";
+import { emitCallEvent } from "@/lib/calls/automation/emit";
 
 type Db = SupabaseClient<Database>;
 
@@ -29,7 +30,8 @@ export async function handleFathomSync(ctx: JobContext): Promise<void> {
   }
   const service = ctx.supabase as Db;
   try {
-    const result = await syncFathomConnection({ supabase: service }, connectionId);
+    // Una llamada nueva que queda vinculada a un contacto dispara los flujos de `call_linked`.
+    const result = await syncFathomConnection({ supabase: service, onLinked: async ({ callId }) => void (await emitCallEvent(service, "call_linked", callId)) }, connectionId);
     // Solo numeros y el resultado: nunca titulos, correos ni transcripciones.
     console.log(`[fathom_sync] ${result.outcome} · nuevas ${result.ingested} · ya estaban ${result.skippedExisting} · de otros ${result.skippedNotCloser} · pedidos ${result.requests}`);
   } catch (err) {

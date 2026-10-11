@@ -41,6 +41,9 @@ import {
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
+import { ContactCallsSection } from "@/components/contacts/calls-section";
+import { getPermissionContext } from "@/lib/auth/guards";
+import { loadContactCalls } from "@/lib/calls/contact-section";
 import { PageHeader } from "@/components/page-header";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -193,6 +196,13 @@ export default async function ContactDetailPage({
     assignsTo: t.assigns_to,
   }));
   const labels = memberLabels(members);
+
+  // Las llamadas del contacto (F34): solo si quien mira tiene `calls.view`, y solo las que la RLS le deja ver.
+  const canViewCalls = (await getPermissionContext()).can("calls.view");
+  const contactCalls = canViewCalls
+    ? await loadContactCalls(supabase, { workspaceId: workspace.id, contactId, names: new Map(members.map((m) => [m.userId, m.name])) })
+    : { rows: [], total: 0 };
+
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
     title: b.title,
@@ -436,6 +446,8 @@ export default async function ContactDetailPage({
             />
 
             <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
+
+            <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
 
             <AttributionSection view={attributionView} />
 

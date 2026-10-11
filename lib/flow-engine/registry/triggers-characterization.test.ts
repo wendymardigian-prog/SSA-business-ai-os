@@ -28,6 +28,18 @@ describe("triggers registrados", () => {
     }
   });
 
+  it("Llamadas suma exactamente call_analyzed y call_linked, de alcance evento y prioridad 45", () => {
+    const byType = new Map(listTriggers().map((t) => [t.type, t]));
+    for (const type of ["call_analyzed", "call_linked"]) {
+      const t = byType.get(type)!;
+      expect(t, type).toBeDefined();
+      expect(t.scope).toBe("event");
+      expect(t.priority).toBe(45);
+      expect(t.eventTypes).toEqual([type]);
+    }
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2);
+  });
+
   it("el orden de prioridad de los de mensaje sigue igual", () => {
     const order = listTriggers("message").map((t) => t.type);
     expect(order[0]).not.toBe("default");
