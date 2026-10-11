@@ -408,7 +408,13 @@ export type AgentRunSource =
   // Mejoras de Chat (00103). Los dos van SIN agent_id: no los pide un agente,
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
-  | "media_description";
+  | "media_description"
+  // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.
+  | "call_classification"
+  | "call_analysis"
+  | "call_correction"
+  | "call_summary"
+  | "call_prompt_test";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -2899,7 +2905,7 @@ export interface Database {
         Row: {
           id: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note: string | null;
@@ -2909,7 +2915,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note?: string | null;

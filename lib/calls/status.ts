@@ -34,6 +34,8 @@ const REASONS: Record<string, string> = {
   schema: "La IA devolvió un análisis incompleto",
   no_transcript: "No tiene transcripción",
   rule: "El tipo lo decidió una regla",
+  ai_off: "Ninguna regla lo decide y la clasificación con IA está apagada",
+  ai_error: "La IA no pudo clasificarla: elegí el tipo vos",
 };
 
 /** El motivo en palabras, o null si no hay (o no se conoce). */

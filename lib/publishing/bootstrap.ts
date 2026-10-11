@@ -25,6 +25,8 @@ import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
 import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync";
+import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify";
+import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -94,6 +96,8 @@ export function registerPublishing(): void {
 
   // Llamadas: la consulta a Fathom de una conexion (F8).
   registerFathomSyncHandler();
+  registerCallClassifyHandler();
+  registerCallAnalyzeHandler();
 }
 
 /** Para los tests. */

@@ -28,7 +28,7 @@ Pendientes y decisiones: [PENDIENTE-llamadas.md](PENDIENTE-llamadas.md).
 | 00145 | 00144 | `calls`, `can_see_call`, CHECK provider, sync, closer, candado de refresh | **aplicada y registrada** (`verify-calls`, `verify-rls`, `verify-roles` en verde) |
 | 00146 | 00145 | `private.enqueue_fathom_sync()` + cron `fathom-sync` | **aplicada y registrada** (`call_app_cron` con la misma huella `c90fa613…`; `verify-calls` en verde) |
 | 00147 | 00146 | política `audit_log_select_calls` | **aplicada y registrada** (`audit_log_select` con la misma huella `5b4ffabd…`; `verify-audit-visibility` igual antes y después) |
-| 00148 | 00147 | CHECK `agent_runs.source` / `ai_task_prompt_versions.task`, `set_ai_background_task_settings` | pendiente |
+| 00148 | 00147 | CHECK `agent_runs.source` / `ai_task_prompt_versions.task`, `set_ai_background_task_settings` | **aplicada y registrada** (`verify-calls` ampliado en verde) |
 | 00149 | 00148 | CHECK `triggers.type` / `content_ideas.source`, `content_ideas.call_id` | pendiente |
 
 Próxima libre al cerrar: **00150**.

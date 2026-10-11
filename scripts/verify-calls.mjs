@@ -60,6 +60,8 @@ function sql(query) {
   const out = execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   return JSON.parse(out).rows ?? [];
 }
+/** Comparacion de jsonb: la base reordena las claves, asi que se ordenan antes de comparar. */
+const canon = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 const slotNow = () => Math.floor(Date.now() / 1000 / 600); // la misma cuenta que lib/fathom/queue.ts
 
 const callRow = (wsId, extra = {}) => ({
@@ -261,6 +263,46 @@ try {
     for (const id of [activa, caida, revocada, deLaIda]) await svc.from("scheduled_jobs").delete().like("dedupe_key", `fathom_sync:${id}:%`);
     const { data: restos } = await svc.from("scheduled_jobs").select("id").eq("type", "fathom_sync").like("dedupe_key", `fathom_sync:${activa}:%`);
     check((restos ?? []).length === 0, "los jobs de prueba quedaron limpios");
+  }
+
+  console.log("\n— La configuracion de una tarea (set_ai_background_task_settings, 00148) —");
+  {
+    const otras = {
+      message_classification: { mode: "batch", frequency: "daily", hour: "03:00", model: null },
+      conversation_summary: { mode: "now" },
+      close_classification: { mode: "off" },
+      knowledge_indexing: { mode: "now" },
+      call_classification: { mode: "now", confidence_threshold: 0.7 },
+    };
+    await svc.from("workspaces").update({ ai_background_settings: otras }).eq("id", ws.id);
+    const nuevo = { mode: "now", analyze_types: ["cierre"], rubric: { version: 2, closer: [], lead: [] } };
+    const r1 = await svc.rpc("set_ai_background_task_settings", { p_workspace_id: ws.id, p_task: "call_analysis", p_value: nuevo });
+    check(!r1.error && r1.data === null, "guardar call_analysis devuelve lo que habia antes (nada, la primera vez)", r1.error?.message);
+    const { data: despues } = await svc.from("workspaces").select("ai_background_settings").eq("id", ws.id).single();
+    const cfg = despues.ai_background_settings;
+    check(canon(cfg.call_analysis) === canon(nuevo), "queda guardada la clave nueva");
+    for (const k of ["message_classification", "conversation_summary", "close_classification", "knowledge_indexing", "call_classification"]) {
+      check(canon(cfg[k]) === canon(otras[k]), `la clave ${k} NO cambio`);
+    }
+    const r2 = await svc.rpc("set_ai_background_task_settings", { p_workspace_id: ws.id, p_task: "call_analysis", p_value: { mode: "off" } });
+    check(canon(r2.data) === canon(nuevo), "al guardar de nuevo devuelve el valor anterior (para la auditoria)");
+    const r3 = await svc.rpc("set_ai_background_task_settings", { p_workspace_id: ws.id, p_task: "message_classification", p_value: { mode: "off" } });
+    check(!!r3.error, "una tarea fuera de la lista (message_classification) lanza", r3.error ? undefined : "la dejo pasar");
+    const r4 = await closer.client.rpc("set_ai_background_task_settings", { p_workspace_id: ws.id, p_task: "call_analysis", p_value: {} });
+    check(!!r4.error, "un usuario con sesion NO puede ejecutarla");
+
+    const run = await svc.from("agent_runs").insert({ workspace_id: ws.id, source: "call_analysis", trigger: "job", status: "completed" }).select("id").single();
+    check(!run.error, "agent_runs acepta source 'call_analysis'", run.error?.message);
+    for (const src of ["call_classification", "call_correction", "call_summary", "call_prompt_test"]) {
+      const x = await svc.from("agent_runs").insert({ workspace_id: ws.id, source: src, trigger: "job", status: "completed" });
+      check(!x.error, `agent_runs acepta source '${src}'`, x.error?.message);
+    }
+    const bad = await svc.from("agent_runs").insert({ workspace_id: ws.id, source: "inventada", trigger: "job", status: "completed" });
+    check(!!bad.error, "y sigue rechazando un source inventado");
+    for (const task of ["call_classification", "call_analysis", "call_summary"]) {
+      const v = await svc.from("ai_task_prompt_versions").insert({ workspace_id: ws.id, task, version: 1, instructions: "texto de prueba" });
+      check(!v.error, `ai_task_prompt_versions acepta task '${task}'`, v.error?.message);
+    }
   }
 
   console.log("\n— Equipo: closer —");
