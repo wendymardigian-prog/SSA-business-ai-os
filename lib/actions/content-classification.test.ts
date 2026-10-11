@@ -37,7 +37,7 @@ beforeEach(() => {
       { id: "p-arch", workspace_id: WS, name: "Viejo", archived_at: "2026-10-01T00:00:00Z" },
       { id: "p-ajeno", workspace_id: "otro-ws", name: "Ajeno", archived_at: null },
     ],
-    content_offers: [
+    products: [
       { id: "o-ok", workspace_id: WS, name: "Mentoria", archived_at: null },
       { id: "o-arch", workspace_id: WS, name: "Vieja", archived_at: "2026-10-01T00:00:00Z" },
     ],

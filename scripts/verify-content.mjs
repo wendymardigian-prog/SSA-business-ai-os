@@ -90,7 +90,7 @@ try {
   // Una idea con TODA la clasificacion cargada, para ver que pasa a la pieza.
   const { data: pilar } = await svc.from("content_pillars")
     .insert({ workspace_id: wsA, name: "zz-test Educativo", color: "#10b981" }).select("id").single();
-  const { data: oferta } = await svc.from("content_offers")
+  const { data: oferta } = await svc.from("products")
     .insert({ workspace_id: wsA, name: "zz-test Mentoria" }).select("id").single();
   await svc.from("content_ideas").update({
     content: "Hook de la idea\n\nAngulo y notas",

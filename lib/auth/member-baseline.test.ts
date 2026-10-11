@@ -164,6 +164,10 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/social/page.tsx", "social.view"],
   ["app/(dashboard)/dashboard/dashboards/content/page.tsx", "dashboards.content.view"],
   ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
+  // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
+  // misma settings.manage que la lista de Productos.
+  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
+  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "settings.manage"],
 ] as const;
 
 describe("caracterizacion: las paginas que piden un permiso (F78)", () => {
@@ -306,6 +310,8 @@ describe("caracterizacion: el menu (F68)", () => {
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",
       "Social",
+      // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).
+      "Ventas",
     ]);
   });
 });

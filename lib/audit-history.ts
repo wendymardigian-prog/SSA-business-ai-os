@@ -66,6 +66,24 @@ const FIELD_LABELS: Record<string, string> = {
   analysis: "Análisis",
   status: "Estado",
   name: "Nombre",
+  product_type: "Tipo",
+  description: "Descripción",
+  price: "Precio",
+  change_notes: "Notas del cambio",
+  setter_id: "Setter",
+  vendedor_id: "Vendedor",
+  discount_amount: "Descuento",
+  final_amount: "Monto final",
+  base_amount: "Monto base",
+  discount_reason: "Motivo del descuento",
+  sale_date: "Fecha de la venta",
+  service_starts_at: "Inicio del servicio",
+  notes: "Notas",
+  attribution: "Atribución",
+  due_date: "Vence",
+  amount: "Monto",
+  payment_method: "Método de pago",
+  paid_on: "Cobrado el",
   title: "Título",
   role: "Rol",
 };
@@ -219,4 +237,51 @@ export const FORM_ACTION_LABELS: Record<
   "contact.linked": "vinculó el contacto desde un formulario",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
+};
+
+/** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
+export const SALE_ACTION_LABELS: Record<
+  Extract<
+    AuditAction,
+    | `product.${string}`
+    | `variant.${string}`
+    | `version.${string}`
+    | `assignment_rule.${string}`
+    | `assignment.${string}`
+    | `sale.${string}`
+    | `payment.${string}`
+  >,
+  string
+> = {
+  "product.created": "creó el producto",
+  "product.updated": "editó el producto",
+  "product.status_changed": "cambió el estado del producto",
+  "variant.created": "creó la variante",
+  "variant.updated": "editó la variante",
+  "variant.archived": "archivó la variante",
+  "variant.restored": "restauró la variante",
+  "variant.duplicated": "duplicó la variante",
+  "version.draft_created": "creó un borrador de versión",
+  "version.draft_updated": "editó el borrador de versión",
+  "version.draft_deleted": "borró el borrador de versión",
+  "version.published": "publicó la versión",
+  "assignment_rule.updated": "cambió la regla de asignación",
+  "assignment.automatic": "asignó automáticamente",
+  "sale.created": "cargó la venta",
+  "sale.updated": "editó la venta",
+  "sale.attribution_changed": "cambió la atribución de la venta",
+  "sale.repriced": "cambió el producto o el precio de la venta",
+  "sale.cancelled": "canceló la venta",
+  "sale.subscription_cancelled": "canceló la suscripción",
+  "sale.refunded": "reembolsó la venta",
+  "sale.contract_sent": "envió el contrato",
+  "payment.created": "agregó un pago",
+  "payment.paid": "cobró el pago",
+  "payment.reverted": "revirtió el cobro",
+  "payment.rescheduled": "reprogramó el pago",
+  "payment.uncollectible": "marcó el pago como incobrable",
+  "payment.restored": "volvió a poner el pago en cobro",
+  "payment.cancelled": "anuló el pago",
+  "payment.overdue": "marcó el pago como moroso",
+  "payment.refund": "registró un reembolso",
 };

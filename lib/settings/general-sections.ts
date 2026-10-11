@@ -1,5 +1,5 @@
 /**
- * Las cuatro secciones de General (S2), como datos puros: la navegación
+ * Las secciones de General (S2; Ventas se sumó con la Etapa 5), como datos puros: la navegación
  * interna de la pestaña sale de acá, igual que
  * lib/scheduling/config-sections.ts para la Configuración de Agenda.
  *
@@ -9,7 +9,7 @@
  */
 
 export interface GeneralSection {
-  id: "workspace" | "conversaciones" | "archivos" | "ia";
+  id: "workspace" | "conversaciones" | "archivos" | "ventas" | "ia";
   label: string;
 }
 
@@ -17,6 +17,7 @@ export const GENERAL_SECTIONS: GeneralSection[] = [
   { id: "workspace", label: "Workspace" },
   { id: "conversaciones", label: "Conversaciones" },
   { id: "archivos", label: "Archivos" },
+  { id: "ventas", label: "Ventas" },
   { id: "ia", label: "IA" },
 ];
 

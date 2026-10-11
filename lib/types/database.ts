@@ -377,7 +377,14 @@ export type AuditEntityType =
   /** Formularios (00150): el formulario, una respuesta y la firma de un contrato. */
   | "form"
   | "form_submission"
-  | "contract_signature";
+  | "contract_signature"
+  /** Ventas (00159 a 00168): el catalogo, las reglas de asignacion, la venta y el pago. */
+  | "product"
+  | "product_variant"
+  | "product_version"
+  | "assignment_rule"
+  | "sale"
+  | "payment";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -503,7 +510,42 @@ export type AuditAction =
   | "contact.linked"
   /** Entity contract_signature. */
   | "contract.email_resent"
-  | "contract.pdf_regenerated";
+  | "contract.pdf_regenerated"
+  /** Ventas, catalogo (entity product, product_variant o product_version). */
+  | "product.created"
+  | "product.updated"
+  | "product.status_changed"
+  | "variant.created"
+  | "variant.updated"
+  | "variant.archived"
+  | "variant.restored"
+  | "variant.duplicated"
+  | "version.draft_created"
+  | "version.draft_updated"
+  | "version.draft_deleted"
+  | "version.published"
+  /** Ventas, asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
+  | "assignment_rule.updated"
+  | "assignment.automatic"
+  /** Ventas (entity sale). */
+  | "sale.created"
+  | "sale.updated"
+  | "sale.attribution_changed"
+  | "sale.repriced"
+  | "sale.cancelled"
+  | "sale.subscription_cancelled"
+  | "sale.refunded"
+  | "sale.contract_sent"
+  /** Pagos (entity payment). */
+  | "payment.created"
+  | "payment.paid"
+  | "payment.reverted"
+  | "payment.rescheduled"
+  | "payment.uncollectible"
+  | "payment.restored"
+  | "payment.cancelled"
+  | "payment.overdue"
+  | "payment.refund";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -859,6 +901,8 @@ export interface Database {
           content_copy_settings: Json;
           /** Zona horaria IANA del negocio (migracion 00075). */
           timezone: string;
+          /** Metodos de pago que ofrece el selector de Ventas (00159). */
+          enabled_payment_methods: string[];
           ai_background_settings: Json;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
@@ -892,6 +936,7 @@ export interface Database {
           scheduling_auto_create_flows?: boolean;
           scheduling_public_base_url?: string | null;
           timezone?: string;
+          enabled_payment_methods?: string[];
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -922,6 +967,7 @@ export interface Database {
           scheduling_auto_create_flows?: boolean;
           scheduling_public_base_url?: string | null;
           timezone?: string;
+          enabled_payment_methods?: string[];
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -3668,6 +3714,143 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Catalogo de productos de Ventas (00159). Absorbe content_offers: los migrados conservan el id. */
+      products: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          description: string | null;
+          product_type: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order: number;
+          status: "active" | "inactive" | "discontinued";
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          description?: string | null;
+          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order?: number;
+          status?: "active" | "inactive" | "discontinued";
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order?: number;
+          status?: "active" | "inactive" | "discontinued";
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Como se vende un producto: duracion, garantia y facturacion (00159). El precio vive en product_versions. */
+      product_variants: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          product_id: string;
+          name: string;
+          duration_type: "days" | "weeks" | "months" | "lifetime";
+          duration_value: number | null;
+          guarantee_duration_type: "days" | "weeks" | "months" | null;
+          guarantee_duration_value: number | null;
+          billing_type: "one_time" | "recurring";
+          billing_interval: "monthly" | "quarterly" | "yearly" | null;
+          display_order: number;
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          product_id: string;
+          name: string;
+          duration_type?: "days" | "weeks" | "months" | "lifetime";
+          duration_value?: number | null;
+          guarantee_duration_type?: "days" | "weeks" | "months" | null;
+          guarantee_duration_value?: number | null;
+          billing_type?: "one_time" | "recurring";
+          billing_interval?: "monthly" | "quarterly" | "yearly" | null;
+          display_order?: number;
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          duration_type?: "days" | "weeks" | "months" | "lifetime";
+          duration_value?: number | null;
+          guarantee_duration_type?: "days" | "weeks" | "months" | null;
+          guarantee_duration_value?: number | null;
+          billing_type?: "one_time" | "recurring";
+          billing_interval?: "monthly" | "quarterly" | "yearly" | null;
+          display_order?: number;
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** El precio y las condiciones vigentes de una variante (00159). Una publicada no se edita. */
+      product_versions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          product_variant_id: string;
+          version_number: number;
+          price: number;
+          currency: "USD";
+          change_notes: string | null;
+          capabilities_config: Json;
+          status: "draft" | "active" | "deprecated";
+          published_at: string | null;
+          published_by: string | null;
+          deprecated_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          product_variant_id: string;
+          version_number?: number;
+          price: number;
+          currency?: "USD";
+          change_notes?: string | null;
+          capabilities_config?: Json;
+          status?: "draft" | "active" | "deprecated";
+          published_at?: string | null;
+          published_by?: string | null;
+          deprecated_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          price?: number;
+          change_notes?: string | null;
+          capabilities_config?: Json;
+          status?: "draft" | "active" | "deprecated";
+          published_at?: string | null;
+          published_by?: string | null;
+          deprecated_at?: string | null;
+        };
+        Relationships: [];
+      };
+
       content_post_versions: {
         Row: {
           id: string;
@@ -4669,6 +4852,11 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Publica un borrador de version: la activa pasa a deprecated, en una transaccion (00159). Solo service_role. */
+      publish_product_version: {
+        Args: { p_version_id: string; p_actor_id: string };
+        Returns: Json;
+      };
       /** Crea la agenda entera en una transaccion (00099, F26). */
       create_booking: {
         Args: {

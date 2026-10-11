@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { AI_RUNS_HREF, GENERAL_SECTIONS } from "./general-sections";
 
 describe("GENERAL_SECTIONS", () => {
-  it("tiene las cuatro secciones en orden, sin Zona de peligro", () => {
+  it("tiene las secciones en orden (Ventas se suma con la Etapa 5), sin Zona de peligro", () => {
     expect(GENERAL_SECTIONS.map((s) => s.id)).toEqual([
       "workspace",
       "conversaciones",
       "archivos",
+      "ventas",
       "ia",
     ]);
   });

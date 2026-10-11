@@ -55,7 +55,7 @@ function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
       ],
       content_ideas: [{ id: "idea-1", workspace_id: WS, title: "La idea", content: "Texto de la idea" }],
       content_pillars: [],
-      content_offers: [],
+      products: [],
       social_posts: [
         { id: "sp-1", content_post_id: "post-1", platform: "instagram", status: "failed", scheduled_at: "2026-10-05T15:00:00Z", published_at: null, url: null, last_error: "Boom", last_error_kind: "temporary", attempts: 2, warning: null, actual_visibility: null, deleted_at: null },
         { id: "sp-2", content_post_id: "post-1", platform: "tiktok", status: "published", deleted_at: "2026-10-01T00:00:00Z" },

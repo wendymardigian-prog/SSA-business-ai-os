@@ -45,6 +45,7 @@ const MODULE_LABELS: Record<PermissionModule, string> = {
   scheduling: "Agenda",
   calls: "Llamadas",
   forms: "Formularios",
+  sales: "Ventas",
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuracion",
@@ -59,6 +60,7 @@ interface Draft {
   conversationsScope: PermissionScope;
   bookingsScope: PermissionScope;
   callsScope: PermissionScope;
+  salesScope: PermissionScope;
 }
 
 const emptyDraft = (): Draft => ({
@@ -70,6 +72,7 @@ const emptyDraft = (): Draft => ({
   conversationsScope: "own",
   bookingsScope: "own",
   callsScope: "own",
+  salesScope: "own",
 });
 
 export function RolesView({
@@ -105,6 +108,7 @@ export function RolesView({
       conversationsScope: role.permissions.scopes.conversations,
       bookingsScope: role.permissions.scopes.bookings,
       callsScope: role.permissions.scopes.calls,
+      salesScope: role.permissions.scopes.sales,
     });
     setError(null);
     setWarnings([]);
@@ -123,6 +127,7 @@ export function RolesView({
         conversationsScope: draft.conversationsScope,
         bookingsScope: draft.bookingsScope,
         callsScope: draft.callsScope,
+        salesScope: draft.salesScope,
       };
 
       const result = draft.id ? await updateRole(draft.id, input) : await createRole(input);
@@ -306,7 +311,7 @@ export function RolesView({
               </label>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <ScopeField
                 label="Que leads ve"
                 module="leads"
@@ -332,6 +337,13 @@ export function RolesView({
                 hint="Las que grabó o las de contactos que puede ver."
                 value={draft.callsScope}
                 onChange={(callsScope) => setDraft({ ...draft, callsScope })}
+              />
+              <ScopeField
+                label="Que ventas ve"
+                module="sales"
+                hint="Las que cargó o donde es setter o vendedor."
+                value={draft.salesScope}
+                onChange={(salesScope) => setDraft({ ...draft, salesScope })}
               />
             </div>
 

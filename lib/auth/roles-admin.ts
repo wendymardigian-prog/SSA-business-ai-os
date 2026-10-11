@@ -90,6 +90,7 @@ export function validateRole(input: RoleInput): RoleValidation {
       conversations: input.scopes.conversations ?? "own",
       bookings: input.scopes.bookings ?? "own",
       calls: input.scopes.calls ?? "own",
+      sales: input.scopes.sales ?? "own",
     },
   });
 

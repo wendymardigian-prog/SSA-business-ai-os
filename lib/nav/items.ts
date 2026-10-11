@@ -28,9 +28,7 @@ export interface NavGroupMeta {
 export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "inicio", title: null },
   { id: "adquisicion", title: "Adquisición" },
-  // Arranca con dos items: no existe el modulo de Ventas todavia (D2). El
-  // lugar de Facturacion queda reservado para cuando ese modulo exista; no se
-  // agrega un item que hoy no tendria a donde ir.
+  // Contactos, Agenda, Llamadas y Ventas (Etapa 5).
   { id: "ventas", title: "Ventas" },
   { id: "automatizacion", title: "Automatización" },
   { id: "sistema", title: null },
@@ -82,6 +80,10 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // Llamadas (Fathom + analizador): menu propio (decision 151), debajo de
   // Agenda. Se ve con `calls.view`; un Member de sistema lo tiene (decision 152).
   { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", adminOnly: false, permissions: ["calls.view"], group: "ventas" },
+  // Ventas y pagos (Etapa 5, F8): abre la lista de ventas, SIN engranaje. Los
+  // productos y las reglas de asignacion viven en Ajustes. Va despues de
+  // Llamadas: ese lugar ya estaba fijado por su test.
+  { name: "Ventas", href: "/dashboard/ventas", icon: "CircleDollarSign", adminOnly: false, permissions: ["sales.view"], group: "ventas", alsoActiveOn: ["/dashboard/ventas"] },
 
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false, group: "automatizacion" },
   { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },

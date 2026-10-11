@@ -2,7 +2,7 @@
  * Pilares y productos: las reglas puras (F89).
  *
  * Los PRODUCTOS (lo que se vende) se llamaban "ofertas": la tabla sigue siendo
- * `content_offers` (00134 les suma precio y estado) y las columnas `offer_id`.
+ * `products` (Ventas, 00160; antes `content_offers`) y las columnas `offer_id`.
  * Todo lo que ve el usuario dice "producto".
  *
  * Son listas del negocio que se configuran en Ajustes y se eligen al cargar

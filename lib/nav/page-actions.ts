@@ -275,7 +275,15 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con su precio en dolares y su estado. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+  },
+  "/dashboard/settings/productos/[id]": {
+    title: "Producto",
+    tooltip: "Las variantes del producto y, en cada una, su precio vigente y el historial de precios.",
+  },
+  "/dashboard/ventas": {
+    title: "Ventas",
+    tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",
   },
 };
 

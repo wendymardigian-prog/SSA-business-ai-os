@@ -16,7 +16,8 @@ let role = "admin";
 let roleId: string | null = null;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined) }));
+vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined), diffFields: () => null }));
+vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
     user: { id: "user-1" },
@@ -28,6 +29,25 @@ vi.mock("@/lib/workspace", () => ({
 }));
 
 const actions = await import("./content-taxonomy");
+
+/** La base en memoria con el catalogo y la funcion de publicar (espejo de publish_product_version, 00159). */
+function mem(seed: Record<string, Array<Record<string, unknown>>> = {}) {
+  return memoryDb(
+    { content_pillars: [], products: [], product_variants: [], product_versions: [], workspace_roles: [], ...seed },
+    {
+      rpc: {
+        publish_product_version: (args, d) => {
+          const versions = d.rows("product_versions");
+          const target = versions.find((v) => v.id === args.p_version_id)!;
+          const prev = versions.find((v) => v.product_variant_id === target.product_variant_id && v.status === "active");
+          if (prev) prev.status = "deprecated";
+          target.status = "active";
+          return { version_id: target.id, deprecated_version_id: prev?.id ?? null };
+        },
+      },
+    },
+  );
+}
 
 function customRole(keys: string[]) {
   role = "member";
@@ -43,7 +63,7 @@ function customRole(keys: string[]) {
 beforeEach(() => {
   role = "admin";
   roleId = null;
-  db = memoryDb({ content_pillars: [], content_offers: [], workspace_roles: [] });
+  db = mem();
 });
 
 describe("crear", () => {
@@ -117,13 +137,11 @@ describe("permiso", () => {
 
 describe("renombrar y archivar", () => {
   beforeEach(() => {
-    db = memoryDb({
+    db = mem({
       content_pillars: [
         { id: "p1", workspace_id: WS, name: "Educativo", color: "#6366f1", archived_at: null },
         { id: "p2", workspace_id: WS, name: "Autoridad", color: "#0ea5e9", archived_at: null },
       ],
-      content_offers: [],
-      workspace_roles: [],
     });
   });
 
@@ -183,26 +201,35 @@ describe("renombrar y archivar", () => {
   });
 });
 
-describe("productos: precio y estado (00134)", () => {
+describe("productos: atajos del catalogo de Ventas", () => {
   const product = (over: Record<string, unknown> = {}) => ({
-    id: "pr1", workspace_id: WS, name: "Mentoria", price_usd: 1500, status: "active", archived_at: null, ...over,
+    id: "pr1", workspace_id: WS, name: "Mentoria", description: null, product_type: "otro", status: "active", archived_at: null, display_order: 0, ...over,
   });
+  const variant = (over: Record<string, unknown> = {}) => ({
+    id: "va1", workspace_id: WS, product_id: "pr1", name: "Estandar", duration_type: "lifetime", duration_value: null,
+    guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, display_order: 0, archived_at: null, ...over,
+  });
+  const version = (over: Record<string, unknown> = {}) => ({
+    id: "ve1", workspace_id: WS, product_variant_id: "va1", version_number: 1, price: 1500, change_notes: null, status: "active", ...over,
+  });
+  const activeVersions = () => db.rows("product_versions").filter((v) => v.status === "active");
 
-  it("crea un producto activo, con su precio en USD", async () => {
+  it("crea un producto activo con su variante Estandar y su version 1 YA publicada", async () => {
     const result = await actions.createProduct({ name: "  Mentoria  ", priceUsd: "1500,5" });
 
     expect(result).toMatchObject({ ok: true, data: { name: "Mentoria", priceUsd: 1500.5, status: "active" } });
-    expect(db.rows("content_offers")[0]).toMatchObject({
-      workspace_id: WS, name: "Mentoria", price_usd: 1500.5, status: "active",
-    });
-    expect(result.ok && result.data.id).toBe(db.rows("content_offers")[0].id);
+    expect(db.rows("products")[0]).toMatchObject({ workspace_id: WS, name: "Mentoria", status: "active" });
+    expect(db.rows("product_variants")).toHaveLength(1);
+    expect(activeVersions()).toHaveLength(1);
+    expect(activeVersions()[0]).toMatchObject({ price: 1500.5, version_number: 1 });
+    expect(result.ok && result.data.id).toBe(db.rows("products")[0].id);
   });
 
   it("el precio es obligatorio: sin precio no se crea nada", async () => {
     for (const bad of [undefined, null, "", "  ", "mil", -5]) {
       expect((await actions.createProduct({ name: "Mentoria", priceUsd: bad })).ok).toBe(false);
     }
-    expect(db.rows("content_offers")).toHaveLength(0);
+    expect(db.rows("products")).toHaveLength(0);
   });
 
   it("rechaza un nombre repetido entre los activos, sin mirar mayusculas", async () => {
@@ -210,73 +237,74 @@ describe("productos: precio y estado (00134)", () => {
     const again = await actions.createProduct({ name: "mentoria", priceUsd: 20 });
 
     expect(again).toMatchObject({ ok: false });
-    expect(db.rows("content_offers")).toHaveLength(1);
+    expect(db.rows("products")).toHaveLength(1);
   });
 
   describe("editar", () => {
     beforeEach(() => {
-      db = memoryDb({ content_pillars: [], content_offers: [product()], workspace_roles: [] });
+      db = mem({ products: [product()], product_variants: [variant()], product_versions: [version()] });
     });
 
-    it("cambia el precio y deja el resto", async () => {
+    it("cambiar el precio NO lo pisa: publica una version nueva y la anterior queda deprecated", async () => {
       expect(await actions.updateProduct({ id: "pr1", priceUsd: 2000 })).toEqual({ ok: true });
-      expect(db.rows("content_offers")[0]).toMatchObject({ name: "Mentoria", price_usd: 2000, status: "active", archived_at: null });
+      expect(db.rows("products")[0]).toMatchObject({ name: "Mentoria", status: "active", archived_at: null });
+      expect(activeVersions().map((v) => v.price)).toEqual([2000]);
+      expect(db.rows("product_versions").find((v) => v.id === "ve1")).toMatchObject({ status: "deprecated", price: 1500 });
+    });
+
+    it("el mismo precio no crea una version", async () => {
+      expect(await actions.updateProduct({ id: "pr1", priceUsd: 1500 })).toEqual({ ok: true });
+      expect(db.rows("product_versions")).toHaveLength(1);
     });
 
     it("renombra, pero no al nombre de otro producto activo", async () => {
-      db.rows("content_offers").push(product({ id: "pr2", name: "Curso" }));
+      db.rows("products").push(product({ id: "pr2", name: "Curso" }));
       expect(await actions.updateProduct({ id: "pr1", name: "Curso" })).toMatchObject({ ok: false });
       expect(await actions.updateProduct({ id: "pr1", name: "Mentoria VIP" })).toEqual({ ok: true });
-      expect(db.rows("content_offers").find((r) => r.id === "pr1")?.name).toBe("Mentoria VIP");
+      expect(db.rows("products").find((r) => r.id === "pr1")?.name).toBe("Mentoria VIP");
     });
 
     it("inactivo y discontinuado quedan archivados (estado y archivado van juntos); NO se borra la fila", async () => {
       expect(await actions.updateProduct({ id: "pr1", status: "inactive" })).toEqual({ ok: true });
-      const inactive = db.rows("content_offers")[0];
+      const inactive = db.rows("products")[0];
       expect(inactive).toMatchObject({ status: "inactive" });
       expect(inactive.archived_at).toBeTruthy();
 
       const when = inactive.archived_at;
       expect(await actions.updateProduct({ id: "pr1", status: "discontinued" })).toEqual({ ok: true });
       // Pasar de un archivado a otro conserva cuando salio de circulacion.
-      expect(db.rows("content_offers")[0]).toMatchObject({ status: "discontinued", archived_at: when });
-      expect(db.rows("content_offers")).toHaveLength(1);
+      expect(db.rows("products")[0]).toMatchObject({ status: "discontinued", archived_at: when });
+      expect(db.rows("products")).toHaveLength(1);
     });
 
     it("volver a activo lo desarchiva", async () => {
       await actions.updateProduct({ id: "pr1", status: "discontinued" });
       expect(await actions.updateProduct({ id: "pr1", status: "active" })).toEqual({ ok: true });
-      expect(db.rows("content_offers")[0]).toMatchObject({ status: "active", archived_at: null });
+      expect(db.rows("products")[0]).toMatchObject({ status: "active", archived_at: null });
     });
 
     it("no reactiva si mientras tanto se creo otro activo con el mismo nombre", async () => {
       await actions.updateProduct({ id: "pr1", status: "discontinued" });
-      db.rows("content_offers").push(product({ id: "pr2", name: "Mentoria" }));
+      db.rows("products").push(product({ id: "pr2", name: "Mentoria" }));
 
       const result = await actions.updateProduct({ id: "pr1", status: "active" });
 
-      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Renombra uno de los dos") });
-      expect(db.rows("content_offers").find((r) => r.id === "pr1")?.status).toBe("discontinued");
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Renombr") });
+      expect(db.rows("products").find((r) => r.id === "pr1")?.status).toBe("discontinued");
     });
 
-    it("rechaza un estado que no existe y un precio invalido", async () => {
+    it("rechaza un estado que no existe y un precio invalido, sin escribir nada", async () => {
       expect(await actions.updateProduct({ id: "pr1", status: "archivado" })).toMatchObject({ ok: false });
       expect(await actions.updateProduct({ id: "pr1", priceUsd: -1 })).toMatchObject({ ok: false });
       expect(await actions.updateProduct({ id: "pr1", priceUsd: "" })).toMatchObject({ ok: false });
-      expect(db.rows("content_offers")[0]).toMatchObject({ price_usd: 1500, status: "active" });
+      expect(db.rows("products")[0]).toMatchObject({ status: "active" });
+      expect(db.rows("product_versions")).toHaveLength(1);
     });
 
     it("un producto de otro workspace no se toca", async () => {
-      db.rows("content_offers").push(product({ id: "ajeno", workspace_id: "ws-2", name: "Otro" }));
+      db.rows("products").push(product({ id: "ajeno", workspace_id: "ws-2", name: "Otro" }));
       expect(await actions.updateProduct({ id: "ajeno", status: "inactive" })).toMatchObject({ ok: false });
-      expect(db.rows("content_offers").find((r) => r.id === "ajeno")?.status).toBe("active");
-    });
-
-    it("un producto anterior a la 00134 (sin precio) pide el precio al editarlo, y no se rompe al listarlo", async () => {
-      db.rows("content_offers")[0].price_usd = null;
-      expect(await actions.updateProduct({ id: "pr1", status: "inactive" })).toEqual({ ok: true });
-      expect(db.rows("content_offers")[0].price_usd).toBeNull();
-      expect(await actions.updateProduct({ id: "pr1", priceUsd: 900 })).toEqual({ ok: true });
+      expect(db.rows("products").find((r) => r.id === "ajeno")?.status).toBe("active");
     });
   });
 

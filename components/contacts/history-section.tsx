@@ -4,7 +4,8 @@ import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
-import { CALL_ACTION_LABELS, FORM_ACTION_LABELS } from "@/lib/audit-history";import { EmptyHint, Section, formatDateTime } from "./ui";
+import { CALL_ACTION_LABELS, FORM_ACTION_LABELS, SALE_ACTION_LABELS } from "@/lib/audit-history";
+import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
  * Historial del contacto: todo lo que le paso, en un solo orden.
@@ -87,6 +88,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   agent_asset_sent: "mandó un recurso de audio de la banca",
   ...CALL_ACTION_LABELS,
   ...FORM_ACTION_LABELS,
+  ...SALE_ACTION_LABELS,
 };
 
 const FIELD_LABELS: Record<string, string> = {

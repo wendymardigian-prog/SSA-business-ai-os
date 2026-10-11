@@ -9,6 +9,10 @@
  * Formularios suma (alcance v7.1 §4.5): `forms.view` al Member (ve las respuestas
  * de los contactos que ve; la RLS lo aplica) y `forms.view` + `forms.manage` al
  * Owner y al Admin. El Member NO tiene `forms.manage`.
+ *
+ * Ventas suma (plano §5): `sales.view`, `sales.manage` y `payments.manage` a los
+ * tres roles de sistema, con alcance `sales` = `own` para el Member y `all` para
+ * Owner y Admin. El Member NO tiene `settings.manage`.
  */
 import { describe, expect, it } from "vitest";
 import { SYSTEM_ROLE_PERMISSIONS, ALL_PERMISSION_KEYS } from "./permissions";
@@ -31,19 +35,21 @@ describe("Member de sistema", () => {
         "calls.view",
         // Formularios (alcance v7.1 §4.5): el unico permiso nuevo del Member.
         "forms.view",
+        // Ventas (Etapa 5, §5): el unico permiso nuevo del Member. Alcance `own`.
+        "sales.view", "sales.manage", "payments.manage",
       ].sort(),
     );
   });
 
   it("tiene alcance 'own' en todo lo que tiene alcance", () => {
-    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own" });
+    expect(SYSTEM_ROLE_PERMISSIONS.member.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own" });
   });
 });
 
 describe("Owner y Admin", () => {
   it("el Owner tiene todas las claves y el alcance 'all'", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
-    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all" });
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.scopes).toEqual({ leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all" });
   });
 
   it("el Admin tiene todas menos transferir la propiedad", () => {

@@ -1,37 +1,28 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Loader2, Pencil, Plus, X } from "lucide-react";
-import { createProduct, updateProduct } from "@/lib/actions/content-taxonomy";
+import { ArrowLeft, Layers, Loader2, Package, Plus, X } from "lucide-react";
+import { createProduct, setProductStatus } from "@/lib/actions/products";
+import { PRODUCT_STATUSES, PRODUCT_STATUS_LABEL, TAXONOMY_NAME_MAX, isProductStatus, type ProductStatus } from "@/lib/content/taxonomy";
 import {
-  PRODUCT_STATUSES,
-  PRODUCT_STATUS_LABEL,
-  TAXONOMY_NAME_MAX,
-  checkPrice,
-  formatPriceUsd,
-  isProductStatus,
-  type ProductStatus,
-} from "@/lib/content/taxonomy";
+  PRODUCT_TYPES,
+  PRODUCT_TYPE_LABELS,
+  piecesLabel,
+  sortProducts,
+  visibleProducts,
+  type ProductRow,
+} from "@/lib/sales/catalog/products";
 import { ActionError } from "@/components/contacts/ui";
+import { ContentDialog, DialogField, fieldInput } from "@/components/content/dialog";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 import { cn } from "@/lib/utils";
 
-export interface ProductRow {
-  id: string;
-  name: string;
-  /** USD. null = un producto anterior a la 00134, que todavia no tiene precio cargado. */
-  priceUsd: number | null;
-  status: ProductStatus;
-  /** Cuantas piezas lo usan. */
-  pieces: number;
-}
-
-const STATUS_ORDER: Record<ProductStatus, number> = { active: 0, inactive: 1, discontinued: 2 };
+export type { ProductRow };
 
 const STATUS_BADGE: Record<ProductStatus, string> = {
   active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
@@ -39,61 +30,66 @@ const STATUS_BADGE: Record<ProductStatus, string> = {
   discontinued: "bg-muted text-muted-foreground",
 };
 
+const NOTICE_KEY = "ssa:productos-aviso-contenido";
+
+// El aviso "tus productos de Contenido ya están acá" se muestra hasta que se cierra. Se lee de
+// localStorage con useSyncExternalStore: en el servidor se considera cerrado (no aparece de golpe).
+const noticeListeners = new Set<() => void>();
+function subscribeNotice(listener: () => void) {
+  noticeListeners.add(listener);
+  return () => void noticeListeners.delete(listener);
+}
+function noticeDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(NOTICE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function dismissNoticeForever() {
+  try {
+    window.localStorage.setItem(NOTICE_KEY, "1");
+  } catch {
+    /* sin almacenamiento: el aviso vuelve a aparecer, no pasa nada */
+  }
+  noticeListeners.forEach((l) => l());
+}
+
 const inputClass =
   "h-9 min-w-0 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary";
 
 /**
- * Ajustes -> Productos: lo que vende el negocio.
+ * Ajustes -> Productos: lo que vende el negocio (lista).
  *
- * Cada producto tiene SIEMPRE un precio (en USD) y un estado: activo (se
- * ofrece al clasificar una idea o una pieza), inactivo (pausado) o
- * discontinuado (dejo de venderse). NO hay "eliminar": una pieza ya
- * clasificada sigue mostrando su producto aunque ya no se ofrezca.
+ * Cada producto tiene variantes y, en cada variante, un precio vigente (la
+ * versión publicada). NO hay "eliminar": inactivo (pausado) o discontinuado
+ * (dejó de venderse) lo sacan de los selectores de venta y de Contenido, pero
+ * lo ya vendido o clasificado lo sigue mostrando. El detalle (variantes y
+ * precios) está en /dashboard/settings/productos/[id].
  */
 export function ProductosView({ products }: { products: ProductRow[] }) {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editPrice, setEditPrice] = useState("");
+  const [creating, setCreating] = useState(false);
   const [showDiscontinued, setShowDiscontinued] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const dismissed = useSyncExternalStore(subscribeNotice, noticeDismissed, () => true);
+  const notice = !dismissed;
 
-  const sorted = [...products].sort(
-    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name, "es"),
-  );
+  const sorted = sortProducts(products);
   const discontinued = sorted.filter((p) => p.status === "discontinued");
-  const shown = showDiscontinued ? sorted : sorted.filter((p) => p.status !== "discontinued");
-  const priceCheck = checkPrice(price);
+  const shown = visibleProducts(sorted, showDiscontinued);
 
-  function run(task: () => Promise<{ ok: true } | { ok: false; error: string }>, onDone?: () => void) {
+  function changeStatus(id: string, status: ProductStatus) {
     setError(null);
     start(async () => {
-      const result = await task();
+      const result = await setProductStatus({ id, status });
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      onDone?.();
       router.refresh();
     });
-  }
-
-  function add() {
-    if (!name.trim() || !priceCheck.ok) return;
-    run(
-      () => createProduct({ name, priceUsd: price }),
-      () => {
-        setName("");
-        setPrice("");
-      },
-    );
-  }
-
-  function saveEdit(id: string) {
-    run(() => updateProduct({ id, name: editName, priceUsd: editPrice }), () => setEditingId(null));
   }
 
   return (
@@ -113,59 +109,33 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
       <SettingsTabs />
 
       <section aria-labelledby="productos-title" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 md:px-8">
-        <h2 id="productos-title" className="text-base font-semibold">
-          Productos
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Lo que vendés, con su precio en dólares. Sirve para saber qué contenido empuja cada producto. Los pilares de
-          tu contenido se administran en la página de Contenido, con el botón de ajustes.
-        </p>
-
-        <form
-          className="mt-4 flex flex-col gap-2 sm:flex-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add();
-          }}
-        >
-          <label htmlFor="new-product-name" className="sr-only">
-            Nombre del producto nuevo
-          </label>
-          <input
-            id="new-product-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={TAXONOMY_NAME_MAX}
-            placeholder="Nuevo producto"
-            className={cn(inputClass, "flex-1")}
-          />
-          <label htmlFor="new-product-price" className="sr-only">
-            Precio en USD
-          </label>
-          <div className="relative sm:w-40">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">USD</span>
-            <input
-              id="new-product-price"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              inputMode="decimal"
-              placeholder="Precio"
-              className={cn(inputClass, "w-full pl-11")}
-            />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id="productos-title" className="text-base font-semibold">
+              Productos
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Lo que vendés, con sus variantes y su precio en dólares. Sirve para cargar ventas y para saber qué contenido
+              empuja cada producto. Los pilares de tu contenido se administran en la página de Contenido.
+            </p>
           </div>
           <button
-            type="submit"
-            disabled={pending || !name.trim() || !priceCheck.ok}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            type="button"
+            onClick={() => setCreating(true)}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Agregar
+            <Plus className="h-4 w-4" aria-hidden />
+            Nuevo producto
           </button>
-        </form>
-        {price.trim() !== "" && !priceCheck.ok && (
-          <p role="alert" className="mt-1 text-xs text-red-700 dark:text-red-400">
-            {priceCheck.error}
-          </p>
+        </div>
+
+        {notice && products.length > 0 && (
+          <div role="status" className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <p className="min-w-0 flex-1">Tus productos de Contenido ya están acá, con su precio.</p>
+            <button type="button" onClick={dismissNoticeForever} aria-label="Cerrar el aviso" className="rounded p-0.5 hover:bg-accent hover:text-foreground">
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
         )}
 
         {error && (
@@ -176,7 +146,19 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
 
         {products.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-border">
-            <SettingsEmptyState description={SETTINGS_EMPTY_STATES.contentProducts} />
+            <SettingsEmptyState
+              description={SETTINGS_EMPTY_STATES.contentProducts}
+              action={
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Crear el primer producto
+                </button>
+              }
+            />
           </div>
         ) : (
           <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
@@ -185,109 +167,53 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
                 key={product.id}
                 className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5", product.status !== "active" && "bg-muted/40")}
               >
-                {editingId === product.id ? (
-                  <form
-                    className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      saveEdit(product.id);
-                    }}
+                <Package className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/dashboard/settings/productos/${product.id}`}
+                    className={cn("block truncate text-sm font-medium hover:underline", product.status !== "active" && "text-muted-foreground")}
                   >
-                    <label htmlFor={`edit-name-${product.id}`} className="sr-only">
-                      Nombre del producto
-                    </label>
-                    <input
-                      id={`edit-name-${product.id}`}
-                      autoFocus
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      maxLength={TAXONOMY_NAME_MAX}
-                      className={cn(inputClass, "h-8 min-w-[10rem] flex-1 px-2")}
-                    />
-                    <label htmlFor={`edit-price-${product.id}`} className="sr-only">
-                      Precio en USD
-                    </label>
-                    <input
-                      id={`edit-price-${product.id}`}
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Precio (USD)"
-                      className={cn(inputClass, "h-8 w-32 px-2")}
-                    />
-                    <button
-                      type="submit"
-                      aria-label="Guardar"
-                      disabled={pending || !checkPrice(editPrice).ok || !editName.trim()}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                    >
-                      <Check className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Cancelar"
-                      onClick={() => setEditingId(null)}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </form>
-                ) : (
-                  <>
-                    <div className="min-w-0 flex-1">
-                      <p className={cn("truncate text-sm font-medium", product.status !== "active" && "text-muted-foreground")}>
-                        {product.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        <span className={cn(product.priceUsd === null && "text-amber-700 dark:text-amber-300")}>
-                          {formatPriceUsd(product.priceUsd)}
-                        </span>
-                        {" · "}
-                        {product.pieces === 0 ? "Sin piezas" : `${product.pieces} ${product.pieces === 1 ? "pieza" : "piezas"}`}
-                      </p>
-                    </div>
-                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_BADGE[product.status])}>
-                      {PRODUCT_STATUS_LABEL[product.status]}
+                    {product.name}
+                  </Link>
+                  <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                    <span className={cn(product.defaultPrice === null && "text-amber-700 dark:text-amber-300")}>{product.priceLabel}</span>
+                    <span aria-hidden>·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Layers className="h-3 w-3" aria-hidden />
+                      {product.variants === 0 ? "Sin variantes" : `${product.variants} ${product.variants === 1 ? "variante" : "variantes"}`}
                     </span>
-                    <label htmlFor={`status-${product.id}`} className="sr-only">
-                      Estado de {product.name}
-                    </label>
-                    <select
-                      id={`status-${product.id}`}
-                      value={product.status}
-                      disabled={pending}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        if (isProductStatus(next)) run(() => updateProduct({ id: product.id, status: next }));
-                      }}
-                      title={
-                        product.pieces > 0
-                          ? "Deja de ofrecerse al clasificar, pero las piezas que lo tienen lo siguen mostrando"
-                          : "Un producto inactivo o discontinuado deja de ofrecerse al clasificar"
-                      }
-                      className={cn(inputClass, "h-8 px-2 text-xs")}
-                    >
-                      {PRODUCT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {PRODUCT_STATUS_LABEL[status]}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      aria-label={`Editar ${product.name}`}
-                      onClick={() => {
-                        setError(null);
-                        setEditName(product.name);
-                        setEditPrice(product.priceUsd === null ? "" : String(product.priceUsd));
-                        setEditingId(product.id);
-                      }}
-                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  </>
-                )}
+                    <span aria-hidden>·</span>
+                    <span>{piecesLabel(product.pieces)}</span>
+                  </p>
+                </div>
+                <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">{PRODUCT_TYPE_LABELS[product.type]}</span>
+                <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", STATUS_BADGE[product.status])}>
+                  {PRODUCT_STATUS_LABEL[product.status]}
+                </span>
+                <label htmlFor={`status-${product.id}`} className="sr-only">
+                  Estado de {product.name}
+                </label>
+                <select
+                  id={`status-${product.id}`}
+                  value={product.status}
+                  disabled={pending}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (isProductStatus(next)) changeStatus(product.id, next);
+                  }}
+                  title={
+                    product.pieces > 0
+                      ? "Deja de ofrecerse al vender y al clasificar, pero las piezas y ventas que lo tienen lo siguen mostrando"
+                      : "Un producto inactivo o discontinuado deja de ofrecerse al vender y al clasificar"
+                  }
+                  className={cn(inputClass, "h-8 px-2 text-xs")}
+                >
+                  {PRODUCT_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {PRODUCT_STATUS_LABEL[status]}
+                    </option>
+                  ))}
+                </select>
               </li>
             ))}
           </ul>
@@ -303,6 +229,75 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
           </button>
         )}
       </section>
+
+      {creating && <NewProductDialog onClose={() => setCreating(false)} />}
     </div>
+  );
+}
+
+function NewProductDialog({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [type, setType] = useState<(typeof PRODUCT_TYPES)[number]>("otro");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function submit() {
+    setError(null);
+    start(async () => {
+      const result = await createProduct({ name, type, description });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onClose();
+      router.push(`/dashboard/settings/productos/${result.data.id}`);
+    });
+  }
+
+  return (
+    <ContentDialog
+      title="Nuevo producto"
+      label="Nuevo producto"
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending || !name.trim()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+          >
+            {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+            Crear producto
+          </button>
+          <button type="button" onClick={onClose} className="h-9 rounded-lg border border-border px-3 text-sm hover:bg-accent">
+            Cancelar
+          </button>
+          {error && (
+            <p role="alert" className="w-full text-xs text-red-700 dark:text-red-400">
+              {error}
+            </p>
+          )}
+        </>
+      }
+    >
+      <DialogField label="Nombre">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={TAXONOMY_NAME_MAX} placeholder="Mentoría 1:1" className={fieldInput} />
+      </DialogField>
+      <DialogField label="Tipo">
+        <select value={type} onChange={(e) => setType(e.target.value as (typeof PRODUCT_TYPES)[number])} className={fieldInput}>
+          {PRODUCT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {PRODUCT_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+      </DialogField>
+      <DialogField label="Descripción (opcional)" hint="Se crea con una variante «Estándar»: después le cargás el precio y la publicás.">
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={1000} className={fieldInput} />
+      </DialogField>
+    </ContentDialog>
   );
 }

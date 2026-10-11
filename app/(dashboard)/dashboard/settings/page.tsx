@@ -1,5 +1,7 @@
 import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { can, systemRolePermissions } from "@/lib/auth/permissions";
+import { isPaymentMethodKey } from "@/lib/sales/payment-methods";
+import { PAYMENT_METHOD_KEYS } from "@/lib/sales/payment-methods";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
@@ -22,6 +24,9 @@ export default async function SettingsPage() {
         persistChatMedia: workspace.persist_chat_media ?? true,
         chatMediaRetentionDays: workspace.chat_media_retention_days ?? 180,
         timezone: (workspace as { timezone?: string }).timezone ?? "UTC",
+        enabledPaymentMethods: (workspace.enabled_payment_methods ?? PAYMENT_METHOD_KEYS).filter(isPaymentMethodKey),
+        // Hasta que exista `payments` (Bloque 3) no hay pagos programados que avisar.
+        scheduledByMethod: {},
       }}
       canViewAiCosts={canViewAiCosts}
     />

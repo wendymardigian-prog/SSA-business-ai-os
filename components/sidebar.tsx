@@ -18,6 +18,7 @@ import {
   Settings,
   CalendarDays,
   PhoneCall,
+  CircleDollarSign,
   ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
@@ -59,7 +60,7 @@ interface WorkspaceItem {
 // Integraciones, que es la que trae a Blocks de vuelta al mapa.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Blocks, Bot, BookOpen, Settings,
-  Clapperboard, Grid3x3, CalendarDays, Library, PhoneCall, ClipboardList,
+  Clapperboard, Grid3x3, CalendarDays, Library, PhoneCall, ClipboardList, CircleDollarSign,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
