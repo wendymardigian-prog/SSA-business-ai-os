@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, ExternalLink, Info, Loader2, Tag, Video } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { BackToCalls } from "@/components/calls/back-link";
 import { Tabs } from "@/components/ui/tabs";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
 import { CallTranscript } from "@/components/calls/call-transcript";
@@ -91,7 +92,7 @@ export function CallDetail({ data, view, canEdit }: { data: CallDetailData; view
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/llamadas/[id]" title="Llamada" backHref="/dashboard/llamadas" />
+      <PageHeader route="/dashboard/llamadas/[id]" title="Llamada" backHref={<BackToCalls />} />
       <div className="min-h-0 flex-1 overflow-y-auto lg:overflow-hidden">
         <div className="grid min-h-full gap-0 lg:h-full lg:grid-cols-[3fr_2fr]">
           <div className="min-w-0 space-y-4 p-4 md:p-6 lg:overflow-y-auto">

@@ -12,10 +12,9 @@ import { statusLabel } from "@/lib/calls/status";
  */
 
 export function TypeChip({ type, needsReview, custom }: { type: string | null; needsReview?: boolean; custom?: Array<{ clave: string; nombre: string }> }) {
-  if (needsReview) {
-    return <span className={callBadgeClass("review")}>Por revisar</span>;
-  }
-  return <span className={callBadgeClass(typeBadgeTone(type))}>{callTypeLabel(type, custom)}</span>;
+  // Por revisar: el tipo se muestra en ambar (hay que confirmarlo); "Por revisar" lo dice el chip de estado.
+  const tone = needsReview ? "review" : typeBadgeTone(type);
+  return <span className={callBadgeClass(tone)}>{callTypeLabel(type, custom)}{needsReview && type ? "?" : ""}</span>;
 }
 
 export function StatusChip({ status }: { status: string }) {

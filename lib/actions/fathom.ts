@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { storeSecret, SECRET_NAMES } from "@/lib/vault";
 import { revokeFathomConnection } from "@/lib/fathom/revoke";
 import { queueFathomSyncNow } from "@/lib/fathom/queue";
+import { validateFathomApp } from "@/lib/fathom/app-validation";
 
 /**
  * Server Actions de Fathom (F5, F6, F10).
@@ -20,15 +21,6 @@ export type FathomActionResult<T = object> = ({ ok: true } & T) | { ok: false; e
 
 const INTEGRATIONS_PATH = "/dashboard/settings/integrations";
 const MI_FATHOM_PATH = "/dashboard/llamadas/mi-fathom";
-
-/** Largos razonables, para atajar un pegado equivocado (la validez la decide Fathom). */
-export function validateFathomApp(input: { clientId: string; clientSecret: string }): string | null {
-  const id = input.clientId.trim();
-  const secret = input.clientSecret.trim();
-  if (id.length < 8 || id.length > 200 || /\s/.test(id)) return "El Client ID no parece válido";
-  if (secret.length < 8 || secret.length > 400 || /\s/.test(secret)) return "El Client Secret no parece válido";
-  return null;
-}
 
 /** Guarda (o reemplaza) la app OAuth de Fathom en Vault. Con `integrations.manage`. */
 export async function saveFathomApp(input: { clientId: string; clientSecret: string }): Promise<FathomActionResult> {

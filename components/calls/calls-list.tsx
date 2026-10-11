@@ -374,8 +374,8 @@ export function CallsList(props: Props) {
                           <TypeChip type={r.callType} needsReview={r.status === "needs_review"} />
                           <StatusChip status={r.status} />
                           <OutcomeChip outcome={r.outcome} />
-                          {r.closerScore !== null && <span className="text-xs">Closer <ScoreCell score={r.closerScore} /></span>}
-                          {r.leadScore !== null && <span className="text-xs">Lead <ScoreCell score={r.leadScore} /></span>}
+                          {r.closerScore !== null && <span className="inline-flex items-center gap-1 text-xs">Closer <ScoreCell score={r.closerScore} /></span>}
+                          {r.leadScore !== null && <span className="inline-flex items-center gap-1 text-xs">Lead <ScoreCell score={r.leadScore} /></span>}
                         </div>
                       </Link>
                     </li>

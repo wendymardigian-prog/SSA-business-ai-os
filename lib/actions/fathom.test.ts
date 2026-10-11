@@ -20,7 +20,8 @@ vi.mock("@/lib/vault", async (orig) => {
 const queue = vi.hoisted(() => ({ queueFathomSyncNow: vi.fn() }));
 vi.mock("@/lib/fathom/queue", () => queue);
 
-import { disconnectFathom, saveFathomApp, syncFathomNow, validateFathomApp } from "./fathom";
+import { disconnectFathom, saveFathomApp, syncFathomNow } from "./fathom";
+import { validateFathomApp } from "@/lib/fathom/app-validation";
 
 const WS = "ws-1";
 const ME = { workspace: { id: WS }, user: { id: "user-ana" }, supabase: fakeDb().client };

@@ -33,21 +33,21 @@ Pendientes y decisiones: [PENDIENTE-llamadas.md](PENDIENTE-llamadas.md).
 
 Próxima libre al cerrar: **00150**.
 
-## Bloque L1 · Conexión, ingesta y vinculación
-- [ ] F1 Historial transversal
-- [ ] F2 Permisos de Llamadas
-- [ ] F3 Tabla `calls` y cambios en tablas existentes
-- [ ] F4 Marca "es closer" y correos alternos
-- [ ] F5 App OAuth de Fathom en Integraciones
-- [ ] F6 Conectar mi Fathom
-- [ ] F7 Token vigente (refresh de un solo uso)
-- [ ] F8 Ingesta paginada cada 10 minutos
-- [ ] F9 Vinculación automática con contacto y agenda
-- [ ] F10 Sincronizar ahora
-- [ ] F11 Importar una transcripción a mano
-- [ ] F12 Lista de llamadas
-- [ ] F13 Ficha de la llamada y vincular a mano
-- [ ] F14 Métricas de conversación
+## Bloque L1 · Conexión, ingesta y vinculación — **cerrado** (migraciones 00144–00147 aplicadas)
+- [x] F1 Historial transversal
+- [x] F2 Permisos de Llamadas
+- [x] F3 Tabla `calls` y cambios en tablas existentes
+- [x] F4 Marca "es closer" y correos alternos
+- [x] F5 App OAuth de Fathom en Integraciones
+- [x] F6 Conectar mi Fathom
+- [x] F7 Token vigente (refresh de un solo uso)
+- [x] F8 Ingesta paginada cada 10 minutos
+- [x] F9 Vinculación automática con contacto y agenda
+- [x] F10 Sincronizar ahora
+- [x] F11 Importar una transcripción a mano
+- [x] F12 Lista de llamadas
+- [x] F13 Ficha de la llamada y vincular a mano
+- [x] F14 Métricas de conversación
 
 ## Bloque L2 · Clasificación y análisis
 - [ ] F15 CHECKs de IA y escritura de la configuración de una tarea
@@ -77,3 +77,9 @@ Próxima libre al cerrar: **00150**.
 - [ ] docs/llamadas.md, flow-registry.md, CLAUDE.md, .env.example, BITACORA.md
 - [ ] Definición de listo (todos los verify, vitest, build, lint)
 - [ ] PR abierto (sin mergear)
+
+## Bloque L1 — lo que se verificó al cerrarlo
+- `npx vitest run` 6.402 tests en verde · `npm run build` compila · `npm run lint` 0 errores y 36 avisos (los mismos del punto de partida).
+- `verify-rls`, `verify-roles`, `verify-calls`, `verify-audit-visibility` (con `--despues-de-00147`) y `verify-scheduling` en verde, de a uno.
+- `private.call_app_cron` con la misma huella (`c90fa613…`); `audit_log_select` con la misma huella (`5b4ffabd…`); `lib/cron-config.test.ts` sin tocar.
+- Revisión visual (1440 y 390 px, oscuro y claro): lista, ficha, Mi Fathom, tarjeta de Fathom en Integraciones y control de closer en Equipo. Se hizo con la sesión ya abierta del navegador, con 4 llamadas de prueba (`zz-prueba visual…`) que se insertaron para mirar y **se borraron** al terminar.

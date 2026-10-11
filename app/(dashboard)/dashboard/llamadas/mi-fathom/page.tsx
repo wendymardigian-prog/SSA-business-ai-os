@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/page-header";
 import { MiFathomCard } from "@/components/calls/mi-fathom-card";
+import { BackToCalls } from "@/components/calls/back-link";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { fathomCardView, pickConnection } from "@/lib/fathom/connection-state";
@@ -60,7 +61,7 @@ export default async function MiFathomPage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader route="/dashboard/llamadas/mi-fathom" backHref="/dashboard/llamadas" />
+      <PageHeader route="/dashboard/llamadas/mi-fathom" backHref={<BackToCalls />} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <MiFathomCard view={view} connectionId={connectionId} flash={flash} />
       </div>
