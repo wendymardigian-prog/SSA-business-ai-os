@@ -4,6 +4,8 @@ import { useCallback, useState, useMemo } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TriggerType } from "@/lib/types/database";
+import { BASE_CALL_TYPES } from "@/lib/calls/classification";
+import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
 
 interface Keyword {
   value: string;
@@ -58,6 +60,9 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "booking_before_start", label: "Antes de la reunion", description: "Un recordatorio antes de la hora de inicio" },
   { value: "booking_after_end", label: "Despues de la reunion", description: "Un seguimiento despues de la hora de fin" },
   { value: "booking_after_created", label: "Despues de agendar", description: "Un mensaje un rato despues de que agendaron" },
+  // Llamadas: solo se dispara si la llamada tiene contacto.
+  { value: "call_analyzed", label: "Se analizo una llamada", description: "Cuando una llamada con contacto queda analizada (nueva o regenerada)" },
+  { value: "call_linked", label: "Se vinculo una llamada", description: "Cuando una llamada se vincula a un contacto, sola o a mano" },
 ];
 
 /** Los nueve de agenda, para mostrar sus filtros. */
@@ -71,6 +76,15 @@ const BOOKING_TRIGGERS = [
   "booking_before_start",
   "booking_after_end",
   "booking_after_created",
+];
+
+/** Los dos de Llamadas, para mostrar sus filtros. */
+const CALL_TRIGGERS = ["call_analyzed", "call_linked"];
+
+const QUALIFICATIONS = [
+  { value: "calificado", label: "Calificado" },
+  { value: "con_reservas", label: "Con reservas" },
+  { value: "no_calificado", label: "No calificado" },
 ];
 
 const RELATIVE_TRIGGERS = ["booking_before_start", "booking_after_end", "booking_after_created"];
@@ -475,6 +489,74 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
 
           <p className="text-[11px] text-muted-foreground/60">
             Para acotar por evento, area o anfitrion, conviene crear el flujo desde el evento: ahi el filtro queda puesto solo.
+          </p>
+        </div>
+      )}
+
+      {/* Llamadas (F32): filtros de call_analyzed y call_linked */}
+      {CALL_TRIGGERS.includes(triggerType) && (
+        <div className="space-y-3">
+          {([
+            ["call_types", "Solo estos tipos de llamada", BASE_CALL_TYPES.map((t) => ({ value: t, label: t }))],
+            ...(triggerType === "call_analyzed"
+              ? ([
+                  ["outcomes", "Solo estos resultados", OUTCOME_CATEGORIES.map((o) => ({ value: o, label: o.replace(/_/g, " ") }))],
+                  ["qualifications", "Solo estos leads", QUALIFICATIONS],
+                ] as const)
+              : []),
+          ] as const).map(([key, title, options]) => {
+            const list = (data[key] as string[] | undefined) ?? [];
+            return (
+              <div key={key}>
+                <label className="mb-2 block text-xs font-semibold text-foreground">{title}</label>
+                <div className="flex flex-wrap gap-2">
+                  {options.map((o) => {
+                    const on = list.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => onChange({ ...data, [key]: on ? list.filter((v) => v !== o.value) : [...list, o.value] })}
+                        className={
+                          on
+                            ? "rounded-lg bg-emerald-500/15 px-2.5 py-1 text-xs text-emerald-600 dark:text-emerald-300"
+                            : "rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+                        }
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {triggerType === "call_analyzed" && (
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ["lead_score_min", "Puntaje del lead desde"],
+                ["lead_score_max", "Puntaje del lead hasta"],
+                ["closer_score_min", "Puntaje del closer desde"],
+                ["closer_score_max", "Puntaje del closer hasta"],
+              ] as const).map(([key, label]) => (
+                <div key={key}>
+                  <label htmlFor={`call-${key}`} className="mb-1 block text-xs font-semibold text-foreground">{label}</label>
+                  <input
+                    id={`call-${key}`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={typeof data[key] === "number" ? (data[key] as number) : ""}
+                    onChange={(e) => onChange({ ...data, [key]: e.target.value === "" ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground/60">
+            Sin elegir nada, vale para cualquier llamada. Solo dispara si la llamada tiene contacto. Las variables {"{{call.title}}"}, {"{{call.date}}"}, {"{{call.outcome}}"}, {"{{call.next_step}}"}, {"{{call.closer_name}}"}, {"{{call.closer_score}}"} y {"{{call.lead_score}}"} quedan disponibles para los mensajes.
           </p>
         </div>
       )}

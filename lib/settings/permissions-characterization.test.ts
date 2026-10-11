@@ -102,7 +102,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     // comportamiento real hoy; S3 (el segmented Miembros|Roles) no lo cambia.
     const customPermissions: RolePermissions = {
       keys: ["roles.manage"],
-      scopes: { leads: "own", conversations: "own", bookings: "own" },
+      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({
       general: false,
@@ -119,7 +119,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     // Contenido es la excepcion: mira el permiso, no el cargo (F89).
     const customPermissions: RolePermissions = {
       keys: ["settings.manage"],
-      scopes: { leads: "own", conversations: "own", bookings: "own" },
+      scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({
       general: false,

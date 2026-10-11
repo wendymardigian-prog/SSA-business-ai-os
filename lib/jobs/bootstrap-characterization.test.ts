@@ -16,7 +16,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
     resetPublishingBootstrap();
     registerPublishing();
     // La Etapa 4 sumo los tres de agenda; Mejoras de Chat suma describe_media y
-    // transcribe_audio. Los ocho originales no cambian.
+    // transcribe_audio; Llamadas suma fathom_sync (y despues call_*). Los ocho
+    // originales no cambian.
     //
     // El valor de esta lista es que un handler nuevo NO se registre por
     // accidente: cada tipo que aparece aca tiene que ser uno que alguien quiso
@@ -26,12 +27,17 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "booking_ended",
       "booking_google_sync",
       "booking_relative_trigger",
+      "call_analyze",
+      "call_classify",
+      "call_index_knowledge",
+      "call_summary",
       "content_copy",
       "content_provider_schedule",
       "content_publish",
       "content_publish_check",
       "content_upload",
       "describe_media",
+      "fathom_sync",
       "meta_ads_sync",
       "metrics_sync",
       "transcribe_audio",

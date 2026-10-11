@@ -79,6 +79,29 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argumentPlaceholder: "ai_response",
     valueKind: "text",
   },
+  // Llamadas (F32): todos sobre la ultima llamada analizada del contacto. Sin
+  // llamada analizada comparan contra vacio.
+  {
+    prefix: "last_call_outcome:",
+    label: "Resultado de la última llamada",
+    argument: "none",
+    valueKind: "text",
+    hint: "Por ejemplo: venta, no_venta, seguimiento_con_fecha.",
+  },
+  {
+    prefix: "last_call_lead_score:",
+    label: "Puntaje del lead en la última llamada",
+    argument: "none",
+    valueKind: "text",
+    hint: "Un número de 0 a 100. Se compara con mayor o menor que.",
+  },
+  {
+    prefix: "last_call_type:",
+    label: "Tipo de la última llamada",
+    argument: "none",
+    valueKind: "text",
+    hint: "Por ejemplo: cierre, seguimiento, triaje.",
+  },
   {
     // Sin prefijo: el campo es el slug del campo personalizado tal cual.
     prefix: "",

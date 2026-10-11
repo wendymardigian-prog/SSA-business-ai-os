@@ -14,6 +14,12 @@ type ServiceClient = Awaited<ReturnType<typeof createServiceClient>>;
 async function loadTeamMembers(service: ServiceClient, workspaceId: string) {
   const { data: profiles, error } = await service.rpc("workspace_member_profiles", { p_workspace_id: workspaceId });
   if (!error && profiles) {
+    // Quien graba llamadas (Llamadas, 00145): una consulta chica aparte.
+    const { data: closers } = await service
+      .from("workspace_members")
+      .select("user_id, is_closer, closer_emails")
+      .eq("workspace_id", workspaceId);
+    const closerOf = new Map((closers ?? []).map((c) => [c.user_id, c]));
     return profiles.map((p) => ({
       userId: p.user_id,
       role: p.role,
@@ -21,6 +27,8 @@ async function loadTeamMembers(service: ServiceClient, workspaceId: string) {
       joinedAt: p.joined_at,
       email: p.email ?? "Sin email",
       name: memberDisplayName(p.full_name, p.meta_name, p.email),
+      isCloser: closerOf.get(p.user_id)?.is_closer ?? false,
+      closerEmails: closerOf.get(p.user_id)?.closer_emails ?? [],
     }));
   }
 

@@ -140,7 +140,8 @@ describe("los tres tipos nuevos estan registrados", () => {
   it("los de evento y los agendados estan separados", () => {
     // `email_received` (etapa 2) es de evento: lo dispara el receptor de
     // Resend, no el matcher de la bandeja ni un cron. Los seis de agenda
-    // (etapa 4) tambien son de evento: nacen de la cola de automation_events.
+    // (etapa 4) tambien son de evento: nacen de la cola de automation_events, y
+    // los dos de Llamadas (call_analyzed, call_linked) tambien.
     expect(listTriggers("event").map((t) => t.type).sort()).toEqual([
       "booking_cancelled",
       "booking_created",
@@ -148,6 +149,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "booking_rescheduled",
       "booking_status_changed",
       "booking_updated",
+      "call_analyzed",
+      "call_linked",
       "crm_event",
       "email_received",
       "new_contact",

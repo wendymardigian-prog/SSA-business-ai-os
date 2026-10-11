@@ -31,6 +31,7 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TeamRolesSwitch } from "@/components/settings/team-roles-switch";
 import { SettingsEmptyState } from "@/components/settings/settings-empty-state";
+import { CloserControl } from "@/components/settings/closer-control";
 import { SETTINGS_EMPTY_STATES } from "@/lib/settings/empty-states";
 
 interface MemberDetail {
@@ -41,6 +42,9 @@ interface MemberDetail {
   joinedAt: string;
   email: string;
   name: string;
+  /** Graba llamadas de venta (Llamadas, 00145). */
+  isCloser?: boolean;
+  closerEmails?: string[];
 }
 
 /** Un rol del workspace, para el selector (F72). */
@@ -287,8 +291,9 @@ export function TeamView({
               {members.map((member) => (
                 <div
                   key={member.userId}
-                  className="flex items-center justify-between rounded-xl border border-border bg-card p-4"
+                  className="rounded-xl border border-border bg-card p-4"
                 >
+                  <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground">
                       {member.name.charAt(0).toUpperCase()}
@@ -397,6 +402,15 @@ export function TeamView({
                       </button>
                     )}
                   </div>
+                  </div>
+                  {canManageTeam && (
+                    <CloserControl
+                      userId={member.userId}
+                      name={member.name}
+                      initialIsCloser={member.isCloser ?? false}
+                      initialEmails={member.closerEmails ?? []}
+                    />
+                  )}
                 </div>
               ))}
             </div>

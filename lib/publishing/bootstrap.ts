@@ -24,6 +24,11 @@ import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-rela
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
 import { registerTranscribeAudioHandler } from "@/lib/jobs/handlers/transcribe-audio";
 import { registerDescribeMediaHandler } from "@/lib/jobs/handlers/describe-media";
+import { registerFathomSyncHandler } from "@/lib/jobs/handlers/fathom-sync";
+import { registerCallClassifyHandler } from "@/lib/jobs/handlers/call-classify";
+import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
+import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary";
+import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge";
 
 /**
  * Lee el video por rangos desde la URL firmada.
@@ -90,6 +95,13 @@ export function registerPublishing(): void {
 
   // Y describir las imagenes, para que una captura no sea un mensaje vacio (F8).
   registerDescribeMediaHandler();
+
+  // Llamadas: la consulta a Fathom de una conexion (F8).
+  registerFathomSyncHandler();
+  registerCallClassifyHandler();
+  registerCallAnalyzeHandler();
+  registerCallSummaryHandler();
+  registerCallIndexKnowledgeHandler();
 }
 
 /** Para los tests. */

@@ -7,9 +7,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
+import { oauthForbiddenMessage, oauthRouteContext } from "@/lib/oauth/route-context";
 import { startOAuth } from "@/lib/oauth/flow";
 import { OAUTH_STATE_COOKIE, STATE_TTL_MS } from "@/lib/oauth/state";
 import { oauthCallbackUrl } from "@/lib/webhook-url";
@@ -27,19 +27,11 @@ export async function GET(
 
   // Las conexiones del workspace (YouTube, LinkedIn, Threads) son de Owner y
   // Admin. Una conexion por persona (Google Calendar, Etapa 4) la hace
-  // cualquiera con el permiso del adaptador, siempre a su propio nombre.
-  const ctx = adapter.perUser
-    ? await getPermissionAction(adapter.requiredPermission ?? "scheduling.use")
-    : await getAdminContext();
+  // cualquiera con el permiso del adaptador, y la de Fathom cualquier miembro
+  // (`anyMember`): siempre a su propio nombre. Ver `oauthRouteContext`.
+  const ctx = await oauthRouteContext(adapter);
   if (!ctx) {
-    return NextResponse.json(
-      {
-        error: adapter.perUser
-          ? "No tenes permiso para conectar tu calendario"
-          : "Solo Owner y Admin pueden conectar cuentas",
-      },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: oauthForbiddenMessage(adapter) }, { status: 403 });
   }
 
   let callbackUrl: string;

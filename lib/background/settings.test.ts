@@ -29,3 +29,22 @@ describe("configuración de tareas en segundo plano (F23)", () => {
     expect(validateBackgroundSettings({ message_classification: { mode: "batch", frequency: "daily", hour: "25:99" } }).ok).toBe(false);
   });
 });
+
+describe("mergeBackgroundSettings: guardar una tarea no borra la configuracion de Llamadas", () => {
+  const next = resolveBackgroundSettings({ message_classification: { mode: "off" } });
+
+  it("conserva las claves de Llamadas que ya estaban", async () => {
+    const { mergeBackgroundSettings } = await import("./settings");
+    const rubric = { version: 3, closer: [], lead: [] };
+    const merged = mergeBackgroundSettings({ call_analysis: { mode: "now", rubric }, call_classification: { mode: "off" }, message_classification: { mode: "batch" } }, next);
+    expect(merged.call_analysis).toEqual({ mode: "now", rubric });
+    expect(merged.call_classification).toEqual({ mode: "off" });
+    expect(merged.message_classification).toEqual({ mode: "off" });
+  });
+
+  it("sin nada guardado, devuelve solo lo nuevo", async () => {
+    const { mergeBackgroundSettings } = await import("./settings");
+    expect(mergeBackgroundSettings(null, next)).toEqual({ ...next });
+    expect(mergeBackgroundSettings([], next)).toEqual({ ...next });
+  });
+});

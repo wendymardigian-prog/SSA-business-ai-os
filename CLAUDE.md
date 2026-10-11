@@ -252,8 +252,16 @@ saca a `authenticated` el permiso de ejecutar `read_secret`: **aplicada y
 registrada** (version `20261010211554`), despues de desplegar el codigo que lee
 las claves con el cliente de servicio (ver "Integraciones y secretos").
 `verify-rls.mjs` y `verify-workspace-isolation.mjs` con `--despues-de-00143`
-en verde. **La proxima migracion disponible es la
-`00144`.**
+en verde.
+
+**Llamadas (octubre 2026).** `00144` a `00149` estan **aplicadas** y registradas
+(ver "Llamadas" mas abajo): `00144` (`audit_log.actor_type`/`actor_label`),
+`00145` (la tabla `calls`, `can_see_call`, las columnas de Fathom y los candados
+del refresh token), `00146` (el cron SQL `fathom-sync`), `00147` (la politica
+ADICIONAL `audit_log_select_calls`), `00148` (CHECK de `agent_runs.source` y
+`ai_task_prompt_versions.task`, `set_ai_background_task_settings`) y `00149`
+(CHECK de `triggers.type` y `content_ideas.source`, `content_ideas.call_id`).
+**La proxima migracion disponible es la `00150`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -426,6 +434,63 @@ node scripts/verify-booking-concurrency.mjs   # diez pedidos a la vez, una reuni
 
 Valen las mismas reglas que los de la Etapa 2: crean y limpian sus datos
 (prefijo `zz-test-`), y no se corren dos en simultaneo.
+
+# Llamadas (Fathom + analizador de llamadas con IA)
+
+Cada closer conecta su Fathom y sus llamadas de venta entran solas: se vinculan
+al contacto y a la agenda, se clasifican, se analizan con el SPSP del negocio, se
+corrigen sin perder lo que dijo la IA, y lo aprendido vuelve al negocio. Plano en
+`docs/requerimientos-llamadas.md`; el resumen del modulo, en
+[docs/llamadas.md](docs/llamadas.md); avance y decisiones en
+`docs/PROGRESS-llamadas.md` y `docs/PENDIENTE-llamadas.md`.
+
+## Lo que no se puede romper
+
+- **Una sola tabla nueva: `calls`.** Escribe solo el servidor; la ven Owner y
+  Admin, quien la grabo, quien ve su contacto (`can_see_contact`) y un rol con
+  `calls.view` de alcance `all` (`can_see_call`).
+- **Dos copias del analisis.** `analysis_ai` (lo que dijo la IA) solo cambia con
+  una corrida nueva (otro `analysis_run_id`: lo exige el trigger
+  `calls_protect_analysis_ai`); `analysis` es lo que se muestra y se corrige, y un
+  cambio recalcula los puntajes con `rubric_snapshot`, no con la rubrica vigente.
+- **Los puntajes salen del codigo** (`lib/calls/scoring.ts`), nunca del modelo, y
+  una cita que no esta en la transcripcion no cuenta.
+- **`audit_log_select` NO se reescribe.** El acceso al historial de un modulo nuevo
+  es una politica ADICIONAL: `audit_log_select_<modulo>` (la de Llamadas es la
+  00147). Las politicas de SELECT se suman. `scripts/verify-audit-visibility.mjs`
+  compara la visibilidad completa antes y despues.
+- **`private.call_app_cron` no se toca.** El cron de Fathom es de SQL directo
+  (`private.enqueue_fathom_sync`, 00146).
+- **El refresh token de Fathom es de UN SOLO USO**: dos procesos renovando a la vez
+  dejan la conexion muerta, y por eso el candado vive en la base
+  (`claim_oauth_refresh`).
+- **Los jobs de Llamadas no lanzan por un fallo de un proveedor** (Fathom, IA,
+  Voyage): la cola reintentaria a los 10 s encima de la espera propia. Reagendan
+  a 1, 5 y 15 minutos o dejan la llamada en un estado que una persona ve. Un 429
+  o un 5xx de Fathom NUNCA marcan la conexion como `error`.
+- **La configuracion de las tareas vive en `workspaces.ai_background_settings`**
+  (claves `call_classification` y `call_analysis`, esquema en
+  `lib/calls/task-settings.ts`) y se escribe SOLO con
+  `set_ai_background_task_settings` (cambia UNA clave) via `saveCallTaskSettings`
+  (`calls.configure`). Guardar una tarea en segundo plano conserva esas claves
+  (`mergeBackgroundSettings`).
+- **Lo que escribe una persona como pedido** (corregir con IA, el contexto al
+  regenerar) viaja SIEMPRE como dato en el mensaje del usuario, nunca en el system
+  prompt. El texto editable de las instrucciones se versiona; la parte tecnica
+  (anti-inyeccion, rubrica, categorias) es fija.
+- **El documento de Conocimiento de una llamada es SIEMPRE interno**
+  (`internal_only = true`) y nunca de una reunion de equipo.
+- **La memoria del contacto se escribe con control de concurrencia**
+  (`lib/calls/memory.ts`): condicional sobre `ai_summary_updated_at`, un reintento
+  y despues `memory_status = 'conflict'`.
+- **Los eventos de automatizacion nunca tumban lo que los emite**, y una llamada
+  sin contacto no emite nada.
+
+## Variables de entorno
+
+Llamadas **no suma ninguna variable de entorno**: la app OAuth de Fathom (Client ID
+y Secret) y los tokens viven en Supabase Vault, y el cron usa los secretos que ya
+estan en el Vault.
 
 # Mejoras de Chat (Bloques 1-6)
 

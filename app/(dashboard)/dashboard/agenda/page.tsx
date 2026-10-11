@@ -5,6 +5,7 @@ import { getProfileForUser } from "@/lib/scheduling/data/profiles";
 import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
+import { loadBookingCalls } from "@/lib/calls/contact-section";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
@@ -190,6 +191,9 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const detail = query.agenda ? await getBookingDetail(ctx.supabase, one(query.agenda) ?? "") : null;
   const publicBase = publicBaseUrl(ctx.workspace as { scheduling_public_base_url?: string | null });
+  // Las llamadas vinculadas a esta agenda (F34): solo con `calls.view`, y solo las que la RLS deja ver.
+  const bookingCalls =
+    detail && ctx.can("calls.view") ? await loadBookingCalls(ctx.supabase, { workspaceId: ctx.workspace.id, bookingId: detail.booking.id, names }) : [];
 
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
@@ -283,6 +287,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               history: detail.history.map((h) => ({ id: h.id, at: h.performed_at, text: historyText(h, names) })),
               attribution: attributionOf((detail.booking as unknown as { utm?: unknown; referrer_url?: string | null }).utm, detail.booking.referrer_url),
               slotReleasedAt: detail.booking.slot_released_at,
+              calls: bookingCalls,
             }
           : null
       }

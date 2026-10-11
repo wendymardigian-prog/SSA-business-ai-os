@@ -1426,3 +1426,68 @@ El dashboard de Meta Ads (`/dashboard/dashboards/ads` y las tres pantallas de de
 ### Lo que queda
 
 - Aplicar el mismo patrón de modelo elegible al resto de las tareas, si se quiere (el `ai_task_models` ya está pensado para eso).
+
+---
+## Llamadas — Fathom y analizador de llamadas con IA (L1, L2 y L3)
+
+**Fecha:** 10 y 11 de octubre de 2026
+**Rama:** `feat/llamadas` (PR abierto, sin mergear)
+**Migraciones:** 00144 a 00149, todas aplicadas y registradas. Ninguna borra datos.
+
+### Qué se construyó
+
+Treinta y cuatro funcionalidades (F1 a F34) en tres bloques:
+
+1. **L1 — conexión, ingesta y vinculación.** Cada closer conecta su Fathom; sus
+   llamadas entran solas cada 10 minutos, se vinculan al contacto y a la agenda,
+   y se ven en una lista y una ficha. También se pueden importar a mano. De paso
+   quedó el historial transversal (`audit_log.actor_type`, `<Historial/>`).
+2. **L2 — clasificación y análisis.** Tipo de llamada con reglas y con IA,
+   análisis con salida estructurada y puntajes calculados por código, citas
+   verificadas, dos copias del análisis, corregir a mano y con IA, regenerar con
+   motivo, probar el borrador, propuestas de categoría y objeción del closer. Tres
+   tareas nuevas en Agentes IA. El SPSP del negocio quedó cargado como la
+   versión 1.
+3. **L3 — uso de lo analizado.** Resumen con próximos pasos e ideas de
+   contenido, memoria del contacto, transcripción a Conocimiento, los triggers
+   `call_analyzed` y `call_linked`, el dashboard de Llamadas y las llamadas en la
+   ficha del contacto y de la agenda.
+
+### Las decisiones que más costaron
+
+**`audit_log_select` no se reescribe.** Dar acceso al historial de las llamadas
+reescribiendo la política vigente era arriesgado (una regla mal copiada le saca
+el historial a todos). Se sumó una política adicional (`audit_log_select_calls`) y
+se comparó la visibilidad completa antes y después con un script nuevo. Es la
+convención para los módulos que sigan.
+
+**El refresh token de Fathom es de un solo uso.** Dos procesos renovando a la
+vez dejan la conexión muerta, así que el candado vive en la base, no en el
+código.
+
+**Los jobs no lanzan por un fallo de un proveedor.** La cola reintenta a los 10
+segundos, muy poco para un 429. Los handlers reagendan ellos (1, 5 y 15 minutos)
+y dejan la llamada en un estado visible. Un 429 de Fathom nunca marca la conexión
+como caída.
+
+**Dos copias del análisis.** `analysis_ai` es lo que dijo la IA y no se toca; lo
+que se corrige es `analysis`, y los puntajes se recalculan con la rúbrica con la
+que se analizó, no con la de hoy.
+
+**La memoria del contacto se escribe con control de concurrencia.** El resumen de
+una llamada y el cierre de una conversación escriben la misma columna: sin la
+escritura condicional uno pisaba al otro en silencio.
+
+### Un bug que ya estaba
+
+`verify-knowledge.mjs` fallaba desde antes de empezar: comprobaba que la búsqueda
+quedara vacía después de borrar su documento de prueba, pero corre contra el
+primer workspace, que ya tiene un documento real. Ahora comprueba que NO salga el
+documento de prueba.
+
+### Lo que queda
+
+Ver `docs/PENDIENTE-llamadas.md`. Lo principal: la verificación en vivo contra
+Fathom y contra un proveedor de IA (esta corrida no llama a ninguno real), y abrir
+la pantalla de una tarea de Agentes IA a quien tiene `calls.configure` sin ser
+Admin.

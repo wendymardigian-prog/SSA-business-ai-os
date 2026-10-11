@@ -57,6 +57,14 @@ export const DASHBOARDS: DashboardOption[] = [
     permission: "dashboards.agenda.view",
   },
   {
+    key: "calls",
+    label: "Llamadas",
+    description: "Cómo le va al equipo en las llamadas analizadas",
+    href: "/dashboard/dashboards/llamadas",
+    // El mismo permiso que la lista de Llamadas: se ve lo que el alcance permite.
+    permission: "calls.view",
+  },
+  {
     key: "ads",
     // "Meta Ads" y no "Anuncios": es el nombre del producto y es lo que se
     // busca cuando algo no cuadra.

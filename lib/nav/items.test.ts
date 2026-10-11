@@ -120,6 +120,23 @@ describe("Agenda en el menu (F8)", () => {
   });
 });
 
+describe("Llamadas en el menu", () => {
+  const llamadas = NAV_ITEMS.find((i) => i.name === "Llamadas");
+
+  it("va debajo de Agenda, en Ventas, con el permiso calls.view", () => {
+    expect(llamadas).toMatchObject({ href: "/dashboard/llamadas", icon: "PhoneCall", group: "ventas", adminOnly: false, permissions: ["calls.view"] });
+    const nombres = NAV_ITEMS.map((i) => i.name);
+    expect(nombres.indexOf("Llamadas")).toBe(nombres.indexOf("Agenda") + 1);
+  });
+
+  it("aparece con calls.view y a nadie mas", () => {
+    const names = (keys: string[]) => visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+    expect(names(["calls.view"])).toContain("Llamadas");
+    expect(names(["calls.edit"])).not.toContain("Llamadas");
+    expect(names([])).not.toContain("Llamadas");
+  });
+});
+
 describe("Social en el menu (F78)", () => {
   const social = NAV_ITEMS.find((i) => i.name === "Social");
   const names = (isAdmin: boolean, keys: string[]) =>

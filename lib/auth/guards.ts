@@ -126,6 +126,23 @@ export async function requirePermission(key: string): Promise<PermissionContext>
 }
 
 /**
+ * Para rutas y Server Actions que cualquier MIEMBRO puede usar, sin un permiso
+ * aparte (conectar el propio Fathom, decision 153). Devuelve el contexto con
+ * los permisos resueltos, o null si no hay sesion o membresia.
+ *
+ * No existe un "guard de miembro" mas barato: `getWorkspace` ya manda al login
+ * si no hay usuario o membresia. Esto solo da una salida con null para los
+ * lugares que prefieren responder 403 a redirigir.
+ */
+export async function getMemberAction(): Promise<PermissionContext | null> {
+  try {
+    return await getPermissionContext();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Para Server Actions y rutas: devuelve el contexto o null.
  *
  * Null y no una excepcion: quien llama decide el mensaje, y una accion que

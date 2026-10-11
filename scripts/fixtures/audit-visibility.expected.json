@@ -1,0 +1,428 @@
+{
+  "types": [
+    "agent",
+    "ai_task",
+    "booking",
+    "channel",
+    "contact",
+    "conversation",
+    "event_type",
+    "response_asset",
+    "response_template",
+    "scheduling_profile",
+    "sequence",
+    "tag",
+    "workspace",
+    "workspace_member"
+  ],
+  "cases": {
+    "agent|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "agent|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "agent|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "agent|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "ai_task|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "ai_task|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "ai_task|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "ai_task|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "booking|ajena|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "booking|ajena|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "booking|ajena|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "booking|ajena|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "booking|propia|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "booking|propia|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "booking|propia|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "booking|propia|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "channel|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "channel|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "channel|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "channel|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "contact|ajeno|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "contact|ajeno|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "contact|ajeno|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "contact|ajeno|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "contact|propio|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "contact|propio|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "contact|propio|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "contact|propio|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "conversation|ajena|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "conversation|ajena|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "conversation|ajena|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "conversation|ajena|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "conversation|propia|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "conversation|propia|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "conversation|propia|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "conversation|propia|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "event_type|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "event_type|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "event_type|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "event_type|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_asset|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_asset|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_asset|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "response_asset|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_template|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_template|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "response_template|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "response_template|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "scheduling_profile|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "scheduling_profile|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "scheduling_profile|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "scheduling_profile|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "sequence|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "sequence|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "sequence|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "sequence|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "tag|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "tag|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "tag|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "tag|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace_member|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace_member|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace_member|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "workspace_member|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace|x|por_admin": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace|x|por_agente": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    },
+    "workspace|x|por_member": {
+      "owner": true,
+      "admin": true,
+      "m1": true,
+      "m2": false
+    },
+    "workspace|x|por_sistema": {
+      "owner": true,
+      "admin": true,
+      "m1": false,
+      "m2": false
+    }
+  }
+}

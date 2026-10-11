@@ -153,6 +153,8 @@ const REDIRECT_ALLOWLIST = [
   "/dashboard/content",
   // Etapa 4: cada persona conecta su Google Calendar desde la configuracion de agenda.
   "/dashboard/agenda/configuracion/calendarios",
+  // Llamadas: cada closer conecta su Fathom desde su pantalla.
+  "/dashboard/llamadas/mi-fathom",
 ];
 
 /**
