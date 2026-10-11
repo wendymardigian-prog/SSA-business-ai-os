@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/forms/back-link";
 import { Historial } from "@/components/historial/historial";
 import { Notice } from "@/components/agents/fields";
+import { LinkContact } from "./link-contact";
 import { getSubmissionFileUrl } from "@/lib/actions/forms/responses";
 import { setSubmissionSpam } from "@/lib/actions/forms/forms";
 import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type SubmissionStatus } from "@/lib/forms/responses";
@@ -165,6 +166,8 @@ export function SubmissionDetail({
               </div>
             )}
           </section>
+
+          {canManage && !contact && submission.status !== "spam" && <LinkContact submissionId={submission.id} />}
 
           <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="respuestas-titulo">
             <h2 id="respuestas-titulo" className="text-sm font-semibold">
