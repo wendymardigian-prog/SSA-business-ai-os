@@ -13,6 +13,8 @@ import type { CallTranscriptLine } from "@/lib/types/database";
 
 /** Tamano maximo de lo que se importa (texto o archivo). */
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+/** Importaciones por hora y por persona. */
+export const IMPORT_LIMIT_PER_HOUR = 20;
 export const IMPORT_EXTENSIONS = [".vtt", ".srt", ".txt"] as const;
 
 const WATERMARK_RE = /turboscribe/i;

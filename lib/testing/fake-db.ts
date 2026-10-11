@@ -30,7 +30,7 @@ export type DbHandler = DbResult | ((call: DbCall) => DbResult | undefined);
 
 export interface FakeDb {
   /** Cliente listo para pasar donde se espera un SupabaseClient. */
-  client: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  client: any;
   calls: DbCall[];
   rpcCalls: Array<{ name: string; args: unknown }>;
   /** Las escrituras (insert/update/delete/upsert), en orden. */

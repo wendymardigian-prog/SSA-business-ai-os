@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { fathomCardView, pickConnection } from "@/lib/fathom/connection-state";
 import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { firstParam } from "@/lib/url-params";
+import { daysAgoIso } from "@/lib/calls/format";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function MiFathomPage({
   // Si la app esta cargada se lee con el cliente de servicio: listar los secretos
   // es de admins, y a un closer solo le importa si esta o no.
   const service = await createServiceClient();
-  const since = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+  const since = daysAgoIso(7);
   const [secretNames, { data: connections }, { data: member }] = await Promise.all([
     listSecretNames(service, workspace.id),
     supabase

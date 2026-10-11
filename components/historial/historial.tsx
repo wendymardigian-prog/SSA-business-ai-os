@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bot, Cog, User, Webhook } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -61,26 +61,36 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const load = useCallback(
-    async (after: string | null) => {
-      const supabase = createClient();
-      const spec = buildHistoryQuery({ entityType, entityId, cursor: after, pageSize });
-      const result = await runHistoryQuery(supabase as never, spec);
-      if (!result.ok) {
-        setState("error");
-        return;
-      }
-      setRows((prev) => (after ? [...prev, ...result.page.rows] : result.page.rows));
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // La primera pagina se pide al montar (y al reintentar). Para otra entidad,
+  // el que lo usa le pone `key` y se monta de nuevo (el estado vuelve a "loading").
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const spec = buildHistoryQuery({ entityType, entityId, cursor: null, pageSize });
+      const result = await runHistoryQuery(createClient() as never, spec);
+      if (!alive) return;
+      if (!result.ok) return setState("error");
+      setRows(result.page.rows);
       setCursor(result.page.nextCursor);
       setState("ready");
-    },
-    [entityType, entityId, pageSize],
-  );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [entityType, entityId, pageSize, reloadKey]);
 
-  useEffect(() => {
-    setState("loading");
-    void load(null);
-  }, [load]);
+  async function loadMore() {
+    if (!cursor) return;
+    setLoadingMore(true);
+    const spec = buildHistoryQuery({ entityType, entityId, cursor, pageSize });
+    const result = await runHistoryQuery(createClient() as never, spec);
+    setLoadingMore(false);
+    if (!result.ok) return setState("error");
+    setRows((prev) => [...prev, ...result.page.rows]);
+    setCursor(result.page.nextCursor);
+  }
 
   if (state === "loading") {
     return <div className="space-y-2" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="h-10 animate-pulse rounded-md bg-muted" />)}</div>;
@@ -89,7 +99,7 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
     return (
       <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
         <span>No pude leer el historial.</span>
-        <button type="button" className="underline" onClick={() => { setState("loading"); void load(null); }}>Reintentar</button>
+        <button type="button" className="underline" onClick={() => { setState("loading"); setReloadKey((k) => k + 1); }}>Reintentar</button>
       </div>
     );
   }
@@ -133,7 +143,7 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
         <button
           type="button"
           disabled={loadingMore}
-          onClick={async () => { setLoadingMore(true); await load(cursor); setLoadingMore(false); }}
+          onClick={() => void loadMore()}
           className="mt-3 text-sm text-primary underline disabled:opacity-50"
         >
           {loadingMore ? "Cargando…" : "Ver más"}

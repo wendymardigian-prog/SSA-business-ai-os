@@ -25,7 +25,7 @@ import type { Database, Json } from "@/lib/types/database";
 import { auditAsWebhook } from "@/lib/audit";
 import { countPeople } from "@/lib/calls/classification";
 import { computeAutoLink, externalEmailsOf, type BookingCandidate, type ContactCandidate } from "@/lib/calls/linking";
-import { scheduleJob } from "@/lib/scheduler";
+import { enqueueClassify } from "@/lib/calls/queue";
 import { BudgetExhausted, getTranscript, listMeetings, secondsBetween, toAttendees, type FathomMeeting } from "./api";
 import {
   forceFathomRefresh,
@@ -327,21 +327,12 @@ async function saveCall(
       metadata: { source: "fathom", link_method: link.link_method, lines: transcript.length },
       label: "Fathom",
     });
-    await (deps.enqueueClassify ?? ((id: string) => defaultEnqueueClassify(db, id, now)))(callId);
+    await (deps.enqueueClassify ?? ((id: string) => enqueueClassify(db, id, now)))(callId);
     if (link.contact_id && deps.onLinked) await deps.onLinked({ callId, contactId: link.contact_id, workspaceId: connection.workspace_id });
   } catch (err) {
     console.error("[fathom] la llamada se guardó pero falló un paso posterior:", err instanceof Error ? err.message : "error");
   }
   return "created";
-}
-
-/** `call_classify` con su clave de dedupe; un duplicado no es un error. */
-export async function defaultEnqueueClassify(db: Db, callId: string, now: Date): Promise<void> {
-  try {
-    await scheduleJob(db, "call_classify", { callId }, now, `call_classify:${callId}`);
-  } catch (err) {
-    if ((err as { code?: string }).code !== "23505") throw err;
-  }
 }
 
 // ── Errores ───────────────────────────────────────────────────────────────
