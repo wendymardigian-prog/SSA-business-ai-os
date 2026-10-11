@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
@@ -14,6 +14,7 @@ import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
 import { isTurnstileConfigured } from "@/lib/forms/server-ports";
 import { typeChecks } from "@/lib/forms/type-checks";
+import { formCacheTag } from "@/lib/forms/site-load";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -34,6 +35,21 @@ export type FormActionResult<T extends object = object> = ({ ok: true } & T) | {
 
 async function context() {
   return getPermissionAction("forms.manage");
+}
+
+/**
+ * Las páginas del sitio que usan `<Formulario>` guardan la definición en caché con la
+ * etiqueta `form:<slug>` (F31). Publicar, pausar, archivar, reanudar o cambiar el link
+ * la invalida, así la página muestra lo vigente sin volver a desplegar. Nunca tumba la acción.
+ */
+function invalidateSiteForm(...slugs: string[]) {
+  for (const slug of new Set(slugs.filter(Boolean))) {
+    try {
+      revalidateTag(formCacheTag(slug), { expire: 0 });
+    } catch (error) {
+      console.error("[forms] no pude invalidar la caché del sitio:", error instanceof Error ? error.message : "error");
+    }
+  }
 }
 
 function refresh(formId?: string) {
@@ -206,6 +222,7 @@ export async function setFormStatus(formId: string, to: FormStatus): Promise<For
     changes: { status: { old: from, new: to } },
     performedBy: ctx.user.id,
   });
+  invalidateSiteForm(form.slug);
   refresh(formId);
   return { ok: true };
 }
@@ -315,6 +332,7 @@ export async function changeFormSlug(input: { formId: string; slug: string; conf
     changes: { slug: { old: form.slug, new: slug } },
     performedBy: ctx.user.id,
   });
+  invalidateSiteForm(form.slug, slug);
   refresh(input.formId);
   return { ok: true, slug };
 }
@@ -348,6 +366,7 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
     return { ok: false, error: "No pudimos publicar el formulario. Probá de nuevo." };
   }
 
+  invalidateSiteForm(form.slug);
   refresh(formId);
   return { ok: true, versionNumber: data.version_number, changed: data.changed };
 }

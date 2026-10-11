@@ -48,7 +48,7 @@ function setup(over: { call?: Record<string, unknown>; settings?: Record<string,
       "workspaces:select": { data: { ai_background_settings: over.settings ?? {} } },
       "scheduled_jobs:insert": { data: { id: "j1" } },
     },
-    { workspace_member_profiles: { data: [{ user_id: "u1", email: "yo@agencia.com", full_name: "Wendy", meta_name: null }] } },
+    { workspace_member_profiles: { data: [{ user_id: "u1", email: "yo@agencia.com", full_name: "Carla", meta_name: null }] } },
   );
   return db;
 }

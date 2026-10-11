@@ -37,6 +37,15 @@ describe("handleBeacon", () => {
     expect(JSON.stringify(events)).not.toContain(SID);
   });
 
+  it("con origin: 'site' el evento lo dice; un origen desconocido invalida el pedido y no escribe", async () => {
+    const { ports, events } = makePorts();
+    await call(ports, { kind: "view", sid: SID, origin: "site" });
+    expect(events[0].metadata).toEqual({ form_id: "form-1", version_id: "v-1", origin: "site" });
+    const other = makePorts();
+    expect((await call(other.ports, { kind: "view", sid: SID, origin: "hackeado" })).wrote).toBe(false);
+    expect(other.events).toHaveLength(0);
+  });
+
   it("recargar la misma pestaña 5 veces (mismo sid) deja UNA vista; otra pestaña, dos", async () => {
     const { ports, events } = makePorts();
     for (let i = 0; i < 5; i++) await call(ports, { kind: "view", sid: SID });

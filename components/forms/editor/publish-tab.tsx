@@ -7,8 +7,10 @@ import { Notice, Field, inputClass } from "@/components/agents/fields";
 import { Tabs } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { changeFormSlug } from "@/lib/actions/forms/forms";
-import { generateFormEmbedCode } from "@/lib/embed/code";
+import { formPageSnippet, generateFormEmbedCode, trackingSnippet } from "@/lib/embed/code";
+import { PrefillCard } from "./prefill-card";
 import { ContactLinkCard } from "./contact-link-card";
+import type { FormDefinition } from "@/lib/forms/fields";
 import type { EditorForm, EditorVersion } from "./types";
 
 /**
@@ -50,6 +52,7 @@ export function PublishTab({
   published,
   onSlugChanged,
   timeZone,
+  definition,
 }: {
   form: EditorForm;
   versions: EditorVersion[];
@@ -59,6 +62,8 @@ export function PublishTab({
   published: boolean;
   onSlugChanged: (slug: string) => void;
   timeZone: string;
+  /** Los campos del borrador que se está editando (los parámetros de la URL salen de acá). */
+  definition: FormDefinition;
 }) {
   const copy = useCopy();
   const [slug, setSlug] = useState(form.slug);
@@ -70,6 +75,8 @@ export function PublishTab({
   const base = appUrl || (typeof window !== "undefined" ? window.location.origin : "");
   const publicUrl = `${base}/f/${form.slug}`;
   const code = useMemo(() => generateFormEmbedCode(codeTab, { slug: form.slug }, base || "https://tu-dominio.com"), [codeTab, form.slug, base]);
+  const siteSnippet = formPageSnippet(form.slug);
+  const tracking = trackingSnippet(base || "https://tu-dominio.com");
 
   function saveSlug(confirm: boolean) {
     setMessage(null);
@@ -149,7 +156,29 @@ export function PublishTab({
           </div>
         </Tabs>
         <p className="text-xs text-muted-foreground">Si la web ya carga el embed de la Agenda, no hace falta repetir la primera parte: es el mismo script.</p>
+
+        <div className="space-y-2 border-t border-border pt-3">
+          <h3 className="text-xs font-semibold">Seguimiento en todo el sitio</h3>
+          <p className="text-xs text-muted-foreground">
+            Pegá esta línea UNA vez en el &lt;head&gt; de tu web (con o sin formulario). Guarda de dónde vino cada persona (UTM, ids de clic) para que un formulario que llene en otra página, o en otra visita, no pierda esos datos. No muestra nada ni hace pedidos.
+          </p>
+          <textarea readOnly aria-label="Código de seguimiento para el head de tu web" rows={2} value={tracking} className="w-full rounded-lg border border-input bg-muted px-3 py-2 font-mono text-[11px]" />
+          <CopyButton id="tracking" text={tracking} label="Copiar seguimiento" state={copy} />
+        </div>
       </section>
+
+      <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="pagina-sitio">
+        <h2 id="pagina-sitio" className="text-sm font-semibold">
+          Usar en una página del sitio
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Si armás páginas dentro de este mismo proyecto (se piden a Claude Code), el formulario va con este componente. Muestra siempre la versión publicada, sin volver a desplegar. Ver <code>docs/sitio.md</code>.
+        </p>
+        <code className="block rounded-lg bg-muted px-3 py-2 text-xs">{siteSnippet}</code>
+        <CopyButton id="site" text={siteSnippet} label="Copiar" state={copy} />
+      </section>
+
+      <PrefillCard definition={definition} baseUrl={publicUrl} />
 
       <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="proteccion">
         <h2 id="proteccion" className="text-sm font-semibold">

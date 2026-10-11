@@ -6,12 +6,12 @@ describe("buildCallVariables", () => {
   const call = { title: "Llamada con Ana", recorded_at: "2026-10-09T15:00:00Z", outcome: "seguimiento_con_fecha", closer_score: 72, lead_score: 61, nextStep: "Llamar el martes" };
 
   it("arma las siete variables como texto", () => {
-    expect(buildCallVariables(call, "Wendy", "America/Costa_Rica")).toEqual({
+    expect(buildCallVariables(call, "Carla", "America/Costa_Rica")).toEqual({
       title: "Llamada con Ana",
       date: "9 de octubre de 2026",
       outcome: "Seguimiento con fecha",
       next_step: "Llamar el martes",
-      closer_name: "Wendy",
+      closer_name: "Carla",
       closer_score: "72",
       lead_score: "61",
     });
@@ -36,10 +36,10 @@ describe("callContextVariables", () => {
         "calls:select": { data: { title: "Llamada con Ana", recorded_at: "2026-10-09T15:00:00Z", outcome: "venta", closer_score: 90, lead_score: 80, workspace_id: "ws1", recorded_by_user_id: "u1", next_step: "Enviar el contrato" } },
         "workspaces:select": { data: { timezone: "America/Costa_Rica" } },
       },
-      { workspace_member_profiles: { data: [{ user_id: "u1", full_name: "Wendy Mardigian", meta_name: null, email: "w@x.com", role: "owner" }] } },
+      { workspace_member_profiles: { data: [{ user_id: "u1", full_name: "Carla Gómez", meta_name: null, email: "w@x.com", role: "owner" }] } },
     );
     expect(await callContextVariables(db.client, "c1")).toEqual({
-      call: { title: "Llamada con Ana", date: "9 de octubre de 2026", outcome: "Venta", next_step: "Enviar el contrato", closer_name: "Wendy Mardigian", closer_score: "90", lead_score: "80" },
+      call: { title: "Llamada con Ana", date: "9 de octubre de 2026", outcome: "Venta", next_step: "Enviar el contrato", closer_name: "Carla Gómez", closer_score: "90", lead_score: "80" },
     });
   });
   it("una llamada que ya no existe da un objeto vacio", async () => {

@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { attributionFromParams, parseCookieHeader, sanitizeAttribution } from "@/lib/attribution/collect";
+import { effectiveAttribution } from "@/lib/attribution/merge";
+import { cookieEnv, storedFromEffective } from "@/lib/attribution/browser";
+import { parseStored } from "@/lib/attribution/store";
 import { decodeAttr } from "@/lib/forms/embed-attr";
 import { hiddenValues, prefillFromParams } from "@/lib/forms/prefill";
 import { validateSubmission } from "@/lib/forms/submission-schema";
@@ -19,6 +22,7 @@ import {
   type PublicFormData,
 } from "@/lib/forms/public-client";
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
+import { submitOriginFields } from "@/lib/forms/site-submit";
 import { useEmbedBridge } from "@/components/scheduling/booker/use-embed-bridge";
 import { FIELD_RENDERERS } from "./fields/registry";
 import { TurnstileWidget } from "./turnstile-widget";
@@ -79,13 +83,13 @@ function getSessionId(): string {
   }
 }
 
-function sendBeacon(slug: string, kind: "view" | "start", sid: string) {
+function sendBeacon(slug: string, kind: "view" | "start", sid: string, origin: FormMode) {
   // Un error acá no se le muestra a nadie.
   try {
     void fetch(`/api/public/forms/${encodeURIComponent(slug)}/beacon`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, sid }),
+      body: JSON.stringify({ kind, sid, origin }),
       keepalive: true,
     }).catch(() => undefined);
   } catch {
@@ -129,7 +133,7 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
   // Vista, y el borrador que quedó si el formulario cambió mientras se completaba.
   useEffect(() => {
     sid.current = getSessionId();
-    if (!preview) sendBeacon(form.slug, "view", sid.current);
+    if (!preview) sendBeacon(form.slug, "view", sid.current, mode);
     try {
       const saved = window.sessionStorage.getItem(DRAFT_KEY(form.slug));
       if (saved) {
@@ -140,13 +144,13 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
     } catch {
       // sessionStorage bloqueado: se sigue sin borrador.
     }
-  }, [form.slug, preview]);
+  }, [form.slug, preview, mode]);
 
   const onInteract = useCallback(() => {
     if (started.current || preview) return;
     started.current = true;
-    if (sid.current) sendBeacon(form.slug, "start", sid.current);
-  }, [form.slug, preview]);
+    if (sid.current) sendBeacon(form.slug, "start", sid.current, mode);
+  }, [form.slug, preview, mode]);
 
   const setValue = useCallback((key: string, value: unknown) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
@@ -170,17 +174,30 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
 
   const visible = useMemo(() => new Set(visibleFieldKeys(fields, answers as never)), [fields, answers]);
 
-  /** Atribución de ESTA visita: URL, referrer, cookies y lo que mandó el embed (el servidor la vuelve a sanear). */
+  /**
+   * La atribución EFECTIVA de este envío (F6, F29): si la URL trae UTM, un id de clic o de
+   * anuncio, esa visita es un toque nuevo y gana; si no, vale el último guardado (la cookie
+   * `ssa_attr` en las páginas propias; en un embed, lo que mandó el script de la web que lo
+   * contiene en `attr`). El servidor la vuelve a sanear: no se confía.
+   */
   const collectAttribution = useCallback((): Record<string, unknown> => {
-    const fromEmbed = sanitizeAttribution(decodeAttr(params.attr));
-    const parentUrl = mode === "embed" ? params.referrer : undefined;
-    const current = attributionFromParams(params, {
-      referrer: parentUrl ?? document.referrer,
-      landing: parentUrl ?? window.location.href,
-      pageUrl: parentUrl ?? window.location.href,
-      cookies: parseCookieHeader(document.cookie),
-    });
-    return { ...fromEmbed, ...current };
+    try {
+      const parentUrl = mode === "embed" ? params.referrer : undefined;
+      const current = attributionFromParams(params, {
+        referrer: parentUrl ?? document.referrer,
+        landing: parentUrl ?? window.location.href,
+        pageUrl: parentUrl ?? window.location.href,
+        cookies: parseCookieHeader(document.cookie),
+      });
+      if (mode === "embed") {
+        const fromEmbed = sanitizeAttribution(decodeAttr(params.attr));
+        return effectiveAttribution(current, storedFromEffective(fromEmbed));
+      }
+      // Las páginas propias: la cookie `ssa_attr`; la URL actual manda si trae un toque nuevo.
+      return effectiveAttribution(current, parseStored(cookieEnv(document, window.location).readStored()));
+    } catch {
+      return {};
+    }
   }, [params, mode]);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -227,8 +244,8 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
         timezone,
         locale: navigator.language,
         screen: `${window.screen.width}x${window.screen.height}`,
-        origin: mode,
-        sitePath,
+        origin: submitOriginFields(mode, sitePath).origin,
+        sitePath: submitOriginFields(mode, sitePath).site_path,
         linkToken,
         ...(isContract ? { accepted, signature: signature.dataUrl ?? undefined, signatureStrokes: signature.strokes } : {}),
       });

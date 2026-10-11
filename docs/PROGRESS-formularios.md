@@ -118,12 +118,19 @@ Lo que se verificó al cerrarlo:
   - **RLS de las firmas**: Owner y Admin las ven; un Member solo las de sus contactos; sin `forms.view`, otro workspace y `anon`, ninguna; nadie inserta ni borra desde el navegador.
 - Las huellas md5 de `find_or_link_contact`, `create_booking` y `record_contact_touch` siguen iguales.
 
-## Bloque FO4 · Sitio público y atribución completa
-- [ ] F29 Atribución persistente entre páginas
-- [ ] F30 Área pública del sitio
-- [ ] F31 Componente `<Formulario>`
-- [ ] F32 Parámetros, links con prellenado y códigos
-- [ ] F33 Todos los datos del anuncio llegan al contacto
+## Bloque FO4 · Sitio público y atribución completa — **cerrado** (sin migraciones)
+- [x] F29 Atribución persistente entre páginas
+- [x] F30 Área pública del sitio
+- [x] F31 Componente `<Formulario>`
+- [x] F32 Parámetros, links con prellenado y códigos
+- [x] F33 Todos los datos del anuncio llegan al contacto
+
+Lo que se verificó al cerrarlo:
+- `npx vitest run`: 619 archivos, 7.641 tests, todo en verde. `npm run lint`: 0 errores, 36 avisos (los mismos). `npm run build`: compila con la versión por defecto del sitio y también con una página de ejemplo (`/ejemplo`, estática con renovación de 1 hora; **se borró antes de commitear**). `public/embed/embed.js`: 21,1 KB (tope 60 KB).
+- `verify-forms.mjs` con los casos de FO4 contra la base real: un envío con `origin: "site"` guarda `meta.origin = 'site'` y `meta.site_path` (limpia de query y hash; fuera del sitio no se guarda); con una cookie `ssa_attr` cuyo último toque es `utm_campaign = octubre` y la URL sin UTM, la respuesta guarda `attribution.utm_campaign = octubre` y el toque queda con `campaign = octubre` (primer toque del contacto nuevo); con `?utm_source=facebook&fbclid=abc&msclkid=m1&gbraid=gb1&ad_id=77` el toque guarda `fbclid` y `ad_id` en sus columnas y `msclkid`, `gbraid`, `fbc`, `fbp` y `page_url` en `raw`; el `form_view` de una página del sitio lleva `origin: "site"` sin el `sid` ni la IP.
+- `verify-scheduling` en 0. `verify-attribution` con su única falla de antes (la misma cantidad de contactos sin `first_touch`).
+- `scripts/export-template.mjs` en una carpeta temporal: **pasa el control de nombres** (se arreglaron los 12 restos en tests de Llamadas) y deja `app/(sitio)/` con solo `layout.tsx` y `page.tsx` iguales a `scripts/template-files/sitio/`, sin `public/sitio/` propio ni `app/page.tsx`.
+- Revisión visual (navegador integrado, con la sesión de Wendy): una página del sitio con el layout, dos `<Formulario>` de un formulario que no existe (cada uno muestra su aviso y la página carga) y uno publicado con `prefill={{plan:"pro"}}` y la URL `?plan=basic` (queda en `pro`); la cookie `ssa_attr` se escribe con la última visita y solo las claves de atribución de la URL.
 
 ## Definición de listo — corrida final
 (se completa al cerrar)

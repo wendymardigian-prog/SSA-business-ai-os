@@ -85,3 +85,11 @@ describe("código del embed de un formulario (F10, F32)", () => {
     expect(formPageSnippet("apl")).toBe('<Formulario slug="apl" />');
   });
 });
+
+import { trackingSnippet } from "./code";
+
+describe("snippet de seguimiento en todo el sitio (F29, F32)", () => {
+  it("es el embed.js con data-agenda-track y async, sin la barra final de la base", () => {
+    expect(trackingSnippet("https://app.ejemplo.com/")).toBe('<script src="https://app.ejemplo.com/embed/embed.js" data-agenda-track async></script>');
+  });
+});

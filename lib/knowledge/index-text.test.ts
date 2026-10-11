@@ -22,8 +22,8 @@ const input = (over: Record<string, unknown> = {}) => ({
   internalOnly: true,
   sourceFilename: "llamada-c1.md",
   sourceMime: "text/markdown",
-  contentMd: "Ana: hola\nWendy: buenas",
-  chunks: ["Ana: hola, esto es un pedazo largo de prueba", "Wendy: buenas, este es otro pedazo largo"],
+  contentMd: "Ana: hola\nCarla: buenas",
+  chunks: ["Ana: hola, esto es un pedazo largo de prueba", "Carla: buenas, este es otro pedazo largo"],
   now: new Date("2026-10-10T12:00:00Z"),
   ...over,
 });
@@ -57,7 +57,7 @@ describe("indexText", () => {
       source_filename: "llamada-c1.md",
       source_file_path: null,
       status: "processing",
-      content_md: "Ana: hola\nWendy: buenas",
+      content_md: "Ana: hola\nCarla: buenas",
     });
     const final = db.writesTo("knowledge_base").at(-1)!.values as Record<string, unknown>;
     expect(final).toMatchObject({ status: "ready", chunk_count: 2, embedding_model: "voyage-4-lite", error_detail: null });

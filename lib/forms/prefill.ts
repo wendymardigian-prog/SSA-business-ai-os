@@ -10,7 +10,7 @@
  * respuesta (lo valida, no se fía de que "estaba bloqueado").
  */
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
-import { supportsPrefill, type FormField, type PrefillConfig } from "./fields";
+import { PREFILL_PARAM_RE, supportsPrefill, type FormField, type PrefillConfig } from "./fields";
 
 export type PrefillValue = string | number | string[];
 
@@ -159,4 +159,96 @@ export function hiddenValues(
     if (value) out[field.key] = value.slice(0, 500);
   }
   return out;
+}
+
+// ── "Parámetros de la URL" y el armador de links (F32) ───────────────────────
+
+export interface PrefillParamRow {
+  fieldKey: string;
+  label: string;
+  /** Los parámetros que lo llenan, en orden de prioridad. */
+  params: string[];
+  behavior: PrefillConfig["behavior"];
+}
+
+export interface HiddenParamRow {
+  fieldKey: string;
+  label: string;
+  /** De dónde sale su valor: un parámetro de la URL o una clave de atribución. */
+  source: "url_param" | "attribution";
+  param: string;
+}
+
+export interface AutoAttributionGroup {
+  title: string;
+  keys: string[];
+}
+
+/** Lo que el sistema registra solo: la persona que arma links no tiene que hacer nada con estas claves. */
+export const AUTO_ATTRIBUTION_GROUPS: AutoAttributionGroup[] = [
+  { title: "Campaña (UTM)", keys: ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "utm_id"] },
+  { title: "Ids de clic de los anuncios", keys: ["fbclid", "gclid", "gbraid", "wbraid", "msclkid", "ttclid", "li_fat_id", "twclid", "sccid", "epik", "rdt_cid"] },
+  { title: "Ids del anuncio", keys: ["ad_id", "adset_id", "campaign_id", "placement"] },
+  { title: "Cookies de los anuncios", keys: ["fbp", "fbc", "ga_client_id"] },
+];
+
+export interface DescribedPrefill {
+  fields: PrefillParamRow[];
+  hidden: HiddenParamRow[];
+  auto: AutoAttributionGroup[];
+}
+
+/**
+ * Qué parámetros acepta la URL de un formulario: los campos que se pueden prellenar (con
+ * su comportamiento), los ocultos que toman su valor de la URL o de la atribución y lo
+ * que se registra solo. NUNCA lista un campo de consentimiento ni de archivo (no se
+ * prellenan) ni el `value` de un oculto fijo (jamás sale del servidor): de esos, ni el
+ * campo aparece.
+ */
+export function describePrefillParams(definition: { fields: FormField[] }): DescribedPrefill {
+  const fields: PrefillParamRow[] = [];
+  const hidden: HiddenParamRow[] = [];
+  for (const field of definition.fields) {
+    if (field.type === "hidden") {
+      const config = field.hidden;
+      if (config && (config.source === "url_param" || config.source === "attribution") && config.param) {
+        hidden.push({ fieldKey: field.key, label: field.label || field.key, source: config.source, param: config.param });
+      }
+      continue;
+    }
+    const config = effectivePrefill(field);
+    if (!config) continue;
+    fields.push({ fieldKey: field.key, label: field.label || field.key, params: [...config.params], behavior: config.behavior });
+  }
+  return { fields, hidden, auto: AUTO_ATTRIBUTION_GROUPS };
+}
+
+/** Las variables del contacto que se pueden pegar sin codificar en un mensaje o email de una automatización. */
+export const CONTACT_LINK_VARIABLES = ["{{contact.display_name}}", "{{contact.email}}", "{{contact.phone}}"] as const;
+
+const CONTACT_TOKEN = /(\{\{\s*contact\.[a-z_]+\s*\}\})/gi;
+
+/** El valor codificado para una URL, salvo las variables `{{contact.*}}`, que quedan tal cual. */
+function encodeLinkValue(value: string): string {
+  return value
+    .split(CONTACT_TOKEN)
+    .map((part) => (CONTACT_TOKEN.test(part) ? part.replace(/\s+/g, "") : encodeURIComponent(part)))
+    .join("");
+}
+
+/**
+ * La URL de un formulario con valores prellenados. Los valores se codifican, menos las
+ * variables del contacto (`{{contact.email}}`…), que van sin codificar para que el nodo
+ * de envío de una automatización las reemplace como a cualquier variable. Los nombres
+ * inválidos y los valores vacíos se ignoran.
+ */
+export function buildPrefillLink(baseUrl: string, values: Record<string, string | undefined | null>): string {
+  const pairs: string[] = [];
+  for (const [name, raw] of Object.entries(values)) {
+    if (typeof raw !== "string" || raw.trim() === "") continue;
+    if (!PREFILL_PARAM_RE.test(name)) continue;
+    pairs.push(`${encodeURIComponent(name)}=${encodeLinkValue(raw.trim())}`);
+  }
+  if (pairs.length === 0) return baseUrl;
+  return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${pairs.join("&")}`;
 }

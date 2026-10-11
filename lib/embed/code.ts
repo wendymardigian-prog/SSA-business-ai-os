@@ -191,3 +191,13 @@ export function generateFormEmbedCode(mode: "inline" | "floating", options: Form
 export function formPageSnippet(slug: string): string {
   return `<Formulario slug="${slug}" />`;
 }
+
+/**
+ * El snippet de "Seguimiento en todo el sitio" (F29, F32): el mismo `embed.js` en modo
+ * "solo seguimiento". Se pega UNA vez en el `<head>` de toda la web y solo guarda de dónde
+ * vino cada persona (UTM, ids de clic) en el `localStorage` de esa web, para que un
+ * formulario embebido en otra página conserve esos datos. No muestra nada ni hace pedidos.
+ */
+export function trackingSnippet(baseUrl: string): string {
+  return `<script src="${baseUrl.replace(/\/$/, "")}/embed/embed.js" data-agenda-track async></script>`;
+}

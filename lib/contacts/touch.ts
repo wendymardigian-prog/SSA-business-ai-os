@@ -100,6 +100,9 @@ const RAW_KEYS = new Set([
   "ad_id", "adset_id", "campaign_id", "ref", "source", "type", "source_id",
   "source_type", "source_url", "headline", "ctwa_clid", "title", "media_type",
   "fbclid", "gclid", "ttclid", "li_fat_id",
+  // Formularios (F33): los datos del anuncio que `contact_touches` no tiene como columna.
+  "utm_id", "gbraid", "wbraid", "msclkid", "twclid", "sccid", "epik", "rdt_cid", "placement",
+  "fbp", "fbc", "ga_client_id", "page_url",
 ]);
 
 /** Cuánto texto puede tener un valor guardado en `raw`. */

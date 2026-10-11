@@ -317,6 +317,7 @@ export function FormEditor({
                 published={status === "published"}
                 onSlugChanged={setSlug}
                 timeZone={timeZone}
+                definition={draft.definition}
               />
             )}
           </div>

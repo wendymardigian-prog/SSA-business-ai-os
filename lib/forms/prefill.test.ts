@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { coercePrefillValue, hiddenValues, prefillFromParams } from "./prefill";
+import { AUTO_ATTRIBUTION_GROUPS, CONTACT_LINK_VARIABLES, buildPrefillLink, coercePrefillValue, describePrefillParams, hiddenValues, prefillFromParams } from "./prefill";
+import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { newField, type FormField } from "./fields";
 
 const f = (type: Parameters<typeof newField>[0], key: string, extra: Partial<FormField> = {}): FormField => ({
@@ -110,5 +111,78 @@ describe("hiddenValues", () => {
     const out = hiddenValues([url, attr, fixed], { utm_campaign: "oct" }, { utm_source: "meta" });
     expect(out).toEqual({ campana: "oct", origen: "meta" });
     expect(JSON.stringify(out)).not.toContain("octubre");
+  });
+});
+
+describe("describePrefillParams (F32)", () => {
+  const field = (type: Parameters<typeof newField>[0], key: string, extra: Record<string, unknown> = {}) => ({ ...newField(type, key, key), ...extra });
+
+  it("lista los campos prellenables con sus parámetros y su comportamiento", () => {
+    const out = describePrefillParams({
+      fields: [
+        field("email", "email", { label: "Email" }),
+        field("short_text", "nombre", { label: "Nombre", prefill: { params: ["nombre", "name"], behavior: "locked" } }),
+      ],
+    });
+    expect(out.fields).toEqual([
+      { fieldKey: "email", label: "Email", params: ["email"], behavior: "editable" },
+      { fieldKey: "nombre", label: "Nombre", params: ["nombre", "name"], behavior: "locked" },
+    ]);
+  });
+
+  it("NO lista consentimientos ni archivos", () => {
+    const out = describePrefillParams({ fields: [field("consent", "acepto"), field("file", "cv"), field("short_text", "nombre")] });
+    expect(out.fields.map((f) => f.fieldKey)).toEqual(["nombre"]);
+  });
+
+  it("lista los ocultos que vienen de la URL o de la atribución, y NO el valor de un oculto fijo (ni el campo)", () => {
+    const out = describePrefillParams({
+      fields: [
+        field("hidden", "campana", { hidden: { source: "url_param", param: "utm_campaign" } }),
+        field("hidden", "origen", { hidden: { source: "attribution", param: "gclid" } }),
+        field("hidden", "secreto", { hidden: { source: "fixed", value: "valor-secreto-123" } }),
+      ],
+    });
+    expect(out.hidden).toEqual([
+      { fieldKey: "campana", label: "campana", source: "url_param", param: "utm_campaign" },
+      { fieldKey: "origen", label: "origen", source: "attribution", param: "gclid" },
+    ]);
+    expect(JSON.stringify(out)).not.toContain("valor-secreto-123");
+    expect(JSON.stringify(out)).not.toContain("secreto");
+  });
+
+  it("siempre dice lo que se registra solo (UTM, ids de clic, ids del anuncio, cookies)", () => {
+    const out = describePrefillParams({ fields: [] });
+    expect(out.auto.map((g) => g.title)).toEqual(["Campaña (UTM)", "Ids de clic de los anuncios", "Ids del anuncio", "Cookies de los anuncios"]);
+    expect(out.auto[1].keys).toContain("msclkid");
+  });
+
+  it("las claves automáticas son las de lib/attribution/keys (una sola lista)", () => {
+    const all = AUTO_ATTRIBUTION_GROUPS.flatMap((g) => g.keys).sort();
+    expect(all).toEqual([...ATTRIBUTION_KEYS].sort());
+  });
+});
+
+describe("buildPrefillLink (F32)", () => {
+  it("la variable del contacto va SIN codificar y el resto codificado", () => {
+    expect(buildPrefillLink("https://app.x/f/apl", { correo: "{{contact.email}}", plan: "pro" })).toBe("https://app.x/f/apl?correo={{contact.email}}&plan=pro");
+  });
+  it("codifica espacios, acentos y símbolos de los valores comunes", () => {
+    expect(buildPrefillLink("https://app.x/f/apl", { nombre: "Ana Pérez & Cía" })).toBe("https://app.x/f/apl?nombre=Ana%20P%C3%A9rez%20%26%20C%C3%ADa");
+  });
+  it("un valor mixto codifica el texto y deja la variable", () => {
+    expect(buildPrefillLink("https://app.x/f/apl", { msg: "Hola {{contact.display_name}}!" })).toBe("https://app.x/f/apl?msg=Hola%20{{contact.display_name}}!");
+  });
+  it("ignora valores vacíos y nombres inválidos; sin nada devuelve la base", () => {
+    expect(buildPrefillLink("https://app.x/f/apl", { a: "", b: "  ", "mal nombre": "x", c: undefined, d: null })).toBe("https://app.x/f/apl");
+  });
+  it("si la base ya tiene query, suma con &", () => {
+    expect(buildPrefillLink("https://app.x/f/apl?c=tok", { plan: "pro" })).toBe("https://app.x/f/apl?c=tok&plan=pro");
+  });
+  it("las variables que se ofrecen son las tres que el sistema resuelve", () => {
+    expect([...CONTACT_LINK_VARIABLES]).toEqual(["{{contact.display_name}}", "{{contact.email}}", "{{contact.phone}}"]);
+  });
+  it("una variable con espacios adentro se normaliza (la que resuelve el motor no los tiene)", () => {
+    expect(buildPrefillLink("https://x/f/a", { e: "{{ contact.email }}" })).toBe("https://x/f/a?e={{contact.email}}");
   });
 });

@@ -1,12 +1,15 @@
 import type { MetadataRoute } from "next";
+import { appUrl } from "@/lib/app-url";
+import { SITE_PAGES, buildRobots } from "@/lib/site/pages";
 
 /**
- * No hay nada publico que indexar: el sistema es la app, no un sitio web.
- * Las paginas de agenda (/calendario/*) ya se marcan `noindex` cada una por
- * separado; esto es el cinturon de seguridad para todo lo demas.
+ * Sigue bloqueando todo: el sistema es la app, no un sitio web. Las páginas de agenda
+ * (/calendario/*) ya se marcan `noindex` cada una por separado.
+ *
+ * La excepción son las páginas públicas del sitio de ESTE clon (`lib/site/pages.ts`):
+ * esas se dejan pasar y se suman al sitemap. Con la lista vacía (la plantilla) queda
+ * exactamente como antes.
  */
 export default function robots(): MetadataRoute.Robots {
-  return {
-    rules: [{ userAgent: "*", disallow: "/" }],
-  };
+  return buildRobots(SITE_PAGES, appUrl());
 }

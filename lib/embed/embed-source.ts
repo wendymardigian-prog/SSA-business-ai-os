@@ -15,6 +15,9 @@
 import { buildEmbedIframeUrl, isFormLink, parentAttributionFromSearch, parentUtmFromSearch, type EmbedConfig, type FormEmbedExtras, type ParentUtm } from "./url";
 import { attributionFromParams, parseCookieHeader } from "@/lib/attribution/collect";
 import { encodeAttr } from "@/lib/forms/embed-attr";
+import { pageAttribution, trackVisit, type TrackEnv } from "@/lib/attribution/browser";
+import { STORE_KEY } from "@/lib/attribution/store";
+import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { parseEmbedMessage, isTrustedOrigin, isEmbedEventName, embedMessage, type EmbedEventName } from "./events";
 import { createLoadWatchdog, parseFallbackAttr, renderFallback, LOAD_TIMEOUT_MS, type FallbackElement } from "./fallback";
 import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable-defaults";
@@ -45,6 +48,8 @@ export interface EmbedElement extends FallbackElement {
 export interface EmbedDocument {
   /** `document.cookie`: lo lee el embed de un formulario para pasar `_fbp`, `_fbc` y `_ga` (el iframe no las ve). */
   cookie?: string;
+  /** `document.referrer`: de dónde llegó la persona a la web que contiene el embed. */
+  referrer?: string;
   createElement(tag: string): EmbedElement;
   querySelector(selector: string): EmbedElement | null;
   body: EmbedElement;
@@ -62,7 +67,9 @@ export interface EmbedWindow {
   addEventListener(type: string, cb: (ev: MessageEventLike) => void): void;
   setTimeout(cb: () => void, ms: number): unknown;
   clearTimeout(handle: unknown): void;
-  location: { href: string; search: string };
+  location: { href: string; search: string; hostname?: string };
+  /** El `localStorage` de la web que contiene el script: ahí se guarda la atribución (`ssa_attr`). Puede lanzar o faltar. */
+  localStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void };
   Agenda?: AgendaGlobal;
 }
 
@@ -94,6 +101,39 @@ export const MODAL_ID = "agenda-modal";
 function style(el: EmbedElement, styles: Record<string, string>) {
   const s = el.style as Record<string, string>;
   for (const [k, v] of Object.entries(styles)) s[k] = v;
+}
+
+/** El entorno de seguimiento de la web que contiene el script (F29): la atribución persiste en SU `localStorage`. */
+export function trackEnvOf(env: RuntimeEnv): TrackEnv {
+  const loc = env.window.location;
+  let hostname = loc.hostname ?? "";
+  if (!hostname) {
+    try {
+      hostname = new URL(loc.href).hostname;
+    } catch {
+      hostname = "";
+    }
+  }
+  return {
+    href: loc.href,
+    search: loc.search,
+    hostname,
+    referrer: env.document.referrer ?? "",
+    cookieHeader: env.document.cookie ?? "",
+    readStored: () => env.window.localStorage?.getItem(STORE_KEY) ?? null,
+    writeStored: (text) => {
+      env.window.localStorage?.setItem(STORE_KEY, text);
+    },
+  };
+}
+
+/** Anota la visita de la página que contiene el script. NUNCA lanza (localStorage puede estar bloqueado). */
+export function trackEmbedVisit(env: RuntimeEnv): void {
+  try {
+    trackVisit(trackEnvOf(env));
+  } catch {
+    // Sin almacenamiento, el formulario sigue funcionando con la URL actual.
+  }
 }
 
 export class EmbedRuntime {
@@ -302,12 +342,35 @@ export class EmbedRuntime {
     params.forEach((value, key) => {
       if (!(key in hostParams)) hostParams[key] = value;
     });
-    const cookies = attributionFromParams({}, { cookies: parseCookieHeader(this.env.document.cookie) });
     return {
       hostParams,
       parentAttribution: parentAttributionFromSearch(search),
-      attr: Object.keys(cookies).length > 0 ? encodeAttr(cookies) : null,
+      attr: this.attrParam(),
     };
+  }
+
+  /**
+   * La atribución EFECTIVA de la página que embebe (la de su URL si trae un toque nuevo; si
+   * no, la última guardada en su `localStorage`), con las cookies de los anuncios y la
+   * primera visita. Si no entra en el tope, se sueltan primero la primera visita y después
+   * las páginas.
+   */
+  private attrParam(): string | null {
+    let effective: Record<string, unknown>;
+    try {
+      effective = pageAttribution(trackEnvOf(this.env));
+    } catch {
+      effective = attributionFromParams({}, { cookies: parseCookieHeader(this.env.document.cookie) });
+    }
+    // Solo vale la pena mandarlo si trae atribución (UTM, ids de clic, cookies, primera visita): las páginas solas ya las conoce el iframe.
+    const meaningful = Object.keys(effective).some((key) => ATTRIBUTION_KEYS.includes(key) || key === "first_visit");
+    if (!meaningful) return null;
+    const attempt = (drop: string[]) => {
+      const copy: Record<string, unknown> = { ...effective };
+      for (const key of drop) delete copy[key];
+      return Object.keys(copy).length > 0 ? encodeAttr(copy) : null;
+    };
+    return attempt([]) ?? attempt(["first_visit"]) ?? attempt(["first_visit", "referrer_url", "landing_page", "page_url"]);
   }
 
   private createIframe(calLink: string, config: EmbedConfig, container: EmbedElement, fallback: FallbackPayload): EmbedElement {
@@ -430,6 +493,8 @@ export interface FloatingButtonArgs {
  * la cola por defecto y la de cada namespace. Idempotente.
  */
 export function bootstrap(env: RuntimeEnv): EmbedRuntime | null {
+  // La atribución de la web que contiene el script se anota SIEMPRE (también en modo "solo seguimiento").
+  trackEmbedVisit(env);
   const global = env.window.Agenda;
   if (!global) return null;
   if (global.instance) return global.instance;

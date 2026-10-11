@@ -161,6 +161,26 @@ describe("el raw es una lista blanca (F83)", () => {
   });
 });
 
+describe("el raw conserva los datos del anuncio de un formulario (F33)", () => {
+  it("conserva fbc, fbp, gbraid y page_url, y sigue descartando una clave inventada", () => {
+    const raw = sanitizeRaw({ fbc: "fb.1.4.5", fbp: "fb.1.2.3", gbraid: "g1", page_url: "https://s.test/f", foo: "x", token: "secreto" });
+    expect(raw).toEqual({ fbc: "fb.1.4.5", fbp: "fb.1.2.3", gbraid: "g1", page_url: "https://s.test/f" });
+  });
+  it("conserva las trece claves nuevas (y solo esas)", () => {
+    const keys = ["utm_id", "gbraid", "wbraid", "msclkid", "twclid", "sccid", "epik", "rdt_cid", "placement", "fbp", "fbc", "ga_client_id", "page_url"];
+    const raw = sanitizeRaw(Object.fromEntries(keys.map((k) => [k, `v-${k}`])));
+    expect(Object.keys(raw).sort()).toEqual([...keys].sort());
+  });
+  it("lo que ya se conservaba sigue igual (la Agenda y Zernio)", () => {
+    expect(sanitizeRaw({ booking_origin: "public_page", utm: { utm_source: "meta" }, message_id: "m1", referral: { ad_id: "1" } })).toEqual({
+      booking_origin: "public_page",
+      utm: { utm_source: "meta" },
+      message_id: "m1",
+      referral: { ad_id: "1" },
+    });
+  });
+});
+
 describe("recordTouch (F83)", () => {
   it("llama a la función de la base con el workspace, el contacto y el toque limpio", async () => {
     const { client, rpc } = fakeDb({ data: { inserted: true, touch_id: "t-1" } });

@@ -491,6 +491,24 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
   });
 });
 
+describe("submitForm: origen del sitio (FO4)", () => {
+  it("meta.origin = 'site' y meta.site_path = la ruta, limpia de query y hash", async () => {
+    const { ports, saves } = makePorts(makeForm([field("short_text", "nombre")]));
+    await submitForm(ports, baseInput({ answers: { nombre: "Ana" }, origin: "site", site_path: "/servicios/?x=1#form" }));
+    expect(saves[0].meta).toMatchObject({ origin: "site", site_path: "/servicios" });
+  });
+
+  it("fuera del sitio no se guarda site_path aunque lo manden; con una ruta inválida, tampoco", async () => {
+    const a = makePorts(makeForm([field("short_text", "nombre")]));
+    await submitForm(a.ports, baseInput({ answers: { nombre: "Ana" }, origin: "public_page", site_path: "/x" }));
+    expect(a.saves[0].meta).not.toHaveProperty("site_path");
+    const b = makePorts(makeForm([field("short_text", "nombre")]));
+    await submitForm(b.ports, baseInput({ answers: { nombre: "Ana" }, origin: "site", site_path: "sin-barra" }));
+    expect(b.saves[0].meta).toMatchObject({ origin: "site" });
+    expect(b.saves[0].meta).not.toHaveProperty("site_path");
+  });
+});
+
 describe("submitForm: contratos (FO3)", () => {
   const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   const goodSignature = `data:image/png;base64,${Buffer.from([...PNG_HEAD, 1, 2, 3, 4]).toString("base64")}`;

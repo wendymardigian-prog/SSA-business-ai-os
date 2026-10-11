@@ -49,6 +49,7 @@ import type { TurnstileResult } from "./turnstile";
 import { renderSuccess, type SuccessConfig } from "./success";
 import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./submission-schema";
 import { answerToText } from "./responses";
+import { normalizeSitePath } from "./site-submit";
 import { applyContactMapping } from "./contact-mapping";
 import type { ContactConfig, CustomFieldDef } from "./contact-config";
 import type { ContractConfig } from "./defaults";
@@ -564,7 +565,8 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     ip_hash: ports.hashIp(input.ip),
     user_agent: input.userAgent ? input.userAgent.slice(0, 300) : null,
     origin,
-    ...(origin === "site" && payload.site_path ? { site_path: payload.site_path } : {}),
+    // La ruta de la página del sitio, ya limpia (sin query ni hash): el navegador no es de fiar.
+    ...(origin === "site" && normalizeSitePath(payload.site_path) ? { site_path: normalizeSitePath(payload.site_path) } : {}),
     timezone: payload.client_meta?.timezone ?? null,
     locale: payload.client_meta?.locale ?? null,
   };

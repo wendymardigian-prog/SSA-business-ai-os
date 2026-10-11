@@ -33,6 +33,9 @@ import { createNotification } from "../lib/notifications/create";
 import { extractText, getDocumentProxy } from "unpdf";
 import { isAlreadyAnswered } from "../lib/forms/public-load";
 import { npsCategory } from "../lib/forms/survey";
+import { effectiveAttribution } from "../lib/attribution/merge";
+import { recordVisit, serializeStored, parseStored } from "../lib/attribution/store";
+import { attributionFromParams } from "../lib/attribution/collect";
 import { runContractPdf } from "../lib/forms/contract/pdf-run";
 import { runContractEmail } from "../lib/forms/contract/email-run";
 
@@ -973,8 +976,10 @@ try {
   const { data: storedSig } = await svc.storage.from("contracts").download(String(sig1?.signature_path));
   check(!!storedSig && (await storedSig.arrayBuffer()).byteLength === PNG.byteLength, "la imagen de la firma esta en el bucket privado de contratos");
 
+  // Sin mirar el estado: el ejecutor de la cola de produccion puede tomar el job antes de esta consulta
+  // (hoy no conoce el tipo y lo deja fallido; con el codigo desplegado lo corre de verdad).
   const { data: pdfJob } = await svc.from("scheduled_jobs").select("id, type, dedupe_key, status, payload").eq("dedupe_key", `contract_pdf:${sig1!.id}`);
-  check(pdfJob?.length === 1 && pdfJob[0].type === "contract_pdf" && pdfJob[0].status === "pending" && (pdfJob[0].payload as { signatureId?: string }).signatureId === sig1!.id, "la RPC encolo el job contract_pdf en la misma transaccion");
+  check(pdfJob?.length === 1 && pdfJob[0].type === "contract_pdf" && (pdfJob[0].payload as { signatureId?: string }).signatureId === sig1!.id, "la RPC encolo el job contract_pdf en la misma transaccion");
   for (const j of pdfJob ?? []) jobIds.push(j.id);
   const { data: contractEvents } = await svc.from("automation_events").select("event_type, payload").eq("contact_id", String(sig1?.contact_id));
   check((contractEvents ?? []).some((e) => e.event_type === "contract_signed"), "se emite contract_signed (no espera al PDF)");
@@ -1112,6 +1117,50 @@ try {
   const oursByKey = await svc.from("scheduled_jobs").delete().or(`dedupe_key.like.contract_pdf:%,dedupe_key.like.contract_email:%`).in("id", jobIds).select("id");
   void oursByKey;
   if (contractFiles.length > 0) await svc.storage.from("contracts").remove(contractFiles);
+
+
+  // ── FO4: el sitio, la atribucion persistente y los datos del anuncio ───────
+  console.log("\n— F29-F33: formulario en una pagina del sitio y atribucion completa —");
+
+  // La persona llego antes con ?utm_campaign=octubre (cookie ssa_attr); ahora esta en otra pagina SIN UTM.
+  const storedCookie = parseStored(serializeStored(recordVisit({ v: 1 }, { utm_source: "facebook", utm_campaign: "octubre", landing_page: "https://app.ejemplo.test/promo?utm_campaign=octubre" }, Date.now() - 3600_000)));
+  const siteAttribution = effectiveAttribution(attributionFromParams({}, { landing: "https://app.ejemplo.test/contacto", pageUrl: "https://app.ejemplo.test/contacto" }), storedCookie);
+  check(siteAttribution.utm_campaign === "octubre" && siteAttribution.page_url === "https://app.ejemplo.test/contacto", "la atribucion efectiva usa el ultimo toque guardado cuando la URL no trae UTM");
+  const siteSend = await send({ nombre: "Desde el Sitio", email: "sitio.zz@example.test" }, { origin: "site", site_path: "/servicios?x=1", attribution: siteAttribution });
+  check(siteSend.status === 200, "un envio desde una pagina del sitio se guarda", JSON.stringify(siteSend.body));
+  const siteRow = await rowOf(siteSend.body.submission_id);
+  check((siteRow.meta as { origin?: string; site_path?: string }).origin === "site" && (siteRow.meta as { site_path?: string }).site_path === "/servicios", "meta.origin = 'site' y meta.site_path = la ruta limpia", JSON.stringify(siteRow.meta));
+  check((siteRow.attribution as { utm_campaign?: string }).utm_campaign === "octubre", "attribution.utm_campaign = 'octubre' (de la cookie, sin UTM en la URL)");
+  const { data: siteTouch } = await svc.from("contact_touches").select("campaign, origin, source").eq("contact_id", String(siteRow.contact_id));
+  check(siteTouch?.length === 1 && siteTouch[0].campaign === "octubre" && siteTouch[0].origin === "form" && siteTouch[0].source === "facebook", "queda un toque con campaign 'octubre'", JSON.stringify(siteTouch));
+  const { data: siteContact } = await svc.from("contacts").select("attribution").eq("id", String(siteRow.contact_id)).single();
+  check((siteContact?.attribution as { first_touch?: { campaign?: string } })?.first_touch?.campaign === "octubre", "y es el primer toque del contacto nuevo");
+
+  // Un envio fuera del sitio no lleva site_path aunque lo manden.
+  const pageSend = await send({ nombre: "Pagina", email: "pagina.zz@example.test" }, { origin: "public_page", site_path: "/no-deberia" });
+  check(!("site_path" in ((await rowOf(pageSend.body.submission_id)).meta as object)), "fuera del sitio, site_path no se guarda");
+
+  // F33: todos los datos del anuncio llegan al toque.
+  const adAttribution = attributionFromParams(new URLSearchParams("utm_source=facebook&fbclid=abc&msclkid=m1&gbraid=gb1&ad_id=77"), { landing: "https://app.ejemplo.test/?utm_source=facebook&fbclid=abc&msclkid=m1&gbraid=gb1&ad_id=77", pageUrl: "https://app.ejemplo.test/f/x", referrer: "https://www.google.com/", cookies: { _fbp: "fb.1.2.3" } });
+  const adSend = await send({ nombre: "Del Anuncio", email: "anuncio.zz@example.test" }, { origin: "site", site_path: "/", attribution: adAttribution });
+  const adRow = await rowOf(adSend.body.submission_id);
+  const { data: adTouch } = await svc.from("contact_touches").select("fbclid, ad_id, referrer_url, landing_page, raw, source").eq("contact_id", String(adRow.contact_id)).single();
+  const adRaw = (adTouch?.raw ?? {}) as Record<string, unknown>;
+  check(adTouch?.fbclid === "abc" && adTouch?.ad_id === "77" && adTouch?.source === "facebook", "fbclid y ad_id van a sus columnas");
+  check(adRaw.msclkid === "m1" && adRaw.gbraid === "gb1" && typeof adRaw.fbc === "string" && adRaw.fbc !== "" && adRaw.fbp === "fb.1.2.3" && adRaw.page_url === "https://app.ejemplo.test/f/x", "msclkid, gbraid, fbc, fbp y page_url quedan en raw", JSON.stringify(adRaw));
+  check(adTouch?.referrer_url === "https://www.google.com/" && String(adTouch?.landing_page).includes("fbclid=abc"), "el referrer y la pagina de llegada van a sus columnas");
+  check(!JSON.stringify(adRaw).includes("foo"), "raw sigue siendo una lista blanca");
+  check((adRow.attribution as Record<string, string>).msclkid === "m1" && (adRow.attribution as Record<string, string>).gbraid === "gb1", "la respuesta guarda todos los datos del anuncio");
+
+  // La vista y el inicio llevan el origen.
+  const siteBeaconPorts = createBeaconPorts(svc);
+  const siteSid = randomUUID();
+  const siteBeaconIp = nextIp();
+  const siteWrapped = { ...siteBeaconPorts, limit: async (spec: Parameters<typeof siteBeaconPorts.limit>[0]) => (usedLimitKeys.add(spec.key), siteBeaconPorts.limit(spec)) };
+  await handleBeacon(siteWrapped, { slug: fo2Slug, ip: siteBeaconIp, body: { kind: "view", sid: siteSid, origin: "site" } });
+  const { data: siteView } = await svc.from("analytics_events").select("metadata").eq("workspace_id", ws.id).eq("event_type", "form_view").filter("metadata->>form_id", "eq", fo2!.id).filter("metadata->>origin", "eq", "site");
+  check((siteView ?? []).length === 1, "un form_view desde el sitio lleva origin: 'site' en su metadata");
+  check(!JSON.stringify(siteView).includes(siteSid) && !JSON.stringify(siteView).includes(siteBeaconIp), "...sin el sid ni la IP");
 
   // ── Buckets ────────────────────────────────────────────────────────────────
   console.log("\n— 00153: buckets privados —");

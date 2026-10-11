@@ -4,6 +4,7 @@ import { brandLogoUrl, brandName } from "@/lib/brand";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getAuthUser } from "@/lib/supabase/auth-user";
 import { PublicForm } from "@/components/forms/public/public-form";
+import { AttributionTracker } from "@/components/attribution/attribution-tracker";
 import { isAlreadyAnswered, loadPreviewFormData, loadPublicFormData } from "@/lib/forms/public-load";
 import { isAvailable } from "@/lib/forms/public-client";
 
@@ -88,6 +89,8 @@ export default async function PublicFormPage({
 
   return (
     <main className={embed ? "px-1 py-1" : "px-4 py-8"}>
+      {/* Fuera de un iframe, la página anota de dónde vino la persona (cookie `ssa_attr`). */}
+      {!embed && !preview && <AttributionTracker />}
       {logo && !embed && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logo} alt={brandName()} className="mx-auto mb-6 h-10 w-auto" />

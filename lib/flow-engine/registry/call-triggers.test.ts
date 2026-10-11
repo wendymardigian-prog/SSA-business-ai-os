@@ -72,10 +72,10 @@ describe("variables", () => {
         "calls:select": { data: { title: "Llamada con Ana", recorded_at: "2026-10-09T15:00:00Z", outcome: "venta", closer_score: 90, lead_score: 80, workspace_id: "ws1", recorded_by_user_id: "u1", next_step: "Enviar contrato" } },
         "workspaces:select": { data: { timezone: "UTC" } },
       },
-      { workspace_member_profiles: { data: [{ user_id: "u1", full_name: "Wendy", meta_name: null }] } },
+      { workspace_member_profiles: { data: [{ user_id: "u1", full_name: "Carla", meta_name: null }] } },
     );
     const a = { ...args("call_analyzed", payload()), supabase: db.client } as TriggerEventArgs;
     const vars = (await getTrigger("call_analyzed")!.variablesFor!(a)) as { call: Record<string, string> };
-    expect(vars.call).toMatchObject({ title: "Llamada con Ana", outcome: "Venta", next_step: "Enviar contrato", closer_name: "Wendy", closer_score: "90", lead_score: "80" });
+    expect(vars.call).toMatchObject({ title: "Llamada con Ana", outcome: "Venta", next_step: "Enviar contrato", closer_name: "Carla", closer_score: "90", lead_score: "80" });
   });
 });

@@ -11,7 +11,9 @@
  *     24 horas. El `sid` NO se guarda en claro en ningún lado: solo viaja hasheado
  *     en la clave del tope.
  *  5. El evento va a `analytics_events` con `contact_id` y `flow_id` null y una
- *     `metadata` de `{ form_id, version_id }`: nada personal, ni IP ni sid.
+ *     `metadata` de `{ form_id, version_id }` (y `origin` si la página lo dice: la
+ *     página del formulario, un embed o una página del sitio): nada personal, ni IP
+ *     ni sid.
  */
 import { z } from "zod";
 import { isValidSessionId } from "@/lib/antispam/rate-limit";
@@ -31,10 +33,12 @@ export interface BeaconPorts {
     session(kind: "view" | "start", formId: string, sid: string): string;
   };
   loadPublishedForm(slug: string): Promise<BeaconForm | null>;
-  insertEvent(input: { workspaceId: string; eventType: "form_view" | "form_start"; metadata: { form_id: string; version_id: string } }): Promise<void>;
+  insertEvent(input: { workspaceId: string; eventType: "form_view" | "form_start"; metadata: { form_id: string; version_id: string; origin?: BeaconOrigin } }): Promise<void>;
 }
 
-const bodySchema = z.object({ kind: z.enum(["view", "start"]), sid: z.string() });
+export type BeaconOrigin = "public_page" | "embed" | "site";
+
+const bodySchema = z.object({ kind: z.enum(["view", "start"]), sid: z.string(), origin: z.enum(["public_page", "embed", "site"]).optional() });
 
 export interface BeaconOutcome {
   status: 204;
@@ -49,7 +53,7 @@ export async function handleBeacon(
 
   const parsed = bodySchema.safeParse(input.body);
   if (!parsed.success || !isValidSessionId(parsed.data.sid)) return nothing;
-  const { kind, sid } = parsed.data;
+  const { kind, sid, origin } = parsed.data;
 
   const ipLimit = await ports.limit({
     key: ports.limitKeys.beacon(input.ip),
@@ -71,7 +75,7 @@ export async function handleBeacon(
   await ports.insertEvent({
     workspaceId: form.workspaceId,
     eventType: kind === "view" ? "form_view" : "form_start",
-    metadata: { form_id: form.id, version_id: form.versionId },
+    metadata: { form_id: form.id, version_id: form.versionId, ...(origin ? { origin } : {}) },
   });
   return { status: 204, wrote: true };
 }
