@@ -169,5 +169,73 @@ export function taskAbout(id: AiTaskId): TaskAbout {
         ],
         cost: TOKENS,
       };
+    case "call_classification":
+      return {
+        trigger: "Cuando entra una llamada de Fathom (o una importada) y las reglas del negocio no alcanzan para decidir su tipo. También cuando alguien pide reclasificarla.",
+        reads: [
+          "El título, los invitados y las personas que hablaron, y el comienzo y el final de la transcripción.",
+          "Los tipos válidos (los del sistema y los propios) y tus criterios de la pestaña Instrucciones.",
+        ],
+        decides: [
+          "De qué tipo es la llamada, con una confianza de 0 a 1 y una alternativa.",
+          "Si ninguno encaja, propone el nombre corto de un tipo nuevo; nunca lo crea sola.",
+          "Si la confianza queda bajo tu umbral, la llamada queda “Por revisar” para que alguien la confirme.",
+        ],
+        writes: [
+          "El tipo de la llamada, su confianza y el motivo. Un tipo que cambió una persona a mano nunca se pisa.",
+        ],
+        limits: [
+          "Lee hasta 60.000 caracteres: los primeros 40.000 y los últimos 20.000.",
+          "Antes de llamar al modelo corren las reglas fijas del negocio; si una decide, no se gasta nada.",
+          "Frena si se llegó a un tope de gasto de IA del negocio.",
+        ],
+        cost: TOKENS,
+      };
+    case "call_analysis":
+      return {
+        trigger: "Cuando una llamada de cierre o seguimiento se clasifica (si el modo es automático), o cuando alguien aprieta Analizar. Con el modo apagado, nunca corre sola.",
+        reads: [
+          "La transcripción completa, el título, los invitados y lo que ya se sabe del contacto.",
+          "Tu rúbrica (criterios y pesos), tus categorías de objeciones y el contexto del negocio.",
+          "Tus instrucciones de la pestaña Instrucciones (por ejemplo, el método de ventas del negocio).",
+        ],
+        decides: [
+          "Un puntaje de 1 a 5 por cada criterio, con la justificación y la cita textual que lo respalda.",
+          "Las objeciones, el dolor, la situación deseada y las creencias del lead, cada una con su cita.",
+          "El feedback para el closer. Los puntajes finales los calcula el código con la rúbrica, no el modelo.",
+        ],
+        writes: [
+          "El análisis de la llamada, con la versión de las instrucciones y de la rúbrica usadas. Lo que corrige una persona se guarda aparte; lo que dijo la IA nunca se pierde.",
+          "El puntaje del closer y la calificación del lead.",
+        ],
+        limits: [
+          "Una cita que no está en la transcripción se descarta.",
+          "El modelo puede escribir hasta 32.000 tokens por análisis.",
+          "Frena si se llegó a un tope de gasto de IA del negocio, y avisa al equipo con permiso de configurar.",
+        ],
+        cost: TOKENS,
+      };
+    case "call_summary":
+      return {
+        trigger: "Después de analizar una llamada, o cuando alguien aprieta Resumir.",
+        reads: [
+          "El análisis y la transcripción de la llamada.",
+          "La memoria que el contacto ya tenía, si existe.",
+        ],
+        decides: [
+          "El resumen de la llamada, los próximos pasos y hasta unas pocas ideas de contenido que nacen de lo que dijo el lead.",
+          "La memoria integrada del contacto: si un dato nuevo contradice uno viejo, se queda con el nuevo.",
+        ],
+        writes: [
+          "El resumen de la llamada y la memoria del contacto (la ve el agente en la próxima conversación).",
+          "Ideas nuevas en Contenido, solo la primera vez que se resume esa llamada.",
+          "La llamada como documento interno de Conocimiento.",
+        ],
+        limits: [
+          "Si la memoria cambió mientras tanto, reintenta una vez; si vuelve a chocar, queda marcada en conflicto sin pisar nada.",
+          "Frena si se llegó a un tope de gasto de IA del negocio.",
+        ],
+        cost: TOKENS,
+      };
   }
 }

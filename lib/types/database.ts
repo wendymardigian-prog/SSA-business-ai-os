@@ -59,7 +59,107 @@ export type IntegrationType =
   | "meta";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
-export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar";
+export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom";
+
+// ── Llamadas (00145) ──────────────────────────────────────────────────────
+export type CallSource = "fathom" | "manual";
+export type CallLinkMethod = "auto_email" | "auto_booking" | "auto_email_booking" | "manual" | "none";
+export type CallTypeSource = "rule" | "ai" | "human";
+export type CallAnalysisStatus =
+  | "classifying"
+  | "needs_review"
+  | "pending"
+  | "analyzing"
+  | "analyzed"
+  | "not_applicable"
+  | "error";
+export type CallLeadQualification = "calificado" | "con_reservas" | "no_calificado";
+
+/** Una linea de la transcripcion (Fathom o importada). */
+export interface CallTranscriptLine {
+  speaker: { display_name: string };
+  text: string;
+  /** "HH:MM:SS" o "MM:SS". Vacio en una transcripcion importada sin tiempos. */
+  timestamp: string;
+}
+
+/** Un invitado de la reunion (`calendar_invitees` de Fathom). */
+export interface CallAttendee {
+  name: string | null;
+  email: string | null;
+  is_external: boolean | null;
+}
+
+export type CallRow = {
+  id: string;
+  workspace_id: string;
+  source: CallSource;
+  external_id: string | null;
+  connection_id: string | null;
+  title: string;
+  fathom_url: string | null;
+  share_url: string | null;
+  recorded_at: string;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  duration_seconds: number | null;
+  recorded_by_email: string | null;
+  recorded_by_user_id: string | null;
+  attendees: CallAttendee[];
+  transcript: CallTranscriptLine[];
+  transcript_language: string | null;
+  participants_count: number | null;
+  speakers_count: number | null;
+  people_count: number | null;
+  contact_id: string | null;
+  booking_id: string | null;
+  link_method: CallLinkMethod;
+  linked_by: string | null;
+  linked_at: string | null;
+  call_type: string | null;
+  call_type_source: CallTypeSource | null;
+  call_type_rule: string | null;
+  call_type_confidence: number | null;
+  call_type_alternative: string | null;
+  call_type_proposed: string | null;
+  analysis_status: CallAnalysisStatus;
+  analysis_status_reason: string | null;
+  analysis_error: string | null;
+  /** Lo que dijo la IA. Inmutable salvo corrida nueva. */
+  analysis_ai: Json | null;
+  /** Lo vigente (corregible). */
+  analysis: Json | null;
+  analysis_edited: boolean;
+  closer_score: number | null;
+  lead_score: number | null;
+  lead_qualification: CallLeadQualification | null;
+  outcome: string | null;
+  main_objection: string | null;
+  followup_at: string | null;
+  has_open_alerts: boolean;
+  quotes_total: number | null;
+  quotes_verified: number | null;
+  analysis_prompt_version: number | null;
+  rubric_snapshot: Json | null;
+  rubric_version: number | null;
+  analysis_model: string | null;
+  analysis_run_id: string | null;
+  analyzed_at: string | null;
+  summary: Json | null;
+  summary_status: "none" | "pending" | "done" | "error";
+  memory_status: "none" | "applied" | "conflict" | "skipped";
+  memory_applied_at: string | null;
+  ideas_created_at: string | null;
+  knowledge_document_id: string | null;
+  objections: Json;
+  raw_payload: Json | null;
+  created_by: string | null;
+  archived_at: string | null;
+  archived_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** En que estado esta una conexion OAuth (00082). */
 export type OAuthConnectionStatus = "active" | "attention" | "revoked" | "error";
 
@@ -165,7 +265,9 @@ export type AuditEntityType =
   /** La banca de recursos: textos y audios en una sola tabla (migracion 00105/00106). */
   | "response_asset"
   /** Cambiar el publicador por defecto de una cuenta social (Bloque G, G7). */
-  | "social_account";
+  | "social_account"
+  /** Una llamada de venta (Llamadas, 00145). La configuracion de sus tareas se audita sobre "workspace". */
+  | "call";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -255,7 +357,21 @@ export type AuditAction =
   /** Agenda v2: cambió de anfitrión. */
   | "booking.host_changed"
   /** El agente mando un recurso de audio de la banca. performed_by_agent_id, entity response_asset. */
-  | "agent_asset_sent";
+  | "agent_asset_sent"
+  /** Llamadas (modulo Fathom + analizador). entity call, salvo que se aclare. */
+  | "call.ingested"
+  | "call.imported"
+  | "call.linked"
+  | "call.unlinked"
+  | "call.type_changed"
+  | "call.analyzed"
+  | "call.section_edited"
+  | "call.regenerated"
+  | "call.objection"
+  | "call.objection_resolved"
+  | "call.archived";
+/** Quien hizo la accion (migracion 00144). */
+export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
 export type CustomFieldType = "text" | "number" | "boolean" | "date" | "url" | "email";
 /** Temperatura del lead (migracion 00022). */
@@ -292,7 +408,13 @@ export type AgentRunSource =
   // Mejoras de Chat (00103). Los dos van SIN agent_id: no los pide un agente,
   // los pide el sistema al recibir un mensaje.
   | "audio_transcription"
-  | "media_description";
+  | "media_description"
+  // Llamadas (00148): clasificar, analizar, corregir con IA, probar el borrador y resumir.
+  | "call_classification"
+  | "call_analysis"
+  | "call_correction"
+  | "call_summary"
+  | "call_prompt_test";
 export type AgentRunTrigger =
   | "inbound_message"
   | "cron_close"
@@ -358,7 +480,11 @@ export type TriggerType =
   | "booking_status_changed"
   | "booking_before_start"
   | "booking_after_end"
-  | "booking_after_created";
+  | "booking_after_created"
+  // Llamadas (CHECK de la migracion 00149): una llamada con contacto queda
+  // analizada, o se vincula un contacto a una llamada.
+  | "call_analyzed"
+  | "call_linked";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -670,6 +796,18 @@ export interface Database {
         };
         Relationships: [];
       };
+      calls: {
+        Row: CallRow;
+        Insert: Partial<Omit<CallRow, "id" | "workspace_id" | "source" | "title" | "recorded_at">> & {
+          id?: string;
+          workspace_id: string;
+          source: CallSource;
+          title: string;
+          recorded_at: string;
+        };
+        Update: Partial<Omit<CallRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
       workspace_roles: {
         Row: {
           id: string;
@@ -714,6 +852,10 @@ export interface Database {
            */
           role_id: string | null;
           created_at: string;
+          /** Graba llamadas de venta (00145). */
+          is_closer: boolean;
+          /** Correos alternos con los que graba en Fathom o Zoom (00145). */
+          closer_emails: string[];
         };
         Insert: {
           workspace_id: string;
@@ -721,10 +863,14 @@ export interface Database {
           role?: string;
           role_id?: string | null;
           created_at?: string;
+          is_closer?: boolean;
+          closer_emails?: string[];
         };
         Update: {
           role?: string;
           role_id?: string | null;
+          is_closer?: boolean;
+          closer_emails?: string[];
         };
         Relationships: [
           {
@@ -2233,6 +2379,10 @@ export interface Database {
           /** Marca de reversion desde la pestana Acciones (migracion 00068). */
           reverted_at: string | null;
           reverted_by_audit_id: string | null;
+          /** Quien hizo la accion (00144). Las filas viejas dicen "user": leer con effectiveActorType(). */
+          actor_type: AuditActorType;
+          /** Nombre legible de un actor que no es una persona (00144). */
+          actor_label: string | null;
         };
         Insert: {
           id?: string;
@@ -2247,6 +2397,8 @@ export interface Database {
           performed_at?: string;
           reverted_at?: string | null;
           reverted_by_audit_id?: string | null;
+          actor_type?: AuditActorType;
+          actor_label?: string | null;
         };
         // Inmutable para los usuarios (sin UPDATE ni DELETE en la RLS). Solo el
         // service role marca la reversion.
@@ -2757,7 +2909,7 @@ export interface Database {
         Row: {
           id: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note: string | null;
@@ -2767,7 +2919,7 @@ export interface Database {
         Insert: {
           id?: string;
           workspace_id: string;
-          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
+          task: "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis" | "call_classification" | "call_analysis" | "call_summary";
           version: number;
           instructions: string;
           note?: string | null;
@@ -3072,6 +3224,13 @@ export interface Database {
           vault_secret_prefix: string;
           created_at: string;
           updated_at: string;
+          /** Sincronizacion con la fuente (Fathom, 00145). */
+          last_synced_at: string | null;
+          sync_watermark: string | null;
+          sync_cursor: string | null;
+          sync_last_error: string | null;
+          /** Candado de renovacion del refresh token (claim_oauth_refresh). */
+          refresh_locked_until: string | null;
         };
         Insert: {
           id?: string;
@@ -3101,6 +3260,11 @@ export interface Database {
           last_refreshed_at?: string | null;
           vault_secret_prefix?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
+          sync_watermark?: string | null;
+          sync_cursor?: string | null;
+          sync_last_error?: string | null;
+          refresh_locked_until?: string | null;
         };
         Relationships: [];
       };
@@ -3121,7 +3285,9 @@ export interface Database {
           pillar_id: string | null;
           funnel_stage: FunnelStage | null;
           status: ContentIdeaStatus;
-          source: "manual" | "agent";
+          source: "manual" | "agent" | "call";
+          /** De que llamada salio la idea (00149), si source = 'call'. */
+          call_id: string | null;
           position: number;
           created_by: string | null;
           approved_by: string | null;
@@ -3147,7 +3313,8 @@ export interface Database {
           pillar_id?: string | null;
           funnel_stage?: FunnelStage | null;
           status?: ContentIdeaStatus;
-          source?: "manual" | "agent";
+          source?: "manual" | "agent" | "call";
+          call_id?: string | null;
           position?: number;
           created_by?: string | null;
           created_at?: string;
@@ -4357,6 +4524,20 @@ export interface Database {
       bump_rate_limit: {
         Args: { p_key: string; p_window_start: string };
         Returns: number;
+      };
+      /** Llamadas (00145): toma el candado de renovacion del refresh token de Fathom. Solo service_role. */
+      claim_oauth_refresh: {
+        Args: { p_connection_id: string; p_seconds: number };
+        Returns: boolean;
+      };
+      release_oauth_refresh: {
+        Args: { p_connection_id: string };
+        Returns: undefined;
+      };
+      /** Llamadas (00148): escribe la configuracion de UNA tarea de llamadas y devuelve la anterior. Solo service_role. */
+      set_ai_background_task_settings: {
+        Args: { p_workspace_id: string; p_task: string; p_value: Json };
+        Returns: Json;
       };
       /** Agenda v2 (00129): valores de fuente/medio/campaña para el filtro UTM. */
       booking_utm_options: {

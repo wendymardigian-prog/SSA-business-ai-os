@@ -258,7 +258,7 @@ async function toMarkdown(buffer: Uint8Array, mime: SupportedMime): Promise<stri
  * Borrar primero hace que reindexar sea idempotente: correr esto dos veces deja
  * la misma cantidad de fragmentos, no el doble.
  */
-async function writeChunks(
+export async function writeChunks(
   supabase: Db,
   args: {
     documentId: string;

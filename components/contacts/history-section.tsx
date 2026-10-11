@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CONTACT_FIELDS } from "@/lib/contacts/fields";
 import { describeHistoryItem, type AuditHistoryItem, type HistoryItem } from "@/lib/contacts/history";
 import type { AuditAction, Json } from "@/lib/types/database";
-import { EmptyHint, Section, formatDateTime } from "./ui";
+import { CALL_ACTION_LABELS } from "@/lib/audit-history";import { EmptyHint, Section, formatDateTime } from "./ui";
 
 /**
  * Historial del contacto: todo lo que le paso, en un solo orden.
@@ -85,6 +85,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   "booking.slot_occupied": "volvió a ocupar el espacio de una agenda",
   "booking.host_changed": "reasignó el anfitrión de una agenda",
   agent_asset_sent: "mandó un recurso de audio de la banca",
+  ...CALL_ACTION_LABELS,
 };
 
 const FIELD_LABELS: Record<string, string> = {

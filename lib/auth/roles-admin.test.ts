@@ -21,7 +21,7 @@ const role = (over: Partial<RoleRow> = {}): RoleRow => ({
   name: "Setter senior",
   description: null,
   systemRole: null,
-  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own" } },
+  permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" } },
   members: 0,
   ...over,
 });
@@ -88,7 +88,7 @@ describe("validar un rol (F71)", () => {
   it("sin alcance elegido, el mas restrictivo", () => {
     const result = validateRole({ name: "Setter", keys: ["contacts.view"], scopes: {} });
 
-    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own" });
+    expect(result.ok && result.role.permissions.scopes).toEqual({ leads: "own", conversations: "own", bookings: "own", calls: "own" });
   });
 });
 
@@ -176,7 +176,7 @@ describe("como se muestran (F71)", () => {
     expect(
       describeRole(
         role({
-          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own" } },
+          permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own", calls: "own" } },
         }),
       ),
     ).toBe("2 permisos · todos los leads");
@@ -185,7 +185,7 @@ describe("como se muestran (F71)", () => {
   it("el alcance 'los suyos + los sin asignar' se nombra", () => {
     expect(
       describeRole(
-        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own" } } }),
+        role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own" } } }),
       ),
     ).toBe("1 permiso · sus leads y los sin asignar");
   });
@@ -197,7 +197,7 @@ describe("como se muestran (F71)", () => {
 
   it("uno vacio lo dice", () => {
     expect(
-      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own" } } })),
+      describeRole(role({ permissions: { keys: [], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" } } })),
     ).toBe("Sin permisos.");
   });
 });

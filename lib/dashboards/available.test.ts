@@ -6,14 +6,20 @@ const nada = () => false;
 const solo = (...keys: string[]) => (p: string) => keys.includes(p);
 
 describe("B3 · que dashboards se ven", () => {
-  it("con todos los permisos se ven los cinco", () => {
+  it("con todos los permisos se ven los seis", () => {
     expect(availableDashboards(todo).map((d) => d.key)).toEqual([
       "chat",
       "content",
       "agenda",
+      "calls",
       "ads",
       "unified",
     ]);
+  });
+
+  it("Llamadas sale del permiso calls.view y de nada mas", () => {
+    expect(availableDashboards(solo("calls.view")).map((d) => d.key)).toEqual(["calls"]);
+    expect(availableDashboards(solo("dashboards.agenda.view")).map((d) => d.key)).not.toContain("calls");
   });
 
   it("Agenda sale de su propio permiso", () => {

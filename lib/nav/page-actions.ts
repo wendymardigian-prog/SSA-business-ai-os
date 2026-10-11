@@ -177,6 +177,23 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Equipo",
     tooltip: "Quienes tienen acceso y con que permisos.",
   },
+  // ── Llamadas (Fathom + analizador) ────────────────────────────────────
+  "/dashboard/llamadas": {
+    title: "Llamadas",
+    tooltip: "Las llamadas de venta que entran desde Fathom, con su tipo, su análisis y su puntaje. Se consulta Fathom cada 10 minutos.",
+  },
+  "/dashboard/llamadas/[id]": {
+    title: "Llamada",
+    tooltip: "La transcripción de la llamada y su análisis. El análisis se puede corregir; lo que dijo la IA queda guardado aparte.",
+  },
+  "/dashboard/llamadas/mi-fathom": {
+    title: "Mi Fathom",
+    tooltip: "Conectá tu cuenta de Fathom para que tus llamadas de venta entren solas al sistema.",
+  },
+  "/dashboard/dashboards/llamadas": {
+    title: "Dashboards",
+    tooltip: "La calidad de las llamadas de venta: puntaje por criterio, foco de cada closer y objeciones más frecuentes.",
+  },
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",

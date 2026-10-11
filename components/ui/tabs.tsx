@@ -46,7 +46,9 @@ export function Tabs<T extends string>({
 
   return (
     <div>
-      <div role="tablist" aria-label={label} className="mb-3 inline-flex rounded-lg bg-muted p-1">
+      {/* Si la tira no entra en una pantalla angosta, se desplaza adentro en vez de salirse del margen. */}
+      <div className="mb-3 max-w-full overflow-x-auto">
+      <div role="tablist" aria-label={label} className="inline-flex rounded-lg bg-muted p-1">
         {tabs.map((tab, index) => {
           const selected = tab.value === value;
           return (
@@ -71,6 +73,7 @@ export function Tabs<T extends string>({
             </button>
           );
         })}
+      </div>
       </div>
       <div id={`${base}-panel`} role="tabpanel" aria-labelledby={`${base}-tab-${tabs[Math.max(active, 0)].value}`}>
         {children}

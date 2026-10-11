@@ -172,3 +172,26 @@ describe("createNotificationOnce", () => {
     expect(Math.abs(desde - esperado)).toBeLessThan(5000);
   });
 });
+
+describe("createNotificationOnce: perRecipient", () => {
+  it("sin perRecipient no mira el destinatario (como siempre)", async () => {
+    const { client, filters } = fakeClient({ existing: [] });
+    await createNotificationOnce({ supabase: client, ...BASE, entityId: "e-1", recipientId: "u-1" });
+    expect(filters["recipient_id"]).toBeUndefined();
+  });
+
+  it("con perRecipient filtra por destinatario: otro destinatario recibe su aviso", async () => {
+    const { client, filters, inserted } = fakeClient({ existing: [] });
+    const ok = await createNotificationOnce({ supabase: client, ...BASE, entityId: "e-1", recipientId: "u-2", perRecipient: true });
+    expect(ok).toBe(true);
+    expect(filters["recipient_id"]).toBe("u-2");
+    expect(inserted).toHaveLength(1);
+  });
+
+  it("con perRecipient y un aviso ya existente para ESA persona, no repite", async () => {
+    const { client, inserted } = fakeClient({ existing: [{ id: "n1" }] });
+    const ok = await createNotificationOnce({ supabase: client, ...BASE, entityId: "e-1", recipientId: "u-2", perRecipient: true });
+    expect(ok).toBe(false);
+    expect(inserted).toHaveLength(0);
+  });
+});

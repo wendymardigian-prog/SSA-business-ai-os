@@ -76,6 +76,12 @@ export interface OAuthAdapter {
   perUser?: boolean;
   /** El permiso que exige iniciarla cuando es por persona. */
   requiredPermission?: string;
+  /**
+   * Cualquier miembro del workspace puede iniciarla y completarla, sin un
+   * permiso aparte (Fathom, decision 153). Solo vale con `perUser`: la
+   * conexion siempre queda a nombre de quien la hace.
+   */
+  anyMember?: boolean;
   /** Los permisos que se piden. */
   scopes: string[];
   /**

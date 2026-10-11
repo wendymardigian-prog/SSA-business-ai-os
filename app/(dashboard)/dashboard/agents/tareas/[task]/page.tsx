@@ -18,6 +18,7 @@ import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import type { TaskScreenData } from "@/lib/ai-tasks/screen";
+import { loadCallConfig } from "@/lib/calls/config-data";
 import { TaskDetailView } from "@/components/agents/tasks/task-detail-view";
 
 /**
@@ -107,10 +108,26 @@ export default async function TaskDetailPage({
     return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, options };
   };
 
+  // Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias).
+  const callTask = task.callTask;
+  const loadCall = async (): Promise<TaskScreenData["callConfig"]> => {
+    const permissions = await getPermissionContext();
+    return loadCallConfig({
+      service,
+      userClient: supabase,
+      workspaceId: workspace.id,
+      task: callTask!,
+      canEdit: permissions.can("calls.configure"),
+      stored: (workspace as { ai_background_settings?: unknown }).ai_background_settings,
+    });
+  };
+  // La prueba del borrador de instrucciones necesita las llamadas analizadas, asi que el analisis tambien la carga en Instrucciones.
+  const needsCallConfig = Boolean(callTask) && (tab === "config" || (tab === "instrucciones" && callTask === "call_analysis"));
+
   const isClassification = task.id === "message_classification";
   const byAgent = task.control.kind === "agent";
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
-  const [lastRun, backgroundScreen, instructions, model, runs, categories, agentClose] = await Promise.all([
+  const [lastRun, backgroundScreen, instructions, model, runs, categories, agentClose, callConfig] = await Promise.all([
     loadTaskRunSummary(service, workspace.id, task),
     isClassification && tab === "config" ? loadBackgroundScreen(workspace.id, workspace.timezone) : Promise.resolve(null),
     taskIsVersioned(task.id) && tab === "instrucciones" ? loadInstructions() : Promise.resolve(undefined),
@@ -118,6 +135,7 @@ export default async function TaskDetailPage({
     tab === "runs" ? loadRunsTab(viewerTimezone) : Promise.resolve(undefined),
     isClassification && tab === "config" ? loadReviewCategories(workspace.id) : Promise.resolve(undefined),
     byAgent && (tab === "como" || tab === "config") ? loadAgentCloseSettings(service, workspace.id) : Promise.resolve(undefined),
+    needsCallConfig ? loadCall() : Promise.resolve(undefined),
   ]);
 
   const data: TaskScreenData = {
@@ -131,6 +149,7 @@ export default async function TaskDetailPage({
     batchWarning: null,
     quality: backgroundScreen ?? undefined,
     categories,
+    callConfig,
     instructions,
     model,
     runs,

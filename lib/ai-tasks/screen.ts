@@ -7,6 +7,7 @@ import type { RunsTabData } from "@/lib/agent/screen";
 import type { TaskModelChoice } from "./model";
 import type { TaskAbout } from "./about";
 import type { AgentCloseSettings } from "./agent-close-settings";
+import type { CallConfigData } from "@/lib/calls/config-data";
 
 /** Lo que la pantalla de una tarea (Agentes IA) necesita, ya aplanado. */
 export interface TaskScreenData {
@@ -45,6 +46,8 @@ export interface TaskScreenData {
       pricedModels: string[];
     };
   };
+  /** Clasificacion y Analisis de llamadas: su configuracion propia (reglas, rubrica, categorias…). */
+  callConfig?: CallConfigData;
   /** Solo cuando la pestaña activa es Corridas. */
   runs?: RunsTabData;
 }

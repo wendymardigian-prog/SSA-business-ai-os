@@ -90,3 +90,17 @@ export function validateBackgroundSettings(raw: unknown): ValidateResult {
   }
   return { ok: true, settings: out };
 }
+
+/**
+ * Lo que se guarda en `workspaces.ai_background_settings` al cambiar una de las
+ * tareas de arriba: lo nuevo MAS todo lo demas que ya habia.
+ *
+ * Esa columna tiene mas claves que las cuatro de `BackgroundSettings`: las
+ * tareas de Llamadas (`call_classification`, `call_analysis`) viven ahi con su
+ * propio esquema. Guardar el objeto validado tal cual las borraria — con la
+ * rubrica del negocio adentro.
+ */
+export function mergeBackgroundSettings(previous: unknown, next: BackgroundSettings): Record<string, unknown> {
+  const base = previous && typeof previous === "object" && !Array.isArray(previous) ? (previous as Record<string, unknown>) : {};
+  return { ...base, ...next };
+}

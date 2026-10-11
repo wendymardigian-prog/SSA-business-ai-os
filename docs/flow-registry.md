@@ -144,3 +144,38 @@ conviene saber antes de sumar algo:
   conversación: antes el insert de la sesión fallaba en silencio y el flujo no
   arrancaba. Los nodos que envían por un canal se saltean con motivo;
   `send_email` no lo necesita.
+
+## Llamadas: los triggers `call_analyzed` y `call_linked`
+
+Dos tipos de trigger (`lib/flow-engine/registry/call-triggers.ts`), tres campos
+de condición (`call-conditions.ts`) y las variables `{{call.*}}`. Las reglas
+puras viven en `lib/calls/automation/triggers.ts`; el registro solo declara.
+
+| Trigger | Cuándo | Filtros (`triggers.config`) |
+|---|---|---|
+| `call_analyzed` | Una llamada **con contacto** queda analizada (análisis nuevo o regenerado; una corrección a mano NO lo dispara) | `call_types[]`, `outcomes[]`, `closer_ids[]`, `closer_score_min/max`, `lead_score_min/max`, `qualifications[]` |
+| `call_linked` | Se vincula un contacto a una llamada (automático, importada con contacto o a mano) | `call_types[]`, `closer_ids[]` |
+
+- **Vacío significa "cualquiera"**, nunca "ninguno". Con un límite de puntaje, una
+  llamada sin puntaje no entra (no se adivina).
+- **El evento** va a `automation_events` con `contact_id` y el payload
+  `{ call_id, call_type, outcome, closer_score, lead_score, lead_qualification,
+  closer_id, booking_id, analysis_run_id }` (`lib/calls/automation/emit.ts`).
+  Emitir NUNCA lanza. **Una llamada sin contacto no emite nada**: cuando después
+  se vincula, emite `call_linked`.
+- **Idempotencia** (`dedupeKeyFor`, `trigger_fires`): `call:<callId>:<tipo>:<corrida
+  o contacto>`. Un análisis regenerado tiene otra corrida y vuelve a disparar; el
+  mismo evento procesado dos veces dispara una vez.
+- **Condiciones** (todas sobre la última llamada ANALIZADA del contacto; sin
+  ninguna devuelven vacío): `last_call_outcome:`, `last_call_lead_score:`,
+  `last_call_type:`. Están en el catálogo de la UI (`condition-fields.ts`).
+- **Variables** (`lib/calls/automation/context.ts`, todas texto; lo que falta
+  queda vacío): `{{call.title}}`, `{{call.date}}`, `{{call.outcome}}`,
+  `{{call.next_step}}`, `{{call.closer_name}}`, `{{call.closer_score}}`,
+  `{{call.lead_score}}`.
+- En el editor (`TriggerPanel`) se configuran tipos, resultados, calificación y
+  rangos de puntaje. El filtro por closer (`closer_ids`) existe en el motor pero
+  todavía no tiene selector en el panel.
+- **Dónde se emite**: `call_analyzed` al terminar `runCallAnalysisJob`;
+  `call_linked` en la ingesta (`onLinked`), al importar con contacto y al
+  vincular a mano.

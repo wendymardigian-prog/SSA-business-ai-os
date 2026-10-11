@@ -88,7 +88,7 @@ export function TaskModelPanel({
           />
           <span>
             <span className="font-medium">Elegir un modelo para esta tarea</span>
-            <span className="block text-xs text-muted-foreground">Un proveedor y un modelo solo para el análisis.</span>
+            <span className="block text-xs text-muted-foreground">Un proveedor y un modelo solo para esta tarea.</span>
           </span>
         </label>
       </fieldset>

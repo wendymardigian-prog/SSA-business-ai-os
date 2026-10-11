@@ -75,6 +75,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // Agenda (Etapa 4, F8): abre directo las agendas. La configuracion va
   // detras del engranaje de esa pantalla, no del menu.
   { name: "Agenda", href: "/dashboard/agenda", icon: "CalendarDays", adminOnly: false, permissions: ["scheduling.use", "bookings.view"], group: "ventas" },
+  // Llamadas (Fathom + analizador): menu propio (decision 151), debajo de
+  // Agenda. Se ve con `calls.view`; un Member de sistema lo tiene (decision 152).
+  { name: "Llamadas", href: "/dashboard/llamadas", icon: "PhoneCall", adminOnly: false, permissions: ["calls.view"], group: "ventas" },
 
   { name: "Automatizaciones", href: "/dashboard/flows", icon: "GitBranch", adminOnly: false, group: "automatizacion" },
   { name: "Agentes IA", href: "/dashboard/agents", icon: "Bot", adminOnly: false, group: "automatizacion" },

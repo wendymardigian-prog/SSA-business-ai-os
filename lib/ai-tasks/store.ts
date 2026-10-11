@@ -3,6 +3,9 @@ import type { Database } from "@/lib/types/database";
 import { AI_TASKS, type AiTaskId } from "./catalog";
 import {
   ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  CALL_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
+  CALL_SUMMARY_DEFAULT_INSTRUCTIONS,
   CLASSIFY_DEFAULT_INSTRUCTIONS,
   CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
   MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
@@ -13,11 +16,19 @@ type Db = SupabaseClient<Database>;
 
 /**
  * Las tareas que de verdad guardan versiones: las que el CHECK de
- * `ai_task_prompt_versions.task` admite (00137, 00138, 00142). Tienen que ser
+ * `ai_task_prompt_versions.task` admite (00137, 00138, 00142, 00148). Tienen que ser
  * exactamente las del catalogo con `instructions.editable`: `store.test.ts`
  * compara las tres listas (catalogo, este mapa y la ultima migracion).
  */
-export type VersionedTask = "message_classification" | "conversation_summary" | "close_classification" | "media_description" | "ads_analysis";
+export type VersionedTask =
+  | "message_classification"
+  | "conversation_summary"
+  | "close_classification"
+  | "media_description"
+  | "ads_analysis"
+  | "call_classification"
+  | "call_analysis"
+  | "call_summary";
 
 export const DEFAULT_TEXT: Record<VersionedTask, string> = {
   message_classification: CLASSIFY_DEFAULT_INSTRUCTIONS,
@@ -25,6 +36,9 @@ export const DEFAULT_TEXT: Record<VersionedTask, string> = {
   close_classification: CLOSE_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
   media_description: MEDIA_DESCRIPTION_DEFAULT_INSTRUCTIONS,
   ads_analysis: ADS_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  call_classification: CALL_CLASSIFICATION_DEFAULT_INSTRUCTIONS,
+  call_analysis: CALL_ANALYSIS_DEFAULT_INSTRUCTIONS,
+  call_summary: CALL_SUMMARY_DEFAULT_INSTRUCTIONS,
 };
 
 /** La fuente es el catalogo (`instructions.editable`); `DEFAULT_TEXT` tiene que cubrirlas a todas (lo fija store.test.ts). */

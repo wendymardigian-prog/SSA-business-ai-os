@@ -198,6 +198,11 @@ describe("los archivos \"use server\" solo exportan funciones", () => {
       // Una constante exportada tampoco: mismo problema.
       const consts = source.match(/^export const /gm) ?? [];
       expect(consts, `constante exportada en ${file}`).toEqual([]);
+
+      // Ni una funcion SINCRONICA: Next exige `async` ("Server Actions must be
+      // async functions") y solo lo dice al abrir la pantalla en desarrollo.
+      const syncFunctions = source.match(/^export function /gm) ?? [];
+      expect(syncFunctions, `funcion exportada sin async en ${file}`).toEqual([]);
     });
   }
 });

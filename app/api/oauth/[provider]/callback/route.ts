@@ -10,16 +10,18 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext, getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getOAuthAdapter } from "@/lib/oauth/registry";
 import { completeOAuth } from "@/lib/oauth/flow";
+import { oauthForbiddenMessage, oauthRouteContext, perUserLanding } from "@/lib/oauth/route-context";
 import { OAUTH_STATE_COOKIE } from "@/lib/oauth/state";
 import { oauthCallbackUrl } from "@/lib/webhook-url";
 import { syncSocialAccounts } from "@/lib/social/accounts";
 import { queueFirstRead } from "@/lib/social/sync-hook";
 import { syncCalendars } from "@/lib/scheduling/data/calendars";
 import { appUrl } from "@/lib/app-url";
+import { queueFathomSyncNow } from "@/lib/fathom/queue";
+import { logAudit } from "@/lib/audit";
 
 const FALLBACK = "/dashboard/settings/integrations";
 
@@ -33,18 +35,9 @@ export async function GET(
     return NextResponse.json({ error: "Proveedor desconocido" }, { status: 404 });
   }
 
-  const ctx = adapter.perUser
-    ? await getPermissionAction(adapter.requiredPermission ?? "scheduling.use")
-    : await getAdminContext();
+  const ctx = await oauthRouteContext(adapter);
   if (!ctx) {
-    return NextResponse.json(
-      {
-        error: adapter.perUser
-          ? "No tenes permiso para conectar tu calendario"
-          : "Solo Owner y Admin pueden conectar cuentas",
-      },
-      { status: 403 },
-    );
+    return NextResponse.json({ error: oauthForbiddenMessage(adapter) }, { status: 403 });
   }
 
   const url = request.nextUrl;
@@ -67,9 +60,23 @@ export async function GET(
   // Google Calendar, en cambio, trae sus calendarios (F5).
   if (result.ok) {
     try {
-      if (adapter.perUser) {
+      // Rama explicita por proveedor: un proveedor por persona nuevo no cae
+      // por defecto en la sincronizacion de calendarios.
+      if (adapter.provider === "google_calendar") {
         await syncCalendars({ supabase: service }, result.connectionId);
-      } else {
+      } else if (adapter.provider === "fathom") {
+        // La primera consulta no espera a la vuelta del cron (F8): se encola ya.
+        await queueFathomSyncNow(service, result.connectionId);
+        await logAudit({
+          supabase: service,
+          workspaceId: ctx.workspace.id,
+          entityType: "oauth_connection",
+          entityId: result.connectionId,
+          action: "create",
+          metadata: { provider: "fathom", kind: "connected" },
+          performedBy: ctx.user.id,
+        });
+      } else if (!adapter.perUser) {
         const synced = await syncSocialAccounts(service, ctx.workspace.id);
         // Una red recien conectada se lee ya, no a las 3 AM. Nunca lanza.
         await queueFirstRead(ctx.workspace.id, synced.newAccountIds, `oauth ${adapter.provider}`);
@@ -79,10 +86,12 @@ export async function GET(
     }
   }
 
-  const destination = new URL(
-    result.ok && adapter.perUser ? "/dashboard/agenda/configuracion/calendarios" : result.redirectTo,
-    appUrl() || url.origin,
-  );
+  // Google Calendar vuelve a Agenda solo si salio bien (como siempre); Fathom
+  // vuelve a su pantalla salga como salga, porque un Member no entra a
+  // Integraciones, que es a donde caeria el error.
+  const landing =
+    adapter.provider === "fathom" ? perUserLanding("fathom") : result.ok && adapter.perUser ? perUserLanding(adapter.provider) : result.redirectTo;
+  const destination = new URL(landing, appUrl() || url.origin);
   if (result.ok) destination.searchParams.set("connected", adapter.perUser ? "1" : adapter.provider);
   else destination.searchParams.set("error", result.error);
 

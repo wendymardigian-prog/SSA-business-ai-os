@@ -20682,3 +20682,701 @@ $$;
 COMMENT ON FUNCTION public.read_secret(text, uuid) IS
   'Devuelve el valor desencriptado de un secret del workspace. Solo service_role (00143): '
   'el servidor lee con createServiceClient(); ningun usuario, tampoco el Owner, puede leer una clave desde el navegador.';
+
+-- ============================================================
+-- MIGRATION 144: AUDIT ACTOR
+-- ============================================================
+-- ============================================================================
+-- 00144 — Historial transversal: quien hizo cada cosa (persona, agente, sistema, webhook)
+-- ============================================================================
+-- Llamadas (F1) crea lo transversal del historial que despues usan Formularios,
+-- Ventas, CX y Gastos:
+--
+--   - audit_log.actor_type   'user' | 'agent' | 'system' | 'webhook' (default 'user')
+--   - audit_log.actor_label  nombre legible de un actor que no es una persona
+--                            ("Analisis automatico", "Fathom")
+--   - indice (workspace_id, entity_type, entity_id, performed_at DESC), que es
+--     como se lee el historial de UNA entidad.
+--
+-- No hay backfill: las filas viejas toman 'user' por el default. Las de agente
+-- (performed_by_agent_id no nulo) y las de sistema (performed_by nulo) se
+-- muestran bien igual, porque <Historial/> decide el actor con
+-- `effectiveActorType(row)` (lib/audit-history.ts) y no con esta columna sola.
+--
+-- NO se toca ninguna policy: `audit_log_select` queda exactamente como esta.
+--
+-- Aditiva e idempotente. Se puede aplicar antes de desplegar el codigo: el
+-- codigo viejo no lee ni escribe estas columnas.
+--
+-- Como volver atras:
+--   DROP INDEX IF EXISTS public.idx_audit_log_entity;
+--   ALTER TABLE public.audit_log DROP COLUMN IF EXISTS actor_label;
+--   ALTER TABLE public.audit_log DROP COLUMN IF EXISTS actor_type;
+-- ============================================================================
+
+ALTER TABLE public.audit_log
+  ADD COLUMN IF NOT EXISTS actor_type text NOT NULL DEFAULT 'user';
+
+ALTER TABLE public.audit_log
+  ADD COLUMN IF NOT EXISTS actor_label text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'audit_log_actor_type_check'
+      AND conrelid = 'public.audit_log'::regclass
+  ) THEN
+    ALTER TABLE public.audit_log
+      ADD CONSTRAINT audit_log_actor_type_check
+      CHECK (actor_type IN ('user', 'agent', 'system', 'webhook'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity
+  ON public.audit_log (workspace_id, entity_type, entity_id, performed_at DESC);
+
+COMMENT ON COLUMN public.audit_log.actor_type IS
+  'Quien hizo la accion: user (una persona), agent (agente de IA), system (proceso interno) o webhook (un proveedor). Las filas anteriores a la 00144 tienen user por el default: usar effectiveActorType() para leerlas.';
+COMMENT ON COLUMN public.audit_log.actor_label IS
+  'Nombre legible del actor cuando no es una persona (ej: "Analisis automatico", "Fathom").';
+
+-- ============================================================
+-- MIGRATION 145: CALLS
+-- ============================================================
+-- ============================================================================
+-- 00145 — Llamadas: la tabla `calls`, quien ve cada una, y lo que necesita Fathom
+-- ============================================================================
+-- Modulo Llamadas (Fathom + analizador de llamadas con IA), F2 y F3.
+--
+-- Una sola tabla nueva: `calls`. Todo lo demas son columnas y funciones:
+--
+--   1. `calls` (con RLS: solo lectura para los usuarios; escribe el servidor).
+--      - Unico (workspace_id, source, external_id): la misma llamada de Fathom
+--        no entra dos veces.
+--      - SIN unico sobre booking_id: varias llamadas pueden colgar de la misma
+--        agenda (bug de prevxcrm, que fallaba en silencio).
+--      - Trigger `calls_protect_analysis_ai`: `analysis_ai` y `rubric_snapshot`
+--        (lo que dijo la IA y con que rubrica) solo cambian junto con un
+--        `analysis_run_id` NUEVO, es decir, con una corrida nueva.
+--   2. `can_see_call(calls)` y `can_see_call_id(uuid)`: la copia del patron de
+--      `can_see_booking`. Una llamada la ve: Owner/Admin, quien la grabo, quien
+--      puede ver su contacto (`can_see_contact`) y un rol con `calls.view` de
+--      alcance `all`. Las ramas "propias" NO dependen de `has_permission`
+--      (que no conoce los permisos del Member de sistema).
+--   3. `oauth_connections`: el CHECK de `provider` suma 'fathom' y 5 columnas
+--      de sincronizacion (marca de agua, cursor, ultimo error, candado).
+--   4. `claim_oauth_refresh` / `release_oauth_refresh`: el refresh token de
+--      Fathom es de UN SOLO USO; dos procesos renovando a la vez dejan la
+--      conexion muerta. El candado vive en la base. Solo `service_role`.
+--   5. `workspace_members.is_closer` y `closer_emails`: quien graba llamadas
+--      de venta y con que correos alternos.
+--
+-- NO se toca ninguna funcion ni policy existente. Aditiva (salvo el CHECK de
+-- `provider`, que conserva todos sus valores) e idempotente.
+--
+-- Como volver atras:
+--   ALTER TABLE public.oauth_connections DROP CONSTRAINT IF EXISTS oauth_connections_provider_check;
+--   ALTER TABLE public.oauth_connections ADD CONSTRAINT oauth_connections_provider_check
+--     CHECK (provider = ANY (ARRAY['google'::text, 'linkedin'::text, 'threads'::text, 'google_calendar'::text]));
+--   (antes: borrar las conexiones con provider = 'fathom')
+--   DROP FUNCTION IF EXISTS public.claim_oauth_refresh(uuid, integer);
+--   DROP FUNCTION IF EXISTS public.release_oauth_refresh(uuid);
+--   ALTER TABLE public.oauth_connections
+--     DROP COLUMN IF EXISTS refresh_locked_until, DROP COLUMN IF EXISTS sync_last_error,
+--     DROP COLUMN IF EXISTS sync_cursor, DROP COLUMN IF EXISTS sync_watermark, DROP COLUMN IF EXISTS last_synced_at;
+--   ALTER TABLE public.workspace_members DROP COLUMN IF EXISTS closer_emails, DROP COLUMN IF EXISTS is_closer;
+--   DROP POLICY IF EXISTS calls_select ON public.calls;
+--   DROP TABLE IF EXISTS public.calls;           -- despues de las dos funciones can_see_call*
+--   DROP FUNCTION IF EXISTS public.can_see_call_id(uuid);
+--   DROP FUNCTION IF EXISTS public.can_see_call(public.calls);
+--   DROP FUNCTION IF EXISTS public.calls_protect_analysis_ai();
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. La tabla
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.calls (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+
+  source text NOT NULL CHECK (source IN ('fathom', 'manual')),
+  external_id text,
+  connection_id uuid REFERENCES public.oauth_connections(id) ON DELETE SET NULL,
+
+  title text NOT NULL,
+  fathom_url text,
+  share_url text,
+  recorded_at timestamptz NOT NULL,
+  scheduled_start_at timestamptz,
+  scheduled_end_at timestamptz,
+  duration_seconds integer CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+  recorded_by_email text,
+  recorded_by_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  attendees jsonb NOT NULL DEFAULT '[]'::jsonb,
+  transcript jsonb NOT NULL DEFAULT '[]'::jsonb,
+  transcript_language text,
+  participants_count smallint,
+  speakers_count smallint,
+  people_count smallint,
+
+  contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  booking_id uuid REFERENCES public.bookings(id) ON DELETE SET NULL,
+  link_method text NOT NULL DEFAULT 'none'
+    CHECK (link_method IN ('auto_email', 'auto_booking', 'auto_email_booking', 'manual', 'none')),
+  linked_by uuid,
+  linked_at timestamptz,
+
+  call_type text,
+  call_type_source text CHECK (call_type_source IN ('rule', 'ai', 'human')),
+  call_type_rule text,
+  call_type_confidence numeric(3, 2) CHECK (call_type_confidence IS NULL OR (call_type_confidence >= 0 AND call_type_confidence <= 1)),
+  call_type_alternative text,
+  call_type_proposed text,
+
+  analysis_status text NOT NULL DEFAULT 'classifying'
+    CHECK (analysis_status IN ('classifying', 'needs_review', 'pending', 'analyzing', 'analyzed', 'not_applicable', 'error')),
+  analysis_status_reason text,
+  analysis_error text,
+  analysis_ai jsonb,
+  analysis jsonb,
+  analysis_edited boolean NOT NULL DEFAULT false,
+  closer_score smallint CHECK (closer_score IS NULL OR (closer_score >= 0 AND closer_score <= 100)),
+  lead_score smallint CHECK (lead_score IS NULL OR (lead_score >= 0 AND lead_score <= 100)),
+  lead_qualification text CHECK (lead_qualification IN ('calificado', 'con_reservas', 'no_calificado')),
+  outcome text,
+  main_objection text,
+  followup_at timestamptz,
+  has_open_alerts boolean NOT NULL DEFAULT false,
+  quotes_total smallint,
+  quotes_verified smallint,
+  analysis_prompt_version integer,
+  rubric_snapshot jsonb,
+  rubric_version integer,
+  analysis_model text,
+  analysis_run_id uuid,
+  analyzed_at timestamptz,
+
+  summary jsonb,
+  summary_status text NOT NULL DEFAULT 'none' CHECK (summary_status IN ('none', 'pending', 'done', 'error')),
+  memory_status text NOT NULL DEFAULT 'none' CHECK (memory_status IN ('none', 'applied', 'conflict', 'skipped')),
+  memory_applied_at timestamptz,
+  ideas_created_at timestamptz,
+  knowledge_document_id uuid REFERENCES public.knowledge_base(id) ON DELETE SET NULL,
+
+  objections jsonb NOT NULL DEFAULT '[]'::jsonb,
+  raw_payload jsonb,
+  created_by uuid,
+  archived_at timestamptz,
+  archived_by uuid,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.calls IS
+  'Llamadas de venta (Fathom o importadas a mano) con su transcripcion y su analisis. Se archivan, no se borran. Escribe solo el servidor; las lee quien pasa can_see_call().';
+COMMENT ON COLUMN public.calls.analysis_ai IS
+  'La salida original de la IA. Inmutable salvo corrida nueva (trigger calls_protect_analysis_ai). Lo que se muestra y se corrige es `analysis`.';
+COMMENT ON COLUMN public.calls.rubric_snapshot IS
+  'Copia completa de la rubrica con la que se analizo ({version, closer[], lead[]}). Un cambio posterior de la rubrica no altera puntajes viejos.';
+COMMENT ON COLUMN public.calls.analysis_run_id IS
+  'agent_runs.id de la corrida que escribio analysis_ai. Si no hay corrida registrada, un uuid nuevo: tiene que cambiar en cada analisis.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_calls_external
+  ON public.calls (workspace_id, source, external_id) WHERE external_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calls_recorded ON public.calls (workspace_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_status ON public.calls (workspace_id, analysis_status);
+CREATE INDEX IF NOT EXISTS idx_calls_contact ON public.calls (contact_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_booking ON public.calls (booking_id) WHERE booking_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_calls_recorder ON public.calls (recorded_by_user_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_outcome ON public.calls (workspace_id, outcome);
+CREATE INDEX IF NOT EXISTS idx_calls_connection ON public.calls (connection_id) WHERE connection_id IS NOT NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.calls;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.calls
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- 2. Lo que dijo la IA no se edita nunca
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.calls_protect_analysis_ai()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF (NEW.analysis_ai IS DISTINCT FROM OLD.analysis_ai
+      OR NEW.rubric_snapshot IS DISTINCT FROM OLD.rubric_snapshot)
+     AND NEW.analysis_run_id IS NOT DISTINCT FROM OLD.analysis_run_id THEN
+    RAISE EXCEPTION 'analysis_ai y rubric_snapshot solo cambian con una corrida de analisis nueva (analysis_run_id)'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS calls_protect_analysis_ai ON public.calls;
+CREATE TRIGGER calls_protect_analysis_ai BEFORE UPDATE ON public.calls
+  FOR EACH ROW EXECUTE FUNCTION public.calls_protect_analysis_ai();
+
+-- ------------------------------------------------------------
+-- 3. Quien ve cada llamada
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.can_see_call(c public.calls)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.is_workspace_member(c.workspace_id)
+     AND (
+       public.is_workspace_admin(c.workspace_id)
+       OR c.recorded_by_user_id = auth.uid()
+       OR (
+         c.contact_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM public.contacts ct
+           WHERE ct.id = c.contact_id AND public.can_see_contact(ct)
+         )
+       )
+       OR (
+         public.has_permission(c.workspace_id, 'calls.view')
+         AND public.permission_scope(c.workspace_id, 'calls') = 'all'
+       )
+     );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_call(public.calls) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_call(public.calls) TO authenticated, service_role;
+
+-- La misma regla, por id: la usa la politica de lectura del historial (00147).
+CREATE OR REPLACE FUNCTION public.can_see_call_id(p_call_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    (SELECT public.can_see_call(c) FROM public.calls c WHERE c.id = p_call_id),
+    false
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_call_id(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_call_id(uuid) TO authenticated, service_role;
+
+ALTER TABLE public.calls ENABLE ROW LEVEL SECURITY;
+
+-- Solo lectura para los usuarios: escribir es del servidor (las acciones
+-- verifican el permiso antes). Sin DELETE: las llamadas se archivan.
+DROP POLICY IF EXISTS calls_select ON public.calls;
+CREATE POLICY calls_select ON public.calls
+  FOR SELECT TO authenticated USING (public.can_see_call(calls));
+
+REVOKE ALL ON public.calls FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.calls FROM authenticated;
+
+-- ------------------------------------------------------------
+-- 4. oauth_connections: Fathom y su sincronizacion
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'oauth_connections_provider_check'
+      AND conrelid = 'public.oauth_connections'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%fathom%'
+  ) THEN
+    ALTER TABLE public.oauth_connections DROP CONSTRAINT IF EXISTS oauth_connections_provider_check;
+    ALTER TABLE public.oauth_connections ADD CONSTRAINT oauth_connections_provider_check
+      CHECK (provider = ANY (ARRAY['google'::text, 'linkedin'::text, 'threads'::text, 'google_calendar'::text, 'fathom'::text]));
+  END IF;
+END $$;
+
+ALTER TABLE public.oauth_connections
+  ADD COLUMN IF NOT EXISTS last_synced_at timestamptz,
+  ADD COLUMN IF NOT EXISTS sync_watermark timestamptz,
+  ADD COLUMN IF NOT EXISTS sync_cursor text,
+  ADD COLUMN IF NOT EXISTS sync_last_error text,
+  ADD COLUMN IF NOT EXISTS refresh_locked_until timestamptz;
+
+COMMENT ON COLUMN public.oauth_connections.sync_watermark IS
+  'Hasta donde se leyo de la fuente (Fathom). Solo avanza al terminar una pasada completa.';
+COMMENT ON COLUMN public.oauth_connections.sync_cursor IS
+  'Cursor de paginacion de una pasada a medias (Fathom). Null = no hay pasada pendiente.';
+COMMENT ON COLUMN public.oauth_connections.refresh_locked_until IS
+  'Candado de renovacion: el refresh token de Fathom es de un solo uso, solo un proceso renueva a la vez (claim_oauth_refresh).';
+
+-- ------------------------------------------------------------
+-- 5. El candado de renovacion (solo service_role)
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.claim_oauth_refresh(p_connection_id uuid, p_seconds integer)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_taken boolean;
+BEGIN
+  UPDATE public.oauth_connections
+     SET refresh_locked_until = now() + make_interval(secs => GREATEST(p_seconds, 1))
+   WHERE id = p_connection_id
+     AND (refresh_locked_until IS NULL OR refresh_locked_until < now())
+  RETURNING true INTO v_taken;
+  RETURN COALESCE(v_taken, false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.release_oauth_refresh(p_connection_id uuid)
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  UPDATE public.oauth_connections SET refresh_locked_until = NULL WHERE id = p_connection_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.claim_oauth_refresh(uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_oauth_refresh(uuid, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.release_oauth_refresh(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.release_oauth_refresh(uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 6. Equipo: quien es closer
+-- ------------------------------------------------------------
+ALTER TABLE public.workspace_members
+  ADD COLUMN IF NOT EXISTS is_closer boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS closer_emails text[] NOT NULL DEFAULT '{}';
+
+COMMENT ON COLUMN public.workspace_members.is_closer IS
+  'Graba llamadas de venta. Solo las llamadas de quien es closer entran desde Fathom.';
+COMMENT ON COLUMN public.workspace_members.closer_emails IS
+  'Correos alternos con los que esta persona graba en Fathom o Zoom (normalizados, en minuscula).';
+
+-- ============================================================
+-- MIGRATION 146: FATHOM SYNC CRON
+-- ============================================================
+-- ============================================================================
+-- 00146 — Llamadas: el cron que consulta Fathom cada 10 minutos
+-- ============================================================================
+-- Fathom no tiene webhooks para apps OAuth: hay que preguntarle. Cada 10
+-- minutos, pg_cron llama a `private.enqueue_fathom_sync()`, que deja en la cola
+-- de trabajos (`scheduled_jobs`) un pedido `fathom_sync` por cada persona con
+-- Fathom conectado. El cron `jobs` que ya corre cada minuto los procesa con el
+-- handler `lib/jobs/handlers/fathom-sync.ts`.
+--
+-- NO se reescribe `private.call_app_cron` ni se agrega una ruta en
+-- `app/api/cron/`: comparten esa funcion y su lista blanca TODOS los crons de
+-- la app. Este cron llama una funcion SQL directo, igual que
+-- `private.sweep_agent_drafts()` y `private.alert_draft_windows()`.
+--
+-- La funcion:
+--   1. Por cada conexion activa de Fathom cuya persona sigue en el workspace,
+--      encola UN job, salvo que ya haya uno `pending` o `processing` de esa
+--      conexion. La clave de dedupe (conexion + franja de 10 minutos) es la
+--      misma que arma `fathomSyncDedupeKey` en lib/fathom/queue.ts, asi que
+--      "Sincronizar ahora" y las continuaciones del handler no duplican.
+--   2. Devuelve a `pending` (motivo `stuck`) los analisis de llamadas que
+--      llevan mas de 15 minutos en `analyzing`.
+--   3. Devuelve cuantos jobs encolo. Una conexion que falla se avisa con
+--      RAISE WARNING y NO frena a las demas.
+--
+-- Es SECURITY DEFINER y nadie con sesion la puede ejecutar. Aditiva e
+-- idempotente. Aplicarla antes de desplegar el codigo es inofensivo: sin una
+-- conexion de Fathom (no se puede conectar hasta desplegar) no encola nada.
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('fathom-sync');
+--   DROP FUNCTION IF EXISTS private.enqueue_fathom_sync();
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'fathom_sync' AND status = 'pending';
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION private.enqueue_fathom_sync()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_conn record;
+  v_slot bigint := floor(extract(epoch FROM now()) / 600);
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_conn IN
+    SELECT c.id
+    FROM public.oauth_connections c
+    WHERE c.provider = 'fathom'
+      AND c.status = 'active'
+      AND EXISTS (
+        SELECT 1 FROM public.workspace_members m
+        WHERE m.workspace_id = c.workspace_id AND m.user_id = c.user_id
+      )
+  LOOP
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.scheduled_jobs j
+        WHERE j.type = 'fathom_sync'
+          AND j.status IN ('pending', 'processing')
+          AND j.dedupe_key LIKE 'fathom_sync:' || v_conn.id::text || ':%'
+      ) THEN
+        INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+        VALUES (
+          'fathom_sync',
+          jsonb_build_object('connectionId', v_conn.id),
+          now(),
+          'fathom_sync:' || v_conn.id::text || ':' || v_slot::text
+        )
+        ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+        IF FOUND THEN
+          v_enqueued := v_enqueued + 1;
+        END IF;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_fathom_sync: no pude encolar la conexion %: %', v_conn.id, SQLERRM;
+    END;
+  END LOOP;
+
+  -- Un analisis que se quedo en `analyzing` (el proceso murio a la mitad) vuelve a la fila.
+  BEGIN
+    UPDATE public.calls
+       SET analysis_status = 'pending', analysis_status_reason = 'stuck'
+     WHERE analysis_status = 'analyzing'
+       AND updated_at < now() - interval '15 minutes';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'enqueue_fathom_sync: no pude barrer los analisis trabados: %', SQLERRM;
+  END;
+
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_fathom_sync() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'fathom-sync') THEN
+    PERFORM cron.unschedule('fathom-sync');
+  END IF;
+END $$;
+
+SELECT cron.schedule('fathom-sync', '*/10 * * * *', $$SELECT private.enqueue_fathom_sync()$$);
+
+-- ============================================================
+-- MIGRATION 147: AUDIT LOG SELECT CALLS
+-- ============================================================
+-- ============================================================================
+-- 00147 — Historial de llamadas: una politica de lectura APARTE sobre audit_log
+-- ============================================================================
+-- Hoy un Member solo ve en el historial lo que hizo el mismo (mas lo de
+-- agentes sobre contactos y conversaciones, y lo de agendas). Las entradas que
+-- escribe el SISTEMA sobre una llamada (el analisis automatico, la
+-- clasificacion) no las veria el closer de su propia llamada.
+--
+-- Se suma una politica de lectura NUEVA, que solo aplica a las filas
+-- `entity_type = 'call'`: las ve quien ve la llamada (`can_see_call_id`).
+-- Postgres combina las politicas permisivas con "o": lo que cada rol ve hoy NO
+-- puede achicarse, y lo que no es una llamada no cambia.
+--
+-- `audit_log_select` NO se toca ni una coma. Convencion para los demas modulos
+-- (Formularios, Ventas, CX, Gastos): cada modulo suma su propia politica
+-- `audit_log_select_<modulo>`; nadie reescribe `audit_log_select`.
+--
+-- Se aplica DESPUES de `node scripts/verify-audit-visibility.mjs` en verde, y se
+-- vuelve a correr despues (con --despues-de-00147).
+--
+-- Aditiva e idempotente.
+--
+-- Como volver atras:
+--   DROP POLICY IF EXISTS audit_log_select_calls ON public.audit_log;
+-- ============================================================================
+
+DROP POLICY IF EXISTS audit_log_select_calls ON public.audit_log;
+CREATE POLICY audit_log_select_calls ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND entity_type = 'call'
+    AND public.can_see_call_id(entity_id)
+  );
+
+-- ============================================================
+-- MIGRATION 148: CALL AI TASKS
+-- ============================================================
+-- ============================================================================
+-- 00148 — Llamadas: las tareas de IA del analisis y como se guarda su configuracion
+-- ============================================================================
+-- Llamadas suma tres tareas de IA al catalogo (Clasificacion, Analisis y
+-- Resumen de llamadas) y cuatro tipos de corrida mas (correccion, prueba del
+-- borrador y las propias de cada tarea). Esta migracion:
+--
+--   1. Amplia el CHECK de `agent_runs.source`: + call_classification,
+--      call_analysis, call_correction, call_summary, call_prompt_test.
+--      (Lista leida de la base al escribirla; nada se borra.)
+--   2. Amplia el CHECK de `ai_task_prompt_versions.task`: + call_classification,
+--      call_analysis, call_summary. `lib/ai-tasks/store.test.ts` lee esta
+--      migracion y compara la lista con el catalogo.
+--   3. `set_ai_background_task_settings(p_workspace_id, p_task, p_value)`:
+--      escribe la configuracion de UNA tarea dentro de
+--      `workspaces.ai_background_settings` (jsonb_set de una sola clave), sin
+--      pisar las demas, y devuelve lo que habia antes (para la auditoria). Solo
+--      acepta call_classification y call_analysis. Solo `service_role`.
+--
+-- NO se crea ninguna tabla. Aditiva (los CHECK conservan todos sus valores) e
+-- idempotente. Se puede aplicar antes de desplegar: el codigo viejo no lee nada
+-- de esto.
+--
+-- Como volver atras (solo si no hay corridas ni versiones de las tareas nuevas):
+--   ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+--   ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+--     CHECK (source = ANY (ARRAY['agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing',
+--       'conversation_summary', 'message_classification', 'message_classification_eval',
+--       'content_copy', 'ads_analysis', 'audio_transcription', 'media_description']));
+--   ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT IF EXISTS ai_task_prompt_versions_task_check;
+--   ALTER TABLE public.ai_task_prompt_versions ADD CONSTRAINT ai_task_prompt_versions_task_check
+--     CHECK (task IN ('message_classification', 'conversation_summary', 'close_classification', 'media_description', 'ads_analysis'));
+--   DROP FUNCTION IF EXISTS public.set_ai_background_task_settings(uuid, text, jsonb);
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'agent_runs_source_check'
+      AND conrelid = 'public.agent_runs'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%call_analysis%'
+  ) THEN
+    ALTER TABLE public.agent_runs DROP CONSTRAINT IF EXISTS agent_runs_source_check;
+    ALTER TABLE public.agent_runs ADD CONSTRAINT agent_runs_source_check
+      CHECK (source = ANY (ARRAY[
+        'agent', 'flow_ai_node', 'sequence_ai_step', 'kb_indexing', 'conversation_summary',
+        'message_classification', 'message_classification_eval', 'content_copy', 'ads_analysis',
+        'audio_transcription', 'media_description',
+        'call_classification', 'call_analysis', 'call_correction', 'call_summary', 'call_prompt_test'
+      ]));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'ai_task_prompt_versions_task_check'
+      AND conrelid = 'public.ai_task_prompt_versions'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%call_analysis%'
+  ) THEN
+    ALTER TABLE public.ai_task_prompt_versions DROP CONSTRAINT IF EXISTS ai_task_prompt_versions_task_check;
+    ALTER TABLE public.ai_task_prompt_versions
+      ADD CONSTRAINT ai_task_prompt_versions_task_check
+      CHECK (task IN ('message_classification', 'conversation_summary', 'close_classification', 'media_description', 'ads_analysis', 'call_classification', 'call_analysis', 'call_summary'));
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.set_ai_background_task_settings(p_workspace_id uuid, p_task text, p_value jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_old jsonb;
+BEGIN
+  IF p_task NOT IN ('call_classification', 'call_analysis') THEN
+    RAISE EXCEPTION 'tarea no admitida: %', p_task USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT ai_background_settings -> p_task INTO v_old
+    FROM public.workspaces WHERE id = p_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'workspace inexistente' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  -- Solo esa clave: las demas tareas quedan como estaban.
+  UPDATE public.workspaces
+     SET ai_background_settings = jsonb_set(COALESCE(ai_background_settings, '{}'::jsonb), ARRAY[p_task], p_value, true)
+   WHERE id = p_workspace_id;
+
+  RETURN v_old;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_ai_background_task_settings(uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_ai_background_task_settings(uuid, text, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 149: CALL USES
+-- ============================================================
+-- ============================================================================
+-- 00149 — Llamadas: lo que se hace con lo analizado (triggers e ideas de contenido)
+-- ============================================================================
+-- Modulo Llamadas, bloque L3 (F29 y F32). Tres cambios, todos aditivos:
+--
+--   1. `triggers.type`: el CHECK suma `call_analyzed` y `call_linked` (los dos
+--      disparadores de flujos de Llamadas). Conserva los 19 valores de antes.
+--   2. `content_ideas.source`: el CHECK suma `call` (una idea que nace de una
+--      llamada). Conserva `manual` y `agent`.
+--   3. `content_ideas.call_id`: de que llamada salio la idea (ON DELETE SET
+--      NULL: borrar la llamada no borra la idea) + indice parcial.
+--
+-- NO se toca ninguna funcion ni policy. Se puede aplicar antes de desplegar el
+-- codigo: el codigo viejo no conoce ninguno de estos valores.
+--
+-- Como volver atras (solo si no hay triggers ni ideas con los valores nuevos):
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY[
+--     'keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact',
+--     'crm_event', 'inactivity', 'email_received', 'booking_created', 'booking_rescheduled',
+--     'booking_cancelled', 'booking_updated', 'booking_ended', 'booking_status_changed',
+--     'booking_before_start', 'booking_after_end', 'booking_after_created']));
+--   ALTER TABLE public.content_ideas DROP CONSTRAINT IF EXISTS content_ideas_source_check;
+--   ALTER TABLE public.content_ideas ADD CONSTRAINT content_ideas_source_check
+--     CHECK (source = ANY (ARRAY['manual', 'agent']));
+--   DROP INDEX IF EXISTS public.idx_content_ideas_call;
+--   ALTER TABLE public.content_ideas DROP COLUMN IF EXISTS call_id;
+--   (antes: borrar los triggers con type call_* y las ideas con source = 'call')
+-- ============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'triggers_type_check'
+      AND conrelid = 'public.triggers'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%call_analyzed%'
+  ) THEN
+    ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+    ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY[
+      'keyword', 'postback', 'quick_reply', 'welcome', 'default', 'comment_keyword', 'new_contact',
+      'crm_event', 'inactivity', 'email_received', 'booking_created', 'booking_rescheduled',
+      'booking_cancelled', 'booking_updated', 'booking_ended', 'booking_status_changed',
+      'booking_before_start', 'booking_after_end', 'booking_after_created',
+      'call_analyzed', 'call_linked'
+    ]));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'content_ideas_source_check'
+      AND conrelid = 'public.content_ideas'::regclass
+      AND pg_get_constraintdef(oid) LIKE '%call%'
+  ) THEN
+    ALTER TABLE public.content_ideas DROP CONSTRAINT IF EXISTS content_ideas_source_check;
+    ALTER TABLE public.content_ideas ADD CONSTRAINT content_ideas_source_check
+      CHECK (source = ANY (ARRAY['manual', 'agent', 'call']));
+  END IF;
+END $$;
+
+ALTER TABLE public.content_ideas
+  ADD COLUMN IF NOT EXISTS call_id uuid REFERENCES public.calls(id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN public.content_ideas.call_id IS
+  'La llamada de la que salio la idea (source = ''call''). ON DELETE SET NULL: borrar la llamada no borra la idea.';
+
+CREATE INDEX IF NOT EXISTS idx_content_ideas_call
+  ON public.content_ideas (call_id) WHERE call_id IS NOT NULL;

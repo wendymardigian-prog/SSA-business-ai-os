@@ -13,6 +13,9 @@ import { TaskInstructionsPanel } from "./task-instructions-panel";
 import { TaskModelPanel } from "./task-model-panel";
 import { QualityPanel, ButtonTextsPanel } from "./classification-quality";
 import { AgentCloseTable, HowItWorks } from "./how-it-works";
+import { ClassificationConfig } from "./calls/classification-config";
+import { AnalysisConfig } from "./calls/analysis-config";
+import { PromptTestPanel } from "./calls/prompt-test-panel";
 import { MODE_LABELS, formatSpend, lastRunLabel } from "@/lib/background/screen";
 import { controlLabel } from "@/lib/ai-tasks/catalog";
 import { TASK_TABS, resolveTaskTab } from "@/lib/ai-tasks/tabs";
@@ -101,6 +104,17 @@ export function TaskDetailView({ data, tab, timeZone }: { data: TaskScreenData; 
                   versions={data.instructions.versions}
                   technical={data.instructions.technical}
                   variables={task.instructions.variables}
+                  testPanel={
+                    data.callConfig?.task === "call_analysis"
+                      ? (draft) => (
+                          <PromptTestPanel
+                            calls={data.callConfig && data.callConfig.task === "call_analysis" ? data.callConfig.testableCalls : []}
+                            what="las instrucciones"
+                            getDraft={() => ({ instructionsText: draft })}
+                          />
+                        )
+                      : undefined
+                  }
                 />
               )
             ) : (
@@ -156,7 +170,14 @@ function ConfigTab({ data }: { data: TaskScreenData }) {
             .
           </Notice>
         )}
-        {control.kind === "on_demand" && <Notice>Corre solo {control.where}. Nunca corre sola.</Notice>}
+        {control.kind === "on_demand" &&
+          (task.id.startsWith("call_") ? (
+            <Notice>
+              Corre {control.where}. Si la corre sola o solo con un botón se elige más abajo, en esta misma pantalla.
+            </Notice>
+          ) : (
+            <Notice>Corre solo {control.where}. Nunca corre sola.</Notice>
+          ))}
       </section>
 
       <section className="space-y-3">
@@ -173,6 +194,9 @@ function ConfigTab({ data }: { data: TaskScreenData }) {
           <Notice>{task.modelSource}</Notice>
         )}
       </section>
+
+      {data.callConfig?.task === "call_classification" && <ClassificationConfig data={data.callConfig} />}
+      {data.callConfig?.task === "call_analysis" && <AnalysisConfig data={data.callConfig} />}
 
       {data.quality && <QualityPanel data={data.quality} categories={data.categories ?? []} />}
       {data.quality && <ButtonTextsPanel buttonTexts={data.quality.buttonTexts} />}

@@ -33,6 +33,7 @@ export const PERMISSION_MODULES = [
   "knowledge",
   "content",
   "scheduling",
+  "calls",
   "integrations",
   "team",
   "settings",
@@ -110,6 +111,10 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "scheduling.manage_categories", module: "scheduling", label: "Administrar areas y tipos de agenda", description: "Crear, renombrar, reordenar y archivar categorias." },
   { key: "bookings.view", module: "scheduling", label: "Ver agendas", description: "El alcance decide si ve todas o solo las que es anfitrion." },
   { key: "bookings.manage", module: "scheduling", label: "Gestionar agendas", description: "Cancelar, reagendar, marcar, editar y agendar a mano. Mismo alcance que ver." },
+  // ── Llamadas (Fathom + analizador de llamadas) ──────────────────────────
+  { key: "calls.view", module: "calls", label: "Ver las llamadas", description: "La lista, la ficha, el análisis y el dashboard de Llamadas, según el alcance." },
+  { key: "calls.edit", module: "calls", label: "Editar las llamadas", description: "Cambiar el tipo, vincular contacto y agenda, analizar, corregir, regenerar, resumir, mandar a Conocimiento e importar." },
+  { key: "calls.configure", module: "calls", label: "Configurar el análisis de llamadas", description: "Reglas, tipos, rúbrica, categorías y contexto del negocio de las tareas Clasificación y Análisis de llamadas." },
 
   // ── Configuracion ───────────────────────────────────────────────────────
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas y guardar claves." },
@@ -132,7 +137,7 @@ export function permissionLabel(key: string): string {
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations", "bookings"] as const;
+export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
@@ -204,21 +209,24 @@ const MEMBER_KEYS = [
   "scheduling.use",
   "bookings.view",
   "bookings.manage",
+  // Llamadas (decision 152): un Member ve las llamadas que grabo y las de los
+  // contactos que puede ver. NO edita ni configura.
+  "calls.view",
 ] as const;
 
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all", bookings: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all" },
   },
   admin: {
     // Todo salvo transferir la propiedad: eso es irreversible y es del Owner.
     keys: ALL_PERMISSION_KEYS.filter((key) => key !== "workspace.transfer"),
-    scopes: { leads: "all", conversations: "all", bookings: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all" },
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own", bookings: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" },
   },
 };
 
@@ -280,7 +288,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings") },
+    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls") },
   };
 }
 
