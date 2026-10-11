@@ -179,6 +179,10 @@ export async function assignContact(
 
   if (Object.keys(patch).length === 0) return { ok: true, contactId };
 
+  // Lo asignado a mano bloquea lo automatico (Ventas, 00161): desde ahora la
+  // asignacion automatica no toca el setter ni el vendedor de este contacto.
+  patch.assignment_locked_at = new Date().toISOString();
+
   return applyPatch({
     supabase, workspaceId: workspace.id, userId: user.id,
     contactId, patch, action: "assign",

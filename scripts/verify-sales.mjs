@@ -58,6 +58,21 @@ export function sql(query) {
   return JSON.parse(out).rows ?? [];
 }
 
+/**
+ * Corre un bloque DO que termina con `RAISE EXCEPTION 'RESULTADO: ...'`: la transaccion se
+ * deshace sola (no queda nada) y el mensaje trae lo que se quiere leer.
+ */
+export function sqlProbe(query) {
+  try {
+    execFileSync("supabase", ["db", "query", "--linked", query], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return "SIN RESULTADO (el bloque no levanto la excepcion final)";
+  } catch (e) {
+    const text = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+    const m = text.match(/RESULTADO: ([^"\\]*)/);
+    return m ? m[1].trim() : text.slice(0, 300);
+  }
+}
+
 const ctx = {}; // lo que comparten las secciones: ws, owner, member, otros
 
 try {
@@ -230,6 +245,92 @@ try {
       const [{ n: dup }] = sql("select count(*)::int n from (select v.product_id from public.product_variants v join public.content_offers o on o.id = v.product_id where o.workspace_id <> '" + ws.id + "' group by v.product_id having count(*) > 1) x");
       check(dup === 0, "las ofertas migradas no tienen variantes duplicadas");
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bloque 2 · Asignacion (00161)
+  // ─────────────────────────────────────────────────────────────────────────
+  if (MAX_BLOCK >= 2) {
+    console.log("\n— 00161: reglas de asignacion —");
+    const rulesOf = async (client, wsId) => (await client.from("assignment_rules").select("id, kind, mode, entity_type").eq("workspace_id", wsId)).data ?? [];
+
+    const reglas = await rulesOf(svc, ws.id);
+    check(reglas.length === 3 && ["setter", "vendedor", "referral"].every((k) => reglas.some((r) => r.kind === k)), "un workspace nuevo trae 3 reglas (setter, vendedor, referral)");
+    check(reglas.every((r) => r.mode === "manual" && r.entity_type === "contact"), "las 3 arrancan en modo manual, para contactos");
+    const [{ n: sinReglas }] = sql("select count(*)::int n from public.workspaces w where (select count(*) from public.assignment_rules r where r.workspace_id = w.id) <> 3");
+    check(sinReglas === 0, "todos los workspaces que ya existian tienen exactamente 3 reglas (backfill)");
+
+    const { error: kindFuente } = await svc.from("assignment_rules").insert({ workspace_id: ws.id, kind: "source" });
+    check(!!kindFuente, "un kind 'source' se rechaza (el catalogo de fuentes quedo para una fase futura)");
+    const { error: dupKind } = await svc.from("assignment_rules").insert({ workspace_id: ws.id, kind: "setter" });
+    check(!!dupKind, "no puede haber dos reglas del mismo kind en un workspace");
+    const { error: refRr } = await svc.from("assignment_rules").update({ mode: "round_robin" }).eq("workspace_id", ws.id).eq("kind", "referral");
+    check(!!refRr, "el referido no admite reparto por turnos (CHECK)");
+    const { error: noArray } = await svc.from("assignment_rules").update({ condition_rules: { no: "array" } }).eq("workspace_id", ws.id).eq("kind", "setter");
+    check(!!noArray, "condition_rules tiene que ser una lista");
+
+    const memberSees = await rulesOf(member.client, ws.id);
+    check(memberSees.length === 3, "un Member LEE las reglas de su workspace");
+    check((await rulesOf(outsider.client, ws.id)).length === 0, "otro workspace no las ve");
+    const { data: memberUpd } = await member.client.from("assignment_rules").update({ mode: "round_robin", enabled_member_ids: [member.id] }).eq("workspace_id", ws.id).eq("kind", "setter").select("id");
+    check((memberUpd ?? []).length === 0, "un Member NO puede escribir una regla (RLS)");
+    const { error: memberIns } = await member.client.from("assignment_rules").insert({ workspace_id: ws.id, kind: "setter" });
+    check(!!memberIns, "ni insertar");
+    const { data: ownerUpd, error: ownerErr } = await owner.client.from("assignment_rules").update({ mode: "round_robin", enabled_member_ids: [owner.id] }).eq("workspace_id", ws.id).eq("kind", "setter").select("id");
+    check(!ownerErr && (ownerUpd ?? []).length === 1, "el Owner si puede", ownerErr?.message);
+    await owner.client.from("assignment_rules").delete().eq("workspace_id", ws.id).eq("kind", "setter");
+    check((await rulesOf(svc, ws.id)).length === 3, "nadie borra una regla (sin policy de DELETE)");
+
+    console.log("\n— 00161: columnas nuevas —");
+    const [{ n: cols }] = sql("select count(*)::int n from information_schema.columns where table_schema = 'public' and ((table_name = 'contacts' and column_name in ('referred_by_user_id','referred_by_contact_id','assignment_locked_at','payment_health')) or (table_name = 'workspaces' and column_name in ('max_discount_percent','overdue_grace_days','sales_auto_create_flows')))");
+    check(cols === 7, "contacts suma 4 columnas y workspaces 3");
+    const { error: gracia } = await svc.from("workspaces").update({ overdue_grace_days: 31 }).eq("id", ws.id);
+    check(!!gracia, "la gracia de mora no pasa de 30 dias");
+    const { error: tope } = await svc.from("workspaces").update({ max_discount_percent: 101 }).eq("id", ws.id);
+    check(!!tope, "el tope de descuento no pasa de 100 %");
+    const { error: topeOk } = await svc.from("workspaces").update({ max_discount_percent: 25.5, overdue_grace_days: 3 }).eq("id", ws.id);
+    check(!topeOk, "y valores validos se aceptan", topeOk?.message);
+
+    console.log("\n— 00161: el trigger de contacts encola la evaluacion —");
+    const jobsOf = async (contactId) => (await svc.from("scheduled_jobs").select("id, status, dedupe_key, payload").eq("type", "sales_contact_eval").eq("payload->>contact_id", contactId)).data ?? [];
+
+    // Con todo en manual: ningun job.
+    await svc.from("assignment_rules").update({ mode: "manual", enabled_member_ids: [] }).eq("workspace_id", ws.id);
+    const { data: c0 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test eval manual" }).select("id").single();
+    check((await jobsOf(c0.id)).length === 0, "con todas las reglas en manual, crear un contacto NO encola nada");
+
+    // Con una regla que no es manual: un job por contacto y atribucion.
+    await svc.from("assignment_rules").update({ mode: "round_robin", enabled_member_ids: [owner.id] }).eq("workspace_id", ws.id).eq("kind", "setter");
+    const { data: c1 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test eval auto" }).select("id").single();
+    const j1 = await jobsOf(c1.id);
+    check(j1.length === 1 && /^sales_eval:/.test(j1[0].dedupe_key), "con una regla no manual, crear un contacto encola UN job sales_contact_eval");
+    check(j1[0]?.payload?.workspace_id === ws.id && j1[0]?.payload?.contact_id === c1.id, "con el contacto y el workspace en el payload");
+
+    // Cambiar la atribucion: otro job (otra clave); el mismo valor dos veces mientras espera: uno solo.
+    const attribution = { version: 2, last_touch: { source: "instagram", medium: "paid_social", campaign: "zz-test" } };
+    await svc.from("contacts").update({ attribution }).eq("id", c1.id);
+    const j2 = await jobsOf(c1.id);
+    check(j2.length >= 2 && new Set(j2.map((j) => j.dedupe_key)).size === j2.length, "cambiar la atribucion encola otro job, con otra clave");
+    const antes = (await jobsOf(c1.id)).length;
+    await svc.from("contacts").update({ attribution }).eq("id", c1.id);
+    const despues = (await jobsOf(c1.id)).length;
+    check(despues === antes, "el mismo cambio dos veces no duplica el job (la clave incluye el md5 de la atribucion)");
+    await svc.from("scheduled_jobs").delete().eq("type", "sales_contact_eval").in("payload->>contact_id", [c0.id, c1.id]);
+
+    // El trigger nunca tumba el alta: se fuerza un fallo del INSERT en scheduled_jobs (adentro de una
+    // transaccion que se deshace sola, asi no queda nada y el candado dura milisegundos).
+    const forzado = sqlProbe(`
+      DO $$
+      DECLARE w uuid; c uuid; existe boolean;
+      BEGIN
+        INSERT INTO public.workspaces (name, slug) VALUES ('zz-test-trigger-falla', 'zz-test-trigger-falla-' || gen_random_uuid()) RETURNING id INTO w;
+        UPDATE public.assignment_rules SET mode = 'round_robin', enabled_member_ids = ARRAY[gen_random_uuid()] WHERE workspace_id = w AND kind = 'setter';
+        ALTER TABLE public.scheduled_jobs ADD CONSTRAINT zz_test_fuerza_fallo CHECK (type <> 'sales_contact_eval') NOT VALID;
+        INSERT INTO public.contacts (workspace_id, display_name) VALUES (w, 'zz-test el alta sobrevive') RETURNING id INTO c;
+        SELECT EXISTS (SELECT 1 FROM public.contacts WHERE id = c) INTO existe;
+        RAISE EXCEPTION 'RESULTADO: %', CASE WHEN existe THEN 'contacto creado aunque el trigger fallo' ELSE 'el contacto NO se creo' END;
+      END $$;`);
+    check(forzado === "contacto creado aunque el trigger fallo", "si el INSERT del job falla, el contacto se crea igual (el trigger atrapa toda excepcion)", forzado);
   }
 } catch (e) {
   fail("el script fallo", e.message);

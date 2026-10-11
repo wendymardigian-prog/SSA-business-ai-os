@@ -30,6 +30,8 @@ const PAGES: Record<string, { file: string; guardMarker: string }> = {
   // no un cargo (F89): un rol personalizado con `settings.manage` entra, un
   // admin al que se lo sacaron no.
   productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
+  // Reglas de asignacion (Ventas, F13): tambien por permiso fino, como Productos.
+  asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
   integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
 };
 
@@ -57,6 +59,7 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
     "custom-fields": admin,
     recursos: true,
     productos: can(permissions, "settings.manage"),
+    asignacion: can(permissions, "settings.manage"),
     integrations: admin,
   };
 }
@@ -68,6 +71,7 @@ const ALL_VISIBLE = {
   "custom-fields": true,
   recursos: true,
   productos: true,
+  asignacion: true,
   integrations: true,
 };
 
@@ -88,6 +92,7 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       "custom-fields": false,
       recursos: true,
       productos: false,
+      asignacion: false,
       integrations: false,
     });
   });
@@ -111,11 +116,12 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       "custom-fields": false,
       recursos: true,
       productos: false,
+      asignacion: false,
       integrations: false,
     });
   });
 
-  it("Member con rol personalizado y settings.manage ve Recursos y Contenido, nada mas", () => {
+  it("Member con rol personalizado y settings.manage ve Recursos, Productos y Asignación, nada mas", () => {
     // Contenido es la excepcion: mira el permiso, no el cargo (F89).
     const customPermissions: RolePermissions = {
       keys: ["settings.manage"],
@@ -128,6 +134,8 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
       "custom-fields": false,
       recursos: true,
       productos: true,
+      // Reglas de asignacion (Ventas): tambien por permiso, como Productos.
+      asignacion: true,
       integrations: false,
     });
   });

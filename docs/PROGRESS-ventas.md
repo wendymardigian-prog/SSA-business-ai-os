@@ -6,14 +6,14 @@ Decisiones y diferencias con el código real: `docs/PENDIENTE-ventas.md`.
 ## Bloques
 
 - [x] **B1 · Catálogo**: F1 · F2 · F3 · F4 · F5 · F6 · F7 · F8
-- [ ] **B2 · Atribución y asignación**: F9 · F10 · F11 · F12 · F13 · F14 · F15 · F16
+- [x] **B2 · Atribución y asignación**: F9 · F10 · F11 · F12 · F13 · F14 · F15 · F16
 - [ ] **B3 · Ventas**: F17 · F18 · F19 · F20 · F21 · F22 · F23 · F24 · F25 · F26 · F26b
 - [ ] **B4 · Pagos, mora, historial y triggers**: F27 · F28 · F29 · F30 · F31 · F32 · F33 · F34 · F35 · F36 · F37 · F38
 
 ### Funcionalidades (marcar al cerrar)
 
 - [x] F1 · [x] F2 · [x] F3 · [x] F4 · [x] F5 · [x] F6 · [x] F7 · [x] F8
-- [ ] F9 · [ ] F10 · [ ] F11 · [ ] F12 · [ ] F13 · [ ] F14 · [ ] F15 · [ ] F16
+- [x] F9 · [x] F10 · [x] F11 · [x] F12 · [x] F13 · [x] F14 · [x] F15 · [x] F16
 - [ ] F17 · [ ] F18 · [ ] F19 · [ ] F20 · [ ] F21 · [ ] F22 · [ ] F23 · [ ] F24 · [ ] F25 · [ ] F26 · [ ] F26b
 - [ ] F27 · [ ] F28 · [ ] F29 · [ ] F30 · [ ] F31 · [ ] F32 · [ ] F33 · [ ] F34 · [ ] F35 · [ ] F36 · [ ] F37 · [ ] F38
 
@@ -38,7 +38,7 @@ Base: última migración aplicada `00158_forms_once_key_fix`. Datos: `content_of
 |---|---|---|
 | 00159 | Catálogo (`products`, `product_variants`, `product_versions`) | **aplicada y registrada** (dos veces: idempotente; `verify-sales --block 1` y `verify-rls` en verde) |
 | 00160 | Absorbe `content_offers` (riesgo alto) | **aplicada y registrada** (control: 0 divergentes, 3 productos / 3 variantes / 3 versiones activas 3000·6000·12000, FK a `products`; dos veces: no duplica; `verify-content`, `verify-rls`, `verify-crm`, `verify-sales --block 1` en verde). Respaldo previo en `docs/ventas/respaldo-pre-00160.json` |
-| 00161 | Asignación (`assignment_rules`, columnas, trigger) | pendiente |
+| 00161 | Asignación (`assignment_rules`, columnas, trigger) | **aplicada y registrada** (dos veces: idempotente; 3 reglas manuales por workspace; `verify-sales --block 2`, `verify-crm`, `verify-csv-import`, `verify-roles`, `verify-rls` en verde; `verify-attribution` con su única falla de antes) |
 | 00162 | `sales`, `payments` y funciones | pendiente |
 | 00163 | FK de `sale_id` en formularios y firmas | pendiente |
 | 00164 | `submit_form_response` valida el `sale_id` (riesgo alto) | pendiente |
@@ -58,3 +58,12 @@ Próxima libre al terminar: 00169.
 - **Servidor**: `lib/actions/products.ts` (productos, variantes, versiones, publicar); las acciones de producto de Contenido delegan ahí.
 - **Pantallas**: Ajustes > Productos (lista) y `/[id]` (variantes, pestaña Precio, historial), General > Ventas (métodos habilitados), ítem "Ventas" del menú con una página provisoria.
 - Verificación: vitest 7791 verdes, build y lint (0 errores), `verify-sales --block 1`, `verify-rls`, `verify-content`, `verify-crm`.
+
+## Bloque B2 · Atribución y asignación (hecho)
+
+- **Base**: 00161 (`assignment_rules` con RLS, columnas de `contacts` y `workspaces`, precarga por workspace, trigger `contacts_enqueue_sales_eval` que solo encola y atrapa toda excepción).
+- **Atribución de la venta (F10)**: `lib/sales/attribution.ts` (copia congelada del último toque, otro toque, manual, sin atribución, extras de `raw`).
+- **Núcleo portado**: `reparto-condiciones.ts` → `lib/sales/conditions-schema.ts`; `run-assignment-rules` (`evalSingleCondition`, `combine`, `evaluateRules`) → `lib/sales/assignment/{conditions,resolve}.ts`; `apply-contact-setter-assignment` → `round-robin.ts`. Con los bugs arreglados (operador desconocido, puntero del turno).
+- **Job `sales_contact_eval`** (`lib/jobs/handlers/sales-contact-eval.ts`) y `assignContact` que ahora escribe `assignment_locked_at`.
+- **Pantallas**: Ajustes > Asignación (3 tarjetas, constructor de condiciones reutilizable, probador y simulación en seco), el componente de atribución y la línea de último toque y asignación en la ficha del contacto.
+- Verificación: vitest 7882 verdes, build y lint (0 errores), `verify-sales --block 2`.

@@ -39,6 +39,8 @@ export const SETTINGS_TABS: SettingsTab[] = [
     href: "/dashboard/settings/productos",
     also: ["/dashboard/settings/contenido"],
   },
+  // Reglas de asignacion (Ventas, F13): como se asignan solos setter, vendedor y referido.
+  { name: "Asignación", href: "/dashboard/settings/asignacion" },
   { name: "Integraciones", href: "/dashboard/settings/integrations" },
   // "Tareas" se mudo a Agentes IA (Bloque Agentes IA): /dashboard/settings/background
   // ahora solo redirige, ya no es una pestana de Ajustes.

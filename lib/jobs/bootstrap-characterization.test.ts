@@ -42,6 +42,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "fathom_sync",
       "meta_ads_sync",
       "metrics_sync",
+      // Ventas (B2): la asignacion automatica de un contacto.
+      "sales_contact_eval",
       "transcribe_audio",
     ]);
   });

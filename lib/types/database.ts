@@ -903,6 +903,10 @@ export interface Database {
           timezone: string;
           /** Metodos de pago que ofrece el selector de Ventas (00159). */
           enabled_payment_methods: string[];
+          /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
+          max_discount_percent: number | null;
+          overdue_grace_days: number;
+          sales_auto_create_flows: boolean;
           ai_background_settings: Json;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
@@ -937,6 +941,9 @@ export interface Database {
           scheduling_public_base_url?: string | null;
           timezone?: string;
           enabled_payment_methods?: string[];
+          max_discount_percent?: number | null;
+          overdue_grace_days?: number;
+          sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -968,6 +975,9 @@ export interface Database {
           scheduling_public_base_url?: string | null;
           timezone?: string;
           enabled_payment_methods?: string[];
+          max_discount_percent?: number | null;
+          overdue_grace_days?: number;
+          sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -1191,6 +1201,13 @@ export interface Database {
           avatar_url: string | null;
           /** De donde sale avatar_url (migracion 00104, F16). Default 'external'. */
           avatar_source: AvatarSource;
+          /** Ventas (00161): quien refirio a este contacto. */
+          referred_by_user_id: string | null;
+          referred_by_contact_id: string | null;
+          /** Se escribe al asignar a mano setter o vendedor: la asignacion automatica no lo toca mas. */
+          assignment_locked_at: string | null;
+          /** Salud de pago (F31): la recalcula el servidor. */
+          payment_health: Json;
           /** Cuando se actualizo avatar_url por ultima vez (migracion 00104, F16). */
           avatar_updated_at: string | null;
           is_subscribed: boolean;
@@ -1239,6 +1256,10 @@ export interface Database {
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
+          referred_by_user_id?: string | null;
+          referred_by_contact_id?: string | null;
+          assignment_locked_at?: string | null;
+          payment_health?: Json;
           avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
@@ -1274,6 +1295,10 @@ export interface Database {
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
+          referred_by_user_id?: string | null;
+          referred_by_contact_id?: string | null;
+          assignment_locked_at?: string | null;
+          payment_health?: Json;
           avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
@@ -3710,6 +3735,42 @@ export interface Database {
           price_usd?: number | null;
           status?: "active" | "inactive" | "discontinued";
           archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Reglas de asignacion automatica (Ventas, 00161): una fila por workspace y kind. */
+      assignment_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          kind: "setter" | "vendedor" | "referral";
+          entity_type: "contact";
+          mode: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids: string[];
+          last_assigned_member_id: string | null;
+          condition_rules: Json;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          kind: "setter" | "vendedor" | "referral";
+          entity_type?: "contact";
+          mode?: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          condition_rules?: Json;
+          updated_by?: string | null;
+        };
+        Update: {
+          mode?: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          condition_rules?: Json;
+          updated_by?: string | null;
         };
         Relationships: [];
       };

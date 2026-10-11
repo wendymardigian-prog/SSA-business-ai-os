@@ -281,6 +281,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Producto",
     tooltip: "Las variantes del producto y, en cada una, su precio vigente y el historial de precios.",
   },
+  "/dashboard/settings/asignacion": {
+    title: "Reglas de asignación",
+    tooltip: "Cómo se asignan solos el setter, el vendedor y el referido de un contacto, con probador y simulación en seco. Lo asignado a mano nunca se pisa.",
+  },
   "/dashboard/ventas": {
     title: "Ventas",
     tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",

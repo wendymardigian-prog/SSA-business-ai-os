@@ -32,6 +32,8 @@ import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection } from "@/components/contacts/history-section";
 import { buildContactHistory } from "@/lib/contacts/history";
+import { automaticRulesFromAudit } from "@/lib/sales/contact-summary";
+import { ContactSummary } from "@/components/sales/contact-summary";
 import {
   ContactSequencesSection,
   type ContactEnrollment,
@@ -116,7 +118,7 @@ export default async function ContactDetailPage({
       supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
       supabase
         .from("audit_log")
-        .select("id, action, changes, metadata, performed_at, performed_by")
+        .select("id, action, changes, metadata, performed_at, performed_by, actor_type, actor_label")
         .eq("workspace_id", workspace.id)
         .eq("entity_type", "contact")
         .eq("entity_id", contactId)
@@ -464,6 +466,15 @@ export default async function ContactDetailPage({
                 vendedorId={contact.vendedor_id}
                 currentUserId={user.id}
                 isAdmin={isAdmin}
+              />
+              <ContactSummary
+                attribution={contact.attribution}
+                now={new Date()}
+                timeZone={viewerTimezone}
+                setterName={contact.setter_id ? (labels.get(contact.setter_id) ?? null) : null}
+                vendedorName={contact.vendedor_id ? (labels.get(contact.vendedor_id) ?? null) : null}
+                locked={!!contact.assignment_locked_at}
+                automaticRule={automaticRulesFromAudit(auditRes.data ?? [])}
               />
             </Section>
 

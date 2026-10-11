@@ -93,7 +93,7 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-auto">
+    <div className="flex h-full flex-col">
       <PageHeader
         route="/dashboard/settings/productos"
         backHref={
@@ -108,7 +108,8 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
       />
       <SettingsTabs />
 
-      <section aria-labelledby="productos-title" className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 md:px-8">
+      <div className="min-h-0 flex-1 overflow-auto">
+      <section aria-labelledby="productos-title" className="mx-auto w-full max-w-3xl px-4 py-6 md:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 id="productos-title" className="text-base font-semibold">
@@ -229,6 +230,7 @@ export function ProductosView({ products }: { products: ProductRow[] }) {
           </button>
         )}
       </section>
+      </div>
 
       {creating && <NewProductDialog onClose={() => setCreating(false)} />}
     </div>

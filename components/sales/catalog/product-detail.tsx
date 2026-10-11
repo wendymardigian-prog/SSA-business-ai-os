@@ -83,7 +83,7 @@ export function ProductDetail({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-auto">
+    <div className="flex h-full flex-col">
       <PageHeader
         title={product.name}
         tooltip="Las variantes del producto y, en cada una, su precio vigente y el historial de precios."
@@ -99,7 +99,8 @@ export function ProductDetail({
       />
       <SettingsTabs />
 
-      <div className="mx-auto w-full max-w-4xl flex-1 space-y-6 px-4 py-6 md:px-8">
+      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-8">
         {/* Encabezado del producto */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:flex-1">
@@ -283,6 +284,7 @@ export function ProductDetail({
             </Tabs>
           </section>
         )}
+      </div>
       </div>
 
       {variantForm && <VariantDialog productId={product.id} initial={variantForm} onClose={() => setVariantForm(null)} />}
