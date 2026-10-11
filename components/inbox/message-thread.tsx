@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useReducer } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Send, Bot, User, MessageSquare, CheckCircle, Clock, RotateCcw, Loader2, AlertTriangle, ChevronLeft, UserRound, UserRoundSearch, Mic, Paperclip, X, FileText, Library } from "lucide-react";
 import { needsHumanBadge } from "@/lib/inbox/needs-human";
 import { NeedsHumanBanner } from "./needs-human-banner";
@@ -227,8 +227,12 @@ export function MessageThread({
   onOpenContact?: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [input, setInput] = useState("");
+  // `?texto=` deja el mensaje escrito en el composer, sin mandarlo (Ventas: "Enviar contrato" por
+  // WhatsApp o Instagram). Se lee una sola vez al abrir y se saca de la URL.
+  const [input, setInput] = useState(() => (searchParams.get("texto") ?? "").slice(0, 2000));
   const [sending, setSending] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   // El widget de recursos guardados (banca v2): se abre con "/", con el boton
@@ -244,6 +248,12 @@ export function MessageThread({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!searchParams.get("texto")) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("texto");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [searchParams, pathname, router]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** El envio de media que quedo esperando la confirmacion de "no contactar". */
   const pendingMediaRef = useRef<{ file: File; filename: string; durationSeconds: number | null; isRecording: boolean } | null>(null);

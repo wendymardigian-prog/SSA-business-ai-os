@@ -21,6 +21,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { runCleanup } from "./test-cleanup.mjs";
 
@@ -33,6 +34,7 @@ const URL = env.NEXT_PUBLIC_SUPABASE_URL;
 const ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
+const require = createRequire(import.meta.url);
 const blockArg = process.argv.indexOf("--block");
 const MAX_BLOCK = blockArg >= 0 ? Number(process.argv[blockArg + 1]) || 4 : 4;
 
@@ -331,6 +333,308 @@ try {
         RAISE EXCEPTION 'RESULTADO: %', CASE WHEN existe THEN 'contacto creado aunque el trigger fallo' ELSE 'el contacto NO se creo' END;
       END $$;`);
     check(forzado === "contacto creado aunque el trigger fallo", "si el INSERT del job falla, el contacto se crea igual (el trigger atrapa toda excepcion)", forzado);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bloque 3 · Ventas y pagos (00162)
+  // ─────────────────────────────────────────────────────────────────────────
+  if (MAX_BLOCK >= 3) {
+    console.log("\n— 00162: la paridad del estado derivado (los mismos casos que Vitest) —");
+    const cases = require("../lib/sales/sale-status.cases.json");
+    for (const c of cases) {
+      const { data, error } = await svc.rpc("derive_sale_status", { p_current_status: c.current_status ?? null, p_financing_type: c.financing_type, p_final_amount: c.final_amount, p_payments: c.payments });
+      check(!error && data === c.expected, `derive_sale_status: ${c.name}`, error?.message ?? `dio ${data}, esperaba ${c.expected}`);
+    }
+
+    // Catalogo de prueba: un producto con una version activa.
+    const { data: prod3 } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Producto de ventas", product_type: "programa" }).select("id").single();
+    const { data: variant3 } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod3.id, name: "Estandar" }).select("id").single();
+    const { data: ver3 } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant3.id, price: 1297 }).select("id").single();
+    await svc.rpc("publish_product_version", { p_version_id: ver3.id, p_actor_id: owner.id });
+
+    const setterMember = member; // el Member de sistema es el setter de la venta
+    const contactName = (t) => `zz-test ${t}`;
+    const newContact = async (t, extra = {}) => (await svc.from("contacts").insert({ workspace_id: ws.id, display_name: contactName(t), ...extra }).select("id").single()).data;
+    const contactA = await newContact("lead A");
+    const contactB = await newContact("lead B");
+
+    const snapshot = (price) => ({ product_id: prod3.id, product_name: "zz-test Producto de ventas", product_type: "programa", variant_id: variant3.id, variant_name: "Estandar", version_id: ver3.id, version_number: 1, price, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null });
+    const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const optionSnapshot = { method_key: "wise", method_name: "Wise", provider_fee_percent: 0, provider_fee_fixed: 0 };
+    const paidReservation = { type: "reservation", amount: 297, status: "paid", due_date: ayer, paid_at: `${ayer}T15:00:00Z`, paid_on: ayer, payment_method: "wise", payment_option_snapshot: optionSnapshot, provider_fee_amount: 0 };
+    const installments = [1, 2, 3, 4].map((n) => ({ type: "installment", amount: 250, status: "scheduled", due_date: `2031-0${n}-15` }));
+    const payload = (over = {}) => ({
+      workspace_id: ws.id, contact_id: contactA.id, product_version_id: ver3.id, product_snapshot: snapshot(1297),
+      base_amount: 1297, discount_amount: 0, financing_type: "reservation_installments", sale_date: ayer,
+      setter_id: setterMember.id, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [paidReservation, ...installments], ...over,
+    });
+    const createSale = (over, contact) => svc.rpc("create_sale", { p_payload: payload({ ...(contact ? { contact_id: contact } : {}), ...over }), p_actor_id: owner.id });
+    const eventsOf = async (contactId, type) => (await svc.from("automation_events").select("event_type, payload").eq("contact_id", contactId).eq("event_type", type)).data ?? [];
+
+    console.log("\n— 00162: las restricciones de la base —");
+    const base = { workspace_id: ws.id, contact_id: contactB.id, product_version_id: ver3.id, product_snapshot: snapshot(1297), base_amount: 100, final_amount: 100, status: "pending_payment", financing_type: "full", sale_date: ayer };
+    check(!!(await svc.from("sales").insert({ ...base, currency: "EUR" })).error, "una venta en EUR se rechaza (solo USD)");
+    check(!!(await svc.from("sales").insert({ ...base, attribution_type: "none", attribution: { source: "web" } })).error, "attribution_type 'none' con una atribucion cargada se rechaza");
+    check(!!(await svc.from("sales").insert({ ...base, attribution_type: "manual" })).error, "y un tipo 'manual' sin atribucion tambien");
+    check(!!(await svc.from("sales").insert({ ...base, final_amount: 90 })).error, "final_amount tiene que ser base - descuento");
+    check(!!(await svc.from("sales").insert({ ...base, status: "pagada" })).error, "un estado que no es de los 9 se rechaza");
+    check(!!(await svc.from("sales").insert({ ...base, financing_type: "subscription" })).error, "una suscripcion sin intervalo se rechaza");
+
+    console.log("\n— 00162: crear una venta es una sola transaccion —");
+    // Un toque de Instagram pago, con extras en raw.
+    const { data: touch1 } = await svc.from("contact_touches").insert({
+      workspace_id: ws.id, contact_id: contactA.id, occurred_at: "2026-10-07T15:00:00Z", source: "instagram", medium: "paid_social", campaign: "octubre",
+      content_label: "Reel de la mentoria", ad_id: "123", fbclid: "fb-1", origin: "dm", dedupe_key: `zz-${randomUUID()}`, raw: { msclkid: "m1", fbc: "fb.1.x", foo: "ignorada" },
+    }).select("id").single();
+    await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: contactA.id, occurred_at: "2026-10-01T15:00:00Z", source: "google", origin: "form", dedupe_key: `zz-${randomUUID()}` });
+
+    const made = await createSale();
+    const saleId = made.data?.sale_id;
+    check(!made.error && !!saleId, "create_sale crea la venta", made.error?.message);
+    check(made.data?.status === "reserved", "con la reserva cobrada y saldo, el estado calculado es 'reserved'");
+    const { data: sale } = await svc.from("sales").select("*").eq("id", saleId).single();
+    check(sale?.attribution_type === "last_touch" && sale?.attribution_touch_id === touch1.id, "last_touch toma el toque mas reciente y guarda su id");
+    check(sale?.attribution?.source === "instagram" && sale?.attribution?.content === "Reel de la mentoria" && sale?.attribution?.ad_id === "123" && sale?.attribution?.fbclid === "fb-1", "la copia congelada trae source, content_label como content, ad_id y fbclid");
+    check(JSON.stringify(sale?.attribution?.extras) === JSON.stringify({ fbc: "fb.1.x", msclkid: "m1" }) || JSON.stringify(Object.entries(sale?.attribution?.extras ?? {}).sort()) === JSON.stringify([["fbc", "fb.1.x"], ["msclkid", "m1"]]), "los extras de raw (sin la clave desconocida) quedan en la copia: paridad con attributionFromTouch");
+    const { data: pagos } = await svc.from("payments").select("id, type, status, amount, original_due_date, delay_days").eq("sale_id", saleId);
+    check((pagos ?? []).length === 5, "se crean los 5 pagos del plan");
+    check((await svc.from("audit_log").select("action").eq("entity_id", saleId).eq("action", "sale.created")).data?.length === 1, "y la auditoria de sale.created con actor persona");
+
+    const evCreated = await eventsOf(contactA.id, "sale_created");
+    const evStatus = await eventsOf(contactA.id, "sale_status_changed");
+    const evPay = await eventsOf(contactA.id, "payment_created");
+    const evPaid = (await eventsOf(contactA.id, "payment_status_changed")).filter((e) => e.payload.sale_id === saleId);
+    check(evCreated.length === 1 && evStatus.length === 1 && evPay.length === 5, "los eventos: un sale_created, un sale_status_changed y un payment_created por pago");
+    check(evStatus[0].payload.to_status === "reserved" && !("from_status" in evStatus[0].payload), "el sale_status_changed nace 'desde nada' (sin from_status) y NO hay uno intermedio");
+    check(evCreated[0].payload.change_id === evStatus[0].payload.change_id, "sale_created y su sale_status_changed llevan el MISMO change_id");
+    check(evPaid.length === 1 && evPaid[0].payload.to_status === "paid" && !("from_status" in evPaid[0].payload), "el pago que nace cobrado emite payment_status_changed desde nada");
+    check(evPay.every((e) => !("booking_id" in e.payload)) && !("booking_id" in evCreated[0].payload), "ningun payload lleva booking_id (el cron lo trataria como una reserva)");
+    check(evCreated[0].payload.utm_source === "instagram" && evCreated[0].payload.utm_campaign === "octubre", "el payload de la venta trae los UTM de la copia");
+
+    console.log("\n— 00162: la atribucion queda congelada —");
+    await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: contactA.id, occurred_at: "2026-10-09T15:00:00Z", source: "tiktok", origin: "dm", dedupe_key: `zz-${randomUUID()}` });
+    const { data: despues } = await svc.from("sales").select("attribution, attribution_touch_id").eq("id", saleId).single();
+    check(despues?.attribution?.source === "instagram" && despues?.attribution_touch_id === touch1.id, "un toque nuevo del contacto NO cambia la atribucion de la venta ya creada");
+    const otraVenta = await createSale({ payments: [{ ...paidReservation, amount: 1297, type: "full" }], financing_type: "full" });
+    const { data: sale2 } = await svc.from("sales").select("attribution").eq("id", otraVenta.data?.sale_id).single();
+    check(sale2?.attribution?.source === "tiktok", "pero una venta NUEVA toma el toque mas reciente al guardar (ahora el de TikTok)");
+
+    const elegida = await createSale({ attribution: { mode: "touch", touch_id: touch1.id }, payments: [{ ...paidReservation, amount: 1297, type: "full" }], financing_type: "full" });
+    const { data: sale3 } = await svc.from("sales").select("attribution_type, attribution_touch_id").eq("id", elegida.data?.sale_id).single();
+    check(sale3?.attribution_type === "manual" && sale3?.attribution_touch_id === touch1.id, "elegir otro toque del historial → tipo manual con su touch_id");
+    const { data: touchB } = await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: contactB.id, occurred_at: "2026-10-02T00:00:00Z", source: "web", origin: "form", dedupe_key: `zz-${randomUUID()}` }).select("id").single();
+    const ajeno = await createSale({ attribution: { mode: "touch", touch_id: touchB.id } });
+    check(!!ajeno.error && /invalid_touch/.test(ajeno.error.message), "un toque de OTRO contacto se rechaza (invalid_touch)");
+    const sinToques = await createSale({ payments: [{ ...paidReservation, amount: 1297, type: "full" }], financing_type: "full" }, (await newContact("sin toques")).id);
+    const { data: sale4 } = await svc.from("sales").select("attribution, attribution_type").eq("id", sinToques.data?.sale_id).single();
+    check(sale4?.attribution_type === "none" && sale4?.attribution === null, "un contacto sin toques: venta con attribution 'none' y null (no bloquea)");
+    const manual = await createSale({ attribution: { mode: "manual", manual: { source: "instagram", medium: "paid_social", campaign: "a mano" } }, payments: [{ ...paidReservation, amount: 1297, type: "full" }], financing_type: "full" });
+    const { data: sale5 } = await svc.from("sales").select("attribution, attribution_type").eq("id", manual.data?.sale_id).single();
+    check(sale5?.attribution_type === "manual" && sale5?.attribution?.campaign === "a mano", "cargada a mano: tipo manual con lo que se valido");
+
+    console.log("\n— 00162: lo que create_sale rechaza (y no deja nada) —");
+    const cuentas = async () => ({ sales: (await svc.from("sales").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count, payments: (await svc.from("payments").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count });
+    const antes = await cuentas();
+    const descuadrada = await createSale({ payments: [paidReservation, ...installments.slice(0, 3)] });
+    check(!!descuadrada.error && /plan_unbalanced:25000/.test(descuadrada.error.message), "un plan que no cuadra se rechaza con la diferencia exacta (en centimos)", descuadrada.error?.message);
+    const fallo2 = await createSale({ payments: [paidReservation, { ...installments[0], payment_method: "paypal" }, ...installments.slice(1)] });
+    check(!!fallo2.error, "si falla la insercion de UN pago, la venta entera se deshace");
+    const cambio = await createSale({ product_snapshot: snapshot(1000) });
+    check(!!cambio.error && /version_changed/.test(cambio.error.message), "si el precio de la version ya no es el que se mostro: version_changed");
+    const fecha = await createSale({ sale_date: "2999-01-01" });
+    check(!!fecha.error && /invalid_sale_date/.test(fecha.error.message), "una fecha futura se rechaza");
+    const contactoAjeno = await createSale({ contact_id: randomUUID() });
+    check(!!contactoAjeno.error && /invalid_contact/.test(contactoAjeno.error.message), "un contacto que no es de este workspace se rechaza");
+    const despues2 = await cuentas();
+    check(despues2.sales === antes.sales && despues2.payments === antes.payments, "tras todos esos rechazos no quedo NADA creado (ni venta ni pagos)");
+
+    console.log("\n— 00162: quien ve cada venta y que NO se puede escribir —");
+    const ids = async (client, table) => new Set(((await client.from(table).select("id")).data ?? []).map((r) => r.id));
+    check((await ids(setterMember.client, "sales")).has(saleId), "el setter (Member de sistema) ve su venta");
+    check(!(await ids(outsider.client, "sales")).has(saleId), "otro workspace no la ve");
+    const solo = await svc.from("sales").update({ setter_id: null }).eq("id", saleId);
+    check(!solo.error, "(preparacion) sin setter");
+    check(!(await ids(setterMember.client, "sales")).has(saleId), "un Member que no es ni setter ni vendedor NO ve la venta");
+    check((await ids(setterMember.client, "payments")).size === 0 || ![...(await ids(setterMember.client, "payments"))].some((id) => (pagos ?? []).some((p) => p.id === id)), "ni sus pagos");
+    check((await ids(owner.client, "sales")).has(saleId) && (await ids(owner.client, "payments")).size >= 5, "el Owner ve todas las ventas y sus pagos");
+    await svc.from("sales").update({ vendedor_id: setterMember.id }).eq("id", saleId);
+    check((await ids(setterMember.client, "sales")).has(saleId) && (await ids(setterMember.client, "payments")).has(pagos[0].id), "como vendedor la vuelve a ver, con sus pagos");
+
+    // Un rol personalizado con sales.view y alcance all ve todo; con alcance own, no.
+    const supervisor = await makeUser("sales-supervisor");
+    const { data: rolAll } = await svc.from("workspace_roles").insert({ workspace_id: ws.id, name: "zz-test Supervisor de ventas", permissions: { keys: ["sales.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "all" } } }).select("id").single();
+    await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: supervisor.id, role: "member", role_id: rolAll.id });
+    check((await ids(supervisor.client, "sales")).has(saleId), "un rol personalizado con sales.view y alcance all ve las ventas del equipo");
+    await svc.from("workspace_roles").update({ permissions: { keys: ["sales.view"], scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own" } } }).eq("id", rolAll.id);
+    check(!(await ids(supervisor.client, "sales")).has(saleId), "y con alcance own deja de verlas");
+
+    for (const [table, id] of [["sales", saleId], ["payments", pagos[0].id]]) {
+      const upd = await owner.client.from(table).update({ notes: "hackeada" }).eq("id", id).select("id");
+      check((upd.data ?? []).length === 0, `ni el Owner puede UPDATE sobre ${table} con su sesion (solo el servidor)`);
+      await owner.client.from(table).delete().eq("id", id);
+      check(!!(await svc.from(table).select("id").eq("id", id).maybeSingle()).data, `ni DELETE sobre ${table}`);
+      check(!!(await member.client.from(table).insert({ workspace_id: ws.id })).error, `ni INSERT de un Member sobre ${table}`);
+    }
+    check(!!(await owner.client.rpc("create_sale", { p_payload: payload(), p_actor_id: owner.id })).error, "un usuario autenticado NO puede llamar create_sale (solo service_role)");
+    check(!!(await owner.client.rpc("cancel_sale", { p_sale_id: saleId, p_reason: "x", p_actor_id: owner.id })).error, "ni cancel_sale");
+    check(!!(await svc.from("contacts").delete().eq("id", contactA.id)).error, "un contacto con ventas no se puede borrar de verdad (RESTRICT)");
+
+    console.log("\n— 00162: los pagos y su estado —");
+    const pagoProgramado = (pagos ?? []).find((p) => p.status === "scheduled");
+    const { data: pagoCompleto } = await svc.from("payments").select("id, original_due_date, due_date").eq("id", pagoProgramado.id).single();
+    check(!!(await svc.from("payments").insert({ workspace_id: ws.id, sale_id: saleId, type: "refund", amount: 10, status: "paid", paid_at: new Date().toISOString(), paid_on: ayer })).error, "un reembolso con monto positivo se rechaza");
+    check(!!(await svc.from("payments").insert({ workspace_id: ws.id, sale_id: saleId, type: "installment", amount: -5, status: "scheduled", due_date: "2031-06-01" })).error, "y un pago normal con monto negativo tambien");
+    check(!!(await svc.from("payments").update({ status: "paid" }).eq("id", pagoProgramado.id)).error, "un pago 'paid' sin paid_at ni paid_on se rechaza");
+    check(!!(await svc.from("payments").update({ provider_fee_amount: 3 }).eq("id", pagoProgramado.id)).error, "una comision en un pago que no esta cobrado se rechaza");
+    check(!!(await svc.from("payments").update({ status: "refunded" }).eq("id", pagoProgramado.id)).error, "el estado 'refunded' del pago esta apagado en la Fase 1 (un reembolso es otra fila)");
+    check(!!(await svc.from("payments").insert({ workspace_id: ws.id, sale_id: saleId, type: "installment", amount: 5, status: "scheduled", due_date: "2031-06-01", payment_method: "paypal" })).error, "el metodo de pago es de las 5 claves");
+
+    await svc.from("payments").update({ due_date: "2031-09-09" }).eq("id", pagoProgramado.id);
+    const { data: movido } = await svc.from("payments").select("due_date, original_due_date").eq("id", pagoProgramado.id).single();
+    check(movido?.due_date === "2031-09-09" && movido?.original_due_date === pagoCompleto.original_due_date, "reprogramar mueve due_date y original_due_date NO cambia");
+    await svc.from("payments").update({ original_due_date: "2000-01-01" }).eq("id", pagoProgramado.id);
+    check((await svc.from("payments").select("original_due_date").eq("id", pagoProgramado.id).single()).data?.original_due_date === pagoCompleto.original_due_date, "ni escribiendolo a mano");
+
+    // delay_days = paid_on - original_due_date
+    const probar = async (originalDue, paidOn) => {
+      const { data: venta } = await createSale({ payments: [{ ...paidReservation, type: "full", amount: 1297, due_date: originalDue, paid_on: paidOn }], financing_type: "full" }).then((r) => ({ data: r.data }));
+      return (await svc.from("payments").select("delay_days").eq("sale_id", venta.sale_id).single()).data?.delay_days;
+    };
+    check((await probar(ayer, ayer)) === 0, "delay_days = 0 si se cobro el dia del vencimiento");
+    const diaDespues = new Date(Date.parse(`${ayer}T00:00:00Z`) + 2 * 86_400_000).toISOString().slice(0, 10);
+    check((await probar(ayer, diaDespues)) === 2, "delay_days = +2 si se cobro dos dias despues");
+    check((await probar(diaDespues, ayer)) === -2, "y -2 si se cobro dos dias antes");
+
+    // Cobrar el pago programado: un payment_status_changed y la venta puede cambiar de estado (un evento).
+    const eventosAntes = (await eventsOf(contactA.id, "sale_status_changed")).length;
+    await svc.from("payments").update({ status: "paid", paid_at: new Date().toISOString(), paid_on: ayer, payment_method: "wise", provider_fee_amount: 0 }).eq("id", pagoProgramado.id);
+    const pst = (await eventsOf(contactA.id, "payment_status_changed")).filter((e) => e.payload.payment_id === pagoProgramado.id);
+    check(pst.length === 1 && pst[0].payload.from_status === "scheduled" && pst[0].payload.to_status === "paid", "cobrar un pago emite UN payment_status_changed con from y to");
+    check((await eventsOf(contactA.id, "sale_status_changed")).length === eventosAntes, "cobrar una cuota de una venta ya 'reserved' no cambia el estado: NO hay sale_status_changed");
+    await svc.from("payments").update({ notes: "solo una nota" }).eq("id", pagoProgramado.id);
+    check((await eventsOf(contactA.id, "payment_status_changed")).filter((e) => e.payload.payment_id === pagoProgramado.id).length === 1, "un cambio que no toca el estado no emite nada");
+    await svc.from("payments").update({ status: "scheduled", paid_at: null, paid_on: null, provider_fee_amount: null }).eq("id", pagoProgramado.id);
+    const revertido = (await eventsOf(contactA.id, "payment_status_changed")).filter((e) => e.payload.payment_id === pagoProgramado.id).find((e) => e.payload.from_status === "paid");
+    check(revertido?.payload.to_status === "scheduled", "revertir un cobro emite payment_status_changed paid → scheduled");
+
+    // Moroso → la venta pasa a 'overdue' y emite UN sale_status_changed con from y to.
+    await svc.from("payments").update({ status: "overdue" }).eq("id", pagoProgramado.id);
+    const sOverdue = (await eventsOf(contactA.id, "sale_status_changed")).filter((e) => e.payload.sale_id === saleId && e.payload.to_status === "overdue");
+    check(sOverdue.length === 1 && sOverdue[0].payload.from_status === "reserved", "un pago moroso lleva la venta a overdue con UN evento (reserved → overdue)");
+    check((await svc.from("sales").select("status").eq("id", saleId).single()).data?.status === "overdue", "y el estado de la venta quedo overdue");
+
+    console.log("\n— 00162: cancelar es definitivo —");
+    const cancel = await svc.rpc("cancel_sale", { p_sale_id: saleId, p_reason: "El cliente se arrepintio", p_actor_id: owner.id });
+    check(!cancel.error && cancel.data?.payments_cancelled === 4, "cancel_sale anula los 4 pagos programados y morosos", cancel.error?.message);
+    const { data: trasCancelar } = await svc.from("payments").select("status").eq("sale_id", saleId);
+    check((trasCancelar ?? []).filter((p) => p.status === "paid").length === 1 && (trasCancelar ?? []).filter((p) => p.status === "cancelled").length === 4, "el cobrado se conserva");
+    const sCancel = (await eventsOf(contactA.id, "sale_status_changed")).filter((e) => e.payload.sale_id === saleId && e.payload.to_status === "cancelled");
+    check(sCancel.length === 1 && sCancel[0].payload.reason === "El cliente se arrepintio", "y hay UN sale_status_changed hacia cancelled con el motivo");
+    check((await svc.from("sales").select("status").eq("id", saleId).single()).data?.status === "cancelled", "la venta queda cancelled (no la devuelve el recalculo de cada pago)");
+    check(!!(await svc.rpc("cancel_sale", { p_sale_id: saleId, p_reason: "otra vez", p_actor_id: owner.id })).error, "cancelar dos veces se rechaza");
+    check(!!(await svc.rpc("cancel_sale", { p_sale_id: otraVenta.data.sale_id, p_reason: "  ", p_actor_id: owner.id })).error, "cancelar sin motivo se rechaza");
+
+    console.log("\n— 00162: la purga de 30 dias no toca contactos con ventas —");
+    await newContact("sin ventas, a purgar");
+    const purga = sqlProbe(`
+      DO $$
+      DECLARE con_ventas boolean; sin_ventas boolean;
+      BEGIN
+        UPDATE public.contacts SET deleted_at = now() - interval '40 days' WHERE workspace_id = '${ws.id}';
+        PERFORM public.purge_soft_deleted(30);
+        SELECT EXISTS (SELECT 1 FROM public.contacts WHERE id = '${contactA.id}') INTO con_ventas;
+        SELECT EXISTS (SELECT 1 FROM public.contacts WHERE workspace_id = '${ws.id}' AND display_name = 'zz-test sin ventas, a purgar') INTO sin_ventas;
+        RAISE EXCEPTION 'RESULTADO: con_ventas=% sin_ventas=%', con_ventas, sin_ventas;
+      END $$;`);
+    check(purga === "con_ventas=t sin_ventas=f", "la purga NO borra al contacto con ventas (y sigue borrando al que no tiene) y no falla", purga);
+
+    // La agenda de origen: del mismo contacto y ya pasada.
+    console.log("\n— 00162: la agenda de origen —");
+    const { data: cat } = await svc.from("booking_categories").select("id").eq("workspace_id", ws.id).not("parent_id", "is", null).limit(1).single();
+    const { data: ev } = await svc.from("event_types").insert({ workspace_id: ws.id, owner_user_id: owner.id, category_id: cat.id, title: "zz-test-ventas", slug: "zz-test-ventas", duration_minutes: 30, status: "active", location_type: "manual", location_text: "Zoom" }).select("id").single();
+    const mkBooking = async (contact, startAt) => (await svc.from("bookings").insert({ workspace_id: ws.id, uid: `zz-ventas-${randomUUID().slice(0, 8)}`, event_type_id: ev.id, host_user_id: owner.id, contact_id: contact, title: "zz-test", start_at: startAt, end_at: new Date(Date.parse(startAt) + 1_800_000).toISOString(), booker_name: "zz", booker_email: "zz-ventas@example.test" }).select("id").single()).data;
+    const reunion = await mkBooking(contactB.id, "2026-09-01T15:00:00Z");
+    const reunionAjena = await mkBooking(contactA.id, "2026-09-02T15:00:00Z");
+    const futura = await mkBooking(contactB.id, "2031-09-03T15:00:00Z");
+    const conAgenda = await createSale({ booking_id: reunion.id, payments: [{ ...paidReservation, type: "full", amount: 1297 }], financing_type: "full" }, contactB.id);
+    check(!conAgenda.error, "una venta atada a la agenda pasada del mismo contacto se crea", conAgenda.error?.message);
+    const deOtro = await createSale({ booking_id: reunionAjena.id }, contactB.id);
+    check(!!deOtro.error && /invalid_booking/.test(deOtro.error.message), "una agenda de OTRO contacto se rechaza");
+    const futuraErr = await createSale({ booking_id: futura.id }, contactB.id);
+    check(!!futuraErr.error && /invalid_booking/.test(futuraErr.error.message), "una agenda futura se rechaza");
+    await svc.from("bookings").delete().eq("id", reunion.id);
+    check(!!(await svc.from("sales").select("id").eq("id", conAgenda.data.sale_id).maybeSingle()).data && (await svc.from("sales").select("booking_id").eq("id", conAgenda.data.sale_id).single()).data?.booking_id === null, "si se borra la agenda, la venta NO se borra (booking_id pasa a null)");
+
+    console.log("\n— 00162: el asistente abierto con una version que ya no es la vigente —");
+    const { data: ver3b } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant3.id, price: 1400 }).select("id").single();
+    await svc.rpc("publish_product_version", { p_version_id: ver3b.id, p_actor_id: owner.id });
+    const viejaVersion = await createSale();
+    check(!!viejaVersion.error && /version_changed:1400/.test(viejaVersion.error.message), "con la version reemplazada: version_changed con el precio nuevo", viejaVersion.error?.message);
+
+    console.log("\n— 00163: claves foráneas de sale_id —");
+    const fks = sql(`select conrelid::regclass::text as tabla, confdeltype as accion from pg_constraint where conname in ('form_submissions_sale_id_fkey','contract_signatures_sale_id_fkey') order by 1`);
+    check(fks.length === 2 && fks.find((f) => f.tabla === "form_submissions")?.accion === "n" && fks.find((f) => f.tabla === "contract_signatures")?.accion === "a", "form_submissions.sale_id es ON DELETE SET NULL y contract_signatures.sale_id no tiene accion (una venta firmada no se borra)");
+
+    console.log("\n— 00164: submit_form_response valida el sale_id del link firmado —");
+    const contractFields = [{ id: "f-email", key: "email", type: "email", label: "Email", required: true }];
+    const { data: cForm, error: cFormErr } = await svc.from("forms").insert({
+      workspace_id: ws.id, name: "zz-test contrato ventas", type: "contract", slug: `zz-test-cv-${Date.now()}`,
+      draft_definition: { fields: contractFields, contractText: "# Acuerdo\n\nTexto del contrato de prueba." },
+      contract_config: { title: "Acuerdo", signatureRequired: false, acceptLabel: "Acepto", ccEmails: [] }, notify_enabled: false,
+    }).select("id").single();
+    check(!cFormErr && !!cForm, "(preparacion) un contrato de prueba", cFormErr?.message);
+    await svc.rpc("publish_form_version", { p_form_id: cForm.id, p_actor: owner.id });
+    await svc.from("forms").update({ status: "published" }).eq("id", cForm.id);
+    const { data: cCur } = await svc.from("forms").select("current_version_id").eq("id", cForm.id).single();
+    const firmar = (hint) => svc.rpc("submit_form_response", {
+      p_form_id: cForm.id, p_version_id: cCur.current_version_id, p_idempotency_key: randomUUID(),
+      p_answers: { email: { type: "email", value: "ana-ventas@example.test" } }, p_attribution: {}, p_meta: {},
+      p_contact_hint: hint, p_extra: { signer_name: "Ana", signer_email: "ana-ventas@example.test", legal: {} },
+    });
+    const submissionOf = async (id) => (await svc.from("form_submissions").select("sale_id, contact_id, meta").eq("id", id).single()).data;
+    const signatureOf = async (id) => (await svc.from("contract_signatures").select("sale_id").eq("submission_id", id).single()).data;
+    const eventOf = async (contactId, type, submissionId) => (await eventsOf(contactId, type)).find((e) => e.payload.submission_id === submissionId);
+
+    const ventaPropia = otraVenta.data.sale_id;
+    const ventaDeB = conAgenda.data.sale_id;
+    const propia = await firmar({ signed_contact_id: contactA.id, signed_sale_id: ventaPropia });
+    check(!propia.error && propia.data?.ok === true, "firmar con el link de una venta propia funciona", propia.error?.message);
+    const sPropia = await submissionOf(propia.data.submission_id);
+    check(sPropia.sale_id === ventaPropia && sPropia.meta?.sale_id_discarded === undefined, "la respuesta guarda el sale_id validado, sin marca de descartado");
+    check((await signatureOf(propia.data.submission_id)).sale_id === ventaPropia, "y la firma (contract_signatures) lo copia");
+    check((await eventOf(contactA.id, "contract_signed", propia.data.submission_id))?.payload.sale_id === ventaPropia, "contract_signed trae el sale_id en su payload");
+
+    const ajena = await firmar({ signed_contact_id: contactA.id, signed_sale_id: ventaDeB });
+    check(!ajena.error && ajena.data?.ok === true, "una venta de OTRO contacto: la firma se guarda igual", ajena.error?.message);
+    const sAjena = await submissionOf(ajena.data.submission_id);
+    check(sAjena.sale_id === null && sAjena.meta?.sale_id_discarded === true && sAjena.meta?.sale_id_discard_reason === "other_contact", "...sin sale_id y con meta.sale_id_discarded = true (other_contact)");
+    check((await signatureOf(ajena.data.submission_id)).sale_id === null, "la firma queda sin venta");
+    check((await eventOf(contactA.id, "contract_signed", ajena.data.submission_id))?.payload.sale_id === undefined, "y el evento no trae sale_id");
+
+    const inexistente = await firmar({ signed_contact_id: contactA.id, signed_sale_id: randomUUID() });
+    const sInex = await submissionOf(inexistente.data.submission_id);
+    check(sInex.sale_id === null && sInex.meta?.sale_id_discard_reason === "not_found", "una venta que no existe se descarta (not_found)");
+
+    // Un formulario comun con el link de la venta: form_submitted trae el sale_id.
+    const { data: fCustom } = await svc.from("forms").insert({
+      workspace_id: ws.id, name: "zz-test formulario ventas", type: "custom", slug: `zz-test-fv-${Date.now()}`,
+      draft_definition: { fields: [{ id: "f-n", key: "nombre", type: "short_text", label: "Nombre", required: false }] },
+      contact_config: { mode: "create_or_link", update: "fill_empty", map: [] }, notify_enabled: false,
+    }).select("id").single();
+    await svc.rpc("publish_form_version", { p_form_id: fCustom.id, p_actor: owner.id });
+    await svc.from("forms").update({ status: "published" }).eq("id", fCustom.id);
+    const { data: fCur } = await svc.from("forms").select("current_version_id").eq("id", fCustom.id).single();
+    const enviar = (hint) => svc.rpc("submit_form_response", { p_form_id: fCustom.id, p_version_id: fCur.current_version_id, p_idempotency_key: randomUUID(), p_answers: { nombre: { type: "short_text", value: "Ana" } }, p_attribution: {}, p_meta: {}, p_contact_hint: hint, p_extra: {} });
+    const custom = await enviar({ signed_contact_id: contactA.id, signed_sale_id: ventaPropia });
+    check((await eventOf(contactA.id, "form_submitted", custom.data.submission_id))?.payload.sale_id === ventaPropia, "un formulario comun con el link de la venta: form_submitted trae el sale_id");
+    const sinLink = await enviar({ display_name: "zz-test sin link", email: `zz-sin-link-${Date.now()}@example.test` });
+    check((await eventsOf((await submissionOf(sinLink.data.submission_id)).contact_id, "form_submitted"))[0]?.payload.sale_id === undefined, "sin link de venta, el payload queda como antes (sin sale_id)");
+
+    const fkBad = await svc.from("form_submissions").insert({ workspace_id: ws.id, form_id: fCustom.id, form_version_id: fCur.current_version_id, idempotency_key: randomUUID(), status: "no_contact", answers: {}, sale_id: randomUUID() });
+    check(!!fkBad.error, "un sale_id que no existe en sales se rechaza por la clave foranea", fkBad.error?.message);
+    const delVenta = await svc.from("sales").delete().eq("id", ventaPropia);
+    check(!!delVenta.error, "una venta con una firma no se puede borrar", delVenta.error?.message);
+
   }
 } catch (e) {
   fail("el script fallo", e.message);

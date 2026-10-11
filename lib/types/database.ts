@@ -3739,6 +3739,86 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Ventas (Etapa 5, 00162). Solo las escribe el servidor; nada se borra. */
+      sales: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          product_version_id: string;
+          product_snapshot: Json;
+          base_amount: number;
+          discount_amount: number;
+          final_amount: number;
+          discount_reason: string | null;
+          currency: "USD";
+          status: "pending_payment" | "reserved" | "paid" | "overdue" | "subscription_active" | "cancelled" | "refunded" | "disputed" | "subscription_cancelled";
+          financing_type: "full" | "reservation_balance" | "installments" | "reservation_installments" | "subscription";
+          subscription_interval: "monthly" | "quarterly" | "yearly" | null;
+          sale_date: string;
+          setter_id: string | null;
+          vendedor_id: string | null;
+          attribution: Json | null;
+          attribution_touch_id: string | null;
+          attribution_type: "last_touch" | "manual" | "none";
+          booking_id: string | null;
+          service_starts_at: string | null;
+          notes: string | null;
+          plan_unbalanced: boolean;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          cancellation_reason: string | null;
+          subscription_cancelled_at: string | null;
+          subscription_cancel_reason: string | null;
+          refunded_at: string | null;
+          opportunity_stage: string | null;
+          stage_entered_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Pagos de una venta (00162). Un reembolso es otra fila (type refund, monto negativo). */
+      payments: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          sale_id: string;
+          type: "full" | "reservation" | "installment" | "refund";
+          amount: number;
+          currency: "USD";
+          status: "scheduled" | "paid" | "overdue" | "uncollectible" | "refunded" | "cancelled";
+          due_date: string | null;
+          original_due_date: string | null;
+          reschedule_count: number;
+          paid_at: string | null;
+          paid_on: string | null;
+          delay_days: number | null;
+          payment_method: "whop" | "transferencia_cr" | "transferencia_usa" | "wise" | "binance" | null;
+          payment_option_snapshot: Json | null;
+          provider_fee_amount: number | null;
+          receipt_path: string | null;
+          notes: string | null;
+          reschedule_reason: string | null;
+          uncollectible_reason: string | null;
+          refund_reason: string | null;
+          revert_reason: string | null;
+          refund_of_payment_id: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
       /** Reglas de asignacion automatica (Ventas, 00161): una fila por workspace y kind. */
       assignment_rules: {
         Row: {
@@ -4913,6 +4993,26 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Busca un contacto por telefono primero y despues por email; NO crea (Formularios, 00156). Solo service_role. */
+      find_contact_by_phone_or_email: {
+        Args: { p_workspace_id: string; p_phone: string; p_email: string };
+        Returns: Json;
+      };
+      /** Crea una venta con sus pagos, estado, eventos y auditoria en UNA transaccion (00162). Solo service_role. */
+      create_sale: {
+        Args: { p_payload: Json; p_actor_id: string };
+        Returns: Json;
+      };
+      /** Cancela una venta: anula programados y morosos, conserva lo cobrado (00162). Solo service_role. */
+      cancel_sale: {
+        Args: { p_sale_id: string; p_reason: string; p_actor_id: string };
+        Returns: Json;
+      };
+      /** Recalcula el estado de una venta y emite el evento si cambio (00162). Solo service_role. */
+      refresh_sale_status: {
+        Args: { p_sale_id: string; p_change_id?: string };
+        Returns: string;
+      };
       /** Publica un borrador de version: la activa pasa a deprecated, en una transaccion (00159). Solo service_role. */
       publish_product_version: {
         Args: { p_version_id: string; p_actor_id: string };

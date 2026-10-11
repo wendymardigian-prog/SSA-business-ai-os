@@ -44,6 +44,9 @@ import {
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { ContactCallsSection } from "@/components/contacts/calls-section";
+import { ContactSalesSection } from "@/components/contacts/sales-section";
+import { loadWizardConfig } from "@/lib/sales/wizard/load";
+import { snapshotText } from "@/lib/sales/sale-text";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { loadContactCalls } from "@/lib/calls/contact-section";
 import { PageHeader } from "@/components/page-header";
@@ -204,6 +207,21 @@ export default async function ContactDetailPage({
   const contactCalls = canViewCalls
     ? await loadContactCalls(supabase, { workspaceId: workspace.id, contactId, names: new Map(members.map((m) => [m.userId, m.name])) })
     : { rows: [], total: 0 };
+
+  // Las ventas del contacto (Ventas, B3): solo con `sales.view`; la RLS decide cuáles ve. El asistente
+  // se carga solo si puede cargar ventas y hay algo para vender.
+  const permissionCtx = await getPermissionContext();
+  const canViewSales = permissionCtx.can("sales.view");
+  const contactSales = canViewSales
+    ? await supabase
+        .from("sales")
+        .select("id, sale_date, status, final_amount, product_snapshot", { count: "exact" })
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("sale_date", { ascending: false })
+        .limit(10)
+    : null;
+  const salesWizard = canViewSales && permissionCtx.can("sales.manage") ? await loadWizardConfig(permissionCtx) : null;
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -450,6 +468,15 @@ export default async function ContactDetailPage({
             <ContactBookingsSection bookings={contactBookings} timezone={bookingTimezone} timeFormat={bookingTimeFormat} />
 
             <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
+
+            {canViewSales && (
+              <ContactSalesSection
+                sales={(contactSales?.data ?? []).map((s) => ({ id: s.id, saleDate: s.sale_date, status: s.status, finalAmount: Number(s.final_amount) || 0, product: snapshotText(s.product_snapshot) }))}
+                total={contactSales?.count ?? 0}
+                contact={{ id: contact.id, name: contact.display_name || contact.email || "Contacto" }}
+                wizard={salesWizard && salesWizard.catalog.length > 0 ? salesWizard : null}
+              />
+            )}
 
             <AttributionSection view={attributionView} />
 

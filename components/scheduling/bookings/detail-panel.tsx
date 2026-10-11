@@ -23,6 +23,10 @@ import { changeBookingStatus, cancelBookingAsHost, fixBookingCategory, occupyBoo
 import { StatusChip, SlotReleasedChip, statusDotClass } from "./status-chip";
 import { CallSectionList } from "@/components/calls/call-section-list";
 import type { CallSectionRow } from "@/lib/calls/contact-section";
+import { SaleWizard } from "@/components/sales/wizard/sale-wizard";
+import type { WizardConfig, WizardInitial } from "@/components/sales/wizard/types";
+import { StatusChip as SaleStatusChip } from "@/components/sales/sales-list";
+import { formatMoney } from "@/lib/sales/format";
 
 export interface BookingDetailData {
   id: string;
@@ -57,6 +61,10 @@ export interface BookingDetailData {
   slotReleasedAt: string | null;
   /** Las llamadas vinculadas a esta agenda que quien mira puede ver (vacio si no tiene `calls.view` o no hay ninguna). */
   calls: CallSectionRow[];
+  /** Las ventas que nacieron de esta agenda y que quien mira puede ver (vacío sin `sales.view`). */
+  sales: Array<{ id: string; status: string; finalAmount: number; product: string }>;
+  /** «Cargar venta»: solo con `sales.manage`, reunión pasada y con resultado. El asistente abre con el contacto y la agenda resueltos. */
+  saleLoad: { config: WizardConfig; initial: WizardInitial } | null;
 }
 
 const OUTCOME_SHORTCUTS: BookingStatus[] = ["no_show", "followup_warm", "followup_cold", "sale", "not_qualified"];
@@ -86,6 +94,7 @@ export function BookingDetailPanel({
   const [menuOpen, setMenuOpen] = useState(false);
   const [cancelFor, setCancelFor] = useState<BookingStatus | null>(null);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const [saleOpen, setSaleOpen] = useState(false);
   const [newHostId, setNewHostId] = useState("");
   const [transferAssignment, setTransferAssignment] = useState(true);
   const [reason, setReason] = useState("");
@@ -526,6 +535,32 @@ export function BookingDetailPanel({
             </section>
           )}
 
+          {(booking.sales.length > 0 || booking.saleLoad) && (
+            <section className="rounded-lg border border-border p-3">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Ventas</h3>
+              {booking.sales.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin venta.</p>
+              ) : (
+                <ul className="divide-y divide-border text-sm">
+                  {booking.sales.map((s) => (
+                    <li key={s.id}>
+                      <Link href={`/dashboard/ventas/${s.id}`} className="flex flex-wrap items-center gap-2 py-1.5 hover:underline">
+                        <span className="min-w-0 flex-1 truncate font-medium">{s.product}</span>
+                        <span className="tabular-nums text-xs">{formatMoney(s.finalAmount)}</span>
+                        <SaleStatusChip status={s.status} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {booking.saleLoad && (
+                <button type="button" onClick={() => setSaleOpen(true)} className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-muted">
+                  Cargar venta
+                </button>
+              )}
+            </section>
+          )}
+
           <section className="rounded-lg border border-border p-3">
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Historial</h3>
             <ul className="flex flex-col gap-1.5 text-xs text-muted-foreground">
@@ -539,6 +574,7 @@ export function BookingDetailPanel({
           </section>
         </div>
       </aside>
+      {saleOpen && booking.saleLoad && <SaleWizard config={booking.saleLoad.config} initial={booking.saleLoad.initial} onClose={() => setSaleOpen(false)} />}
     </>
   );
 }

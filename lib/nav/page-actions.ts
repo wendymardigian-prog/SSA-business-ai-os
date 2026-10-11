@@ -289,6 +289,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Ventas",
     tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",
   },
+  "/dashboard/ventas/[id]": {
+    title: "Venta",
+    tooltip: "El detalle de una venta: sus números, el plan de pagos, los contratos y todo lo que se le hizo. Cancelar es definitivo.",
+  },
 };
 
 /** Rutas que a proposito NO llevan barra superior, y por que. */

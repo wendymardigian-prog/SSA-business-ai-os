@@ -7,14 +7,14 @@ Decisiones y diferencias con el código real: `docs/PENDIENTE-ventas.md`.
 
 - [x] **B1 · Catálogo**: F1 · F2 · F3 · F4 · F5 · F6 · F7 · F8
 - [x] **B2 · Atribución y asignación**: F9 · F10 · F11 · F12 · F13 · F14 · F15 · F16
-- [ ] **B3 · Ventas**: F17 · F18 · F19 · F20 · F21 · F22 · F23 · F24 · F25 · F26 · F26b
+- [x] **B3 · Ventas**: F17 · F18 · F19 · F20 · F21 · F22 · F23 · F24 · F25 · F26 · F26b
 - [ ] **B4 · Pagos, mora, historial y triggers**: F27 · F28 · F29 · F30 · F31 · F32 · F33 · F34 · F35 · F36 · F37 · F38
 
 ### Funcionalidades (marcar al cerrar)
 
 - [x] F1 · [x] F2 · [x] F3 · [x] F4 · [x] F5 · [x] F6 · [x] F7 · [x] F8
 - [x] F9 · [x] F10 · [x] F11 · [x] F12 · [x] F13 · [x] F14 · [x] F15 · [x] F16
-- [ ] F17 · [ ] F18 · [ ] F19 · [ ] F20 · [ ] F21 · [ ] F22 · [ ] F23 · [ ] F24 · [ ] F25 · [ ] F26 · [ ] F26b
+- [x] F17 · [x] F18 · [x] F19 · [x] F20 · [x] F21 · [x] F22 · [x] F23 · [x] F24 · [x] F25 · [x] F26 · [x] F26b
 - [ ] F27 · [ ] F28 · [ ] F29 · [ ] F30 · [ ] F31 · [ ] F32 · [ ] F33 · [ ] F34 · [ ] F35 · [ ] F36 · [ ] F37 · [ ] F38
 
 ## Punto de partida (11/10/2026, `main` = `3475798`, PR #41 de Formularios ya mergeado)
@@ -39,9 +39,9 @@ Base: última migración aplicada `00158_forms_once_key_fix`. Datos: `content_of
 | 00159 | Catálogo (`products`, `product_variants`, `product_versions`) | **aplicada y registrada** (dos veces: idempotente; `verify-sales --block 1` y `verify-rls` en verde) |
 | 00160 | Absorbe `content_offers` (riesgo alto) | **aplicada y registrada** (control: 0 divergentes, 3 productos / 3 variantes / 3 versiones activas 3000·6000·12000, FK a `products`; dos veces: no duplica; `verify-content`, `verify-rls`, `verify-crm`, `verify-sales --block 1` en verde). Respaldo previo en `docs/ventas/respaldo-pre-00160.json` |
 | 00161 | Asignación (`assignment_rules`, columnas, trigger) | **aplicada y registrada** (dos veces: idempotente; 3 reglas manuales por workspace; `verify-sales --block 2`, `verify-crm`, `verify-csv-import`, `verify-roles`, `verify-rls` en verde; `verify-attribution` con su única falla de antes) |
-| 00162 | `sales`, `payments` y funciones | pendiente |
-| 00163 | FK de `sale_id` en formularios y firmas | pendiente |
-| 00164 | `submit_form_response` valida el `sale_id` (riesgo alto) | pendiente |
+| 00162 | `sales`, `payments` y funciones | **aplicada y registrada** (`verify-sales --block 3` en verde: atomicidad, atribución congelada, visibilidad, DELETE bloqueado, paridad del estado) |
+| 00163 | FK de `sale_id` en formularios y firmas | **aplicada y registrada** (0 huérfanos; `form_submissions` SET NULL, `contract_signatures` sin acción) |
+| 00164 | `submit_form_response` valida el `sale_id` (riesgo alto) | **aplicada y registrada** (partió de la definición vigente, md5 `9d28625f…`; `lib/sales/submit-form-response-diff.test.ts`; `verify-forms` en verde con un caso adaptado a propósito) |
 | 00165 | Bucket `payment-receipts` | pendiente |
 | 00166 | CHECK de `triggers.type` | pendiente |
 | 00167 | Cron de mora | pendiente |
@@ -67,3 +67,12 @@ Próxima libre al terminar: 00169.
 - **Job `sales_contact_eval`** (`lib/jobs/handlers/sales-contact-eval.ts`) y `assignContact` que ahora escribe `assignment_locked_at`.
 - **Pantallas**: Ajustes > Asignación (3 tarjetas, constructor de condiciones reutilizable, probador y simulación en seco), el componente de atribución y la línea de último toque y asignación en la ficha del contacto.
 - Verificación: vitest 7882 verdes, build y lint (0 errores), `verify-sales --block 2`.
+
+## Bloque B3 · Ventas (hecho)
+
+- **Base**: 00162 (`sales`, `payments`, `create_sale`, `cancel_sale`, `derive_sale_status`, eventos y auditoría en la misma transacción), 00163 (claves de `sale_id`), 00164 (`submit_form_response` v4: valida el `sale_id` del link y lo suma a los eventos).
+- **Núcleo puro** (`lib/sales/`): `sale-status` (con casos compartidos con SQL), `sale-math`, `payment-plan`, `create`, `contacts`, `booking-link`, `list`, `edit`, `detail`, `contract`, `wizard/{step1,catalog,step3,summary}`.
+- **Servidor** (`lib/actions/sales.ts`, `sales-contract.ts`): `createSale`, `updateSale` (con `confirmRepricing`, conflicto por `updated_at` y atribución auditada), `cancelSale`, `cancelSubscription`, `rebuildPlan`, `getSaleContactContext`, y el envío del contrato (link firmado con el `sale_id` adentro del token, por copia/WhatsApp/Instagram/email).
+- **Pantallas**: lista `/dashboard/ventas` (pastillas, filtros en la URL, cards en celular), asistente «Nueva venta» de 3 pasos, ficha `/dashboard/ventas/[id]` (datos, plan de pagos de solo lectura, contratos, historial), sección «Ventas» en la ficha del contacto y en el panel de la Agenda («Cargar venta» con el contacto y la agenda resueltos).
+- **Bandeja**: `?texto=` deja el mensaje escrito en el composer sin mandarlo (para «Enviar por WhatsApp/Instagram»).
+- Verificación: `verify-sales --block 3` (incluye 00163 y 00164), `verify-forms` en verde, vitest, build y lint (0 errores).

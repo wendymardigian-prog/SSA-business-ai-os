@@ -65,3 +65,14 @@ describe("métodos de pago", () => {
     expect(scheduledUsingDisabled(["wise", "binance", "binance", null], ["wise"])).toEqual({ binance: 2 });
   });
 });
+
+describe("paridad con el CHECK de payments.payment_method (00162)", () => {
+  it("las claves de la migración son exactamente las de la constante", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync("supabase/migrations/00162_sales_payments.sql", "utf8");
+    const check = sql.match(/payments_method_check\s+CHECK \(payment_method IS NULL OR payment_method IN \(([^)]*)\)\)/);
+    expect(check).not.toBeNull();
+    const keys = [...(check![1].matchAll(/'([a-z_]+)'/g))].map((m) => m[1]);
+    expect(keys).toEqual([...PAYMENT_METHOD_KEYS]);
+  });
+});
