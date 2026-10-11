@@ -126,3 +126,20 @@ describe("describeHistoryItem", () => {
     expect(describeHistoryItem({ source: "flow", id: "f", at: "x", phase: "completed", flowName: "Bienvenida" }).text).toBe("terminó la automatización «Bienvenida»");
   });
 });
+
+describe("eventos de Formularios (form_view, form_start, form_rejected)", () => {
+  it("nunca aparecen en el historial del contacto, aunque lleguen mezclados con los del motor", () => {
+    const items = buildContactHistory(
+      base({
+        flowEvents: [
+          { id: "v1", eventType: "form_view", flowId: null, createdAt: "2026-10-09T10:00:00Z" },
+          { id: "s1", eventType: "form_start", flowId: null, createdAt: "2026-10-09T10:01:00Z" },
+          { id: "r1", eventType: "form_rejected", flowId: null, createdAt: "2026-10-09T10:02:00Z" },
+          { id: "e1", eventType: "flow_started", flowId: "f-1", createdAt: "2026-10-09T10:03:00Z" },
+        ],
+      }),
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ source: "flow", phase: "started" });
+  });
+});

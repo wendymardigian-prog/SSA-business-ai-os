@@ -110,6 +110,12 @@ const pathToVault = (entry: string) => pathTo(entry, VAULT);
 const SERVER_ONLY = [
   { label: "lib/vault.ts", file: VAULT },
   { label: "lib/supabase/server.ts", file: join(ROOT, "lib/supabase/server.ts") },
+  // Formularios: verifican el captcha con la secret key, calculan huellas con
+  // `node:crypto` o cuentan topes con el cliente de servicio. Nada de esto puede
+  // viajar al navegador.
+  { label: "lib/forms/turnstile.ts", file: join(ROOT, "lib/forms/turnstile.ts") },
+  { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") },
+  { label: "lib/antispam/rate-limit.ts", file: join(ROOT, "lib/antispam/rate-limit.ts") },
 ];
 
 describe("limite del servidor: lib/vault.ts", () => {
@@ -146,6 +152,20 @@ describe("limite del servidor: lib/vault.ts", () => {
       .map((f) => ({ file: f, chain: pathTo(f, server) }))
       .filter((r) => r.chain)
       .map((r) => r.chain!.map((f) => relative(ROOT, f)).join(" -> "));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("ningun Client Component llega a los modulos de solo servidor de Formularios", () => {
+    const formsOnly = SERVER_ONLY.filter((e) => e.label.startsWith("lib/forms/") || e.label.startsWith("lib/antispam/"));
+    expect(formsOnly.length).toBeGreaterThan(0);
+
+    const offenders = formsOnly.flatMap((entry) =>
+      clientFiles
+        .map((f) => ({ file: f, chain: pathTo(f, entry.file) }))
+        .filter((r) => r.chain)
+        .map((r) => `${entry.label}: ${r.chain!.map((f) => relative(ROOT, f)).join(" -> ")}`),
+    );
 
     expect(offenders).toEqual([]);
   });

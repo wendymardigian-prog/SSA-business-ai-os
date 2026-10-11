@@ -145,3 +145,49 @@ export default function AgendaEmbed() {
 
   return { html, react };
 }
+
+// ── Formularios (F10, F32) ───────────────────────────────────────────────────
+
+export const FORM_EMBED_MODES: EmbedMode[] = ["inline", "floating"];
+
+/** El mensaje de respaldo de un formulario que no carga: ya resuelto, con un link para abrirlo aparte. */
+export function formFallback(slug: string, baseUrl: string): FallbackPayload {
+  return {
+    title: "No pudimos cargar el formulario",
+    body: "Revisá tu conexión y probá de nuevo, o abrilo en otra pestaña.",
+    cta: { label: "Abrir el formulario", href: `${baseUrl.replace(/\/$/, "")}/f/${slug}` },
+  };
+}
+
+export interface FormEmbedOptions {
+  slug: string;
+  buttonText?: string;
+  buttonColor?: string | null;
+  buttonTextColor?: string | null;
+  buttonPosition?: ButtonPosition;
+}
+
+/**
+ * El código para pegar un formulario en una web: dentro de la página
+ * ("inline") o como botón flotante. Es el mismo `embed.js` de la Agenda con el
+ * link `f/<slug>`.
+ */
+export function generateFormEmbedCode(mode: "inline" | "floating", options: FormEmbedOptions, baseUrl: string): EmbedCode {
+  return generateEmbedCode(
+    mode,
+    {
+      calLink: `f/${options.slug}`,
+      buttonText: options.buttonText || "Completar el formulario",
+      buttonColor: options.buttonColor,
+      buttonTextColor: options.buttonTextColor,
+      buttonPosition: options.buttonPosition,
+      fallback: formFallback(options.slug, baseUrl),
+    },
+    baseUrl,
+  );
+}
+
+/** El snippet de una página del sitio propio (F31/F32): `<Formulario slug="…" />`. */
+export function formPageSnippet(slug: string): string {
+  return `<Formulario slug="${slug}" />`;
+}

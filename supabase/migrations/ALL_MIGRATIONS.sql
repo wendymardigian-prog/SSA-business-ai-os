@@ -21380,3 +21380,797 @@ COMMENT ON COLUMN public.content_ideas.call_id IS
 
 CREATE INDEX IF NOT EXISTS idx_content_ideas_call
   ON public.content_ideas (call_id) WHERE call_id IS NOT NULL;
+
+-- ============================================================
+-- MIGRATION 150: FORMS CORE
+-- ============================================================
+-- ============================================================================
+-- 00150 — Formularios: formularios, versiones y respuestas, y quien las ve
+-- ============================================================================
+-- Modulo Formularios (personalizado, encuesta/NPS y contrato), F1.
+--
+-- Tres tablas nuevas, dos funciones de visibilidad y la RLS:
+--
+--   1. `forms`            el formulario y su copia de trabajo (`draft_definition`).
+--   2. `form_versions`    lo que se publico, INMUTABLE (sin policy de UPDATE; la
+--                         escribe solo `publish_form_version`, 00152).
+--   3. `form_submissions` las respuestas. Escribe solo el servidor (las RPC).
+--   4. `can_view_forms(ws)`: ver formularios y metricas. NO usa `has_permission`
+--      sola, porque esa funcion devuelve false para el Member de sistema (su fila
+--      de rol tiene los permisos vacios a proposito: la fuente es
+--      lib/auth/permissions.ts). Contempla los tres casos: Owner/Admin, Member de
+--      sistema (que tiene `forms.view`) y rol personalizado con la clave.
+--   5. `can_see_form_submission(s)`: Owner/Admin ven todas; el resto, solo las de
+--      contactos que `can_see_contact` le deja ver. Una respuesta sin contacto la
+--      ve solo un Admin.
+--
+-- Sin DELETE para nadie: los formularios se archivan, las versiones son
+-- permanentes y las respuestas se marcan spam. Sin policy para `anon`: lo
+-- publico sale solo por `get_public_form` (00152).
+--
+-- `sale_id` y `service_id` (en `form_submissions`) son para Ventas y CX: uuid
+-- sin FK porque `sales` y `services` todavia no existen. Los suman con su FK
+-- esos modulos.
+--
+-- NO toca ninguna funcion ni policy existente. Aditiva e idempotente.
+--
+-- Como volver atras (solo tiene sentido si todavia no hay respuestas reales):
+--   DROP POLICY IF EXISTS form_submissions_select ON public.form_submissions;
+--   DROP POLICY IF EXISTS form_versions_select ON public.form_versions;
+--   DROP POLICY IF EXISTS forms_select ON public.forms;
+--   ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_current_version_fk;
+--   DROP TABLE IF EXISTS public.form_submissions;
+--   DROP TABLE IF EXISTS public.form_versions;
+--   DROP TABLE IF EXISTS public.forms;
+--   DROP FUNCTION IF EXISTS public.can_see_form_submission(public.form_submissions);
+--   DROP FUNCTION IF EXISTS public.can_view_forms(uuid);
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. forms
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.forms (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  type text NOT NULL CHECK (type IN ('custom', 'survey', 'contract')),
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'paused', 'archived')),
+  slug text NOT NULL CHECK (slug ~ '^[a-z0-9-]{3,60}$'),
+
+  draft_definition jsonb NOT NULL DEFAULT '{"fields":[]}'::jsonb,
+  current_version_id uuid,
+  design jsonb NOT NULL DEFAULT '{}'::jsonb,
+  success jsonb NOT NULL DEFAULT '{"mode":"message"}'::jsonb,
+  contact_config jsonb NOT NULL DEFAULT '{"mode":"create_or_link","update":"fill_empty","map":[]}'::jsonb,
+  survey_config jsonb,
+  contract_config jsonb,
+  tags_on_submit uuid[] NOT NULL DEFAULT '{}',
+  notify_enabled boolean NOT NULL DEFAULT true,
+  notify_user_ids uuid[] NOT NULL DEFAULT '{}',
+
+  published_at timestamptz,
+  archived_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT forms_survey_config_required CHECK (type <> 'survey' OR survey_config IS NOT NULL),
+  CONSTRAINT forms_contract_config_required CHECK (type <> 'contract' OR contract_config IS NOT NULL)
+);
+
+COMMENT ON TABLE public.forms IS
+  'Formularios (personalizado, encuesta, contrato). Se archivan, no se borran. Escribe solo el servidor; los lee quien pasa can_view_forms().';
+
+-- La URL publica no lleva workspace: el slug es unico en todo el sistema.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_forms_slug_lower ON public.forms (lower(slug));
+CREATE INDEX IF NOT EXISTS idx_forms_workspace_status ON public.forms (workspace_id, status, updated_at DESC);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.forms;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.forms
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- 2. form_versions (inmutable)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.form_versions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  form_id uuid NOT NULL REFERENCES public.forms(id) ON DELETE CASCADE,
+  version_number integer NOT NULL CHECK (version_number >= 1),
+  definition jsonb NOT NULL,
+  contract_text text,
+  contract_text_sha256 text,
+  published_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  published_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT form_versions_unique_number UNIQUE (form_id, version_number),
+  CONSTRAINT form_versions_sha_hex CHECK (contract_text IS NULL OR contract_text_sha256 ~ '^[0-9a-f]{64}$')
+);
+
+COMMENT ON TABLE public.form_versions IS
+  'Versiones publicadas de un formulario. Inmutables: sin policy de UPDATE; solo las crea publish_form_version().';
+
+CREATE INDEX IF NOT EXISTS idx_form_versions_form ON public.form_versions (form_id, version_number DESC);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.form_versions;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.form_versions
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- La FK de la version vigente se agrega aca (la tabla de versiones no existia
+-- cuando se creo `forms`). DEFERRABLE: publicar escribe las dos cosas juntas.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'forms_current_version_fk'
+  ) THEN
+    ALTER TABLE public.forms
+      ADD CONSTRAINT forms_current_version_fk
+      FOREIGN KEY (current_version_id) REFERENCES public.form_versions(id)
+      DEFERRABLE INITIALLY DEFERRED;
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 3. form_submissions
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.form_submissions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  form_id uuid NOT NULL REFERENCES public.forms(id),
+  form_version_id uuid NOT NULL REFERENCES public.form_versions(id),
+
+  idempotency_key uuid NOT NULL,
+  status text NOT NULL CHECK (status IN ('received', 'no_contact', 'spam')),
+  answers jsonb NOT NULL,
+
+  contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  contact_created boolean NOT NULL DEFAULT false,
+  dedupe jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+  score integer,
+  nps_category text CHECK (nps_category IN ('promoter', 'passive', 'detractor')),
+  once_key text,
+
+  attribution jsonb NOT NULL DEFAULT '{}'::jsonb,
+  meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+  upload_prefix text,
+
+  linked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  linked_at timestamptz,
+  marked_spam_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  marked_spam_at timestamptz,
+
+  -- Para Ventas y CX: sin FK (sales y services todavia no existen).
+  sale_id uuid,
+  service_id uuid,
+
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT form_submissions_idempotency UNIQUE (form_id, idempotency_key)
+);
+
+COMMENT ON TABLE public.form_submissions IS
+  'Respuestas de formularios. Escribe solo el servidor (submit_form_response); las lee quien pasa can_see_form_submission(). Nunca se borran.';
+
+-- "Una vez por contacto": el unico ignora las respuestas marcadas spam.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_form_submissions_once
+  ON public.form_submissions (form_id, once_key)
+  WHERE once_key IS NOT NULL AND status <> 'spam';
+
+CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON public.form_submissions (form_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_workspace ON public.form_submissions (workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_form_submissions_contact ON public.form_submissions (contact_id, created_at DESC)
+  WHERE contact_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_form_submissions_form_status ON public.form_submissions (form_id, status, created_at DESC);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.form_submissions;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.form_submissions
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- 4. Quien ve formularios y respuestas
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.can_view_forms(p_workspace_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN public.is_workspace_admin(p_workspace_id) THEN true
+    ELSE COALESCE((
+      SELECT
+        -- Member sin rol asignado, o con el rol de sistema Member: tiene `forms.view`
+        -- (su baseline vive en lib/auth/permissions.ts, no en el jsonb).
+        m.role_id IS NULL
+        OR r.system_role = 'member'
+        -- Rol personalizado: solo si marco la clave.
+        OR COALESCE(r.permissions -> 'keys' @> to_jsonb(ARRAY['forms.view']), false)
+      FROM public.workspace_members m
+      LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+      WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid()
+    ), false)
+  END;
+$$;
+
+REVOKE ALL ON FUNCTION public.can_view_forms(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_view_forms(uuid) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.can_see_form_submission(s public.form_submissions)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.is_workspace_admin(s.workspace_id)
+     OR (
+       public.can_view_forms(s.workspace_id)
+       AND s.contact_id IS NOT NULL
+       AND EXISTS (
+         SELECT 1 FROM public.contacts ct
+         WHERE ct.id = s.contact_id AND public.can_see_contact(ct)
+       )
+     );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_form_submission(public.form_submissions) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_form_submission(public.form_submissions) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 5. RLS: solo lectura para los usuarios; sin DELETE; sin policy para anon
+-- ------------------------------------------------------------
+ALTER TABLE public.forms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.form_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.form_submissions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS forms_select ON public.forms;
+CREATE POLICY forms_select ON public.forms
+  FOR SELECT TO authenticated
+  USING (public.is_workspace_member(workspace_id) AND public.can_view_forms(workspace_id));
+
+DROP POLICY IF EXISTS form_versions_select ON public.form_versions;
+CREATE POLICY form_versions_select ON public.form_versions
+  FOR SELECT TO authenticated
+  USING (public.is_workspace_member(workspace_id) AND public.can_view_forms(workspace_id));
+
+DROP POLICY IF EXISTS form_submissions_select ON public.form_submissions;
+CREATE POLICY form_submissions_select ON public.form_submissions
+  FOR SELECT TO authenticated
+  USING (public.can_see_form_submission(form_submissions));
+
+REVOKE ALL ON public.forms FROM anon;
+REVOKE ALL ON public.form_versions FROM anon;
+REVOKE ALL ON public.form_submissions FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.forms FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.form_versions FROM authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.form_submissions FROM authenticated;
+
+-- ============================================================
+-- MIGRATION 151: ANALYTICS FORMS INDEX
+-- ============================================================
+-- ============================================================================
+-- 00151 — Formularios: indice parcial para las metricas
+-- ============================================================================
+-- Vistas, inicios y rechazados de un formulario no tienen tabla propia: se
+-- escriben en `analytics_events` (event_type form_view / form_start /
+-- form_rejected, contact_id null, metadata {form_id, version_id}). Este indice
+-- parcial es lo que usa `form_metrics_daily` (00152) para leerlos.
+--
+-- Es PARCIAL (`event_type LIKE 'form\_%'`): ninguna de las filas de hoy lo
+-- cubre (todas son `contact_created`) y los inserts del motor de flows no lo
+-- mantienen. No cambia ni lee ninguna fila existente.
+--
+-- Aditiva e idempotente.
+--
+-- Como volver atras:
+--   DROP INDEX IF EXISTS public.idx_analytics_forms;
+-- (los eventos form_* ya escritos quedan en analytics_events y no molestan a nadie)
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_analytics_forms
+  ON public.analytics_events (workspace_id, (metadata ->> 'form_id'), event_type, created_at)
+  WHERE event_type LIKE 'form\_%';
+
+-- ============================================================
+-- MIGRATION 152: FORMS FUNCTIONS
+-- ============================================================
+-- ============================================================================
+-- 00152 — Formularios: definicion publica, publicar, metricas y envio (v1)
+-- ============================================================================
+-- Modulo Formularios, F8, F9, F12 y F14. Cuatro funciones nuevas:
+--
+--   1. get_public_form(slug)        la definicion que ve la pagina publica.
+--      LISTA BLANCA: nunca devuelve el id ni el workspace del formulario, el
+--      mapeo a contacto, las etiquetas, los avisos, el borrador, la pantalla de
+--      exito, ni el valor de un campo oculto `fixed`. Un formulario que no esta
+--      publicado devuelve lo mismo que uno que no existe (no se puede
+--      enumerar). Ejecutable por `anon`: es la unica puerta publica.
+--   2. publish_form_version(form, actor)   publica en UNA transaccion: inserta la
+--      version (copia congelada), calcula la huella SHA-256 del texto del
+--      contrato, apunta `current_version_id`, deja el audit_log. Sin cambios
+--      respecto de la version vigente, no crea otra. Solo `service_role`: la
+--      Server Action verifica `forms.manage` antes.
+--   3. form_metrics_daily(form, desde, hasta)   vistas, inicios, envios, spam y
+--      rechazados por dia, en la zona del workspace. Exige `can_view_forms`.
+--   4. submit_form_response(...)    v1: guarda la respuesta, idempotente por
+--      (form_id, idempotency_key). En FO1 no resuelve contacto (queda
+--      `no_contact`); la 00156 (v2) y la 00157 (v3) la reescriben.
+--
+-- Todas con `SET search_path = ''` y referencias calificadas.
+--
+-- Aditiva e idempotente (CREATE OR REPLACE).
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb);
+--   DROP FUNCTION IF EXISTS public.form_metrics_daily(uuid, date, date);
+--   DROP FUNCTION IF EXISTS public.publish_form_version(uuid, uuid);
+--   DROP FUNCTION IF EXISTS public.get_public_form(text);
+-- ============================================================================
+
+-- ------------------------------------------------------------
+-- 1. get_public_form
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_public_form(p_slug text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_form    public.forms%ROWTYPE;
+  v_version public.form_versions%ROWTYPE;
+  v_fields  jsonb;
+  v_site_key text;
+BEGIN
+  IF p_slug IS NULL OR p_slug = '' THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  SELECT * INTO v_form
+  FROM public.forms f
+  WHERE lower(f.slug) = lower(p_slug)
+    AND f.status = 'published'
+    AND f.current_version_id IS NOT NULL;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  SELECT * INTO v_version FROM public.form_versions WHERE id = v_form.current_version_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  -- Los campos, uno por uno, con lista blanca. Un oculto `fixed` no sale.
+  SELECT COALESCE(jsonb_agg(x.pf ORDER BY x.ord), '[]'::jsonb) INTO v_fields
+  FROM (
+    SELECT
+      t.ord,
+      CASE
+        WHEN t.field ->> 'type' = 'hidden' THEN
+          CASE
+            WHEN t.field -> 'hidden' ->> 'source' IN ('url_param', 'attribution') THEN
+              jsonb_build_object(
+                'key', t.field -> 'key',
+                'type', 'hidden',
+                'hidden', jsonb_strip_nulls(jsonb_build_object(
+                  'source', t.field -> 'hidden' -> 'source',
+                  'param', t.field -> 'hidden' -> 'param'
+                ))
+              )
+            ELSE NULL
+          END
+        ELSE
+          jsonb_strip_nulls(jsonb_build_object(
+            'key', t.field -> 'key',
+            'type', t.field -> 'type',
+            'label', t.field -> 'label',
+            'help', t.field -> 'help',
+            'placeholder', t.field -> 'placeholder',
+            'required', t.field -> 'required',
+            'options', t.field -> 'options',
+            'min', t.field -> 'min',
+            'max', t.field -> 'max',
+            'file', t.field -> 'file',
+            'consentText', t.field -> 'consentText',
+            'visibility', t.field -> 'visibility',
+            'prefill', t.field -> 'prefill'
+          ))
+      END AS pf
+    FROM jsonb_array_elements(COALESCE(v_version.definition -> 'fields', '[]'::jsonb))
+         WITH ORDINALITY AS t(field, ord)
+  ) x
+  WHERE x.pf IS NOT NULL;
+
+  -- La clave PUBLICA de Turnstile (la secreta vive en Vault y nunca sale).
+  SELECT ic.config ->> 'site_key' INTO v_site_key
+  FROM public.integration_configs ic
+  WHERE ic.workspace_id = v_form.workspace_id
+    AND ic.type = 'captcha'
+    AND ic.is_active
+  ORDER BY ic.created_at
+  LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'status', 'available',
+    'slug', v_form.slug,
+    'type', v_form.type,
+    'version_id', v_version.id,
+    'design', jsonb_strip_nulls(jsonb_build_object(
+      'title', v_form.design -> 'title',
+      'intro', v_form.design -> 'intro',
+      'submitLabel', v_form.design -> 'submitLabel',
+      'showLogo', v_form.design -> 'showLogo'
+    )),
+    'fields', v_fields,
+    'contract', CASE
+      WHEN v_form.type = 'contract' THEN jsonb_build_object(
+        'text', v_version.contract_text,
+        'version_number', v_version.version_number,
+        'title', v_form.contract_config -> 'title',
+        'accept_label', v_form.contract_config -> 'acceptLabel'
+      )
+      ELSE NULL
+    END,
+    'signature_required', CASE
+      WHEN v_form.type = 'contract' THEN COALESCE((v_form.contract_config ->> 'signatureRequired')::boolean, true)
+      ELSE false
+    END,
+    'survey', CASE
+      WHEN v_form.type = 'survey' THEN jsonb_build_object('scoreFieldKey', v_form.survey_config -> 'scoreFieldKey')
+      ELSE NULL
+    END,
+    'turnstile_site_key', v_site_key
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_public_form(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_form(text) TO anon, authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 2. publish_form_version
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.publish_form_version(p_form_id uuid, p_actor uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_form     public.forms%ROWTYPE;
+  v_current  public.form_versions%ROWTYPE;
+  v_def      jsonb;
+  v_text     text;
+  v_sha      text;
+  v_number   integer;
+  v_version_id uuid;
+BEGIN
+  SELECT * INTO v_form FROM public.forms WHERE id = p_form_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  -- Lo que se congela: la definicion sin el texto del contrato (que va en su columna).
+  v_def := v_form.draft_definition - 'contractText';
+  IF v_form.type = 'contract' THEN
+    v_text := v_form.draft_definition ->> 'contractText';
+    IF v_text IS NULL OR btrim(v_text) = '' THEN
+      RAISE EXCEPTION 'El contrato no tiene texto' USING ERRCODE = 'check_violation';
+    END IF;
+    v_sha := encode(sha256(convert_to(v_text, 'UTF8')), 'hex');
+  END IF;
+
+  IF v_form.current_version_id IS NOT NULL THEN
+    SELECT * INTO v_current FROM public.form_versions WHERE id = v_form.current_version_id;
+    IF FOUND AND v_current.definition = v_def AND v_current.contract_text IS NOT DISTINCT FROM v_text THEN
+      -- Sin cambios: no hay version nueva. Si estaba pausado o en borrador, vuelve a publicarse.
+      IF v_form.status <> 'published' THEN
+        UPDATE public.forms
+           SET status = 'published', published_at = now(), updated_by = p_actor
+         WHERE id = p_form_id;
+      END IF;
+      RETURN jsonb_build_object(
+        'changed', false,
+        'version_id', v_current.id,
+        'version_number', v_current.version_number
+      );
+    END IF;
+  END IF;
+
+  SELECT COALESCE(max(version_number), 0) + 1 INTO v_number
+  FROM public.form_versions WHERE form_id = p_form_id;
+
+  INSERT INTO public.form_versions
+    (workspace_id, form_id, version_number, definition, contract_text, contract_text_sha256, published_by)
+  VALUES
+    (v_form.workspace_id, p_form_id, v_number, v_def, v_text, v_sha, p_actor)
+  RETURNING id INTO v_version_id;
+
+  UPDATE public.forms
+     SET current_version_id = v_version_id,
+         status = 'published',
+         published_at = now(),
+         updated_by = p_actor
+   WHERE id = p_form_id;
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by, actor_type)
+  VALUES (
+    v_form.workspace_id, 'form', p_form_id, 'form.published',
+    jsonb_build_object('version_number', v_number, 'version_id', v_version_id),
+    p_actor,
+    'user'
+  );
+
+  RETURN jsonb_build_object('changed', true, 'version_id', v_version_id, 'version_number', v_number);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.publish_form_version(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_form_version(uuid, uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 3. form_metrics_daily
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.form_metrics_daily(p_form_id uuid, p_from date, p_to date)
+RETURNS TABLE (day date, views integer, starts integer, submissions integer, spam integer, rejected integer)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_ws uuid;
+  v_tz text;
+  v_from_ts timestamptz;
+  v_to_ts timestamptz;
+BEGIN
+  IF p_from IS NULL OR p_to IS NULL OR p_to < p_from THEN
+    RETURN;
+  END IF;
+  IF (p_to - p_from) + 1 > 366 THEN
+    RAISE EXCEPTION 'El rango no puede pasar de 366 dias' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  SELECT f.workspace_id, COALESCE(NULLIF(w.timezone, ''), 'UTC')
+    INTO v_ws, v_tz
+  FROM public.forms f
+  JOIN public.workspaces w ON w.id = f.workspace_id
+  WHERE f.id = p_form_id;
+
+  IF v_ws IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- Quien no puede ver formularios no recibe filas (ni siquiera ceros).
+  IF NOT public.can_view_forms(v_ws) THEN
+    RETURN;
+  END IF;
+
+  v_from_ts := p_from::timestamp AT TIME ZONE v_tz;
+  v_to_ts := (p_to + 1)::timestamp AT TIME ZONE v_tz;
+
+  RETURN QUERY
+  WITH days AS (
+    SELECT d::date AS day FROM generate_series(p_from::timestamp, p_to::timestamp, interval '1 day') AS d
+  ),
+  ev AS (
+    SELECT (e.created_at AT TIME ZONE v_tz)::date AS day, e.event_type, count(*)::integer AS n
+    FROM public.analytics_events e
+    WHERE e.workspace_id = v_ws
+      AND e.metadata ->> 'form_id' = p_form_id::text
+      AND e.event_type LIKE 'form\_%'
+      AND e.event_type IN ('form_view', 'form_start', 'form_rejected')
+      AND e.created_at >= v_from_ts
+      AND e.created_at < v_to_ts
+    GROUP BY 1, 2
+  ),
+  sub AS (
+    SELECT (s.created_at AT TIME ZONE v_tz)::date AS day,
+           count(*) FILTER (WHERE s.status IN ('received', 'no_contact'))::integer AS submissions,
+           count(*) FILTER (WHERE s.status = 'spam')::integer AS spam
+    FROM public.form_submissions s
+    WHERE s.form_id = p_form_id
+      AND s.created_at >= v_from_ts
+      AND s.created_at < v_to_ts
+    GROUP BY 1
+  )
+  SELECT
+    d.day,
+    COALESCE((SELECT ev.n FROM ev WHERE ev.day = d.day AND ev.event_type = 'form_view'), 0),
+    COALESCE((SELECT ev.n FROM ev WHERE ev.day = d.day AND ev.event_type = 'form_start'), 0),
+    COALESCE(sub.submissions, 0),
+    COALESCE(sub.spam, 0),
+    COALESCE((SELECT ev.n FROM ev WHERE ev.day = d.day AND ev.event_type = 'form_rejected'), 0)
+  FROM days d
+  LEFT JOIN sub ON sub.day = d.day
+  ORDER BY d.day;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.form_metrics_daily(uuid, date, date) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.form_metrics_daily(uuid, date, date) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 4. submit_form_response (v1: sin contacto)
+-- ------------------------------------------------------------
+-- Idempotente por (form_id, idempotency_key): un doble clic, un reintento de
+-- red o dos pestañas devuelven la MISMA respuesta y no disparan nada dos veces.
+-- La unica que decide es el indice unico, no un SELECT previo.
+--
+-- `p_extra` lleva lo propio de cada tipo (la carpeta de archivos hoy; la firma
+-- del contrato mas adelante) para no tener que cambiar la firma de la funcion.
+CREATE OR REPLACE FUNCTION public.submit_form_response(
+  p_form_id uuid,
+  p_version_id uuid,
+  p_idempotency_key uuid,
+  p_answers jsonb,
+  p_attribution jsonb,
+  p_meta jsonb,
+  p_contact_hint jsonb DEFAULT '{}'::jsonb,
+  p_extra jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_form public.forms%ROWTYPE;
+  v_id uuid;
+  v_existing public.form_submissions%ROWTYPE;
+BEGIN
+  SELECT * INTO v_form FROM public.forms WHERE id = p_form_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.form_versions v WHERE v.id = p_version_id AND v.form_id = p_form_id
+  ) THEN
+    RAISE EXCEPTION 'La version no es de este formulario' USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  INSERT INTO public.form_submissions
+    (workspace_id, form_id, form_version_id, idempotency_key, status, answers,
+     attribution, meta, upload_prefix)
+  VALUES
+    (v_form.workspace_id, p_form_id, p_version_id, p_idempotency_key, 'no_contact', p_answers,
+     COALESCE(p_attribution, '{}'::jsonb), COALESCE(p_meta, '{}'::jsonb), p_extra ->> 'upload_prefix')
+  ON CONFLICT (form_id, idempotency_key) DO NOTHING
+  RETURNING id INTO v_id;
+
+  IF v_id IS NULL THEN
+    SELECT * INTO v_existing
+    FROM public.form_submissions
+    WHERE form_id = p_form_id AND idempotency_key = p_idempotency_key;
+
+    RETURN jsonb_build_object(
+      'ok', true,
+      'duplicate', true,
+      'submission_id', v_existing.id,
+      'status', v_existing.status,
+      'contact_id', v_existing.contact_id,
+      'contact_created', v_existing.contact_created
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'duplicate', false,
+    'submission_id', v_id,
+    'status', 'no_contact',
+    'contact_id', NULL,
+    'contact_created', false
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 153: FORMS BUCKETS
+-- ============================================================
+-- ============================================================================
+-- 00153 — Formularios: buckets privados para archivos y contratos
+-- ============================================================================
+-- Dos buckets, los dos PRIVADOS y SIN policies para clientes:
+--
+--   form-uploads   archivos que sube quien responde un formulario.
+--                  {workspace_id}/{form_id}/{idempotency_key}/{field_key}/{uuid}.{ext}
+--   contracts      firma dibujada y PDF firmado de un contrato.
+--                  {workspace_id}/{form_id}/{idempotency_key}/signature.png
+--                  {workspace_id}/{form_id}/{signature_id}/contrato-v<N>.pdf
+--
+-- Sin policies para `authenticated` ni `anon`: escribe y firma SOLO el servidor
+-- (service role). La lectura es un link firmado de 60 segundos que el servidor
+-- genera unicamente si `can_see_form_submission` da true. Que sean privados es
+-- una condicion de seguridad: si ya existian (creados a mano), se les fuerza.
+--
+-- El primer segmento del path es el workspace, como en `chat-media`.
+--
+-- Aditiva e idempotente.
+--
+-- Como volver atras (solo si estan vacios):
+--   select count(*) from storage.objects where bucket_id in ('form-uploads','contracts');  -- 0
+--   DELETE FROM storage.buckets WHERE id IN ('form-uploads', 'contracts');
+-- ============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'form-uploads',
+  'form-uploads',
+  false,
+  10485760,  -- 10 MB
+  ARRAY[
+    'image/jpeg', 'image/png', 'image/webp',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ]
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'contracts',
+  'contracts',
+  false,
+  10485760,  -- 10 MB
+  ARRAY['image/png', 'application/pdf']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- ============================================================
+-- MIGRATION 154: INTEGRATION CAPTCHA
+-- ============================================================
+-- ============================================================================
+-- 00154 — Formularios: el tipo de integracion `captcha` (Cloudflare Turnstile)
+-- ============================================================================
+-- El CHECK de `integration_configs.type` suma 'captcha'. La card de Turnstile
+-- guarda la site key (publica) en `config` y la secret key en Vault.
+--
+-- SOLO SUMA: la lista se leyo de la base viva al escribir esta migracion (no de
+-- memoria) y se conservan los 7 valores que ya tenia.
+--
+-- Definicion VIEJA, para volver atras:
+--   CHECK ((type = ANY (ARRAY['channel'::text, 'ai_provider'::text, 'email_provider'::text,
+--           'social_network'::text, 'publishing_service'::text, 'google'::text, 'meta'::text])))
+--
+-- Como volver atras:
+--   (antes) DELETE FROM public.integration_configs WHERE type = 'captcha';
+--           y borrar el secreto `turnstile_secret_key` de Vault con deleteSecret.
+--   ALTER TABLE public.integration_configs DROP CONSTRAINT IF EXISTS integration_configs_type_check;
+--   ALTER TABLE public.integration_configs ADD CONSTRAINT integration_configs_type_check
+--     CHECK (type = ANY (ARRAY['channel','ai_provider','email_provider','social_network',
+--                              'publishing_service','google','meta']));
+-- ============================================================================
+
+ALTER TABLE public.integration_configs DROP CONSTRAINT IF EXISTS integration_configs_type_check;
+ALTER TABLE public.integration_configs ADD CONSTRAINT integration_configs_type_check
+  CHECK (type = ANY (ARRAY[
+    'channel'::text,
+    'ai_provider'::text,
+    'email_provider'::text,
+    'social_network'::text,
+    'publishing_service'::text,
+    'google'::text,
+    'meta'::text,
+    'captcha'::text
+  ]));

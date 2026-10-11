@@ -13,10 +13,10 @@ function statusOf(statuses: Record<string, IntegrationStatus>) {
 }
 
 describe("filterSections", () => {
-  it("sin filtros, se ven las dos secciones completas", () => {
+  it("sin filtros, se ven las tres secciones completas (Seguridad la suma Formularios)", () => {
     const result = filterSections(sections, statusOf({}), { chip: null, onlyAttention: false });
-    expect(result.map((g) => g.section)).toEqual(["connections", "ai"]);
-    expect(result.flatMap((g) => g.providers).length).toBe(14);
+    expect(result.map((g) => g.section)).toEqual(["connections", "ai", "security"]);
+    expect(result.flatMap((g) => g.providers).length).toBe(15);
   });
 
   it("un chip solo filtra Conexiones; Inteligencia artificial no se toca", () => {

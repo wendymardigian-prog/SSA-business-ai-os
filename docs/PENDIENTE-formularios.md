@@ -44,3 +44,15 @@ Formato: **qué quedó · por qué · qué se decidió**.
 - **Validación de respuestas sin Zod:** `validateSubmission` (en `lib/forms/submission-schema.ts`) es una función que devuelve errores por clave, no un esquema Zod: la visibilidad encadenada hace que el esquema dependa de las propias respuestas. La misma función corre en el navegador y en el servidor. Zod valida la forma de la definición y de la config.
 - **`renderSuccess` escapa por defecto** (como pide el plano); la API de envío lo llama con `escape: false` porque React ya escapa los nodos de texto.
 - **`lib/attribution/collect.ts` trae su propio `safeUrl`** en lugar de importar `safeReferrer` de la Agenda: ese módulo importa `node:crypto` y la atribución tiene que poder ir en el bundle del embed. Un test verifica que ambos dan lo mismo.
+
+## Bloque FO1 · decisiones y pendientes
+
+- **`get_public_form` devuelve además `contract.title` y `contract.accept_label`.** La página pública del contrato los necesita (título y texto de la casilla) y el plano solo nombraba `text` y `version_number`. Siguen siendo datos públicos del formulario; la lista blanca de claves prohibidas no cambia.
+- **`submit_form_response` tiene un octavo parámetro `p_extra jsonb default '{}'`.** Lleva lo propio de cada tipo (la carpeta de archivos hoy; la firma del contrato en FO3) para no tener que cambiar la firma de la función en cada migración.
+- **El test del beacon vive en `lib/forms/beacon.test.ts`** (no en `app/api/public/forms/beacon.test.ts`): la lógica está en `lib/forms/beacon.ts` con puertos inyectables y la ruta es un envoltorio de 20 líneas. Lo mismo con el envío (`lib/forms/submit.ts` y `submit.test.ts`).
+- **Las métricas por día se dibujan con barras propias (sin `recharts`).** Son dos series y hasta 366 días; evita sumar un chunk de gráficos a una pantalla chica. Tiene la tabla equivalente en "Ver como tabla" (accesibilidad). Las métricas por campo (promedio, opciones, últimos textos) son el porte de `form-metrics.ts`.
+- **Las respuestas vienen de la RLS, no de una consulta con filtros de permisos**: un Member que inventa filtros en la URL sigue viendo solo lo suyo.
+- **La lista de formularios cuenta envíos sobre las últimas 10.000 respuestas visibles** (no tiene un conteo exacto por formulario). Alcanza para una idea; con más volumen conviene una función de conteo.
+- **`Popover` suma la opción `closeOnSelect`** (apagada por defecto; no cambia a ningún otro uso): el menú de acciones y el selector de tipos de campo tienen que cerrarse al elegir.
+- **Falta (llega en los bloques siguientes):** las pestañas Contacto y Automatizaciones (FO2), Encuesta y Contrato (FO3), y en Publicar el "link firmado para un contacto" (F22) y la tarjeta "Usar en una página del sitio" y los parámetros de URL (F32). El `Historial` del detalle de una respuesta se ve solo para Owner/Admin (no se toca `audit_log_select`).
+- **La card de Turnstile se verificó por las pruebas (`providers.test.ts`, `test-connection.ts`) y por el catálogo**, pero no se guardó una clave real: la clave de Cloudflare real la carga Wendy en la verificación en vivo (§18 del plano).

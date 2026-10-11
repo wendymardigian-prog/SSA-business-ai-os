@@ -174,7 +174,8 @@ describe("catalogo extendido (F1)", () => {
 
     // Bloque G: de seis secciones a dos. El agrupamiento fino de antes lo
     // recuperan los chips (ver providers.ts, CHIP_BY_TYPE).
-    expect(groups.map((g) => g.section)).toEqual(["connections", "ai"]);
+    // Formularios suma "Seguridad" (Cloudflare Turnstile).
+    expect(groups.map((g) => g.section)).toEqual(["connections", "ai", "security"]);
     for (const group of groups) {
       expect(group.providers.every((p) => p.visible)).toBe(true);
       expect(group.label.length).toBeGreaterThan(0);

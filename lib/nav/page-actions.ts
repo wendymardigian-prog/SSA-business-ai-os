@@ -194,6 +194,35 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "La calidad de las llamadas de venta: puntaje por criterio, foco de cada closer y objeciones más frecuentes.",
   },
+  // ── Formularios ───────────────────────────────────────────────────────
+  "/dashboard/formularios": {
+    title: "Formularios",
+    tooltip: "Formularios para captar leads, medir satisfacción o firmar contratos. Cada respuesta crea o vincula un contacto con su atribución.",
+  },
+  "/dashboard/formularios/[id]": {
+    title: "Formulario",
+    tooltip: "Los campos, cómo se mapea a un contacto, las automatizaciones y cómo publicarlo.",
+  },
+  "/dashboard/formularios/[id]/respuestas": {
+    title: "Respuestas",
+    tooltip: "Lo que respondió la gente. Solo ves las respuestas de los contactos que podés ver.",
+  },
+  "/dashboard/formularios/[id]/respuestas/[submissionId]": {
+    title: "Respuesta",
+    tooltip: "Una respuesta con su contacto, su atribución y su versión del formulario.",
+  },
+  "/dashboard/formularios/[id]/metricas": {
+    title: "Métricas",
+    tooltip: "Vistas, inicios y envíos por día. La conversión es envíos sobre vistas.",
+  },
+  "/dashboard/formularios/[id]/encuesta": {
+    title: "Encuesta",
+    tooltip: "El puntaje de la encuesta: promedio o NPS, distribución y evolución.",
+  },
+  "/dashboard/formularios/[id]/automatizaciones/[flowId]": {
+    title: "Automatización",
+    tooltip: "Qué pasa cuando alguien responde este formulario: cuándo, bajo qué condición y qué se hace.",
+  },
   // ── Agenda (Etapa 4) ──────────────────────────────────────────────────
   "/dashboard/agenda": {
     title: "Agenda",

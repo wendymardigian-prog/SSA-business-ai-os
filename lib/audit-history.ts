@@ -193,3 +193,30 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
   "call.objection_resolved": "resolvió una objeción",
   "call.archived": "archivó la llamada",
 };
+
+/** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
+export const FORM_ACTION_LABELS: Record<
+  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}`>,
+  string
+> = {
+  "form.created": "creó el formulario",
+  "form.updated": "editó el formulario",
+  "form.published": "publicó el formulario",
+  "form.paused": "pausó el formulario",
+  "form.resumed": "reanudó el formulario",
+  "form.archived": "archivó el formulario",
+  "form.restored": "restauró el formulario",
+  "form.duplicated": "duplicó el formulario",
+  "form.slug_changed": "cambió el link del formulario",
+  "form.contact_config_changed": "cambió cómo se arma el contacto",
+  "form.flow_created": "creó una automatización del formulario",
+  "form.flow_toggled": "encendió o apagó una automatización del formulario",
+  "form.flow_updated": "editó una automatización del formulario",
+  "submission.linked": "vinculó la respuesta con un contacto",
+  "submission.spam": "marcó la respuesta como spam",
+  "submission.unspam": "sacó la respuesta de spam",
+  "contact.created": "creó el contacto desde un formulario",
+  "contact.linked": "vinculó el contacto desde un formulario",
+  "contract.email_resent": "reenvió la copia del contrato",
+  "contract.pdf_regenerated": "regeneró el PDF del contrato",
+};

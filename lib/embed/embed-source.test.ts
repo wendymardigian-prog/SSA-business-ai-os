@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { bootstrap, EmbedRuntime, FLOATING_BUTTON_ID, MODAL_ID, type EmbedDocument, type EmbedElement, type EmbedWindow, type AgendaGlobal } from "./embed-source";
+import { decodeAttr } from "@/lib/forms/embed-attr";
 import { embedMessage } from "./events";
 
 /** DOM de juguete suficiente para el runtime. */
@@ -67,6 +68,7 @@ function makeEnv(search = "?utm_source=web") {
   const docListeners: Record<string, ((ev: any) => void)[]> = {};
   const winListeners: Record<string, ((ev: any) => void)[]> = {};
   const document: EmbedDocument = {
+    cookie: "",
     body,
     head,
     createElement: (tag) => new FakeEl(tag),
@@ -221,5 +223,59 @@ describe("runtime del embed (F39, F41, F58)", () => {
     rt.processQueue([["noExiste", {}], ["inline", { elementOrSelector: "#nada", calLink: "ana/llamada" }]]);
     expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
+  });
+});
+
+describe("embed de un formulario (F10)", () => {
+  it("carga /f/<slug>, pasa los parámetros de la página y la atribución, y NO los sensibles", () => {
+    const env = makeEnv("?utm_source=facebook&ad_id=123&email=ana%40x.com&token=secreto&msclkid=m1");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.processQueue([
+      ["init", { origin: ORIGIN }],
+      ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion", config: { prefill: { plan: "pro" } } }],
+    ]);
+    const u = new URL(container.find((e) => e.tag === "iframe")!.src!);
+    expect(u.pathname).toBe("/f/aplicacion");
+    const p = u.searchParams;
+    expect(p.get("embed")).toBe("1");
+    expect(p.get("utm_source")).toBe("facebook");
+    expect(p.get("ad_id")).toBe("123");
+    expect(p.get("msclkid")).toBe("m1");
+    expect(p.get("email")).toBe("ana@x.com");
+    expect(p.get("plan")).toBe("pro");
+    expect(p.has("token")).toBe(false);
+    expect(p.get("referrer")).toContain("https://mi-web.com/landing");
+  });
+
+  it("DADO un sitio con cookie _fbp, el iframe recibe attr con fbp", () => {
+    const env = makeEnv("");
+    env.document.cookie = "otra=1; _fbp=fb.1.1.2; _ga=GA1.1.111.222";
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    const attr = new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr");
+    expect(attr).toBeTruthy();
+    expect(decodeAttr(attr)).toEqual({ fbp: "fb.1.1.2", ga_client_id: "111.222" });
+  });
+
+  it("un sitio sin cookies de anuncios no manda attr", () => {
+    const env = makeEnv("");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#f1", calLink: "f/aplicacion" }]]);
+    expect(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.has("attr")).toBe(false);
+  });
+
+  it("reintentar un formulario que no cargó vuelve a crear el iframe de /f/<slug>", () => {
+    vi.useFakeTimers();
+    const env = makeEnv("");
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "f1" }));
+    const rt = new EmbedRuntime(env, "");
+    rt.init({ origin: ORIGIN });
+    rt.inline({ elementOrSelector: "#f1", calLink: "f/aplicacion" });
+    vi.advanceTimersByTime(10_000);
+    container.find((e) => e.tag === "button")!.listeners.click[0]({});
+    const again = container.find((e) => e.tag === "iframe");
+    expect(new URL(again!.src!).pathname).toBe("/f/aplicacion");
   });
 });

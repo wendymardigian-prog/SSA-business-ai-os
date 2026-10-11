@@ -17,6 +17,7 @@ export function Popover({
   align = "end",
   panelClassName = "w-72",
   triggerClassName = "",
+  closeOnSelect = false,
 }: {
   /** El nombre accesible del boton. */
   label: string;
@@ -26,6 +27,8 @@ export function Popover({
   align?: "start" | "end";
   panelClassName?: string;
   triggerClassName?: string;
+  /** Cierra el panel al apretar un boton de adentro (menus de acciones). Apagado por defecto. */
+  closeOnSelect?: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -72,6 +75,7 @@ export function Popover({
           id={id}
           role="dialog"
           aria-label={label}
+          onClick={closeOnSelect ? (event) => { if ((event.target as HTMLElement).closest("button")) close(true); } : undefined}
           className={`absolute top-full z-50 mt-1 rounded-xl border border-border bg-popover p-4 text-popover-foreground shadow-lg ${
             align === "end" ? "right-0" : "left-0"
           } ${panelClassName}`}

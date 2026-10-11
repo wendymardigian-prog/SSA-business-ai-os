@@ -51,32 +51,38 @@ CHECK vivos al empezar: `triggers_type_check` con 21 tipos (incluye `call_analyz
 
 | Número real | Número del plano | Qué hace | Estado |
 |---|---|---|---|
-| 00150 | 00150 | `forms`, `form_versions`, `form_submissions`, `can_view_forms`, `can_see_form_submission`, RLS | pendiente |
-| 00151 | 00151 | índice parcial `idx_analytics_forms` | pendiente |
-| 00152 | 00152 | `get_public_form`, `publish_form_version`, `form_metrics_daily`, `submit_form_response` v1 | pendiente |
-| 00153 | 00153 | buckets privados `form-uploads` y `contracts` | pendiente |
-| 00154 | 00154 | CHECK de `integration_configs.type` suma `captcha` | pendiente |
+| 00150 | 00150 | `forms`, `form_versions`, `form_submissions`, `can_view_forms`, `can_see_form_submission`, RLS | **aplicada y registrada** (`verify-forms`, `verify-rls` en verde; idempotente: aplicada dos veces) |
+| 00151 | 00151 | índice parcial `idx_analytics_forms` | **aplicada y registrada** (índice parcial; el `EXPLAIN` lo usa) |
+| 00152 | 00152 | `get_public_form`, `publish_form_version`, `form_metrics_daily`, `submit_form_response` v1 | **aplicada y registrada** (`verify-forms`: lista blanca, huella, concurrencia, métricas en zona horaria) |
+| 00153 | 00153 | buckets privados `form-uploads` y `contracts` | **aplicada y registrada** (buckets privados, sin policies) |
+| 00154 | 00154 | CHECK de `integration_configs.type` suma `captcha` | **aplicada y registrada** (el CHECK contiene los 7 tipos de antes + `captcha`) |
 | 00155 | 00155 | `flows.form_id` + CHECK de `triggers.type` suma 3 | pendiente |
 | 00156 | 00156 | `find_contact_by_phone_or_email` + `submit_form_response` v2 | pendiente |
 | 00157 | 00157 | `contract_signatures`, `record_contract_signature`, `submit_form_response` v3 | pendiente |
 
 Próxima libre al cerrar: **00158**.
 
-## Bloque FO1 · Builder, publicación y envío
-- [ ] F1 Tablas base, RLS y script de verificación
-- [ ] F2 Permisos y navegación
-- [ ] F3 Lista de formularios
-- [ ] F4 Campos y builder
-- [ ] F5 Condiciones
-- [ ] F6 Prellenado por URL, campos ocultos y atribución
-- [ ] F7 Diseño y pantalla de éxito
-- [ ] F8 Publicación y versiones
-- [ ] F9 Definición pública segura y página pública
-- [ ] F10 Embed
-- [ ] F11 Cloudflare Turnstile
-- [ ] F12 Envío seguro
-- [ ] F13 Respuestas
-- [ ] F14 Métricas
+## Bloque FO1 · Builder, publicación y envío — **cerrado** (migraciones 00150–00154 aplicadas)
+- [x] F1 Tablas base, RLS y script de verificación
+- [x] F2 Permisos y navegación
+- [x] F3 Lista de formularios
+- [x] F4 Campos y builder
+- [x] F5 Condiciones
+- [x] F6 Prellenado por URL, campos ocultos y atribución
+- [x] F7 Diseño y pantalla de éxito
+- [x] F8 Publicación y versiones
+- [x] F9 Definición pública segura y página pública
+- [x] F10 Embed
+- [x] F11 Cloudflare Turnstile
+- [x] F12 Envío seguro
+- [x] F13 Respuestas
+- [x] F14 Métricas
+
+Lo que se verificó al cerrarlo:
+- `npx vitest run`: 584 archivos, 7.244 tests, todo en verde (el punto de partida eran 547 y 6.865). `npm run lint`: 0 errores, 36 avisos (los mismos). `npm run build`: compila. `public/embed/embed.js`: 18,2 KB (era 14 KB; tope 60 KB).
+- `verify-forms.mjs` (nuevo, 113 comprobaciones contra la base real): RLS por rol (Owner, Admin, Member de sistema, rol con y sin `forms.view`, otro workspace, `anon`), unicidad de slug e idempotencia, sin DELETE; las huellas de `find_or_link_contact`, `create_booking` y `record_contact_touch` iguales; publicar (paridad del SHA-256 SQL/Node, versión 2, inmutabilidad, historial); `get_public_form` sin ninguna clave interna ni el valor de un oculto fijo; el envío real con Turnstile simulado (5 pedidos simultáneos con la misma clave = 1 respuesta, honeypot, captcha, Cloudflare caído, archivo real y `.exe` renombrado, republicar con otra etiqueta); métricas por día en la zona del workspace (el caso de las 23:30), spam aparte, índice parcial usado, beacon con un solo evento por sesión y sin IP ni `sid`; buckets privados.
+- `verify-rls`, `verify-scheduling` y `verify-roles` en 0. `verify-attribution` sigue con su única falla de antes (backfill de contactos; no es del módulo).
+- Revisión visual (navegador integrado, con la sesión de Wendy; datos `zz-test` creados y borrados): lista, editor de tres columnas con vista previa en vivo, publicar, respuestas, detalle y métricas a 1440 px; la página pública a 1440 y a 390 px en claro y oscuro; editor, respuestas, métricas y lista a 390 px sin scroll horizontal.
 
 ## Bloque FO2 · Contacto, atribución y automatizaciones
 - [ ] F15 Pestaña Contacto

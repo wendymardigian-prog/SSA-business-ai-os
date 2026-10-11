@@ -20,6 +20,7 @@ import { testApiKey as testPostproxyKey } from "@/lib/social/postproxy";
 import { validateMetaToken } from "@/lib/meta/token";
 import { fetchAdAccounts } from "@/lib/meta/accounts";
 import { checkAiProviderKey } from "./ai-key-check";
+import { checkTurnstileSecret } from "@/lib/forms/turnstile";
 
 export type ConnectionTest =
   | {
@@ -86,6 +87,16 @@ export async function testConnection(input: TestInput): Promise<ConnectionTest> 
             ? `Conectado. El token alcanza ${accounts.accounts.length} cuenta(s) publicitaria(s): elegí cuáles sincronizar.`
             : "Conectado, pero el token no alcanza ninguna cuenta publicitaria. Revisá los permisos en el Business Manager.",
       };
+    }
+
+    case "turnstile": {
+      const secret = (input.secrets.secret_key ?? "").trim();
+      // Sin clave nueva no hay nada que probar: se esta editando la site key.
+      if (!secret) return { ok: true };
+
+      const result = await checkTurnstileSecret(secret, input.fetchImpl);
+      if (!result.ok) return result;
+      return { ok: true, detail: "Cloudflare reconoció la secret key." };
     }
 
     case "openai":

@@ -12,7 +12,9 @@
  * `window` y `document` con una interfaz mínima (`EmbedWindow`,
  * `EmbedDocument`) que el DOM real cumple.
  */
-import { buildEmbedIframeUrl, parentUtmFromSearch, type EmbedConfig, type ParentUtm } from "./url";
+import { buildEmbedIframeUrl, isFormLink, parentAttributionFromSearch, parentUtmFromSearch, type EmbedConfig, type FormEmbedExtras, type ParentUtm } from "./url";
+import { attributionFromParams, parseCookieHeader } from "@/lib/attribution/collect";
+import { encodeAttr } from "@/lib/forms/embed-attr";
 import { parseEmbedMessage, isTrustedOrigin, isEmbedEventName, embedMessage, type EmbedEventName } from "./events";
 import { createLoadWatchdog, parseFallbackAttr, renderFallback, LOAD_TIMEOUT_MS, type FallbackElement } from "./fallback";
 import type { FallbackPayload } from "@/lib/scheduling/booker/unavailable-defaults";
@@ -41,6 +43,8 @@ export interface EmbedElement extends FallbackElement {
 }
 
 export interface EmbedDocument {
+  /** `document.cookie`: lo lee el embed de un formulario para pasar `_fbp`, `_fbc` y `_ga` (el iframe no las ve). */
+  cookie?: string;
   createElement(tag: string): EmbedElement;
   querySelector(selector: string): EmbedElement | null;
   body: EmbedElement;
@@ -285,9 +289,30 @@ export class EmbedRuntime {
     };
   }
 
+  /**
+   * Lo que un FORMULARIO necesita de la pagina que lo embebe: sus parametros (para
+   * prellenar), la atribucion de su URL y las cookies de los anuncios, que son de
+   * ese dominio y el iframe no puede leer. Va en un solo parametro `attr` y el
+   * servidor lo vuelve a sanear: no se confia.
+   */
+  private formExtras(): FormEmbedExtras {
+    const search = this.env.window.location.search;
+    const params = new URLSearchParams(search);
+    const hostParams: Record<string, string> = {};
+    params.forEach((value, key) => {
+      if (!(key in hostParams)) hostParams[key] = value;
+    });
+    const cookies = attributionFromParams({}, { cookies: parseCookieHeader(this.env.document.cookie) });
+    return {
+      hostParams,
+      parentAttribution: parentAttributionFromSearch(search),
+      attr: Object.keys(cookies).length > 0 ? encodeAttr(cookies) : null,
+    };
+  }
+
   private createIframe(calLink: string, config: EmbedConfig, container: EmbedElement, fallback: FallbackPayload): EmbedElement {
     const origin = this.getOrigin();
-    const url = buildEmbedIframeUrl(calLink, config, this.parentUtm, origin);
+    const url = buildEmbedIframeUrl(calLink, config, this.parentUtm, origin, isFormLink(calLink) ? this.formExtras() : undefined);
     const iframe = this.env.document.createElement("iframe");
     iframe.src = url;
     iframe.setAttribute("title", "Agenda");
@@ -327,6 +352,8 @@ export class EmbedRuntime {
   }
 
   private calLinkFromUrl(url: string): string {
+    const form = /\/f\/([a-z0-9-]{3,60})(?:[?#]|$)/.exec(url);
+    if (form) return `f/${form[1]}`;
     const m = /\/calendario\/([a-z0-9-]+\/[a-z0-9-]+)/.exec(url);
     return m ? m[1] : "";
   }

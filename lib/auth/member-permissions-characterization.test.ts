@@ -5,6 +5,10 @@
  *
  * Llamadas suma (decision 152): `calls.view` con alcance `own` al Member, y
  * las tres claves de `calls` al Owner y al Admin. Nada mas.
+ *
+ * Formularios suma (alcance v7.1 §4.5): `forms.view` al Member (ve las respuestas
+ * de los contactos que ve; la RLS lo aplica) y `forms.view` + `forms.manage` al
+ * Owner y al Admin. El Member NO tiene `forms.manage`.
  */
 import { describe, expect, it } from "vitest";
 import { SYSTEM_ROLE_PERMISSIONS, ALL_PERMISSION_KEYS } from "./permissions";
@@ -25,6 +29,8 @@ describe("Member de sistema", () => {
         "scheduling.use", "bookings.view", "bookings.manage",
         // Llamadas (decision 152): el unico permiso nuevo del Member.
         "calls.view",
+        // Formularios (alcance v7.1 §4.5): el unico permiso nuevo del Member.
+        "forms.view",
       ].sort(),
     );
   });
