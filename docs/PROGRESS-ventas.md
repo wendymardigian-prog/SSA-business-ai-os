@@ -89,3 +89,16 @@ Próxima libre al terminar: 00169.
 - Verificación: vitest 8213 verdes (682 archivos), `tsc` y build verdes, lint 0 errores (36 warnings, los mismos del punto de partida), `verify-sales` completo y `verify-audit-visibility --despues-de-00168`.
 
 Próxima migración libre: **00169**.
+
+## Cierre (11/10/2026)
+
+| Comprobación | Resultado |
+|---|---|
+| `npx vitest run` | 682 archivos, 8213 tests, verde |
+| `npx tsc --noEmit`, `npm run build` | verdes |
+| `npm run lint` | 0 errores, 36 warnings (los mismos del punto de partida) |
+| `verify-sales` (bloques 1 a 4), `verify-audit-visibility --despues-de-00168` | 0 |
+| `verify-rls`, `verify-roles`, `verify-workspace-isolation` (con sus flags), `verify-content`, `verify-crm`, `verify-csv-import`, `verify-scheduling`, `verify-booking-concurrency`, `verify-calls`, `verify-forms`, `verify-dashboards`, `verify-inbox-filters`, `verify-publishing`, `verify-optout`, `verify-enrichment`, `verify-chat-media`, `verify-message-persistence` | 0 |
+| `verify-attribution` | Solo la falla de antes: «todos los contactos reales tienen first_touch» (741 de 800, los mismos 59 contactos). No empeoró |
+
+Migraciones 00159 a 00168 aplicadas y registradas; `ALL_MIGRATIONS.sql` regenerado. `docs/ventas.md`, `docs/flow-registry.md`, `CLAUDE.md` y `BITACORA.md` actualizados. El borrado de `content_offers` queda escrito y sin aplicar.
