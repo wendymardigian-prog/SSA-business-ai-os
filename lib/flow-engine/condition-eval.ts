@@ -69,6 +69,40 @@ export interface BranchNodeData {
   paths: BranchPath[];
 }
 
+/** Una opcion de un campo de seleccion: `value` es lo que se guarda y compara, `label` lo que se lee. */
+export interface FieldOption {
+  value: string;
+  label: string;
+}
+
+/** Que hay que pedir ademas de elegir el campo (`has_active_sale:` + un producto). */
+export interface FieldArgumentSpec {
+  kind: "text" | "sequence";
+  label?: string;
+  placeholder?: string;
+}
+
+/**
+ * Un campo que se puede comparar, tal como lo ofrece el catalogo. Es lo que
+ * devuelven `variableSchema` (triggers), `outputs` (nodos) y
+ * `availableConditionFields`.
+ */
+export interface ConditionFieldSpec {
+  /** La ruta que se guarda en la condicion: `answer.facturacion`, `contact.tags`, `booking.status`... */
+  path: string;
+  label: string;
+  type: ConditionValueType;
+  /** Solo en las selecciones. */
+  options?: FieldOption[];
+  /** Como se agrupa en el selector ("Del formulario", "De la reunión"...). */
+  group?: string;
+  /** Si hay que pedir un argumento: la ruta final es `path + argumento`. */
+  argument?: FieldArgumentSpec;
+  hint?: string;
+  /** Un campo del nodo viejo que sigue valiendo pero ya no se ofrece para armar condiciones nuevas. */
+  legacy?: boolean;
+}
+
 /** Para saber cuando el valor viene de un campo que ya no existe. */
 export class MissingFieldError extends Error {
   constructor(public readonly field: string) {

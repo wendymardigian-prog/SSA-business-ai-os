@@ -178,8 +178,10 @@ export function matchConditionField(
 
   // De mas largo a mas corto: si un prefijo fuera prefijo de otro, ganar por
   // orden de registro elegiria el campo equivocado sin que nadie se entere.
+  // Los prefijos con punto (`answer.`, `booking.`) son los de los caminos
+  // condicionales: la ruta es la misma que la de la variable.
   const byLength = [...fields.values()]
-    .filter((d) => d.prefix.endsWith(":"))
+    .filter((d) => d.prefix.endsWith(":") || d.prefix.endsWith("."))
     .sort((a, b) => b.prefix.length - a.prefix.length);
 
   for (const definition of byLength) {

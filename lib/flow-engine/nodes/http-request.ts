@@ -1,6 +1,7 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { HttpRequestNodeData } from "../types";
 import { interpolateVariables } from "../interpolate";
+import { httpRequestOutputs } from "../node-outputs";
 
 /**
  * Llama a una API externa y guarda la respuesta en una variable.
@@ -13,6 +14,8 @@ export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
   label: "Llamada HTTP",
   aliases: [{ nodeType: "action", actionType: "httpRequest" }],
   persistsVariables: true,
+  // La respuesta queda en la variable elegida: los caminos condicionales la pueden comparar.
+  outputs: httpRequestOutputs,
   async execute({ data, context }: NodeExecutionArgs<HttpRequestNodeData>) {
     try {
       const url = interpolateVariables(data.url, context.variables || {});

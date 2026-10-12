@@ -5,6 +5,7 @@ import { outboundMessageRow } from "@/lib/messages/outbound";
 import type { FlowExecutionContext, AiResponseNodeData } from "../types";
 import { generateAiReply } from "@/lib/ai/generate-reply";
 import { sendChannelMessage, recordSend } from "../send";
+import { aiResponseOutputs } from "../node-outputs";
 
 /**
  * Corta la corrida.
@@ -98,6 +99,8 @@ export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
   type: "aiResponse",
   label: "Respuesta con IA",
   persistsVariables: true,
+  // Siempre guarda el texto en {{ai_response}}: los caminos condicionales lo pueden comparar.
+  outputs: aiResponseOutputs,
   execute: ({ supabase, data, context, sessionId, node }: NodeExecutionArgs<AiResponseNodeData>) =>
     executeAiResponse(supabase, data, context, sessionId, node.id),
 };

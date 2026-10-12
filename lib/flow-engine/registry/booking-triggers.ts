@@ -22,6 +22,7 @@ import {
   type BookingForFilter,
   type BookingTriggerConfig,
 } from "@/lib/scheduling/automation/triggers";
+import { bookingVariableSchema } from "@/lib/scheduling/automation/variable-schema";
 
 /** La agenda que llega en `args.booking`, adaptada a lo que los filtros piden. */
 function bookingForFilter(args: TriggerEventArgs): BookingForFilter | null {
@@ -47,6 +48,9 @@ for (const type of BOOKING_TRIGGER_TYPES) {
     // también encajara en uno del CRM, primero corre el específico.
     priority: 45,
     eventTypes: [type],
+
+    // Los datos de la reunion que un camino condicional puede comparar.
+    variableSchema: () => bookingVariableSchema(),
 
     eventMatches: (args) => {
       const booking = bookingForFilter(args);
