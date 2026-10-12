@@ -286,6 +286,125 @@ export function suggestContactMap(fields: FormField[]): MapEntry[] {
   return map;
 }
 
+// ── Mapeo automático (R4) ────────────────────────────────────────────────────
+
+const NAME_KEYS = ["nombre", "name", "nombre_completo", "full_name"];
+
+/** El destino que le corresponde a un campo recién agregado, o null si no tiene uno obvio. */
+function defaultTargetFor(field: FormField): string | null {
+  switch (field.type) {
+    case "email":
+      return "contact.email";
+    case "phone":
+      return "contact.phone";
+    case "social":
+      return field.social ? SOCIAL_TARGET[field.social.platform] : null;
+    case "short_text":
+      return NAME_KEYS.includes(field.key) ? "contact.display_name" : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Al agregar un campo (o cambiarle el tipo) lo mapea solo: email → Email, teléfono → Teléfono, usuario de red →
+ * la columna de esa red, y un texto corto llamado nombre/name/nombre_completo/full_name → Nombre completo.
+ * NUNCA pisa un mapeo elegido a mano: si el campo ya está mapeado, o si ese destino ya lo usa otro campo del
+ * formulario, no hace nada (el segundo campo de email queda sin mapear).
+ */
+export function autoMapOnFieldAdded(config: ContactConfig, field: FormField, fields: FormField[]): ContactConfig {
+  if (config.map.some((m) => m.fieldKey === field.key)) return config;
+  const target = defaultTargetFor(field);
+  if (!target || !targetAccepts(field, target)) return config;
+  const takenByLiveField = config.map.some((m) => m.target === target && fields.some((f) => f.key === m.fieldKey));
+  if (takenByLiveField) return config;
+  // Un mapeo viejo a un campo que ya no existe no cuenta: se reemplaza.
+  return { ...config, map: [...config.map.filter((m) => m.target !== target), { fieldKey: field.key, target }] };
+}
+
+/**
+ * Pone al día el mapeo cuando cambian los campos: un campo borrado pierde su mapeo, uno renombrado (misma `id`,
+ * otra clave) lo conserva con la clave nueva, y uno nuevo o con otro tipo se mapea solo. Devuelve el MISMO objeto
+ * si nada cambió.
+ */
+export function reconcileContactConfig(prev: FormField[], next: FormField[], config: ContactConfig): ContactConfig {
+  let current = config;
+  const prevById = new Map(prev.map((f) => [f.id, f]));
+  const nextIds = new Set(next.map((f) => f.id));
+
+  for (const gone of prev) {
+    if (nextIds.has(gone.id)) continue;
+    if (current.map.some((m) => m.fieldKey === gone.key)) current = { ...current, map: current.map.filter((m) => m.fieldKey !== gone.key) };
+  }
+
+  for (const field of next) {
+    const before = prevById.get(field.id);
+    if (!before) {
+      current = autoMapOnFieldAdded(current, field, next);
+      continue;
+    }
+    if (before.key !== field.key && current.map.some((m) => m.fieldKey === before.key)) {
+      current = { ...current, map: current.map.map((m) => (m.fieldKey === before.key ? { ...m, fieldKey: field.key } : m)) };
+    }
+    if (before.type !== field.type || before.social?.platform !== field.social?.platform) {
+      // Los destinos fijos que el campo ya no acepta se sacan; los de campos personalizados los revisa el servidor.
+      current = {
+        ...current,
+        map: current.map.filter((m) => m.fieldKey !== field.key || isCustomTarget(m.target) || targetAccepts(field, m.target)),
+      };
+      current = autoMapOnFieldAdded(current, field, next);
+    }
+  }
+  return current.map.length === config.map.length && current.map.every((m, i) => m === config.map[i]) && current.mode === config.mode ? config : current;
+}
+
+/** Lo que dice el panel de un campo: adónde va en el contacto. */
+export function fieldContactLine(config: ContactConfig, field: Pick<FormField, "key">, customFields: CustomFieldDef[]): string {
+  if (config.mode === "none") return "Las respuestas de este formulario no se vinculan con contactos.";
+  const entry = config.map.find((m) => m.fieldKey === field.key);
+  return entry ? `Se guarda en el contacto: ${targetLabel(entry.target, customFields)}` : "No se guarda en el contacto";
+}
+
+/** Los datos por los que una respuesta busca y crea contactos, en el orden en que se muestran ("Email, Teléfono, Instagram"). */
+const IDENTIFIER_DISPLAY_ORDER: readonly string[] = [
+  "contact.email",
+  "contact.phone",
+  "contact.whatsapp_phone",
+  ...SOCIAL_LOOKUP_PLATFORMS.map((p) => SOCIAL_TARGET[p]),
+];
+
+export function identifierLabels(config: ContactConfig, fields: FormField[]): string[] {
+  return IDENTIFIER_DISPLAY_ORDER.filter((target) => config.map.some((m) => m.target === target && fields.some((f) => f.key === m.fieldKey))).map(
+    (target) => FIXED_TARGET_LABELS[target as FixedTarget],
+  );
+}
+
+/**
+ * Saca del mapeo lo que ya no se puede guardar contra estos campos: campos que no existen, destinos que el campo
+ * no acepta, y repetidos (gana el primero). Se usa al guardar el borrador junto con el mapeo, para que nunca
+ * quede un mapeo apuntando a algo que el borrador no tiene.
+ */
+export function pruneContactConfig(config: ContactConfig, fields: FormField[], customFields: CustomFieldDef[]): ContactConfig {
+  const seenFields = new Set<string>();
+  const seenTargets = new Set<string>();
+  const map: MapEntry[] = [];
+  for (const entry of config.map) {
+    const field = fields.find((f) => f.key === entry.fieldKey);
+    if (!field || seenFields.has(entry.fieldKey) || seenTargets.has(entry.target)) continue;
+    if (isCustomTarget(entry.target)) {
+      const def = customFields.find((c) => c.slug === customSlugOf(entry.target));
+      // Un campo personalizado borrado se conserva (la pantalla lo marca; el envío lo ignora).
+      if (def && !targetAccepts(field, entry.target, def.type)) continue;
+    } else if (!(FIXED_TARGETS as readonly string[]).includes(entry.target) || !targetAccepts(field, entry.target)) {
+      continue;
+    }
+    seenFields.add(entry.fieldKey);
+    seenTargets.add(entry.target);
+    map.push(entry);
+  }
+  return map.length === config.map.length ? config : { ...config, map };
+}
+
 /** ¿Alguna respuesta va a poder crear o vincular un contacto? Hace falta email, teléfono o un usuario de red social. */
 export function canIdentifyContact(config: ContactConfig, fields: FormField[]): boolean {
   return config.map.some((entry) => {

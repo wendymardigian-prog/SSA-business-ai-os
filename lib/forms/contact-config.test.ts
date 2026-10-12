@@ -2,8 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   brokenMappings,
   canIdentifyContact,
+  autoMapOnFieldAdded,
   DEFAULT_CONTACT_CONFIG,
+  fieldContactLine,
   FIXED_TARGETS,
+  identifierLabels,
+  pruneContactConfig,
+  reconcileContactConfig,
   linksContacts,
   NO_CONTACT_CONSEQUENCES,
   parseStoredContactConfig,
@@ -216,5 +221,113 @@ describe("país como destino (R6)", () => {
     expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "México", "Spain"] }), "contact.country")).toBe(true);
     expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "Narnia"] }), "contact.country")).toBe(false);
     expect(targetAccepts(f("single_select", "p", { options: ["A", "B"] }), "contact.country")).toBe(false);
+  });
+});
+
+describe("el mapeo se arma solo (R4)", () => {
+  const empty = DEFAULT_CONTACT_CONFIG;
+
+  it("un formulario personalizado recién creado: al agregar un campo email queda contact.email", () => {
+    const email = f("email", "email");
+    const next = reconcileContactConfig([], [email], empty);
+    expect(next.map).toEqual([{ fieldKey: "email", target: "contact.email" }]);
+  });
+
+  it("teléfono, usuario de red y nombre también se mapean solos", () => {
+    const fields = [f("phone", "tel"), f("social", "ig", { social: { platform: "instagram" } }), f("short_text", "nombre")];
+    const next = reconcileContactConfig([], fields, empty);
+    expect(next.map).toEqual([
+      { fieldKey: "tel", target: "contact.phone" },
+      { fieldKey: "ig", target: "contact.instagram_username" },
+      { fieldKey: "nombre", target: "contact.display_name" },
+    ]);
+  });
+
+  it("un texto corto con otra clave no se mapea (no se adivina)", () => {
+    expect(autoMapOnFieldAdded(empty, f("short_text", "empresa"), [f("short_text", "empresa")])).toBe(empty);
+  });
+
+  it("nunca pisa un mapeo elegido a mano: un segundo email NO cambia el primero", () => {
+    const first = f("email", "email1");
+    const taken = { ...empty, map: [{ fieldKey: "email1", target: "contact.email" }] };
+    const next = reconcileContactConfig([first], [first, f("email", "email2")], taken);
+    expect(next).toBe(taken);
+    expect(next.map).toEqual([{ fieldKey: "email1", target: "contact.email" }]);
+  });
+
+  it("si el email estaba mapeado a otro destino a mano, el campo nuevo toma contact.email solo si está libre", () => {
+    const first = f("email", "email1");
+    const manual = { ...empty, map: [{ fieldKey: "email1", target: "contact.custom.facturacion" }] };
+    const next = reconcileContactConfig([first], [first, f("email", "email2")], manual);
+    expect(next.map).toEqual([
+      { fieldKey: "email1", target: "contact.custom.facturacion" },
+      { fieldKey: "email2", target: "contact.email" },
+    ]);
+  });
+
+  it("al borrar un campo mapeado, su entrada desaparece", () => {
+    const email = f("email", "email");
+    const cfg = { ...empty, map: [{ fieldKey: "email", target: "contact.email" }] };
+    expect(reconcileContactConfig([email], [], cfg).map).toEqual([]);
+  });
+
+  it("renombrar la clave (misma id) conserva el mapeo con la clave nueva", () => {
+    const before = f("email", "email");
+    const after = { ...before, key: "correo" };
+    const cfg = { ...empty, map: [{ fieldKey: "email", target: "contact.email" }] };
+    expect(reconcileContactConfig([before], [after], cfg).map).toEqual([{ fieldKey: "correo", target: "contact.email" }]);
+  });
+
+  it("cambiar el tipo saca el destino que ya no acepta y vuelve a mapear", () => {
+    const before = f("short_text", "dato");
+    const after = { ...before, type: "email" as const };
+    const cfg = { ...empty, map: [{ fieldKey: "dato", target: "contact.display_name" }] };
+    expect(reconcileContactConfig([before], [after], cfg).map).toEqual([{ fieldKey: "dato", target: "contact.email" }]);
+  });
+
+  it("sin cambios devuelve el mismo objeto", () => {
+    const email = f("email", "email");
+    const cfg = { ...empty, map: [{ fieldKey: "email", target: "contact.email" }] };
+    expect(reconcileContactConfig([email], [email], cfg)).toBe(cfg);
+  });
+
+  it("apagar el interruptor no impide que el mapeo siga armándose", () => {
+    const off = { ...empty, mode: "none" as const };
+    expect(reconcileContactConfig([], [f("email", "email")], off).mode).toBe("none");
+    expect(reconcileContactConfig([], [f("email", "email")], off).map).toHaveLength(1);
+  });
+});
+
+describe("lo que dicen el campo y la pestaña Contacto (R4)", () => {
+  const email = f("email", "email");
+  const ig = f("social", "ig", { social: { platform: "instagram" } });
+  const cfg = { ...DEFAULT_CONTACT_CONFIG, map: [{ fieldKey: "email", target: "contact.email" }, { fieldKey: "ig", target: "contact.instagram_username" }] };
+
+  it('el campo dice adónde va: "Se guarda en el contacto: Email" o "No se guarda en el contacto"', () => {
+    expect(fieldContactLine(cfg, email, customs)).toBe("Se guarda en el contacto: Email");
+    expect(fieldContactLine(cfg, f("short_text", "x"), customs)).toBe("No se guarda en el contacto");
+    expect(fieldContactLine({ ...cfg, mode: "none" }, email, customs)).toMatch(/no se vinculan con contactos/);
+  });
+
+  it("el resumen nombra los identificadores", () => {
+    expect(identifierLabels(cfg, [email, ig])).toEqual(["Email", "Instagram"]);
+    expect(identifierLabels(DEFAULT_CONTACT_CONFIG, [email])).toEqual([]);
+  });
+
+  it("pruneContactConfig saca lo que ya no existe o no se acepta, y los repetidos", () => {
+    const messy = {
+      ...DEFAULT_CONTACT_CONFIG,
+      map: [
+        { fieldKey: "email", target: "contact.email" },
+        { fieldKey: "fantasma", target: "contact.phone" },
+        { fieldKey: "ig", target: "contact.email" },
+        { fieldKey: "ig", target: "contact.instagram_username" },
+      ],
+    };
+    expect(pruneContactConfig(messy, [email, ig], customs).map).toEqual([
+      { fieldKey: "email", target: "contact.email" },
+      { fieldKey: "ig", target: "contact.instagram_username" },
+    ]);
+    expect(pruneContactConfig(cfg, [email, ig], customs)).toBe(cfg);
   });
 });

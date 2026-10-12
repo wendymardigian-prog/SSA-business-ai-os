@@ -7,10 +7,12 @@ import { BarChart3, ExternalLink, Inbox, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/forms/back-link";
 import { Notice } from "@/components/agents/fields";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tabs } from "@/components/ui/tabs";
 import { publishForm, saveFormDraft } from "@/lib/actions/forms/forms";
 import { FORM_STATUS_LABELS, FORM_TYPE_LABELS } from "@/lib/forms/fields";
-import { checkPublishable, hasUnpublishedChanges } from "@/lib/forms/publish";
+import { reconcileContactConfig, type ContactConfig } from "@/lib/forms/contact-config";
+import { checkPublishable, contactWarning, hasUnpublishedChanges } from "@/lib/forms/publish";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { fingerprint } from "@/lib/unsaved-changes";
 import { cn } from "@/lib/utils";
@@ -62,6 +64,11 @@ export function FormEditor({
   const [draft, setDraft] = useState<Draft>({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success });
   const [surveyConfig, setSurveyConfig] = useState(form.surveyConfig);
   const [contractConfig, setContractConfig] = useState(form.contractConfig);
+  // El mapeo al contacto vive aparte del borrador pero se guarda JUNTO con él (R4).
+  const [contactConfig, setContactConfig] = useState<ContactConfig>(form.contactConfig);
+  const contactRef = useRef(contactConfig);
+  contactRef.current = contactConfig;
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
   const [slug, setSlug] = useState(form.slug);
   const [status, setStatus] = useState(form.status);
   const [snapshot, setSnapshot] = useState(form.publishedSnapshot);
@@ -71,8 +78,8 @@ export function FormEditor({
   const [publishing, startPublishing] = useTransition();
 
   const updatedAt = useRef(form.updatedAt);
-  const [savedFp, setSavedFp] = useState(() => fingerprint({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success }));
-  const fp = useMemo(() => fingerprint(draft), [draft]);
+  const [savedFp, setSavedFp] = useState(() => fingerprint({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success, contactConfig: form.contactConfig }));
+  const fp = useMemo(() => fingerprint({ ...draft, contactConfig }), [draft, contactConfig]);
   const dirty = fp !== savedFp;
   const inFlight = useRef(false);
 
@@ -92,6 +99,7 @@ export function FormEditor({
           definition: target.definition,
           design: target.design,
           success: target.success,
+          contactConfig: contactRef.current,
           expectedUpdatedAt: updatedAt.current,
         });
         if (result.ok) {
@@ -138,15 +146,38 @@ export function FormEditor({
         type: form.type,
         slug,
         definition: draft.definition,
-        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: form.contactConfig.mode }),
+        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: contactConfig.mode }),
       }),
-    [form.type, slug, draft.definition, surveyConfig, contractConfig, form.contactConfig.mode],
+    [form.type, slug, draft.definition, surveyConfig, contractConfig, contactConfig.mode],
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
   const publishBlocked = disabled || reasons.length > 0 || publishing || saveState === "conflict";
 
+  /** Guarda lo último que se escribió (si hace falta) y dice si quedó guardado. */
+  const ensureSaved = useCallback(async (): Promise<boolean> => (dirty ? save(draft, fp) : true), [dirty, save, draft, fp]);
+
+  /** Los campos cambian: el mapeo al contacto se pone al día solo (campo nuevo → se mapea; borrado → se saca). */
+  function changeDraft(next: Draft) {
+    if (next.definition.fields !== draft.definition.fields) {
+      setContactConfig((current) => reconcileContactConfig(draft.definition.fields, next.definition.fields, current));
+    }
+    setDraft(next);
+  }
+
+  const noContactsWarning = contactWarning(contactConfig, draft.definition.fields);
+
+  /** Publicar. Sin identificadores en el mapeo (y con el interruptor prendido) primero se pide confirmación. */
   function publish() {
+    if (noContactsWarning && !confirmingPublish) {
+      setConfirmingPublish(true);
+      return;
+    }
+    publishNow();
+  }
+
+  function publishNow() {
+    setConfirmingPublish(false);
     setPublishMessage(null);
     startPublishing(async () => {
       // Lo último que se escribió tiene que estar guardado ANTES de publicar.
@@ -295,18 +326,39 @@ export function FormEditor({
         >
           <div className="pt-4">
             {section === "campos" ? (
-              <FieldsTab draft={draft} onChange={setDraft} disabled={disabled} neverPublished={neverPublished} slug={slug} type={form.type} contract={contractConfig} />
+              <FieldsTab
+                draft={draft}
+                onChange={changeDraft}
+                disabled={disabled}
+                neverPublished={neverPublished}
+                slug={slug}
+                type={form.type}
+                contract={contractConfig}
+                contactConfig={contactConfig}
+                customFields={extras.customFields}
+                onOpenContact={() => setSection("contacto")}
+              />
             ) : section === "encuesta" && form.type === "survey" ? (
-              <SurveyTab form={form} draft={draft} config={surveyConfig} onSaved={setSurveyConfig} canManage={canManage} />
+              <SurveyTab form={{ ...form, contactConfig }} draft={draft} config={surveyConfig} onSaved={setSurveyConfig} canManage={canManage} />
             ) : section === "contrato" && form.type === "contract" && contractConfig ? (
               <ContractEditor form={form} draft={draft} onDraftChange={setDraft} config={contractConfig} onSaved={setContractConfig} canManage={canManage} />
             ) : section === "contacto" ? (
-              <ContactTab form={form} draft={draft} extras={extras} canManage={canManage} />
+              <ContactTab
+                form={{ ...form, contactConfig }}
+                draft={draft}
+                extras={extras}
+                canManage={canManage}
+                ensureSaved={ensureSaved}
+                onSaved={(config, newUpdatedAt) => {
+                  setContactConfig(config);
+                  if (newUpdatedAt) updatedAt.current = newUpdatedAt;
+                }}
+              />
             ) : section === "automatizaciones" ? (
               <AutomationsTab form={form} extras={extras} canManage={canManage} />
             ) : (
               <PublishTab
-                form={{ ...form, slug, status }}
+                form={{ ...form, slug, status, contactConfig }}
                 versions={versions}
                 canManage={canManage}
                 appUrl={appUrl}
@@ -319,6 +371,18 @@ export function FormEditor({
           </div>
         </Tabs>
       </div>
+      <ConfirmDialog
+        open={confirmingPublish}
+        title="Publicar sin contactos"
+        message={noContactsWarning ?? ""}
+        confirmLabel="Publicar igual"
+        cancelLabel="Ir a Contacto"
+        onConfirm={publishNow}
+        onCancel={() => {
+          setConfirmingPublish(false);
+          setSection("contacto");
+        }}
+      />
     </div>
   );
 }

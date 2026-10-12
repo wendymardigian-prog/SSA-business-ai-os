@@ -8,6 +8,7 @@
 import { validateDefinition } from "./definition-schema";
 import type { FormDefinition, FormType } from "./fields";
 import { SLUG_PATTERN } from "./list";
+import { canIdentifyContact, linksContacts, type ContactConfig } from "./contact-config";
 
 export interface PublishInput {
   type: FormType;
@@ -36,6 +37,19 @@ export function checkPublishable(input: PublishInput): PublishCheck {
 
   if (reasons.length > 0) return { ok: false, reasons };
   return { ok: true, definition: result.definition };
+}
+
+/**
+ * El aviso (que NO bloquea) de publicar un formulario que no va a crear ni vincular contactos: el interruptor de
+ * contactos está prendido pero el mapeo no tiene ningún dato con el que identificar a la persona (email,
+ * teléfono, WhatsApp o red social). Con el interruptor apagado no hay aviso: es a propósito.
+ */
+export const CONTACT_WARNING =
+  "Este formulario no va a crear ni vincular contactos: no tiene ningún campo de email, teléfono o red social mapeado. ¿Publicar igual?";
+
+export function contactWarning(config: ContactConfig, fields: FormDefinition["fields"]): string | null {
+  if (!linksContacts(config)) return null;
+  return canIdentifyContact(config, fields) ? null : CONTACT_WARNING;
 }
 
 /** JSON con las claves ordenadas: dos definiciones iguales dan el mismo texto. */

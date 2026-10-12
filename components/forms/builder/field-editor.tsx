@@ -31,6 +31,8 @@ export function FieldEditor({
   fields,
   neverPublished,
   disabled,
+  contactLine,
+  onOpenContact,
   onPatch,
   onRelabel,
   onSetKey,
@@ -40,6 +42,9 @@ export function FieldEditor({
   fields: FormField[];
   neverPublished: boolean;
   disabled: boolean;
+  /** "Se guarda en el contacto: Email" o "No se guarda en el contacto" (R4). */
+  contactLine: string;
+  onOpenContact: () => void;
   onPatch: (patch: Partial<FormField>) => void;
   onRelabel: (label: string) => void;
   onSetKey: (key: string) => string | undefined;
@@ -69,6 +74,12 @@ export function FieldEditor({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{FIELD_TYPE_LABELS[field.type]}</p>
+      <p className="text-xs text-muted-foreground">
+        {contactLine}{" "}
+        <button type="button" onClick={onOpenContact} className="underline hover:text-foreground">
+          Ver en Contacto
+        </button>
+      </p>
 
       <Field label="Etiqueta">
         {(id) => <input id={id} className={inputClass} value={field.label} disabled={disabled} maxLength={200} onChange={(e) => onRelabel(e.target.value)} />}

@@ -7,9 +7,9 @@ import { logAudit } from "@/lib/audit";
 import { newFormParts } from "@/lib/forms/defaults";
 import { validateDraftShape } from "@/lib/forms/definition-schema";
 import { normalizeContractText } from "@/lib/forms/contract-text";
-import { FORM_TYPES, type FormStatus, type FormType } from "@/lib/forms/fields";
+import { FORM_TYPES, type FormField, type FormStatus, type FormType } from "@/lib/forms/fields";
 import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } from "@/lib/forms/list";
-import { DEFAULT_CONTACT_CONFIG, parseStoredContactConfig, suggestContactMap } from "@/lib/forms/contact-config";
+import { DEFAULT_CONTACT_CONFIG, parseStoredContactConfig, pruneContactConfig, suggestContactMap, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
 import { typeChecks } from "@/lib/forms/type-checks";
@@ -232,6 +232,11 @@ export interface SaveDraftInput {
   definition: unknown;
   design?: unknown;
   success?: unknown;
+  /**
+   * El mapeo al contacto que acompaña a esta definición (R4). Se guardan JUNTOS, en una misma escritura, para que
+   * nunca quede un mapeo apuntando a un campo que el borrador no tiene. Lo que ya no encaja se saca al guardar.
+   */
+  contactConfig?: unknown;
   /** El `updated_at` que tenía el editor al abrir/guardar: si cambió, alguien más editó. */
   expectedUpdatedAt?: string;
 }
@@ -263,6 +268,12 @@ export async function saveFormDraft(input: SaveDraftInput): Promise<FormActionRe
   }
 
   const patch: Record<string, unknown> = { draft_definition: definition, updated_by: ctx.user.id };
+
+  if (input.contactConfig !== undefined) {
+    const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id);
+    const fields = (Array.isArray(definition.fields) ? definition.fields : []) as FormField[];
+    patch.contact_config = pruneContactConfig(parseStoredContactConfig(input.contactConfig), fields, (defs ?? []) as CustomFieldDef[]) as unknown as Json;
+  }
 
   if (input.name !== undefined) {
     const name = input.name.trim();

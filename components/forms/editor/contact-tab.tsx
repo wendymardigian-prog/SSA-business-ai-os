@@ -8,6 +8,7 @@ import { saveContactSettings } from "@/lib/actions/forms/contact";
 import {
   brokenMappings,
   canIdentifyContact,
+  identifierLabels,
   linksContacts,
   NO_CONTACT_CONSEQUENCES,
   targetsFor,
@@ -55,11 +56,16 @@ export function ContactTab({
   draft,
   extras,
   canManage,
+  ensureSaved,
+  onSaved,
 }: {
   form: EditorForm;
   draft: Draft;
   extras: EditorExtras;
   canManage: boolean;
+  /** Guarda el borrador pendiente ANTES de guardar el mapeo: el servidor lo valida contra los campos guardados. */
+  ensureSaved: () => Promise<boolean>;
+  onSaved: (config: ContactConfig, updatedAt?: string) => void;
 }) {
   const router = useRouter();
   const fields: FormField[] = draft.definition.fields;
@@ -77,6 +83,7 @@ export function ContactTab({
   const broken = useMemo(() => brokenMappings(config, fields, extras.customFields), [config, fields, extras.customFields]);
   const brokenKeys = new Set(broken.map((b) => b.fieldKey));
   const identifiable = canIdentifyContact(config, fields);
+  const identifiers = identifierLabels(config, fields);
 
   // Lo roto (un campo que ya no existe) no se puede guardar: se limpia antes.
   const cleaned: ContactConfig = useMemo(() => ({ ...config, map: config.map.filter((m) => fields.some((f) => f.key === m.fieldKey)) }), [config, fields]);
@@ -90,9 +97,14 @@ export function ContactTab({
   function save() {
     setMessage(null);
     startSaving(async () => {
+      if (!(await ensureSaved())) {
+        setMessage({ tone: "error", text: "No pudimos guardar los últimos cambios de los campos. Probá de nuevo." });
+        return;
+      }
       const result = await saveContactSettings({ formId: form.id, contactConfig: cleaned, tagIds, notifyEnabled, notifyUserIds });
       if (result.ok) {
         setConfig(cleaned);
+        onSaved(cleaned, result.updatedAt);
         setMessage({ tone: "success", text: "Guardado" });
         router.refresh();
       } else {
@@ -105,6 +117,11 @@ export function ContactTab({
     <div className="mx-auto max-w-3xl space-y-4">
       {linking && !identifiable && (
         <Notice tone="warning">Sin email, teléfono ni usuario de red social mapeados, ninguna respuesta va a crear ni vincular contacto.</Notice>
+      )}
+      {linking && identifiable && (
+        <p className="text-sm text-muted-foreground">
+          Las respuestas buscan y crean contactos por: <span className="font-medium text-foreground">{identifiers.join(", ")}</span>
+        </p>
       )}
 
       <Section title="Vincular con contactos" description="Cada respuesta con email, teléfono o usuario de red social busca a la persona en tus contactos. Nunca se busca por nombre.">

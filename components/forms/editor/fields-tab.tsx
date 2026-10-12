@@ -14,6 +14,7 @@ import { toPublicFields } from "@/lib/forms/public-definition";
 import type { PublicFormData } from "@/lib/forms/public-client";
 import { cn } from "@/lib/utils";
 import { DesignCards } from "./design-cards";
+import { fieldContactLine, type ContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
 import type { Draft } from "./types";
 
 /**
@@ -29,6 +30,9 @@ export function FieldsTab({
   slug,
   type,
   contract,
+  contactConfig,
+  customFields,
+  onOpenContact,
 }: {
   draft: Draft;
   onChange: (next: Draft) => void;
@@ -38,6 +42,10 @@ export function FieldsTab({
   type: "custom" | "survey" | "contract";
   /** Solo un contrato: lo que la vista previa necesita para mostrar el texto y la firma. */
   contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
+  /** El mapeo al contacto, para decirle a cada campo adónde va (R4). */
+  contactConfig: ContactConfig;
+  customFields: CustomFieldDef[];
+  onOpenContact: () => void;
 }) {
   const fields = draft.definition.fields;
   const [selected, setSelected] = useState<number>(fields.length > 0 ? 0 : -1);
@@ -140,6 +148,8 @@ export function FieldsTab({
               fields={fields}
               neverPublished={neverPublished}
               disabled={disabled}
+              contactLine={fieldContactLine(contactConfig, current, customFields)}
+              onOpenContact={onOpenContact}
               onPatch={(patch) => setFields(updateField(fields, selected, patch))}
               onRelabel={(label) => setFields(relabelField(fields, selected, label, neverPublished))}
               onSetKey={(key) => {
