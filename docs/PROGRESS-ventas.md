@@ -48,9 +48,9 @@ Base: última migración aplicada `00158_forms_once_key_fix`. Datos: `content_of
 | 00168 | Política `audit_log_select_sales` | **aplicada y registrada** (`verify-audit-visibility --despues-de-00168`; `audit_log_select` idéntica) |
 | 00169 | Precio en `product_variants`, `sales.product_variant_id`, `create_sale` y puente reescritos, **borra `product_versions`** | **aplicada y registrada** (respaldo en `docs/ventas/respaldo-product-versions.json`; `verify-sales` en verde) |
 | 00170 | Trigger `catalog_audit`: historial de productos y variantes en la base | **aplicada y registrada** (`verify-sales` con 15 casos nuevos) |
-| — | `docs/pendientes/drop_content_offers.sql` | se escribe, **no se aplica** (solo después del deploy) |
+| 00171 | Borra `content_offers` y su puente | **aplicada y registrada** (12/10/2026, tras el deploy de `9eee8bb`; auditoría 0, respaldo en `docs/ventas/respaldo-content-offers.json`) |
 
-Próxima libre al terminar: 00171.
+Próxima libre al terminar: 00172.
 
 ## Bloque B1 · Catálogo (hecho)
 
@@ -87,7 +87,7 @@ Próxima libre al terminar: 00171.
 - **Triggers**: seis por cambio de estado y tres relativos al vencimiento (`payment_relative_trigger`, clave con el número de reprogramaciones). `pickCanonicalTrigger` dentro de `eventMatches` hace que un flow corra UNA vez por cambio. Tres nodos (cobrar, reprogramar, cambiar estado de venta), 11 atajos en el selector y `SalesTriggerPanel` con sus filtros.
 - **Pantallas**: `/dashboard/ventas/pagos`, cobrar/editar/ver pago con comprobante, reembolso, incobrable, plan de pagos en la ficha, sección «Ventas» de Ajustes > General (tope, gracia, flujos de cobranza) y Ajustes > Actividad (historial global con filtros).
 - **Flujos de cobranza precreados**: cuatro flows en borrador que se crean al abrir Ventas por primera vez (Owner/Admin), al prender la opción y al crear un workspace. Sin backfill durante la corrida.
-- **Borrado diferido**: `docs/pendientes/drop_content_offers.sql` escrito, **no aplicado**.
+- **Borrado de `content_offers`**: aplicado el 12/10/2026 como la 00171 (después del deploy).
 - Verificación: vitest 8213 verdes (682 archivos), `tsc` y build verdes, lint 0 errores (36 warnings, los mismos del punto de partida), `verify-sales` completo y `verify-audit-visibility --despues-de-00168`.
 
 Próxima migración libre: **00169**.
@@ -113,3 +113,7 @@ Pedido de Wendy: sacar `product_versions`, asegurar que todo cambio del catálog
 - **00170**: el historial de `products` y `product_variants` lo escribe un trigger (fuente única; se sacaron las llamadas `audit()` de `lib/actions/products.ts`, con un test que las prohíbe).
 - Pantalla: la pestaña «Precio» es un editor simple y debajo muestra los cambios de precio del historial.
 - Verificación: vitest 683 archivos / 8207 tests, `tsc`, lint (0 errores), `verify-sales` completo y `verify-rls`, `verify-audit-visibility`, `verify-roles`, `verify-workspace-isolation`, `verify-content`, `verify-crm`, `verify-calls`, `verify-forms`, `verify-csv-import` en 0.
+
+## content_offers borrada (12/10/2026)
+
+Con el deploy de `9eee8bb` en `SUCCESS` en Railway (el anterior ya estaba `REMOVED`): auditoría de la base en 0 (sin FK, vistas, crons ni policies que la nombren; 0 huérfanas, 0 divergencias, 3 ofertas = 3 productos), respaldo, migración 00171 aplicada y registrada. `verify-sales` ahora comprueba que la tabla y su puente ya no existen.

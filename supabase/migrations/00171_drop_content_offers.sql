@@ -1,8 +1,8 @@
 -- ============================================================================
--- DROP DIFERIDO de `content_offers` (Ventas, Fase 1 · plano §1b.5)
+-- 00171 — DROP de `content_offers` (Ventas, Fase 1 · plano §1b.5)
 -- ============================================================================
--- *** NO SE APLICA AUTOMATICAMENTE. NO ES UNA MIGRACION. *** Vive FUERA de `supabase/migrations/` a
--- proposito: ni `supabase db push` ni `build-all-migrations.mjs` lo levantan. Es IRREVERSIBLE.
+-- *** IRREVERSIBLE. *** Se aplico el 12/10/2026, DESPUES de desplegar en Railway el codigo que lee `products`
+-- (deploy del merge 9eee8bb), con los cuatro pasos de abajo cumplidos. Respaldo: docs/ventas/respaldo-content-offers.json.
 --
 -- Por que existe: la 00160 hizo que `products` absorbiera a `content_offers` (mismos ids) y dejo la tabla
 -- vieja SIN USO, con un puente (trigger `content_offers_bridge`) para que el codigo viejo desplegado siga

@@ -907,7 +907,7 @@ Catalogo de productos con precio versionado, atribucion y asignacion automatica 
 
 - **`sales` y `payments` los escribe SOLO el servidor** (Server Actions con el cliente de servicio, despues de `getPermissionAction`); la app lee con la RLS (`can_see_sale`). Los tipos Update/Insert son `Record<string, never>`: se escribe con `as never`.
 - **La plata va en centimos** (`lib/sales/money.ts`, `Number(x) || 0`). Siempre USD. La comision de **Whop esta en 0 %** hasta que Wendy confirme el porcentaje real.
-- **El precio vive en la VARIANTE** (`product_variants.price`, USD, 0 = sin precio: no se vende). No hay tabla de versiones (se borro en la 00169): la venta guarda el snapshot congelado del producto y su precio, y el historial de cambios de precio vive en `audit_log`. `create_sale` compara el precio de la variante con el que mostro el asistente (`price_changed`). `products` reemplaza a `content_offers`; **su borrado esta escrito en `docs/pendientes/drop_content_offers.sql` y NO se aplico** (irreversible: solo despues de que este codigo este DESPLEGADO; ver sus 4 pasos en PENDIENTE-ventas).
+- **El precio vive en la VARIANTE** (`product_variants.price`, USD, 0 = sin precio: no se vende). No hay tabla de versiones (se borro en la 00169): la venta guarda el snapshot congelado del producto y su precio, y el historial de cambios de precio vive en `audit_log`. `create_sale` compara el precio de la variante con el que mostro el asistente (`price_changed`). `products` reemplazo a `content_offers`, que se **borro en la 00171** (12/10/2026, despues de desplegar; respaldo en `docs/ventas/respaldo-content-offers.json`): ya no existe ni su puente.
 - **El estado de la venta se deriva igual en SQL y en TypeScript** (`derive_sale_status` / `deriveSaleStatus`, mismos casos en `lib/sales/sale-status.cases.json`). Cuatro estados se escriben y ganan; un incobrable nunca deja llegar a `paid`.
 - **Un cambio = un evento = una ejecucion por flow.** Los triggers de base emiten con un `change_id` y `pickCanonicalTrigger` (dentro de `eventMatches`) elige un trigger ganador. Los eventos llevan solo escalares y nunca `booking_id`.
 - **Los pagos se tocan por un solo nucleo** (`lib/sales/payments-core.ts`, actor usuario o sistema), usado por las Server Actions y por los nodos de flow. Reembolso = fila NUEVA negativa `paid`.
@@ -919,7 +919,7 @@ Catalogo de productos con precio versionado, atribucion y asignacion automatica 
 
 ## Migraciones
 
-`00159` a `00170`, todas aplicadas y registradas: catalogo (00159, 00160), asignacion (00161), ventas y pagos (00162), FK de `sale_id` (00163), `submit_form_response` v4 (00164), bucket de comprobantes (00165), CHECK de `triggers.type` (00166), cron de mora (00167) politica de historial (00168), precio en la variante y baja de `product_versions` (00169) y el historial del catalogo por trigger (00170). **La proxima migracion disponible es la `00171`** (confirmar con `list_migrations`).
+`00159` a `00171`, todas aplicadas y registradas: catalogo (00159, 00160), asignacion (00161), ventas y pagos (00162), FK de `sale_id` (00163), `submit_form_response` v4 (00164), bucket de comprobantes (00165), CHECK de `triggers.type` (00166), cron de mora (00167) politica de historial (00168), precio en la variante y baja de `product_versions` (00169) el historial del catalogo por trigger (00170) y el borrado de `content_offers` (00171). **La proxima migracion disponible es la `00172`** (confirmar con `list_migrations`).
 
 ## Scripts de verificacion
 

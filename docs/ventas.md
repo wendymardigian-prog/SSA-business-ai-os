@@ -6,9 +6,9 @@ Plano: [requerimientos-ventas-v7.md](requerimientos-ventas-v7.md) (v1.1; gana so
 
 ## Datos
 
-Migraciones **00159** a **00170** (la próxima libre es la **00171**).
+Migraciones **00159** a **00171** (la próxima libre es la **00172**).
 
-- **Catálogo** (00159, 00160, 00169): `products` → `product_variants`. El precio vive en la **variante** (`price`, USD; 0 = sin precio, no se vende). Cambiarlo es inmediato y queda en el historial general. Hubo una tabla `product_versions`; se borró en la 00169 porque la venta ya guarda su copia congelada del producto y del precio. `content_offers` se absorbió con el mismo id y un puente (que copia el precio a la variante); su borrado quedó escrito y **sin aplicar** (`docs/pendientes/drop_content_offers.sql`), para después del deploy.
+- **Catálogo** (00159, 00160, 00169): `products` → `product_variants`. El precio vive en la **variante** (`price`, USD; 0 = sin precio, no se vende). Cambiarlo es inmediato y queda en el historial general. Hubo una tabla `product_versions`; se borró en la 00169 porque la venta ya guarda su copia congelada del producto y del precio. `content_offers` se absorbió con el mismo id (00160) y se **borró en la 00171**, después de desplegar el código nuevo (respaldo en `docs/ventas/respaldo-content-offers.json`).
 - **Historial del catálogo** (00170): el trigger `catalog_audit` escribe `audit_log` por cada cambio de `products` y `product_variants` (alta, estado, archivado, precio y demás campos), con quién lo hizo. Un UPDATE de varios campos es una sola fila y uno que no cambia nada no escribe nada.
 - **Asignación** (00161): `assignment_rules` (setter, vendedor, referido; manual, por turnos o por condiciones) y el trigger `contacts_enqueue_sales_eval`, que solo encola y atrapa toda excepción.
 - **Ventas y pagos** (00162): `sales` y `payments`. **Escribe solo el servidor** (Server Actions con el cliente de servicio, después de `getPermissionAction`); la app lee con la RLS (`can_see_sale`). Un cambio = un evento: los triggers de base emiten `sale_*` / `payment_*` con un `change_id`, y `create_sale` / `cancel_sale` hacen todo en una transacción.

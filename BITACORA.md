@@ -1589,6 +1589,10 @@ Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_off
 **Pendiente.** Borrar `content_offers` después del deploy (guiado en `docs/PENDIENTE-ventas.md`).
 
 
+## content_offers borrada (12/10/2026)
+
+**Migración 00171**, aplicada y registrada después de comprobar que Railway desplegó el merge del PR #42 (el servicio anterior ya estaba removido). Antes: auditoría de la base en 0 y respaldo en `docs/ventas/respaldo-content-offers.json`. Los 3 productos, sus 3 variantes con precio y la idea y la pieza clasificadas siguen intactos. La próxima migración libre es la **00172**.
+
 ## Formularios — correcciones del 12/10 (R1 a R10)
 
 **Migraciones:** 00172 a 00177, aplicadas y registradas. Rama `feat/formularios-correcciones`, un commit por corrección.
