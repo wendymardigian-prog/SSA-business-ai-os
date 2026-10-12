@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles } from "lucide-react";
+import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles, Split } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Edge, Node } from "@xyflow/react";
 
@@ -11,14 +11,20 @@ import { ConditionPanel } from "./ConditionPanel";
 import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
 import { AiResponsePanel } from "./AiResponsePanel";
+import { BranchPanel } from "./BranchPanel";
+import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
 
 interface NodeConfigSidebarProps {
+  /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
+  flowId: string;
   node: Node;
   nodes: Node[];
   edges: Edge[];
   onChange: (nodeId: string, data: Record<string, unknown>) => void;
   onClose: () => void;
   onDelete: (nodeId: string) => void;
+  /** "Convertir a Condiciones" en un nodo `condition`. */
+  onConvert?: (nodeId: string) => void;
 }
 
 // BFS backwards over edges; the visited set makes cycles terminate.
@@ -57,12 +63,14 @@ function getFlowVariables({
   // Producer-derived variables are only offered when the producing node runs before this one.
   const upstreamIds = getUpstreamNodeIds(node.id, edges);
 
-  if (nodes.some((n) => n.type === "aiResponse" && upstreamIds.has(n.id))) {
+  if (nodes.some((n) => canonicalNodeType({ type: n.type ?? "", data: n.data }) === "aiResponse" && upstreamIds.has(n.id))) {
     variables.push("ai_response");
   }
 
   for (const n of nodes) {
-    if (n.type !== "httpRequest" || !upstreamIds.has(n.id)) continue;
+    // El canvas guarda el HTTP Request como `type: "action"` con el tipo real en `data.actionType`:
+    // mirar `n.type` solo nunca lo encontraba y la variable de su respuesta no se ofrecia.
+    if (canonicalNodeType({ type: n.type ?? "", data: n.data }) !== "httpRequest" || !upstreamIds.has(n.id)) continue;
     const responseVariable = (n.data as Record<string, unknown>)
       .responseVariable as string | undefined;
     if (responseVariable && !variables.includes(responseVariable)) {
@@ -87,10 +95,16 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
     borderColor: "border-blue-500",
   },
   condition: {
-    label: "Condition",
+    label: "Condición (sí / si no)",
     icon: GitBranch,
     color: "bg-amber-500",
     borderColor: "border-amber-500",
+  },
+  branch: {
+    label: "Condiciones",
+    icon: Split,
+    color: "bg-indigo-500",
+    borderColor: "border-indigo-500",
   },
   delay: {
     label: "Delay",
@@ -112,7 +126,7 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
   },
 };
 
-export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDelete }: NodeConfigSidebarProps) {
+export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClose, onDelete, onConvert }: NodeConfigSidebarProps) {
   const nodeType = node.type || "action";
   const config = nodeTypeConfig[nodeType] || nodeTypeConfig.action;
   const Icon = config.icon;
@@ -156,7 +170,9 @@ export function NodeConfigSidebar({ node, nodes, edges, onChange, onClose, onDel
           />
         );
       case "condition":
-        return <ConditionPanel data={data} onChange={handleChange} />;
+        return <ConditionPanel data={data} onChange={handleChange} onConvert={onConvert ? () => onConvert(node.id) : undefined} />;
+      case "branch":
+        return <BranchPanel flowId={flowId} nodeId={node.id} data={data} nodes={nodes} edges={edges} onChange={handleChange} />;
       case "delay":
         return <DelayPanel data={data} onChange={handleChange} />;
       case "aiResponse":
