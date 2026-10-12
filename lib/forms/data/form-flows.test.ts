@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { fakeDb } from "@/lib/testing/fake-db";
 import { flowsForForm, formFlowGraph } from "./form-flows";
+import { formTemplateGraph } from "@/lib/forms/automation/templates";
 
 /**
  * `flows` NO tiene `deleted_at`: filtrar por esa columna hace fallar la consulta y
@@ -27,8 +28,26 @@ describe("los flujos de un formulario", () => {
     });
     const rows = await flowsForForm(db.client, "form-1", {});
     expect(rows).toEqual([
-      { id: "f1", name: "Avisarme", enabled: true, describe: "Se envía un formulario en cualquier formulario" },
-      { id: "f2", name: "Apagada", enabled: false, describe: "Se responde una encuesta en cualquier formulario" },
+      { id: "f1", name: "Avisarme", enabled: true, describe: "Se envía un formulario en cualquier formulario", summary: "Armado en el canvas" },
+      { id: "f2", name: "Apagada", enabled: false, describe: "Se responde una encuesta en cualquier formulario", summary: "Armado en el canvas" },
     ]);
+  });
+
+  it("la fila trae el resumen del flujo: «2 caminos + si no · 3 emails», o «Armado en el canvas»", async () => {
+    const tree = formTemplateGraph("email_by_answer", {
+      form: { id: "form-1", name: "A", type: "custom" },
+      userEmail: "yo@ejemplo.com",
+      question: { key: "plan", label: "Plan", type: "single_select", options: ["Uno", "Dos"] },
+    });
+    const db = fakeDb({
+      "flows:select": {
+        data: [
+          { id: "f1", name: "Con caminos", status: "draft", nodes: tree.nodes, edges: tree.edges },
+          { id: "f2", name: "A mano", status: "draft", nodes: [{ id: "trigger", type: "trigger", data: { triggerType: "form_submitted" }, position: { x: 0, y: 0 } }, { id: "s", type: "split", data: {}, position: { x: 0, y: 0 } }, { id: "a", type: "action", data: {}, position: { x: 0, y: 0 } }, { id: "b", type: "action", data: {}, position: { x: 0, y: 0 } }], edges: [{ id: "e", source: "trigger", target: "s" }, { id: "e1", source: "s", target: "a", sourceHandle: "A" }, { id: "e2", source: "s", target: "b", sourceHandle: "B" }] },
+        ],
+      },
+    });
+    const rows = await flowsForForm(db.client, "form-1");
+    expect(rows.map((r) => r.summary)).toEqual(["Cuando se envía · 2 caminos + si no · 3 emails", "Armado en el canvas"]);
   });
 });

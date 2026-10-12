@@ -27,12 +27,18 @@ interface Opts {
   formStatus?: string;
   flow?: Record<string, unknown> | null;
   existingNames?: string[];
+  /** Las preguntas del formulario (borrador, sin version publicada), para la plantilla que pide una. */
+  fields?: Array<Record<string, unknown>>;
 }
 
 function setup(opts: Opts = {}): FakeDb {
   const graph = formTemplateGraph("notify_me_email", { form: { id: FORM, name: "Aplicación", type: "custom" }, userEmail: "yo@ejemplo.com" });
   const db = fakeDb({
-    "forms:select": { data: { id: FORM, name: "Aplicación", type: opts.formType ?? "custom", status: opts.formStatus ?? "published" } },
+    "forms:select": (call) =>
+      call.single
+        ? { data: { id: FORM, name: "Aplicación", type: opts.formType ?? "custom", status: opts.formStatus ?? "published" } }
+        : // `loadFormsWithFields` (varios formularios, sin version publicada: usa el borrador).
+          { data: [{ id: FORM, current_version_id: null, draft_definition: { fields: opts.fields ?? [] } }] },
     "flows:select": (call) => {
       // `namesTaken` pide solo el nombre; `formFlowGraph` pide el grafo.
       if (call.single || call.filters.some((f) => f.column === "id")) {
@@ -112,6 +118,56 @@ describe("createFormFlowFromTemplate", () => {
     setup();
     expect((await createFormFlowFromTemplate({ formId: FORM, template: "add_tag" })).ok).toBe(false);
     expect((await createFormFlowFromTemplate({ formId: FORM, template: "add_tag", tagName: "calificado" })).ok).toBe(true);
+  });
+});
+
+describe("createFormFlowFromTemplate: Email distinto según una respuesta", () => {
+  const FACT = ["Poco", "Mucho", "Muchisimo"];
+  const fields = [
+    { id: "1", key: "facturacion", label: "Facturación", type: "single_select", required: true, options: FACT },
+    { id: "2", key: "comentario", label: "Comentario", type: "text", required: false },
+    { id: "3", key: "nota", label: "Nota", type: "nps", required: true, min: 0, max: 10 },
+  ];
+
+  it("nace APAGADA, atada al formulario, con un Condiciones y tres emails vacíos", async () => {
+    const db = setup({ fields });
+    const out = await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer", questionKey: "facturacion" });
+    expect(out).toEqual({ ok: true, flowId: FLOW });
+    const row = db.writesTo("flows")[0].values as { status: string; form_id: string; name: string; nodes: Array<{ type: string; data: Record<string, unknown> }>; edges: Array<{ sourceHandle?: string }> };
+    expect(row).toMatchObject({ status: "draft", form_id: FORM, name: "Aplicación · Email distinto según una respuesta" });
+    expect(row.nodes.filter((n) => n.type === "branch")).toHaveLength(1);
+    expect(row.nodes.filter((n) => n.data.actionType === "send_email")).toHaveLength(3);
+    expect(row.edges.map((e) => e.sourceHandle).filter(Boolean)).toContain("else");
+    // Nace apagada: no escribe ningun trigger.
+    expect(db.writesTo("triggers")).toEqual([]);
+    // Y el editor de pasos la abre.
+    expect(flowToTree(row.nodes as never, row.edges as never)).not.toBeNull();
+  });
+
+  it("una pregunta numérica arma los umbrales", async () => {
+    const db = setup({ fields });
+    await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer", questionKey: "nota" });
+    const row = db.writesTo("flows")[0].values as { nodes: Array<{ type: string; data: { paths?: Array<{ conditions: Array<{ operator: string; value: string }> }> } }> };
+    const paths = row.nodes.find((n) => n.type === "branch")!.data.paths!;
+    expect(paths.map((p) => [p.conditions[0].operator, p.conditions[0].value])).toEqual([["gte", "7"], ["gte", "3"]]);
+  });
+
+  it("pide la pregunta", async () => {
+    const db = setup({ fields });
+    expect((await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer" })).ok).toBe(false);
+    expect(db.writes()).toEqual([]);
+  });
+
+  it("una pregunta que no sirve (texto) o que no existe no se acepta", async () => {
+    const db = setup({ fields });
+    expect((await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer", questionKey: "comentario" })).ok).toBe(false);
+    expect((await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer", questionKey: "no_existe" })).ok).toBe(false);
+    expect(db.writes()).toEqual([]);
+  });
+
+  it("un formulario sin preguntas no se acepta", async () => {
+    setup();
+    expect(await createFormFlowFromTemplate({ formId: FORM, template: "email_by_answer", questionKey: "x" })).toEqual({ ok: false, error: expect.stringMatching(/pregunta/) });
   });
 });
 

@@ -15,7 +15,8 @@ import { flowToLinear, linearToFlow, type LinearFlow } from "@/lib/scheduling/au
 import { prepareTreeSave } from "@/lib/automations/step-tree-save";
 import type { StepTree } from "@/lib/automations/step-tree";
 import { withAnswerConditions } from "@/lib/forms/automation/answer-conditions";
-import { blankFormFlowGraph, formFlowName, formTemplateByKey, formTemplateGraph, nextAutomationName, type FormTemplateKey } from "@/lib/forms/automation/templates";
+import { blankFormFlowGraph, formFlowName, formTemplateByKey, formTemplateGraph, nextAutomationName, templateQuestions, type FormTemplateKey } from "@/lib/forms/automation/templates";
+import { loadFormsWithFields } from "@/lib/flow-engine/registry/form-triggers";
 import { emptyFormVariables } from "@/lib/forms/automation/variables";
 import { formFlowGraph } from "@/lib/forms/data/form-flows";
 
@@ -108,8 +109,11 @@ export async function createFormFlow(input: { formId: string }): Promise<FormFlo
   return { ok: true, flowId: data.id };
 }
 
-/** Una plantilla de un clic. Nace APAGADA, con el email de quien la crea si manda un aviso. */
-export async function createFormFlowFromTemplate(input: { formId: string; template: FormTemplateKey; tagName?: string }): Promise<FormFlowResult<{ flowId: string }>> {
+/**
+ * Una plantilla de un clic. Nace APAGADA, con el email de quien la crea si manda un aviso.
+ * `questionKey` es la pregunta de la plantilla «Email distinto según una respuesta».
+ */
+export async function createFormFlowFromTemplate(input: { formId: string; template: FormTemplateKey; tagName?: string; questionKey?: string }): Promise<FormFlowResult<{ flowId: string }>> {
   const ctx = await context();
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const form = await loadForm(ctx, input.formId);
@@ -126,7 +130,16 @@ export async function createFormFlowFromTemplate(input: { formId: string; templa
     return { ok: false, error: "Tu usuario no tiene email: no hay a dónde mandar el aviso." };
   }
 
-  const graph = formTemplateGraph(template.key, { form, userEmail, tagName });
+  // La pregunta se busca en el servidor, con la misma definicion con la que se arman las condiciones
+  // (la version publicada, o el borrador si nunca se publico): el navegador solo dice cual.
+  let question;
+  if (template.needsQuestion) {
+    const [loaded] = await loadFormsWithFields(ctx.supabase, ctx.workspace.id, [form.id]);
+    question = templateQuestions(loaded?.fields ?? []).find((q) => q.key === input.questionKey);
+    if (!question) return { ok: false, error: "Elegí una pregunta de selección única o de número de este formulario." };
+  }
+
+  const graph = formTemplateGraph(template.key, { form, userEmail, tagName, question });
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({

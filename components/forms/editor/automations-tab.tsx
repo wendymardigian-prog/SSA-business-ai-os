@@ -7,27 +7,30 @@ import { Loader2, Plus, Workflow } from "lucide-react";
 import { Notice, Section, inputClass } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
 import { createFormFlow, createFormFlowFromTemplate, toggleFormFlow } from "@/lib/actions/forms/flows";
-import { templatesForType, type FormTemplateKey } from "@/lib/forms/automation/templates";
+import { templateQuestions, templatesForType, type FormTemplateKey } from "@/lib/forms/automation/templates";
 import type { EditorExtras, EditorForm } from "./types";
 
 /**
  * La pestaña Automatizaciones (F21): los flujos de este formulario, un botón para
  * crear uno y las plantillas de un clic. Un flujo es un flow normal: se edita en el
- * editor lineal (Cuándo / Si / Entonces) o, si hace falta más, en el canvas.
+ * editor de pasos (Cuándo / Solo si… / Pasos, con Condiciones) o, si hace falta más, en el canvas.
  *
  * Aspecto de `FormAutomationsSection.tsx` de prevxcrm (la lista y las tarjetas de
- * plantilla); el editor es el lineal de SSA.
+ * plantilla); el editor es el de pasos de SSA.
  */
 export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; extras: EditorExtras; canManage: boolean }) {
   const router = useRouter();
   const [flows, setFlows] = useState(extras.flows);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [tagName, setTagName] = useState("");
+  const [questionKey, setQuestionKey] = useState("");
   const [pending, start] = useTransition();
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const canEdit = canManage && extras.canFlows && form.status !== "archived";
   const templates = templatesForType(form.type);
+  // Las mismas preguntas con las que se arman las condiciones: la version publicada, o el borrador si nunca se publico.
+  const questions = templateQuestions((form.publishedSnapshot ?? form.draftDefinition).fields);
 
   function create() {
     setMessage(null);
@@ -44,7 +47,7 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
     setMessage(null);
     setBusyKey(key);
     start(async () => {
-      const result = await createFormFlowFromTemplate({ formId: form.id, template: key, tagName: key === "add_tag" ? tagName : undefined });
+      const result = await createFormFlowFromTemplate({ formId: form.id, template: key, tagName: key === "add_tag" ? tagName : undefined, questionKey: key === "email_by_answer" ? questionKey : undefined });
       setBusyKey(null);
       if (result.ok) router.push(`/dashboard/formularios/${form.id}/automatizaciones/${result.flowId}`);
       else setMessage({ tone: "error", text: result.error });
@@ -87,7 +90,9 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
                   <Link href={`/dashboard/formularios/${form.id}/automatizaciones/${flow.id}`} className="block truncate text-sm font-medium hover:underline">
                     {flow.name}
                   </Link>
-                  <p className="truncate text-xs text-muted-foreground">{flow.describe}</p>
+                  <p className="truncate text-xs text-muted-foreground" title={flow.describe}>
+                    {flow.summary}
+                  </p>
                 </div>
                 <span className="text-xs text-muted-foreground">{flow.enabled ? "Encendida" : "Apagada"}</span>
                 <Switch checked={flow.enabled} disabled={!canEdit || pending} label={`${flow.enabled ? "Apagar" : "Encender"} ${flow.name}`} onChange={(next) => toggle(flow.id, next)} />
@@ -131,11 +136,35 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
                       </select>
                     </div>
                   )}
+                  {t.needsQuestion && (
+                    <div className="mt-2">
+                      {questions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Este formulario todavía no tiene preguntas de selección única o de número. Sumá una para usar esta plantilla.</p>
+                      ) : (
+                        <>
+                          <label htmlFor={`tpl-${t.key}-question`} className="sr-only">
+                            Pregunta que reparte los caminos
+                          </label>
+                          <select id={`tpl-${t.key}-question`} className={inputClass} value={questionKey} onChange={(e) => setQuestionKey(e.target.value)}>
+                            <option value="">Elegí una pregunta…</option>
+                            {questions.map((q) => (
+                              <option key={q.key} value={q.key}>
+                                {q.label}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Con una selección, un camino por cada una de las dos primeras opciones. Con un número, dos umbrales de partida que después editás en el flujo.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => fromTemplate(t.key)}
-                  disabled={pending || (t.needsTag && !tagName)}
+                  disabled={pending || (t.needsTag && !tagName) || (t.needsQuestion && !questionKey)}
                   className="mt-3 inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-lg border border-border px-3 text-xs hover:bg-accent disabled:opacity-50"
                 >
                   {busyKey === t.key && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
