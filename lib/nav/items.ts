@@ -34,6 +34,9 @@ export const NAV_GROUPS: NavGroupMeta[] = [
   { id: "sistema", title: null },
 ];
 
+/** Condiciones del menú que se calculan en el servidor (no son un permiso). */
+export type NavFlag = "eod";
+
 export interface NavItemMeta {
   name: string;
   href: string;
@@ -52,6 +55,12 @@ export interface NavItemMeta {
    * los items, el candidato (href o alsoActiveOn) mas largo que matchee.
    */
   alsoActiveOn?: string[];
+  /**
+   * Visible solo si la condición calculada en el servidor es verdadera, también para
+   * Owner y Admin: "Mi reporte del día" aparece si la persona está en la audiencia de
+   * algún reporte de fin de día publicado (`lib/eod/nav-flag.ts`).
+   */
+  requires?: NavFlag;
 }
 
 export const NAV_ITEMS: NavItemMeta[] = [
@@ -62,6 +71,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
+  // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
+  { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", adminOnly: false, group: "inicio", requires: "eod" },
 
   { name: "Contenido", href: "/dashboard/content", icon: "Clapperboard", adminOnly: false, group: "adquisicion" },
   // Social: el perfil de cada red y sus publicaciones. Se ve con el permiso
@@ -115,11 +127,12 @@ export const NAV_ITEMS: NavItemMeta[] = [
  * valiendo por rol (es lo que fija member-baseline), y `permissions` se
  * evalua sobre las claves del rol resuelto.
  */
-export function visibleNavItems<T extends Pick<NavItemMeta, "adminOnly" | "permissions">>(
+export function visibleNavItems<T extends Pick<NavItemMeta, "adminOnly" | "permissions" | "requires">>(
   items: T[],
-  viewer: { isAdmin: boolean; permissionKeys: string[] },
+  viewer: { isAdmin: boolean; permissionKeys: string[]; flags?: Partial<Record<NavFlag, boolean>> },
 ): T[] {
   return items.filter((item) => {
+    if (item.requires && viewer.flags?.[item.requires] !== true) return false;
     if (item.adminOnly && !viewer.isAdmin) return false;
     if (item.permissions && !viewer.isAdmin) {
       return item.permissions.some((key) => viewer.permissionKeys.includes(key));

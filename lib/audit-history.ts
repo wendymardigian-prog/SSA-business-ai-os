@@ -223,9 +223,10 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
 
 /** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
 export const FORM_ACTION_LABELS: Record<
-  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}`>,
+  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}`>,
   string
 > = {
+  "eod.edited": "corrigió el reporte de fin de día",
   "form.created": "creó el formulario",
   "form.updated": "editó el formulario",
   "form.published": "publicó el formulario",

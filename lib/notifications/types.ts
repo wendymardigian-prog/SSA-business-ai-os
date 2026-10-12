@@ -51,6 +51,13 @@ export const NOTIFICATION_TYPES = [
   // Formularios.
   /** Alguien respondió un formulario. Va a quienes eligió el formulario (por defecto, Owner y Admin). */
   "form_submitted",
+  // Reportes de fin de día.
+  /** Alguien envió su reporte del día. Va a quienes eligió el reporte (`eod_config.notify`). */
+  "eod_submitted",
+  /** A la hora configurada: a quien le toca y todavía no envió el de hoy (E13). Va SOLO a esa persona. */
+  "eod_reminder",
+  /** Un flujo mandó un aviso al equipo (nodo "Avisar en la campana"). */
+  "flow_notice",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -68,7 +75,11 @@ export type NotificationEntity =
   | "flow"
   | "fathom"
   | "call"
-  | "form_submission";
+  | "form_submission"
+  /** Un reporte de fin de día enviado (el id del formulario viaja en la metadata). */
+  | "eod_report"
+  /** Un reporte de fin de día para completar (el id es el del formulario). */
+  | "eod_form";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -292,6 +303,23 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "info",
     entity: "form_submission",
   },
+  eod_submitted: {
+    type: "eod_submitted",
+    label: "Reporte de fin de día enviado",
+    tone: "info",
+    entity: "eod_report",
+  },
+  eod_reminder: {
+    type: "eod_reminder",
+    label: "Falta el reporte del día",
+    tone: "warning",
+    entity: "eod_form",
+  },
+  flow_notice: {
+    type: "flow_notice",
+    label: "Aviso de una automatización",
+    tone: "info",
+  },
 };
 
 export function isNotificationType(value: string): value is NotificationType {
@@ -350,6 +378,16 @@ export function linkFor(
 
     case "call":
       return entityId ? `/dashboard/llamadas/${entityId}` : "/dashboard/llamadas";
+
+    // Reportes de fin de día: el enviado abre su detalle; el que falta, la pantalla para completarlo.
+    case "eod_report": {
+      const formId = metadata?.form_id;
+      if (typeof formId !== "string") return "/dashboard/eod";
+      return entityId ? `/dashboard/formularios/${formId}/reportes/${entityId}` : `/dashboard/formularios/${formId}/reportes`;
+    }
+
+    case "eod_form":
+      return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
 
     // Formularios: la respuesta abre su detalle (necesita el id del formulario, que viaja en la metadata).
     case "form_submission": {
