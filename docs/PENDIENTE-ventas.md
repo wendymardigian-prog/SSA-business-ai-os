@@ -104,3 +104,12 @@ Se escribe en `docs/pendientes/drop_content_offers.sql` al cerrar B4 y **no se a
 - **No hay tests unitarios directos de `payments-core`**: lo cubren `lib/actions/payments.test.ts`, `sales-actions.test.ts` (nodos) y `verify-sales --block 4` contra la base real.
 - **Revisión visual de B4** (navegador integrado, sesión de Wendy): Pagos vacío, editor de flows con los 11 atajos y el panel de filtros, Ajustes > Actividad, Ajustes > General > Ventas. No se abrió `/dashboard/ventas` con el admin para no disparar la creación de los flows en el workspace real, ni se apretó ningún botón que escriba.
 - **Pendiente en vivo (§18 del plano)**: con la rama desplegada, cargar una venta de prueba con un pago programado vencido y comprobar que la mora y el flow de cobranza se disparan una sola vez.
+
+## Después del cierre: precio en la variante (12/10/2026)
+
+- **`content_offers` NO se borró todavía** y es lo único grande que queda. Producción corre `main`, que lee y escribe esa tabla (el puente la copia a `products`); borrarla antes del deploy de esta rama rompe Contenido. **Después de desplegar**: repetir la auditoría (0 FK, 0 vistas, 0 crons, 0 policies que la nombren; el código no la lee), respaldo `docs/ventas/respaldo-content-offers.json`, aplicar `docs/pendientes/drop_content_offers.sql`, registrarla como migración **00171**, y limpiar el tipo de `database.ts`, el caso del puente de `verify-sales.mjs` y la exención de `no-content-offers.test.ts`.
+- **Se perdió a propósito** el borrador de precio (preparar un precio y publicarlo después) y el contador de ventas por versión. El cambio de precio es inmediato.
+- **Precio 0 = sin precio**: la variante no se ofrece en una venta nueva. No hay un precio «de cortesía» de 0.
+- **Actor en el historial**: si una escritura no trae sesión ni `updated_by`, queda como `system`; si trae un `updated_by` viejo sin sesión (rarísimo: un proceso interno que no lo actualiza), se le atribuye a esa persona.
+- **Las 4 filas de `audit_log` de `product_version`**: no había ninguna (0); la política `audit_log_select_sales` sigue nombrando ese tipo, inofensivo.
+- **Revisión visual de la pestaña «Precio» no hecha**: el servidor local no estaba corriendo en esta vuelta y no se escribe un precio sobre datos reales. Queda para mirar con el deploy.

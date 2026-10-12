@@ -256,13 +256,13 @@ export interface ProductData {
 /**
  * Crea un producto desde Contenido. El precio (siempre en USD) es obligatorio: un
  * producto sin precio no sirve para medir que contenido empuja cuanto. Nace
- * activo, con su variante "Estandar" y su version 1 YA publicada con ese precio.
+ * activo, con su variante "Estandar" y ese precio.
  */
 export async function createProduct(input: { name: string; priceUsd: unknown }): Promise<TaxonomyResult<ProductData>> {
   const price = checkPrice(input.priceUsd);
   if (!price.ok) return price;
 
-  const created = await createCatalogProduct({ name: input.name, priceUsd: price.price, publish: true });
+  const created = await createCatalogProduct({ name: input.name, priceUsd: price.price, requirePrice: true });
   if (!created.ok) return created;
 
   return { ok: true, data: { id: created.data.id, name: created.data.name, priceUsd: price.price, status: "active" } };
@@ -273,9 +273,8 @@ export async function createProduct(input: { name: string; priceUsd: unknown }):
  *
  *  - El estado y el archivado van juntos (CHECK de la 00159): activo = sin
  *    archivar; inactivo o discontinuado = archivado. Nunca se borra.
- *  - El PRECIO ya no se pisa: vive en la version. Cambiarlo crea una version
- *    nueva en la variante por defecto y la publica; la anterior queda
- *    deprecated y el historial de precios la conserva.
+ *  - El PRECIO vive en la variante por defecto (la de menor orden, no archivada).
+ *    Cambiarlo es inmediato y queda en el historial general (lo escribe la base).
  */
 export async function updateProduct(input: {
   id: string;
@@ -310,15 +309,8 @@ export async function updateProduct(input: {
     const target = live[0];
     if (!target) return { ok: false, error: "Ese producto no tiene una variante para cambiarle el precio" };
 
-    const { data: versions } = await ctx.supabase
-      .from("product_versions")
-      .select("price, status")
-      .eq("product_variant_id", target.id);
-    const active = (versions ?? []).find((v) => v.status === "active");
-    if (!active || Number(active.price) !== newPrice) {
-      const priced = await setVariantPrice({ variantId: target.id, priceUsd: newPrice, changeNotes: "Cambio de precio desde Contenido" });
-      if (!priced.ok) return priced;
-    }
+    const priced = await setVariantPrice({ variantId: target.id, priceUsd: newPrice });
+    if (!priced.ok) return priced;
   }
 
   if (input.status !== undefined) {

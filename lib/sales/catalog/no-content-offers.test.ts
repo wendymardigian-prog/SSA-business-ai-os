@@ -18,7 +18,8 @@ const EXTENSIONS = /\.(ts|tsx|mjs)$/;
 const SKIP = new Set(["node_modules", ".next"]);
 // verify-sales.mjs nombra la tabla vieja A PROPÓSITO: es el script que prueba que el
 // puente de la 00160 copia a `products` lo que el código viejo escriba ahí.
-const SKIP_FILES = new Set(["lib/types/database.ts", "lib/sales/catalog/no-content-offers.test.ts", "scripts/verify-sales.mjs"]);
+// create-sale-variant-diff.test.ts lee la migración 00169, que reescribe el puente y por eso nombra la tabla.
+const SKIP_FILES = new Set(["lib/types/database.ts", "lib/sales/catalog/no-content-offers.test.ts", "lib/sales/create-sale-variant-diff.test.ts", "scripts/verify-sales.mjs"]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

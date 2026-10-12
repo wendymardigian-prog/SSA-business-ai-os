@@ -50,7 +50,7 @@ describe("variantRow", () => {
     expect(variantRow(variant, 3000)).toMatchObject({ priceLabel: "$3.000,00", sellable: true });
   });
   it("sin versión activa no se vende y se dice por qué", () => {
-    expect(variantRow(variant, null)).toMatchObject({ priceLabel: "Sin precio publicado", sellable: false });
+    expect(variantRow(variant, null)).toMatchObject({ priceLabel: "Sin precio", sellable: false });
   });
   it("una archivada no se vende", () => {
     expect(variantRow({ ...variant, archived_at: "2026-10-01" }, 3000).sellable).toBe(false);

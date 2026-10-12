@@ -3,19 +3,19 @@ import { applySaleRules, buildPaymentRows, createSaleInputSchema, mapCreateSaleE
 
 const U = "00000000-0000-4000-8000-0000000000";
 const CONTACT = `${U}01`;
-const VERSION = `${U}02`;
+const VARIANT = `${U}02`;
 const ME = `${U}03`;
 
-const snapshot = { product_id: "p", product_name: "Mentoría", product_type: "mentoria", variant_id: "v", variant_name: "Estándar", version_id: VERSION, version_number: 1, price: 1297, currency: "USD" as const, duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+const snapshot = { product_id: "p", product_name: "Mentoría", product_type: "mentoria", variant_id: VARIANT, variant_name: "Estándar", price: 1297, currency: "USD" as const, duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
 
 const ctx = (over: Partial<SaleRuleContext> = {}): SaleRuleContext => ({
   timeZone: "America/Costa_Rica", now: new Date("2026-10-11T18:00:00Z"), enabledMethods: ["wise", "binance", "whop"],
-  maxDiscountPercent: null, hasAllScope: true, userId: ME, version: { id: VERSION, price: 1297 }, snapshot, ...over,
+  maxDiscountPercent: null, hasAllScope: true, userId: ME, variant: { id: VARIANT, price: 1297 }, snapshot, ...over,
 });
 
 const input = (over: Record<string, unknown> = {}) =>
   createSaleInputSchema.parse({
-    contactId: CONTACT, versionId: VERSION, financing: "reservation_installments", saleDate: "2026-10-10", setterId: ME,
+    contactId: CONTACT, variantId: VARIANT, shownPrice: 1297, financing: "reservation_installments", saleDate: "2026-10-10", setterId: ME,
     payments: [
       { type: "reservation", amount: 297, status: "paid", date: "2026-10-10", method: "wise" },
       { type: "installment", amount: 500, status: "scheduled", date: "2026-11-10" },
@@ -29,7 +29,7 @@ describe("applySaleRules", () => {
     const r = applySaleRules(input(), ctx());
     expect(r).toMatchObject({ ok: true, finalAmount: 1297 });
     if (!r.ok) return;
-    expect(r.payload).toMatchObject({ contact_id: CONTACT, product_version_id: VERSION, base_amount: 1297, discount_amount: 0, financing_type: "reservation_installments", attribution: { mode: "last_touch" } });
+    expect(r.payload).toMatchObject({ contact_id: CONTACT, product_variant_id: VARIANT, base_amount: 1297, discount_amount: 0, financing_type: "reservation_installments", attribution: { mode: "last_touch" } });
     expect((r.payload.payments as unknown[]).length).toBe(3);
   });
 
@@ -116,7 +116,8 @@ describe("buildPaymentRows", () => {
 
 describe("mapCreateSaleError", () => {
   it("traduce los códigos de create_sale", () => {
-    expect(mapCreateSaleError("version_changed:1400")).toMatchObject({ code: "version_changed", newPrice: 1400 });
+    expect(mapCreateSaleError("price_changed:1400")).toMatchObject({ code: "price_changed", newPrice: 1400 });
+    expect(mapCreateSaleError("invalid_variant")).toMatchObject({ code: "invalid" });
     expect(mapCreateSaleError("plan_unbalanced:-250")).toMatchObject({ code: "plan_unbalanced", diffCents: -250 });
     expect(mapCreateSaleError("invalid_touch")).toMatchObject({ code: "invalid_touch" });
     expect(mapCreateSaleError("invalid_booking")).toMatchObject({ code: "invalid_booking" });

@@ -1,6 +1,6 @@
 /**
  * Ventas F22: la Server Action `createSale`. Fija que sin `sales.manage` no toca la base, que
- * RELEE el catálogo (version_changed), que pasa por la RPC con el cliente de servicio y que el
+ * RELEE el catálogo (price_changed), que pasa por la RPC con el cliente de servicio y que el
  * alta del contacto usa find_contact_by_phone_or_email (nunca find_or_link_contact).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +12,6 @@ const ME = U(1);
 const CONTACT = U(10);
 const PRODUCT = U(20);
 const VARIANT = U(21);
-const VERSION = U(22);
 
 let db: MemoryDb;
 let role = "admin";
@@ -48,13 +47,12 @@ const seed = () =>
     contacts: [{ id: CONTACT, workspace_id: WS, deleted_at: null }],
     workspace_members: [{ workspace_id: WS, user_id: ME }],
     products: [{ id: PRODUCT, workspace_id: WS, name: "Mentoría", product_type: "mentoria", status: "active" }],
-    product_variants: [{ id: VARIANT, workspace_id: WS, product_id: PRODUCT, name: "Estándar", duration_type: "lifetime", duration_value: null, guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, archived_at: null }],
-    product_versions: [{ id: VERSION, workspace_id: WS, product_variant_id: VARIANT, version_number: 1, price: 1297, status: "active" }],
+    product_variants: [{ id: VARIANT, workspace_id: WS, product_id: PRODUCT, name: "Estándar", duration_type: "lifetime", duration_value: null, guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, price: 1297, archived_at: null }],
     workspace_roles: [],
   });
 
 const valid = (over: Record<string, unknown> = {}) => ({
-  contactId: CONTACT, versionId: VERSION, financing: "full", saleDate: "2026-10-01", setterId: ME,
+  contactId: CONTACT, variantId: VARIANT, shownPrice: 1297, financing: "full", saleDate: "2026-10-01", setterId: ME,
   payments: [{ type: "full", amount: 1297, status: "scheduled", date: "2026-11-01" }], ...over,
 });
 
@@ -83,15 +81,20 @@ describe("createSale", () => {
     const call = rpcCalls.find((c) => c.name === "create_sale")!;
     const payload = call.args.p_payload as Record<string, unknown>;
     expect(call.args.p_actor_id).toBe(ME);
-    expect(payload).toMatchObject({ workspace_id: WS, contact_id: CONTACT, product_version_id: VERSION, base_amount: 1297, discount_amount: 0 });
-    expect(payload.product_snapshot).toMatchObject({ product_name: "Mentoría", variant_name: "Estándar", price: 1297, version_number: 1 });
+    expect(payload).toMatchObject({ workspace_id: WS, contact_id: CONTACT, product_variant_id: VARIANT, base_amount: 1297, discount_amount: 0 });
+    expect(payload.product_snapshot).toMatchObject({ product_name: "Mentoría", variant_name: "Estándar", price: 1297, variant_id: VARIANT });
   });
 
-  it("si la versión activa ya no es la que mostró el asistente: version_changed con el precio nuevo, sin crear nada", async () => {
-    db.rows("product_versions")[0].status = "deprecated";
-    db.rows("product_versions").push({ id: U(23), workspace_id: WS, product_variant_id: VARIANT, version_number: 2, price: 1400, status: "active" });
+  it("si el precio ya no es el que mostró el asistente: price_changed con el precio nuevo, sin crear nada", async () => {
+    db.rows("product_variants")[0].price = 1400;
     const r = await createSale(valid() as never);
-    expect(r).toMatchObject({ ok: false, code: "version_changed", newPrice: 1400 });
+    expect(r).toMatchObject({ ok: false, code: "price_changed", newPrice: 1400 });
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("una variante sin precio (0) no se vende", async () => {
+    db.rows("product_variants")[0].price = 0;
+    expect(await createSale(valid({ shownPrice: 0 }) as never)).toMatchObject({ ok: false, code: "invalid" });
     expect(rpcCalls).toHaveLength(0);
   });
 
@@ -116,9 +119,9 @@ describe("createSale", () => {
     expect(rpcCalls.map((c) => c.name)).not.toContain("find_contact_by_phone_or_email");
   });
 
-  it("los errores de create_sale se traducen (version_changed de la base)", async () => {
-    rpcResult = { error: { message: "version_changed:1500" } };
-    expect(await createSale(valid() as never)).toMatchObject({ ok: false, code: "version_changed", newPrice: 1500 });
+  it("los errores de create_sale se traducen (price_changed de la base)", async () => {
+    rpcResult = { error: { message: "price_changed:1500" } };
+    expect(await createSale(valid() as never)).toMatchObject({ ok: false, code: "price_changed", newPrice: 1500 });
     rpcResult = { error: { message: "invalid_touch" } };
     expect(await createSale(valid() as never)).toMatchObject({ ok: false, code: "invalid_touch" });
   });

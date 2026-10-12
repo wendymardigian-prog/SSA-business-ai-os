@@ -16,7 +16,7 @@ let role = "admin";
 let roleId: string | null = null;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined), diffFields: () => null }));
+vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => undefined), diffFields: () => null }));  // pilares: siguen con logAudit
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
 vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({
@@ -30,23 +30,9 @@ vi.mock("@/lib/workspace", () => ({
 
 const actions = await import("./content-taxonomy");
 
-/** La base en memoria con el catalogo y la funcion de publicar (espejo de publish_product_version, 00159). */
+/** La base en memoria con el catalogo (el precio vive en la variante, 00169). */
 function mem(seed: Record<string, Array<Record<string, unknown>>> = {}) {
-  return memoryDb(
-    { content_pillars: [], products: [], product_variants: [], product_versions: [], workspace_roles: [], ...seed },
-    {
-      rpc: {
-        publish_product_version: (args, d) => {
-          const versions = d.rows("product_versions");
-          const target = versions.find((v) => v.id === args.p_version_id)!;
-          const prev = versions.find((v) => v.product_variant_id === target.product_variant_id && v.status === "active");
-          if (prev) prev.status = "deprecated";
-          target.status = "active";
-          return { version_id: target.id, deprecated_version_id: prev?.id ?? null };
-        },
-      },
-    },
-  );
+  return memoryDb({ content_pillars: [], products: [], product_variants: [], workspace_roles: [], ...seed });
 }
 
 function customRole(keys: string[]) {
@@ -207,21 +193,16 @@ describe("productos: atajos del catalogo de Ventas", () => {
   });
   const variant = (over: Record<string, unknown> = {}) => ({
     id: "va1", workspace_id: WS, product_id: "pr1", name: "Estandar", duration_type: "lifetime", duration_value: null,
-    guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, display_order: 0, archived_at: null, ...over,
+    guarantee_duration_type: null, guarantee_duration_value: null, billing_type: "one_time", billing_interval: null, display_order: 0, price: 1500, archived_at: null, ...over,
   });
-  const version = (over: Record<string, unknown> = {}) => ({
-    id: "ve1", workspace_id: WS, product_variant_id: "va1", version_number: 1, price: 1500, change_notes: null, status: "active", ...over,
-  });
-  const activeVersions = () => db.rows("product_versions").filter((v) => v.status === "active");
 
-  it("crea un producto activo con su variante Estandar y su version 1 YA publicada", async () => {
+  it("crea un producto activo con su variante Estandar y el precio", async () => {
     const result = await actions.createProduct({ name: "  Mentoria  ", priceUsd: "1500,5" });
 
     expect(result).toMatchObject({ ok: true, data: { name: "Mentoria", priceUsd: 1500.5, status: "active" } });
     expect(db.rows("products")[0]).toMatchObject({ workspace_id: WS, name: "Mentoria", status: "active" });
     expect(db.rows("product_variants")).toHaveLength(1);
-    expect(activeVersions()).toHaveLength(1);
-    expect(activeVersions()[0]).toMatchObject({ price: 1500.5, version_number: 1 });
+    expect(db.rows("product_variants")[0]).toMatchObject({ name: "Estándar", price: 1500.5 });
     expect(result.ok && result.data.id).toBe(db.rows("products")[0].id);
   });
 
@@ -242,19 +223,19 @@ describe("productos: atajos del catalogo de Ventas", () => {
 
   describe("editar", () => {
     beforeEach(() => {
-      db = mem({ products: [product()], product_variants: [variant()], product_versions: [version()] });
+      db = mem({ products: [product()], product_variants: [variant()] });
     });
 
-    it("cambiar el precio NO lo pisa: publica una version nueva y la anterior queda deprecated", async () => {
+    it("cambiar el precio va a la variante por defecto y no toca el producto", async () => {
       expect(await actions.updateProduct({ id: "pr1", priceUsd: 2000 })).toEqual({ ok: true });
       expect(db.rows("products")[0]).toMatchObject({ name: "Mentoria", status: "active", archived_at: null });
-      expect(activeVersions().map((v) => v.price)).toEqual([2000]);
-      expect(db.rows("product_versions").find((v) => v.id === "ve1")).toMatchObject({ status: "deprecated", price: 1500 });
+      expect(db.rows("product_variants")[0]).toMatchObject({ price: 2000 });
     });
 
-    it("el mismo precio no crea una version", async () => {
+    it("el mismo precio no escribe nada", async () => {
+      const before = JSON.stringify(db.rows("product_variants"));
       expect(await actions.updateProduct({ id: "pr1", priceUsd: 1500 })).toEqual({ ok: true });
-      expect(db.rows("product_versions")).toHaveLength(1);
+      expect(JSON.stringify(db.rows("product_variants"))).toBe(before);
     });
 
     it("renombra, pero no al nombre de otro producto activo", async () => {
@@ -298,7 +279,7 @@ describe("productos: atajos del catalogo de Ventas", () => {
       expect(await actions.updateProduct({ id: "pr1", priceUsd: -1 })).toMatchObject({ ok: false });
       expect(await actions.updateProduct({ id: "pr1", priceUsd: "" })).toMatchObject({ ok: false });
       expect(db.rows("products")[0]).toMatchObject({ status: "active" });
-      expect(db.rows("product_versions")).toHaveLength(1);
+      expect(db.rows("product_variants")[0]).toMatchObject({ price: 1500 });
     });
 
     it("un producto de otro workspace no se toca", async () => {

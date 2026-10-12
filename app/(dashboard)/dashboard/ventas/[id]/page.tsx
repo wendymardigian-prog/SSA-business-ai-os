@@ -26,7 +26,7 @@ export default async function VentaPage({ params }: { params: Promise<{ id: stri
 
   const { data: sale } = await supabase
     .from("sales")
-    .select("id, contact_id, status, financing_type, subscription_interval, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_version_id, setter_id, vendedor_id, attribution, attribution_type, booking_id, service_starts_at, sale_date, notes, plan_unbalanced, cancellation_reason, subscription_cancel_reason, created_at, updated_at")
+    .select("id, contact_id, status, financing_type, subscription_interval, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_type, booking_id, service_starts_at, sale_date, notes, plan_unbalanced, cancellation_reason, subscription_cancel_reason, created_at, updated_at")
     .eq("id", id)
     .eq("workspace_id", workspace.id)
     .maybeSingle();

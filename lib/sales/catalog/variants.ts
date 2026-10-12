@@ -1,4 +1,4 @@
-/** Variantes de un producto (plano F4): duración, garantía y facturación. El precio vive en la versión. */
+/** Variantes de un producto (plano F4): duración, garantía y facturación. El precio vive en la variante (00169). */
 import { z } from "zod";
 import { formatMoney } from "../format";
 
@@ -141,7 +141,7 @@ export function variantRow(variant: VariantRowInput, activePrice: number | null)
     id: variant.id,
     name: variant.name,
     activePrice,
-    priceLabel: activePrice === null ? "Sin precio publicado" : formatMoney(activePrice),
+    priceLabel: activePrice === null ? "Sin precio" : formatMoney(activePrice),
     duration: describeDuration(variant.duration_type, variant.duration_value),
     guarantee: describeGuarantee(variant.guarantee_duration_type, variant.guarantee_duration_value),
     billing: describeBilling(variant.billing_type, variant.billing_interval),

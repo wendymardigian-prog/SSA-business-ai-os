@@ -46,9 +46,11 @@ Base: última migración aplicada `00158_forms_once_key_fix`. Datos: `content_of
 | 00166 | CHECK de `triggers.type` (los 24 anteriores + 6 de ventas + `payment.receipt_uploaded`) | **aplicada y registrada** |
 | 00167 | Cron de mora (`private.enqueue_payments_overdue_sweep`, solo encola con pagos candidatos) | **aplicada y registrada** (`cron.job` presente; `cron-config.test` intacto) |
 | 00168 | Política `audit_log_select_sales` | **aplicada y registrada** (`verify-audit-visibility --despues-de-00168`; `audit_log_select` idéntica) |
-| — | `docs/pendientes/drop_content_offers.sql` | se escribe, **no se aplica** |
+| 00169 | Precio en `product_variants`, `sales.product_variant_id`, `create_sale` y puente reescritos, **borra `product_versions`** | **aplicada y registrada** (respaldo en `docs/ventas/respaldo-product-versions.json`; `verify-sales` en verde) |
+| 00170 | Trigger `catalog_audit`: historial de productos y variantes en la base | **aplicada y registrada** (`verify-sales` con 15 casos nuevos) |
+| — | `docs/pendientes/drop_content_offers.sql` | se escribe, **no se aplica** (solo después del deploy) |
 
-Próxima libre al terminar: 00169.
+Próxima libre al terminar: 00171.
 
 ## Bloque B1 · Catálogo (hecho)
 
@@ -102,3 +104,12 @@ Próxima migración libre: **00169**.
 | `verify-attribution` | Solo la falla de antes: «todos los contactos reales tienen first_touch» (741 de 800, los mismos 59 contactos). No empeoró |
 
 Migraciones 00159 a 00168 aplicadas y registradas; `ALL_MIGRATIONS.sql` regenerado. `docs/ventas.md`, `docs/flow-registry.md`, `CLAUDE.md` y `BITACORA.md` actualizados. El borrado de `content_offers` queda escrito y sin aplicar.
+
+## Después del cierre: precio en la variante y historial por trigger (12/10/2026)
+
+Pedido de Wendy: sacar `product_versions`, asegurar que todo cambio del catálogo quede en el historial general y preparar el borrado de `content_offers`.
+
+- **00169**: el precio pasa a `product_variants.price`; `sales.product_variant_id` reemplaza a `product_version_id`; `create_sale` y el puente de `content_offers` reescritos con diff acotado (`lib/sales/create-sale-variant-diff.test.ts`); se borra `product_versions` con sus funciones. `version_changed` pasó a `price_changed`.
+- **00170**: el historial de `products` y `product_variants` lo escribe un trigger (fuente única; se sacaron las llamadas `audit()` de `lib/actions/products.ts`, con un test que las prohíbe).
+- Pantalla: la pestaña «Precio» es un editor simple y debajo muestra los cambios de precio del historial.
+- Verificación: vitest 683 archivos / 8207 tests, `tsc`, lint (0 errores), `verify-sales` completo y `verify-rls`, `verify-audit-visibility`, `verify-roles`, `verify-workspace-isolation`, `verify-content`, `verify-crm`, `verify-calls`, `verify-forms`, `verify-csv-import` en 0.

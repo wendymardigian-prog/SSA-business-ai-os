@@ -381,7 +381,6 @@ export type AuditEntityType =
   /** Ventas (00159 a 00168): el catalogo, las reglas de asignacion, la venta y el pago. */
   | "product"
   | "product_variant"
-  | "product_version"
   | "assignment_rule"
   | "sale"
   | "payment";
@@ -511,14 +510,18 @@ export type AuditAction =
   /** Entity contract_signature. */
   | "contract.email_resent"
   | "contract.pdf_regenerated"
-  /** Ventas, catalogo (entity product, product_variant o product_version). */
+  /** Ventas, catalogo (entity product o product_variant). Los escribe el trigger `catalog_audit` (00170). */
   | "product.created"
   | "product.updated"
   | "product.status_changed"
+  | "product.deleted"
   | "variant.created"
   | "variant.updated"
+  | "variant.price_changed"
   | "variant.archived"
   | "variant.restored"
+  | "variant.deleted"
+  /** Solo filas viejas: antes de la 00169 las duplicaciones y las versiones de precio se registraban asi. */
   | "variant.duplicated"
   | "version.draft_created"
   | "version.draft_updated"
@@ -3753,7 +3756,7 @@ export interface Database {
           id: string;
           workspace_id: string;
           contact_id: string;
-          product_version_id: string;
+          product_variant_id: string;
           product_snapshot: Json;
           base_amount: number;
           discount_amount: number;
@@ -3903,7 +3906,7 @@ export interface Database {
         Relationships: [];
       };
 
-      /** Como se vende un producto: duracion, garantia y facturacion (00159). El precio vive en product_versions. */
+      /** Como se vende un producto: duracion, garantia, facturacion y PRECIO en USD (00159, 00169). */
       product_variants: {
         Row: {
           id: string;
@@ -3917,6 +3920,7 @@ export interface Database {
           billing_type: "one_time" | "recurring";
           billing_interval: "monthly" | "quarterly" | "yearly" | null;
           display_order: number;
+          price: number;
           archived_at: string | null;
           created_by: string | null;
           updated_by: string | null;
@@ -3935,6 +3939,7 @@ export interface Database {
           billing_type?: "one_time" | "recurring";
           billing_interval?: "monthly" | "quarterly" | "yearly" | null;
           display_order?: number;
+          price?: number;
           archived_at?: string | null;
           created_by?: string | null;
           updated_by?: string | null;
@@ -3948,54 +3953,9 @@ export interface Database {
           billing_type?: "one_time" | "recurring";
           billing_interval?: "monthly" | "quarterly" | "yearly" | null;
           display_order?: number;
+          price?: number;
           archived_at?: string | null;
           updated_by?: string | null;
-        };
-        Relationships: [];
-      };
-
-      /** El precio y las condiciones vigentes de una variante (00159). Una publicada no se edita. */
-      product_versions: {
-        Row: {
-          id: string;
-          workspace_id: string;
-          product_variant_id: string;
-          version_number: number;
-          price: number;
-          currency: "USD";
-          change_notes: string | null;
-          capabilities_config: Json;
-          status: "draft" | "active" | "deprecated";
-          published_at: string | null;
-          published_by: string | null;
-          deprecated_at: string | null;
-          created_by: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          workspace_id: string;
-          product_variant_id: string;
-          version_number?: number;
-          price: number;
-          currency?: "USD";
-          change_notes?: string | null;
-          capabilities_config?: Json;
-          status?: "draft" | "active" | "deprecated";
-          published_at?: string | null;
-          published_by?: string | null;
-          deprecated_at?: string | null;
-          created_by?: string | null;
-        };
-        Update: {
-          price?: number;
-          change_notes?: string | null;
-          capabilities_config?: Json;
-          status?: "draft" | "active" | "deprecated";
-          published_at?: string | null;
-          published_by?: string | null;
-          deprecated_at?: string | null;
         };
         Relationships: [];
       };
@@ -5020,11 +4980,6 @@ export interface Database {
       refresh_sale_status: {
         Args: { p_sale_id: string; p_change_id?: string };
         Returns: string;
-      };
-      /** Publica un borrador de version: la activa pasa a deprecated, en una transaccion (00159). Solo service_role. */
-      publish_product_version: {
-        Args: { p_version_id: string; p_actor_id: string };
-        Returns: Json;
       };
       /** Crea la agenda entera en una transaccion (00099, F26). */
       create_booking: {

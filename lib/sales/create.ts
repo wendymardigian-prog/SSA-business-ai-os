@@ -36,8 +36,9 @@ export const attributionRequestSchema = z.discriminatedUnion("mode", [
 
 export const createSaleInputSchema = z.object({
   contactId: uuid,
-  /** La versión que el asistente MOSTRÓ: si ya no es la vigente, se rechaza con el precio nuevo. */
-  versionId: uuid,
+  /** La variante que se vende y el precio que el asistente MOSTRÓ: si el precio ya cambió, se rechaza con el nuevo. */
+  variantId: uuid,
+  shownPrice: z.coerce.number().min(0),
   discount: z
     .union([
       z.object({ type: z.literal("amount"), value: z.coerce.number().min(0) }),
@@ -64,7 +65,7 @@ export type CreateSaleParsed = z.output<typeof createSaleInputSchema>;
 
 export type SaleCode =
   | "invalid"
-  | "version_changed"
+  | "price_changed"
   | "plan_unbalanced"
   | "discount"
   | "method"
@@ -85,7 +86,7 @@ export interface SaleRuleContext {
   hasAllScope: boolean;
   userId: string;
   /** El catálogo releído en el servidor. */
-  version: { id: string; price: number };
+  variant: { id: string; price: number };
   snapshot: ProductSnapshot;
 }
 
@@ -174,7 +175,7 @@ export function applySaleRules(input: CreateSaleParsed, ctx: SaleRuleContext): S
     finalAmount: discount.finalAmount,
     payload: {
       contact_id: input.contactId,
-      product_version_id: ctx.version.id,
+      product_variant_id: ctx.variant.id,
       product_snapshot: ctx.snapshot,
       base_amount: ctx.snapshot.price,
       discount_amount: discount.discountAmount,
@@ -204,10 +205,12 @@ function parseManual(manual: z.output<typeof manualAttributionSchema>): Record<s
 
 /** Los códigos que devuelve `create_sale` (RAISE EXCEPTION '<codigo>[:detalle]') → un resultado entendible. */
 export function mapCreateSaleError(message: string): { code: SaleCode; error: string; diffCents?: number; newPrice?: number } {
-  const m = message.match(/(version_changed|plan_unbalanced|invalid_[a-z_]+)(?::(-?\d+(?:\.\d+)?))?/);
+  const m = message.match(/(price_changed|plan_unbalanced|invalid_[a-z_]+)(?::(-?\d+(?:\.\d+)?))?/);
   switch (m?.[1]) {
-    case "version_changed":
-      return { code: "version_changed", error: "El precio del producto cambió mientras cargabas la venta", newPrice: Number(m[2]) || 0 };
+    case "price_changed":
+      return { code: "price_changed", error: "El precio del producto cambió mientras cargabas la venta", newPrice: Number(m[2]) || 0 };
+    case "invalid_variant":
+      return { code: "invalid", error: "Ese producto ya no se ofrece" };
     case "plan_unbalanced":
       return { code: "plan_unbalanced", error: "El plan de pagos no cuadra con el total", diffCents: Number(m[2]) || 0 };
     case "invalid_touch":

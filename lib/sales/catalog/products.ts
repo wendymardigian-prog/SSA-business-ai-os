@@ -85,7 +85,7 @@ export function productRow(
     statusLabel: PRODUCT_STATUS_LABEL[status],
     variants: variants.filter((v) => !v.archived_at).length,
     defaultPrice,
-    priceLabel: defaultPrice === null ? "Sin precio publicado" : formatMoney(defaultPrice),
+    priceLabel: defaultPrice === null ? "Sin precio" : formatMoney(defaultPrice),
     pieces,
   };
 }

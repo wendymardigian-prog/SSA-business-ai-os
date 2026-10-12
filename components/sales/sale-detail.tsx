@@ -29,7 +29,7 @@ export interface SaleDetailData {
     final_amount: unknown;
     discount_reason: string | null;
     product_snapshot: unknown;
-    product_version_id: string;
+    product_variant_id: string;
     setter_id: string | null;
     vendedor_id: string | null;
     attribution: unknown;
@@ -88,7 +88,7 @@ export function SaleDetail({ data, wizard, contracts }: { data: SaleDetailData; 
     discount_amount: sale.discount_amount,
     discount_reason: sale.discount_reason,
     product_snapshot: sale.product_snapshot,
-    product_version_id: sale.product_version_id,
+    product_variant_id: sale.product_variant_id,
     notes: sale.notes,
     service_starts_at: sale.service_starts_at,
     attribution_line: `${ATTRIBUTION_TYPE_LABELS[sale.attribution_type as AttributionType] ?? sale.attribution_type}: ${attributionLine}`,

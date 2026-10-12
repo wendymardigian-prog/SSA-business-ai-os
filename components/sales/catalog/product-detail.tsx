@@ -8,7 +8,7 @@ import { archiveVariant, duplicateVariant, restoreVariant, setProductStatus, upd
 import { PRODUCT_STATUSES, PRODUCT_STATUS_LABEL, TAXONOMY_NAME_MAX, isProductStatus } from "@/lib/content/taxonomy";
 import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from "@/lib/sales/catalog/products";
 import { archiveLeavesProductUnsellable, variantRow } from "@/lib/sales/catalog/variants";
-import type { ProductDetailData, VariantWithVersions } from "@/lib/sales/catalog/load";
+import type { ProductDetailData, CatalogVariant } from "@/lib/sales/catalog/load";
 import { ActionError } from "@/components/contacts/ui";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Historial } from "@/components/historial/historial";
@@ -22,7 +22,7 @@ import { VariantPriceTab } from "./variant-price-tab";
 
 type VariantTab = "precio" | "historial";
 
-function formFrom(v: VariantWithVersions): VariantFormValues {
+function formFrom(v: CatalogVariant): VariantFormValues {
   return {
     id: v.id,
     name: v.name,
@@ -286,8 +286,7 @@ export function ProductDetail({
                 <VariantPriceTab
                   key={selected.id}
                   variantId={selected.id}
-                  versions={selected.versions}
-                  salesByVersion={selected.salesByVersion}
+                  price={selected.price}
                   userNames={userNames}
                   timeZone={timeZone}
                 />

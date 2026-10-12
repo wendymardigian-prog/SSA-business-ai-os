@@ -16,6 +16,8 @@ import { validatePlanBalances } from "@/lib/sales/payment-plan";
 import { applySaleRules, createSaleInputSchema, mapCreateSaleError, type CreateSaleInput, type SaleCode } from "@/lib/sales/create";
 import { manualContactSchema, resolveFoundContact, type ManualContactInput } from "@/lib/sales/contacts";
 import { buildProductSnapshot } from "@/lib/sales/sale-math";
+import { hasPrice } from "@/lib/sales/catalog/price";
+import { toCents } from "@/lib/sales/money";
 import { syncPaymentRelativeJobs } from "@/lib/sales/automation/relative";
 import type { Json } from "@/lib/types/database";
 
@@ -65,38 +67,30 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
     if ((members ?? []).length !== new Set(people).size) return fail("invalid", "Esa persona no es miembro del workspace");
   }
 
-  // 2. El catálogo, RELEÍDO: la versión vigente EN ESTE MOMENTO.
-  const { data: shown } = await supabase
-    .from("product_versions")
-    .select("id, product_variant_id, version_number, price, status")
-    .eq("id", input.versionId)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-  if (!shown) return fail("invalid", "No encontré esa versión del producto");
-
+  // 2. El catálogo, RELEÍDO: la variante y su precio EN ESTE MOMENTO.
   const { data: variant } = await supabase
     .from("product_variants")
-    .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, archived_at")
-    .eq("id", shown.product_variant_id)
+    .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, price, archived_at")
+    .eq("id", input.variantId)
     .eq("workspace_id", workspace.id)
     .maybeSingle();
-  const { data: product } = variant
-    ? await supabase.from("products").select("id, name, product_type, status").eq("id", variant.product_id).eq("workspace_id", workspace.id).maybeSingle()
-    : { data: null };
-  if (!variant || !product || variant.archived_at || !isProductStatus(product.status) || product.status !== "active") {
+  if (!variant) return fail("invalid", "No encontré esa variante del producto");
+  const { data: product } = await supabase
+    .from("products")
+    .select("id, name, product_type, status")
+    .eq("id", variant.product_id)
+    .eq("workspace_id", workspace.id)
+    .maybeSingle();
+  if (!product || variant.archived_at || !isProductStatus(product.status) || product.status !== "active") {
     return fail("invalid", "Ese producto ya no se ofrece");
   }
+  if (!hasPrice(variant.price)) return fail("invalid", "Esa variante no tiene precio: cargalo en Ajustes › Productos");
+  const currentPrice = Number(variant.price) || 0;
+  if (toCents(input.shownPrice) !== toCents(currentPrice)) {
+    return fail("price_changed", "El precio del producto cambió mientras cargabas la venta", { newPrice: currentPrice });
+  }
 
-  const { data: active } = await supabase
-    .from("product_versions")
-    .select("id, version_number, price")
-    .eq("product_variant_id", variant.id)
-    .eq("status", "active")
-    .maybeSingle();
-  if (!active) return fail("invalid", "Esa variante no tiene un precio publicado");
-  if (active.id !== input.versionId) return fail("version_changed", "El precio del producto cambió mientras cargabas la venta", { newPrice: Number(active.price) || 0 });
-
-  const snapshot = buildProductSnapshot(product, variant, active);
+  const snapshot = buildProductSnapshot(product, variant);
 
   // 3. Las reglas del servidor: descuento, fechas, métodos, alcance y cuadre.
   const w = workspace as unknown as {
@@ -111,7 +105,7 @@ export async function createSale(rawInput: CreateSaleInput): Promise<CreateSaleR
     maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),
     hasAllScope: ctx.role === "owner" || ctx.role === "admin" || ctx.scope("sales") === "all",
     userId: user.id,
-    version: { id: active.id, price: Number(active.price) || 0 },
+    variant: { id: variant.id, price: currentPrice },
     snapshot,
   });
   if (!ruled.ok) return fail(ruled.code, ruled.error, { diffCents: ruled.diffCents });
@@ -246,8 +240,9 @@ export interface UpdateSaleInput {
   attribution?: unknown;
   discount?: { type: "amount" | "percent"; value: unknown } | null;
   discountReason?: string | null;
-  /** Cambiar a otra versión del catálogo (la que se mostró). */
-  versionId?: string;
+  /** Cambiar a otra variante del catálogo, con el precio que se mostró. */
+  variantId?: string;
+  shownPrice?: number;
   notes?: string | null;
   serviceStartsAt?: string | null;
   confirmRepricing?: boolean;
@@ -255,7 +250,7 @@ export interface UpdateSaleInput {
 }
 
 const SALE_COLUMNS =
-  "id, workspace_id, contact_id, status, financing_type, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_version_id, setter_id, vendedor_id, attribution, attribution_touch_id, attribution_type, notes, service_starts_at, plan_unbalanced, updated_at";
+  "id, workspace_id, contact_id, status, financing_type, base_amount, discount_amount, final_amount, discount_reason, product_snapshot, product_variant_id, setter_id, vendedor_id, attribution, attribution_touch_id, attribution_type, notes, service_starts_at, plan_unbalanced, updated_at";
 
 /**
  * Edita una venta. Pide `sales.manage` y que la persona VEA la venta (RLS). Una venta
@@ -279,7 +274,7 @@ export async function updateSale(input: UpdateSaleInput): Promise<SaleActionResu
   if (input.setterId !== undefined && input.setterId !== sale.setter_id) fields.push("setter");
   if (input.vendedorId !== undefined && input.vendedorId !== sale.vendedor_id) fields.push("vendedor");
   if (input.attribution !== undefined) fields.push("attribution");
-  if (input.discount !== undefined || input.versionId !== undefined) fields.push("pricing");
+  if (input.discount !== undefined || input.variantId !== undefined) fields.push("pricing");
   if (input.serviceStartsAt !== undefined && input.serviceStartsAt !== sale.service_starts_at) fields.push("serviceStartsAt");
   const locked = lockedEditError(sale.status, fields);
   if (locked) return fail2("locked", locked);
@@ -332,19 +327,29 @@ export async function updateSale(input: UpdateSaleInput): Promise<SaleActionResu
   let repricing: ReturnType<typeof planRepricing> | null = null;
   if (fields.includes("pricing")) {
     let snapshot: ReturnType<typeof buildProductSnapshot> | null = null;
-    if (input.versionId && input.versionId !== sale.product_version_id) {
-      const { data: version } = await supabase.from("product_versions").select("id, product_variant_id, version_number, price, status").eq("id", input.versionId).eq("workspace_id", workspace.id).maybeSingle();
-      if (!version || version.status !== "active") return fail2("invalid", "Esa versión ya no es la vigente");
-      const { data: variant } = await supabase.from("product_variants").select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval").eq("id", version.product_variant_id).eq("workspace_id", workspace.id).maybeSingle();
-      const { data: product } = variant ? await supabase.from("products").select("id, name, product_type").eq("id", variant.product_id).eq("workspace_id", workspace.id).maybeSingle() : { data: null };
+    if (input.variantId && input.variantId !== sale.product_variant_id) {
+      const { data: variant } = await supabase
+        .from("product_variants")
+        .select("id, product_id, name, duration_type, duration_value, guarantee_duration_type, guarantee_duration_value, billing_type, billing_interval, price, archived_at")
+        .eq("id", input.variantId)
+        .eq("workspace_id", workspace.id)
+        .maybeSingle();
+      const { data: product } = variant
+        ? await supabase.from("products").select("id, name, product_type, status").eq("id", variant.product_id).eq("workspace_id", workspace.id).maybeSingle()
+        : { data: null };
       if (!variant || !product) return fail2("invalid", "Ese producto ya no existe");
-      snapshot = buildProductSnapshot(product, variant, version);
+      if (variant.archived_at || product.status !== "active") return fail2("invalid", "Ese producto ya no se ofrece");
+      if (!hasPrice(variant.price)) return fail2("invalid", "Esa variante no tiene precio: cargalo en Ajustes › Productos");
+      if (input.shownPrice !== undefined && toCents(input.shownPrice) !== toCents(Number(variant.price) || 0)) {
+        return fail2("invalid", "El precio de ese producto cambió: volvé a elegirlo");
+      }
+      snapshot = buildProductSnapshot(product, variant);
     }
     const { data: pays } = await supabase.from("payments").select("type, status, amount").eq("sale_id", sale.id);
     repricing = planRepricing(
       sale,
       pays ?? [],
-      { snapshot, versionId: snapshot ? snapshot.version_id : null, discount: input.discount as never, discountReason: input.discountReason ?? undefined },
+      { snapshot, variantId: snapshot ? snapshot.variant_id : null, discount: input.discount as never, discountReason: input.discountReason ?? undefined },
       { maxPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent), hasAllScope, confirmRepricing: input.confirmRepricing === true, repricingReason: input.repricingReason ?? null },
     );
     if (!repricing.ok) return fail2(repricing.code, repricing.error, { paidAmount: repricing.paidCents });

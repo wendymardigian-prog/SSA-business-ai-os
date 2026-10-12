@@ -21,7 +21,7 @@ describe("productRow: un producto de cada estado", () => {
     const row = productRow(prod("raro", { product_type: "inventado" }), [], 0);
     expect(row.status).toBe("active");
     expect(row.type).toBe("otro");
-    expect(row.priceLabel).toBe("Sin precio publicado");
+    expect(row.priceLabel).toBe("Sin precio");
   });
 });
 

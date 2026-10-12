@@ -25,7 +25,7 @@ export interface EditableSale {
   discount_amount: unknown;
   discount_reason: string | null;
   product_snapshot: unknown;
-  product_version_id: string;
+  product_variant_id: string;
   notes: string | null;
   service_starts_at: string | null;
   attribution_line: string;
@@ -84,7 +84,7 @@ export function SaleEditDialog({ sale, contactName, config, onClose }: { sale: E
         ...(vendedorId !== sale.vendedor_id ? { vendedorId } : {}),
         ...(attributionTouched ? { attribution } : {}),
         ...(pricingChanged ? { discount: discountValue.trim() && raw > 0 ? { type: discountType, value: raw } : null, discountReason: discountReason.trim() || null } : {}),
-        ...(variantChanged && variant?.versionId ? { versionId: variant.versionId } : {}),
+        ...(variantChanged && variant?.price != null ? { variantId: variant.id, shownPrice: variant.price } : {}),
         ...(notes !== (sale.notes ?? "") ? { notes } : {}),
         ...(serviceStart !== (sale.service_starts_at ?? "") ? { serviceStartsAt: serviceStart || null } : {}),
         ...(confirmed ? { confirmRepricing: true, repricingReason: repriceReason } : {}),

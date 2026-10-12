@@ -79,7 +79,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
   const discount = variant ? discountState(config, base, s2) : null;
   const finalAmount = discount?.ok ? discount.finalAmount : 0;
   const duplicates = activeSalesOfProduct(contactContext?.sales ?? [], product?.id ?? null);
-  const step2Ok = !!variant?.versionId && !!discount?.ok && finalAmount > 0 && (duplicates.length === 0 || duplicateOk);
+  const step2Ok = variant?.price != null && !!discount?.ok && finalAmount > 0 && (duplicates.length === 0 || duplicateOk);
 
   const check = useMemo(() => checkRows(rows, { saleDate: s1.saleDate, today: config.today, enabledMethods: config.enabledMethods }), [rows, s1.saleDate, config.today, config.enabledMethods]);
   const summary = useMemo(
@@ -130,13 +130,14 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
   }
 
   function save() {
-    if (!s1.contact || !variant?.versionId || !step3Ok) return;
+    if (!s1.contact || variant?.price == null || !step3Ok) return;
     setError(null);
     start(async () => {
       const raw = Number(s2.discountValue);
       const result = await createSale({
         contactId: s1.contact!.id,
-        versionId: variant.versionId!,
+        variantId: variant.id,
+        shownPrice: variant.price,
         discount: s2.discountValue.trim() && raw > 0 ? { type: s2.discountType, value: raw } : null,
         discountReason: s2.discountReason.trim() || null,
         financing: s3.financing,
@@ -155,7 +156,7 @@ export function SaleWizard({ config, initial, onClose }: { config: WizardConfig;
         router.push(`/dashboard/ventas/${result.id}`);
         return;
       }
-      if (result.code === "version_changed") {
+      if (result.code === "price_changed") {
         setError(`El precio de este producto cambió${result.newPrice != null ? ` a ${formatMoney(result.newPrice)}` : ""} mientras cargabas la venta. Volvé al paso 2 para revisarlo.`);
         router.refresh();
         setStep(1);

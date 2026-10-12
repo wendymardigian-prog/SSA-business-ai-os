@@ -1,8 +1,9 @@
 /**
  * Lo que el asistente de venta ofrece del catálogo (plano F19): productos activos → variantes
- * activas, con el precio de la versión ACTIVA a la vista. Una variante sin versión activa no se
- * ofrece, y se dice por qué. Puro.
+ * activas, con el precio de la variante a la vista. Una variante sin precio (0) no se ofrece, y se
+ * dice por qué. Puro.
  */
+import { priceOrNull } from "@/lib/sales/catalog/price";
 import { describeBilling, describeDuration } from "@/lib/sales/catalog/variants";
 
 export interface WizardVariant {
@@ -10,12 +11,11 @@ export interface WizardVariant {
   name: string;
   billingType: string;
   billingInterval: string | null;
-  /** La versión activa que se está mostrando: `createSale` la vuelve a leer. */
-  versionId: string | null;
+  /** El precio que se está mostrando (null = sin precio): `createSale` lo vuelve a leer. */
   price: number | null;
   /** «Pago único · De por vida». */
   detail: string;
-  /** Por qué no se puede vender (sin precio vigente), o null. */
+  /** Por qué no se puede vender (sin precio), o null. */
   unavailable: string | null;
 }
 
@@ -30,17 +30,14 @@ interface ProductInput { id: string; name: string; product_type: string; status:
 interface VariantInput {
   id: string; product_id: string; name: string; duration_type: string; duration_value: number | null;
   billing_type: string; billing_interval: string | null; display_order: number | null; archived_at: string | null;
+  price: unknown;
 }
-interface VersionInput { id: string; product_variant_id: string; price: unknown; status: string }
 
 function variantDetail(v: VariantInput): string {
   return `${describeBilling(v.billing_type, v.billing_interval)} · ${describeDuration(v.duration_type, v.duration_value)}`;
 }
 
-export function buildWizardCatalog(products: readonly ProductInput[], variants: readonly VariantInput[], versions: readonly VersionInput[]): WizardProduct[] {
-  const active = new Map<string, VersionInput>();
-  for (const v of versions) if (v.status === "active") active.set(v.product_variant_id, v);
-
+export function buildWizardCatalog(products: readonly ProductInput[], variants: readonly VariantInput[]): WizardProduct[] {
   return products
     .filter((p) => p.status === "active")
     .map((p) => ({
@@ -51,16 +48,15 @@ export function buildWizardCatalog(products: readonly ProductInput[], variants: 
         .filter((v) => v.product_id === p.id && !v.archived_at)
         .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
         .map((v): WizardVariant => {
-          const version = active.get(v.id);
+          const price = priceOrNull(v.price);
           return {
             id: v.id,
             name: v.name,
             billingType: v.billing_type,
             billingInterval: v.billing_interval,
-            versionId: version?.id ?? null,
-            price: version ? Number(version.price) || 0 : null,
+            price,
             detail: variantDetail(v),
-            unavailable: version ? null : "Sin precio vigente: publicá una versión en Ajustes › Productos",
+            unavailable: price != null ? null : "Sin precio: cargalo en Ajustes › Productos",
           };
         }),
     }))

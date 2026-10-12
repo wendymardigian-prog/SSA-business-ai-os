@@ -43,14 +43,14 @@ export interface PricingSale {
   final_amount: unknown;
   discount_reason: string | null;
   product_snapshot: unknown;
-  product_version_id: string;
+  product_variant_id: string;
   financing_type: string;
 }
 
 export interface PricingChange {
-  /** Un producto o una versión nueva (ya releída del catálogo). */
+  /** Un producto o una variante nueva (ya releída del catálogo). */
   snapshot?: ProductSnapshot | null;
-  versionId?: string | null;
+  variantId?: string | null;
   discount?: Discount;
   /** Si no viene el descuento, se mantiene el actual. */
   discountReason?: string | null;
@@ -69,14 +69,14 @@ export type PricingResult =
       changed: boolean;
       patch: {
         product_snapshot: unknown;
-        product_version_id: string;
+        product_variant_id: string;
         base_amount: number;
         discount_amount: number;
         final_amount: number;
         discount_reason: string | null;
       };
       /** Lo anterior, para `audit_log.changes`. */
-      previous: { product_snapshot: unknown; base_amount: unknown; discount_amount: unknown; final_amount: unknown; product_version_id: string };
+      previous: { product_snapshot: unknown; base_amount: unknown; discount_amount: unknown; final_amount: unknown; product_variant_id: string };
       planUnbalanced: boolean;
       diffCents: number;
       paidCents: number;
@@ -102,7 +102,7 @@ export function planRepricing(sale: PricingSale, payments: readonly PricingPayme
   const changed =
     toCents(finalAmount) !== toCents(sale.final_amount) ||
     toCents(base) !== toCents(sale.base_amount) ||
-    (change.versionId != null && change.versionId !== sale.product_version_id);
+    (change.variantId != null && change.variantId !== sale.product_variant_id);
 
   const paidCents = totalPaidCents(payments);
   const live = payments.filter((p) => p.status !== "cancelled" && p.type !== "refund");
@@ -124,7 +124,7 @@ export function planRepricing(sale: PricingSale, payments: readonly PricingPayme
     changed,
     patch: {
       product_snapshot: change.snapshot ?? sale.product_snapshot,
-      product_version_id: change.versionId ?? sale.product_version_id,
+      product_variant_id: change.variantId ?? sale.product_variant_id,
       base_amount: base,
       discount_amount: checked.discountAmount,
       final_amount: finalAmount,
@@ -135,7 +135,7 @@ export function planRepricing(sale: PricingSale, payments: readonly PricingPayme
       base_amount: sale.base_amount,
       discount_amount: sale.discount_amount,
       final_amount: sale.final_amount,
-      product_version_id: sale.product_version_id,
+      product_variant_id: sale.product_variant_id,
     },
     planUnbalanced: changed && !subscription && !balance.ok,
     diffCents: balance.diffCents,

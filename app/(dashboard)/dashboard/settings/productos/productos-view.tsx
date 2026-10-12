@@ -61,8 +61,7 @@ const inputClass =
 /**
  * Ajustes -> Productos: lo que vende el negocio (lista).
  *
- * Cada producto tiene variantes y, en cada variante, un precio vigente (la
- * versión publicada). NO hay "eliminar": inactivo (pausado) o discontinuado
+ * Cada producto tiene variantes y, en cada variante, un precio. NO hay "eliminar": inactivo (pausado) o discontinuado
  * (dejó de venderse) lo sacan de los selectores de venta y de Contenido, pero
  * lo ya vendido o clasificado lo sigue mostrando. El detalle (variantes y
  * precios) está en /dashboard/settings/productos/[id].

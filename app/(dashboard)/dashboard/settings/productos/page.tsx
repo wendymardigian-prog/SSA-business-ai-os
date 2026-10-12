@@ -7,7 +7,7 @@ import { ProductosView } from "./productos-view";
  *
  * Con Ventas (00160) el catálogo vive en `products`: cada producto tiene al
  * menos una variante (la "Estándar" de los que ya existían) y el precio está en
- * la versión vigente de la variante. Los pilares se mudaron a la página de
+ * la variante (00169). Los pilares se mudaron a la página de
  * Contenido.
  *
  * Pide `settings.manage` y no "ser admin": un rol personalizado con ese

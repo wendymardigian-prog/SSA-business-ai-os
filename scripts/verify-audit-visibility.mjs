@@ -239,14 +239,12 @@ try {
 
     // Catalogo + dos ventas: una de m1 (es su vendedor) y otra ajena (setter: el admin).
     const { data: prod } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test av producto", product_type: "programa" }).select("id").single();
-    const { data: variant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar" }).select("id").single();
-    const { data: ver } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 500 }).select("id").single();
-    await svc.rpc("publish_product_version", { p_version_id: ver.id, p_actor_id: owner.id });
+    const { data: variant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar", price: 500 }).select("id").single();
     const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    const snapshot = { product_id: prod.id, product_name: "zz-test av producto", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", version_id: ver.id, version_number: 1, price: 500, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+    const snapshot = { product_id: prod.id, product_name: "zz-test av producto", product_type: "programa", variant_id: variant.id, variant_name: "Estandar", price: 500, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
     const mkSale = async (contact, setter, vendedor) => {
       const { data, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: {
-        workspace_id: ws.id, contact_id: contact, product_version_id: ver.id, product_snapshot: snapshot, base_amount: 500, discount_amount: 0,
+        workspace_id: ws.id, contact_id: contact, product_variant_id: variant.id, product_snapshot: snapshot, base_amount: 500, discount_amount: 0,
         financing_type: "full", sale_date: ayer, setter_id: setter, vendedor_id: vendedor, attribution: { mode: "last_touch" },
         payments: [{ type: "full", amount: 500, status: "scheduled", due_date: "2031-05-15" }],
       } });
@@ -268,7 +266,7 @@ try {
     };
     add("sale", saleMine, "propia"); add("sale", saleOther, "ajena");
     add("payment", payMine, "propio"); add("payment", payOther, "ajeno");
-    add("product", prod.id, "x"); add("product_variant", variant.id, "x"); add("product_version", ver.id, "x");
+    add("product", prod.id, "x"); add("product_variant", variant.id, "x");
     const { error: vErr } = await svc.from("audit_log").insert(ventas);
     if (vErr) throw new Error(`no pude sembrar filas de ventas: ${vErr.message}`);
     const vSeen = await readAll((k) => k.startsWith("ventas|"));
@@ -280,7 +278,7 @@ try {
     check(["por_sistema", "por_admin", "por_agente"].every((v) => vSeen[`ventas|sale|ajena|${v}`]?.m1 !== true && vSeen[`ventas|payment|ajeno|${v}`]?.m1 !== true), "quien no es setter ni vendedor NO ve ninguna fila de esa venta ni de sus pagos (salvo lo que escribio el mismo)");
     check(["por_sistema", "por_member", "por_admin"].every((v) => vSeen[`ventas|sale|propia|${v}`]?.m2 !== true && vSeen[`ventas|payment|propio|${v}`]?.m2 !== true), "un Member sin relacion no ve ni la venta de otro ni sus pagos");
     check(Object.entries(vSeen).filter(([k]) => /\|(sale|payment)\|/.test(k)).every(([, v]) => v.owner && v.admin), "Owner y Admin ven todas las filas de ventas y pagos");
-    check(["product", "product_variant", "product_version"].every((t) => ["por_sistema", "por_member", "por_admin", "por_agente"].every((v) => vSeen[`ventas|${t}|x|${v}`]?.m1 === true && vSeen[`ventas|${t}|x|${v}`]?.m2 === true)), "el historial del catalogo lo ve cualquier miembro (el catalogo ya es legible por todos)");
+    check(["product", "product_variant"].every((t) => ["por_sistema", "por_member", "por_admin", "por_agente"].every((v) => vSeen[`ventas|${t}|x|${v}`]?.m1 === true && vSeen[`ventas|${t}|x|${v}`]?.m2 === true)), "el historial del catalogo lo ve cualquier miembro (el catalogo ya es legible por todos)");
 
     // Lo previo no se movio: las filas `contact` que un Member no escribio siguen sin verse.
     const again = await readAll((k) => k.startsWith("contact|"));

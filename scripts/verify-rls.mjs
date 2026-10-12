@@ -1439,8 +1439,8 @@ try {
     }
 
     // Productos (00159): estado y archivado los hace cumplir la base, no solo la pantalla.
-    // El precio ya no vive en el producto sino en su version: precio negativo y precio
-    // cero sin notas se rechazan en product_versions (lo prueba verify-sales.mjs).
+    // El precio ya no vive en el producto sino en su variante (00169): un precio negativo
+    // se rechaza ahi (lo prueba verify-sales.mjs).
     check(!!(await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Estado malo", status: "pausado" })).error,
       "la base rechaza un estado que no es activo/inactivo/discontinuado");
     check(!!(await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Incoherente", status: "inactive" })).error,

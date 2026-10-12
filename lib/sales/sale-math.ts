@@ -66,12 +66,8 @@ export interface SnapshotVariant {
   billing_interval: string | null;
   guarantee_duration_type: string | null;
   guarantee_duration_value: number | null;
-}
-export interface SnapshotVersion {
-  id: string;
-  version_number: number;
+  /** El precio de la variante en este momento (USD). */
   price: unknown;
-  currency?: string;
 }
 
 export interface ProductSnapshot {
@@ -80,8 +76,6 @@ export interface ProductSnapshot {
   product_type: string;
   variant_id: string;
   variant_name: string;
-  version_id: string;
-  version_number: number;
   price: number;
   currency: "USD";
   duration_type: string;
@@ -93,16 +87,14 @@ export interface ProductSnapshot {
 }
 
 /** La foto del producto al vender: la venta conserva su precio aunque el catálogo cambie. */
-export function buildProductSnapshot(product: SnapshotProduct, variant: SnapshotVariant, version: SnapshotVersion): ProductSnapshot {
+export function buildProductSnapshot(product: SnapshotProduct, variant: SnapshotVariant): ProductSnapshot {
   return {
     product_id: product.id,
     product_name: product.name,
     product_type: product.product_type,
     variant_id: variant.id,
     variant_name: variant.name,
-    version_id: version.id,
-    version_number: version.version_number,
-    price: fromCents(toCents(version.price)),
+    price: fromCents(toCents(variant.price)),
     currency: "USD",
     duration_type: variant.duration_type,
     duration_value: variant.duration_value,

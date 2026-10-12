@@ -94,7 +94,6 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   contract_signature: "Firma de contrato",
   product: "Producto",
   product_variant: "Variante",
-  product_version: "Versión de precio",
   assignment_rule: "Regla de asignación",
   sale: "Venta",
   payment: "Pago",

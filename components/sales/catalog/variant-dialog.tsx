@@ -32,8 +32,8 @@ export const EMPTY_VARIANT_FORM: VariantFormValues = {
 
 /**
  * Crear o editar una variante: nombre, duración, garantía y facturación. El
- * precio vive en la versión, así que acá solo se pide al CREAR (para arrancar
- * con un borrador con ese precio); editar no lo toca. Sin sección de Whop
+ * precio vive en la variante: acá solo se pide al CREAR (para arrancar con ese
+ * precio); cambiarlo después es la pestaña "Precio", que deja el cambio en el historial. Sin sección de Whop
  * (Fase 2).
  */
 export function VariantDialog({
@@ -164,7 +164,7 @@ export function VariantDialog({
       </div>
 
       {!editing && (
-        <DialogField label="Precio en USD (opcional)" hint="Queda como borrador de la versión 1: lo publicás cuando esté listo.">
+        <DialogField label="Precio en USD (opcional)" hint="Si lo dejás vacío, la variante queda sin precio y no se puede vender hasta que lo cargues.">
           <input value={form.priceUsd} onChange={(e) => set({ priceUsd: e.target.value })} inputMode="decimal" placeholder="1497" className={fieldInput} />
         </DialogField>
       )}

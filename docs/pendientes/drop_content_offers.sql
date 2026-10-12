@@ -70,7 +70,7 @@ DROP FUNCTION IF EXISTS public.content_offers_bridge_to_products();
 DROP TABLE IF EXISTS public.content_offers;
 
 -- Despues de aplicarlo:
---   - Registrarlo en `supabase_migrations.schema_migrations` con el siguiente numero libre (00169 o mas).
+--   - Registrarlo en `supabase_migrations.schema_migrations` con el siguiente numero libre (00171).
 --   - Quitar el tipo `content_offers` de `lib/types/database.ts` y el caso del puente de `scripts/verify-sales.mjs`
 --     (y el de `lib/sales/catalog/no-content-offers.test.ts` que lo exime).
 --   - `node scripts/build-all-migrations.mjs`.

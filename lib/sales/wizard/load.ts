@@ -19,16 +19,15 @@ export async function loadWizardConfig(ctx: PermissionContext): Promise<WizardCo
   const { supabase, workspace, user } = ctx;
   const w = workspace as unknown as { timezone?: string; enabled_payment_methods?: string[] | null; max_discount_percent?: number | null };
 
-  const [products, variants, versions, members, viewerTz] = await Promise.all([
+  const [products, variants, members, viewerTz] = await Promise.all([
     supabase.from("products").select("id, name, product_type, status").eq("workspace_id", workspace.id),
-    supabase.from("product_variants").select("id, product_id, name, duration_type, duration_value, billing_type, billing_interval, display_order, archived_at").eq("workspace_id", workspace.id),
-    supabase.from("product_versions").select("id, product_variant_id, price, status").eq("workspace_id", workspace.id).eq("status", "active"),
+    supabase.from("product_variants").select("id, product_id, name, duration_type, duration_value, billing_type, billing_interval, display_order, price, archived_at").eq("workspace_id", workspace.id),
     getWorkspaceMembers(workspace.id),
     resolveViewerTimezone(workspace.timezone),
   ]);
 
   return {
-    catalog: buildWizardCatalog(products.data ?? [], variants.data ?? [], versions.data ?? []),
+    catalog: buildWizardCatalog(products.data ?? [], variants.data ?? []),
     members: members.map((m) => ({ id: m.userId, name: m.name })),
     enabledMethods: w.enabled_payment_methods ?? [...DEFAULT_ENABLED_PAYMENT_METHODS],
     maxDiscountPercent: w.max_discount_percent == null ? null : Number(w.max_discount_percent),

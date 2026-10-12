@@ -1578,3 +1578,12 @@ Treinta y ocho funcionalidades (F1 a F38 más F26b) en cuatro bloques:
 ### Lo que queda
 
 Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_offers` cuando el código esté desplegado (4 pasos escritos), y la verificación en vivo del plano (§18) con la rama desplegada: una venta de prueba con un pago vencido, comprobando que la mora y el flujo de cobranza disparan una sola vez.
+
+
+## Ventas — el precio pasa a la variante y el historial del catálogo a la base (12/10/2026)
+
+**Migraciones:** 00169 y 00170, aplicadas y registradas. La 00169 borra `product_versions` (respaldo en `docs/ventas/respaldo-product-versions.json`).
+
+**Qué cambió.** La tabla de versiones de precio no aportaba nada que no tuvieran ya la copia congelada de cada venta y el historial general: se eliminó. El precio vive en `product_variants.price` (0 = sin precio) y un cambio es inmediato. El historial de productos y variantes lo escribe un trigger de la base, así que *siempre* queda registrado, incluso si alguien escribe sin pasar por la pantalla.
+
+**Pendiente.** Borrar `content_offers` después del deploy (guiado en `docs/PENDIENTE-ventas.md`).

@@ -3,7 +3,7 @@ import { hasEditConflict, isLockedForEdit, lockedEditError, planRepricing } from
 
 const sale = {
   base_amount: 1000, discount_amount: 0, final_amount: 1000, discount_reason: null,
-  product_snapshot: { price: 1000 }, product_version_id: "v1", financing_type: "installments",
+  product_snapshot: { price: 1000 }, product_variant_id: "v1", financing_type: "installments",
 };
 const plan = [
   { type: "installment", status: "paid", amount: 400 },

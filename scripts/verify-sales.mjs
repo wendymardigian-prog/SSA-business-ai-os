@@ -117,14 +117,14 @@ try {
     const { data: variant, error: vErr } = await owner.client.from("product_variants")
       .insert({ workspace_id: ws.id, product_id: prod.id, name: "Estandar" }).select("id").single();
     check(!vErr && !!variant, "el Owner crea una variante", vErr?.message);
-    const { data: v1, error: v1Err } = await owner.client.from("product_versions")
-      .insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 1497, version_number: 1 }).select("id, version_number").single();
-    check(!v1Err && !!v1, "el Owner crea la version 1 (borrador)", v1Err?.message);
+    const { error: priceErr } = await owner.client.from("product_variants").update({ price: 1497 }).eq("id", variant.id);
+    check(!priceErr, "el Owner le pone precio a la variante", priceErr?.message);
 
     const memberVariant = await member.client.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test" });
     check(!!memberVariant.error, "un Member NO crea variantes");
-    const memberVersion = await member.client.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 1 });
-    check(!!memberVersion.error, "un Member NO crea versiones");
+    await member.client.from("product_variants").update({ price: 1 }).eq("id", variant.id);
+    const { data: stillPriced } = await svc.from("product_variants").select("price").eq("id", variant.id).single();
+    check(Number(stillPriced?.price) === 1497, "un Member NO cambia el precio de una variante (RLS)");
 
     // DELETE: nadie puede con su sesion (no hay policy).
     for (const [table, id] of [["products", prod.id], ["product_variants", variant.id]]) {
@@ -162,41 +162,16 @@ try {
     const { error: recurringOk } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test mensual", duration_type: "months", duration_value: 6, billing_type: "recurring", billing_interval: "monthly", guarantee_duration_type: "days", guarantee_duration_value: 30 });
     check(!recurringOk, "una variante mensual de 6 meses con garantia es valida", recurringOk?.message);
 
-    console.log("\n— Versiones: publicar —");
-    const { error: zeroPrice } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 0 });
-    check(!!zeroPrice, "precio 0 sin notas del cambio se rechaza");
-    const { error: zeroNotes } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 0, change_notes: "cortesia" });
-    check(!zeroNotes, "precio 0 con notas es valido", zeroNotes?.message);
-    await svc.from("product_versions").delete().eq("product_variant_id", variant.id).eq("price", 0);
-
-    const { data: autoNum } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 1600 }).select("id, version_number").single();
-    check(autoNum?.version_number === 2, "el numero de version es autoincremental por variante", `vino ${autoNum?.version_number}`);
-
-    const memberPublish = await member.client.rpc("publish_product_version", { p_version_id: v1.id, p_actor_id: member.id });
-    check(!!memberPublish.error, "un usuario autenticado NO puede llamar publish_product_version (solo service_role)");
-
-    const pub1 = await svc.rpc("publish_product_version", { p_version_id: v1.id, p_actor_id: owner.id });
-    check(!pub1.error, "se publica la version 1", pub1.error?.message);
-    const pub2 = await svc.rpc("publish_product_version", { p_version_id: autoNum.id, p_actor_id: owner.id });
-    check(!pub2.error && pub2.data?.deprecated_version_id === v1.id, "al publicar la 2, la 1 queda deprecated en la misma transaccion", pub2.error?.message);
-    const { data: after } = await svc.from("product_versions").select("id, status").eq("product_variant_id", variant.id);
-    check((after ?? []).filter((r) => r.status === "active").length === 1 && after.find((r) => r.id === v1.id)?.status === "deprecated",
-      "queda exactamente una activa y la anterior deprecated");
-
-    const again = await svc.rpc("publish_product_version", { p_version_id: v1.id, p_actor_id: owner.id });
-    check(!!again.error, "publicar una version deprecated se rechaza");
-
-    const { error: secondActive } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 5, status: "active" });
-    check(!!secondActive, "una segunda version activa de la misma variante falla por el indice unico");
-
-    const { error: editPublished } = await svc.from("product_versions").update({ price: 1 }).eq("id", autoNum.id);
-    check(!!editPublished, "una version publicada no se edita (ni con el service role)");
-    const { error: delPublished } = await svc.from("product_versions").delete().eq("id", autoNum.id);
-    check(!!delPublished, "una version publicada no se borra");
-    const { data: draft } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant.id, price: 2000 }).select("id").single();
-    const { error: editDraft } = await svc.from("product_versions").update({ price: 2100 }).eq("id", draft.id);
-    const { error: delDraft } = await svc.from("product_versions").delete().eq("id", draft.id);
-    check(!editDraft && !delDraft, "un borrador se edita y se borra libremente", (editDraft || delDraft)?.message);
+    console.log("\n— 00169: el precio vive en la variante —");
+    check((sql("select to_regclass('public.product_versions') is null as gone"))[0].gone === true, "la tabla product_versions ya no existe");
+    check((sql("select count(*)::int n from pg_proc where proname in ('publish_product_version','product_versions_assign_number','product_versions_protect')"))[0].n === 0, "y sus tres funciones tampoco");
+    const { error: negPrice } = await svc.from("product_variants").update({ price: -1 }).eq("id", variant.id);
+    check(!!negPrice, "un precio negativo se rechaza (CHECK)");
+    const { error: zeroOk } = await svc.from("product_variants").update({ price: 0 }).eq("id", variant.id);
+    check(!zeroOk, "el precio 0 es valido: significa 'sin precio'", zeroOk?.message);
+    await svc.from("product_variants").update({ price: 1497 }).eq("id", variant.id);
+    const { data: newVariant } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod.id, name: "zz-test sin precio" }).select("price").single();
+    check(Number(newVariant?.price) === 0, "una variante nueva nace sin precio (0)");
 
     console.log("\n— Metodos de pago habilitados —");
     const { data: wsRow } = await svc.from("workspaces").select("enabled_payment_methods").eq("id", ws.id).single();
@@ -222,8 +197,8 @@ try {
       check(puente?.name === "zz-test puente" && puente?.status === "active", "el puente lo copia a products con el mismo id");
       const { data: vars } = await svc.from("product_variants").select("id, name").eq("product_id", viejo.id);
       check(vars?.length === 1 && vars[0].name === "Estándar", "y le crea su variante Estandar");
-      const { data: vers } = await svc.from("product_versions").select("price, status, version_number").eq("product_variant_id", vars[0].id);
-      check(vers?.length === 1 && Number(vers[0].price) === 800 && vers[0].status === "active", "y su version 1 activa con el precio");
+      const { data: pv } = await svc.from("product_variants").select("price").eq("id", vars[0].id).single();
+      check(Number(pv?.price) === 800, "y le copia el precio (800) a la variante");
 
       // Una pieza puede apuntar a ese producto (la FK ahora es a products).
       const { data: idea, error: ideaErr } = await svc.from("content_ideas")
@@ -232,11 +207,10 @@ try {
       const { error: fkBad } = await svc.from("content_ideas").update({ offer_id: randomUUID() }).eq("id", idea.id);
       check(!!fkBad, "y un producto que no existe se rechaza");
 
-      // Cambiar el precio en la tabla vieja: version nueva, la anterior queda deprecated.
+      // Cambiar el precio en la tabla vieja: el puente lo copia a la variante.
       await svc.from("content_offers").update({ price_usd: 900 }).eq("id", viejo.id);
-      const { data: vers2 } = await svc.from("product_versions").select("price, status").eq("product_variant_id", vars[0].id);
-      check(vers2?.length === 2 && vers2.filter((v) => v.status === "active").length === 1 && Number(vers2.find((v) => v.status === "active").price) === 900,
-        "cambiar el precio en la tabla vieja publica una version nueva y deprecia la anterior");
+      const { data: pv2 } = await svc.from("product_variants").select("price").eq("id", vars[0].id).single();
+      check(Number(pv2?.price) === 900, "cambiar el precio en la tabla vieja actualiza el precio de la variante");
 
       // Cambiar el estado: el puente lo copia junto con archived_at.
       await svc.from("content_offers").update({ status: "discontinued", archived_at: new Date().toISOString() }).eq("id", viejo.id);
@@ -246,6 +220,73 @@ try {
       // Aplicarla dos veces no duplica: las 3 ofertas reales tienen exactamente 1 variante y 1 version.
       const [{ n: dup }] = sql("select count(*)::int n from (select v.product_id from public.product_variants v join public.content_offers o on o.id = v.product_id where o.workspace_id <> '" + ws.id + "' group by v.product_id having count(*) > 1) x");
       check(dup === 0, "las ofertas migradas no tienen variantes duplicadas");
+    }
+
+    console.log("\n— 00170: el historial del catalogo lo escribe la base —");
+    {
+      const log = async (entityId) =>
+        (await svc.from("audit_log").select("action, changes, metadata, performed_by, actor_type, actor_label").eq("entity_id", entityId).order("performed_at", { ascending: true })).data ?? [];
+      const actions = (rows) => rows.map((r) => r.action);
+
+      // Lo que ya hicimos con la sesion del Owner (alta del producto y de la variante, y su precio).
+      const pLog = await log(prod.id);
+      check(actions(pLog).filter((a) => a === "product.created").length === 1, "el alta de un producto deja UNA fila 'product.created' (una sola, no dos)");
+      check(pLog[0]?.performed_by === owner.id && pLog[0]?.actor_type === "user", "con la persona que lo hizo (auth.uid de la sesion)");
+      const vLog = await log(variant.id);
+      check(actions(vLog).filter((a) => a === "variant.created").length === 1, "el alta de una variante deja UNA fila 'variant.created'");
+      const priceRows = vLog.filter((r) => r.action === "variant.price_changed");
+      check(priceRows.length >= 1 && priceRows.some((r) => Number(r.changes?.price?.new) === 1497), "cambiar el precio deja 'variant.price_changed' con el precio nuevo");
+
+      // Un cambio de precio por la sesion del Owner: antes y ahora.
+      await owner.client.from("product_variants").update({ price: 2000 }).eq("id", variant.id);
+      const after = (await log(variant.id)).filter((r) => r.action === "variant.price_changed");
+      const last = after[after.length - 1];
+      check(Number(last?.changes?.price?.old) === 1497 && Number(last?.changes?.price?.new) === 2000 && last?.performed_by === owner.id,
+        "el cambio queda con el precio de antes (1497), el de ahora (2000) y quien lo hizo");
+      check(after.length === priceRows.length + 1, "y es UNA fila por cambio");
+
+      // Un UPDATE que no cambia nada no escribe nada.
+      const nAntes = (await log(variant.id)).length;
+      await owner.client.from("product_variants").update({ price: 2000 }).eq("id", variant.id);
+      check((await log(variant.id)).length === nAntes, "guardar el mismo precio no deja ninguna fila");
+      await svc.from("product_variants").update({ price: 1497 }).eq("id", variant.id);
+
+      // Varios campos en un UPDATE: UNA fila con todos.
+      await owner.client.from("products").update({ name: "zz-test Programa v2", description: "una descripcion" }).eq("id", prod.id);
+      const upd = (await log(prod.id)).filter((r) => r.action === "product.updated");
+      check(upd.length === 1 && !!upd[0].changes?.name && !!upd[0].changes?.description, "dos campos en un UPDATE dejan UNA fila 'product.updated' con los dos");
+      check(!upd[0].changes?.updated_at && !upd[0].changes?.updated_by, "y sin ruido (updated_at / updated_by no cuentan)");
+
+      // Estado: una fila 'status_changed', sin el archived_at que lo acompana.
+      await svc.from("products").update({ status: "inactive", archived_at: new Date().toISOString(), updated_by: owner.id }).eq("id", prod.id);
+      const st = (await log(prod.id)).filter((r) => r.action === "product.status_changed");
+      check(st.length === 1 && st[0].changes?.status?.new === "inactive" && !st[0].changes?.archived_at, "pasar a inactivo deja UNA fila 'product.status_changed' (sin archived_at)");
+      check(st[0]?.performed_by === owner.id, "con el cliente de servicio, el actor sale de updated_by");
+      await svc.from("products").update({ status: "active", archived_at: null, updated_by: owner.id }).eq("id", prod.id);
+
+      // Archivar y restaurar una variante.
+      await svc.from("product_variants").update({ archived_at: new Date().toISOString(), updated_by: owner.id }).eq("id", variant.id);
+      await svc.from("product_variants").update({ archived_at: null, updated_by: owner.id }).eq("id", variant.id);
+      const vAll = actions(await log(variant.id));
+      check(vAll.includes("variant.archived") && vAll.includes("variant.restored"), "archivar y restaurar una variante quedan como 'variant.archived' y 'variant.restored'");
+
+      // Una escritura sin sesion y sin updated_by: actor 'system'.
+      const { data: huerfano } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test sin autor" }).select("id").single();
+      await svc.from("products").update({ description: "sin autor" }).eq("id", huerfano.id);
+      const hLog = await log(huerfano.id);
+      check(hLog.length === 2 && hLog.every((r) => r.actor_type === "system" && r.performed_by === null && r.actor_label === "Sistema"), "sin sesion ni updated_by el actor es 'system' (Sistema)");
+
+      // Lo que un Member intenta por su cuenta no pasa y no deja rastro.
+      const nMember = (await log(prod.id)).length;
+      await member.client.from("products").update({ name: "zz-test lo cambia el member" }).eq("id", prod.id);
+      check((await log(prod.id)).length === nMember, "un cambio rechazado por la RLS no deja ninguna fila");
+
+      // El puente (content_offers) tambien queda registrado: lo escribe la misma base.
+      const { data: viejo2 } = await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test puente log", price_usd: 50 }).select("id").single();
+      const bLog = await log(viejo2.id);
+      check(actions(bLog).includes("product.created"), "un alta hecha por el codigo viejo (puente de content_offers) tambien deja 'product.created'");
+
+      // Borrar el workspace entero no se atora con el trigger (se prueba en la limpieza de abajo).
     }
   }
 
@@ -346,11 +387,9 @@ try {
       check(!error && data === c.expected, `derive_sale_status: ${c.name}`, error?.message ?? `dio ${data}, esperaba ${c.expected}`);
     }
 
-    // Catalogo de prueba: un producto con una version activa.
+    // Catalogo de prueba: un producto con una variante con precio.
     const { data: prod3 } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Producto de ventas", product_type: "programa" }).select("id").single();
-    const { data: variant3 } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod3.id, name: "Estandar" }).select("id").single();
-    const { data: ver3 } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant3.id, price: 1297 }).select("id").single();
-    await svc.rpc("publish_product_version", { p_version_id: ver3.id, p_actor_id: owner.id });
+    const { data: variant3 } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prod3.id, name: "Estandar", price: 1297 }).select("id").single();
 
     const setterMember = member; // el Member de sistema es el setter de la venta
     const contactName = (t) => `zz-test ${t}`;
@@ -358,13 +397,13 @@ try {
     const contactA = await newContact("lead A");
     const contactB = await newContact("lead B");
 
-    const snapshot = (price) => ({ product_id: prod3.id, product_name: "zz-test Producto de ventas", product_type: "programa", variant_id: variant3.id, variant_name: "Estandar", version_id: ver3.id, version_number: 1, price, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null });
+    const snapshot = (price) => ({ product_id: prod3.id, product_name: "zz-test Producto de ventas", product_type: "programa", variant_id: variant3.id, variant_name: "Estandar", price, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null });
     const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const optionSnapshot = { method_key: "wise", method_name: "Wise", provider_fee_percent: 0, provider_fee_fixed: 0 };
     const paidReservation = { type: "reservation", amount: 297, status: "paid", due_date: ayer, paid_at: `${ayer}T15:00:00Z`, paid_on: ayer, payment_method: "wise", payment_option_snapshot: optionSnapshot, provider_fee_amount: 0 };
     const installments = [1, 2, 3, 4].map((n) => ({ type: "installment", amount: 250, status: "scheduled", due_date: `2031-0${n}-15` }));
     const payload = (over = {}) => ({
-      workspace_id: ws.id, contact_id: contactA.id, product_version_id: ver3.id, product_snapshot: snapshot(1297),
+      workspace_id: ws.id, contact_id: contactA.id, product_variant_id: variant3.id, product_snapshot: snapshot(1297),
       base_amount: 1297, discount_amount: 0, financing_type: "reservation_installments", sale_date: ayer,
       setter_id: setterMember.id, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [paidReservation, ...installments], ...over,
     });
@@ -372,7 +411,7 @@ try {
     const eventsOf = async (contactId, type) => (await svc.from("automation_events").select("event_type, payload").eq("contact_id", contactId).eq("event_type", type)).data ?? [];
 
     console.log("\n— 00162: las restricciones de la base —");
-    const base = { workspace_id: ws.id, contact_id: contactB.id, product_version_id: ver3.id, product_snapshot: snapshot(1297), base_amount: 100, final_amount: 100, status: "pending_payment", financing_type: "full", sale_date: ayer };
+    const base = { workspace_id: ws.id, contact_id: contactB.id, product_variant_id: variant3.id, product_snapshot: snapshot(1297), base_amount: 100, final_amount: 100, status: "pending_payment", financing_type: "full", sale_date: ayer };
     check(!!(await svc.from("sales").insert({ ...base, currency: "EUR" })).error, "una venta en EUR se rechaza (solo USD)");
     check(!!(await svc.from("sales").insert({ ...base, attribution_type: "none", attribution: { source: "web" } })).error, "attribution_type 'none' con una atribucion cargada se rechaza");
     check(!!(await svc.from("sales").insert({ ...base, attribution_type: "manual" })).error, "y un tipo 'manual' sin atribucion tambien");
@@ -440,7 +479,7 @@ try {
     const fallo2 = await createSale({ payments: [paidReservation, { ...installments[0], payment_method: "paypal" }, ...installments.slice(1)] });
     check(!!fallo2.error, "si falla la insercion de UN pago, la venta entera se deshace");
     const cambio = await createSale({ product_snapshot: snapshot(1000) });
-    check(!!cambio.error && /version_changed/.test(cambio.error.message), "si el precio de la version ya no es el que se mostro: version_changed");
+    check(!!cambio.error && /price_changed/.test(cambio.error.message), "si el precio de la variante ya no es el que se mostro: price_changed");
     const fecha = await createSale({ sale_date: "2999-01-01" });
     check(!!fecha.error && /invalid_sale_date/.test(fecha.error.message), "una fecha futura se rechaza");
     const contactoAjeno = await createSale({ contact_id: randomUUID() });
@@ -565,11 +604,14 @@ try {
     await svc.from("bookings").delete().eq("id", reunion.id);
     check(!!(await svc.from("sales").select("id").eq("id", conAgenda.data.sale_id).maybeSingle()).data && (await svc.from("sales").select("booking_id").eq("id", conAgenda.data.sale_id).single()).data?.booking_id === null, "si se borra la agenda, la venta NO se borra (booking_id pasa a null)");
 
-    console.log("\n— 00162: el asistente abierto con una version que ya no es la vigente —");
-    const { data: ver3b } = await svc.from("product_versions").insert({ workspace_id: ws.id, product_variant_id: variant3.id, price: 1400 }).select("id").single();
-    await svc.rpc("publish_product_version", { p_version_id: ver3b.id, p_actor_id: owner.id });
-    const viejaVersion = await createSale();
-    check(!!viejaVersion.error && /version_changed:1400/.test(viejaVersion.error.message), "con la version reemplazada: version_changed con el precio nuevo", viejaVersion.error?.message);
+    console.log("\n— 00169: el asistente abierto con un precio que ya cambio —");
+    await svc.from("product_variants").update({ price: 1400 }).eq("id", variant3.id);
+    const precioViejo = await createSale();
+    check(!!precioViejo.error && /price_changed:1400/.test(precioViejo.error.message), "con el precio cambiado: price_changed con el precio nuevo", precioViejo.error?.message);
+    await svc.from("product_variants").update({ archived_at: new Date().toISOString() }).eq("id", variant3.id);
+    const archivada = await createSale({ product_snapshot: snapshot(1400) });
+    check(!!archivada.error && /invalid_variant/.test(archivada.error.message), "una variante archivada no se vende: invalid_variant", archivada.error?.message);
+    await svc.from("product_variants").update({ archived_at: null, price: 1297 }).eq("id", variant3.id);
 
     console.log("\n— 00163: claves foráneas de sale_id —");
     const fks = sql(`select conrelid::regclass::text as tabla, confdeltype as accion from pg_constraint where conname in ('form_submissions_sale_id_fkey','contract_signatures_sale_id_fkey') order by 1`);
@@ -693,13 +735,11 @@ try {
     const mkCandidate = async (name, tz, { due = "2020-01-15", saleStatus } = {}) => {
       const { data: w } = await svc.from("workspaces").insert({ name: `zz-test-${name}`, slug: `zz-test-${name}-${Date.now()}`, timezone: tz }).select("id").single();
       const { data: pr } = await svc.from("products").insert({ workspace_id: w.id, name: "zz-test mora", product_type: "programa" }).select("id").single();
-      const { data: va } = await svc.from("product_variants").insert({ workspace_id: w.id, product_id: pr.id, name: "Estandar" }).select("id").single();
-      const { data: ve } = await svc.from("product_versions").insert({ workspace_id: w.id, product_variant_id: va.id, price: 100 }).select("id").single();
-      await svc.rpc("publish_product_version", { p_version_id: ve.id, p_actor_id: owner.id });
+      const { data: va } = await svc.from("product_variants").insert({ workspace_id: w.id, product_id: pr.id, name: "Estandar", price: 100 }).select("id").single();
       const { data: c } = await svc.from("contacts").insert({ workspace_id: w.id, display_name: "zz-test mora lead" }).select("id").single();
       const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-      const snap = { product_id: pr.id, product_name: "zz-test mora", product_type: "programa", variant_id: va.id, variant_name: "Estandar", version_id: ve.id, version_number: 1, price: 100, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
-      const { data: sale, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: { workspace_id: w.id, contact_id: c.id, product_version_id: ve.id, product_snapshot: snap, base_amount: 100, discount_amount: 0, financing_type: "full", sale_date: ayer, setter_id: null, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [{ type: "full", amount: 100, status: "scheduled", due_date: due }] } });
+      const snap = { product_id: pr.id, product_name: "zz-test mora", product_type: "programa", variant_id: va.id, variant_name: "Estandar", price: 100, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+      const { data: sale, error } = await svc.rpc("create_sale", { p_actor_id: owner.id, p_payload: { workspace_id: w.id, contact_id: c.id, product_variant_id: va.id, product_snapshot: snap, base_amount: 100, discount_amount: 0, financing_type: "full", sale_date: ayer, setter_id: null, vendedor_id: null, attribution: { mode: "last_touch" }, payments: [{ type: "full", amount: 100, status: "scheduled", due_date: due }] } });
       if (error) throw new Error(`no pude crear la venta de mora: ${error.message}`);
       if (saleStatus) await svc.from("sales").update({ status: saleStatus }).eq("id", sale.sale_id);
       return { id: w.id, tz, saleId: sale.sale_id };

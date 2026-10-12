@@ -44,7 +44,7 @@ const seed = () =>
     sales: [{
       id: SALE, workspace_id: WS, contact_id: U(10), status: "pending_payment", financing_type: "installments",
       base_amount: 1000, discount_amount: 0, final_amount: 1000, discount_reason: null, product_snapshot: { price: 1000 },
-      product_version_id: U(22), setter_id: ME, vendedor_id: null, attribution: null, attribution_touch_id: null,
+      product_variant_id: U(22), setter_id: ME, vendedor_id: null, attribution: null, attribution_touch_id: null,
       attribution_type: "none", notes: null, service_starts_at: null, plan_unbalanced: false, updated_at: "2026-10-01T10:00:00Z",
     }],
     payments: [
@@ -52,7 +52,7 @@ const seed = () =>
       { id: U(41), workspace_id: WS, sale_id: SALE, type: "installment", status: "scheduled", amount: 600 },
     ],
     contact_touches: [],
-    product_versions: [], product_variants: [], products: [],
+    product_variants: [], products: [],
   });
 
 beforeEach(() => { role = "admin"; roleId = null; rpcCalls.length = 0; audits.length = 0; db = seed(); });
