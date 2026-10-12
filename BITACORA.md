@@ -1600,3 +1600,54 @@ Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_off
 **Qué cambió.** Se sacó Cloudflare Turnstile (hoy no se podía publicar ningún formulario porque no estaba configurado; la protección queda en honeypot, tope por IP e idempotencia, y el captcha está documentado en `docs/pendientes/turnstile-captcha.md`). El tope por IP pasó a 30/h por formulario y 60/h en total. La pestaña Contacto tiene un interruptor "Vincular las respuestas con contactos" y el mapeo se arma solo al agregar campos y se guarda con el borrador. Hay un campo nuevo "Usuario de red social" y un contacto se puede crear o vincular por @ de Instagram, TikTok, X o LinkedIn (los 560 contactos que llegaron por DM de Instagram ahora se reconocen si llenan un formulario con su @). El país se entiende por nombre. El prellenado ya no rompe teléfonos ni emails con "+". La ficha del contacto muestra los formularios que respondió. Las versiones publicadas tienen un candado en la base y el PDF del contrato no repite el nombre y el email del firmante.
 
 **Pendiente.** Detalle en `docs/PENDIENTE-formularios.md`: la IP real detrás del proxy de Railway (la Agenda tiene el mismo problema), `is_anonymous` que no mira TikTok, X ni LinkedIn, y la carrera de `verify-forms` con el cron de producción.
+
+---
+## Reporte de fin de día — EOD (E1 a E3, E13)
+
+**Fecha:** 12 de octubre de 2026
+**Rama:** `feat/formularios-eod`
+**Migraciones:** 00178 a 00185, todas aplicadas y registradas. Aditivas: ninguna fila existente
+cambia y todo evento de hoy sigue exigiendo contacto.
+
+### Qué se construyó
+
+Un cuarto tipo de formulario: el reporte de fin de día. El de setters (con canales) se deja
+abierto todo el día y se usa como contador; el general es para cualquier otro rol.
+
+1. **E1 · Crear y configurar.** Tipo `eod`, variante fija, cinco tipos de pregunta, número con
+   paso y métrica, canales (catálogo, personalizados, copiar y "usar en todos"), plantillas de
+   XCRM, audiencia por personas o roles (incluidos los de sistema).
+2. **E2 · Completar, guardar y ver.** "Mi reporte del día" con la sesión iniciada, el stepper
+   con − y +, el borrador que no se pierde (servidor + navegador, revisión, fusión de los "+1"
+   entre dispositivos), envío validado en el servidor, Reportes con totales y pendientes, y el
+   recordatorio.
+3. **E3 · Automatizaciones sin contacto.** El motor aprendió que hay flujos sobre una persona
+   del equipo: `subject` en los disparadores, `needsContact` en los nodos, el cron ramifica por
+   sujeto, el nodo "Avisar en la campana" y tres plantillas.
+
+### Decisiones que conviene recordar
+
+**La persona sale de la sesión.** En XCRM cualquiera con el link elegía su nombre de una lista.
+Acá el reporte se completa adentro de la app y `user_id` es siempre `ctx.user.id`.
+
+**La unicidad la da la base**, no un "select previo": índice único por formulario, persona y
+día, y una revisión (`rev`) en cada guardado. Dos envíos a la vez = un solo reporte.
+
+**El borrador vive en dos lugares** y se junta al abrir. Los números se fusionan por diferencia
+(10, +3 en la compu, +2 en el celular = 15); los textos, gana el último. Las pestañas del mismo
+navegador comparten una copia y se avisan con `BroadcastChannel`.
+
+**La corrección en curso no se ve.** Mientras alguien corrige un reporte ya enviado, lo enviado
+no cambia: la corrección va a `pending_edit`, una columna que nadie lee con su sesión.
+
+**Sin contacto falso.** En vez de crear un contacto por setter, `contact_id` admite null en
+`automation_events` y `flow_sessions` con un CHECK que solo lo permite para `eod_submitted`. El
+único cambio en `engine.ts` es saltear (y anotar) un paso que necesita contacto; la rama de
+contacto del cron quedó igual y su caracterización sigue en verde.
+
+**Migraciones renumeradas respecto del plan**, para aplicarlas en orden sin huecos.
+
+### Lo que queda
+
+Ver `docs/PENDIENTE.md` ("Reporte de fin de día"). Lo principal: el dashboard de setters, que
+ya tiene las métricas guardadas por canal y en total.
