@@ -10,6 +10,7 @@ function build(type: "subscribe" | "unsubscribe", label: string): NodeDefinition
   return {
     type,
     label,
+    needsContact: true,
     aliases: [{ nodeType: "action", actionType: type }],
     async execute({ supabase, context }: NodeExecutionArgs<unknown>) {
       await supabase

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowExecutionContext } from "../types";
+import type { ContactFlowContext } from "../types";
 
 vi.mock("@/lib/sequences/collisions", () => ({ detectSequenceCollision: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue(undefined) }));
@@ -22,7 +22,7 @@ const context = {
   channelId: "chn-1",
   flowId: "flow-1",
   conversationId: "conv-1",
-} as unknown as FlowExecutionContext;
+} as unknown as ContactFlowContext;
 
 interface World {
   sequence: Record<string, unknown> | null;

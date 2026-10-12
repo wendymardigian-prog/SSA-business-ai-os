@@ -18,6 +18,7 @@
 import { registerConditionField } from "./registry";
 import type { ConditionFieldArgs } from "./types";
 import { groupOf, isBookingStatus } from "@/lib/scheduling/booking-status";
+import { requireContactId } from "../types";
 
 interface BookingRow {
   status: string;
@@ -38,7 +39,7 @@ async function bookingsOf(args: ConditionFieldArgs): Promise<BookingRow[]> {
     .from("bookings")
     .select("status, start_at, event_type_id, category_snapshot")
     .eq("workspace_id", args.context.workspaceId)
-    .eq("contact_id", args.context.contactId)
+    .eq("contact_id", requireContactId(args.context))
     .order("start_at", { ascending: false })
     .limit(50);
   return ((data ?? []) as unknown as BookingRow[]).filter((b) => inScope(b, args.argument));

@@ -32,6 +32,8 @@ export interface StepEditorContextValue {
   announce: (text: string) => void;
   /** Pide confirmacion antes de algo que borra. */
   ask: (request: ConfirmRequest, onConfirm: () => void) => void;
+  /** Las personas del equipo (para un email o un aviso a personas elegidas). */
+  members: Array<{ userId: string; name: string }>;
 }
 
 const StepEditorContext = createContext<StepEditorContextValue | null>(null);

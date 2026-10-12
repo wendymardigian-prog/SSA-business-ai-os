@@ -8,6 +8,11 @@ import { commonFields } from "@/lib/forms/automation/trigger-config";
 import type { VisibilityConfig } from "@/lib/forms/visibility-types";
 import { FormLinearFlowEditor } from "@/components/forms/editor/form-linear-flow-editor";
 import type { FormField } from "@/lib/forms/fields";
+import { EodFlowEditor } from "@/components/eod/editor/eod-flow-editor";
+import { EOD_TRIGGER } from "@/lib/eod/automation/trigger-name";
+import { loadEodFormsForSchema } from "@/lib/flow-engine/registry/eod-triggers";
+import { eodVariableSchema } from "@/lib/eod/automation/variables";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +42,34 @@ export default async function AutomatizacionDeFormularioPage({ params }: { param
   const triggerNode = found.nodes.find((n) => n.type === "trigger");
   const triggerData = (triggerNode?.data ?? {}) as Record<string, unknown>;
   const triggerType = String(triggerData.triggerType ?? "form_submitted");
+
+  // Un reporte de fin de día: su propio editor (sin contacto, sin «Solo si…»).
+  if (triggerType === EOD_TRIGGER) {
+    const [forms, members] = await Promise.all([loadEodFormsForSchema(ctx.supabase, ctx.workspace.id, [id]), getWorkspaceMembers(ctx.workspace.id)]);
+    const variableKeys = [
+      "member.name",
+      "member.email",
+      "eod.date",
+      "eod.role",
+      "eod.channels",
+      "eod.all_answers",
+      "report.url",
+      ...eodVariableSchema(forms).map((s) => s.path).filter((p) => p.startsWith("answer.") || p.startsWith("channel.") || p.startsWith("metrics.")),
+    ];
+    return (
+      <EodFlowEditor
+        formId={id}
+        formName={form.name}
+        flowId={flowId}
+        flowName={found.flow.name}
+        tree={flowToTree(found.nodes, found.edges)}
+        trigger={{ type: triggerType, config: triggerData }}
+        enabled={enabled}
+        variableKeys={[...new Set(variableKeys)]}
+        members={members.map((m) => ({ userId: m.userId, name: m.name }))}
+      />
+    );
+  }
 
   // El «Solo si…»: las preguntas de los formularios del disparador (las de la versión publicada,
   // o el borrador si todavía no se publicó). Un contrato firmado no tiene respuestas que filtrar.

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
-import type { FlowNode, FlowEdge, FlowExecutionContext } from "./types";
+import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
 import type { FlowRuntime } from "./registry/types";
 
@@ -33,11 +33,12 @@ type FlowSessionRow = Database["public"]["Tables"]["flow_sessions"]["Row"];
  */
 export async function findWaitingSession(
   supabase: SupabaseClient<Database>,
-  { contactId, channelId }: { contactId: string; channelId: string }
+  { contactId, channelId }: { contactId: string | null; channelId: string }
 ): Promise<FlowSessionRow | null> {
   // Sin canal no hay sesión que retomar: un mensaje entrante siempre llega por
-  // uno, y una sesión sin canal (agenda) no espera respuesta del contacto.
-  if (!channelId) return null;
+  // uno, y una sesión sin canal (agenda) no espera respuesta del contacto. Un
+  // flujo sin contacto (EOD) tampoco tiene canal.
+  if (!channelId || !contactId) return null;
 
   const { data, error } = await supabase
     .from("flow_sessions")
@@ -126,6 +127,8 @@ export async function executeFlow(
     .from("flow_sessions")
     .insert({
       contact_id: context.contactId,
+      // Un flujo sin contacto es sobre una persona del equipo (00182).
+      ...(context.contactId ? {} : { member_user_id: context.memberUserId ?? null }),
       flow_id: context.flowId,
       // Null y no cadena vacía: `channel_id` es una referencia a `channels`.
       // Antes el cron mandaba "" y el insert fallaba en silencio, así que un
@@ -390,11 +393,30 @@ async function executeNode(
     return;
   }
 
+  if (!definition.needsContact) {
+    return definition.execute({ supabase, node, data: node.data as never, context, sessionId, runtime });
+  }
+
+  // Un flujo sin contacto (sobre una persona del equipo, E15) que llega a un paso que
+  // necesita uno: se saltea, se anota y se sigue. Nunca lanza. El editor ya impide
+  // agregar esos pasos: esto es la red de seguridad.
+  if (!context.contactId) {
+    console.warn(`[flow-engine] el nodo ${node.id} (${definition.type}) necesita un contacto y el flow ${context.flowId} no tiene: se saltea`);
+    await supabase.from("analytics_events").insert({
+      workspace_id: context.workspaceId,
+      flow_id: context.flowId,
+      contact_id: null,
+      event_type: "node_skipped",
+      metadata: { nodeId: node.id, nodeType: definition.type, reason: "Este paso necesita un contacto y este flujo no tiene" },
+    });
+    return;
+  }
+
   return definition.execute({
     supabase,
     node,
     data: node.data as never,
-    context,
+    context: context as ContactFlowContext,
     sessionId,
     runtime,
   });

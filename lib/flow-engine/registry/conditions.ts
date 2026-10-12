@@ -12,6 +12,7 @@ import { agentStateForConversation } from "@/lib/agent/state";
 import { LEGACY_OPERATORS } from "../legacy-operators";
 import { MissingFieldError, type FieldValue } from "../condition-eval";
 import { answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema";
+import { requireContactId } from "../types";
 
 // ------------------------------------------------------------
 // Operadores
@@ -83,7 +84,7 @@ registerConditionField({
     const { data } = await supabase
       .from("sequence_enrollments")
       .select("id, sequences!inner(workspace_id)")
-      .eq("contact_id", context.contactId)
+      .eq("contact_id", requireContactId(context))
       .eq("sequence_id", argument)
       .eq("sequences.workspace_id", context.workspaceId)
       .in("status", ["active", "paused"])
@@ -106,7 +107,7 @@ registerConditionField({
     const { data } = await supabase
       .from("sequence_enrollments")
       .select("id, sequences!inner(workspace_id)")
-      .eq("contact_id", context.contactId)
+      .eq("contact_id", requireContactId(context))
       .eq("sequence_id", argument)
       .eq("sequences.workspace_id", context.workspaceId)
       .limit(1);
@@ -187,7 +188,8 @@ export function variablePathValue(variables: Record<string, unknown> | undefined
 }
 
 // Lo que el disparador deja en las variables del flow: se lee por su ruta.
-for (const prefix of ["form.", "submission.", "booking.", "sale.", "payment."]) {
+// Reporte de fin de día (E16): quién, el día, las respuestas por canal y las métricas.
+for (const prefix of ["form.", "submission.", "booking.", "sale.", "payment.", "eod.", "member.", "metrics.", "channel.", "report."]) {
   registerTypedField({
     prefix,
     label: `Dato del flujo (${prefix}*)`,
@@ -213,7 +215,7 @@ registerTypedField({
     const { data, error } = await supabase
       .from("sequence_enrollments")
       .select("sequence_id, sequences!inner(workspace_id)")
-      .eq("contact_id", context.contactId)
+      .eq("contact_id", requireContactId(context))
       .eq("sequences.workspace_id", context.workspaceId)
       .in("status", ["active", "paused"])
       .limit(200);

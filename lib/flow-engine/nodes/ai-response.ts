@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { outboundMessageRow } from "@/lib/messages/outbound";
-import type { FlowExecutionContext, AiResponseNodeData } from "../types";
+import type { ContactFlowContext, AiResponseNodeData } from "../types";
 import { generateAiReply } from "@/lib/ai/generate-reply";
 import { sendChannelMessage, recordSend } from "../send";
 import { aiResponseOutputs } from "../node-outputs";
@@ -25,7 +25,7 @@ async function cancelRun(
 async function executeAiResponse(
   supabase: SupabaseClient<Database>,
   data: AiResponseNodeData,
-  context: FlowExecutionContext,
+  context: ContactFlowContext,
   sessionId: string,
   nodeId: string
 ) {
@@ -96,6 +96,7 @@ async function executeAiResponse(
  * loop: eso es la Fase 3.
  */
 export const aiResponseNode: NodeDefinition<AiResponseNodeData> = {
+  needsContact: true,
   type: "aiResponse",
   label: "Respuesta con IA",
   persistsVariables: true,

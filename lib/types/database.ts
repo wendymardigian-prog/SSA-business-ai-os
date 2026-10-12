@@ -704,7 +704,9 @@ export type TriggerType =
   | "payment_created"
   | "payment_status_changed"
   | "payment_before_due"
-  | "payment_after_due";
+  | "payment_after_due"
+  /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
+  | "eod_submitted";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1709,7 +1711,9 @@ export interface Database {
       flow_sessions: {
         Row: {
           id: string;
-          contact_id: string;
+          /** Null en un flujo sin contacto (00182): entonces `member_user_id` no es null. */
+          contact_id: string | null;
+          member_user_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1724,7 +1728,8 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          contact_id: string;
+          contact_id: string | null;
+          member_user_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -2310,7 +2315,9 @@ export interface Database {
           id: string;
           workspace_id: string;
           event_type: string;
-          contact_id: string;
+          /** Null solo en los eventos de una persona del equipo (`eod_submitted`, 00182). */
+          contact_id: string | null;
+          member_user_id: string | null;
           payload: Json;
           created_at: string;
           processed_at: string | null;
@@ -2320,7 +2327,8 @@ export interface Database {
           id?: string;
           workspace_id: string;
           event_type: string;
-          contact_id: string;
+          contact_id: string | null;
+          member_user_id?: string | null;
           payload?: Json;
           created_at?: string;
           processed_at?: string | null;

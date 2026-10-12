@@ -1,4 +1,5 @@
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
+import type { FlowExecutionContext } from "../types";
 import type { DelayNodeData } from "../types";
 import type { Json } from "@/lib/types/database";
 
@@ -17,9 +18,10 @@ const MULTIPLIERS: Record<string, number> = {
  * corre por pg_cron. Sin ese cron andando, un Delay para el flow para siempre.
  */
 export const delayNode: NodeDefinition<DelayNodeData> = {
+  needsContact: false,
   type: "delay",
   label: "Esperar",
-  async execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<DelayNodeData>) {
+  async execute({ supabase, data, context, node, sessionId }: NodeExecutionArgs<DelayNodeData, FlowExecutionContext>) {
     const delayMs = data.duration * (MULTIPLIERS[data.unit] || 1000);
     const runAt = new Date(Date.now() + delayMs).toISOString();
 
@@ -31,6 +33,8 @@ export const delayNode: NodeDefinition<DelayNodeData> = {
         flowId: context.flowId,
         channelId: context.channelId,
         contactId: context.contactId,
+        // Un flujo sin contacto (E15) retoma con la misma persona del equipo.
+        ...(context.contactId ? {} : { memberUserId: context.memberUserId ?? null }),
         conversationId: context.conversationId,
         workspaceId: context.workspaceId,
         lateConversationId: context.lateConversationId || null,
@@ -56,6 +60,7 @@ export const delayNode: NodeDefinition<DelayNodeData> = {
  * la despierta el proximo mensaje entrante, via resumeSession.
  */
 export const smartDelayNode: NodeDefinition<unknown> = {
+  needsContact: true,
   type: "smartDelay",
   label: "Esperar respuesta",
   aliases: [{ nodeType: "action", actionType: "smartDelay" }],

@@ -1,3 +1,4 @@
+import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { HttpRequestNodeData } from "../types";
 import { interpolateVariables } from "../interpolate";
@@ -10,13 +11,14 @@ import { httpRequestOutputs } from "../node-outputs";
  * puede leer adentro con dot-path ({{respuesta.data.nombre}}).
  */
 export const httpRequestNode: NodeDefinition<HttpRequestNodeData> = {
+  needsContact: false,
   type: "httpRequest",
   label: "Llamada HTTP",
   aliases: [{ nodeType: "action", actionType: "httpRequest" }],
   persistsVariables: true,
   // La respuesta queda en la variable elegida: los caminos condicionales la pueden comparar.
   outputs: httpRequestOutputs,
-  async execute({ data, context }: NodeExecutionArgs<HttpRequestNodeData>) {
+  async execute({ data, context }: NodeExecutionArgs<HttpRequestNodeData, FlowExecutionContext>) {
     try {
       const url = interpolateVariables(data.url, context.variables || {});
       const body = data.body

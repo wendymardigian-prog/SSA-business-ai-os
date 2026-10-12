@@ -34,6 +34,7 @@ async function resolveAccount(
 
 /** Responde publicamente, debajo del comentario. */
 export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
+  needsContact: true,
   type: "commentReply",
   label: "Responder el comentario",
   async execute({ supabase, data, context }: NodeExecutionArgs<CommentReplyNodeData>) {
@@ -65,6 +66,7 @@ export const commentReplyNode: NodeDefinition<CommentReplyNodeData> = {
 
 /** Le manda un DM privado a quien comento, que abre la conversacion. */
 export const privateReplyNode: NodeDefinition<PrivateReplyNodeData> = {
+  needsContact: true,
   type: "privateReply",
   label: "Responder por privado",
   async execute({ supabase, data, context, node }: NodeExecutionArgs<PrivateReplyNodeData>) {

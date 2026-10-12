@@ -83,6 +83,7 @@ async function loadCore(db: Db, context: NodeExecutionArgs<unknown>["context"], 
 }
 
 export const markPaymentPaidNode: NodeDefinition<MarkPaymentPaidNodeData> = {
+  needsContact: true,
   type: "mark_payment_paid",
   label: "Marcar el pago como cobrado",
   aliases: [{ nodeType: "action", actionType: "mark_payment_paid" }],
@@ -108,6 +109,7 @@ export const markPaymentPaidNode: NodeDefinition<MarkPaymentPaidNodeData> = {
 };
 
 export const reschedulePaymentNode: NodeDefinition<ReschedulePaymentNodeData> = {
+  needsContact: true,
   type: "reschedule_payment",
   label: "Reprogramar el pago",
   aliases: [{ nodeType: "action", actionType: "reschedule_payment" }],
@@ -132,6 +134,7 @@ export const reschedulePaymentNode: NodeDefinition<ReschedulePaymentNodeData> = 
 };
 
 export const setSaleStatusNode: NodeDefinition<SetSaleStatusNodeData> = {
+  needsContact: true,
   type: "set_sale_status",
   label: "Cambiar el estado de la venta",
   aliases: [{ nodeType: "action", actionType: "set_sale_status" }],

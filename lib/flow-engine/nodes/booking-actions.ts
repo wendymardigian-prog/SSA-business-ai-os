@@ -33,6 +33,7 @@ function bookingIdOf(context: NodeExecutionArgs<unknown>["context"]): string | n
 }
 
 export const cancelBookingNode: NodeDefinition<CancelBookingNodeData> = {
+  needsContact: true,
   type: "cancel_booking",
   label: "Cancelar la reunión",
   aliases: [{ nodeType: "action", actionType: "cancel_booking" }],
@@ -55,6 +56,7 @@ export const cancelBookingNode: NodeDefinition<CancelBookingNodeData> = {
 };
 
 export const setBookingStatusNode: NodeDefinition<SetBookingStatusNodeData> = {
+  needsContact: true,
   type: "set_booking_status",
   label: "Cambiar el estado de la reunión",
   aliases: [{ nodeType: "action", actionType: "set_booking_status" }],

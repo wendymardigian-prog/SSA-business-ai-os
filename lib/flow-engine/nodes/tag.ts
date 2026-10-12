@@ -34,6 +34,7 @@ async function execute({ supabase, data, context }: NodeExecutionArgs<TagNodeDat
 }
 
 export const addTagNode: NodeDefinition<TagNodeData> = {
+  needsContact: true,
   type: "addTag",
   label: "Agregar tag",
   aliases: [{ nodeType: "action", actionType: "addTag" }],
@@ -41,6 +42,7 @@ export const addTagNode: NodeDefinition<TagNodeData> = {
 };
 
 export const removeTagNode: NodeDefinition<TagNodeData> = {
+  needsContact: true,
   type: "removeTag",
   label: "Quitar tag",
   aliases: [{ nodeType: "action", actionType: "removeTag" }],

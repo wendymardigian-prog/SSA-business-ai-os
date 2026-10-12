@@ -9,7 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowNode, FlowExecutionContext, IncomingMessage } from "../types";
+import type { ContactFlowContext, FlowNode, FlowExecutionContext, IncomingMessage } from "../types";
 import type { ConditionFieldSpec, FieldValue } from "../condition-eval";
 
 // ------------------------------------------------------------
@@ -38,13 +38,18 @@ export interface FlowRuntime {
   ): Promise<void>;
 }
 
-export interface NodeExecutionArgs<TData = unknown> {
+/**
+ * Lo que recibe un nodo. Por defecto, con contacto (`ContactFlowContext`): es lo que
+ * reciben los nodos que lo necesitan, y el motor nunca los corre sin uno. Los que
+ * sirven también sin contacto declaran `NodeExecutionArgs<Data, FlowExecutionContext>`.
+ */
+export interface NodeExecutionArgs<TData = unknown, TContext extends FlowExecutionContext = ContactFlowContext> {
   supabase: SupabaseClient<Database>;
   /** El nodo completo, por si hace falta el id o algo del canvas. */
   node: FlowNode;
   /** node.data ya tipado por la definicion. */
   data: TData;
-  context: FlowExecutionContext;
+  context: TContext;
   sessionId: string;
   runtime: FlowRuntime;
 }
@@ -66,7 +71,7 @@ export interface NodeAlias {
   actionType?: string;
 }
 
-export interface NodeDefinition<TData = never> {
+interface NodeDefinitionBase<TData> {
   /** Tipo canonico. Es el que usan el historial de analytics y los tests. */
   type: string;
   /** Etiqueta corta para la UI y los logs. */
@@ -85,8 +90,24 @@ export interface NodeDefinition<TData = never> {
    * de condiciones, que corre en el navegador. La fuente es `node-outputs.ts`.
    */
   outputs?(data: TData): ConditionFieldSpec[];
-  execute(args: NodeExecutionArgs<TData>): Promise<NodeResult> | NodeResult;
 }
+
+/**
+ * Cada nodo declara si necesita un contacto (E15). Los que sí (mandar un mensaje, tags,
+ * campos, secuencias, agenda, ventas...) reciben el contacto como texto; en un flujo sin
+ * contacto el motor los saltea y lo anota. Los que no (Condiciones, Esperar, Enviar
+ * email, HTTP, Ir a otro flujo, Avisar en la campana) reciben `contactId: string | null`.
+ * `registry/consistency.test.ts` exige que todos lo declaren.
+ */
+export type NodeDefinition<TData = never> =
+  | (NodeDefinitionBase<TData> & {
+      needsContact: true;
+      execute(args: NodeExecutionArgs<TData, ContactFlowContext>): Promise<NodeResult> | NodeResult;
+    })
+  | (NodeDefinitionBase<TData> & {
+      needsContact: false;
+      execute(args: NodeExecutionArgs<TData, FlowExecutionContext>): Promise<NodeResult> | NodeResult;
+    });
 
 // ------------------------------------------------------------
 // Triggers
@@ -132,9 +153,18 @@ export interface AutomationEventRow {
   id: string;
   workspace_id: string;
   event_type: string;
-  contact_id: string;
+  /** Null solo en los eventos de una persona del equipo (`eod_submitted`, 00182). */
+  contact_id: string | null;
+  /** La persona del equipo del evento (`eod_submitted`). */
+  member_user_id?: string | null;
   payload: Record<string, unknown>;
 }
+
+/**
+ * Sobre quién es un flujo. `contact` (todos los de siempre): un lead. `member`: una
+ * persona del equipo, sin contacto (E15). Lo declara el disparador; por defecto `contact`.
+ */
+export type TriggerSubject = "contact" | "member";
 
 export interface TriggerEventArgs {
   supabase: SupabaseClient<Database>;
@@ -168,6 +198,13 @@ export interface TriggerDefinition {
    * tipo nuevo elige su lugar sin reescribir la cascada.
    */
   priority: number;
+  /** Sobre quién es el flujo que arranca. Sin declarar = `contact` (todos los existentes). */
+  subject?: TriggerSubject;
+  /**
+   * Solo `subject: "member"`: sobre qué entidad queda el disparo en el historial
+   * (un flujo sin contacto no se audita sobre un contacto).
+   */
+  auditEntityFor?(args: TriggerEventArgs): { entityType: "eod_report"; entityId: string; metadata?: Record<string, unknown> } | null;
   /** Decide si este trigger le corresponde al mensaje. Solo para scope "message"/"comment". */
   matches?(args: TriggerMatchArgs): boolean;
   /**

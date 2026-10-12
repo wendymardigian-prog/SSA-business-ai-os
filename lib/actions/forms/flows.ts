@@ -19,6 +19,10 @@ import { blankFormFlowGraph, formFlowName, formTemplateByKey, formTemplateGraph,
 import { loadFormsWithFields } from "@/lib/flow-engine/registry/form-triggers";
 import { emptyFormVariables } from "@/lib/forms/automation/variables";
 import { formFlowGraph } from "@/lib/forms/data/form-flows";
+import { blankEodFlowGraph, eodTemplateByKey, eodTemplateGraph, type EodTemplateKey } from "@/lib/eod/automation/templates";
+import { EOD_TRIGGER } from "@/lib/eod/automation/trigger-name";
+import { eodVariables } from "@/lib/eod/automation/variables";
+import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
 
 /**
  * Las automatizaciones de un formulario (F21). Con `forms.manage` y `flows.edit`.
@@ -88,8 +92,8 @@ export async function createFormFlow(input: { formId: string }): Promise<FormFlo
   if (!form) return { ok: false, error: "No encontré ese formulario." };
   if (form.status === "archived") return { ok: false, error: "El formulario está archivado: restauralo para sumarle automatizaciones." };
 
-  if (!isPublicFormType(form.type)) return { ok: false, error: "Este formulario no admite automatizaciones de formulario." };
-  const graph = blankFormFlowGraph({ id: form.id, type: form.type });
+  // Un reporte de fin de día arranca con su propio disparador (sin contacto, E16).
+  const graph = isPublicFormType(form.type) ? blankFormFlowGraph({ id: form.id, type: form.type }) : blankEodFlowGraph(form.id);
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({
@@ -142,6 +146,42 @@ export async function createFormFlowFromTemplate(input: { formId: string; templa
 
   if (!isPublicFormType(form.type)) return { ok: false, error: "Esa plantilla no existe para este tipo de formulario." };
   const graph = formTemplateGraph(template.key, { form: { ...form, type: form.type }, userEmail, tagName, question });
+  const { data, error } = await ctx.supabase
+    .from("flows")
+    .insert({
+      workspace_id: ctx.workspace.id,
+      name: formFlowName(form.name, template.name),
+      description: template.describe,
+      status: "draft",
+      nodes: graph.nodes as unknown as Json,
+      edges: graph.edges as unknown as Json,
+      form_id: form.id,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "No pude crear la automatización. Probá de nuevo." };
+
+  await audit(ctx, form.id, { flow_id: data.id, created: true, template: template.key });
+  refresh(form.id);
+  return { ok: true, flowId: data.id };
+}
+
+/**
+ * Una plantilla de un clic de un reporte de fin de día (E16). Nace APAGADA. El aviso y la
+ * copia van a quien la crea.
+ */
+export async function createEodFlowFromTemplate(input: { formId: string; template: EodTemplateKey }): Promise<FormFlowResult<{ flowId: string }>> {
+  const ctx = await context();
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const form = await loadForm(ctx, input.formId);
+  if (!form || form.type !== "eod") return { ok: false, error: "No encontré ese reporte." };
+  if (form.status === "archived") return { ok: false, error: "El reporte está archivado: restauralo para sumarle automatizaciones." };
+  const template = eodTemplateByKey(input.template);
+  if (!template) return { ok: false, error: "Esa plantilla no existe." };
+  const userEmail = ctx.user.email ?? "";
+  if (template.key === "eod_copy_email" && !userEmail) return { ok: false, error: "Tu usuario no tiene email: no hay a dónde mandar la copia." };
+
+  const graph = eodTemplateGraph(template.key, { form, userId: ctx.user.id, userEmail });
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({
@@ -222,20 +262,43 @@ export async function saveFormLinearFlow(input: { flowId: string; linear: Linear
  * del disparador que se puede cambiar es `answerConditions` ("Solo si…", el mismo
  * formato de siempre; `undefined` = no tocarlo, `null` = sacarlo).
  */
-export async function saveFormFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: unknown }): Promise<FormFlowResult> {
+export async function saveFormFlowTree(input: {
+  flowId: string;
+  tree: Pick<StepTree, "steps">;
+  answerConditions?: unknown;
+  /** Solo un reporte de fin de día: "first" (el primer envío) o "every" (también cada corrección). */
+  eodOn?: unknown;
+}): Promise<FormFlowResult> {
   const owned = await ownedFlow(input.flowId);
   if (owned.error !== undefined) return { ok: false, error: owned.error };
   const { ctx, found } = owned;
 
   const storedTrigger = found.nodes.find((n) => n.type === "trigger");
   if (!storedTrigger) return { ok: false, error: "Esta automatización no tiene disparador: abrila en el canvas." };
+  const storedData = (storedTrigger.data ?? {}) as Record<string, unknown>;
 
-  const trigger = withAnswerConditions((storedTrigger.data ?? {}) as Record<string, unknown>, input.answerConditions);
-  if (!trigger.ok) return { ok: false, error: trigger.error };
+  // El disparador sale SIEMPRE de la base. Un reporte de fin de día (sin contacto) solo deja
+  // cambiar "primer envío / cada corrección"; un formulario, el «Solo si…».
+  const isEod = storedData.triggerType === EOD_TRIGGER;
+  let triggerData: Record<string, unknown>;
+  if (isEod) {
+    if (input.answerConditions !== undefined) return { ok: false, error: "Un reporte de fin de día no tiene «Solo si…»: usá el paso Condiciones." };
+    if (input.eodOn !== undefined && input.eodOn !== "first" && input.eodOn !== "every") return { ok: false, error: "Los datos no son válidos." };
+    triggerData = input.eodOn === undefined ? storedData : { ...storedData, on: input.eodOn };
+  } else {
+    if (input.eodOn !== undefined) return { ok: false, error: "Los datos no son válidos." };
+    const trigger = withAnswerConditions(storedData, input.answerConditions);
+    if (!trigger.ok) return { ok: false, error: trigger.error };
+    triggerData = trigger.data;
+  }
 
-  const prepared = prepareTreeSave({ screen: "forms", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree, triggerData: trigger.data });
+  const prepared = prepareTreeSave({ screen: isEod ? "eod" : "forms", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree, triggerData });
   if (!prepared.ok) return { ok: false, error: prepared.error };
   const graph = prepared.graph;
+
+  // Un flujo sin contacto no puede tener pasos que necesiten uno (aunque ya estuvieran guardados).
+  const problems = await checkMemberFlow(ctx.supabase, ctx.workspace.id, graph.nodes as unknown[]);
+  if (problems.length > 0) return { ok: false, error: problems[0] };
 
   const { error } = await ctx.supabase.from("flows").update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json }).eq("id", input.flowId);
   if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
@@ -267,12 +330,27 @@ export async function sendFormFlowTestEmail(input: { flowId: string; subject: st
   if (!to) return { ok: false, error: "Tu usuario no tiene email." };
 
   const base = emptyFormVariables();
-  const sample = {
-    contact: { display_name: "Ana Pérez" },
-    ...base,
-    answer: { nombre: "Ana Pérez", email: "ana@ejemplo.com" },
-    submission: { ...base.submission, id: "ejemplo", url: `${appUrl()}/dashboard/formularios`, score: "9", nps_category: "promoter" },
-  };
+  const isEod = owned.found.nodes.some((n) => n.type === "trigger" && (n.data as { triggerType?: unknown } | undefined)?.triggerType === EOD_TRIGGER);
+  const sample = isEod
+    ? eodVariables({
+        form: { id: owned.found.formId, name: "Reporte de fin de día", roleLabel: "Setter" },
+        report: {
+          id: "ejemplo",
+          reportDate: new Date().toISOString().slice(0, 10),
+          editCount: 0,
+          answers: { horas_trabajadas: { label: "Horas trabajadas hoy", type: "number", value: 8 } },
+          channels: { instagram: { label: "Instagram", answers: { links_enviados: { label: "Links enviados", type: "number", value: 4 } } } },
+          metrics: { total: { links_enviados: 4 }, instagram: { links_enviados: 4 } },
+        },
+        member: { name: "Ana Pérez", email: "ana@ejemplo.com" },
+        baseUrl: appUrl(),
+      })
+    : {
+        contact: { display_name: "Ana Pérez" },
+        ...base,
+        answer: { nombre: "Ana Pérez", email: "ana@ejemplo.com" },
+        submission: { ...base.submission, id: "ejemplo", url: `${appUrl()}/dashboard/formularios`, score: "9", nps_category: "promoter" },
+      };
 
   const result = await sendTransactionalEmail({
     workspaceId: ctx.workspace.id,
@@ -289,5 +367,30 @@ export async function sendFormFlowTestEmail(input: { flowId: string; subject: st
   if (!result.ok) {
     return { ok: false, error: result.reason === "not_configured" ? "Resend no está conectado: cargalo en Integraciones." : result.error };
   }
+  return { ok: true };
+}
+
+/**
+ * "Primer envío del día" o "cada corrección" de una automatización de un reporte de fin
+ * de día (E16). Es lo único del disparador que se cambia: el resto sale de la base.
+ */
+export async function setEodFlowOn(input: { flowId: string; on: unknown }): Promise<FormFlowResult> {
+  if (input.on !== "first" && input.on !== "every") return { ok: false, error: "Los datos no son válidos." };
+  const owned = await ownedFlow(input.flowId);
+  if (owned.error !== undefined) return { ok: false, error: owned.error };
+  const { ctx, found } = owned;
+  const nodes = found.nodes.map((n) =>
+    n.type === "trigger" && (n.data as { triggerType?: unknown } | undefined)?.triggerType === EOD_TRIGGER ? { ...n, data: { ...(n.data as Record<string, unknown>), on: input.on } } : n,
+  );
+  if (!nodes.some((n, i) => n !== found.nodes[i])) return { ok: false, error: "Esta automatización no es de un reporte de fin de día." };
+  const { error } = await ctx.supabase.from("flows").update({ nodes: nodes as unknown as Json }).eq("id", input.flowId);
+  if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
+  if (found.flow.status === "published") {
+    const desired = buildDesiredTriggers(nodes as unknown as Array<Record<string, unknown>>, input.flowId);
+    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+    if (desired.length > 0) await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+  }
+  await audit(ctx, found.formId, { flow_id: input.flowId, eod_on: input.on });
+  refresh(found.formId, input.flowId);
   return { ok: true };
 }

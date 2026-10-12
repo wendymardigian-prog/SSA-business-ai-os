@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowExecutionContext } from "../types";
+import type { ContactFlowContext } from "../types";
 
 export type Contact = Record<string, unknown> | null;
 
@@ -47,8 +47,8 @@ export const contactWith = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-export const context = (variables?: Record<string, unknown>, platform: FlowExecutionContext["platform"] = "whatsapp"): FlowExecutionContext =>
-  ({ workspaceId: "ws-1", contactId: "c-1", channelId: "ch-1", conversationId: "", flowId: "f", triggerId: "t", incomingMessage: {}, variables, platform }) as unknown as FlowExecutionContext;
+export const context = (variables?: Record<string, unknown>, platform: ContactFlowContext["platform"] = "whatsapp"): ContactFlowContext =>
+  ({ workspaceId: "ws-1", contactId: "c-1", channelId: "ch-1", conversationId: "", flowId: "f", triggerId: "t", incomingMessage: {}, variables, platform }) as unknown as ContactFlowContext;
 
 export type Cond = { field: string; operator: string; value: string };
 
@@ -57,7 +57,7 @@ export interface ConditionCase {
   name: string;
   conditions: Cond[];
   logic?: "and" | "or";
-  ctx?: FlowExecutionContext;
+  ctx?: ContactFlowContext;
   contact?: Contact;
   enrollments?: unknown[];
   out: string;

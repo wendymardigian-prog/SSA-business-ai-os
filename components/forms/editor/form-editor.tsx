@@ -386,8 +386,6 @@ export function FormEditor({
               </div>
             ) : isEod && section === "canales" ? (
               <ChannelsTab definition={draft.definition} onChange={(definition) => setDraft({ ...draft, definition })} disabled={disabled} neverPublished={neverPublished} />
-            ) : isEod && section === "automatizaciones" ? (
-              <Notice tone="info">Las automatizaciones del reporte de fin de día llegan con el Bloque E3.</Notice>
             ) : section === "campos" && isPublicFormType(form.type) ? (
               <FieldsTab
                 draft={draft}

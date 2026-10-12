@@ -518,6 +518,18 @@ export function simulateFlow(
         break;
       }
 
+      // E15: el aviso al equipo. En la simulación no se crea ninguna notificación.
+      case "notify_team": {
+        const title = interpolate((data.title as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "notify_team",
+          nodeLabel: label,
+          result: { type: "action", actionType: "notify_team", detail: title || "(sin título)" },
+        });
+        break;
+      }
+
       case "cancel_booking": {
         steps.push({
           nodeId: node.id,

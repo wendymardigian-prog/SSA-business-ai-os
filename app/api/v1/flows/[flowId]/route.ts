@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
 
 async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>) {
   const {
@@ -51,6 +52,12 @@ export async function PUT(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
+
+  // Un flujo sin contacto (reporte de fin de día, E15) no puede tener pasos que necesiten uno.
+  if (Array.isArray(body.nodes)) {
+    const problems = await checkMemberFlow(supabase, workspaceId, body.nodes);
+    if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
+  }
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;

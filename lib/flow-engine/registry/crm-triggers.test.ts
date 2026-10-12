@@ -157,6 +157,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "contract_signed",
       "crm_event",
       "email_received",
+      // Reporte de fin de día (E16): el primero sin contacto.
+      "eod_submitted",
       "form_submitted",
       "new_contact",
       "payment_created",

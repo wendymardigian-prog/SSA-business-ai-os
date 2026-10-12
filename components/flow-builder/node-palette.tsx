@@ -26,6 +26,7 @@ import {
   Ban,
 } from "lucide-react";
 import type { DragEvent } from "react";
+import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
 
 interface PaletteItem {
   type: string;
@@ -184,6 +185,14 @@ const categories: PaletteCategory[] = [
         icon: Mail,
         actionType: "send_email",
       },
+      // E15: un aviso al equipo en la campana (sirve también en flujos sin contacto).
+      {
+        type: "action",
+        nodeType: "notify_team",
+        label: "Avisar en la campana",
+        icon: Bell,
+        actionType: "notify_team",
+      },
       {
         type: "action",
         nodeType: "cancel_booking",
@@ -234,15 +243,29 @@ function onDragStart(event: DragEvent, item: PaletteItem) {
   event.dataTransfer.effectAllowed = "move";
 }
 
-export function NodePalette() {
+/**
+ * `memberFlow`: el flujo es sobre una persona del equipo (reporte de fin de día, E15). Se
+ * ocultan los pasos que necesitan un contacto; guardar uno igual lo rechaza el servidor.
+ */
+export function NodePalette({ memberFlow = false }: { memberFlow?: boolean }) {
+  const shown = memberFlow
+    ? categories
+        .map((c) => ({ ...c, items: c.items.filter((item) => item.type !== "trigger" && isContactFreeNodeType(item.actionType ?? item.nodeType)) }))
+        .filter((c) => c.items.length > 0)
+    : categories;
   return (
     <div className="flex w-56 flex-col border-r border-border bg-card">
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Nodes</h2>
         <p className="text-xs text-muted-foreground">Drag to canvas</p>
+        {memberFlow && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.
+          </p>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        {categories.map((category) => (
+        {shown.map((category) => (
           <div key={category.name} className="mb-4">
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {category.name}

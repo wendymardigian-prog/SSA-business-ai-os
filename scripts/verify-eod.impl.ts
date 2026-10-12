@@ -19,6 +19,10 @@ import { defaultEodConfig, type EodConfig } from "../lib/eod/config";
 import { todayInputValue } from "../lib/dates";
 import { addDays } from "../lib/eod/dates";
 import type { EodDraftData } from "../lib/eod/draft";
+import "../lib/flow-engine/registry";
+import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
+import { eodTemplateGraph } from "../lib/eod/automation/templates";
+import { buildDesiredTriggers } from "../lib/flow-triggers";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -224,6 +228,83 @@ try {
   const { data: audit } = await svc.from("audit_log").select("changes, performed_by").eq("entity_type", "eod_report").eq("entity_id", after!.id).eq("action", "eod.edited");
   const changes = (audit?.[0]?.changes ?? {}) as Record<string, { old: unknown; new: unknown }>;
   check(audit?.length === 1 && audit[0].performed_by === setterA.id && changes["instagram.links_enviados"]?.old === 5 && changes["instagram.links_enviados"]?.new === 9, "lo anterior queda en el historial con lo que cambió", JSON.stringify(audit));
+
+  // ── E3: el evento y la automatización sin contacto ────────────────────────
+  console.log("\n— E3: flujos sin contacto —");
+  const { data: firstEvent } = await svc
+    .from("automation_events")
+    .select("id, workspace_id, event_type, contact_id, member_user_id, payload")
+    .eq("workspace_id", ws.id)
+    .eq("member_user_id", setterB.id)
+    .maybeSingle();
+  check(
+    firstEvent?.event_type === "eod_submitted" && firstEvent.contact_id === null && (firstEvent.payload as Record<string, unknown>)?.edit_count === 0,
+    "al enviar queda un automation_events eod_submitted, sin contacto y con la persona",
+    JSON.stringify(firstEvent),
+  );
+  const { error: noContactEvent } = await svc.from("automation_events").insert({ workspace_id: ws.id, event_type: "tag_added", contact_id: null, member_user_id: setterA.id, payload: {} });
+  check(!!noContactEvent, "un evento de contacto sin contacto no se puede insertar (CHECK de la 00182)");
+
+  // "Alerta por bajo rendimiento", encendida, creada por el Owner.
+  const { data: ownerUser } = await svc.auth.admin.getUserById(owner.id);
+  const mkFlow = async (on: "first" | "every") => {
+    const graph = eodTemplateGraph("eod_low_performance", { form: { id: form.id, name: "zz-test EOD" }, userId: owner.id, userEmail: ownerUser.user?.email ?? "" });
+    const trigger = graph.nodes.find((n) => n.type === "trigger")!;
+    trigger.data = { ...trigger.data, on };
+    const { data: flow } = await svc.from("flows").insert({ workspace_id: ws.id, name: `zz-test bajo rendimiento ${on}`, status: "published", nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json, form_id: form.id }).select("id").single();
+    const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, flow!.id);
+    await svc.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ws.id, is_active: true })));
+    return flow!.id;
+  };
+  const firstFlow = await mkFlow("first");
+
+  const runEventsOf = async (userId: string, editCount?: number) => {
+    // Solo los eventos de esta prueba: la cola real no se toca.
+    let query = svc.from("automation_events").select("id, workspace_id, event_type, contact_id, member_user_id, payload").eq("workspace_id", ws.id).eq("member_user_id", userId);
+    if (editCount !== undefined) query = query.eq("payload->>edit_count", String(editCount));
+    const { data: events } = await query.order("created_at");
+    let fired = 0;
+    for (const event of events ?? []) fired += await processEvent(svc, event as unknown as AutomationEvent);
+    return fired;
+  };
+  const emailsTo = async (email: string) => (await svc.from("email_log").select("id").eq("workspace_id", ws.id).eq("to_email", email)).data?.length ?? 0;
+  const noticesTo = async (userId: string) => (await svc.from("notifications").select("id").eq("workspace_id", ws.id).eq("type", "flow_notice").eq("recipient_id", userId)).data?.length ?? 0;
+
+  // Un setter con 4 links: le llega el email y al Owner el aviso.
+  await svc.from("forms").update({ eod_config: { ...config, audience: { mode: "all", userIds: [], roleIds: [] }, reportMode: "single" } as unknown as Json }).eq("id", form.id);
+  const low = await makeUser("eod-setter-low");
+  const high = await makeUser("eod-setter-high");
+  await svc.from("workspace_members").insert([
+    { workspace_id: ws.id, user_id: low.id, role: "member" },
+    { workspace_id: ws.id, user_id: high.id, role: "member" },
+  ]);
+  const lowEmail = (await svc.auth.admin.getUserById(low.id)).data.user?.email ?? "";
+  const highEmail = (await svc.auth.admin.getUserById(high.id)).data.user?.email ?? "";
+  const lowSaved = await saveDraftCore(ports, { ...base, userId: low.id, rev: 0, data: fullDraft(4) });
+  check((await submitEodCore(ports, { ...base, userId: low.id, rev: lowSaved.ok ? lowSaved.rev : -1 })).ok, "el setter con 4 links envía");
+  const noticesBefore = await noticesTo(owner.id);
+  check((await runEventsOf(low.id)) === 1, "el evento dispara la Alerta por bajo rendimiento");
+  check((await emailsTo(lowEmail)) === 1, "le llega el email a quien envió (4 links < 10)");
+  check((await noticesTo(owner.id)) === noticesBefore + 1, "y el aviso en la campana a quien creó el flujo");
+  const { data: sessions } = await svc.from("flow_sessions").select("contact_id, member_user_id, status").eq("flow_id", firstFlow);
+  check(sessions?.length === 1 && sessions[0].contact_id === null && sessions[0].member_user_id === low.id, "la sesión del flujo es sin contacto, sobre la persona", JSON.stringify(sessions));
+  check((await runEventsOf(low.id)) === 0, "el mismo evento no dispara dos veces (trigger_fires)");
+
+  // Uno con 25 links: no pasa nada.
+  const highSaved = await saveDraftCore(ports, { ...base, userId: high.id, rev: 0, data: fullDraft(20, 5) });
+  check((await submitEodCore(ports, { ...base, userId: high.id, rev: highSaved.ok ? highSaved.rev : -1 })).ok, "el setter con 25 links envía");
+  const noticesMid = await noticesTo(owner.id);
+  await runEventsOf(high.id);
+  check((await emailsTo(highEmail)) === 0 && (await noticesTo(owner.id)) === noticesMid, "con 25 links no pasa nada (va por «Si no», vacío)");
+
+  // Una corrección: con "first" no vuelve a disparar; con "every", una vez por corrección.
+  await svc.from("forms").update({ eod_config: { ...config, audience: { mode: "all", userIds: [], roleIds: [] }, reportMode: "editable" } as unknown as Json }).eq("id", form.id);
+  await mkFlow("every");
+  const { data: lowRow } = await svc.from("eod_reports").select("rev").eq("form_id", form.id).eq("user_id", low.id).single();
+  const corr = await saveDraftCore(ports, { ...base, userId: low.id, rev: lowRow!.rev, data: fullDraft(3) });
+  check((await submitEodCore(ports, { ...base, userId: low.id, rev: corr.ok ? corr.rev : -1 })).ok, "el setter corrige su reporte");
+  check((await runEventsOf(low.id, 1)) === 1, "la corrección dispara solo el flujo 'cada corrección' (el de 'primer envío' no)");
+  check((await runEventsOf(low.id, 1)) === 0, "y una sola vez por corrección");
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));
 } finally {

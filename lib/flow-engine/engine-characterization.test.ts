@@ -71,3 +71,55 @@ describe("executeFlow (canal opcional desde la 00100)", () => {
     expect(failing.rows("analytics_events")).toHaveLength(0);
   });
 });
+
+describe("caracterización antes de los flujos sin contacto (EOD, E15)", () => {
+  it("un flujo con contacto: sesión, nodos y log con el contact_id, en el mismo orden", async () => {
+    await import("./registry");
+    const db = memoryDb({
+      flows: [
+        {
+          id: "flow-1",
+          workspace_id: WS,
+          status: "published",
+          nodes: [
+            { id: "n-trigger", type: "trigger", data: { triggerType: "crm_event" } },
+            { id: "n-branch", type: "branch", data: { label: "Condiciones", paths: [{ id: "p_alto01", label: "Alto", conjunction: "and", conditions: [{ field: "variable:puntos", operator: "gte", value: "10", valueType: "number" }] }] } },
+            { id: "n-delay", type: "delay", data: { duration: 1, unit: "minutes" } },
+          ],
+          edges: [
+            { id: "e1", source: "n-trigger", target: "n-branch" },
+            { id: "e2", source: "n-branch", sourceHandle: "else", target: "n-delay" },
+          ],
+        },
+      ],
+      channels: [],
+      conversations: [],
+      contacts: [{ id: "c-1", workspace_id: WS }],
+      flow_sessions: [],
+      analytics_events: [],
+      scheduled_jobs: [],
+    });
+    await executeFlow(db.client, {
+      triggerId: "tr-1",
+      flowId: "flow-1",
+      channelId: "",
+      contactId: "c-1",
+      conversationId: "",
+      workspaceId: WS,
+      incomingMessage: {},
+      variables: { puntos: "3" },
+    });
+    const sessions = db.rows("flow_sessions");
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ contact_id: "c-1", channel_id: null, current_node_id: "n-delay" });
+    const events = db.rows("analytics_events").map((e) => [e.event_type, e.contact_id]);
+    expect(events).toEqual([
+      ["flow_started", "c-1"],
+      ["node_executed", "c-1"],
+      ["branch_taken", "c-1"],
+      ["node_executed", "c-1"],
+    ]);
+    const job = db.rows("scheduled_jobs")[0];
+    expect((job?.payload as Record<string, unknown>)?.contactId).toBe("c-1");
+  });
+});

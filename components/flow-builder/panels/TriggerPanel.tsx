@@ -77,6 +77,8 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "payment_status_changed", label: "Cambio el estado del pago", description: "Cuando un pago pasa a cobrado, moroso, incobrable..." },
   { value: "payment_before_due", label: "Antes de un vencimiento", description: "Un recordatorio X dias antes de que venza un pago" },
   { value: "payment_after_due", label: "Despues de un vencimiento impago", description: "Un aviso X dias despues del vencimiento si el pago sigue sin cobrarse" },
+  // Reporte de fin de dia (E16): el flujo es sobre la persona del equipo que lo envio, no sobre un contacto.
+  { value: "eod_submitted", label: "Se envio un reporte de fin de dia", description: "Cuando alguien del equipo envia su reporte del dia (sin contacto: no manda mensajes por chat)" },
 ];
 
 /** Los nueve de agenda, para mostrar sus filtros. */

@@ -37,8 +37,8 @@ describe("triggers registrados", () => {
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
     }
-    // + los tres de Formularios y los seis de Ventas (ver los tests de abajo).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6);
+    // + los tres de Formularios, los seis de Ventas y el del reporte de fin de día (ver abajo).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1);
   });
 
   it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {
@@ -77,5 +77,15 @@ describe("triggers registrados", () => {
   it("los nodos registrados siguen sin repetirse", () => {
     const types = listNodes().map((n) => n.type);
     expect(new Set(types).size).toBe(types.length);
+  });
+});
+
+describe("reporte de fin de día (E16)", () => {
+  it("eod_submitted es el ÚNICO disparador sin contacto; todos los demás siguen siendo sobre un contacto", () => {
+    const members = listTriggers().filter((t) => t.subject === "member").map((t) => t.type);
+    expect(members).toEqual(["eod_submitted"]);
+    const t = listTriggers().find((x) => x.type === "eod_submitted")!;
+    expect(t).toMatchObject({ scope: "event", priority: 45, eventTypes: ["eod_submitted"] });
+    expect(listTriggers().filter((x) => x.type !== "eod_submitted").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
   });
 });

@@ -5,7 +5,7 @@ import { InsertAssetButton } from "@/components/response-assets/insert-asset-but
 import { PopoverMenu, type MenuItem } from "@/components/automations/popover-menu";
 import { useStepEditor } from "@/components/automations/step-tree-context";
 import { BOOKING_STATUSES } from "@/lib/scheduling/booking-status";
-import { actionProblem, describeAction, emailRecipientsFor, kindOfStep } from "@/lib/automations/step-catalog";
+import { actionProblem, describeAction, emailRecipientsFor, kindOfStep, type EmailRecipient } from "@/lib/automations/step-catalog";
 import { canDuplicate, canMove, duplicateStep, moveStep, patchStepData, removeStep } from "@/lib/automations/step-tree-edit";
 import type { ActionStep, NodeData, Step } from "@/lib/automations/step-tree";
 
@@ -19,7 +19,13 @@ import type { ActionStep, NodeData, Step } from "@/lib/automations/step-tree";
 const inputClass = "h-9 w-full rounded-lg border border-input bg-background px-3 text-sm";
 const textareaClass = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm";
 
-const RECIPIENT_OPTION: Record<"contact" | "host" | "fixed", string> = { contact: "Al contacto", host: "Al anfitrión (quien da la reunión)", fixed: "A una dirección fija" };
+const RECIPIENT_OPTION: Record<EmailRecipient, string> = {
+  contact: "Al contacto",
+  host: "Al anfitrión (quien da la reunión)",
+  fixed: "A una dirección fija",
+  member: "A quien envió el reporte",
+  users: "A personas del equipo",
+};
 
 const CANCEL_STATUSES = ["cancelled_other", "cancelled_no_response", "cancelled_not_qualified"] as const;
 
@@ -64,6 +70,7 @@ export function ActionCard({ step, index, steps }: { step: ActionStep; index: nu
       {(kind?.key === "tag_add" || kind?.key === "tag_remove") && <TagEditor name={name} step={step} patch={patch} disabled={disabled} />}
       {kind?.key === "booking_status" && <BookingStatusEditor name={name} step={step} patch={patch} disabled={disabled} />}
       {kind?.key === "cancel_booking" && <CancelEditor name={name} step={step} patch={patch} disabled={disabled} />}
+      {kind?.key === "notify_team" && <NotifyEditor name={name} step={step} patch={patch} disabled={disabled} />}
       {!kind && <p className="text-xs text-muted-foreground">Este paso se edita en el canvas. Acá se puede mover o borrar.</p>}
 
       {problem && <p className="text-[11px] text-amber-700 dark:text-amber-300">{problem}</p>}
@@ -96,7 +103,9 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
             id={`${name}-to`}
             value={to}
             disabled={disabled}
-            onChange={(e) => patch({ to: e.target.value, ...(e.target.value === "fixed" ? {} : { fixedEmail: undefined }) })}
+            onChange={(e) =>
+              patch({ to: e.target.value, ...(e.target.value === "fixed" ? {} : { fixedEmail: undefined }), ...(e.target.value === "users" ? {} : { userIds: undefined }) })
+            }
             className={inputClass}
           >
             {emailRecipientsFor(screen).map((r) => (
@@ -115,6 +124,7 @@ function EmailEditor({ name, step, patch, disabled }: EditorProps) {
           </div>
         )}
       </div>
+      {to === "users" && <MemberPicker name={`${name}-users`} value={Array.isArray(d.userIds) ? (d.userIds as string[]) : []} onChange={(userIds) => patch({ userIds })} disabled={disabled} />}
       <div className="space-y-1">
         <label htmlFor={`${name}-subject`} className="text-xs text-muted-foreground">
           Asunto
@@ -246,6 +256,64 @@ function CancelEditor({ name, step, patch, disabled }: EditorProps) {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+/** Personas del equipo, con casillas (EOD: un email o un aviso a gente elegida). */
+function MemberPicker({ name, value, onChange, disabled }: { name: string; value: string[]; onChange: (ids: string[]) => void; disabled: boolean }) {
+  const { members } = useStepEditor();
+  if (members.length === 0) return <p className="text-xs text-muted-foreground">No hay personas en el equipo para elegir.</p>;
+  return (
+    <fieldset className="space-y-1">
+      <legend className="text-xs text-muted-foreground">Personas del equipo</legend>
+      <div className="grid gap-1 sm:grid-cols-2">
+        {members.map((m) => (
+          <label key={m.userId} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name={name}
+              disabled={disabled}
+              checked={value.includes(m.userId)}
+              onChange={(e) => onChange(e.target.checked ? [...new Set([...value, m.userId])] : value.filter((id) => id !== m.userId))}
+            />
+            {m.name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** "Avisar en la campana": a quién, el título y el texto (con variables). */
+function NotifyEditor({ name, step, patch, disabled }: EditorProps) {
+  const d = step.data;
+  const to = String(d.to ?? "users");
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <label htmlFor={`${name}-to`} className="text-xs text-muted-foreground">
+          Para
+        </label>
+        <select id={`${name}-to`} value={to} disabled={disabled} onChange={(e) => patch({ to: e.target.value })} className={inputClass}>
+          <option value="users">Personas elegidas</option>
+          <option value="reporter">Quien envió el reporte</option>
+          <option value="both">Quien envió el reporte y personas elegidas</option>
+        </select>
+      </div>
+      {to !== "reporter" && <MemberPicker name={`${name}-users`} value={Array.isArray(d.userIds) ? (d.userIds as string[]) : []} onChange={(userIds) => patch({ userIds })} disabled={disabled} />}
+      <div className="space-y-1">
+        <label htmlFor={`${name}-title`} className="text-xs text-muted-foreground">
+          Título
+        </label>
+        <input id={`${name}-title`} value={String(d.title ?? "")} maxLength={200} disabled={disabled} onChange={(e) => patch({ title: e.target.value })} className={inputClass} />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor={`${name}-body`} className="text-xs text-muted-foreground">
+          Texto (opcional)
+        </label>
+        <textarea id={`${name}-body`} value={String(d.body ?? "")} maxLength={1000} rows={3} disabled={disabled} onChange={(e) => patch({ body: e.target.value })} className={textareaClass} />
+      </div>
     </div>
   );
 }
