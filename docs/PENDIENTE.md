@@ -1110,3 +1110,135 @@ tiene criterios editables (00142, aplicada). Quedó afuera, a propósito:
   modelo en producción). Lo cubren los tests del prompt; la primera vez que se
   guarde una versión, mirar en Corridas que el run de `conversation_summary`
   diga `classified`.
+
+## Automatizaciones con condiciones (12/10/2026, rama `feat/automatizaciones-condiciones`)
+
+El nodo `branch` ("Condiciones"), el editor de pasos con caminos, "Probar condiciones"
+y la plantilla "Email distinto según una respuesta". Sin migraciones. Plano en
+`~/.claude/plans/vamos-a-darles-a-quizzical-hamming.md`, avance y desvíos de cada tanda
+en `docs/PROGRESS-automatizaciones-condiciones.md`. Lo de abajo es lo que quedó afuera,
+a propósito o por falta de revisión.
+
+### Revisión visual: sin hacer (pide sesión de la app)
+
+- **Qué quedó:** mirar con los ojos, en escritorio y a 390 px: el editor de pasos en
+  Formularios y en la Agenda, el nodo y el panel de Condiciones en el canvas,
+  "Convertir a Condiciones", "Probar condiciones" (los dos modos) y la plantilla nueva.
+- **Por qué:** necesita iniciar sesión en la app y no se corrió ningún `verify-*`.
+  Lo que hay es `tsc`, `lint`, `build`, los tests y una prueba de humo que dibuja el
+  editor y el resultado de la prueba sin navegador.
+- **Qué se decidió en su lugar:** nada. Antes de darlo por cerrado, además de mirar,
+  correr `verify-forms.mjs` y después `verify-scheduling.mjs` (nunca a la vez).
+- **Regla de parada de la Agenda, no aplicada:** el plan decía que, si la Agenda se
+  rompía de una forma que los tests no cubren, volvía al editor lineal. No apareció nada
+  (las 7 plantillas se abren, se guardan, conservan `onlyIfPhone` y se dibujan), pero
+  hay que mirarla.
+
+### Borrar el editor lineal viejo, cuando se confirme el nuevo
+
+- **Qué quedó:** `saveFormLinearFlow`, `saveLinearFlow` (Agenda) y el módulo
+  `lib/scheduling/automation/linear-flow.ts` siguen exportados y con sus tests, pero
+  ninguna pantalla los usa. `lib/automations/editor-characterization.test.ts` y
+  `step-tree.test.ts` fijan lo que hacía el viejo (incluido que `linearToFlow` perdía
+  `onlyIfPhone` y escribía el "Si" sin `sourceHandle`).
+- **Por qué:** son la red de seguridad hasta que se confirme el editor nuevo a ojo.
+- **Qué se decidió en su lugar:** borrarlos en una tarea aparte, junto con los casos "HOY"
+  del test de caracterización. `CanvasNode`/`CanvasEdge` se importan de ese módulo: antes
+  de borrarlo hay que mover esos dos tipos.
+
+### El A/B split del canvas termina en silencio (bug previo, no de esta rama)
+
+- **Qué quedó:** `components/flow-builder/nodes/action-node.tsx` dibuja las salidas del
+  A/B split como `split-0`, `split-1`, pero el nodo (`lib/flow-engine/nodes/ab-split.ts`)
+  devuelve `handle:<nombre del camino>` (`A`, `B`...). Un split dibujado a mano en el canvas
+  no encuentra la arista y la sesión termina sin hacer nada.
+- **Por qué:** se encontró al leer el nodo para el árbol de pasos; no se tocó porque el
+  motor y el A/B quedaban fuera del alcance.
+- **Qué se decidió en su lugar:** `flowToTree` devuelve `null` ante un A/B (el editor de
+  pasos no sabe mostrarlo) y el flujo se abre solo en el canvas. Falta decidir cuál de los
+  dos lados cambia (el id de la salida dibujada o el nombre que devuelve el nodo) y un test
+  del recorrido real.
+
+### `variable:answer.x` no funciona en el `condition` viejo
+
+- **Qué quedó:** el resolver de `variable:` busca la clave de primer nivel
+  (`variables["answer.x"]`) y las respuestas del formulario están anidadas
+  (`variables.answer.x`): con el nodo viejo no hay forma de ramificar por una respuesta.
+- **Por qué:** el `condition` no se toca (regla dura de la rama). Está fijado en
+  `condition-fixtures.ts` como "HOY no se resuelve".
+- **Qué se decidió en su lugar:** el `branch` lee `answer.*` por su cuenta (de
+  `form_submissions`, con la definición de la versión). Un flujo viejo que usa
+  `variable:answer.x` sigue sin cumplirse, igual que antes.
+
+### Campos que el catálogo no ofrece todavía
+
+- **Agenda:** `has_upcoming_booking:`, `last_booking_status:`, `last_booking_result:` y
+  `no_show_count:` están registrados como campos del `condition` pero **no** están en
+  `CONDITION_FIELDS`, así que el catálogo no los ofrece. Sumarlos es una entrada con
+  `valueType` en `condition-fields.ts`. Tampoco se ofrece `booking.answers.<clave>` (cambia
+  por tipo de evento); `booking.*` se ofrece como texto.
+- **Ventas:** solo las variables que son texto en serio (producto, variante, estados,
+  vendedor/setter, UTM, atribución, medio de pago). Los montos y las fechas salen
+  **formateados** (`$1.297,00`, "12 de octubre") y no se pueden comparar como número o
+  fecha. Ramificar por monto o por fecha de pago pide un `variableSchema` que lea los
+  valores sin formatear.
+- **Formularios con "cualquier formulario"** en el disparador (sin `form_ids`): solo se
+  ofrece `form.name` (y puntaje/NPS en encuestas), no las preguntas. El resolver igual
+  contesta por clave si la pregunta existe.
+- **Un campo personalizado cuyo slug coincide con un campo reservado** (`platform`,
+  `is_subscribed`...) queda tapado por el reservado (ya era así en el `condition`).
+
+### Caminos planos, sin grupos anidados
+
+- **Qué quedó:** un camino es una lista de condiciones con un solo "y / o". "Esto o aquello,
+  pero además lo otro" no se puede armar en un camino. El constructor sí soporta grupos
+  (`allowGroups`; lo usan el "Solo si…" y la visibilidad de un campo), pero el evaluador y
+  el formato guardado del `branch` no.
+- **Qué se decidió en su lugar:** se arma con dos caminos (gana el primero que se cumple).
+  Si hace falta de verdad, es cambiar el formato guardado y `evaluateGroupDetailed`.
+
+### Una condición del formato viejo se muestra como frase
+
+- **Qué quedó:** la que trae "Convertir a Condiciones" (sin `valueType`, operadores
+  `equals`...) se ve como frase con "quitala y armá una nueva". No se edita campo por campo.
+- **Por qué:** pasarla a un campo tipado sin querer cambiaría su semántica.
+- **Una diferencia documentada con el `condition`:** un nodo convertido sin NINGUNA condición
+  y sin contacto se cumple (un `and` vacío), y el original daba `false`. No se da en la
+  práctica (el motor siempre corre sobre un contacto) y hay un test que la fija.
+
+### "Probar condiciones" tiene límites
+
+- Con una respuesta real **solo en Formularios**. En la Agenda se prueba cargando los datos a
+  mano (`booking.*` como texto).
+- Lo que mira un paso anterior, el contacto o una venta figura "sin dato en la prueba" y no
+  se cumple: no hay de dónde leerlo sin ejecutar el flujo. Para ver un camino que depende
+  del contacto hay que encender la automatización con un contacto de prueba.
+- Las 20 respuestas son las últimas que la persona puede ver (la RLS decide); no hay buscador.
+
+### La plantilla "Email distinto según una respuesta"
+
+- Ofrece, además de selección única y número, **calificación y NPS** (son numéricas para
+  las condiciones). Una selección con una sola opción no se ofrece.
+- Nace con los **tres emails vacíos**: si se enciende sin completarlos, el paso se ejecuta
+  vacío. No hay un aviso al encender; el texto de la tarjeta lo dice.
+- Los umbrales de una pregunta numérica son un punto de partida (tercios del rango,
+  redondeados). Para una pregunta de número sin mínimo ni máximo se asume un rango de 0 a 100.
+
+### Cosas menores
+
+- **`branch_taken` por cada ejecución** consume el límite `HISTORY_FETCH` de la ficha del
+  contacto en flujos muy usados: si un contacto pasa por muchos Condiciones, lo automático
+  puede desplazar a lo demás. Mirar si en la práctica se nota.
+- Una arista que sale de un `condition` sin salida declarada **nunca se sigue** (ni en el
+  motor viejo ni en el `branch`). El editor nuevo lo arregla al guardar; un flujo viejo que
+  nadie reabre sigue cortándose en la condición.
+- Guardar desde el editor de pasos **recalcula las posiciones** (lo acomodado a mano en el
+  canvas se reordena) y las aristas pierden `animated` y `style`. Cosmético.
+- `useConditionCatalog` pide el catálogo aunque el flujo sea de solo lectura (una consulta de
+  más). Si el catálogo no carga, Condiciones se ve pero no se puede editar (se avisa arriba).
+  Sin campos para ofrecer (un formulario sin preguntas publicadas y sin disparador con
+  formulario), un camino nuevo nace sin condición y el editor lo marca.
+- Condiciones en el medio de una lista: lo que seguía pasa **adentro del primer camino** (el
+  editor lo anuncia). Un "Si" y Condiciones no se mueven ni se duplican.
+- `NodeType` (`lib/types/database.ts`) suma `"branch"`; el contador de `registry.test.ts`
+  pasó de 26 a 27 nodos (el plan decía de 23 a 24: antes de la rama ya había 26).

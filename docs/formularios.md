@@ -80,7 +80,37 @@ Todo lo que toca base y Storage entra por `SubmitPorts`: el orden se prueba ente
 - **Tres triggers**: `form_submitted`, `survey_answered`, `contract_signed`. Un solo evento por respuesta, según el tipo. El payload es de **solo escalares** y nunca lleva `booking_id` (ver [flow-registry.md](flow-registry.md)).
 - **Variables**: `{{form.*}}`, `{{answer.<clave>}}`, `{{submission.*}}` y `{{form_link.<slug>}}` (el link firmado para el contacto del flujo).
 - **Link firmado por contacto** (`lib/forms/signed-link.ts`): `?c=<token>` con HMAC-SHA256, el `contact_id` (y el `service_id` y `sale_id` si los hay) **dentro de la firma**, 60 días. Un id suelto en la URL o en el cuerpo se ignora. Es lo que reusan Ventas y CX.
-- **Desde el formulario** (pestaña Automatizaciones): crear una, o una plantilla de un clic (avisarme por email, mensaje de gracias, ponerle un tag, alerta por detractor), que nace apagada. El editor lineal es el mismo que usa la Agenda.
+- **Desde el formulario** (pestaña Automatizaciones): crear una, o una plantilla de un clic (avisarme por email, mensaje de gracias, ponerle un tag, alerta por detractor, email distinto según una respuesta), que nace apagada. Todo flujo sigue siendo un flujo normal (`flows.form_id`): también aparece en Automatizaciones y se abre en el canvas. "+ Nueva automatización" abre el editor con el disparador del formulario ya puesto.
+- **La lista** muestra, de cada flujo, qué hace en una línea (`describeTree`, vía `summarizeFlow`): "Cuando se envía · 2 caminos + si no · 3 emails". Un flujo que no se puede leer como lista de pasos (caminos que se vuelven a juntar, un A/B, un ciclo) dice "Armado en el canvas".
+
+### El editor de pasos (Cuándo / Solo si… / Pasos)
+
+Es el mismo que usa la Agenda (`components/automations/step-tree-editor.tsx`). Lee el grafo como un **árbol de pasos** (`lib/automations/step-tree.ts`); no es el canvas, es la misma información. Si el flujo no es un árbol, el editor es de solo lectura con "Abrir en el canvas": guardar desde una vista simplificada borraría lo que no se ve.
+
+- **Cuándo**: el disparador, **fijo**. El servidor toma el disparador de la base al guardar; de lo que manda el navegador solo acepta cambios en "Solo si…" (`answer_conditions`, validado con `parseFormTriggerConfig`, mismo formato de siempre).
+- **Solo si…**: decide si el flujo **arranca**. Si no se cumple, no hay sesión ni pasos. Es el filtro de siempre.
+- **Pasos**: email (al contacto o a una dirección fija), mensaje, esperar, agregar o quitar un tag y **Condiciones**. "+ Agregar paso", subir, bajar, duplicar y borrar (borrar un camino con pasos pide confirmación).
+- **Condiciones** reparte el flujo por **caminos**: arriba va el primero que se cumple (en el orden en que están) y al final siempre hay un **"Si no"**. Cada camino tiene sus condiciones con "y / o" y sus propios pasos, y **termina en sí mismo**: lo que viene después de Condiciones va adentro de un camino (para repetir un paso en varios caminos, "Duplicar paso"). Hasta 3 niveles de Condiciones anidadas.
+- **Las condiciones se arman con campos que existen**: las preguntas del formulario con su tipo (una selección se elige de un desplegable con sus opciones, nunca se escribe), el nombre del formulario, el puntaje y la categoría NPS en encuestas, lo que dejó un paso anterior del mismo camino y datos del contacto. Se comparan con el **valor real** de la respuesta, no con su texto.
+- Si una pregunta se borra del formulario, la condición lo avisa ("esta pregunta ya no existe") y no se cumple.
+
+**"Solo si…" vs. Condiciones.** "Solo si…" es un portón: o el flujo corre entero o no corre. Condiciones es una bifurcación: el flujo corre siempre y hace cosas **distintas** según la respuesta. Para "mandar el email A a quien facturó mucho y el B al resto", Condiciones; para "no hacer nada si no dejó teléfono", "Solo si…".
+
+### Probar condiciones
+
+Junto a "Enviarme una prueba" (solo si el flujo tiene algún paso Condiciones). Muestra **por qué camino iría** cada Condiciones y cada condición en palabras con ✓ o ✗ ("Facturación es «Más de USD 10.000» ✓; Presupuesto es mayor que 5000 ✗"), siguiendo el camino que toma si hay Condiciones anidadas. Se prueba con:
+
+- **una respuesta real**: las últimas 20 que la persona puede ver (la RLS decide), leídas con la definición de **la versión con la que se respondió**; o
+- **datos cargados a mano** en un formulario chico con las preguntas (las selecciones, con desplegable).
+
+Lo que mira un paso anterior o el contacto figura **"sin dato en la prueba"** y no se cumple; una pregunta que ya no existe lo dice. **No ejecuta nada**: ni sesión, ni evento, ni email, ni mensaje (la acción solo hace `select`; la cuenta es `explainPaths`, pura, sobre el mismo `pickPath` del nodo; hay tests de paridad con el motor y un test con espías que prueban que no se crea nada). Se calcula en el navegador con el árbol que está en pantalla, aunque tenga cambios sin guardar.
+
+### La plantilla "Email distinto según una respuesta"
+
+Se elige una pregunta del formulario (selección única, número, calificación o NPS) y se arma un Condiciones con **dos caminos + "Si no"**, cada uno con un paso "Enviar email" **vacío** para completar (nace apagada: completá los tres emails antes de encenderla).
+
+- Selección única: un camino por cada una de las **dos primeras opciones**; las demás van por "Si no".
+- Número: dos umbrales, "Alto: X o más" y "Medio: Y o más" (gana el primero que se cumple, así arman tres rangos con "Si no"). Salen de partir el rango de la pregunta en tercios (7 y 3 en un NPS, 4 y 2 en una calificación de 1 a 5, 70 y 30 si no hay mínimo ni máximo). **Son un punto de partida: se editan en el flujo.**
 
 ## Encuesta
 
@@ -110,6 +140,7 @@ El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante
 - Las claves de atribución están en **un solo lugar** (`lib/attribution/keys.ts`).
 - Un `service_id` o `sale_id` suelto nunca se guarda: solo viaja dentro de un link firmado válido.
 - Los eventos de automatización llevan solo escalares y nunca `booking_id`.
+- Un flujo con Condiciones se guarda desde el servidor (`saveFormFlowTree`): el disparador sale de la base y solo "Solo si…" es editable; "Probar condiciones" nunca escribe nada.
 - Nada de lo de acá tumba un envío: el toque, el aviso y el correo van después del commit y dentro de `try/catch`.
 
 ## Scripts de verificación

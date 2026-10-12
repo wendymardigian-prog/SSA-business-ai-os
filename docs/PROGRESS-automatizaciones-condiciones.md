@@ -76,7 +76,7 @@ Rama `feat/automatizaciones-condiciones` (desde `origin/main` ad7581c). Plan en
 - Si el catálogo no carga, Condiciones se puede ver pero no editar (se avisa arriba).
 - Sin campos para ofrecer (un formulario sin preguntas publicadas y sin disparador con formulario), un camino nuevo nace sin condición y el editor lo marca.
 
-## Para `docs/PENDIENTE.md` (lo escribe la tanda de cierre)
+## Para `docs/PENDIENTE.md` (escrito en la tanda 3: sección "Automatizaciones con condiciones")
 
 - **`variable:answer.x` no funciona en el `condition` viejo** (busca la clave `"answer.x"` de primer nivel y las respuestas están anidadas). Sigue igual a propósito; el `branch` lee `answer.*` por su cuenta.
 - **A/B split del canvas** dibuja las salidas como `split-0`/`split-1` y el motor busca `A`/`B` (según el plan; no se verificó en esta tanda).
@@ -87,6 +87,31 @@ Rama `feat/automatizaciones-condiciones` (desde `origin/main` ad7581c). Plan en
 - **Un campo personalizado cuyo slug coincide con un campo reservado** (`platform`, `is_subscribed`...) queda tapado por el reservado (ya era así en el `condition`).
 - **`branch_taken` por cada ejecución** consume el límite (`HISTORY_FETCH`) de la ficha del contacto en flujos muy usados.
 
+## Tanda 3 (pasos 8 a 10): hecha
+
+| Paso | Commit | Qué quedó |
+|------|--------|-----------|
+| 8. Probar condiciones | `aa2b030` | `lib/automations/explain-paths.ts` (`explainPaths`, puro, sobre el mismo `pickPath` del nodo), `test-values.ts` (valores desde una respuesta real o a mano), la acción de solo lectura `lib/actions/forms/test-conditions.ts` (`listTestResponses`, `getTestResponseValues`) y `components/automations/{test-conditions-sheet,explanation-view}.tsx`. Tests de paridad con el motor de verdad (`explain-parity.test.ts`), del resultado, de la acción con espías (no escribe, no manda, no corre nada) y de dibujo. |
+| 9. Plantilla y lista | `a49a5bf` | `email_by_answer` en `templates.ts` (`FORM_BRANCH_TEMPLATES`, `emailByAnswerTree`, `templateQuestions`, `numberThresholds`), la pregunta en `automations-tab.tsx`, `createFormFlowFromTemplate` con `questionKey`, `lib/automations/flow-summary.ts` y `summary` en `FormFlowRow`. |
+| 10. Docs | (este) | `docs/flow-registry.md`, `docs/formularios.md`, sección en `CLAUDE.md`, `docs/PENDIENTE.md`. |
+
+### Desvíos del plan (el código real ganó)
+
+1. **"Probar condiciones" calcula en el navegador, no en el servidor.** La acción solo trae las respuestas y arma los valores; la cuenta (`explainPaths`) corre sobre el árbol que está en pantalla, con cambios sin guardar. Probar lo guardado y no lo que se está viendo habría sido engañoso. La acción pide `forms.view` (no una llave de escritura): es solo lectura.
+2. **Sin dato vs. la pregunta ya no existe** se decide por el prefijo: `answer.*` que no está en los valores = "ya no existe" (la respuesta real trae TODAS las preguntas de su versión, `null` si no respondió); cualquier otra ruta que no está = "sin dato en la prueba". El puntaje y la categoría NPS solo entran si la respuesta los tiene (nunca un cero inventado).
+3. **A mano, la Agenda también puede probar** (con `booking.*` como texto); solo la respuesta real es exclusiva de Formularios (`testResponses` es opcional en `StepTreeEditor`).
+4. **El "Si" plano (`gate`) no se explica**, pero lo que tiene adentro se sigue mirando: sus campos son del formato viejo y casi nunca se pueden resolver en una prueba.
+5. **La plantilla vive en `FORM_BRANCH_TEMPLATES`, aparte de `FORM_FLOW_TEMPLATES`**, para que las cuatro lineales y sus tests no cambien (los tests recorren esa lista entera y esperan que sea lineal). `templatesForType` y `formTemplateByKey` devuelven las dos.
+6. **Ofrece también calificación y NPS**, no solo "número": son numéricas para las condiciones y tienen mínimo y máximo declarados. Una selección única necesita al menos dos opciones.
+7. **Los tres caminos de salida llevan un email** (los dos caminos y "Si no"), que es lo que dice el resumen de ejemplo del plan ("3 emails").
+8. **La pregunta se busca en el servidor** (`loadFormsWithFields`, la misma definición con la que se arman las condiciones: versión publicada, o el borrador si nunca se publicó). El navegador solo manda la clave.
+9. **`FormFlowRow` suma `summary`** (se conserva `describe`, la frase del disparador, como `title`). `form-flows.test.ts` se actualizó para la fila nueva.
+10. **"+ Nueva automatización" ya abría el editor con el disparador fijo** (`createFormFlow` + `router.push` a la página del editor, que toma el disparador de la base): verificado, no hizo falta tocarlo.
+
+### Deuda
+
+Ver `docs/PENDIENTE.md` ("Automatizaciones con condiciones"). Lo central: revisión visual y `verify-forms` / `verify-scheduling` sin correr; borrar el editor lineal viejo; el bug previo del A/B split.
+
 ## Verificación de la tanda
 
-Ver el reporte final de la tanda (suite completa, `tsc`, `lint`).
+Suite completa, `tsc`, `lint` y `build` al cierre de la tanda 3 (ver el reporte final).
