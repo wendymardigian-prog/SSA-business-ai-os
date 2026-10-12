@@ -8,6 +8,7 @@
  * ni vincula contacto (decisión 156).
  */
 import { z } from "zod";
+import { resolveCountry } from "@/lib/contacts/country";
 import { SOCIAL_LABELS, SOCIAL_LOOKUP_PLATFORMS, type SocialPlatform } from "@/lib/contacts/social";
 import type { FormField, FormFieldType } from "./fields";
 
@@ -120,8 +121,6 @@ export function customSlugOf(target: string): string {
   return target.slice(CUSTOM_PREFIX.length);
 }
 
-const ISO2 = /^[A-Za-z]{2}$/;
-
 /** ¿Un campo de este tipo se puede guardar en este destino? */
 export function targetAccepts(
   field: Pick<FormField, "type" | "options" | "social">,
@@ -180,7 +179,8 @@ export function targetAccepts(
       return type === "short_text" || type === "hidden";
     }
     case "contact.country":
-      if (type === "single_select") return (field.options ?? []).length > 0 && (field.options ?? []).every((o) => ISO2.test(o.trim()));
+      // Una selección única sirve si TODAS sus opciones son un país: el código ISO ("CR") o el nombre ("Costa Rica").
+      if (type === "single_select") return (field.options ?? []).length > 0 && (field.options ?? []).every((o) => resolveCountry(o) !== null);
       return type === "short_text";
     default:
       return false;

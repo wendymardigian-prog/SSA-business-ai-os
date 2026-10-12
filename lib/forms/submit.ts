@@ -49,7 +49,8 @@ import { renderSuccess, type SuccessConfig } from "./success";
 import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./submission-schema";
 import { answerToText } from "./responses";
 import { normalizeSitePath } from "./site-submit";
-import { applyContactMapping } from "./contact-mapping";
+import { applyContactMappingDetailed } from "./contact-mapping";
+import type { ContactNote } from "./contact-outcome";
 import type { ContactConfig, CustomFieldDef } from "./contact-config";
 import type { ContractConfig } from "./defaults";
 import { validateSignature } from "./contract/signature";
@@ -443,7 +444,8 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   // 10. Guardar. El contacto sale del mapeo (con las respuestas ya validadas) o del link firmado.
   // Con el interruptor de contactos apagado (R3) no viaja nada: ni el mapeo ni un link firmado.
   const linksContacts = form.contactConfig.mode !== "none";
-  const contactHint: Record<string, unknown> = linksContacts ? { ...applyContactMapping(form.fields, form.contactConfig, values, form.customFields) } : {};
+  const mapped = linksContacts ? applyContactMappingDetailed(form.fields, form.contactConfig, values, form.customFields) : null;
+  const contactHint: Record<string, unknown> = mapped ? { ...mapped.hint } : {};
   if (linksContacts && payload.link_token) {
     const link = await ports.verifyLink(form, payload.link_token);
     if (link) {
@@ -458,7 +460,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     idempotencyKey: payload.idempotency_key,
     answers: toLabeledAnswers(form.fields, values),
     attribution,
-    meta: buildMeta(ports, input, payload),
+    meta: buildMeta(ports, input, payload, mapped?.notes ?? []),
     uploadPrefix: pendingUploads.length > 0 ? uploadPrefix : null,
     contactHint,
     contract: contractSave,
@@ -527,7 +529,7 @@ export function buildAttribution(payload: SubmitPayload, cookieHeader: string | 
   return attribution;
 }
 
-function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayload): Record<string, unknown> {
+function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayload, contactNotes: ContactNote[]): Record<string, unknown> {
   const origin = payload.origin ?? "public_page";
   return {
     ip_hash: ports.hashIp(input.ip),
@@ -537,5 +539,7 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     ...(origin === "site" && normalizeSitePath(payload.site_path) ? { site_path: normalizeSitePath(payload.site_path) } : {}),
     timezone: payload.client_meta?.timezone ?? null,
     locale: payload.client_meta?.locale ?? null,
+    // Datos que no se pudieron guardar en el contacto (país no reconocido…): el detalle de la respuesta los muestra.
+    ...(contactNotes.length > 0 ? { contact_notes: contactNotes.map((n) => ({ ...n, text: n.text.slice(0, 100) })) } : {}),
   };
 }

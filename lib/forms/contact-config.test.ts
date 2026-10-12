@@ -43,9 +43,11 @@ describe("targetAccepts", () => {
     expect(targetAccepts(f("multi_select", "m"), "contact.custom.empresa", "text")).toBe(true);
   });
 
-  it("selección única va a país solo si las opciones son códigos ISO-2", () => {
+  it("selección única va a país solo si las opciones son países (R6: por código o por nombre)", () => {
     expect(targetAccepts(f("single_select", "p", { options: ["CR", "MX"] }), "contact.country")).toBe(true);
-    expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "México"] }), "contact.country")).toBe(false);
+    // Antes (F15) solo valían los códigos; desde R6 también los nombres reconocibles.
+    expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "México"] }), "contact.country")).toBe(true);
+    expect(targetAccepts(f("single_select", "p", { options: ["Gold", "Silver"] }), "contact.country")).toBe(false);
   });
 
   it("un archivo no se mapea a nada", () => {
@@ -205,5 +207,14 @@ describe("el interruptor de contactos: modo none (R3)", () => {
 
   it("las consecuencias se pueden mostrar", () => {
     expect(NO_CONTACT_CONSEQUENCES.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("país como destino (R6)", () => {
+  it("una selección única sirve si todas sus opciones son un país, por código o por nombre", () => {
+    expect(targetAccepts(f("single_select", "p", { options: ["CR", "MX"] }), "contact.country")).toBe(true);
+    expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "México", "Spain"] }), "contact.country")).toBe(true);
+    expect(targetAccepts(f("single_select", "p", { options: ["Costa Rica", "Narnia"] }), "contact.country")).toBe(false);
+    expect(targetAccepts(f("single_select", "p", { options: ["A", "B"] }), "contact.country")).toBe(false);
   });
 });

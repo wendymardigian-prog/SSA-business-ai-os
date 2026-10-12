@@ -3,7 +3,9 @@
  * PURO: lo llama el envío con las respuestas ya validadas y le pasa el resultado
  * a la RPC `submit_form_response` como `p_contact_hint`.
  */
+import { resolveCountry } from "@/lib/contacts/country";
 import { normalizeSocialHandle, SOCIAL_LOOKUP_PLATFORMS, type SocialPlatform } from "@/lib/contacts/social";
+import type { ContactNote } from "./contact-outcome";
 import { CUSTOM_PREFIX, customSlugOf, isCustomTarget, socialPlatformOf, type ContactConfig, type CustomFieldDef } from "./contact-config";
 import type { FormField } from "./fields";
 
@@ -32,7 +34,21 @@ export function applyContactMapping(
   values: Record<string, unknown>,
   customFields: CustomFieldDef[],
 ): ContactHint {
+  return applyContactMappingDetailed(fields, config, values, customFields).hint;
+}
+
+/**
+ * Lo mismo, y además lo que NO se pudo guardar en el contacto (un país o un usuario que no se reconoce). La
+ * respuesta se guarda igual; las notas se ven en su detalle (`meta.contact_notes`).
+ */
+export function applyContactMappingDetailed(
+  fields: FormField[],
+  config: ContactConfig,
+  values: Record<string, unknown>,
+  customFields: CustomFieldDef[],
+): { hint: ContactHint; notes: ContactNote[] } {
   const hint: ContactHint = { custom: {} };
+  const notes: ContactNote[] = [];
   let first = "";
   let last = "";
 
@@ -61,15 +77,20 @@ export function applyContactMapping(
       case "contact.whatsapp_phone":
         hint.whatsapp_phone = text;
         break;
-      case "contact.country":
-        if (/^[A-Za-z]{2}$/.test(text)) hint.country = text.toUpperCase();
+      case "contact.country": {
+        // El código ("CR") o el nombre en español o inglés ("Costa Rica", "Spain").
+        const country = resolveCountry(text);
+        if (country) hint.country = country;
+        else notes.push({ reason: "country_unrecognized", text });
         break;
+      }
       default: {
         const platform = socialPlatformOf(entry.target);
         if (platform) {
           // Un texto que no es un usuario válido no se guarda en el contacto; la respuesta queda igual.
           const handle = normalizeSocialHandle(platform, text);
           if (handle.ok) hint.social = { ...hint.social, [platform]: handle.value };
+          else notes.push({ reason: "social_invalid", text, platform });
           break;
         }
         if (isCustomTarget(entry.target)) {
@@ -82,7 +103,7 @@ export function applyContactMapping(
   }
 
   if (!hint.display_name && (first || last)) hint.display_name = [first, last].filter(Boolean).join(" ");
-  return hint;
+  return { hint, notes };
 }
 
 /**

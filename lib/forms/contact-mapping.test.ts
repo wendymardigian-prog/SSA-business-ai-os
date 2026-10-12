@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyContactMapping, canResolveContact } from "./contact-mapping";
+import { applyContactMapping, applyContactMappingDetailed, canResolveContact } from "./contact-mapping";
 import { DEFAULT_CONTACT_CONFIG, type CustomFieldDef } from "./contact-config";
 import { newField, type FormField } from "./fields";
 
@@ -32,8 +32,9 @@ describe("applyContactMapping", () => {
     expect(hint).toMatchObject({ email: "ana@x.com", phone: "+50688881234", country: "CR" });
   });
 
-  it("un país que no son dos letras se ignora", () => {
-    expect(applyContactMapping(fields, cfg([["pais", "contact.country"]]), { pais: "Costa Rica" }, customs).country).toBeUndefined();
+  it("un país que no se reconoce se ignora (R6: el nombre \"Costa Rica\" sí se reconoce)", () => {
+    expect(applyContactMapping(fields, cfg([["pais", "contact.country"]]), { pais: "Narnia" }, customs).country).toBeUndefined();
+    expect(applyContactMapping(fields, cfg([["pais", "contact.country"]]), { pais: "Costa Rica" }, customs).country).toBe("CR");
   });
 
   it("campos personalizados por id, con booleanos y listas en texto", () => {
@@ -98,5 +99,27 @@ describe("redes sociales en el mapeo (R5)", () => {
     expect(canResolveContact({ custom: {}, social: { tiktok: "ana" } })).toBe(true);
     expect(canResolveContact({ custom: {}, social: { facebook: "ana", youtube: "UC1" } })).toBe(false);
     expect(canResolveContact({ custom: {} })).toBe(false);
+  });
+});
+
+describe("el país también se entiende por nombre (R6)", () => {
+  const countryField = f("short_text", "pais_texto");
+
+  it('"Costa Rica", "México" y "Spain" dan el código', () => {
+    for (const [text, code] of [["Costa Rica", "CR"], ["México", "MX"], ["Spain", "ES"], ["cr", "CR"]] as const) {
+      const hint = applyContactMapping([countryField], cfg([["pais_texto", "contact.country"]]), { pais_texto: text }, customs);
+      expect(hint.country, text).toBe(code);
+    }
+  });
+
+  it("un país que no se reconoce no se guarda y queda anotado, sin tumbar nada", () => {
+    const r = applyContactMappingDetailed([countryField], cfg([["pais_texto", "contact.country"]]), { pais_texto: "Narnia" }, customs);
+    expect(r.hint.country).toBeUndefined();
+    expect(r.notes).toEqual([{ reason: "country_unrecognized", text: "Narnia" }]);
+  });
+
+  it("un usuario de red inválido en un texto queda anotado con su red", () => {
+    const r = applyContactMappingDetailed([f("short_text", "u")], cfg([["u", "contact.tiktok_username"]]), { u: "esto no es" }, customs);
+    expect(r.notes).toEqual([{ reason: "social_invalid", text: "esto no es", platform: "tiktok" }]);
   });
 });

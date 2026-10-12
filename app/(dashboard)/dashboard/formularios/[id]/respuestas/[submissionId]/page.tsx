@@ -5,6 +5,7 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { SubmissionDetail } from "@/components/forms/responses/submission-detail";
 import { fieldsOf } from "@/lib/forms/server-ports";
 import type { StoredAnswer } from "@/lib/forms/responses";
+import { describeConflicts, describeContactNotes, type StoredDedupe } from "@/lib/forms/contact-outcome";
 import type { ContractView } from "@/components/forms/responses/contract-panel";
 import type { SubmissionStatus } from "@/lib/forms/responses";
 
@@ -72,7 +73,7 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
   }
 
   const meta = (submission.meta ?? {}) as Record<string, unknown>;
-  const dedupe = (submission.dedupe ?? {}) as { matched_by?: string | null; conflict_contact_id?: string | null };
+  const dedupe = (submission.dedupe ?? {}) as StoredDedupe;
 
   return (
     <SubmissionDetail
@@ -93,7 +94,8 @@ export default async function RespuestaPage({ params }: { params: Promise<{ id: 
         timezone: typeof meta.timezone === "string" ? meta.timezone : null,
         contactCreated: submission.contact_created,
         matchedBy: dedupe.matched_by ?? null,
-        conflictContactId: dedupe.conflict_contact_id ?? null,
+        conflicts: describeConflicts(dedupe),
+        contactNotes: describeContactNotes(meta),
       }}
       fieldOrder={fieldsOf(version?.definition).map((f) => f.key)}
       contact={contactRes.data ? { id: contactRes.data.id, name: contactRes.data.display_name || contactRes.data.email || "Sin nombre" } : null}

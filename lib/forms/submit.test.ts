@@ -434,6 +434,15 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
     expect(ports.verifyLink).not.toHaveBeenCalled();
   });
 
+  it("un país que no se reconoce se anota en meta y la respuesta se guarda igual (R6)", async () => {
+    const form = makeForm([field("short_text", "pais")], { contactConfig: { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "pais", target: "contact.country" }] } });
+    const { ports, saves } = makePorts(form);
+    const out = await submitForm(ports, baseInput({ answers: { pais: "Narnia" } }));
+    expect(out.status).toBe(200);
+    expect(saves[0].meta.contact_notes).toEqual([{ reason: "country_unrecognized", text: "Narnia" }]);
+    expect(saves[0].contactHint).not.toHaveProperty("country");
+  });
+
   it("con contacto: anota el toque y avisa", async () => {
     const { ports } = makePorts(mapped(), { save: withContact() });
     const out = await submitForm(ports, baseInput({ answers: { email: "a@x.com" }, attribution: { utm_source: "meta" } }));
