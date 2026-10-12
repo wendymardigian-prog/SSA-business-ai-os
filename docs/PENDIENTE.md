@@ -1242,3 +1242,22 @@ a propósito o por falta de revisión.
   editor lo anuncia). Un "Si" y Condiciones no se mueven ni se duplican.
 - `NodeType` (`lib/types/database.ts`) suma `"branch"`; el contador de `registry.test.ts`
   pasó de 26 a 27 nodos (el plan decía de 23 a 24: antes de la rama ya había 26).
+- **Revisión del 12/10 (a mano, datos `zz-test-` ya borrados).** Se recorrió en el navegador: la
+  plantilla "Email distinto según una respuesta", el editor de pasos (escritorio y 390 px, sin
+  desborde), la confirmación al borrar un camino con pasos, "Probar condiciones" a mano, el canvas
+  (los tres caminos conectados) y un flujo de la Agenda (abre, guarda, conserva `onlyIfPhone` y
+  el resto del grafo). Quedó anotado:
+  - **Arreglado de paso:** la sección Flujos de la Agenda aparecía **siempre vacía** (el filtro
+    `flows.deleted_at` no existía; `lib/scheduling/data/event-flows.ts`, desde la Etapa 4). Los
+    flujos existían y corrían: solo no se podían abrir desde el evento. Un test lo cuida.
+  - En el canvas, un paso "Enviar email" se dibuja como "Action / Not configured": el nodo visual
+    no conoce `send_email`. Ya pasaba antes; el flujo se ejecuta bien.
+  - Al abrir un flujo, el resumen de un camino muestra un instante la ruta cruda
+    (`answer.facturacion`) hasta que carga el catálogo, y después pasa a "Facturación". Cosmético.
+  - **`verify-forms` intermitente:** de cuatro corridas, tres dieron "Todo en orden" y una falló
+    dos pruebas del PDF del contrato ("already": el cron real generó el PDF de la firma de prueba
+    antes de que el script lo pidiera). No toca nada de esta rama; conviene que el script espere o
+    tolere que el job ya esté `generated`.
+  - **Pendiente de probar con una respuesta real:** el workspace no tenía respuestas, así que
+    "Probar condiciones" con una respuesta real solo se vio en su estado vacío (la paridad con el
+    motor está cubierta por `explain-parity.test.ts`).
