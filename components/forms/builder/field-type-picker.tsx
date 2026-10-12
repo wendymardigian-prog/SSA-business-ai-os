@@ -5,23 +5,36 @@ import { Popover } from "@/components/ui/popover";
 import { FIELD_TYPE_LABELS, FORM_FIELD_TYPES, type FormFieldType } from "@/lib/forms/fields";
 import { FIELD_ICONS } from "./field-icons";
 
-/** "+ Agregar campo": elige entre los 14 tipos. */
-export function FieldTypePicker({ onPick, disabled }: { onPick: (type: FormFieldType) => void; disabled?: boolean }) {
+/**
+ * "+ Agregar campo": elige entre los 14 tipos, o entre los que admita el formulario
+ * (`types`: un reporte de fin de día solo admite cinco, `allowedFieldTypes`).
+ */
+export function FieldTypePicker({
+  onPick,
+  disabled,
+  types = FORM_FIELD_TYPES,
+  label = "Agregar campo",
+}: {
+  onPick: (type: FormFieldType) => void;
+  disabled?: boolean;
+  types?: readonly FormFieldType[];
+  label?: string;
+}) {
   return (
     <Popover
-      label="Agregar campo"
+      label={label}
       align="start"
       panelClassName="w-72 p-2"
       closeOnSelect
       triggerClassName={`inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent ${disabled ? "pointer-events-none opacity-50" : ""}`}
       trigger={
         <>
-          <Plus className="h-4 w-4" aria-hidden /> Agregar campo
+          <Plus className="h-4 w-4" aria-hidden /> {label}
         </>
       }
     >
       <ul className="grid grid-cols-1 gap-0.5" role="list">
-        {FORM_FIELD_TYPES.map((type) => {
+        {types.map((type) => {
           const Icon = FIELD_ICONS[type];
           return (
             <li key={type}>

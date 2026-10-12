@@ -9,7 +9,7 @@ import { FieldTypePicker } from "@/components/forms/builder/field-type-picker";
 import { PublicForm } from "@/components/forms/public/public-form";
 import { addField, moveField, relabelField, removeField, setFieldKey, updateField } from "@/lib/forms/builder";
 import { validateDefinition } from "@/lib/forms/definition-schema";
-import { FIELD_TYPE_LABELS, MAX_FIELDS, type FormDefinition, type FormField } from "@/lib/forms/fields";
+import { FIELD_TYPE_LABELS, MAX_FIELDS, type FormDefinition, type FormField, type PublicFormType } from "@/lib/forms/fields";
 import { toPublicFields } from "@/lib/forms/public-definition";
 import type { PublicFormData } from "@/lib/forms/public-client";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function FieldsTab({
   disabled: boolean;
   neverPublished: boolean;
   slug: string;
-  type: "custom" | "survey" | "contract";
+  type: PublicFormType;
   /** Solo un contrato: lo que la vista previa necesita para mostrar el texto y la firma. */
   contract?: { title: string; acceptLabel: string; signatureRequired: boolean } | null;
   /** El mapeo al contacto, para decirle a cada campo adónde va (R4). */

@@ -10,7 +10,7 @@ import { changeFormSlug } from "@/lib/actions/forms/forms";
 import { formPageSnippet, generateFormEmbedCode, trackingSnippet } from "@/lib/embed/code";
 import { PrefillCard } from "./prefill-card";
 import { ContactLinkCard } from "./contact-link-card";
-import type { FormDefinition } from "@/lib/forms/fields";
+import { isPublicFormType, type FormDefinition } from "@/lib/forms/fields";
 import type { EditorForm, EditorVersion } from "./types";
 
 /**
@@ -94,8 +94,21 @@ export function PublishTab({
     else saveSlug(false);
   }
 
+  // Un reporte de fin de día no tiene link público, embed ni prellenado: se completa en
+  // "Mi reporte del día" con la sesión iniciada. De Publicar le quedan las versiones.
+  const publicForm = isPublicFormType(form.type);
+
   return (
     <div className="space-y-6">
+      {!publicForm && (
+        <Notice tone="info">
+          {published
+            ? "Publicado: las personas a las que les toca lo completan desde “Mi reporte del día”, con su sesión iniciada. No tiene link público."
+            : "Cuando lo publiques, las personas a las que les toca lo van a ver en “Mi reporte del día”, con su sesión iniciada. No tiene link público."}
+        </Notice>
+      )}
+      {publicForm && (
+      <>
       {!published && <Notice tone="info">Este formulario todavía no está publicado: el link y el código funcionan recién cuando lo publiques.</Notice>}
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="link-publico">
@@ -133,7 +146,7 @@ export function PublishTab({
         )}
       </section>
 
-      {canManage && form.contactConfig.mode !== "none" && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
+      {canManage && form.contactConfig.mode !== "none" && isPublicFormType(form.type) && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
         <h2 id="embed" className="text-sm font-semibold">
@@ -177,6 +190,8 @@ export function PublishTab({
       </section>
 
       <PrefillCard definition={definition} baseUrl={publicUrl} slug={form.slug} />
+      </>
+      )}
 
       <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="versiones">
         <h2 id="versiones" className="text-sm font-semibold">
