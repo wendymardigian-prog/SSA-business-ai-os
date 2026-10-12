@@ -19,6 +19,7 @@ import { contractStorage, type ContractStorage } from "./storage";
 import { emailJobKey, nextEmailRetryAt } from "./email-retry";
 import { answerToText, orderedAnswers, type StoredAnswer } from "@/lib/forms/responses";
 import { fieldsOf } from "@/lib/forms/server-ports";
+import { pdfSkippedKeys } from "./config";
 
 type Db = SupabaseClient<Database>;
 
@@ -96,10 +97,13 @@ export async function runContractPdf(deps: PdfRunDeps, signatureId: string, opti
       if (!signaturePng) return fail("no pude leer la imagen de la firma");
     }
 
-    const answers = orderedAnswers((submission.answers ?? {}) as unknown as Record<string, StoredAnswer>, fieldsOf(version.definition).map((f) => f.key)).map(([, answer]) => ({
-      label: answer.label,
-      value: answerToText(answer.value),
-    }));
+    const definitionFields = fieldsOf(version.definition);
+    const stored = (submission.answers ?? {}) as unknown as Record<string, StoredAnswer>;
+    // El nombre y el email del firmante ya salen en "Firmante": no se repiten en la lista de respuestas.
+    const skip = pdfSkippedKeys(definitionFields, Object.fromEntries(Object.entries(stored).map(([key, answer]) => [key, answer.value])));
+    const answers = orderedAnswers(stored, definitionFields.map((f) => f.key))
+      .filter(([key]) => !skip.has(key))
+      .map(([, answer]) => ({ label: answer.label, value: answerToText(answer.value) }));
 
     const bytes = await (deps.build ?? buildContractPdf)({
       businessName: (deps.businessName ?? brandName)(),

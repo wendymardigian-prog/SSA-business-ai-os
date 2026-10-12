@@ -58,9 +58,26 @@ export function signerEmailField(fields: FormField[]): FormField | undefined {
  * diga (nombre, firmante, name) o, si no hay, el primer texto corto con valor.
  */
 export function signerNameFromAnswers(fields: FormField[], values: Record<string, unknown>): string {
+  const field = signerNameField(fields, values);
+  return field ? (values[field.key] as string).trim() : "";
+}
+
+/** El campo de donde sale el nombre del firmante (el que `signerNameFromAnswers` lee), o undefined si ninguno tiene valor. */
+export function signerNameField(fields: FormField[], values: Record<string, unknown>): FormField | undefined {
   const text = (key: string) => (typeof values[key] === "string" ? (values[key] as string).trim() : "");
   const named = fields.find((f) => f.type === "short_text" && /nombre|name|firmante|signer/i.test(`${f.key} ${f.label}`) && text(f.key));
-  if (named) return text(named.key);
-  const any = fields.find((f) => f.type === "short_text" && text(f.key));
-  return any ? text(any.key) : "";
+  return named ?? fields.find((f) => f.type === "short_text" && text(f.key));
+}
+
+/**
+ * Las respuestas que van en la lista del PDF: todas MENOS los dos campos de los que salen el nombre y el email del
+ * firmante, que el PDF ya muestra en "Firmante" (si no, aparecían dos veces). Respeta el orden de la versión.
+ */
+export function pdfSkippedKeys(fields: FormField[], values: Record<string, unknown>): Set<string> {
+  const skip = new Set<string>();
+  const email = signerEmailField(fields);
+  const name = signerNameField(fields, values);
+  if (email) skip.add(email.key);
+  if (name) skip.add(name.key);
+  return skip;
 }

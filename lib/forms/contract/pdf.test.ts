@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
 import { buildContractPdf, toWinAnsi, type ContractPdfInput } from "./pdf";
+import { pdfSkippedKeys } from "./config";
+import { newField } from "../fields";
+import { answerToText, orderedAnswers } from "../responses";
 
 const SHA = "a".repeat(8) + "0123456789abcdef".repeat(3) + "b".repeat(8);
 
@@ -109,5 +112,41 @@ describe("buildContractPdf", () => {
   it("el PDF empieza con la cabecera de PDF", async () => {
     const bytes = await buildContractPdf(base());
     expect(Buffer.from(bytes.slice(0, 5)).toString()).toBe("%PDF-");
+  });
+});
+
+describe("el firmante no se repite en la lista de respuestas (R10)", () => {
+  const fields = [newField("short_text", "nombre", "Nombre completo"), newField("email", "email", "Email"), newField("short_text", "empresa", "Empresa")].map((f) =>
+    f.type === "email" ? { ...f, required: true } : f,
+  );
+  const stored = {
+    nombre: { label: "Nombre completo", type: "short_text", value: "Ana Pérez" },
+    email: { label: "Email", type: "email", value: "ana@example.com" },
+    empresa: { label: "Empresa", type: "short_text", value: "Acme" },
+  };
+
+  /** Arma las respuestas como lo hace `runContractPdf`. */
+  const answersForPdf = () => {
+    const skip = pdfSkippedKeys(fields, Object.fromEntries(Object.entries(stored).map(([key, a]) => [key, a.value])));
+    return orderedAnswers(stored, fields.map((f) => f.key))
+      .filter(([key]) => !skip.has(key))
+      .map(([, answer]) => ({ label: answer.label, value: answerToText(answer.value) }));
+  };
+
+  it("se saltean el campo del nombre y el del email, y queda lo demás", () => {
+    expect(answersForPdf()).toEqual([{ label: "Empresa", value: "Acme" }]);
+  });
+
+  it("el texto extraído del PDF trae el email del firmante UNA sola vez (y el nombre, una)", async () => {
+    const { all } = await read(await buildContractPdf(base({ answers: answersForPdf() })));
+    expect(all.split("ana@example.com")).toHaveLength(2);
+    expect(all.split("Ana Pérez")).toHaveLength(2);
+    expect(all).toContain("Acme");
+  });
+
+  it("antes del arreglo (con todas las respuestas) el email salía dos veces", async () => {
+    const everything = orderedAnswers(stored, fields.map((f) => f.key)).map(([, a]) => ({ label: a.label, value: answerToText(a.value) }));
+    const { all } = await read(await buildContractPdf(base({ answers: everything })));
+    expect(all.split("ana@example.com").length).toBeGreaterThan(2);
   });
 });
