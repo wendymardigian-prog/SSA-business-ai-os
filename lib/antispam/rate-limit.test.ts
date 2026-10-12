@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { checkLimit, formsKeys, isValidSessionId, windowStartFor } from "./rate-limit";
+import { FORM_LIMITS } from "@/lib/forms/limits";
 
 const fakeDb = (impl: () => Promise<{ data: unknown; error: { message: string } | null }>) => {
   const rpc = vi.fn(impl);
@@ -34,6 +35,13 @@ describe("checkLimit", () => {
       throw new Error("red");
     });
     expect((await checkLimit(client, { key: "k", max: 1, windowMs: 1000 })).allowed).toBe(true);
+  });
+});
+
+describe("el tope de envíos de Formularios (R2)", () => {
+  it("los valores dejan pasar a una red compartida: 30 por formulario y 60 en total", () => {
+    expect(FORM_LIMITS.submitPerIpPerFormPerHour).toBe(30);
+    expect(FORM_LIMITS.submitPerIpPerHour).toBe(60);
   });
 });
 
