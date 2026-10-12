@@ -8,46 +8,17 @@
 
 import { registerConditionField, registerConditionOperator } from "./registry";
 import { agentStateForConversation } from "@/lib/agent/state";
+import { LEGACY_OPERATORS } from "../legacy-operators";
 
 // ------------------------------------------------------------
 // Operadores
 // ------------------------------------------------------------
 
-registerConditionOperator({
-  operator: "equals",
-  label: "es igual a",
-  evaluate: (actual, expected) => actual === expected,
-});
-
-registerConditionOperator({
-  operator: "not_equals",
-  label: "no es igual a",
-  evaluate: (actual, expected) => actual !== expected,
-});
-
-registerConditionOperator({
-  operator: "contains",
-  label: "contiene",
-  evaluate: (actual, expected) => actual?.includes(expected) || false,
-});
-
-registerConditionOperator({
-  operator: "exists",
-  label: "tiene algun valor",
-  evaluate: (actual) => actual !== undefined && actual !== null && actual !== "",
-});
-
-registerConditionOperator({
-  operator: "gt",
-  label: "es mayor que",
-  evaluate: (actual, expected) => Number(actual) > Number(expected),
-});
-
-registerConditionOperator({
-  operator: "lt",
-  label: "es menor que",
-  evaluate: (actual, expected) => Number(actual) < Number(expected),
-});
+// Los seis de siempre viven en un modulo puro (`legacy-operators.ts`): el
+// evaluador tipado de los caminos condicionales usa las MISMAS funciones.
+for (const operator of LEGACY_OPERATORS) {
+  registerConditionOperator(operator);
+}
 
 // ------------------------------------------------------------
 // Campos
