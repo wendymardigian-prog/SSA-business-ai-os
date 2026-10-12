@@ -1,0 +1,49 @@
+{
+  "content_offers": [
+    {
+      "archived_at": null,
+      "created_at": "2026-10-09T21:14:11.17867+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "id": "ddaaabef-8d2b-403b-be2f-7fc8f7bbc9e9",
+      "name": "Scaling Systems Academy",
+      "price_usd": 3000,
+      "status": "active",
+      "updated_at": "2026-10-09T22:11:33.218249+00:00",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "archived_at": null,
+      "created_at": "2026-10-09T21:13:59.657189+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "id": "9b004f61-56ea-485e-aa4d-5abf3c0c4c09",
+      "name": "Scaling Systems B2B",
+      "price_usd": 6000,
+      "status": "active",
+      "updated_at": "2026-10-10T00:18:36.466574+00:00",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "archived_at": null,
+      "created_at": "2026-10-09T21:13:30.655278+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "id": "17a16d97-ab7b-49e7-8956-98abac65e3eb",
+      "name": "BusinessXcelerator",
+      "price_usd": 12000,
+      "status": "active",
+      "updated_at": "2026-10-10T00:18:44.878746+00:00",
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    }
+  ],
+  "ideas_con_oferta": [
+    {
+      "id": "392fa750-ec8d-4c9d-8ef3-e632755f8c78",
+      "offer_id": "17a16d97-ab7b-49e7-8956-98abac65e3eb"
+    }
+  ],
+  "piezas_con_oferta": [
+    {
+      "id": "92a5b6da-fd17-47d3-852e-c03658edcb26",
+      "offer_id": "17a16d97-ab7b-49e7-8956-98abac65e3eb"
+    }
+  ]
+}

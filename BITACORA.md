@@ -1587,3 +1587,8 @@ Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_off
 **Qué cambió.** La tabla de versiones de precio no aportaba nada que no tuvieran ya la copia congelada de cada venta y el historial general: se eliminó. El precio vive en `product_variants.price` (0 = sin precio) y un cambio es inmediato. El historial de productos y variantes lo escribe un trigger de la base, así que *siempre* queda registrado, incluso si alguien escribe sin pasar por la pantalla.
 
 **Pendiente.** Borrar `content_offers` después del deploy (guiado en `docs/PENDIENTE-ventas.md`).
+
+
+## content_offers borrada (12/10/2026)
+
+**Migración 00171**, aplicada y registrada después de comprobar que Railway desplegó el merge del PR #42 (el servicio anterior ya estaba removido). Antes: auditoría de la base en 0 y respaldo en `docs/ventas/respaldo-content-offers.json`. Los 3 productos, sus 3 variantes con precio y la idea y la pieza clasificadas siguen intactos. La próxima migración libre es la **00172**.

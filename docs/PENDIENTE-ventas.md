@@ -47,9 +47,9 @@ Formato: **qué quedó · por qué · qué se decidió**.
 | D-27 | Asignación manual | `assignContact` | Suma `assignment_locked_at` |
 | D-28 | Archivos de progreso y commits | Corrección de Wendy | `PROGRESS-ventas.md` / `PENDIENTE-ventas.md`, `feat: ventas - bloque X (nombre)` |
 
-## Borrado diferido de `content_offers`
+## Borrado de `content_offers`
 
-Se escribe en `docs/pendientes/drop_content_offers.sql` al cerrar B4 y **no se aplica**. Se aplica solo cuando: (1) el código de B1 está desplegado y comprobado; (2) `grep -rn "content_offers" app lib scripts` no encuentra lecturas; (3) corrieron las consultas de seguridad de su cabecera; (4) hay respaldo (`docs/ventas/respaldo-content-offers.json`). Es IRREVERSIBLE.
+**Hecho el 12/10/2026 (migración 00171)**, después de desplegar el código de Ventas y de repetir la auditoría. Respaldo: `docs/ventas/respaldo-content-offers.json`.
 
 ## Bloque B1 · decisiones y pendientes
 
@@ -95,7 +95,7 @@ Se escribe en `docs/pendientes/drop_content_offers.sql` al cerrar B4 y **no se a
 ## Bloque B4 · decisiones y pendientes
 
 - **Comisión de Whop: 0 %** hasta que Wendy confirme el porcentaje real (anotado con fecha en `lib/sales/payment-methods.ts`). El criterio del plano (`computeProviderFee(100,'whop') = 3.00`) se prueba pasando el método explícito `{pct: 3, fixed: 0}`. Whop como pasarela es Fase 2.
-- **Borrado de `content_offers` (IRREVERSIBLE, no aplicado)**: `docs/pendientes/drop_content_offers.sql`. Orden: (1) el código del B1 desplegado y comprobado; (2) `grep -rn "content_offers" app lib scripts` sin lecturas; (3) las consultas de seguridad de su cabecera en 0; (4) respaldo `docs/ventas/respaldo-content-offers.json`. Recién ahí.
+- **Borrado de `content_offers`**: aplicado (00171), ver arriba.
 - **Cancelar como sistema no usa la RPC `cancel_sale`** (la RPC siempre escribe `actor_type 'user'`): se hace con sentencias directas y `auditAsSystem` con la etiqueta («Job de mora» / nombre del flow). Si más adelante la RPC acepta actor de sistema, se unifica.
 - **`total_paid` en `payment_health` es la cantidad de pagos cobrados**, no el monto (el nombre viene del plano). Los montos salen de `sales`.
 - **Republicar un flow desde el lienzo duplica las filas de trigger que no son del builder**: es anterior a Ventas y afecta a otros eventos; para los tipos de venta se corrigió en `app/api/v1/flows/[flowId]/publish/route.ts`. Los demás quedan igual a propósito.
@@ -107,7 +107,7 @@ Se escribe en `docs/pendientes/drop_content_offers.sql` al cerrar B4 y **no se a
 
 ## Después del cierre: precio en la variante (12/10/2026)
 
-- **`content_offers` NO se borró todavía** y es lo único grande que queda. Producción corre `main`, que lee y escribe esa tabla (el puente la copia a `products`); borrarla antes del deploy de esta rama rompe Contenido. **Después de desplegar**: repetir la auditoría (0 FK, 0 vistas, 0 crons, 0 policies que la nombren; el código no la lee), respaldo `docs/ventas/respaldo-content-offers.json`, aplicar `docs/pendientes/drop_content_offers.sql`, registrarla como migración **00171**, y limpiar el tipo de `database.ts`, el caso del puente de `verify-sales.mjs` y la exención de `no-content-offers.test.ts`.
+- **`content_offers` ya se borró** (00171, después del deploy).
 - **Se perdió a propósito** el borrador de precio (preparar un precio y publicarlo después) y el contador de ventas por versión. El cambio de precio es inmediato.
 - **Precio 0 = sin precio**: la variante no se ofrece en una venta nueva. No hay un precio «de cortesía» de 0.
 - **Actor en el historial**: si una escritura no trae sesión ni `updated_by`, queda como `system`; si trae un `updated_by` viejo sin sesión (rarísimo: un proceso interno que no lo actualiza), se le atribuye a esa persona.

@@ -180,46 +180,18 @@ try {
     check(!!badMethod, "un metodo que no existe se rechaza");
     const { error: goodMethod } = await svc.from("workspaces").update({ enabled_payment_methods: ["wise", "binance"] }).eq("id", ws.id);
     check(!goodMethod, "y un subconjunto valido se acepta", goodMethod?.message);
-    console.log("\n— 00160: Productos absorbe content_offers —");
+    console.log("\n— 00160 / 00171: Productos reemplazo a content_offers —");
     {
-      const [{ n: huerfanas }] = sql("select count(*)::int n from public.content_offers o left join public.products p on p.id = o.id where p.id is null");
-      check(huerfanas === 0, "toda oferta de content_offers tiene su producto con el MISMO id");
-      const [{ n: divergentes }] = sql("select count(*)::int n from public.content_offers o join public.products p on p.id = o.id where p.status <> o.status or p.archived_at is distinct from o.archived_at or p.name <> o.name");
-      check(divergentes === 0, "y con el mismo nombre, estado y archivado");
+      check((sql("select to_regclass('public.content_offers') is null as gone"))[0].gone === true, "la tabla content_offers ya no existe (00171)");
+      check((sql("select count(*)::int n from pg_proc where proname = 'content_offers_bridge_to_products'"))[0].n === 0, "y su puente tampoco");
       const fks = sql("select conname, pg_get_constraintdef(oid) d from pg_constraint where conname in ('content_ideas_offer_id_fkey','content_posts_offer_id_fkey')");
       check(fks.length === 2 && fks.every((f) => /REFERENCES products\(id\) ON DELETE SET NULL/.test(f.d)), "las FK de ideas y piezas apuntan a products (ON DELETE SET NULL)");
-
-      // El puente: lo que el codigo viejo escribe en content_offers aparece en products.
-      const { data: viejo, error: viejoErr } = await svc.from("content_offers")
-        .insert({ workspace_id: ws.id, name: "zz-test puente", price_usd: 800 }).select("id").single();
-      check(!viejoErr && !!viejo, "el codigo viejo todavia puede crear un producto en content_offers", viejoErr?.message);
-      const { data: puente } = await svc.from("products").select("id, name, status").eq("id", viejo.id).maybeSingle();
-      check(puente?.name === "zz-test puente" && puente?.status === "active", "el puente lo copia a products con el mismo id");
-      const { data: vars } = await svc.from("product_variants").select("id, name").eq("product_id", viejo.id);
-      check(vars?.length === 1 && vars[0].name === "Estándar", "y le crea su variante Estandar");
-      const { data: pv } = await svc.from("product_variants").select("price").eq("id", vars[0].id).single();
-      check(Number(pv?.price) === 800, "y le copia el precio (800) a la variante");
-
-      // Una pieza puede apuntar a ese producto (la FK ahora es a products).
+      const { data: prodIdea } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test producto de idea" }).select("id").single();
       const { data: idea, error: ideaErr } = await svc.from("content_ideas")
-        .insert({ workspace_id: ws.id, title: "zz-test idea con producto", offer_id: viejo.id }).select("id, offer_id").single();
-      check(!ideaErr && idea?.offer_id === viejo.id, "una idea de Contenido se clasifica con ese producto sin error de FK", ideaErr?.message);
+        .insert({ workspace_id: ws.id, title: "zz-test idea con producto", offer_id: prodIdea.id }).select("id, offer_id").single();
+      check(!ideaErr && idea?.offer_id === prodIdea.id, "una idea de Contenido se clasifica con un producto sin error de FK", ideaErr?.message);
       const { error: fkBad } = await svc.from("content_ideas").update({ offer_id: randomUUID() }).eq("id", idea.id);
       check(!!fkBad, "y un producto que no existe se rechaza");
-
-      // Cambiar el precio en la tabla vieja: el puente lo copia a la variante.
-      await svc.from("content_offers").update({ price_usd: 900 }).eq("id", viejo.id);
-      const { data: pv2 } = await svc.from("product_variants").select("price").eq("id", vars[0].id).single();
-      check(Number(pv2?.price) === 900, "cambiar el precio en la tabla vieja actualiza el precio de la variante");
-
-      // Cambiar el estado: el puente lo copia junto con archived_at.
-      await svc.from("content_offers").update({ status: "discontinued", archived_at: new Date().toISOString() }).eq("id", viejo.id);
-      const { data: disc } = await svc.from("products").select("status, archived_at").eq("id", viejo.id).single();
-      check(disc?.status === "discontinued" && !!disc?.archived_at, "y el cambio de estado");
-
-      // Aplicarla dos veces no duplica: las 3 ofertas reales tienen exactamente 1 variante y 1 version.
-      const [{ n: dup }] = sql("select count(*)::int n from (select v.product_id from public.product_variants v join public.content_offers o on o.id = v.product_id where o.workspace_id <> '" + ws.id + "' group by v.product_id having count(*) > 1) x");
-      check(dup === 0, "las ofertas migradas no tienen variantes duplicadas");
     }
 
     console.log("\n— 00170: el historial del catalogo lo escribe la base —");
@@ -280,11 +252,6 @@ try {
       const nMember = (await log(prod.id)).length;
       await member.client.from("products").update({ name: "zz-test lo cambia el member" }).eq("id", prod.id);
       check((await log(prod.id)).length === nMember, "un cambio rechazado por la RLS no deja ninguna fila");
-
-      // El puente (content_offers) tambien queda registrado: lo escribe la misma base.
-      const { data: viejo2 } = await svc.from("content_offers").insert({ workspace_id: ws.id, name: "zz-test puente log", price_usd: 50 }).select("id").single();
-      const bLog = await log(viejo2.id);
-      check(actions(bLog).includes("product.created"), "un alta hecha por el codigo viejo (puente de content_offers) tambien deja 'product.created'");
 
       // Borrar el workspace entero no se atora con el trigger (se prueba en la limpieza de abajo).
     }
