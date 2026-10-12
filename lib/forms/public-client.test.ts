@@ -27,14 +27,9 @@ describe("describeFailure", () => {
     });
   });
 
-  it("ya respondió, el formulario cambió, el captcha y no disponible", () => {
+  it("ya respondió, el formulario cambió y no disponible", () => {
     expect(describeFailure(409, { error: "already_answered" }).kind).toBe("already_answered");
     expect(describeFailure(409, { error: "form_changed" }).kind).toBe("form_changed");
-    expect(describeFailure(400, { error: "captcha_failed" }).kind).toBe("captcha");
-    expect(describeFailure(503, { error: "captcha_unavailable", message: "Probá de nuevo en un momento." })).toMatchObject({
-      kind: "captcha",
-      message: "Probá de nuevo en un momento.",
-    });
     expect(describeFailure(404, { error: "unavailable" }).kind).toBe("unavailable");
   });
 
@@ -66,7 +61,6 @@ describe("el pedido", () => {
   it("buildPayload arma la forma que valida el servidor", () => {
     const payload = buildPayload({
       idempotencyKey: "k",
-      turnstileToken: "t",
       versionId: "v",
       answers: { a: 1 },
       honeypot: "",
@@ -77,7 +71,6 @@ describe("el pedido", () => {
     });
     expect(payload).toMatchObject({
       idempotency_key: "k",
-      turnstile_token: "t",
       version_id: "v",
       honeypot: "",
       client_meta: { timezone: "America/Costa_Rica" },

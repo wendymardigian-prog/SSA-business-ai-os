@@ -52,7 +52,7 @@ export default function Contacto() {
 - `variant="card"` (por defecto) lo pone en una tarjeta; `variant="plain"`, sin marco. `className` suma clases.
 - **Varios en la misma página** funcionan cada uno por su lado.
 - Si el formulario no está disponible (en borrador, pausado, archivado o con otro nombre), la página **no se rompe**: en su lugar aparece "Este formulario no está disponible por ahora".
-- El envío va por el mismo camino que `/f/<slug>`: captcha, un solo envío por intento, condiciones, archivos, pantalla de éxito o redirección, vistas e inicios en las métricas. En la respuesta queda `origen: sitio` y la ruta de la página.
+- El envío va por el mismo camino que `/f/<slug>`: honeypot y tope por IP, un solo envío por intento, condiciones, archivos, pantalla de éxito o redirección, vistas e inicios en las métricas. En la respuesta queda `origen: sitio` y la ruta de la página.
 
 ## SEO
 

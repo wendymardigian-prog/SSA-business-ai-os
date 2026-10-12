@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  *
  * `multipart/form-data`: un campo `payload` (JSON) y los archivos en campos
  * `file:<clave del campo>`. Sin sesión: la defensa es el tope por IP, el
- * honeypot, Turnstile, la idempotencia y la validación total del servidor, todo
+ * honeypot, la idempotencia y la validación total del servidor, todo
  * en `lib/forms/submit.ts`. Esta ruta solo lee el pedido y llama.
  */
 export async function POST(request: NextRequest, context: { params: Promise<{ slug: string }> }) {

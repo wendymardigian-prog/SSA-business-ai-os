@@ -6,7 +6,6 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath, revalidateT
 vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: mocks.permission }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
-vi.mock("@/lib/forms/server-ports", () => ({ isTurnstileConfigured: async () => true }));
 
 import { changeFormSlug, publishForm, setFormStatus } from "./forms";
 import { newField } from "@/lib/forms/fields";

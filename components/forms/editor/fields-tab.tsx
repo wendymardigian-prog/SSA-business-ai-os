@@ -65,7 +65,6 @@ export function FieldsTab({
     contract: type === "contract" && contract ? { text: draft.definition.contractText ?? "", version_number: 0, title: contract.title, accept_label: contract.acceptLabel } : null,
     signature_required: type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: null,
-    turnstile_site_key: null,
   };
 
   const preview = (

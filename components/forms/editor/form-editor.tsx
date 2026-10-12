@@ -46,7 +46,6 @@ export function FormEditor({
   form,
   versions,
   canManage,
-  turnstileConfigured,
   appUrl,
   timeZone,
   extras,
@@ -54,7 +53,6 @@ export function FormEditor({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
-  turnstileConfigured: boolean;
   appUrl: string;
   timeZone: string;
   extras: EditorExtras;
@@ -140,10 +138,9 @@ export function FormEditor({
         type: form.type,
         slug,
         definition: draft.definition,
-        turnstileConfigured,
         extraChecks: typeChecks(form.type, { surveyConfig, contractConfig }),
       }),
-    [form.type, slug, draft.definition, turnstileConfigured, surveyConfig, contractConfig],
+    [form.type, slug, draft.definition, surveyConfig, contractConfig],
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
@@ -312,7 +309,6 @@ export function FormEditor({
                 form={{ ...form, slug, status }}
                 versions={versions}
                 canManage={canManage}
-                turnstileConfigured={turnstileConfigured}
                 appUrl={appUrl}
                 published={status === "published"}
                 onSlugChanged={setSlug}

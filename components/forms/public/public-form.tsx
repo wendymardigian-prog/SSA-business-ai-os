@@ -25,7 +25,6 @@ import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import { submitOriginFields } from "@/lib/forms/site-submit";
 import { useEmbedBridge } from "@/components/scheduling/booker/use-embed-bridge";
 import { FIELD_RENDERERS } from "./fields/registry";
-import { TurnstileWidget } from "./turnstile-widget";
 import { ContractReader, ContractSigning } from "./contract-block";
 import { canSign } from "@/lib/forms/contract/signature-input";
 
@@ -112,9 +111,6 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
   const [done, setDone] = useState<RenderedSuccess | null>(null);
   const [alreadyAnswered, setAlreadyAnswered] = useState(false);
   const [changed, setChanged] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
-  const [captchaReset, setCaptchaReset] = useState(0);
-  const [captchaBroken, setCaptchaBroken] = useState(false);
   const [honeypot, setHoneypot] = useState("");
   // Contrato: la casilla de aceptación y la firma dibujada.
   const [accepted, setAccepted] = useState(false);
@@ -227,16 +223,10 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       setGlobalError(!accepted ? "Tenés que aceptar el contrato para poder firmarlo." : "Falta tu firma. Dibujala en el recuadro.");
       return;
     }
-    if (!token) {
-      setGlobalError("Esperá un momento a que termine la verificación e intentá de nuevo.");
-      return;
-    }
-
     setSubmitting(true);
     try {
       const payload = buildPayload({
         idempotencyKey: idempotencyKey.current,
-        turnstileToken: token,
         versionId: form.version_id,
         answers: answersForSubmit(fields, answers),
         honeypot,
@@ -285,9 +275,6 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
       setGlobalError("No pudimos enviar tu respuesta. Revisá tu conexión e intentá de nuevo.");
     } finally {
       setSubmitting(false);
-      // El token de Turnstile es de un solo uso: se pide otro para el próximo intento.
-      setToken(null);
-      setCaptchaReset((n) => n + 1);
     }
   }
 
@@ -399,15 +386,6 @@ export function PublicForm({ form, params, mode, explicitPrefill, preview = fals
           <input type="text" name="website" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} />
         </label>
       </div>
-
-      {form.turnstile_site_key && !preview ? (
-        <TurnstileWidget siteKey={form.turnstile_site_key} onToken={setToken} onError={() => setCaptchaBroken(true)} resetKey={captchaReset} />
-      ) : null}
-      {captchaBroken && (
-        <p role="alert" className="text-xs text-destructive">
-          No se pudo cargar la verificación. Si usás un bloqueador de anuncios, desactivalo para esta página y recargá.
-        </p>
-      )}
 
       {globalError && (
         <div role="alert" className="text-center text-sm text-destructive">

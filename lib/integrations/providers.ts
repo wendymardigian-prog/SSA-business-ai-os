@@ -64,15 +64,14 @@ export type ConnectionKind = "api_key" | "oauth_app" | "system_token" | "qr" | "
  * son dos decisiones de dos personas distintas. El agrupamiento fino que se
  * pierde lo recuperan los chips de abajo.
  */
-export type ProviderSection = "connections" | "ai" | "security";
+export type ProviderSection = "connections" | "ai";
 
 /** Titulos de las secciones, en orden. El orden de esta lista es el de la pantalla. */
-export const SECTION_ORDER: readonly ProviderSection[] = ["connections", "ai", "security"];
+export const SECTION_ORDER: readonly ProviderSection[] = ["connections", "ai"];
 
 export const SECTION_LABELS: Record<ProviderSection, string> = {
   connections: "Conexiones",
   ai: "Inteligencia artificial",
-  security: "Seguridad",
 };
 
 /**
@@ -666,44 +665,6 @@ export const PROVIDERS: ProviderDefinition[] = [
       },
     ],
     docsUrl: "https://console.groq.com/keys",
-  },
-
-  // ── Seguridad ────────────────────────────────────────────────────────────
-  {
-    id: "turnstile",
-    type: "captcha",
-    connection: "api_key",
-    section: "security",
-    visible: true,
-    label: "Cloudflare Turnstile",
-    description:
-      "El captcha de los formularios públicos: frena los envíos de bots sin pedirle a la gente que resuelva un puzzle. Sin esto no se puede publicar ningún formulario.",
-    secretName: SECRET_NAMES.turnstileSecretKey,
-    minKeyLength: 16,
-    secretFields: [
-      {
-        key: "secret_key",
-        label: "Secret key",
-        hint: "La clave secreta del sitio en Cloudflare. Se guarda cifrada y no se vuelve a mostrar.",
-        secretName: SECRET_NAMES.turnstileSecretKey,
-        required: true,
-        minLength: 16,
-      },
-    ],
-    configFields: [
-      {
-        key: "site_key",
-        label: "Site key",
-        hint: "La clave pública del sitio. Va en la página del formulario. Acordate de agregar en Cloudflare el dominio de la app y el de cada web donde lo embebas.",
-        placeholder: "0x4AAAAAAA...",
-        required: true,
-        validate: (value) =>
-          /^[0-9A-Za-z_-]{10,64}$/.test(value.trim())
-            ? null
-            : "Tiene que ser la site key de Cloudflare: letras y números, sin espacios",
-      },
-    ],
-    docsUrl: "https://dash.cloudflare.com/?to=/:account/turnstile",
   },
 ];
 

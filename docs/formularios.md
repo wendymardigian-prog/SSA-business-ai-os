@@ -23,7 +23,7 @@ Cuatro tablas nuevas. Todas con RLS; **escribe solo el servidor**.
 - `form_submissions`: las respuestas. Idempotencia por `(form_id, idempotency_key)`; "una vez por contacto" por `(form_id, once_key)`. Nunca se borran.
 - `contract_signatures`: una firma por respuesta de contrato, con la huella, la imagen, la metadata legal y el estado del PDF y del email. **La evidencia no se puede cambiar, ni con el service role** (trigger).
 
-Además: `flows.form_id` (las automatizaciones creadas desde el formulario), los buckets privados `form-uploads` y `contracts` (sin policies: solo el servidor), y la integración `captcha` (Cloudflare Turnstile, con su secret key en Vault). **Las vistas, los inicios y los rechazados no tienen tabla**: van a `analytics_events` (`form_view`, `form_start`, `form_rejected`, sin contacto ni datos personales); los envíos salen de `form_submissions`.
+Además: `flows.form_id` (las automatizaciones creadas desde el formulario), los buckets privados `form-uploads` y `contracts` (sin policies: solo el servidor). **Las vistas, los inicios y los rechazados no tienen tabla**: van a `analytics_events` (`form_view`, `form_start`, `form_rejected`, sin contacto ni datos personales); los envíos salen de `form_submissions`.
 
 Quién ve qué (`can_view_forms`, `can_see_form_submission`): Owner y Admin ven todo; un Member ve las respuestas de **sus** contactos (la misma regla de alcance de leads); un rol personalizado necesita `forms.view`. Administrar (`forms.manage`) es aparte. Los totales de métricas son conteos del formulario entero y los ve cualquiera que pase `can_view_forms`.
 
@@ -35,21 +35,22 @@ Migraciones: **00150** a **00158** (la 00158 corrige "una vez por contacto"; ver
 
 ## El envío (`lib/forms/submit.ts`), en orden
 
-1. Tope por IP (20/h) y por formulario (5/h). Un envío cortado por el tope no deja rastro.
+1. Tope por IP (60/h) y por formulario (30/h): valores holgados a propósito, porque una oficina o un evento comparten la misma IP. Un envío cortado por el tope no deja rastro.
 2. Formulario disponible (versión vigente).
 3. Forma del pedido (Zod).
-4. **Idempotencia, antes que el captcha**: si ya existe una respuesta con esa clave se devuelve la misma sin verificar Turnstile.
+4. **Idempotencia**: si ya existe una respuesta con esa clave se devuelve la misma.
 5. Honeypot: lleno → éxito falso, sin guardar, con `form_rejected`.
-6. **Turnstile en el servidor** (la secret key vive en Vault). Si Cloudflare no responde: 503; jamás se acepta sin verificar.
-7. Versión: si se republicó mientras se completaba y ya no valida, 409 `form_changed`.
-8. **Validación total**, con la visibilidad recalculada (lo oculto por condición se descarta) y el mismo `validateSubmission` que corre en el navegador.
-9. Archivos por su **tipo real** (los primeros bytes, no el nombre) a un bucket privado.
-10. Ocultos `fixed`: los pone el servidor.
-11. **Contrato**: casilla aceptada, firma válida (PNG real, ≤ 200 KB, con trazos) y email del firmante; la imagen va al bucket antes de la RPC.
-12. **RPC `submit_form_response`** (una transacción): lock → contacto → respuesta → firma si es contrato → evento de automatización.
-13. Después del commit, en `try/catch`: el toque de atribución, la notificación al equipo y la limpieza. Si fallan, el envío sigue siendo un éxito.
+6. Versión: si se republicó mientras se completaba y ya no valida, 409 `form_changed`.
+7. **Validación total**, con la visibilidad recalculada (lo oculto por condición se descarta) y el mismo `validateSubmission` que corre en el navegador.
+8. Archivos por su **tipo real** (los primeros bytes, no el nombre) a un bucket privado.
+9. Ocultos `fixed`: los pone el servidor.
+10. **Contrato**: casilla aceptada, firma válida (PNG real, ≤ 200 KB, con trazos) y email del firmante; la imagen va al bucket antes de la RPC.
+11. **RPC `submit_form_response`** (una transacción): lock → contacto → respuesta → firma si es contrato → evento de automatización.
+12. Después del commit, en `try/catch`: el toque de atribución, la notificación al equipo y la limpieza. Si fallan, el envío sigue siendo un éxito.
 
-Todo lo que toca base, captcha y Storage entra por `SubmitPorts`: el orden se prueba entero sin nada real, y `verify-forms.mjs` lo corre con los puertos de verdad. Los logs llevan solo `form_id`, `submission_id` y el resultado: nunca respuestas, emails, teléfonos ni la firma.
+**No hay captcha.** La protección anti-spam es honeypot + tope por IP + idempotencia, y publicar no depende de ninguna configuración externa. Cloudflare Turnstile se sacó el 12/10/2026 y está documentado para retomarlo en [docs/pendientes/turnstile-captcha.md](pendientes/turnstile-captcha.md).
+
+Todo lo que toca base y Storage entra por `SubmitPorts`: el orden se prueba entero sin nada real, y `verify-forms.mjs` lo corre con los puertos de verdad. Los logs llevan solo `form_id`, `submission_id` y el resultado: nunca respuestas, emails, teléfonos ni la firma.
 
 ## El contacto
 
@@ -96,7 +97,7 @@ El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante
 - La definición pública **solo** por `get_public_form`.
 - La huella sobre el texto **guardado**, calculada en la base.
 - La idempotencia es un índice único, no una comprobación previa.
-- Turnstile se verifica en el servidor, con la clave en Vault.
+- La protección anti-spam es honeypot + tope por IP + idempotencia (el captcha está en `docs/pendientes/turnstile-captcha.md`).
 - Las claves de atribución están en **un solo lugar** (`lib/attribution/keys.ts`).
 - Un `service_id` o `sale_id` suelto nunca se guarda: solo viaja dentro de un link firmado válido.
 - Los eventos de automatización llevan solo escalares y nunca `booking_id`.
@@ -105,7 +106,7 @@ El mismo `embed.js` de la Agenda con el link `f/<slug>`, el modo botón flotante
 ## Scripts de verificación
 
 ```
-node scripts/verify-forms.mjs   # RLS, la huella, la RPC, el envío real (Turnstile y Resend simulados), el PDF, la atribución
+node scripts/verify-forms.mjs   # RLS, la huella, la RPC, el envío real (Resend simulado), el PDF, la atribución
 ```
 
 Crea y limpia sus datos (prefijo `zz-test-`) y no se corre en simultáneo con los otros `verify-*`.

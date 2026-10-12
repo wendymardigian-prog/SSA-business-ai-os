@@ -88,7 +88,7 @@ export function MetricsView({
             <Stat label="Conversión" value={formatPercent(total.conversion)} hint="Envíos sobre vistas" />
           </div>
           <p className="text-xs text-muted-foreground">
-            Rechazados por el captcha o el campo trampa: <span className="font-medium text-foreground">{total.rejected}</span> · Marcados como spam: <span className="font-medium text-foreground">{total.spam}</span>
+            Rechazados por el campo trampa: <span className="font-medium text-foreground">{total.rejected}</span> · Marcados como spam: <span className="font-medium text-foreground">{total.spam}</span>
           </p>
 
           {empty ? (

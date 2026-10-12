@@ -849,8 +849,9 @@ completa y puede disparar automatizaciones. El resumen del modulo esta en
   firma no se puede cambiar (trigger, tambien para el service role).
 - **La idempotencia es un indice unico** `(form_id, idempotency_key)`, no una comprobacion
   previa. "Una vez por contacto" es `(form_id, once_key)` y la clave guardada es `contact:<id>`.
-- **Turnstile se verifica en el servidor**, con la secret key en Vault. Si Cloudflare no
-  responde: 503; nunca se acepta sin verificar. Los tests no llaman a Cloudflare.
+- **La proteccion anti-spam es honeypot + tope por IP + idempotencia.** No hay captcha:
+  publicar un formulario no depende de ninguna configuracion externa. Turnstile esta
+  documentado para retomarlo en `docs/pendientes/turnstile-captcha.md`.
 - **Las claves de atribucion estan en UN solo lugar: `lib/attribution/keys.ts`.** Es un
   superconjunto de la lista de la Agenda (que no se toca). Sumar una clave es sumarla ahi.
 - **`service_id` y `sale_id` solo viajan dentro de un link firmado valido** (`signed-link.ts`);
@@ -870,7 +871,7 @@ completa y puede disparar automatizaciones. El resumen del modulo esta en
 ## Scripts de verificacion
 
 ```
-node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Turnstile y Resend simulados), el PDF y la atribucion
+node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Resend simulado), el PDF y la atribucion
 ```
 
 Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.

@@ -1,9 +1,8 @@
 /**
  * Formularios contra la base real (FO1 y los bloques que siguen).
  *
- * Base real, proveedores simulados: Turnstile responde con un `fetch` de mentira
- * que imita las claves de prueba de Cloudflare (`1x…` aprueba, `2x…` rechaza); no
- * se llama a Cloudflare, ni a Resend, ni a ningun proveedor de IA.
+ * Base real, proveedores simulados: no se llama a Resend ni a ningun proveedor de IA.
+ * (El captcha se saco en la correccion R1; ver docs/pendientes/turnstile-captcha.md.)
  *
  * Lo que prueba es lo que un test con Vitest no puede: que la BASE haga cumplir
  * las reglas (RLS, unicos, la huella del contrato, la lista blanca publica, la
@@ -24,7 +23,7 @@ import { contractTextSha256, hashContractText } from "../lib/forms/contract-hash
 import { findForbiddenKeys, containsText } from "../lib/forms/public-definition";
 import { newField, type FormField } from "../lib/forms/fields";
 import { hashIp } from "../lib/scheduling/antispam";
-import { deleteSecret, storeSecret } from "../lib/vault";
+import { deleteSecret } from "../lib/vault";
 import { signFormLink, verifyFormLink, createToken, getOrCreateLinkSecret } from "../lib/forms/signed-link";
 import { recordTouch } from "../lib/contacts/touch";
 import { resolveBankVariables } from "../lib/response-assets/bank-variables";
@@ -83,29 +82,12 @@ function sql(query: string): Array<Record<string, unknown>> {
   return (JSON.parse(out).rows ?? []) as Array<Record<string, unknown>>;
 }
 
-// ── Turnstile simulado: imita las claves de prueba de Cloudflare ─────────────
-const turnstileCalls: Array<{ secret: string; idempotencyKey: string | null }> = [];
-const fakeTurnstile = (async (_url: unknown, init?: RequestInit) => {
-  const body = new URLSearchParams(String(init?.body));
-  const secret = body.get("secret") ?? "";
-  turnstileCalls.push({ secret: secret.slice(0, 2), idempotencyKey: body.get("idempotency_key") });
-  const approve = secret.startsWith("1x");
-  return {
-    ok: true,
-    status: 200,
-    json: async () => (approve ? { success: true } : { success: false, "error-codes": ["invalid-input-response"] }),
-  } as Response;
-}) as typeof fetch;
-
-const TEST_SECRET_OK = "1x0000000000000000000000000000000AA"; // clave publica de prueba de Cloudflare
-const TEST_SECRET_NO = "2x0000000000000000000000000000000AA";
-
 const usedLimitKeys = new Set<string>();
 const uploaded: string[] = [];
 
 function ports(ws: string, over: Partial<SubmitPorts> = {}): SubmitPorts {
   void ws;
-  const real = createSubmitPorts(svc, { fetchImpl: fakeTurnstile });
+  const real = createSubmitPorts(svc);
   return {
     ...real,
     limit: async (spec) => {
@@ -282,9 +264,10 @@ try {
   // ── 00154: el CHECK conserva todo lo anterior ──────────────────────────────
   console.log("\n— 00154: integration_configs.type —");
   const integrationCheck = String(sql("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'integration_configs_type_check'")[0]?.d);
-  for (const t of ["channel", "ai_provider", "email_provider", "social_network", "publishing_service", "google", "meta", "captcha"]) {
+  for (const t of ["channel", "ai_provider", "email_provider", "social_network", "publishing_service", "google", "meta"]) {
     check(integrationCheck.includes(`'${t}'`), `el CHECK de integration_configs.type incluye '${t}'`);
   }
+  check(!integrationCheck.includes("'captcha'"), "...y ya NO incluye 'captcha' (R1: se saco Turnstile)");
 
   // ── F8: publicar, versiones y huella ───────────────────────────────────────
   console.log("\n— F8: publicar, versiones y la huella del contrato —");
@@ -366,7 +349,7 @@ try {
   const pubUnpublished = await anon.rpc("get_public_form", { p_slug: publicSlug });
   check((pubUnpublished.data as { status?: string })?.status === "unavailable", "un formulario en borrador devuelve unavailable");
   await svc.rpc("publish_form_version", { p_form_id: pForm!.id, p_actor: owner.id });
-  await svc.from("integration_configs").insert({ workspace_id: ws.id, type: "captcha", provider: "turnstile", config: { site_key: "1x00000000000000000000AA" }, is_active: true });
+  check(true, "se publica sin ninguna integracion configurada (R1: publicar no depende de nada externo)");
 
   const pub = await anon.rpc("get_public_form", { p_slug: publicSlug });
   check(!pub.error && (pub.data as { status?: string })?.status === "available", "anon obtiene la definicion publica de un formulario publicado", pub.error?.message);
@@ -377,7 +360,7 @@ try {
   const pubFields = (pub.data as { fields: Array<{ key: string; type: string; hidden?: unknown }> }).fields;
   check(pubFields.some((f) => f.key === "campana" && f.type === "hidden"), "un oculto de URL si se devuelve, solo con su fuente");
   check(!pubFields.some((f) => f.key === "canal"), "el oculto fijo no se devuelve");
-  check((pub.data as { turnstile_site_key?: string }).turnstile_site_key === "1x00000000000000000000AA", "devuelve la site key publica de Turnstile");
+  check(!("turnstile_site_key" in (pub.data as object)), "get_public_form NO devuelve turnstile_site_key (R1)");
   check(!("success" in (pub.data as object)), "no devuelve la configuracion de exito");
   const sameKeys = (pub.data as { fields: Array<Record<string, unknown>> }).fields.every((f) => Object.keys(f).every((k) => ["key", "type", "label", "help", "placeholder", "required", "options", "min", "max", "file", "consentText", "visibility", "prefill", "hidden"].includes(k)));
   check(sameKeys, "cada campo publico solo tiene claves de la lista blanca (paridad con toPublicField)");
@@ -399,15 +382,11 @@ try {
   check(!!adminPublish, "ni un Admin desde el navegador puede llamar a publish_form_version (la accion verifica el permiso)");
 
   // ── F12: el envio, de punta a punta ────────────────────────────────────────
-  console.log("\n— F12: el envio seguro (codigo real, Turnstile simulado) —");
-  const stored = await storeSecret(svc, ws.id, "turnstile_secret_key", TEST_SECRET_OK);
-  check(stored.ok, "se guarda la secret key de prueba en Vault", stored.ok ? undefined : stored.error);
-
+  console.log("\n— F12: el envio seguro (codigo real, sin captcha) —");
   const key1 = randomUUID();
   const { data: pubVersion } = await svc.from("forms").select("current_version_id").eq("id", pForm!.id).single();
   const basePayload = (key: string, answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
     idempotency_key: key,
-    turnstile_token: "token-de-prueba",
     version_id: pubVersion!.current_version_id,
     answers,
     honeypot: "",
@@ -434,17 +413,15 @@ try {
   check(!JSON.stringify(saved.meta).includes("203.0.113"), "la IP no se guarda en claro en meta");
   check(String((saved.meta as { ip_hash?: string }).ip_hash ?? "").length > 8, "meta guarda el hash de la IP");
   check(saved.status === "received", "con email mapeado, la respuesta crea el contacto y queda 'received' (FO2)");
-  const afterConcurrent = turnstileCalls.length;
   const again = await submitForm(ports(ws.id), input(publicSlug, basePayload(key1, { nombre: "Ana", email: "ana@example.test", plan: "A" })));
-  check(again.body.duplicate === true && turnstileCalls.length === afterConcurrent, "un reintento con la misma clave no vuelve a verificar Turnstile");
-  check(turnstileCalls.some((c) => c.idempotencyKey === key1), "Turnstile recibe la clave de idempotencia");
+  check(again.body.duplicate === true, "un reintento con la misma clave devuelve la misma respuesta (duplicate)");
 
   const noEmail = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Sin email", plan: "A" })));
   check(noEmail.status === 400 && (noEmail.body.fields as Record<string, string>)?.email, "falta un obligatorio visible: 400 con el campo");
   const badOption = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "X", email: "x@example.test", plan: "Z" })));
   check(badOption.status === 400, "una opcion que no existe: 400");
 
-  // Honeypot y captcha: dejan form_rejected, sin datos personales.
+  // Honeypot: deja form_rejected, sin datos personales.
   const rejectedBefore = (await svc.from("analytics_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).eq("event_type", "form_rejected")).count ?? 0;
   const honey = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Bot", email: "bot@example.test" }, { honeypot: "http://spam" })));
   check(honey.status === 200 && honey.body.ok === true, "honeypot lleno: 200 falso");
@@ -452,18 +429,13 @@ try {
   check((honeyRow ?? []).length === 0, "...y no se guarda nada");
   const rejectedMid = (await svc.from("analytics_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).eq("event_type", "form_rejected")).count ?? 0;
   check(rejectedMid === rejectedBefore + 1, "queda un form_rejected por el honeypot");
-  const badCaptcha = await submitForm(ports(ws.id, { turnstileSecret: async () => TEST_SECRET_NO }), input(publicSlug, basePayload(randomUUID(), { nombre: "Otro", email: "o@example.test" })));
-  check(badCaptcha.status === 400 && badCaptcha.body.error === "captcha_failed", "Turnstile rechaza: 400 captcha_failed");
   const { data: rejectedRows } = await svc.from("analytics_events").select("contact_id, flow_id, metadata").eq("workspace_id", ws.id).eq("event_type", "form_rejected");
-  check((rejectedRows ?? []).length === rejectedBefore + 2, "...y queda otro form_rejected");
+  check((rejectedRows ?? []).length === rejectedBefore + 1, "...y no hay ningun otro rechazo");
   check((rejectedRows ?? []).every((r) => r.contact_id === null && r.flow_id === null), "los form_rejected no tienen contacto ni flow");
   const meta = (rejectedRows ?? []).map((r) => Object.keys((r.metadata ?? {}) as object).sort().join(","));
   check(meta.every((k) => k === "form_id,reason,version_id"), "la metadata de un rechazo es solo {form_id, reason, version_id}", meta.join(" | "));
-  const netFail = await submitForm(
-    ports(ws.id, { verifyTurnstile: async () => ({ ok: false as const, codes: ["network"] }) }),
-    input(publicSlug, basePayload(randomUUID(), { nombre: "Red", email: "r@example.test" })),
-  );
-  check(netFail.status === 503, "Cloudflare no responde: 503 y no se acepta sin verificar");
+  const noToken = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Sin token", email: "st@example.test" })));
+  check(noToken.status === 200 && noToken.body.ok === true, "un envio sin token de captcha se guarda (R1)", JSON.stringify(noToken.body));
 
   // Archivos: tipo real, tamano y carpeta.
   const fileKey = randomUUID();
@@ -586,7 +558,7 @@ try {
   const formIdIndex = sql("select indexdef from pg_indexes where indexname='idx_flows_form'");
   check(String(formIdIndex[0]?.indexdef ?? "").includes("WHERE (form_id IS NOT NULL)"), "idx_flows_form es parcial (solo flows con formulario)");
 
-  console.log("\n— F16/F17/F18: el contacto, el toque y el aviso (codigo real, Turnstile simulado) —");
+  console.log("\n— F16/F17/F18: el contacto, el toque y el aviso (codigo real, sin captcha) —");
   const { data: tag } = await svc.from("tags").insert({ workspace_id: ws.id, name: "zz-test calificado" }).select("id").single();
   const { data: customDef } = await svc.from("custom_field_definitions").insert({ workspace_id: ws.id, name: "zz-test empresa", slug: "zz_test_empresa", type: "text" }).select("id").single();
   const fo2Slug = `zz-test-fo2-${Date.now()}`;
@@ -623,7 +595,6 @@ try {
 
   const fo2Payload = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
     idempotency_key: randomUUID(),
-    turnstile_token: "token-de-prueba",
     version_id: fo2Pub!.current_version_id,
     answers,
     honeypot: "",
@@ -855,7 +826,7 @@ try {
   const { data: sVer } = await svc.from("forms").select("current_version_id").eq("id", sForm!.id).single();
   const sendSurvey = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
     submitForm(ports(ws.id), input(surveySlug, {
-      idempotency_key: randomUUID(), turnstile_token: "t", version_id: sVer!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page", ...extra,
+      idempotency_key: randomUUID(), version_id: sVer!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page", ...extra,
     }));
   const rowById = async (id: unknown) => (await svc.from("form_submissions").select("*").eq("id", String(id)).single()).data!;
 
@@ -883,7 +854,7 @@ try {
   await svc.rpc("publish_form_version", { p_form_id: stForm!.id, p_actor: owner.id });
   await svc.from("forms").update({ status: "published" }).eq("id", stForm!.id);
   const { data: stVer } = await svc.from("forms").select("current_version_id").eq("id", stForm!.id).single();
-  const starsOut = await submitForm(ports(ws.id), input(starsSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: stVer!.current_version_id, answers: { estrellas: 4 }, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page" }));
+  const starsOut = await submitForm(ports(ws.id), input(starsSlug, { idempotency_key: randomUUID(), version_id: stVer!.current_version_id, answers: { estrellas: 4 }, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page" }));
   const starsRow = await rowById(starsOut.body.submission_id);
   check(starsRow.score === 4 && starsRow.nps_category === null, "estrellas: guarda el puntaje y NO una categoria NPS");
 
@@ -943,7 +914,7 @@ try {
   const { data: kVer1 } = await svc.from("forms").select("current_version_id").eq("id", kForm!.id).single();
   const v1Id = kVer1!.current_version_id!;
   const sendContract = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}, versionId = v1Id, ip = nextIp()) =>
-    submitForm(ctPorts(), { ...input(contractSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: versionId, answers, honeypot: "", attribution: { utm_source: "meta" }, client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, origin: "public_page", ...extra }, [], ip), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
+    submitForm(ctPorts(), { ...input(contractSlug, { idempotency_key: randomUUID(), version_id: versionId, answers, honeypot: "", attribution: { utm_source: "meta" }, client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, origin: "public_page", ...extra }, [], ip), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
   const sig = (over: Record<string, unknown> = {}) => ({ accepted: true, signature: pngUrl, signature_strokes: 3, ...over });
   const ana = { nombre: "Ana Firma", email: "Ana.Firma@Example.test" };
 
@@ -1176,7 +1147,7 @@ try {
   // Limpieza: el secreto de prueba, los archivos subidos, los topes por IP y los datos de prueba.
   const { data: testWorkspaces } = await svc.from("workspaces").select("id").like("name", "zz-test-%");
   for (const w of testWorkspaces ?? []) {
-    for (const name of ["turnstile_secret_key", "forms_link_secret"]) {
+    for (const name of ["forms_link_secret"]) {
       try {
         await deleteSecret(svc, w.id, name);
       } catch {

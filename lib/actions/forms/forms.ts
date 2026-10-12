@@ -12,7 +12,6 @@ import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } fr
 import { DEFAULT_CONTACT_CONFIG, suggestContactMap } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
-import { isTurnstileConfigured } from "@/lib/forms/server-ports";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { formCacheTag } from "@/lib/forms/site-load";
 import type { Json } from "@/lib/types/database";
@@ -339,8 +338,7 @@ export async function changeFormSlug(input: { formId: string; slug: string; conf
 
 /**
  * Publicar. Antes de llamar a la función SQL (que arma la versión en una
- * transacción) se chequea todo lo que se pueda: el link, Turnstile y la
- * definición. Si falta algo, vuelve el motivo.
+ * transacción) se chequea todo lo que se pueda: el link y la definición. Si falta algo, vuelve el motivo.
  */
 export async function publishForm(formId: string): Promise<FormActionResult<{ versionNumber: number; changed: boolean }> & { reasons?: string[] }> {
   const ctx = await context();
@@ -350,12 +348,10 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
   if (!form) return { ok: false, error: "No encontré ese formulario" };
   if (form.status === "archived") return { ok: false, error: "Restauralo para poder publicarlo" };
 
-  const turnstileConfigured = await isTurnstileConfigured(service, ctx.workspace.id);
   const check = checkPublishable({
     type: form.type as FormType,
     slug: form.slug,
     definition: form.draft_definition,
-    turnstileConfigured,
     extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config }),
   });
   if (!check.ok) return { ok: false, error: check.reasons[0], reasons: check.reasons };

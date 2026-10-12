@@ -56,9 +56,7 @@ export type IntegrationType =
   | "social_network"
   | "publishing_service"
   | "google"
-  | "meta"
-  // Formularios (migracion 00154): la card de Cloudflare Turnstile.
-  | "captcha";
+  | "meta";
 
 /** Proveedores que se conectan por OAuth con la app propia del negocio (00082). */
 export type OAuthProvider = "google" | "linkedin" | "threads" | "google_calendar" | "fathom";

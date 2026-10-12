@@ -56,7 +56,6 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
         : null,
     signature_required: form.type === "contract" ? (contract?.signatureRequired ?? true) : false,
     survey: form.type === "survey" ? { scoreFieldKey: (form.survey_config as { scoreFieldKey?: string } | null)?.scoreFieldKey ?? null } : null,
-    turnstile_site_key: null,
   };
 }
 

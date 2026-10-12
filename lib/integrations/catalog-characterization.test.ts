@@ -9,7 +9,9 @@ import { PROVIDERS, providersBySection } from "./providers";
  * secciones, y tiene que seguir pasando igual con dos. Si un dia se suma un
  * proveedor de verdad, este es el test que se actualiza, a proposito.
  *
- * Formularios suma "turnstile" (seccion nueva "Seguridad"): es el unico cambio.
+ * Formularios sumo "turnstile" (seccion "Seguridad") y la correccion R1 (12/10/2026) lo saco:
+ * publicar un formulario no puede depender de un captcha. Por eso el catalogo vuelve a los catorce
+ * de siempre a proposito (ver docs/pendientes/turnstile-captcha.md).
  */
 const IDS = [
   "anthropic",
@@ -24,13 +26,12 @@ const IDS = [
   "resend",
   "resend_inbound",
   "threads",
-  "turnstile",
   "voyage",
   "zernio",
 ];
 
 describe("el conjunto de proveedores no cambia", () => {
-  it("son los catorce de siempre más Turnstile (Formularios)", () => {
+  it("son los catorce de siempre (sin Turnstile desde R1)", () => {
     expect(PROVIDERS.map((p) => p.id).sort()).toEqual(IDS);
   });
 

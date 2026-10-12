@@ -9,13 +9,10 @@ import { validateDefinition } from "./definition-schema";
 import type { FormDefinition, FormType } from "./fields";
 import { SLUG_PATTERN } from "./list";
 
-export const TURNSTILE_MISSING_MESSAGE = "Configurá Cloudflare Turnstile en Integraciones para publicar";
-
 export interface PublishInput {
   type: FormType;
   slug: string;
   definition: unknown;
-  turnstileConfigured: boolean;
   /** Reglas propias de cada tipo (encuesta, contrato): devuelven los motivos que falten. */
   extraChecks?: Array<(definition: FormDefinition) => string[]>;
 }
@@ -28,7 +25,6 @@ export function checkPublishable(input: PublishInput): PublishCheck {
   if (!SLUG_PATTERN.test(input.slug)) {
     reasons.push("El link del formulario no es válido (3 a 60 caracteres: minúsculas, números y guiones)");
   }
-  if (!input.turnstileConfigured) reasons.push(TURNSTILE_MISSING_MESSAGE);
 
   const result = validateDefinition(input.definition);
   if (!result.ok) {
