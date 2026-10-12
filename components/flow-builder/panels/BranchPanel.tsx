@@ -43,7 +43,7 @@ export function BranchPanel({
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const triggerData = nodes.find((n) => n.type === "trigger")?.data as Record<string, unknown> | undefined;
-  const { inputs, error, loading } = useConditionCatalog(flowId, triggerData);
+  const { inputs, error } = useConditionCatalog(flowId, triggerData);
   const upstream = useMemo(
     () =>
       upstreamOf(
@@ -75,7 +75,6 @@ export function BranchPanel({
       </p>
 
       {error && <p className="rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
-      {loading && !inputs && <p className="text-xs text-muted-foreground">Cargando los campos para comparar…</p>}
 
       <ol className="space-y-3">
         {paths.map((path, index) => (
@@ -123,7 +122,12 @@ export function BranchPanel({
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
-            <PathConditions path={path} groups={groups} onChange={(next) => setPaths(patchPath(paths, path.id, next))} />
+            {inputs || error ? (
+              <PathConditions path={path} groups={groups} onChange={(next) => setPaths(patchPath(paths, path.id, next))} />
+            ) : (
+              // Hasta que no cargan los campos, todo parecería "ya no existe".
+              <p className="text-xs text-muted-foreground">Cargando los campos para comparar…</p>
+            )}
           </li>
         ))}
 

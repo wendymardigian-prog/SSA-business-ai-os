@@ -234,6 +234,20 @@ export function isLegacyCondition(condition: BuilderCondition): boolean {
   return !condition.valueType && isLegacyOperator(condition.operator);
 }
 
+const NO_VALUE_OPERATORS = new Set(["is_empty", "is_not_empty", "is_true", "is_false"]);
+
+/**
+ * ¿Tiene pinta de estar a medio armar? Sin necesitar el catalogo (que puede no
+ * haber cargado todavia): sin campo, o sin valor en un operador que lo pide. Sirve
+ * para decidir si un camino nace abierto en el editor.
+ */
+export function looksIncomplete(condition: BuilderCondition): boolean {
+  if (isLegacyCondition(condition)) return false;
+  if (condition.field === "") return true;
+  const hasValue = (condition.value ?? "") !== "" || (condition.values?.length ?? 0) > 0;
+  return !hasValue && !NO_VALUE_OPERATORS.has(condition.operator);
+}
+
 /**
  * Que le falta a una condicion para poder cumplirse, o `null` si esta completa.
  * Una condicion a medio armar nunca se cumple, asi que conviene decirlo antes
@@ -265,6 +279,12 @@ export function describeBuilderCondition(condition: BuilderCondition, fields: Bu
   const optionLabels: Record<string, string> = {};
   for (const o of field?.options ?? []) optionLabels[o.value] = o.label;
   return describeCondition(condition, { fieldLabel: field ? fieldLabelFor(field, condition.field) : undefined, optionLabels });
+}
+
+/** Las condiciones de un camino en una frase: "Facturación es «Más de USD 10.000» y Edad es mayor que 30". Sin condiciones: "Siempre". */
+export function describePathConditions(group: { logic: "and" | "or"; conditions: BuilderCondition[] }, fields: BuilderField[]): string {
+  if (group.conditions.length === 0) return "Siempre";
+  return group.conditions.map((c) => describeBuilderCondition(c, fields)).join(group.logic === "or" ? " o " : " y ");
 }
 
 function fieldLabelFor(field: BuilderField, path: string): string {

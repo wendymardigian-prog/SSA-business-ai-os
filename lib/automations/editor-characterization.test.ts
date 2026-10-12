@@ -283,17 +283,24 @@ describe("quien importa el editor lineal", () => {
     expect(typeof linearModule.describeStep).toBe("function");
   });
 
-  // Si alguien mueve el modulo o lo renombra, esta lista dice a quien avisarle.
-  const IMPORTERS = [
-    "lib/actions/forms/flows.ts",
-    "lib/actions/scheduling/event-flows.ts",
-    "app/(dashboard)/dashboard/formularios/[id]/automatizaciones/[flowId]/page.tsx",
-    "app/(dashboard)/dashboard/agenda/configuracion/eventos/[id]/flujos/[flowId]/page.tsx",
-  ];
+  // Si alguien mueve el modulo o lo renombra, esta lista dice a quien avisarle. Las Server Actions
+  // viejas (`saveLinearFlow`, `saveFormLinearFlow`) siguen usandolo; las PAGINAS ya no: leen el
+  // flujo con `flowToTree`.
+  const IMPORTERS = ["lib/actions/forms/flows.ts", "lib/actions/scheduling/event-flows.ts"];
   it.each(IMPORTERS)("%s sigue importando de linear-flow", (file) => {
     const text = readFileSync(resolve(__dirname, "../..", file), "utf8");
     expect(text).toMatch(/scheduling\/automation\/linear-flow/);
     expect(text).toMatch(/flowToLinear|linearToFlow/);
+  });
+
+  const PAGES = [
+    "app/(dashboard)/dashboard/formularios/[id]/automatizaciones/[flowId]/page.tsx",
+    "app/(dashboard)/dashboard/agenda/configuracion/eventos/[id]/flujos/[flowId]/page.tsx",
+  ];
+  it.each(PAGES)("%s abre el flujo con flowToTree (el editor de pasos), no con la lista vieja", (file) => {
+    const text = readFileSync(resolve(__dirname, "../..", file), "utf8");
+    expect(text).toMatch(/flowToTree/);
+    expect(text).not.toMatch(/flowToLinear/);
   });
 });
 

@@ -1,9 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { validateBranchData } from "@/lib/flow-engine/branch-paths";
 import { MAX_PATHS } from "@/lib/flow-engine/branch-paths";
+import { formVariableSchema } from "@/lib/forms/automation/variable-schema";
 import {
   ROOT,
   addBranchPath,
+  addBranchPathWithDefault,
+  conditionGroupsFor,
+  defaultConditionFor,
+  insertNewBranch,
   branchLevelOf,
   canAddBranchAt,
   canDuplicate,
@@ -17,6 +22,7 @@ import {
   locate,
   moveBranchPath,
   moveStep,
+  patchStepData,
   newBranchStep,
   patchBranchPath,
   removeBranchPath,
@@ -180,6 +186,14 @@ describe("mover, duplicar, borrar", () => {
     expect(setStepData(b, "b", { x: 1 })).toBe(b);
   });
 
+  it("patchStepData cambia solo lo que se le pide, y una clave en undefined se saca", () => {
+    const t = tree([{ kind: "action", id: "e", nodeType: "action", data: { actionType: "send_email", to: "fixed", fixedEmail: "a@b.co", subject: "S", body: "B" } }]);
+    const next = patchStepData(t, "e", { to: "contact", fixedEmail: undefined });
+    expect((next.steps[0] as ActionStep).data).toEqual({ actionType: "send_email", to: "contact", subject: "S", body: "B" });
+    expect((t.steps[0] as ActionStep).data.fixedEmail).toBe("a@b.co");
+    expect(patchStepData(t, "nada", { a: 1 })).toBe(t);
+  });
+
   it("locate dice donde esta un paso", () => {
     const t = tree([branch("b", [path("p1", [act("x")])])]);
     expect(locate(t, "x")).toMatchObject({ ref: { where: "path", stepId: "b", pathId: "p1" }, index: 0 });
@@ -273,5 +287,49 @@ describe("convertir un Si", () => {
     expect(convertGate(t, "a")).toBe(t);
     const deep = tree([branch("1", [path("p1", [branch("2", [path("p2", [branch("3", [path("p3", [gate("g")])])])])])])]);
     expect(convertGate(deep, "g")).toBe(deep);
+  });
+});
+
+describe("armar Condiciones con un campo que existe", () => {
+  const inputs = {
+    triggerSchema: formVariableSchema("form_submitted", [
+      { id: "f1", fields: [{ id: "1", key: "facturacion", type: "single_select", label: "Facturación", required: true, options: ["Poco", "Mucho"] }] },
+    ]),
+    customFields: [],
+    tags: [],
+    sequences: [],
+  };
+
+  it("el primer campo que se ofrece es la primera pregunta del formulario (no 'Nombre del formulario')", () => {
+    const t = tree([act("a")]);
+    const next = ok(insertNewBranch(t, ROOT, 1, inputs, () => 0.3));
+    const b = next.steps[1] as BranchStep;
+    expect(b.paths[0].conditions).toEqual([{ field: "answer.facturacion", operator: "is", valueType: "single_select", value: "" }]);
+  });
+
+  it("lo que dejan los pasos de antes tambien cuenta como campo, pero solo en su camino", () => {
+    const withHttp = tree([{ kind: "action", id: "h", nodeType: "action", data: { actionType: "httpRequest", responseVariable: "crm" } }]);
+    const noForm = { ...inputs, triggerSchema: [] };
+    const next = insertNewBranch(withHttp, ROOT, 1, noForm, () => 0.3);
+    expect(defaultConditionFor(next, next.steps[1].id, noForm)?.field).toBe("variable:crm"); // sin preguntas, lo primero que se ofrece es lo de antes
+    expect(conditionGroupsFor(next, next.steps[1].id, noForm).map((g) => g.label)).toContain("De pasos anteriores");
+    expect(conditionGroupsFor(withHttp, "h", noForm).map((g) => g.label)).not.toContain("De pasos anteriores");
+  });
+
+  it("sin catalogo cargado igual se arma: el camino nace sin condicion y se le puede agregar despues", () => {
+    const t = tree([act("a")]);
+    const next = ok(insertNewBranch(t, ROOT, 1, null, () => 0.3));
+    expect(next.steps[1].kind).toBe("branch");
+  });
+
+  it("un lugar donde no se puede (pasado el tope) devuelve el mismo arbol", () => {
+    const deep = tree([branch("1", [path("p1", [branch("2", [path("p2", [branch("3", [path("p3")])])])])])]);
+    expect(insertNewBranch(deep, { where: "path", stepId: "3", pathId: "p3" }, 0, inputs)).toBe(deep);
+  });
+
+  it("'+ Camino' trae su condicion en blanco", () => {
+    const t = tree([newBranchStep([], undefined, () => 0.25)]);
+    const next = addBranchPathWithDefault(t, t.steps[0].id, inputs, () => 0.6);
+    expect((next.steps[0] as BranchStep).paths[1].conditions).toEqual([{ field: "answer.facturacion", operator: "is", valueType: "single_select", value: "" }]);
   });
 });

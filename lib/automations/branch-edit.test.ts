@@ -33,6 +33,13 @@ describe("agregar y borrar", () => {
     expect(out[1].id).not.toBe("p_aaaaaa");
   });
 
+  it("quien llama puede elegir el id del camino nuevo (si no choca ni es reservado)", () => {
+    const base = [p("p_aaaaaa", "Camino 1")];
+    expect(addPath(base, (id, label) => ({ id, label }), fixed, "p_nuevo1")[1].id).toBe("p_nuevo1");
+    expect(addPath(base, (id, label) => ({ id, label }), fixed, "p_aaaaaa")[1].id).not.toBe("p_aaaaaa");
+    expect(addPath(base, (id, label) => ({ id, label }), fixed, "else")[1].id).not.toBe("else");
+  });
+
   it("con el maximo no agrega", () => {
     const full = Array.from({ length: MAX_PATHS }, (_, i) => p(`p_00000${i % 10}`.slice(0, 8)));
     expect(canAddPath(full.length)).toBe(false);

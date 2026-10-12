@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { flowGraph } from "@/lib/scheduling/data/event-flows";
-import { flowToLinear } from "@/lib/scheduling/automation/linear-flow";
+import { flowToTree } from "@/lib/automations/step-tree";
 import { planRelativeJobs, type BookingTriggerConfig, type TriggerForPlanning } from "@/lib/scheduling/automation/triggers";
 import { LinearFlowEditor } from "@/components/scheduling/event-editor/linear-flow-editor";
 
@@ -21,7 +21,7 @@ export default async function FlujoDelEventoPage({ params }: { params: Promise<{
   const found = await flowGraph(ctx.supabase, flowId);
   if (!found || found.flow.workspace_id !== ctx.workspace.id || found.flow.event_type_id !== id) notFound();
 
-  const linear = flowToLinear(found.nodes, found.edges);
+  const tree = flowToTree(found.nodes, found.edges);
 
   // A cuántas reuniones futuras alcanzaría hoy.
   let reach: number | null = null;
@@ -50,7 +50,8 @@ export default async function FlujoDelEventoPage({ params }: { params: Promise<{
       eventId={id}
       flowId={flowId}
       flowName={found.flow.name}
-      linear={linear}
+      tree={tree}
+      trigger={{ type: triggerType, config: (triggerNode?.data ?? {}) as Record<string, unknown> }}
       enabled={found.flow.status === "published"}
       reach={reach}
     />

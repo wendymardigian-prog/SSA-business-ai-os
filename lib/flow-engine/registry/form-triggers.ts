@@ -79,7 +79,7 @@ function fieldsOfDefinition(definition: unknown): FormField[] {
  * formulario que todavia no se publico (la automatizacion se arma antes) usa
  * su borrador, y la condicion se vuelve a mirar cuando se publique.
  */
-async function loadFormsWithFields(db: Db, workspaceId: string, formIds: string[]): Promise<FormWithFields[]> {
+export async function loadFormsWithFields(db: Db, workspaceId: string, formIds: string[]): Promise<FormWithFields[]> {
   if (formIds.length === 0) return [];
   const { data: forms } = await db
     .from("forms")

@@ -12,9 +12,11 @@ import {
   countConditions,
   defaultOperatorOf,
   describeBuilderCondition,
+  describePathConditions,
   fieldOfCondition,
   isLegacyCondition,
   isOperatorValid,
+  looksIncomplete,
   offeredFields,
   operatorsOf,
   optionsWithCurrent,
@@ -191,5 +193,43 @@ describe("lo que arma el constructor lo evalua el motor", () => {
   it("isOperatorValid distingue los operadores de cada tipo", () => {
     expect(isOperatorValid(byPath("answer.edad"), "gt")).toBe(true);
     expect(isOperatorValid(byPath("answer.facturacion"), "gt")).toBe(false);
+  });
+});
+
+describe("describePathConditions", () => {
+  const fields = recognizedFields(groups);
+  const a = { field: "answer.facturacion", operator: "is", valueType: "single_select" as const, value: FACT[2] };
+  const b = { field: "answer.edad", operator: "gt", valueType: "number" as const, value: "30" };
+
+  it("une con 'y' o con 'o' segun el camino", () => {
+    expect(describePathConditions({ logic: "and", conditions: [a, b] }, fields)).toBe(`Facturación es «${FACT[2]}» y Edad es mayor que 30`);
+    expect(describePathConditions({ logic: "or", conditions: [a, b] }, fields)).toBe(`Facturación es «${FACT[2]}» o Edad es mayor que 30`);
+  });
+
+  it("sin condiciones dice 'Siempre'", () => {
+    expect(describePathConditions({ logic: "and", conditions: [] }, fields)).toBe("Siempre");
+  });
+
+  it("una condicion del nodo viejo se lee con su campo", () => {
+    expect(describePathConditions({ logic: "and", conditions: [{ field: "tag:vip", operator: "equals", value: "true" }] }, fields)).toContain("es igual a");
+  });
+});
+
+describe("looksIncomplete", () => {
+  it("sin campo, o sin valor donde hace falta", () => {
+    expect(looksIncomplete({ field: "", operator: "is", valueType: "text", value: "" })).toBe(true);
+    expect(looksIncomplete({ field: "answer.x", operator: "is", valueType: "single_select", value: "" })).toBe(true);
+    expect(looksIncomplete({ field: "answer.x", operator: "is_any_of", valueType: "single_select", values: [] })).toBe(true);
+  });
+
+  it("con valor, con lista, o con un operador que no pide valor, no", () => {
+    expect(looksIncomplete({ field: "answer.x", operator: "is", valueType: "single_select", value: "A" })).toBe(false);
+    expect(looksIncomplete({ field: "answer.x", operator: "is_any_of", valueType: "single_select", values: ["A"] })).toBe(false);
+    expect(looksIncomplete({ field: "answer.x", operator: "is_empty", valueType: "text", value: "" })).toBe(false);
+    expect(looksIncomplete({ field: "x", operator: "is_true", valueType: "boolean" })).toBe(false);
+  });
+
+  it("una condicion del nodo viejo no", () => {
+    expect(looksIncomplete({ field: "tag:vip", operator: "exists", value: "" })).toBe(false);
   });
 });

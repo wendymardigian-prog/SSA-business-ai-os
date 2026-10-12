@@ -30,6 +30,52 @@ Rama `feat/automatizaciones-condiciones` (desde `origin/main` ad7581c). Plan en
 14. **Fixtures**: la tabla de contextos del `condition` se movió a `lib/flow-engine/nodes/condition-fixtures.ts` para reusarla en `branch.test.ts` (conversión). La caracterización del paso 1 quedó igual de estricta.
 15. **El simulador** suma `SimulationConfig.mockValues` (valores por ruta de campo para "Probar") y el `branch` sigue SOLO la salida que eligió: sin arista para esa salida el flujo termina (como el motor), no cae a "cualquier otra arista" como hacen los demás nodos del simulador.
 
+## Tanda 2 (pasos 5 a 7): hecha
+
+| Paso | Commit | Qué quedó |
+|------|--------|-----------|
+| 5. El nodo en el canvas | `ccf2fda` | `branch-node.tsx` (una salida por camino con el id del camino, "Si no" = `else` al final), `BranchPanel.tsx`, el constructor general `components/automations/condition-builder.tsx` (más `lib/automations/condition-builder-model.ts`, puro, con la lógica), `VisibilityRuleBuilder` como envoltorio (`lib/forms/visibility-builder-adapter.ts`, formato guardado intacto), paleta con "Condiciones", `condition` visto como "Condición (sí / si no)" con "Convertir a Condiciones", server action `getConditionCatalogInputs`. |
+| 6. Modelo de árbol | `4220074` | `lib/automations/step-tree.ts`: `flowToTree`, `treeToFlow`, `gateToBranch`, `describeTree` y los helpers de recorrido. Ida y vuelta exacta con 0 a 3 niveles; los 7 de la Agenda y las 4 plantillas de Formularios abren como árbol y conservan ids, tipos, datos y recorrido del motor. |
+| 7a. Guardar el árbol | `b5e86ac` | `step-catalog.ts` (qué pasos hay en cada pantalla y sus validaciones), `step-tree-edit.ts` (operaciones puras), `step-tree-save.ts` (`prepareTreeSave`), `saveFormFlowTree` y `saveEventFlowTree`, `answer-conditions.ts`. |
+| 7b. El editor de pasos | (este) | `step-tree-editor.tsx` + `step-list`, `step-card`, `branch-card`, `popover-menu`, `step-tree-context`. `linear-flow-editor.tsx` pasa a ser un envoltorio; las dos páginas leen con `flowToTree`. Prueba de humo que dibuja el editor con todas las formas (`step-tree-render.test.ts`). |
+
+### API pública que usa la tanda siguiente
+
+- **`lib/automations/step-tree.ts`**: tipos `StepTree { trigger: { id, data }, steps }`, `Step = ActionStep | GateStep | BranchStep`; `BranchStep { id, data, paths: BranchPathStep[] (cada uno es un `BranchPath` + `steps`), otherwise: Step[] }`. `flowToTree(nodes, edges): StepTree | null`, `treeToFlow(tree, random?): { nodes, edges }` (lanza `InvalidTreeError` si el árbol no tiene forma de grafo; `treeShapeProblems(tree)` lo dice antes), `gateToBranch`, `describeTree(tree, { when? })`, `allSteps`, `findStep`, `allIds`, `childLists`, `branchDepth`, `upstreamNodesOf(tree, stepId)`, `firstEmailStep`, `actionTypeOf`, `newStepId`, `MAX_BRANCH_DEPTH`.
+- **`explainPaths`** se arma sobre `StepTree`: por cada `BranchStep`, `pickPath(step.paths, resolve)` (de `condition-eval.ts`) elige el camino; los pasos de antes para marcar "sin dato en la prueba" salen de `upstreamNodesOf` y los campos de `conditionGroupsFor(tree, branchId, inputs)` (`step-tree-edit.ts`). `getConditionCatalogInputs({ flowId, triggerData? })` trae lo del servidor (disparador, campos personalizados, tags, secuencias).
+- **La plantilla** (paso 9) usa `treeToFlow` con un `StepTree` armado a mano: `newBranchStep(taken, firstCondition?)`, `newActionStep(actionKind("email"), taken)` y `blankBranchPath` ayudan. Hay que pasar por `prepareTreeSave` o por `treeShapeProblems` si viene de afuera.
+- **La lista** (paso 9) usa `describeTree(flowToTree(nodes, edges))`; si es `null`, "Armado en el canvas".
+- Para escribir desde un servidor: `prepareTreeSave({ screen, stored, tree, triggerData? })` devuelve `{ ok, graph, tree }` o `{ ok: false, error }`.
+
+### Desvíos del plan (el código real ganó)
+
+1. **Los caminos de Condiciones son planos** (una lista de condiciones con un solo "y / o"): el evaluador y el formato guardado de tanda 1 no tienen grupos anidados. El constructor sí los soporta (`allowGroups`) y los usan el "Solo si…" y la visibilidad de un campo; en Condiciones van apagados. "Esto o aquello pero además lo otro" se arma con dos caminos (gana el primero que se cumple).
+2. **Una condición del formato viejo** (la que trae "Convertir a Condiciones": sin `valueType`, operador `equals`...) se muestra como frase con "quitala y armá una nueva". No se edita campo por campo, para no cambiar su semántica por accidente.
+3. **La server action del catálogo es `getConditionCatalogInputs({ flowId, triggerData? })`**, sin `nodeId`: el servidor devuelve lo que solo él sabe y el navegador le suma los pasos de antes con el grafo que está editando (que puede tener cambios sin guardar). `triggerData` permite usar el disparador de la pantalla.
+4. **El "Si" plano (`GateStep`) lleva adentro lo que corre si se cumple** (`steps`), en vez de ser una marca en una lista. Así no se puede mover un paso de un lado al otro de la condición sin querer. No se crea ni se edita desde el editor: solo se conserva, se borra o se convierte en Condiciones.
+5. **Un "Si" guardado sin salida declarada se lee como "Si" y se escribe con `true`.** El motor nunca seguía esa arista (el flujo se cortaba en la condición), así que guardar desde el editor nuevo lo arregla. Es el único caso donde guardar cambia el comportamiento de un flujo; queda fijado en `editor-characterization.test.ts` y `step-tree.test.ts`.
+6. **Condiciones en el medio de una lista**: lo que seguía pasa ADENTRO del primer camino (lo único que no pierde pasos ni los saca de la condición sin avisar). El editor lo anuncia. No se puede si empujar lo que seguía pasaría el tope de 3 niveles.
+7. **Un "Si" y Condiciones no se mueven ni se duplican** (tienen que ser siempre el último paso de su lista; duplicar arrastraría todo lo que tienen adentro).
+8. **El servidor no crea nodos que el editor no ofrece**: un paso que no está en el catálogo de esa pantalla solo se acepta si ya estaba guardado, con el mismo id, tipo y datos. Un paso sin tocar no se vuelve a validar (un flujo viejo con un dato raro no queda bloqueado).
+9. **Un camino con nombre vacío se guarda como "Camino N"** (la base lo exige y el historial del contacto lo nombra); en el editor se ve como placeholder.
+10. **Se frena guardar con una condición a medio armar** (`treeConditionProblems`), diciendo en qué camino. Un email vacío o parecido no se frena.
+11. **`changeField` conserva el operador si sigue valiendo** en el campo nuevo (igual que el `VisibilityRuleBuilder` de siempre); el plan no lo especificaba para los campos tipados.
+12. **`VisibilityRuleBuilder` suma una prop opcional `leadLabel`** ("Arrancar si" en el "Solo si…"); sin ella dice "Mostrar si" como siempre.
+13. **`getFlowVariables` del canvas** buscaba `httpRequest` por `n.type` y los HTTP Request se guardan como `type: "action"`: ahora usa `canonicalNodeType`. Era trivial, quedó arreglado.
+14. **El layout recalcula las posiciones** al guardar desde el editor de pasos (lo acomodado a mano en el canvas se reordena). Las aristas pierden `animated` y `style` del canvas (cosmético).
+15. **`loadFormsWithFields`** (`registry/form-triggers.ts`) ahora se exporta: la página de Formularios la usa para las preguntas del "Solo si…" (versión publicada, o el borrador si nunca se publicó).
+16. **Los pasos de la Agenda y de Formularios se editan más que antes**: email a una dirección fija o al anfitrión, mensaje con "saltear si no tiene teléfono" (`onlyIfPhone`), esperar, tags con sugerencias, estado de la reunión y cancelarla. Un mensaje con botones/imágenes se conserva tal cual y solo se edita su texto.
+17. **Etiquetas del canvas**: la paleta ofrece "Condiciones"; el `condition` viejo se ve "Condición (sí / si no)" con salidas "Sí" / "Si no". El resto de la paleta sigue en inglés como estaba.
+
+### Deuda anotada
+
+- **Revisión visual pendiente** (necesita sesión de la app): escritorio y 390 px, el editor de pasos en Formularios y en la Agenda, el nodo y el panel de Condiciones en el canvas, y "Convertir a Condiciones". Lo que hay es `tsc`, `lint`, `build`, tests y una prueba de humo que dibuja el editor sin navegador.
+- **No se aplicó la regla de parada de la Agenda**: no apareció nada que los tests no cubran (las 7 plantillas se abren, se guardan, conservan `onlyIfPhone`, y se dibujan). Igual hay que mirarla con los ojos.
+- Las acciones viejas `saveFormLinearFlow` / `saveLinearFlow` y el módulo `linear-flow.ts` siguen exportados y con sus tests, pero ya no las usa ninguna pantalla. Se pueden borrar cuando se confirme visualmente el editor nuevo.
+- `useConditionCatalog` pide el catálogo aunque el flujo sea de solo lectura (una consulta de más); no molesta.
+- Si el catálogo no carga, Condiciones se puede ver pero no editar (se avisa arriba).
+- Sin campos para ofrecer (un formulario sin preguntas publicadas y sin disparador con formulario), un camino nuevo nace sin condición y el editor lo marca.
+
 ## Para `docs/PENDIENTE.md` (lo escribe la tanda de cierre)
 
 - **`variable:answer.x` no funciona en el `condition` viejo** (busca la clave `"answer.x"` de primer nivel y las respuestas están anidadas). Sigue igual a propósito; el `branch` lee `answer.*` por su cuenta.

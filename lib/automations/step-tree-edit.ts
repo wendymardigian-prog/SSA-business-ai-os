@@ -13,6 +13,9 @@
 
 import { addPath, blankBranchPath, movePath, patchPath, removePath, renamePath } from "./branch-edit";
 import { newPathId } from "@/lib/flow-engine/branch-paths";
+import { availableConditionFields, type ConditionFieldGroup } from "@/lib/flow-engine/condition-catalog";
+import { blankCondition, offeredFields } from "./condition-builder-model";
+import type { ConditionCatalogInputs } from "./condition-catalog-inputs";
 import type { BranchCondition, BranchPath } from "@/lib/flow-engine/condition-eval";
 import {
   MAX_BRANCH_DEPTH,
@@ -22,6 +25,7 @@ import {
   childLists,
   gateToBranch,
   newStepId,
+  upstreamNodesOf,
   type ActionStep,
   type BranchPathStep,
   type BranchStep,
@@ -227,6 +231,19 @@ export function setStepData(tree: StepTree, stepId: string, data: NodeData): Ste
   return withList(tree, at.ref, (list) => list.map((s) => (s.id === stepId ? { ...s, data } : s)));
 }
 
+/** Cambia algunos datos de un paso suelto, sobre sus datos MAS RECIENTES. Una clave con `undefined` se saca. */
+export function patchStepData(tree: StepTree, stepId: string, patch: NodeData): StepTree {
+  const at = locate(tree, stepId);
+  const step = at?.list[at.index];
+  if (!at || !step || step.kind !== "action") return tree;
+  const data: NodeData = { ...step.data };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete data[key];
+    else data[key] = value;
+  }
+  return setStepData(tree, stepId, data);
+}
+
 /** Cambia un paso por otro del mismo lugar (por ejemplo, un Si convertido en Condiciones). */
 export function replaceStep(tree: StepTree, stepId: string, next: Step): StepTree {
   const at = locate(tree, stepId);
@@ -258,10 +275,10 @@ function mapBranch(tree: StepTree, stepId: string, fn: (branch: BranchStep) => B
   return withList(tree, at.ref, (list) => list.map((s) => (s.id === stepId ? next : s)));
 }
 
-export function addBranchPath(tree: StepTree, branchId: string, firstCondition?: BranchCondition, random?: () => number): StepTree {
+export function addBranchPath(tree: StepTree, branchId: string, firstCondition?: BranchCondition, random?: () => number, pathId?: string): StepTree {
   return mapBranch(tree, branchId, (b) => ({
     ...b,
-    paths: addPath<BranchPathStep>(b.paths, (id, label) => ({ ...blankBranchPath(id, label, firstCondition), steps: [] }), random),
+    paths: addPath<BranchPathStep>(b.paths, (id, label) => ({ ...blankBranchPath(id, label, firstCondition), steps: [] }), random, pathId),
   }));
 }
 
@@ -290,4 +307,43 @@ export function renameBranch(tree: StepTree, branchId: string, label: string): S
     else data.label = label;
     return { ...b, data };
   });
+}
+
+// ------------------------------------------------------------
+// Armar Condiciones con un primer campo razonable
+// ------------------------------------------------------------
+
+const NO_INPUTS: ConditionCatalogInputs = { triggerSchema: [], customFields: [], tags: [], sequences: [] };
+
+/** Los campos que se pueden comparar en un nodo Condiciones de este arbol (lo del servidor mas lo que dejan los pasos de antes). */
+export function conditionGroupsFor(tree: StepTree, stepId: string, inputs: ConditionCatalogInputs | null): ConditionFieldGroup[] {
+  return availableConditionFields({ ...(inputs ?? NO_INPUTS), upstreamNodes: upstreamNodesOf(tree, stepId) });
+}
+
+/**
+ * Una condicion en blanco sobre el campo con el que mas probablemente se quiera
+ * empezar: la primera pregunta del formulario si hay, o el primer campo que se
+ * ofrezca. Sin campos, `undefined` (el camino nace sin condicion y el editor lo avisa).
+ */
+export function defaultConditionFor(tree: StepTree, stepId: string, inputs: ConditionCatalogInputs | null): BranchCondition | undefined {
+  const fields = offeredFields(conditionGroupsFor(tree, stepId, inputs));
+  const first = fields.find((f) => f.path.startsWith("answer.")) ?? fields[0];
+  if (!first) return undefined;
+  const { id: _id, ...condition } = blankCondition(first);
+  void _id;
+  return condition;
+}
+
+/** "+ Agregar paso → Condiciones": el nodo nuevo ya con una condicion en blanco sobre un campo que existe. */
+export function insertNewBranch(tree: StepTree, ref: ListRef, index: number, inputs: ConditionCatalogInputs | null, random?: () => number): StepTree {
+  const bare = newBranchStep(allIds(tree), undefined, random);
+  const inserted = insertStep(tree, ref, index, bare);
+  if (inserted === tree) return tree;
+  const condition = defaultConditionFor(inserted, bare.id, inputs);
+  return condition ? patchBranchPath(inserted, bare.id, bare.paths[0].id, { conditions: [condition] }) : inserted;
+}
+
+/** "+ Camino": un camino nuevo con una condicion en blanco. */
+export function addBranchPathWithDefault(tree: StepTree, branchId: string, inputs: ConditionCatalogInputs | null, random?: () => number, pathId?: string): StepTree {
+  return addBranchPath(tree, branchId, defaultConditionFor(tree, branchId, inputs), random, pathId);
 }

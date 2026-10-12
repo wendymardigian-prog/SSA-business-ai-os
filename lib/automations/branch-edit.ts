@@ -10,7 +10,7 @@
  * adentro sin que esto se entere.
  */
 
-import { MAX_LABEL_LENGTH, MAX_PATHS, MIN_PATHS, newPathId } from "@/lib/flow-engine/branch-paths";
+import { MAX_LABEL_LENGTH, MAX_PATHS, MIN_PATHS, isReservedPathId, newPathId } from "@/lib/flow-engine/branch-paths";
 import type { BranchCondition, BranchPath } from "@/lib/flow-engine/condition-eval";
 
 /** Lo minimo que tiene que tener un camino para estas operaciones. */
@@ -47,12 +47,11 @@ export function canRemovePath(count: number): boolean {
  * Suma un camino al final (antes de "Si no", que no es parte de la lista). Con el
  * maximo alcanzado devuelve la lista tal cual.
  */
-export function addPath<P extends PathLike>(paths: P[], make: (id: string, label: string) => P, random?: () => number): P[] {
+export function addPath<P extends PathLike>(paths: P[], make: (id: string, label: string) => P, random?: () => number, forcedId?: string): P[] {
   if (!canAddPath(paths.length)) return paths;
-  const id = newPathId(
-    paths.map((p) => p.id),
-    random,
-  );
+  const taken = paths.map((p) => p.id);
+  // Quien llama puede elegir el id de antemano (para saber cual es el camino nuevo y, por ejemplo, abrirlo).
+  const id = forcedId && !taken.includes(forcedId) && !isReservedPathId(forcedId) ? forcedId : newPathId(taken, random);
   return [...paths, make(id, nextPathLabel(paths))];
 }
 
