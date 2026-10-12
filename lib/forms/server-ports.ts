@@ -17,7 +17,7 @@ import { CONTRACTS_BUCKET } from "./contract/storage";
 import { recordFormTouch } from "@/lib/contacts/touch-entry";
 import { createNotification } from "@/lib/notifications/create";
 import { SLUG_PATTERN } from "./list";
-import type { FormField, FormType } from "./fields";
+import { isPublicFormType, type FormField } from "./fields";
 import type { BeaconPorts } from "./beacon";
 import type { ExistingSubmission, LoadedForm, SaveInput, SaveResult, SubmitPorts } from "./submit";
 
@@ -43,6 +43,8 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     .not("current_version_id", "is", null)
     .maybeSingle();
   if (!form?.current_version_id) return null;
+  // Un reporte de fin de día no tiene envío público: se completa con la sesión iniciada.
+  if (!isPublicFormType(form.type)) return null;
 
   const [{ data: version }, { data: workspace }] = await Promise.all([
     service.from("form_versions").select("id, version_number, definition").eq("id", form.current_version_id).maybeSingle(),
@@ -56,7 +58,7 @@ export async function loadPublishedForm(service: Db, slug: string): Promise<Load
     id: form.id,
     workspaceId: form.workspace_id,
     name: form.name,
-    type: form.type as FormType,
+    type: form.type,
     slug: form.slug,
     versionId: version.id,
     versionNumber: version.version_number,

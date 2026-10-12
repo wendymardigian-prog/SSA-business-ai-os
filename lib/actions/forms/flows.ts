@@ -5,7 +5,7 @@ import { getPermissionAction, type PermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
-import type { FormType } from "@/lib/forms/fields";
+import { isPublicFormType, type FormType } from "@/lib/forms/fields";
 import { appUrl } from "@/lib/app-url";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
 import { sendTransactionalEmail } from "@/lib/email/send";
@@ -88,7 +88,8 @@ export async function createFormFlow(input: { formId: string }): Promise<FormFlo
   if (!form) return { ok: false, error: "No encontré ese formulario." };
   if (form.status === "archived") return { ok: false, error: "El formulario está archivado: restauralo para sumarle automatizaciones." };
 
-  const graph = blankFormFlowGraph(form);
+  if (!isPublicFormType(form.type)) return { ok: false, error: "Este formulario no admite automatizaciones de formulario." };
+  const graph = blankFormFlowGraph({ id: form.id, type: form.type });
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({
@@ -139,7 +140,8 @@ export async function createFormFlowFromTemplate(input: { formId: string; templa
     if (!question) return { ok: false, error: "Elegí una pregunta de selección única o de número de este formulario." };
   }
 
-  const graph = formTemplateGraph(template.key, { form, userEmail, tagName, question });
+  if (!isPublicFormType(form.type)) return { ok: false, error: "Esa plantilla no existe para este tipo de formulario." };
+  const graph = formTemplateGraph(template.key, { form: { ...form, type: form.type }, userEmail, tagName, question });
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({

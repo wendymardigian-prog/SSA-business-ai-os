@@ -95,7 +95,7 @@ export type FormRow = {
   id: string;
   workspace_id: string;
   name: string;
-  type: "custom" | "survey" | "contract";
+  type: "custom" | "survey" | "contract" | "eod";
   status: "draft" | "published" | "paused" | "archived";
   slug: string;
   draft_definition: Json;
@@ -105,6 +105,8 @@ export type FormRow = {
   contact_config: Json;
   survey_config: Json | null;
   contract_config: Json | null;
+  /** Solo un reporte de fin de día (00178): `lib/eod/config.ts`. */
+  eod_config: Json | null;
   tags_on_submit: string[];
   notify_enabled: boolean;
   notify_user_ids: string[];

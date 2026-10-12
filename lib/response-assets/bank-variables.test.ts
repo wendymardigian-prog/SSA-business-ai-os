@@ -63,7 +63,7 @@ describe("{{form_link.<slug>}} (Formularios, F20)", () => {
   function formsClient(forms: Array<{ id: string; slug: string }>) {
     const from = vi.fn((table: string) => {
       const chain: Record<string, unknown> = {};
-      for (const m of ["select", "eq", "in"]) chain[m] = () => chain;
+      for (const m of ["select", "eq", "neq", "in"]) chain[m] = () => chain;
       chain.then = (resolve: (v: unknown) => void) => resolve({ data: table === "forms" ? forms : null, error: null });
       return chain;
     });

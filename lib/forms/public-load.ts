@@ -32,7 +32,8 @@ export async function loadPreviewFormData(userClient: Db, slug: string): Promise
     .select("slug, type, draft_definition, design, contract_config, survey_config")
     .ilike("slug", slug)
     .maybeSingle();
-  if (!form) return null;
+  // Un reporte de fin de día no tiene página pública: tampoco vista previa.
+  if (!form || form.type === "eod") return null;
 
   const design = (form.design ?? {}) as PublicFormData["design"];
   const contract = form.contract_config as { title?: string; acceptLabel?: string; signatureRequired?: boolean } | null;

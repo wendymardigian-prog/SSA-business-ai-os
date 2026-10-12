@@ -4,12 +4,16 @@
  */
 import type { FormDefinition, FormType } from "./fields";
 import { isScoreType } from "./fields";
+import { eodPublishChecks } from "@/lib/eod/definition";
+import { parseStoredEodConfig } from "@/lib/eod/config";
 
 export interface TypeConfigs {
   surveyConfig?: unknown;
   contractConfig?: unknown;
   /** El modo de contacto del formulario (R3): una encuesta "una vez por contacto" lo necesita prendido. */
   contactMode?: string;
+  /** Solo un EOD: su configuración (de ahí sale la variante). */
+  eodConfig?: unknown;
 }
 
 export function surveyChecks(config: unknown, contactMode?: string): (definition: FormDefinition) => string[] {
@@ -39,5 +43,6 @@ export function contractChecks(): (definition: FormDefinition) => string[] {
 export function typeChecks(type: FormType, configs: TypeConfigs): Array<(definition: FormDefinition) => string[]> {
   if (type === "survey") return [surveyChecks(configs.surveyConfig, configs.contactMode)];
   if (type === "contract") return [contractChecks()];
+  if (type === "eod") return [eodPublishChecks(parseStoredEodConfig(configs.eodConfig)?.variant)];
   return [];
 }

@@ -77,6 +77,8 @@ export async function resolveFormLinkVariables(
     .select("id, slug")
     .eq("workspace_id", context.workspaceId)
     .eq("status", "published")
+    // Un reporte de fin de día no tiene link público (00179): no se arma su link.
+    .neq("type", "eod")
     .in("slug", slugs);
   if (!forms || forms.length === 0) return texts;
 
