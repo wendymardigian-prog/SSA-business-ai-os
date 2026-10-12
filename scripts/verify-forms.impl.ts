@@ -22,6 +22,7 @@ import { handleBeacon } from "../lib/forms/beacon";
 import { contractTextSha256, hashContractText } from "../lib/forms/contract-hash";
 import { findForbiddenKeys, containsText } from "../lib/forms/public-definition";
 import { newField, type FormField } from "../lib/forms/fields";
+import { loadContactForms } from "../lib/forms/data/contact-forms";
 import { hashIp } from "../lib/scheduling/antispam";
 import { deleteSecret } from "../lib/vault";
 import { signFormLink, verifyFormLink, createToken, getOrCreateLinkSecret } from "../lib/forms/signed-link";
@@ -719,6 +720,148 @@ try {
   const { data: npAttr } = await svc.from("contacts").select("attribution").eq("id", noPrior!.id).single();
   const np = npAttr?.attribution as { first_touch?: { campaign?: string }; last_touch?: { campaign?: string } };
   check(np?.first_touch?.campaign === "tardio" && np?.last_touch?.campaign === "tardio", "contacto existente SIN toques: el del formulario queda como primero y ultimo");
+
+  // ── R3 + R5: el interruptor de contactos y los usuarios de redes sociales ───
+  console.log("\n— R3/R5: sin contacto (none) y crear o vincular por @ (codigo real y la v5 de la base) —");
+  const r5Slug = `zz-test-r5-${Date.now()}`;
+  const r5Fields: FormField[] = [
+    field("short_text", "nombre", { label: "Nombre" }),
+    field("email", "email", { label: "Email" }),
+    field("phone", "tel", { label: "Telefono" }),
+    field("social", "ig", { label: "Instagram", social: { platform: "instagram" } }),
+    field("social", "tt", { label: "TikTok", social: { platform: "tiktok" } }),
+    field("social", "li", { label: "LinkedIn", social: { platform: "linkedin" } }),
+    field("short_text", "usuario_x", { label: "Usuario de X (texto)" }),
+    field("short_text", "pais", { label: "Pais" }),
+  ];
+  const r5Config = (over: Record<string, unknown> = {}) => ({
+    mode: "create_or_link",
+    update: "fill_empty",
+    map: [
+      { fieldKey: "nombre", target: "contact.display_name" },
+      { fieldKey: "email", target: "contact.email" },
+      { fieldKey: "tel", target: "contact.phone" },
+      { fieldKey: "ig", target: "contact.instagram_username" },
+      { fieldKey: "tt", target: "contact.tiktok_username" },
+      { fieldKey: "li", target: "contact.linkedin_profile_url" },
+      { fieldKey: "usuario_x", target: "contact.twitter_username" },
+      { fieldKey: "pais", target: "contact.country" },
+    ],
+    ...over,
+  });
+  const { data: r5 } = await svc
+    .from("forms")
+    .insert({ workspace_id: ws.id, name: "zz-test R5", type: "custom", slug: r5Slug, draft_definition: { fields: r5Fields } as unknown as Json, contact_config: r5Config() as unknown as Json })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: r5!.id, p_actor: owner.id });
+  const { data: r5Pub } = await svc.from("forms").select("current_version_id").eq("id", r5!.id).single();
+  await svc.from("forms").update({ status: "published" }).eq("id", r5!.id);
+  const r5Send = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    submitForm(ports(ws.id), input(r5Slug, { idempotency_key: randomUUID(), version_id: r5Pub!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: { timezone: "America/Costa_Rica" }, origin: "public_page", ...extra }));
+  const r5Row = async (r: { body: Record<string, unknown> }) => (await svc.from("form_submissions").select("*").eq("id", String(r.body.submission_id)).single()).data!;
+  const countContacts = async () => (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+
+  // A y B. Un contacto que llego por DM de Instagram: el @ del formulario cae en el MISMO contacto.
+  const { data: dm } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test DM Ana", instagram_username: "ana.perez" }).select("id").single();
+  const viaAt = await r5Row(await r5Send({ ig: "@Ana.Perez" }));
+  check(viaAt.contact_id === dm!.id && viaAt.contact_created === false && (viaAt.dedupe as { matched_by?: string }).matched_by === "instagram", "un @Ana.Perez (sin email ni telefono) se vincula al contacto del DM con matched_by = instagram", JSON.stringify(viaAt.dedupe));
+  const viaUrl = await r5Row(await r5Send({ ig: "https://www.instagram.com/ana.perez/" }));
+  check(viaUrl.contact_id === dm!.id, "la URL del perfil se vincula igual");
+  const instagramRows = await svc.from("contacts").select("id").eq("workspace_id", ws.id).eq("instagram_username", "ana.perez");
+  check(instagramRows.data?.length === 1, "...y no se duplica el contacto");
+  const invalidIg = await r5Send({ ig: "ana perez" });
+  check(invalidIg.status === 400 && !!(invalidIg.body.fields as Record<string, string> | undefined)?.ig, "un @ con espacios es un error del campo (400)");
+
+  // C. Un @ de TikTok que no existe: se crea el contacto con ese dato, con el @ de nombre y sin quedar 'anonimo'.
+  const tikTok = await r5Row(await r5Send({ tt: "@Nuevo.Tiktok" }));
+  const { data: ttContact } = await svc.from("contacts").select("tiktok_username, display_name, is_anonymous").eq("id", tikTok.contact_id!).single();
+  check(tikTok.contact_created === true && ttContact?.tiktok_username === "nuevo.tiktok", "un @ de TikTok que no existe crea un contacto con tiktok_username", JSON.stringify(ttContact));
+  check(ttContact?.display_name === "@nuevo.tiktok" && ttContact?.is_anonymous === false, "...con el @ de nombre y sin quedar marcado como anonimo");
+
+  // D. Telefono de A y @ de B: gana el telefono (A) y el @ queda como conflicto (B).
+  const { data: contactA } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Contacto A", phone: "+50670001111" }).select("id").single();
+  const { data: contactB } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Contacto B", instagram_username: "conflicto.b" }).select("id").single();
+  const clash = await r5Row(await r5Send({ tel: "+50670001111", ig: "conflicto.b" }));
+  const clashDedupe = clash.dedupe as { matched_by?: string; conflict_contact_id?: string; conflicts?: Array<{ by: string; contact_id: string }> };
+  check(clash.contact_id === contactA!.id && clashDedupe.matched_by === "phone", "telefono de A y @ de B: se vincula a A");
+  check(clashDedupe.conflict_contact_id === contactB!.id && clashDedupe.conflicts?.some((c) => c.by === "instagram" && c.contact_id === contactB!.id) === true, "dedupe.conflicts nombra a B por instagram", JSON.stringify(clashDedupe));
+  const { data: aAfter } = await svc.from("contacts").select("instagram_username").eq("id", contactA!.id).single();
+  check(aAfter?.instagram_username === null, "...y el @ que es de B NO se escribe en A (no quedan dos contactos con el mismo @)");
+
+  // E. Un contacto con un canal de Instagram vinculado: su @ NUNCA cambia, ni con overwrite.
+  const { data: igChannel } = await svc.from("channels").insert({ workspace_id: ws.id, platform: "instagram", late_account_id: `zz-test-ig-${Date.now()}`, display_name: "zz-test IG" } as never).select("id").single();
+  const { data: igLinked } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test IG real", phone: "+50670003333", instagram_username: "handle.real" }).select("id").single();
+  await svc.from("contact_channels").insert({ contact_id: igLinked!.id, channel_id: igChannel!.id, platform_sender_id: `zz-test-sender-${Date.now()}` });
+  const { data: igFree } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test IG libre", phone: "+50670004444", instagram_username: "handle.viejo" }).select("id").single();
+  await svc.from("forms").update({ contact_config: r5Config({ update: "overwrite" }) as unknown as Json }).eq("id", r5!.id);
+  await r5Send({ tel: "+50670003333", ig: "otro.handle" });
+  await r5Send({ tel: "+50670004444", ig: "handle.nuevo" });
+  const { data: igAfter } = await svc.from("contacts").select("id, instagram_username").in("id", [igLinked!.id, igFree!.id]);
+  check(igAfter?.find((c) => c.id === igLinked!.id)?.instagram_username === "handle.real", "con overwrite, el instagram_username de un contacto con canal de Instagram NO cambia");
+  check(igAfter?.find((c) => c.id === igFree!.id)?.instagram_username === "handle.nuevo", "...y el de un contacto sin canal si se actualiza");
+
+  // F. Dos respuestas simultaneas con el mismo @ nuevo: UN contacto.
+  await svc.from("forms").update({ contact_config: r5Config() as unknown as Json }).eq("id", r5!.id);
+  const raceIg = await Promise.all(Array.from({ length: 5 }, () => r5Send({ ig: "carrera.ig.zz" })));
+  check(raceIg.every((r) => r.status === 200), "5 respuestas simultaneas con el mismo @ nuevo responden 200", raceIg.map((r) => r.status).join(","));
+  const raceRows = await svc.from("contacts").select("id").eq("workspace_id", ws.id).eq("instagram_username", "carrera.ig.zz");
+  check(raceRows.data?.length === 1, "...y queda UN solo contacto", `hay ${raceRows.data?.length}`);
+
+  // LinkedIn: se guarda como URL del perfil y se encuentra por el slug.
+  const li1 = await r5Row(await r5Send({ li: "linkedin.com/in/Ana-Linked/" }));
+  const { data: liContact } = await svc.from("contacts").select("linkedin_profile_url").eq("id", li1.contact_id!).single();
+  check(liContact?.linkedin_profile_url === "https://www.linkedin.com/in/ana-linked", "LinkedIn se guarda como la URL del perfil", String(liContact?.linkedin_profile_url));
+  const li2 = await r5Row(await r5Send({ li: "https://www.linkedin.com/in/ANA-LINKED?utm=1" }));
+  check(li2.contact_id === li1.contact_id && (li2.dedupe as { matched_by?: string }).matched_by === "linkedin", "...y la misma persona por otra URL del mismo perfil se vincula por linkedin");
+
+  // El pais por nombre y lo que no se reconoce.
+  const paisOk = await r5Row(await r5Send({ email: "pais.zz@example.test", pais: "costa rica" }));
+  const { data: paisContact } = await svc.from("contacts").select("country").eq("id", paisOk.contact_id!).single();
+  check(paisContact?.country === "CR", "el pais 'costa rica' se guarda como CR");
+  const paisMal = await r5Row(await r5Send({ email: "pais2.zz@example.test", pais: "Narnia" }));
+  const { data: paisMalContact } = await svc.from("contacts").select("country").eq("id", paisMal.contact_id!).single();
+  check(paisMal.status === "received" && paisMalContact?.country === null && JSON.stringify(paisMal.meta).includes("country_unrecognized"), "un pais que no se reconoce no se guarda, la respuesta queda y el detalle lo anota");
+
+  // G. El interruptor apagado: no se crea ni se vincula nada, tampoco con un link firmado.
+  await svc.from("forms").update({ contact_config: r5Config({ mode: "none" }) as unknown as Json }).eq("id", r5!.id);
+  const contactsBeforeNone = await countContacts();
+  const eventsBeforeNone = (await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+  const noneRes = await r5Send({ email: "none.zz@example.test", tel: "+50670002222", ig: "none.ig.zz" });
+  const noneRow = await r5Row(noneRes);
+  check(noneRes.status === 200 && noneRow.contact_id === null && noneRow.status === "no_contact" && noneRow.contact_created === false, "mode none con email, telefono y @: la respuesta queda sin contacto");
+  check((await countContacts()) === contactsBeforeNone, "...no se crea ningun contacto");
+  const { data: noneByEmail } = await svc.from("contacts").select("id").eq("workspace_id", ws.id).or("email.eq.none.zz@example.test,phone.eq.+50670002222,instagram_username.eq.none.ig.zz");
+  check((noneByEmail ?? []).length === 0, "...ni con esos datos");
+  check(((await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === eventsBeforeNone, "...y no existe ningun automation_event");
+  const noneLink = await signFormLink(svc, { workspaceId: ws.id, formId: r5!.id, slug: r5Slug, contactId: contactA!.id, baseUrl: "https://app.ejemplo.test" });
+  const noneSigned = await r5Row(await r5Send({ nombre: "Pisar" }, { link_token: new globalThis.URL(noneLink).searchParams.get("c") }));
+  const { data: aName } = await svc.from("contacts").select("display_name").eq("id", contactA!.id).single();
+  check(noneSigned.contact_id === null && aName?.display_name === "zz-test Contacto A", "mode none con un link firmado valido: la respuesta queda sin contacto y no toca al contacto del link");
+  // Directo a la RPC (la base manda aunque el servidor mande datos).
+  const { data: rpcNone } = await svc.rpc("submit_form_response", {
+    p_form_id: r5!.id, p_version_id: r5Pub!.current_version_id!, p_idempotency_key: randomUUID(), p_answers: {}, p_attribution: {}, p_meta: {},
+    p_contact_hint: { email: "directo.none.zz@example.test", signed_contact_id: contactA!.id, social: { instagram: "directo.none" } }, p_extra: {},
+  });
+  check((rpcNone as { contact_id?: string | null } | null)?.contact_id === null, "la RPC con mode none ignora el hint (aunque llegue con email, @ y un link firmado)");
+  await svc.from("forms").update({ contact_config: r5Config() as unknown as Json }).eq("id", r5!.id);
+
+  // R8: la ficha del contacto. La RLS decide: un Member ve solo lo de sus contactos; el spam no se muestra.
+  console.log("\n— R8: los formularios en la ficha del contacto (la RLS decide) —");
+  const own = await r5Row(await r5Send({ email: "zz-test-visible@example.test" }));
+  const hidden = await r5Row(await r5Send({ email: "zz-test-ajeno@example.test" }));
+  const spamOwn = await r5Row(await r5Send({ email: "zz-test-visible@example.test" }));
+  await svc.from("form_submissions").update({ status: "spam" }).eq("id", spamOwn.id);
+  const ownerForms = await loadContactForms(owner.client, { workspaceId: ws.id, contactId: contactVisible });
+  check(ownerForms.rows.some((r) => r.id === own.id) && ownerForms.rows.every((r) => r.id !== spamOwn.id), "Owner ve la respuesta del contacto y NO la marcada como spam");
+  check(ownerForms.rows.every((r) => r.typeLabel.length > 0 && r.href.includes("/respuestas/")), "...con su tipo y el link al detalle");
+  const memberForms = await loadContactForms(member.client, { workspaceId: ws.id, contactId: contactVisible });
+  check(memberForms.rows.some((r) => r.id === own.id), "un Member ve las respuestas de SU contacto");
+  const memberHiddenForms = await loadContactForms(member.client, { workspaceId: ws.id, contactId: contactAjeno });
+  check(memberHiddenForms.rows.length === 0 && memberHiddenForms.total === 0, "un Member NO ve las respuestas de un contacto que no es suyo");
+  check(hidden.contact_id === contactAjeno, "(la respuesta del contacto ajeno existe: no es que no hubiera nada)");
+  const ownerHiddenForms = await loadContactForms(owner.client, { workspaceId: ws.id, contactId: contactAjeno });
+  check(ownerHiddenForms.rows.length >= 1, "Owner si ve las del contacto ajeno");
 
   console.log("\n— F20: el link firmado por contacto —");
   const signedUrl = await signFormLink(svc, { workspaceId: ws.id, formId: fo2!.id, slug: fo2Slug, contactId: veteran!.id, serviceId: randomUUID(), saleId: randomUUID(), baseUrl: "https://app.ejemplo.test" });
