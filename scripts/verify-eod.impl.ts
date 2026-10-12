@@ -23,6 +23,8 @@ import "../lib/flow-engine/registry";
 import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
 import { eodTemplateGraph } from "../lib/eod/automation/templates";
 import { buildDesiredTriggers } from "../lib/flow-triggers";
+import { runEodReminders } from "../lib/jobs/handlers/eod-reminder";
+import { zonedClock } from "../lib/dates";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -305,6 +307,22 @@ try {
   check((await submitEodCore(ports, { ...base, userId: low.id, rev: corr.ok ? corr.rev : -1 })).ok, "el setter corrige su reporte");
   check((await runEventsOf(low.id, 1)) === 1, "la corrección dispara solo el flujo 'cada corrección' (el de 'primer envío' no)");
   check((await runEventsOf(low.id, 1)) === 0, "y una sola vez por corrección");
+
+  // ── E13: el recordatorio ──────────────────────────────────────────────────
+  console.log("\n— E13: recordatorio —");
+  const { minutes } = zonedClock(new Date(), TZ);
+  const at = Math.max(0, minutes - 1);
+  const time = `${String(Math.floor(at / 60)).padStart(2, "0")}:${String(at % 60).padStart(2, "0")}`;
+  const lazy = await makeUser("eod-setter-lazy");
+  await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: lazy.id, role: "member" });
+  await svc.from("user_preferences").upsert({ user_id: lazy.id, timezone: TZ, timezone_source: "manual" });
+  await svc.from("forms").update({ eod_config: { ...config, audience: { mode: "users", userIds: [lazy.id, low.id], roleIds: [] }, reminder: { enabled: true, time } } as unknown as Json }).eq("id", form.id);
+  const reminders = async (userId: string) => (await svc.from("notifications").select("id").eq("workspace_id", ws.id).eq("type", "eod_reminder").eq("recipient_id", userId)).data?.length ?? 0;
+  await runEodReminders(svc, form.id);
+  check((await reminders(lazy.id)) === 1, "a quien no envió el de hoy le llega 'Te falta el reporte del día'");
+  check((await reminders(low.id)) === 0, "a quien ya envió, no");
+  await runEodReminders(svc, form.id);
+  check((await reminders(lazy.id)) === 1, "una sola vez por día");
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));
 } finally {
