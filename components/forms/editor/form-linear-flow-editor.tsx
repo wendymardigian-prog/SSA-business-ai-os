@@ -16,6 +16,10 @@ import { FORM_VARIABLE_KEYS, variableKey } from "@/lib/forms/automation/variable
 import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter";
 import type { VisibilityConfig } from "@/lib/forms/visibility-types";
 import { saveFormFlowTree, sendFormFlowTestEmail } from "@/lib/actions/forms/flows";
+import { getTestResponseValues, listTestResponses } from "@/lib/actions/forms/test-conditions";
+
+// Probar con una respuesta real: el servidor solo lee (ver `test-conditions.ts`).
+const TEST_RESPONSES = { list: listTestResponses, load: getTestResponseValues };
 
 export function FormLinearFlowEditor({
   formId,
@@ -67,6 +71,7 @@ export function FormLinearFlowEditor({
       onlyIf={onlyIf}
       onSave={saveFormFlowTree}
       onSendTest={sendFormFlowTestEmail}
+      testResponses={TEST_RESPONSES}
     />
   );
 }

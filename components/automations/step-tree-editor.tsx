@@ -29,6 +29,7 @@ import { PageHeader } from "@/components/page-header";
 import { StepList } from "@/components/automations/step-list";
 import { StepEditorProvider, type ConfirmRequest } from "@/components/automations/step-tree-context";
 import { useConditionCatalog } from "@/components/automations/use-condition-catalog";
+import { TestConditionsButton, type TestResponsesSource } from "@/components/automations/test-conditions-sheet";
 import { VisibilityRuleBuilder } from "@/components/forms/builder/visibility-rule-builder";
 import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter";
 import type { VisibilityConfig } from "@/lib/forms/visibility-types";
@@ -65,6 +66,8 @@ export interface StepTreeEditorProps {
   onlyIf?: { sources: ConditionSource[]; value: VisibilityConfig | undefined };
   onSave: (input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: VisibilityConfig | null }) => Promise<EditorActionResult>;
   onSendTest: (input: { flowId: string; subject: string; body: string }) => Promise<EditorActionResult>;
+  /** Para "Probar condiciones" con una respuesta real (hoy solo Formularios). Sin esto se prueba cargando los datos a mano. */
+  testResponses?: TestResponsesSource;
 }
 
 const HELP_KEY = "ssa:step-tree-help-seen";
@@ -110,6 +113,7 @@ export function StepTreeEditor({
   onlyIf,
   onSave,
   onSendTest,
+  testResponses,
 }: StepTreeEditorProps) {
   const router = useRouter();
   const [tree, setTree] = useState<StepTree | null>(initialTree);
@@ -319,6 +323,7 @@ export function StepTreeEditor({
               <Send className="h-4 w-4" aria-hidden /> Enviarme una prueba
             </button>
           )}
+          {tree && hasBranch && <TestConditionsButton flowId={flowId} tree={tree} catalog={catalog} source={testResponses} disabled={pending} />}
           {dirty && !pending && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Cambios sin guardar</span>}
         </div>
         <p className="text-xs text-muted-foreground">
