@@ -5,6 +5,8 @@
  */
 
 import type { Node, Edge } from "@xyflow/react";
+import { pickPath, type BranchNodeData, type FieldValue } from "./condition-eval";
+import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "./branch-paths";
 
 // --- Types ---
 
@@ -29,6 +31,8 @@ export type SimulationStepResult =
       quickReplies?: { title: string }[];
     }
   | { type: "condition"; conditions: string[]; result: boolean; path: string }
+  /** "Condiciones": por que camino iria (`pathId` es el del camino o `else`) y que paso con cada condicion. */
+  | { type: "branch"; pathId: string; pathLabel: string; checks: Array<{ pathId: string; field: string; operator: string; ok: boolean; missing?: boolean }> }
   | { type: "delay"; duration: number; unit: string }
   | { type: "action"; actionType: string; detail: string }
   | { type: "ai_response"; mode: "skipped" | "generated"; text?: string }
@@ -51,6 +55,12 @@ export interface SimulationConfig {
     customFields?: Record<string, string>;
     isSubscribed?: boolean;
   };
+  /**
+   * Valores de prueba por ruta de campo (`answer.facturacion`, `booking.status`,
+   * `contact.lead_temperature`...) para los nodos "Condiciones". Lo que no este
+   * aca ni en el contacto de prueba se ve vacio ("sin dato en la prueba").
+   */
+  mockValues?: Record<string, FieldValue>;
 }
 
 export interface SimulationResult {
@@ -194,6 +204,8 @@ export function simulateFlow(
     const data = node.data as Record<string, unknown>;
     const label = (data.label as string) || node.type || "Unknown";
     let nextHandle: string | undefined;
+    // "Condiciones" sigue SOLO la salida que eligio: sin ella el flujo termina, como en el motor.
+    let strictHandle = false;
     let shouldPause = false;
 
     switch (node.type) {
@@ -270,6 +282,40 @@ export function simulateFlow(
           },
         });
         nextHandle = passed ? "true" : "false";
+        break;
+      }
+
+      // "Condiciones": mismo evaluador que el motor (`pickPath`), con los datos de la prueba.
+      case "branch": {
+        const paths = pathsOf(data as unknown as Partial<BranchNodeData>);
+        const resolve = (field: string): FieldValue => {
+          const mock = config.mockValues;
+          if (mock && field in mock) return mock[field];
+          if (field === "contact.tags") return config.mockContact?.tags ?? [];
+          if (field === "platform") return "instagram"; // simulated
+          if (field === "is_subscribed") return String(config.mockContact?.isSubscribed ?? true);
+          if (field.startsWith("tag:")) return String(config.mockContact?.tags?.includes(field.slice(4)) ?? false);
+          if (field.startsWith("variable:")) return variables[field.slice(9)];
+          // Un campo personalizado, o lo que la prueba no sabe: sin dato (vacio).
+          return config.mockContact?.customFields?.[field];
+        };
+        const pick = pickPath(paths, resolve);
+        const pathId = pick.path?.id ?? BRANCH_ELSE_HANDLE;
+        steps.push({
+          nodeId: node.id,
+          nodeType: "branch",
+          nodeLabel: label,
+          result: {
+            type: "branch",
+            pathId,
+            pathLabel: pick.path?.label ?? BRANCH_ELSE_LABEL,
+            checks: pick.evaluated.flatMap((e) =>
+              e.checks.map((c) => ({ pathId: e.pathId, field: c.field, operator: c.operator, ok: c.ok, ...(c.missing ? { missing: true } : {}) })),
+            ),
+          },
+        });
+        nextHandle = pathId;
+        strictHandle = true;
         break;
       }
 
@@ -589,12 +635,12 @@ export function simulateFlow(
         (e) => e.source === node.id && e.sourceHandle === nextHandle
       );
     }
-    if (!nextEdge) {
+    if (!nextEdge && !strictHandle) {
       nextEdge = edges.find(
         (e) => e.source === node.id && !e.sourceHandle
       );
     }
-    if (!nextEdge) {
+    if (!nextEdge && !strictHandle) {
       // Try any edge from this source (fallback)
       nextEdge = edges.find((e) => e.source === node.id);
     }

@@ -168,10 +168,11 @@ export default async function ContactDetailPage({
       // las automatizaciones que corrieron sobre este contacto...
       supabase
         .from("analytics_events")
-        .select("id, event_type, flow_id, created_at")
+        .select("id, event_type, flow_id, created_at, metadata")
         .eq("contact_id", contactId)
         .eq("workspace_id", workspace.id)
-        .in("event_type", ["flow_started", "flow_completed"])
+        // `branch_taken`: por que camino fue una automatizacion con "Condiciones".
+        .in("event_type", ["flow_started", "flow_completed", "branch_taken"])
         .order("created_at", { ascending: false })
         .limit(HISTORY_FETCH),
       // ...y los emails automaticos que salieron para el. La RLS de email_log
@@ -304,7 +305,7 @@ export default async function ContactDetailPage({
       performedAt: a.performed_at,
       actorLabel: a.performed_by ? (labels.get(a.performed_by) ?? "Alguien del equipo") : "El sistema",
     })),
-    flowEvents: (flowEventsRes.data ?? []).map((e) => ({ id: e.id, eventType: e.event_type, flowId: e.flow_id, createdAt: e.created_at })),
+    flowEvents: (flowEventsRes.data ?? []).map((e) => ({ id: e.id, eventType: e.event_type, flowId: e.flow_id, createdAt: e.created_at, metadata: e.metadata as Json | null })),
     enrollments: enrollments.map((e) => ({ id: e.id, sequenceName: e.sequenceName, enrolledAt: e.enrolledAt, completedAt: e.completedAt })),
     emails: (emailLogRes.data ?? []).map((m) => ({
       id: m.id,

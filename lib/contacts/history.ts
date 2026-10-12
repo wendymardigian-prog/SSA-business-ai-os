@@ -9,7 +9,8 @@
  *
  *  - `audit`: lo de siempre (ediciones, asignaciones, tags, agenda...).
  *  - `flow`: una automatizacion empezo o termino (analytics_events), con su
- *    NOMBRE.
+ *    NOMBRE; y, si tiene "Condiciones", por que camino fue (`branch_taken`:
+ *    solo el nombre del camino, nunca lo que respondio).
  *  - `sequence`: se inscribio o completo una secuencia.
  *  - `email`: un email AUTOMATICO que salio (o no pudo salir) para este contacto
  *    (email_log.contact_id, 00135).
@@ -42,8 +43,10 @@ export interface FlowHistoryItem {
   source: "flow";
   id: string;
   at: string;
-  phase: "started" | "completed";
+  phase: "started" | "completed" | "branch";
   flowName: string | null;
+  /** Solo en `branch`: el nombre del camino por el que fue ("Si no" si ninguno se cumplio). */
+  pathLabel?: string | null;
 }
 
 export interface SequenceHistoryItem {
@@ -79,8 +82,8 @@ export interface BuildHistoryInput {
     performedAt: string;
     actorLabel: string;
   }>;
-  /** Eventos del motor de flows de este contacto (`flow_started`, `flow_completed`). */
-  flowEvents: Array<{ id: string; eventType: string; flowId: string | null; createdAt: string }>;
+  /** Eventos del motor de flows de este contacto (`flow_started`, `flow_completed`, `branch_taken`). */
+  flowEvents: Array<{ id: string; eventType: string; flowId: string | null; createdAt: string; metadata?: Json | null }>;
   enrollments: Array<{ id: string; sequenceName: string | null; enrolledAt: string; completedAt: string | null }>;
   emails: Array<{
     id: string;
@@ -103,6 +106,12 @@ function flowIdOf(metadata: Json | null): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+function pathLabelOf(metadata: Json | null): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const label = (metadata as Record<string, unknown>).pathLabel;
+  return typeof label === "string" && label.trim() ? label.trim() : null;
+}
+
 function isEmailStatus(value: string): value is EmailHistoryItem["status"] {
   return value === "sent" || value === "failed" || value === "skipped_not_configured";
 }
@@ -114,6 +123,17 @@ export function buildContactHistory(input: BuildHistoryInput): HistoryItem[] {
   // Los eventos del motor que cuentan: empezo y termino una automatizacion.
   const started: Array<{ flowId: string; at: number }> = [];
   for (const event of input.flowEvents) {
+    if (event.eventType === "branch_taken") {
+      items.push({
+        source: "flow",
+        id: `flow:${event.id}`,
+        at: event.createdAt,
+        phase: "branch",
+        flowName: nameOf(event.flowId),
+        pathLabel: pathLabelOf(event.metadata ?? null),
+      });
+      continue;
+    }
     if (event.eventType !== "flow_started" && event.eventType !== "flow_completed") continue;
     const phase = event.eventType === "flow_started" ? "started" : "completed";
     items.push({ source: "flow", id: `flow:${event.id}`, at: event.createdAt, phase, flowName: nameOf(event.flowId) });
@@ -187,6 +207,12 @@ const quoted = (name: string | null, fallback: string) => (name ? `«${name}»` 
 export function describeHistoryItem(item: Exclude<HistoryItem, AuditHistoryItem>): { actor: string; text: string } {
   switch (item.source) {
     case "flow":
+      if (item.phase === "branch") {
+        return {
+          actor: "El sistema",
+          text: `en la automatización ${quoted(item.flowName, "(borrada)")} fue por el camino ${quoted(item.pathLabel ?? null, "(sin nombre)")}`,
+        };
+      }
       return item.phase === "started"
         ? { actor: "El sistema", text: `ejecutó la automatización ${quoted(item.flowName, "(borrada)")}` }
         : { actor: "El sistema", text: `terminó la automatización ${quoted(item.flowName, "(borrada)")}` };

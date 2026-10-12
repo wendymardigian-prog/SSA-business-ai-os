@@ -1,4 +1,7 @@
 import type { NodeType, Platform } from "@/lib/types/database";
+import type { BranchNodeData } from "./condition-eval";
+
+export type { BranchNodeData };
 
 export interface FlowNode {
   id: string;
@@ -19,6 +22,7 @@ export type NodeData =
   | TriggerNodeData
   | SendMessageNodeData
   | ConditionNodeData
+  | BranchNodeData
   | DelayNodeData
   | TagNodeData
   | SetFieldNodeData

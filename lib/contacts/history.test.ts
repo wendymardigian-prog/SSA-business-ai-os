@@ -143,3 +143,42 @@ describe("eventos de Formularios (form_view, form_start, form_rejected)", () => 
     expect(items[0]).toMatchObject({ source: "flow", phase: "started" });
   });
 });
+
+describe("por que camino fue una automatizacion (branch_taken)", () => {
+  const taken = (id: string, at: string, metadata: unknown) => ({ id, eventType: "branch_taken", flowId: "f-1", createdAt: at, metadata: metadata as never });
+
+  it("aparece en el historial con el nombre del camino", () => {
+    const items = buildContactHistory(base({ flowEvents: [taken("e1", "2026-10-09T10:00:00Z", { pathId: "p_abc123", pathLabel: "Facturación alta" })] }));
+    expect(items[0]).toMatchObject({ source: "flow", phase: "branch", flowName: "Bienvenida", pathLabel: "Facturación alta" });
+    expect(describeHistoryItem(items[0] as FlowHistoryItem)).toEqual({
+      actor: "El sistema",
+      text: "en la automatización «Bienvenida» fue por el camino «Facturación alta»",
+    });
+  });
+
+  it("«Si no» se muestra con su nombre", () => {
+    const items = buildContactHistory(base({ flowEvents: [taken("e1", "2026-10-09T10:00:00Z", { pathId: "else", pathLabel: "Si no" })] }));
+    expect((describeHistoryItem(items[0] as FlowHistoryItem)).text).toContain("«Si no»");
+  });
+
+  it("sin metadata o con metadata rota no se rompe", () => {
+    for (const metadata of [null, undefined, [], "x", {}, { pathLabel: 7 }]) {
+      const items = buildContactHistory(base({ flowEvents: [taken("e1", "2026-10-09T10:00:00Z", metadata)] }));
+      expect(items[0]).toMatchObject({ phase: "branch", pathLabel: null });
+      expect(describeHistoryItem(items[0] as FlowHistoryItem).text).toContain("(sin nombre)");
+    }
+  });
+
+  it("queda ordenado junto al resto y no desplaza la deduplicacion de la automatizacion", () => {
+    const items = buildContactHistory(
+      base({
+        audit: [audit("a1", "2026-10-09T10:00:02Z", "automation_triggered", { flow_id: "f-1" })],
+        flowEvents: [
+          { id: "e0", eventType: "flow_started", flowId: "f-1", createdAt: "2026-10-09T10:00:00Z" },
+          taken("e1", "2026-10-09T10:00:01Z", { pathLabel: "A" }),
+        ],
+      }),
+    );
+    expect(items.map((i) => (i.source === "flow" ? i.phase : i.source))).toEqual(["branch", "started"]);
+  });
+});
