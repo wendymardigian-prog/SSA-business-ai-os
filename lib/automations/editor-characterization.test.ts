@@ -8,9 +8,11 @@
  *    (los tipos de nodo siguiendo las aristas) antes y despues de esa ida y vuelta;
  *  - las formas que el editor lineal acepta o rechaza (condicion con una o dos
  *    salidas, A/B, ciclo, nodo suelto);
- *  - lo que hoy se PIERDE o se escribe mal al guardar (anotado abajo como
- *    "hoy"): el editor nuevo lo tiene que arreglar, y al hacerlo estos tests
- *    se actualizan a proposito, no por accidente;
+ *  - lo que el editor LINEAL (`linear-flow.ts`, hoy el viejo) pierde o escribe
+ *    mal al guardar (anotado abajo como "hoy"). Esos tests siguen en pie: el
+ *    modulo sigue exportado y describen lo que paso. Lo arregla el editor de
+ *    arbol (`step-tree.ts`), y el ultimo bloque de este archivo lo prueba CONTRA
+ *    los mismos grafos: `onlyIfPhone` se conserva y el "Si" se escribe bien;
  *  - quien importa `flowToLinear`/`linearToFlow`.
  *
  * Sin Supabase real y sin fetch: el motor corre sobre la base en memoria, con
@@ -25,6 +27,7 @@ import { FLOW_TEMPLATES, templateGraph } from "@/lib/scheduling/automation/templ
 import { FORM_FLOW_TEMPLATES, formTemplateGraph, blankFormFlowGraph } from "@/lib/forms/automation/templates";
 import * as linearModule from "@/lib/scheduling/automation/linear-flow";
 import { flowToLinear, linearToFlow, type CanvasEdge, type CanvasNode } from "@/lib/scheduling/automation/linear-flow";
+import { flowToTree, treeToFlow } from "@/lib/automations/step-tree";
 import { resolveNodeType } from "@/lib/flow-engine/registry";
 import { executeFlow } from "@/lib/flow-engine/engine";
 
@@ -172,10 +175,10 @@ describe("grafo -> flowToLinear -> linearToFlow (tal cual hoy)", () => {
     expect(back.nodes[0].data).toEqual(g.nodes[0].data);
   });
 
-  it("HOY se pierde `onlyIfPhone` del mensaje al guardar desde el editor lineal", () => {
+  it("HOY (editor lineal VIEJO) se pierde `onlyIfPhone` del mensaje al guardar", () => {
     // reminder_1h (Agenda) y thank_you_message (Formularios) lo traen en true:
     // el editor lineal solo conserva el texto del primer mensaje. El editor de
-    // arbol guarda los datos del nodo tal cual y lo arregla.
+    // arbol guarda los datos del nodo tal cual y lo arregla (ultimo bloque).
     for (const { name, graph } of GRAPHS) {
       const original = graph.nodes.find((n) => n.type === "sendMessage");
       if (!original) continue;
@@ -251,10 +254,10 @@ describe("flowToLinear: que formas acepta y cuales no", () => {
 });
 
 describe("linearToFlow: las condiciones (tal cual hoy)", () => {
-  it("HOY escribe el `Si` sin `sourceHandle: true` y con las condiciones como TEXTO, sin `logic`", () => {
+  it("HOY (editor lineal VIEJO) escribe el `Si` sin `sourceHandle: true` y con las condiciones como TEXTO, sin `logic`", () => {
     // Un flujo con "Si" guardado desde el editor lineal se corta en la condicion:
     // el motor sigue `handle:true` y la arista no declara ninguno. El editor de
-    // arbol guarda los datos del nodo tal cual y lo arregla.
+    // arbol guarda los datos del nodo tal cual y lo arregla (ultimo bloque).
     const back = linearToFlow({
       trigger: { type: "form_submitted", config: { form_ids: ["f1"] } },
       conditions: ['{"field":"tag:vip","operator":"equals","value":"true"}'],
@@ -291,5 +294,50 @@ describe("quien importa el editor lineal", () => {
     const text = readFileSync(resolve(__dirname, "../..", file), "utf8");
     expect(text).toMatch(/scheduling\/automation\/linear-flow/);
     expect(text).toMatch(/flowToLinear|linearToFlow/);
+  });
+});
+
+describe("el editor de arbol arregla lo que el lineal perdia (a proposito: ahora estos tests dicen lo contrario de los marcados HOY)", () => {
+  it.each(GRAPHS.map((g) => [g.name, g.graph] as const))("%s: guardar desde el arbol conserva los datos de TODOS los nodos, `onlyIfPhone` incluido", (_name, graph) => {
+    const back = treeToFlow(flowToTree(graph.nodes, graph.edges)!);
+    for (const original of graph.nodes) {
+      expect(back.nodes.find((n) => n.id === original.id)?.data, original.id).toEqual(original.data ?? {});
+    }
+  });
+
+  it("el mensaje conserva `onlyIfPhone` (con el editor lineal quedaba solo con el texto)", () => {
+    for (const { name, graph } of GRAPHS) {
+      const original = graph.nodes.find((n) => n.type === "sendMessage");
+      if (!original) continue;
+      const sent = treeToFlow(flowToTree(graph.nodes, graph.edges)!).nodes.find((n) => n.id === original.id)!;
+      expect((sent.data as { onlyIfPhone?: boolean }).onlyIfPhone, name).toBe(true);
+    }
+  });
+
+  it("un `Si` se escribe con su salida `true` y las condiciones como objetos con su `logic` (el motor ya no se corta)", () => {
+    const c = { field: "tag:vip", operator: "equals", value: "true" };
+    const graph: Graph = {
+      nodes: [
+        { id: "t", type: "trigger", data: { triggerType: "form_submitted" } },
+        { id: "c", type: "condition", data: { conditions: [c], logic: "and" } },
+        { id: "a", type: "action", data: { actionType: "addTag", tagName: "x" } },
+      ],
+      edges: [{ id: "t-c", source: "t", target: "c" }, { id: "c-a", source: "c", target: "a", sourceHandle: "true" }],
+    };
+    const back = treeToFlow(flowToTree(graph.nodes, graph.edges)!);
+    expect(back.nodes.find((n) => n.id === "c")!.data).toEqual({ conditions: [c], logic: "and" });
+    expect(back.edges.find((e) => e.source === "c")!.sourceHandle).toBe("true");
+  });
+
+  it("y en el mismo caso un Si guardado SIN salida declarada (como lo dejaba el editor lineal) queda arreglado al guardar", () => {
+    const graph: Graph = {
+      nodes: [
+        { id: "t", type: "trigger", data: { triggerType: "form_submitted" } },
+        { id: "c", type: "condition", data: { conditions: [], logic: "and" } },
+        { id: "a", type: "action", data: { actionType: "addTag", tagName: "x" } },
+      ],
+      edges: [{ id: "t-c", source: "t", target: "c" }, { id: "c-a", source: "c", target: "a" }],
+    };
+    expect(treeToFlow(flowToTree(graph.nodes, graph.edges)!).edges.find((e) => e.source === "c")!.sourceHandle).toBe("true");
   });
 });
