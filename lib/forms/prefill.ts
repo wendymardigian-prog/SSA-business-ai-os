@@ -36,13 +36,31 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_SHORT = 500;
 const MAX_LONG = 5000;
 
-/** Lo que una persona puede dejar escrito en el campo, o null si no es válido para él. */
+/**
+ * En una URL el "+" sin codificar se lee como un espacio (`?telefono=+50688881234` llega como " 50688881234"). Un
+ * teléfono nunca empieza con un espacio seguido de un dígito, así que ese espacio era un "+". Antes de arreglarlo,
+ * el país del workspace se le sumaba a un número que ya traía el suyo (+50650688881234, un número que no existe).
+ */
+export function restorePlusInPhone(raw: string): string {
+  return /^\s+\d/.test(raw) ? raw.replace(/^\s+/, "+") : raw;
+}
+
+/** Un email nunca tiene espacios: los que trae son "+" que la URL leyó como espacio (`ana+promo@x.com`). */
+export function restorePlusInEmail(raw: string): string {
+  return raw.trim().replace(/\s/g, "+");
+}
+
+/**
+ * Lo que una persona puede dejar escrito en el campo, o null si no es válido para él. (El parámetro `attr` del
+ * embed no pasa por acá: viaja en base64url, que usa "-" y "_" y no tiene "+".)
+ */
 export function coercePrefillValue(
   field: FormField,
   raw: string,
   defaultCountry?: string | null,
 ): PrefillValue | null {
-  const text = raw.trim();
+  const restored = field.type === "phone" ? restorePlusInPhone(raw) : field.type === "email" ? restorePlusInEmail(raw) : raw;
+  const text = restored.trim();
   if (text === "") return null;
 
   switch (field.type) {
@@ -172,6 +190,9 @@ export function hiddenValues(
 export interface PrefillParamRow {
   fieldKey: string;
   label: string;
+  type: FormField["type"];
+  /** Un valor de ejemplo válido para este campo (para armar un link de muestra). */
+  example: string;
   /** Los parámetros que lo llenan, en orden de prioridad. */
   params: string[];
   behavior: PrefillConfig["behavior"];
@@ -224,9 +245,49 @@ export function describePrefillParams(definition: { fields: FormField[] }): Desc
     }
     const config = effectivePrefill(field);
     if (!config) continue;
-    fields.push({ fieldKey: field.key, label: field.label || field.key, params: [...config.params], behavior: config.behavior });
+    fields.push({ fieldKey: field.key, label: field.label || field.key, type: field.type, example: exampleValueFor(field), params: [...config.params], behavior: config.behavior });
   }
   return { fields, hidden, auto: AUTO_ATTRIBUTION_GROUPS };
+}
+
+/** Un valor de ejemplo válido para el campo, para mostrar un link de muestra. */
+export function exampleValueFor(field: Pick<FormField, "type" | "options" | "social">): string {
+  switch (field.type) {
+    case "email":
+      return "ana@ejemplo.com";
+    case "phone":
+      return "+50688881234";
+    case "social":
+      return field.social?.platform === "linkedin" ? "ana-perez" : "tuusuario";
+    case "number":
+      return "5";
+    case "rating":
+      return "5";
+    case "nps":
+      return "9";
+    case "date":
+      return "2026-10-31";
+    case "single_select":
+      return field.options?.[0] ?? "opcion";
+    case "multi_select":
+      return (field.options ?? []).slice(0, 2).join(",") || "opcion";
+    case "long_text":
+      return "Hola";
+    default:
+      return "Ana";
+  }
+}
+
+/**
+ * Los parámetros cortos que se le suman a un campo de email, teléfono o red social al crearlo (`?email=…`,
+ * `?telefono=…`, `?instagram=…`), salvo los que ya usa otro campo. Se ven como chips y se pueden quitar.
+ */
+export function prefillAliasesFor(field: Pick<FormField, "type" | "key" | "social">, otherFields: Array<Pick<FormField, "key" | "prefill">>): string[] {
+  const wanted =
+    field.type === "email" ? ["email"] : field.type === "phone" ? ["telefono", "phone"] : field.type === "social" && field.social ? [field.social.platform] : [];
+  const used = new Set(otherFields.flatMap((f) => (f.prefill?.params ?? [f.key]).map((p) => p.toLowerCase())));
+  used.add(field.key.toLowerCase());
+  return wanted.filter((alias) => !used.has(alias));
 }
 
 /** Las variables del contacto que se pueden pegar sin codificar en un mensaje o email de una automatización. */

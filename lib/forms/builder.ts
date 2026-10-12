@@ -12,6 +12,7 @@
  */
 import { identifierFromLabel, uniqueIdentifier } from "@/lib/scheduling/booking-fields";
 import { MAX_FIELDS, newField, type FormField, type FormFieldType } from "./fields";
+import { prefillAliasesFor } from "./prefill";
 import type { Condition, ConditionGroup, VisibilityConfig } from "./visibility-types";
 
 /** La clave automática que corresponde a una etiqueta, sin chocar con otras. */
@@ -23,7 +24,10 @@ export function addField(fields: FormField[], type: FormFieldType): FormField[] 
   if (fields.length >= MAX_FIELDS) return fields;
   const base = newField(type, "tmp");
   const key = autoKey(base.label, fields.map((f) => f.key));
-  const field = type === "hidden" ? { ...newField(type, key, base.label), hidden: { source: "url_param" as const, param: key } } : { ...newField(type, key, base.label) };
+  const created = type === "hidden" ? { ...newField(type, key, base.label), hidden: { source: "url_param" as const, param: key } } : { ...newField(type, key, base.label) };
+  // Un campo de email, teléfono o red social también se llena con el nombre corto de su tipo (?email=…), si nadie lo usa.
+  const aliases = prefillAliasesFor(created, fields);
+  const field: FormField = aliases.length > 0 ? { ...created, prefill: { params: [key, ...aliases], behavior: "editable" } } : created;
   return [...fields, field];
 }
 

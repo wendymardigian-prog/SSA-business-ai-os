@@ -176,7 +176,7 @@ export function PublishTab({
         <CopyButton id="site" text={siteSnippet} label="Copiar" state={copy} />
       </section>
 
-      <PrefillCard definition={definition} baseUrl={publicUrl} />
+      <PrefillCard definition={definition} baseUrl={publicUrl} slug={form.slug} />
 
       <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="versiones">
         <h2 id="versiones" className="text-sm font-semibold">

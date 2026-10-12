@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { AUTO_ATTRIBUTION_GROUPS, CONTACT_LINK_VARIABLES, buildPrefillLink, coercePrefillValue, describePrefillParams, hiddenValues, prefillFromParams } from "./prefill";
+import { AUTO_ATTRIBUTION_GROUPS, CONTACT_LINK_VARIABLES, buildPrefillLink, coercePrefillValue, describePrefillParams, exampleValueFor, hiddenValues, prefillAliasesFor, prefillFromParams } from "./prefill";
+import { addField } from "./builder";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { newField, type FormField } from "./fields";
 
@@ -125,8 +126,9 @@ describe("describePrefillParams (F32)", () => {
       ],
     });
     expect(out.fields).toEqual([
-      { fieldKey: "email", label: "Email", params: ["email"], behavior: "editable" },
-      { fieldKey: "nombre", label: "Nombre", params: ["nombre", "name"], behavior: "locked" },
+      // R7: la fila trae además el tipo y un ejemplo válido (para el link de muestra).
+      { fieldKey: "email", label: "Email", type: "email", example: "ana@ejemplo.com", params: ["email"], behavior: "editable" },
+      { fieldKey: "nombre", label: "Nombre", type: "short_text", example: "Ana", params: ["nombre", "name"], behavior: "locked" },
     ]);
   });
 
@@ -196,5 +198,100 @@ describe("prefill de un usuario de red social (R5)", () => {
 
   it("un valor que no es un usuario válido se ignora entero", () => {
     expect(prefillFromParams([ig], { instagram: "no es un usuario" }).values).toEqual({});
+  });
+});
+
+describe('el "+" de la URL (R7)', () => {
+  const phone = f("phone", "telefono");
+  const email = f("email", "email");
+
+  it("un teléfono con + sin codificar llega como espacio y se restaura: +50688881234", () => {
+    expect(coercePrefillValue(phone, " 50688881234", "CR")).toBe("+50688881234");
+    // Antes: el espacio se recortaba, el número parecía local y se le sumaba el código del país otra vez.
+    expect(coercePrefillValue(phone, "  50688881234", "CR")).toBe("+50688881234");
+  });
+
+  it("un teléfono local sin + sigue igual (sin cambios)", () => {
+    expect(coercePrefillValue(phone, "88881234", "CR")).toBe("+50688881234");
+    expect(coercePrefillValue(phone, "+50688881234", "CR")).toBe("+50688881234");
+  });
+
+  it("un email con + sin codificar llega con un espacio en el medio y se restaura", () => {
+    expect(coercePrefillValue(email, "ana promo@x.com")).toBe("ana+promo@x.com");
+    expect(coercePrefillValue(email, "ana+promo@x.com")).toBe("ana+promo@x.com");
+    expect(coercePrefillValue(email, "  ana@x.com  ")).toBe("ana@x.com");
+  });
+
+  it("de punta a punta: buildPrefillLink → la variable se reemplaza SIN codificar → la URL → el campo", () => {
+    const link = buildPrefillLink("https://app.ejemplo.test/f/aplicacion", { telefono: "{{contact.phone}}", email: "{{contact.email}}" });
+    // El nodo de envío reemplaza la variable por el valor tal cual, sin codificar.
+    const resolved = link.replace("{{contact.phone}}", "+50688881234").replace("{{contact.email}}", "ana+promo@x.com");
+    const params: Record<string, string> = {};
+    new URL(resolved).searchParams.forEach((value, key) => (params[key] = value));
+    const result = prefillFromParams([phone, email], params, { defaultCountry: "CR" });
+    expect(result.values.telefono).toBe("+50688881234");
+    expect(result.values.email).toBe("ana+promo@x.com");
+  });
+
+  it("codificado a mano también funciona", () => {
+    const link = buildPrefillLink("https://app.ejemplo.test/f/a", { telefono: "+50688881234", email: "ana+promo@x.com" });
+    const params: Record<string, string> = {};
+    new URL(link).searchParams.forEach((value, key) => (params[key] = value));
+    expect(prefillFromParams([phone, email], params, { defaultCountry: "CR" }).values).toEqual({ telefono: "+50688881234", email: "ana+promo@x.com" });
+  });
+});
+
+describe("parámetros cortos automáticos (R7)", () => {
+  it("un campo email nuevo se llena con ?email=… (su clave ya es email, o se suma el alias si la clave es otra)", () => {
+    const [field] = addField([], "email");
+    expect(field.key).toBe("email");
+    expect(field.prefill).toBeUndefined(); // el parámetro por defecto ya es `email`
+    expect(prefillAliasesFor({ type: "email", key: "correo_de_contacto" }, [])).toEqual(["email"]);
+  });
+
+  it("si otro campo ya lo usa, NO se suma: el segundo email no se queda con ?email=", () => {
+    const fields = addField(addField([], "email"), "email");
+    expect(fields[1].key).not.toBe("email");
+    expect(fields[1].prefill).toBeUndefined();
+    expect(prefillFromParams(fields, { email: "ana@x.com" }).values).toEqual({ [fields[0].key]: "ana@x.com" });
+  });
+
+  it("teléfono suma telefono y phone (menos el que ya es su clave); las redes, su nombre", () => {
+    expect(addField([], "phone")[0].prefill?.params).toEqual(["telefono", "phone"]);
+    expect(prefillAliasesFor({ type: "phone", key: "mi_numero" }, [])).toEqual(["telefono", "phone"]);
+    const [social] = addField([], "social");
+    expect(social.prefill?.params).toEqual([social.key, "instagram"]);
+    expect(prefillFromParams([social], { instagram: "@Prueba" }).values[social.key]).toBe("prueba");
+  });
+
+  it("un campo cuya clave ya es el alias no lo repite", () => {
+    expect(prefillAliasesFor({ type: "email", key: "email" }, [])).toEqual([]);
+  });
+
+  it("el alias que otro campo ya tiene como clave (sin prefill propio) cuenta como usado", () => {
+    expect(prefillAliasesFor({ type: "email", key: "correo" }, [{ key: "email" }])).toEqual([]);
+  });
+
+  it("no se suma nada a los demás tipos", () => {
+    expect(addField([], "short_text")[0].prefill).toBeUndefined();
+  });
+});
+
+describe("ejemplos de link (R7)", () => {
+  it("cada campo prellenable tiene un ejemplo que su propio campo acepta", () => {
+    for (const type of ["short_text", "long_text", "email", "phone", "number", "date", "rating", "nps"] as const) {
+      const field = f(type, "campo");
+      expect(coercePrefillValue(field, exampleValueFor(field), "CR"), type).not.toBeNull();
+    }
+    const select = f("single_select", "plan", { options: ["A", "B"] });
+    expect(coercePrefillValue(select, exampleValueFor(select))).toBe("A");
+    const social = f("social", "ig", { social: { platform: "instagram" } });
+    expect(coercePrefillValue(social, exampleValueFor(social))).toBe("tuusuario");
+  });
+
+  it("describePrefillParams trae tipo y ejemplo por campo", () => {
+    const row = describePrefillParams({ fields: [f("email", "email")] }).fields[0];
+    expect(row.type).toBe("email");
+    expect(row.example).toBe("ana@ejemplo.com");
   });
 });
