@@ -14,7 +14,8 @@ vi.mock("@/lib/supabase/server", () => ({ createServiceClient: mocks.service }))
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
 vi.mock("@/lib/email/send", () => ({ sendTransactionalEmail: mocks.sendEmail }));
 
-import { createFormFlow, createFormFlowFromTemplate, saveFormLinearFlow, sendFormFlowTestEmail, toggleFormFlow } from "./flows";
+import { createFormFlow, createFormFlowFromTemplate, saveFormFlowTree, saveFormLinearFlow, sendFormFlowTestEmail, toggleFormFlow } from "./flows";
+import { flowToTree } from "@/lib/automations/step-tree";
 import { blankFormFlowGraph, formTemplateGraph } from "@/lib/forms/automation/templates";
 
 const FORM = "11111111-1111-4111-8111-111111111111";
@@ -169,6 +170,94 @@ describe("saveFormLinearFlow", () => {
     const out = await saveFormLinearFlow({ flowId: FLOW, linear: linear() });
     expect(out.ok).toBe(false);
     expect(db.writes()).toHaveLength(0);
+  });
+});
+
+describe("saveFormFlowTree", () => {
+  const graph = () => formTemplateGraph("notify_me_email", { form: { id: FORM, name: "Aplicación", type: "custom" }, userEmail: "yo@ejemplo.com" });
+  const steps = () => flowToTree(graph().nodes, graph().edges)!.steps;
+  const rule = { rootConjunction: "and", conditions: [{ id: "c_1", fieldKey: "edad", operator: "gte", value: "18" }], groups: [] };
+  const branch = {
+    kind: "branch" as const,
+    id: "b1",
+    data: {},
+    paths: [{ id: "p_aaaaaa", label: "A", logic: "and" as const, conditions: [{ field: "answer.x", operator: "is", valueType: "single_select" as const, value: "A" }], steps: [] }],
+    otherwise: [],
+  };
+
+  it("guarda el arbol como grafo: Condiciones con sus salidas, y conserva los ids", async () => {
+    const db = setup();
+    expect(await saveFormFlowTree({ flowId: FLOW, tree: { steps: [...steps(), branch] } })).toEqual({ ok: true });
+    const row = db.writesTo("flows")[0].values as { nodes: Array<{ id: string; type: string }>; edges: Array<{ source: string; sourceHandle?: string }> };
+    expect(row.nodes.map((n) => n.id)).toEqual(["trigger", "step-1", "b1"]);
+    expect(row.nodes.find((n) => n.id === "b1")?.type).toBe("branch");
+    expect(row.edges.filter((e) => e.source === "b1")).toEqual([]);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "form", entityId: FORM }));
+  });
+
+  it("el disparador sale de la base y el 'Solo si…' se guarda en el mismo formato", async () => {
+    const db = setup();
+    await saveFormFlowTree({ flowId: FLOW, tree: { steps: steps() }, answerConditions: rule });
+    const nodes = (db.writesTo("flows")[0].values as { nodes: Array<{ id: string; data: Record<string, unknown> }> }).nodes;
+    expect(nodes[0].data).toMatchObject({ triggerType: "form_submitted", form_ids: [FORM], answer_conditions: rule });
+  });
+
+  it("sin answerConditions no toca el 'Solo si…' que ya habia", async () => {
+    const g = graph();
+    (g.nodes[0].data as Record<string, unknown>).answer_conditions = rule;
+    const db = setup({ flow: { nodes: g.nodes, edges: g.edges } });
+    await saveFormFlowTree({ flowId: FLOW, tree: { steps: steps() } });
+    const nodes = (db.writesTo("flows")[0].values as { nodes: Array<{ data: Record<string, unknown> }> }).nodes;
+    expect(nodes[0].data.answer_conditions).toEqual(rule);
+  });
+
+  it("un 'Solo si…' invalido no se guarda", async () => {
+    const db = setup();
+    const out = await saveFormFlowTree({ flowId: FLOW, tree: { steps: steps() }, answerConditions: { rootConjunction: "xor", conditions: [], groups: [] } });
+    expect(out.ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("se niega si el grafo guardado no es un arbol", async () => {
+    const g = blankFormFlowGraph({ id: FORM, type: "custom" });
+    const nodes = [...g.nodes, { id: "a", type: "action", data: { actionType: "addTag" } }, { id: "b", type: "action", data: { actionType: "addTag" } }];
+    const edges = [{ id: "e1", source: "trigger", target: "a" }, { id: "e2", source: "trigger", target: "b" }];
+    const db = setup({ flow: { nodes, edges } });
+    const out = await saveFormFlowTree({ flowId: FLOW, tree: { steps: [] } });
+    expect(out).toEqual({ ok: false, error: expect.stringMatching(/canvas/) });
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("valida el arbol: un paso que Formularios no ofrece no se guarda", async () => {
+    const db = setup();
+    const out = await saveFormFlowTree({ flowId: FLOW, tree: { steps: [{ kind: "action", id: "x", nodeType: "action", data: { actionType: "cancel_booking", status: "cancelled_other" } }] } });
+    expect(out.ok).toBe(false);
+    expect(db.writes()).toHaveLength(0);
+  });
+
+  it("si estaba encendido, rehace el trigger activo (como las acciones lineales)", async () => {
+    const db = setup({ flow: { status: "published" } });
+    await saveFormFlowTree({ flowId: FLOW, tree: { steps: steps() } });
+    expect(db.writesTo("triggers").some((c) => c.op === "delete")).toBe(true);
+    const inserted = db.writesTo("triggers").find((c) => c.op === "insert")!.values as Array<Record<string, unknown>>;
+    expect(inserted[0]).toMatchObject({ type: "form_submitted", is_active: true, workspace_id: "ws1" });
+  });
+
+  it("apagado no toca los triggers", async () => {
+    const db = setup();
+    await saveFormFlowTree({ flowId: FLOW, tree: { steps: steps() } });
+    expect(db.writesTo("triggers")).toHaveLength(0);
+  });
+
+  it("sin permiso, nada; de otro workspace o de otro formulario, nada", async () => {
+    mocks.permission.mockResolvedValue(null);
+    expect((await saveFormFlowTree({ flowId: FLOW, tree: { steps: [] } })).ok).toBe(false);
+    const other = setup({ flow: { workspace_id: "otro" } });
+    expect((await saveFormFlowTree({ flowId: FLOW, tree: { steps: [] } })).ok).toBe(false);
+    expect(other.writes()).toHaveLength(0);
+    const noForm = setup({ flow: { form_id: null } });
+    expect((await saveFormFlowTree({ flowId: FLOW, tree: { steps: [] } })).ok).toBe(false);
+    expect(noForm.writes()).toHaveLength(0);
   });
 });
 
