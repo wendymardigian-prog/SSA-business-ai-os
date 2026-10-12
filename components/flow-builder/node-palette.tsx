@@ -21,6 +21,9 @@ import {
   CalendarX,
   CalendarCheck,
   Library,
+  BadgeDollarSign,
+  CalendarClock,
+  Ban,
 } from "lucide-react";
 import type { DragEvent } from "react";
 
@@ -192,6 +195,28 @@ const categories: PaletteCategory[] = [
         label: "Cambiar estado de la reunion",
         icon: CalendarCheck,
         actionType: "set_booking_status",
+      },
+      // Ventas (F37): las tres acciones de cobranza. Trabajan sobre el pago o la venta que disparo el flujo.
+      {
+        type: "action",
+        nodeType: "mark_payment_paid",
+        label: "Marcar pago como cobrado",
+        icon: BadgeDollarSign,
+        actionType: "mark_payment_paid",
+      },
+      {
+        type: "action",
+        nodeType: "reschedule_payment",
+        label: "Reprogramar pago",
+        icon: CalendarClock,
+        actionType: "reschedule_payment",
+      },
+      {
+        type: "action",
+        nodeType: "set_sale_status",
+        label: "Cancelar la venta",
+        icon: Ban,
+        actionType: "set_sale_status",
       },
     ],
   },

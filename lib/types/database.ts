@@ -377,7 +377,13 @@ export type AuditEntityType =
   /** Formularios (00150): el formulario, una respuesta y la firma de un contrato. */
   | "form"
   | "form_submission"
-  | "contract_signature";
+  | "contract_signature"
+  /** Ventas (00159 a 00168): el catalogo, las reglas de asignacion, la venta y el pago. */
+  | "product"
+  | "product_variant"
+  | "assignment_rule"
+  | "sale"
+  | "payment";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -503,7 +509,47 @@ export type AuditAction =
   | "contact.linked"
   /** Entity contract_signature. */
   | "contract.email_resent"
-  | "contract.pdf_regenerated";
+  | "contract.pdf_regenerated"
+  /** Ventas, catalogo (entity product o product_variant). Los escribe el trigger `catalog_audit` (00170). */
+  | "product.created"
+  | "product.updated"
+  | "product.status_changed"
+  | "product.deleted"
+  | "variant.created"
+  | "variant.updated"
+  | "variant.price_changed"
+  | "variant.archived"
+  | "variant.restored"
+  | "variant.deleted"
+  /** Solo filas viejas: antes de la 00169 las duplicaciones y las versiones de precio se registraban asi. */
+  | "variant.duplicated"
+  | "version.draft_created"
+  | "version.draft_updated"
+  | "version.draft_deleted"
+  | "version.published"
+  /** Ventas, asignacion (entity assignment_rule; la automatica es entity contact, actor sistema). */
+  | "assignment_rule.updated"
+  | "assignment.automatic"
+  /** Ventas (entity sale). */
+  | "sale.created"
+  | "sale.updated"
+  | "sale.attribution_changed"
+  | "sale.repriced"
+  | "sale.cancelled"
+  | "sale.subscription_cancelled"
+  | "sale.refunded"
+  | "sale.contract_sent"
+  /** Pagos (entity payment). */
+  | "payment.created"
+  | "payment.paid"
+  | "payment.reverted"
+  | "payment.rescheduled"
+  | "payment.uncollectible"
+  | "payment.restored"
+  | "payment.cancelled"
+  | "payment.overdue"
+  | "payment.refund"
+  | "payment.receipt_uploaded";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -622,7 +668,14 @@ export type TriggerType =
   // Formularios (CHECK de la migracion 00155): un envio por tipo de formulario.
   | "form_submitted"
   | "survey_answered"
-  | "contract_signed";
+  | "contract_signed"
+  // Ventas (CHECK de la migracion 00166): un cambio de estado = un evento; los dos ultimos son relativos al vencimiento.
+  | "sale_created"
+  | "sale_status_changed"
+  | "payment_created"
+  | "payment_status_changed"
+  | "payment_before_due"
+  | "payment_after_due";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -859,6 +912,12 @@ export interface Database {
           content_copy_settings: Json;
           /** Zona horaria IANA del negocio (migracion 00075). */
           timezone: string;
+          /** Metodos de pago que ofrece el selector de Ventas (00159). */
+          enabled_payment_methods: string[];
+          /** Tope de descuento de una venta, en %. NULL = sin tope (00161). */
+          max_discount_percent: number | null;
+          overdue_grace_days: number;
+          sales_auto_create_flows: boolean;
           ai_background_settings: Json;
           /** Topes globales de gasto de IA del workspace. NULL = sin tope (migracion 00058). */
           ai_daily_cost_limit_usd: number | null;
@@ -892,6 +951,10 @@ export interface Database {
           scheduling_auto_create_flows?: boolean;
           scheduling_public_base_url?: string | null;
           timezone?: string;
+          enabled_payment_methods?: string[];
+          max_discount_percent?: number | null;
+          overdue_grace_days?: number;
+          sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -922,6 +985,10 @@ export interface Database {
           scheduling_auto_create_flows?: boolean;
           scheduling_public_base_url?: string | null;
           timezone?: string;
+          enabled_payment_methods?: string[];
+          max_discount_percent?: number | null;
+          overdue_grace_days?: number;
+          sales_auto_create_flows?: boolean;
           ai_background_settings?: Json;
           ai_daily_cost_limit_usd?: number | null;
           ai_monthly_cost_limit_usd?: number | null;
@@ -1145,6 +1212,13 @@ export interface Database {
           avatar_url: string | null;
           /** De donde sale avatar_url (migracion 00104, F16). Default 'external'. */
           avatar_source: AvatarSource;
+          /** Ventas (00161): quien refirio a este contacto. */
+          referred_by_user_id: string | null;
+          referred_by_contact_id: string | null;
+          /** Se escribe al asignar a mano setter o vendedor: la asignacion automatica no lo toca mas. */
+          assignment_locked_at: string | null;
+          /** Salud de pago (F31): la recalcula el servidor. */
+          payment_health: Json;
           /** Cuando se actualizo avatar_url por ultima vez (migracion 00104, F16). */
           avatar_updated_at: string | null;
           is_subscribed: boolean;
@@ -1193,6 +1267,10 @@ export interface Database {
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
+          referred_by_user_id?: string | null;
+          referred_by_contact_id?: string | null;
+          assignment_locked_at?: string | null;
+          payment_health?: Json;
           avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
@@ -1228,6 +1306,10 @@ export interface Database {
           email?: string | null;
           avatar_url?: string | null;
           avatar_source?: AvatarSource;
+          referred_by_user_id?: string | null;
+          referred_by_contact_id?: string | null;
+          assignment_locked_at?: string | null;
+          payment_health?: Json;
           avatar_updated_at?: string | null;
           is_subscribed?: boolean;
           last_interaction_at?: string | null;
@@ -3668,6 +3750,216 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Ventas (Etapa 5, 00162). Solo las escribe el servidor; nada se borra. */
+      sales: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          contact_id: string;
+          product_variant_id: string;
+          product_snapshot: Json;
+          base_amount: number;
+          discount_amount: number;
+          final_amount: number;
+          discount_reason: string | null;
+          currency: "USD";
+          status: "pending_payment" | "reserved" | "paid" | "overdue" | "subscription_active" | "cancelled" | "refunded" | "disputed" | "subscription_cancelled";
+          financing_type: "full" | "reservation_balance" | "installments" | "reservation_installments" | "subscription";
+          subscription_interval: "monthly" | "quarterly" | "yearly" | null;
+          sale_date: string;
+          setter_id: string | null;
+          vendedor_id: string | null;
+          attribution: Json | null;
+          attribution_touch_id: string | null;
+          attribution_type: "last_touch" | "manual" | "none";
+          booking_id: string | null;
+          service_starts_at: string | null;
+          notes: string | null;
+          plan_unbalanced: boolean;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          cancellation_reason: string | null;
+          subscription_cancelled_at: string | null;
+          subscription_cancel_reason: string | null;
+          refunded_at: string | null;
+          opportunity_stage: string | null;
+          stage_entered_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Pagos de una venta (00162). Un reembolso es otra fila (type refund, monto negativo). */
+      payments: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          sale_id: string;
+          type: "full" | "reservation" | "installment" | "refund";
+          amount: number;
+          currency: "USD";
+          status: "scheduled" | "paid" | "overdue" | "uncollectible" | "refunded" | "cancelled";
+          due_date: string | null;
+          original_due_date: string | null;
+          reschedule_count: number;
+          paid_at: string | null;
+          paid_on: string | null;
+          delay_days: number | null;
+          payment_method: "whop" | "transferencia_cr" | "transferencia_usa" | "wise" | "binance" | null;
+          payment_option_snapshot: Json | null;
+          provider_fee_amount: number | null;
+          receipt_path: string | null;
+          notes: string | null;
+          reschedule_reason: string | null;
+          uncollectible_reason: string | null;
+          refund_reason: string | null;
+          revert_reason: string | null;
+          refund_of_payment_id: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      /** Reglas de asignacion automatica (Ventas, 00161): una fila por workspace y kind. */
+      assignment_rules: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          kind: "setter" | "vendedor" | "referral";
+          entity_type: "contact";
+          mode: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids: string[];
+          last_assigned_member_id: string | null;
+          condition_rules: Json;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          kind: "setter" | "vendedor" | "referral";
+          entity_type?: "contact";
+          mode?: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          condition_rules?: Json;
+          updated_by?: string | null;
+        };
+        Update: {
+          mode?: "manual" | "round_robin" | "condition_based";
+          enabled_member_ids?: string[];
+          last_assigned_member_id?: string | null;
+          condition_rules?: Json;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Catalogo de productos de Ventas (00159). Absorbe content_offers: los migrados conservan el id. */
+      products: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          name: string;
+          description: string | null;
+          product_type: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order: number;
+          status: "active" | "inactive" | "discontinued";
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          name: string;
+          description?: string | null;
+          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order?: number;
+          status?: "active" | "inactive" | "discontinued";
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          description?: string | null;
+          product_type?: "programa" | "mentoria" | "curso" | "servicio" | "otro";
+          display_order?: number;
+          status?: "active" | "inactive" | "discontinued";
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
+      /** Como se vende un producto: duracion, garantia, facturacion y PRECIO en USD (00159, 00169). */
+      product_variants: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          product_id: string;
+          name: string;
+          duration_type: "days" | "weeks" | "months" | "lifetime";
+          duration_value: number | null;
+          guarantee_duration_type: "days" | "weeks" | "months" | null;
+          guarantee_duration_value: number | null;
+          billing_type: "one_time" | "recurring";
+          billing_interval: "monthly" | "quarterly" | "yearly" | null;
+          display_order: number;
+          price: number;
+          archived_at: string | null;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          product_id: string;
+          name: string;
+          duration_type?: "days" | "weeks" | "months" | "lifetime";
+          duration_value?: number | null;
+          guarantee_duration_type?: "days" | "weeks" | "months" | null;
+          guarantee_duration_value?: number | null;
+          billing_type?: "one_time" | "recurring";
+          billing_interval?: "monthly" | "quarterly" | "yearly" | null;
+          display_order?: number;
+          price?: number;
+          archived_at?: string | null;
+          created_by?: string | null;
+          updated_by?: string | null;
+        };
+        Update: {
+          name?: string;
+          duration_type?: "days" | "weeks" | "months" | "lifetime";
+          duration_value?: number | null;
+          guarantee_duration_type?: "days" | "weeks" | "months" | null;
+          guarantee_duration_value?: number | null;
+          billing_type?: "one_time" | "recurring";
+          billing_interval?: "monthly" | "quarterly" | "yearly" | null;
+          display_order?: number;
+          price?: number;
+          archived_at?: string | null;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+
       content_post_versions: {
         Row: {
           id: string;
@@ -4669,6 +4961,26 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      /** Busca un contacto por telefono primero y despues por email; NO crea (Formularios, 00156). Solo service_role. */
+      find_contact_by_phone_or_email: {
+        Args: { p_workspace_id: string; p_phone: string; p_email: string };
+        Returns: Json;
+      };
+      /** Crea una venta con sus pagos, estado, eventos y auditoria en UNA transaccion (00162). Solo service_role. */
+      create_sale: {
+        Args: { p_payload: Json; p_actor_id: string };
+        Returns: Json;
+      };
+      /** Cancela una venta: anula programados y morosos, conserva lo cobrado (00162). Solo service_role. */
+      cancel_sale: {
+        Args: { p_sale_id: string; p_reason: string; p_actor_id: string };
+        Returns: Json;
+      };
+      /** Recalcula el estado de una venta y emite el evento si cambio (00162). Solo service_role. */
+      refresh_sale_status: {
+        Args: { p_sale_id: string; p_change_id?: string };
+        Returns: string;
+      };
       /** Crea la agenda entera en una transaccion (00099, F26). */
       create_booking: {
         Args: {

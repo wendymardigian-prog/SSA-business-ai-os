@@ -275,7 +275,31 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   "/dashboard/settings/productos": {
     title: "Productos",
-    tooltip: "Lo que vendes, con su precio en dolares y su estado. Se usan para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+    tooltip: "Lo que vendes, con sus variantes y su precio en dolares. Se usan para cargar ventas y para clasificar tus ideas y piezas. No se borran: se ponen inactivos o discontinuados.",
+  },
+  "/dashboard/settings/productos/[id]": {
+    title: "Producto",
+    tooltip: "Las variantes del producto y, en cada una, su precio vigente y el historial de precios.",
+  },
+  "/dashboard/settings/asignacion": {
+    title: "Reglas de asignación",
+    tooltip: "Cómo se asignan solos el setter, el vendedor y el referido de un contacto, con probador y simulación en seco. Lo asignado a mano nunca se pisa.",
+  },
+  "/dashboard/settings/actividad": {
+    title: "Actividad",
+    tooltip: "Todo lo que se hizo en el workspace: quién, qué y cuándo, con lo que cambió. Solo Owner y Admin.",
+  },
+  "/dashboard/ventas": {
+    title: "Ventas",
+    tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",
+  },
+  "/dashboard/ventas/pagos": {
+    title: "Pagos",
+    tooltip: "Todos los pagos de las ventas: lo que vence, lo que está moroso y lo cobrado, con su método, comisión y desfase.",
+  },
+  "/dashboard/ventas/[id]": {
+    title: "Venta",
+    tooltip: "El detalle de una venta: sus números, el plan de pagos, los contratos y todo lo que se le hizo. Cancelar es definitivo.",
   },
 };
 

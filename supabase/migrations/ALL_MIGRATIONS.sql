@@ -24018,3 +24018,3525 @@ $$;
 
 REVOKE ALL ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 159: SALES CATALOG
+-- ============================================================
+-- ============================================================
+-- 00159_sales_catalog.sql
+--
+-- Ventas, Fase 1 · B1 · F1: el catalogo de productos.
+--
+-- Tres tablas: `products` (lo que se vende), `product_variants` (como se
+-- vende: duracion, garantia, facturacion) y `product_versions` (el PRECIO y
+-- las condiciones vigentes). A lo sumo una version `active` por variante.
+--
+-- Aditiva e idempotente: no toca ninguna tabla existente salvo sumar
+-- `workspaces.enabled_payment_methods`. La migracion que absorbe
+-- `content_offers` es la 00160.
+--
+-- Escritura: solo con `settings.manage` (Owner y Admin; un rol personalizado
+-- si la marco). Lectura: cualquier miembro (un Member necesita ver los
+-- productos para cargar una venta). SIN policy de DELETE: nada se borra.
+-- Un borrador de version si se puede borrar, pero solo desde el servidor
+-- (service_role) y el trigger de abajo lo permite unicamente en borrador.
+--
+-- Como volver atras (solo si nadie la usa todavia):
+--   DROP FUNCTION IF EXISTS public.publish_product_version(uuid, uuid);
+--   DROP TABLE IF EXISTS public.product_versions, public.product_variants, public.products;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS enabled_payment_methods;
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. products
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.products (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id  uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  description   text,
+  product_type  text NOT NULL DEFAULT 'otro',
+  display_order int  NOT NULL DEFAULT 0,
+  status        text NOT NULL DEFAULT 'active',
+  archived_at   timestamptz,
+  created_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.products IS
+  'Catalogo de productos (Ventas, 00159). Reemplaza a content_offers: los productos migrados conservan el id. Un producto no se borra: pasa a inactivo o discontinuado.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_name_check') THEN
+    ALTER TABLE public.products ADD CONSTRAINT products_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 120);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_type_check') THEN
+    ALTER TABLE public.products ADD CONSTRAINT products_type_check
+      CHECK (product_type IN ('programa', 'mentoria', 'curso', 'servicio', 'otro'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_status_check') THEN
+    ALTER TABLE public.products ADD CONSTRAINT products_status_check
+      CHECK (status IN ('active', 'inactive', 'discontinued'));
+  END IF;
+  -- Los mismos estados y la misma regla que content_offers (00134).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'products_status_archived_check') THEN
+    ALTER TABLE public.products ADD CONSTRAINT products_status_archived_check
+      CHECK ((status = 'active') = (archived_at IS NULL));
+  END IF;
+END $$;
+
+-- El nombre es unico entre los NO archivados (como content_offers).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_products_name
+  ON public.products (workspace_id, lower(btrim(name)))
+  WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_products_ws_status_order
+  ON public.products (workspace_id, status, display_order);
+
+-- ------------------------------------------------------------
+-- 2. product_variants
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.product_variants (
+  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id              uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  product_id                uuid NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
+  name                      text NOT NULL,
+  duration_type             text NOT NULL DEFAULT 'lifetime',
+  duration_value            int,
+  guarantee_duration_type   text,
+  guarantee_duration_value  int,
+  billing_type              text NOT NULL DEFAULT 'one_time',
+  billing_interval          text,
+  display_order             int  NOT NULL DEFAULT 0,
+  archived_at               timestamptz,
+  created_by                uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by                uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at                timestamptz NOT NULL DEFAULT now(),
+  updated_at                timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.product_variants IS
+  'Como se vende un producto (duracion, garantia, facturacion). El precio vive en product_versions. CX va a sumar sus columnas aca en su propia migracion.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_variants_name_check') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_name_check
+      CHECK (char_length(btrim(name)) BETWEEN 1 AND 120);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_variants_duration_type_check') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_duration_type_check
+      CHECK (duration_type IN ('days', 'weeks', 'months', 'lifetime'));
+  END IF;
+  -- lifetime => sin valor; si no, un valor positivo.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_variants_duration_value_check') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_duration_value_check
+      CHECK (
+        (duration_type = 'lifetime' AND duration_value IS NULL)
+        OR (duration_type <> 'lifetime' AND duration_value IS NOT NULL AND duration_value > 0)
+      );
+  END IF;
+  -- Ojo con NULL IN (...): da NULL y un CHECK deja pasar un NULL. Por eso cada
+  -- rama pide IS NOT NULL de forma explicita.
+  ALTER TABLE public.product_variants DROP CONSTRAINT IF EXISTS product_variants_guarantee_check;
+  ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_guarantee_check
+    CHECK (
+      (guarantee_duration_type IS NULL AND guarantee_duration_value IS NULL)
+      OR (guarantee_duration_type IS NOT NULL AND guarantee_duration_type IN ('days', 'weeks', 'months')
+          AND guarantee_duration_value IS NOT NULL AND guarantee_duration_value > 0)
+    );
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_variants_billing_type_check') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_billing_type_check
+      CHECK (billing_type IN ('one_time', 'recurring'));
+  END IF;
+  -- recurring => intervalo obligatorio; one_time => sin intervalo.
+  ALTER TABLE public.product_variants DROP CONSTRAINT IF EXISTS product_variants_billing_interval_check;
+  ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_billing_interval_check
+    CHECK (
+      (billing_type = 'one_time' AND billing_interval IS NULL)
+      OR (billing_type = 'recurring' AND billing_interval IS NOT NULL AND billing_interval IN ('monthly', 'quarterly', 'yearly'))
+    );
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_product_variants_product
+  ON public.product_variants (product_id, archived_at, display_order);
+CREATE INDEX IF NOT EXISTS idx_product_variants_ws
+  ON public.product_variants (workspace_id);
+
+-- ------------------------------------------------------------
+-- 3. product_versions
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.product_versions (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id        uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  product_variant_id  uuid NOT NULL REFERENCES public.product_variants(id) ON DELETE RESTRICT,
+  version_number      int  NOT NULL,
+  price               numeric(12,2) NOT NULL,
+  currency            text NOT NULL DEFAULT 'USD',
+  change_notes        text,
+  capabilities_config jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status              text NOT NULL DEFAULT 'draft',
+  published_at        timestamptz,
+  published_by        uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  deprecated_at       timestamptz,
+  created_by          uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.product_versions IS
+  'El precio y las condiciones vigentes de una variante. Una version publicada no se edita nunca: se crea otra. A lo sumo una active por variante.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_versions_price_check') THEN
+    ALTER TABLE public.product_versions ADD CONSTRAINT product_versions_price_check
+      CHECK (price >= 0);
+  END IF;
+  -- Precio cero solo con notas del cambio (una cortesia o un error se explica).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_versions_zero_needs_notes_check') THEN
+    ALTER TABLE public.product_versions ADD CONSTRAINT product_versions_zero_needs_notes_check
+      CHECK (price > 0 OR (change_notes IS NOT NULL AND btrim(change_notes) <> ''));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_versions_currency_check') THEN
+    ALTER TABLE public.product_versions ADD CONSTRAINT product_versions_currency_check
+      CHECK (currency = 'USD');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_versions_status_check') THEN
+    ALTER TABLE public.product_versions ADD CONSTRAINT product_versions_status_check
+      CHECK (status IN ('draft', 'active', 'deprecated'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_versions_number_check') THEN
+    ALTER TABLE public.product_versions ADD CONSTRAINT product_versions_number_check
+      CHECK (version_number >= 1);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_product_versions_number
+  ON public.product_versions (product_variant_id, version_number);
+
+-- Una sola version activa por variante.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_product_versions_active
+  ON public.product_versions (product_variant_id)
+  WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS idx_product_versions_ws
+  ON public.product_versions (workspace_id);
+
+-- El numero de version es autoincremental por variante: si el insert no lo trae, se calcula.
+CREATE OR REPLACE FUNCTION public.product_versions_assign_number()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF NEW.version_number IS NULL THEN
+    SELECT COALESCE(MAX(v.version_number), 0) + 1
+      INTO NEW.version_number
+      FROM public.product_versions v
+     WHERE v.product_variant_id = NEW.product_variant_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS product_versions_assign_number ON public.product_versions;
+CREATE TRIGGER product_versions_assign_number
+  BEFORE INSERT ON public.product_versions
+  FOR EACH ROW EXECUTE FUNCTION public.product_versions_assign_number();
+
+-- Una version publicada no se edita ni se borra, ni siquiera con el service role.
+-- Transiciones validas: draft -> active, active -> deprecated. Un borrador se
+-- edita y se borra libremente.
+CREATE OR REPLACE FUNCTION public.product_versions_protect()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    -- Borrar un workspace entero (cascade) tiene que poder llevarse todo: en ese
+    -- caso el workspace ya no existe cuando corre este trigger.
+    IF NOT EXISTS (SELECT 1 FROM public.workspaces w WHERE w.id = OLD.workspace_id) THEN
+      RETURN OLD;
+    END IF;
+    IF OLD.status <> 'draft' THEN
+      RAISE EXCEPTION 'Una version publicada no se borra (version % de la variante %)', OLD.version_number, OLD.product_variant_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN OLD;
+  END IF;
+
+  -- UPDATE
+  IF OLD.status = 'draft' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.product_variant_id IS DISTINCT FROM OLD.product_variant_id
+     OR NEW.version_number IS DISTINCT FROM OLD.version_number
+     OR NEW.price IS DISTINCT FROM OLD.price
+     OR NEW.currency IS DISTINCT FROM OLD.currency
+     OR NEW.change_notes IS DISTINCT FROM OLD.change_notes
+     OR NEW.capabilities_config IS DISTINCT FROM OLD.capabilities_config
+     OR NEW.workspace_id IS DISTINCT FROM OLD.workspace_id THEN
+    RAISE EXCEPTION 'Una version publicada no se edita: crea una nueva'
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status
+     AND NOT (OLD.status = 'active' AND NEW.status = 'deprecated') THEN
+    RAISE EXCEPTION 'Transicion de version invalida: % -> %', OLD.status, NEW.status
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS product_versions_protect ON public.product_versions;
+CREATE TRIGGER product_versions_protect
+  BEFORE UPDATE OR DELETE ON public.product_versions
+  FOR EACH ROW EXECUTE FUNCTION public.product_versions_protect();
+
+-- ------------------------------------------------------------
+-- 4. updated_at y RLS de las tres
+-- ------------------------------------------------------------
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['products', 'product_variants', 'product_versions'] LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at ON public.%I', t);
+    EXECUTE format(
+      'CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.update_updated_at()',
+      t
+    );
+
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_select" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_select" ON public.%1$I FOR SELECT USING (public.is_workspace_member(workspace_id))',
+      t
+    );
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_insert" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_insert" ON public.%1$I FOR INSERT WITH CHECK (public.has_permission(workspace_id, ''settings.manage''))',
+      t
+    );
+
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_update" ON public.%1$I', t);
+    EXECUTE format(
+      'CREATE POLICY "%1$s_update" ON public.%1$I FOR UPDATE USING (public.has_permission(workspace_id, ''settings.manage'')) WITH CHECK (public.has_permission(workspace_id, ''settings.manage''))',
+      t
+    );
+
+    -- Sin policy de DELETE, a proposito.
+    EXECUTE format('DROP POLICY IF EXISTS "%1$s_delete" ON public.%1$I', t);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- 5. Publicar una version, en UNA transaccion
+-- ------------------------------------------------------------
+-- La que estaba activa pasa a `deprecated` y la nueva a `active`. Solo el
+-- servidor la llama (con el cliente de servicio, despues de requirePermission).
+-- Devuelve la version publicada y la que se depreco (si habia).
+
+CREATE OR REPLACE FUNCTION public.publish_product_version(p_version_id uuid, p_actor_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_version public.product_versions%ROWTYPE;
+  v_prev_id uuid;
+BEGIN
+  SELECT * INTO v_version
+    FROM public.product_versions
+   WHERE id = p_version_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'version_not_found' USING ERRCODE = 'no_data_found';
+  END IF;
+  IF v_version.status <> 'draft' THEN
+    RAISE EXCEPTION 'version_not_draft' USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- Bloquea la variante para que dos publicaciones simultaneas no choquen.
+  PERFORM 1 FROM public.product_variants WHERE id = v_version.product_variant_id FOR UPDATE;
+
+  UPDATE public.product_versions
+     SET status = 'deprecated', deprecated_at = now()
+   WHERE product_variant_id = v_version.product_variant_id
+     AND status = 'active'
+  RETURNING id INTO v_prev_id;
+
+  UPDATE public.product_versions
+     SET status = 'active', published_at = now(), published_by = p_actor_id
+   WHERE id = p_version_id;
+
+  RETURN jsonb_build_object('version_id', p_version_id, 'deprecated_version_id', v_prev_id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.publish_product_version(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.publish_product_version(uuid, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.publish_product_version(uuid, uuid) IS
+  'Publica un borrador: la activa pasa a deprecated y esta a active, en una transaccion. Solo service_role (00159).';
+
+-- ------------------------------------------------------------
+-- 6. Metodos de pago habilitados por workspace
+-- ------------------------------------------------------------
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS enabled_payment_methods text[] NOT NULL
+  DEFAULT ARRAY['whop', 'transferencia_cr', 'transferencia_usa', 'wise', 'binance']::text[];
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_enabled_payment_methods_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_enabled_payment_methods_check
+      CHECK (enabled_payment_methods <@ ARRAY['whop', 'transferencia_cr', 'transferencia_usa', 'wise', 'binance']::text[]);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.enabled_payment_methods IS
+  'Metodos de pago que ofrece el selector (la lista completa esta en lib/sales/payment-methods.ts). Un pago que ya usa uno deshabilitado lo sigue mostrando.';
+
+-- ============================================================
+-- MIGRATION 160: PRODUCTS ABSORB CONTENT OFFERS
+-- ============================================================
+-- ============================================================
+-- 00160_products_absorb_content_offers.sql
+--
+-- Ventas, Fase 1 · B1 · F3: el catalogo de Ventas ABSORBE `content_offers`.
+-- RIESGO ALTO: modifica estructura y datos que Contenido usa todos los dias.
+--
+-- Hoy "Productos" es la tabla `content_offers` (3 filas). Ventas la reemplaza
+-- para que no haya dos pantallas "Productos". Cada fila pasa a ser un producto
+-- CON EL MISMO ID, con una variante "Estandar" y su version 1 con el precio que
+-- tenia. Como el id no cambia, las ideas y piezas siguen apuntando a su
+-- producto sin reescribir nada: lo unico que cambia es a que tabla apunta la FK
+-- (`content_ideas.offer_id` y `content_posts.offer_id`).
+--
+-- Que hace, en orden (todo en UNA transaccion: si algo falla, no queda nada):
+--   1. Copia cada fila de content_offers a `products` (mismo id, mismo estado,
+--      mismo archived_at, product_type 'otro').
+--   2. Crea la variante "Estandar" (lifetime, pago unico) de cada producto migrado
+--      que no tenga variantes.
+--   3. Crea la version 1: con precio -> ACTIVA con ese precio; sin precio ->
+--      BORRADOR con precio 0 y la nota "Migrado sin precio: carga el precio y
+--      publica".
+--   4. Deja un PUENTE (trigger en content_offers): mientras la tabla vieja
+--      conviva, lo que el codigo viejo cree o cambie ahi se copia a `products`
+--      con el mismo id. Sin el puente, crear un producto desde la pantalla vieja
+--      entre esta migracion y el deploy rompia la clasificacion de Contenido.
+--   5. Mueve las dos FK a `products(id) ON DELETE SET NULL`.
+--
+-- NO borra nada: `content_offers` queda intacta, sin uso. El DROP esta escrito
+-- aparte (docs/pendientes/drop_content_offers.sql) y NO se aplica aca.
+--
+-- Idempotente: aplicarla dos veces no duplica productos, variantes ni versiones.
+--
+-- ------------------------------------------------------------
+-- CONSULTAS DE CONTROL (tienen que dar 0 / lo esperado, ver el DO del final):
+--
+--   SELECT count(*) FROM public.content_offers o
+--     LEFT JOIN public.products p ON p.id = o.id
+--    WHERE p.id IS NULL OR p.status <> o.status
+--       OR p.archived_at IS DISTINCT FROM o.archived_at OR p.name <> o.name;      -- 0
+--   SELECT count(*) FROM public.product_versions WHERE status = 'active';           -- = ofertas con precio
+--   SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+--    WHERE conname IN ('content_ideas_offer_id_fkey','content_posts_offer_id_fkey'); -- REFERENCES products
+--
+-- COMO VOLVER ATRAS (script de vuelta; content_offers conserva sus filas):
+--
+--   BEGIN;
+--   ALTER TABLE public.content_ideas DROP CONSTRAINT IF EXISTS content_ideas_offer_id_fkey;
+--   ALTER TABLE public.content_posts DROP CONSTRAINT IF EXISTS content_posts_offer_id_fkey;
+--   -- Productos creados DESPUES de esta migracion y referenciados por ideas o piezas:
+--   INSERT INTO public.content_offers (id, workspace_id, name, price_usd, status, archived_at, created_by, created_at)
+--   SELECT p.id, p.workspace_id, p.name,
+--          (SELECT v.price FROM public.product_versions v
+--             JOIN public.product_variants pv ON pv.id = v.product_variant_id
+--            WHERE pv.product_id = p.id AND v.status = 'active'
+--            ORDER BY pv.display_order LIMIT 1),
+--          p.status, p.archived_at, p.created_by, p.created_at
+--     FROM public.products p
+--    WHERE p.id IN (SELECT offer_id FROM public.content_ideas WHERE offer_id IS NOT NULL
+--                   UNION SELECT offer_id FROM public.content_posts WHERE offer_id IS NOT NULL)
+--   ON CONFLICT (id) DO NOTHING;
+--   ALTER TABLE public.content_ideas ADD CONSTRAINT content_ideas_offer_id_fkey
+--     FOREIGN KEY (offer_id) REFERENCES public.content_offers(id) ON DELETE SET NULL;
+--   ALTER TABLE public.content_posts ADD CONSTRAINT content_posts_offer_id_fkey
+--     FOREIGN KEY (offer_id) REFERENCES public.content_offers(id) ON DELETE SET NULL;
+--   DROP TRIGGER IF EXISTS content_offers_bridge ON public.content_offers;
+--   DROP FUNCTION IF EXISTS public.content_offers_bridge_to_products();
+--   COMMIT;
+--   -- y desplegar el codigo anterior (la pantalla vieja). Las tablas nuevas pueden
+--   -- quedar: nadie las lee.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. Cada oferta pasa a ser un producto, con el MISMO id
+-- ------------------------------------------------------------
+
+INSERT INTO public.products (id, workspace_id, name, product_type, status, archived_at, created_by, created_at)
+SELECT o.id, o.workspace_id, o.name, 'otro', o.status, o.archived_at, o.created_by, o.created_at
+  FROM public.content_offers o
+ WHERE NOT EXISTS (SELECT 1 FROM public.products p WHERE p.id = o.id);
+
+-- ------------------------------------------------------------
+-- 2. La variante "Estandar" de cada producto migrado que no tenga variantes
+-- ------------------------------------------------------------
+
+INSERT INTO public.product_variants (workspace_id, product_id, name, duration_type, billing_type, display_order, created_by)
+SELECT p.workspace_id, p.id, 'Estándar', 'lifetime', 'one_time', 0, p.created_by
+  FROM public.products p
+ WHERE p.id IN (SELECT o.id FROM public.content_offers o)
+   AND NOT EXISTS (SELECT 1 FROM public.product_variants v WHERE v.product_id = p.id);
+
+-- ------------------------------------------------------------
+-- 3. La version 1 de cada variante migrada que no tenga versiones
+-- ------------------------------------------------------------
+
+INSERT INTO public.product_versions
+  (workspace_id, product_variant_id, version_number, price, currency, change_notes, status, published_at, published_by, created_by)
+SELECT v.workspace_id,
+       v.id,
+       1,
+       COALESCE(o.price_usd, 0),
+       'USD',
+       CASE WHEN o.price_usd IS NOT NULL THEN 'Migrado de Productos (content_offers)'
+            ELSE 'Migrado sin precio: cargá el precio y publicá' END,
+       CASE WHEN o.price_usd IS NOT NULL THEN 'active' ELSE 'draft' END,
+       CASE WHEN o.price_usd IS NOT NULL THEN now() END,
+       CASE WHEN o.price_usd IS NOT NULL THEN o.created_by END,
+       o.created_by
+  FROM public.product_variants v
+  JOIN public.content_offers o ON o.id = v.product_id
+ WHERE NOT EXISTS (SELECT 1 FROM public.product_versions x WHERE x.product_variant_id = v.id);
+
+-- ------------------------------------------------------------
+-- 4. El puente: lo que el codigo viejo cree o cambie en content_offers se copia
+--    a products. Existe solo mientras conviva la tabla; el borrado diferido
+--    (docs/pendientes/drop_content_offers.sql) lo borra.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.content_offers_bridge_to_products()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_variant uuid;
+  v_version uuid;
+  v_active_price numeric;
+  v_next int;
+BEGIN
+  -- El producto: alta, o cambio de nombre / estado / archivado.
+  INSERT INTO public.products (id, workspace_id, name, product_type, status, archived_at, created_by, created_at)
+  VALUES (NEW.id, NEW.workspace_id, NEW.name, 'otro', NEW.status, NEW.archived_at, NEW.created_by, NEW.created_at)
+  ON CONFLICT (id) DO UPDATE
+     SET name = EXCLUDED.name,
+         status = EXCLUDED.status,
+         archived_at = EXCLUDED.archived_at;
+
+  -- Su variante por defecto ("Estandar"), si todavia no tiene ninguna.
+  SELECT v.id INTO v_variant
+    FROM public.product_variants v
+   WHERE v.product_id = NEW.id AND v.archived_at IS NULL
+   ORDER BY v.display_order, v.created_at
+   LIMIT 1;
+
+  IF v_variant IS NULL THEN
+    INSERT INTO public.product_variants (workspace_id, product_id, name, duration_type, billing_type, display_order, created_by)
+    VALUES (NEW.workspace_id, NEW.id, 'Estándar', 'lifetime', 'one_time', 0, NEW.created_by)
+    RETURNING id INTO v_variant;
+  END IF;
+
+  -- El precio: si cambio (o no habia version vigente), una version nueva publicada.
+  SELECT v.price INTO v_active_price
+    FROM public.product_versions v
+   WHERE v.product_variant_id = v_variant AND v.status = 'active';
+
+  IF NEW.price_usd IS NOT NULL AND (v_active_price IS NULL OR v_active_price <> NEW.price_usd) THEN
+    SELECT COALESCE(MAX(v.version_number), 0) + 1 INTO v_next
+      FROM public.product_versions v WHERE v.product_variant_id = v_variant;
+
+    INSERT INTO public.product_versions
+      (workspace_id, product_variant_id, version_number, price, change_notes, status, created_by)
+    VALUES
+      (NEW.workspace_id, v_variant, v_next, NEW.price_usd, 'Cambio desde la pantalla anterior de Productos', 'draft', NEW.created_by)
+    RETURNING id INTO v_version;
+
+    PERFORM public.publish_product_version(v_version, NEW.created_by);
+  ELSIF NEW.price_usd IS NULL AND NOT EXISTS (
+    SELECT 1 FROM public.product_versions v WHERE v.product_variant_id = v_variant
+  ) THEN
+    INSERT INTO public.product_versions
+      (workspace_id, product_variant_id, version_number, price, change_notes, status, created_by)
+    VALUES
+      (NEW.workspace_id, v_variant, 1, 0, 'Migrado sin precio: cargá el precio y publicá', 'draft', NEW.created_by);
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.content_offers_bridge_to_products() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS content_offers_bridge ON public.content_offers;
+CREATE TRIGGER content_offers_bridge
+  AFTER INSERT OR UPDATE ON public.content_offers
+  FOR EACH ROW EXECUTE FUNCTION public.content_offers_bridge_to_products();
+
+-- ------------------------------------------------------------
+-- 5. Las dos FK pasan a apuntar a products (mismos ids: nada se reescribe)
+-- ------------------------------------------------------------
+
+ALTER TABLE public.content_ideas DROP CONSTRAINT IF EXISTS content_ideas_offer_id_fkey;
+ALTER TABLE public.content_ideas
+  ADD CONSTRAINT content_ideas_offer_id_fkey
+  FOREIGN KEY (offer_id) REFERENCES public.products(id) ON DELETE SET NULL NOT VALID;
+ALTER TABLE public.content_ideas VALIDATE CONSTRAINT content_ideas_offer_id_fkey;
+
+ALTER TABLE public.content_posts DROP CONSTRAINT IF EXISTS content_posts_offer_id_fkey;
+ALTER TABLE public.content_posts
+  ADD CONSTRAINT content_posts_offer_id_fkey
+  FOREIGN KEY (offer_id) REFERENCES public.products(id) ON DELETE SET NULL NOT VALID;
+ALTER TABLE public.content_posts VALIDATE CONSTRAINT content_posts_offer_id_fkey;
+
+COMMENT ON TABLE public.content_offers IS
+  'SIN USO desde la 00160: la reemplaza `products` (los productos conservan el id). Un puente (trigger content_offers_bridge) copia a products lo que el codigo viejo escriba aca. Se borra con el DROP diferido (docs/pendientes/drop_content_offers.sql).';
+
+-- ------------------------------------------------------------
+-- 6. Control: si alguna oferta quedo sin producto, TODO se deshace.
+-- ------------------------------------------------------------
+
+DO $$
+DECLARE
+  v_missing int;
+BEGIN
+  SELECT count(*) INTO v_missing
+    FROM public.content_offers o
+    LEFT JOIN public.products p ON p.id = o.id
+   WHERE p.id IS NULL;
+  IF v_missing > 0 THEN
+    RAISE EXCEPTION '00160: % oferta(s) de content_offers quedaron sin su producto; se deshace todo', v_missing;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.content_ideas i
+     WHERE i.offer_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.products p WHERE p.id = i.offer_id)
+  ) OR EXISTS (
+    SELECT 1 FROM public.content_posts c
+     WHERE c.offer_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.products p WHERE p.id = c.offer_id)
+  ) THEN
+    RAISE EXCEPTION '00160: hay ideas o piezas con un offer_id que no existe en products; se deshace todo';
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 161: SALES ASSIGNMENT
+-- ============================================================
+-- ============================================================
+-- 00161_sales_assignment.sql
+--
+-- Ventas, Fase 1 · B2 · F9: asignacion automatica de setter, vendedor y
+-- referido, y las columnas que Ventas suma a `contacts` y `workspaces`.
+--
+-- Aditiva e idempotente. Lo unico que toca una tabla en uso es un trigger NUEVO
+-- en `contacts` (`contacts_enqueue_sales_eval`): solo ENCOLA un job y atrapa
+-- toda excepcion, asi que crear o editar un contacto nunca puede fallar por
+-- esto. Los triggers que ya tiene `contacts` no se tocan.
+--
+--   assignment_rules   una fila por workspace y `kind` (setter, vendedor,
+--                      referral). Todas arrancan en `manual`: no asignan nada
+--                      hasta que alguien las configure.
+--   contacts           referred_by_user_id, referred_by_contact_id,
+--                      assignment_locked_at (lo manual bloquea lo automatico),
+--                      payment_health (lo escribe el servidor, F31).
+--   workspaces         max_discount_percent, overdue_grace_days,
+--                      sales_auto_create_flows.
+--
+-- Como volver atras:
+--   DROP TRIGGER IF EXISTS contacts_enqueue_sales_eval ON public.contacts;
+--   DROP FUNCTION IF EXISTS public.contacts_enqueue_sales_eval();
+--   DROP TRIGGER IF EXISTS seed_sales_defaults ON public.workspaces;
+--   DROP FUNCTION IF EXISTS public.seed_sales_defaults();
+--   DROP TABLE IF EXISTS public.assignment_rules;
+--   ALTER TABLE public.contacts DROP COLUMN IF EXISTS referred_by_user_id,
+--     DROP COLUMN IF EXISTS referred_by_contact_id, DROP COLUMN IF EXISTS assignment_locked_at,
+--     DROP COLUMN IF EXISTS payment_health;
+--   ALTER TABLE public.workspaces DROP COLUMN IF EXISTS max_discount_percent,
+--     DROP COLUMN IF EXISTS overdue_grace_days, DROP COLUMN IF EXISTS sales_auto_create_flows;
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. assignment_rules
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.assignment_rules (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id            uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  kind                    text NOT NULL,
+  entity_type             text NOT NULL DEFAULT 'contact',
+  mode                    text NOT NULL DEFAULT 'manual',
+  enabled_member_ids      uuid[] NOT NULL DEFAULT '{}',
+  last_assigned_member_id uuid,
+  condition_rules         jsonb NOT NULL DEFAULT '[]'::jsonb,
+  updated_by              uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.assignment_rules IS
+  'Reglas de asignacion automatica de un contacto (Ventas, 00161): una fila por workspace y kind. Arrancan en manual. entity_type queda listo para booking y sale.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_rules_kind_check') THEN
+    ALTER TABLE public.assignment_rules ADD CONSTRAINT assignment_rules_kind_check
+      CHECK (kind IN ('setter', 'vendedor', 'referral'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_rules_entity_check') THEN
+    ALTER TABLE public.assignment_rules ADD CONSTRAINT assignment_rules_entity_check
+      CHECK (entity_type IN ('contact'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_rules_mode_check') THEN
+    ALTER TABLE public.assignment_rules ADD CONSTRAINT assignment_rules_mode_check
+      CHECK (mode IN ('manual', 'round_robin', 'condition_based'));
+  END IF;
+  -- El referido no se reparte por turnos: es una persona o un contacto.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_rules_referral_mode_check') THEN
+    ALTER TABLE public.assignment_rules ADD CONSTRAINT assignment_rules_referral_mode_check
+      CHECK (kind <> 'referral' OR mode <> 'round_robin');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_rules_conditions_array_check') THEN
+    ALTER TABLE public.assignment_rules ADD CONSTRAINT assignment_rules_conditions_array_check
+      CHECK (jsonb_typeof(condition_rules) = 'array');
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assignment_rules_kind
+  ON public.assignment_rules (workspace_id, kind, entity_type);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.assignment_rules;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.assignment_rules
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+ALTER TABLE public.assignment_rules ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "assignment_rules_select" ON public.assignment_rules;
+CREATE POLICY "assignment_rules_select" ON public.assignment_rules
+  FOR SELECT USING (public.is_workspace_member(workspace_id));
+
+DROP POLICY IF EXISTS "assignment_rules_insert" ON public.assignment_rules;
+CREATE POLICY "assignment_rules_insert" ON public.assignment_rules
+  FOR INSERT WITH CHECK (public.has_permission(workspace_id, 'settings.manage'));
+
+DROP POLICY IF EXISTS "assignment_rules_update" ON public.assignment_rules;
+CREATE POLICY "assignment_rules_update" ON public.assignment_rules
+  FOR UPDATE USING (public.has_permission(workspace_id, 'settings.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'settings.manage'));
+
+-- Sin policy de DELETE: la fila por kind es fija.
+DROP POLICY IF EXISTS "assignment_rules_delete" ON public.assignment_rules;
+
+-- ------------------------------------------------------------
+-- 2. Columnas nuevas (todas nullable o con default)
+-- ------------------------------------------------------------
+
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS referred_by_user_id    uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS referred_by_contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS assignment_locked_at   timestamptz,
+  ADD COLUMN IF NOT EXISTS payment_health         jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+COMMENT ON COLUMN public.contacts.assignment_locked_at IS
+  'Se escribe cuando alguien asigna a mano setter o vendedor: desde ahi la asignacion automatica no toca a este contacto (00161).';
+COMMENT ON COLUMN public.contacts.payment_health IS
+  'Salud de pago: {on_time, late, early, avg_delay_days, has_active_overdue, total_paid}. La recalcula el servidor al cobrar, revertir o pasar a moroso (F31).';
+
+CREATE INDEX IF NOT EXISTS idx_contacts_referred_by_contact
+  ON public.contacts (referred_by_contact_id) WHERE referred_by_contact_id IS NOT NULL;
+
+ALTER TABLE public.workspaces
+  ADD COLUMN IF NOT EXISTS max_discount_percent    numeric(5,2),
+  ADD COLUMN IF NOT EXISTS overdue_grace_days      int NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS sales_auto_create_flows boolean NOT NULL DEFAULT true;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_max_discount_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_max_discount_check
+      CHECK (max_discount_percent IS NULL OR (max_discount_percent >= 0 AND max_discount_percent <= 100));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspaces_overdue_grace_check') THEN
+    ALTER TABLE public.workspaces ADD CONSTRAINT workspaces_overdue_grace_check
+      CHECK (overdue_grace_days BETWEEN 0 AND 30);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspaces.max_discount_percent IS
+  'Tope de descuento de una venta, en %. NULL = sin tope. Pasarlo exige alcance "todos" en Ventas (00161).';
+COMMENT ON COLUMN public.workspaces.overdue_grace_days IS
+  'Dias de gracia antes de marcar un pago moroso (0 a 30).';
+COMMENT ON COLUMN public.workspaces.sales_auto_create_flows IS
+  'Si Ventas crea apagados los flujos de cobranza precreados (F38).';
+
+-- ------------------------------------------------------------
+-- 3. Precarga por workspace: 3 reglas en modo manual
+--    (mismo patron que seed_booking_categories, 00097)
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.seed_sales_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO public.assignment_rules (workspace_id, kind, entity_type, mode)
+  VALUES (NEW.id, 'setter', 'contact', 'manual'),
+         (NEW.id, 'vendedor', 'contact', 'manual'),
+         (NEW.id, 'referral', 'contact', 'manual')
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS seed_sales_defaults ON public.workspaces;
+CREATE TRIGGER seed_sales_defaults AFTER INSERT ON public.workspaces
+  FOR EACH ROW EXECUTE FUNCTION public.seed_sales_defaults();
+
+-- Backfill para los workspaces que ya existen.
+INSERT INTO public.assignment_rules (workspace_id, kind, entity_type, mode)
+SELECT w.id, k.kind, 'contact', 'manual'
+  FROM public.workspaces w
+ CROSS JOIN (VALUES ('setter'), ('vendedor'), ('referral')) AS k(kind)
+ON CONFLICT DO NOTHING;
+
+-- ------------------------------------------------------------
+-- 4. El trigger de `contacts`: encola la evaluacion de asignacion
+-- ------------------------------------------------------------
+-- Si el workspace tiene alguna regla que no sea manual, un job `sales_contact_eval`
+-- por contacto y atribucion (la clave incluye el md5 de la atribucion: dos
+-- cambios iguales mientras el primero espera no hacen dos jobs). TODA excepcion se
+-- atrapa: el alta de un contacto no puede fallar por esto.
+
+CREATE OR REPLACE FUNCTION public.contacts_enqueue_sales_eval()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM public.assignment_rules r
+       WHERE r.workspace_id = NEW.workspace_id AND r.mode <> 'manual'
+    ) THEN
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'sales_contact_eval',
+        jsonb_build_object('contact_id', NEW.id, 'workspace_id', NEW.workspace_id),
+        now(),
+        'sales_eval:' || NEW.id::text || ':' || md5(coalesce(NEW.attribution::text, ''))
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'contacts_enqueue_sales_eval: %', SQLERRM;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contacts_enqueue_sales_eval() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contacts_enqueue_sales_eval ON public.contacts;
+CREATE TRIGGER contacts_enqueue_sales_eval
+  AFTER INSERT OR UPDATE OF attribution ON public.contacts
+  FOR EACH ROW EXECUTE FUNCTION public.contacts_enqueue_sales_eval();
+
+-- ============================================================
+-- MIGRATION 162: SALES PAYMENTS
+-- ============================================================
+-- ============================================================
+-- 00162_sales_payments.sql
+--
+-- Ventas, Fase 1 · B3 · F17: las tablas `sales` y `payments`, quien ve cada
+-- venta, el estado derivado, los eventos por cambio de estado y la creacion de
+-- una venta en UNA transaccion.
+--
+-- Aditiva e idempotente, con UNA excepcion que se nombra aca porque toca una
+-- funcion en uso: `purge_soft_deleted` (la purga diaria de 30 dias) se redefine
+-- para NO borrar un contacto que tiene ventas. Sin eso, la FK
+-- `sales.contact_id ... ON DELETE RESTRICT` haria fallar `DELETE FROM contacts`
+-- todos los dias (y con eso la purga entera) en cuanto un contacto con una
+-- venta cumpliera sus 30 dias en la papelera. La definicion anterior esta
+-- copiada completa abajo, por si hay que volver atras.
+--
+-- Como se escribe (§3.2 del plano): `sales` y `payments` NO tienen policy de
+-- INSERT, UPDATE ni DELETE. Todo se escribe con el cliente de servicio desde
+-- Server Actions que ya pasaron `requirePermission` y el chequeo de alcance
+-- (`has_permission` en SQL no conoce al Member de sistema, cuyos permisos viven
+-- en el codigo). Las funciones que escriben son solo para `service_role`.
+--
+-- Un cambio de estado = UN evento, emitido desde la base (triggers), con
+-- `from_status`, `to_status` y `change_id`. Ningun payload lleva `booking_id`
+-- (el cron de automatizaciones trata como "reserva" a todo lo que lo trae).
+--
+-- Como volver atras (si nadie creo ventas todavia):
+--   DROP FUNCTION IF EXISTS public.create_sale(jsonb, uuid), public.cancel_sale(uuid, text, uuid),
+--     public.refresh_sale_status(uuid, uuid), public.derive_sale_status(text, text, numeric, jsonb),
+--     public.emit_sales_event(uuid, text, uuid, jsonb), public.can_see_sale_id(uuid),
+--     public.can_see_sale(public.sales);
+--   DROP TABLE IF EXISTS public.payments, public.sales;
+--   DROP INDEX IF EXISTS public.idx_scheduled_jobs_payment;
+--   -- y volver a la purga anterior (definicion al final de esta cabecera).
+--
+-- DEFINICION ANTERIOR DE public.purge_soft_deleted(integer), tal como estaba antes:
+--
+--   CREATE OR REPLACE FUNCTION public.purge_soft_deleted(p_retention_days integer DEFAULT 30)
+--    RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $function$
+--   DECLARE
+--     v_cutoff timestamptz := now() - make_interval(days => GREATEST(p_retention_days, 0));
+--     v_contacts integer := 0; v_notes integer := 0; v_convs integer := 0; v_assets integer := 0;
+--     v_schedules integer := 0; v_ooo integer := 0; v_events integer := 0;
+--   BEGIN
+--     DELETE FROM public.contacts WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_contacts = ROW_COUNT;
+--     DELETE FROM public.conversations WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_convs = ROW_COUNT;
+--     DELETE FROM public.contact_notes WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_notes = ROW_COUNT;
+--     DELETE FROM public.response_assets WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_assets = ROW_COUNT;
+--     DELETE FROM public.availability_schedules WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_schedules = ROW_COUNT;
+--     DELETE FROM public.out_of_office WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     GET DIAGNOSTICS v_ooo = ROW_COUNT;
+--     IF to_regclass('public.bookings') IS NULL THEN
+--       DELETE FROM public.event_types WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+--     ELSE
+--       EXECUTE ' DELETE FROM public.event_types e WHERE e.deleted_at IS NOT NULL AND e.deleted_at < $1
+--         AND NOT EXISTS (SELECT 1 FROM public.bookings b WHERE b.event_type_id = e.id) ' USING v_cutoff;
+--     END IF;
+--     GET DIAGNOSTICS v_events = ROW_COUNT;
+--     RETURN jsonb_build_object('cutoff', v_cutoff, 'contacts', v_contacts, 'conversations', v_convs,
+--       'contact_notes', v_notes, 'response_assets', v_assets, 'availability_schedules', v_schedules,
+--       'out_of_office', v_ooo, 'event_types', v_events);
+--   END; $function$;
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. sales
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.sales (
+  id                         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id               uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  contact_id                 uuid NOT NULL REFERENCES public.contacts(id) ON DELETE RESTRICT,
+  product_version_id         uuid NOT NULL REFERENCES public.product_versions(id) ON DELETE RESTRICT,
+  product_snapshot           jsonb NOT NULL,
+  base_amount                numeric(12,2) NOT NULL,
+  discount_amount            numeric(12,2) NOT NULL DEFAULT 0,
+  final_amount               numeric(12,2) NOT NULL,
+  discount_reason            text,
+  currency                   text NOT NULL DEFAULT 'USD',
+  status                     text NOT NULL,
+  financing_type             text NOT NULL,
+  subscription_interval      text,
+  sale_date                  date NOT NULL,
+  setter_id                  uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  vendedor_id                uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  attribution                jsonb,
+  attribution_touch_id       uuid REFERENCES public.contact_touches(id) ON DELETE SET NULL,
+  attribution_type           text NOT NULL DEFAULT 'none',
+  booking_id                 uuid REFERENCES public.bookings(id) ON DELETE SET NULL,
+  service_starts_at          date,
+  notes                      text,
+  plan_unbalanced            boolean NOT NULL DEFAULT false,
+  cancelled_at               timestamptz,
+  cancelled_by               uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  cancellation_reason        text,
+  subscription_cancelled_at  timestamptz,
+  subscription_cancel_reason text,
+  refunded_at                timestamptz,
+  opportunity_stage          text,
+  stage_entered_at           timestamptz,
+  created_by                 uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by                 uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at                 timestamptz NOT NULL DEFAULT now(),
+  updated_at                 timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.sales IS
+  'Ventas (Etapa 5, 00162). Nada se borra: se cancelan. La atribucion es una COPIA CONGELADA del toque (no cambia cuando el contacto recibe toques nuevos).';
+COMMENT ON COLUMN public.sales.attribution IS
+  'Copia congelada del toque: {touch_id, occurred_at, source, medium, campaign, content, term, ad_id, ..., extras}. NULL si attribution_type = none.';
+COMMENT ON COLUMN public.sales.service_starts_at IS
+  'Reservada para CX: en esta fase solo se carga y se edita.';
+COMMENT ON COLUMN public.sales.opportunity_stage IS 'Reservada sin uso (pipeline futuro).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_currency_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_currency_check CHECK (currency = 'USD');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_status_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_status_check CHECK (status IN (
+      'pending_payment', 'reserved', 'paid', 'overdue', 'subscription_active',
+      'cancelled', 'refunded', 'disputed', 'subscription_cancelled'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_financing_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_financing_check CHECK (financing_type IN (
+      'full', 'reservation_balance', 'installments', 'reservation_installments', 'subscription'));
+  END IF;
+  -- Ojo con NULL IN (...): da NULL y un CHECK deja pasar un NULL. Por eso IS NOT NULL explicito.
+  ALTER TABLE public.sales DROP CONSTRAINT IF EXISTS sales_interval_check;
+  ALTER TABLE public.sales ADD CONSTRAINT sales_interval_check CHECK (
+    (financing_type = 'subscription' AND subscription_interval IS NOT NULL
+       AND subscription_interval IN ('monthly', 'quarterly', 'yearly'))
+    OR (financing_type <> 'subscription' AND subscription_interval IS NULL));
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_amounts_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_amounts_check CHECK (
+      base_amount >= 0 AND discount_amount >= 0
+      AND final_amount = base_amount - discount_amount AND final_amount >= 0);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_attribution_type_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_attribution_type_check
+      CHECK (attribution_type IN ('last_touch', 'manual', 'none'));
+  END IF;
+  -- Sin atribucion <=> no hay copia. (IS NULL da un booleano limpio: no hay NULL que deje pasar al CHECK.)
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'sales_attribution_none_check') THEN
+    ALTER TABLE public.sales ADD CONSTRAINT sales_attribution_none_check
+      CHECK ((attribution_type = 'none') = (attribution IS NULL));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_sales_ws_created ON public.sales (workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_ws_status_created ON public.sales (workspace_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_contact_created ON public.sales (contact_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sales_version ON public.sales (product_version_id);
+CREATE INDEX IF NOT EXISTS idx_sales_vendedor ON public.sales (vendedor_id);
+CREATE INDEX IF NOT EXISTS idx_sales_setter ON public.sales (setter_id);
+CREATE INDEX IF NOT EXISTS idx_sales_booking ON public.sales (booking_id) WHERE booking_id IS NOT NULL;
+-- Los filtros del listado y las condiciones de flujo por UTM.
+CREATE INDEX IF NOT EXISTS idx_sales_attr_source ON public.sales (workspace_id, ((attribution ->> 'source')));
+CREATE INDEX IF NOT EXISTS idx_sales_attr_campaign ON public.sales (workspace_id, ((attribution ->> 'campaign')));
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.sales;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.sales
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- 2. payments
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.payments (
+  id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id            uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  sale_id                 uuid NOT NULL REFERENCES public.sales(id) ON DELETE RESTRICT,
+  type                    text NOT NULL,
+  amount                  numeric(12,2) NOT NULL,
+  currency                text NOT NULL DEFAULT 'USD',
+  status                  text NOT NULL,
+  due_date                date,
+  original_due_date       date,
+  reschedule_count        int NOT NULL DEFAULT 0,
+  paid_at                 timestamptz,
+  paid_on                 date,
+  delay_days              int GENERATED ALWAYS AS (paid_on - original_due_date) STORED,
+  payment_method          text,
+  payment_option_snapshot jsonb,
+  provider_fee_amount     numeric(12,2),
+  receipt_path            text,
+  notes                   text,
+  reschedule_reason       text,
+  uncollectible_reason    text,
+  refund_reason           text,
+  revert_reason           text,
+  refund_of_payment_id    uuid REFERENCES public.payments(id) ON DELETE SET NULL,
+  created_by              uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by              uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  updated_at              timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.payments IS
+  'Pagos de una venta (00162). Un reembolso es OTRA fila (type refund, monto negativo, status paid): el pago original no cambia de estado.';
+COMMENT ON COLUMN public.payments.paid_on IS
+  'Fecha LOCAL del cobro (en la zona del workspace), escrita por el servidor junto con paid_at. delay_days se calcula sobre ella.';
+COMMENT ON COLUMN public.payments.provider_fee_amount IS
+  'Comision del proveedor CONGELADA al cobrar. La suma Gastos por metodo y por mes (indice abajo).';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_currency_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_currency_check CHECK (currency = 'USD');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_type_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_type_check
+      CHECK (type IN ('full', 'reservation', 'installment', 'refund'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_status_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_status_check
+      CHECK (status IN ('scheduled', 'paid', 'overdue', 'uncollectible', 'refunded', 'cancelled'));
+  END IF;
+  -- En la Fase 1 un reembolso NO cambia el estado del pago original: es otra fila.
+  -- El valor 'refunded' queda para la Fase 2 (se quita este CHECK con una migracion aditiva).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_no_refunded_status_phase1') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_no_refunded_status_phase1 CHECK (status <> 'refunded');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_amount_sign_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_amount_sign_check
+      CHECK ((type = 'refund' AND amount < 0) OR (type <> 'refund' AND amount > 0));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_paid_fields_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_paid_fields_check
+      CHECK (status <> 'paid' OR (paid_at IS NOT NULL AND paid_on IS NOT NULL));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_fee_only_paid_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_fee_only_paid_check
+      CHECK (status = 'paid' OR provider_fee_amount IS NULL);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_refund_fee_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_refund_fee_check
+      CHECK (type <> 'refund' OR provider_fee_amount IS NULL OR provider_fee_amount = 0);
+  END IF;
+  -- Las mismas 5 claves de lib/sales/payment-methods.ts (un test de paridad lee esta migracion).
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_method_check') THEN
+    ALTER TABLE public.payments ADD CONSTRAINT payments_method_check
+      CHECK (payment_method IS NULL OR payment_method IN ('whop', 'transferencia_cr', 'transferencia_usa', 'wise', 'binance'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_payments_sale ON public.payments (sale_id);
+CREATE INDEX IF NOT EXISTS idx_payments_ws_status_due ON public.payments (workspace_id, status, due_date);
+CREATE INDEX IF NOT EXISTS idx_payments_ws_paid_at ON public.payments (workspace_id, paid_at);
+-- El que usa Gastos: comisiones por metodo y por mes, solo de lo cobrado.
+CREATE INDEX IF NOT EXISTS idx_payments_fee_by_method
+  ON public.payments (workspace_id, payment_method, paid_at) WHERE status = 'paid';
+
+-- Los relativos de un pago (recordatorios) se cancelan por `payload->>'payment_id'`.
+CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_payment
+  ON public.scheduled_jobs ((payload ->> 'payment_id')) WHERE payload ? 'payment_id';
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.payments;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- original_due_date se escribe UNA vez (al crear, = due_date) y no cambia nunca:
+-- reprogramar mueve due_date, y el desfase se sigue midiendo contra la original.
+CREATE OR REPLACE FUNCTION public.payments_protect_original_due_date()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    NEW.original_due_date := COALESCE(NEW.original_due_date, NEW.due_date);
+  ELSE
+    NEW.original_due_date := OLD.original_due_date;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS payments_protect_original_due_date ON public.payments;
+CREATE TRIGGER payments_protect_original_due_date
+  BEFORE INSERT OR UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.payments_protect_original_due_date();
+
+-- ------------------------------------------------------------
+-- 3. Quien ve una venta (mismo patron que can_see_booking, 00099)
+-- ------------------------------------------------------------
+-- Administrador, o setter, o vendedor, o `sales.view` con alcance `all`. NO depende
+-- de has_permission para el caso "lo mio": un Member de sistema nunca tiene sus
+-- claves en la base (viven en el codigo).
+
+CREATE OR REPLACE FUNCTION public.can_see_sale(s public.sales)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.is_workspace_member(s.workspace_id)
+     AND (
+       public.is_workspace_admin(s.workspace_id)
+       OR s.setter_id = auth.uid()
+       OR s.vendedor_id = auth.uid()
+       OR (
+         public.has_permission(s.workspace_id, 'sales.view')
+         AND public.permission_scope(s.workspace_id, 'sales') = 'all'
+       )
+     );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_sale(public.sales) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_sale(public.sales) TO authenticated, service_role;
+
+-- La misma regla a partir del id (la usan `payments` y `audit_log`).
+CREATE OR REPLACE FUNCTION public.can_see_sale_id(p_sale_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = p_sale_id AND public.can_see_sale(s));
+$$;
+
+REVOKE ALL ON FUNCTION public.can_see_sale_id(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_see_sale_id(uuid) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- 4. RLS: solo lectura para quien corresponde. Sin INSERT/UPDATE/DELETE.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "sales_select" ON public.sales;
+CREATE POLICY "sales_select" ON public.sales FOR SELECT USING (public.can_see_sale(sales));
+
+DROP POLICY IF EXISTS "payments_select" ON public.payments;
+CREATE POLICY "payments_select" ON public.payments FOR SELECT USING (public.can_see_sale_id(sale_id));
+
+-- ------------------------------------------------------------
+-- 5. El estado derivado (espejo de lib/sales/sale-status.ts; un test de paridad
+--    corre los mismos casos contra las dos)
+-- ------------------------------------------------------------
+-- Los 4 estados ESCRITOS ganan y no se derivan (cancelled, refunded, disputed,
+-- subscription_cancelled). Los 5 derivados, por precedencia:
+--   1. subscription_active  si es suscripcion
+--   2. overdue              si hay al menos un pago overdue
+--   3. paid                 si el saldo (final - cobrado neto) <= 0, EN CENTIMOS
+--   4. reserved             si hay una reserva cobrada y queda saldo
+--   5. pending_payment
+-- Un `uncollectible` NO baja el saldo: una venta con un incobrable nunca llega a paid.
+
+CREATE OR REPLACE FUNCTION public.derive_sale_status(
+  p_current_status text,
+  p_financing_type text,
+  p_final_amount numeric,
+  p_payments jsonb
+)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_paid_cents bigint := 0;
+  v_overdue boolean := false;
+  v_reservation_paid boolean := false;
+  p jsonb;
+BEGIN
+  IF p_current_status IN ('cancelled', 'refunded', 'disputed', 'subscription_cancelled') THEN
+    RETURN p_current_status;
+  END IF;
+
+  IF p_financing_type = 'subscription' THEN
+    RETURN 'subscription_active';
+  END IF;
+
+  FOR p IN SELECT * FROM jsonb_array_elements(COALESCE(p_payments, '[]'::jsonb)) LOOP
+    IF p ->> 'status' = 'overdue' THEN v_overdue := true; END IF;
+    IF p ->> 'status' = 'paid' THEN
+      v_paid_cents := v_paid_cents + round(COALESCE((p ->> 'amount')::numeric, 0) * 100)::bigint;
+      IF p ->> 'type' = 'reservation' THEN v_reservation_paid := true; END IF;
+    END IF;
+  END LOOP;
+
+  IF v_overdue THEN RETURN 'overdue'; END IF;
+  IF round(COALESCE(p_final_amount, 0) * 100)::bigint - v_paid_cents <= 0 THEN RETURN 'paid'; END IF;
+  IF v_reservation_paid THEN RETURN 'reserved'; END IF;
+  RETURN 'pending_payment';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.derive_sale_status(text, text, numeric, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.derive_sale_status(text, text, numeric, jsonb) TO service_role;
+
+-- ------------------------------------------------------------
+-- 6. Eventos de automatizacion (una sola puerta)
+-- ------------------------------------------------------------
+-- Llama a emit_automation_event (la que ya usa todo el sistema) y agrega el
+-- `change_id` si el payload no lo trae. Solo escalares: el cron aplana el payload
+-- con String(v) y un objeto anidado saldria como "[object Object]".
+
+CREATE OR REPLACE FUNCTION public.emit_sales_event(
+  p_workspace_id uuid,
+  p_event_type text,
+  p_contact_id uuid,
+  p_payload jsonb
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  PERFORM public.emit_automation_event(
+    p_workspace_id,
+    p_event_type,
+    p_contact_id,
+    CASE WHEN p_payload ? 'change_id' THEN p_payload
+         ELSE p_payload || jsonb_build_object('change_id', gen_random_uuid()) END
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.emit_sales_event(uuid, text, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.emit_sales_event(uuid, text, uuid, jsonb) TO service_role;
+
+-- Lo que llevan los eventos de una venta (escalares; sin `booking_id`).
+CREATE OR REPLACE FUNCTION public.sales_event_payload(s public.sales)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'sale_id', s.id,
+    'contact_id', s.contact_id,
+    'product_id', s.product_snapshot ->> 'product_id',
+    'variant_id', s.product_snapshot ->> 'variant_id',
+    'vendedor_id', s.vendedor_id,
+    'setter_id', s.setter_id,
+    'financing_type', s.financing_type,
+    'final_amount', s.final_amount,
+    'attribution_type', s.attribution_type,
+    'utm_source', s.attribution ->> 'source',
+    'utm_medium', s.attribution ->> 'medium',
+    'utm_campaign', s.attribution ->> 'campaign'
+  ));
+$$;
+
+-- Los eventos de un pago.
+CREATE OR REPLACE FUNCTION public.payments_event_payload(p public.payments)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'payment_id', p.id,
+    'sale_id', p.sale_id,
+    'contact_id', (SELECT s.contact_id FROM public.sales s WHERE s.id = p.sale_id),
+    'product_id', (SELECT s.product_snapshot ->> 'product_id' FROM public.sales s WHERE s.id = p.sale_id),
+    'payment_type', p.type,
+    'payment_method', p.payment_method,
+    'amount', p.amount,
+    'status', p.status
+  ));
+$$;
+
+-- ------------------------------------------------------------
+-- 7. Triggers de eventos
+-- ------------------------------------------------------------
+
+-- Pagos: payment_created al insertar, y payment_status_changed (a) al nacer cobrado
+-- (from null) o (b) cada vez que cambia el estado. El que nace cobrado emite los dos
+-- con el MISMO change_id: un flujo con "Pago creado" y "Pago cobrado" corre una vez.
+CREATE OR REPLACE FUNCTION public.payments_emit_events()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_contact uuid;
+  v_change uuid := gen_random_uuid();
+  v_tz text;
+  v_payload jsonb;
+  v_scope text;
+  v_net_cents bigint;
+BEGIN
+  SELECT s.contact_id INTO v_contact FROM public.sales s WHERE s.id = NEW.sale_id;
+  IF v_contact IS NULL THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    v_payload := public.payments_event_payload(NEW) || jsonb_build_object('change_id', v_change);
+
+    IF NEW.type = 'refund' THEN
+      -- total = el reembolso deja lo cobrado neto en cero (o menos); si no, parcial.
+      SELECT COALESCE(sum(round(p.amount * 100)), 0)::bigint INTO v_net_cents
+        FROM public.payments p WHERE p.sale_id = NEW.sale_id AND p.status = 'paid';
+      v_scope := CASE WHEN v_net_cents <= 0 THEN 'total' ELSE 'partial' END;
+      v_payload := v_payload || jsonb_build_object('refund_scope', v_scope);
+    END IF;
+
+    PERFORM public.emit_sales_event(NEW.workspace_id, 'payment_created', v_contact, v_payload);
+
+    IF NEW.status = 'paid' THEN
+      PERFORM public.emit_sales_event(
+        NEW.workspace_id, 'payment_status_changed', v_contact,
+        v_payload || jsonb_build_object('to_status', 'paid', 'delay_days', NEW.delay_days));
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = NEW.workspace_id;
+    v_payload := public.payments_event_payload(NEW) || jsonb_build_object(
+      'change_id', v_change,
+      'from_status', OLD.status,
+      'to_status', NEW.status);
+    IF NEW.delay_days IS NOT NULL THEN
+      v_payload := v_payload || jsonb_build_object('delay_days', NEW.delay_days);
+    END IF;
+    IF NEW.status = 'overdue' AND NEW.due_date IS NOT NULL THEN
+      v_payload := v_payload || jsonb_build_object(
+        'days_overdue', GREATEST((now() AT TIME ZONE COALESCE(v_tz, 'UTC'))::date - NEW.due_date, 0));
+    END IF;
+    PERFORM public.emit_sales_event(NEW.workspace_id, 'payment_status_changed', v_contact, v_payload);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.payments_emit_events() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_emit_status_change ON public.payments;
+CREATE TRIGGER payments_emit_status_change
+  AFTER INSERT OR UPDATE OF status ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.payments_emit_events();
+
+-- Ventas: UN evento cuando cambia `sales.status`, sea derivado (lo escribe
+-- refresh_sale_status) o escrito (cancelar, reembolso total, cancelar suscripcion).
+-- El alta NO pasa por aca: create_sale emite sus eventos (con el estado `from null`).
+-- `ssa.sale_change_id` lo deja refresh_sale_status para que el evento lleve su change_id.
+CREATE OR REPLACE FUNCTION public.sales_emit_status_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_change uuid;
+  v_payload jsonb;
+BEGIN
+  IF NEW.status IS NOT DISTINCT FROM OLD.status THEN RETURN NEW; END IF;
+
+  BEGIN
+    v_change := NULLIF(current_setting('ssa.sale_change_id', true), '')::uuid;
+  EXCEPTION WHEN OTHERS THEN
+    v_change := NULL;
+  END;
+  v_change := COALESCE(v_change, gen_random_uuid());
+
+  v_payload := public.sales_event_payload(NEW) || jsonb_build_object(
+    'change_id', v_change, 'from_status', OLD.status, 'to_status', NEW.status);
+  IF NEW.status = 'cancelled' AND NEW.cancellation_reason IS NOT NULL THEN
+    v_payload := v_payload || jsonb_build_object('reason', NEW.cancellation_reason);
+  END IF;
+
+  PERFORM public.emit_sales_event(NEW.workspace_id, 'sale_status_changed', NEW.contact_id, v_payload);
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.sales_emit_status_change() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS sales_emit_status_change ON public.sales;
+CREATE TRIGGER sales_emit_status_change
+  AFTER UPDATE OF status ON public.sales
+  FOR EACH ROW EXECUTE FUNCTION public.sales_emit_status_change();
+
+-- ------------------------------------------------------------
+-- 8. Recalcular el estado de una venta
+-- ------------------------------------------------------------
+-- Bloquea la venta, lee sus pagos, deriva el estado y, SOLO si cambio, lo escribe
+-- (el trigger de arriba emite el evento, una sola vez). Devuelve el estado.
+
+CREATE OR REPLACE FUNCTION public.refresh_sale_status(p_sale_id uuid, p_change_id uuid DEFAULT gen_random_uuid())
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  s public.sales%ROWTYPE;
+  v_payments jsonb;
+  v_next text;
+BEGIN
+  SELECT * INTO s FROM public.sales WHERE id = p_sale_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('type', p.type, 'status', p.status, 'amount', p.amount)), '[]'::jsonb)
+    INTO v_payments FROM public.payments p WHERE p.sale_id = p_sale_id;
+
+  v_next := public.derive_sale_status(s.status, s.financing_type, s.final_amount, v_payments);
+
+  IF v_next IS DISTINCT FROM s.status THEN
+    PERFORM set_config('ssa.sale_change_id', p_change_id::text, true);
+    UPDATE public.sales SET status = v_next WHERE id = p_sale_id;
+    PERFORM set_config('ssa.sale_change_id', '', true);
+  END IF;
+  RETURN v_next;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.refresh_sale_status(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refresh_sale_status(uuid, uuid) TO service_role;
+
+-- Un pago que se inserta o cambia de estado, monto o tipo recalcula la venta, salvo
+-- dentro de create_sale (que calcula el estado UNA vez: `ssa.suppress_sale_refresh`).
+CREATE OR REPLACE FUNCTION public.payments_refresh_sale_status()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF current_setting('ssa.suppress_sale_refresh', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+  PERFORM public.refresh_sale_status(NEW.sale_id, gen_random_uuid());
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.payments_refresh_sale_status() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payments_refresh_sale_status ON public.payments;
+CREATE TRIGGER payments_refresh_sale_status
+  AFTER INSERT OR UPDATE OF status, amount, type ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.payments_refresh_sale_status();
+
+-- ------------------------------------------------------------
+-- 9. La copia congelada de un toque (la misma forma que lib/sales/attribution.ts)
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.sale_attribution_from_touch(t public.contact_touches)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_out jsonb;
+  v_extras jsonb;
+BEGIN
+  v_out := jsonb_strip_nulls(jsonb_build_object(
+    'touch_id', t.id,
+    'occurred_at', t.occurred_at,
+    'source', NULLIF(btrim(t.source), ''),
+    'medium', NULLIF(btrim(t.medium), ''),
+    'campaign', NULLIF(btrim(t.campaign), ''),
+    'content', NULLIF(btrim(t.content_label), ''),
+    'term', NULLIF(btrim(t.term), ''),
+    'ad_id', NULLIF(btrim(t.ad_id), ''),
+    'adset_id', NULLIF(btrim(t.adset_id), ''),
+    'campaign_id', NULLIF(btrim(t.campaign_id), ''),
+    'fbclid', NULLIF(btrim(t.fbclid), ''),
+    'gclid', NULLIF(btrim(t.gclid), ''),
+    'ttclid', NULLIF(btrim(t.ttclid), ''),
+    'li_fat_id', NULLIF(btrim(t.li_fat_id), ''),
+    'ctwa_clid', NULLIF(btrim(t.ctwa_clid), ''),
+    'referrer_url', NULLIF(btrim(t.referrer_url), ''),
+    'landing_page', NULLIF(btrim(t.landing_page), '')
+  ));
+
+  -- Las claves de raw que no tienen columna (v1.1, §0.0.4); se omite si no hay ninguna.
+  SELECT jsonb_object_agg(k, v) INTO v_extras
+    FROM (
+      SELECT k, NULLIF(btrim(t.raw ->> k), '') AS v
+        FROM unnest(ARRAY['utm_id','gbraid','wbraid','msclkid','twclid','sccid','epik','rdt_cid',
+                          'placement','fbp','fbc','ga_client_id','page_url']) AS k
+    ) x
+   WHERE v IS NOT NULL;
+  IF v_extras IS NOT NULL THEN
+    v_out := v_out || jsonb_build_object('extras', v_extras);
+  END IF;
+
+  RETURN v_out;
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- 10. Crear una venta en UNA transaccion
+-- ------------------------------------------------------------
+-- El servidor ya valido con Zod, resolvio permisos y alcance, releyo el catalogo y
+-- armo el payload. Aca se vuelve a comprobar lo que la base puede comprobar (la
+-- version sigue activa y con el mismo precio, el cuadre, el contacto, la agenda) y
+-- se escribe TODO o NADA: venta + pagos + estado (calculado UNA vez) + eventos +
+-- auditoria. Los errores salen como `RAISE EXCEPTION '<codigo>[:detalle]'`.
+
+CREATE OR REPLACE FUNCTION public.create_sale(p_payload jsonb, p_actor_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws uuid := (p_payload ->> 'workspace_id')::uuid;
+  v_contact uuid := (p_payload ->> 'contact_id')::uuid;
+  v_version_id uuid := (p_payload ->> 'product_version_id')::uuid;
+  v_base numeric := (p_payload ->> 'base_amount')::numeric;
+  v_discount numeric := COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+  v_final numeric := v_base - COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+  v_financing text := p_payload ->> 'financing_type';
+  v_payments jsonb := COALESCE(p_payload -> 'payments', '[]'::jsonb);
+  v_attr_req jsonb := COALESCE(p_payload -> 'attribution', '{"mode":"last_touch"}'::jsonb);
+  v_mode text;
+  v_touch public.contact_touches%ROWTYPE;
+  v_attribution jsonb := NULL;
+  v_attr_type text := 'none';
+  v_attr_touch_id uuid := NULL;
+  v_version public.product_versions%ROWTYPE;
+  v_tz text;
+  v_today date;
+  v_sale_date date := (p_payload ->> 'sale_date')::date;
+  v_booking uuid := NULLIF(p_payload ->> 'booking_id', '')::uuid;
+  v_status text;
+  v_sale public.sales%ROWTYPE;
+  v_change uuid := gen_random_uuid();
+  v_scheduled_sum_cents bigint;
+  p jsonb;
+BEGIN
+  IF v_ws IS NULL OR v_contact IS NULL OR v_version_id IS NULL OR v_base IS NULL OR v_financing IS NULL THEN
+    RAISE EXCEPTION 'invalid_payload';
+  END IF;
+  IF jsonb_typeof(v_payments) <> 'array' OR jsonb_array_length(v_payments) = 0 THEN
+    RAISE EXCEPTION 'invalid_payload:payments';
+  END IF;
+
+  -- El contacto es de este workspace y no esta en la papelera.
+  IF NOT EXISTS (SELECT 1 FROM public.contacts c WHERE c.id = v_contact AND c.workspace_id = v_ws AND c.deleted_at IS NULL) THEN
+    RAISE EXCEPTION 'invalid_contact';
+  END IF;
+
+  -- La version sigue activa y con el mismo precio que se mostro (si no: version_changed + precio nuevo).
+  SELECT * INTO v_version FROM public.product_versions WHERE id = v_version_id AND workspace_id = v_ws;
+  IF NOT FOUND THEN RAISE EXCEPTION 'invalid_version'; END IF;
+  IF v_version.status <> 'active' OR v_version.price IS DISTINCT FROM (p_payload -> 'product_snapshot' ->> 'price')::numeric THEN
+    RAISE EXCEPTION 'version_changed:%', COALESCE((
+      SELECT a.price FROM public.product_versions a
+       WHERE a.product_variant_id = v_version.product_variant_id AND a.status = 'active'), 0);
+  END IF;
+
+  -- Fecha de la venta: no futura, en la zona del workspace.
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = v_ws;
+  v_today := (now() AT TIME ZONE COALESCE(v_tz, 'UTC'))::date;
+  IF v_sale_date IS NULL OR v_sale_date > v_today THEN RAISE EXCEPTION 'invalid_sale_date'; END IF;
+
+  -- La agenda de origen: del MISMO contacto y ya pasada.
+  IF v_booking IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.bookings b
+     WHERE b.id = v_booking AND b.workspace_id = v_ws AND b.contact_id = v_contact AND b.start_at < now()
+  ) THEN
+    RAISE EXCEPTION 'invalid_booking';
+  END IF;
+
+  -- El cuadre, otra vez, en centimos: lo programado y cobrado (sin reembolsos) suma EXACTO el final.
+  IF v_financing <> 'subscription' THEN
+    SELECT COALESCE(sum(round((x ->> 'amount')::numeric * 100)), 0)::bigint INTO v_scheduled_sum_cents
+      FROM jsonb_array_elements(v_payments) x WHERE x ->> 'type' <> 'refund';
+    IF v_scheduled_sum_cents <> round(v_final * 100)::bigint THEN
+      RAISE EXCEPTION 'plan_unbalanced:%', (round(v_final * 100)::bigint - v_scheduled_sum_cents);
+    END IF;
+  END IF;
+
+  -- La atribucion se resuelve ACA, dentro de la transaccion: con `last_touch` es el toque
+  -- mas reciente AL GUARDAR (no el que mostraba el asistente).
+  v_mode := COALESCE(v_attr_req ->> 'mode', 'last_touch');
+  IF v_mode = 'touch' THEN
+    SELECT * INTO v_touch FROM public.contact_touches
+     WHERE id = NULLIF(v_attr_req ->> 'touch_id', '')::uuid AND contact_id = v_contact AND workspace_id = v_ws;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid_touch'; END IF;
+    v_attribution := public.sale_attribution_from_touch(v_touch);
+    v_attr_type := 'manual';
+    v_attr_touch_id := v_touch.id;
+  ELSIF v_mode = 'manual' THEN
+    v_attribution := v_attr_req -> 'manual';
+    IF v_attribution IS NULL OR jsonb_typeof(v_attribution) <> 'object' THEN RAISE EXCEPTION 'invalid_manual'; END IF;
+    v_attr_type := 'manual';
+    v_attr_touch_id := NULLIF(v_attribution ->> 'touch_id', '')::uuid;
+  ELSE
+    SELECT * INTO v_touch FROM public.contact_touches
+     WHERE contact_id = v_contact AND workspace_id = v_ws
+     ORDER BY occurred_at DESC, id DESC LIMIT 1;
+    IF FOUND THEN
+      v_attribution := public.sale_attribution_from_touch(v_touch);
+      v_attr_type := 'last_touch';
+      v_attr_touch_id := v_touch.id;
+    ELSE
+      -- Sin filas de toque: el ultimo de contacts.attribution (forma canonica), sin touch_id.
+      SELECT NULLIF(jsonb_strip_nulls(jsonb_build_object(
+               'occurred_at', c.attribution -> 'last_touch' ->> 'occurred_at',
+               'source', c.attribution -> 'last_touch' ->> 'source',
+               'medium', c.attribution -> 'last_touch' ->> 'medium',
+               'campaign', c.attribution -> 'last_touch' ->> 'campaign',
+               'content', c.attribution -> 'last_touch' ->> 'content',
+               'term', c.attribution -> 'last_touch' ->> 'term',
+               'ad_id', c.attribution -> 'last_touch' ->> 'ad_id',
+               'adset_id', c.attribution -> 'last_touch' ->> 'adset_id',
+               'campaign_id', c.attribution -> 'last_touch' ->> 'campaign_id',
+               'fbclid', c.attribution -> 'last_touch' ->> 'fbclid',
+               'gclid', c.attribution -> 'last_touch' ->> 'gclid',
+               'ttclid', c.attribution -> 'last_touch' ->> 'ttclid',
+               'li_fat_id', c.attribution -> 'last_touch' ->> 'li_fat_id',
+               'ctwa_clid', c.attribution -> 'last_touch' ->> 'ctwa_clid',
+               'referrer_url', c.attribution -> 'last_touch' ->> 'referrer_url',
+               'landing_page', c.attribution -> 'last_touch' ->> 'landing_page')), '{}'::jsonb)
+        INTO v_attribution
+        FROM public.contacts c WHERE c.id = v_contact;
+      IF v_attribution IS NOT NULL THEN v_attr_type := 'last_touch'; END IF;
+    END IF;
+  END IF;
+
+  -- El estado, calculado UNA vez a partir de lo que se va a crear.
+  v_status := public.derive_sale_status(NULL, v_financing, v_final, v_payments);
+
+  INSERT INTO public.sales (
+    workspace_id, contact_id, product_version_id, product_snapshot, base_amount, discount_amount, final_amount,
+    discount_reason, status, financing_type, subscription_interval, sale_date, setter_id, vendedor_id,
+    attribution, attribution_touch_id, attribution_type, booking_id, service_starts_at, notes, created_by, updated_by
+  ) VALUES (
+    v_ws, v_contact, v_version_id, p_payload -> 'product_snapshot', v_base, v_discount, v_final,
+    NULLIF(btrim(p_payload ->> 'discount_reason'), ''), v_status, v_financing,
+    NULLIF(p_payload ->> 'subscription_interval', ''), v_sale_date,
+    NULLIF(p_payload ->> 'setter_id', '')::uuid, NULLIF(p_payload ->> 'vendedor_id', '')::uuid,
+    v_attribution, v_attr_touch_id, v_attr_type, v_booking,
+    NULLIF(p_payload ->> 'service_starts_at', '')::date, NULLIF(btrim(p_payload ->> 'notes'), ''),
+    p_actor_id, p_actor_id
+  ) RETURNING * INTO v_sale;
+
+  -- Los pagos del plan, SIN recalcular el estado fila por fila (ya esta calculado).
+  PERFORM set_config('ssa.suppress_sale_refresh', 'on', true);
+  FOR p IN SELECT * FROM jsonb_array_elements(v_payments) LOOP
+    INSERT INTO public.payments (
+      workspace_id, sale_id, type, amount, status, due_date, paid_at, paid_on, payment_method,
+      payment_option_snapshot, provider_fee_amount, notes, created_by, updated_by
+    ) VALUES (
+      v_ws, v_sale.id, p ->> 'type', (p ->> 'amount')::numeric, p ->> 'status',
+      NULLIF(p ->> 'due_date', '')::date, NULLIF(p ->> 'paid_at', '')::timestamptz, NULLIF(p ->> 'paid_on', '')::date,
+      NULLIF(p ->> 'payment_method', ''), p -> 'payment_option_snapshot',
+      NULLIF(p ->> 'provider_fee_amount', '')::numeric, NULLIF(btrim(p ->> 'notes'), ''), p_actor_id, p_actor_id
+    );
+  END LOOP;
+  PERFORM set_config('ssa.suppress_sale_refresh', '', true);
+
+  -- Eventos de la venta: sale_created y sale_status_changed (from null) con el MISMO change_id.
+  PERFORM public.emit_sales_event(v_ws, 'sale_created', v_contact,
+    public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change));
+  PERFORM public.emit_sales_event(v_ws, 'sale_status_changed', v_contact,
+    public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change, 'to_status', v_status));
+
+  -- Auditoria: la venta y cada pago cobrado, con actor persona.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+  VALUES (v_ws, 'sale', v_sale.id, 'sale.created', NULL,
+          jsonb_build_object('final_amount', v_final, 'financing_type', v_financing, 'status', v_status,
+                             'attribution_type', v_attr_type, 'payments', jsonb_array_length(v_payments)),
+          p_actor_id, 'user');
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+  SELECT v_ws, 'payment', pay.id, 'payment.paid', NULL,
+         jsonb_build_object('amount', pay.amount, 'payment_method', pay.payment_method, 'sale_id', v_sale.id),
+         p_actor_id, 'user'
+    FROM public.payments pay WHERE pay.sale_id = v_sale.id AND pay.status = 'paid';
+
+  RETURN jsonb_build_object('sale_id', v_sale.id, 'status', v_status, 'attribution_type', v_attr_type);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.create_sale(jsonb, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_sale(jsonb, uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 11. Cancelar una venta (definitivo): pagos programados y morosos pasan a anulado,
+--     los cobrados se conservan, la venta pasa a cancelled. Todo en una transaccion.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.cancel_sale(p_sale_id uuid, p_reason text, p_actor_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  s public.sales%ROWTYPE;
+  v_cancelled int;
+BEGIN
+  SELECT * INTO s FROM public.sales WHERE id = p_sale_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  IF s.status = 'cancelled' THEN RAISE EXCEPTION 'already_cancelled'; END IF;
+  IF s.status IN ('refunded', 'disputed') THEN RAISE EXCEPTION 'not_editable:%', s.status; END IF;
+  IF p_reason IS NULL OR btrim(p_reason) = '' THEN RAISE EXCEPTION 'reason_required'; END IF;
+
+  -- Primero la venta: `cancelled` es un estado escrito, asi que el recalculo que dispara
+  -- cada pago al anularse lo respeta y no la devuelve a un estado derivado.
+  UPDATE public.sales
+     SET status = 'cancelled', cancelled_at = now(), cancelled_by = p_actor_id,
+         cancellation_reason = btrim(p_reason), updated_by = p_actor_id
+   WHERE id = p_sale_id;
+
+  UPDATE public.payments SET status = 'cancelled', updated_by = p_actor_id
+   WHERE sale_id = p_sale_id AND status IN ('scheduled', 'overdue');
+  GET DIAGNOSTICS v_cancelled = ROW_COUNT;
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+  VALUES (s.workspace_id, 'sale', p_sale_id, 'sale.cancelled',
+          jsonb_build_object('status', jsonb_build_object('old', s.status, 'new', 'cancelled')),
+          jsonb_build_object('reason', btrim(p_reason), 'payments_cancelled', v_cancelled), p_actor_id, 'user');
+
+  RETURN jsonb_build_object('sale_id', p_sale_id, 'payments_cancelled', v_cancelled);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.cancel_sale(uuid, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cancel_sale(uuid, text, uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 12. La purga de 30 dias NO borra un contacto con ventas
+-- ------------------------------------------------------------
+-- Es la definicion de siempre; lo unico nuevo es el NOT EXISTS sobre `sales` en la primera
+-- sentencia. Las ventas no se purgan nunca: el contacto de una venta se queda en la papelera.
+
+CREATE OR REPLACE FUNCTION public.purge_soft_deleted(p_retention_days integer DEFAULT 30)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_cutoff     timestamptz := now() - make_interval(days => GREATEST(p_retention_days, 0));
+  v_contacts   integer := 0;
+  v_notes      integer := 0;
+  v_convs      integer := 0;
+  v_assets     integer := 0;
+  v_schedules  integer := 0;
+  v_ooo        integer := 0;
+  v_events     integer := 0;
+BEGIN
+  DELETE FROM public.contacts c
+   WHERE c.deleted_at IS NOT NULL AND c.deleted_at < v_cutoff
+     AND NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.contact_id = c.id);
+  GET DIAGNOSTICS v_contacts = ROW_COUNT;
+
+  DELETE FROM public.conversations WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_convs = ROW_COUNT;
+
+  DELETE FROM public.contact_notes WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_notes = ROW_COUNT;
+
+  DELETE FROM public.response_assets WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_assets = ROW_COUNT;
+
+  DELETE FROM public.availability_schedules WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_schedules = ROW_COUNT;
+
+  DELETE FROM public.out_of_office WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  GET DIAGNOSTICS v_ooo = ROW_COUNT;
+
+  -- Un evento con agendas NO se purga: la agenda guarda su historia y apunta
+  -- al evento. (bookings llega en la 00099; antes de eso la condicion de
+  -- existencia da falso y se purgan todos los borrados.)
+  IF to_regclass('public.bookings') IS NULL THEN
+    DELETE FROM public.event_types WHERE deleted_at IS NOT NULL AND deleted_at < v_cutoff;
+  ELSE
+    EXECUTE '
+      DELETE FROM public.event_types e
+      WHERE e.deleted_at IS NOT NULL AND e.deleted_at < $1
+        AND NOT EXISTS (SELECT 1 FROM public.bookings b WHERE b.event_type_id = e.id)
+    ' USING v_cutoff;
+  END IF;
+  GET DIAGNOSTICS v_events = ROW_COUNT;
+
+  RETURN jsonb_build_object(
+    'cutoff', v_cutoff,
+    'contacts', v_contacts,
+    'conversations', v_convs,
+    'contact_notes', v_notes,
+    'response_assets', v_assets,
+    'availability_schedules', v_schedules,
+    'out_of_office', v_ooo,
+    'event_types', v_events
+  );
+END;
+$function$;
+
+-- ============================================================
+-- MIGRATION 163: SALES FORM FKS
+-- ============================================================
+-- 00163_sales_form_fks.sql
+-- Ventas, Bloque 3 (F26b): `form_submissions.sale_id` y `contract_signatures.sale_id` pasan de
+-- "uuid suelto" (lo dejaron así las 00150 y 00157, a la espera de Ventas) a una clave foránea a
+-- `sales`.
+--
+--   form_submissions.sale_id    ON DELETE SET NULL: una respuesta de formulario sobrevive aunque
+--                               la venta desaparezca (nada borra ventas hoy, pero la regla es esa).
+--   contract_signatures.sale_id sin acción (NO ACTION): la firma es evidencia legal y un trigger
+--                               (`contract_signatures_protect`) impide cambiarla, así que una
+--                               venta con firmas NO se puede borrar. Al borrar un workspace, la
+--                               cascada se lleva las firmas en la misma sentencia y no estorba.
+--
+-- Más un índice parcial por cada una, para listar las firmas y respuestas de una venta.
+--
+-- ABORTA si hay filas con un `sale_id` que no existe en `sales` (hoy: 0). Idempotente.
+--
+-- Vuelta atrás:
+--   ALTER TABLE public.form_submissions    DROP CONSTRAINT IF EXISTS form_submissions_sale_id_fkey;
+--   ALTER TABLE public.contract_signatures DROP CONSTRAINT IF EXISTS contract_signatures_sale_id_fkey;
+--   DROP INDEX IF EXISTS public.form_submissions_sale_idx;
+--   DROP INDEX IF EXISTS public.contract_signatures_sale_idx;
+
+DO $$
+DECLARE
+  v_fs integer;
+  v_cs integer;
+BEGIN
+  SELECT count(*) INTO v_fs FROM public.form_submissions f
+   WHERE f.sale_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = f.sale_id);
+  SELECT count(*) INTO v_cs FROM public.contract_signatures c
+   WHERE c.sale_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = c.sale_id);
+  IF v_fs > 0 OR v_cs > 0 THEN
+    RAISE EXCEPTION '00163: hay % respuestas y % firmas con un sale_id que no existe en sales; revisarlas antes de agregar la clave', v_fs, v_cs;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'form_submissions_sale_id_fkey') THEN
+    ALTER TABLE public.form_submissions
+      ADD CONSTRAINT form_submissions_sale_id_fkey
+      FOREIGN KEY (sale_id) REFERENCES public.sales(id) ON DELETE SET NULL;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contract_signatures_sale_id_fkey') THEN
+    ALTER TABLE public.contract_signatures
+      ADD CONSTRAINT contract_signatures_sale_id_fkey
+      FOREIGN KEY (sale_id) REFERENCES public.sales(id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS form_submissions_sale_idx
+  ON public.form_submissions (sale_id) WHERE sale_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS contract_signatures_sale_idx
+  ON public.contract_signatures (sale_id) WHERE sale_id IS NOT NULL;
+
+-- ============================================================
+-- MIGRATION 164: SUBMIT FORM RESPONSE SALE
+-- ============================================================
+-- ============================================================================
+-- 00164 — Ventas (B3, F26b): submit_form_response valida el sale_id del link firmado (v4)
+-- ============================================================================
+-- Hasta ahora la funcion guardaba el 'signed_sale_id' del link firmado SIN validarlo (la 00150
+-- dejo la columna a la espera de Ventas). Ahora, partiendo de la definicion VIGENTE (v3 de la
+-- 00157 con la correccion de la 00158; md5 9d28625fbbe3faabd5e438a26d445788 al escribir esta
+-- migracion), suma tres cosas y NADA mas:
+--   1. Valida que la venta exista, sea de este workspace y sea del MISMO contacto de la respuesta.
+--      Si no se cumple, el sale_id se DESCARTA (queda null) y se anota meta.sale_id_discarded = true
+--      con meta.sale_id_discard_reason ('no_contact' | 'not_found' | 'other_contact'). La respuesta
+--      y la firma se guardan igual.
+--   2. El sale_id validado queda en form_submissions.sale_id; record_contract_signature (que NO
+--      cambia) lo copia a contract_signatures.sale_id.
+--   3. El payload de form_submitted, survey_answered y contract_signed suma 'sale_id' (solo
+--      escalares; si es null, jsonb_strip_nulls lo saca, como los demas).
+-- La firma es la misma: submit_form_response(uuid,uuid,uuid,jsonb,jsonb,jsonb,jsonb,jsonb).
+-- lib/sales/submit-form-response-diff.test.ts comprueba que el diff contra la 00158 se limita a
+-- lineas del sale_id.
+--
+-- Como volver atras: pegar la definicion de la cabecera (CREATE OR REPLACE) y nada mas.
+--
+-- ---- definicion vigente de submit_form_response (pg_get_functiondef), para volver atras ----
+--   CREATE OR REPLACE FUNCTION public.submit_form_response(p_form_id uuid, p_version_id uuid, p_idempotency_key uuid, p_answers jsonb, p_attribution jsonb, p_meta jsonb, p_contact_hint jsonb DEFAULT '{}'::jsonb, p_extra jsonb DEFAULT '{}'::jsonb)
+--    RETURNS jsonb
+--    LANGUAGE plpgsql
+--    SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_form      public.forms%ROWTYPE;
+--     v_id        uuid;
+--     v_existing  public.form_submissions%ROWTYPE;
+--     v_hint      jsonb := COALESCE(p_contact_hint, '{}'::jsonb);
+--     v_mode      text;
+--     v_overwrite boolean;
+--     v_name      text := nullif(btrim(v_hint ->> 'display_name'), '');
+--     v_email     text := public.normalize_email(v_hint ->> 'email');
+--     v_phone     text := nullif(btrim(v_hint ->> 'phone'), '');
+--     v_wa        text := nullif(btrim(v_hint ->> 'whatsapp_phone'), '');
+--     v_country   text := nullif(btrim(v_hint ->> 'country'), '');
+--     v_signed    uuid;
+--     v_service   uuid;
+--     v_sale      uuid;
+--     v_contact   uuid;
+--     v_created   boolean := false;
+--     v_matched   text;
+--     v_conflict  uuid;
+--     v_found     jsonb;
+--     v_status    text := 'no_contact';
+--     v_score     integer;
+--     v_nps       text;
+--     v_once      text;
+--     v_event     text;
+--     v_score_key text;
+--     v_field     record;
+--     v_first_touch jsonb;
+--     v_version   public.form_versions%ROWTYPE;
+--     v_sig       uuid;
+--   BEGIN
+--     SELECT * INTO v_form FROM public.forms WHERE id = p_form_id;
+--     IF NOT FOUND THEN
+--       RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+--     END IF;
+--
+--     IF NOT EXISTS (
+--       SELECT 1 FROM public.form_versions v WHERE v.id = p_version_id AND v.form_id = p_form_id
+--     ) THEN
+--       RAISE EXCEPTION 'La version no es de este formulario' USING ERRCODE = 'foreign_key_violation';
+--     END IF;
+--
+--     -- Contrato: la huella de la version se vuelve a calcular AHORA, sobre el texto guardado. Si no
+--     -- coincide con la que se guardo al publicar, algo se corrompio: la firma falla y la excepcion
+--     -- deshace TODO (ni la respuesta, ni el contacto, ni el job). Nada de lo que manda el navegador
+--     -- entra en la huella: el pedido ni siquiera trae el texto.
+--     IF v_form.type = 'contract' THEN
+--       SELECT * INTO v_version FROM public.form_versions WHERE id = p_version_id;
+--       IF v_version.contract_text IS NULL
+--          OR v_version.contract_text_sha256 IS NULL
+--          OR encode(sha256(convert_to(v_version.contract_text, 'UTF8')), 'hex') <> v_version.contract_text_sha256 THEN
+--         RAISE EXCEPTION 'La huella del contrato no coincide con su texto' USING ERRCODE = 'data_exception';
+--       END IF;
+--     END IF;
+--
+--     -- Mismo pedido a la vez (doble clic, reintento de red, dos pestañas): se hacen en fila.
+--     PERFORM pg_advisory_xact_lock(hashtextextended('form-submit:' || p_form_id::text || ':' || p_idempotency_key::text, 0));
+--
+--     SELECT * INTO v_existing
+--     FROM public.form_submissions
+--     WHERE form_id = p_form_id AND idempotency_key = p_idempotency_key;
+--     IF FOUND THEN
+--       RETURN jsonb_build_object(
+--         'ok', true, 'duplicate', true,
+--         'submission_id', v_existing.id, 'status', v_existing.status,
+--         'contact_id', v_existing.contact_id, 'contact_created', v_existing.contact_created
+--       );
+--     END IF;
+--
+--     v_mode := COALESCE(v_form.contact_config ->> 'mode', 'create_or_link');
+--     v_overwrite := COALESCE(v_form.contact_config ->> 'update', 'fill_empty') = 'overwrite';
+--
+--     -- Los ids del link firmado: solo se aceptan si el contacto existe en ESTE workspace.
+--     IF (v_hint ->> 'signed_contact_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--       SELECT c.id INTO v_signed
+--       FROM public.contacts c
+--       WHERE c.id = (v_hint ->> 'signed_contact_id')::uuid
+--         AND c.workspace_id = v_form.workspace_id AND c.deleted_at IS NULL;
+--     END IF;
+--     IF v_signed IS NOT NULL THEN
+--       IF (v_hint ->> 'signed_service_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--         v_service := (v_hint ->> 'signed_service_id')::uuid;
+--       END IF;
+--       IF (v_hint ->> 'signed_sale_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--         v_sale := (v_hint ->> 'signed_sale_id')::uuid;
+--       END IF;
+--     END IF;
+--
+--     -- 1. Resolver el contacto (todavia sin tocar nada).
+--     IF v_signed IS NOT NULL THEN
+--       v_contact := v_signed;
+--       v_matched := 'link';
+--     ELSIF v_phone IS NOT NULL OR v_wa IS NOT NULL OR v_email IS NOT NULL THEN
+--       PERFORM pg_advisory_xact_lock(hashtextextended('form-contact:' || v_form.workspace_id::text || ':' || COALESCE(v_phone, v_wa, v_email), 0));
+--       v_found := public.find_contact_by_phone_or_email(v_form.workspace_id, COALESCE(v_phone, v_wa), v_email);
+--       IF v_found ->> 'contact_id' IS NULL AND v_phone IS NOT NULL AND v_wa IS NOT NULL AND v_wa <> v_phone THEN
+--         -- Tiene dos telefonos y el primero no estaba: se prueba con el de WhatsApp.
+--         v_found := public.find_contact_by_phone_or_email(v_form.workspace_id, v_wa, v_email);
+--       END IF;
+--       v_contact := (v_found ->> 'contact_id')::uuid;
+--       v_matched := v_found ->> 'matched_by';
+--       v_conflict := (v_found ->> 'conflict_contact_id')::uuid;
+--     END IF;
+--
+--     -- 2. Encuesta: puntaje, categoria y "una vez por contacto".
+--     IF v_form.type = 'survey' THEN
+--       v_score_key := v_form.survey_config ->> 'scoreFieldKey';
+--       IF v_score_key IS NOT NULL AND jsonb_typeof(p_answers -> v_score_key -> 'value') = 'number' THEN
+--         v_score := round((p_answers -> v_score_key ->> 'value')::numeric)::integer;
+--         IF p_answers -> v_score_key ->> 'type' = 'nps' THEN
+--           v_nps := CASE WHEN v_score >= 9 THEN 'promoter' WHEN v_score >= 7 THEN 'passive' ELSE 'detractor' END;
+--         END IF;
+--       END IF;
+--
+--       IF COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+--         IF v_contact IS NOT NULL THEN
+--           v_once := 'contact:' || v_contact::text;
+--         ELSIF v_email IS NOT NULL THEN
+--           v_once := 'email:' || v_email;
+--         END IF;
+--         -- Se miran las DOS claves: una respuesta anterior pudo guardarse con el email (el contacto
+--         -- todavia no existia) o con el contacto. Con una sola, la segunda respuesta de alguien que
+--         -- se creo con la primera no se detectaba.
+--         IF EXISTS (
+--           SELECT 1 FROM public.form_submissions s
+--           WHERE s.form_id = p_form_id AND s.status <> 'spam'
+--             AND s.once_key = ANY (array_remove(ARRAY[
+--               CASE WHEN v_contact IS NOT NULL THEN 'contact:' || v_contact::text END,
+--               CASE WHEN v_email IS NOT NULL THEN 'email:' || v_email END
+--             ], NULL))
+--         ) THEN
+--           RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+--         END IF;
+--       END IF;
+--     END IF;
+--
+--     -- 3. Crear o completar el contacto.
+--     IF v_contact IS NULL THEN
+--       IF v_mode = 'create_or_link' AND (v_email IS NOT NULL OR v_phone IS NOT NULL OR v_wa IS NOT NULL) THEN
+--         INSERT INTO public.contacts
+--           (workspace_id, display_name, email, phone, whatsapp_phone, country, attribution, last_interaction_at)
+--         VALUES (
+--           v_form.workspace_id, v_name, v_email, v_phone, v_wa, v_country,
+--           jsonb_build_object('source', 'form', 'referrer', p_attribution ->> 'referrer_url'),
+--           now()
+--         )
+--         RETURNING id INTO v_contact;
+--         v_created := true;
+--         v_matched := NULL;
+--       END IF;
+--     ELSE
+--       UPDATE public.contacts c
+--       SET display_name = CASE WHEN v_overwrite THEN COALESCE(v_name, c.display_name)
+--                               WHEN COALESCE(btrim(c.display_name), '') = '' THEN v_name ELSE c.display_name END,
+--           email        = CASE WHEN v_overwrite THEN COALESCE(v_email, c.email)
+--                               WHEN COALESCE(btrim(c.email), '') = '' THEN v_email ELSE c.email END,
+--           phone        = CASE WHEN v_overwrite THEN COALESCE(v_phone, c.phone)
+--                               WHEN COALESCE(btrim(c.phone), '') = '' THEN v_phone ELSE c.phone END,
+--           whatsapp_phone = CASE WHEN v_overwrite THEN COALESCE(v_wa, c.whatsapp_phone)
+--                                 WHEN COALESCE(btrim(c.whatsapp_phone), '') = '' THEN v_wa ELSE c.whatsapp_phone END,
+--           country      = CASE WHEN v_overwrite THEN COALESCE(v_country, c.country)
+--                               WHEN COALESCE(btrim(c.country), '') = '' THEN v_country ELSE c.country END,
+--           last_interaction_at = now()
+--       WHERE c.id = v_contact AND c.workspace_id = v_form.workspace_id;
+--     END IF;
+--
+--     IF v_contact IS NOT NULL THEN
+--       v_status := 'received';
+--       -- Con contacto (existente o recien creado), la clave es SIEMPRE la del contacto: la del email
+--       -- solo vale para quien responde sin que se pueda identificar un contacto.
+--       IF v_form.type = 'survey' AND COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+--         v_once := 'contact:' || v_contact::text;
+--       END IF;
+--
+--       -- Campos personalizados (solo los que siguen existiendo en este workspace).
+--       IF jsonb_typeof(v_hint -> 'custom') = 'object' THEN
+--         FOR v_field IN
+--           SELECT d.id AS field_id, e.value AS value
+--           FROM jsonb_each_text(v_hint -> 'custom') e
+--           JOIN public.custom_field_definitions d
+--             ON d.id::text = e.key AND d.workspace_id = v_form.workspace_id AND d.deleted_at IS NULL
+--           WHERE btrim(e.value) <> ''
+--         LOOP
+--           INSERT INTO public.contact_custom_fields (contact_id, field_id, value)
+--           VALUES (v_contact, v_field.field_id, v_field.value)
+--           ON CONFLICT (contact_id, field_id) DO UPDATE
+--             SET value = EXCLUDED.value, updated_at = now()
+--             WHERE v_overwrite OR btrim(public.contact_custom_fields.value) = '';
+--         END LOOP;
+--       END IF;
+--
+--       -- Etiquetas del formulario (las del workspace; las repetidas no hacen nada).
+--       IF COALESCE(array_length(v_form.tags_on_submit, 1), 0) > 0 THEN
+--         INSERT INTO public.contact_tags (contact_id, tag_id)
+--         SELECT v_contact, t.id FROM public.tags t
+--         WHERE t.workspace_id = v_form.workspace_id AND t.id = ANY (v_form.tags_on_submit)
+--         ON CONFLICT DO NOTHING;
+--       END IF;
+--     END IF;
+--
+--     -- 4. La respuesta.
+--     BEGIN
+--       INSERT INTO public.form_submissions
+--         (workspace_id, form_id, form_version_id, idempotency_key, status, answers,
+--          contact_id, contact_created, dedupe, score, nps_category, once_key,
+--          attribution, meta, upload_prefix, sale_id, service_id)
+--       VALUES
+--         (v_form.workspace_id, p_form_id, p_version_id, p_idempotency_key, v_status, p_answers,
+--          v_contact, v_created,
+--          jsonb_build_object('matched_by', v_matched, 'conflict_contact_id', v_conflict),
+--          v_score, v_nps, v_once,
+--          COALESCE(p_attribution, '{}'::jsonb), COALESCE(p_meta, '{}'::jsonb), p_extra ->> 'upload_prefix',
+--          v_sale, v_service)
+--       RETURNING id INTO v_id;
+--     EXCEPTION WHEN unique_violation THEN
+--       -- Carrera por "una vez por contacto": otra respuesta del mismo contacto se guardo en el medio.
+--       RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+--     END;
+--
+--     -- 4b. Contrato: la firma, en la MISMA transaccion que la respuesta. `record_contract_signature`
+--     -- guarda la huella, la metadata legal y encola el PDF; si algo falla, no queda nada.
+--     IF v_form.type = 'contract' THEN
+--       v_sig := public.record_contract_signature(
+--         v_id,
+--         nullif(p_extra ->> 'signature_path', ''),
+--         COALESCE(p_extra -> 'legal', '{}'::jsonb),
+--         COALESCE(p_extra ->> 'signer_name', ''),
+--         p_extra ->> 'signer_email'
+--       );
+--     END IF;
+--
+--     -- 5. Historial, y el evento de automatizacion (solo con contacto).
+--     IF v_contact IS NOT NULL THEN
+--       IF v_created OR v_matched IS NOT NULL THEN
+--         INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by, actor_type, actor_label)
+--         VALUES (
+--           v_form.workspace_id, 'contact', v_contact,
+--           CASE WHEN v_created THEN 'contact.created' ELSE 'contact.linked' END,
+--           jsonb_build_object('source', 'form', 'form_id', p_form_id, 'submission_id', v_id, 'matched_by', v_matched),
+--           NULL, 'system', 'Formulario: ' || v_form.name
+--         );
+--       END IF;
+--
+--       v_event := CASE v_form.type WHEN 'custom' THEN 'form_submitted' WHEN 'survey' THEN 'survey_answered' WHEN 'contract' THEN 'contract_signed' ELSE NULL END;
+--       IF v_event IS NOT NULL THEN
+--         INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+--         VALUES (
+--           v_form.workspace_id, v_event, v_contact,
+--           jsonb_strip_nulls(jsonb_build_object(
+--             'submission_id', v_id, 'form_id', p_form_id, 'form_type', v_form.type,
+--             'score', v_score, 'nps_category', v_nps
+--           ))
+--         );
+--       END IF;
+--     END IF;
+--
+--     RETURN jsonb_build_object(
+--       'ok', true,
+--       'duplicate', false,
+--       'submission_id', v_id,
+--       'status', v_status,
+--       'contact_id', v_contact,
+--       'contact_created', v_created,
+--       'matched_by', v_matched,
+--       'conflict_contact_id', v_conflict,
+--       'signature_id', v_sig
+--     );
+--   END;
+--   $function$
+-- ---- fin de la definicion anterior ------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.submit_form_response(
+  p_form_id uuid,
+  p_version_id uuid,
+  p_idempotency_key uuid,
+  p_answers jsonb,
+  p_attribution jsonb,
+  p_meta jsonb,
+  p_contact_hint jsonb DEFAULT '{}'::jsonb,
+  p_extra jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_form      public.forms%ROWTYPE;
+  v_id        uuid;
+  v_existing  public.form_submissions%ROWTYPE;
+  v_hint      jsonb := COALESCE(p_contact_hint, '{}'::jsonb);
+  v_mode      text;
+  v_overwrite boolean;
+  v_name      text := nullif(btrim(v_hint ->> 'display_name'), '');
+  v_email     text := public.normalize_email(v_hint ->> 'email');
+  v_phone     text := nullif(btrim(v_hint ->> 'phone'), '');
+  v_wa        text := nullif(btrim(v_hint ->> 'whatsapp_phone'), '');
+  v_country   text := nullif(btrim(v_hint ->> 'country'), '');
+  v_signed    uuid;
+  v_service   uuid;
+  v_sale      uuid;
+  v_contact   uuid;
+  v_created   boolean := false;
+  v_matched   text;
+  v_conflict  uuid;
+  v_found     jsonb;
+  v_status    text := 'no_contact';
+  v_score     integer;
+  v_nps       text;
+  v_once      text;
+  v_event     text;
+  v_score_key text;
+  v_field     record;
+  v_first_touch jsonb;
+  v_version   public.form_versions%ROWTYPE;
+  v_sig       uuid;
+  v_sale_reason text;
+BEGIN
+  SELECT * INTO v_form FROM public.forms WHERE id = p_form_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.form_versions v WHERE v.id = p_version_id AND v.form_id = p_form_id
+  ) THEN
+    RAISE EXCEPTION 'La version no es de este formulario' USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  -- Contrato: la huella de la version se vuelve a calcular AHORA, sobre el texto guardado. Si no
+  -- coincide con la que se guardo al publicar, algo se corrompio: la firma falla y la excepcion
+  -- deshace TODO (ni la respuesta, ni el contacto, ni el job). Nada de lo que manda el navegador
+  -- entra en la huella: el pedido ni siquiera trae el texto.
+  IF v_form.type = 'contract' THEN
+    SELECT * INTO v_version FROM public.form_versions WHERE id = p_version_id;
+    IF v_version.contract_text IS NULL
+       OR v_version.contract_text_sha256 IS NULL
+       OR encode(sha256(convert_to(v_version.contract_text, 'UTF8')), 'hex') <> v_version.contract_text_sha256 THEN
+      RAISE EXCEPTION 'La huella del contrato no coincide con su texto' USING ERRCODE = 'data_exception';
+    END IF;
+  END IF;
+
+  -- Mismo pedido a la vez (doble clic, reintento de red, dos pestañas): se hacen en fila.
+  PERFORM pg_advisory_xact_lock(hashtextextended('form-submit:' || p_form_id::text || ':' || p_idempotency_key::text, 0));
+
+  SELECT * INTO v_existing
+  FROM public.form_submissions
+  WHERE form_id = p_form_id AND idempotency_key = p_idempotency_key;
+  IF FOUND THEN
+    RETURN jsonb_build_object(
+      'ok', true, 'duplicate', true,
+      'submission_id', v_existing.id, 'status', v_existing.status,
+      'contact_id', v_existing.contact_id, 'contact_created', v_existing.contact_created
+    );
+  END IF;
+
+  v_mode := COALESCE(v_form.contact_config ->> 'mode', 'create_or_link');
+  v_overwrite := COALESCE(v_form.contact_config ->> 'update', 'fill_empty') = 'overwrite';
+
+  -- Los ids del link firmado: solo se aceptan si el contacto existe en ESTE workspace.
+  IF (v_hint ->> 'signed_contact_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    SELECT c.id INTO v_signed
+    FROM public.contacts c
+    WHERE c.id = (v_hint ->> 'signed_contact_id')::uuid
+      AND c.workspace_id = v_form.workspace_id AND c.deleted_at IS NULL;
+  END IF;
+  IF v_signed IS NOT NULL THEN
+    IF (v_hint ->> 'signed_service_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      v_service := (v_hint ->> 'signed_service_id')::uuid;
+    END IF;
+    IF (v_hint ->> 'signed_sale_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      v_sale := (v_hint ->> 'signed_sale_id')::uuid;
+    END IF;
+  END IF;
+
+  -- 1. Resolver el contacto (todavia sin tocar nada).
+  IF v_signed IS NOT NULL THEN
+    v_contact := v_signed;
+    v_matched := 'link';
+  ELSIF v_phone IS NOT NULL OR v_wa IS NOT NULL OR v_email IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('form-contact:' || v_form.workspace_id::text || ':' || COALESCE(v_phone, v_wa, v_email), 0));
+    v_found := public.find_contact_by_phone_or_email(v_form.workspace_id, COALESCE(v_phone, v_wa), v_email);
+    IF v_found ->> 'contact_id' IS NULL AND v_phone IS NOT NULL AND v_wa IS NOT NULL AND v_wa <> v_phone THEN
+      -- Tiene dos telefonos y el primero no estaba: se prueba con el de WhatsApp.
+      v_found := public.find_contact_by_phone_or_email(v_form.workspace_id, v_wa, v_email);
+    END IF;
+    v_contact := (v_found ->> 'contact_id')::uuid;
+    v_matched := v_found ->> 'matched_by';
+    v_conflict := (v_found ->> 'conflict_contact_id')::uuid;
+  END IF;
+
+  -- 2. Encuesta: puntaje, categoria y "una vez por contacto".
+  IF v_form.type = 'survey' THEN
+    v_score_key := v_form.survey_config ->> 'scoreFieldKey';
+    IF v_score_key IS NOT NULL AND jsonb_typeof(p_answers -> v_score_key -> 'value') = 'number' THEN
+      v_score := round((p_answers -> v_score_key ->> 'value')::numeric)::integer;
+      IF p_answers -> v_score_key ->> 'type' = 'nps' THEN
+        v_nps := CASE WHEN v_score >= 9 THEN 'promoter' WHEN v_score >= 7 THEN 'passive' ELSE 'detractor' END;
+      END IF;
+    END IF;
+
+    IF COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+      IF v_contact IS NOT NULL THEN
+        v_once := 'contact:' || v_contact::text;
+      ELSIF v_email IS NOT NULL THEN
+        v_once := 'email:' || v_email;
+      END IF;
+      -- Se miran las DOS claves: una respuesta anterior pudo guardarse con el email (el contacto
+      -- todavia no existia) o con el contacto. Con una sola, la segunda respuesta de alguien que
+      -- se creo con la primera no se detectaba.
+      IF EXISTS (
+        SELECT 1 FROM public.form_submissions s
+        WHERE s.form_id = p_form_id AND s.status <> 'spam'
+          AND s.once_key = ANY (array_remove(ARRAY[
+            CASE WHEN v_contact IS NOT NULL THEN 'contact:' || v_contact::text END,
+            CASE WHEN v_email IS NOT NULL THEN 'email:' || v_email END
+          ], NULL))
+      ) THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+      END IF;
+    END IF;
+  END IF;
+
+  -- 3. Crear o completar el contacto.
+  IF v_contact IS NULL THEN
+    IF v_mode = 'create_or_link' AND (v_email IS NOT NULL OR v_phone IS NOT NULL OR v_wa IS NOT NULL) THEN
+      INSERT INTO public.contacts
+        (workspace_id, display_name, email, phone, whatsapp_phone, country, attribution, last_interaction_at)
+      VALUES (
+        v_form.workspace_id, v_name, v_email, v_phone, v_wa, v_country,
+        jsonb_build_object('source', 'form', 'referrer', p_attribution ->> 'referrer_url'),
+        now()
+      )
+      RETURNING id INTO v_contact;
+      v_created := true;
+      v_matched := NULL;
+    END IF;
+  ELSE
+    UPDATE public.contacts c
+    SET display_name = CASE WHEN v_overwrite THEN COALESCE(v_name, c.display_name)
+                            WHEN COALESCE(btrim(c.display_name), '') = '' THEN v_name ELSE c.display_name END,
+        email        = CASE WHEN v_overwrite THEN COALESCE(v_email, c.email)
+                            WHEN COALESCE(btrim(c.email), '') = '' THEN v_email ELSE c.email END,
+        phone        = CASE WHEN v_overwrite THEN COALESCE(v_phone, c.phone)
+                            WHEN COALESCE(btrim(c.phone), '') = '' THEN v_phone ELSE c.phone END,
+        whatsapp_phone = CASE WHEN v_overwrite THEN COALESCE(v_wa, c.whatsapp_phone)
+                              WHEN COALESCE(btrim(c.whatsapp_phone), '') = '' THEN v_wa ELSE c.whatsapp_phone END,
+        country      = CASE WHEN v_overwrite THEN COALESCE(v_country, c.country)
+                            WHEN COALESCE(btrim(c.country), '') = '' THEN v_country ELSE c.country END,
+        last_interaction_at = now()
+    WHERE c.id = v_contact AND c.workspace_id = v_form.workspace_id;
+  END IF;
+
+  IF v_contact IS NOT NULL THEN
+    v_status := 'received';
+    -- Con contacto (existente o recien creado), la clave es SIEMPRE la del contacto: la del email
+    -- solo vale para quien responde sin que se pueda identificar un contacto.
+    IF v_form.type = 'survey' AND COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+      v_once := 'contact:' || v_contact::text;
+    END IF;
+
+    -- Campos personalizados (solo los que siguen existiendo en este workspace).
+    IF jsonb_typeof(v_hint -> 'custom') = 'object' THEN
+      FOR v_field IN
+        SELECT d.id AS field_id, e.value AS value
+        FROM jsonb_each_text(v_hint -> 'custom') e
+        JOIN public.custom_field_definitions d
+          ON d.id::text = e.key AND d.workspace_id = v_form.workspace_id AND d.deleted_at IS NULL
+        WHERE btrim(e.value) <> ''
+      LOOP
+        INSERT INTO public.contact_custom_fields (contact_id, field_id, value)
+        VALUES (v_contact, v_field.field_id, v_field.value)
+        ON CONFLICT (contact_id, field_id) DO UPDATE
+          SET value = EXCLUDED.value, updated_at = now()
+          WHERE v_overwrite OR btrim(public.contact_custom_fields.value) = '';
+      END LOOP;
+    END IF;
+
+    -- Etiquetas del formulario (las del workspace; las repetidas no hacen nada).
+    IF COALESCE(array_length(v_form.tags_on_submit, 1), 0) > 0 THEN
+      INSERT INTO public.contact_tags (contact_id, tag_id)
+      SELECT v_contact, t.id FROM public.tags t
+      WHERE t.workspace_id = v_form.workspace_id AND t.id = ANY (v_form.tags_on_submit)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END IF;
+
+  -- 3b. La venta del link firmado (Ventas, 00164): el 'signed_sale_id' solo vale si la venta existe,
+  -- es de ESTE workspace y es del MISMO contacto de la respuesta. Si no, se descarta (queda null) y
+  -- se anota en meta; la respuesta y la firma se guardan igual.
+  IF v_sale IS NOT NULL THEN
+    IF v_contact IS NULL THEN v_sale_reason := 'no_contact';
+    ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.workspace_id = v_form.workspace_id) THEN v_sale_reason := 'not_found';
+    ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.contact_id = v_contact) THEN v_sale_reason := 'other_contact';
+    END IF;
+    IF v_sale_reason IS NOT NULL THEN
+      v_sale := NULL;
+      p_meta := COALESCE(p_meta, '{}'::jsonb) || jsonb_build_object('sale_id_discarded', true, 'sale_id_discard_reason', v_sale_reason);
+    END IF;
+  END IF;
+
+  -- 4. La respuesta.
+  BEGIN
+    INSERT INTO public.form_submissions
+      (workspace_id, form_id, form_version_id, idempotency_key, status, answers,
+       contact_id, contact_created, dedupe, score, nps_category, once_key,
+       attribution, meta, upload_prefix, sale_id, service_id)
+    VALUES
+      (v_form.workspace_id, p_form_id, p_version_id, p_idempotency_key, v_status, p_answers,
+       v_contact, v_created,
+       jsonb_build_object('matched_by', v_matched, 'conflict_contact_id', v_conflict),
+       v_score, v_nps, v_once,
+       COALESCE(p_attribution, '{}'::jsonb), COALESCE(p_meta, '{}'::jsonb), p_extra ->> 'upload_prefix',
+       v_sale, v_service)
+    RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN
+    -- Carrera por "una vez por contacto": otra respuesta del mismo contacto se guardo en el medio.
+    RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+  END;
+
+  -- 4b. Contrato: la firma, en la MISMA transaccion que la respuesta. `record_contract_signature`
+  -- guarda la huella, la metadata legal y encola el PDF; si algo falla, no queda nada.
+  IF v_form.type = 'contract' THEN
+    v_sig := public.record_contract_signature(
+      v_id,
+      nullif(p_extra ->> 'signature_path', ''),
+      COALESCE(p_extra -> 'legal', '{}'::jsonb),
+      COALESCE(p_extra ->> 'signer_name', ''),
+      p_extra ->> 'signer_email'
+    );
+  END IF;
+
+  -- 5. Historial, y el evento de automatizacion (solo con contacto).
+  IF v_contact IS NOT NULL THEN
+    IF v_created OR v_matched IS NOT NULL THEN
+      INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by, actor_type, actor_label)
+      VALUES (
+        v_form.workspace_id, 'contact', v_contact,
+        CASE WHEN v_created THEN 'contact.created' ELSE 'contact.linked' END,
+        jsonb_build_object('source', 'form', 'form_id', p_form_id, 'submission_id', v_id, 'matched_by', v_matched),
+        NULL, 'system', 'Formulario: ' || v_form.name
+      );
+    END IF;
+
+    v_event := CASE v_form.type WHEN 'custom' THEN 'form_submitted' WHEN 'survey' THEN 'survey_answered' WHEN 'contract' THEN 'contract_signed' ELSE NULL END;
+    IF v_event IS NOT NULL THEN
+      INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+      VALUES (
+        v_form.workspace_id, v_event, v_contact,
+        jsonb_strip_nulls(jsonb_build_object(
+          'submission_id', v_id, 'form_id', p_form_id, 'form_type', v_form.type,
+          'score', v_score, 'nps_category', v_nps, 'sale_id', v_sale
+        ))
+      );
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'duplicate', false,
+    'submission_id', v_id,
+    'status', v_status,
+    'contact_id', v_contact,
+    'contact_created', v_created,
+    'matched_by', v_matched,
+    'conflict_contact_id', v_conflict,
+    'signature_id', v_sig
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 165: PAYMENT RECEIPTS BUCKET
+-- ============================================================
+-- ============================================================================
+-- 00165 — Ventas (B4, F27): bucket privado para los comprobantes de pago
+-- ============================================================================
+-- Un bucket PRIVADO y SIN policies para clientes:
+--
+--   payment-receipts   {workspace_id}/{sale_id}/{payment_id}/{uuid}.{ext}
+--
+-- Tipos: JPEG, PNG, WebP y PDF. Tope: 10 MB. Sube y firma SOLO el servidor (service
+-- role) DESPUES de comprobar la venta con la sesion de quien pide (`can_see_sale`):
+-- la lectura es un link firmado de 60 segundos. Que sea privado es una condicion de
+-- seguridad: si ya existia (creado a mano), se le fuerza.
+--
+-- El primer segmento del path es el workspace, como en `chat-media` y `contracts`.
+-- Aditiva e idempotente.
+--
+-- Como volver atras (solo si esta vacio):
+--   select count(*) from storage.objects where bucket_id = 'payment-receipts';  -- 0
+--   DELETE FROM storage.buckets WHERE id = 'payment-receipts';
+-- ============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'payment-receipts',
+  'payment-receipts',
+  false,
+  10485760,  -- 10 MB
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- ============================================================
+-- MIGRATION 166: SALES TRIGGER TYPES
+-- ============================================================
+-- ============================================================================
+-- 00166 — Ventas (B4, F37): seis tipos de trigger nuevos en `triggers.type`
+-- ============================================================================
+-- Suma `sale_created`, `sale_status_changed`, `payment_created`, `payment_status_changed`,
+-- `payment_before_due` y `payment_after_due` al CHECK de `triggers.type`. SOLO SUMA: la lista
+-- vieja (24 tipos, con los de Llamadas y Formularios) se leyo de la base viva al escribir esta
+-- migracion, no de memoria; `lib/sales/automation/triggers-check.test.ts` lee ESTE archivo y exige
+-- los 24 + los 6.
+--
+-- Definicion VIEJA del CHECK, para volver atras:
+--   CHECK ((type = ANY (ARRAY[
+--     'keyword'::text,
+--     'postback'::text,
+--     'quick_reply'::text,
+--     'welcome'::text,
+--     'default'::text,
+--     'comment_keyword'::text,
+--     'new_contact'::text,
+--     'crm_event'::text,
+--     'inactivity'::text,
+--     'email_received'::text,
+--     'booking_created'::text,
+--     'booking_rescheduled'::text,
+--     'booking_cancelled'::text,
+--     'booking_updated'::text,
+--     'booking_ended'::text,
+--     'booking_status_changed'::text,
+--     'booking_before_start'::text,
+--     'booking_after_end'::text,
+--     'booking_after_created'::text,
+--     'call_analyzed'::text,
+--     'call_linked'::text,
+--     'form_submitted'::text,
+--     'survey_answered'::text,
+--     'contract_signed'::text
+--   ])))
+--
+-- Como volver atras:
+--   (antes) DELETE FROM public.triggers WHERE type IN ('sale_created', 'sale_status_changed',
+--     'payment_created', 'payment_status_changed', 'payment_before_due', 'payment_after_due');
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY[<la lista vieja>]));
+-- ============================================================================
+
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
+  CHECK (type = ANY (ARRAY[
+    'keyword'::text,
+    'postback'::text,
+    'quick_reply'::text,
+    'welcome'::text,
+    'default'::text,
+    'comment_keyword'::text,
+    'new_contact'::text,
+    'crm_event'::text,
+    'inactivity'::text,
+    'email_received'::text,
+    'booking_created'::text,
+    'booking_rescheduled'::text,
+    'booking_cancelled'::text,
+    'booking_updated'::text,
+    'booking_ended'::text,
+    'booking_status_changed'::text,
+    'booking_before_start'::text,
+    'booking_after_end'::text,
+    'booking_after_created'::text,
+    'call_analyzed'::text,
+    'call_linked'::text,
+    'form_submitted'::text,
+    'survey_answered'::text,
+    'contract_signed'::text,
+    'sale_created'::text,
+    'sale_status_changed'::text,
+    'payment_created'::text,
+    'payment_status_changed'::text,
+    'payment_before_due'::text,
+    'payment_after_due'::text
+  ]));
+
+-- ============================================================
+-- MIGRATION 167: PAYMENTS OVERDUE CRON
+-- ============================================================
+-- ============================================================================
+-- 00167 — Ventas (B4, F30): el cron que encola el barrido de mora
+-- ============================================================================
+-- Un pago `scheduled` que vence pasa a `overdue` solo. Cada hora (minuto 7), pg_cron llama a
+-- `private.enqueue_payments_overdue_sweep()`, que deja en la cola (`scheduled_jobs`) UN job
+-- `payments_overdue_sweep` por workspace y por dia local. El cron `jobs` que ya corre cada minuto
+-- lo procesa con el handler `lib/jobs/handlers/payments-overdue-sweep.ts`.
+--
+-- NO se agrega una ruta en `app/api/cron/` ni se toca `private.call_app_cron`: comparten esa
+-- funcion y su lista blanca TODOS los crons de la app. Este cron llama una funcion SQL directo, igual
+-- que `private.enqueue_fathom_sync()` (00146); `lib/cron-config.test.ts` queda intacto.
+--
+-- La funcion, por cada workspace:
+--   1. Calcula su hora local (`now() AT TIME ZONE workspaces.timezone`). ANTES de las 03:00 locales
+--      no encola nada; desde las 03:00, el barrido del dia (cada workspace se barre una vez por dia
+--      local, sea cual sea su zona).
+--   2. SOLO encola si el workspace tiene algun pago candidato (`scheduled`, con `due_date <
+--      hoy_local - overdue_grace_days`, de una venta que no sea cancelled, refunded, disputed ni
+--      subscription_cancelled). Sin candidatos no deja ningun job: un workspace sin ventas (o sin
+--      nada vencido) no genera trabajo ni ruido.
+--   3. Inserta el job con `dedupe_key = 'overdue:<workspace>:<fecha local>'` y `ON CONFLICT DO NOTHING`
+--      (el indice unico solo vale mientras el job esta `pending`; despues el handler es igual de seguro
+--      porque su transicion es idempotente).
+--   4. Una falla en UN workspace se avisa con RAISE WARNING y no frena a los demas.
+-- Devuelve cuantos jobs encolo. Es SECURITY DEFINER y nadie con sesion la puede ejecutar. Aditiva
+-- e idempotente.
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('payments-overdue-enqueue');
+--   DROP FUNCTION IF EXISTS private.enqueue_payments_overdue_sweep();
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'payments_overdue_sweep' AND status = 'pending';
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION private.enqueue_payments_overdue_sweep()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ws record;
+  v_local timestamp;
+  v_day date;
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_ws IN
+    SELECT w.id, COALESCE(w.timezone, 'UTC') AS tz, COALESCE(w.overdue_grace_days, 0) AS grace
+    FROM public.workspaces w
+  LOOP
+    BEGIN
+      v_local := now() AT TIME ZONE v_ws.tz;
+      v_day := v_local::date;
+
+      -- Antes de las 03:00 locales no se encola nada.
+      CONTINUE WHEN extract(hour FROM v_local) < 3;
+
+      -- Sin pagos candidatos no hay trabajo que dejar.
+      CONTINUE WHEN NOT EXISTS (
+        SELECT 1
+        FROM public.payments p
+        JOIN public.sales s ON s.id = p.sale_id
+        WHERE p.workspace_id = v_ws.id
+          AND p.status = 'scheduled'
+          AND p.due_date IS NOT NULL
+          AND p.due_date < v_day - v_ws.grace
+          AND s.status NOT IN ('cancelled', 'refunded', 'disputed', 'subscription_cancelled')
+      );
+
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'payments_overdue_sweep',
+        jsonb_build_object('workspace_id', v_ws.id, 'local_date', v_day::text),
+        now(),
+        'overdue:' || v_ws.id::text || ':' || v_day::text
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_payments_overdue_sweep: no pude encolar el workspace %: %', v_ws.id, SQLERRM;
+    END;
+  END LOOP;
+
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_payments_overdue_sweep() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'payments-overdue-enqueue') THEN
+    PERFORM cron.unschedule('payments-overdue-enqueue');
+  END IF;
+END $$;
+
+SELECT cron.schedule('payments-overdue-enqueue', '7 * * * *', $$SELECT private.enqueue_payments_overdue_sweep()$$);
+
+-- ============================================================
+-- MIGRATION 168: AUDIT LOG SELECT SALES
+-- ============================================================
+-- ============================================================================
+-- 00168 — Ventas (B4, F35): quien lee el historial de una venta, un pago o el catalogo
+-- ============================================================================
+-- `audit_log_select` NO se reescribe (ni la politica de Llamadas, `audit_log_select_calls`).
+-- Siguiendo la convencion de Llamadas, cada modulo suma su propia politica de SELECT ADICIONAL y
+-- permisiva; Postgres las combina con OR. La de Ventas:
+--
+--   entity_type = 'sale'       quien ve la venta (`can_see_sale_id`: admin, setter, vendedor, o un rol
+--                              con `sales.view` de alcance `all`), incluidas las filas que escribio el
+--                              sistema o un agente.
+--   entity_type = 'payment'    quien ve la venta del pago.
+--   product, product_variant,  cualquier miembro del workspace: el catalogo ya es legible por todos en sus
+--   product_version            tablas (00159), asi que su historial tambien.
+--
+-- Una persona que no es setter ni vendedor NO ve ninguna fila de esa venta ni de sus pagos. Lo que ya
+-- se veia de los demas `entity_type` (contact, conversation, booking, call, ...) no cambia:
+-- `scripts/verify-audit-visibility.mjs` (--despues-de-00168) lo comprueba contra el resultado de antes.
+--
+-- Idempotente: DROP POLICY IF EXISTS + CREATE.
+--
+-- Como volver atras:
+--   DROP POLICY IF EXISTS audit_log_select_sales ON public.audit_log;
+-- ============================================================================
+
+DROP POLICY IF EXISTS audit_log_select_sales ON public.audit_log;
+CREATE POLICY audit_log_select_sales ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id) AND (
+         (entity_type = 'sale' AND public.can_see_sale_id(entity_id))
+      OR (entity_type = 'payment' AND EXISTS (
+            SELECT 1 FROM public.payments p
+             WHERE p.id = audit_log.entity_id AND public.can_see_sale_id(p.sale_id)))
+      OR entity_type IN ('product', 'product_variant', 'product_version')
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 169: VARIANT PRICE DROP VERSIONS
+-- ============================================================
+-- ============================================================
+-- 00169_variant_price_drop_versions.sql
+--
+-- Ventas, Fase 1 · el precio vive en la VARIANTE y desaparece `product_versions`.
+--
+-- Por que: la venta ya guarda una copia congelada del producto y de su precio
+-- (`sales.product_snapshot`), y el historial de cambios vive en `audit_log`
+-- (00170). Una tabla de versiones aparte no sumaba nada que no estuviera en esos
+-- dos lugares. Se pierde, a proposito: preparar un precio en borrador y publicarlo
+-- despues. Un cambio de precio es inmediato y queda en el historial.
+--
+-- Que hace, en orden (todo en UNA transaccion):
+--   1. `product_variants.price` (USD, >= 0; 0 = "sin precio", no se puede vender),
+--      con el precio de la version ACTIVA de cada variante.
+--   2. `sales.product_variant_id` (FK RESTRICT, NOT NULL) reemplaza a
+--      `sales.product_version_id`; se rellena desde la version de cada venta.
+--   3. `create_sale` compara el precio de la VARIANTE con el que mostro el asistente
+--      (`price_changed:<precio de hoy>`) y rechaza una variante archivada o de un
+--      producto inactivo (`invalid_variant`). Partio de la definicion vigente en la
+--      base (md5 bc7b29e3da3501d7039016c541c6fbcd); solo cambian las lineas de la
+--      variante (ver `lib/sales/create-sale-variant-diff.test.ts`).
+--   4. El puente `content_offers_bridge_to_products()` (00160) deja de crear
+--      versiones: copia el precio a la variante. Tiene que seguir andando porque
+--      produccion (main) todavia escribe en `content_offers` hasta que se despliegue
+--      esta rama (md5 vigente dbf13b08f9242cad404cba1064b6813e).
+--   5. Borra `product_versions` con sus triggers y sus funciones.
+--
+-- No toca datos de Contenido ni de Formularios. Hoy: 3 versiones (3000, 6000, 12000)
+-- y 0 ventas. Respaldo previo: docs/ventas/respaldo-product-versions.json.
+--
+-- Idempotente: aplicarla dos veces no rompe nada.
+--
+-- ------------------------------------------------------------
+-- CONSULTAS DE CONTROL (despues de aplicar):
+--
+--   SELECT to_regclass('public.product_versions');                                    -- null
+--   SELECT count(*) FROM public.product_variants WHERE price > 0;                     -- = variantes con precio (3)
+--   SELECT column_name FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='sales' AND column_name LIKE 'product_%'; -- product_snapshot, product_variant_id
+--   SELECT count(*) FROM pg_proc WHERE proname IN ('publish_product_version',
+--     'product_versions_assign_number','product_versions_protect');                   -- 0
+--
+-- COMO VOLVER ATRAS (la tabla es irreversible; se rearma desde el respaldo):
+--
+--   1. Recrear `product_versions` y sus dos funciones con la definicion de la 00159.
+--   2. Reinsertar las filas de docs/ventas/respaldo-product-versions.json.
+--   3. ALTER TABLE public.sales ADD COLUMN product_version_id uuid REFERENCES public.product_versions(id) ON DELETE RESTRICT;
+--      y rellenarla (con 0 ventas no hay nada que rellenar).
+--   4. Restaurar `create_sale` y el puente con estas definiciones (las de antes):
+--
+-- create_sale (antes):
+--   CREATE OR REPLACE FUNCTION public.create_sale(p_payload jsonb, p_actor_id uuid)
+--    RETURNS jsonb
+--    LANGUAGE plpgsql
+--    SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_ws uuid := (p_payload ->> 'workspace_id')::uuid;
+--     v_contact uuid := (p_payload ->> 'contact_id')::uuid;
+--     v_version_id uuid := (p_payload ->> 'product_version_id')::uuid;
+--     v_base numeric := (p_payload ->> 'base_amount')::numeric;
+--     v_discount numeric := COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+--     v_final numeric := v_base - COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+--     v_financing text := p_payload ->> 'financing_type';
+--     v_payments jsonb := COALESCE(p_payload -> 'payments', '[]'::jsonb);
+--     v_attr_req jsonb := COALESCE(p_payload -> 'attribution', '{"mode":"last_touch"}'::jsonb);
+--     v_mode text;
+--     v_touch public.contact_touches%ROWTYPE;
+--     v_attribution jsonb := NULL;
+--     v_attr_type text := 'none';
+--     v_attr_touch_id uuid := NULL;
+--     v_version public.product_versions%ROWTYPE;
+--     v_tz text;
+--     v_today date;
+--     v_sale_date date := (p_payload ->> 'sale_date')::date;
+--     v_booking uuid := NULLIF(p_payload ->> 'booking_id', '')::uuid;
+--     v_status text;
+--     v_sale public.sales%ROWTYPE;
+--     v_change uuid := gen_random_uuid();
+--     v_scheduled_sum_cents bigint;
+--     p jsonb;
+--   BEGIN
+--     IF v_ws IS NULL OR v_contact IS NULL OR v_version_id IS NULL OR v_base IS NULL OR v_financing IS NULL THEN
+--       RAISE EXCEPTION 'invalid_payload';
+--     END IF;
+--     IF jsonb_typeof(v_payments) <> 'array' OR jsonb_array_length(v_payments) = 0 THEN
+--       RAISE EXCEPTION 'invalid_payload:payments';
+--     END IF;
+--
+--     -- El contacto es de este workspace y no esta en la papelera.
+--     IF NOT EXISTS (SELECT 1 FROM public.contacts c WHERE c.id = v_contact AND c.workspace_id = v_ws AND c.deleted_at IS NULL) THEN
+--       RAISE EXCEPTION 'invalid_contact';
+--     END IF;
+--
+--     -- La version sigue activa y con el mismo precio que se mostro (si no: version_changed + precio nuevo).
+--     SELECT * INTO v_version FROM public.product_versions WHERE id = v_version_id AND workspace_id = v_ws;
+--     IF NOT FOUND THEN RAISE EXCEPTION 'invalid_version'; END IF;
+--     IF v_version.status <> 'active' OR v_version.price IS DISTINCT FROM (p_payload -> 'product_snapshot' ->> 'price')::numeric THEN
+--       RAISE EXCEPTION 'version_changed:%', COALESCE((
+--         SELECT a.price FROM public.product_versions a
+--          WHERE a.product_variant_id = v_version.product_variant_id AND a.status = 'active'), 0);
+--     END IF;
+--
+--     -- Fecha de la venta: no futura, en la zona del workspace.
+--     SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = v_ws;
+--     v_today := (now() AT TIME ZONE COALESCE(v_tz, 'UTC'))::date;
+--     IF v_sale_date IS NULL OR v_sale_date > v_today THEN RAISE EXCEPTION 'invalid_sale_date'; END IF;
+--
+--     -- La agenda de origen: del MISMO contacto y ya pasada.
+--     IF v_booking IS NOT NULL AND NOT EXISTS (
+--       SELECT 1 FROM public.bookings b
+--        WHERE b.id = v_booking AND b.workspace_id = v_ws AND b.contact_id = v_contact AND b.start_at < now()
+--     ) THEN
+--       RAISE EXCEPTION 'invalid_booking';
+--     END IF;
+--
+--     -- El cuadre, otra vez, en centimos: lo programado y cobrado (sin reembolsos) suma EXACTO el final.
+--     IF v_financing <> 'subscription' THEN
+--       SELECT COALESCE(sum(round((x ->> 'amount')::numeric * 100)), 0)::bigint INTO v_scheduled_sum_cents
+--         FROM jsonb_array_elements(v_payments) x WHERE x ->> 'type' <> 'refund';
+--       IF v_scheduled_sum_cents <> round(v_final * 100)::bigint THEN
+--         RAISE EXCEPTION 'plan_unbalanced:%', (round(v_final * 100)::bigint - v_scheduled_sum_cents);
+--       END IF;
+--     END IF;
+--
+--     -- La atribucion se resuelve ACA, dentro de la transaccion: con `last_touch` es el toque
+--     -- mas reciente AL GUARDAR (no el que mostraba el asistente).
+--     v_mode := COALESCE(v_attr_req ->> 'mode', 'last_touch');
+--     IF v_mode = 'touch' THEN
+--       SELECT * INTO v_touch FROM public.contact_touches
+--        WHERE id = NULLIF(v_attr_req ->> 'touch_id', '')::uuid AND contact_id = v_contact AND workspace_id = v_ws;
+--       IF NOT FOUND THEN RAISE EXCEPTION 'invalid_touch'; END IF;
+--       v_attribution := public.sale_attribution_from_touch(v_touch);
+--       v_attr_type := 'manual';
+--       v_attr_touch_id := v_touch.id;
+--     ELSIF v_mode = 'manual' THEN
+--       v_attribution := v_attr_req -> 'manual';
+--       IF v_attribution IS NULL OR jsonb_typeof(v_attribution) <> 'object' THEN RAISE EXCEPTION 'invalid_manual'; END IF;
+--       v_attr_type := 'manual';
+--       v_attr_touch_id := NULLIF(v_attribution ->> 'touch_id', '')::uuid;
+--     ELSE
+--       SELECT * INTO v_touch FROM public.contact_touches
+--        WHERE contact_id = v_contact AND workspace_id = v_ws
+--        ORDER BY occurred_at DESC, id DESC LIMIT 1;
+--       IF FOUND THEN
+--         v_attribution := public.sale_attribution_from_touch(v_touch);
+--         v_attr_type := 'last_touch';
+--         v_attr_touch_id := v_touch.id;
+--       ELSE
+--         -- Sin filas de toque: el ultimo de contacts.attribution (forma canonica), sin touch_id.
+--         SELECT NULLIF(jsonb_strip_nulls(jsonb_build_object(
+--                  'occurred_at', c.attribution -> 'last_touch' ->> 'occurred_at',
+--                  'source', c.attribution -> 'last_touch' ->> 'source',
+--                  'medium', c.attribution -> 'last_touch' ->> 'medium',
+--                  'campaign', c.attribution -> 'last_touch' ->> 'campaign',
+--                  'content', c.attribution -> 'last_touch' ->> 'content',
+--                  'term', c.attribution -> 'last_touch' ->> 'term',
+--                  'ad_id', c.attribution -> 'last_touch' ->> 'ad_id',
+--                  'adset_id', c.attribution -> 'last_touch' ->> 'adset_id',
+--                  'campaign_id', c.attribution -> 'last_touch' ->> 'campaign_id',
+--                  'fbclid', c.attribution -> 'last_touch' ->> 'fbclid',
+--                  'gclid', c.attribution -> 'last_touch' ->> 'gclid',
+--                  'ttclid', c.attribution -> 'last_touch' ->> 'ttclid',
+--                  'li_fat_id', c.attribution -> 'last_touch' ->> 'li_fat_id',
+--                  'ctwa_clid', c.attribution -> 'last_touch' ->> 'ctwa_clid',
+--                  'referrer_url', c.attribution -> 'last_touch' ->> 'referrer_url',
+--                  'landing_page', c.attribution -> 'last_touch' ->> 'landing_page')), '{}'::jsonb)
+--           INTO v_attribution
+--           FROM public.contacts c WHERE c.id = v_contact;
+--         IF v_attribution IS NOT NULL THEN v_attr_type := 'last_touch'; END IF;
+--       END IF;
+--     END IF;
+--
+--     -- El estado, calculado UNA vez a partir de lo que se va a crear.
+--     v_status := public.derive_sale_status(NULL, v_financing, v_final, v_payments);
+--
+--     INSERT INTO public.sales (
+--       workspace_id, contact_id, product_version_id, product_snapshot, base_amount, discount_amount, final_amount,
+--       discount_reason, status, financing_type, subscription_interval, sale_date, setter_id, vendedor_id,
+--       attribution, attribution_touch_id, attribution_type, booking_id, service_starts_at, notes, created_by, updated_by
+--     ) VALUES (
+--       v_ws, v_contact, v_version_id, p_payload -> 'product_snapshot', v_base, v_discount, v_final,
+--       NULLIF(btrim(p_payload ->> 'discount_reason'), ''), v_status, v_financing,
+--       NULLIF(p_payload ->> 'subscription_interval', ''), v_sale_date,
+--       NULLIF(p_payload ->> 'setter_id', '')::uuid, NULLIF(p_payload ->> 'vendedor_id', '')::uuid,
+--       v_attribution, v_attr_touch_id, v_attr_type, v_booking,
+--       NULLIF(p_payload ->> 'service_starts_at', '')::date, NULLIF(btrim(p_payload ->> 'notes'), ''),
+--       p_actor_id, p_actor_id
+--     ) RETURNING * INTO v_sale;
+--
+--     -- Los pagos del plan, SIN recalcular el estado fila por fila (ya esta calculado).
+--     PERFORM set_config('ssa.suppress_sale_refresh', 'on', true);
+--     FOR p IN SELECT * FROM jsonb_array_elements(v_payments) LOOP
+--       INSERT INTO public.payments (
+--         workspace_id, sale_id, type, amount, status, due_date, paid_at, paid_on, payment_method,
+--         payment_option_snapshot, provider_fee_amount, notes, created_by, updated_by
+--       ) VALUES (
+--         v_ws, v_sale.id, p ->> 'type', (p ->> 'amount')::numeric, p ->> 'status',
+--         NULLIF(p ->> 'due_date', '')::date, NULLIF(p ->> 'paid_at', '')::timestamptz, NULLIF(p ->> 'paid_on', '')::date,
+--         NULLIF(p ->> 'payment_method', ''), p -> 'payment_option_snapshot',
+--         NULLIF(p ->> 'provider_fee_amount', '')::numeric, NULLIF(btrim(p ->> 'notes'), ''), p_actor_id, p_actor_id
+--       );
+--     END LOOP;
+--     PERFORM set_config('ssa.suppress_sale_refresh', '', true);
+--
+--     -- Eventos de la venta: sale_created y sale_status_changed (from null) con el MISMO change_id.
+--     PERFORM public.emit_sales_event(v_ws, 'sale_created', v_contact,
+--       public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change));
+--     PERFORM public.emit_sales_event(v_ws, 'sale_status_changed', v_contact,
+--       public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change, 'to_status', v_status));
+--
+--     -- Auditoria: la venta y cada pago cobrado, con actor persona.
+--     INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+--     VALUES (v_ws, 'sale', v_sale.id, 'sale.created', NULL,
+--             jsonb_build_object('final_amount', v_final, 'financing_type', v_financing, 'status', v_status,
+--                                'attribution_type', v_attr_type, 'payments', jsonb_array_length(v_payments)),
+--             p_actor_id, 'user');
+--     INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+--     SELECT v_ws, 'payment', pay.id, 'payment.paid', NULL,
+--            jsonb_build_object('amount', pay.amount, 'payment_method', pay.payment_method, 'sale_id', v_sale.id),
+--            p_actor_id, 'user'
+--       FROM public.payments pay WHERE pay.sale_id = v_sale.id AND pay.status = 'paid';
+--
+--     RETURN jsonb_build_object('sale_id', v_sale.id, 'status', v_status, 'attribution_type', v_attr_type);
+--   END;
+--   $function$
+--   ;
+--
+-- content_offers_bridge_to_products (antes):
+--   CREATE OR REPLACE FUNCTION public.content_offers_bridge_to_products()
+--    RETURNS trigger
+--    LANGUAGE plpgsql
+--    SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_variant uuid;
+--     v_version uuid;
+--     v_active_price numeric;
+--     v_next int;
+--   BEGIN
+--     -- El producto: alta, o cambio de nombre / estado / archivado.
+--     INSERT INTO public.products (id, workspace_id, name, product_type, status, archived_at, created_by, created_at)
+--     VALUES (NEW.id, NEW.workspace_id, NEW.name, 'otro', NEW.status, NEW.archived_at, NEW.created_by, NEW.created_at)
+--     ON CONFLICT (id) DO UPDATE
+--        SET name = EXCLUDED.name,
+--            status = EXCLUDED.status,
+--            archived_at = EXCLUDED.archived_at;
+--
+--     -- Su variante por defecto ("Estandar"), si todavia no tiene ninguna.
+--     SELECT v.id INTO v_variant
+--       FROM public.product_variants v
+--      WHERE v.product_id = NEW.id AND v.archived_at IS NULL
+--      ORDER BY v.display_order, v.created_at
+--      LIMIT 1;
+--
+--     IF v_variant IS NULL THEN
+--       INSERT INTO public.product_variants (workspace_id, product_id, name, duration_type, billing_type, display_order, created_by)
+--       VALUES (NEW.workspace_id, NEW.id, 'Estándar', 'lifetime', 'one_time', 0, NEW.created_by)
+--       RETURNING id INTO v_variant;
+--     END IF;
+--
+--     -- El precio: si cambio (o no habia version vigente), una version nueva publicada.
+--     SELECT v.price INTO v_active_price
+--       FROM public.product_versions v
+--      WHERE v.product_variant_id = v_variant AND v.status = 'active';
+--
+--     IF NEW.price_usd IS NOT NULL AND (v_active_price IS NULL OR v_active_price <> NEW.price_usd) THEN
+--       SELECT COALESCE(MAX(v.version_number), 0) + 1 INTO v_next
+--         FROM public.product_versions v WHERE v.product_variant_id = v_variant;
+--
+--       INSERT INTO public.product_versions
+--         (workspace_id, product_variant_id, version_number, price, change_notes, status, created_by)
+--       VALUES
+--         (NEW.workspace_id, v_variant, v_next, NEW.price_usd, 'Cambio desde la pantalla anterior de Productos', 'draft', NEW.created_by)
+--       RETURNING id INTO v_version;
+--
+--       PERFORM public.publish_product_version(v_version, NEW.created_by);
+--     ELSIF NEW.price_usd IS NULL AND NOT EXISTS (
+--       SELECT 1 FROM public.product_versions v WHERE v.product_variant_id = v_variant
+--     ) THEN
+--       INSERT INTO public.product_versions
+--         (workspace_id, product_variant_id, version_number, price, change_notes, status, created_by)
+--       VALUES
+--         (NEW.workspace_id, v_variant, 1, 0, 'Migrado sin precio: cargá el precio y publicá', 'draft', NEW.created_by);
+--     END IF;
+--
+--     RETURN NEW;
+--   END;
+--   $function$
+--   ;
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1. El precio en la variante
+-- ------------------------------------------------------------
+
+ALTER TABLE public.product_variants
+  ADD COLUMN IF NOT EXISTS price numeric(12,2) NOT NULL DEFAULT 0;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'product_variants_price_check') THEN
+    ALTER TABLE public.product_variants ADD CONSTRAINT product_variants_price_check CHECK (price >= 0);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.product_variants.price IS
+  'Precio de la variante, siempre en USD. 0 = sin precio (no se puede vender). Cada cambio queda en audit_log (00170).';
+
+COMMENT ON TABLE public.product_variants IS
+  'Como se vende un producto: duracion, garantia, facturacion y PRECIO. El historial de cambios vive en audit_log.';
+
+-- El precio vigente de cada variante = el de su version activa (si todavia existe la tabla).
+DO $$
+BEGIN
+  IF to_regclass('public.product_versions') IS NOT NULL THEN
+    UPDATE public.product_variants pv
+       SET price = a.price
+      FROM public.product_versions a
+     WHERE a.product_variant_id = pv.id
+       AND a.status = 'active'
+       AND pv.price IS DISTINCT FROM a.price;
+  END IF;
+END $$;
+
+-- ------------------------------------------------------------
+-- 2. La venta apunta a la variante
+-- ------------------------------------------------------------
+
+ALTER TABLE public.sales
+  ADD COLUMN IF NOT EXISTS product_variant_id uuid REFERENCES public.product_variants(id) ON DELETE RESTRICT;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'sales' AND column_name = 'product_version_id') THEN
+    UPDATE public.sales s
+       SET product_variant_id = v.product_variant_id
+      FROM public.product_versions v
+     WHERE v.id = s.product_version_id
+       AND s.product_variant_id IS NULL;
+  END IF;
+END $$;
+
+ALTER TABLE public.sales ALTER COLUMN product_variant_id SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_sales_variant ON public.sales (product_variant_id);
+DROP INDEX IF EXISTS public.idx_sales_version;
+ALTER TABLE public.sales DROP COLUMN IF EXISTS product_version_id;
+
+-- ------------------------------------------------------------
+-- 3. create_sale (definicion vigente + lo de la variante)
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.create_sale(p_payload jsonb, p_actor_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_ws uuid := (p_payload ->> 'workspace_id')::uuid;
+  v_contact uuid := (p_payload ->> 'contact_id')::uuid;
+  v_variant_id uuid := (p_payload ->> 'product_variant_id')::uuid;
+  v_base numeric := (p_payload ->> 'base_amount')::numeric;
+  v_discount numeric := COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+  v_final numeric := v_base - COALESCE((p_payload ->> 'discount_amount')::numeric, 0);
+  v_financing text := p_payload ->> 'financing_type';
+  v_payments jsonb := COALESCE(p_payload -> 'payments', '[]'::jsonb);
+  v_attr_req jsonb := COALESCE(p_payload -> 'attribution', '{"mode":"last_touch"}'::jsonb);
+  v_mode text;
+  v_touch public.contact_touches%ROWTYPE;
+  v_attribution jsonb := NULL;
+  v_attr_type text := 'none';
+  v_attr_touch_id uuid := NULL;
+  v_variant public.product_variants%ROWTYPE;
+  v_tz text;
+  v_today date;
+  v_sale_date date := (p_payload ->> 'sale_date')::date;
+  v_booking uuid := NULLIF(p_payload ->> 'booking_id', '')::uuid;
+  v_status text;
+  v_sale public.sales%ROWTYPE;
+  v_change uuid := gen_random_uuid();
+  v_scheduled_sum_cents bigint;
+  p jsonb;
+BEGIN
+  IF v_ws IS NULL OR v_contact IS NULL OR v_variant_id IS NULL OR v_base IS NULL OR v_financing IS NULL THEN
+    RAISE EXCEPTION 'invalid_payload';
+  END IF;
+  IF jsonb_typeof(v_payments) <> 'array' OR jsonb_array_length(v_payments) = 0 THEN
+    RAISE EXCEPTION 'invalid_payload:payments';
+  END IF;
+
+  -- El contacto es de este workspace y no esta en la papelera.
+  IF NOT EXISTS (SELECT 1 FROM public.contacts c WHERE c.id = v_contact AND c.workspace_id = v_ws AND c.deleted_at IS NULL) THEN
+    RAISE EXCEPTION 'invalid_contact';
+  END IF;
+
+  -- La variante se puede vender (no archivada, de un producto activo) y su precio sigue siendo el que se mostro
+  -- (si no: price_changed + el precio de hoy).
+  SELECT * INTO v_variant FROM public.product_variants WHERE id = v_variant_id AND workspace_id = v_ws;
+  IF NOT FOUND THEN RAISE EXCEPTION 'invalid_variant'; END IF;
+  IF v_variant.archived_at IS NOT NULL OR NOT EXISTS (
+    SELECT 1 FROM public.products pr WHERE pr.id = v_variant.product_id AND pr.workspace_id = v_ws AND pr.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'invalid_variant';
+  END IF;
+  IF v_variant.price IS DISTINCT FROM (p_payload -> 'product_snapshot' ->> 'price')::numeric THEN
+    RAISE EXCEPTION 'price_changed:%', v_variant.price;
+  END IF;
+
+  -- Fecha de la venta: no futura, en la zona del workspace.
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = v_ws;
+  v_today := (now() AT TIME ZONE COALESCE(v_tz, 'UTC'))::date;
+  IF v_sale_date IS NULL OR v_sale_date > v_today THEN RAISE EXCEPTION 'invalid_sale_date'; END IF;
+
+  -- La agenda de origen: del MISMO contacto y ya pasada.
+  IF v_booking IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.bookings b
+     WHERE b.id = v_booking AND b.workspace_id = v_ws AND b.contact_id = v_contact AND b.start_at < now()
+  ) THEN
+    RAISE EXCEPTION 'invalid_booking';
+  END IF;
+
+  -- El cuadre, otra vez, en centimos: lo programado y cobrado (sin reembolsos) suma EXACTO el final.
+  IF v_financing <> 'subscription' THEN
+    SELECT COALESCE(sum(round((x ->> 'amount')::numeric * 100)), 0)::bigint INTO v_scheduled_sum_cents
+      FROM jsonb_array_elements(v_payments) x WHERE x ->> 'type' <> 'refund';
+    IF v_scheduled_sum_cents <> round(v_final * 100)::bigint THEN
+      RAISE EXCEPTION 'plan_unbalanced:%', (round(v_final * 100)::bigint - v_scheduled_sum_cents);
+    END IF;
+  END IF;
+
+  -- La atribucion se resuelve ACA, dentro de la transaccion: con `last_touch` es el toque
+  -- mas reciente AL GUARDAR (no el que mostraba el asistente).
+  v_mode := COALESCE(v_attr_req ->> 'mode', 'last_touch');
+  IF v_mode = 'touch' THEN
+    SELECT * INTO v_touch FROM public.contact_touches
+     WHERE id = NULLIF(v_attr_req ->> 'touch_id', '')::uuid AND contact_id = v_contact AND workspace_id = v_ws;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invalid_touch'; END IF;
+    v_attribution := public.sale_attribution_from_touch(v_touch);
+    v_attr_type := 'manual';
+    v_attr_touch_id := v_touch.id;
+  ELSIF v_mode = 'manual' THEN
+    v_attribution := v_attr_req -> 'manual';
+    IF v_attribution IS NULL OR jsonb_typeof(v_attribution) <> 'object' THEN RAISE EXCEPTION 'invalid_manual'; END IF;
+    v_attr_type := 'manual';
+    v_attr_touch_id := NULLIF(v_attribution ->> 'touch_id', '')::uuid;
+  ELSE
+    SELECT * INTO v_touch FROM public.contact_touches
+     WHERE contact_id = v_contact AND workspace_id = v_ws
+     ORDER BY occurred_at DESC, id DESC LIMIT 1;
+    IF FOUND THEN
+      v_attribution := public.sale_attribution_from_touch(v_touch);
+      v_attr_type := 'last_touch';
+      v_attr_touch_id := v_touch.id;
+    ELSE
+      -- Sin filas de toque: el ultimo de contacts.attribution (forma canonica), sin touch_id.
+      SELECT NULLIF(jsonb_strip_nulls(jsonb_build_object(
+               'occurred_at', c.attribution -> 'last_touch' ->> 'occurred_at',
+               'source', c.attribution -> 'last_touch' ->> 'source',
+               'medium', c.attribution -> 'last_touch' ->> 'medium',
+               'campaign', c.attribution -> 'last_touch' ->> 'campaign',
+               'content', c.attribution -> 'last_touch' ->> 'content',
+               'term', c.attribution -> 'last_touch' ->> 'term',
+               'ad_id', c.attribution -> 'last_touch' ->> 'ad_id',
+               'adset_id', c.attribution -> 'last_touch' ->> 'adset_id',
+               'campaign_id', c.attribution -> 'last_touch' ->> 'campaign_id',
+               'fbclid', c.attribution -> 'last_touch' ->> 'fbclid',
+               'gclid', c.attribution -> 'last_touch' ->> 'gclid',
+               'ttclid', c.attribution -> 'last_touch' ->> 'ttclid',
+               'li_fat_id', c.attribution -> 'last_touch' ->> 'li_fat_id',
+               'ctwa_clid', c.attribution -> 'last_touch' ->> 'ctwa_clid',
+               'referrer_url', c.attribution -> 'last_touch' ->> 'referrer_url',
+               'landing_page', c.attribution -> 'last_touch' ->> 'landing_page')), '{}'::jsonb)
+        INTO v_attribution
+        FROM public.contacts c WHERE c.id = v_contact;
+      IF v_attribution IS NOT NULL THEN v_attr_type := 'last_touch'; END IF;
+    END IF;
+  END IF;
+
+  -- El estado, calculado UNA vez a partir de lo que se va a crear.
+  v_status := public.derive_sale_status(NULL, v_financing, v_final, v_payments);
+
+  INSERT INTO public.sales (
+    workspace_id, contact_id, product_variant_id, product_snapshot, base_amount, discount_amount, final_amount,
+    discount_reason, status, financing_type, subscription_interval, sale_date, setter_id, vendedor_id,
+    attribution, attribution_touch_id, attribution_type, booking_id, service_starts_at, notes, created_by, updated_by
+  ) VALUES (
+    v_ws, v_contact, v_variant_id, p_payload -> 'product_snapshot', v_base, v_discount, v_final,
+    NULLIF(btrim(p_payload ->> 'discount_reason'), ''), v_status, v_financing,
+    NULLIF(p_payload ->> 'subscription_interval', ''), v_sale_date,
+    NULLIF(p_payload ->> 'setter_id', '')::uuid, NULLIF(p_payload ->> 'vendedor_id', '')::uuid,
+    v_attribution, v_attr_touch_id, v_attr_type, v_booking,
+    NULLIF(p_payload ->> 'service_starts_at', '')::date, NULLIF(btrim(p_payload ->> 'notes'), ''),
+    p_actor_id, p_actor_id
+  ) RETURNING * INTO v_sale;
+
+  -- Los pagos del plan, SIN recalcular el estado fila por fila (ya esta calculado).
+  PERFORM set_config('ssa.suppress_sale_refresh', 'on', true);
+  FOR p IN SELECT * FROM jsonb_array_elements(v_payments) LOOP
+    INSERT INTO public.payments (
+      workspace_id, sale_id, type, amount, status, due_date, paid_at, paid_on, payment_method,
+      payment_option_snapshot, provider_fee_amount, notes, created_by, updated_by
+    ) VALUES (
+      v_ws, v_sale.id, p ->> 'type', (p ->> 'amount')::numeric, p ->> 'status',
+      NULLIF(p ->> 'due_date', '')::date, NULLIF(p ->> 'paid_at', '')::timestamptz, NULLIF(p ->> 'paid_on', '')::date,
+      NULLIF(p ->> 'payment_method', ''), p -> 'payment_option_snapshot',
+      NULLIF(p ->> 'provider_fee_amount', '')::numeric, NULLIF(btrim(p ->> 'notes'), ''), p_actor_id, p_actor_id
+    );
+  END LOOP;
+  PERFORM set_config('ssa.suppress_sale_refresh', '', true);
+
+  -- Eventos de la venta: sale_created y sale_status_changed (from null) con el MISMO change_id.
+  PERFORM public.emit_sales_event(v_ws, 'sale_created', v_contact,
+    public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change));
+  PERFORM public.emit_sales_event(v_ws, 'sale_status_changed', v_contact,
+    public.sales_event_payload(v_sale) || jsonb_build_object('change_id', v_change, 'to_status', v_status));
+
+  -- Auditoria: la venta y cada pago cobrado, con actor persona.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+  VALUES (v_ws, 'sale', v_sale.id, 'sale.created', NULL,
+          jsonb_build_object('final_amount', v_final, 'financing_type', v_financing, 'status', v_status,
+                             'attribution_type', v_attr_type, 'payments', jsonb_array_length(v_payments)),
+          p_actor_id, 'user');
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type)
+  SELECT v_ws, 'payment', pay.id, 'payment.paid', NULL,
+         jsonb_build_object('amount', pay.amount, 'payment_method', pay.payment_method, 'sale_id', v_sale.id),
+         p_actor_id, 'user'
+    FROM public.payments pay WHERE pay.sale_id = v_sale.id AND pay.status = 'paid';
+
+  RETURN jsonb_build_object('sale_id', v_sale.id, 'status', v_status, 'attribution_type', v_attr_type);
+END;
+$function$
+;
+
+-- ------------------------------------------------------------
+-- 4. El puente de content_offers copia el precio a la variante
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.content_offers_bridge_to_products()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_variant uuid;
+BEGIN
+  -- El producto: alta, o cambio de nombre / estado / archivado.
+  INSERT INTO public.products (id, workspace_id, name, product_type, status, archived_at, created_by, created_at)
+  VALUES (NEW.id, NEW.workspace_id, NEW.name, 'otro', NEW.status, NEW.archived_at, NEW.created_by, NEW.created_at)
+  ON CONFLICT (id) DO UPDATE
+     SET name = EXCLUDED.name,
+         status = EXCLUDED.status,
+         archived_at = EXCLUDED.archived_at;
+
+  -- Su variante por defecto ("Estandar"), si todavia no tiene ninguna.
+  SELECT v.id INTO v_variant
+    FROM public.product_variants v
+   WHERE v.product_id = NEW.id AND v.archived_at IS NULL
+   ORDER BY v.display_order, v.created_at
+   LIMIT 1;
+
+  IF v_variant IS NULL THEN
+    INSERT INTO public.product_variants (workspace_id, product_id, name, duration_type, billing_type, display_order, created_by)
+    VALUES (NEW.workspace_id, NEW.id, 'Estándar', 'lifetime', 'one_time', 0, NEW.created_by)
+    RETURNING id INTO v_variant;
+  END IF;
+
+  -- El precio: lo que el codigo viejo cambia en content_offers se copia a la variante por defecto.
+  IF NEW.price_usd IS NOT NULL THEN
+    UPDATE public.product_variants
+       SET price = NEW.price_usd
+     WHERE id = v_variant AND price IS DISTINCT FROM NEW.price_usd;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+;
+
+-- ------------------------------------------------------------
+-- 5. Adios product_versions
+-- ------------------------------------------------------------
+
+DROP TABLE IF EXISTS public.product_versions;
+DROP FUNCTION IF EXISTS public.publish_product_version(uuid, uuid);
+DROP FUNCTION IF EXISTS public.product_versions_assign_number();
+DROP FUNCTION IF EXISTS public.product_versions_protect();
+
+-- ============================================================
+-- MIGRATION 170: CATALOG AUDIT TRIGGERS
+-- ============================================================
+-- ============================================================
+-- 00170_catalog_audit_triggers.sql
+--
+-- Ventas, Fase 1 · el historial de productos y variantes lo escribe la BASE.
+--
+-- Por que: hasta ahora cada Server Action de `lib/actions/products.ts` llamaba a
+-- `logAudit`. Eso dejaba dos huecos: (1) las policies de la 00159 dejan escribir
+-- directo a quien tiene `settings.manage`, sin pasar por la accion, y (2) si
+-- `logAudit` fallaba, el cambio ya estaba guardado sin historial. Con un trigger,
+-- TODO cambio queda en `audit_log`, venga de la pantalla, del boton de Contenido,
+-- del puente de `content_offers` o de una escritura directa. Es el mismo criterio
+-- que `create_sale` (00162), que escribe la auditoria dentro de la transaccion.
+--
+-- Que escribe (entity_type `product` o `product_variant`):
+--   alta                       product.created / variant.created
+--   cambio de estado           product.status_changed
+--   archivar / restaurar       variant.archived / variant.restored
+--   cambio de precio           variant.price_changed   (changes.price = {old, new})
+--   cualquier otro campo       product.updated / variant.updated  (changes = diff)
+--   baja (solo el rollback de una alta que fallo)   product.deleted / variant.deleted
+--
+-- Un UPDATE que cambia varios campos escribe UNA fila. Un UPDATE que no cambia
+-- nada (el `ON CONFLICT DO UPDATE` del puente con los mismos valores) no escribe nada.
+-- `updated_at` y `updated_by` no cuentan como cambio.
+--
+-- Quien lo hizo: `auth.uid()`; si no hay sesion (cliente de servicio), `updated_by`
+-- / `created_by`; si tampoco, actor `system`.
+--
+-- Al mismo tiempo se SACAN las llamadas `audit()` de `lib/actions/products.ts`:
+-- un test falla si vuelven (`lib/actions/products-audit.test.ts`), porque
+-- duplicarian cada fila.
+--
+-- No toca `audit_log_select` ni ninguna policy. Aditiva e idempotente.
+--
+-- ------------------------------------------------------------
+-- COMO VOLVER ATRAS:
+--   DROP TRIGGER IF EXISTS products_audit ON public.products;
+--   DROP TRIGGER IF EXISTS product_variants_audit ON public.product_variants;
+--   DROP FUNCTION IF EXISTS public.catalog_audit();
+--   (y volver a poner las llamadas `audit()` en lib/actions/products.ts)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.catalog_audit()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_is_product boolean := TG_TABLE_NAME = 'products';
+  v_entity text := CASE WHEN TG_TABLE_NAME = 'products' THEN 'product' ELSE 'product_variant' END;
+  v_prefix text := CASE WHEN TG_TABLE_NAME = 'products' THEN 'product' ELSE 'variant' END;
+  v_actor uuid;
+  v_action text;
+  v_changes jsonb;
+  v_meta jsonb;
+  v_row jsonb;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    -- Borrar un workspace entero (cascade) se lleva sus productos: el workspace ya no existe
+    -- y el historial tampoco tiene a donde escribirse.
+    IF NOT EXISTS (SELECT 1 FROM public.workspaces w WHERE w.id = OLD.workspace_id) THEN
+      RETURN OLD;
+    END IF;
+    v_actor := COALESCE(auth.uid(), OLD.updated_by, OLD.created_by);
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type, actor_label)
+    VALUES (OLD.workspace_id, v_entity, OLD.id, v_prefix || '.deleted', NULL,
+            jsonb_build_object('name', OLD.name),
+            v_actor,
+            CASE WHEN v_actor IS NULL THEN 'system' ELSE 'user' END,
+            CASE WHEN v_actor IS NULL THEN 'Sistema' END);
+    RETURN OLD;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    v_actor := COALESCE(auth.uid(), NEW.created_by);
+    -- Por jsonb y no por `NEW.price`: la misma funcion corre sobre dos tablas y cada una tiene sus columnas.
+    v_row := to_jsonb(NEW);
+    v_meta := CASE WHEN v_is_product
+      THEN jsonb_build_object('name', v_row ->> 'name', 'product_type', v_row ->> 'product_type')
+      ELSE jsonb_build_object('name', v_row ->> 'name', 'product_id', v_row ->> 'product_id', 'price', v_row -> 'price')
+    END;
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type, actor_label)
+    VALUES (NEW.workspace_id, v_entity, NEW.id, v_prefix || '.created', NULL, v_meta,
+            v_actor,
+            CASE WHEN v_actor IS NULL THEN 'system' ELSE 'user' END,
+            CASE WHEN v_actor IS NULL THEN 'Sistema' END);
+    RETURN NEW;
+  END IF;
+
+  -- UPDATE: el diff campo por campo, sin `updated_at` ni `updated_by`.
+  SELECT jsonb_object_agg(n.key, jsonb_build_object('old', o.value, 'new', n.value))
+    INTO v_changes
+    FROM jsonb_each(to_jsonb(NEW)) n
+    JOIN jsonb_each(to_jsonb(OLD)) o ON o.key = n.key
+   WHERE n.value IS DISTINCT FROM o.value
+     AND n.key NOT IN ('updated_at', 'updated_by');
+
+  -- No cambio nada: no hay nada que contar.
+  IF v_changes IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF v_is_product THEN
+    IF v_changes ? 'status' OR v_changes ? 'archived_at' THEN
+      v_action := 'product.status_changed';
+      -- `archived_at` acompana siempre al estado (CHECK de la 00159): el cambio que se lee es el del estado.
+      IF v_changes ? 'status' THEN v_changes := v_changes - 'archived_at'; END IF;
+    ELSE
+      v_action := 'product.updated';
+    END IF;
+  ELSE
+    IF v_changes ? 'archived_at' THEN
+      v_action := CASE WHEN NEW.archived_at IS NULL THEN 'variant.restored' ELSE 'variant.archived' END;
+    ELSIF v_changes ? 'price' THEN
+      v_action := 'variant.price_changed';
+    ELSE
+      v_action := 'variant.updated';
+    END IF;
+  END IF;
+
+  v_actor := COALESCE(auth.uid(), NEW.updated_by);
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by, actor_type, actor_label)
+  VALUES (NEW.workspace_id, v_entity, NEW.id, v_action, v_changes, NULL,
+          v_actor,
+          CASE WHEN v_actor IS NULL THEN 'system' ELSE 'user' END,
+          CASE WHEN v_actor IS NULL THEN 'Sistema' END);
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.catalog_audit() FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION public.catalog_audit() IS
+  'Escribe el historial (audit_log) de products y product_variants: alta, estado, precio, archivado y el resto de los campos (00170).';
+
+DROP TRIGGER IF EXISTS products_audit ON public.products;
+CREATE TRIGGER products_audit
+  AFTER INSERT OR UPDATE OR DELETE ON public.products
+  FOR EACH ROW EXECUTE FUNCTION public.catalog_audit();
+
+DROP TRIGGER IF EXISTS product_variants_audit ON public.product_variants;
+CREATE TRIGGER product_variants_audit
+  AFTER INSERT OR UPDATE OR DELETE ON public.product_variants
+  FOR EACH ROW EXECUTE FUNCTION public.catalog_audit();

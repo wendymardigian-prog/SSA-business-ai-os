@@ -7,6 +7,8 @@ import type { TriggerType } from "@/lib/types/database";
 import { BASE_CALL_TYPES } from "@/lib/calls/classification";
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
 import { FormTriggerPanel } from "./FormTriggerPanel";
+import { SALES_FILTER_KEYS, SalesTriggerPanel } from "./SalesTriggerPanel";
+import { SALES_PRESETS, presetFor } from "@/lib/sales/automation/presets";
 
 interface Keyword {
   value: string;
@@ -68,6 +70,13 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "form_submitted", label: "Se envio un formulario", description: "Cuando alguien envia un formulario personalizado" },
   { value: "survey_answered", label: "Se respondio una encuesta", description: "Cuando alguien responde una encuesta, con su puntaje" },
   { value: "contract_signed", label: "Se firmo un contrato", description: "Cuando alguien firma un contrato" },
+  // Ventas: un cambio de estado = un evento. En la lista se muestran como atajos (SALES_PRESETS), no como estos seis.
+  { value: "sale_created", label: "Venta creada", description: "Cuando se carga una venta nueva" },
+  { value: "sale_status_changed", label: "Cambio el estado de la venta", description: "Cuando una venta pasa a otro estado (cancelada, pagada, con mora...)" },
+  { value: "payment_created", label: "Pago creado", description: "Cuando se crea un pago: programado, cobrado o un reembolso" },
+  { value: "payment_status_changed", label: "Cambio el estado del pago", description: "Cuando un pago pasa a cobrado, moroso, incobrable..." },
+  { value: "payment_before_due", label: "Antes de un vencimiento", description: "Un recordatorio X dias antes de que venza un pago" },
+  { value: "payment_after_due", label: "Despues de un vencimiento impago", description: "Un aviso X dias despues del vencimiento si el pago sigue sin cobrarse" },
 ];
 
 /** Los nueve de agenda, para mostrar sus filtros. */
@@ -82,6 +91,9 @@ const BOOKING_TRIGGERS = [
   "booking_after_end",
   "booking_after_created",
 ];
+
+/** Los seis de Ventas: se ofrecen como atajos aparte y llevan su propio panel de filtros. */
+const SALES_TRIGGERS = ["sale_created", "sale_status_changed", "payment_created", "payment_status_changed", "payment_before_due", "payment_after_due"];
 
 /** Los dos de Llamadas, para mostrar sus filtros. */
 const CALL_TRIGGERS = ["call_analyzed", "call_linked"];
@@ -191,7 +203,7 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
           Trigger Type
         </label>
         <div className="space-y-1.5">
-          {triggerTypes.map((t) => (
+          {triggerTypes.filter((t) => !SALES_TRIGGERS.includes(t.value)).map((t) => (
             <label
               key={t.value}
               className={cn(
@@ -217,6 +229,45 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
           ))}
         </div>
       </div>
+
+      {/* Ventas: los atajos (presets) del selector. Cada uno guarda el tipo y deja elegida su configuracion. */}
+      <div>
+        <label className="mb-2 block text-xs font-semibold text-foreground">Ventas y pagos</label>
+        <div className="space-y-1.5">
+          {SALES_PRESETS.map((preset) => {
+            const selected = SALES_TRIGGERS.includes(triggerType) && presetFor(triggerType, data)?.key === preset.key;
+            return (
+              <label
+                key={preset.key}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                  selected ? "border-emerald-500 bg-emerald-50" : "border-border bg-card hover:border-input"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="triggerType"
+                  value={preset.key}
+                  checked={selected}
+                  onChange={() => {
+                    // Un atajo nuevo arranca de cero: no arrastra los filtros del anterior.
+                    const next: Record<string, unknown> = { ...data };
+                    for (const key of SALES_FILTER_KEYS) delete next[key];
+                    onChange({ ...next, ...preset.config, triggerType: preset.type, ...(preset.type.endsWith("_due") ? { offset_days: 3, at_time: "09:00" } : {}) });
+                  }}
+                  className="mt-0.5 h-4 w-4 border-input text-emerald-500 focus:ring-emerald-500"
+                />
+                <div>
+                  <p className="text-sm font-medium text-foreground">{preset.label}</p>
+                  <p className="text-xs text-muted-foreground">{preset.description}</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {SALES_TRIGGERS.includes(triggerType) && <SalesTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
 
       {/* Keywords Section */}
       {showKeywords && (

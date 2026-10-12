@@ -2,19 +2,25 @@ import { describe, expect, it } from "vitest";
 import { activeSettingsTab, SETTINGS_TABS } from "./tabs";
 
 describe("SETTINGS_TABS", () => {
-  it("tiene las seis pestañas en orden (Tareas se mudo a Agentes IA)", () => {
+  it("tiene las siete pestañas en orden (Tareas se mudo a Agentes IA; Asignación se suma con Ventas)", () => {
     expect(SETTINGS_TABS.map((t) => t.name)).toEqual([
       "General",
       "Equipo y roles",
       "Campos personalizados",
       "Recursos",
       "Productos",
+      "Asignación",
       "Integraciones",
     ]);
   });
 });
 
 describe("activeSettingsTab", () => {
+  it("marca Asignación en /asignacion y Productos en el detalle de un producto", () => {
+    expect(activeSettingsTab("/dashboard/settings/asignacion")).toBe("/dashboard/settings/asignacion");
+    expect(activeSettingsTab("/dashboard/settings/productos/9f0d1b6e-1111-2222-3333-444455556666")).toBe("/dashboard/settings/productos");
+  });
+
   it("marca General solo con la ruta exacta", () => {
     expect(activeSettingsTab("/dashboard/settings")).toBe("/dashboard/settings");
   });

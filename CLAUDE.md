@@ -261,7 +261,7 @@ del refresh token), `00146` (el cron SQL `fathom-sync`), `00147` (la politica
 ADICIONAL `audit_log_select_calls`), `00148` (CHECK de `agent_runs.source` y
 `ai_task_prompt_versions.task`, `set_ai_background_task_settings`) y `00149`
 (CHECK de `triggers.type` y `content_ideas.source`, `content_ideas.call_id`).
-**Despues de Formularios, la proxima libre es la `00159`** (ver mas abajo).
+**Despues de Formularios, la `00159` abrio Ventas; la proxima libre es la `00171`** (ver "Ventas Fase 1").
 
 **Formularios (11/10/2026).** `00150` a `00158` estan **aplicadas** y registradas:
 `00150` (tablas, `can_view_forms`, `can_see_form_submission`, RLS), `00151` (indice
@@ -270,7 +270,7 @@ de metricas), `00152` (`get_public_form`, `publish_form_version`,
 `00154` (`captcha` en integraciones), `00155` (`flows.form_id` y tres tipos de
 trigger), `00156` (`find_contact_by_phone_or_email` y `submit_form_response` v2),
 `00157` (`contract_signatures`, `record_contract_signature` y la v3) y `00158`
-(corrige "una vez por contacto"). **La proxima migracion disponible es la `00159`.**
+(corrige "una vez por contacto"). La `00159` en adelante son de Ventas (ver "Ventas Fase 1"); **la proxima disponible es la `00171`** (ver "Ventas Fase 1").
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -874,6 +874,37 @@ node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Turnstile 
 ```
 
 Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.
+
+# Ventas Fase 1 (construido)
+
+Catalogo de productos con precio versionado, atribucion y asignacion automatica de cada lead, alta de venta en tres pasos, pagos, mora, historial y triggers por cambio de estado. El resumen esta en [docs/ventas.md](docs/ventas.md); avance y decisiones en `docs/PROGRESS-ventas.md` y `docs/PENDIENTE-ventas.md`; triggers y nodos en [docs/flow-registry.md](docs/flow-registry.md).
+
+## Lo que no se puede romper
+
+- **`sales` y `payments` los escribe SOLO el servidor** (Server Actions con el cliente de servicio, despues de `getPermissionAction`); la app lee con la RLS (`can_see_sale`). Los tipos Update/Insert son `Record<string, never>`: se escribe con `as never`.
+- **La plata va en centimos** (`lib/sales/money.ts`, `Number(x) || 0`). Siempre USD. La comision de **Whop esta en 0 %** hasta que Wendy confirme el porcentaje real.
+- **El precio vive en la VARIANTE** (`product_variants.price`, USD, 0 = sin precio: no se vende). No hay tabla de versiones (se borro en la 00169): la venta guarda el snapshot congelado del producto y su precio, y el historial de cambios de precio vive en `audit_log`. `create_sale` compara el precio de la variante con el que mostro el asistente (`price_changed`). `products` reemplaza a `content_offers`; **su borrado esta escrito en `docs/pendientes/drop_content_offers.sql` y NO se aplico** (irreversible: solo despues de que este codigo este DESPLEGADO; ver sus 4 pasos en PENDIENTE-ventas).
+- **El estado de la venta se deriva igual en SQL y en TypeScript** (`derive_sale_status` / `deriveSaleStatus`, mismos casos en `lib/sales/sale-status.cases.json`). Cuatro estados se escriben y ganan; un incobrable nunca deja llegar a `paid`.
+- **Un cambio = un evento = una ejecucion por flow.** Los triggers de base emiten con un `change_id` y `pickCanonicalTrigger` (dentro de `eventMatches`) elige un trigger ganador. Los eventos llevan solo escalares y nunca `booking_id`.
+- **Los pagos se tocan por un solo nucleo** (`lib/sales/payments-core.ts`, actor usuario o sistema), usado por las Server Actions y por los nodos de flow. Reembolso = fila NUEVA negativa `paid`.
+- **La mora corre por SQL directo** (`private.enqueue_payments_overdue_sweep`, 00167), **no** por `call_app_cron`; solo encola si hay pagos candidatos. Los jobs de Ventas no lanzan por un fallo de proveedor: reagendan.
+- **`audit_log_select` NO se reescribe**: el historial de Ventas es la politica ADICIONAL `audit_log_select_sales` (00168).
+- **`submit_form_response` valida el `sale_id`** del link firmado (00164): uno suelto en la URL o el cuerpo se ignora. `find_or_link_contact`, `create_booking` y `record_contact_touch` no se tocaron.
+- **El historial de `products` y `product_variants` lo escribe la BASE** (trigger `catalog_audit`, 00170): alta, estado, archivado, precio (`variant.price_changed` con `changes.price = {old, new}`) y el resto de los campos, venga el cambio de donde venga. `lib/actions/products.ts` NO llama a `logAudit` (`products-audit.test.ts` lo exige: duplicaria cada fila). Actor: `auth.uid()`, si no `updated_by`/`created_by`, si no `system`.
+- **Los flujos de cobranza precreados** (cuatro, en borrador) se crean al abrir Ventas por primera vez (Owner/Admin), al prender la opcion y al crear un workspace; nunca con un backfill.
+
+## Migraciones
+
+`00159` a `00170`, todas aplicadas y registradas: catalogo (00159, 00160), asignacion (00161), ventas y pagos (00162), FK de `sale_id` (00163), `submit_form_response` v4 (00164), bucket de comprobantes (00165), CHECK de `triggers.type` (00166), cron de mora (00167) politica de historial (00168), precio en la variante y baja de `product_versions` (00169) y el historial del catalogo por trigger (00170). **La proxima migracion disponible es la `00171`** (confirmar con `list_migrations`).
+
+## Scripts de verificacion
+
+```
+node scripts/verify-sales.mjs                          # bloques 1 a 4; --block N corre uno
+node scripts/verify-audit-visibility.mjs --despues-de-00168
+```
+
+Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
 
 # Sitio publico
 

@@ -28,7 +28,7 @@ export async function loadContentTaxonomy(
 ): Promise<ContentTaxonomy> {
   const [pillarsRes, offersRes] = await Promise.all([
     supabase.from("content_pillars").select("id, name, color, archived_at").eq("workspace_id", workspaceId),
-    supabase.from("content_offers").select("id, name, archived_at").eq("workspace_id", workspaceId),
+    supabase.from("products").select("id, name, archived_at").eq("workspace_id", workspaceId),
   ]);
 
   if (pillarsRes.error) console.error("[content] no pude leer los pilares:", pillarsRes.error.message);

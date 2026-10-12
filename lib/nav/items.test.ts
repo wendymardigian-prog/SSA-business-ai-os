@@ -120,6 +120,24 @@ describe("Agenda en el menu (F8)", () => {
   });
 });
 
+describe("Ventas en el menu (Etapa 5)", () => {
+  const ventas = NAV_ITEMS.find((i) => i.name === "Ventas");
+
+  it("va en el grupo Ventas, despues de Llamadas, y abre la lista sin engranaje", () => {
+    expect(ventas).toMatchObject({ href: "/dashboard/ventas", group: "ventas", adminOnly: false, permissions: ["sales.view"] });
+    const nombres = NAV_ITEMS.map((i) => i.name);
+    expect(nombres.indexOf("Ventas")).toBe(nombres.indexOf("Llamadas") + 1);
+  });
+
+  it("se ve con sales.view y no sin el", () => {
+    const names = (keys: string[]) =>
+      visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+    expect(names(["sales.view"])).toContain("Ventas");
+    expect(names(["sales.manage"])).not.toContain("Ventas");
+    expect(names([])).not.toContain("Ventas");
+  });
+});
+
 describe("Llamadas en el menu", () => {
   const llamadas = NAV_ITEMS.find((i) => i.name === "Llamadas");
 

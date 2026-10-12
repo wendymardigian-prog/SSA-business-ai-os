@@ -32,6 +32,8 @@ import { CustomFieldsEditor } from "@/components/contacts/custom-fields-editor";
 import { AttributionSection } from "@/components/contacts/attribution-section";
 import { HistorySection } from "@/components/contacts/history-section";
 import { buildContactHistory } from "@/lib/contacts/history";
+import { automaticRulesFromAudit } from "@/lib/sales/contact-summary";
+import { ContactSummary } from "@/components/sales/contact-summary";
 import {
   ContactSequencesSection,
   type ContactEnrollment,
@@ -42,6 +44,10 @@ import {
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { ContactCallsSection } from "@/components/contacts/calls-section";
+import { ContactSalesSection } from "@/components/contacts/sales-section";
+import { loadWizardConfig } from "@/lib/sales/wizard/load";
+import { snapshotText } from "@/lib/sales/sale-text";
+import { describePaymentHealth } from "@/lib/sales/payment-health";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { loadContactCalls } from "@/lib/calls/contact-section";
 import { PageHeader } from "@/components/page-header";
@@ -116,7 +122,7 @@ export default async function ContactDetailPage({
       supabase.from("tags").select("id, name, color, disables_agent, assigns_to").eq("workspace_id", workspace.id).order("name"),
       supabase
         .from("audit_log")
-        .select("id, action, changes, metadata, performed_at, performed_by")
+        .select("id, action, changes, metadata, performed_at, performed_by, actor_type, actor_label")
         .eq("workspace_id", workspace.id)
         .eq("entity_type", "contact")
         .eq("entity_id", contactId)
@@ -202,6 +208,21 @@ export default async function ContactDetailPage({
   const contactCalls = canViewCalls
     ? await loadContactCalls(supabase, { workspaceId: workspace.id, contactId, names: new Map(members.map((m) => [m.userId, m.name])) })
     : { rows: [], total: 0 };
+
+  // Las ventas del contacto (Ventas, B3): solo con `sales.view`; la RLS decide cuáles ve. El asistente
+  // se carga solo si puede cargar ventas y hay algo para vender.
+  const permissionCtx = await getPermissionContext();
+  const canViewSales = permissionCtx.can("sales.view");
+  const contactSales = canViewSales
+    ? await supabase
+        .from("sales")
+        .select("id, sale_date, status, final_amount, product_snapshot", { count: "exact" })
+        .eq("contact_id", contactId)
+        .eq("workspace_id", workspace.id)
+        .order("sale_date", { ascending: false })
+        .limit(10)
+    : null;
+  const salesWizard = canViewSales && permissionCtx.can("sales.manage") ? await loadWizardConfig(permissionCtx) : null;
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -449,6 +470,16 @@ export default async function ContactDetailPage({
 
             <ContactCallsSection calls={contactCalls.rows} total={contactCalls.total} contactId={contact.id} timeZone={viewerTimezone} />
 
+            {canViewSales && (
+              <ContactSalesSection
+                sales={(contactSales?.data ?? []).map((s) => ({ id: s.id, saleDate: s.sale_date, status: s.status, finalAmount: Number(s.final_amount) || 0, product: snapshotText(s.product_snapshot) }))}
+                total={contactSales?.count ?? 0}
+                contact={{ id: contact.id, name: contact.display_name || contact.email || "Contacto" }}
+                wizard={salesWizard && salesWizard.catalog.length > 0 ? salesWizard : null}
+                paymentHealth={describePaymentHealth((contact as unknown as { payment_health?: Record<string, unknown> | null }).payment_health as never)}
+              />
+            )}
+
             <AttributionSection view={attributionView} />
 
             <HistorySection items={history} />
@@ -464,6 +495,15 @@ export default async function ContactDetailPage({
                 vendedorId={contact.vendedor_id}
                 currentUserId={user.id}
                 isAdmin={isAdmin}
+              />
+              <ContactSummary
+                attribution={contact.attribution}
+                now={new Date()}
+                timeZone={viewerTimezone}
+                setterName={contact.setter_id ? (labels.get(contact.setter_id) ?? null) : null}
+                vendedorName={contact.vendedor_id ? (labels.get(contact.vendedor_id) ?? null) : null}
+                locked={!!contact.assignment_locked_at}
+                automaticRule={automaticRulesFromAudit(auditRes.data ?? [])}
               />
             </Section>
 

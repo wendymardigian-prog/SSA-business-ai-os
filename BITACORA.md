@@ -1546,3 +1546,44 @@ Ver `docs/PENDIENTE-llamadas.md`. Lo principal: la verificación en vivo contra
 Fathom y contra un proveedor de IA (esta corrida no llama a ninguno real), y abrir
 la pantalla de una tarea de Agentes IA a quien tiene `calls.configure` sin ser
 Admin.
+
+
+## Ventas Fase 1 — catálogo, atribución, ventas y pagos (B1 a B4)
+
+**Fecha:** 11 de octubre de 2026
+**Rama:** `feat/ventas-fase1` (PR abierto, sin mergear)
+**Migraciones:** 00159 a 00168, todas aplicadas y registradas. Ninguna borra datos; el borrado de `content_offers` quedó escrito y sin aplicar.
+
+### Qué se construyó
+
+Treinta y ocho funcionalidades (F1 a F38 más F26b) en cuatro bloques:
+
+1. **B1 — catálogo.** Productos, variantes y versiones de precio; absorbe `content_offers` con el mismo id y un puente, así Contenido sigue funcionando. Permisos `sales.view`, `sales.manage`, `payments.manage` y alcance `sales`.
+2. **B2 — atribución y asignación.** Reglas de asignación (manual, por turnos o por condiciones) para setter, vendedor y referido, y la atribución congelada de cada venta.
+3. **B3 — ventas.** Asistente de tres pasos, lista, ficha, edición, cancelación y suscripciones, contrato firmado desde la venta.
+4. **B4 — pagos, mora, historial y triggers.** Cobrar, reprogramar, incobrable y reembolso; comprobantes; mora de madrugada; Pagos y Actividad; seis triggers, once atajos y tres nodos.
+
+### Decisiones que conviene recordar
+
+**Un cambio dispara un flow una sola vez.** Un flow puede tener «Pago cobrado» y «Cambió el estado del pago» a la vez; sin una regla, correría dos veces. `pickCanonicalTrigger` elige un ganador por cambio.
+
+**Los pagos se tocan por un solo núcleo** (`lib/sales/payments-core.ts`): lo usan las pantallas y los nodos de flow, y la auditoría dice si fue una persona, el job de mora o un flow.
+
+**El cron de mora no pasa por `call_app_cron`** (esa función no se toca): es SQL directo, y solo encola si hay pagos vencidos candidatos. Con la base de hoy (sin ventas) no encola nada.
+
+**El historial de ventas es una política adicional** (`audit_log_select_sales`): `audit_log_select` quedó idéntica y `verify-audit-visibility` compara antes y después.
+
+**Whop con comisión 0 %** hasta que se confirme el porcentaje.
+
+### Lo que queda
+
+Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_offers` cuando el código esté desplegado (4 pasos escritos), y la verificación en vivo del plano (§18) con la rama desplegada: una venta de prueba con un pago vencido, comprobando que la mora y el flujo de cobranza disparan una sola vez.
+
+
+## Ventas — el precio pasa a la variante y el historial del catálogo a la base (12/10/2026)
+
+**Migraciones:** 00169 y 00170, aplicadas y registradas. La 00169 borra `product_versions` (respaldo en `docs/ventas/respaldo-product-versions.json`).
+
+**Qué cambió.** La tabla de versiones de precio no aportaba nada que no tuvieran ya la copia congelada de cada venta y el historial general: se eliminó. El precio vive en `product_variants.price` (0 = sin precio) y un cambio es inmediato. El historial de productos y variantes lo escribe un trigger de la base, así que *siempre* queda registrado, incluso si alguien escribe sin pasar por la pantalla.
+
+**Pendiente.** Borrar `content_offers` después del deploy (guiado en `docs/PENDIENTE-ventas.md`).

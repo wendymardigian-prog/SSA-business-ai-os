@@ -48,6 +48,8 @@ const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/settings/integrations/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
   "app/(dashboard)/dashboard/settings/team/page.tsx",
+  // Ventas (F36): el historial de todo el workspace, solo Owner y Admin.
+  "app/(dashboard)/dashboard/settings/actividad/page.tsx",
 ] as const;
 
 /**
@@ -121,12 +123,12 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     expect(sinGuard, `estas paginas dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
   });
 
-  it("son exactamente once, y estan todas en el repo", () => {
+  it("son exactamente doce, y estan todas en el repo", () => {
     // El numero importa: si aparece una pagina nueva de Admin sin sumarla
     // aca, el bloque 9 puede cambiarle el guard sin que nadie lo note.
     // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
     // dashboard de contenido: pasaron a un permiso.)
-    expect(ADMIN_PAGES).toHaveLength(11);
+    expect(ADMIN_PAGES).toHaveLength(12);
     for (const page of ADMIN_PAGES) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
@@ -164,6 +166,10 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/social/page.tsx", "social.view"],
   ["app/(dashboard)/dashboard/dashboards/content/page.tsx", "dashboards.content.view"],
   ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
+  // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
+  // misma settings.manage que la lista de Productos.
+  ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
+  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "settings.manage"],
 ] as const;
 
 describe("caracterizacion: las paginas que piden un permiso (F78)", () => {
@@ -306,6 +312,8 @@ describe("caracterizacion: el menu (F68)", () => {
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",
       "Social",
+      // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).
+      "Ventas",
     ]);
   });
 });

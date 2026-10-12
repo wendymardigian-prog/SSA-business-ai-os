@@ -122,7 +122,7 @@ async function loadPieces(supabase: Db, workspaceId: string, pieceIds: string[])
 
   const [offers, pillars] = await Promise.all([
     offerIds.length > 0
-      ? supabase.from("content_offers").select("id, name").eq("workspace_id", workspaceId).in("id", offerIds)
+      ? supabase.from("products").select("id, name").eq("workspace_id", workspaceId).in("id", offerIds)
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
     pillarIds.length > 0
       ? supabase.from("content_pillars").select("id, name").eq("workspace_id", workspaceId).in("id", pillarIds)

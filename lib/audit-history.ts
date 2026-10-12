@@ -7,6 +7,8 @@
  * pasen. Con el cliente del usuario, la RLS decide que se ve.
  */
 
+import { paymentStatusLabel, saleStatusLabel } from "@/lib/sales/labels";
+import { applyAuditFilters, auditFilters } from "@/lib/audit-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AuditActorType, AuditAction, AuditEntityType, Json } from "@/lib/types/database";
 
@@ -66,6 +68,26 @@ const FIELD_LABELS: Record<string, string> = {
   analysis: "Análisis",
   status: "Estado",
   name: "Nombre",
+  product_type: "Tipo",
+  description: "Descripción",
+  price: "Precio",
+  change_notes: "Notas del cambio",
+  setter_id: "Setter",
+  vendedor_id: "Vendedor",
+  discount_amount: "Descuento",
+  final_amount: "Monto final",
+  base_amount: "Monto base",
+  discount_reason: "Motivo del descuento",
+  sale_date: "Fecha de la venta",
+  service_starts_at: "Inicio del servicio",
+  notes: "Notas",
+  attribution: "Atribución",
+  due_date: "Vence",
+  amount: "Monto",
+  payment_method: "Método de pago",
+  paid_on: "Cobrado el",
+  reschedule_reason: "Motivo de la reprogramación",
+  provider_fee_amount: "Comisión",
   title: "Título",
   role: "Rol",
 };
@@ -106,13 +128,19 @@ export function readableValue(value: unknown): string {
 
 /** El cambio de un campo, con etiqueta, antes y despues legibles. */
 export function describeChange(entityType: AuditEntityType | string, field: string, oldValue: unknown, newValue: unknown): ChangeLine {
-  void entityType; // reservado: hoy el campo se explica igual en todas las entidades
   const key = field.includes(".") ? field.split(".").pop()! : field;
+  // El estado de una venta o de un pago se lee con su etiqueta («Pagada», «Moroso»), no con la clave interna.
+  const named = (value: unknown): unknown => {
+    if (key !== "status" || typeof value !== "string") return value;
+    if (entityType === "sale") return saleStatusLabel(value);
+    if (entityType === "payment") return paymentStatusLabel(value);
+    return value;
+  };
   return {
     field,
     label: FIELD_LABELS[field] ?? FIELD_LABELS[key] ?? field.replace(/_/g, " "),
-    before: readableValue(oldValue),
-    after: readableValue(newValue),
+    before: readableValue(named(oldValue)),
+    after: readableValue(named(newValue)),
   };
 }
 
@@ -163,14 +191,13 @@ export async function runHistoryQuery(
   supabase: SupabaseClient,
   spec: HistoryQuerySpec,
 ): Promise<{ ok: true; page: HistoryPage } | { ok: false; error: string }> {
-  let q = supabase
-    .from("audit_log")
-    .select(HISTORY_COLUMNS)
-    .eq("entity_type", spec.entityType)
-    .eq("entity_id", spec.entityId)
+  // Los filtros salen de la funcion compartida con la pantalla de Actividad (lib/audit-query.ts).
+  const q = applyAuditFilters(
+    supabase.from("audit_log").select(HISTORY_COLUMNS),
+    auditFilters({ entityType: spec.entityType, entityId: spec.entityId, cursor: spec.cursor }),
+  )
     .order("performed_at", { ascending: false })
     .limit(spec.limit);
-  if (spec.cursor) q = q.lt("performed_at", spec.cursor);
   const { data, error } = await q;
   if (error) return { ok: false, error: "No pude leer el historial" };
   const all = (data ?? []) as unknown as HistoryRow[];
@@ -219,4 +246,55 @@ export const FORM_ACTION_LABELS: Record<
   "contact.linked": "vinculó el contacto desde un formulario",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
+};
+
+/** Etiquetas de las acciones de Ventas (catalogo, venta y pago), para <Historial/>. */
+export const SALE_ACTION_LABELS: Record<
+  Extract<
+    AuditAction,
+    | `product.${string}`
+    | `variant.${string}`
+    | `version.${string}`
+    | `assignment_rule.${string}`
+    | `assignment.${string}`
+    | `sale.${string}`
+    | `payment.${string}`
+  >,
+  string
+> = {
+  "product.created": "creó el producto",
+  "product.updated": "editó el producto",
+  "product.status_changed": "cambió el estado del producto",
+  "product.deleted": "borró el producto (un alta que falló)",
+  "variant.created": "creó la variante",
+  "variant.updated": "editó la variante",
+  "variant.price_changed": "cambió el precio de la variante",
+  "variant.archived": "archivó la variante",
+  "variant.restored": "restauró la variante",
+  "variant.deleted": "borró la variante (un alta que falló)",
+  "variant.duplicated": "duplicó la variante",
+  "version.draft_created": "creó un borrador de versión",
+  "version.draft_updated": "editó el borrador de versión",
+  "version.draft_deleted": "borró el borrador de versión",
+  "version.published": "publicó la versión",
+  "assignment_rule.updated": "cambió la regla de asignación",
+  "assignment.automatic": "asignó automáticamente",
+  "sale.created": "cargó la venta",
+  "sale.updated": "editó la venta",
+  "sale.attribution_changed": "cambió la atribución de la venta",
+  "sale.repriced": "cambió el producto o el precio de la venta",
+  "sale.cancelled": "canceló la venta",
+  "sale.subscription_cancelled": "canceló la suscripción",
+  "sale.refunded": "reembolsó la venta",
+  "sale.contract_sent": "envió el contrato",
+  "payment.created": "agregó un pago",
+  "payment.paid": "cobró el pago",
+  "payment.reverted": "revirtió el cobro",
+  "payment.rescheduled": "reprogramó el pago",
+  "payment.uncollectible": "marcó el pago como incobrable",
+  "payment.restored": "volvió a poner el pago en cobro",
+  "payment.cancelled": "anuló el pago",
+  "payment.overdue": "marcó el pago como moroso",
+  "payment.refund": "registró un reembolso",
+  "payment.receipt_uploaded": "subió el comprobante del pago",
 };

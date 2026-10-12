@@ -226,3 +226,26 @@ registro solo declara.
 - Los flujos creados desde la pestaña **Automatizaciones** de un formulario llevan
   `flows.form_id` (00155) y se editan en el editor lineal compartido
   (`components/automations/linear-flow-editor.tsx`, que usa también la Agenda).
+
+## Ventas (seis triggers, once atajos, tres nodos)
+
+Declarados en `lib/flow-engine/registry/sales-triggers.ts`, `sales-conditions.ts` y `lib/flow-engine/nodes/sales-actions.ts`; la lógica pura de cada filtro vive en `lib/sales/automation/`. Detalle del módulo en [ventas.md](ventas.md); migración del CHECK de `triggers.type`: **00166**.
+
+| Tipo | Cuándo | Evento |
+|---|---|---|
+| `sale_created` | Se crea una venta | `sale_created` |
+| `sale_status_changed` | Cambia el estado de la venta (y al nacer, sin `from_status`) | `sale_status_changed` |
+| `payment_created` | Se crea un pago (programado, cobrado o reembolso) | `payment_created` |
+| `payment_status_changed` | Cambia el estado de un pago (y al nacer cobrado) | `payment_status_changed` |
+| `payment_before_due` | Relativo: X días **antes** del vencimiento | agendado |
+| `payment_after_due` | Relativo: X días **después**, si sigue impago | agendado |
+
+- **Los atajos** («Venta cancelada», «Venta saldada», «Pago cobrado», «Pago vencido», «Reembolso registrado») **no son tipos**: son presets del editor (`lib/sales/automation/presets.ts`) que llenan el tipo y el filtro. `consistency.test` exige que el array de tipos de `TriggerPanel` sea igual al registro, por eso los atajos van en una lista aparte.
+- **Vacío significa «cualquiera»; una configuración rota no dispara para nadie.** Los filtros leen el **payload del evento** (solo escalares), nunca la venta de hoy.
+- **Un cambio dispara una vez por flow**: `eventMatches` incluye `pickCanonicalTrigger`, que entre los triggers activos del mismo flow que coinciden con el mismo `change_id` elige uno por `(prioridad, trigger.id, event.id)`. Los relativos quedan fuera (se agendan, no vienen de un evento).
+- **Relativos**: se agendan como `scheduled_jobs` `payment_relative_trigger`, con clave `rel:<trigger>:<pago>:<reprogramaciones>`; un duplicado (23505) se tolera. Mover un vencimiento cambia la clave y vuelve a habilitar el recordatorio.
+- **Variables** (`lib/sales/automation/variables.ts`): `{{sale.*}}` y `{{payment.*}}`; `{{form_link.*}}` ya firma el link con la venta del flow.
+- **Condiciones** de flow (`sales-conditions.ts`) sobre la venta y el pago del evento; el constructor es `components/conditions/condition-tree-editor.tsx`.
+- **Nodos de acción**: cobrar un pago, reprogramarlo y cambiar el estado de la venta, todos por `lib/sales/payments-core.ts` con actor de sistema (la auditoría lleva el nombre del flow). Están en `node-palette.tsx` y en el simulador.
+- Los eventos de venta **llevan solo escalares y nunca `booking_id`** (el cron trata como «reserva» cualquier payload con `booking_id` y se saltearía «no contactar»).
+- Los flows con triggers de venta que se republican desde el lienzo no duplican filas de trigger (`app/api/v1/flows/[flowId]/publish/route.ts`); para los otros tipos esa duplicación es anterior y se dejó como estaba.

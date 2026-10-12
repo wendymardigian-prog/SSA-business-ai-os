@@ -148,7 +148,7 @@ function seed(over: { agentConfig?: unknown; agentPrompt?: string; gastado?: num
         { workspace_id: WS_A, title: "Oferta", content_md: "Implementacion en 10 dias", tags: ["oferta"], internal_only: false, status: "ready" },
       ],
       content_pillars: [],
-      content_offers: [],
+      products: [],
       agent_runs: [],
       agent_run_steps: [],
     },
@@ -182,7 +182,7 @@ describe("E4 · el contexto que junta antes de escribir", () => {
   it("F94: le da la clasificacion de la pieza (pilar, oferta, etapa) con sus NOMBRES, no los ids", async () => {
     const db = seed();
     db.rows("content_pillars").push({ id: "p1", workspace_id: WS_A, name: "Sistemas", archived_at: null });
-    db.rows("content_offers").push({ id: "o1", workspace_id: WS_A, name: "Implementacion en 10 dias", archived_at: null });
+    db.rows("products").push({ id: "o1", workspace_id: WS_A, name: "Implementacion en 10 dias", archived_at: null });
     Object.assign(db.rows("content_posts")[0], { pillar_id: "p1", offer_id: "o1", funnel_stage: "bofu", reference: "https://ref.test/x" });
     const generate = fakeGenerate();
 

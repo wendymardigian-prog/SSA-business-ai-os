@@ -35,6 +35,7 @@ export const PERMISSION_MODULES = [
   "scheduling",
   "calls",
   "forms",
+  "sales",
   "integrations",
   "team",
   "settings",
@@ -121,6 +122,11 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." },
   { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." },
 
+  // ── Ventas y pagos (Etapa 5, Fase 1) ────────────────────────────────────
+  { key: "sales.view", module: "sales", label: "Ver las ventas", description: "La lista, la ficha, los pagos y el historial de cada venta, según el alcance." },
+  { key: "sales.manage", module: "sales", label: "Cargar y editar ventas", description: "Cargar, editar y cancelar ventas; enviar el contrato. Pasar el tope de descuento exige alcance «todos»." },
+  { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." },
+
   // ── Configuracion ───────────────────────────────────────────────────────
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas y guardar claves." },
   { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Invitar personas y cambiarles el rol." },
@@ -142,7 +148,7 @@ export function permissionLabel(key: string): string {
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls"] as const;
+export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
@@ -220,21 +226,27 @@ const MEMBER_KEYS = [
   // Formularios (alcance v7.1 §4.5): ve las respuestas de los contactos que ve
   // (lo aplica la RLS). NO crea ni publica formularios.
   "forms.view",
+  // Ventas (Etapa 5): un Member carga y cobra las ventas donde es setter o
+  // vendedor (alcance `own`, aplicado por la RLS y por las acciones). NO
+  // administra productos ni reglas de asignación (eso es settings.manage).
+  "sales.view",
+  "sales.manage",
+  "payments.manage",
 ] as const;
 
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all" },
   },
   admin: {
     // Todo salvo transferir la propiedad: eso es irreversible y es del Owner.
     keys: ALL_PERMISSION_KEYS.filter((key) => key !== "workspace.transfer"),
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all" },
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own" },
   },
 };
 
@@ -296,7 +308,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls") },
+    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales") },
   };
 }
 

@@ -6,6 +6,9 @@ import { eventDefaults } from "@/lib/scheduling/data/event-context";
 import { brokenCalendarAccounts } from "@/lib/scheduling/data/attention";
 import { bookingUtmOptions, getBookingDetail, hostNames, listBookings } from "@/lib/scheduling/data/bookings";
 import { loadBookingCalls } from "@/lib/calls/contact-section";
+import { canLoadSaleFromBooking, prefillFromBooking } from "@/lib/sales/booking-link";
+import { snapshotText } from "@/lib/sales/sale-text";
+import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { listCategories, listEventTypes, toCategoryRow } from "@/lib/scheduling/data/event-types";
 import { expandCategoryFilter, categoryLabel } from "@/lib/scheduling/categories";
 import { quickFilterCounts, type QuickFilter } from "@/lib/scheduling/bookings-view";
@@ -195,6 +198,24 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const bookingCalls =
     detail && ctx.can("calls.view") ? await loadBookingCalls(ctx.supabase, { workspaceId: ctx.workspace.id, bookingId: detail.booking.id, names }) : [];
 
+  // Las ventas que nacieron de esta agenda (Ventas, F24): solo con `sales.view`, y solo las que la RLS deja ver.
+  const bookingSales =
+    detail && ctx.can("sales.view")
+      ? (await ctx.supabase.from("sales").select("id, status, final_amount, product_snapshot").eq("booking_id", detail.booking.id).eq("workspace_id", ctx.workspace.id).order("created_at", { ascending: false })).data ?? []
+      : [];
+  // «Cargar venta»: con `sales.manage`, si la reunión ya pasó y tiene un resultado.
+  let saleLoad: { config: Awaited<ReturnType<typeof loadWizardConfig>>; initial: { contact: { id: string; name: string }; bookingId: string; vendedorId: string | null } } | null = null;
+  if (detail && ctx.can("sales.manage") && canLoadSaleFromBooking({ status: detail.booking.status, contact_id: detail.booking.contact_id, start_at: detail.booking.start_at }, new Date())) {
+    const config = await loadWizardConfig(ctx);
+    const prefill = prefillFromBooking(
+      { id: detail.booking.id, contact_id: detail.booking.contact_id, start_at: detail.booking.start_at, status: detail.booking.status, host_user_id: detail.booking.host_user_id },
+      new Set(config.members.map((m) => m.id)),
+    );
+    if (prefill && config.catalog.length > 0) {
+      saleLoad = { config, initial: { contact: { id: prefill.contactId, name: detail.contact?.display_name ?? detail.booking.booker_name ?? "Contacto" }, bookingId: prefill.bookingId, vendedorId: prefill.vendedorId } };
+    }
+  }
+
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
   // Google Calendar", aunque ya estuviera conectado.
@@ -288,6 +309,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               attribution: attributionOf((detail.booking as unknown as { utm?: unknown; referrer_url?: string | null }).utm, detail.booking.referrer_url),
               slotReleasedAt: detail.booking.slot_released_at,
               calls: bookingCalls,
+              sales: bookingSales.map((x) => ({ id: x.id, status: x.status, finalAmount: Number(x.final_amount) || 0, product: snapshotText(x.product_snapshot) })),
+              saleLoad,
             }
           : null
       }

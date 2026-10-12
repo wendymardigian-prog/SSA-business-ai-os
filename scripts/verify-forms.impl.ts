@@ -773,7 +773,8 @@ try {
   const withLink = await signFormLink(svc, { workspaceId: ws.id, formId: fo2!.id, slug: fo2Slug, contactId: veteran!.id, serviceId, saleId, baseUrl: "https://app.ejemplo.test" });
   const linked = await rowOf((await send({ nombre: "Otro Nombre", email: "completamente.otro@example.test" }, { link_token: new globalThis.URL(withLink).searchParams.get("c") })).body.submission_id);
   check(linked.contact_id === veteran!.id && linked.contact_created === false, "con un link valido la respuesta va al contacto del link, sin deduplicar por el email que escribio");
-  check(linked.service_id === serviceId && linked.sale_id === saleId, "...y guarda el service_id y el sale_id de la firma (sin tablas de servicios ni ventas)");
+  // Desde la 00164 el sale_id del link se VALIDA: una venta que no existe se descarta (la respuesta se guarda igual).
+  check(linked.service_id === serviceId && linked.sale_id === null && (linked.meta as { sale_id_discarded?: boolean })?.sale_id_discarded === true, "...guarda el service_id y descarta un sale_id de una venta inexistente (00164, meta.sale_id_discarded)");
   const looseIds = await rowOf((await send({ nombre: "Suelto", email: "suelto.zz@example.test" }, { service_id: randomUUID(), sale_id: randomUUID() })).body.submission_id);
   check(looseIds.service_id === null && looseIds.sale_id === null, "un service_id o sale_id suelto en el cuerpo del envio se ignora");
   const badLink = await rowOf((await send({ nombre: "Token Roto", email: "tokenroto.zz@example.test" }, { link_token: tampered })).body.submission_id);

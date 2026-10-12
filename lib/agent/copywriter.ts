@@ -302,7 +302,7 @@ async function gatherContext(
       : Promise.resolve(null),
     post.offer_id
       ? supabase
-          .from("content_offers")
+          .from("products")
           .select("name")
           .eq("id", post.offer_id)
           .eq("workspace_id", post.workspace_id)

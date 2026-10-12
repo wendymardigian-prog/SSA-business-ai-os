@@ -30,6 +30,9 @@ import { registerCallAnalyzeHandler } from "@/lib/jobs/handlers/call-analyze";
 import { registerCallSummaryHandler } from "@/lib/jobs/handlers/call-summary";
 import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-index-knowledge";
 import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf";
+import { registerSalesContactEvalHandler } from "@/lib/jobs/handlers/sales-contact-eval";
+import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payments-overdue-sweep";
+import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative";
 import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email";
 
 /**
@@ -108,6 +111,11 @@ export function registerPublishing(): void {
   // Formularios: el PDF firmado de un contrato y su copia por email (F27, F28).
   registerContractPdfHandler();
   registerContractEmailHandler();
+
+  // Ventas: la asignacion automatica de setter, vendedor y referido (F15).
+  registerSalesContactEvalHandler();
+  registerPaymentsOverdueSweepHandler();
+  registerPaymentRelativeHandler();
 }
 
 /** Para los tests. */

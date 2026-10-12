@@ -492,6 +492,36 @@ export function simulateFlow(
         break;
       }
 
+      case "mark_payment_paid": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "mark_payment_paid",
+          nodeLabel: label,
+          result: { type: "action", actionType: "mark_payment_paid", detail: data.confirmed === true ? `cobrado por ${(data.method as string) || "el primer método habilitado"}` : "sin confirmar: no cobra nada" },
+        });
+        break;
+      }
+
+      case "reschedule_payment": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "reschedule_payment",
+          nodeLabel: label,
+          result: { type: "action", actionType: "reschedule_payment", detail: `+${Number(data.days) || 0} días` },
+        });
+        break;
+      }
+
+      case "set_sale_status": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "set_sale_status",
+          nodeLabel: label,
+          result: { type: "action", actionType: "set_sale_status", detail: (data.status as string) || "" },
+        });
+        break;
+      }
+
       case "subscribe":
       case "unsubscribe": {
         steps.push({

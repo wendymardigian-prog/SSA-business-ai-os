@@ -1,0 +1,73 @@
+{
+  "audit_log_product_version": [],
+  "product_versions": [
+    {
+      "capabilities_config": {},
+      "change_notes": "Migrado de Productos (content_offers)",
+      "created_at": "2026-10-11T21:19:01.66517+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "currency": "USD",
+      "deprecated_at": null,
+      "id": "090fef70-6043-46ec-aa78-f199b11ca8e1",
+      "price": 3000,
+      "product_variant_id": "cd83d097-4171-432e-a5c1-eac7e56cff56",
+      "published_at": "2026-10-11T21:19:01.66517+00:00",
+      "published_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "status": "active",
+      "updated_at": "2026-10-11T21:19:01.66517+00:00",
+      "version_number": 1,
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "capabilities_config": {},
+      "change_notes": "Migrado de Productos (content_offers)",
+      "created_at": "2026-10-11T21:19:01.66517+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "currency": "USD",
+      "deprecated_at": null,
+      "id": "0a076046-10b6-446a-9a30-6bfa3e530457",
+      "price": 6000,
+      "product_variant_id": "841e5efc-090d-4733-885c-edacf94e78af",
+      "published_at": "2026-10-11T21:19:01.66517+00:00",
+      "published_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "status": "active",
+      "updated_at": "2026-10-11T21:19:01.66517+00:00",
+      "version_number": 1,
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    },
+    {
+      "capabilities_config": {},
+      "change_notes": "Migrado de Productos (content_offers)",
+      "created_at": "2026-10-11T21:19:01.66517+00:00",
+      "created_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "currency": "USD",
+      "deprecated_at": null,
+      "id": "1e1da0be-ea28-408c-b0e2-0b3113dc91bc",
+      "price": 12000,
+      "product_variant_id": "81ada115-cfd0-4e28-9e1b-bbea1b035df7",
+      "published_at": "2026-10-11T21:19:01.66517+00:00",
+      "published_by": "9c576ef6-6489-4d81-bedc-5676842f4a3c",
+      "status": "active",
+      "updated_at": "2026-10-11T21:19:01.66517+00:00",
+      "version_number": 1,
+      "workspace_id": "280223ad-6bbc-4620-8c65-20f302a7c249"
+    }
+  ],
+  "variantes": [
+    {
+      "id": "cd83d097-4171-432e-a5c1-eac7e56cff56",
+      "name": "Estándar",
+      "product_id": "ddaaabef-8d2b-403b-be2f-7fc8f7bbc9e9"
+    },
+    {
+      "id": "841e5efc-090d-4733-885c-edacf94e78af",
+      "name": "Estándar",
+      "product_id": "9b004f61-56ea-485e-aa4d-5abf3c0c4c09"
+    },
+    {
+      "id": "81ada115-cfd0-4e28-9e1b-bbea1b035df7",
+      "name": "Estándar",
+      "product_id": "17a16d97-ab7b-49e7-8956-98abac65e3eb"
+    }
+  ]
+}

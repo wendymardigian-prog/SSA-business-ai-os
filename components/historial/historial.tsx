@@ -11,6 +11,7 @@ import {
   runHistoryQuery,
   CALL_ACTION_LABELS,
   FORM_ACTION_LABELS,
+  SALE_ACTION_LABELS,
   type HistoryRow,
 } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
@@ -35,6 +36,7 @@ const GENERIC_ACTIONS: Record<string, string> = {
   summary: "actualizó el resumen",
   ...CALL_ACTION_LABELS,
   ...FORM_ACTION_LABELS,
+  ...SALE_ACTION_LABELS,
 };
 
 function actionText(action: string): string {

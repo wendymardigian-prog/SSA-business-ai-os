@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import {
-  archivedAtFor,
   checkName,
   checkPrice,
   isProductStatus,
@@ -12,10 +11,18 @@ import {
   nextColor,
   type TaxonomyItem,
 } from "@/lib/content/taxonomy";
+import {
+  createProduct as createCatalogProduct,
+  setProductStatus,
+  setVariantPrice,
+  updateProduct as updateCatalogProduct,
+} from "@/lib/actions/products";
 
 /**
- * Pilares y productos (F89; las "ofertas" pasaron a ser productos con precio y
- * estado en la 00134, pero la tabla sigue siendo `content_offers`).
+ * Pilares y productos (F89). Las "ofertas" pasaron a ser productos con precio y
+ * estado en la 00134 y, con Ventas (00160), viven en `products`: las acciones de
+ * producto de acá abajo son atajos de `lib/actions/products.ts` (el catálogo),
+ * que es quien escribe.
  *
  * Todo pide `settings.manage`, y ademas lo aplica la RLS de la 00116: la
  * pantalla decide que botones muestra, la barrera es la base.
@@ -25,7 +32,7 @@ import {
  * `lib/content/taxonomy.test.ts` falla si alguien agrega una.
  *
  * Los selectores de la idea y de la pieza ofrecen "+ Crear" al final para no
- * frenar la carga: esa accion es `createPillar` / `createOffer`, que devuelve
+ * frenar la carga: esa accion es `createPillar` / `createProduct`, que devuelve
  * el id nuevo para que el selector lo deje elegido. Quien no tiene el permiso
  * no ve el "+ Crear" (y si llamara igual, la accion lo rechaza).
  */
@@ -39,14 +46,12 @@ export type TaxonomyResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? object : { data: T }))
   | { ok: false; error: string };
 
-type Table = "content_pillars" | "content_offers";
+type Table = "content_pillars";
 
-// Para los mensajes: "el pilar" / "el producto". Los productos tienen sus propias
-// acciones (createProduct / updateProduct, mas abajo): precio y estado no
-// entran en las genericas de pilares.
+// Para los mensajes: "el pilar". Los productos ya no pasan por aca: viven en el
+// catalogo de Ventas (`lib/actions/products.ts`).
 const KIND: Record<Table, { label: string; audit: string; the: string; that: string; it: string }> = {
   content_pillars: { label: "pilar", audit: "content_pillar", the: "el", that: "ese", it: "o" },
-  content_offers: { label: "producto", audit: "content_offer", the: "el", that: "ese", it: "o" },
 };
 
 async function manageContext() {
@@ -238,7 +243,7 @@ export async function restorePillar(input: { id: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Productos (lo que se vende): precio y estado (00134)
+// Productos (lo que se vende): atajos del catalogo de Ventas
 // ---------------------------------------------------------------------------
 
 export interface ProductData {
@@ -249,58 +254,27 @@ export interface ProductData {
 }
 
 /**
- * Crea un producto. El precio (siempre en USD) es obligatorio: un producto sin
- * precio no sirve para medir que contenido empuja cuanto. Nace activo.
+ * Crea un producto desde Contenido. El precio (siempre en USD) es obligatorio: un
+ * producto sin precio no sirve para medir que contenido empuja cuanto. Nace
+ * activo, con su variante "Estandar" y ese precio.
  */
 export async function createProduct(input: { name: string; priceUsd: unknown }): Promise<TaxonomyResult<ProductData>> {
-  const ctx = await manageContext();
-  if (!ctx) return { ok: false, error: NO_PERMISSION };
-  const { workspace, supabase, user } = ctx;
-
-  const items = await loadItems(supabase, "content_offers", workspace.id);
-  const name = checkName(input.name, items);
-  if (!name.ok) return name;
   const price = checkPrice(input.priceUsd);
   if (!price.ok) return price;
 
-  const { data, error } = await supabase
-    .from("content_offers")
-    .insert({
-      workspace_id: workspace.id,
-      name: name.name,
-      price_usd: price.price,
-      status: "active",
-      created_by: user.id,
-    } as never)
-    .select("id")
-    .single();
+  const created = await createCatalogProduct({ name: input.name, priceUsd: price.price, requirePrice: true });
+  if (!created.ok) return created;
 
-  if (error || !data) {
-    if (error && uniqueViolation(error)) return { ok: false, error: `Ya existe "${name.name}"` };
-    console.error("[content-taxonomy] no pude crear el producto:", error?.message);
-    return { ok: false, error: "No pude crear el producto" };
-  }
-
-  await logAudit({
-    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id,
-    action: "create",
-    metadata: { section: KIND.content_offers.audit, name: name.name, price_usd: price.price },
-    performedBy: user.id,
-  });
-
-  revalidatePath(SETTINGS_PATH);
-  revalidatePath(CONTENT_PATH);
-  return { ok: true, data: { id: data.id, name: name.name, priceUsd: price.price, status: "active" } };
+  return { ok: true, data: { id: created.data.id, name: created.data.name, priceUsd: price.price, status: "active" } };
 }
 
 /**
  * Edita un producto: nombre, precio y/o estado (lo que no viene no se toca).
  *
- * El estado y el archivado van juntos (CHECK de la 00134): activo = sin
- * archivar; inactivo o discontinuado = archivado, es decir, ya no se ofrece al
- * clasificar pero lo ya clasificado lo sigue mostrando. Nunca se borra.
- * Volver a activo vuelve a ocupar el nombre: si mientras tanto se creo otro
- * activo con el mismo, se avisa en vez de chocar con el indice unico.
+ *  - El estado y el archivado van juntos (CHECK de la 00159): activo = sin
+ *    archivar; inactivo o discontinuado = archivado. Nunca se borra.
+ *  - El PRECIO vive en la variante por defecto (la de menor orden, no archivada).
+ *    Cambiarlo es inmediato y queda en el historial general (lo escribe la base).
  */
 export async function updateProduct(input: {
   id: string;
@@ -310,76 +284,39 @@ export async function updateProduct(input: {
 }): Promise<TaxonomyResult> {
   const ctx = await manageContext();
   if (!ctx) return { ok: false, error: NO_PERMISSION };
-  const { workspace, supabase, user } = ctx;
 
-  const { data: before } = await supabase
-    .from("content_offers")
-    .select("id, name, price_usd, status, archived_at")
-    .eq("id", input.id)
-    .eq("workspace_id", workspace.id)
-    .maybeSingle();
-  if (!before) return { ok: false, error: "No encontre ese producto" };
-
-  const items = await loadItems(supabase, "content_offers", workspace.id);
-  const patch: Record<string, unknown> = {};
-  const changes: Record<string, { old: string | number | null; new: string | number | null }> = {};
-
-  let name = before.name;
-  if (input.name !== undefined) {
-    const checked = checkName(input.name, items, input.id);
+  // Se valida todo antes de escribir algo.
+  if (input.status !== undefined && !isProductStatus(input.status)) return { ok: false, error: "Ese estado no es valido" };
+  let newPrice: number | null = null;
+  if (input.priceUsd !== undefined) {
+    const checked = checkPrice(input.priceUsd);
     if (!checked.ok) return checked;
-    name = checked.name;
-    if (name !== before.name) {
-      patch.name = name;
-      changes.name = { old: before.name, new: name };
-    }
+    newPrice = checked.price;
   }
 
-  if (input.priceUsd !== undefined) {
-    const price = checkPrice(input.priceUsd);
-    if (!price.ok) return price;
-    const old = before.price_usd === null || before.price_usd === undefined ? null : Number(before.price_usd);
-    if (price.price !== old) {
-      patch.price_usd = price.price;
-      changes.price_usd = { old, new: price.price };
-    }
+  if (input.name !== undefined) {
+    const renamed = await updateCatalogProduct({ id: input.id, name: input.name });
+    if (!renamed.ok) return renamed;
+  }
+
+  if (newPrice !== null) {
+    const { data: variants } = await ctx.supabase
+      .from("product_variants")
+      .select("id, display_order, archived_at")
+      .eq("product_id", input.id)
+      .eq("workspace_id", ctx.workspace.id);
+    const live = (variants ?? []).filter((v) => !v.archived_at).sort((a, b) => a.display_order - b.display_order);
+    const target = live[0];
+    if (!target) return { ok: false, error: "Ese producto no tiene una variante para cambiarle el precio" };
+
+    const priced = await setVariantPrice({ variantId: target.id, priceUsd: newPrice });
+    if (!priced.ok) return priced;
   }
 
   if (input.status !== undefined) {
-    if (!isProductStatus(input.status)) return { ok: false, error: "Ese estado no es valido" };
-    if (input.status !== before.status) {
-      // Volver a activo ocupa el nombre de nuevo: se valida contra los activos.
-      if (input.status === "active") {
-        const clash = checkName(name, items, input.id);
-        if (!clash.ok) return { ok: false, error: `${clash.error}. Renombra uno de los dos antes de reactivarlo.` };
-      }
-      patch.status = input.status;
-      patch.archived_at = archivedAtFor(input.status, before.archived_at ?? null, new Date());
-      changes.status = { old: before.status, new: input.status };
-    }
+    const changed = await setProductStatus({ id: input.id, status: input.status });
+    if (!changed.ok) return changed;
   }
-
-  if (Object.keys(patch).length === 0) return { ok: true };
-
-  const { error } = await supabase
-    .from("content_offers")
-    .update(patch as never)
-    .eq("id", input.id)
-    .eq("workspace_id", workspace.id);
-
-  if (error) {
-    if (uniqueViolation(error)) return { ok: false, error: `Ya existe "${name}"` };
-    console.error("[content-taxonomy] no pude guardar el producto:", error.message);
-    return { ok: false, error: "No pude guardar el producto" };
-  }
-
-  await logAudit({
-    supabase, workspaceId: workspace.id, entityType: "workspace", entityId: workspace.id,
-    action: "update",
-    metadata: { section: KIND.content_offers.audit, id: input.id },
-    changes,
-    performedBy: user.id,
-  });
 
   revalidatePath(SETTINGS_PATH);
   revalidatePath(CONTENT_PATH);

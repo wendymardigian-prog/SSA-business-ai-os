@@ -6,6 +6,8 @@ import { updateWorkspaceSettings } from "@/lib/actions/workspace";
 import { ChatMediaSettings } from "@/components/settings/chat-media-settings";
 import { OptOutSettings } from "@/components/settings/opt-out-settings";
 import { TimezoneSettings } from "@/components/settings/timezone-settings";
+import { SalesSettings } from "@/components/settings/sales-settings";
+import type { PaymentMethodKey } from "@/lib/sales/payment-methods";
 import { PageHeader } from "@/components/page-header";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SectionNav } from "@/components/settings/section-nav";
@@ -21,6 +23,12 @@ interface WorkspaceSettings {
   persistChatMedia: boolean;
   chatMediaRetentionDays: number;
   timezone: string;
+  enabledPaymentMethods: PaymentMethodKey[];
+  /** Pagos programados o morosos por método de pago (para el aviso de apagar uno). */
+  scheduledByMethod: Record<string, number>;
+  maxDiscountPercent: number | null;
+  overdueGraceDays: number;
+  salesAutoCreateFlows: boolean;
 }
 
 /**
@@ -250,6 +258,32 @@ export function SettingsView({
                 enabled={workspace.persistChatMedia}
                 retentionDays={workspace.chatMediaRetentionDays}
               />
+            </section>
+
+            <hr className="border-border" />
+
+            {/* Ventas */}
+            <section id="ventas" className="scroll-mt-20 space-y-6">
+              <SalesSettings
+                enabledMethods={workspace.enabledPaymentMethods}
+                scheduledByMethod={workspace.scheduledByMethod}
+                maxDiscountPercent={workspace.maxDiscountPercent}
+                overdueGraceDays={workspace.overdueGraceDays}
+                autoCreateFlows={workspace.salesAutoCreateFlows}
+              />
+            </section>
+
+            <hr className="border-border" />
+
+            {/* Actividad */}
+            <section id="actividad" className="scroll-mt-20 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Quién hizo qué y cuándo en todo el workspace:{" "}
+                <Link href="/dashboard/settings/actividad" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Ver la actividad
+                </Link>
+                .
+              </p>
             </section>
 
             <hr className="border-border" />
