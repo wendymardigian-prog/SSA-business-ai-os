@@ -1000,23 +1000,45 @@ try {
   const { data: sig2Job } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_pdf:${sig2!.id}`);
   for (const j of sig2Job ?? []) jobIds.push(j.id);
 
-  // Huella corrupta: la firma falla y no queda NADA.
-  await svc.from("form_versions").update({ contract_text: "texto adulterado" } as never).eq("id", v2Id);
+  // R9: el candado. Una version publicada no se puede cambiar, ni con el service role.
+  const lockedTry = await svc.from("form_versions").update({ contract_text: "texto adulterado" } as never).eq("id", v2Id);
+  check(!!lockedTry.error && lockedTry.error.code === "23001", "UPDATE de contract_text de una version publicada FALLA (restrict_violation), tambien con el service role", lockedTry.error?.code);
+  const lockedSha = await svc.from("form_versions").update({ contract_text_sha256: "0".repeat(64) } as never).eq("id", v2Id);
+  const lockedDef = await svc.from("form_versions").update({ definition: { fields: [] } } as never).eq("id", v2Id);
+  const lockedNumber = await svc.from("form_versions").update({ version_number: 99 } as never).eq("id", v2Id);
+  check([lockedSha, lockedDef, lockedNumber].every((r) => r.error?.code === "23001"), "...igual con la huella, la definicion y el numero de version");
+  const { data: v2Intact } = await svc.from("form_versions").select("contract_text, contract_text_sha256").eq("id", v2Id).single();
+  check(v2Intact?.contract_text === contractText2.text && v2Intact?.contract_text_sha256 === contractText2.sha256, "...y la version sigue intacta");
+
+  // Huella corrupta: la firma falla y no queda NADA. Como la version no se puede alterar, se INSERTA una version de
+  // prueba cuya huella no coincide con su texto, se la hace la vigente y se firma contra ella.
+  const { data: v2Row } = await svc.from("form_versions").select("workspace_id, definition, published_at").eq("id", v2Id).single();
+  const { data: badVer, error: badVerError } = await svc
+    .from("form_versions")
+    .insert({ workspace_id: v2Row!.workspace_id, form_id: kForm!.id, version_number: 3, definition: v2Row!.definition, contract_text: "texto con huella equivocada", contract_text_sha256: "f".repeat(64), published_by: owner.id })
+    .select("id")
+    .single();
+  check(!badVerError && !!badVer, "se inserta una version de prueba con la huella equivocada", badVerError?.message);
+  const badVersionId = badVer!.id;
+  await svc.from("forms").update({ current_version_id: badVersionId }).eq("id", kForm!.id);
   const beforeContacts = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
   const beforeSigs = (await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0;
   const corruptKey = randomUUID();
   const errorsMute = console.error;
   console.error = () => undefined;
-  const corrupt = await sendContract({ nombre: "Carlos Corrupto", email: "corrupto.zz@example.test" }, sig({ idempotency_key: corruptKey }), v2Id);
+  const corrupt = await sendContract({ nombre: "Carlos Corrupto", email: "corrupto.zz@example.test" }, sig({ idempotency_key: corruptKey }), badVersionId);
   console.error = errorsMute;
-  check(corrupt.status === 500, "con el texto de la version alterado, la firma falla (500 sin detalles)", String(corrupt.status));
+  check(corrupt.status === 500, "con la huella que no coincide con el texto, la firma falla (500 sin detalles)", String(corrupt.status));
   const { data: corruptRows } = await svc.from("form_submissions").select("id").eq("form_id", kForm!.id).eq("idempotency_key", corruptKey);
   check((corruptRows ?? []).length === 0, "...y la respuesta NO queda guardada");
   check(((await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === beforeContacts, "...ni se crea el contacto");
   check(((await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0) === beforeSigs, "...ni la firma ni su job (todo en la misma transaccion)");
   const { data: leftover } = await svc.storage.from("contracts").download(`${ws.id}/${kForm!.id}/${corruptKey}/signature.png`);
   check(!leftover, "...y la imagen de la firma que se habia subido se descarta");
-  await svc.from("form_versions").update({ contract_text: contractText2.text } as never).eq("id", v2Id);
+  // Se vuelve a la version buena y se borra la de prueba (DELETE no esta bloqueado).
+  await svc.from("forms").update({ current_version_id: v2Id }).eq("id", kForm!.id);
+  const { error: delBad } = await svc.from("form_versions").delete().eq("id", badVersionId);
+  check(!delBad, "DELETE de una version no esta bloqueado (la limpieza en cascada sigue andando)", delBad?.message);
 
   // El PDF, de verdad: con la base y el bucket reales, sin proveedores.
   console.log("\n— F27-F28: el PDF y el email (base y Storage reales; Resend simulado) —");
