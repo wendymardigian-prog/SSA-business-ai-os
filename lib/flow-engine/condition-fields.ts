@@ -11,6 +11,9 @@
  * que lo importan el panel (cliente) y los tests de consistencia.
  */
 
+import type { ConditionValueType, FieldOption } from "./condition-eval";
+import { PLATFORMS, PLATFORM_LABELS } from "@/lib/platforms";
+
 /** Que hay que pedirle al usuario despues de elegir el campo. */
 export type ConditionArgumentKind =
   /** Nada: el campo se llama exactamente asi. */
@@ -32,7 +35,18 @@ export interface ConditionFieldOption {
   argumentPlaceholder?: string;
   valueKind: ConditionValueKind;
   hint?: string;
+  /**
+   * El tipo con el que se compara en el nodo `branch` ("Condiciones"). El nodo
+   * viejo (`condition`) no lo mira: compara texto con `valueKind`.
+   */
+  valueType: ConditionValueType;
+  /** Solo en las selecciones. */
+  options?: FieldOption[];
+  /** Como se agrupa en el selector de campos del `branch`. */
+  group: "contact" | "calls" | "sales";
 }
+
+const PLATFORM_OPTIONS: FieldOption[] = PLATFORMS.map((p) => ({ value: p, label: PLATFORM_LABELS[p] }));
 
 export const CONDITION_FIELDS: ConditionFieldOption[] = [
   {
@@ -41,14 +55,14 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argument: "text",
     argumentLabel: "Nombre del tag",
     argumentPlaceholder: "interesado",
-    valueKind: "boolean",
+    valueKind: "boolean", valueType: "boolean", group: "contact",
   },
   {
     prefix: "sequence:",
     label: "Está en la secuencia",
     argument: "sequence",
     argumentLabel: "Secuencia",
-    valueKind: "boolean",
+    valueKind: "boolean", valueType: "boolean", group: "contact",
     hint: "Cuenta si la inscripción sigue viva, aunque esté pausada porque respondió.",
   },
   {
@@ -56,20 +70,20 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     label: "Estuvo alguna vez en la secuencia",
     argument: "sequence",
     argumentLabel: "Secuencia",
-    valueKind: "boolean",
+    valueKind: "boolean", valueType: "boolean", group: "contact",
     hint: "Cuenta también las que ya terminaron o se cancelaron.",
   },
   {
     prefix: "platform",
     label: "Canal",
     argument: "none",
-    valueKind: "text",
+    valueKind: "text", valueType: "single_select", group: "contact", options: PLATFORM_OPTIONS,
   },
   {
     prefix: "is_subscribed",
     label: "Está suscripto",
     argument: "none",
-    valueKind: "boolean",
+    valueKind: "boolean", valueType: "boolean", group: "contact",
   },
   {
     prefix: "variable:",
@@ -77,7 +91,7 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argument: "text",
     argumentLabel: "Nombre de la variable",
     argumentPlaceholder: "ai_response",
-    valueKind: "text",
+    valueKind: "text", valueType: "text", group: "contact",
   },
   // Llamadas (F32): todos sobre la ultima llamada analizada del contacto. Sin
   // llamada analizada comparan contra vacio.
@@ -85,21 +99,21 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     prefix: "last_call_outcome:",
     label: "Resultado de la última llamada",
     argument: "none",
-    valueKind: "text",
+    valueKind: "text", valueType: "text", group: "calls",
     hint: "Por ejemplo: venta, no_venta, seguimiento_con_fecha.",
   },
   {
     prefix: "last_call_lead_score:",
     label: "Puntaje del lead en la última llamada",
     argument: "none",
-    valueKind: "text",
+    valueKind: "text", valueType: "number", group: "calls",
     hint: "Un número de 0 a 100. Se compara con mayor o menor que.",
   },
   {
     prefix: "last_call_type:",
     label: "Tipo de la última llamada",
     argument: "none",
-    valueKind: "text",
+    valueKind: "text", valueType: "text", group: "calls",
     hint: "Por ejemplo: cierre, seguimiento, triaje.",
   },
   // Ventas (F37): sobre las ventas y los pagos del contacto. Los de `sale_*` miran LA VENTA que
@@ -110,33 +124,33 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argument: "text",
     argumentLabel: "Producto o variante (opcional)",
     argumentPlaceholder: "id del producto",
-    valueKind: "boolean",
+    valueKind: "boolean", valueType: "boolean", group: "sales",
     hint: "Activa = que no esta cancelada, reembolsada ni dada de baja. Sin elegir un producto, mira todas.",
   },
-  { prefix: "last_sale_status", label: "Estado de su última venta", argument: "none", valueKind: "text", hint: "Por ejemplo: paid, overdue, reserved, cancelled." },
-  { prefix: "do_not_contact", label: "Está marcado como no contactar", argument: "none", valueKind: "boolean", hint: "Los flujos de cobranza lo usan como puerta." },
-  { prefix: "has_overdue_payments", label: "Tiene pagos morosos", argument: "none", valueKind: "boolean" },
+  { prefix: "last_sale_status", label: "Estado de su última venta", argument: "none", valueKind: "text", valueType: "text", group: "sales", hint: "Por ejemplo: paid, overdue, reserved, cancelled." },
+  { prefix: "do_not_contact", label: "Está marcado como no contactar", argument: "none", valueKind: "boolean", valueType: "boolean", group: "contact", hint: "Los flujos de cobranza lo usan como puerta." },
+  { prefix: "has_overdue_payments", label: "Tiene pagos morosos", argument: "none", valueKind: "boolean", valueType: "boolean", group: "sales" },
   {
     prefix: "late_payments_count:",
     label: "Pagos cobrados con atraso mayor a N días",
     argument: "text",
     argumentLabel: "Más de cuántos días",
     argumentPlaceholder: "7",
-    valueKind: "text",
+    valueKind: "text", valueType: "number", group: "sales",
     hint: "Devuelve una cantidad. Se compara con mayor o menor que.",
   },
-  { prefix: "total_purchased", label: "Monto total comprado", argument: "none", valueKind: "text", hint: "Lo cobrado neto de todas sus ventas, en dólares. Se compara con mayor o menor que." },
+  { prefix: "total_purchased", label: "Monto total comprado", argument: "none", valueKind: "text", valueType: "number", group: "sales", hint: "Lo cobrado neto de todas sus ventas, en dólares. Se compara con mayor o menor que." },
   {
     prefix: "sale_utm:",
     label: "UTM de la venta",
     argument: "text",
     argumentLabel: "Cuál: source, medium o campaign",
     argumentPlaceholder: "source",
-    valueKind: "text",
+    valueKind: "text", valueType: "text", group: "sales",
   },
-  { prefix: "sale_attribution_type", label: "Tipo de atribución de la venta", argument: "none", valueKind: "text", hint: "last_touch (último toque), manual o none (sin atribución)." },
-  { prefix: "sale_from_booking", label: "La venta vino de una agenda", argument: "none", valueKind: "boolean" },
-  { prefix: "sale_booking_event_type", label: "Tipo de evento de la agenda de la venta", argument: "none", valueKind: "text", hint: "El id del tipo de evento de agenda; vacío si la venta no vino de una agenda." },
+  { prefix: "sale_attribution_type", label: "Tipo de atribución de la venta", argument: "none", valueKind: "text", valueType: "single_select", group: "sales", options: [{ value: "last_touch", label: "Último toque" }, { value: "manual", label: "Manual" }, { value: "none", label: "Sin atribución" }], hint: "last_touch (último toque), manual o none (sin atribución)." },
+  { prefix: "sale_from_booking", label: "La venta vino de una agenda", argument: "none", valueKind: "boolean", valueType: "boolean", group: "sales" },
+  { prefix: "sale_booking_event_type", label: "Tipo de evento de la agenda de la venta", argument: "none", valueKind: "text", valueType: "text", group: "sales", hint: "El id del tipo de evento de agenda; vacío si la venta no vino de una agenda." },
   {
     // Sin prefijo: el campo es el slug del campo personalizado tal cual.
     prefix: "",
@@ -144,7 +158,7 @@ export const CONDITION_FIELDS: ConditionFieldOption[] = [
     argument: "text",
     argumentLabel: "Identificador del campo",
     argumentPlaceholder: "presupuesto",
-    valueKind: "text",
+    valueKind: "text", valueType: "text", group: "contact",
   },
 ];
 

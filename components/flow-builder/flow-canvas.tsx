@@ -26,11 +26,15 @@ import { useUnsavedChanges } from "@/lib/hooks/use-unsaved-changes";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import type { Database, FlowStatus, Json } from "@/lib/types/database";
+import { conditionToBranch, type ConvertibleEdge, type ConvertibleNode } from "@/lib/flow-engine/convert-condition";
+import { newPathId, pathsOf } from "@/lib/flow-engine/branch-paths";
+import { pruneBranchEdges } from "@/lib/automations/branch-edit";
 
 import { NodePalette } from "./node-palette";
 import { TriggerNode } from "./nodes/trigger-node";
 import { SendMessageNode } from "./nodes/send-message-node";
 import { ConditionNode } from "./nodes/condition-node";
+import { BranchNode } from "./nodes/branch-node";
 import { DelayNode } from "./nodes/delay-node";
 import { ActionNode } from "./nodes/action-node";
 import { AiResponseNode } from "./nodes/AiResponseNode";
@@ -44,6 +48,7 @@ const nodeTypes: NodeTypes = {
   trigger: TriggerNode,
   sendMessage: SendMessageNode,
   condition: ConditionNode,
+  branch: BranchNode,
   delay: DelayNode,
   action: ActionNode,
   aiResponse: AiResponseNode,
@@ -66,6 +71,9 @@ function getDefaultData(type: string, actionType?: string): Record<string, unkno
       return { messages: [] };
     case "condition":
       return { conditions: [], logic: "and" };
+    case "branch":
+      // Nace con un camino (la base exige al menos uno); las condiciones se arman en el panel.
+      return { paths: [{ id: newPathId(), label: "Camino 1", logic: "and", conditions: [] }] };
     case "delay":
       return { duration: 5, unit: "minutes" };
     case "aiResponse":
@@ -182,8 +190,26 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
           n.id === nodeId ? { ...n, data: newData } : n
         )
       );
+      // Borrar un camino de "Condiciones" suelta las conexiones que salian de el.
+      if (Array.isArray((newData as { paths?: unknown }).paths)) {
+        const paths = pathsOf(newData as never);
+        setEdges((eds) => pruneBranchEdges(nodeId, paths, eds));
+      }
     },
-    [setNodes]
+    [setNodes, setEdges]
+  );
+
+  // "Convertir a Condiciones": un `condition` pasa a ser un `branch` con un camino, y sus salidas
+  // «Sí» / «No» pasan a ser el camino y «Si no». No cambia a donde va nadie.
+  const convertCondition = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node || node.type !== "condition") return;
+      const converted = conditionToBranch(node as unknown as ConvertibleNode, edges as unknown as ConvertibleEdge[]);
+      setNodes((nds) => nds.map((n) => (n.id === nodeId ? (converted.node as unknown as Node) : n)));
+      setEdges(converted.edges as unknown as Edge[]);
+    },
+    [nodes, edges, setNodes, setEdges]
   );
 
   const closeSidebar = useCallback(() => {
@@ -491,12 +517,14 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
         </div>
         {selectedNode && !versionPanelOpen && !testPanelOpen && (
           <NodeConfigSidebar
+            flowId={flow.id}
             node={selectedNode}
             nodes={nodes}
             edges={edges}
             onChange={onNodeDataChange}
             onClose={closeSidebar}
             onDelete={deleteNode}
+            onConvert={convertCondition}
           />
         )}
         {versionPanelOpen && (

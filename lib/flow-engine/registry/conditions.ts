@@ -7,47 +7,21 @@
  */
 
 import { registerConditionField, registerConditionOperator } from "./registry";
+import type { ConditionField, ConditionFieldArgs } from "./types";
 import { agentStateForConversation } from "@/lib/agent/state";
+import { LEGACY_OPERATORS } from "../legacy-operators";
+import { MissingFieldError, type FieldValue } from "../condition-eval";
+import { answerValueOf, type AnswerSource } from "@/lib/forms/automation/variable-schema";
 
 // ------------------------------------------------------------
 // Operadores
 // ------------------------------------------------------------
 
-registerConditionOperator({
-  operator: "equals",
-  label: "es igual a",
-  evaluate: (actual, expected) => actual === expected,
-});
-
-registerConditionOperator({
-  operator: "not_equals",
-  label: "no es igual a",
-  evaluate: (actual, expected) => actual !== expected,
-});
-
-registerConditionOperator({
-  operator: "contains",
-  label: "contiene",
-  evaluate: (actual, expected) => actual?.includes(expected) || false,
-});
-
-registerConditionOperator({
-  operator: "exists",
-  label: "tiene algun valor",
-  evaluate: (actual) => actual !== undefined && actual !== null && actual !== "",
-});
-
-registerConditionOperator({
-  operator: "gt",
-  label: "es mayor que",
-  evaluate: (actual, expected) => Number(actual) > Number(expected),
-});
-
-registerConditionOperator({
-  operator: "lt",
-  label: "es menor que",
-  evaluate: (actual, expected) => Number(actual) < Number(expected),
-});
+// Los seis de siempre viven en un modulo puro (`legacy-operators.ts`): el
+// evaluador tipado de los caminos condicionales usa las MISMAS funciones.
+for (const operator of LEGACY_OPERATORS) {
+  registerConditionOperator(operator);
+}
 
 // ------------------------------------------------------------
 // Campos
@@ -157,5 +131,154 @@ registerConditionField({
       conversationId: context.conversationId,
     });
     return String(state.state === "active");
+  },
+});
+
+// ------------------------------------------------------------
+// Campos de los caminos condicionales ("Condiciones")
+// ------------------------------------------------------------
+//
+// Los resuelve el nodo `branch` con su valor REAL (una lista de tags, un
+// numero). El nodo `condition` viejo no los ofrece, pero si alguien escribiera
+// uno de estos nombres igual funcionaria: `resolve` es la version en texto.
+
+/** Del valor con tipo al texto que compara el nodo viejo. */
+function asText(value: FieldValue): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return Array.isArray(value) ? value.join(", ") : String(value);
+}
+
+function registerTypedField(definition: {
+  prefix: string;
+  label: string;
+  value(args: ConditionFieldArgs): Promise<FieldValue> | FieldValue;
+}) {
+  const field: ConditionField = {
+    prefix: definition.prefix,
+    label: definition.label,
+    resolveTyped: definition.value,
+    resolve: async (args) => {
+      try {
+        return asText(await definition.value(args));
+      } catch (error) {
+        // Para el nodo viejo, un campo que ya no existe es "sin valor".
+        if (error instanceof MissingFieldError) return undefined;
+        throw error;
+      }
+    },
+  };
+  registerConditionField(field);
+}
+
+/** `a.b.c` dentro de las variables del flow: primero la clave entera, despues anidada. */
+export function variablePathValue(variables: Record<string, unknown> | undefined, path: string): FieldValue {
+  if (!variables) return undefined;
+  let value: unknown = path in variables ? variables[path] : undefined;
+  if (value === undefined) {
+    value = variables;
+    for (const key of path.split(".")) {
+      if (typeof value !== "object" || value === null) return undefined;
+      value = (value as Record<string, unknown>)[key];
+    }
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value as string[];
+  return undefined;
+}
+
+// Lo que el disparador deja en las variables del flow: se lee por su ruta.
+for (const prefix of ["form.", "submission.", "booking.", "sale.", "payment."]) {
+  registerTypedField({
+    prefix,
+    label: `Dato del flujo (${prefix}*)`,
+    value: ({ context, argument }) => variablePathValue(context.variables, `${prefix}${argument}`),
+  });
+}
+
+registerTypedField({
+  prefix: "contact.tags",
+  label: "Tags del contacto",
+  value: ({ contact }) => {
+    const tags = contact.contact_tags;
+    if (!Array.isArray(tags)) return [];
+    return (tags as Array<{ tags: { name: string } | null }>).map((ct) => ct.tags?.name).filter((name): name is string => !!name);
+  },
+});
+
+registerTypedField({
+  prefix: "contact.sequences",
+  label: "Secuencias del contacto",
+  // Una inscripcion pausada sigue contando (igual que `sequence:`). Valor = id de la secuencia.
+  value: async ({ supabase, context }) => {
+    const { data, error } = await supabase
+      .from("sequence_enrollments")
+      .select("sequence_id, sequences!inner(workspace_id)")
+      .eq("contact_id", context.contactId)
+      .eq("sequences.workspace_id", context.workspaceId)
+      .in("status", ["active", "paused"])
+      .limit(200);
+    if (error) throw new Error(`no pude leer las secuencias del contacto: ${error.message}`);
+    return (data ?? []).map((row) => String((row as { sequence_id: string }).sequence_id));
+  },
+});
+
+registerTypedField({
+  prefix: "contact.lead_temperature",
+  label: "Temperatura del lead",
+  value: ({ contact }) => (typeof contact.lead_temperature === "string" ? contact.lead_temperature : undefined),
+});
+
+/**
+ * La respuesta del formulario que disparo el flujo, junto con las preguntas de
+ * la version con la que se respondio. Se carga UNA vez por corrida del nodo.
+ * `null` = no hay con que leerla (sin id de respuesta, o ya no esta): se cae al
+ * texto de la variable.
+ */
+async function loadAnswerSource(args: ConditionFieldArgs): Promise<AnswerSource | null> {
+  const submissionId = variablePathValue(args.context.variables, "submission.id");
+  if (typeof submissionId !== "string" || !submissionId) return null;
+
+  const load = async (): Promise<AnswerSource | null> => {
+    const { data: submission, error } = await args.supabase
+      .from("form_submissions")
+      .select("form_version_id, answers")
+      .eq("id", submissionId)
+      .eq("workspace_id", args.context.workspaceId)
+      .maybeSingle();
+    if (error) throw new Error(`no pude leer la respuesta del formulario: ${error.message}`);
+    if (!submission) return null;
+
+    const { data: version, error: versionError } = await args.supabase
+      .from("form_versions")
+      .select("definition")
+      .eq("id", submission.form_version_id)
+      .maybeSingle();
+    if (versionError) throw new Error(`no pude leer la version del formulario: ${versionError.message}`);
+    if (!version) return null;
+
+    const fields = (version.definition as { fields?: unknown } | null)?.fields;
+    return {
+      fields: Array.isArray(fields) ? (fields as AnswerSource["fields"]) : [],
+      answers: (submission.answers ?? {}) as AnswerSource["answers"],
+    };
+  };
+
+  if (!args.memo) return load();
+  const key = `answer-source:${submissionId}`;
+  if (!args.memo.has(key)) args.memo.set(key, load());
+  return (await args.memo.get(key)) as AnswerSource | null;
+}
+
+registerTypedField({
+  prefix: "answer.",
+  label: "Respuesta del formulario",
+  value: async (args) => {
+    const path = `answer.${args.argument}`;
+    const source = await loadAnswerSource(args);
+    // Si la pregunta no esta en la version con la que se respondio, lanza
+    // MissingFieldError: "la pregunta ya no existe" no es lo mismo que "vacia".
+    if (source) return answerValueOf(path, source);
+    // Sin respuesta que leer: el texto de la variable (`{{answer.x}}`).
+    return variablePathValue(args.context.variables, path);
   },
 });

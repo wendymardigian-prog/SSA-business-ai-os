@@ -26,6 +26,8 @@ interface ConditionPanelData {
 interface ConditionPanelProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
+  /** Lo convierte en un nodo "Condiciones" con un camino, sin cambiar a donde va nadie. */
+  onConvert?: () => void;
 }
 
 const operatorOptions = [
@@ -45,7 +47,7 @@ const operatorOptions = [
  * catálogo de campos es compartido (lib/flow-engine/condition-fields.ts) y el
  * panel pide el argumento que faltaba: qué tag, qué variable, qué secuencia.
  */
-export function ConditionPanel({ data: rawData, onChange }: ConditionPanelProps) {
+export function ConditionPanel({ data: rawData, onChange, onConvert }: ConditionPanelProps) {
   const data = rawData as ConditionPanelData;
   const conditions = data.conditions || [];
   const logic = data.logic || "and";
@@ -97,6 +99,22 @@ export function ConditionPanel({ data: rawData, onChange }: ConditionPanelProps)
 
   return (
     <div className="space-y-4">
+      {onConvert && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200">
+          <p>
+            Este nodo tiene dos salidas: «Sí» y «No». Con <strong>Condiciones</strong> podés tener varios caminos, cada uno con sus condiciones, y un «Si no».
+          </p>
+          <button
+            type="button"
+            onClick={onConvert}
+            className="mt-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            Convertir a Condiciones
+          </button>
+          <p className="mt-1 text-[11px] opacity-80">Se conservan las condiciones y a dónde llevaba cada salida: «Sí» pasa a ser el camino «Si» y «No», el «Si no».</p>
+        </div>
+      )}
+
       {conditions.length > 1 && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Se cumplen</span>

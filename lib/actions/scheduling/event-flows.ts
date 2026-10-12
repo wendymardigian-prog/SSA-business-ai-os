@@ -7,6 +7,8 @@ import { logAudit } from "@/lib/audit";
 import type { Json } from "@/lib/types/database";
 import { flowGraph } from "@/lib/scheduling/data/event-flows";
 import { flowToLinear, linearToFlow, type LinearFlow } from "@/lib/scheduling/automation/linear-flow";
+import { prepareTreeSave } from "@/lib/automations/step-tree-save";
+import type { StepTree } from "@/lib/automations/step-tree";
 import { backfillRelativeJobs } from "@/lib/scheduling/automation/relative";
 import { isRelativeTrigger } from "@/lib/scheduling/automation/triggers";
 import { buildDesiredTriggers } from "@/lib/flow-triggers";
@@ -100,6 +102,43 @@ export async function saveLinearFlow(input: { flowId: string; linear: LinearFlow
   }
 
   const graph = linearToFlow(input.linear);
+  const { error } = await ctx.supabase
+    .from("flows")
+    .update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json })
+    .eq("id", input.flowId);
+  if (error) return { ok: false, error: `No pude guardar: ${error.message}` };
+
+  // Si estaba publicado, el trigger se rehace con lo que quedó.
+  if (found.flow.status === "published") {
+    const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
+    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+    if (desired.length > 0) {
+      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+    }
+  }
+
+  revalidatePath(`${PATH}/${found.flow.event_type_id}`);
+  return { ok: true };
+}
+
+/**
+ * Guardar el flujo desde el editor de pasos (arbol con Condiciones).
+ *
+ * Se niega si el grafo guardado no es un arbol (fusion, A/B, ciclo: eso se edita en
+ * el canvas), valida el arbol entero (`prepareTreeSave`: pasos permitidos en la
+ * Agenda, caminos de Condiciones, forma posible) y el disparador es SIEMPRE el
+ * guardado: el editor de pasos no lo toca. Rehace los triggers si el flujo esta
+ * encendido, igual que `saveLinearFlow`.
+ */
+export async function saveEventFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps"> }): Promise<FlowActionResult> {
+  const owned = await ownedFlow(input.flowId);
+  if (owned.error !== undefined) return { ok: false, error: owned.error };
+  const { ctx, found } = owned;
+
+  const prepared = prepareTreeSave({ screen: "agenda", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree });
+  if (!prepared.ok) return { ok: false, error: prepared.error };
+  const graph = prepared.graph;
+
   const { error } = await ctx.supabase
     .from("flows")
     .update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json })

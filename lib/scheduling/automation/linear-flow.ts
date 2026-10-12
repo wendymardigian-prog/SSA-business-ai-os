@@ -12,6 +12,13 @@
  * que no se veía.
  *
  * Puro: entra el grafo del canvas, sale la lista, y al revés.
+ *
+ * VIEJO: el editor de pasos (`lib/automations/step-tree.ts`) lo reemplaza y es un
+ * superconjunto (los caminos de Condiciones). Este módulo se conserva exportando
+ * lo mismo (hay tests que fijan su comportamiento) pero no se usa para guardar:
+ * `linearToFlow` pierde `onlyIfPhone` del mensaje, escribe el "Si" sin salida y
+ * con las condiciones como texto. Los tipos `CanvasNode` / `CanvasEdge` siguen
+ * siendo los del grafo del canvas.
  */
 
 export interface CanvasNode {

@@ -702,7 +702,9 @@ export type NodeType =
   | "sendAsset"
   /** Pausar / reanudar el agente de IA en la conversacion (Fase 3). */
   | "pauseAgent"
-  | "resumeAgent";
+  | "resumeAgent"
+  /** "Condiciones": caminos en orden, el primero que se cumple, y "Si no". */
+  | "branch";
 
 export type SequenceStatus = "draft" | "active" | "paused";
 /**

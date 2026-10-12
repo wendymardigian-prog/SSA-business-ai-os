@@ -1,7 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { getPermissionContext } from "@/lib/auth/guards";
 import { formFlowGraph } from "@/lib/forms/data/form-flows";
-import { flowToLinear } from "@/lib/scheduling/automation/linear-flow";
+import { flowToTree } from "@/lib/automations/step-tree";
+import { loadFormsWithFields } from "@/lib/flow-engine/registry/form-triggers";
+import { conditionSources } from "@/lib/forms/builder";
+import { commonFields } from "@/lib/forms/automation/trigger-config";
+import type { VisibilityConfig } from "@/lib/forms/visibility-types";
 import { FormLinearFlowEditor } from "@/components/forms/editor/form-linear-flow-editor";
 import type { FormField } from "@/lib/forms/fields";
 
@@ -10,8 +14,9 @@ export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * El editor de una automatización de un formulario (F21): Cuándo / Si / Entonces.
- * Un flujo con ramas se abre en solo lectura, con "Abrir en el canvas".
+ * El editor de una automatización de un formulario (F21): Cuándo / Solo si… / pasos
+ * (con Condiciones). Un flujo que no es un árbol de pasos se abre en solo lectura,
+ * con "Abrir en el canvas".
  */
 export default async function AutomatizacionDeFormularioPage({ params }: { params: Promise<{ id: string; flowId: string }> }) {
   const ctx = await getPermissionContext();
@@ -29,6 +34,20 @@ export default async function AutomatizacionDeFormularioPage({ params }: { param
   const enabled = found.flow.status === "published" && Boolean(triggerRow.data?.is_active);
   const answerKeys = (((form.draft_definition as { fields?: FormField[] } | null)?.fields ?? []) as FormField[]).filter((f) => f.type !== "file").map((f) => f.key);
 
+  const triggerNode = found.nodes.find((n) => n.type === "trigger");
+  const triggerData = (triggerNode?.data ?? {}) as Record<string, unknown>;
+  const triggerType = String(triggerData.triggerType ?? "form_submitted");
+
+  // El «Solo si…»: las preguntas de los formularios del disparador (las de la versión publicada,
+  // o el borrador si todavía no se publicó). Un contrato firmado no tiene respuestas que filtrar.
+  let onlyIf: { sources: ReturnType<typeof conditionSources>; value: VisibilityConfig | undefined } | undefined;
+  if (triggerType !== "contract_signed") {
+    const formIds = (Array.isArray(triggerData.form_ids) ? triggerData.form_ids : []).filter((v): v is string => typeof v === "string");
+    const forms = formIds.length > 0 ? await loadFormsWithFields(ctx.supabase, ctx.workspace.id, formIds) : [];
+    const common = commonFields(forms);
+    onlyIf = { sources: conditionSources(common, common.length), value: (triggerData.answer_conditions as VisibilityConfig | null | undefined) ?? undefined };
+  }
+
   return (
     <FormLinearFlowEditor
       formId={id}
@@ -36,8 +55,10 @@ export default async function AutomatizacionDeFormularioPage({ params }: { param
       answerKeys={answerKeys}
       flowId={flowId}
       flowName={found.flow.name}
-      linear={flowToLinear(found.nodes, found.edges)}
+      tree={flowToTree(found.nodes, found.edges)}
+      trigger={{ type: triggerType, config: triggerData }}
       enabled={enabled}
+      onlyIf={onlyIf}
     />
   );
 }

@@ -1,18 +1,25 @@
 "use client";
 
 /**
- * El editor lineal de una automatización de formulario (F21). Envoltorio del
- * editor compartido (`components/automations/linear-flow-editor.tsx`): le pasa las
- * variables de Formularios, su descripción del disparador y sus acciones.
+ * El editor de pasos de una automatización de formulario (F21). Envoltorio del
+ * editor compartido (`components/automations/step-tree-editor.tsx`): le pasa las
+ * variables de Formularios, su descripción del disparador, sus acciones y el
+ * «Solo si…» del disparador.
  */
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { LinearFlowEditor } from "@/components/automations/linear-flow-editor";
-import type { LinearFlow } from "@/lib/scheduling/automation/linear-flow";
+import { StepTreeEditor } from "@/components/automations/step-tree-editor";
+import type { StepTree } from "@/lib/automations/step-tree";
 import { describeFormTrigger } from "@/lib/forms/automation/trigger-config";
 import { FORM_VARIABLE_KEYS, variableKey } from "@/lib/forms/automation/variables";
-import { saveFormLinearFlow, sendFormFlowTestEmail } from "@/lib/actions/forms/flows";
+import type { ConditionSource } from "@/lib/forms/visibility-builder-adapter";
+import type { VisibilityConfig } from "@/lib/forms/visibility-types";
+import { saveFormFlowTree, sendFormFlowTestEmail } from "@/lib/actions/forms/flows";
+import { getTestResponseValues, listTestResponses } from "@/lib/actions/forms/test-conditions";
+
+// Probar con una respuesta real: el servidor solo lee (ver `test-conditions.ts`).
+const TEST_RESPONSES = { list: listTestResponses, load: getTestResponseValues };
 
 export function FormLinearFlowEditor({
   formId,
@@ -20,8 +27,10 @@ export function FormLinearFlowEditor({
   answerKeys,
   flowId,
   flowName,
-  linear,
+  tree,
+  trigger,
   enabled,
+  onlyIf,
 }: {
   formId: string;
   formName: string;
@@ -29,13 +38,17 @@ export function FormLinearFlowEditor({
   answerKeys: string[];
   flowId: string;
   flowName: string;
-  /** null = el flujo tiene ramas y solo se puede abrir en el canvas. */
-  linear: LinearFlow | null;
+  /** null = el flujo no es un árbol (caminos que se juntan, un A/B...) y solo se puede abrir en el canvas. */
+  tree: StepTree | null;
+  trigger: { type: string; config: Record<string, unknown> };
   enabled: boolean;
+  /** El «Solo si…»: las preguntas sobre las que se puede armar y lo que hay guardado. Sin esto (un contrato) no se muestra. */
+  onlyIf?: { sources: ConditionSource[]; value: VisibilityConfig | undefined };
 }) {
   const variableKeys = [...FORM_VARIABLE_KEYS, ...answerKeys.map((key) => `answer.${variableKey(key)}`), "contact.display_name"];
   return (
-    <LinearFlowEditor
+    <StepTreeEditor
+      screen="forms"
       routeForHeader={`/dashboard/formularios/${formId}/automatizaciones/${flowId}`}
       backHref={
         <Link
@@ -49,13 +62,16 @@ export function FormLinearFlowEditor({
       }
       flowId={flowId}
       flowName={flowName}
-      linear={linear}
+      tree={tree}
+      trigger={trigger}
       enabled={enabled}
       variableKeys={variableKeys}
       variableExample="answer.nombre"
       describeTrigger={(type, config) => describeFormTrigger(type, config, { [formId]: formName })}
-      onSave={saveFormLinearFlow}
+      onlyIf={onlyIf}
+      onSave={saveFormFlowTree}
       onSendTest={sendFormFlowTestEmail}
+      testResponses={TEST_RESPONSES}
     />
   );
 }

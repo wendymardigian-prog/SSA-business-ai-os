@@ -8,6 +8,7 @@
 import { registerNode } from "./registry";
 import { sendMessageNode } from "../nodes/send-message";
 import { conditionNode } from "../nodes/condition";
+import { branchNode } from "../nodes/branch";
 import { delayNode, smartDelayNode } from "../nodes/delay";
 import { addTagNode, removeTagNode } from "../nodes/tag";
 import { setCustomFieldNode } from "../nodes/set-field";
@@ -30,6 +31,8 @@ registerNode(sendMessageNode);
 registerNode(sendAssetNode);
 registerNode(aiResponseNode);
 registerNode(conditionNode);
+// "Condiciones": varios caminos en orden + "Si no". El `condition` de siempre sigue andando igual.
+registerNode(branchNode);
 registerNode(delayNode);
 registerNode(smartDelayNode);
 registerNode(addTagNode);

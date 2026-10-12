@@ -3,7 +3,7 @@
 import {
   Zap,
   MessageSquare,
-  GitBranch,
+  Split,
   Clock,
   Tag,
   FileText,
@@ -75,7 +75,9 @@ const categories: PaletteCategory[] = [
   {
     name: "Logic",
     items: [
-      { type: "condition", nodeType: "condition", label: "Condition", icon: GitBranch },
+      // "Condiciones" reemplaza a "Condition": varios caminos en orden y "Si no". Los
+      // flujos que ya tienen un "Condition" lo siguen mostrando como "Condición (sí / si no)".
+      { type: "branch", nodeType: "branch", label: "Condiciones", icon: Split },
       { type: "delay", nodeType: "delay", label: "Delay", icon: Clock },
       {
         type: "action",

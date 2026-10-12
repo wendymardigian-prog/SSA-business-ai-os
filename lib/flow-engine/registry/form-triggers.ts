@@ -23,6 +23,9 @@ import {
   type SubmissionForMatch,
 } from "@/lib/forms/automation/triggers";
 import { formVariables } from "@/lib/forms/automation/variables";
+import { formVariableSchema } from "@/lib/forms/automation/variable-schema";
+import type { FormWithFields } from "@/lib/forms/automation/trigger-config";
+import type { FormField } from "@/lib/forms/fields";
 
 type Db = SupabaseClient<Database>;
 
@@ -65,6 +68,39 @@ async function loadSubmission(db: Db, submissionId: string): Promise<LoadedSubmi
   };
 }
 
+function fieldsOfDefinition(definition: unknown): FormField[] {
+  const fields = (definition as { fields?: unknown } | null)?.fields;
+  return Array.isArray(fields) ? (fields as FormField[]) : [];
+}
+
+/**
+ * Los formularios del disparador con los campos de su version PUBLICADA: es con
+ * la que se responde, y por eso con la que se arman las condiciones. Un
+ * formulario que todavia no se publico (la automatizacion se arma antes) usa
+ * su borrador, y la condicion se vuelve a mirar cuando se publique.
+ */
+export async function loadFormsWithFields(db: Db, workspaceId: string, formIds: string[]): Promise<FormWithFields[]> {
+  if (formIds.length === 0) return [];
+  const { data: forms } = await db
+    .from("forms")
+    .select("id, current_version_id, draft_definition")
+    .eq("workspace_id", workspaceId)
+    .in("id", formIds);
+  if (!forms || forms.length === 0) return [];
+
+  const versionIds = forms.map((f) => f.current_version_id).filter((id): id is string => !!id);
+  const definitions = new Map<string, unknown>();
+  if (versionIds.length > 0) {
+    const { data: versions } = await db.from("form_versions").select("id, definition").in("id", versionIds);
+    for (const version of versions ?? []) definitions.set(version.id, version.definition);
+  }
+
+  return forms.map((form) => ({
+    id: form.id,
+    fields: fieldsOfDefinition(form.current_version_id && definitions.has(form.current_version_id) ? definitions.get(form.current_version_id) : form.draft_definition),
+  }));
+}
+
 for (const type of FORM_TRIGGER_TYPES) {
   registerTrigger({
     type,
@@ -80,6 +116,12 @@ for (const type of FORM_TRIGGER_TYPES) {
       const loaded = await loadSubmission(args.supabase, String(payload.submission_id ?? ""));
       if (!loaded) return false;
       return formEventMatches(type, args.config ?? {}, loaded.match);
+    },
+
+    // Que se puede comparar en un camino condicional: nombre, puntaje y las preguntas.
+    variableSchema: async (config, ctx) => {
+      const ids = Array.isArray(config?.form_ids) ? (config.form_ids as unknown[]).filter((id): id is string => typeof id === "string") : [];
+      return formVariableSchema(type, await loadFormsWithFields(ctx.supabase, ctx.workspaceId, ids));
     },
 
     dedupeKeyFor: (args) => {

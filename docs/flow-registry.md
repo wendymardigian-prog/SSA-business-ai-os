@@ -224,8 +224,132 @@ registro solo declara.
   puntaje y las condiciones. Con varios formularios, las condiciones ofrecen solo los
   campos que tienen la misma clave y el mismo tipo en todos.
 - Los flujos creados desde la pestaña **Automatizaciones** de un formulario llevan
-  `flows.form_id` (00155) y se editan en el editor lineal compartido
-  (`components/automations/linear-flow-editor.tsx`, que usa también la Agenda).
+  `flows.form_id` (00155) y se editan en el editor de pasos compartido
+  (`components/automations/step-tree-editor.tsx`, que usa también la Agenda; el
+  `linear-flow-editor.tsx` quedó como envoltorio). Cómo se arman con
+  condiciones: [formularios.md](formularios.md) y la sección siguiente.
+
+## Condiciones con caminos: el nodo `branch`
+
+Un nodo del registro (`lib/flow-engine/nodes/branch.ts`, alta en `registry/nodes.ts`)
+que reparte el flujo por **caminos distintos según un dato**. Se llama "Condiciones"
+en la pantalla. **El motor no sabe de él**: sigue `handle:<salida>` como con cualquier
+otro nodo. Detalle de uso desde un formulario en [formularios.md](formularios.md).
+
+**Los datos del nodo** (`BranchNodeData`):
+
+```ts
+{ label?: string, paths: [{ id, label, logic: "and" | "or", conditions: BranchCondition[] }] }
+```
+
+- **Las salidas son handles**: `handle:<id del camino>` y `handle:else` ("Si no", que
+  no se guarda: existe siempre y es siempre la última).
+- **La regla**: va por **el primer camino, en el orden en que están, cuyas condiciones
+  se cumplen**; si ninguno se cumple, por "Si no". En cuanto uno se cumple los de
+  abajo ni se miran (`pickPath`). Un camino o un "Si no" sin pasos termina la sesión
+  sin error.
+- **Los ids de camino** son `p_xxxxxx`, se generan una vez y **no cambian** aunque se
+  renombre o se reordene el camino (son la salida). Prohibidos: `else`, `true`,
+  `false`, `yes`, `no` (el motor tiene alias para los últimos). De 1 a 10 caminos y
+  un nombre de hasta 60 caracteres (`lib/flow-engine/branch-paths.ts`).
+- **Nunca lanza.** Un campo que no se puede leer (la pregunta ya no existe, la base no
+  responde) hace que esa condición **no se cumpla** y el flujo sigue; datos del nodo
+  rotos van por "Si no".
+
+**Una condición** es `{ field, operator, value?, value2?, values?, valueType? }`. El
+`field` es la ruta del dato (`answer.facturacion`, `form.name`, `submission.score`,
+`booking.status`, `contact.tags`, `variable:ai_response`...).
+
+**Operadores por tipo** (`OPERATORS_BY_TYPE` en `condition-eval.ts`):
+
+| Tipo | Operadores |
+|---|---|
+| texto | `is`, `is_not`, `contains`, `not_contains`, `is_empty`, `is_not_empty` |
+| número | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between`, `is_empty` |
+| selección única | `is`, `is_not`, `is_any_of`, `is_empty` |
+| selección múltiple | `includes`, `includes_any`, `includes_all`, `not_includes`, `is_empty` |
+| fecha | `before`, `after`, `between`, `within_last_days`, `older_than_days`, `is_empty` |
+| sí / no | `is_true`, `is_false` |
+
+### Un solo evaluador
+
+`lib/flow-engine/condition-eval.ts` es **el único** que decide si una condición se
+cumple. Lo usan el nodo, el simulador, el panel del canvas y "Probar condiciones".
+Es puro (sin base, sin React, con el reloj por parámetro), así que corre igual en el
+servidor y en el navegador. Reglas que no se discuten:
+
+- **Se compara por tipo, con el valor real**: `"12" > 9`, no como texto. Las
+  respuestas de un formulario se leen de la base con su tipo (un número es un número,
+  una selección múltiple es una lista), no del texto de `{{answer.x}}`.
+- Mayúsculas y espacios no cuentan. Los números no aceptan coma decimal (`"1,5"` no
+  es número). Las fechas `YYYY-MM-DD` son UTC y se comparan por día.
+- **Un valor que no se puede leer como el tipo** (un "abc" donde va un número) no
+  cumple NINGUNA condición de ese tipo, ni siquiera "es distinto de".
+- **Una condición incompleta no se cumple** (una lista sin elementos, una fecha sin
+  fecha): una regla a medio armar no deja pasar a nadie.
+- **Un grupo vacío**: `and` se cumple, `or` no (igual que el nodo viejo).
+- **Los seis operadores viejos** del `condition` (`equals`, `not_equals`, `contains`,
+  `exists`, `gt`, `lt`) viven en `legacy-operators.ts` y se evalúan con la semántica de
+  siempre cuando la condición no trae `valueType`. El registro registra esa misma
+  función: un test lo comprueba.
+
+### De dónde sale cada campo
+
+`resolveBranchFields` resuelve **cada campo una sola vez** y carga el contacto
+**solo si algún campo lo necesita** (una condición sin `valueType`, la que viene del
+nodo viejo, siempre lo necesita). Cada campo del registro puede declarar
+`resolveTyped` (valor con su tipo) además del `resolve` de siempre.
+
+- `answer.<clave>` (las claves con guion pasan a guion bajo): se lee `form_submissions`
+  por `submission.id` y se usa la definición **de la versión con la que se respondió**
+  (`answerValueOf`). Si la pregunta no está en esa versión: "la pregunta ya no existe"
+  (no se cumple, y queda en el log). Si está pero no se respondió: vacía (`is_empty`
+  se cumple). Sin `submission.id` cae al texto de la variable.
+- `form.*`, `submission.*`, `booking.*`, `sale.*`, `payment.*`: las variables que dejó
+  el disparador, por su ruta (no necesitan contacto).
+- `contact.tags`, `contact.sequences`, `contact.lead_temperature`, los campos
+  personalizados y los datos de llamadas y ventas que ya tenía el `condition`.
+
+### Qué se puede comparar: `variableSchema` y `outputs`
+
+El editor ofrece solo campos que existen, con su tipo y sus opciones:
+
+- **`TriggerDefinition.variableSchema?(config, ctx)`** (asincrónico, corre en el
+  **servidor**, devuelve `ConditionFieldSpec[]`): lo que aporta el disparador.
+  Formularios (`formVariableSchema`): cada pregunta con su tipo, `form.name` y, en
+  encuestas, `submission.score` y `submission.nps_category`; con varios formularios
+  solo las preguntas con la misma clave y el mismo tipo en todos. Agenda: `booking.*`
+  como texto. Ventas: solo las variables que son texto en serio. El canvas y el editor
+  de pasos lo piden con la acción `getConditionCatalogInputs`.
+- **`NodeDefinition.outputs?(data)`** (puro, en `node-outputs.ts`): lo que un nodo le
+  deja a los pasos siguientes. Hoy solo `httpRequest` (`variable:<responseVariable>`)
+  y `aiResponse` (`variable:ai_response`). **Solo cuentan los nodos que están ANTES
+  en el mismo camino** (`upstreamNodesOf`): un camino no ve lo de otro.
+- **`availableConditionFields`** (`condition-catalog.ts`, puro) junta todo en grupos
+  ("Del formulario", "De pasos anteriores", "Del contacto"...) y `staleConditions`
+  avisa de las condiciones sobre campos que ya no existen.
+
+Sumar un trigger que aporte campos es declarar `variableSchema`; sumar un nodo que
+deje una variable es declarar `outputs` y sumarlo a `node-outputs.ts`. El motor y el
+catálogo no se tocan.
+
+### `branch_taken`: lo que queda en el historial
+
+Cada vez que el nodo corre inserta en `analytics_events` un `branch_taken` con
+`{ nodeId, sessionId, pathId, pathLabel, checks: [{ pathId, field, operator, ok, missing?, error? }] }`.
+**Nunca guarda valores** (pueden ser datos personales): solo el camino y, por
+condición mirada, qué campo y si se cumplió. Si el insert falla, el flujo sigue. La
+ficha del contacto (`lib/contacts/history.ts`) lo muestra como "en la automatización X
+fue por el camino Y".
+
+### Convertir el `condition` viejo
+
+`conditionToBranch` (`convert-condition.ts`) arma un camino con las condiciones viejas
+tal cual, `true` → ese camino, `false` → "Si no". Da las mismas salidas que el
+original (misma tabla de contextos en los tests). **Única diferencia documentada**: un
+nodo sin NINGUNA condición y sin contacto (el `condition` da `false`; el `branch`
+convertido se cumple, porque un `and` vacío se cumple). No se da en la práctica: el
+motor siempre corre sobre un contacto. El `condition` viejo **no se toca**.
 
 ## Ventas (seis triggers, once atajos, tres nodos)
 

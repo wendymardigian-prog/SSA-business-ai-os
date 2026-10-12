@@ -12,7 +12,11 @@ import { sendTransactionalEmail } from "@/lib/email/send";
 import { bodyToHtml } from "@/lib/flow-engine/nodes/send-email";
 import { interpolateVariables } from "@/lib/flow-engine/interpolate";
 import { flowToLinear, linearToFlow, type LinearFlow } from "@/lib/scheduling/automation/linear-flow";
-import { blankFormFlowGraph, formFlowName, formTemplateByKey, formTemplateGraph, nextAutomationName, type FormTemplateKey } from "@/lib/forms/automation/templates";
+import { prepareTreeSave } from "@/lib/automations/step-tree-save";
+import type { StepTree } from "@/lib/automations/step-tree";
+import { withAnswerConditions } from "@/lib/forms/automation/answer-conditions";
+import { blankFormFlowGraph, formFlowName, formTemplateByKey, formTemplateGraph, nextAutomationName, templateQuestions, type FormTemplateKey } from "@/lib/forms/automation/templates";
+import { loadFormsWithFields } from "@/lib/flow-engine/registry/form-triggers";
 import { emptyFormVariables } from "@/lib/forms/automation/variables";
 import { formFlowGraph } from "@/lib/forms/data/form-flows";
 
@@ -105,8 +109,11 @@ export async function createFormFlow(input: { formId: string }): Promise<FormFlo
   return { ok: true, flowId: data.id };
 }
 
-/** Una plantilla de un clic. Nace APAGADA, con el email de quien la crea si manda un aviso. */
-export async function createFormFlowFromTemplate(input: { formId: string; template: FormTemplateKey; tagName?: string }): Promise<FormFlowResult<{ flowId: string }>> {
+/**
+ * Una plantilla de un clic. Nace APAGADA, con el email de quien la crea si manda un aviso.
+ * `questionKey` es la pregunta de la plantilla «Email distinto según una respuesta».
+ */
+export async function createFormFlowFromTemplate(input: { formId: string; template: FormTemplateKey; tagName?: string; questionKey?: string }): Promise<FormFlowResult<{ flowId: string }>> {
   const ctx = await context();
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   const form = await loadForm(ctx, input.formId);
@@ -123,7 +130,16 @@ export async function createFormFlowFromTemplate(input: { formId: string; templa
     return { ok: false, error: "Tu usuario no tiene email: no hay a dónde mandar el aviso." };
   }
 
-  const graph = formTemplateGraph(template.key, { form, userEmail, tagName });
+  // La pregunta se busca en el servidor, con la misma definicion con la que se arman las condiciones
+  // (la version publicada, o el borrador si nunca se publico): el navegador solo dice cual.
+  let question;
+  if (template.needsQuestion) {
+    const [loaded] = await loadFormsWithFields(ctx.supabase, ctx.workspace.id, [form.id]);
+    question = templateQuestions(loaded?.fields ?? []).find((q) => q.key === input.questionKey);
+    if (!question) return { ok: false, error: "Elegí una pregunta de selección única o de número de este formulario." };
+  }
+
+  const graph = formTemplateGraph(template.key, { form, userEmail, tagName, question });
   const { data, error } = await ctx.supabase
     .from("flows")
     .insert({
@@ -177,6 +193,48 @@ export async function saveFormLinearFlow(input: { flowId: string; linear: Linear
   }
 
   const graph = linearToFlow(input.linear);
+  const { error } = await ctx.supabase.from("flows").update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json }).eq("id", input.flowId);
+  if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
+
+  // Si estaba encendido, el trigger se rehace con lo que quedó.
+  if (found.flow.status === "published") {
+    const desired = buildDesiredTriggers(graph.nodes as unknown as Array<Record<string, unknown>>, input.flowId);
+    await ctx.supabase.from("triggers").delete().eq("flow_id", input.flowId);
+    if (desired.length > 0) {
+      await ctx.supabase.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ctx.workspace.id, is_active: true })));
+    }
+  }
+
+  await audit(ctx, found.formId, { flow_id: input.flowId, saved: true });
+  refresh(found.formId, input.flowId);
+  return { ok: true };
+}
+
+/**
+ * Guardar el flujo desde el editor de pasos (arbol con Condiciones).
+ *
+ * El servidor no le cree al navegador lo que no tiene que decidir el: se niega si
+ * el grafo guardado no es un arbol (fusion, A/B, ciclo: eso se edita en el canvas),
+ * valida el arbol entero (`prepareTreeSave`: pasos permitidos en Formularios,
+ * caminos de Condiciones, forma posible) y toma el disparador de la base. Lo unico
+ * del disparador que se puede cambiar es `answerConditions` ("Solo si…", el mismo
+ * formato de siempre; `undefined` = no tocarlo, `null` = sacarlo).
+ */
+export async function saveFormFlowTree(input: { flowId: string; tree: Pick<StepTree, "steps">; answerConditions?: unknown }): Promise<FormFlowResult> {
+  const owned = await ownedFlow(input.flowId);
+  if (owned.error !== undefined) return { ok: false, error: owned.error };
+  const { ctx, found } = owned;
+
+  const storedTrigger = found.nodes.find((n) => n.type === "trigger");
+  if (!storedTrigger) return { ok: false, error: "Esta automatización no tiene disparador: abrila en el canvas." };
+
+  const trigger = withAnswerConditions((storedTrigger.data ?? {}) as Record<string, unknown>, input.answerConditions);
+  if (!trigger.ok) return { ok: false, error: trigger.error };
+
+  const prepared = prepareTreeSave({ screen: "forms", stored: { nodes: found.nodes, edges: found.edges }, tree: input.tree, triggerData: trigger.data });
+  if (!prepared.ok) return { ok: false, error: prepared.error };
+  const graph = prepared.graph;
+
   const { error } = await ctx.supabase.from("flows").update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json }).eq("id", input.flowId);
   if (error) return { ok: false, error: "No pude guardar. Probá de nuevo." };
 

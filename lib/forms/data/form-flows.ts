@@ -9,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { CanvasEdge, CanvasNode } from "@/lib/scheduling/automation/linear-flow";
 import { describeFormTrigger } from "@/lib/forms/automation/trigger-config";
+import { summarizeFlow } from "@/lib/automations/flow-summary";
 
 type Db = SupabaseClient<Database>;
 
@@ -19,12 +20,14 @@ export interface FormFlowRow {
   enabled: boolean;
   /** "Se envía un formulario en «Aplicación»". */
   describe: string;
+  /** Lo que hace, en una línea: "Cuando se envía · 2 caminos + si no · 3 emails", o "Armado en el canvas". */
+  summary: string;
 }
 
 export async function flowsForForm(supabase: Db, formId: string, formNames: Record<string, string> = {}): Promise<FormFlowRow[]> {
   const { data: flows } = await supabase
     .from("flows")
-    .select("id, name, status")
+    .select("id, name, status, nodes, edges")
     .eq("form_id", formId)
     .order("created_at", { ascending: true });
   if (!flows || flows.length === 0) return [];
@@ -42,6 +45,7 @@ export async function flowsForForm(supabase: Db, formId: string, formNames: Reco
       name: flow.name,
       enabled: flow.status === "published" && Boolean(trigger?.is_active),
       describe: trigger ? describeFormTrigger(trigger.type, trigger.config, formNames) : "Sin disparador",
+      summary: summarizeFlow(flow.nodes, flow.edges),
     };
   });
 }

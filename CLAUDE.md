@@ -930,6 +930,52 @@ node scripts/verify-audit-visibility.mjs --despues-de-00168
 
 Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
 
+# Automatizaciones con condiciones (construido, 12/10/2026)
+
+El nodo `branch` ("Condiciones") reparte un flujo por caminos según un dato, y el editor
+de pasos (Cuándo / Solo si… / Pasos) lo arma desde Formularios y la Agenda sin pasar por
+el canvas. Detalle en [docs/flow-registry.md](docs/flow-registry.md) (el nodo, los
+operadores, `variableSchema`, `outputs`) y [docs/formularios.md](docs/formularios.md)
+(cómo se arma, "Probar condiciones", la plantilla). Avance en
+`docs/PROGRESS-automatizaciones-condiciones.md`, pendientes en `docs/PENDIENTE.md`.
+
+## Lo que no se puede romper
+
+- **El motor no se tocó.** `engine.ts`, `interpolate.ts`, `nodes/condition.ts` y el cron
+  de `automation_events` siguen igual; todo entró por el registro. Sin migraciones.
+- **Los caminos son handles**: `handle:<id del camino>` y `handle:else` ("Si no", que no
+  se guarda y es siempre el último). El id es `p_xxxxxx`, no cambia nunca aunque se
+  renombre o reordene el camino, y no puede ser `else`/`true`/`false`/`yes`/`no`.
+- **Va por el primer camino que se cumple**, en el orden en que están; si ninguno, "Si no".
+  Los de abajo ni se miran. Un campo que no se puede leer es "no se cumple", nunca un
+  error: el nodo no lanza.
+- **Ida y vuelta exacta árbol ↔ grafo** (`lib/automations/step-tree.ts`): `flowToTree` y
+  `treeToFlow` conservan ids, tipos y datos de cada nodo (una sesión pausada en un
+  "Esperar" no se pierde al guardar). Lo que no es árbol (fusión, ciclo, A/B, más de 3
+  niveles) devuelve `null` y se edita solo en el canvas; el editor nunca guarda sobre eso.
+- **Un solo evaluador**: `lib/flow-engine/condition-eval.ts`, puro, lo usan el nodo, el
+  simulador, el panel y "Probar condiciones". Nadie arma su propia comparación. Se compara
+  por tipo con el valor real; los seis operadores viejos del `condition` se evalúan con su
+  semántica de siempre (`legacy-operators.ts`).
+- **El `condition` viejo no se toca.** "Convertir a Condiciones" crea un `branch` nuevo
+  (`conditionToBranch`); el original sigue funcionando igual.
+- **`branch_taken` no guarda valores**: solo el camino y, por condición, qué campo y si se
+  cumplió (pueden ser datos personales). Y un fallo al anotarlo nunca frena el flujo.
+- **En Formularios el disparador es fijo.** Al guardar, el servidor lo toma de la base y
+  solo acepta cambios en `answer_conditions` ("Solo si…", mismo formato de siempre,
+  validado con `parseFormTriggerConfig`). Un paso que el editor no ofrece en esa pantalla
+  solo se acepta si ya estaba guardado, igual. Todo pasa por `prepareTreeSave`: un árbol
+  que viene de afuera (una plantilla, por ejemplo) se valida ahí.
+- **Guardar un "Si" sin salida declarada ahora escribe `true`.** El motor nunca seguía
+  esa arista (el flujo se cortaba en la condición); es el único caso donde guardar desde
+  el editor nuevo cambia el comportamiento de un flujo, y está fijado en un test.
+- **"Probar condiciones" no escribe nada**: la acción solo hace `select` con el cliente
+  del usuario (la RLS decide qué respuestas ve) y la cuenta (`explainPaths`) usa el mismo
+  `pickPath` que el nodo. Hay un test de paridad con el motor y otro con espías.
+- Una condición sobre `answer.*` lee la respuesta con la definición **de la versión con la
+  que se respondió**: una pregunta que ya no está = "ya no existe" (no se cumple), distinto
+  de "no respondida" (vacía).
+
 # Sitio publico
 
 Las paginas publicas del propio proyecto viven en `app/(sitio)/` y se arman **a pedido con

@@ -10,6 +10,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import type { FlowNode, FlowExecutionContext, IncomingMessage } from "../types";
+import type { ConditionFieldSpec, FieldValue } from "../condition-eval";
 
 // ------------------------------------------------------------
 // Nodos
@@ -78,6 +79,12 @@ export interface NodeDefinition<TData = never> {
    * esto era un `if` con dos tipos escritos a mano adentro del motor.
    */
   persistsVariables?: boolean;
+  /**
+   * Lo que este nodo le deja a los pasos siguientes para comparar (una
+   * variable que guarda, por ejemplo). Puro y sin base: lo importa el catalogo
+   * de condiciones, que corre en el navegador. La fuente es `node-outputs.ts`.
+   */
+  outputs?(data: TData): ConditionFieldSpec[];
   execute(args: NodeExecutionArgs<TData>): Promise<NodeResult> | NodeResult;
 }
 
@@ -144,6 +151,12 @@ export interface TriggerEventArgs {
   booking?: Record<string, unknown> | null;
 }
 
+/** Lo que un trigger necesita para decir que variables aporta. */
+export interface VariableSchemaContext {
+  supabase: SupabaseClient<Database>;
+  workspaceId: string;
+}
+
 export interface TriggerDefinition {
   type: string;
   label: string;
@@ -175,6 +188,13 @@ export interface TriggerDefinition {
   dedupeKeyFor?(args: TriggerEventArgs): string;
   /** Variables que este trigger le suma al contexto del flow. */
   variablesFor?(args: TriggerEventArgs): Promise<Record<string, unknown>> | Record<string, unknown>;
+  /**
+   * Que campos aporta este trigger para armar condiciones, con su tipo
+   * (las preguntas de un formulario, los datos de una reunion...). Depende de
+   * la config del trigger (a que formularios aplica), asi que va a la base:
+   * corre en el SERVIDOR y el canvas lo pide con una accion del servidor.
+   */
+  variableSchema?(config: Record<string, unknown>, ctx: VariableSchemaContext): Promise<ConditionFieldSpec[]> | ConditionFieldSpec[];
   /**
    * Puerta de entrada extra de ESTE tipo, evaluada despues del match y antes
    * de disparar. Las puertas que valen para cualquier tipo y se prenden desde
@@ -219,6 +239,12 @@ export interface ConditionFieldArgs {
   context: FlowExecutionContext;
   /** El contacto ya cargado, para no volver a consultarlo por cada condicion. */
   contact: Record<string, unknown>;
+  /**
+   * Memoria de UNA corrida de nodo: lo que varios campos necesitan y es caro
+   * (la respuesta del formulario) se carga una sola vez. La pasa el nodo
+   * `branch`; el `condition` viejo no la usa.
+   */
+  memo?: Map<string, Promise<unknown>>;
 }
 
 /**
@@ -235,4 +261,10 @@ export interface ConditionField {
   resolve(
     args: ConditionFieldArgs
   ): Promise<string | undefined> | string | undefined;
+  /**
+   * El valor con su tipo real (una lista de tags, un numero) en vez de texto.
+   * Solo lo usa el nodo `branch`; el `condition` viejo sigue con `resolve`.
+   * Puede lanzar `MissingFieldError` (el campo ya no existe).
+   */
+  resolveTyped?(args: ConditionFieldArgs): Promise<FieldValue> | FieldValue;
 }

@@ -31,7 +31,8 @@ export async function flowsForEventType(supabase: Db, eventTypeId: string): Prom
     .from("flows")
     .select("id, name, status, template_key")
     .eq("event_type_id", eventTypeId)
-    .is("deleted_at", null)
+    // `flows` NO tiene `deleted_at`: filtrarlo hacía fallar la consulta y la sección
+    // Flujos del evento aparecía siempre vacía, aunque los flujos existieran.
     .order("created_at", { ascending: true });
 
   if (!flows || flows.length === 0) return [];

@@ -29,6 +29,7 @@ import {
   type SalesTriggerType,
 } from "@/lib/sales/automation/triggers";
 import { salesVariables } from "@/lib/sales/automation/variables";
+import { salesVariableSchema } from "@/lib/sales/automation/variable-schema";
 
 type Db = SupabaseClient<Database>;
 
@@ -113,6 +114,9 @@ for (const type of SALES_TRIGGER_TYPES) {
     // Debajo de `crm_event` (50), igual que agenda, llamadas y formularios.
     priority: 45,
     eventTypes: EVENT_TYPES_OF[type],
+
+    // Lo que un camino condicional puede comparar de la venta o el pago (solo texto: ver el modulo).
+    variableSchema: () => salesVariableSchema(type),
 
     eventMatches: async (args) => {
       const payload = (args.event.payload ?? {}) as Record<string, unknown>;
