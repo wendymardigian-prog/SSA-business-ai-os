@@ -16,7 +16,6 @@ export interface PublicFormData {
   contract: { text: string | null; version_number: number; title?: string | null; accept_label?: string | null } | null;
   signature_required: boolean;
   survey: { scoreFieldKey?: string | null } | null;
-  turnstile_site_key: string | null;
 }
 
 export type PublicFormResult = PublicFormData | { status: "unavailable" };
@@ -43,6 +42,7 @@ export function toFormFields(fields: PublicField[]): FormField[] {
     hidden: f.hidden ? { source: f.hidden.source, param: f.hidden.param } : undefined,
     visibility: f.visibility,
     prefill: f.prefill,
+    social: f.social,
   }));
 }
 
@@ -60,7 +60,6 @@ export type SubmitFailure =
   | { kind: "fields"; fields: Record<string, string>; message: string }
   | { kind: "already_answered"; message: string }
   | { kind: "form_changed"; message: string }
-  | { kind: "captcha"; message: string; retryable: true }
   | { kind: "unavailable"; message: string }
   | { kind: "general"; message: string };
 
@@ -73,9 +72,6 @@ export function describeFailure(status: number, body: unknown): SubmitFailure {
   }
   if (data.error === "already_answered") return { kind: "already_answered", message: message || "Ya respondiste, ¡gracias!" };
   if (data.error === "form_changed") return { kind: "form_changed", message: message || "El formulario cambió: recargá la página." };
-  if (data.error === "captcha_failed" || data.error === "captcha_unavailable") {
-    return { kind: "captcha", message: message || "No pudimos verificar que sos una persona. Probá de nuevo.", retryable: true };
-  }
   if (status === 404) return { kind: "unavailable", message: "Este formulario no está disponible." };
   if (status === 429) return { kind: "general", message: message || "Hiciste demasiados envíos. Probá de nuevo más tarde." };
   return { kind: "general", message: message || "No pudimos enviar tu respuesta. Probá de nuevo." };
@@ -105,7 +101,6 @@ export function checkClientFiles(field: Pick<FormField, "file" | "required">, fi
 
 export interface PayloadInput {
   idempotencyKey: string;
-  turnstileToken: string;
   versionId: string;
   answers: Record<string, unknown>;
   honeypot: string;
@@ -124,7 +119,6 @@ export interface PayloadInput {
 export function buildPayload(input: PayloadInput): Record<string, unknown> {
   return {
     idempotency_key: input.idempotencyKey,
-    turnstile_token: input.turnstileToken,
     version_id: input.versionId,
     answers: input.answers,
     honeypot: input.honeypot,

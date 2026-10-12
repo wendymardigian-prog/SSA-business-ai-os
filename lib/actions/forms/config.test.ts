@@ -39,6 +39,14 @@ describe("saveSurveyConfig", () => {
     expect(service.writesTo("forms")[0].values).toMatchObject({ survey_config: config, updated_by: "u1" });
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "form", action: "form.updated" }));
   });
+  it('no deja limitar a "una vez por contacto" si las respuestas no se vinculan con contactos (R3)', async () => {
+    const { service } = setup({ contact_config: { mode: "none", update: "fill_empty", map: [] } });
+    expect((await saveSurveyConfig({ formId: FORM, config })).ok).toBe(false);
+    expect(service.writes()).toHaveLength(0);
+    // Sin el límite sí se guarda.
+    setup({ contact_config: { mode: "none", update: "fill_empty", map: [] } });
+    expect((await saveSurveyConfig({ formId: FORM, config: { ...config, oncePerContact: false } })).ok).toBe(true);
+  });
   it("rechaza un puntaje que no existe o no es obligatorio", async () => {
     const { service } = setup({});
     expect((await saveSurveyConfig({ formId: FORM, config: { ...config, scoreFieldKey: "otro" } })).ok).toBe(false);
@@ -82,6 +90,11 @@ describe("createSignedFormLink", () => {
     setup({ status: "published" });
     expect(await createSignedFormLink({ formId: FORM, contactId: CONTACT })).toEqual({ ok: true, url: "https://app.ejemplo.test/f/como-vas?c=tok" });
     expect(mocks.sign).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ workspaceId: "ws1", formId: FORM, slug: "como-vas", contactId: CONTACT, baseUrl: "https://app.ejemplo.test" }));
+  });
+  it("con el vínculo a contactos apagado no hay link firmado (R3)", async () => {
+    setup({ status: "published", contact_config: { mode: "none", update: "fill_empty", map: [] } });
+    expect((await createSignedFormLink({ formId: FORM, contactId: CONTACT })).ok).toBe(false);
+    expect(mocks.sign).not.toHaveBeenCalled();
   });
   it("un formulario sin publicar no tiene links", async () => {
     setup({ status: "draft" });

@@ -12,7 +12,6 @@ import { parseStoredContractConfig } from "@/lib/forms/contract/config";
 import { defaultDesign, type FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import { DEFAULT_SUCCESS, validateSuccess } from "@/lib/forms/success";
-import { isTurnstileConfigured } from "@/lib/forms/server-ports";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +38,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
   ]);
 
   const service = await createServiceClient();
-  const [turnstileConfigured, { data: customRows }, { data: tagRows }, flows] = await Promise.all([
-    isTurnstileConfigured(service, workspace.id),
+  const [{ data: customRows }, { data: tagRows }, flows] = await Promise.all([
     supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
@@ -94,7 +92,6 @@ export default async function FormularioEditorPage({ params }: { params: Promise
       form={editorForm}
       versions={versions}
       canManage={ctx.can("forms.manage")}
-      turnstileConfigured={turnstileConfigured}
       appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
       timeZone={timeZone}
       extras={extras}

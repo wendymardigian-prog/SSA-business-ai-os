@@ -2,35 +2,35 @@
  * El envío de un formulario público (F12). SOLO servidor.
  *
  * El orden importa, y cada paso existe por algo:
- *   1. Tope por IP (20/h) y, ya con el formulario, por formulario (5/h).
+ *   1. Tope por IP (60/h) y, ya con el formulario, por formulario (30/h).
  *      Un envío cortado por el tope NO deja `form_rejected`: un ataque llenaría
  *      `analytics_events`. Lo cuenta `rate_limits`.
  *   2. Formulario disponible (versión vigente y su definición completa, con los
  *      ocultos `fixed`). No disponible → 404, también para un envío en curso.
  *   3. Forma del pedido (Zod).
- *   4. IDEMPOTENCIA, antes que el captcha: si ya existe una respuesta con esa
- *      clave se devuelve la misma sin verificar Turnstile (el token ya se
- *      consumió) ni disparar nada.
+ *   4. IDEMPOTENCIA: si ya existe una respuesta con esa clave se devuelve la
+ *      misma sin guardar ni disparar nada.
  *   5. Honeypot: lleno → éxito falso, sin guardar, con `form_rejected`.
- *   6. Turnstile en el servidor. Si Cloudflare no responde: 503 (jamás se acepta
- *      sin verificar). `timeout-or-duplicate` → se vuelve a buscar la respuesta.
- *   7. Versión: si se republicó mientras se completaba, se valida contra la
+ *      La protección anti-spam es honeypot + tope por IP + idempotencia; el
+ *      captcha está documentado en docs/pendientes/turnstile-captcha.md.
+ *   6. Versión: si se republicó mientras se completaba, se valida contra la
  *      vigente; si no pasa, 409 `form_changed`.
- *   8. Validación total (visibilidad recalculada, obligatorios, formatos,
+ *   7. Validación total (visibilidad recalculada, obligatorios, formatos,
  *      opciones, rangos). Lo oculto por condición se descarta.
- *   9. Archivos por su tipo REAL, a un bucket privado.
- *  10. Ocultos `fixed`: los pone el servidor.
- *  11. Guardar con la RPC (idempotente por índice único). La RPC resuelve el
- *      contacto (el del link firmado, o el que coincide por teléfono/email).
- *  11b. Contrato: casilla aceptada, firma válida (PNG real, ≤ 200 KB, con
+ *   8. Archivos por su tipo REAL, a un bucket privado.
+ *   9. Ocultos `fixed`: los pone el servidor.
+ *  10. Guardar con la RPC (idempotente por índice único). La RPC resuelve el
+ *      contacto (el del link firmado, o el que coincide por teléfono, email o
+ *      usuario de red social).
+ *  10b. Contrato: casilla aceptada, firma válida (PNG real, ≤ 200 KB, con
  *      trazos), email del firmante. La imagen va a un bucket privado ANTES de la
  *      RPC; la huella la calcula la base sobre el texto GUARDADO de la versión
  *      (el navegador no manda el texto: nada de lo suyo entra en la huella).
- *  12. Con el commit hecho: el toque de atribución y el aviso. Si fallan, la
+ *  11. Con el commit hecho: el toque de atribución y el aviso. Si fallan, la
  *      respuesta ya está guardada y el envío sigue siendo un éxito.
- *  13. Responder con la pantalla de éxito ya armada.
+ *  12. Responder con la pantalla de éxito ya armada.
  *
- * Todo lo que tiene que ver con la base, el captcha y el almacenamiento entra
+ * Todo lo que tiene que ver con la base y el almacenamiento entra
  * por `SubmitPorts`: así el orden se prueba entero sin tocar nada real, y
  * `verify-forms` lo corre con los puertos de verdad.
  *
@@ -45,12 +45,12 @@ import { sniffUploadMime } from "@/lib/content/media";
 import type { LimitResult, LimitSpec } from "@/lib/antispam/rate-limit";
 import { FORM_LIMITS, HOUR_MS } from "./limits";
 import type { FormField, FormType } from "./fields";
-import type { TurnstileResult } from "./turnstile";
 import { renderSuccess, type SuccessConfig } from "./success";
 import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./submission-schema";
 import { answerToText } from "./responses";
 import { normalizeSitePath } from "./site-submit";
-import { applyContactMapping } from "./contact-mapping";
+import { applyContactMappingDetailed } from "./contact-mapping";
+import type { ContactNote } from "./contact-outcome";
 import type { ContactConfig, CustomFieldDef } from "./contact-config";
 import type { ContractConfig } from "./defaults";
 import { validateSignature } from "./contract/signature";
@@ -131,9 +131,7 @@ export interface SubmitPorts {
   hashIp(ip: string): string;
   loadForm(slug: string): Promise<LoadedForm | null>;
   findSubmission(formId: string, idempotencyKey: string): Promise<ExistingSubmission | null>;
-  turnstileSecret(workspaceId: string): Promise<string | null>;
-  verifyTurnstile(input: { secret: string; token: string; ip: string; idempotencyKey: string }): Promise<TurnstileResult>;
-  recordRejected(input: { workspaceId: string; formId: string; versionId: string; reason: "captcha" | "honeypot" }): Promise<void>;
+  recordRejected(input: { workspaceId: string; formId: string; versionId: string; reason: "honeypot" }): Promise<void>;
   upload(path: string, bytes: Uint8Array, mime: string): Promise<boolean>;
   /** La imagen de la firma, al bucket privado de contratos. */
   uploadContractFile(path: string, bytes: Uint8Array, mime: string): Promise<boolean>;
@@ -185,7 +183,6 @@ export interface SubmitOutcome {
 
 const payloadSchema = z.object({
   idempotency_key: z.string().uuid(),
-  turnstile_token: z.string().min(1).max(4096),
   version_id: z.string().uuid(),
   answers: z.record(z.string(), z.unknown()),
   honeypot: z.string().max(500).optional(),
@@ -293,7 +290,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   if (!parsed.success) return fail(400, "invalid_request", { message: "El envío no es válido. Recargá la página e intentá de nuevo." });
   const payload = parsed.data;
 
-  // 4. Idempotencia, antes que el captcha.
+  // 4. Idempotencia.
   const already = await ports.findSubmission(form.id, payload.idempotency_key);
   if (already) {
     logResult(form.id, "duplicate", already.id);
@@ -310,37 +307,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     };
   }
 
-  // 6. Turnstile, en el servidor.
-  const secret = await ports.turnstileSecret(form.workspaceId);
-  if (!secret) {
-    logResult(form.id, "captcha_not_configured");
-    return fail(503, "captcha_unavailable", { message: "El formulario no está disponible por ahora. Probá de nuevo en un momento." });
-  }
-  const captcha = await ports.verifyTurnstile({
-    secret,
-    token: payload.turnstile_token,
-    ip: input.ip,
-    idempotencyKey: payload.idempotency_key,
-  });
-  if (!captcha.ok) {
-    if (captcha.codes.includes("network")) {
-      logResult(form.id, "captcha_network");
-      return fail(503, "captcha_unavailable", { message: "Probá de nuevo en un momento." });
-    }
-    if (captcha.codes.includes("timeout-or-duplicate")) {
-      // Carrera: otra pestaña (o el reintento) ya consumió el token. Si la respuesta existe, es esa.
-      const winner = await ports.findSubmission(form.id, payload.idempotency_key);
-      if (winner) {
-        logResult(form.id, "duplicate_after_captcha", winner.id);
-        return duplicateOutcome(form, winner);
-      }
-    }
-    await ports.recordRejected({ workspaceId: form.workspaceId, formId: form.id, versionId: form.versionId, reason: "captcha" });
-    logResult(form.id, "rejected_captcha");
-    return fail(400, "captcha_failed", { message: "No pudimos verificar que sos una persona. Probá de nuevo." });
-  }
-
-  // 7 y 8. Validación total contra la versión VIGENTE.
+  // 6 y 7. Validación total contra la versión VIGENTE.
   const versionChanged = payload.version_id !== form.versionId;
   const attribution = buildAttribution(payload, input.cookieHeader);
 
@@ -370,7 +337,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   const result = validateSubmission(form.fields, answersIn, { defaultCountry, fileCounts });
   const errors: Record<string, string> = { ...result.errors };
 
-  // 9. Archivos, por su tipo real.
+  // 8. Archivos, por su tipo real.
   const visible = new Set(result.visible);
   const stored: Record<string, Array<{ path: string; name: string; size: number; mime: string }>> = {};
   const uploadPrefix = `${form.workspaceId}/${form.id}/${payload.idempotency_key}`;
@@ -410,7 +377,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     return fail(400, "invalid", { fields: errors, message: "Revisá los campos marcados." });
   }
 
-  // 11b. Contrato: aceptación, firma y firmante, ANTES de subir nada.
+  // 10b. Contrato: aceptación, firma y firmante, ANTES de subir nada.
   let signature: { bytes: Uint8Array; path: string } | null = null;
   let contractSave: SaveInput["contract"] = null;
   if (form.type === "contract") {
@@ -465,7 +432,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     }
   }
 
-  // 10. Ocultos `fixed`.
+  // 9. Ocultos `fixed`.
   const values: Record<string, NormalizedValue | unknown> = { ...result.values };
   for (const field of form.fields) {
     if (field.type === "hidden" && field.hidden?.source === "fixed" && field.hidden.value && visible.has(field.key)) {
@@ -474,9 +441,12 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   }
   for (const [key, list] of Object.entries(stored)) values[key] = list;
 
-  // 11. Guardar. El contacto sale del mapeo (con las respuestas ya validadas) o del link firmado.
-  const contactHint: Record<string, unknown> = { ...applyContactMapping(form.fields, form.contactConfig, values, form.customFields) };
-  if (payload.link_token) {
+  // 10. Guardar. El contacto sale del mapeo (con las respuestas ya validadas) o del link firmado.
+  // Con el interruptor de contactos apagado (R3) no viaja nada: ni el mapeo ni un link firmado.
+  const linksContacts = form.contactConfig.mode !== "none";
+  const mapped = linksContacts ? applyContactMappingDetailed(form.fields, form.contactConfig, values, form.customFields) : null;
+  const contactHint: Record<string, unknown> = mapped ? { ...mapped.hint } : {};
+  if (linksContacts && payload.link_token) {
     const link = await ports.verifyLink(form, payload.link_token);
     if (link) {
       contactHint.signed_contact_id = link.contactId;
@@ -490,7 +460,7 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     idempotencyKey: payload.idempotency_key,
     answers: toLabeledAnswers(form.fields, values),
     attribution,
-    meta: buildMeta(ports, input, payload),
+    meta: buildMeta(ports, input, payload, mapped?.notes ?? []),
     uploadPrefix: pendingUploads.length > 0 ? uploadPrefix : null,
     contactHint,
     contract: contractSave,
@@ -503,10 +473,10 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
     return fail(500, "server_error", { message: "No pudimos guardar tu respuesta. Probá de nuevo." });
   }
 
-  // 12. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
+  // 11. Lo que va DESPUÉS del commit: el toque y el aviso. Una falla acá se registra y nada más.
   if (!saved.duplicate) await afterSave(ports, form, saved, attribution);
 
-  // 13. Responder.
+  // 12. Responder.
   logResult(form.id, saved.duplicate ? "duplicate" : "saved", saved.submissionId);
   return {
     status: 200,
@@ -559,7 +529,7 @@ export function buildAttribution(payload: SubmitPayload, cookieHeader: string | 
   return attribution;
 }
 
-function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayload): Record<string, unknown> {
+function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayload, contactNotes: ContactNote[]): Record<string, unknown> {
   const origin = payload.origin ?? "public_page";
   return {
     ip_hash: ports.hashIp(input.ip),
@@ -569,5 +539,7 @@ function buildMeta(ports: SubmitPorts, input: SubmitInput, payload: SubmitPayloa
     ...(origin === "site" && normalizeSitePath(payload.site_path) ? { site_path: normalizeSitePath(payload.site_path) } : {}),
     timezone: payload.client_meta?.timezone ?? null,
     locale: payload.client_meta?.locale ?? null,
+    // Datos que no se pudieron guardar en el contacto (país no reconocido…): el detalle de la respuesta los muestra.
+    ...(contactNotes.length > 0 ? { contact_notes: contactNotes.map((n) => ({ ...n, text: n.text.slice(0, 100) })) } : {}),
   };
 }

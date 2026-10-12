@@ -31,10 +31,10 @@ function setup(over: { sig?: Record<string, unknown> | null; version?: Record<st
   const db = fakeDb({
     "contract_signatures:select": { data: over.sig === null ? null : signature(over.sig ?? {}) },
     "form_versions:select": {
-      data: over.version === null ? null : { version_number: 2, definition: { fields: [newField("short_text", "nombre", "Nombre")] }, contract_text: "# Acuerdo\n\nTexto", contract_text_sha256: SHA, ...(over.version ?? {}) },
+      data: over.version === null ? null : { version_number: 2, definition: { fields: [newField("short_text", "nombre", "Nombre"), newField("short_text", "empresa", "Empresa")] }, contract_text: "# Acuerdo\n\nTexto", contract_text_sha256: SHA, ...(over.version ?? {}) },
     },
     "forms:select": { data: { name: "Mi contrato", contract_config: { title: "Acuerdo de servicios" } } },
-    "form_submissions:select": { data: { answers: { nombre: { label: "Nombre", type: "short_text", value: "Ana Pérez" } } } },
+    "form_submissions:select": { data: { answers: { nombre: { label: "Nombre", type: "short_text", value: "Ana Pérez" }, empresa: { label: "Empresa", type: "short_text", value: "Acme" } } } },
     "workspaces:select": { data: { timezone: "America/Costa_Rica" } },
     "contract_signatures:update": { data: null },
   });
@@ -70,7 +70,8 @@ describe("runContractPdf", () => {
     expect(scheduled).toEqual([{ type: "contract_email", payload: { signatureId: SIG, attempt: 0 }, runAt: NOW, key: `contract_email:${SIG}:0` }]);
     // El PDF lleva lo de la firma, no lo vigente.
     expect(build.mock.calls[0][0]).toMatchObject({ businessName: "Mi Negocio", title: "Acuerdo de servicios", versionNumber: 2, sha256: SHA, signer: { name: "Ana Pérez", email: "ana@x.com" }, timeZone: "America/Costa_Rica", legal: { ip: "203.0.113.9", device: "mobile", acceptedLabel: "Acepto" } });
-    expect(build.mock.calls[0][0].answers).toEqual([{ label: "Nombre", value: "Ana Pérez" }]);
+    // R10: el nombre del firmante ya sale en "Firmante"; la lista trae solo lo demás.
+    expect(build.mock.calls[0][0].answers).toEqual([{ label: "Empresa", value: "Acme" }]);
     expect(build.mock.calls[0][0].signaturePng).toBeInstanceOf(Uint8Array);
   });
 

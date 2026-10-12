@@ -110,10 +110,9 @@ const pathToVault = (entry: string) => pathTo(entry, VAULT);
 const SERVER_ONLY = [
   { label: "lib/vault.ts", file: VAULT },
   { label: "lib/supabase/server.ts", file: join(ROOT, "lib/supabase/server.ts") },
-  // Formularios: verifican el captcha con la secret key, calculan huellas con
+  // Formularios: calculan huellas con
   // `node:crypto` o cuentan topes con el cliente de servicio. Nada de esto puede
   // viajar al navegador.
-  { label: "lib/forms/turnstile.ts", file: join(ROOT, "lib/forms/turnstile.ts") },
   { label: "lib/forms/contract-hash.ts", file: join(ROOT, "lib/forms/contract-hash.ts") },
   { label: "lib/antispam/rate-limit.ts", file: join(ROOT, "lib/antispam/rate-limit.ts") },
   { label: "lib/forms/signed-link.ts", file: join(ROOT, "lib/forms/signed-link.ts") },

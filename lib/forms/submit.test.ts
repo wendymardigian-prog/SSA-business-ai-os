@@ -47,8 +47,6 @@ function makePorts(form: LoadedForm | null, over: Partial<SubmitPorts> = {}) {
     hashIp: () => "ip-hasheada",
     loadForm: vi.fn(async () => form),
     findSubmission: vi.fn(async () => null),
-    turnstileSecret: vi.fn(async () => "secret"),
-    verifyTurnstile: vi.fn(async () => ({ ok: true as const })),
     recordRejected: vi.fn(async ({ reason }) => {
       rejected.push(reason);
     }),
@@ -78,7 +76,6 @@ const baseInput = (payload: Record<string, unknown>, files: SubmitInput["files"]
   cookieHeader: null,
   payload: {
     idempotency_key: KEY,
-    turnstile_token: "tok",
     version_id: VERSION,
     answers: {},
     ...payload,
@@ -142,7 +139,7 @@ describe("submitForm: tope por IP y disponibilidad", () => {
 });
 
 describe("submitForm: idempotencia", () => {
-  it("si ya existe devuelve lo mismo sin verificar Turnstile ni guardar", async () => {
+  it("si ya existe devuelve lo mismo sin guardar de nuevo", async () => {
     const form = makeForm([field("short_text", "nombre")]);
     const { ports, saves } = makePorts(form, {
       findSubmission: vi.fn(async () => ({
@@ -155,21 +152,7 @@ describe("submitForm: idempotencia", () => {
     const out = await submitForm(ports, baseInput({ answers: { nombre: "Ana" } }));
     expect(out.status).toBe(200);
     expect(out.body).toMatchObject({ ok: true, duplicate: true, submission_id: "sub-0" });
-    expect(ports.verifyTurnstile).not.toHaveBeenCalled();
     expect(saves).toHaveLength(0);
-  });
-
-  it("timeout-or-duplicate: si la otra pestaña ya guardó, devuelve esa respuesta", async () => {
-    const form = makeForm([]);
-    let looked = 0;
-    const { ports, rejected } = makePorts(form, {
-      findSubmission: vi.fn(async () => (++looked === 1 ? null : { id: "sub-9", status: "no_contact" as const, answers: {}, attribution: {} })),
-      verifyTurnstile: vi.fn(async () => ({ ok: false as const, codes: ["timeout-or-duplicate"] })),
-    });
-    const out = await submitForm(ports, baseInput({}));
-    expect(out.status).toBe(200);
-    expect(out.body).toMatchObject({ duplicate: true, submission_id: "sub-9" });
-    expect(rejected).toEqual([]);
   });
 
   it("la RPC puede devolver duplicado (carrera real) y se responde 200 igual", async () => {
@@ -182,7 +165,28 @@ describe("submitForm: idempotencia", () => {
   });
 });
 
-describe("submitForm: honeypot y captcha", () => {
+describe("submitForm: el tope por IP (R2)", () => {
+  it("30 envíos desde la misma IP en una hora se guardan; el 31 recibe 429", async () => {
+    // Un contador por clave, como `rate_limits`: suma uno y deja pasar mientras no se pase del máximo.
+    const counts = new Map<string, number>();
+    const limit = vi.fn(async (spec: { key: string; max: number }) => {
+      const count = (counts.get(spec.key) ?? 0) + 1;
+      counts.set(spec.key, count);
+      return { allowed: count <= spec.max, count, max: spec.max };
+    });
+    const { ports, saves } = makePorts(makeForm([]), { limit });
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i++) {
+      const key = `3f0c1c2e-0000-4000-8000-${String(i).padStart(12, "0")}`;
+      statuses.push((await submitForm(ports, baseInput({ idempotency_key: key }))).status);
+    }
+    expect(statuses.slice(0, 30).every((s) => s === 200)).toBe(true);
+    expect(statuses[30]).toBe(429);
+    expect(saves).toHaveLength(30);
+  });
+});
+
+describe("submitForm: honeypot y envío sin captcha", () => {
   it("honeypot lleno: 200 falso, no guarda y deja form_rejected", async () => {
     const { ports, saves, rejected } = makePorts(makeForm([]));
     const out = await submitForm(ports, baseInput({ honeypot: "http://spam" }));
@@ -190,40 +194,14 @@ describe("submitForm: honeypot y captcha", () => {
     expect(out.body.ok).toBe(true);
     expect(saves).toHaveLength(0);
     expect(rejected).toEqual(["honeypot"]);
-    expect(ports.verifyTurnstile).not.toHaveBeenCalled();
   });
 
-  it("captcha rechazado: 400 captcha_failed, no guarda y deja form_rejected", async () => {
-    const { ports, saves, rejected } = makePorts(makeForm([]), {
-      verifyTurnstile: vi.fn(async () => ({ ok: false as const, codes: ["invalid-input-response"] })),
-    });
+  it("un envío sin token de captcha se guarda (el captcha ya no existe)", async () => {
+    const { ports, saves, rejected } = makePorts(makeForm([]));
     const out = await submitForm(ports, baseInput({}));
-    expect(out.status).toBe(400);
-    expect(out.body.error).toBe("captcha_failed");
-    expect(saves).toHaveLength(0);
-    expect(rejected).toEqual(["captcha"]);
-  });
-
-  it("Cloudflare no responde: 503 y NO se guarda sin verificar", async () => {
-    const { ports, saves, rejected } = makePorts(makeForm([]), {
-      verifyTurnstile: vi.fn(async () => ({ ok: false as const, codes: ["network"] })),
-    });
-    const out = await submitForm(ports, baseInput({}));
-    expect(out.status).toBe(503);
-    expect(saves).toHaveLength(0);
+    expect(out.status).toBe(200);
+    expect(saves).toHaveLength(1);
     expect(rejected).toEqual([]);
-  });
-
-  it("sin secret key configurada: 503, no se acepta sin verificar", async () => {
-    const { ports, saves } = makePorts(makeForm([]), { turnstileSecret: vi.fn(async () => null) });
-    expect((await submitForm(ports, baseInput({}))).status).toBe(503);
-    expect(saves).toHaveLength(0);
-  });
-
-  it("el token, la IP y la clave de idempotencia viajan a Turnstile", async () => {
-    const { ports } = makePorts(makeForm([]));
-    await submitForm(ports, baseInput({}));
-    expect(ports.verifyTurnstile).toHaveBeenCalledWith({ secret: "secret", token: "tok", ip: "203.0.113.9", idempotencyKey: KEY });
   });
 });
 
@@ -442,6 +420,27 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
     await submitForm(invalid.ports, baseInput({ answers: { nombre: "Ana" }, link_token: "falso" }));
     const sent2 = (invalid.ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
     expect(sent2.contactHint).not.toHaveProperty("signed_contact_id");
+  });
+
+  it("con el interruptor de contactos apagado (none) no viaja nada: ni el mapeo ni un link firmado (R3)", async () => {
+    const form = { ...mapped(), contactConfig: { ...mapped().contactConfig, mode: "none" as const } };
+    const { ports } = makePorts(form, {
+      save: withContact(),
+      verifyLink: vi.fn(async () => ({ contactId: "c-9", serviceId: null, saleId: null })),
+    });
+    await submitForm(ports, baseInput({ answers: { nombre: "Ana Pérez", email: "ANA@x.com" }, link_token: "tok.firma" }));
+    const sent = (ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent.contactHint).toEqual({});
+    expect(ports.verifyLink).not.toHaveBeenCalled();
+  });
+
+  it("un país que no se reconoce se anota en meta y la respuesta se guarda igual (R6)", async () => {
+    const form = makeForm([field("short_text", "pais")], { contactConfig: { mode: "create_or_link", update: "fill_empty", map: [{ fieldKey: "pais", target: "contact.country" }] } });
+    const { ports, saves } = makePorts(form);
+    const out = await submitForm(ports, baseInput({ answers: { pais: "Narnia" } }));
+    expect(out.status).toBe(200);
+    expect(saves[0].meta.contact_notes).toEqual([{ reason: "country_unrecognized", text: "Narnia" }]);
+    expect(saves[0].contactHint).not.toHaveProperty("country");
   });
 
   it("con contacto: anota el toque y avisa", async () => {

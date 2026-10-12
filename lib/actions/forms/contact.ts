@@ -34,7 +34,7 @@ export interface SaveContactSettingsInput {
 }
 
 /** Guarda el mapeo (validado contra los campos del borrador), las etiquetas y los avisos. */
-export async function saveContactSettings(input: SaveContactSettingsInput): Promise<ContactActionResult> {
+export async function saveContactSettings(input: SaveContactSettingsInput): Promise<ContactActionResult<{ updatedAt?: string }>> {
   const ctx = await getPermissionAction("forms.manage");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   if (!UUID.test(input.formId)) return { ok: false, error: "Los datos no son válidos" };
@@ -68,7 +68,7 @@ export async function saveContactSettings(input: SaveContactSettingsInput): Prom
   const memberIds = new Set(members.map((m) => m.userId));
   const notifyUserIds = [...new Set((input.notifyUserIds ?? []).filter((id) => UUID.test(id)))].filter((id) => memberIds.has(id));
 
-  const { error } = await service
+  const { data: updated, error } = await service
     .from("forms")
     .update({
       contact_config: checked.config as unknown as Json,
@@ -78,7 +78,9 @@ export async function saveContactSettings(input: SaveContactSettingsInput): Prom
       updated_by: ctx.user.id,
     })
     .eq("id", input.formId)
-    .eq("workspace_id", ctx.workspace.id);
+    .eq("workspace_id", ctx.workspace.id)
+    .select("updated_at")
+    .maybeSingle();
   if (error) {
     console.error("[forms] saveContactSettings fallo, code=", error.code);
     return { ok: false, error: "No pudimos guardar. Probá de nuevo." };
@@ -98,7 +100,8 @@ export async function saveContactSettings(input: SaveContactSettingsInput): Prom
     performedBy: ctx.user.id,
   });
   revalidatePath(`/dashboard/formularios/${input.formId}`);
-  return { ok: true };
+  // El editor necesita el `updated_at` nuevo: si no, el próximo guardado automático chocaría con este.
+  return { ok: true, updatedAt: updated?.updated_at };
 }
 
 export interface ContactOption {

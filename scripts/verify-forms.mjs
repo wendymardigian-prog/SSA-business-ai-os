@@ -4,7 +4,7 @@
  *
  * Lanza la version TypeScript con vite-node, porque lo que hay que probar es el
  * codigo de verdad (el envio, el beacon, la huella) y no una copia en JavaScript
- * que podria divergir. Turnstile, Resend y la IA van SIMULADOS: no se llama a
+ * que podria divergir. Resend y la IA van SIMULADOS: no se llama a
  * ningun proveedor real.
  *
  * Crea todo con prefijo `zz-test-` y lo borra al terminar. Una limpieza que

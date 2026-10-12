@@ -13,6 +13,7 @@ const BY_TYPE: Record<FormFieldType, ConditionOperator[]> = {
   email: TEXT,
   phone: TEXT,
   hidden: TEXT,
+  social: TEXT,
   number: NUMERIC,
   rating: NUMERIC,
   nps: NUMERIC,

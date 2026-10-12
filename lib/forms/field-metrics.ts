@@ -58,7 +58,7 @@ export interface MetricasDelFormulario {
  */
 const NO_SON_PREGUNTA = new Set(['heading', 'paragraph', 'divider']);
 const NO_SE_AGREGAN = new Set([
-  'file', 'consent', 'hidden', 'date', 'email', 'phone',
+  'file', 'consent', 'hidden', 'date', 'email', 'phone', 'social',
 ]);
 
 export function clasificarCampo(type: string | undefined): ClaseDeCampo {

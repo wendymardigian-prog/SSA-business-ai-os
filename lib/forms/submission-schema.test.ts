@@ -145,3 +145,28 @@ describe("toLabeledAnswers", () => {
     });
   });
 });
+
+describe("validateSubmission: usuario de red social (R5)", () => {
+  const ig = f("social", "instagram", { social: { platform: "instagram" } });
+
+  it.each(["@Ana", "ana", "instagram.com/ana", "https://instagram.com/ana/?hl=es"])("%s se guarda como ana", (raw) => {
+    const r = validateSubmission([ig], { instagram: raw });
+    expect(r.ok).toBe(true);
+    expect(r.values.instagram).toBe("ana");
+  });
+
+  it("un usuario con espacios es un error del campo", () => {
+    const r = validateSubmission([ig], { instagram: "ana perez" });
+    expect(r.errors.instagram).toBe("Ese usuario de Instagram no es válido");
+  });
+
+  it("obligatorio y vacío: falta; opcional y vacío: no pasa nada", () => {
+    expect(validateSubmission([{ ...ig, required: true }], { instagram: " " }).errors.instagram).toBeDefined();
+    expect(validateSubmission([ig], {}).ok).toBe(true);
+  });
+
+  it("LinkedIn guarda la URL del perfil", () => {
+    const li = f("social", "linkedin", { social: { platform: "linkedin" } });
+    expect(validateSubmission([li], { linkedin: "linkedin.com/in/Ana-Perez/" }).values.linkedin).toBe("https://www.linkedin.com/in/ana-perez");
+  });
+});

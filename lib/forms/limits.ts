@@ -2,9 +2,14 @@
  * Topes del módulo (D17). Se ajustan acá, en un solo lugar.
  */
 export const FORM_LIMITS = {
-  /** Envíos por IP por hora, en total y por formulario. */
-  submitPerIpPerHour: 20,
-  submitPerIpPerFormPerHour: 5,
+  /**
+   * Envíos por IP por hora, en total y por formulario. Sin captcha este tope es una defensa
+   * importante, pero 5 por hora frenaba a gente legítima: una oficina o un evento comparten el
+   * mismo wifi (la misma IP) y la sexta persona quedaba afuera. 30 por formulario y 60 en total
+   * dejan pasar a un grupo real y siguen cortando a un bot.
+   */
+  submitPerIpPerHour: 60,
+  submitPerIpPerFormPerHour: 30,
   /** Beacons (vistas e inicios) por IP por hora. */
   beaconPerIpPerHour: 60,
   /** Ventana para contar una vista o un inicio por sesión del navegador y formulario. */

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Field, Checkbox, inputClass } from "@/components/agents/fields";
-import { ALLOWED_UPLOAD_MIMES, FIELD_TYPE_LABELS, FILE_LIMITS, MAX_PREFILL_PARAMS, PREFILL_PARAM_RE, supportsPrefill, type FormField, type PrefillBehavior } from "@/lib/forms/fields";
+import { ALLOWED_UPLOAD_MIMES, FIELD_TYPE_LABELS, FILE_LIMITS, MAX_PREFILL_PARAMS, PREFILL_PARAM_RE, socialDefaultLabel, supportsPrefill, type FormField, type PrefillBehavior } from "@/lib/forms/fields";
+import { SOCIAL_LABELS, SOCIAL_PLATFORMS, isSocialPlatform } from "@/lib/contacts/social";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { conditionSources } from "@/lib/forms/builder";
 import { describeAccepted } from "@/components/forms/public/fields/file-field";
@@ -30,6 +31,8 @@ export function FieldEditor({
   fields,
   neverPublished,
   disabled,
+  contactLine,
+  onOpenContact,
   onPatch,
   onRelabel,
   onSetKey,
@@ -39,6 +42,9 @@ export function FieldEditor({
   fields: FormField[];
   neverPublished: boolean;
   disabled: boolean;
+  /** "Se guarda en el contacto: Email" o "No se guarda en el contacto" (R4). */
+  contactLine: string;
+  onOpenContact: () => void;
   onPatch: (patch: Partial<FormField>) => void;
   onRelabel: (label: string) => void;
   onSetKey: (key: string) => string | undefined;
@@ -48,7 +54,7 @@ export function FieldEditor({
   const [paramError, setParamError] = useState<string | undefined>();
   const isHidden = field.type === "hidden";
   const hasOptions = field.type === "single_select" || field.type === "multi_select";
-  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number";
+  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number" || field.type === "social";
   const prefillOk = supportsPrefill(field.type) && !isHidden;
   const prefill = field.prefill ?? { params: [field.key], behavior: "editable" as PrefillBehavior };
   const usedParams = new Set(fields.filter((f) => f.key !== field.key).flatMap((f) => (f.prefill?.params ?? [f.key]).map((p) => p.toLowerCase())));
@@ -68,6 +74,12 @@ export function FieldEditor({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{FIELD_TYPE_LABELS[field.type]}</p>
+      <p className="text-xs text-muted-foreground">
+        {contactLine}{" "}
+        <button type="button" onClick={onOpenContact} className="underline hover:text-foreground">
+          Ver en Contacto
+        </button>
+      </p>
 
       <Field label="Etiqueta">
         {(id) => <input id={id} className={inputClass} value={field.label} disabled={disabled} maxLength={200} onChange={(e) => onRelabel(e.target.value)} />}
@@ -98,6 +110,32 @@ export function FieldEditor({
               value={(field.options ?? []).join("\n")}
               onChange={(e) => onPatch({ options: e.target.value.split("\n") })}
             />
+          )}
+        </Field>
+      )}
+
+      {field.type === "social" && field.social && (
+        <Field label="Red social" hint="A qué red pertenece el usuario. Se guarda en el contacto en el dato de esa red.">
+          {(id) => (
+            <select
+              id={id}
+              className={inputClass}
+              disabled={disabled}
+              value={field.social!.platform}
+              onChange={(e) => {
+                if (!isSocialPlatform(e.target.value)) return;
+                const platform = e.target.value;
+                // Si la etiqueta todavía es la automática de la red anterior, acompaña a la nueva.
+                const followsDefault = field.label === socialDefaultLabel(field.social!.platform);
+                onPatch({ social: { platform }, ...(followsDefault ? { label: socialDefaultLabel(platform) } : {}) });
+              }}
+            >
+              {SOCIAL_PLATFORMS.map((p) => (
+                <option key={p} value={p}>
+                  {SOCIAL_LABELS[p]}
+                </option>
+              ))}
+            </select>
           )}
         </Field>
       )}

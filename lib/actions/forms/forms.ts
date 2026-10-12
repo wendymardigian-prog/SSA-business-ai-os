@@ -7,12 +7,11 @@ import { logAudit } from "@/lib/audit";
 import { newFormParts } from "@/lib/forms/defaults";
 import { validateDraftShape } from "@/lib/forms/definition-schema";
 import { normalizeContractText } from "@/lib/forms/contract-text";
-import { FORM_TYPES, type FormStatus, type FormType } from "@/lib/forms/fields";
+import { FORM_TYPES, type FormField, type FormStatus, type FormType } from "@/lib/forms/fields";
 import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } from "@/lib/forms/list";
-import { DEFAULT_CONTACT_CONFIG, suggestContactMap } from "@/lib/forms/contact-config";
+import { DEFAULT_CONTACT_CONFIG, parseStoredContactConfig, pruneContactConfig, suggestContactMap, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
-import { isTurnstileConfigured } from "@/lib/forms/server-ports";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { formCacheTag } from "@/lib/forms/site-load";
 import type { Json } from "@/lib/types/database";
@@ -233,6 +232,11 @@ export interface SaveDraftInput {
   definition: unknown;
   design?: unknown;
   success?: unknown;
+  /**
+   * El mapeo al contacto que acompaña a esta definición (R4). Se guardan JUNTOS, en una misma escritura, para que
+   * nunca quede un mapeo apuntando a un campo que el borrador no tiene. Lo que ya no encaja se saca al guardar.
+   */
+  contactConfig?: unknown;
   /** El `updated_at` que tenía el editor al abrir/guardar: si cambió, alguien más editó. */
   expectedUpdatedAt?: string;
 }
@@ -264,6 +268,12 @@ export async function saveFormDraft(input: SaveDraftInput): Promise<FormActionRe
   }
 
   const patch: Record<string, unknown> = { draft_definition: definition, updated_by: ctx.user.id };
+
+  if (input.contactConfig !== undefined) {
+    const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id);
+    const fields = (Array.isArray(definition.fields) ? definition.fields : []) as FormField[];
+    patch.contact_config = pruneContactConfig(parseStoredContactConfig(input.contactConfig), fields, (defs ?? []) as CustomFieldDef[]) as unknown as Json;
+  }
 
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -339,8 +349,7 @@ export async function changeFormSlug(input: { formId: string; slug: string; conf
 
 /**
  * Publicar. Antes de llamar a la función SQL (que arma la versión en una
- * transacción) se chequea todo lo que se pueda: el link, Turnstile y la
- * definición. Si falta algo, vuelve el motivo.
+ * transacción) se chequea todo lo que se pueda: el link y la definición. Si falta algo, vuelve el motivo.
  */
 export async function publishForm(formId: string): Promise<FormActionResult<{ versionNumber: number; changed: boolean }> & { reasons?: string[] }> {
   const ctx = await context();
@@ -350,13 +359,11 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
   if (!form) return { ok: false, error: "No encontré ese formulario" };
   if (form.status === "archived") return { ok: false, error: "Restauralo para poder publicarlo" };
 
-  const turnstileConfigured = await isTurnstileConfigured(service, ctx.workspace.id);
   const check = checkPublishable({
     type: form.type as FormType,
     slug: form.slug,
     definition: form.draft_definition,
-    turnstileConfigured,
-    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config }),
+    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config, contactMode: parseStoredContactConfig(form.contact_config).mode }),
   });
   if (!check.ok) return { ok: false, error: check.reasons[0], reasons: check.reasons };
 

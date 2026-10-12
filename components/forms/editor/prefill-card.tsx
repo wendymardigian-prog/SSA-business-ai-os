@@ -18,7 +18,7 @@ const BEHAVIOR_LABELS: Record<PrefillBehavior, string> = {
  * lista para copiar. Las variables del contacto van sin codificar, para pegar el link en
  * un mensaje o email de una automatización (las resuelve el nodo de envío).
  */
-export function PrefillCard({ definition, baseUrl }: { definition: FormDefinition; baseUrl: string }) {
+export function PrefillCard({ definition, baseUrl, slug }: { definition: FormDefinition; baseUrl: string; slug?: string }) {
   const described = useMemo(() => describePrefillParams(definition), [definition]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
@@ -26,9 +26,11 @@ export function PrefillCard({ definition, baseUrl }: { definition: FormDefinitio
   const link = buildPrefillLink(baseUrl, values);
   const usesContactVariables = Object.values(values).some((v) => /\{\{\s*contact\./i.test(v));
   const rows = [
-    ...described.fields.map((f) => ({ key: f.fieldKey, label: f.label, param: f.params[0], note: BEHAVIOR_LABELS[f.behavior], accepts: f.params })),
-    ...described.hidden.filter((h) => h.source === "url_param").map((h) => ({ key: h.fieldKey, label: h.label, param: h.param, note: "Campo oculto", accepts: [h.param] })),
+    ...described.fields.map((f) => ({ key: f.fieldKey, label: f.label, param: f.params[0], note: BEHAVIOR_LABELS[f.behavior], accepts: f.params, example: f.example })),
+    ...described.hidden.filter((h) => h.source === "url_param").map((h) => ({ key: h.fieldKey, label: h.label, param: h.param, note: "Campo oculto", accepts: [h.param], example: "valor" })),
   ];
+  // El link firmado por contacto: lo identifica sin poner sus datos en la URL.
+  const signedToken = slug ? `{{form_link.${slug.replace(/-/g, "_")}}}` : "{{form_link.<link>}}";
 
   function copy() {
     void navigator.clipboard?.writeText(link).then(() => {
@@ -56,6 +58,7 @@ export function PrefillCard({ definition, baseUrl }: { definition: FormDefinitio
                 <tr>
                   <th scope="col" className="px-3 py-2 font-medium">Campo</th>
                   <th scope="col" className="px-3 py-2 font-medium">Parámetro</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Ejemplo de link</th>
                   <th scope="col" className="px-3 py-2 font-medium">Comportamiento</th>
                   <th scope="col" className="px-3 py-2 font-medium">Valor para el link</th>
                 </tr>
@@ -64,7 +67,10 @@ export function PrefillCard({ definition, baseUrl }: { definition: FormDefinitio
                 {rows.map((row) => (
                   <tr key={row.key} className="border-t border-border">
                     <td className="px-3 py-2">{row.label}</td>
-                    <td className="px-3 py-2 font-mono">{row.accepts.join(" · ")}</td>
+                    <td className="px-3 py-2 font-mono font-semibold">{row.accepts.join(" · ")}</td>
+                    <td className="px-3 py-2">
+                      <code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">{buildPrefillLink(baseUrl, { [row.param]: row.example })}</code>
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{row.note}</td>
                     <td className="px-3 py-2">
                       <input
@@ -98,7 +104,9 @@ export function PrefillCard({ definition, baseUrl }: { definition: FormDefinitio
               </button>
             </div>
             {usesContactVariables && (
-              <Notice tone="info">Los datos del contacto viajan en la URL. Para una encuesta de “una vez por contacto”, conviene el link firmado de arriba (“Link para un contacto”).</Notice>
+              <Notice tone="info">
+                Los datos del contacto viajan en la URL. Para mandarle el link a un contacto que ya existe es mejor el link firmado (<code className="rounded bg-muted px-1 text-[11px]">{signedToken}</code> en un mensaje, o “Link para un contacto” arriba): lo identifica sin poner sus datos en la URL. Para una encuesta de “una vez por contacto” es el que corresponde.
+              </Notice>
             )}
           </div>
         </>

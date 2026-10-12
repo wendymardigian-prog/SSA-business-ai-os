@@ -1,15 +1,13 @@
 /**
- * Los puertos REALES del envío y del beacon: base, Vault, Turnstile y Storage.
+ * Los puertos REALES del envío y del beacon: base, Vault y Storage.
  * SOLO servidor. `submit.ts` y `beacon.ts` no saben nada de esto: reciben estos
  * puertos, y los tests reciben unos simulados.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
-import { readSecret, SECRET_NAMES } from "@/lib/vault";
 import { checkLimit, formsKeys } from "@/lib/antispam/rate-limit";
 import { hashIp } from "@/lib/scheduling/antispam";
-import { verifyTurnstile } from "./turnstile";
 import { validateSuccess, DEFAULT_SUCCESS } from "./success";
 import { parseStoredContactConfig, isCustomTarget, customSlugOf, type CustomFieldDef } from "./contact-config";
 import { verifyFormLink } from "./signed-link";
@@ -81,7 +79,7 @@ async function loadCustomFields(service: Db, workspaceId: string, targets: strin
   return (data ?? []) as CustomFieldDef[];
 }
 
-export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fetch } = {}): SubmitPorts {
+export function createSubmitPorts(service: Db): SubmitPorts {
   return {
     limit: (spec) => checkLimit(service, spec),
     limitKeys: { submit: formsKeys.submit, submitForm: formsKeys.submitForm },
@@ -103,17 +101,6 @@ export function createSubmitPorts(service: Db, options: { fetchImpl?: typeof fet
         attribution: (data.attribution ?? {}) as Record<string, unknown>,
       };
     },
-
-    async turnstileSecret(workspaceId) {
-      try {
-        return await readSecret(service, workspaceId, SECRET_NAMES.turnstileSecretKey);
-      } catch {
-        // Una falla de Vault no puede dejar pasar un envio sin verificar: se trata como "no disponible".
-        return null;
-      }
-    },
-
-    verifyTurnstile: (input) => verifyTurnstile({ ...input, fetchImpl: options.fetchImpl }),
 
     async recordRejected({ workspaceId, formId, versionId, reason }) {
       // Sin datos personales: ni IP, ni user agent, ni nada de lo que escribio la persona.
@@ -244,24 +231,4 @@ export function createBeaconPorts(service: Db): BeaconPorts {
       if (error) console.error("[forms] no pude registrar la vista:", error.message);
     },
   };
-}
-
-/** ¿Hay Turnstile listo para publicar? Site key guardada y secret key en Vault. */
-export async function isTurnstileConfigured(service: Db, workspaceId: string): Promise<boolean> {
-  const { data } = await service
-    .from("integration_configs")
-    .select("config, is_active")
-    .eq("workspace_id", workspaceId)
-    .eq("type", "captcha")
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-  const siteKey = (data?.config as { site_key?: string } | null)?.site_key;
-  if (!siteKey) return false;
-  try {
-    const secret = await readSecret(service, workspaceId, SECRET_NAMES.turnstileSecretKey);
-    return !!secret;
-  } catch {
-    return false;
-  }
 }

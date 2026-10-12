@@ -3,7 +3,10 @@
  * PURO: lo llama el envío con las respuestas ya validadas y le pasa el resultado
  * a la RPC `submit_form_response` como `p_contact_hint`.
  */
-import { CUSTOM_PREFIX, customSlugOf, isCustomTarget, type ContactConfig, type CustomFieldDef } from "./contact-config";
+import { resolveCountry } from "@/lib/contacts/country";
+import { normalizeSocialHandle, SOCIAL_LOOKUP_PLATFORMS, type SocialPlatform } from "@/lib/contacts/social";
+import type { ContactNote } from "./contact-outcome";
+import { CUSTOM_PREFIX, customSlugOf, isCustomTarget, socialPlatformOf, type ContactConfig, type CustomFieldDef } from "./contact-config";
 import type { FormField } from "./fields";
 
 export interface ContactHint {
@@ -12,6 +15,8 @@ export interface ContactHint {
   phone?: string;
   whatsapp_phone?: string;
   country?: string;
+  /** Usuarios de redes sociales, YA normalizados (`ana`, no `@Ana`; LinkedIn como URL del perfil). */
+  social?: Partial<Record<SocialPlatform, string>>;
   /** `custom_field_definitions.id` → valor en texto. */
   custom: Record<string, string>;
 }
@@ -29,7 +34,21 @@ export function applyContactMapping(
   values: Record<string, unknown>,
   customFields: CustomFieldDef[],
 ): ContactHint {
+  return applyContactMappingDetailed(fields, config, values, customFields).hint;
+}
+
+/**
+ * Lo mismo, y además lo que NO se pudo guardar en el contacto (un país o un usuario que no se reconoce). La
+ * respuesta se guarda igual; las notas se ven en su detalle (`meta.contact_notes`).
+ */
+export function applyContactMappingDetailed(
+  fields: FormField[],
+  config: ContactConfig,
+  values: Record<string, unknown>,
+  customFields: CustomFieldDef[],
+): { hint: ContactHint; notes: ContactNote[] } {
   const hint: ContactHint = { custom: {} };
+  const notes: ContactNote[] = [];
   let first = "";
   let last = "";
 
@@ -58,23 +77,40 @@ export function applyContactMapping(
       case "contact.whatsapp_phone":
         hint.whatsapp_phone = text;
         break;
-      case "contact.country":
-        if (/^[A-Za-z]{2}$/.test(text)) hint.country = text.toUpperCase();
+      case "contact.country": {
+        // El código ("CR") o el nombre en español o inglés ("Costa Rica", "Spain").
+        const country = resolveCountry(text);
+        if (country) hint.country = country;
+        else notes.push({ reason: "country_unrecognized", text });
         break;
-      default:
+      }
+      default: {
+        const platform = socialPlatformOf(entry.target);
+        if (platform) {
+          // Un texto que no es un usuario válido no se guarda en el contacto; la respuesta queda igual.
+          const handle = normalizeSocialHandle(platform, text);
+          if (handle.ok) hint.social = { ...hint.social, [platform]: handle.value };
+          else notes.push({ reason: "social_invalid", text, platform });
+          break;
+        }
         if (isCustomTarget(entry.target)) {
           const def = customFields.find((c) => `${CUSTOM_PREFIX}${c.slug}` === entry.target || c.slug === customSlugOf(entry.target));
           // Un campo personalizado borrado se ignora: no hace fallar el envío.
           if (def) hint.custom[def.id] = text;
         }
+      }
     }
   }
 
   if (!hint.display_name && (first || last)) hint.display_name = [first, last].filter(Boolean).join(" ");
-  return hint;
+  return { hint, notes };
 }
 
-/** ¿La respuesta tiene con qué crear o vincular un contacto? */
+/**
+ * ¿La respuesta tiene con qué crear o vincular un contacto? Email, teléfono, WhatsApp o un usuario de
+ * Instagram, TikTok, X o LinkedIn. Facebook y YouTube solo se guardan: no sirven para identificar.
+ */
 export function canResolveContact(hint: ContactHint): boolean {
-  return !!(hint.email || hint.phone || hint.whatsapp_phone);
+  if (hint.email || hint.phone || hint.whatsapp_phone) return true;
+  return SOCIAL_LOOKUP_PLATFORMS.some((platform) => !!hint.social?.[platform]);
 }

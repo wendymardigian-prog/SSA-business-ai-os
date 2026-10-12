@@ -144,3 +144,24 @@ Lo que se verificó al cerrarlo:
 - **Documentos**: `docs/formularios.md`, `docs/sitio.md`, `docs/flow-registry.md`, el comentario de `.env.example`, `CLAUDE.md` (secciones "Formularios" y "Sitio público" y la próxima migración libre, 00159) y `BITACORA.md`.
 - `export-template.mjs` en una carpeta temporal: pasa el control de nombres y deja `app/(sitio)/` con la versión por defecto.
 - **Revisión visual** hecha por bloque (ver cada uno). La verificación en vivo con las claves reales de Turnstile y de Resend queda para Wendy (§18 del plano; ver PENDIENTE).
+
+## Correcciones del 12/10 (R1 a R10) — **cerradas**
+
+Rama `feat/formularios-correcciones` (desde `main` con Ventas ya mergeada, PR #42). Migraciones **00172 a 00177**, aplicadas y registradas. Un commit por corrección.
+
+- [x] **R1** Se sacó Cloudflare Turnstile entero (código, interfaz, definición pública, card de Integraciones, secreto y tipo `captcha`): publicar ya no depende de nada externo. Documentado para retomarlo en `docs/pendientes/turnstile-captcha.md` (último commit con Turnstile: `9eee8bb`). Migraciones 00172 y 00173.
+- [x] **R2** Tope por IP: 30/h por formulario y 60/h en total (antes 5 y 20: una oficina o un evento comparten la IP). `clientIp` no se tocó (ver PENDIENTE).
+- [x] **R3** Interruptor "Vincular las respuestas con contactos" (`mode: "none"`), con la base haciéndolo cumplir.
+- [x] **R4** El mapeo se arma solo, se guarda con el borrador, el campo dice adónde va y publicar avisa si no va a crear contactos.
+- [x] **R5** Campo "Usuario de red social", destinos de red en el mapeo y crear o vincular por @ (`find_contact_for_form`, `submit_form_response` v5). Migraciones 00174, 00175 y 00176.
+- [x] **R6** El país también se entiende por nombre.
+- [x] **R7** Prellenado: el "+" de la URL ya no rompe teléfonos ni emails; parámetros cortos automáticos y ejemplos de link.
+- [x] **R8** La ficha del contacto muestra sus formularios.
+- [x] **R9** Candado en las versiones publicadas (00177).
+- [x] **R10** El PDF no repite nombre y email del firmante.
+
+Lo que se verificó al cerrarlo:
+- `npx vitest run`, `npm run build` y `npm run lint` en verde (ver el cierre en BITACORA).
+- Contra la base real, de a una, todas en 0: `verify-forms` (con los casos nuevos: sin captcha, none, redes, conflictos, canal de Instagram con overwrite, dos respuestas simultáneas con el mismo @, el país, la RLS de la ficha, el candado y la huella corrupta con una versión insertada), `verify-sales` (con la versión actualizada de la otra sesión: la de esta rama todavía consulta `content_offers`, que Ventas ya borró en la base), `verify-crm`, `verify-rls --despues-de-00143`, `verify-roles --despues-de-00136`, `verify-scheduling` y `verify-audit-visibility --despues-de-00168`.
+- Las huellas md5 de `find_or_link_contact`, `create_booking`, `record_contact_touch` y `find_contact_by_phone_or_email` son iguales a las del inicio.
+- Revisión visual (navegador integrado, con un usuario `zz-test-` en `127.0.0.1`, para no tocar la sesión de Wendy en `localhost`): la pestaña Contacto con el interruptor apagado y prendido, el mapeo automático al agregar un email y un usuario de Instagram, el aviso al publicar, un formulario con Instagram publicado y enviado con `?instagram=@Prueba` (se vinculó por Instagram al contacto que ya existía), la sección Formularios de la ficha con una encuesta (Puntaje 4 · Detractor), un contrato y uno común, y Integraciones sin Turnstile. Datos `zz-test-` borrados.

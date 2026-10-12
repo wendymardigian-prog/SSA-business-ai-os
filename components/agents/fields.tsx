@@ -89,17 +89,20 @@ export function Checkbox({
   onChange,
   label,
   description,
+  disabled,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   label: string;
   description?: string;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3">
+    <label className={disabled ? "flex cursor-not-allowed items-start gap-3 opacity-60" : "flex cursor-pointer items-start gap-3"}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5 h-4 w-4 flex-shrink-0"
       />

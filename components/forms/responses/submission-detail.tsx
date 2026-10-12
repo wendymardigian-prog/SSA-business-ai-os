@@ -16,6 +16,7 @@ import { answerToText, orderedAnswers, statusLabel, type StoredAnswer, type Subm
 import { filesOfAnswers } from "@/lib/forms/files";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { attributionSections } from "@/lib/forms/attribution-view";
+import { matchedByText, type ConflictView } from "@/lib/forms/contact-outcome";
 
 export interface SubmissionView {
   id: string;
@@ -31,7 +32,10 @@ export interface SubmissionView {
   timezone: string | null;
   contactCreated: boolean;
   matchedBy: string | null;
-  conflictContactId: string | null;
+  /** Datos de la respuesta que coinciden con OTRO contacto (R5). */
+  conflicts: ConflictView[];
+  /** Datos de la respuesta que no se pudieron guardar en el contacto (país no reconocido…). */
+  contactNotes: string[];
 }
 
 const ORIGIN_LABELS: Record<string, string> = { public_page: "Página del formulario", embed: "Embebido en otra web", site: "Página del sitio" };
@@ -158,16 +162,25 @@ export function SubmissionDetail({
                 </div>
               )}
             </dl>
-            {submission.conflictContactId && (
-              <div className="mt-3">
-                <Notice tone="warning">
-                  El email coincide con otro contacto:{" "}
-                  <Link href={`/dashboard/contacts/${submission.conflictContactId}`} className="underline">
-                    verlo
-                  </Link>
-                  . La respuesta se vinculó por el teléfono.
-                </Notice>
+            {submission.conflicts.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {submission.conflicts.map((conflict) => (
+                  <Notice key={`${conflict.by}:${conflict.contactId}`} tone="warning">
+                    {conflict.text}:{" "}
+                    <Link href={`/dashboard/contacts/${conflict.contactId}`} className="underline">
+                      verlo
+                    </Link>
+                    . {matchedByText(submission.matchedBy) ?? "La respuesta se vinculó al otro dato."}
+                  </Notice>
+                ))}
               </div>
+            )}
+            {submission.contactNotes.length > 0 && (
+              <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs text-muted-foreground">
+                {submission.contactNotes.map((note) => (
+                  <li key={note}>{note} (no se guardó en el contacto)</li>
+                ))}
+              </ul>
             )}
           </section>
 

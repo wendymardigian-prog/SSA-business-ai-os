@@ -45,6 +45,8 @@ import {
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
 import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
+import { ContactFormsSection } from "@/components/contacts/forms-section";
+import { loadContactForms } from "@/lib/forms/data/contact-forms";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { snapshotText } from "@/lib/sales/sale-text";
 import { describePaymentHealth } from "@/lib/sales/payment-health";
@@ -223,6 +225,10 @@ export default async function ContactDetailPage({
         .limit(10)
     : null;
   const salesWizard = canViewSales && permissionCtx.can("sales.manage") ? await loadWizardConfig(permissionCtx) : null;
+
+  // Los formularios que respondió (Formularios, R8): solo con `forms.view`; la RLS decide cuáles ve.
+  const canViewForms = permissionCtx.can("forms.view");
+  const contactForms = canViewForms ? await loadContactForms(supabase, { workspaceId: workspace.id, contactId }) : null;
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -479,6 +485,8 @@ export default async function ContactDetailPage({
                 paymentHealth={describePaymentHealth((contact as unknown as { payment_health?: Record<string, unknown> | null }).payment_health as never)}
               />
             )}
+
+            {contactForms && <ContactFormsSection rows={contactForms.rows} total={contactForms.total} contactId={contact.id} timeZone={viewerTimezone} />}
 
             <AttributionSection view={attributionView} />
 

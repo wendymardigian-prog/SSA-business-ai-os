@@ -1592,3 +1592,11 @@ Ver `docs/PENDIENTE-ventas.md`. Lo principal: aplicar el borrado de `content_off
 ## content_offers borrada (12/10/2026)
 
 **Migración 00171**, aplicada y registrada después de comprobar que Railway desplegó el merge del PR #42 (el servicio anterior ya estaba removido). Antes: auditoría de la base en 0 y respaldo en `docs/ventas/respaldo-content-offers.json`. Los 3 productos, sus 3 variantes con precio y la idea y la pieza clasificadas siguen intactos. La próxima migración libre es la **00172**.
+
+## Formularios — correcciones del 12/10 (R1 a R10)
+
+**Migraciones:** 00172 a 00177, aplicadas y registradas. Rama `feat/formularios-correcciones`, un commit por corrección.
+
+**Qué cambió.** Se sacó Cloudflare Turnstile (hoy no se podía publicar ningún formulario porque no estaba configurado; la protección queda en honeypot, tope por IP e idempotencia, y el captcha está documentado en `docs/pendientes/turnstile-captcha.md`). El tope por IP pasó a 30/h por formulario y 60/h en total. La pestaña Contacto tiene un interruptor "Vincular las respuestas con contactos" y el mapeo se arma solo al agregar campos y se guarda con el borrador. Hay un campo nuevo "Usuario de red social" y un contacto se puede crear o vincular por @ de Instagram, TikTok, X o LinkedIn (los 560 contactos que llegaron por DM de Instagram ahora se reconocen si llenan un formulario con su @). El país se entiende por nombre. El prellenado ya no rompe teléfonos ni emails con "+". La ficha del contacto muestra los formularios que respondió. Las versiones publicadas tienen un candado en la base y el PDF del contrato no repite el nombre y el email del firmante.
+
+**Pendiente.** Detalle en `docs/PENDIENTE-formularios.md`: la IP real detrás del proxy de Railway (la Agenda tiene el mismo problema), `is_anonymous` que no mira TikTok, X ni LinkedIn, y la carrera de `verify-forms` con el cron de producción.

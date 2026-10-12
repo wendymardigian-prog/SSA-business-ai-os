@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { appUrl } from "@/lib/app-url";
 import { validateSurveyConfig } from "@/lib/forms/survey";
+import { parseStoredContactConfig } from "@/lib/forms/contact-config";
 import { validateContractConfig } from "@/lib/forms/contract/config";
 import { signFormLink } from "@/lib/forms/signed-link";
 import type { FormDefinition, FormField } from "@/lib/forms/fields";
@@ -30,7 +31,7 @@ async function loadForm(formId: string, workspaceId: string) {
   const service = await createServiceClient();
   const { data } = await service
     .from("forms")
-    .select("id, name, type, status, slug, draft_definition, survey_config, contract_config")
+    .select("id, name, type, status, slug, draft_definition, survey_config, contract_config, contact_config")
     .eq("id", formId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -49,6 +50,10 @@ export async function saveSurveyConfig(input: { formId: string; config: unknown 
   const fields = ((form.draft_definition as unknown as FormDefinition | null)?.fields ?? []) as FormField[];
   const checked = validateSurveyConfig(input.config, fields);
   if (!checked.ok) return { ok: false, error: checked.errors[0] ?? "La configuración no es válida" };
+  // "Una vez por contacto" necesita contactos: con el vínculo apagado no se puede prender.
+  if (checked.config.oncePerContact && parseStoredContactConfig(form.contact_config).mode === "none") {
+    return { ok: false, error: 'Para limitar a "una vez por contacto" prendé "Vincular las respuestas con contactos" en la pestaña Contacto.' };
+  }
 
   const { error } = await service
     .from("forms")
@@ -119,6 +124,9 @@ export async function createSignedFormLink(input: { formId: string; contactId: s
   if (!loaded) return { ok: false, error: "No encontré ese formulario" };
   const { service, form } = loaded;
   if (form.status !== "published") return { ok: false, error: "Publicá el formulario antes de armar links para un contacto" };
+  if (parseStoredContactConfig(form.contact_config).mode === "none") {
+    return { ok: false, error: "Este formulario no vincula las respuestas con contactos: no hay link firmado por contacto" };
+  }
 
   // Con el cliente de la persona: si no ve al contacto, no le arma el link.
   const { data: contact } = await ctx.supabase

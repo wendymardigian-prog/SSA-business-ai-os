@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, Copy, ExternalLink, Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Notice, Field, inputClass } from "@/components/agents/fields";
 import { Tabs } from "@/components/ui/tabs";
@@ -15,7 +15,7 @@ import type { EditorForm, EditorVersion } from "./types";
 
 /**
  * La pestaña Publicar (F8, F10): el link público, el código para embeber, el
- * estado de Turnstile y el historial de versiones.
+ * el historial de versiones.
  */
 
 type CodeTab = "inline" | "floating";
@@ -47,7 +47,6 @@ export function PublishTab({
   form,
   versions,
   canManage,
-  turnstileConfigured,
   appUrl,
   published,
   onSlugChanged,
@@ -57,7 +56,6 @@ export function PublishTab({
   form: EditorForm;
   versions: EditorVersion[];
   canManage: boolean;
-  turnstileConfigured: boolean;
   appUrl: string;
   published: boolean;
   onSlugChanged: (slug: string) => void;
@@ -135,7 +133,7 @@ export function PublishTab({
         )}
       </section>
 
-      {canManage && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
+      {canManage && form.contactConfig.mode !== "none" && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
         <h2 id="embed" className="text-sm font-semibold">
@@ -178,25 +176,7 @@ export function PublishTab({
         <CopyButton id="site" text={siteSnippet} label="Copiar" state={copy} />
       </section>
 
-      <PrefillCard definition={definition} baseUrl={publicUrl} />
-
-      <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="proteccion">
-        <h2 id="proteccion" className="text-sm font-semibold">
-          Protección contra bots
-        </h2>
-        {turnstileConfigured ? (
-          <p className="mt-2 flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
-            <ShieldCheck className="h-4 w-4" aria-hidden /> Protegido con Cloudflare Turnstile
-          </p>
-        ) : (
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
-            <ShieldAlert className="h-4 w-4" aria-hidden /> Falta configurar Turnstile.
-            <Link href="/dashboard/settings/integrations" className="underline">
-              Integraciones → Seguridad
-            </Link>
-          </p>
-        )}
-      </section>
+      <PrefillCard definition={definition} baseUrl={publicUrl} slug={form.slug} />
 
       <section className="rounded-xl border border-border bg-card p-5" aria-labelledby="versiones">
         <h2 id="versiones" className="text-sm font-semibold">

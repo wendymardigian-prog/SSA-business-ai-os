@@ -60,8 +60,6 @@ export const SECRET_NAMES = {
   metaSystemUserToken: "meta_system_user_token",
 
   // ── Formularios ──────────────────────────────────────────────────────────
-  /** Secret key de Cloudflare Turnstile: se verifica cada envio en el servidor. */
-  turnstileSecretKey: "turnstile_secret_key",
   /** Firma los links de formulario por contacto (HMAC). Se genera la primera vez. */
   formsLinkSecret: "forms_link_secret",
 } as const;

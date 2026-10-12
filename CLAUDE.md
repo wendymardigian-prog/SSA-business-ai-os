@@ -261,16 +261,23 @@ del refresh token), `00146` (el cron SQL `fathom-sync`), `00147` (la politica
 ADICIONAL `audit_log_select_calls`), `00148` (CHECK de `agent_runs.source` y
 `ai_task_prompt_versions.task`, `set_ai_background_task_settings`) y `00149`
 (CHECK de `triggers.type` y `content_ideas.source`, `content_ideas.call_id`).
-**Despues de Formularios, la `00159` abrio Ventas; la proxima libre es la `00172`** (ver "Ventas Fase 1").
+**Despues de Formularios, la `00159` abrio Ventas (hasta la `00171`), y las correcciones de Formularios del 12/10 usaron la `00172` a la `00177`: la proxima libre es la `00178`** (confirmar con `list_migrations`).
 
 **Formularios (11/10/2026).** `00150` a `00158` estan **aplicadas** y registradas:
 `00150` (tablas, `can_view_forms`, `can_see_form_submission`, RLS), `00151` (indice
 de metricas), `00152` (`get_public_form`, `publish_form_version`,
 `form_metrics_daily`, `submit_form_response` v1), `00153` (buckets privados),
-`00154` (`captcha` en integraciones), `00155` (`flows.form_id` y tres tipos de
+`00154` (`captcha` en integraciones; **se sacó en la 00173**), `00155` (`flows.form_id` y tres tipos de
 trigger), `00156` (`find_contact_by_phone_or_email` y `submit_form_response` v2),
 `00157` (`contract_signatures`, `record_contract_signature` y la v3) y `00158`
-(corrige "una vez por contacto"). La `00159` en adelante son de Ventas (ver "Ventas Fase 1"); **la proxima disponible es la `00172`** (ver "Ventas Fase 1").
+(corrige "una vez por contacto"). La `00159` a la `00171` son de Ventas (ver "Ventas Fase 1").
+
+**Correcciones de Formularios (12/10/2026).** `00172` a `00177`, **aplicadas** y registradas:
+`00172` (`get_public_form` sin `turnstile_site_key`), `00173` (el CHECK de
+`integration_configs.type` sin `captcha`; aborta si hubiera filas), `00174`
+(`get_public_form` deja pasar `social`), `00175` (`find_contact_for_form`, `linkedin_slug`
+e indices por red social), `00176` (`submit_form_response` v5: modo `none` y redes
+sociales) y `00177` (candado en `form_versions`). **La proxima disponible es la `00178`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -847,10 +854,27 @@ completa y puede disparar automatizaciones. El resumen del modulo esta en
   calcula la base y la RPC la vuelve a verificar al firmar. Nada de lo que manda el navegador
   entra. Publicar una version nueva no toca las firmas de la anterior. La evidencia de una
   firma no se puede cambiar (trigger, tambien para el service role).
+- **El interruptor "Vincular las respuestas con contactos"** es `contact_config.mode = 'none'`:
+  la base (`submit_form_response` v5) no resuelve, crea ni actualiza ningun contacto, tampoco
+  con un link firmado, aunque el servidor mande datos. Apagarlo no borra el mapeo. Una encuesta
+  "una vez por contacto" necesita el vinculo prendido.
+- **Un contacto se crea o se vincula por telefono, email, WhatsApp o un usuario de Instagram,
+  TikTok, X o LinkedIn**, en ese orden de busqueda (`find_contact_for_form`, 00175); Facebook y
+  YouTube solo se guardan. `find_contact_by_phone_or_email` NO se toca (la usa Ventas). Los
+  usuarios se normalizan en UN solo lugar (`lib/contacts/social.ts`), igual a como estan
+  guardados los contactos (sin "@" y en minusculas; LinkedIn como URL). El `instagram_username`
+  de un contacto con canal de Instagram vinculado NUNCA se pisa desde un formulario.
+- **El mapeo al contacto se guarda JUNTO con el borrador** (`saveFormDraft` recibe
+  `contactConfig` y saca lo que ya no encaja) y se arma solo al agregar un campo
+  (`autoMapOnFieldAdded`, nunca pisa uno elegido a mano).
+- **Una version publicada no se puede cambiar** (trigger `form_versions_protect`, 00177,
+  tambien para el service role; `published_by` solo puede pasar a NULL por el ON DELETE SET NULL).
+- **El envio no usa captcha**; ver la regla de abajo.
 - **La idempotencia es un indice unico** `(form_id, idempotency_key)`, no una comprobacion
   previa. "Una vez por contacto" es `(form_id, once_key)` y la clave guardada es `contact:<id>`.
-- **Turnstile se verifica en el servidor**, con la secret key en Vault. Si Cloudflare no
-  responde: 503; nunca se acepta sin verificar. Los tests no llaman a Cloudflare.
+- **La proteccion anti-spam es honeypot + tope por IP + idempotencia.** No hay captcha:
+  publicar un formulario no depende de ninguna configuracion externa. Turnstile esta
+  documentado para retomarlo en `docs/pendientes/turnstile-captcha.md`.
 - **Las claves de atribucion estan en UN solo lugar: `lib/attribution/keys.ts`.** Es un
   superconjunto de la lista de la Agenda (que no se toca). Sumar una clave es sumarla ahi.
 - **`service_id` y `sale_id` solo viajan dentro de un link firmado valido** (`signed-link.ts`);
@@ -870,7 +894,7 @@ completa y puede disparar automatizaciones. El resumen del modulo esta en
 ## Scripts de verificacion
 
 ```
-node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Turnstile y Resend simulados), el PDF y la atribucion
+node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Resend simulado), el PDF y la atribucion
 ```
 
 Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.

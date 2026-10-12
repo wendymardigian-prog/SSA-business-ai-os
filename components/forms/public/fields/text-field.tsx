@@ -1,5 +1,6 @@
 "use client";
 
+import { SOCIAL_PREFIX } from "@/lib/contacts/social";
 import { FieldShell, publicInputClass, type FieldProps } from "./shared";
 
 const text = (value: unknown) => (typeof value === "string" ? value : value === null || value === undefined ? "" : String(value));
@@ -139,6 +140,40 @@ export function DateField({ field, value, onChange, error, locked, onInteract }:
           onFocus={onInteract}
           onChange={(e) => onChange(e.target.value)}
         />
+      )}
+    </FieldShell>
+  );
+}
+
+/** Un usuario de red social: con el prefijo "@" (o la dirección de LinkedIn) pegado al input. */
+export function SocialField({ field, value, onChange, error, locked, onInteract }: FieldProps) {
+  const platform = field.social?.platform ?? "instagram";
+  return (
+    <FieldShell field={{ ...field, help: field.help ?? (platform === "linkedin" ? undefined : "Sin la arroba") }} error={error} locked={locked}>
+      {({ id, describedBy }) => (
+        <div className="flex items-stretch">
+          <span className="inline-flex items-center rounded-l-lg border border-r-0 border-input bg-muted px-3 text-sm text-muted-foreground" aria-hidden="true">
+            {SOCIAL_PREFIX[platform]}
+          </span>
+          <input
+            id={id}
+            type="text"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            className={`${publicInputClass} rounded-l-none`}
+            value={text(value)}
+            placeholder={field.placeholder || (platform === "linkedin" ? "tu-nombre" : "tuusuario")}
+            disabled={locked}
+            required={field.required}
+            aria-invalid={!!error}
+            aria-describedby={describedBy}
+            onFocus={onInteract}
+            onChange={(e) => onChange(e.target.value)}
+            maxLength={300}
+          />
+        </div>
       )}
     </FieldShell>
   );

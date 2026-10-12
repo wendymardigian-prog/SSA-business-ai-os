@@ -1,9 +1,8 @@
 /**
  * Formularios contra la base real (FO1 y los bloques que siguen).
  *
- * Base real, proveedores simulados: Turnstile responde con un `fetch` de mentira
- * que imita las claves de prueba de Cloudflare (`1x…` aprueba, `2x…` rechaza); no
- * se llama a Cloudflare, ni a Resend, ni a ningun proveedor de IA.
+ * Base real, proveedores simulados: no se llama a Resend ni a ningun proveedor de IA.
+ * (El captcha se saco en la correccion R1; ver docs/pendientes/turnstile-captcha.md.)
  *
  * Lo que prueba es lo que un test con Vitest no puede: que la BASE haga cumplir
  * las reglas (RLS, unicos, la huella del contrato, la lista blanca publica, la
@@ -23,8 +22,9 @@ import { handleBeacon } from "../lib/forms/beacon";
 import { contractTextSha256, hashContractText } from "../lib/forms/contract-hash";
 import { findForbiddenKeys, containsText } from "../lib/forms/public-definition";
 import { newField, type FormField } from "../lib/forms/fields";
+import { loadContactForms } from "../lib/forms/data/contact-forms";
 import { hashIp } from "../lib/scheduling/antispam";
-import { deleteSecret, storeSecret } from "../lib/vault";
+import { deleteSecret } from "../lib/vault";
 import { signFormLink, verifyFormLink, createToken, getOrCreateLinkSecret } from "../lib/forms/signed-link";
 import { recordTouch } from "../lib/contacts/touch";
 import { resolveBankVariables } from "../lib/response-assets/bank-variables";
@@ -83,29 +83,12 @@ function sql(query: string): Array<Record<string, unknown>> {
   return (JSON.parse(out).rows ?? []) as Array<Record<string, unknown>>;
 }
 
-// ── Turnstile simulado: imita las claves de prueba de Cloudflare ─────────────
-const turnstileCalls: Array<{ secret: string; idempotencyKey: string | null }> = [];
-const fakeTurnstile = (async (_url: unknown, init?: RequestInit) => {
-  const body = new URLSearchParams(String(init?.body));
-  const secret = body.get("secret") ?? "";
-  turnstileCalls.push({ secret: secret.slice(0, 2), idempotencyKey: body.get("idempotency_key") });
-  const approve = secret.startsWith("1x");
-  return {
-    ok: true,
-    status: 200,
-    json: async () => (approve ? { success: true } : { success: false, "error-codes": ["invalid-input-response"] }),
-  } as Response;
-}) as typeof fetch;
-
-const TEST_SECRET_OK = "1x0000000000000000000000000000000AA"; // clave publica de prueba de Cloudflare
-const TEST_SECRET_NO = "2x0000000000000000000000000000000AA";
-
 const usedLimitKeys = new Set<string>();
 const uploaded: string[] = [];
 
 function ports(ws: string, over: Partial<SubmitPorts> = {}): SubmitPorts {
   void ws;
-  const real = createSubmitPorts(svc, { fetchImpl: fakeTurnstile });
+  const real = createSubmitPorts(svc);
   return {
     ...real,
     limit: async (spec) => {
@@ -282,9 +265,10 @@ try {
   // ── 00154: el CHECK conserva todo lo anterior ──────────────────────────────
   console.log("\n— 00154: integration_configs.type —");
   const integrationCheck = String(sql("select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'integration_configs_type_check'")[0]?.d);
-  for (const t of ["channel", "ai_provider", "email_provider", "social_network", "publishing_service", "google", "meta", "captcha"]) {
+  for (const t of ["channel", "ai_provider", "email_provider", "social_network", "publishing_service", "google", "meta"]) {
     check(integrationCheck.includes(`'${t}'`), `el CHECK de integration_configs.type incluye '${t}'`);
   }
+  check(!integrationCheck.includes("'captcha'"), "...y ya NO incluye 'captcha' (R1: se saco Turnstile)");
 
   // ── F8: publicar, versiones y huella ───────────────────────────────────────
   console.log("\n— F8: publicar, versiones y la huella del contrato —");
@@ -366,7 +350,7 @@ try {
   const pubUnpublished = await anon.rpc("get_public_form", { p_slug: publicSlug });
   check((pubUnpublished.data as { status?: string })?.status === "unavailable", "un formulario en borrador devuelve unavailable");
   await svc.rpc("publish_form_version", { p_form_id: pForm!.id, p_actor: owner.id });
-  await svc.from("integration_configs").insert({ workspace_id: ws.id, type: "captcha", provider: "turnstile", config: { site_key: "1x00000000000000000000AA" }, is_active: true });
+  check(true, "se publica sin ninguna integracion configurada (R1: publicar no depende de nada externo)");
 
   const pub = await anon.rpc("get_public_form", { p_slug: publicSlug });
   check(!pub.error && (pub.data as { status?: string })?.status === "available", "anon obtiene la definicion publica de un formulario publicado", pub.error?.message);
@@ -377,9 +361,9 @@ try {
   const pubFields = (pub.data as { fields: Array<{ key: string; type: string; hidden?: unknown }> }).fields;
   check(pubFields.some((f) => f.key === "campana" && f.type === "hidden"), "un oculto de URL si se devuelve, solo con su fuente");
   check(!pubFields.some((f) => f.key === "canal"), "el oculto fijo no se devuelve");
-  check((pub.data as { turnstile_site_key?: string }).turnstile_site_key === "1x00000000000000000000AA", "devuelve la site key publica de Turnstile");
+  check(!("turnstile_site_key" in (pub.data as object)), "get_public_form NO devuelve turnstile_site_key (R1)");
   check(!("success" in (pub.data as object)), "no devuelve la configuracion de exito");
-  const sameKeys = (pub.data as { fields: Array<Record<string, unknown>> }).fields.every((f) => Object.keys(f).every((k) => ["key", "type", "label", "help", "placeholder", "required", "options", "min", "max", "file", "consentText", "visibility", "prefill", "hidden"].includes(k)));
+  const sameKeys = (pub.data as { fields: Array<Record<string, unknown>> }).fields.every((f) => Object.keys(f).every((k) => ["key", "type", "label", "help", "placeholder", "required", "options", "min", "max", "file", "consentText", "visibility", "prefill", "social", "hidden"].includes(k)));
   check(sameKeys, "cada campo publico solo tiene claves de la lista blanca (paridad con toPublicField)");
 
   await svc.from("forms").update({ status: "paused" }).eq("id", pForm!.id);
@@ -399,15 +383,11 @@ try {
   check(!!adminPublish, "ni un Admin desde el navegador puede llamar a publish_form_version (la accion verifica el permiso)");
 
   // ── F12: el envio, de punta a punta ────────────────────────────────────────
-  console.log("\n— F12: el envio seguro (codigo real, Turnstile simulado) —");
-  const stored = await storeSecret(svc, ws.id, "turnstile_secret_key", TEST_SECRET_OK);
-  check(stored.ok, "se guarda la secret key de prueba en Vault", stored.ok ? undefined : stored.error);
-
+  console.log("\n— F12: el envio seguro (codigo real, sin captcha) —");
   const key1 = randomUUID();
   const { data: pubVersion } = await svc.from("forms").select("current_version_id").eq("id", pForm!.id).single();
   const basePayload = (key: string, answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
     idempotency_key: key,
-    turnstile_token: "token-de-prueba",
     version_id: pubVersion!.current_version_id,
     answers,
     honeypot: "",
@@ -434,17 +414,15 @@ try {
   check(!JSON.stringify(saved.meta).includes("203.0.113"), "la IP no se guarda en claro en meta");
   check(String((saved.meta as { ip_hash?: string }).ip_hash ?? "").length > 8, "meta guarda el hash de la IP");
   check(saved.status === "received", "con email mapeado, la respuesta crea el contacto y queda 'received' (FO2)");
-  const afterConcurrent = turnstileCalls.length;
   const again = await submitForm(ports(ws.id), input(publicSlug, basePayload(key1, { nombre: "Ana", email: "ana@example.test", plan: "A" })));
-  check(again.body.duplicate === true && turnstileCalls.length === afterConcurrent, "un reintento con la misma clave no vuelve a verificar Turnstile");
-  check(turnstileCalls.some((c) => c.idempotencyKey === key1), "Turnstile recibe la clave de idempotencia");
+  check(again.body.duplicate === true, "un reintento con la misma clave devuelve la misma respuesta (duplicate)");
 
   const noEmail = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Sin email", plan: "A" })));
   check(noEmail.status === 400 && (noEmail.body.fields as Record<string, string>)?.email, "falta un obligatorio visible: 400 con el campo");
   const badOption = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "X", email: "x@example.test", plan: "Z" })));
   check(badOption.status === 400, "una opcion que no existe: 400");
 
-  // Honeypot y captcha: dejan form_rejected, sin datos personales.
+  // Honeypot: deja form_rejected, sin datos personales.
   const rejectedBefore = (await svc.from("analytics_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).eq("event_type", "form_rejected")).count ?? 0;
   const honey = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Bot", email: "bot@example.test" }, { honeypot: "http://spam" })));
   check(honey.status === 200 && honey.body.ok === true, "honeypot lleno: 200 falso");
@@ -452,18 +430,13 @@ try {
   check((honeyRow ?? []).length === 0, "...y no se guarda nada");
   const rejectedMid = (await svc.from("analytics_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id).eq("event_type", "form_rejected")).count ?? 0;
   check(rejectedMid === rejectedBefore + 1, "queda un form_rejected por el honeypot");
-  const badCaptcha = await submitForm(ports(ws.id, { turnstileSecret: async () => TEST_SECRET_NO }), input(publicSlug, basePayload(randomUUID(), { nombre: "Otro", email: "o@example.test" })));
-  check(badCaptcha.status === 400 && badCaptcha.body.error === "captcha_failed", "Turnstile rechaza: 400 captcha_failed");
   const { data: rejectedRows } = await svc.from("analytics_events").select("contact_id, flow_id, metadata").eq("workspace_id", ws.id).eq("event_type", "form_rejected");
-  check((rejectedRows ?? []).length === rejectedBefore + 2, "...y queda otro form_rejected");
+  check((rejectedRows ?? []).length === rejectedBefore + 1, "...y no hay ningun otro rechazo");
   check((rejectedRows ?? []).every((r) => r.contact_id === null && r.flow_id === null), "los form_rejected no tienen contacto ni flow");
   const meta = (rejectedRows ?? []).map((r) => Object.keys((r.metadata ?? {}) as object).sort().join(","));
   check(meta.every((k) => k === "form_id,reason,version_id"), "la metadata de un rechazo es solo {form_id, reason, version_id}", meta.join(" | "));
-  const netFail = await submitForm(
-    ports(ws.id, { verifyTurnstile: async () => ({ ok: false as const, codes: ["network"] }) }),
-    input(publicSlug, basePayload(randomUUID(), { nombre: "Red", email: "r@example.test" })),
-  );
-  check(netFail.status === 503, "Cloudflare no responde: 503 y no se acepta sin verificar");
+  const noToken = await submitForm(ports(ws.id), input(publicSlug, basePayload(randomUUID(), { nombre: "Sin token", email: "st@example.test" })));
+  check(noToken.status === 200 && noToken.body.ok === true, "un envio sin token de captcha se guarda (R1)", JSON.stringify(noToken.body));
 
   // Archivos: tipo real, tamano y carpeta.
   const fileKey = randomUUID();
@@ -586,7 +559,7 @@ try {
   const formIdIndex = sql("select indexdef from pg_indexes where indexname='idx_flows_form'");
   check(String(formIdIndex[0]?.indexdef ?? "").includes("WHERE (form_id IS NOT NULL)"), "idx_flows_form es parcial (solo flows con formulario)");
 
-  console.log("\n— F16/F17/F18: el contacto, el toque y el aviso (codigo real, Turnstile simulado) —");
+  console.log("\n— F16/F17/F18: el contacto, el toque y el aviso (codigo real, sin captcha) —");
   const { data: tag } = await svc.from("tags").insert({ workspace_id: ws.id, name: "zz-test calificado" }).select("id").single();
   const { data: customDef } = await svc.from("custom_field_definitions").insert({ workspace_id: ws.id, name: "zz-test empresa", slug: "zz_test_empresa", type: "text" }).select("id").single();
   const fo2Slug = `zz-test-fo2-${Date.now()}`;
@@ -623,7 +596,6 @@ try {
 
   const fo2Payload = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
     idempotency_key: randomUUID(),
-    turnstile_token: "token-de-prueba",
     version_id: fo2Pub!.current_version_id,
     answers,
     honeypot: "",
@@ -749,6 +721,148 @@ try {
   const np = npAttr?.attribution as { first_touch?: { campaign?: string }; last_touch?: { campaign?: string } };
   check(np?.first_touch?.campaign === "tardio" && np?.last_touch?.campaign === "tardio", "contacto existente SIN toques: el del formulario queda como primero y ultimo");
 
+  // ── R3 + R5: el interruptor de contactos y los usuarios de redes sociales ───
+  console.log("\n— R3/R5: sin contacto (none) y crear o vincular por @ (codigo real y la v5 de la base) —");
+  const r5Slug = `zz-test-r5-${Date.now()}`;
+  const r5Fields: FormField[] = [
+    field("short_text", "nombre", { label: "Nombre" }),
+    field("email", "email", { label: "Email" }),
+    field("phone", "tel", { label: "Telefono" }),
+    field("social", "ig", { label: "Instagram", social: { platform: "instagram" } }),
+    field("social", "tt", { label: "TikTok", social: { platform: "tiktok" } }),
+    field("social", "li", { label: "LinkedIn", social: { platform: "linkedin" } }),
+    field("short_text", "usuario_x", { label: "Usuario de X (texto)" }),
+    field("short_text", "pais", { label: "Pais" }),
+  ];
+  const r5Config = (over: Record<string, unknown> = {}) => ({
+    mode: "create_or_link",
+    update: "fill_empty",
+    map: [
+      { fieldKey: "nombre", target: "contact.display_name" },
+      { fieldKey: "email", target: "contact.email" },
+      { fieldKey: "tel", target: "contact.phone" },
+      { fieldKey: "ig", target: "contact.instagram_username" },
+      { fieldKey: "tt", target: "contact.tiktok_username" },
+      { fieldKey: "li", target: "contact.linkedin_profile_url" },
+      { fieldKey: "usuario_x", target: "contact.twitter_username" },
+      { fieldKey: "pais", target: "contact.country" },
+    ],
+    ...over,
+  });
+  const { data: r5 } = await svc
+    .from("forms")
+    .insert({ workspace_id: ws.id, name: "zz-test R5", type: "custom", slug: r5Slug, draft_definition: { fields: r5Fields } as unknown as Json, contact_config: r5Config() as unknown as Json })
+    .select("id")
+    .single();
+  await svc.rpc("publish_form_version", { p_form_id: r5!.id, p_actor: owner.id });
+  const { data: r5Pub } = await svc.from("forms").select("current_version_id").eq("id", r5!.id).single();
+  await svc.from("forms").update({ status: "published" }).eq("id", r5!.id);
+  const r5Send = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    submitForm(ports(ws.id), input(r5Slug, { idempotency_key: randomUUID(), version_id: r5Pub!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: { timezone: "America/Costa_Rica" }, origin: "public_page", ...extra }));
+  const r5Row = async (r: { body: Record<string, unknown> }) => (await svc.from("form_submissions").select("*").eq("id", String(r.body.submission_id)).single()).data!;
+  const countContacts = async () => (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+
+  // A y B. Un contacto que llego por DM de Instagram: el @ del formulario cae en el MISMO contacto.
+  const { data: dm } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test DM Ana", instagram_username: "ana.perez" }).select("id").single();
+  const viaAt = await r5Row(await r5Send({ ig: "@Ana.Perez" }));
+  check(viaAt.contact_id === dm!.id && viaAt.contact_created === false && (viaAt.dedupe as { matched_by?: string }).matched_by === "instagram", "un @Ana.Perez (sin email ni telefono) se vincula al contacto del DM con matched_by = instagram", JSON.stringify(viaAt.dedupe));
+  const viaUrl = await r5Row(await r5Send({ ig: "https://www.instagram.com/ana.perez/" }));
+  check(viaUrl.contact_id === dm!.id, "la URL del perfil se vincula igual");
+  const instagramRows = await svc.from("contacts").select("id").eq("workspace_id", ws.id).eq("instagram_username", "ana.perez");
+  check(instagramRows.data?.length === 1, "...y no se duplica el contacto");
+  const invalidIg = await r5Send({ ig: "ana perez" });
+  check(invalidIg.status === 400 && !!(invalidIg.body.fields as Record<string, string> | undefined)?.ig, "un @ con espacios es un error del campo (400)");
+
+  // C. Un @ de TikTok que no existe: se crea el contacto con ese dato, con el @ de nombre y sin quedar 'anonimo'.
+  const tikTok = await r5Row(await r5Send({ tt: "@Nuevo.Tiktok" }));
+  const { data: ttContact } = await svc.from("contacts").select("tiktok_username, display_name, is_anonymous").eq("id", tikTok.contact_id!).single();
+  check(tikTok.contact_created === true && ttContact?.tiktok_username === "nuevo.tiktok", "un @ de TikTok que no existe crea un contacto con tiktok_username", JSON.stringify(ttContact));
+  check(ttContact?.display_name === "@nuevo.tiktok" && ttContact?.is_anonymous === false, "...con el @ de nombre y sin quedar marcado como anonimo");
+
+  // D. Telefono de A y @ de B: gana el telefono (A) y el @ queda como conflicto (B).
+  const { data: contactA } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Contacto A", phone: "+50670001111" }).select("id").single();
+  const { data: contactB } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Contacto B", instagram_username: "conflicto.b" }).select("id").single();
+  const clash = await r5Row(await r5Send({ tel: "+50670001111", ig: "conflicto.b" }));
+  const clashDedupe = clash.dedupe as { matched_by?: string; conflict_contact_id?: string; conflicts?: Array<{ by: string; contact_id: string }> };
+  check(clash.contact_id === contactA!.id && clashDedupe.matched_by === "phone", "telefono de A y @ de B: se vincula a A");
+  check(clashDedupe.conflict_contact_id === contactB!.id && clashDedupe.conflicts?.some((c) => c.by === "instagram" && c.contact_id === contactB!.id) === true, "dedupe.conflicts nombra a B por instagram", JSON.stringify(clashDedupe));
+  const { data: aAfter } = await svc.from("contacts").select("instagram_username").eq("id", contactA!.id).single();
+  check(aAfter?.instagram_username === null, "...y el @ que es de B NO se escribe en A (no quedan dos contactos con el mismo @)");
+
+  // E. Un contacto con un canal de Instagram vinculado: su @ NUNCA cambia, ni con overwrite.
+  const { data: igChannel } = await svc.from("channels").insert({ workspace_id: ws.id, platform: "instagram", late_account_id: `zz-test-ig-${Date.now()}`, display_name: "zz-test IG" } as never).select("id").single();
+  const { data: igLinked } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test IG real", phone: "+50670003333", instagram_username: "handle.real" }).select("id").single();
+  await svc.from("contact_channels").insert({ contact_id: igLinked!.id, channel_id: igChannel!.id, platform_sender_id: `zz-test-sender-${Date.now()}` });
+  const { data: igFree } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test IG libre", phone: "+50670004444", instagram_username: "handle.viejo" }).select("id").single();
+  await svc.from("forms").update({ contact_config: r5Config({ update: "overwrite" }) as unknown as Json }).eq("id", r5!.id);
+  await r5Send({ tel: "+50670003333", ig: "otro.handle" });
+  await r5Send({ tel: "+50670004444", ig: "handle.nuevo" });
+  const { data: igAfter } = await svc.from("contacts").select("id, instagram_username").in("id", [igLinked!.id, igFree!.id]);
+  check(igAfter?.find((c) => c.id === igLinked!.id)?.instagram_username === "handle.real", "con overwrite, el instagram_username de un contacto con canal de Instagram NO cambia");
+  check(igAfter?.find((c) => c.id === igFree!.id)?.instagram_username === "handle.nuevo", "...y el de un contacto sin canal si se actualiza");
+
+  // F. Dos respuestas simultaneas con el mismo @ nuevo: UN contacto.
+  await svc.from("forms").update({ contact_config: r5Config() as unknown as Json }).eq("id", r5!.id);
+  const raceIg = await Promise.all(Array.from({ length: 5 }, () => r5Send({ ig: "carrera.ig.zz" })));
+  check(raceIg.every((r) => r.status === 200), "5 respuestas simultaneas con el mismo @ nuevo responden 200", raceIg.map((r) => r.status).join(","));
+  const raceRows = await svc.from("contacts").select("id").eq("workspace_id", ws.id).eq("instagram_username", "carrera.ig.zz");
+  check(raceRows.data?.length === 1, "...y queda UN solo contacto", `hay ${raceRows.data?.length}`);
+
+  // LinkedIn: se guarda como URL del perfil y se encuentra por el slug.
+  const li1 = await r5Row(await r5Send({ li: "linkedin.com/in/Ana-Linked/" }));
+  const { data: liContact } = await svc.from("contacts").select("linkedin_profile_url").eq("id", li1.contact_id!).single();
+  check(liContact?.linkedin_profile_url === "https://www.linkedin.com/in/ana-linked", "LinkedIn se guarda como la URL del perfil", String(liContact?.linkedin_profile_url));
+  const li2 = await r5Row(await r5Send({ li: "https://www.linkedin.com/in/ANA-LINKED?utm=1" }));
+  check(li2.contact_id === li1.contact_id && (li2.dedupe as { matched_by?: string }).matched_by === "linkedin", "...y la misma persona por otra URL del mismo perfil se vincula por linkedin");
+
+  // El pais por nombre y lo que no se reconoce.
+  const paisOk = await r5Row(await r5Send({ email: "pais.zz@example.test", pais: "costa rica" }));
+  const { data: paisContact } = await svc.from("contacts").select("country").eq("id", paisOk.contact_id!).single();
+  check(paisContact?.country === "CR", "el pais 'costa rica' se guarda como CR");
+  const paisMal = await r5Row(await r5Send({ email: "pais2.zz@example.test", pais: "Narnia" }));
+  const { data: paisMalContact } = await svc.from("contacts").select("country").eq("id", paisMal.contact_id!).single();
+  check(paisMal.status === "received" && paisMalContact?.country === null && JSON.stringify(paisMal.meta).includes("country_unrecognized"), "un pais que no se reconoce no se guarda, la respuesta queda y el detalle lo anota");
+
+  // G. El interruptor apagado: no se crea ni se vincula nada, tampoco con un link firmado.
+  await svc.from("forms").update({ contact_config: r5Config({ mode: "none" }) as unknown as Json }).eq("id", r5!.id);
+  const contactsBeforeNone = await countContacts();
+  const eventsBeforeNone = (await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
+  const noneRes = await r5Send({ email: "none.zz@example.test", tel: "+50670002222", ig: "none.ig.zz" });
+  const noneRow = await r5Row(noneRes);
+  check(noneRes.status === 200 && noneRow.contact_id === null && noneRow.status === "no_contact" && noneRow.contact_created === false, "mode none con email, telefono y @: la respuesta queda sin contacto");
+  check((await countContacts()) === contactsBeforeNone, "...no se crea ningun contacto");
+  const { data: noneByEmail } = await svc.from("contacts").select("id").eq("workspace_id", ws.id).or("email.eq.none.zz@example.test,phone.eq.+50670002222,instagram_username.eq.none.ig.zz");
+  check((noneByEmail ?? []).length === 0, "...ni con esos datos");
+  check(((await svc.from("automation_events").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === eventsBeforeNone, "...y no existe ningun automation_event");
+  const noneLink = await signFormLink(svc, { workspaceId: ws.id, formId: r5!.id, slug: r5Slug, contactId: contactA!.id, baseUrl: "https://app.ejemplo.test" });
+  const noneSigned = await r5Row(await r5Send({ nombre: "Pisar" }, { link_token: new globalThis.URL(noneLink).searchParams.get("c") }));
+  const { data: aName } = await svc.from("contacts").select("display_name").eq("id", contactA!.id).single();
+  check(noneSigned.contact_id === null && aName?.display_name === "zz-test Contacto A", "mode none con un link firmado valido: la respuesta queda sin contacto y no toca al contacto del link");
+  // Directo a la RPC (la base manda aunque el servidor mande datos).
+  const { data: rpcNone } = await svc.rpc("submit_form_response", {
+    p_form_id: r5!.id, p_version_id: r5Pub!.current_version_id!, p_idempotency_key: randomUUID(), p_answers: {}, p_attribution: {}, p_meta: {},
+    p_contact_hint: { email: "directo.none.zz@example.test", signed_contact_id: contactA!.id, social: { instagram: "directo.none" } }, p_extra: {},
+  });
+  check((rpcNone as { contact_id?: string | null } | null)?.contact_id === null, "la RPC con mode none ignora el hint (aunque llegue con email, @ y un link firmado)");
+  await svc.from("forms").update({ contact_config: r5Config() as unknown as Json }).eq("id", r5!.id);
+
+  // R8: la ficha del contacto. La RLS decide: un Member ve solo lo de sus contactos; el spam no se muestra.
+  console.log("\n— R8: los formularios en la ficha del contacto (la RLS decide) —");
+  const own = await r5Row(await r5Send({ email: "zz-test-visible@example.test" }));
+  const hidden = await r5Row(await r5Send({ email: "zz-test-ajeno@example.test" }));
+  const spamOwn = await r5Row(await r5Send({ email: "zz-test-visible@example.test" }));
+  await svc.from("form_submissions").update({ status: "spam" }).eq("id", spamOwn.id);
+  const ownerForms = await loadContactForms(owner.client, { workspaceId: ws.id, contactId: contactVisible });
+  check(ownerForms.rows.some((r) => r.id === own.id) && ownerForms.rows.every((r) => r.id !== spamOwn.id), "Owner ve la respuesta del contacto y NO la marcada como spam");
+  check(ownerForms.rows.every((r) => r.typeLabel.length > 0 && r.href.includes("/respuestas/")), "...con su tipo y el link al detalle");
+  const memberForms = await loadContactForms(member.client, { workspaceId: ws.id, contactId: contactVisible });
+  check(memberForms.rows.some((r) => r.id === own.id), "un Member ve las respuestas de SU contacto");
+  const memberHiddenForms = await loadContactForms(member.client, { workspaceId: ws.id, contactId: contactAjeno });
+  check(memberHiddenForms.rows.length === 0 && memberHiddenForms.total === 0, "un Member NO ve las respuestas de un contacto que no es suyo");
+  check(hidden.contact_id === contactAjeno, "(la respuesta del contacto ajeno existe: no es que no hubiera nada)");
+  const ownerHiddenForms = await loadContactForms(owner.client, { workspaceId: ws.id, contactId: contactAjeno });
+  check(ownerHiddenForms.rows.length >= 1, "Owner si ve las del contacto ajeno");
+
   console.log("\n— F20: el link firmado por contacto —");
   const signedUrl = await signFormLink(svc, { workspaceId: ws.id, formId: fo2!.id, slug: fo2Slug, contactId: veteran!.id, serviceId: randomUUID(), saleId: randomUUID(), baseUrl: "https://app.ejemplo.test" });
   const token = new globalThis.URL(signedUrl).searchParams.get("c")!;
@@ -855,7 +969,7 @@ try {
   const { data: sVer } = await svc.from("forms").select("current_version_id").eq("id", sForm!.id).single();
   const sendSurvey = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
     submitForm(ports(ws.id), input(surveySlug, {
-      idempotency_key: randomUUID(), turnstile_token: "t", version_id: sVer!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page", ...extra,
+      idempotency_key: randomUUID(), version_id: sVer!.current_version_id, answers, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page", ...extra,
     }));
   const rowById = async (id: unknown) => (await svc.from("form_submissions").select("*").eq("id", String(id)).single()).data!;
 
@@ -883,7 +997,7 @@ try {
   await svc.rpc("publish_form_version", { p_form_id: stForm!.id, p_actor: owner.id });
   await svc.from("forms").update({ status: "published" }).eq("id", stForm!.id);
   const { data: stVer } = await svc.from("forms").select("current_version_id").eq("id", stForm!.id).single();
-  const starsOut = await submitForm(ports(ws.id), input(starsSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: stVer!.current_version_id, answers: { estrellas: 4 }, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page" }));
+  const starsOut = await submitForm(ports(ws.id), input(starsSlug, { idempotency_key: randomUUID(), version_id: stVer!.current_version_id, answers: { estrellas: 4 }, honeypot: "", attribution: {}, client_meta: {}, origin: "public_page" }));
   const starsRow = await rowById(starsOut.body.submission_id);
   check(starsRow.score === 4 && starsRow.nps_category === null, "estrellas: guarda el puntaje y NO una categoria NPS");
 
@@ -943,7 +1057,7 @@ try {
   const { data: kVer1 } = await svc.from("forms").select("current_version_id").eq("id", kForm!.id).single();
   const v1Id = kVer1!.current_version_id!;
   const sendContract = (answers: Record<string, unknown>, extra: Record<string, unknown> = {}, versionId = v1Id, ip = nextIp()) =>
-    submitForm(ctPorts(), { ...input(contractSlug, { idempotency_key: randomUUID(), turnstile_token: "t", version_id: versionId, answers, honeypot: "", attribution: { utm_source: "meta" }, client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, origin: "public_page", ...extra }, [], ip), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
+    submitForm(ctPorts(), { ...input(contractSlug, { idempotency_key: randomUUID(), version_id: versionId, answers, honeypot: "", attribution: { utm_source: "meta" }, client_meta: { timezone: "America/Costa_Rica", locale: "es-CR" }, origin: "public_page", ...extra }, [], ip), userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1" });
   const sig = (over: Record<string, unknown> = {}) => ({ accepted: true, signature: pngUrl, signature_strokes: 3, ...over });
   const ana = { nombre: "Ana Firma", email: "Ana.Firma@Example.test" };
 
@@ -1029,23 +1143,45 @@ try {
   const { data: sig2Job } = await svc.from("scheduled_jobs").select("id").eq("dedupe_key", `contract_pdf:${sig2!.id}`);
   for (const j of sig2Job ?? []) jobIds.push(j.id);
 
-  // Huella corrupta: la firma falla y no queda NADA.
-  await svc.from("form_versions").update({ contract_text: "texto adulterado" } as never).eq("id", v2Id);
+  // R9: el candado. Una version publicada no se puede cambiar, ni con el service role.
+  const lockedTry = await svc.from("form_versions").update({ contract_text: "texto adulterado" } as never).eq("id", v2Id);
+  check(!!lockedTry.error && lockedTry.error.code === "23001", "UPDATE de contract_text de una version publicada FALLA (restrict_violation), tambien con el service role", lockedTry.error?.code);
+  const lockedSha = await svc.from("form_versions").update({ contract_text_sha256: "0".repeat(64) } as never).eq("id", v2Id);
+  const lockedDef = await svc.from("form_versions").update({ definition: { fields: [] } } as never).eq("id", v2Id);
+  const lockedNumber = await svc.from("form_versions").update({ version_number: 99 } as never).eq("id", v2Id);
+  check([lockedSha, lockedDef, lockedNumber].every((r) => r.error?.code === "23001"), "...igual con la huella, la definicion y el numero de version");
+  const { data: v2Intact } = await svc.from("form_versions").select("contract_text, contract_text_sha256").eq("id", v2Id).single();
+  check(v2Intact?.contract_text === contractText2.text && v2Intact?.contract_text_sha256 === contractText2.sha256, "...y la version sigue intacta");
+
+  // Huella corrupta: la firma falla y no queda NADA. Como la version no se puede alterar, se INSERTA una version de
+  // prueba cuya huella no coincide con su texto, se la hace la vigente y se firma contra ella.
+  const { data: v2Row } = await svc.from("form_versions").select("workspace_id, definition, published_at").eq("id", v2Id).single();
+  const { data: badVer, error: badVerError } = await svc
+    .from("form_versions")
+    .insert({ workspace_id: v2Row!.workspace_id, form_id: kForm!.id, version_number: 3, definition: v2Row!.definition, contract_text: "texto con huella equivocada", contract_text_sha256: "f".repeat(64), published_by: owner.id })
+    .select("id")
+    .single();
+  check(!badVerError && !!badVer, "se inserta una version de prueba con la huella equivocada", badVerError?.message);
+  const badVersionId = badVer!.id;
+  await svc.from("forms").update({ current_version_id: badVersionId }).eq("id", kForm!.id);
   const beforeContacts = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0;
   const beforeSigs = (await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0;
   const corruptKey = randomUUID();
   const errorsMute = console.error;
   console.error = () => undefined;
-  const corrupt = await sendContract({ nombre: "Carlos Corrupto", email: "corrupto.zz@example.test" }, sig({ idempotency_key: corruptKey }), v2Id);
+  const corrupt = await sendContract({ nombre: "Carlos Corrupto", email: "corrupto.zz@example.test" }, sig({ idempotency_key: corruptKey }), badVersionId);
   console.error = errorsMute;
-  check(corrupt.status === 500, "con el texto de la version alterado, la firma falla (500 sin detalles)", String(corrupt.status));
+  check(corrupt.status === 500, "con la huella que no coincide con el texto, la firma falla (500 sin detalles)", String(corrupt.status));
   const { data: corruptRows } = await svc.from("form_submissions").select("id").eq("form_id", kForm!.id).eq("idempotency_key", corruptKey);
   check((corruptRows ?? []).length === 0, "...y la respuesta NO queda guardada");
   check(((await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count ?? 0) === beforeContacts, "...ni se crea el contacto");
   check(((await svc.from("contract_signatures").select("id", { count: "exact", head: true }).eq("form_id", kForm!.id)).count ?? 0) === beforeSigs, "...ni la firma ni su job (todo en la misma transaccion)");
   const { data: leftover } = await svc.storage.from("contracts").download(`${ws.id}/${kForm!.id}/${corruptKey}/signature.png`);
   check(!leftover, "...y la imagen de la firma que se habia subido se descarta");
-  await svc.from("form_versions").update({ contract_text: contractText2.text } as never).eq("id", v2Id);
+  // Se vuelve a la version buena y se borra la de prueba (DELETE no esta bloqueado).
+  await svc.from("forms").update({ current_version_id: v2Id }).eq("id", kForm!.id);
+  const { error: delBad } = await svc.from("form_versions").delete().eq("id", badVersionId);
+  check(!delBad, "DELETE de una version no esta bloqueado (la limpieza en cascada sigue andando)", delBad?.message);
 
   // El PDF, de verdad: con la base y el bucket reales, sin proveedores.
   console.log("\n— F27-F28: el PDF y el email (base y Storage reales; Resend simulado) —");
@@ -1176,7 +1312,7 @@ try {
   // Limpieza: el secreto de prueba, los archivos subidos, los topes por IP y los datos de prueba.
   const { data: testWorkspaces } = await svc.from("workspaces").select("id").like("name", "zz-test-%");
   for (const w of testWorkspaces ?? []) {
-    for (const name of ["turnstile_secret_key", "forms_link_secret"]) {
+    for (const name of ["forms_link_secret"]) {
       try {
         await deleteSecret(svc, w.id, name);
       } catch {
