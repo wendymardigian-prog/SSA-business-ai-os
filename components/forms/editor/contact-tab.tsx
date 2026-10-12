@@ -8,6 +8,8 @@ import { saveContactSettings } from "@/lib/actions/forms/contact";
 import {
   brokenMappings,
   canIdentifyContact,
+  linksContacts,
+  NO_CONTACT_CONSEQUENCES,
   targetsFor,
   validateContactConfig,
   type ContactConfig,
@@ -26,14 +28,16 @@ import type { Draft, EditorExtras, EditorForm } from "./types";
  * formulario entero desde que se guardan, no se publican por versión.
  */
 
-const MODE_LABELS: Record<ContactMode, { label: string; hint: string }> = {
-  create_or_link: { label: "Crear o vincular", hint: "Si ya existe un contacto con ese teléfono o email, se vincula; si no, se crea uno nuevo." },
-  link_only: { label: "Solo vincular", hint: "Se vincula a un contacto que ya existe; si no existe, la respuesta queda sin contacto." },
+type LinkingMode = Exclude<ContactMode, "none">;
+
+const MODE_LABELS: Record<LinkingMode, { label: string; hint: string }> = {
+  create_or_link: { label: "Crear el contacto", hint: "Se crea un contacto nuevo con lo que respondió." },
+  link_only: { label: "No crear: dejar la respuesta sin contacto", hint: "Solo se vincula a un contacto que ya existe; si no existe, la respuesta queda sin contacto." },
 };
 
 const UPDATE_LABELS: Record<ContactUpdate, { label: string; hint: string }> = {
-  fill_empty: { label: "Completar lo vacío", hint: "Solo se llenan los datos que el contacto todavía no tiene." },
-  overwrite: { label: "Pisar con lo nuevo", hint: "Se reemplaza lo que ya tenía por lo que respondió (nunca se borra un dato con un vacío)." },
+  fill_empty: { label: "Completar solo lo que le falta", hint: "Solo se llenan los datos que el contacto todavía no tiene." },
+  overwrite: { label: "Actualizar con lo que respondió", hint: "Se reemplaza lo que ya tenía por lo que respondió (nunca se borra un dato con un vacío)." },
 };
 
 const chip = (on: boolean) =>
@@ -60,6 +64,9 @@ export function ContactTab({
   const router = useRouter();
   const fields: FormField[] = draft.definition.fields;
   const [config, setConfig] = useState<ContactConfig>(form.contactConfig);
+  // Al apagar el interruptor se recuerda el modo para devolverlo al prenderlo; el mapeo nunca se toca.
+  const [lastMode, setLastMode] = useState<LinkingMode>(form.contactConfig.mode === "none" ? "create_or_link" : form.contactConfig.mode);
+  const linking = linksContacts(config);
   const [tagIds, setTagIds] = useState<string[]>(form.tagsOnSubmit);
   const [notifyEnabled, setNotifyEnabled] = useState(form.notifyEnabled);
   const [notifyUserIds, setNotifyUserIds] = useState<string[]>(form.notifyUserIds);
@@ -96,16 +103,42 @@ export function ContactTab({
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      {!identifiable && (
-        <Notice tone="warning">Sin email ni teléfono mapeados, ninguna respuesta va a crear ni vincular contacto.</Notice>
+      {linking && !identifiable && (
+        <Notice tone="warning">Sin email, teléfono ni usuario de red social mapeados, ninguna respuesta va a crear ni vincular contacto.</Notice>
       )}
 
-      <Section title="Qué pasa con el contacto" description="Cada respuesta con email o teléfono busca a la persona en tus contactos. Nunca se busca por nombre.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Cuando llega una respuesta" hint={MODE_LABELS[config.mode].hint}>
+      <Section title="Vincular con contactos" description="Cada respuesta con email, teléfono o usuario de red social busca a la persona en tus contactos. Nunca se busca por nombre.">
+        <Checkbox
+          checked={linking}
+          disabled={disabled}
+          onChange={(on) => {
+            setMessage(null);
+            if (on) setConfig({ ...config, mode: lastMode });
+            else {
+              if (config.mode !== "none") setLastMode(config.mode);
+              setConfig({ ...config, mode: "none" });
+            }
+          }}
+          label="Vincular las respuestas con contactos"
+          description={linking ? "Cada respuesta se vincula con un contacto (o lo crea)." : undefined}
+        />
+        {!linking && (
+          <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Con el interruptor apagado:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {NO_CONTACT_CONSEQUENCES.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <p className="mt-2">Lo que mapeaste se guarda: si lo volvés a prender, sigue ahí.</p>
+          </div>
+        )}
+        {linking && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Field label="Si la persona no está en tus contactos" hint={MODE_LABELS[config.mode as LinkingMode].hint}>
             {(id) => (
               <select id={id} className={inputClass} disabled={disabled} value={config.mode} onChange={(e) => setConfig({ ...config, mode: e.target.value as ContactMode })}>
-                {(Object.keys(MODE_LABELS) as ContactMode[]).map((m) => (
+                {(Object.keys(MODE_LABELS) as LinkingMode[]).map((m) => (
                   <option key={m} value={m}>
                     {MODE_LABELS[m].label}
                   </option>
@@ -113,7 +146,7 @@ export function ContactTab({
               </select>
             )}
           </Field>
-          <Field label="Si el contacto ya existía" hint={UPDATE_LABELS[config.update].hint}>
+          <Field label="Si la persona ya está en tus contactos" hint={UPDATE_LABELS[config.update].hint}>
             {(id) => (
               <select id={id} className={inputClass} disabled={disabled} value={config.update} onChange={(e) => setConfig({ ...config, update: e.target.value as ContactUpdate })}>
                 {(Object.keys(UPDATE_LABELS) as ContactUpdate[]).map((u) => (
@@ -125,8 +158,10 @@ export function ContactTab({
             )}
           </Field>
         </div>
+        )}
       </Section>
 
+      {linking && (
       <Section title="Campo del formulario → campo del contacto" description="Elegí a qué dato del contacto va cada respuesta. Lo que no se mapea queda solo en la respuesta.">
         {fields.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no hay campos. Sumalos en la pestaña Campos.</p>
@@ -191,6 +226,7 @@ export function ContactTab({
         )}
         {!validation.ok && <p className="mt-2 text-xs text-destructive">{validation.errors[0]}</p>}
       </Section>
+      )}
 
       <Section title="Etiquetas al enviar" description="Se le ponen al contacto cuando responde. Si ya la tenía, no pasa nada.">
         {extras.tags.length === 0 ? (

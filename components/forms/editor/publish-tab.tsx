@@ -133,7 +133,7 @@ export function PublishTab({
         )}
       </section>
 
-      {canManage && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
+      {canManage && form.contactConfig.mode !== "none" && <ContactLinkCard formId={form.id} published={published} type={form.type} />}
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-5" aria-labelledby="embed">
         <h2 id="embed" className="text-sm font-semibold">

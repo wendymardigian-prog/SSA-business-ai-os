@@ -138,9 +138,9 @@ export function FormEditor({
         type: form.type,
         slug,
         definition: draft.definition,
-        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig }),
+        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: form.contactConfig.mode }),
       }),
-    [form.type, slug, draft.definition, surveyConfig, contractConfig],
+    [form.type, slug, draft.definition, surveyConfig, contractConfig, form.contactConfig.mode],
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;

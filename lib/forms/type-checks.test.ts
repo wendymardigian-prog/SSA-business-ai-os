@@ -35,3 +35,23 @@ describe("typeChecks", () => {
     expect(typeChecks("contract", {})).toHaveLength(1);
   });
 });
+
+describe("encuesta con el vínculo a contactos apagado (R3)", () => {
+  const ok = { fields: [{ ...newField("nps", "nps", "NPS"), required: true }] };
+
+  it('"una vez por contacto" no se puede publicar con el modo none', () => {
+    const reasons = surveyChecks({ scoreFieldKey: "nps", oncePerContact: true }, "none")(ok);
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toMatch(/una vez por contacto/);
+  });
+
+  it("sin el límite, o con el vínculo prendido, publica igual", () => {
+    expect(surveyChecks({ scoreFieldKey: "nps", oncePerContact: false }, "none")(ok)).toEqual([]);
+    expect(surveyChecks({ scoreFieldKey: "nps", oncePerContact: true }, "create_or_link")(ok)).toEqual([]);
+  });
+
+  it("typeChecks le pasa el modo a la encuesta", () => {
+    const [check] = typeChecks("survey", { surveyConfig: { scoreFieldKey: "nps", oncePerContact: true }, contactMode: "none" });
+    expect(check(ok)).toHaveLength(1);
+  });
+});

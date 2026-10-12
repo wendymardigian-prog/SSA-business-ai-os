@@ -441,8 +441,10 @@ export async function submitForm(ports: SubmitPorts, input: SubmitInput): Promis
   for (const [key, list] of Object.entries(stored)) values[key] = list;
 
   // 10. Guardar. El contacto sale del mapeo (con las respuestas ya validadas) o del link firmado.
-  const contactHint: Record<string, unknown> = { ...applyContactMapping(form.fields, form.contactConfig, values, form.customFields) };
-  if (payload.link_token) {
+  // Con el interruptor de contactos apagado (R3) no viaja nada: ni el mapeo ni un link firmado.
+  const linksContacts = form.contactConfig.mode !== "none";
+  const contactHint: Record<string, unknown> = linksContacts ? { ...applyContactMapping(form.fields, form.contactConfig, values, form.customFields) } : {};
+  if (linksContacts && payload.link_token) {
     const link = await ports.verifyLink(form, payload.link_token);
     if (link) {
       contactHint.signed_contact_id = link.contactId;

@@ -11,7 +11,11 @@ import { z } from "zod";
 import { SOCIAL_LABELS, SOCIAL_LOOKUP_PLATFORMS, type SocialPlatform } from "@/lib/contacts/social";
 import type { FormField, FormFieldType } from "./fields";
 
-export type ContactMode = "create_or_link" | "link_only";
+/**
+ * `none`: las respuestas no crean ni vinculan contactos (a propósito, no por un mapeo vacío).
+ * `create_or_link`: si la persona no está, se crea. `link_only`: si no está, la respuesta queda sin contacto.
+ */
+export type ContactMode = "none" | "create_or_link" | "link_only";
 export type ContactUpdate = "fill_empty" | "overwrite";
 
 export const FIXED_TARGETS = [
@@ -79,6 +83,19 @@ export interface ContactConfig {
   map: MapEntry[];
 }
 
+/** ¿El interruptor "Vincular las respuestas con contactos" está prendido? */
+export function linksContacts(config: Pick<ContactConfig, "mode">): boolean {
+  return config.mode !== "none";
+}
+
+/** Lo que pasa cuando el interruptor está apagado, una línea por consecuencia (la pestaña Contacto las muestra). */
+export const NO_CONTACT_CONSEQUENCES = [
+  'Las respuestas quedan "Sin contacto".',
+  "No disparan automatizaciones (necesitan un contacto).",
+  'Una encuesta no puede limitarse a "una vez por contacto".',
+  "No hay link firmado por contacto.",
+] as const;
+
 export const DEFAULT_CONTACT_CONFIG: ContactConfig = { mode: "create_or_link", update: "fill_empty", map: [] };
 
 export interface CustomFieldDef {
@@ -90,7 +107,7 @@ export interface CustomFieldDef {
 
 const entrySchema = z.object({ fieldKey: z.string().min(1).max(60), target: z.string().min(1).max(120) });
 const configSchema = z.object({
-  mode: z.enum(["create_or_link", "link_only"]).default("create_or_link"),
+  mode: z.enum(["none", "create_or_link", "link_only"]).default("create_or_link"),
   update: z.enum(["fill_empty", "overwrite"]).default("fill_empty"),
   map: z.array(entrySchema).max(100).default([]),
 });

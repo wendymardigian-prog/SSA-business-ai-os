@@ -91,8 +91,9 @@ export function SurveyTab({
         <Checkbox
           checked={oncePerContact}
           onChange={setOncePerContact}
+          disabled={form.contactConfig.mode === "none" && !oncePerContact}
           label="Cada contacto responde una sola vez"
-          description="Quien ya respondió ve “Ya respondiste, ¡gracias!”. Las respuestas anónimas (sin email ni link) no se pueden limitar. Una respuesta marcada como spam no cuenta: esa persona puede responder de nuevo."
+          description={form.contactConfig.mode === "none" ? "No disponible: las respuestas de este formulario no se vinculan con contactos. Prendé el vínculo en la pestaña Contacto. " : "Quien ya respondió ve “Ya respondiste, ¡gracias!”. Las respuestas anónimas (sin email ni link) no se pueden limitar. Una respuesta marcada como spam no cuenta: esa persona puede responder de nuevo."}
         />
       </Section>
 

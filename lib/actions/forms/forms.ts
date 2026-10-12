@@ -9,7 +9,7 @@ import { validateDraftShape } from "@/lib/forms/definition-schema";
 import { normalizeContractText } from "@/lib/forms/contract-text";
 import { FORM_TYPES, type FormStatus, type FormType } from "@/lib/forms/fields";
 import { canTransition, duplicateName, nextSlug, slugFromName, SLUG_PATTERN } from "@/lib/forms/list";
-import { DEFAULT_CONTACT_CONFIG, suggestContactMap } from "@/lib/forms/contact-config";
+import { DEFAULT_CONTACT_CONFIG, parseStoredContactConfig, suggestContactMap } from "@/lib/forms/contact-config";
 import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
 import { typeChecks } from "@/lib/forms/type-checks";
@@ -352,7 +352,7 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
     type: form.type as FormType,
     slug: form.slug,
     definition: form.draft_definition,
-    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config }),
+    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config, contactMode: parseStoredContactConfig(form.contact_config).mode }),
   });
   if (!check.ok) return { ok: false, error: check.reasons[0], reasons: check.reasons };
 

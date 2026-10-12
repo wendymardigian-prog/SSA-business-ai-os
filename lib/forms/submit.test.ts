@@ -422,6 +422,18 @@ describe("submitForm: contacto, toque y aviso (FO2)", () => {
     expect(sent2.contactHint).not.toHaveProperty("signed_contact_id");
   });
 
+  it("con el interruptor de contactos apagado (none) no viaja nada: ni el mapeo ni un link firmado (R3)", async () => {
+    const form = { ...mapped(), contactConfig: { ...mapped().contactConfig, mode: "none" as const } };
+    const { ports } = makePorts(form, {
+      save: withContact(),
+      verifyLink: vi.fn(async () => ({ contactId: "c-9", serviceId: null, saleId: null })),
+    });
+    await submitForm(ports, baseInput({ answers: { nombre: "Ana Pérez", email: "ANA@x.com" }, link_token: "tok.firma" }));
+    const sent = (ports.save as ReturnType<typeof vi.fn>).mock.calls[0][0] as SaveInput;
+    expect(sent.contactHint).toEqual({});
+    expect(ports.verifyLink).not.toHaveBeenCalled();
+  });
+
   it("con contacto: anota el toque y avisa", async () => {
     const { ports } = makePorts(mapped(), { save: withContact() });
     const out = await submitForm(ports, baseInput({ answers: { email: "a@x.com" }, attribution: { utm_source: "meta" } }));

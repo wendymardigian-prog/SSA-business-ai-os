@@ -4,6 +4,9 @@ import {
   canIdentifyContact,
   DEFAULT_CONTACT_CONFIG,
   FIXED_TARGETS,
+  linksContacts,
+  NO_CONTACT_CONSEQUENCES,
+  parseStoredContactConfig,
   SOCIAL_TARGET,
   suggestContactMap,
   targetAccepts,
@@ -167,5 +170,40 @@ describe("redes sociales como destino (R5)", () => {
 
   it("la sugerencia inicial mapea el campo social a su red", () => {
     expect(suggestContactMap([ig])).toEqual([{ fieldKey: "ig", target: "contact.instagram_username" }]);
+  });
+});
+
+describe("el interruptor de contactos: modo none (R3)", () => {
+  const email = f("email", "email");
+
+  it("none es un modo válido y se guarda tal cual", () => {
+    const r = validateContactConfig({ mode: "none", update: "fill_empty", map: [{ fieldKey: "email", target: "contact.email" }] }, [email], customs);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.config.mode).toBe("none");
+  });
+
+  it("apagar y volver a prender no borra el mapeo: el mapeo es independiente del modo", () => {
+    const map = [{ fieldKey: "email", target: "contact.email" }];
+    const off = validateContactConfig({ mode: "none", update: "overwrite", map }, [email], customs);
+    expect(off.ok && off.config.map).toEqual(map);
+    const on = validateContactConfig({ ...(off.ok ? off.config : {}), mode: "create_or_link" }, [email], customs);
+    expect(on.ok && on.config.map).toEqual(map);
+    expect(on.ok && on.config.update).toBe("overwrite");
+  });
+
+  it("linksContacts dice si el interruptor está prendido", () => {
+    expect(linksContacts({ mode: "none" })).toBe(false);
+    expect(linksContacts({ mode: "create_or_link" })).toBe(true);
+    expect(linksContacts({ mode: "link_only" })).toBe(true);
+  });
+
+  it("una configuración vieja (sin none) se sigue leyendo", () => {
+    expect(parseStoredContactConfig({ mode: "link_only", update: "fill_empty", map: [] }).mode).toBe("link_only");
+    expect(parseStoredContactConfig({}).mode).toBe("create_or_link");
+    expect(parseStoredContactConfig("basura").mode).toBe("create_or_link");
+  });
+
+  it("las consecuencias se pueden mostrar", () => {
+    expect(NO_CONTACT_CONSEQUENCES.length).toBeGreaterThanOrEqual(4);
   });
 });
