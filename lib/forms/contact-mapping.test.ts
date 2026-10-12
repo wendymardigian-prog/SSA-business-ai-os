@@ -67,3 +67,36 @@ describe("canResolveContact", () => {
     expect(canResolveContact({ whatsapp_phone: "+5068", custom: {} })).toBe(true);
   });
 });
+
+describe("redes sociales en el mapeo (R5)", () => {
+  const social = [f("social", "ig"), f("social", "li"), f("short_text", "usuario")].map((x) =>
+    x.key === "ig" ? { ...x, social: { platform: "instagram" as const } } : x.key === "li" ? { ...x, social: { platform: "linkedin" as const } } : x,
+  );
+
+  it("el hint lleva los usuarios ya normalizados", () => {
+    const hint = applyContactMapping(
+      social,
+      cfg([["ig", "contact.instagram_username"], ["li", "contact.linkedin_profile_url"]]),
+      { ig: "@Ana.Perez", li: "linkedin.com/in/Ana-Perez/" },
+      customs,
+    );
+    expect(hint.social).toEqual({ instagram: "ana.perez", linkedin: "https://www.linkedin.com/in/ana-perez" });
+  });
+
+  it("un texto que no es un usuario válido no se guarda en el contacto", () => {
+    const hint = applyContactMapping(social, cfg([["usuario", "contact.tiktok_username"]]), { usuario: "esto no es un usuario" }, customs);
+    expect(hint.social).toBeUndefined();
+  });
+
+  it("un texto corto con un usuario válido sí se guarda", () => {
+    const hint = applyContactMapping(social, cfg([["usuario", "contact.tiktok_username"]]), { usuario: "@Ana" }, customs);
+    expect(hint.social).toEqual({ tiktok: "ana" });
+  });
+
+  it("canResolveContact: un @ alcanza; Facebook o YouTube solos no", () => {
+    expect(canResolveContact({ custom: {}, social: { instagram: "ana" } })).toBe(true);
+    expect(canResolveContact({ custom: {}, social: { tiktok: "ana" } })).toBe(true);
+    expect(canResolveContact({ custom: {}, social: { facebook: "ana", youtube: "UC1" } })).toBe(false);
+    expect(canResolveContact({ custom: {} })).toBe(false);
+  });
+});

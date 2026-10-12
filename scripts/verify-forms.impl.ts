@@ -362,7 +362,7 @@ try {
   check(!pubFields.some((f) => f.key === "canal"), "el oculto fijo no se devuelve");
   check(!("turnstile_site_key" in (pub.data as object)), "get_public_form NO devuelve turnstile_site_key (R1)");
   check(!("success" in (pub.data as object)), "no devuelve la configuracion de exito");
-  const sameKeys = (pub.data as { fields: Array<Record<string, unknown>> }).fields.every((f) => Object.keys(f).every((k) => ["key", "type", "label", "help", "placeholder", "required", "options", "min", "max", "file", "consentText", "visibility", "prefill", "hidden"].includes(k)));
+  const sameKeys = (pub.data as { fields: Array<Record<string, unknown>> }).fields.every((f) => Object.keys(f).every((k) => ["key", "type", "label", "help", "placeholder", "required", "options", "min", "max", "file", "consentText", "visibility", "prefill", "social", "hidden"].includes(k)));
   check(sameKeys, "cada campo publico solo tiene claves de la lista blanca (paridad con toPublicField)");
 
   await svc.from("forms").update({ status: "paused" }).eq("id", pForm!.id);

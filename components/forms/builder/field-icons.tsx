@@ -1,4 +1,4 @@
-import { AlignLeft, Calendar, CircleDot, EyeOff, Gauge, Hash, ListChecks, Mail, Paperclip, Phone, ShieldCheck, Star, Type, type LucideIcon } from "lucide-react";
+import { AlignLeft, AtSign, Calendar, CircleDot, EyeOff, Gauge, Hash, ListChecks, Mail, Paperclip, Phone, ShieldCheck, Star, Type, type LucideIcon } from "lucide-react";
 import type { FormFieldType } from "@/lib/forms/fields";
 
 export const FIELD_ICONS: Record<FormFieldType, LucideIcon> = {
@@ -15,4 +15,5 @@ export const FIELD_ICONS: Record<FormFieldType, LucideIcon> = {
   file: Paperclip,
   consent: ShieldCheck,
   hidden: EyeOff,
+  social: AtSign,
 };

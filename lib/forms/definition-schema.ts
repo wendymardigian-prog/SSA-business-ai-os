@@ -23,6 +23,7 @@ import {
   type FormDefinition,
   type FormField,
 } from "./fields";
+import { SOCIAL_PLATFORMS } from "@/lib/contacts/social";
 import { CONDITION_OPERATORS } from "./visibility-types";
 import { referencedKeys } from "./visibility";
 
@@ -82,6 +83,7 @@ const fieldSchema = z.object({
       behavior: z.enum(["editable", "locked", "hidden"]),
     })
     .optional(),
+  social: z.object({ platform: z.enum(SOCIAL_PLATFORMS) }).optional(),
 });
 
 const definitionSchema = z.object({
@@ -146,6 +148,12 @@ function checkField(field: FormField, errors: string[]): void {
         if (!allowed.has(mime)) errors.push(`${who}: el tipo de archivo "${mime}" no está permitido`);
       }
     }
+  }
+
+  if (field.type === "social") {
+    if (!field.social) errors.push(`${who}: elegí de qué red es el usuario`);
+  } else if (field.social) {
+    errors.push(`${who}: solo un campo de usuario de red social lleva red`);
   }
 
   if (field.type === "consent" && !field.consentText?.trim()) {

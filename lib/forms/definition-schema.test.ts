@@ -114,3 +114,25 @@ describe("validateDraftShape (el borrador se guarda incompleto)", () => {
     expect(validateDraftShape({ fields: [{ id: "f1", key: "a", type: "tipo-inventado", label: "x" }] }).ok).toBe(false);
   });
 });
+
+describe("validateDefinition: usuario de red social (R5)", () => {
+  it("un campo social lleva su red", () => {
+    expect(errorsOf([newField("social", "ig", "Instagram")])).toEqual([]);
+    const sinRed = { ...newField("social", "ig", "Instagram"), social: undefined };
+    expect(errorsOf([sinRed as FormField]).some((e) => e.includes("de qué red"))).toBe(true);
+  });
+
+  it("una red que no existe no pasa la forma", () => {
+    const mala = { ...newField("social", "ig", "Instagram"), social: { platform: "myspace" } };
+    expect(validateDefinition({ fields: [mala] }).ok).toBe(false);
+  });
+
+  it("solo un campo social lleva red", () => {
+    const raro = { ...text("nombre"), social: { platform: "instagram" as const } };
+    expect(errorsOf([raro]).some((e) => e.includes("solo un campo de usuario"))).toBe(true);
+  });
+
+  it("su etiqueta por defecto sale de la red", () => {
+    expect(newField("social", "ig").label).toBe("Tu usuario de Instagram");
+  });
+});

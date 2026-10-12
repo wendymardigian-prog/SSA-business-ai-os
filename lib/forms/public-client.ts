@@ -42,6 +42,7 @@ export function toFormFields(fields: PublicField[]): FormField[] {
     hidden: f.hidden ? { source: f.hidden.source, param: f.hidden.param } : undefined,
     visibility: f.visibility,
     prefill: f.prefill,
+    social: f.social,
   }));
 }
 

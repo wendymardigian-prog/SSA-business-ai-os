@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { containsText, findForbiddenKeys, toPublicField, toPublicFields } from "./public-definition";
+import { PUBLIC_FIELD_KEYS, containsText, findForbiddenKeys, toPublicField, toPublicFields } from "./public-definition";
 import { newField, type FormField } from "./fields";
 
 describe("toPublicField", () => {
@@ -40,5 +40,13 @@ describe("findForbiddenKeys", () => {
   it("recorre el JSON entero", () => {
     expect(findForbiddenKeys({ a: [{ b: { workspace_id: "x" } }], success: 1 })).toEqual([".a[0].b.workspace_id", ".success"]);
     expect(findForbiddenKeys({ fields: [{ key: "a" }] })).toEqual([]);
+  });
+});
+
+describe("toPublicField: usuario de red social (R5)", () => {
+  it("la red viaja a la página pública (sin ella no se sabría qué prefijo mostrar)", () => {
+    const field = { ...newField("social", "ig", "Tu Instagram") };
+    expect(toPublicField(field)?.social).toEqual({ platform: "instagram" });
+    expect(PUBLIC_FIELD_KEYS).toContain("social");
   });
 });

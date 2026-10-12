@@ -16,6 +16,7 @@
  * el esquema dependa de las propias respuestas; una función que devuelve errores
  * por clave dice mejor QUÉ campo está mal.
  */
+import { normalizeSocialHandle } from "@/lib/contacts/social";
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
 import type { FormField } from "./fields";
 import { visibleFieldKeys, type Answers } from "./visibility";
@@ -139,6 +140,13 @@ function validateField(
         options.defaultCountry ?? undefined,
       );
       return normalized ? { value: normalized } : { error: MESSAGES.phone };
+    }
+
+    case "social": {
+      if (blank) return field.required ? { error: MESSAGES.required } : {};
+      if (!field.social || typeof raw !== "string") return { error: MESSAGES.required };
+      const handle = normalizeSocialHandle(field.social.platform, raw);
+      return handle.ok ? { value: handle.value } : { error: handle.error };
     }
 
     case "number": {

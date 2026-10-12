@@ -5,7 +5,7 @@ import { Popover } from "@/components/ui/popover";
 import { FIELD_TYPE_LABELS, FORM_FIELD_TYPES, type FormFieldType } from "@/lib/forms/fields";
 import { FIELD_ICONS } from "./field-icons";
 
-/** "+ Agregar campo": elige entre los 13 tipos. */
+/** "+ Agregar campo": elige entre los 14 tipos. */
 export function FieldTypePicker({ onPick, disabled }: { onPick: (type: FormFieldType) => void; disabled?: boolean }) {
   return (
     <Popover

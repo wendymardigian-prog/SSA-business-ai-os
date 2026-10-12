@@ -3,12 +3,15 @@ import {
   brokenMappings,
   canIdentifyContact,
   DEFAULT_CONTACT_CONFIG,
+  FIXED_TARGETS,
+  SOCIAL_TARGET,
   suggestContactMap,
   targetAccepts,
   targetsFor,
   validateContactConfig,
   type CustomFieldDef,
 } from "./contact-config";
+import { SOCIAL_COLUMNS, SOCIAL_PLATFORMS } from "@/lib/contacts/social";
 import { newField, type FormField } from "./fields";
 
 const f = (type: Parameters<typeof newField>[0], key: string, extra: Partial<FormField> = {}): FormField => ({ ...newField(type, key, key), ...extra });
@@ -118,5 +121,51 @@ describe("sugerencias y avisos", () => {
     expect(options.find((o) => o.value === "contact.email")?.group).toBe("Contacto");
     expect(options.some((o) => o.value === "contact.phone")).toBe(false);
     expect(options.some((o) => o.value === "contact.custom.edad")).toBe(false);
+  });
+});
+
+describe("redes sociales como destino (R5)", () => {
+  const ig = f("social", "ig", { social: { platform: "instagram" } });
+  const tt = f("social", "tt", { social: { platform: "tiktok" } });
+
+  it("cada destino de red coincide con la columna real de contacts", () => {
+    for (const p of SOCIAL_PLATFORMS) expect(SOCIAL_TARGET[p]).toBe(`contact.${SOCIAL_COLUMNS[p]}`);
+    expect(Object.values(SOCIAL_TARGET).every((t) => FIXED_TARGETS.includes(t))).toBe(true);
+  });
+
+  it("un campo social solo va a la columna de SU red", () => {
+    expect(targetAccepts(ig, "contact.instagram_username")).toBe(true);
+    expect(targetAccepts(ig, "contact.tiktok_username")).toBe(false);
+    expect(targetAccepts(ig, "contact.email")).toBe(false);
+    expect(targetAccepts(tt, "contact.tiktok_username")).toBe(true);
+  });
+
+  it("un texto corto o un oculto también puede ir a una red", () => {
+    expect(targetAccepts(f("short_text", "usuario"), "contact.instagram_username")).toBe(true);
+    expect(targetAccepts(f("hidden", "h"), "contact.twitter_username")).toBe(true);
+    expect(targetAccepts(f("long_text", "l"), "contact.instagram_username")).toBe(false);
+  });
+
+  it("targetsFor ofrece solo la red del campo social", () => {
+    const values = targetsFor(ig, customs).map((t) => t.value);
+    expect(values).toContain("contact.instagram_username");
+    expect(values).not.toContain("contact.tiktok_username");
+  });
+
+  it("un mapeo de un campo social a otra red no se puede guardar", () => {
+    const r = validateContactConfig({ map: [{ fieldKey: "ig", target: "contact.tiktok_username" }] }, [ig], customs);
+    expect(r.ok).toBe(false);
+  });
+
+  it("un usuario de red alcanza para identificar al contacto; Facebook y YouTube no", () => {
+    const withIg = { ...DEFAULT_CONTACT_CONFIG, map: [{ fieldKey: "ig", target: "contact.instagram_username" }] };
+    expect(canIdentifyContact(withIg, [ig])).toBe(true);
+    const fb = f("social", "fb", { social: { platform: "facebook" } });
+    const withFb = { ...DEFAULT_CONTACT_CONFIG, map: [{ fieldKey: "fb", target: "contact.facebook_id" }] };
+    expect(canIdentifyContact(withFb, [fb])).toBe(false);
+  });
+
+  it("la sugerencia inicial mapea el campo social a su red", () => {
+    expect(suggestContactMap([ig])).toEqual([{ fieldKey: "ig", target: "contact.instagram_username" }]);
   });
 });

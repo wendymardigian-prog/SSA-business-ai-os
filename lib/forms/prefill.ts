@@ -9,6 +9,7 @@
  * Es solo comodidad: el servidor trata lo que llega como cualquier otra
  * respuesta (lo valida, no se fía de que "estaba bloqueado").
  */
+import { normalizeSocialHandle } from "@/lib/contacts/social";
 import { normalizePhoneWithCountry } from "@/lib/scheduling/phone-countries";
 import { PREFILL_PARAM_RE, supportsPrefill, type FormField, type PrefillConfig } from "./fields";
 
@@ -55,6 +56,11 @@ export function coercePrefillValue(
     }
     case "phone":
       return normalizePhoneWithCountry(text, defaultCountry ?? undefined);
+    case "social": {
+      if (!field.social) return null;
+      const handle = normalizeSocialHandle(field.social.platform, text);
+      return handle.ok ? handle.value : null;
+    }
     case "number": {
       const n = Number(text);
       if (!Number.isFinite(n)) return null;

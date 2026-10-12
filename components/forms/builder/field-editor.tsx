@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Field, Checkbox, inputClass } from "@/components/agents/fields";
-import { ALLOWED_UPLOAD_MIMES, FIELD_TYPE_LABELS, FILE_LIMITS, MAX_PREFILL_PARAMS, PREFILL_PARAM_RE, supportsPrefill, type FormField, type PrefillBehavior } from "@/lib/forms/fields";
+import { ALLOWED_UPLOAD_MIMES, FIELD_TYPE_LABELS, FILE_LIMITS, MAX_PREFILL_PARAMS, PREFILL_PARAM_RE, socialDefaultLabel, supportsPrefill, type FormField, type PrefillBehavior } from "@/lib/forms/fields";
+import { SOCIAL_LABELS, SOCIAL_PLATFORMS, isSocialPlatform } from "@/lib/contacts/social";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { conditionSources } from "@/lib/forms/builder";
 import { describeAccepted } from "@/components/forms/public/fields/file-field";
@@ -48,7 +49,7 @@ export function FieldEditor({
   const [paramError, setParamError] = useState<string | undefined>();
   const isHidden = field.type === "hidden";
   const hasOptions = field.type === "single_select" || field.type === "multi_select";
-  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number";
+  const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number" || field.type === "social";
   const prefillOk = supportsPrefill(field.type) && !isHidden;
   const prefill = field.prefill ?? { params: [field.key], behavior: "editable" as PrefillBehavior };
   const usedParams = new Set(fields.filter((f) => f.key !== field.key).flatMap((f) => (f.prefill?.params ?? [f.key]).map((p) => p.toLowerCase())));
@@ -98,6 +99,32 @@ export function FieldEditor({
               value={(field.options ?? []).join("\n")}
               onChange={(e) => onPatch({ options: e.target.value.split("\n") })}
             />
+          )}
+        </Field>
+      )}
+
+      {field.type === "social" && field.social && (
+        <Field label="Red social" hint="A qué red pertenece el usuario. Se guarda en el contacto en el dato de esa red.">
+          {(id) => (
+            <select
+              id={id}
+              className={inputClass}
+              disabled={disabled}
+              value={field.social!.platform}
+              onChange={(e) => {
+                if (!isSocialPlatform(e.target.value)) return;
+                const platform = e.target.value;
+                // Si la etiqueta todavía es la automática de la red anterior, acompaña a la nueva.
+                const followsDefault = field.label === socialDefaultLabel(field.social!.platform);
+                onPatch({ social: { platform }, ...(followsDefault ? { label: socialDefaultLabel(platform) } : {}) });
+              }}
+            >
+              {SOCIAL_PLATFORMS.map((p) => (
+                <option key={p} value={p}>
+                  {SOCIAL_LABELS[p]}
+                </option>
+              ))}
+            </select>
           )}
         </Field>
       )}

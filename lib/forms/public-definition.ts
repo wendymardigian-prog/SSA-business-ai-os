@@ -27,6 +27,7 @@ export const PUBLIC_FIELD_KEYS = [
   "consentText",
   "visibility",
   "prefill",
+  "social",
 ] as const;
 
 /** Claves que NO pueden aparecer en ningún lugar de la definición pública. */
@@ -59,6 +60,7 @@ export interface PublicField {
   consentText?: string;
   visibility?: VisibilityConfig;
   prefill?: PrefillConfig;
+  social?: FormField["social"];
   /** Solo en ocultos: de dónde sale el valor. */
   hidden?: { source: "url_param" | "attribution"; param?: string };
 }
@@ -83,6 +85,7 @@ export function toPublicField(field: FormField): PublicField | null {
   if (field.consentText !== undefined) out.consentText = field.consentText;
   if (field.visibility !== undefined) out.visibility = field.visibility;
   if (field.prefill !== undefined) out.prefill = field.prefill;
+  if (field.social !== undefined) out.social = field.social;
   return out;
 }
 

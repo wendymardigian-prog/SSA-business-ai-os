@@ -8,6 +8,7 @@
  * ni vincula contacto (decisión 156).
  */
 import { z } from "zod";
+import { SOCIAL_LABELS, SOCIAL_LOOKUP_PLATFORMS, type SocialPlatform } from "@/lib/contacts/social";
 import type { FormField, FormFieldType } from "./fields";
 
 export type ContactMode = "create_or_link" | "link_only";
@@ -21,6 +22,12 @@ export const FIXED_TARGETS = [
   "contact.phone",
   "contact.whatsapp_phone",
   "contact.country",
+  "contact.instagram_username",
+  "contact.tiktok_username",
+  "contact.twitter_username",
+  "contact.linkedin_profile_url",
+  "contact.facebook_id",
+  "contact.youtube_channel_id",
 ] as const;
 export type FixedTarget = (typeof FIXED_TARGETS)[number];
 
@@ -32,7 +39,32 @@ export const FIXED_TARGET_LABELS: Record<FixedTarget, string> = {
   "contact.phone": "Teléfono",
   "contact.whatsapp_phone": "WhatsApp",
   "contact.country": "País",
+  "contact.instagram_username": SOCIAL_LABELS.instagram,
+  "contact.tiktok_username": SOCIAL_LABELS.tiktok,
+  "contact.twitter_username": SOCIAL_LABELS.x,
+  "contact.linkedin_profile_url": SOCIAL_LABELS.linkedin,
+  "contact.facebook_id": SOCIAL_LABELS.facebook,
+  "contact.youtube_channel_id": SOCIAL_LABELS.youtube,
 };
+
+/** El destino del contacto de cada red social (`contact.<columna>`). */
+export const SOCIAL_TARGET: Record<SocialPlatform, FixedTarget> = {
+  instagram: "contact.instagram_username",
+  tiktok: "contact.tiktok_username",
+  x: "contact.twitter_username",
+  linkedin: "contact.linkedin_profile_url",
+  facebook: "contact.facebook_id",
+  youtube: "contact.youtube_channel_id",
+};
+
+/** Al revés: de qué red es un destino, o null si no es de una red social. */
+export function socialPlatformOf(target: string): SocialPlatform | null {
+  for (const platform of Object.keys(SOCIAL_TARGET) as SocialPlatform[]) {
+    if (SOCIAL_TARGET[platform] === target) return platform;
+  }
+  return null;
+}
+
 
 export const CUSTOM_PREFIX = "contact.custom.";
 
@@ -75,7 +107,7 @@ const ISO2 = /^[A-Za-z]{2}$/;
 
 /** ¿Un campo de este tipo se puede guardar en este destino? */
 export function targetAccepts(
-  field: Pick<FormField, "type" | "options">,
+  field: Pick<FormField, "type" | "options" | "social">,
   target: string,
   customType?: CustomFieldDef["type"],
 ): boolean {
@@ -118,6 +150,18 @@ export function targetAccepts(
     case "contact.phone":
     case "contact.whatsapp_phone":
       return type === "phone";
+    case "contact.instagram_username":
+    case "contact.tiktok_username":
+    case "contact.twitter_username":
+    case "contact.linkedin_profile_url":
+    case "contact.facebook_id":
+    case "contact.youtube_channel_id": {
+      const platform = socialPlatformOf(target)!;
+      // Un campo `social` solo va a la columna de SU red. Un texto corto u oculto también puede ir a una
+      // red (alguien armó el formulario con un texto): al enviar se normaliza y, si no es válido, no se guarda.
+      if (type === "social") return field.social?.platform === platform;
+      return type === "short_text" || type === "hidden";
+    }
     case "contact.country":
       if (type === "single_select") return (field.options ?? []).length > 0 && (field.options ?? []).every((o) => ISO2.test(o.trim()));
       return type === "short_text";
@@ -181,6 +225,7 @@ const FORM_TYPE_NAME: Record<FormFieldType, string> = {
   file: "archivo",
   consent: "consentimiento",
   hidden: "oculto",
+  social: "usuario de red social",
 };
 
 export function targetLabel(target: string, customFields: CustomFieldDef[]): string {
@@ -200,6 +245,14 @@ export function targetsFor(field: FormField, customFields: CustomFieldDef[]): Ar
   return [...fixed, ...custom];
 }
 
+/** Los datos con los que se puede BUSCAR o CREAR un contacto (el orden de búsqueda lo fija la base). */
+export const IDENTIFIER_TARGETS = [
+  "contact.phone",
+  "contact.whatsapp_phone",
+  "contact.email",
+  ...SOCIAL_LOOKUP_PLATFORMS.map((p) => SOCIAL_TARGET[p]),
+] as readonly string[];
+
 /** Sugerencia al crear: los campos de email y teléfono se mapean solos; `nombre`/`name` al nombre. */
 export function suggestContactMap(fields: FormField[]): MapEntry[] {
   const map: MapEntry[] = [];
@@ -211,14 +264,15 @@ export function suggestContactMap(fields: FormField[]): MapEntry[] {
   };
   add(fields.find((f) => f.type === "email"), "contact.email");
   add(fields.find((f) => f.type === "phone"), "contact.phone");
+  for (const f of fields) if (f.type === "social" && f.social) add(f, SOCIAL_TARGET[f.social.platform]);
   add(fields.find((f) => (f.type === "short_text" || f.type === "hidden") && ["nombre", "name", "nombre_completo", "full_name"].includes(f.key)), "contact.display_name");
   return map;
 }
 
-/** ¿Alguna respuesta va a poder crear o vincular un contacto? Hace falta email o teléfono. */
+/** ¿Alguna respuesta va a poder crear o vincular un contacto? Hace falta email, teléfono o un usuario de red social. */
 export function canIdentifyContact(config: ContactConfig, fields: FormField[]): boolean {
   return config.map.some((entry) => {
-    if (!["contact.email", "contact.phone", "contact.whatsapp_phone"].includes(entry.target)) return false;
+    if (!IDENTIFIER_TARGETS.includes(entry.target)) return false;
     return fields.some((f) => f.key === entry.fieldKey);
   });
 }

@@ -7,6 +7,7 @@
  * clave de las respuestas guardadas y de `{{answer.<key>}}`, así que NO cambia
  * cuando se edita la etiqueta.
  */
+import { SOCIAL_LABELS, type SocialPlatform } from "@/lib/contacts/social";
 import type { VisibilityConfig } from "./visibility-types";
 
 export const FORM_FIELD_TYPES = [
@@ -23,6 +24,7 @@ export const FORM_FIELD_TYPES = [
   "file",
   "consent",
   "hidden",
+  "social",
 ] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 
@@ -40,6 +42,7 @@ export const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
   file: "Archivo",
   consent: "Casilla de consentimiento",
   hidden: "Campo oculto",
+  social: "Usuario de red social",
 };
 
 export const FORM_TYPES = ["custom", "survey", "contract"] as const;
@@ -118,6 +121,8 @@ export interface FormField {
   hidden?: HiddenConfig;
   visibility?: VisibilityConfig;
   prefill?: PrefillConfig;
+  /** Solo en `social`: de qué red es el usuario que se pide. */
+  social?: { platform: SocialPlatform };
 }
 
 /** La copia de trabajo del editor. */
@@ -146,6 +151,11 @@ export function newFieldId(): string {
   return `f_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** La etiqueta por defecto de un campo `social`: sale de la red ("Tu usuario de Instagram"). */
+export function socialDefaultLabel(platform: SocialPlatform): string {
+  return `Tu usuario de ${SOCIAL_LABELS[platform]}`;
+}
+
 /** Un campo nuevo con los valores razonables de su tipo. */
 export function newField(type: FormFieldType, key: string, label?: string): FormField {
   const base: FormField = {
@@ -169,6 +179,8 @@ export function newField(type: FormFieldType, key: string, label?: string): Form
       return { ...base, required: true, consentText: "Acepto los términos" };
     case "hidden":
       return { ...base, hidden: { source: "url_param", param: key } };
+    case "social":
+      return { ...base, label: label ?? socialDefaultLabel("instagram"), social: { platform: "instagram" } };
     default:
       return base;
   }

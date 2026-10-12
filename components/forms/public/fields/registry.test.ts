@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { FIELD_RENDERERS } from "./registry";
 import { FIELD_TYPE_LABELS, FORM_FIELD_TYPES } from "@/lib/forms/fields";
 
-describe("paridad de los 13 tipos de campo", () => {
-  it("hay 13 tipos", () => {
-    expect(FORM_FIELD_TYPES).toHaveLength(13);
+describe("paridad de los 14 tipos de campo", () => {
+  it("hay 14 tipos", () => {
+    expect(FORM_FIELD_TYPES).toHaveLength(14);
   });
 
   it("cada tipo tiene etiqueta en el editor y entrada en el renderizador público", () => {

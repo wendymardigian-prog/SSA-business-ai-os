@@ -186,3 +186,15 @@ describe("buildPrefillLink (F32)", () => {
     expect(buildPrefillLink("https://x/f/a", { e: "{{ contact.email }}" })).toBe("https://x/f/a?e={{contact.email}}");
   });
 });
+
+describe("prefill de un usuario de red social (R5)", () => {
+  const ig = f("social", "instagram", { social: { platform: "instagram" } });
+
+  it("?instagram=@Prueba se prellena normalizado", () => {
+    expect(prefillFromParams([ig], { instagram: "@Prueba" }).values.instagram).toBe("prueba");
+  });
+
+  it("un valor que no es un usuario válido se ignora entero", () => {
+    expect(prefillFromParams([ig], { instagram: "no es un usuario" }).values).toEqual({});
+  });
+});
