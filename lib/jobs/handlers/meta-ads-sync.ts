@@ -14,8 +14,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdsLevel, Database, Json } from "@/lib/types/database";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { getMetaToken } from "@/lib/meta/token";
-import { markSync, parseMetaConfig, syncedAccounts } from "@/lib/meta/accounts";
+import { markCatalogSync, markSync, parseMetaConfig, syncedAccounts, type AdAccount } from "@/lib/meta/accounts";
 import { fetchInsights, syncRange, type InsightRow } from "@/lib/meta/insights";
+import { fetchEntities, MAX_ENTITY_PAGES, updatedSinceFor, type CatalogLevel } from "@/lib/meta/entities";
+import { loadStatuses, persistAdsets, persistAds, persistCampaigns, type StatusMap } from "@/lib/meta/catalog-store";
+import { linkAdsToContent } from "@/lib/meta/content-link";
+import { scheduleThumbnailJob } from "@/lib/meta/thumbnails";
 
 type Db = SupabaseClient<Database>;
 
@@ -31,7 +35,7 @@ const LEVELS: AdsLevel[] = ["account", "campaign", "adset", "ad"];
 /** Guarda las filas leidas. Upsert: la misma corrida dos veces no duplica. */
 export async function persistInsights(
   supabase: Db,
-  params: { workspaceId: string; adAccountId: string; rows: InsightRow[] },
+  params: { workspaceId: string; adAccountId: string; rows: InsightRow[]; statuses?: StatusMap },
 ): Promise<number> {
   if (params.rows.length === 0) return 0;
 
@@ -67,6 +71,9 @@ export async function persistInsights(
     quality_ranking: row.qualityRanking,
     engagement_ranking: row.engagementRanking,
     conversion_ranking: row.conversionRanking,
+    // El estado sale del catalogo (AT2): sin catalogo queda null, como siempre.
+    status: params.statuses?.get(`${row.level}:${row.objectId}`)?.status ?? null,
+    effective_status: params.statuses?.get(`${row.level}:${row.objectId}`)?.effectiveStatus ?? null,
     actions: row.actions as unknown as Json,
   }));
 
@@ -87,6 +94,82 @@ export async function persistInsights(
   }
 
   return written;
+}
+
+
+const LEVEL_LABEL: Record<CatalogLevel, string> = { campaign: "campañas", adset: "conjuntos", ad: "anuncios" };
+
+export interface CatalogSyncResult {
+  campaigns: number;
+  adsets: number;
+  ads: number;
+  /** Se leyeron los tres niveles hasta el final. */
+  complete: boolean;
+  /** Lo que hay que decirle a la persona (tope, limite de uso, un error de Meta). Null si todo salio bien. */
+  note: string | null;
+}
+
+/**
+ * Trae el catalogo (campañas, conjuntos y anuncios) de UNA cuenta y lo guarda.
+ *
+ * Va ANTES de las metricas y es independiente de ellas: si falla, las metricas se sincronizan
+ * igual (y al reves). Nunca lanza. En la primera vez (sin `catalog_synced_at`) lee todo; despues,
+ * solo lo que cambio desde la ultima vez completa, con un dia de margen.
+ */
+export async function syncCatalog(
+  supabase: Db,
+  params: { token: string; workspaceId: string; adAccountId: string; account: AdAccount; now: Date },
+): Promise<CatalogSyncResult> {
+  const updatedSince = updatedSinceFor(params.account.catalog_synced_at);
+  const result: CatalogSyncResult = { campaigns: 0, adsets: 0, ads: 0, complete: true, note: null };
+  const notes: string[] = [];
+  const base = { workspaceId: params.workspaceId, adAccountId: params.adAccountId, at: params.now };
+
+  for (const level of ["campaign", "adset", "ad"] as const) {
+    try {
+      const fetched = await fetchEntities({ token: params.token, adAccountId: params.adAccountId, level, updatedSince });
+
+      if (!fetched.ok) {
+        result.complete = false;
+        notes.push(`Catálogo (${LEVEL_LABEL[level]}): ${fetched.error}`);
+        // Un limite de uso o una caida de red afecta a los tres niveles: no se insiste.
+        if (fetched.retryable) break;
+        continue;
+      }
+
+      if (fetched.deletedRejected) {
+        console.log(`[meta-ads] ${params.adAccountId}: Meta no acepto DELETED en ${LEVEL_LABEL[level]}; se leyo sin los borrados`);
+      }
+      if (fetched.stopReason === "capped") {
+        result.complete = false;
+        notes.push(`Catálogo incompleto: se llegó al tope de ${MAX_ENTITY_PAGES} páginas en ${LEVEL_LABEL[level]}`);
+      } else if (fetched.stopReason === "usage") {
+        result.complete = false;
+        notes.push("Catálogo incompleto: Meta está cerca de su límite de uso; sigue en el próximo ciclo");
+      }
+
+      if (level === "campaign") result.campaigns = await persistCampaigns(supabase, { ...base, rows: fetched.rows as never });
+      if (level === "adset") result.adsets = await persistAdsets(supabase, { ...base, rows: fetched.rows as never });
+      if (level === "ad") {
+        const ads = fetched.rows as import("@/lib/meta/entities").AdEntity[];
+        result.ads = await persistAds(supabase, { ...base, rows: ads });
+        await linkAdsToContent(supabase, {
+          workspaceId: params.workspaceId,
+          adAccountId: params.adAccountId,
+          ads: ads.map((a) => ({ adId: a.adId, instagramMediaId: a.instagramMediaId, objectStoryId: a.objectStoryId })),
+        });
+      }
+
+      if (fetched.stopReason === "usage") break;
+    } catch (err) {
+      // Un fallo inesperado de un nivel no puede frenar el resto del sync.
+      result.complete = false;
+      notes.push(`Catálogo (${LEVEL_LABEL[level]}): ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  result.note = notes[0] ?? null;
+  return result;
 }
 
 async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
@@ -123,6 +206,15 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
   let total = 0;
   const errors: string[] = [];
 
+  // Primero el catalogo (AT2): entidades, estado y enlaces. Es independiente de las metricas.
+  const catalog = await syncCatalog(supabase, {
+    token,
+    workspaceId: payload.workspaceId,
+    adAccountId: payload.adAccountId,
+    account,
+    now,
+  });
+
   for (const level of LEVELS) {
     const result = await fetchInsights({
       token,
@@ -140,18 +232,36 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
       continue;
     }
 
+    // El estado de cada objeto sale del catalogo recien sincronizado (y del ya guardado).
+    const statuses = await loadStatuses(supabase, {
+      workspaceId: payload.workspaceId,
+      adAccountId: payload.adAccountId,
+      ids: {
+        campaign: result.rows.filter((r) => r.level === "campaign").map((r) => r.objectId),
+        adset: result.rows.filter((r) => r.level === "adset").map((r) => r.objectId),
+        ad: result.rows.filter((r) => r.level === "ad").map((r) => r.objectId),
+      },
+    });
+
     total += await persistInsights(supabase, {
       workspaceId: payload.workspaceId,
       adAccountId: payload.adAccountId,
       rows: result.rows,
+      statuses,
     });
   }
 
-  const updated = markSync(config.ad_accounts, payload.adAccountId, {
-    at: now.toISOString(),
-    error: errors[0] ?? null,
-    firstSync: !account.first_sync_completed_at,
-  });
+  // `markSync` decide "primera vez completa" solo por las metricas; el aviso del catalogo (tope,
+  // limite de uso, error de Meta) se suma despues para que no se corte en silencio.
+  const updated = markCatalogSync(
+    markSync(config.ad_accounts, payload.adAccountId, {
+      at: now.toISOString(),
+      error: errors[0] ?? null,
+      firstSync: !account.first_sync_completed_at,
+    }),
+    payload.adAccountId,
+    { at: now.toISOString(), complete: catalog.complete, note: errors[0] ? null : catalog.note },
+  );
 
   await supabase
     .from("integration_configs")
@@ -160,8 +270,15 @@ async function handleMetaAdsSync({ supabase, job }: JobContext): Promise<void> {
     .eq("type", "meta")
     .eq("provider", "meta");
 
+  // Las miniaturas van al final y en su propio job: un fallo de descarga no frena nada de esto.
+  try {
+    await scheduleThumbnailJob(supabase, payload.workspaceId, payload.adAccountId, now);
+  } catch (err) {
+    console.error("[meta-ads] no pude encolar las miniaturas:", err instanceof Error ? err.message : err);
+  }
+
   console.log(
-    `[meta-ads] ${payload.adAccountId}: ${total} filas${errors.length > 0 ? `, ${errors.length} nivel(es) con error` : ""}`,
+    `[meta-ads] ${payload.adAccountId}: ${total} filas, catalogo ${catalog.campaigns}/${catalog.adsets}/${catalog.ads}${errors.length > 0 ? `, ${errors.length} nivel(es) con error` : ""}${catalog.note ? `, ${catalog.note}` : ""}`,
   );
 }
 

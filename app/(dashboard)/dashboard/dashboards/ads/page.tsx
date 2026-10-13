@@ -28,7 +28,9 @@ export default async function AdsDashboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { workspace, supabase } = await requireWorkspaceAdmin();
-  const dashboards = availableDashboards((await getPermissionContext()).can);
+  const permissions = await getPermissionContext();
+  const dashboards = availableDashboards(permissions.can);
+  const canSync = permissions.can("settings.manage");
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -153,6 +155,7 @@ export default async function AdsDashboardPage({
       liveError={live && !live.ok ? live.error : null}
       aiModel={aiChoice ? `${aiChoice.provider}/${aiChoice.model}` : null}
       syncedLabel={syncedLabel(syncedAt, now, timeZone)}
+      canSync={canSync}
     />
   );
 }

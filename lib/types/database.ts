@@ -4462,6 +4462,161 @@ export interface Database {
         Relationships: [];
       };
 
+      meta_campaigns: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          objective: string | null;
+          buying_type: string | null;
+          daily_budget: number | null;
+          lifetime_budget: number | null;
+          start_time: string | null;
+          stop_time: string | null;
+          created_time: string | null;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          objective?: string | null;
+          buying_type?: string | null;
+          daily_budget?: number | null;
+          lifetime_budget?: number | null;
+          start_time?: string | null;
+          stop_time?: string | null;
+          created_time?: string | null;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      meta_adsets: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string | null;
+          adset_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          optimization_goal: string | null;
+          billing_event: string | null;
+          daily_budget: number | null;
+          lifetime_budget: number | null;
+          start_time: string | null;
+          stop_time: string | null;
+          created_time: string | null;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id?: string | null;
+          adset_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          optimization_goal?: string | null;
+          billing_event?: string | null;
+          daily_budget?: number | null;
+          lifetime_budget?: number | null;
+          start_time?: string | null;
+          stop_time?: string | null;
+          created_time?: string | null;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      meta_ads: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string | null;
+          adset_id: string | null;
+          ad_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          created_time: string | null;
+          creative_id: string | null;
+          creative: Json;
+          thumbnail_source_url: string | null;
+          thumbnail_path: string | null;
+          thumbnail_attempts: number;
+          instagram_media_id: string | null;
+          object_story_id: string | null;
+          social_post_id: string | null;
+          content_post_id: string | null;
+          content_link_manual: boolean;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id?: string | null;
+          adset_id?: string | null;
+          ad_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          created_time?: string | null;
+          creative_id?: string | null;
+          creative?: Json;
+          thumbnail_source_url?: string | null;
+          thumbnail_path?: string | null;
+          thumbnail_attempts?: number;
+          instagram_media_id?: string | null;
+          object_story_id?: string | null;
+          social_post_id?: string | null;
+          content_post_id?: string | null;
+          content_link_manual?: boolean;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
       provider_media: {
         Row: {
           id: string;

@@ -19,6 +19,7 @@ import { registerContentPublishHandlers } from "@/lib/jobs/handlers/content-publ
 import { registerContentCopyHandler } from "@/lib/jobs/handlers/content-copy";
 import { registerMetricsHandlers } from "@/lib/jobs/handlers/metrics-sync";
 import { registerMetaAdsHandlers } from "@/lib/jobs/handlers/meta-ads-sync";
+import { registerMetaAdThumbnailsHandler } from "@/lib/jobs/handlers/meta-ad-thumbnails";
 import { registerBookingJobHandlers } from "@/lib/jobs/handlers/booking-sync";
 import { registerBookingRelativeHandler } from "@/lib/jobs/handlers/booking-relative";
 import { registerBgTaskHandler } from "@/lib/jobs/handlers/bg-task";
@@ -86,6 +87,7 @@ export function registerPublishing(): void {
   registerContentCopyHandler();
   registerMetricsHandlers();
   registerMetaAdsHandlers();
+  registerMetaAdThumbnailsHandler();
   // Agenda (Etapa 4): crear/mover/borrar el evento en Google y el fin de agenda.
   registerBookingJobHandlers();
   // Los avisos relativos a la hora de la reunion (F44).

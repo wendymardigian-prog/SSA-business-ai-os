@@ -36,10 +36,10 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] F21 La atribución legible en la ficha del contacto
 
 ### AT2 — Catálogo de Meta
-- [ ] F22 Tablas del catálogo (M6)
-- [ ] F23 Sync de entidades y estado
-- [ ] F24 Miniaturas propias
-- [ ] F25 Enlace con Contenido
+- [x] F22 Tablas del catálogo (M6)
+- [x] F23 Sync de entidades y estado (incluye «Sincronizar ahora»)
+- [x] F24 Miniaturas propias
+- [x] F25 Enlace con Contenido (automático; el manual queda en PENDIENTE)
 
 ### AT3 — Vínculo de cada toque con su campaña, conjunto y anuncio
 - [ ] F26 `resolve_meta_match` y el trigger (M7)
@@ -147,9 +147,9 @@ frene el webhook ya estaban cubiertos en `app/api/webhooks/{late,evolution}/rout
 | M1 | `00186_webhook_endpoints` | `webhook_endpoints` + `inbound_webhooks`, RLS, GRANT por columna | WH1 | **aplicada y registrada** (`20261013050050`), verificada |
 | M2 | `00187_webhook_sessions` | `flow_sessions.inbound_webhook_id` + CHECK recreado; `triggers.type` 31 + `webhook_received` | WH2 | **aplicada y registrada** (`20261013052548`), verificada |
 | M3 | `00188_touch_origin_webhook` | CHECK de `contact_touches.origin` + `webhook` | WH2 | **aplicada y registrada** (`20261013053503`), verificada |
-| M4 | `00189_messages_origin_context` | `messages.origin_context jsonb` | AT1 | pendiente |
-| M5 | `00190_create_booking_ad_ids` | `create_booking` pasa ad/adset/campaign y extras al toque | AT1 | pendiente |
-| M6 | `00191_meta_catalog` | catálogo de Meta, `meta_name_key`, bucket `ad-creatives` | AT2 | pendiente |
+| M4 | `00189_messages_origin_context` | `messages.origin_context jsonb` | AT1 | **aplicada y registrada** (`20261013061922`), verificada |
+| M5 | `00190_create_booking_ad_ids` | `create_booking` pasa ad/adset/campaign y extras al toque | AT1 | **aplicada y registrada** (`20261013062612`), verificada |
+| M6 | `00191_meta_catalog` | catálogo de Meta, `meta_name_key`, bucket `ad-creatives` | AT2 | **aplicada y registrada** (`20261013064536`), verificada |
 | M7 | `00192_meta_touch_match` | vínculo con Meta (columnas, funciones, trigger) | AT3 | pendiente |
 | M8 | `00193_meta_touch_backfill` | backfill del vínculo | AT3 | pendiente |
 | M9 | `00194_ads_crm_metrics` | `ads_crm_metrics` + índices | AT4 | pendiente |

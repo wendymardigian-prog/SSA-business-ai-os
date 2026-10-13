@@ -54,6 +54,8 @@ export interface AdsDashboardProps {
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
+  /** Puede pedir "Sincronizar ahora" (`settings.manage`). */
+  canSync?: boolean;
 }
 
 const SECTION_LABEL = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
@@ -134,6 +136,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
             onOpenAi={() => setAiOpen(true)}
             account={props.account}
             syncedLabel={props.syncedLabel}
+            canSync={props.canSync}
           />
         }
       />

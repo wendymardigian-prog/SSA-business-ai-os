@@ -107,3 +107,28 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
 - **Clic en la agenda con `gbraid`/`wbraid` y otras claves**: la agenda ahora acepta todas las claves de
   `TOUCH_KEYS`, así que dejan de precargarse como respuesta del formulario (cambio menor, previsto en el plan).
 - **`create_booking` sigue poniendo `medium = 'booking'`** siempre; no se tocó (fuera del plano).
+
+
+### AT2 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
+
+- **F25 manual («Vincular con una pieza») no se construyó.** Era nice-to-have y el detalle del anuncio
+  (`/dashboard/dashboards/ads/ads/[id]`) se toca en AT4. La columna `content_link_manual` y la regla «el automático
+  no pisa uno manual» ya están y tienen test; falta solo la pantalla con el buscador de piezas.
+- **El enlace con Contenido solo cubre Instagram.** `social_posts` no tiene Facebook (`SocialPlatform` son
+  instagram, tiktok, youtube, linkedin, threads), así que `object_story_id` se guarda pero no enlaza nada. Si se
+  suman publicaciones de Facebook, `matchPost` ya mira los dos ids.
+- **Miniaturas: 3 intentos y esperas de 1 y 5 minutos** (no 1, 5 y 15). Con `thumbnail_attempts < 3` como tope,
+  el tercer fallo ya no reintenta. Un sync posterior NO reinicia los intentos: un anuncio que agotó los tres queda
+  sin miniatura hasta que alguien ponga `thumbnail_attempts = 0`. Si en la práctica la URL vence seguido, conviene
+  reiniciarlos cuando cambie `thumbnail_source_url`.
+- **El job de miniaturas se llama `meta_ad_thumbnails`** (con guion bajo, como el resto de los tipos del registro);
+  el plano lo escribía con guiones.
+- **`DELETED` en el filtro:** si el grafo lo rechaza con código 100 en la primera página, se lee sin él y queda en el
+  log (no en `last_error`, porque no es un error de la cuenta). No se pudo comprobar contra el grafo real: la
+  verificación en vivo (§11 del plano) tiene que mirar que los anuncios borrados aparezcan.
+- **El catálogo incompleto se avisa en `last_error` de la cuenta** (tope de 50 páginas, límite de uso o error de
+  Meta) y no avanza `catalog_synced_at`: el próximo sync pide desde la última vez completa.
+- **«Sincronizar ahora» no se probó con un clic real**: encola un sync que llama a Meta de verdad. Está probado con
+  tests (permiso, cuenta activada, dedupe por bloque de 10 minutos) y se vio el botón en el panel de la cuenta.
+- **`verify-rls.mjs` necesita `--despues-de-00143`** (la 00143 ya está aplicada); sin la bandera falla un caso que
+  describe el estado anterior a esa migración.
