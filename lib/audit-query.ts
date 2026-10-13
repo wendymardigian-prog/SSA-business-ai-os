@@ -69,6 +69,7 @@ export function entityHref(entityType: string, entityId: string, metadata?: unkn
     case "booking": return `/dashboard/agenda?agenda=${entityId}`;
     case "call": return `/dashboard/llamadas/${entityId}`;
     case "form": return `/dashboard/formularios/${entityId}`;
+    case "task": return `/dashboard/tareas?task=${entityId}`;
     case "eod_report": {
       const formId = typeof (metadata as { form_id?: unknown } | null)?.form_id === "string" ? (metadata as { form_id: string }).form_id : null;
       return formId ? `/dashboard/formularios/${formId}/reportes/${entityId}` : null;
@@ -97,6 +98,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   form_submission: "Respuesta de formulario",
   contract_signature: "Firma de contrato",
   eod_report: "Reporte de fin de día",
+  task: "Tarea",
   product: "Producto",
   product_variant: "Variante",
   assignment_rule: "Regla de asignación",

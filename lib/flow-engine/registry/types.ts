@@ -204,6 +204,12 @@ export interface TriggerDefinition {
   /** Sobre quién es el flujo que arranca. Sin declarar = `contact` (todos los existentes). */
   subject?: TriggerSubject;
   /**
+   * El disparador atiende tambien eventos SIN contacto (Tareas, F25): si el evento trae `contact_id` sigue el camino de
+   * siempre; si no, trae `member_user_id` y el flujo corre sin contacto, sobre esa persona del equipo. A diferencia de
+   * `subject: "member"`, el evento CON contacto no cambia en nada.
+   */
+  contactOptional?: boolean;
+  /**
    * Solo `subject: "member"`: sobre qué entidad queda el disparo en el historial
    * (un flujo sin contacto no se audita sobre un contacto).
    */

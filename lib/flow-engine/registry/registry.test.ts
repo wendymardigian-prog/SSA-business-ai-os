@@ -40,7 +40,7 @@ const NODOS_DE_ACCION = [
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 29 tipos ejecutables", () => {
+  it("tiene los 30 tipos ejecutables", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
     // + enviar email y las dos acciones de agenda (Etapa 4),
     // + enviar un recurso de la banca,
@@ -48,7 +48,8 @@ describe("registro de nodos", () => {
     // + `branch` ("Condiciones": varios caminos en orden y "Si no"). El `condition` de siempre sigue registrado.
     // + `notify_team` ("Avisar en la campana", EOD E15).
     // + `upsert_contact` ("Crear o actualizar contacto", webhooks entrantes, Extra L).
-    expect(listNodes()).toHaveLength(29);
+    // + `create_task` ("Crear tarea", Tareas, F22).
+    expect(listNodes()).toHaveLength(30);
   });
 
   it.each(NODOS_DE_ACCION)(

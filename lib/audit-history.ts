@@ -90,6 +90,14 @@ const FIELD_LABELS: Record<string, string> = {
   provider_fee_amount: "Comisión",
   title: "Título",
   role: "Rol",
+  // Tareas
+  priority: "Prioridad",
+  start_date: "Inicio",
+  owner_id: "Responsable",
+  follower_ids: "Seguidores",
+  project: "Proyecto",
+  conversation_id: "Conversación",
+  blocked_by: "Depende de",
 };
 
 const MAX_VALUE_CHARS = 200;
@@ -127,13 +135,29 @@ export function readableValue(value: unknown): string {
 }
 
 /** El cambio de un campo, con etiqueta, antes y despues legibles. */
-export function describeChange(entityType: AuditEntityType | string, field: string, oldValue: unknown, newValue: unknown): ChangeLine {
+export function describeChange(
+  entityType: AuditEntityType | string,
+  field: string,
+  oldValue: unknown,
+  newValue: unknown,
+  names?: Record<string, string>,
+): ChangeLine {
   const key = field.includes(".") ? field.split(".").pop()! : field;
   // El estado de una venta o de un pago se lee con su etiqueta («Pagada», «Moroso»), no con la clave interna.
   const named = (value: unknown): unknown => {
-    if (key !== "status" || typeof value !== "string") return value;
-    if (entityType === "sale") return saleStatusLabel(value);
-    if (entityType === "payment") return paymentStatusLabel(value);
+    if (typeof value !== "string") return value;
+    if (key === "status") {
+      if (entityType === "sale") return saleStatusLabel(value);
+      if (entityType === "payment") return paymentStatusLabel(value);
+      if (entityType === "task") return TASK_STATUS_NAMES[value] ?? value;
+    }
+    if (entityType === "task") {
+      if (key === "priority") return TASK_PRIORITY_NAMES[value] ?? value;
+      // Responsable y seguidores se guardan como ids: se leen como nombres (uno solo o varios separados por coma).
+      if ((key === "owner_id" || key === "follower_ids") && names) {
+        return value.split(",").map((id) => names[id.trim()] ?? id.trim()).join(", ");
+      }
+    }
     return value;
   };
   return {
@@ -145,12 +169,26 @@ export function describeChange(entityType: AuditEntityType | string, field: stri
 }
 
 /** Todas las lineas de cambio de una fila (vacio si no tiene `changes`). */
-export function describeChanges(entityType: string, changes: Json | null): ChangeLine[] {
+export function describeChanges(entityType: string, changes: Json | null, names?: Record<string, string>): ChangeLine[] {
   if (!changes || typeof changes !== "object" || Array.isArray(changes)) return [];
   return Object.entries(changes as Record<string, { old?: unknown; new?: unknown }>)
     .filter(([, v]) => v && typeof v === "object")
-    .map(([field, v]) => describeChange(entityType, field, v.old, v.new));
+    .map(([field, v]) => describeChange(entityType, field, v.old, v.new, names));
 }
+
+const TASK_STATUS_NAMES: Record<string, string> = { pending: "Pendiente", in_progress: "En progreso", completed: "Completada" };
+const TASK_PRIORITY_NAMES: Record<string, string> = { low: "Baja", normal: "Normal", high: "Alta", urgent: "Urgente" };
+
+/** Etiquetas de las acciones de Tareas, para <Historial/>. */
+export const TASK_ACTION_LABELS: Record<Extract<AuditAction, `task.${string}`>, string> = {
+  "task.created": "creó la tarea",
+  "task.updated": "editó la tarea",
+  "task.reopened": "reabrió la tarea",
+  "task.completed": "completó la tarea",
+  "task.date_shifted": "movió la fecha de la tarea",
+  "task.blockers_changed": "cambió de qué depende la tarea",
+  "task.deleted": "borró la tarea",
+};
 
 // ── La consulta ───────────────────────────────────────────────────────────
 

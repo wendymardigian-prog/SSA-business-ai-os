@@ -22,6 +22,7 @@ import "./form-triggers";
 import "./sales-triggers";
 import "./eod-triggers";
 import "./webhook-triggers";
+import "./task-triggers";
 import "./guards";
 
 export * from "./registry";

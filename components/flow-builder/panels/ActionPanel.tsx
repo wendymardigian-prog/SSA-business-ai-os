@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
 import { SendAssetPanel } from "./SendAssetPanel";
+import { CreateTaskPanel } from "./CreateTaskPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -70,6 +71,9 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <PauseAgentConfig data={data} onChange={onChange} />;
     case "resumeAgent":
       return <ResumeAgentConfig />;
+    // Tareas (F22): deja una tarea para el equipo.
+    case "create_task" as NodeType:
+      return <CreateTaskPanel data={rawData} onChange={onChange} />;
     // Ventas (F37): trabajan sobre el pago o la venta que disparo el flujo.
     case "mark_payment_paid" as NodeType:
       return <MarkPaymentPaidConfig data={data} onChange={onChange} />;

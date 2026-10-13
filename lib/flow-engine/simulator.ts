@@ -545,6 +545,18 @@ export function simulateFlow(
         break;
       }
 
+      // Tareas (F22): en la simulación no se crea ninguna tarea.
+      case "create_task": {
+        const title = interpolate((data.title as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "create_task",
+          nodeLabel: label,
+          result: { type: "action", actionType: "create_task", detail: title || "(sin título)" },
+        });
+        break;
+      }
+
       case "cancel_booking": {
         steps.push({
           nodeId: node.id,

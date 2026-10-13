@@ -226,7 +226,8 @@ export function memoryDb(
         if (op === "is") filters.push((r) => (r[col] ?? null) !== val);
         return b;
       },
-      in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(r[col])), b),
+      // `payload->>task_id` tambien (un `in` sobre una clave de un jsonb), igual que `eq`.
+      in: (col: string, vals: unknown[]) => (filters.push((r) => vals.includes(jsonPath(r, col))), b),
       // `like`/`ilike` con el comodin `%` de PostgREST. `ilike` ignora
       // mayusculas, que es como se busca un usuario de agenda.
       like: (col: string, pattern: string) => (filters.push((r) => likeMatch(r[col], pattern, false)), b),

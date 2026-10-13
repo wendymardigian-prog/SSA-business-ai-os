@@ -166,6 +166,9 @@ describe("los tres tipos nuevos estan registrados", () => {
       "sale_created",
       "sale_status_changed",
       "survey_answered",
+      // Tareas (F25): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto.
+      "task_completed",
+      "task_overdue",
       // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola.
       "webhook_received",
     ]);

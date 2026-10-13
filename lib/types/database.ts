@@ -1,5 +1,5 @@
 import type { Platform } from "@/lib/platforms";
-
+import type { TaskRow } from "@/lib/tasks/types";
 export type Json =
   | string
   | number
@@ -460,7 +460,9 @@ export type AuditEntityType =
   /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181). */
   | "eod_report"
   /** Webhooks entrantes (00186): el endpoint (Extra L). */
-  | "webhook_endpoint";
+  | "webhook_endpoint"
+  /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`. */
+  | "task";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -561,6 +563,14 @@ export type AuditAction =
   | "call.section_edited"
   | "call.regenerated"
   | "call.objection"
+  /** Tareas (Extra A): crear, editar, reabrir; las RPC de 00197 escriben las demas. */
+  | "task.created"
+  | "task.updated"
+  | "task.reopened"
+  | "task.completed"
+  | "task.date_shifted"
+  | "task.blockers_changed"
+  | "task.deleted"
   | "call.objection_resolved"
   | "call.archived"
   /** Formularios (entity form, salvo que se aclare). `form.published` lo escribe la funcion SQL. */
@@ -774,7 +784,10 @@ export type TriggerType =
   /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
   | "eod_submitted"
   /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`. */
-  | "webhook_received";
+  | "webhook_received"
+  /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto. */
+  | "task_completed"
+  | "task_overdue";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -3895,6 +3908,18 @@ export interface Database {
         Relationships: [];
       };
 
+      /** Tareas del equipo (00196). El cliente solo escribe las columnas que le da el GRANT; el resto, el servidor o las RPC (00197). */
+      tasks: {
+        Row: TaskRow;
+        Insert: Partial<Omit<TaskRow, "id" | "workspace_id" | "title" | "blocked_by">> & {
+          id?: string;
+          workspace_id: string;
+          title: string;
+        };
+        Update: Partial<Omit<TaskRow, "id" | "workspace_id" | "blocked_by">> & { blocked_by?: Json };
+        Relationships: [];
+      };
+
       /** Pagos de una venta (00162). Un reembolso es otra fila (type refund, monto negativo). */
       payments: {
         Row: {
@@ -5342,6 +5367,21 @@ export interface Database {
       release_oauth_refresh: {
         Args: { p_connection_id: string };
         Returns: undefined;
+      };
+      /** Tareas (00197): completa una tarea y aplica el plan de fechas, todo o nada. Devuelve `{ok, ...}` o `{ok:false, error}`. */
+      complete_task_with_shifts: {
+        Args: { p_task_id: string; p_shifts: Json; p_expected: Json };
+        Returns: Json;
+      };
+      /** Tareas (00197): guarda las dependencias sin ciclos. */
+      set_task_blockers: {
+        Args: { p_task_id: string; p_blockers: Json };
+        Returns: Json;
+      };
+      /** Tareas (00197): borrado logico que la saca de las dependencias de las demas. */
+      delete_task: {
+        Args: { p_task_id: string };
+        Returns: Json;
       };
       /** Llamadas (00148): escribe la configuracion de UNA tarea de llamadas y devuelve la anterior. Solo service_role. */
       set_ai_background_task_settings: {

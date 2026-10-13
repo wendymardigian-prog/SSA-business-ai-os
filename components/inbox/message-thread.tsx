@@ -21,6 +21,7 @@ import type { AssetChatCopy } from "@/lib/response-assets/send-copy";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
+import { CreateTaskButton } from "@/components/tasks/create-task-button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ActionError } from "@/components/contacts/ui";
 import type { Database, ConversationStatus } from "@/lib/types/database";
@@ -200,6 +201,7 @@ export function MessageThread({
   messages: initialMessages,
   assets = [],
   canManageAssets = false,
+  canCreateTask = false,
   workspaceName = "",
   agentInfo = null,
   channelProvider = null,
@@ -212,6 +214,8 @@ export function MessageThread({
   assets?: InboxAsset[];
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
+  /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado. */
+  canCreateTask?: boolean;
   workspaceName?: string;
   /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
   agentInfo?: ChannelAgentInfo | null;
@@ -801,6 +805,9 @@ export function MessageThread({
             info={agentInfo}
           />
           <div className="flex items-center gap-1">
+            {canCreateTask && (
+              <CreateTaskButton contactId={conversation.contact_id} conversationId={conversation.id} contactName={conversation.contacts?.display_name ?? null} />
+            )}
             {conversation.status !== "closed" && (
               <button
                 onClick={() => updateConversationStatus("closed")}

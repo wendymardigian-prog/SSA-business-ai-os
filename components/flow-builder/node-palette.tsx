@@ -11,6 +11,7 @@ import {
   ArrowRightLeft,
   UserCheck,
   Bell,
+  ListPlus,
   Shuffle,
   Hourglass,
   Sparkles,
@@ -196,6 +197,14 @@ const categories: PaletteCategory[] = [
         label: "Avisar en la campana",
         icon: Bell,
         actionType: "notify_team",
+      },
+      // Tareas (F22): deja una tarea para el equipo (sirve también en flujos sin contacto).
+      {
+        type: "action",
+        nodeType: "create_task",
+        label: "Crear tarea",
+        icon: ListPlus,
+        actionType: "create_task",
       },
       {
         type: "action",

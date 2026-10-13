@@ -8,6 +8,7 @@ import { BASE_CALL_TYPES } from "@/lib/calls/classification";
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
 import { FormTriggerPanel } from "./FormTriggerPanel";
 import { WebhookTriggerPanel } from "./WebhookTriggerPanel";
+import { TaskTriggerPanel } from "./TaskTriggerPanel";
 import { SALES_FILTER_KEYS, SalesTriggerPanel } from "./SalesTriggerPanel";
 import { SALES_PRESETS, presetFor } from "@/lib/sales/automation/presets";
 
@@ -86,6 +87,9 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "payment_after_due", label: "Despues de un vencimiento impago", description: "Un aviso X dias despues del vencimiento si el pago sigue sin cobrarse" },
   // Reporte de fin de dia (E16): el flujo es sobre la persona del equipo que lo envio, no sobre un contacto.
   { value: "eod_submitted", label: "Se envio un reporte de fin de dia", description: "Cuando alguien del equipo envia su reporte del dia (sin contacto: no manda mensajes por chat)" },
+  // Tareas (F25): con contacto, el de la tarea; sin el, corre sobre la persona del equipo a cargo.
+  { value: "task_completed", label: "Se completo una tarea", description: "Cuando alguien completa una tarea. Si la tarea no tiene contacto, el flujo corre sin contacto" },
+  { value: "task_overdue", label: "Una tarea quedo vencida", description: "Cuando una tarea con responsable o seguidores vence sin completarse (una vez por vencimiento)" },
   // Webhooks entrantes (Extra L): arranca sin contacto; el paso "Crear o actualizar contacto" lo consigue.
   { value: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto: lo creás o actualizás con un paso" },
 ];
@@ -668,6 +672,9 @@ export function TriggerPanel({ data: rawData, onChange, flowId }: TriggerPanelPr
 
       {/* Formularios (F19): formularios, puntaje y condiciones sobre las respuestas */}
       {FORM_TRIGGERS.includes(triggerType) && <FormTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+
+      {/* Tareas (F25): proyectos y origenes */}
+      {(triggerType === "task_completed" || triggerType === "task_overdue") && <TaskTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
 
       {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} />}
 

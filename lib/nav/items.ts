@@ -71,6 +71,9 @@ export const NAV_ITEMS: NavItemMeta[] = [
   // La cola de borradores y las sub-pestañas de la bandeja (broadcasts,
   // sequences, growth) son la misma seccion: dejan Bandeja marcada (N4).
   { name: "Bandeja", href: "/dashboard/inbox", icon: "MessageSquare", adminOnly: false, group: "inicio", alsoActiveOn: ["/dashboard/drafts", "/dashboard/broadcasts", "/dashboard/sequences", "/dashboard/growth"] },
+  // Tareas (Extra A): el trabajo pendiente del equipo, junto a la bandeja. Se ve con `tasks.view`:
+  // el Member de sistema lo tiene (ve las que creo, tiene a cargo o sigue).
+  { name: "Tareas", href: "/dashboard/tareas", icon: "ListTodo", adminOnly: false, permissions: ["tasks.view"], group: "inicio" },
   // Reporte de fin de día (E10): completarlo no necesita permiso, alcanza con estar en
   // la audiencia de un EOD publicado. Por eso es una condición del servidor y no un permiso.
   { name: "Mi reporte del día", href: "/dashboard/eod", icon: "ListChecks", adminOnly: false, group: "inicio", requires: "eod" },

@@ -12,6 +12,7 @@ import {
   CALL_ACTION_LABELS,
   FORM_ACTION_LABELS,
   SALE_ACTION_LABELS,
+  TASK_ACTION_LABELS,
   type HistoryRow,
 } from "@/lib/audit-history";
 import type { AuditActorType } from "@/lib/types/database";
@@ -37,6 +38,7 @@ const GENERIC_ACTIONS: Record<string, string> = {
   ...CALL_ACTION_LABELS,
   ...FORM_ACTION_LABELS,
   ...SALE_ACTION_LABELS,
+  ...TASK_ACTION_LABELS,
 };
 
 function actionText(action: string): string {
@@ -117,7 +119,7 @@ export function Historial({ entityType, entityId, names, timeZone, pageSize }: H
         {rows.map((row) => {
           const type = effectiveActorType(row);
           const Icon = ACTOR_ICON[type];
-          const lines = describeChanges(entityType, row.changes);
+          const lines = describeChanges(entityType, row.changes, names?.users);
           return (
             <li key={row.id} className="flex gap-3">
               <span title={ACTOR_NOUN[type]} className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">

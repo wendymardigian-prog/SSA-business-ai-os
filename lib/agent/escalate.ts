@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { logAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
+import { todayInputValue } from "@/lib/dates";
+import { createTaskFromAutomation, resolveConversationResponsible } from "@/lib/tasks/create-from-automation";
 
 /**
  * Derivar la conversacion a una persona (Human Takeover desde el agente).
@@ -109,5 +111,42 @@ export async function escalateToHuman(
     metadata: { run_id: args.runId, origin: args.origin, contact_id: args.contactId, channel_id: args.channelId },
   });
 
+  // Opcional y apagado por defecto (Tareas, F24): ademas de avisar, deja una tarea. No cambia nada de lo de arriba.
+  await maybeCreateEscalationTask(supabase, args, { who, summary });
+
   return { auditLogId };
+}
+
+/**
+ * «Crear una tarea cuando derive a una persona» (F24). Si el agente lo tiene prendido, deja una tarea `agent` vinculada a
+ * la conversacion, a cargo de quien tiene la conversacion (asignada, setter o vendedor; si nadie, avisa a Owner/Admin).
+ * NUNCA lanza ni frena el escalamiento: ya estan hechos el apagado, el audit y el aviso.
+ */
+async function maybeCreateEscalationTask(supabase: Db, args: EscalateArgs, ctx: { who: string; summary: string | null }): Promise<void> {
+  try {
+    const { data: agent } = await supabase.from("agents").select("guardrails").eq("id", args.agentId).maybeSingle();
+    const escalation = (agent?.guardrails as { escalation?: { createTaskOnEscalate?: unknown } } | null)?.escalation;
+    if (escalation?.createTaskOnEscalate !== true) return;
+
+    const { data: workspace } = await supabase.from("workspaces").select("timezone").eq("id", args.workspaceId).maybeSingle();
+    const ownerId = await resolveConversationResponsible(supabase, { workspaceId: args.workspaceId, conversationId: args.conversationId, contactId: args.contactId });
+    await createTaskFromAutomation(supabase, {
+      workspaceId: args.workspaceId,
+      title: `Atender a ${ctx.who}: pidió una persona`,
+      description: ctx.summary ? `${args.reason}. ${ctx.summary}` : args.reason,
+      priority: "high",
+      dueDate: todayInputValue(new Date(), workspace?.timezone || "UTC"),
+      ownerId,
+      contactId: args.contactId,
+      conversationId: args.conversationId,
+      source: "agent",
+      // Una por derivacion: si el mismo turno deriva dos veces, la tarea abierta es una sola.
+      sourceRef: `escalation:${args.runId ?? args.conversationId}:${args.conversationId}`,
+      actor: { kind: "agent", label: "Agente de IA", agentId: args.agentId, runId: args.runId, origin: "escalation" },
+      notifyIfUnassigned: true,
+      reason: args.reason,
+    });
+  } catch (error) {
+    console.error("[tareas] no pude crear la tarea al derivar:", error instanceof Error ? error.message : String(error));
+  }
 }

@@ -433,3 +433,39 @@ Detalle de producto en `docs/webhooks.md`. Lo que importa para el registro:
 - **Condiciones** `webhook.*`: se registran en `registry/webhook-conditions.ts` sin tocar `conditions.ts`, `branch.ts` ni `condition-eval.ts`.
 - **Disparadores de mensaje** (AT1): `keyword` suma los filtros `fromAdOnly` y `storyMentionOnly`; las variables `message_origin.*` se siembran en el
   motor al correr un flujo por un mensaje.
+
+## Tareas: el nodo `create_task` y los triggers `task_completed` / `task_overdue` (Extra A, T4)
+
+Detalle del módulo en [tareas.md](tareas.md). Migración del CHECK de `triggers.type` y de los eventos sin contacto: **00199**.
+
+### `create_task` («Crear tarea»)
+
+`nodes/create-task.ts`, `needsContact: false` (sirve con y sin contacto). Datos:
+`{ title, description, owner: "none" | "user" | "member", ownerId, followerIds, project, priority, dueMode: "none" | "date" | "days", dueDate, dueDays }`.
+
+- Título, descripción y proyecto admiten variables; **lo que no se pudo resolver se saca** (`stripUnresolved`): una `{{...}}` suelta en una tarea es ruido.
+- `owner: "member"` es la persona del flujo sin contacto (`memberUserId`); `owner: "user"` una persona fija. Si ya no es del equipo, la tarea queda sin responsable y se avisa a Owner/Admin.
+- Vencimiento: fecha fija o «+N días» (hoy en la zona horaria del workspace, tope 365).
+- Origen `flow`, `source_ref = flow_id:sesión:nodo`: **la misma ejecución no crea dos tareas abiertas**. Sin título después de interpolar: no crea y lo advierte.
+- **Nunca lanza ni frena el flujo** (`createTaskFromAutomation` captura y registra con `[tareas]`).
+- Alta en `registry/nodes.ts`, en `contact-free.ts` (`CONTACT_FREE_NODE_TYPES`), en la paleta (`node-palette.tsx`), el panel (`panels/CreateTaskPanel.tsx`, desde `ActionPanel`), la tarjeta del lienzo (`nodes/action-node.tsx`) y el simulador. El panel carga las personas del equipo con `loadTaskNodeOptions`.
+
+### Los dos triggers
+
+`registry/task-triggers.ts`, `scope: "event"`, prioridad 45 (debajo de `crm_event`, como agenda, llamadas, formularios y ventas), `eventTypes: [type]`.
+
+| Tipo | Cuándo | Evento |
+|---|---|---|
+| `task_completed` | Se completa una tarea (también al reabrirla y volver a completarla) | `task_completed` |
+| `task_overdue` | Una tarea con responsable o seguidores vence sin completarse (una vez por vencimiento) | `task_overdue` |
+
+- **`contactOptional: true`** (campo nuevo de `TriggerDefinition`, opcional): el trigger atiende **también un evento sin contacto** con una persona del equipo. `eventAllowsNoContact(eventType)` lo consulta el registro; es lo único que `processEvent` mira para decidir.
+- **El enrutado es por fila, no por tipo**: en `processEvent`, un evento **sin `contact_id` y con `member_user_id`** de un tipo que lo admite va por la rama `member` (el flujo corre sin conversación, canal ni «no contactar»). Cualquier otro evento sigue por `eventSubject(event_type)` exactamente como antes. `subject` de estos dos triggers sigue siendo `contact`.
+- **Con contacto, el camino de siempre** (el contacto y su conversación más reciente).
+- **Sin contacto**, la persona es: responsable, si no quien creó la tarea, si no quien hizo el cambio. Si no hay ninguna, el evento **no se emite** (queda en el log).
+- **Filtros** (`lib/tasks/automation/trigger-config.ts`): proyectos (por clave normalizada) y orígenes. Vacío es «cualquiera»; una configuración rota no dispara para nadie. Se leen del **payload del evento**, nunca de la tarea de hoy.
+- **Idempotencia** (`taskDedupeKey`): completar → `task:completed:<tarea>:<completed_at>` (reabrir y volver a completar dispara de nuevo); vencida → `task:overdue:<tarea>:<vencimiento>`.
+- **El evento lleva solo escalares y nunca `booking_id`** (`taskEventPayload`). Emitir (`lib/tasks/automation/emit.ts`) **nunca rompe** la operación que lo origina.
+- **Variables** (`lib/tasks/automation/variables.ts`): `{{task.title}}`, `{{task.project}}`, `{{task.status}}`, `{{task.priority}}`, `{{task.source}}`, `{{task.due_date}}`, `{{task.owner}}` y `{{task.url}}`. El `variableSchema` expone los siete primeros a las Condiciones (todo texto).
+- `automation_events_contact_or_member` (00182) ahora acepta un evento sin contacto de `eod_submitted`, `task_completed` y `task_overdue`, siempre con `member_user_id`.
+- UI: el panel `TaskTriggerPanel` (filtros) se muestra bajo la lista de tipos del `TriggerPanel`; `consistency.test` exige que la lista de tipos del panel coincida con el registro.

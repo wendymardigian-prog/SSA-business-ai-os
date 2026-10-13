@@ -48,6 +48,9 @@ import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { ContactFormsSection } from "@/components/contacts/forms-section";
 import { loadContactForms } from "@/lib/forms/data/contact-forms";
+import { ContactTasks } from "@/components/tasks/contact-tasks";
+import { loadContactTasks } from "@/lib/tasks/contact-section";
+import { todayInputValue } from "@/lib/dates";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { snapshotText } from "@/lib/sales/sale-text";
 import { describePaymentHealth } from "@/lib/sales/payment-health";
@@ -247,6 +250,10 @@ export default async function ContactDetailPage({
   // Los formularios que respondió (Formularios, R8): solo con `forms.view`; la RLS decide cuáles ve.
   const canViewForms = permissionCtx.can("forms.view");
   const contactForms = canViewForms ? await loadContactForms(supabase, { workspaceId: workspace.id, contactId }) : null;
+
+  // Las tareas del contacto (Tareas, F20): solo con `tasks.view`; la RLS decide cuales ve (un Member, las suyas).
+  const canViewTasks = permissionCtx.can("tasks.view");
+  const contactTasks = canViewTasks ? await loadContactTasks(supabase, { workspaceId: workspace.id, contactId }) : [];
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -542,6 +549,18 @@ export default async function ContactDetailPage({
                 />
               </div>
             </Section>
+
+            {canViewTasks && (
+              <Section title="Tareas">
+                <ContactTasks
+                  contactId={contact.id}
+                  initialTasks={contactTasks}
+                  members={members.map((m) => ({ id: m.userId, name: m.name }))}
+                  today={todayInputValue(new Date(), workspace.timezone || "UTC")}
+                  canEdit={permissionCtx.can("tasks.edit")}
+                />
+              </Section>
+            )}
 
             <Section title="Tags">
               <TagsEditor

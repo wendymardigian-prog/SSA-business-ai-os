@@ -61,6 +61,21 @@ export const NOTIFICATION_TYPES = [
   // Webhooks entrantes.
   /** Un endpoint acumuló 5 envíos con error en una hora. Va a quien lo creó y a Owner/Admin. */
   "webhook_errors",
+  // Tareas (Extra A). Todas van a una persona concreta (`recipient_id`), nunca a quien hizo la acción.
+  /** Te asignaron una tarea. */
+  "task_assigned",
+  /** Te agregaron como seguidor de una tarea. */
+  "task_follow_added",
+  /** Cambió el estado, la fecha o el responsable de una tarea que tenés a cargo o seguís. */
+  "task_changed",
+  /** Una tarea tuya quedó sin bloqueantes pendientes. */
+  "task_unblocked",
+  /** Se movió la fecha de una tarea tuya (al completar la que la bloqueaba). */
+  "task_date_moved",
+  /** Una tarea vence hoy. */
+  "task_due_today",
+  /** Una tarea venció y sigue sin completarse. */
+  "task_overdue",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -84,7 +99,9 @@ export type NotificationEntity =
   /** Un reporte de fin de día para completar (el id es el del formulario). */
   | "eod_form"
   /** Un endpoint de webhooks entrantes (el id es el del endpoint). */
-  | "webhook_endpoint";
+  | "webhook_endpoint"
+  /** Una tarea (el id es el de la tarea). */
+  | "task";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -320,6 +337,13 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "eod_form",
   },
+  task_assigned: { type: "task_assigned", label: "Te asignaron una tarea", tone: "info", entity: "task" },
+  task_follow_added: { type: "task_follow_added", label: "Seguís una tarea", tone: "info", entity: "task" },
+  task_changed: { type: "task_changed", label: "Cambió una tarea que seguís", tone: "info", entity: "task" },
+  task_unblocked: { type: "task_unblocked", label: "Una tarea quedó libre", tone: "success", entity: "task" },
+  task_date_moved: { type: "task_date_moved", label: "Se movió la fecha de una tarea", tone: "warning", entity: "task" },
+  task_due_today: { type: "task_due_today", label: "Una tarea vence hoy", tone: "warning", entity: "task" },
+  task_overdue: { type: "task_overdue", label: "Una tarea está vencida", tone: "warning", entity: "task" },
   webhook_errors: {
     type: "webhook_errors",
     label: "Un webhook está fallando",
@@ -399,6 +423,10 @@ export function linkFor(
 
     case "eod_form":
       return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
+
+    // Tareas: abre la tarea en su drawer.
+    case "task":
+      return entityId ? `/dashboard/tareas?task=${entityId}` : "/dashboard/tareas";
 
     // Webhooks entrantes: el historial del endpoint que falla.
     case "webhook_endpoint":

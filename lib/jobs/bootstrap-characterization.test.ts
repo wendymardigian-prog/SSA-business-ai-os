@@ -51,6 +51,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "payments_overdue_sweep",
       // Ventas (B2): la asignacion automatica de un contacto.
       "sales_contact_eval",
+      // Tareas (Extra A, F18): el barrido de vencimientos.
+      "tasks_due_sweep",
       "transcribe_audio",
     ]);
   });

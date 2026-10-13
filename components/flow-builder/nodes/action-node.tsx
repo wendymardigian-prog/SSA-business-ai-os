@@ -14,6 +14,7 @@ import {
   PauseCircle,
   PlayCircle,
   Library,
+  ListTodo,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -35,6 +36,8 @@ export interface ActionNodeProps {
   /** "Enviar recurso": el recurso elegido y su nombre (para mostrarlo sin leer la banca). */
   assetId?: string;
   assetName?: string;
+  /** "Crear tarea": el titulo (con variables) que se muestra como resumen. */
+  title?: string;
 }
 
 const actionConfig: Record<
@@ -116,6 +119,11 @@ const actionConfig: Record<
     label: "Enviar recurso",
     color: "bg-gray-500",
   },
+  create_task: {
+    icon: ListTodo,
+    label: "Crear tarea",
+    color: "bg-gray-500",
+  },
 };
 
 function getSummary(nodeData: ActionNodeProps): string | null {
@@ -154,6 +162,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
         : null;
     case "sendAsset":
       return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
+    case "create_task" as NodeType:
+      return nodeData.title?.trim() || null;
     default:
       return null;
   }
