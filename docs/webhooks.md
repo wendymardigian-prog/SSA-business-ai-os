@@ -64,7 +64,7 @@ Dos salidas: **Listo** y **No se pudo**. Variables de salida: `contact_result` y
 1. **Mapeo** (`lib/webhooks/mapping.ts`, nunca lanza): cada destino (campos del contacto, personalizados, tags, atribución) toma una ruta del
    payload o de la URL, con rutas alternativas o un valor fijo. Un destino sin valor se omite (nunca se escribe `""`). El teléfono se normaliza
    con la regla del CRM; el email, en minúsculas.
-2. **Quién es la persona** (`find_contact_for_form`): por teléfono, email, WhatsApp o usuario de una red; **nunca por nombre**. Sin ningún
+2. **Quién es la persona** (la regla única de contactos, `find_or_create_contact`, ver [contactos.md](contactos.md)): por teléfono, email, WhatsApp o usuario de una red; **nunca por nombre**. Sin ningún
    identificador → «No se pudo» (`no_identifier`) y no se crea nada.
 3. **Política**: «solo completar lo vacío» (por defecto) o «sobrescribir». Los tags se suman siempre (solo los que ya existen). El @ de
    Instagram de un contacto con canal vinculado **nunca** se pisa. Un identificador que ya es de otro contacto no se escribe y no se fusiona.

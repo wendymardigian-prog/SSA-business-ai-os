@@ -1053,6 +1053,34 @@ node scripts/verify-audit-visibility.mjs --despues-de-00168
 
 Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
 
+# Contactos: regla unica (construido, 13/10/2026)
+
+Todo contacto nuevo nace en UN solo lugar, con bloqueo por dato: dos llegadas simultaneas de la misma persona dan un contacto. Resumen en [docs/contactos.md](docs/contactos.md); plan y avance en `docs/PROGRESS-contactos.md`, pendientes en `docs/PENDIENTE-contactos.md`.
+
+## Lo que no se puede romper
+
+- **Un dato fuerte** es lo que identifica a una persona: el canal con el id del remitente, el telefono, el WhatsApp, el email (y el secundario) y los usuarios de Instagram, TikTok, X, LinkedIn y Facebook. **Nunca el nombre.** Se normalizan siempre igual (`lib/contacts/identity.ts` y su gemela SQL, con los casos compartidos de `identity.cases.json`).
+- **Todo pasa por `find_or_create_contact` (00200) / `lib/contacts/find-or-create.ts`** (`findOrCreateContact`; `findContact` para solo buscar), siempre con el cliente de servicio: quien llama ya chequeo el permiso y saca el workspace de la sesion. Los mensajes entrantes, la agenda y los formularios la usan desde la base (`find_or_link_contact` v3, `create_booking` v3, `submit_form_response` v6); los buscadores (`find_contact_for_form`, `find_contact_by_phone_or_email`) comparten su busqueda y no crean.
+- **Ningun archivo de la app inserta en `contacts`.** `lib/contacts/single-entry.test.ts` falla si aparece un `.from("contacts").insert/upsert`, y `scripts/verify-contacts-single-entry.mjs` comprueba contra la base que ninguna funcion salvo la central inserta en `contacts`, que las cuentas SQL y TS coinciden y que 10 llamadas simultaneas dan un contacto.
+- **Un error de la base nunca se toma como "no encontrado"** (eso crearia un duplicado): `findOrCreateContact` lanza y quien llama decide.
+- **Solo el alta manual** puede crear un contacto con el nombre solo (`allowWithoutIdentity`). La agenda sin email ni telefono se rechaza (`CB001`).
+- **Un telefono o email que ya es de OTRO contacto no se escribe** al completar (formulario, agenda, CSV, webhook, mensaje entrante); se anota el conflicto. En la ficha, al restaurar y al fusionar, error claro (`lib/contacts/unique-errors.ts`). `linkContacts` borra al duplicado ANTES de rellenar el principal.
+- **El alta manual de un Member** con un dato que es de un contacto que no ve responde sin enlace ni nombre ("Pedile a un Admin que te lo asigne").
+- **Funciones reescritas a proposito**: `find_or_link_contact` (00202), `create_booking` (00203) y `submit_form_response` (00204), cada una con la definicion vieja completa en la cabecera y `lib/contacts/c2-migrations-diff.test.ts` fijando el diff. `record_contact_touch` NO se toco (`verify-forms` y `verify-ads-attribution` controlan su huella).
+- **Indices unicos del telefono y el email principal** (`00205`, `uq_contacts_workspace_phone` / `_email`, solo contactos vivos): se aplican DESPUES de desplegar el PR (ver PENDIENTE). Antes: la consulta de duplicados de PENDIENTE tiene que dar 0 por telefono y por email.
+
+## Migraciones
+
+`00200` (la central y `normalize_phone`), `00201` (los buscadores sobre la busqueda compartida), `00202` (`find_or_link_contact` v3), `00203` (`create_booking` v3) y `00204` (`submit_form_response` v6), **aplicadas y registradas**. La `00205` (indices unicos) esta escrita y ensayada, **sin aplicar**. La `00206` y la `00207` son de Tareas. **La proxima migracion disponible es la `00208`** (confirmar con `list_migrations`).
+
+## Scripts de verificacion
+
+```
+node scripts/verify-contacts-single-entry.mjs   # la regla unica: base, SQL↔TS, concurrencia, buscadores, 00205
+```
+
+Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
+
 # Sitio publico
 
 Las paginas publicas del propio proyecto viven en `app/(sitio)/` y se arman **a pedido con
