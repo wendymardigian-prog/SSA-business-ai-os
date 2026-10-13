@@ -80,7 +80,7 @@ export function useTaskActions({
         mark(plan.taskId, false);
 
         if (result.ok) {
-          const moved = result.data.shifted.length;
+          const moved = result.data.shifted.length + result.data.hiddenShifted;
           toast.push({ tone: "ok", text: moved > 0 ? `Completaste «${plan.title}» y moviste ${moved === 1 ? "la fecha de 1 tarea" : `las fechas de ${moved} tareas`}.` : `Completaste «${plan.title}».` });
           // Las tareas que se movieron las trae el servidor.
           router.refresh();

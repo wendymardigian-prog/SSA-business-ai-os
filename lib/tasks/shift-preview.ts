@@ -67,3 +67,21 @@ export function shiftSummary(count: number): string {
 export function completionRoute(shiftCount: number): "direct" | "dialog" {
   return shiftCount === 0 ? "direct" : "dialog";
 }
+
+/** La linea de las tareas que quien completa NO ve: solo la cuenta, sin titulo ni datos. */
+export function hiddenShiftsLine(count: number): string {
+  return count === 1 ? "Y 1 tarea de otra persona también se va a mover." : `Y ${count} tareas de otras personas también se van a mover.`;
+}
+
+/**
+ * Lo que el dialogo dibuja: las cadenas con SOLO las tareas que se ven (con titulo y fechas) y cuantas hay de otras personas.
+ * Las cadenas se arman con todos los corrimientos (asi una tarea visible que depende de una oculta queda en su cadena) y
+ * despues se sacan las lineas ocultas; una cadena sin ninguna visible desaparece.
+ */
+export function visibleChains(shifts: ReadonlyArray<ChainShift & { visible: boolean }>): { chains: ShiftChain[]; hidden: number } {
+  const visibleIds = new Set(shifts.filter((s) => s.visible).map((s) => s.taskId));
+  const chains = groupShiftsByChain(shifts)
+    .map((c) => ({ ...c, shifts: c.shifts.filter((s) => visibleIds.has(s.taskId)) }))
+    .filter((c) => c.shifts.length > 0);
+  return { chains, hidden: shifts.filter((s) => !s.visible).length };
+}

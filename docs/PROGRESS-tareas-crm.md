@@ -11,8 +11,8 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] R3 · Nodo «Crear tarea» ampliado
 - [x] R4 · Nodo «Completar tarea»
 - [x] R5 · Interruptor de cobranza (tarea al vencer un pago)
-- [ ] M2 (00207) aplicada, registrada y verificada
-- [ ] R10 · Regla de fechas global
+- [x] M2 (00207) aplicada, registrada y verificada
+- [x] R10 · Regla de fechas global
 - [ ] R9 · Fusión de contactos
 - [ ] R7 · Tareas en el calendario de Agenda
 - [ ] R8 · Arrastrar agendas con confirmación
@@ -28,7 +28,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 | N.º | Archivo | Contenido | Estado |
 |---|---|---|---|
 | M1 | `00206_tasks_time_and_followup.sql` | `due_time`, `duration_minutes`, CHECK, GRANT por columna, índice único de seguimiento | aplicada y registrada (13/10/2026) |
-| M2 | `00207_contact_merge_and_task_shift_context.sql` | `merge_contacts`, `task_shift_context`, reemplazo de `complete_task_with_shifts` | pendiente |
+| M2 | `00207_contact_merge_and_task_shift_context.sql` | `merge_contacts`, `task_shift_context`, reemplazo de `complete_task_with_shifts` | aplicada y registrada (13/10/2026); verificaciones en curso |
 
 Próxima libre después de estas: `00208`.
 
