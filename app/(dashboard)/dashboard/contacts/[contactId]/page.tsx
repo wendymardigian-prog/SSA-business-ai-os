@@ -44,6 +44,8 @@ import {
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
+import { MergeNotice } from "@/components/contacts/merge-notice";
+import { decodeMergeParam } from "@/lib/contacts/merge";
 import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { ContactFormsSection } from "@/components/contacts/forms-section";
@@ -77,10 +79,13 @@ const HISTORY_LIMIT = 80;
 
 export default async function ContactDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ contactId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { contactId } = await params;
+  const { fusion } = await searchParams;
   const { workspace, supabase, user, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
@@ -412,6 +417,8 @@ export default async function ContactDetailPage({
       </header>
 
       <div className="flex-1 overflow-auto px-8 py-6">
+        {fusion !== undefined && <MergeNotice moved={decodeMergeParam(fusion)} />}
+
         {suggestions.length > 0 && (
           <div className="mb-6">
             <LinkSuggestionBanner

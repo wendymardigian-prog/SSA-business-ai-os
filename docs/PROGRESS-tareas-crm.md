@@ -13,7 +13,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] R5 · Interruptor de cobranza (tarea al vencer un pago)
 - [x] M2 (00207) aplicada, registrada y verificada
 - [x] R10 · Regla de fechas global
-- [ ] R9 · Fusión de contactos
+- [x] R9 · Fusión de contactos
 - [ ] R7 · Tareas en el calendario de Agenda
 - [ ] R8 · Arrastrar agendas con confirmación
 - [ ] Revisión visual (1440 y 390 px, claro y oscuro)

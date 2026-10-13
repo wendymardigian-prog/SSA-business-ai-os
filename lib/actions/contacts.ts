@@ -12,6 +12,7 @@ import { recordManualTouch } from "@/lib/contacts/touch-entry";
 import { findDuplicateContact } from "@/lib/contacts/dedup";
 import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
+import { mergeErrorMessage, mergeNotes, summarizeMerge } from "@/lib/contacts/merge";
 
 /**
  * Server Actions de contactos.
@@ -741,18 +742,19 @@ export async function setContactCustomField(
 /**
  * Une un contacto duplicado con el principal.
  *
- * No es un merge destructivo: los canales, conversaciones y notas del
- * duplicado pasan al principal, los campos vacios del principal se completan
- * con los del duplicado (nunca al reves), y el duplicado queda con borrado
- * logico. Como es reversible durante 30 dias, si la vinculacion estuvo mal se
- * puede restaurar.
+ * Todo lo que colgaba del duplicado pasa al principal: conversaciones y sus mensajes, canales, etiquetas, notas,
+ * agendas, llamadas, ventas (con sus pagos), tareas, formularios, secuencias, toques de atribucion y el resto (la lista
+ * completa es `CONTACT_MERGE_TABLES`). Lo hace `merge_contacts` en la base, en UNA transaccion: si algo falla, no se
+ * mueve nada. Los campos de identidad vacios del principal se completan con los del duplicado (nunca al reves), las
+ * notas se juntan y el duplicado queda con borrado logico (reversible durante 30 dias) y `metadata.merged_into`.
  *
- * Es Owner/Admin porque implica borrar (logicamente) un contacto.
+ * Es Owner/Admin porque implica borrar (logicamente) un contacto. La funcion de la base solo la ejecuta el servidor:
+ * por eso se llama con el cliente de servicio, DESPUES de comprobar permiso y que los dos contactos se ven.
  */
 export async function linkContacts(
   duplicateId: string,
   mainId: string,
-): Promise<ContactActionResult> {
+): Promise<ContactActionResult & { summary?: string; notes?: string[]; moved?: Record<string, number> }> {
   const ctx = await getAdminContext();
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden vincular contactos" };
   if (duplicateId === mainId) return { ok: false, error: "Es el mismo contacto" };
@@ -761,7 +763,7 @@ export async function linkContacts(
 
   const { data: pair } = await supabase
     .from("contacts")
-    .select("*")
+    .select("id")
     .eq("workspace_id", workspace.id)
     .in("id", [duplicateId, mainId])
     .is("deleted_at", null);
@@ -770,96 +772,32 @@ export async function linkContacts(
   const duplicate = pair?.find((c) => c.id === duplicateId);
   if (!main || !duplicate) return { ok: false, error: "No encontre alguno de los dos contactos" };
 
-  // Los campos de identidad que el principal tiene vacios se completan con los
-  // del duplicado. Lo que el principal ya tiene cargado no se pisa nunca.
-  const FILLABLE = [
-    "display_name", "email", "secondary_email", "phone", "whatsapp_phone", "country",
-    "instagram_username", "tiktok_username", "twitter_username", "facebook_id",
-    "youtube_channel_id", "linkedin_profile_url", "setter_id", "vendedor_id",
-  ] as const;
+  try {
+    const service = await createServiceClient();
+    const { data, error } = await service.rpc("merge_contacts", {
+      p_workspace_id: workspace.id,
+      p_main: mainId,
+      p_duplicate: duplicateId,
+      p_actor: user.id,
+    });
+    if (error) {
+      console.error("[contacts] merge_contacts:", error.message);
+      return { ok: false, error: mergeErrorMessage(error.message) };
+    }
+    const result = (data ?? {}) as { ok?: boolean; moved?: Record<string, number> };
+    if (!result.ok) return { ok: false, error: mergeErrorMessage(undefined) };
 
-  const fill: Record<string, unknown> = {};
-  for (const key of FILLABLE) {
-    if (!main[key] && duplicate[key]) fill[key] = duplicate[key];
+    revalidateContact(mainId);
+    revalidateContact(duplicateId);
+    // Lo que se movio aparece de inmediato en las pantallas que lo muestran.
+    revalidatePath("/dashboard/tareas");
+    revalidatePath("/dashboard/agenda");
+    revalidatePath("/dashboard/ventas");
+    return { ok: true, contactId: mainId, summary: summarizeMerge(result), notes: mergeNotes(result), moved: result.moved ?? {} };
+  } catch (error) {
+    console.error("[contacts] linkContacts:", error instanceof Error ? error.message : String(error));
+    return { ok: false, error: mergeErrorMessage(undefined) };
   }
-
-  // Una conversacion por canal: conversations es unique (channel_id, contact_id).
-  // Si el principal ya tiene una en ese canal, la del duplicado se queda donde
-  // esta y se va con el borrado logico; mover la romperia el indice.
-  const { data: mainConvs } = await supabase
-    .from("conversations")
-    .select("channel_id")
-    .eq("contact_id", mainId);
-  const takenChannels = new Set((mainConvs ?? []).map((c) => c.channel_id));
-
-  const { data: dupConvs } = await supabase
-    .from("conversations")
-    .select("id, channel_id")
-    .eq("contact_id", duplicateId);
-
-  const movableConvs = (dupConvs ?? []).filter((c) => !takenChannels.has(c.channel_id));
-  const skipped = (dupConvs ?? []).length - movableConvs.length;
-
-  if (movableConvs.length > 0) {
-    await supabase
-      .from("conversations")
-      .update({ contact_id: mainId })
-      .in("id", movableConvs.map((c) => c.id));
-  }
-
-  // contact_channels es unique por (channel_id, platform_sender_id), y los
-  // sender id son distintos justamente porque son dos contactos: no colisiona.
-  await supabase.from("contact_channels").update({ contact_id: mainId }).eq("contact_id", duplicateId);
-  // Las notas de los dos se juntan. Es el unico campo del merge donde "lo que
-  // ya estaba gana" seria una perdida: son dos textos que escribieron personas
-  // distintas sobre el mismo lead, y quedarse con uno tira el otro.
-  const notasUnidas = [main.notes, duplicate.notes]
-    .map((n) => (n ?? "").trim())
-    .filter(Boolean)
-    .join("\n\n---\n\n");
-
-  if (notasUnidas && notasUnidas !== (main.notes ?? "").trim()) {
-    await supabase.from("contacts").update({ notes: notasUnidas }).eq("id", mainId);
-  }
-
-  // contact_tags tiene PK (contact_id, tag_id): los tags repetidos chocarian,
-  // asi que se mueven solo los que el principal no tiene.
-  const { data: mainTags } = await supabase.from("contact_tags").select("tag_id").eq("contact_id", mainId);
-  const owned = new Set((mainTags ?? []).map((t) => t.tag_id));
-  const { data: dupTags } = await supabase.from("contact_tags").select("tag_id").eq("contact_id", duplicateId);
-  const movableTags = (dupTags ?? []).map((t) => t.tag_id).filter((id) => !owned.has(id));
-  if (movableTags.length > 0) {
-    await supabase.from("contact_tags").update({ contact_id: mainId })
-      .eq("contact_id", duplicateId).in("tag_id", movableTags);
-  }
-
-  if (Object.keys(fill).length > 0) {
-    await supabase.from("contacts").update(fill).eq("id", mainId).eq("workspace_id", workspace.id);
-  }
-
-  // El duplicado sale de circulacion y deja de ofrecer la sugerencia.
-  const now = new Date().toISOString();
-  await supabase.from("contacts")
-    .update({ deleted_at: now, metadata: { merged_into: mainId } })
-    .eq("id", duplicateId).eq("workspace_id", workspace.id);
-
-  await clearSuggestion(supabase, workspace.id, mainId, duplicateId);
-
-  await logAudit({
-    supabase, workspaceId: workspace.id, entityType: "contact", entityId: mainId,
-    action: "link",
-    metadata: {
-      merged_from: duplicateId,
-      conversations_moved: movableConvs.length,
-      conversations_skipped: skipped,
-      automatic: false,
-    },
-    performedBy: user.id,
-  });
-
-  revalidateContact(mainId);
-  revalidateContact(duplicateId);
-  return { ok: true, contactId: mainId };
 }
 
 /** Descarta una sugerencia de vinculacion sin unir nada. */
