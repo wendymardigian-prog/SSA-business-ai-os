@@ -58,7 +58,7 @@ async function makeUser(tag: string): Promise<TestUser> {
 
 /** Inserta y devuelve la fila; si la base lo rechaza, corta diciendo QUE tabla fue. */
 async function seed<T = Record<string, any>>(table: string, row: Record<string, unknown> | Array<Record<string, unknown>>): Promise<T> {
-  const { data, error } = await svc.from(table).insert(row as never).select("*");
+  const { data, error } = await svc.from(table).insert(row as never, { defaultToNull: false }).select("*");
   if (error || !data) throw new Error(`no pude sembrar ${table}: ${error?.message}`);
   return (Array.isArray(row) ? data : data[0]) as T;
 }
@@ -161,10 +161,8 @@ try {
   await seed("trigger_fires", { trigger_id: trig.id, workspace_id: ws.id, dedupe_key: `zz-test-${stamp}`, contact_id: dup.id });
 
   // Eventos de automatizacion: uno pendiente y uno ya procesado.
-  const [evPending, evDone]: any[] = await seed("automation_events", [
-    { workspace_id: ws.id, event_type: "contact_created", contact_id: dup.id, payload: {} },
-    { workspace_id: ws.id, event_type: "contact_created", contact_id: dup.id, payload: {}, processed_at: iso("2026-10-02T00:00:00Z") },
-  ]);
+  // (el pendiente se siembra justo antes de fusionar: el cron real de la app lee la cola cada minuto y lo marcaria como procesado)
+  const evDone: any = await seed("automation_events", { workspace_id: ws.id, event_type: "contact_created", contact_id: dup.id, payload: {}, processed_at: iso("2026-10-02T00:00:00Z") });
 
   // Tareas: seguimiento repetido (misma fecha) + una normal + una completada.
   await seed("tasks", [
@@ -188,10 +186,10 @@ try {
 
   // Llamada, comentario, email, evento de analitica, corrida del agente, webhook entrante, envio masivo.
   const call: any = await seed("calls", { workspace_id: ws.id, source: "manual", title: "zz-test llamada", recorded_at: iso("2026-10-03T10:00:00Z"), contact_id: dup.id });
-  await seed("social_post_comments", { workspace_id: ws.id, platform: "instagram", external_comment_id: `zz-test-cm-${stamp}`, contact_id: dup.id });
+  await seed("social_post_comments", { workspace_id: ws.id, platform: "instagram", external_comment_id: `zz-test-cm-${stamp}`, source: "sync", contact_id: dup.id });
   await seed("email_log", { workspace_id: ws.id, to_email: "zz-test@example.test", subject: "zz-test asunto", kind: "notification", status: "sent", contact_id: dup.id });
   await seed("analytics_events", { workspace_id: ws.id, event_type: "zz_test", contact_id: dup.id });
-  await seed("agent_runs", { workspace_id: ws.id, source: "chat", trigger: "burst", contact_id: dup.id });
+  await seed("agent_runs", { workspace_id: ws.id, source: "agent", trigger: "manual", contact_id: dup.id });
   const endpoint: any = await seed("webhook_endpoints", { workspace_id: ws.id, name: "zz-test endpoint", token: randomBytes(16).toString("base64url"), created_by: admin.id });
   await seed("inbound_webhooks", { workspace_id: ws.id, endpoint_id: endpoint.id, status: "processed", contact_id: dup.id });
   const bc: any = await seed("broadcasts", { workspace_id: ws.id, name: "zz-test envio" });
@@ -205,7 +203,7 @@ try {
   };
   const fa = await mkForm("a");
   const fb = await mkForm("b");
-  const sub = (f: { form: any; version: any }, contactId: string, onceKey: string | null) => ({ workspace_id: ws.id, form_id: f.form.id, form_version_id: f.version.id, idempotency_key: randomUUID(), status: "completed", answers: {}, contact_id: contactId, once_key: onceKey });
+  const sub = (f: { form: any; version: any }, contactId: string, onceKey: string | null) => ({ workspace_id: ws.id, form_id: f.form.id, form_version_id: f.version.id, idempotency_key: randomUUID(), status: "received", answers: {}, contact_id: contactId, once_key: onceKey });
   const [subA]: any[] = await seed("form_submissions", [sub(fa, dup.id, `contact:${dup.id}`), sub(fb, dup.id, `contact:${dup.id}`), sub(fb, main.id, `contact:${main.id}`)]);
   await seed("contract_signatures", { workspace_id: ws.id, submission_id: subA.id, form_id: fa.form.id, form_version_id: fa.version.id, text_sha256: "a".repeat(64), signer_email: "zz-test@example.test", legal: {}, contact_id: dup.id });
 
@@ -230,7 +228,7 @@ try {
   const saleId = saleRes.data.sale_id as string;
 
   // ═══ Foto de antes ══════════════════════════════════════════════════════════════════════════════════════════════
-  const countBy = async (table: string, ids: string[], column = "contact_id") => ((await svc.from(table).select("id", { count: "exact", head: true }).in(column, ids)).count ?? 0) as number;
+  const countBy = async (table: string, ids: string[], column = "contact_id") => ((await svc.from(table).select(column, { count: "exact", head: true }).in(column, ids)).count ?? 0) as number;
   const SIMPLE = ["agent_drafts", "agent_runs", "analytics_events", "bookings", "broadcast_recipients", "calls", "contact_notes", "contract_signatures", "email_log", "inbound_webhooks", "sales", "social_post_comments", "trigger_fires"];
   const both = [dup.id, main.id];
   const before: Record<string, number> = {};
@@ -296,6 +294,8 @@ try {
 
   // ═══ La fusion de verdad ════════════════════════════════════════════════════════════════════════════════════════
   console.log("\n— La fusion —");
+  const evPending: any = await seed("automation_events", { workspace_id: ws.id, event_type: "contact_created", contact_id: dup.id, payload: {} });
+  before.automation_events += 1;
   const merged = await svc.rpc("merge_contacts", args);
   check(!merged.error && merged.data?.ok === true, "merge_contacts devuelve ok", merged.error?.message);
   const moved = (merged.data?.moved ?? {}) as Record<string, number>;
@@ -337,7 +337,8 @@ try {
 
   // Secuencias.
   const enrolls = ((await svc.from("sequence_enrollments").select("sequence_id, contact_id, status, paused_reason").in("contact_id", both)).data ?? []) as any[];
-  const dupS1 = enrolls.find((e) => e.sequence_id === s1.id && e.contact_id === dup.id);
+  // La inscripcion cancelada tambien pasa al principal (nada se pierde): se la reconoce por secuencia y estado.
+  const dupS1 = enrolls.find((e) => e.sequence_id === s1.id && e.status === "cancelled");
   check(dupS1?.status === "cancelled" && dupS1?.paused_reason === "fusion de contactos", "secuencias: la inscripcion viva repetida se cancelo con el motivo «fusion de contactos»", JSON.stringify(dupS1));
   check(enrolls.filter((e) => e.sequence_id === s2.id && e.contact_id === main.id).length === 2, "...y las otras (pausada y completada) se movieron");
   check(enrolls.filter((e) => e.sequence_id === s1.id && e.contact_id === main.id && e.status === "active").length === 1, "el principal sigue con su inscripcion activa a esa secuencia");
@@ -399,7 +400,8 @@ try {
   // Totales: ninguna fila desaparece (lo que no se mueve, se cancela o queda en el duplicado, pero existe).
   for (const t of ["contact_tags", "contact_custom_fields", "sequence_enrollments", "automation_events", "tasks", "contact_touches", "form_submissions", "contact_channels"]) {
     const total = await countBy(t, both);
-    check(total === before[t], `${t}: el total de filas no cambia (nada se pierde)`, `${total} de ${before[t]}`);
+    // Los eventos pueden SUMAR uno: al rellenar los datos vacios del principal, el trigger de cambios emite el suyo (igual que antes de la fusion nueva).
+    check(t === "automation_events" ? total >= before[t] : total === before[t], `${t}: ${t === "automation_events" ? "ningun evento desaparece" : "el total de filas no cambia (nada se pierde)"}`, `${total} de ${before[t]}${t === "automation_events" ? " " + JSON.stringify(((await svc.from("automation_events").select("event_type, contact_id").in("contact_id", both)).data ?? []).map((e: any) => e.event_type)) : ""}`);
   }
   check((await countBy("flow_sessions", both)) === before.flow_sessions, "flow_sessions: el total de filas no cambia");
   check((await countBy("conversations", both)) === before.conversations, "conversations: el total de filas no cambia");
