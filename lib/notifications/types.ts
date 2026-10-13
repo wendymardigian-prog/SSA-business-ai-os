@@ -58,6 +58,9 @@ export const NOTIFICATION_TYPES = [
   "eod_reminder",
   /** Un flujo mandó un aviso al equipo (nodo "Avisar en la campana"). */
   "flow_notice",
+  // Webhooks entrantes.
+  /** Un endpoint acumuló 5 envíos con error en una hora. Va a quien lo creó y a Owner/Admin. */
+  "webhook_errors",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -79,7 +82,9 @@ export type NotificationEntity =
   /** Un reporte de fin de día enviado (el id del formulario viaja en la metadata). */
   | "eod_report"
   /** Un reporte de fin de día para completar (el id es el del formulario). */
-  | "eod_form";
+  | "eod_form"
+  /** Un endpoint de webhooks entrantes (el id es el del endpoint). */
+  | "webhook_endpoint";
 
 export interface NotificationDefinition {
   type: NotificationType;
@@ -315,6 +320,12 @@ export const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefi
     tone: "warning",
     entity: "eod_form",
   },
+  webhook_errors: {
+    type: "webhook_errors",
+    label: "Un webhook está fallando",
+    tone: "warning",
+    entity: "webhook_endpoint",
+  },
   flow_notice: {
     type: "flow_notice",
     label: "Aviso de una automatización",
@@ -388,6 +399,10 @@ export function linkFor(
 
     case "eod_form":
       return entityId ? `/dashboard/eod/${entityId}` : "/dashboard/eod";
+
+    // Webhooks entrantes: el historial del endpoint que falla.
+    case "webhook_endpoint":
+      return entityId ? `/dashboard/settings/integrations/webhooks/${entityId}` : "/dashboard/settings/integrations/webhooks";
 
     // Formularios: la respuesta abre su detalle (necesita el id del formulario, que viaja en la metadata).
     case "form_submission": {

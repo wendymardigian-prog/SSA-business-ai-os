@@ -40,4 +40,24 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
 
 ## Entradas de la corrida
 
-(Se agregan acá a medida que aparecen: cosas que no entraron, por qué y qué se decidió.)
+### WH1 — decisiones que se apartan del plano (qué quedó, por qué, qué se decidió)
+
+- **Las dos tablas de webhooks no tienen policies de INSERT, UPDATE ni DELETE para `authenticated`.** El plano
+  decía "INSERT, UPDATE y DELETE con `flows.edit`". **Por qué:** el token se genera en el servidor y no tiene que
+  pasar por el navegador, y `has_permission` devuelve false para el Member de sistema (sus claves viven en
+  `lib/auth/permissions.ts`) aunque tenga `flows.edit`. **Decidido:** escribe solo el servidor (Server Actions con
+  `getPermissionAction("flows.edit")`), la lectura de la pantalla también va por el servidor después de chequear
+  el permiso en TypeScript, y la RLS (`has_permission`) queda como segunda barrera más estricta. Lo prueba
+  `verify-inbound-webhooks.mjs`.
+- **No hay columna `rejected_count_24h`.** El plano dejaba elegir entre esa columna y el limitador. **Decidido:** los
+  rechazos por tope los cuenta `bump_rate_limit` (clave `hooks:<endpoint>`, 600 por hora); no se guardan.
+- **`webhook_endpoints` suma `last_error_alert_at`** (el último aviso de errores, para avisar una vez por hora) e
+  **`inbound_webhooks` suma `processing_started_at`** (el reaper rescata los `processing` colgados: los marca `error`
+  para que una persona los reprocese, no los vuelve a correr solos porque ya pudieron mandar mensajes).
+- **La retención a 12 meses (borrar la fila) necesita, desde M2, borrar antes las sesiones de flujo terminadas sin
+  contacto de ese envío** (su FK es `ON DELETE SET NULL` y dejaría una sesión que viola el CHECK). Hoy no hay
+  ninguna; se agrega en WH2 junto con M2.
+- **Revisión visual a 1440 px solo en tema oscuro**; el tema claro se miró a 390 px. Los componentes usan solo
+  tokens de color (`bg-card`, `border-border`, `text-muted-foreground`…), sin `dark:`.
+- **Reprocesar usa `confirm()` del navegador**, como otras confirmaciones simples del sistema.
+

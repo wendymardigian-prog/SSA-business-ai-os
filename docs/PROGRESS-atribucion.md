@@ -9,14 +9,14 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 ## Checklist por bloque
 
 ### WH1 — Receptor e historial
-- [ ] F1 Tablas `webhook_endpoints` e `inbound_webhooks` (M1)
-- [ ] F2 Receptor `POST /api/hooks/[token]`
-- [ ] F3 Pantalla de endpoints
-- [ ] F4 Historial y detalle de un envío
-- [ ] F5 Escuchar el próximo envío, pegar un ejemplo, usar uno del historial
-- [ ] F6 Reprocesar
-- [ ] F7 Retención y limpieza
-- [ ] F8 Aviso de errores y secreto opcional (nice-to-have)
+- [x] F1 Tablas `webhook_endpoints` e `inbound_webhooks` (M1)
+- [x] F2 Receptor `POST /api/hooks/[token]`
+- [x] F3 Pantalla de endpoints
+- [x] F4 Historial y detalle de un envío
+- [x] F5 Escuchar el próximo envío, pegar un ejemplo, usar uno del historial
+- [x] F6 Reprocesar
+- [x] F7 Retención y limpieza
+- [x] F8 Aviso de errores y secreto opcional (nice-to-have)
 
 ### WH2 — Disparador, variables y paso de contacto
 - [ ] F9 Disparador "Webhook recibido" (M2)
@@ -52,6 +52,20 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [ ] F31 La tabla en el dashboard de Ads
 - [ ] F32 Permiso de la pantalla
 - [ ] F33 Exportar CSV y abrir la lista (nice-to-have)
+
+#### Notas de WH1 (hecho)
+
+- M1 aplicada dos veces sin error (idempotente), registrada, y `verify-inbound-webhooks.mjs` + `verify-rls.mjs` en verde.
+- Receptor probado de punta a punta con la app local (`verify-inbound-webhooks.mjs` con la app en `localhost:3000`):
+  404/200/duplicado/413/JSON roto/pausado/escucha/secreto, y el `after()` deja el envío en `processed`.
+- Código: `lib/webhooks/{paths,receive,read-body,server-ports,process,reaper,sweep,result,run-flows,endpoints,listen,retention,alerts,diff,history-view,payload-tree,queries}.ts`,
+  `app/api/hooks/[token]/route.ts`, `lib/actions/webhook-endpoints.ts`, `components/webhooks/*`, páginas
+  `integrations/webhooks` y `integrations/webhooks/[endpointId]`, tarjeta en Integraciones, `requireAnyPermission`.
+- El reaper cuelga de `/api/cron/jobs` y la retención de `/api/cron/content-media-cleanup` (diario).
+- Aviso de errores (`webhook_errors`) a quien creó el endpoint y a Owner/Admin.
+- Revisión visual hecha con la sesión ya abierta en la app local: 1440 px oscuro (estado vacío, hoja de
+  creación, detalle, historial y cajón del envío), 390 px oscuro y claro (sin scroll horizontal de la página).
+  Se creó un endpoint `zz-test visual` para verlo y se borró del todo al terminar.
 
 ### Cierre
 - [ ] `docs/webhooks.md`, `docs/atribucion.md`, `docs/flow-registry.md`, `docs/dashboards.md`
@@ -104,7 +118,7 @@ frene el webhook ya estaban cubiertos en `app/api/webhooks/{late,evolution}/rout
 
 | M | Número real | Qué | Bloque | Estado |
 |---|---|---|---|---|
-| M1 | `00186_webhook_endpoints` | `webhook_endpoints` + `inbound_webhooks`, RLS, GRANT por columna | WH1 | pendiente |
+| M1 | `00186_webhook_endpoints` | `webhook_endpoints` + `inbound_webhooks`, RLS, GRANT por columna | WH1 | **aplicada y registrada** (`20261013050050`), verificada |
 | M2 | `00187_webhook_sessions` | `flow_sessions.inbound_webhook_id` + CHECK recreado; `triggers.type` 31 + `webhook_received` | WH2 | pendiente |
 | M3 | `00188_touch_origin_webhook` | CHECK de `contact_touches.origin` + `webhook` | WH2 | pendiente |
 | M4 | `00189_messages_origin_context` | `messages.origin_context jsonb` | AT1 | pendiente |

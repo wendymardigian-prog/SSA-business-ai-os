@@ -286,6 +286,15 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Integracion",
     tooltip: "Credenciales, cuentas conectadas y actividad de esta integracion.",
   },
+  "/dashboard/settings/integrations/webhooks": {
+    title: "Webhooks entrantes",
+    tooltip:
+      "Una URL por cada formulario externo (Typeform, Tally, Framer…). Lo que llega se guarda, y los flujos que lo escuchan crean o actualizan el contacto.",
+  },
+  "/dashboard/settings/integrations/webhooks/[endpointId]": {
+    title: "Endpoint de webhooks",
+    tooltip: "La URL de este endpoint, lo que llegó y lo que pasó con cada envío.",
+  },
   "/dashboard/settings/custom-fields": {
     title: "Campos personalizados",
     tooltip: "Los datos propios que se guardan de cada contacto.",

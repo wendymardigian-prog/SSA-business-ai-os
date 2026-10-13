@@ -23,6 +23,7 @@ import type { MediaEntry } from "@/lib/content/media";
 import { cleanupChatMedia } from "@/lib/chat-media/cleanup-run";
 import { cleanupContactAvatars } from "@/lib/contacts/avatar-cleanup";
 import { cleanupOrphanedAssetFiles } from "@/lib/response-assets/cleanup";
+import { sweepInboundRetention } from "@/lib/webhooks/sweep";
 
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
@@ -124,9 +125,15 @@ export async function GET(request: NextRequest) {
   // archivo): nunca deberia tener trabajo, porque el borrado ya es inmediato.
   const assets = await cleanupOrphanedAssetFiles(supabase, now);
 
+  // La retencion de los webhooks entrantes (Extra L, F7): el payload se vacia a los 90 dias y la
+  // fila se borra a los 12 meses. Mismo criterio: es diaria y ya esta en la allowlist del cron.
+  const webhooks = await sweepInboundRetention(supabase, now);
+
   return NextResponse.json({
     ok: true,
     cleanedPosts,
+    webhookPayloadsCleared: webhooks.cleared,
+    webhooksDeleted: webhooks.deleted,
     deletedFiles,
     chatMediaMessages: chat.cleanedMessages,
     chatMediaFiles: chat.deletedFiles,

@@ -143,6 +143,54 @@ export type EodReportRow = {
   updated_at: string;
 };
 
+/**
+ * Endpoint de webhooks entrantes (00186). Escribe solo el servidor. `token` y `secret_vault_name`
+ * NO se pueden leer con el cliente de un usuario (privilegio por columna): nunca `select("*")`.
+ */
+export type WebhookEndpointRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  token: string;
+  status: "active" | "paused";
+  auth_mode: "token";
+  secret_vault_name: string | null;
+  event_id_path: string | null;
+  listen_until: string | null;
+  sample_payload: Json | null;
+  handler_key: string | null;
+  last_received_at: string | null;
+  last_error_alert_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+/** Un envio recibido por un endpoint (00186). Escribe solo el servidor. */
+export type InboundWebhookRow = {
+  id: string;
+  workspace_id: string;
+  endpoint_id: string;
+  received_at: string;
+  status: "received" | "processing" | "processed" | "error" | "ignored" | "captured" | "paused";
+  payload: Json | null;
+  query: Json | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  ip_prefix: string | null;
+  user_agent: string | null;
+  external_event_id: string | null;
+  body_hash: string | null;
+  contact_id: string | null;
+  result: Json;
+  error_message: string | null;
+  reprocess_count: number;
+  processing_started_at: string | null;
+  processed_at: string | null;
+};
+
 /** Version publicada de un formulario: inmutable (migracion 00150). */
 export type FormVersionRow = {
   id: string;
@@ -410,7 +458,9 @@ export type AuditEntityType =
   | "sale"
   | "payment"
   /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181). */
-  | "eod_report";
+  | "eod_report"
+  /** Webhooks entrantes (00186): el endpoint (Extra L). */
+  | "webhook_endpoint";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -578,7 +628,17 @@ export type AuditAction =
   | "payment.cancelled"
   | "payment.overdue"
   | "payment.refund"
-  | "payment.receipt_uploaded";
+  | "payment.receipt_uploaded"
+  /** Webhooks entrantes (entity webhook_endpoint). Nunca llevan el token ni el secreto. */
+  | "webhook_endpoint.created"
+  | "webhook_endpoint.updated"
+  | "webhook_endpoint.paused"
+  | "webhook_endpoint.resumed"
+  | "webhook_endpoint.token_regenerated"
+  | "webhook_endpoint.secret_changed"
+  | "webhook_endpoint.sample_saved"
+  | "webhook_endpoint.deleted"
+  | "webhook_endpoint.reprocessed";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -1042,6 +1102,18 @@ export interface Database {
       };
       eod_reports: {
         Row: EodReportRow;
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      webhook_endpoints: {
+        Row: WebhookEndpointRow;
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      inbound_webhooks: {
+        Row: InboundWebhookRow;
         Insert: Record<string, never>;
         Update: Record<string, never>;
         Relationships: [];
