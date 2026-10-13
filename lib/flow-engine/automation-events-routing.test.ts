@@ -61,7 +61,7 @@ describe("eventos de tareas sin contacto (F25)", () => {
   it("completar, reabrir y volver a completar (otro completed_at) dispara de nuevo", async () => {
     const db = world();
     await processEvent(db.client as never, event());
-    await processEvent(db.client as never, event({ id: "ev-2", payload: taskEventPayload({ ...T, completed_at: "2026-10-14T09:00:00Z" }) }));
+    await processEvent(db.client as never, event({ id: "ev-2", payload: { ...taskEventPayload({ ...T, completed_at: "2026-10-14T09:00:00Z" }) } }));
     expect(mocks.executeFlow).toHaveBeenCalledTimes(2);
   });
 
