@@ -33,6 +33,15 @@ const ok = (m) => console.log("  ok  ", m);
 const fail = (m, extra) => { console.error("  FALLA", m, extra ? `\n        ${extra}` : ""); failures++; };
 const check = (cond, m, extra) => (cond ? ok(m) : fail(m, extra));
 const newToken = () => randomBytes(16).toString("base64url");
+/** Espera (hasta `ms`) a que `read()` devuelva algo que cumpla `done`: el servidor de desarrollo compila la primera vez. */
+async function waitFor(read, done, ms = 30000) {
+  const start = Date.now();
+  for (;;) {
+    const value = await read();
+    if (done(value) || Date.now() - start > ms) return value;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 
 async function makeUser(tag) {
   const email = `zz-test-${tag}-${Date.now()}@example.test`;
@@ -175,6 +184,29 @@ try {
     check(data?.name === "zz-test Typeform", "el endpoint quedo intacto");
   }
 
+  console.log("\n— Sesiones sin contacto y el disparador (M2) —");
+  {
+    const { data: flow } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test flujo sesiones", status: "draft", nodes: [], edges: [] }).select("id").single();
+    const { data: inb } = await svc.from("inbound_webhooks").insert({ ...base, status: "processed" }).select("id").single();
+    const noOwner = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {} });
+    check(!!noOwner.error, "una sesion sin contacto, sin persona y sin envio la rechaza el CHECK", noOwner.error?.message);
+    const withInbound = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, inbound_webhook_id: inb.id }).select("id").single();
+    check(!withInbound.error, "una sesion sostenida por un envio de webhook (sin contacto) se acepta", withInbound.error?.message);
+    const { data: contact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test sesion" }).select("id").single();
+    const withContact = await svc.from("flow_sessions").insert({ flow_id: flow.id, status: "active", variables: {}, contact_id: contact.id });
+    check(!withContact.error, "una sesion con contacto sigue aceptandose", withContact.error?.message);
+    const goodTrigger = await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: flow.id, type: "webhook_received", config: { endpointId: ep.id }, is_active: true });
+    check(!goodTrigger.error, "el CHECK de triggers.type acepta webhook_received", goodTrigger.error?.message);
+    const eodTrigger = await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: flow.id, type: "eod_submitted", config: {}, is_active: false });
+    check(!eodTrigger.error, "y sigue aceptando los 31 de antes (eod_submitted)", eodTrigger.error?.message);
+    const badTrigger = await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: flow.id, type: "inventado", config: {}, is_active: false });
+    check(!!badTrigger.error, "un tipo inventado sigue rechazado");
+    // Borrar el envio deja la sesion SIN contacto fuera del CHECK: por eso la retencion la borra antes.
+    const del = await svc.from("inbound_webhooks").delete().eq("id", inb.id);
+    check(!!del.error, "borrar un envio que sostiene una sesion sin contacto lo frena el CHECK (la retencion la borra antes)", del.error?.message);
+    await svc.from("flow_sessions").delete().eq("inbound_webhook_id", inb.id);
+  }
+
   console.log("\n— Borrar el endpoint se lleva sus envios —");
   {
     const { data: tmp } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test efimero", token: newToken() }).select("id").single();
@@ -222,8 +254,10 @@ try {
     check(broken?.status === "error" && broken?.error_message === "cuerpo no es JSON", "queda con error y motivo", JSON.stringify(broken));
 
     // El after() del receptor procesa el envio guardado: queda `processed` sin flujos que lo escuchen.
-    await new Promise((r) => setTimeout(r, 2500));
-    const { data: processed } = await svc.from("inbound_webhooks").select("status, result").eq("endpoint_id", ep2.id).eq("external_event_id", "e-1").single();
+    const processed = await waitFor(
+      async () => (await svc.from("inbound_webhooks").select("status, result").eq("endpoint_id", ep2.id).eq("external_event_id", "e-1").single()).data,
+      (r) => r?.status === "processed" || r?.status === "error",
+    );
     check(processed?.status === "processed" && processed?.result?.summary === "Ningún flujo publicado escucha este webhook",
       "despues de responder, el envio se procesa (sin flujos: processed)", JSON.stringify(processed));
 
@@ -252,6 +286,72 @@ try {
       await svc.rpc("delete_secret", { secret_name: secretName, workspace_id: ws.id });
     }
 
+
+    // ── WH2: un flujo real, con el motor, el paso de contacto y la atribucion ───────────────────
+    {
+      const t4 = newToken();
+      const { data: ep4 } = await svc.from("webhook_endpoints").insert({ workspace_id: ws.id, name: "zz-test flujo", token: t4, event_id_path: "event_id" }).select("id").single();
+      const upsertNode = { id: "n-u", type: "upsert_contact", position: { x: 0, y: 0 }, data: {
+        mode: "create_or_update", update: "fill_empty", touchMedium: "external_form",
+        map: [{ target: "contact.email", source: { path: "email" }, transform: "lowercase" }, { target: "contact.phone", source: { path: "phone" }, transform: "clean_phone" }, { target: "contact.display_name", source: { path: "name" } }],
+        tags: { fixed: [] }, attribution: { map: [], autoDetect: true } } };
+      const trig = { id: "n-t", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: "webhook_received", endpointId: ep4.id } };
+      const mkFlow = async (name, conditions) => {
+        const { data: f, error } = await svc.from("flows").insert({ workspace_id: ws.id, name, status: "published", version: 1, nodes: [{ ...trig, data: { ...trig.data, ...(conditions ? { conditions } : {}) } }, upsertNode], edges: [{ id: "e1", source: "n-t", target: "n-u" }] }).select("id").single();
+        if (error) throw new Error(`no pude crear el flujo: ${error.message}`);
+        await svc.from("triggers").insert({ workspace_id: ws.id, flow_id: f.id, type: "webhook_received", config: { endpointId: ep4.id, ...(conditions ? { conditions } : {}) }, is_active: true });
+        return f.id;
+      };
+      const flowOk = await mkFlow("zz-test flujo que corre");
+      const flowSkip = await mkFlow("zz-test flujo con condicion", { logic: "and", conditions: [{ field: "webhook.payload.plan", operator: "is", value: "basic", valueType: "text" }] });
+
+      const payload = { event_id: "ev-1", email: " Ana.Perez@Example.com ", name: "Ana Pérez", phone: "+506 8888-1234", plan: "pro", hidden: { utm_source: "facebook", utm_content: "120215" } };
+      const post1 = await hook(t4, { body: JSON.stringify(payload), headers: { "content-type": "application/json" } });
+      check(post1.status === 200, "un envio a un endpoint con flujos: 200");
+      const inb1 = (await waitFor(
+        async () => (await svc.from("inbound_webhooks").select("status, result, contact_id").eq("endpoint_id", ep4.id).eq("external_event_id", "ev-1").single()).data,
+        (r) => r?.status === "processed" || r?.status === "error",
+      ));
+      check(inb1?.status === "processed", "el envio queda processed", JSON.stringify(inb1));
+      check(inb1?.result?.flows?.[flowOk]?.status === "completed" && inb1?.result?.flows?.[flowOk]?.contact_result === "created", "el flujo corrio y el paso creo el contacto", JSON.stringify(inb1?.result));
+      check(inb1?.result?.flows?.[flowSkip]?.status === "skipped_condition", "el flujo con una condicion que no se cumple NO corrio y lo dice");
+      const { data: contacts } = await svc.from("contacts").select("id, email, phone, display_name, attribution").eq("workspace_id", ws.id).ilike("email", "ana.perez@example.com");
+      check((contacts ?? []).length === 1, "se creo UN contacto");
+      const c = contacts?.[0];
+      check(c?.email === "ana.perez@example.com" && c?.phone === "+50688881234" && c?.display_name === "Ana Pérez", "con email, telefono y nombre normalizados", JSON.stringify(c));
+      check(inb1?.contact_id === c?.id, "el envio apunta al contacto");
+      check(c?.attribution?.first_touch?.origin === "webhook" && c?.attribution?.last_touch?.origin === "webhook"
+        && c?.attribution?.last_touch?.source === "facebook" && c?.attribution?.last_touch?.content === "120215",
+        "el primer y el ultimo toque son del webhook, con las UTMs detectadas", JSON.stringify(c?.attribution));
+      const { data: sessions } = await svc.from("flow_sessions").select("contact_id, inbound_webhook_id, status").eq("flow_id", flowOk);
+      check(sessions?.length === 1 && sessions[0].contact_id === c?.id && sessions[0].status === "completed", "la sesion termino con el contacto que consiguio el paso", JSON.stringify(sessions));
+      const { data: audit } = await svc.from("audit_log").select("action, actor_type, actor_label").eq("entity_type", "contact").eq("entity_id", c?.id);
+      check((audit ?? []).some((a) => a.action === "contact.created" && a.actor_type === "webhook" && a.actor_label === "Webhook «zz-test flujo»"), "el historial del contacto dice que lo creo el webhook", JSON.stringify(audit));
+
+      // El mismo envio otra vez: no corre nada.
+      const dup = await (await hook(t4, { body: JSON.stringify(payload), headers: { "content-type": "application/json" } })).json();
+      check(dup.duplicate === true, "el mismo event_id: duplicate");
+      // Otro envio de la misma persona (otro id, otro email en mayusculas): se vincula, no se duplica.
+      const post2 = await hook(t4, { body: JSON.stringify({ ...payload, event_id: "ev-2", email: "ANA.PEREZ@EXAMPLE.COM", name: "Otro Nombre", hidden: { utm_source: "instagram" } }), headers: { "content-type": "application/json" } });
+      check(post2.status === 200, "un segundo envio de la misma persona: 200");
+      await waitFor(async () => (await svc.from("inbound_webhooks").select("status").eq("endpoint_id", ep4.id).eq("external_event_id", "ev-2").maybeSingle()).data, (r) => r?.status === "processed" || r?.status === "error");
+      const { data: contacts2 } = await svc.from("contacts").select("id, display_name, attribution").eq("workspace_id", ws.id).ilike("email", "ana.perez@example.com");
+      check((contacts2 ?? []).length === 1, "NO se creo un segundo contacto");
+      check(contacts2?.[0]?.display_name === "Ana Pérez", "con completar-solo-lo-vacio el nombre NO cambio");
+      check(contacts2?.[0]?.attribution?.first_touch?.source === "facebook" && contacts2?.[0]?.attribution?.last_touch?.source === "instagram",
+        "el primer toque no cambia y el ultimo pasa a ser el del nuevo envio", JSON.stringify(contacts2?.[0]?.attribution));
+      const { data: touches } = await svc.from("contact_touches").select("origin, dedupe_key").eq("contact_id", c?.id);
+      check((touches ?? []).filter((t) => t.origin === "webhook").length === 2, "hay un toque por envio (dos), no por flujo ni por reproceso");
+
+      // Sin telefono, email ni red: sale por «No se pudo» y no crea nada.
+      const before = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count;
+      await hook(t4, { body: JSON.stringify({ event_id: "ev-3", name: "Sin datos" }), headers: { "content-type": "application/json" } });
+      await waitFor(async () => (await svc.from("inbound_webhooks").select("status").eq("endpoint_id", ep4.id).eq("external_event_id", "ev-3").maybeSingle()).data, (r) => r?.status === "processed" || r?.status === "error");
+      const after = (await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws.id)).count;
+      const { data: inb3 } = await svc.from("inbound_webhooks").select("status, result").eq("endpoint_id", ep4.id).eq("external_event_id", "ev-3").single();
+      check(after === before, "sin identificador no se crea ningun contacto");
+      check(inb3?.status === "processed" && inb3?.result?.flows?.[flowOk]?.contact_fail_reason === "no_identifier", "queda processed con el motivo no_identifier (no es un error)", JSON.stringify(inb3));
+    }
     await svc.from("webhook_endpoints").update({ status: "paused" }).eq("id", ep2.id);
     const r5 = await hook(t2, { body: JSON.stringify({ event_id: "e-9" }), headers: { "content-type": "application/json" } });
     check(r5.status === 200, "un endpoint pausado responde 200");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles, Split } from "lucide-react";
+import { X, Trash2, Zap, MessageSquare, GitBranch, Clock, Cog, Sparkles, Split, UserRoundPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Edge, Node } from "@xyflow/react";
 
@@ -12,6 +12,7 @@ import { DelayPanel } from "./DelayPanel";
 import { ActionPanel } from "./ActionPanel";
 import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
+import { UpsertContactPanel } from "./UpsertContactPanel";
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
 
 interface NodeConfigSidebarProps {
@@ -106,6 +107,12 @@ const nodeTypeConfig: Record<string, { label: string; icon: typeof Cog; color: s
     color: "bg-indigo-500",
     borderColor: "border-indigo-500",
   },
+  upsert_contact: {
+    label: "Crear o actualizar contacto",
+    icon: UserRoundPlus,
+    color: "bg-teal-600",
+    borderColor: "border-teal-500",
+  },
   delay: {
     label: "Delay",
     icon: Clock,
@@ -160,7 +167,7 @@ export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClos
     const data = node.data as Record<string, unknown>;
     switch (nodeType) {
       case "trigger":
-        return <TriggerPanel data={data} onChange={handleChange} />;
+        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} />;
       case "sendMessage":
         return (
           <SendMessagePanel
@@ -173,6 +180,8 @@ export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClos
         return <ConditionPanel data={data} onChange={handleChange} onConvert={onConvert ? () => onConvert(node.id) : undefined} />;
       case "branch":
         return <BranchPanel flowId={flowId} nodeId={node.id} data={data} nodes={nodes} edges={edges} onChange={handleChange} />;
+      case "upsert_contact":
+        return <UpsertContactPanel data={data} nodes={nodes} onChange={handleChange} />;
       case "delay":
         return <DelayPanel data={data} onChange={handleChange} />;
       case "aiResponse":

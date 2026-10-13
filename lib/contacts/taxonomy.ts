@@ -57,7 +57,7 @@ export const MEDIUMS = [
 export type KnownMedium = (typeof MEDIUMS)[number];
 
 /** Por qué camino técnico entró el toque (columna `origin`). */
-export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import"] as const;
+export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook"] as const;
 export type TouchOrigin = (typeof ORIGINS)[number];
 
 /**
@@ -198,4 +198,5 @@ export const ORIGIN_LABELS: Record<TouchOrigin, string> = {
   form: "Formulario",
   manual: "Alta manual",
   import: "Importación",
+  webhook: "Webhook",
 };

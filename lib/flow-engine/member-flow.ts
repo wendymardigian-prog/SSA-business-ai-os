@@ -5,6 +5,7 @@
  * el servidor. El motor igual los saltea si llegaran (red de seguridad).
  */
 import { getNode, getTrigger } from "./registry";
+import { missingContactMessage, pathsMissingContact, type GraphEdge, type SubjectOfFlow } from "./contact-requirement";
 
 interface RawNode {
   id?: string;
@@ -12,11 +13,27 @@ interface RawNode {
   data?: unknown;
 }
 
-/** Sobre quién es el flujo: lo dice su disparador. Sin disparador conocido, `contact`. */
-export function flowSubject(nodes: unknown[]): "contact" | "member" {
+/**
+ * Sobre quién es el flujo: lo dice su disparador. Sin disparador conocido, `contact`.
+ * `member` es de una persona del equipo (EOD, nunca tiene contacto); `webhook` arranca sin
+ * contacto y lo consigue con el paso "Crear o actualizar contacto".
+ */
+export function flowSubject(nodes: unknown[]): "contact" | "member" | "webhook" {
   const trigger = (nodes as RawNode[]).find((n) => n?.type === "trigger");
   const type = (trigger?.data as { triggerType?: unknown } | undefined)?.triggerType;
-  return typeof type === "string" && getTrigger(type)?.subject === "member" ? "member" : "contact";
+  const subject = typeof type === "string" ? getTrigger(type)?.subject : undefined;
+  return subject === "member" ? "member" : subject === "webhook" ? "webhook" : "contact";
+}
+
+/**
+ * Los pasos de un flujo de webhook que necesitan un contacto que todavía no hay por algún camino,
+ * en palabras. Vacío si el flujo no es de webhook. A diferencia de los flujos de persona, un paso
+ * que necesita contacto SÍ se puede usar: después de «Crear o actualizar contacto», por su salida
+ * «Listo», en todos los caminos.
+ */
+export function webhookFlowProblems(nodes: unknown[], edges: unknown[], subjectOfFlow?: SubjectOfFlow): string[] {
+  if (flowSubject(nodes) !== "webhook") return [];
+  return pathsMissingContact(nodes as RawNode[], edges as GraphEdge[], subjectOfFlow).map((m) => missingContactMessage(m.name));
 }
 
 export const MEMBER_FLOW_NOTICE = "Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.";
@@ -26,7 +43,7 @@ export const MEMBER_FLOW_NOTICE = "Este flujo es sobre una persona del equipo, n
  * un contacto o si todos sus pasos sirven sin contacto. `subjectOfFlow` dice de qué se trata
  * otro flujo (para "Ir a otro flujo", que solo puede ir a otro flujo sin contacto).
  */
-export function memberFlowProblems(nodes: unknown[], subjectOfFlow?: (flowId: string) => "contact" | "member" | undefined): string[] {
+export function memberFlowProblems(nodes: unknown[], subjectOfFlow?: (flowId: string) => "contact" | "member" | "webhook" | undefined): string[] {
   if (flowSubject(nodes) !== "member") return [];
   const problems: string[] = [];
   for (const node of nodes as RawNode[]) {

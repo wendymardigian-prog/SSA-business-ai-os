@@ -147,6 +147,14 @@ function FlowResultCard({ flowId, flow }: { flowId: string; flow: FlowResult }) 
           ))}</tbody>
         </table>
       )}
+      {flow.touch && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Toque anotado: <span className="font-medium text-foreground">{flow.touch.source}{flow.touch.medium ? ` · ${flow.touch.medium}` : ""}</span>
+          {flow.touch.campaign ? ` · campaña ${flow.touch.campaign}` : ""}{flow.touch.content ? ` · contenido ${flow.touch.content}` : ""}{flow.touch.ad_id ? ` · anuncio ${flow.touch.ad_id}` : ""}
+          {flow.touch.recorded ? "" : " (ya estaba anotado)"}
+        </p>
+      )}
+      {flow.notes && flow.notes.length > 0 && <p className="mt-1 text-xs text-muted-foreground">No se pudo guardar: {flow.notes.join(", ")}.</p>}
       {flow.conflict && flow.conflict.length > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Conflicto: otros datos del envío coinciden con otro contacto. Se usó el principal y no se fusionó nada.</p>}
       {flow.skipped_steps && flow.skipped_steps.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Pasos salteados: no había contacto ({flow.skipped_steps.join(", ")}).</p>}
       {flow.error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">Error: {flow.error}</p>}

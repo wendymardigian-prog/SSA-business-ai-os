@@ -245,6 +245,7 @@ export const FORM_ACTION_LABELS: Record<
   "submission.unspam": "sacó la respuesta de spam",
   "contact.created": "creó el contacto desde un formulario",
   "contact.linked": "vinculó el contacto desde un formulario",
+  "contact.updated": "actualizó el contacto",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
 };

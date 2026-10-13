@@ -34,7 +34,7 @@ describe("las listas cerradas (F81)", () => {
   });
 
   it("orígenes: los que acepta la columna `origin` de la base", () => {
-    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import"]);
+    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import", "webhook"]);
   });
 });
 

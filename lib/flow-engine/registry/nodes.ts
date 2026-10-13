@@ -26,6 +26,7 @@ import { sendAssetNode } from "../nodes/send-asset";
 import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
 import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions";
 import { notifyTeamNode } from "../nodes/notify-team";
+import { upsertContactNode } from "../nodes/upsert-contact";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -62,3 +63,5 @@ registerNode(reschedulePaymentNode);
 registerNode(setSaleStatusNode);
 // Reporte de fin de día (E15): sirve en flujos sin contacto y con contacto.
 registerNode(notifyTeamNode);
+// Webhooks entrantes (Extra L): consigue el contacto de un flujo que arranco sin uno.
+registerNode(upsertContactNode);

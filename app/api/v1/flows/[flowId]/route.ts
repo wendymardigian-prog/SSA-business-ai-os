@@ -55,6 +55,7 @@ export async function PUT(
 
   // Un flujo sin contacto (reporte de fin de día, E15) no puede tener pasos que necesiten uno.
   if (Array.isArray(body.nodes)) {
+    // Guardar un flujo de webhook a medias esta permitido: su regla de contacto frena la publicacion.
     const problems = await checkMemberFlow(supabase, workspaceId, body.nodes);
     if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
   }

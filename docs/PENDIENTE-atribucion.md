@@ -61,3 +61,28 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   tokens de color (`bg-card`, `border-border`, `text-muted-foreground`…), sin `dark:`.
 - **Reprocesar usa `confirm()` del navegador**, como otras confirmaciones simples del sistema.
 
+
+### WH2 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
+
+- **`verify-forms.mjs` es intermitente** (pasa al reintentar): el job que genera el PDF de un contrato lo toma el cron
+  de producción en paralelo y el script ve «already». No es de este módulo y no se tocó; en el punto de partida pasó
+  a la primera por suerte. Al cierre se corre hasta que pase y se muestra la salida.
+- **Los pasos con contacto después de «Crear o actualizar contacto» toman la conversación MÁS RECIENTE del contacto**
+  (igual que un flujo de agenda o del CRM). Un contacto recién creado no tiene ninguna: «Enviar mensaje» se saltea
+  con motivo hasta que haya una conversación. Es lo que hace el motor hoy para esos casos; no se inventó otro canal.
+- **Los tags «desde el payload» solo suman tags que ya existen** (comparación sin mayúsculas); el resto se ignora y
+  queda anotado como nota (`tag_inexistente:<nombre>`). No se crean tags desde datos de afuera. Los tags fijos son
+  ids de tags del negocio.
+- **El conflicto de identidad** (teléfono de uno, email de otro): se usa el contacto del teléfono, no se fusiona, el
+  dato en conflicto no se escribe, y queda en el resultado del envío y en el historial del contacto (`contact.linked`
+  si no cambió nada, `contact.updated` si sí).
+- **La sesión de un flujo y el aviso de «Esperar» llevan una copia del payload** (`flow_sessions.variables` y el payload
+  del job `resume_flow`). La retención de 90 días vacía el envío, no esas copias: si hace falta, sumarlas a la purga.
+- **El resultado de un flujo en «Esperar» queda como «En curso»**; lo que pase después de la espera (la reanudación la
+  hace el cron de jobs) no se vuelca al historial del envío.
+- **El panel del disparador queda abajo de la lista de tipos** (mismo patrón que Formularios y Ventas): conviene un
+  rediseño del selector de disparadores en otra pasada.
+- **Teléfono sin país conocido:** si la zona horaria del negocio no da un país, un número sin prefijo queda «solo
+  dígitos» (como pide el plano). El negocio no tiene un campo de país por defecto.
+- **Flujos `zz-test` viejos:** al limpiar los datos de la revisión visual se borraron 7 flujos con el prefijo
+  `zz-test` que ya estaban en la base real (datos de pruebas de módulos anteriores).

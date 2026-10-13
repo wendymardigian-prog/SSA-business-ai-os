@@ -584,6 +584,8 @@ export type AuditAction =
   /** Entity contact: lo escribe la funcion SQL del envio (actor sistema, "Formulario: <nombre>"). */
   | "contact.created"
   | "contact.linked"
+  /** Entity contact: un webhook entrante actualizo un contacto que ya existia (Extra L). */
+  | "contact.updated"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited"
   /** Entity contract_signature. */
@@ -766,7 +768,9 @@ export type TriggerType =
   | "payment_before_due"
   | "payment_after_due"
   /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
-  | "eod_submitted";
+  | "eod_submitted"
+  /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`. */
+  | "webhook_received";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1786,6 +1790,8 @@ export interface Database {
           /** Null en un flujo sin contacto (00182): entonces `member_user_id` no es null. */
           contact_id: string | null;
           member_user_id: string | null;
+          /** El envio de webhook que arranco el flujo (00187): permite una sesion sin contacto ni persona. */
+          inbound_webhook_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1802,6 +1808,7 @@ export interface Database {
           id?: string;
           contact_id: string | null;
           member_user_id?: string | null;
+          inbound_webhook_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -1815,6 +1822,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          /** Solo lo escribe el paso "Crear o actualizar contacto" de un flujo de webhook (la sesion arranca sin contacto). */
+          contact_id?: string | null;
           status?: FlowSessionStatus;
           current_node_id?: string | null;
           variables?: Json;
@@ -5050,6 +5059,11 @@ export interface Database {
       /** Busca un contacto por telefono primero y despues por email; NO crea (Formularios, 00156). Solo service_role. */
       find_contact_by_phone_or_email: {
         Args: { p_workspace_id: string; p_phone: string; p_email: string };
+        Returns: Json;
+      };
+      /** Busca un contacto por telefono, email o redes; devuelve tambien los conflictos; NO crea (00175). Solo service_role. */
+      find_contact_for_form: {
+        Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
         Returns: Json;
       };
       /** Crea una venta con sus pagos, estado, eventos y auditoria en UNA transaccion (00162). Solo service_role. */

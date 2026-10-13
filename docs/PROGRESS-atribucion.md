@@ -19,13 +19,13 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] F8 Aviso de errores y secreto opcional (nice-to-have)
 
 ### WH2 — Disparador, variables y paso de contacto
-- [ ] F9 Disparador "Webhook recibido" (M2)
-- [ ] F10 Flujos sin contacto (reutilizando `subject`/`needsContact`/`member-flow.ts`)
-- [ ] F11 Variables del webhook y selector
-- [ ] F12 Paso "Crear o actualizar contacto": búsqueda y escritura
-- [ ] F13 El mapeo (lógica y pantalla)
-- [ ] F14 Atribución del webhook y el toque (M3)
-- [ ] F15 Resultado en el historial y cierre del procesamiento
+- [x] F9 Disparador "Webhook recibido" (M2)
+- [x] F10 Flujos sin contacto (reutilizando `subject`/`needsContact`/`member-flow.ts`)
+- [x] F11 Variables del webhook y selector
+- [x] F12 Paso "Crear o actualizar contacto": búsqueda y escritura
+- [x] F13 El mapeo (lógica y pantalla)
+- [x] F14 Atribución del webhook y el toque (M3)
+- [x] F15 Resultado en el historial y cierre del procesamiento
 
 ### AT1 — Que no se pierda nada
 - [ ] F16 La agenda acepta todas las claves y usa la cookie
@@ -66,6 +66,32 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - Revisión visual hecha con la sesión ya abierta en la app local: 1440 px oscuro (estado vacío, hoja de
   creación, detalle, historial y cajón del envío), 390 px oscuro y claro (sin scroll horizontal de la página).
   Se creó un endpoint `zz-test visual` para verlo y se borró del todo al terminar.
+
+#### Notas de WH2 (hecho)
+
+- M2 y M3 aplicadas dos veces sin error, registradas y verificadas. Consulta de control de M2: 0 sesiones sin
+  contacto/persona/envío, CHECK de 3 vías, 32 tipos de disparador; huellas de `record_contact_touch` y
+  `find_contact_for_form` iguales; `verify-eod`, `verify-rls` y `verify-inbound-webhooks` en verde.
+- **Motor:** `FlowExecutionContext` suma `inboundWebhookId`, `onStepSkipped` y `onContactStep`; la sesión se crea con
+  `inbound_webhook_id`; el motor ya salteaba los pasos con `needsContact` sin contacto y ahora además avisa cuál
+  (para el historial). `contact-requirement.ts` hace el análisis «en todos los caminos» (con ciclos); la regla
+  frena la **publicación** (la ruta `publish`), no el guardado a medias; EOD y los flujos con contacto no cambian.
+- **Registro:** `webhook_received` (sujeto `webhook`, sin `eventTypes`: el cron nunca lo levanta), campo de
+  condición `webhook.*`, nodo `upsert_contact`, variables `contact_result` y `contact_fail_reason`.
+- **Código:** `lib/webhooks/{trigger-config,run-flows,mapping,attribution,upsert-config,upsert-contact,payload-tree}.ts`,
+  `lib/flow-engine/{contact-requirement,nodes/upsert-contact,registry/webhook-triggers}.ts`,
+  `lib/actions/webhook-flow-editor.ts`, `components/flow-builder/panels/{WebhookTriggerPanel,UpsertContactPanel}.tsx`,
+  `components/flow-builder/nodes/upsert-contact-node.tsx`.
+- **Tests nuevos:** mapeo (24), atribución (17), núcleo del paso (23), integración del disparo con el motor real (13),
+  análisis por camino (19), publicar (4), migraciones, retención. Se ajustaron sumando el nuevo (no aflojando):
+  `consistency.test.ts`, `registry.test.ts` (28 → 29 nodos), `triggers-characterization.test.ts` (+1),
+  `crm-triggers.test.ts` (+1), `taxonomy.test.ts` (+`webhook`).
+- **`verify-inbound-webhooks.mjs`** corre de punta a punta con la app local: un flujo real crea el contacto, anota
+  el toque `webhook`, no duplica con otro envío de la misma persona, respeta «solo completar lo vacío» y sale por
+  «No se pudo» sin identificador. `verify-attribution.mjs` suma los casos de `origin = webhook`.
+- Revisión visual hecha con la sesión abierta (1440 px, oscuro): el nodo con sus dos salidas, la paleta, el panel
+  del disparador (selector, URL, ejemplo) y el panel del paso (sugerir campos, atribución detectada, «Probar con el
+  ejemplo»). Datos de prueba `zz-test` borrados al terminar.
 
 ### Cierre
 - [ ] `docs/webhooks.md`, `docs/atribucion.md`, `docs/flow-registry.md`, `docs/dashboards.md`
@@ -119,8 +145,8 @@ frene el webhook ya estaban cubiertos en `app/api/webhooks/{late,evolution}/rout
 | M | Número real | Qué | Bloque | Estado |
 |---|---|---|---|---|
 | M1 | `00186_webhook_endpoints` | `webhook_endpoints` + `inbound_webhooks`, RLS, GRANT por columna | WH1 | **aplicada y registrada** (`20261013050050`), verificada |
-| M2 | `00187_webhook_sessions` | `flow_sessions.inbound_webhook_id` + CHECK recreado; `triggers.type` 31 + `webhook_received` | WH2 | pendiente |
-| M3 | `00188_touch_origin_webhook` | CHECK de `contact_touches.origin` + `webhook` | WH2 | pendiente |
+| M2 | `00187_webhook_sessions` | `flow_sessions.inbound_webhook_id` + CHECK recreado; `triggers.type` 31 + `webhook_received` | WH2 | **aplicada y registrada** (`20261013052548`), verificada |
+| M3 | `00188_touch_origin_webhook` | CHECK de `contact_touches.origin` + `webhook` | WH2 | **aplicada y registrada** (`20261013053503`), verificada |
 | M4 | `00189_messages_origin_context` | `messages.origin_context jsonb` | AT1 | pendiente |
 | M5 | `00190_create_booking_ad_ids` | `create_booking` pasa ad/adset/campaign y extras al toque | AT1 | pendiente |
 | M6 | `00191_meta_catalog` | catálogo de Meta, `meta_name_key`, bucket `ad-creatives` | AT2 | pendiente |
