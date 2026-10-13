@@ -5,7 +5,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 ## Checklist
 
 - [ ] M1 (00206) aplicada y registrada
-- [ ] R1 · Sección «Tareas» del contacto (ficha y bandeja)
+- [x] R1 · Sección «Tareas» del contacto (ficha y bandeja)
 - [ ] R2 · «Próximo seguimiento» con «Crear tarea»
 - [ ] R6 · Hora y duración opcionales
 - [ ] R3 · Nodo «Crear tarea» ampliado

@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers, memberDisplayName } from "@/lib/workspace-members";
 import {
+  TASK_COLUMNS,
   completeTaskCore,
   createTaskCore,
   deleteTaskCore,
@@ -17,7 +18,10 @@ import {
   type TaskCtx,
   type UpdateTaskOutput,
 } from "@/lib/tasks/core";
-import { fail, type TaskActionResult } from "@/lib/tasks/result";
+import { loadContactTasksChecked, type ContactTasksPayload, type TaskContextPayload } from "@/lib/tasks/contact-section";
+import { flowIdOf } from "@/lib/tasks/format";
+import { todayInputValue } from "@/lib/dates";
+import { fail, success, type TaskActionResult } from "@/lib/tasks/result";
 import type { TaskBlocker, TaskRow } from "@/lib/tasks/types";
 
 /**
@@ -102,4 +106,72 @@ export async function loadTaskNodeOptions(): Promise<{ members: Array<{ id: stri
   const { workspace } = await getWorkspace();
   const members = await getWorkspaceMembers(workspace.id);
   return { members: members.map((m) => ({ id: m.userId, name: m.name })) };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Tope de tareas que se traen para el contexto del drawer (dependencias, proyectos). */
+const CONTEXT_LIMIT = 2000;
+
+/**
+ * Las tareas de un contacto para el panel de la bandeja (R1). Lee con la sesion de la persona: la RLS decide cuales ve.
+ * Sin `tasks.view` responde `forbidden` y el panel no muestra la seccion.
+ */
+export async function listContactTasks(contactId: string): Promise<TaskActionResult<ContactTasksPayload>> {
+  try {
+    const ctx = await getPermissionAction("tasks.view");
+    if (!ctx) return NO_PERMISSION("ver tareas");
+    if (!UUID.test(contactId)) return fail("validation", "Los datos no son válidos.");
+    const { tasks, failed } = await loadContactTasksChecked(ctx.supabase, { workspaceId: ctx.workspace.id, contactId });
+    if (failed) return fail("server", "No pude cargar las tareas.");
+    const members = await getWorkspaceMembers(ctx.workspace.id);
+    const timeZone = ctx.workspace.timezone || "UTC";
+    return success({
+      tasks,
+      members: members.map((m) => ({ id: m.userId, name: m.name })),
+      today: todayInputValue(new Date(), timeZone),
+      timeZone,
+      currentUserId: ctx.user.id,
+      canEdit: ctx.can("tasks.edit"),
+      canDelete: ctx.can("tasks.delete"),
+    });
+  } catch (error) {
+    console.error("[tareas] listContactTasks:", error instanceof Error ? error.message : String(error));
+    return fail("server", "No pude cargar las tareas.");
+  }
+}
+
+/**
+ * Todas las tareas que la persona ve (para las dependencias y los proyectos del drawer) con los nombres de sus contactos
+ * y flujos de origen. Se pide recien cuando se abre un drawer fuera de la pantalla de Tareas. La RLS decide que ve.
+ */
+export async function loadTaskContext(): Promise<TaskActionResult<TaskContextPayload>> {
+  try {
+    const ctx = await getPermissionAction("tasks.view");
+    if (!ctx) return NO_PERMISSION("ver tareas");
+    const { data, error } = await ctx.supabase
+      .from("tasks")
+      .select(TASK_COLUMNS)
+      .eq("workspace_id", ctx.workspace.id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(CONTEXT_LIMIT);
+    if (error) return fail("server", "No pude cargar las tareas.");
+    const tasks = (data ?? []) as unknown as TaskRow[];
+    const contactIds = [...new Set(tasks.map((t) => t.contact_id).filter((id): id is string => !!id))];
+    const flowIds = [...new Set(tasks.filter((t) => t.source === "flow").map((t) => flowIdOf(t.source_ref)).filter((id): id is string => !!id))];
+    const service = await createServiceClient();
+    const [contacts, flows] = await Promise.all([
+      contactIds.length ? ctx.supabase.from("contacts").select("id, display_name, email").in("id", contactIds) : Promise.resolve({ data: [] as Array<{ id: string; display_name: string | null; email: string | null }> }),
+      flowIds.length ? service.from("flows").select("id, name").eq("workspace_id", ctx.workspace.id).in("id", flowIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    ]);
+    return success({
+      tasks,
+      contactNames: Object.fromEntries((contacts.data ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"])),
+      flowNames: Object.fromEntries((flows.data ?? []).map((f) => [f.id, f.name])),
+    });
+  } catch (error) {
+    console.error("[tareas] loadTaskContext:", error instanceof Error ? error.message : String(error));
+    return fail("server", "No pude cargar las tareas.");
+  }
 }

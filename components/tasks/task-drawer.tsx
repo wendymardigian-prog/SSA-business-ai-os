@@ -282,8 +282,15 @@ function DrawerBody(props: TaskDrawerProps) {
             </Section>
           </>
         )}
+        {creating && defaults?.contact_id && (
+          <Section title="Vínculos">
+            <FieldRow label="Contacto">
+              <span className="text-sm">{contactName ?? "Este contacto"}</span>
+            </FieldRow>
+          </Section>
+        )}
         {creating && (
-          <p className="px-4 py-4 text-xs text-muted-foreground">Las dependencias, el historial y los vínculos aparecen cuando la tarea está creada.</p>
+          <p className="px-4 py-4 text-xs text-muted-foreground">Las dependencias y el historial aparecen cuando la tarea está creada.</p>
         )}
       </SidePanel>
 

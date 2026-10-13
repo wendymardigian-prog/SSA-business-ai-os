@@ -49,7 +49,7 @@ import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { ContactFormsSection } from "@/components/contacts/forms-section";
 import { loadContactForms } from "@/lib/forms/data/contact-forms";
 import { ContactTasks } from "@/components/tasks/contact-tasks";
-import { loadContactTasks } from "@/lib/tasks/contact-section";
+import { loadContactTasksChecked } from "@/lib/tasks/contact-section";
 import { todayInputValue } from "@/lib/dates";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { snapshotText } from "@/lib/sales/sale-text";
@@ -253,7 +253,8 @@ export default async function ContactDetailPage({
 
   // Las tareas del contacto (Tareas, F20): solo con `tasks.view`; la RLS decide cuales ve (un Member, las suyas).
   const canViewTasks = permissionCtx.can("tasks.view");
-  const contactTasks = canViewTasks ? await loadContactTasks(supabase, { workspaceId: workspace.id, contactId }) : [];
+  const contactTasksRes = canViewTasks ? await loadContactTasksChecked(supabase, { workspaceId: workspace.id, contactId }) : { tasks: [], failed: false };
+  const contactTasks = contactTasksRes.tasks;
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -554,10 +555,15 @@ export default async function ContactDetailPage({
               <Section title="Tareas">
                 <ContactTasks
                   contactId={contact.id}
+                  contactName={contact.display_name || contact.email || null}
                   initialTasks={contactTasks}
                   members={members.map((m) => ({ id: m.userId, name: m.name }))}
+                  currentUserId={user.id}
                   today={todayInputValue(new Date(), workspace.timezone || "UTC")}
+                  timeZone={workspace.timezone || "UTC"}
                   canEdit={permissionCtx.can("tasks.edit")}
+                  canDelete={permissionCtx.can("tasks.delete")}
+                  loadError={contactTasksRes.failed}
                 />
               </Section>
             )}

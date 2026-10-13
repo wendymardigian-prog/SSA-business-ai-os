@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
+import { ContactTasksPanel } from "@/components/tasks/contact-tasks-panel";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -190,6 +191,12 @@ export function ContactPanel({
               onSaved={reload}
             />
           </PanelSection>
+
+          <ContactTasksPanel
+            contactId={details.contact.id}
+            contactName={details.contact.display_name}
+            wrap={(children) => <PanelSection title="Tareas">{children}</PanelSection>}
+          />
 
           <AgentMemory contact={details.contact} />
 
