@@ -97,6 +97,13 @@ export interface AttributionTouch {
   referrer_url?: string;
   landing_page?: string;
   origin?: string;
+  /** Lo que el catalogo de Meta dice de este toque (los ids son los de Meta). */
+  meta_campaign_id?: string;
+  meta_adset_id?: string;
+  meta_ad_id?: string;
+  /** matched | unmatched | manual | ignored (nunca `none`: no se escribe). */
+  meta_match_status?: string;
+  meta_match_method?: string;
 }
 
 /** La forma canonica: lo que devuelve `readAttribution`. */
@@ -202,6 +209,8 @@ const TOUCH_TEXT_KEYS = [
   "social_post_id", "content_post_id", "ad_id", "adset_id", "campaign_id",
   "fbclid", "gclid", "ttclid", "li_fat_id", "ctwa_clid", "referrer_url",
   "landing_page", "origin",
+  // El vinculo con el catalogo de Meta (migracion 00192, AT3): ids de Meta y como se hallaron.
+  "meta_campaign_id", "meta_adset_id", "meta_ad_id", "meta_match_status", "meta_match_method",
 ] as const;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

@@ -97,6 +97,9 @@ export async function persistInsights(
 }
 
 
+/** Cuantos dias hacia atras se vuelven a resolver los toques sin vincular despues de cada sync. */
+const REMATCH_DAYS = 90;
+
 const LEVEL_LABEL: Record<CatalogLevel, string> = { campaign: "campañas", adset: "conjuntos", ad: "anuncios" };
 
 export interface CatalogSyncResult {
@@ -166,6 +169,18 @@ export async function syncCatalog(
       result.complete = false;
       notes.push(`Catálogo (${LEVEL_LABEL[level]}): ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // Re-vincular los toques de los ultimos 90 dias que quedaron sin anuncio (AT3, F28): quizas el sync
+  // acaba de traer justo el anuncio que faltaba. Nunca lanza: un fallo aca no frena nada.
+  try {
+    const { error } = await supabase.rpc("rematch_meta_touches", {
+      p_workspace_id: params.workspaceId,
+      p_since: new Date(params.now.getTime() - REMATCH_DAYS * 86_400_000).toISOString(),
+    });
+    if (error) console.error("[meta-ads] no pude re-vincular los toques:", error.message);
+  } catch (err) {
+    console.error("[meta-ads] no pude re-vincular los toques:", err instanceof Error ? err.message : err);
   }
 
   result.note = notes[0] ?? null;

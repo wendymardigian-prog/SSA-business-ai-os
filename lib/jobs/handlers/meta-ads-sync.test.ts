@@ -28,6 +28,8 @@ const { registerMetaAdsHandlers, META_ADS_SYNC_JOB } =
   await import("./meta-ads-sync");
 
 let db: MemoryDb;
+const rematchCalls: Array<Record<string, unknown>> = [];
+let rematchFails = false;
 
 const res = (body: unknown, headers: Record<string, string> = {}) =>
   ({
@@ -150,6 +152,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   scheduled.length = 0;
+  rematchCalls.length = 0;
+  rematchFails = false;
   resetJobHandlers();
   registerMetaAdsHandlers();
   db = memoryDb(
@@ -173,6 +177,13 @@ beforeEach(() => {
       ],
     },
     {
+      rpc: {
+        rematch_meta_touches: (args) => {
+          rematchCalls.push(args);
+          if (rematchFails) throw new Error("base caida");
+          return 0;
+        },
+      },
       // Los defaults de la base (la tabla en memoria no los conoce).
       generated: {
         meta_ads: (row) => {
@@ -365,6 +376,21 @@ describe("el catalogo", () => {
         payload: { workspaceId: WS, adAccountId: ACC },
       },
     ]);
+  });
+
+  it("al final del catalogo re-vincula los toques de los ultimos 90 dias (AT3)", async () => {
+    graph({ campaigns: () => res(PAGE.campaigns), adsets: () => res(PAGE.adsets), ads: () => res(PAGE.ads) });
+    await run();
+    expect(rematchCalls).toHaveLength(1);
+    expect(rematchCalls[0]).toEqual({ p_workspace_id: WS, p_since: new Date(NOW.getTime() - 90 * 86_400_000).toISOString() });
+  });
+
+  it("si el re-vinculo falla, el sync sigue y no queda ningun error de la cuenta", async () => {
+    rematchFails = true;
+    graph({ campaigns: () => res(PAGE.campaigns), adsets: () => res(PAGE.adsets), ads: () => res(PAGE.ads), insights: (url) => res(insight(url.searchParams.get("level") ?? "")) });
+    await expect(run()).resolves.toBeUndefined();
+    expect(db.rows("meta_ads")).toHaveLength(3);
+    expect(db.rows("meta_ads_insights_daily")).toHaveLength(1);
   });
 
   it("enlaza el anuncio con la publicacion de Instagram que promociona", async () => {

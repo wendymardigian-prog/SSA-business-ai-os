@@ -45,14 +45,16 @@ describe("readAttribution (forma canonica y claves ajenas)", () => {
   it("lee primer y ultimo toque e ignora las claves que no conoce", () => {
     const attribution = readAttribution({
       version: 2,
-      first_touch: { source: "instagram", medium: "dm", origin: "dm", occurred_at: "2026-10-01T10:00:00Z", meta_ad_id: "999" },
+      first_touch: { source: "instagram", medium: "dm", origin: "dm", occurred_at: "2026-10-01T10:00:00Z", meta_ad_id: "999", meta_otra_cosa: "x" },
       last_touch: { source: "facebook", medium: "paid_social", origin: "form", occurred_at: "2026-10-05T10:00:00Z", ad_id: "123", campaign_id: "77" },
     });
     expect(attribution.first_touch).toMatchObject({ source: "instagram", medium: "dm", origin: "dm" });
     expect(attribution.last_touch).toMatchObject({ source: "facebook", ad_id: "123", campaign_id: "77" });
-    // Una clave que el lector no conoce no se cuela: F27 suma `meta_*` al JSON de la base
-    // sin que esto rompa a los lectores existentes (se ven recien cuando F21 las lee).
-    expect(attribution.first_touch as Record<string, unknown>).not.toHaveProperty("meta_ad_id");
+    // AT3 (F27): el lector ahora SI conoce las claves `meta_*` que suma la base (el vinculo con el catalogo de
+    // Meta); antes de AT3 este caso fijaba que `meta_ad_id` no se colaba. Una clave que sigue sin conocer
+    // (`meta_otra_cosa`) tampoco se cuela.
+    expect(attribution.first_touch).toMatchObject({ meta_ad_id: "999" });
+    expect(attribution.first_touch as Record<string, unknown>).not.toHaveProperty("meta_otra_cosa");
   });
 
   it("un valor vacio o invalido no lanza", () => {

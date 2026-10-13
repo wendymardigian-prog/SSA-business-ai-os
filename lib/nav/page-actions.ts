@@ -63,6 +63,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "Lo organico y lo pago del mismo periodo, uno al lado del otro.",
   },
+  "/dashboard/dashboards/ads/sin-vincular": {
+    title: "Sin vincular",
+    tooltip: "Los contactos que llegaron con datos de un anuncio y no se pudieron asociar a su campaña, conjunto o anuncio. Acá lo vinculás a mano o lo ignorás.",
+  },
   "/dashboard/dashboards/ads/campaigns/[id]": {
     title: "Campaña",
     tooltip: "Como rinde esta campaña, con sus conjuntos y sus anuncios.",

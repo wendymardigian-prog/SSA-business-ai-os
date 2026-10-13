@@ -1,0 +1,637 @@
+{
+  "_comment": "Casos compartidos entre public.resolve_meta_match (SQL) y resolveMetaMatch (TS). Cada caso corre contra las dos: scripts/verify-ads-attribution.mjs y lib/attribution/meta-match.test.ts. El catalogo es el mismo para todos.",
+  "catalog": {
+    "campaigns": [
+      {
+        "campaignId": "1001",
+        "name": "Campaña Octubre"
+      },
+      {
+        "campaignId": "1002",
+        "name": "Campaña Noviembre"
+      },
+      {
+        "campaignId": "1003",
+        "name": "Retargeting"
+      },
+      {
+        "campaignId": "1004",
+        "name": "Retargeting"
+      }
+    ],
+    "adsets": [
+      {
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "name": "Conjunto Frío"
+      },
+      {
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "name": "Conjunto Caliente"
+      }
+    ],
+    "ads": [
+      {
+        "adId": "3001",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "name": "Video Testimonio"
+      },
+      {
+        "adId": "3002",
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "name": "Video Testimonio"
+      },
+      {
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "name": "Oferta Única"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "con ad_id del catalogo: anuncio, su conjunto y su campaña",
+      "input": {
+        "adId": "3003",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "ad_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "el ad_id se recorta (espacios)",
+      "input": {
+        "adId": " 3003 ",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "ad_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "con utm_content igual a un id de anuncio",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "3003",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "con utm_campaign igual a un id de campaña y nada mas: solo la campaña",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "1002",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1002",
+        "method": "utm_campaign_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "con campaign_id solo",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "method": "campaign_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "con utm_term igual a un id de conjunto: el conjunto (y su campaña)",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": "2002",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_term_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "con adset_id solo",
+      "input": {
+        "adId": null,
+        "adsetId": "2001",
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "adset_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "utm_content por nombre, codificado (%XX): Oferta Única",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "Oferta%20%C3%9Anica",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_name",
+        "reason": null
+      }
+    },
+    {
+      "name": "utm_content por nombre con + y sin tildes",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "oferta+unica",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_name",
+        "reason": null
+      }
+    },
+    {
+      "name": "dos anuncios homonimos y utm_campaign igual al id de una: el de esa campaña",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "1002",
+        "utmContent": "Video Testimonio",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3002",
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_content_name_campaign",
+        "reason": null
+      }
+    },
+    {
+      "name": "dos anuncios homonimos y utm_campaign como nombre: el de esa campaña",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "campaña noviembre",
+        "utmContent": "Video Testimonio",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3002",
+        "adsetId": "2002",
+        "campaignId": "1002",
+        "method": "utm_content_name_campaign",
+        "reason": null
+      }
+    },
+    {
+      "name": "dos anuncios homonimos y campaign_id: el de esa campaña",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "utmCampaign": null,
+        "utmContent": "video testimonio",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3001",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_name_campaign",
+        "reason": null
+      }
+    },
+    {
+      "name": "dos anuncios homonimos y sin campaña: no se vincula el anuncio",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "Video Testimonio",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "homonimos con una campaña que no desempata: campaña vinculada, anuncio no, con aviso",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "1003",
+        "utmContent": "Video Testimonio",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1003",
+        "method": "utm_campaign_id",
+        "reason": "ambiguous_ad_name"
+      }
+    },
+    {
+      "name": "ad_id que no esta en el catalogo",
+      "input": {
+        "adId": "999",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "id_not_in_catalog"
+      }
+    },
+    {
+      "name": "campaign_id que no esta en el catalogo",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "999",
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "id_not_in_catalog"
+      }
+    },
+    {
+      "name": "solo fbclid",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": "IwAR0abc"
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "fbclid_only"
+      }
+    },
+    {
+      "name": "sin ningun dato",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "none",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": null
+      }
+    },
+    {
+      "name": "solo espacios: tampoco hay datos",
+      "input": {
+        "adId": "  ",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": " ",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": ""
+      },
+      "expected": {
+        "status": "none",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": null
+      }
+    },
+    {
+      "name": "un nombre de campaña que no existe",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Campaña Fantasma",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "name_not_found"
+      }
+    },
+    {
+      "name": "un utm_term que no es un conjunto",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": "foo",
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "name_not_found"
+      }
+    },
+    {
+      "name": "un nombre de campaña repetido (dos campañas)",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Retargeting",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "ambiguous_campaign_name"
+      }
+    },
+    {
+      "name": "el anuncio resuelve la campaña aunque el nombre de campaña sea ambiguo",
+      "input": {
+        "adId": "3001",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Retargeting",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3001",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "ad_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "coherencia: el anuncio es de otra campaña que campaign_id, gana el anuncio",
+      "input": {
+        "adId": "3001",
+        "adsetId": null,
+        "campaignId": "1002",
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3001",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "ad_id",
+        "reason": "inconsistent_campaign"
+      }
+    },
+    {
+      "name": "el conjunto del adset_id se respeta aunque el anuncio sea de otro",
+      "input": {
+        "adId": "3001",
+        "adsetId": "2002",
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3001",
+        "adsetId": "2002",
+        "campaignId": "1001",
+        "method": "ad_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "nombre de campaña de una sola coincidencia",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "CAMPAÑA OCTUBRE",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "method": "utm_campaign_name",
+        "reason": null
+      }
+    },
+    {
+      "name": "campaña por nombre y un ad_id que no esta: se vincula la campaña y se avisa",
+      "input": {
+        "adId": "999",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": "Campaña Octubre",
+        "utmContent": null,
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": "1001",
+        "method": "utm_campaign_name",
+        "reason": "id_not_in_catalog"
+      }
+    },
+    {
+      "name": "ad_id desconocido pero utm_content es un id conocido: se vincula por el utm_content (sin aviso: el anuncio se resolvio)",
+      "input": {
+        "adId": "999",
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "3003",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "matched",
+        "adId": "3003",
+        "adsetId": "2001",
+        "campaignId": "1001",
+        "method": "utm_content_id",
+        "reason": null
+      }
+    },
+    {
+      "name": "un % suelto en el utm_content no rompe y no coincide",
+      "input": {
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "utmCampaign": null,
+        "utmContent": "100%",
+        "utmTerm": null,
+        "fbclid": null
+      },
+      "expected": {
+        "status": "unmatched",
+        "adId": null,
+        "adsetId": null,
+        "campaignId": null,
+        "method": null,
+        "reason": "name_not_found"
+      }
+    }
+  ]
+}

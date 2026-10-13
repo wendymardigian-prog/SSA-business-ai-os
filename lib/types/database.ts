@@ -586,6 +586,10 @@ export type AuditAction =
   | "contact.linked"
   /** Entity contact: un webhook entrante actualizo un contacto que ya existia (Extra L). */
   | "contact.updated"
+  /** Entity contact: una persona vinculo, ignoro o quito el vinculo de un toque con un anuncio de Meta (Extra L, AT3). */
+  | "attribution.meta_linked"
+  | "attribution.meta_ignored"
+  | "attribution.meta_unlinked"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited"
   /** Entity contract_signature. */
@@ -4684,6 +4688,15 @@ export interface Database {
           origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
           dedupe_key: string;
           raw: Json;
+          /** El vinculo con el catalogo de Meta (00192). */
+          meta_campaign_id: string | null;
+          meta_adset_id: string | null;
+          meta_ad_id: string | null;
+          meta_match_status: "none" | "matched" | "unmatched" | "manual" | "ignored";
+          meta_match_method: string | null;
+          meta_match_reason: string | null;
+          meta_matched_at: string | null;
+          meta_match_by: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -5221,6 +5234,38 @@ export interface Database {
       /** Busca un contacto por telefono, email o redes; devuelve tambien los conflictos; NO crea (00175). Solo service_role. */
       find_contact_for_form: {
         Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
+        Returns: Json;
+      };
+      /** Resuelve los datos de un toque contra el catalogo de Meta (00192). Solo service_role. La gemela en TS es lib/attribution/meta-match.ts. */
+      resolve_meta_match: {
+        Args: {
+          p_workspace_id: string;
+          p_ad_id: string | null;
+          p_adset_id: string | null;
+          p_campaign_id: string | null;
+          p_utm_campaign: string | null;
+          p_utm_content: string | null;
+          p_utm_term: string | null;
+          p_fbclid: string | null;
+        };
+        Returns: Json;
+      };
+      /** Vuelve a resolver los toques sin vincular de los ultimos dias; devuelve cuantos cambiaron (00192, 00194). Solo service_role. */
+      rematch_meta_touches: {
+        Args: { p_workspace_id: string; p_since: string };
+        Returns: number;
+      };
+      /** Vincula, ignora o quita el vinculo de un toque con Meta, y recalcula la atribucion del contacto (00192, 00194). Solo service_role. */
+      set_touch_meta_match: {
+        Args: {
+          p_workspace_id: string;
+          p_touch_id: string;
+          p_action: string;
+          p_user_id: string;
+          p_ad_id?: string;
+          p_adset_id?: string;
+          p_campaign_id?: string;
+        };
         Returns: Json;
       };
       /** Crea una venta con sus pagos, estado, eventos y auditoria en UNA transaccion (00162). Solo service_role. */

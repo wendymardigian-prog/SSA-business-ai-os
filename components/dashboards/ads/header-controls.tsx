@@ -190,6 +190,12 @@ export function HeaderActions({
           </div>
           {canSync && <SyncNowButton adAccountId={account.id} />}
           <Link
+            href="/dashboard/dashboards/ads/sin-vincular"
+            className="flex h-8 w-full items-center justify-center rounded-lg border border-border text-xs font-medium transition-colors hover:bg-accent"
+          >
+            Toques sin vincular
+          </Link>
+          <Link
             href="/dashboard/settings/integrations"
             className="flex h-8 w-full items-center justify-center rounded-lg bg-primary text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >

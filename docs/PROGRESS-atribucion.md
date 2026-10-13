@@ -42,10 +42,10 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] F25 Enlace con Contenido (automático; el manual queda en PENDIENTE)
 
 ### AT3 — Vínculo de cada toque con su campaña, conjunto y anuncio
-- [ ] F26 `resolve_meta_match` y el trigger (M7)
-- [ ] F27 `contact_touch_json` y la atribución del contacto
-- [ ] F28 Re-vincular después de cada sync, y el backfill (M8)
-- [ ] F29 "Sin vincular"
+- [x] F26 `resolve_meta_match` y el trigger (M7)
+- [x] F27 `contact_touch_json` y la atribución del contacto
+- [x] F28 Re-vincular después de cada sync, y el backfill (M8)
+- [x] F29 "Sin vincular"
 
 ### AT4 — Tabla Meta vs CRM
 - [ ] F30 Función `ads_crm_metrics` (M9)
@@ -150,9 +150,10 @@ frene el webhook ya estaban cubiertos en `app/api/webhooks/{late,evolution}/rout
 | M4 | `00189_messages_origin_context` | `messages.origin_context jsonb` | AT1 | **aplicada y registrada** (`20261013061922`), verificada |
 | M5 | `00190_create_booking_ad_ids` | `create_booking` pasa ad/adset/campaign y extras al toque | AT1 | **aplicada y registrada** (`20261013062612`), verificada |
 | M6 | `00191_meta_catalog` | catálogo de Meta, `meta_name_key`, bucket `ad-creatives` | AT2 | **aplicada y registrada** (`20261013064536`), verificada |
-| M7 | `00192_meta_touch_match` | vínculo con Meta (columnas, funciones, trigger) | AT3 | pendiente |
-| M8 | `00193_meta_touch_backfill` | backfill del vínculo | AT3 | pendiente |
-| M9 | `00194_ads_crm_metrics` | `ads_crm_metrics` + índices | AT4 | pendiente |
+| M7 | `00192_meta_touch_match` | vínculo con Meta (columnas, funciones, trigger) | AT3 | **aplicada y registrada** (`20261013070616`), verificada |
+| M8 | `00193_meta_touch_backfill` | backfill del vínculo | AT3 | **aplicada y registrada** (`20261013071034`), verificada |
+| M7b | `00194_meta_match_signal` | **corrección de la 00192** (no estaba en el plano): solo cuentan como datos de Meta los toques que pueden traer UTMs de verdad | AT3 | **aplicada y registrada** (`20261013071154`), verificada |
+| M9 | `00195_ads_crm_metrics` | `ads_crm_metrics` + índices (corre un número: la 00194 se usó para corregir la 00192) | AT4 | pendiente |
 
 En el plano figuraban como 00178–00186; la base ya tenía hasta la 00185 (EOD). Donde el plano dice
 "00179", "00182", etc., leer "M2", "M5"… Confirmar con `list_migrations` antes de escribir cada una.
@@ -219,7 +220,7 @@ no tienen por dónde entrar. Este cambio suma:
 | M6 | `00191_meta_catalog` | `meta_campaigns/adsets/ads`, `meta_name_key`, bucket `ad-creatives`, política ADICIONAL de lectura en `meta_ads_insights_daily` | AT2 | Bajo |
 | M7 | `00192_meta_touch_match` | columnas `meta_*`, `resolve_meta_match`, trigger BEFORE INSERT, `contact_touch_json`, `refresh_contact_attribution`, `rematch_meta_touches` | AT3 | Alto |
 | M8 | `00193_meta_touch_backfill` | corre `rematch_meta_touches` con `-infinity` | AT3 | Medio |
-| M9 | `00194_ads_crm_metrics` | `ads_crm_metrics` (INVOKER) + índices | AT4 | Bajo |
+| M9 | `00195_ads_crm_metrics` | `ads_crm_metrics` (INVOKER) + índices | AT4 | Bajo |
 
 Se confirma con `list_migrations` y `ls supabase/migrations` antes de escribir cada una. Las nueve son
 compatibles con el código viejo.
@@ -513,7 +514,7 @@ Orden: F18 → M4 → F19 → M5 → F17 → F16 → F21 → F20 (si sobra tiemp
 
 ### Bloque AT4 — Tabla Meta vs CRM (F30–F33)
 
-- **M9 (00194):** `ads_crm_metrics(p_level, p_since, p_until, p_ad_account_id)` SECURITY INVOKER, STABLE,
+- **M9 (00195, antes 00194):** `ads_crm_metrics(p_level, p_since, p_until, p_ad_account_id)` SECURITY INVOKER, STABLE,
   fechas en `workspaces.timezone`; asistidas = `status_group='outcome'`; ventas excluyen
   `cancelled`/`refunded`, por `sale_date`, revenue = `final_amount*100`; cash = pagos `paid` por `paid_on`
   (reembolsos restan); agendas sin "liberar espacio"; herencia del último toque con anuncio anterior a la
@@ -535,7 +536,7 @@ Orden: F18 → M4 → F19 → M5 → F17 → F16 → F21 → F20 (si sobra tiemp
   mención, guía de parámetros de URL de los anuncios), `docs/flow-registry.md` (disparador, paso, sujeto
   `webhook`, regla por camino), `docs/dashboards.md` (tabla Meta vs CRM).
 - `CLAUDE.md`: sección "Webhooks, atribución y anuncios" con "Lo que no se puede romper" y la próxima
-  migración libre (00195 si no aparece otra).
+  migración libre (00196 si no aparece otra).
 - No mergear. `gh pr create` de `feat/atribucion-webhooks` a `main` con el resumen de PROGRESS y PENDIENTE.
 
 ### Verificación de punta a punta

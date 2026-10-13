@@ -132,3 +132,45 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   tests (permiso, cuenta activada, dedupe por bloque de 10 minutos) y se vio el botón en el panel de la cuenta.
 - **`verify-rls.mjs` necesita `--despues-de-00143`** (la 00143 ya está aplicada); sin la bandera falla un caso que
   describe el estado anterior a esa migración.
+
+
+### AT3 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
+
+- **La 00194 corrige la 00192 (no estaba en el plano).** El primer toque real que vio el backfill fue un comentario
+  orgánico cuyo `content_label` es el TÍTULO de la publicación, no un UTM: la regla del plano («cualquier UTM con valor
+  cuenta») lo dejaba «sin vincular / name_not_found», y lo mismo pasaría con todo comentario y DM orgánico. Ahora los
+  ids y el `fbclid` siempre cuentan; `campaign`, `content_label` y `term` cuentan como UTMs solo si el toque puede
+  traerlos (origen booking, form, webhook, import o manual) o ya trae un id de anuncio (un DM de un anuncio: el título
+  del anuncio sirve para el nombre). Está en SQL (`private.meta_touch_has_data`, `resolve_meta_match_for_touch`) y en TS
+  (`touchMetaInput`), con tests y casos en `verify-ads-attribution.mjs`. La 00194 también devolvió a `none` los toques que
+  la 00193 había dejado `unmatched` sin tener datos de Meta (era 1) y recalculó la atribución de su contacto.
+  Por eso **la migración de la tabla Meta vs CRM pasa de 00194 a 00195**.
+- **`set_touch_meta_match` es una función pública más** (el plano pedía las acciones sobre `private.refresh_contact_attribution`,
+  pero la API solo expone `public`): actualiza el toque y recalcula la atribución en la misma transacción, y devuelve el
+  antes y el después para el historial. Solo `service_role`; el permiso y la visibilidad del contacto los chequea la
+  Server Action con la sesión.
+- **Reglas de resolución donde el plano no decía** (todas con caso en `meta-match.cases.json`, 29 casos que corren contra
+  la función SQL y su gemela en TS):
+  - la coherencia (`inconsistent_campaign`) aplica también cuando la campaña se halló por `utm_campaign` igual a un id;
+  - el conjunto sigue el orden literal (`adset_id`, `utm_term`, el del anuncio) y NO se corrige contra el anuncio;
+  - el `reason` de un toque `matched` puede traer avisos (`ambiguous_ad_name`, `id_not_in_catalog`, `inconsistent_campaign`);
+  - `utm_campaign`, `utm_content` y `utm_term` se decodifican igual (`%XX` y `+`), no solo el contenido;
+  - una campaña «existe» solo si está en `meta_campaigns` (no se infiere de un anuncio que la nombre).
+- **El re-vínculo también retoma toques `matched` sin anuncio** que traen `ad_id` o `utm_content` (ampliación chica del
+  plano): si el anuncio llega al catálogo después de la campaña, se completa. Nunca toca `manual` ni `ignored`.
+- **`meta_match_status` solo se escribe en `contacts.attribution` cuando no es `none`** (si no, cada toque llevaría un
+  `none` que no dice nada). El lector (`readAttribution`) ahora conoce las claves `meta_*`; el test de caracterización que
+  fijaba lo contrario se actualizó con comentario.
+- **Los toques UTM-only de fuentes que no son de Meta** (por ejemplo Google o email con `utm_campaign`) quedan
+  `unmatched / name_not_found` y aparecen en «Sin vincular»: la función no recibe la fuente (el plano fija su firma).
+  Si en la práctica hace ruido, conviene filtrar por fuente en el trigger (`source` de la fila) en vez de en la pantalla.
+- **«Sin vincular» y la ficha usan la sesión de quien mira**: la lista respeta `can_see_contact` (RLS de `contact_touches`);
+  los nombres y la miniatura salen del catálogo con la RLS de `dashboards.ads.view`, así que sin ese permiso la ficha
+  muestra los ids. El buscador de «Vincular» usa el cliente de servicio después de `settings.manage` (el valor del
+  usuario va como parámetro de un filtro, nunca dentro de una cadena de filtros).
+- **El catálogo de producción todavía está vacío** (el sync nuevo corre cuando se despliega): la revisión visual de la
+  ficha con NOMBRES y miniatura no se pudo hacer con datos reales; está cubierta con tests (`attribution-view.test.ts`,
+  `meta-names.test.ts`). Para la revisión visual se cargaron cuatro toques `zz-test` sobre contactos existentes (sin crear
+  contactos, para no disparar automatizaciones) y se borraron; la atribución de ese contacto se recalculó y quedó como antes.
+- **Sobran workspaces «zz-test eod-… Workspace»** de corridas anteriores de `verify-eod` (su nombre usa un espacio, no el
+  guion que barre `test-cleanup.mjs`): no son de este módulo y no se tocaron. Conviene ampliar el barrido.

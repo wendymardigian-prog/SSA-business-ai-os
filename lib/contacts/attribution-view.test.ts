@@ -219,3 +219,49 @@ describe("describeTouch (F21: anuncio y detalle)", () => {
     expect(view.details).toEqual([]);
   });
 });
+
+describe("describeTouch con el vinculo de Meta (AT3, F21)", () => {
+  const base = { source: "facebook", medium: "paid_social", occurred_at: "2026-10-05T10:00:00Z" } as const;
+  const names = {
+    campaigns: { "1001": "Campaña Octubre" },
+    adsets: { "2001": "Conjunto Frío" },
+    ads: { "3001": { name: "Video Testimonio", thumbnailUrl: "https://signed.example/t.png" } },
+  };
+
+  it("con catalogo dice campaña › conjunto › anuncio por NOMBRE y trae la miniatura", () => {
+    const view = describeTouch({ ...base, meta_campaign_id: "1001", meta_adset_id: "2001", meta_ad_id: "3001", meta_match_status: "matched", meta_match_method: "utm_content_name" }, undefined, null, names);
+    expect(view.adLine).toBe("Meta · Campaña Octubre › Conjunto Frío › Video Testimonio");
+    expect(view.adThumbnail).toBe("https://signed.example/t.png");
+    expect(view.matchNote).toBe("Vinculado por el nombre del anuncio");
+  });
+
+  it("sin catalogo (o sin permiso para verlo) cae a los ids, sin miniatura", () => {
+    const view = describeTouch({ ...base, meta_campaign_id: "1001", meta_ad_id: "3001", meta_match_status: "matched", meta_match_method: "ad_id" });
+    expect(view.adLine).toBe("Meta · Campaña 1001 › Anuncio 3001");
+    expect(view.adThumbnail).toBeNull();
+  });
+
+  it("un id que el catalogo no conoce se queda con su id", () => {
+    const view = describeTouch({ ...base, meta_campaign_id: "1001", meta_ad_id: "999" }, undefined, null, names);
+    expect(view.adLine).toBe("Meta · Campaña Octubre › Anuncio 999");
+  });
+
+  it("a mano, sin vincular e ignorado se dicen en palabras", () => {
+    expect(describeTouch({ ...base, meta_ad_id: "3001", meta_match_status: "manual" }, undefined, null, names).matchNote).toBe("Vinculado a mano");
+    expect(describeTouch({ ...base, ad_id: "9", meta_match_status: "unmatched" }).matchNote).toBe("No se pudo vincular con un anuncio de Meta");
+    expect(describeTouch({ ...base, meta_match_status: "ignored" }).matchNote).toBe("Ignorado para el vínculo con Meta");
+  });
+
+  it("sin vinculo, los ids que trajo el toque siguen mostrandose como antes (AT1)", () => {
+    const view = describeTouch({ ...base, campaign_id: "77", adset_id: "88", ad_id: "99" });
+    expect(view.adLine).toContain("Campaña 77 › Conjunto 88 › Anuncio 99");
+    expect(view.matchNote).toBeNull();
+  });
+
+  it("buildAttributionView usa los nombres en el primer toque, el ultimo y el camino", () => {
+    const rows = [row({ id: "t-1", source: "facebook", medium: "paid_social", origin: "booking", meta_campaign_id: "1001", meta_ad_id: "3001", meta_match_status: "matched", meta_match_method: "ad_id" })];
+    const view = buildAttributionView({ attribution: null, rows, names });
+    expect(view.first?.adLine).toBe("Meta · Campaña Octubre › Video Testimonio");
+    expect(view.path[0].adLine).toBe("Meta · Campaña Octubre › Video Testimonio");
+  });
+});
