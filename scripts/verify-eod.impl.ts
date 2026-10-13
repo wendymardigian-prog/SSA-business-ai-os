@@ -297,7 +297,9 @@ try {
   check((await submitEodCore(ports, { ...base, userId: high.id, rev: highSaved.ok ? highSaved.rev : -1 })).ok, "el setter con 25 links envía");
   const noticesMid = await noticesTo(owner.id);
   await runEventsOf(high.id);
-  check((await emailsTo(highEmail)) === 0 && (await noticesTo(owner.id)) === noticesMid, "con 25 links no pasa nada (va por «Si no», vacío)");
+  const highEmails = await emailsTo(highEmail);
+  const noticesAfter = await noticesTo(owner.id);
+  check(highEmails === 0 && noticesAfter === noticesMid, "con 25 links no pasa nada (va por «Si no», vacío)", `emails=${highEmails} avisos=${noticesAfter} (antes ${noticesMid})`);
 
   // Una corrección: con "first" no vuelve a disparar; con "every", una vez por corrección.
   await svc.from("forms").update({ eod_config: { ...config, audience: { mode: "all", userIds: [], roleIds: [] }, reportMode: "editable" } as unknown as Json }).eq("id", form.id);

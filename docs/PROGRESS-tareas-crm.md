@@ -17,7 +17,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] R7 · Tareas en el calendario de Agenda
 - [x] R8 · Arrastrar agendas con confirmación
 - [x] Revisión visual (1440 y 390 px, claro y oscuro): **no hecha, anotada en PENDIENTE** (necesita una sesión iniciada contra la base real y el servidor de desarrollo no corre desde el worktree)
-- [ ] Cierre: docs, CLAUDE.md, limpieza `zz-test-`, PR
+- [x] Cierre: docs, CLAUDE.md, limpieza `zz-test-`, PR
 
 ## Punto de partida (13/10/2026)
 
@@ -31,6 +31,22 @@ Medido antes de escribir código (rama `feat/tareas-crm` sin cambios, 13/10/2026
 | `verify-rls`, `verify-roles`, `verify-tasks`, `verify-crm`, `verify-sales`, `verify-scheduling`, `verify-booking-concurrency`, `verify-eod`, `verify-ads-attribution`, `verify-inbound-webhooks`, `verify-content`, `verify-inbox-filters`, `verify-dashboards`, `verify-calls`, `verify-audit-visibility`, `verify-enrichment`, `verify-optout`, `verify-chat-media`, `verify-message-persistence`, `verify-csv-import` | **pasan** |
 | `verify-workspace-isolation` | falló una vez (se pisó con otra corrida en paralelo) y **pasó** al repetirla sola |
 | `verify-forms`, `verify-attribution`, `verify-publishing` | **ya fallaban antes de tocar nada** (datos reales de producción / proveedores); no son de esta tanda y no se corrieron de nuevo como criterio |
+
+## Resultado final (13/10/2026)
+
+| Chequeo | Resultado |
+|---|---|
+| `npx vitest run` | **830 archivos / 10.379 tests, todo verde** |
+| `npm run lint` | 0 errores, 36 warnings (los mismos de antes) |
+| `tsc --noEmit` | sin errores |
+| `npm run build` | verde (en una copia con `node_modules` real: el symlink del worktree no lo acepta Turbopack) |
+| `verify-tasks` (214 pruebas, con los bloques de 00206, la cobranza de punta a punta y 00207), `verify-contact-merge` (110) | verde |
+| `verify-rls --despues-de-00143`, `verify-roles --despues-de-00136`, `verify-crm`, `verify-scheduling`, `verify-booking-concurrency`, `verify-ads-attribution`, `verify-inbound-webhooks`, `verify-content`, `verify-inbox-filters`, `verify-dashboards`, `verify-calls`, `verify-audit-visibility --despues-de-00168`, `verify-enrichment`, `verify-optout`, `verify-chat-media`, `verify-message-persistence`, `verify-csv-import`, `verify-workspace-isolation --despues-de-00143` | verde |
+| `verify-sales`, `verify-eod` | fallaron en la corrida larga (colas y eventos que el cron real de producción consume mientras el script mide) y **pasaron al repetirlas solas**; no tocan nada de esta tanda |
+| `verify-forms`, `verify-attribution`, `verify-publishing` | ya fallaban en el punto de partida (no son de esta tanda) |
+| Residuos `zz-test-` | `node scripts/test-cleanup.mjs`: 0 en las 17 tablas/columnas del informe, 0 usuarios |
+
+Dos arreglos de los propios scripts: `verify-contact-merge` (siembra con valores válidos de las CHECK y el evento pendiente se siembra justo antes de fusionar, para que el cron real no lo marque antes) y `verify-eod` (el detalle del chequeo que se pisaba con el cron).
 
 ## Migraciones
 
