@@ -7,7 +7,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 - [x] **T1 — Base y reglas** (13/10/2026): [x] F1 tabla/RLS · [x] F2 permisos · [x] F3 fechas (pura) · [x] F4 completar con corrimientos · [x] F5 dependencias · [x] F6 limpieza · [x] F7 auditoría · [x] F8 acciones/zod · [x] F9 proyectos
 - [x] **T2 — Tabla, celda y drawer** (13/10/2026): [x] F10 tabla · [x] F11 edición en celda · [x] F12 drawer · [x] F13 diálogo de fechas · [x] F14 filtros/URL · [x] F15 creación rápida y menú
 - [x] **T3 — Tablero, avisos y superficies** (13/10/2026): [x] F16 kanban · [x] F17 notificaciones · [x] F18 cron de vencimientos · [x] F19 Mis tareas · [x] F20 contacto y bandeja · [x] F21 mobile
-- [ ] **T4 — Origen automático**: [ ] F22 nodo create_task · [ ] F23 tool crear_tarea · [ ] F24 tarea al escalar · [ ] F25 triggers task_* (también sin contacto) · [ ] F26 origen visible y robustez
+- [x] **T4 — Origen automático**: [x] F22 nodo create_task · [x] F23 tool crear_tarea · [x] F24 tarea al escalar · [x] F25 triggers task_* (también sin contacto) · [x] F26 origen visible y robustez
 - [ ] Cierre: docs/tareas.md · flow-registry.md · CLAUDE.md · PR
 
 ## Migraciones (plano → número real)
@@ -184,3 +184,13 @@ Cada afirmación de §2 sale de leer `origin/main` (snapshot en el scratchpad) y
 - Superficies (F20): sección «Tareas» en la ficha del contacto (tras «Seguimiento»; solo con `tasks.view`, la RLS decide cuáles ve) y botón «Crear tarea» en el encabezado de la conversación (solo con `tasks.edit`), con título sugerido «Dar seguimiento a <contacto>». No se tocó nada más de la bandeja.
 - Revisión visual: tablero y lista a 1440 y 390 px (sin scroll horizontal de página; el tablero scrollea por dentro), tema claro y oscuro, drawer a pantalla completa en el celular, campana con los tipos nuevos, sección del contacto y panel de la bandeja. Se arrastró una tarjeta con eventos de arrastre reales de HTML5 (el movimiento se guardó).
 - Tests: 803 archivos / 10.024; lint 0 errores / 36 warnings; build compila; `verify-tasks` en verde (incluye 00198, el handler real y la visibilidad de los avisos para un Member).
+
+### T4 — Origen automático (13/10/2026)
+- **00199** aplicada, registrada y verificada: `triggers_type_check` suma `task_completed` y `task_overdue` (32 → 34) y `automation_events_contact_or_member` acepta un evento SIN contacto también para esos dos tipos, siempre con una persona (`member_user_id`). Las dos definiciones viejas están copiadas, leídas de la base, en la cabecera de la migración. `lib/tasks/migrations.test.ts` fija la lista (00187 + 2) y que no toque datos.
+- F22: nodo `create_task` (`needsContact:false`; responsable fijo, «quien envió el reporte» o nadie; vencimiento fijo o «+N días»; `source='flow'`, `source_ref = flow:sesión:nodo`; nunca lanza). Paleta, panel, simulador y lista de nodos sin contacto.
+- F23: herramienta `crear_tarea` del agente (responsable por conversación → setter → vendedor; sin responsable avisa a Owner/Admin; tope por conversación y detección de duplicado; auditoría con el agente como actor). No toca `programar_seguimiento` ni `next_followup_date`.
+- F24: «crear una tarea al derivar a una persona», **apagada por defecto** (`guardrails.escalation.createTaskOnEscalate`). Antes se escribió `escalate-characterization.test.ts`: con el interruptor apagado `escalateToHuman` hace exactamente lo de siempre.
+- F25 (también sin contacto): los triggers viven en `registry/task-triggers.ts`; el registro suma `contactOptional`; `processEvent` manda a la rama de la persona SOLO un evento sin contacto, con persona y de un tipo que lo admite (el resto no cambia). Con contacto, el camino de siempre. Emisión (`lib/tasks/automation/emit.ts`) con solo escalares, nunca `booking_id`, y nunca rompe lo que la origina.
+- F26: `createTaskFromAutomation` captura y registra con `[tareas]`; el origen se ve en la tabla y el drawer.
+- `verify-tasks.mjs` (138 chequeos) suma el bloque 199: los 4 tipos de trigger aceptados, un tipo inventado rechazado, eventos con y sin persona, y **de punta a punta con el motor real**: completar una tarea sin contacto emite el evento, dispara un flujo publicado, la sesión es sin contacto, el paso «Crear tarea» deja una tarea `flow` a cargo de la persona y el mismo evento no dispara dos veces.
+- Tests: 812 archivos / 10.129; lint 0 errores / 36 warnings; build compila.

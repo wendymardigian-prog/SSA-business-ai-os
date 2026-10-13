@@ -37,8 +37,9 @@ describe("triggers registrados", () => {
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
     }
-    // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1);
+    // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo),
+    // + los dos de Tareas (task_completed, task_overdue).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1 + 2);
   });
 
   it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {

@@ -207,6 +207,17 @@ export function resetRegistry(): void {
 }
 
 /**
+ * ¿Algun disparador atiende este tipo de evento tambien SIN contacto (Tareas, F25)? Solo cambia el camino de un evento
+ * que llega sin contacto y con una persona del equipo; los demas eventos no lo consultan.
+ */
+export function eventAllowsNoContact(eventType: string): boolean {
+  for (const t of triggers.values()) {
+    if (t.contactOptional && t.eventTypes?.includes(eventType)) return true;
+  }
+  return false;
+}
+
+/**
  * Sobre quién es un evento de `automation_events`: `member` si lo atiende un disparador
  * sin contacto (`eod_submitted`), si no `contact` (todos los de siempre). El cron ramifica
  * por esto de forma explícita.

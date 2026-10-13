@@ -17,8 +17,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayInputValue, zonedClock } from "@/lib/dates";
 import { registerJobHandler, type JobContext } from "@/lib/jobs/registry";
 import { createNotification } from "@/lib/notifications/create";
+import { emitTaskEvent } from "@/lib/tasks/automation/emit";
 import { isDateOnly } from "@/lib/tasks/dates";
 import { formatDayShort } from "@/lib/tasks/format";
+import type { TaskPriority, TaskSource, TaskStatus } from "@/lib/tasks/types";
 import type { Database } from "@/lib/types/database";
 
 type Db = SupabaseClient<Database>;
@@ -39,15 +41,27 @@ export function isSweepWindow(now: Date, timeZone: string): boolean {
 
 interface Candidate {
   id: string;
+  workspace_id: string;
   title: string;
   due_date: string;
   owner_id: string | null;
   follower_ids: string[];
+  // Para el evento `task_overdue` (F25).
+  contact_id: string | null;
+  created_by: string | null;
+  project: string | null;
+  project_key: string | null;
+  status: TaskStatus;
+  source: TaskSource;
+  priority: TaskPriority;
+  completed_at: string | null;
 }
 
 export interface DueSweepResult {
   dueToday: number;
   overdue: number;
+  /** Eventos `task_overdue` que se encolaron para las automatizaciones. */
+  events: number;
 }
 
 async function loadCandidates(db: Db, workspaceId: string, localDate: string): Promise<Candidate[]> {
@@ -56,7 +70,7 @@ async function loadCandidates(db: Db, workspaceId: string, localDate: string): P
   for (let page = 0; page < MAX_PAGES; page++) {
     let query = db
       .from("tasks")
-      .select("id, title, due_date, owner_id, follower_ids")
+      .select("id, workspace_id, title, due_date, owner_id, follower_ids, contact_id, created_by, project, project_key, status, source, priority, completed_at")
       .eq("workspace_id", workspaceId)
       .is("deleted_at", null)
       .neq("status", "completed")
@@ -96,12 +110,43 @@ async function loadExisting(db: Db, workspaceId: string, taskIds: string[]): Pro
   return seen;
 }
 
+/** Los eventos `task_overdue` que ya se encolaron: `tarea:vencimiento`. */
+async function loadExistingOverdueEvents(db: Db, workspaceId: string, taskIds: string[]): Promise<Set<string>> {
+  const seen = new Set<string>();
+  for (let i = 0; i < taskIds.length; i += ID_CHUNK) {
+    const chunk = taskIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await db
+      .from("automation_events")
+      .select("payload")
+      .eq("workspace_id", workspaceId)
+      .eq("event_type", "task_overdue")
+      .in("payload->>task_id", chunk);
+    if (error) throw new Error(`no pude leer los eventos: ${error.message}`);
+    for (const e of data ?? []) {
+      const p = (e.payload ?? {}) as { task_id?: string; due_date?: string };
+      seen.add(`${p.task_id}:${p.due_date}`);
+    }
+  }
+  return seen;
+}
+
 export async function runTasksDueSweep(db: Db, workspaceId: string, localDate: string): Promise<DueSweepResult> {
   const candidates = await loadCandidates(db, workspaceId, localDate);
-  if (candidates.length === 0) return { dueToday: 0, overdue: 0 };
+  if (candidates.length === 0) return { dueToday: 0, overdue: 0, events: 0 };
   const existing = await loadExisting(db, workspaceId, candidates.map((c) => c.id));
 
-  const result: DueSweepResult = { dueToday: 0, overdue: 0 };
+  const result: DueSweepResult = { dueToday: 0, overdue: 0, events: 0 };
+
+  // El disparador `task_overdue` (F25): una vez por tarea y vencimiento, tambien para las que ya tenian el aviso.
+  const overdue = candidates.filter((c) => c.due_date < localDate);
+  if (overdue.length > 0) {
+    const emitted = await loadExistingOverdueEvents(db, workspaceId, overdue.map((c) => c.id));
+    for (const task of overdue) {
+      if (emitted.has(`${task.id}:${task.due_date}`)) continue;
+      if (await emitTaskEvent(db, "task_overdue", task)) result.events += 1;
+    }
+  }
+
   for (const task of candidates) {
     const today = task.due_date === localDate;
     const type = today ? "task_due_today" : "task_overdue";

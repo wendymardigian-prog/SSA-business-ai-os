@@ -6,7 +6,7 @@
  */
 export const MEMBER_TRIGGER_TYPES = ["eod_submitted"] as const;
 
-export const CONTACT_FREE_NODE_TYPES = ["abSplit", "branch", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "upsert_contact"] as const;
+export const CONTACT_FREE_NODE_TYPES = ["abSplit", "branch", "create_task", "delay", "goToFlow", "httpRequest", "notify_team", "send_email", "upsert_contact"] as const;
 
 export function isMemberTriggerType(type: unknown): boolean {
   return typeof type === "string" && (MEMBER_TRIGGER_TYPES as readonly string[]).includes(type);

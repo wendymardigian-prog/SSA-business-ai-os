@@ -18,6 +18,7 @@ import { diffFields, logAudit } from "@/lib/audit";
 import { todayInputValue } from "@/lib/dates";
 import type { Database, Json } from "@/lib/types/database";
 import { dateOfInstant } from "./dates";
+import { emitTaskEvent } from "./automation/emit";
 import { planCompleted, planCreated, planUpdated, sendTaskNotifications, type TaskNotice } from "./notifications";
 import { computeDateShifts, type DateRuleTask, type DateShift } from "./date-rules";
 import { BLOCKER_ERROR_MESSAGES, regapForNewDue, type BlockerErrorCode } from "./dependencies";
@@ -461,6 +462,14 @@ export async function completeTaskCore(
 
   const movedRows = rows.filter((r) => movedIds.has(r.id));
   const shifted = result.shifted ?? [];
+
+  // El disparador `task_completed` (F25): nunca frena ni deshace la operacion.
+  try {
+    const { data: completed } = await ctx.service.from("tasks").select(TASK_COLUMNS).eq("id", taskId).maybeSingle();
+    if (completed) await emitTaskEvent(ctx.service, "task_completed", completed as unknown as TaskRow, ctx.userId);
+  } catch (error) {
+    console.error("[tareas] no pude emitir task_completed:", error instanceof Error ? error.message : String(error));
+  }
 
   await notify(ctx, () =>
     planCompleted(

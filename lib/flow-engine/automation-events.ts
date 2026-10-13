@@ -4,7 +4,7 @@
  * prueba un evento puntual sin tocar el resto de la cola.
  */
 import { executeFlow } from "@/lib/flow-engine/engine";
-import { eventSubject, getTrigger, triggerTypesForEvent } from "@/lib/flow-engine/registry";
+import { eventAllowsNoContact, eventSubject, getTrigger, triggerTypesForEvent } from "@/lib/flow-engine/registry";
 import { bookingContextVariables } from "@/lib/scheduling/automation/context";
 import { logAudit } from "@/lib/audit";
 import type { createServiceClient } from "@/lib/supabase/server";
@@ -30,6 +30,11 @@ export type Db = Awaited<ReturnType<typeof createServiceClient>>;
  * equipo (EOD, E15) va por el suyo, sin conversacion, canal ni "no contactar".
  */
 export async function processEvent(supabase: Db, event: AutomationEvent): Promise<number> {
+  // Tareas (F25): un evento SIN contacto y con una persona del equipo, de un tipo que atiende tambien sin contacto, corre
+  // por la rama de la persona. Con contacto (o cualquier otro evento) no cambia nada: sigue por `eventSubject`.
+  if (!event.contact_id && event.member_user_id && eventAllowsNoContact(event.event_type)) {
+    return processMemberEvent(supabase, event);
+  }
   const subject = eventSubject(event.event_type);
   switch (subject) {
     case "contact":
@@ -181,7 +186,11 @@ async function processContactEvent(
  */
 async function processMemberEvent(supabase: Db, event: AutomationEvent): Promise<number> {
   if (!event.member_user_id) throw new Error(`el evento ${event.event_type} no trae la persona del equipo`);
-  const types = (triggerTypesForEvent(event.event_type) as TriggerType[]).filter((type) => getTrigger(type)?.subject === "member");
+  // Los `member` de siempre (fin de dia) y los que atienden tambien eventos sin contacto (Tareas).
+  const types = (triggerTypesForEvent(event.event_type) as TriggerType[]).filter((type) => {
+    const definition = getTrigger(type);
+    return definition?.subject === "member" || definition?.contactOptional === true;
+  });
   if (types.length === 0) return 0;
 
   const { data: triggers } = await supabase

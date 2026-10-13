@@ -30,6 +30,8 @@ export const AGENT_ACTION_LABELS: Record<string, string> = {
   summary: "Guardó el resumen",
   whatsapp_handoff: "Pasó el lead a WhatsApp",
   update: "Se apagó por tope de gasto",
+  // Tareas (Extra A): lo que el agente deja pendiente para el equipo.
+  "task.created": "Creó una tarea",
 };
 
 export const REVERTED_VALUES = ["si", "no"] as const;

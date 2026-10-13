@@ -142,6 +142,11 @@ export const guardrailsSchema = z.object({
        * agente, siguen leyendo la columna del workspace.
        */
       onUnreadable: z.boolean().default(true),
+      /**
+       * Al derivar la conversacion a una persona, deja ademas una tarea para el equipo (Tareas, F24). Apagado por defecto:
+       * con esto apagado, derivar hace exactamente lo de siempre. La tarea nunca cambia ni frena el escalamiento.
+       */
+      createTaskOnEscalate: z.boolean().default(false),
     })
     .default({
       maxUnresolvedTurns: 6,
@@ -151,6 +156,7 @@ export const guardrailsSchema = z.object({
       urgency: true,
       urgencyPhrases: DEFAULT_URGENCY_PHRASES,
       onUnreadable: true,
+      createTaskOnEscalate: false,
     }),
   /**
    * Lista blanca de links que el agente puede mandar. VACIA = el guardarrail de

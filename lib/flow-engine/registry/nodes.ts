@@ -27,6 +27,7 @@ import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-action
 import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions";
 import { notifyTeamNode } from "../nodes/notify-team";
 import { upsertContactNode } from "../nodes/upsert-contact";
+import { createTaskNode } from "../nodes/create-task";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -65,3 +66,5 @@ registerNode(setSaleStatusNode);
 registerNode(notifyTeamNode);
 // Webhooks entrantes (Extra L): consigue el contacto de un flujo que arranco sin uno.
 registerNode(upsertContactNode);
+// Tareas (Extra A, F22): deja una tarea para el equipo; sirve con y sin contacto.
+registerNode(createTaskNode);

@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
-import { memberDisplayName } from "@/lib/workspace-members";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getWorkspace } from "@/lib/workspace";
+import { getWorkspaceMembers, memberDisplayName } from "@/lib/workspace-members";
 import {
   completeTaskCore,
   createTaskCore,
@@ -91,4 +92,14 @@ export async function setTaskBlockers(taskId: string, blockerIds: string[]): Pro
 
 export async function deleteTask(taskId: string): Promise<TaskActionResult<{ unlinkedFrom: number }>> {
   return run("tasks.delete", "borrar tareas", (ctx) => deleteTaskCore(ctx, taskId));
+}
+
+/**
+ * Las personas del equipo que el nodo «Crear tarea» del canvas ofrece como responsable y seguidores. Lo abre quien arma
+ * el flujo; es el mismo dato que ya ven los demas selectores de personas (id y nombre de gente del mismo workspace).
+ */
+export async function loadTaskNodeOptions(): Promise<{ members: Array<{ id: string; name: string }> }> {
+  const { workspace } = await getWorkspace();
+  const members = await getWorkspaceMembers(workspace.id);
+  return { members: members.map((m) => ({ id: m.userId, name: m.name })) };
 }

@@ -18,6 +18,7 @@ import { pauseSelfTool } from "./pause-self";
 import { declareIntentTool } from "./declare-intent";
 import { whatsappLinkTool } from "./whatsapp-link";
 import { listarRecursosTool, usarRecursoTool } from "./assets";
+import { createTaskTool } from "./create-task";
 import { registerSchedulingSkill } from "./scheduling";
 
 registerAgentTool(escalateTool);
@@ -32,6 +33,8 @@ registerAgentTool(declareIntentTool);
 registerAgentTool(whatsappLinkTool);
 registerAgentTool(listarRecursosTool);
 registerAgentTool(usarRecursoTool);
+// Tareas (Extra A, F23): deja una tarea para el equipo. No es obligatoria: el agente la usa solo si se la habilitaron.
+registerAgentTool(createTaskTool);
 
 // La habilidad de agendamiento (Etapa 4): siete herramientas que se prenden
 // juntas. Apagada, ninguna se ofrece y el agente ve lo mismo que antes.

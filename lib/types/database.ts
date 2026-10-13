@@ -784,7 +784,10 @@ export type TriggerType =
   /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
   | "eod_submitted"
   /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`. */
-  | "webhook_received";
+  | "webhook_received"
+  /** Tareas (00199): se completo una tarea / quedo vencida. Atienden tambien eventos sin contacto. */
+  | "task_completed"
+  | "task_overdue";
 export type FlowSessionStatus =
   | "active"
   | "completed"

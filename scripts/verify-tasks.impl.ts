@@ -19,6 +19,9 @@ import { todayInputValue } from "../lib/dates";
 import { runTasksDueSweep } from "../lib/jobs/handlers/tasks-due-sweep";
 import { createNotification } from "../lib/notifications/create";
 import { addDays } from "../lib/tasks/dates";
+import "../lib/flow-engine/registry";
+import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
+import { buildDesiredTriggers } from "../lib/flow-triggers";
 
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -512,6 +515,60 @@ try {
     check(assigneeAfter.length === 1, "un aviso dirigido a una persona lo ve esa persona, aunque no pueda ver la tarea", JSON.stringify(assigneeAfter));
     // Limpieza de lo que encolo la funcion (por si algun workspace real tuviera candidatas, no se toca: solo los de prueba).
     runSql(`delete from public.scheduled_jobs where type = 'tasks_due_sweep' and payload->>'workspace_id' in (${ids})`);
+  }
+
+  // ═══ 00199: los disparadores task_completed / task_overdue, tambien sin contacto ═══
+  if (upTo >= 199) {
+    console.log("\n— 00199: disparadores de tareas (con y sin contacto) —");
+    const mkTrigger = (type: string) => svc.from("triggers").insert({ workspace_id: ws.id, flow_id: flow199!.id, type, config: {}, is_active: false });
+    const { data: flow199 } = await svc.from("flows").insert({ workspace_id: ws.id, name: "zz-test flujo tareas 199", status: "draft", nodes: [], edges: [] }).select("id").single();
+    check(!!flow199, "se crea un flujo de prueba");
+    for (const type of ["task_completed", "task_overdue", "sale_created", "eod_submitted"]) {
+      const { error } = await mkTrigger(type);
+      check(!error, `triggers_type_check acepta «${type}»`, error?.message);
+    }
+    const { error: badType } = await mkTrigger("task_inventado");
+    check(!!badType, "un tipo inventado se sigue rechazando");
+
+    const ev = (extra: Record<string, unknown>) => svc.from("automation_events").insert({ workspace_id: ws.id, payload: {}, ...extra });
+    check(!(await ev({ event_type: "task_completed", contact_id: null, member_user_id: owner.id })).error, "un evento task_completed sin contacto y con persona se acepta");
+    check(!(await ev({ event_type: "task_overdue", contact_id: null, member_user_id: owner.id })).error, "un evento task_overdue sin contacto y con persona se acepta");
+    check(!!(await ev({ event_type: "task_completed", contact_id: null, member_user_id: null })).error, "sin contacto Y sin persona se rechaza");
+    check(!!(await ev({ event_type: "tag_added", contact_id: null, member_user_id: owner.id })).error, "un evento de contacto sin contacto se sigue rechazando");
+    await svc.from("automation_events").delete().eq("workspace_id", ws.id);
+
+    // De punta a punta con el motor real: completar una tarea SIN contacto corre un flujo publicado, sin contacto,
+    // y su paso «Crear tarea» deja una tarea nueva de origen `flow`.
+    const trigNode = { id: "t1", type: "trigger", position: { x: 0, y: 0 }, data: { triggerType: "task_completed", config: {} } };
+    const taskNode = { id: "n1", type: "create_task", position: { x: 0, y: 120 }, data: { title: "zz-test seguimiento de {{task.title}}", owner: "member", dueMode: "days", dueDays: 2, priority: "normal" } };
+    const nodes = [trigNode, taskNode];
+    const edges = [{ id: "e1", source: "t1", target: "n1" }];
+    await svc.from("triggers").delete().eq("flow_id", flow199!.id);
+    await svc.from("flows").update({ status: "published", nodes: nodes as never, edges: edges as never }).eq("id", flow199!.id);
+    const desired = buildDesiredTriggers(nodes as unknown as Array<Record<string, unknown>>, flow199!.id);
+    await svc.from("triggers").insert(desired.map((t) => ({ ...t, workspace_id: ws.id, is_active: true })));
+
+    const ctx199: TaskCtx = { supabase: owner.client as never, service: svc as never, workspaceId: ws.id, userId: owner.id, timeZone: "America/Costa_Rica" };
+    const made = await createTaskCore(ctx199, { title: "zz-test sin contacto", owner_id: owner.id });
+    check(made.ok, "se crea una tarea sin contacto", JSON.stringify(made));
+    if (made.ok) {
+      const done = await completeTaskCore(ctx199, made.data.id, false);
+      check(done.ok, "se completa", JSON.stringify(done));
+      const { data: events } = await svc.from("automation_events").select("id, workspace_id, event_type, contact_id, member_user_id, payload").eq("workspace_id", ws.id).eq("event_type", "task_completed");
+      check(events?.length === 1 && events[0].contact_id === null && events[0].member_user_id === owner.id, "completar emite UN task_completed sobre la persona a cargo, sin contacto", JSON.stringify(events));
+      const payload = (events?.[0]?.payload ?? {}) as Record<string, unknown>;
+      check(!("booking_id" in payload) && Object.values(payload).every((v) => v === null || ["string", "number", "boolean"].includes(typeof v)), "el payload lleva solo escalares y nunca booking_id", JSON.stringify(payload));
+      let fired = 0;
+      for (const e of events ?? []) fired += await processEvent(svc as never, e as unknown as AutomationEvent);
+      check(fired === 1, "el motor real dispara el flujo publicado", String(fired));
+      const { data: sessions } = await svc.from("flow_sessions").select("contact_id, member_user_id").eq("flow_id", flow199!.id);
+      check(sessions?.length === 1 && sessions[0].contact_id === null && sessions[0].member_user_id === owner.id, "la sesion es sin contacto, sobre la persona", JSON.stringify(sessions));
+      const { data: created } = await svc.from("tasks").select("title, source, owner_id, due_date").eq("workspace_id", ws.id).eq("source", "flow").like("title", "zz-test seguimiento%");
+      check(created?.length === 1 && created[0].title === "zz-test seguimiento de zz-test sin contacto" && created[0].owner_id === owner.id && !!created[0].due_date, "el paso «Crear tarea» deja una tarea de origen flow, a cargo de la persona", JSON.stringify(created));
+      let again = 0;
+      for (const e of events ?? []) again += await processEvent(svc as never, e as unknown as AutomationEvent);
+      check(again === 0, "el mismo evento no dispara dos veces (trigger_fires)", String(again));
+    }
   }
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));

@@ -17,6 +17,8 @@ describe("registro de herramientas", () => {
         "buscar_datos_del_contacto",
         "buscar_en_conocimiento",
         "cambiar_temperatura",
+        // Tareas (Extra A, F23): deja una tarea para el equipo.
+        "crear_tarea",
         "declarar_intencion",
         "derivar_a_humano",
         "etiquetar_contacto",
