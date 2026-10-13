@@ -4,6 +4,7 @@ import type { SuccessConfig } from "@/lib/forms/success";
 import type { ContactConfig, CustomFieldDef } from "@/lib/forms/contact-config";
 import type { ContractConfig, SurveyConfig } from "@/lib/forms/defaults";
 import type { FormFlowRow } from "@/lib/forms/data/form-flows";
+import type { EodConfig } from "@/lib/eod/config";
 
 /** Lo que el servidor le pasa al editor de un formulario. */
 export interface EditorForm {
@@ -27,6 +28,8 @@ export interface EditorForm {
   surveyConfig: SurveyConfig | null;
   /** Solo un contrato (F24). */
   contractConfig: ContractConfig | null;
+  /** Solo un reporte de fin de día (E1). */
+  eodConfig: EodConfig | null;
 }
 
 /** Lo que las pestañas Contacto y Automatizaciones necesitan además del formulario. */
@@ -37,6 +40,8 @@ export interface EditorExtras {
   flows: FormFlowRow[];
   /** `flows.edit`: sin eso no se ofrecen las automatizaciones. */
   canFlows: boolean;
+  /** Solo un EOD: los roles del workspace (incluidos los de sistema) para "Roles elegidos". */
+  roles: Array<{ id: string; name: string }>;
 }
 
 export interface EditorVersion {

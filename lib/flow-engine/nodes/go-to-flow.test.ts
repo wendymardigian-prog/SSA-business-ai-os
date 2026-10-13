@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
-import type { FlowExecutionContext } from "../types";
+import type { ContactFlowContext } from "../types";
 import { goToFlowNode } from "./go-to-flow";
 
 const context = {
@@ -10,7 +10,7 @@ const context = {
   channelId: "chn-1",
   conversationId: "conv-1",
   flowId: "flow-padre",
-} as unknown as FlowExecutionContext;
+} as unknown as ContactFlowContext;
 
 function fakeClient() {
   const updates: Array<{ table: string; patch: Record<string, unknown>; filtros: Record<string, string> }> = [];

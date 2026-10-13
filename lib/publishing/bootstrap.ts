@@ -32,6 +32,7 @@ import { registerCallIndexKnowledgeHandler } from "@/lib/jobs/handlers/call-inde
 import { registerContractPdfHandler } from "@/lib/jobs/handlers/contract-pdf";
 import { registerSalesContactEvalHandler } from "@/lib/jobs/handlers/sales-contact-eval";
 import { registerPaymentsOverdueSweepHandler } from "@/lib/jobs/handlers/payments-overdue-sweep";
+import { registerEodReminderHandler } from "@/lib/jobs/handlers/eod-reminder";
 import { registerPaymentRelativeHandler } from "@/lib/jobs/handlers/payment-relative";
 import { registerContractEmailHandler } from "@/lib/jobs/handlers/contract-email";
 
@@ -115,6 +116,8 @@ export function registerPublishing(): void {
   // Ventas: la asignacion automatica de setter, vendedor y referido (F15).
   registerSalesContactEvalHandler();
   registerPaymentsOverdueSweepHandler();
+  // Reporte de fin de día (E13): el recordatorio.
+  registerEodReminderHandler();
   registerPaymentRelativeHandler();
 }
 

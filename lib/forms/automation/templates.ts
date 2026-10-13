@@ -8,7 +8,7 @@
  * acciones son los alias exactos del registro (`send_email`, `addTag`, ...): con
  * otro nombre el motor no resuelve el nodo y el paso no corre, sin avisar.
  */
-import type { FormField, FormType } from "@/lib/forms/fields";
+import type { FormField, FormType, PublicFormType } from "@/lib/forms/fields";
 import { TRIGGER_FOR_FORM_TYPE } from "./triggers";
 import { answerPath } from "./variable-schema";
 import type { CanvasEdge, CanvasNode } from "@/lib/scheduling/automation/linear-flow";
@@ -147,7 +147,7 @@ function clip(text: string): string {
  * se cumple, así los dos arman tres rangos).
  */
 export function emailByAnswerTree(
-  form: { id: string; type: FormType },
+  form: { id: string; type: PublicFormType },
   question: TemplateQuestion,
   random?: () => number,
 ): StepTree {
@@ -189,7 +189,7 @@ export function emailByAnswerTree(
 }
 
 export interface FormTemplateContext {
-  form: { id: string; name: string; type: FormType };
+  form: { id: string; name: string; type: PublicFormType };
   /** El email de quien crea la plantilla (para "Avisarme"). */
   userEmail: string;
   /** El tag elegido, para `add_tag`. */
@@ -215,7 +215,7 @@ export function nextAutomationName(formName: string, existingNames: string[]): s
   return formFlowName(formName, "Automatización");
 }
 
-function triggerNode(form: { id: string; type: FormType }, extra: Record<string, unknown> = {}): CanvasNode {
+function triggerNode(form: { id: string; type: PublicFormType }, extra: Record<string, unknown> = {}): CanvasNode {
   return {
     id: "trigger",
     type: "trigger",
@@ -240,7 +240,7 @@ function chain(trigger: CanvasNode, steps: Array<{ type: string; data: Record<st
 }
 
 /** El flujo vacío de "+ Nueva automatización": solo el trigger del tipo del formulario. */
-export function blankFormFlowGraph(form: { id: string; type: FormType }): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
+export function blankFormFlowGraph(form: { id: string; type: PublicFormType }): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   return chain(triggerNode(form), []);
 }
 

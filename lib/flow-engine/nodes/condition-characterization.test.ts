@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { getConditionOperator } from "../registry/registry";
-import type { FlowExecutionContext, FlowNode } from "../types";
+import type { ContactFlowContext, FlowNode } from "../types";
 import { conditionNode } from "./condition";
 import { CONDITION_CASES, contactWith, context, fakeSupabase, type Cond, type Contact } from "./condition-fixtures";
 
@@ -27,7 +27,7 @@ beforeAll(async () => {
 async function run(
   conditions: Cond[],
   logic: "and" | "or",
-  ctx: FlowExecutionContext,
+  ctx: ContactFlowContext,
   contact: Contact = contactWith(),
   enrollments: unknown[] = [],
 ) {

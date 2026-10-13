@@ -130,3 +130,42 @@ describe("cron automation-events (caracterizacion previa a la etapa 4)", () => {
     expect(await res.json()).toEqual({ ok: true, processed: 1, fired: 0 });
   });
 });
+
+describe("eventos sin contacto: un reporte de fin de día (E15)", () => {
+  const eod = (editCount = 0) => ({ event_type: "eod_submitted", contact_id: null, member_user_id: "u-ana", payload: { report_id: "r-1", form_id: "f-1", report_date: "2026-10-12", edit_count: editCount } });
+
+  it("arranca el flujo sin contacto, con la persona, sin canal ni conversación, y audita sobre el reporte", async () => {
+    seed([eod()], [{ type: "eod_submitted", config: { form_ids: ["f-1"] } }, { type: "crm_event", config: { event: "eod_submitted" } }]);
+    const res = await GET(request());
+    expect(await res.json()).toEqual({ ok: true, processed: 1, fired: 1 });
+    expect(executeFlow).toHaveBeenCalledTimes(1);
+    const [, ctx] = executeFlow.mock.calls[0] as unknown as [unknown, Record<string, unknown>];
+    expect(ctx).toMatchObject({ triggerId: "tr-1", contactId: null, memberUserId: "u-ana", channelId: "", conversationId: "" });
+    expect(db.rows("trigger_fires")).toEqual([expect.objectContaining({ trigger_id: "tr-1", dedupe_key: "eod:r-1:0", contact_id: null })]);
+    const [audit] = logAudit.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(audit).toMatchObject({ entityType: "eod_report", entityId: "r-1", action: "automation_triggered" });
+  });
+
+  it("el comodín crm_event nunca recibe un evento sin contacto", async () => {
+    seed([eod()], [{ type: "crm_event", config: { event: "eod_submitted" } }]);
+    const res = await GET(request());
+    expect(await res.json()).toEqual({ ok: true, processed: 1, fired: 0 });
+    expect(executeFlow).not.toHaveBeenCalled();
+  });
+
+  it("una corrección: con 'first' no vuelve a disparar; con 'every', una vez por corrección", async () => {
+    seed([eod(1)], [{ type: "eod_submitted", config: {} }, { type: "eod_submitted", config: { on: "every" } }]);
+    const res = await GET(request());
+    expect(await res.json()).toEqual({ ok: true, processed: 1, fired: 1 });
+    expect(db.rows("trigger_fires").map((f) => [f.trigger_id, f.dedupe_key])).toEqual([["tr-2", "eod:r-1:1"]]);
+  });
+
+  it("un evento de contacto sin contacto se marca con error y no frena a los demás", async () => {
+    seed([{ event_type: "tag_added", contact_id: null }, { event_type: "contact_created", contact_id: "c-1" }], [{ type: "new_contact" }]);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const res = await GET(request());
+    err.mockRestore();
+    expect(await res.json()).toEqual({ ok: true, processed: 2, fired: 1 });
+    expect(db.rows("automation_events")[0].error).toMatch(/no trae contacto/);
+  });
+});

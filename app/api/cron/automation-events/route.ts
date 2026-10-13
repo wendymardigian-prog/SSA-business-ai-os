@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCronRequest } from "@/lib/cron-auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { executeFlow } from "@/lib/flow-engine/engine";
-import { getTrigger, triggerTypesForEvent } from "@/lib/flow-engine/registry";
-import { bookingContextVariables } from "@/lib/scheduling/automation/context";
-import { logAudit } from "@/lib/audit";
-import type { TriggerType } from "@/lib/types/database";
+import { processEvent, type AutomationEvent } from "@/lib/flow-engine/automation-events";
 
 /**
  * GET /api/cron/automation-events
@@ -33,14 +29,6 @@ import type { TriggerType } from "@/lib/types/database";
 /** Cuantos eventos se procesan por corrida. */
 const BATCH = 50;
 
-interface AutomationEvent {
-  id: string;
-  workspace_id: string;
-  event_type: string;
-  contact_id: string;
-  payload: Record<string, unknown>;
-}
-
 export async function GET(request: NextRequest) {
   const denied = authorizeCronRequest(request);
   if (denied) return denied;
@@ -49,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await supabase
     .from("automation_events")
-    .select("id, workspace_id, event_type, contact_id, payload")
+    .select("id, workspace_id, event_type, contact_id, member_user_id, payload")
     .is("processed_at", null)
     .order("created_at", { ascending: true })
     .limit(BATCH);
@@ -84,146 +72,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, processed: events.length, fired });
-}
-
-/** Dispara los flows que le corresponden a un evento. Devuelve cuantos arrancaron. */
-async function processEvent(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  event: AutomationEvent
-): Promise<number> {
-  // Que tipos de trigger atienden este evento lo dice el registro, no un `if`
-  // aca: sumar un tipo es declararlo con sus `eventTypes` y este archivo no se
-  // toca. Un tipo que nombra el evento le gana al comodin `crm_event`.
-  const types = triggerTypesForEvent(event.event_type) as TriggerType[];
-  if (types.length === 0) return 0;
-
-  const { data: triggers } = await supabase
-    .from("triggers")
-    .select("id, flow_id, channel_id, type, config, priority, is_active, flows!inner(status)")
-    .eq("workspace_id", event.workspace_id)
-    .in("type", types)
-    .eq("is_active", true)
-    .eq("flows.status", "published");
-
-  if (!triggers || triggers.length === 0) return 0;
-
-  // La conversacion mas reciente del contacto es por donde va a responder el
-  // flow. Un contacto importado por CSV o que agendo desde la pagina publica
-  // puede no tener ninguna: en ese caso el flow igual corre (puede poner tags,
-  // mandar un email o cambiar el estado de la agenda), pero no va a poder
-  // enviar por un canal.
-  const { data: conversation } = await supabase
-    .from("conversations")
-    .select("id, channel_id")
-    .eq("contact_id", event.contact_id)
-    .is("deleted_at", null)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
-
-  // La agenda del evento, una sola vez para todos los triggers: si cada uno la
-  // consultara, un evento con diez flujos haria diez consultas iguales.
-  const bookingId = typeof event.payload?.booking_id === "string" ? event.payload.booking_id : null;
-  const booking = bookingId ? await loadBooking(supabase, bookingId) : null;
-  const bookingVars = booking ? await bookingContextVariables(supabase, booking) : {};
-
-  let fired = 0;
-
-  for (const trigger of triggers) {
-    const config = (trigger.config ?? {}) as Record<string, unknown>;
-    const definition = getTrigger(trigger.type);
-    if (!definition) continue;
-
-    const args = {
-      supabase,
-      event,
-      config,
-      trigger: {
-        id: trigger.id,
-        flow_id: trigger.flow_id,
-        channel_id: trigger.channel_id,
-        type: trigger.type,
-        config: trigger.config,
-        priority: trigger.priority,
-        is_active: trigger.is_active,
-      },
-      booking,
-    };
-
-    if (definition.eventMatches && !(await definition.eventMatches(args))) continue;
-
-    // Idempotencia: el indice unico de trigger_fires es lo que decide. Si otra
-    // corrida del cron ya lo disparo, el insert choca y no se ejecuta nada.
-    const dedupeKey = definition.dedupeKeyFor ? definition.dedupeKeyFor(args) : `event:${event.id}`;
-
-    const { error: claimError } = await supabase.from("trigger_fires").insert({
-      trigger_id: trigger.id,
-      workspace_id: event.workspace_id,
-      dedupe_key: dedupeKey,
-      contact_id: event.contact_id,
-    });
-
-    if (claimError) {
-      // 23505 = ya se disparo. Es el caso normal, no un error.
-      if (claimError.code !== "23505") {
-        console.error("[cron/automation-events] no pude reclamar el disparo:", claimError.message);
-      }
-      continue;
-    }
-
-    if (!conversation) {
-      console.warn(
-        `[cron/automation-events] el contacto ${event.contact_id} no tiene conversacion: el flow ${trigger.flow_id} no va a poder enviar por un canal`
-      );
-    }
-
-    const extraVars = definition.variablesFor ? await definition.variablesFor(args) : {};
-
-    await executeFlow(supabase, {
-      triggerId: trigger.id,
-      flowId: trigger.flow_id,
-      channelId: conversation?.channel_id ?? "",
-      contactId: event.contact_id,
-      conversationId: conversation?.id ?? "",
-      workspaceId: event.workspace_id,
-      incomingMessage: {},
-      variables: {
-        // El flow puede leer el evento que lo disparo. Util para armar el
-        // mensaje: "vi que te interesa {{event_value}}".
-        event_type: event.event_type,
-        ...Object.fromEntries(
-          Object.entries(event.payload ?? {}).map(([k, v]) => [`event_${k}`, String(v ?? "")])
-        ),
-        ...bookingVars,
-        ...extraVars,
-      },
-    });
-
-    // El requerimiento pide que el disparo quede en el registro de auditoria.
-    await logAudit({
-      supabase,
-      workspaceId: event.workspace_id,
-      entityType: "contact",
-      entityId: event.contact_id,
-      action: "automation_triggered",
-      metadata: {
-        trigger_id: trigger.id,
-        flow_id: trigger.flow_id,
-        event_type: event.event_type,
-      },
-    });
-
-    fired++;
-  }
-
-  return fired;
-}
-
-/** La agenda del evento, si el payload la nombra. */
-async function loadBooking(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
-  bookingId: string
-): Promise<Record<string, unknown> | null> {
-  const { data } = await supabase.from("bookings").select("*").eq("id", bookingId).maybeSingle();
-  return (data as Record<string, unknown> | null) ?? null;
 }

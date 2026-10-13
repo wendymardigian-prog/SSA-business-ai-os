@@ -4,6 +4,7 @@ import { interpolateVariables } from "../interpolate";
 
 /** Escribe un campo personalizado del contacto. El valor admite {{variables}}. */
 export const setCustomFieldNode: NodeDefinition<SetFieldNodeData> = {
+  needsContact: true,
   type: "setCustomField",
   label: "Definir campo",
   aliases: [{ nodeType: "action", actionType: "setCustomField" }],

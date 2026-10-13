@@ -231,9 +231,9 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.find((g) => g.id === "automatizacion")?.title).toBe("Automatización");
   });
 
-  it("Dashboards y Bandeja son los dos sueltos de arriba, antes del primer titulo", () => {
+  it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
     const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
-    expect(sueltos).toEqual(["Dashboards", "Bandeja"]);
+    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]);
   });
 
   it("Integraciones y Ajustes son el bloque del fondo", () => {
@@ -348,5 +348,22 @@ describe("navItemTooltip (bloque N, N3)", () => {
     const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes")!;
     expect(navItemTooltip(dashboards)).toBe("Dashboards");
     expect(navItemTooltip(ajustes)).toBe("Ajustes");
+  });
+});
+
+describe("Mi reporte del día (EOD, E10)", () => {
+  const item = NAV_ITEMS.find((i) => i.name === "Mi reporte del día")!;
+
+  it("está, con ícono de checklist, y no pide permiso: pide estar en la audiencia", () => {
+    expect(item).toMatchObject({ href: "/dashboard/eod", icon: "ListChecks", adminOnly: false, requires: "eod" });
+    expect(item.permissions).toBeUndefined();
+  });
+
+  it("se ve solo con la condición del servidor, también para un admin", () => {
+    const names = (flags?: { eod?: boolean }, isAdmin = false) => visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: [], flags }).map((i) => i.name);
+    expect(names({ eod: true })).toContain("Mi reporte del día");
+    expect(names({ eod: false })).not.toContain("Mi reporte del día");
+    expect(names(undefined, true)).not.toContain("Mi reporte del día");
+    expect(names({ eod: true }, true)).toContain("Mi reporte del día");
   });
 });

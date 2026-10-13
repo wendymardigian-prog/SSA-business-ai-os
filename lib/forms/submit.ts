@@ -44,7 +44,7 @@ import { COOKIE_KEYS } from "@/lib/attribution/keys";
 import { sniffUploadMime } from "@/lib/content/media";
 import type { LimitResult, LimitSpec } from "@/lib/antispam/rate-limit";
 import { FORM_LIMITS, HOUR_MS } from "./limits";
-import type { FormField, FormType } from "./fields";
+import type { FormField, FormType, PublicFormType } from "./fields";
 import { renderSuccess, type SuccessConfig } from "./success";
 import { toLabeledAnswers, validateSubmission, type NormalizedValue } from "./submission-schema";
 import { answerToText } from "./responses";
@@ -64,7 +64,8 @@ export interface LoadedForm {
   id: string;
   workspaceId: string;
   name: string;
-  type: FormType;
+  /** Un EOD nunca llega acá: no tiene envío público (`loadPublishedForm` lo descarta). */
+  type: PublicFormType;
   slug: string;
   versionId: string;
   versionNumber: number;

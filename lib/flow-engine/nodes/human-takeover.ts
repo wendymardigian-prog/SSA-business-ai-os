@@ -18,6 +18,7 @@ import { createNotification } from "@/lib/notifications/create";
  * bandeja: justo lo contrario de lo que el nodo promete.
  */
 export const humanTakeoverNode: NodeDefinition<unknown> = {
+  needsContact: true,
   type: "humanTakeover",
   label: "Derivar a una persona",
   aliases: [{ nodeType: "action", actionType: "humanTakeover" }],

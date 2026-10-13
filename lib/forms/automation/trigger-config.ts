@@ -6,6 +6,8 @@ import { z } from "zod";
 import { CONDITION_OPERATORS, type VisibilityConfig } from "@/lib/forms/visibility-types";
 import type { FormField } from "@/lib/forms/fields";
 import { SURVEY_CATEGORIES } from "@/lib/forms/survey-categories";
+import { EOD_TRIGGER } from "@/lib/eod/automation/trigger-name";
+import { describeEodTrigger } from "@/lib/eod/automation/trigger-config";
 
 const conditionSchema = z.object({
   id: z.string().optional(),
@@ -104,6 +106,8 @@ const SCORE_WORDS: Record<"lte" | "gte" | "eq", string> = { lte: "menor o igual 
 
 /** El trigger en palabras, para la lista de automatizaciones del formulario. */
 export function describeFormTrigger(type: string, rawConfig: unknown, formNames: Record<string, string> = {}): string {
+  // Un reporte de fin de día tiene su propio disparador (E16).
+  if (type === EOD_TRIGGER) return describeEodTrigger(rawConfig, formNames);
   const parsed = parseFormTriggerConfig(type, rawConfig);
   const label = type === "survey_answered" ? "Se responde una encuesta" : type === "contract_signed" ? "Se firma un contrato" : "Se envía un formulario";
   if (!parsed.ok) return `${label} (configuración inválida)`;

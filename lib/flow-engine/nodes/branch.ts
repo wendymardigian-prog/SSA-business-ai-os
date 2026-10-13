@@ -39,7 +39,11 @@ import { BRANCH_ELSE_HANDLE, BRANCH_ELSE_LABEL, pathsOf } from "../branch-paths"
  * existe, igual se puede decidir. Los demas (tags, secuencias, campos
  * personalizados...) no se cumplen sin contacto.
  */
-const CONTACT_FREE_PREFIXES = ["answer.", "form.", "submission.", "booking.", "sale.", "payment.", "variable:"];
+const CONTACT_FREE_PREFIXES = [
+  "answer.", "form.", "submission.", "booking.", "sale.", "payment.", "variable:",
+  // Reporte de fin de día (E16): todo sale de las variables del disparador.
+  "eod.", "member.", "metrics.", "channel.", "report.",
+];
 const CONTACT_FREE_FIELDS = ["platform", "agent_active"];
 
 function isContactFree(condition: BranchCondition): boolean {
@@ -84,7 +88,8 @@ export async function resolveBranchFields(
   // El contacto, solo si algun campo lo necesita.
   const needsContact = [...byField.values()].some((list) => list.some((c) => !isContactFree(c)));
   let contact: Record<string, unknown> | null = null;
-  if (needsContact) {
+  // Un flujo sin contacto (E15) no tiene a quién cargar: esos campos "no se cumplen".
+  if (needsContact && context.contactId) {
     try {
       contact = await loadContact(supabase, context.contactId);
     } catch (error) {
@@ -140,9 +145,10 @@ function checksForLog(evaluated: Array<{ pathId: string; checks: CheckResult[] }
 }
 
 export const branchNode: NodeDefinition<BranchNodeData> = {
+  needsContact: false,
   type: "branch",
   label: "Condiciones",
-  async execute({ supabase, node, data, context, sessionId }: NodeExecutionArgs<BranchNodeData>) {
+  async execute({ supabase, node, data, context, sessionId }: NodeExecutionArgs<BranchNodeData, FlowExecutionContext>) {
     try {
       const paths = pathsOf(data);
       const conditions = paths.flatMap((p) => (Array.isArray(p.conditions) ? p.conditions : []));

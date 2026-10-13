@@ -15,6 +15,7 @@ import type { Json } from "@/lib/types/database";
  * que un admin la vea en la pantalla de la secuencia y decida despues.
  */
 export const enrollSequenceNode: NodeDefinition<EnrollSequenceNodeData> = {
+  needsContact: true,
   type: "enrollSequence",
   label: "Inscribir en secuencia",
   aliases: [{ nodeType: "action", actionType: "enrollSequence" }],

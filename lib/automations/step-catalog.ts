@@ -9,15 +9,18 @@
  * poner o sacar un tag, y Condiciones.
  * Agenda: lo mismo, mas el email al anfitrion, cambiar el estado de la reunion
  * y cancelarla.
+ * Reporte de fin de dia (E15, un flujo SIN contacto): email (a quien envio el reporte,
+ * a personas del equipo o a una direccion fija), esperar, avisar en la campana y
+ * Condiciones. Nada que necesite un contacto.
  */
 
 import { z } from "zod";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/scheduling/booking-status";
 import { actionTypeOf, newStepId, type ActionStep, type NodeData } from "./step-tree";
 
-export type EditorScreen = "forms" | "agenda";
+export type EditorScreen = "forms" | "agenda" | "eod";
 
-export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking";
+export type ActionKindKey = "email" | "message" | "delay" | "tag_add" | "tag_remove" | "booking_status" | "cancel_booking" | "notify_team";
 
 export interface ActionKind {
   key: ActionKindKey;
@@ -42,7 +45,7 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Enviar un email",
     title: "Email",
     nodeType: "action",
-    screens: ["forms", "agenda"],
+    screens: ["forms", "agenda", "eod"],
     matches: (s) => isAction(s, "send_email"),
     blank: () => ({ actionType: "send_email", to: "contact", subject: "", body: "" }),
   },
@@ -60,7 +63,7 @@ export const ACTION_KINDS: ActionKind[] = [
     menuLabel: "Esperar un tiempo",
     title: "Esperar",
     nodeType: "delay",
-    screens: ["forms", "agenda"],
+    screens: ["forms", "agenda", "eod"],
     matches: (s) => s.nodeType === "delay",
     blank: () => ({ duration: 1, unit: "hours" }),
   },
@@ -100,7 +103,26 @@ export const ACTION_KINDS: ActionKind[] = [
     matches: (s) => isAction(s, "cancel_booking"),
     blank: () => ({ actionType: "cancel_booking", status: "cancelled_other" }),
   },
+  {
+    key: "notify_team",
+    menuLabel: "Avisar en la campana",
+    title: "Aviso en la campana",
+    nodeType: "action",
+    screens: ["eod"],
+    matches: (s) => isAction(s, "notify_team"),
+    blank: () => ({ actionType: "notify_team", to: "users", userIds: [], title: "", body: "" }),
+  },
 ];
+
+/**
+ * El primer paso nuevo de una pantalla: en un reporte de fin de día el email no puede ir
+ * "al contacto" (no hay), arranca yendo a quien envió el reporte.
+ */
+export function blankFor(kind: ActionKind, screen: EditorScreen): NodeData {
+  const data = kind.blank();
+  if (screen === "eod" && kind.key === "email") return { ...data, to: "member" };
+  return data;
+}
 
 export function actionKindsFor(screen: EditorScreen): ActionKind[] {
   return ACTION_KINDS.filter((k) => k.screens.includes(screen));
@@ -116,8 +138,8 @@ export function kindOfStep(step: Pick<ActionStep, "nodeType" | "data">, screen: 
 }
 
 /** Un paso nuevo de este tipo, con un id que no choca. */
-export function newActionStep(kind: ActionKind, taken: Iterable<string>, random?: () => number): ActionStep {
-  return { kind: "action", id: newStepId(taken, random), nodeType: kind.nodeType, data: kind.blank() };
+export function newActionStep(kind: ActionKind, taken: Iterable<string>, random?: () => number, screen?: EditorScreen): ActionStep {
+  return { kind: "action", id: newStepId(taken, random), nodeType: kind.nodeType, data: screen ? blankFor(kind, screen) : kind.blank() };
 }
 
 // ------------------------------------------------------------
@@ -131,12 +153,33 @@ const UNITS: Record<string, [string, string]> = {
   days: ["día", "días"],
 };
 
-export const EMAIL_RECIPIENT_LABELS: Record<string, string> = { contact: "al contacto", host: "al anfitrión", fixed: "a una dirección fija" };
+export const EMAIL_RECIPIENT_LABELS: Record<string, string> = {
+  contact: "al contacto",
+  host: "al anfitrión",
+  fixed: "a una dirección fija",
+  member: "a quien envió el reporte",
+  users: "a personas del equipo",
+};
 
-/** A quien se le puede mandar un email en cada pantalla. */
-export function emailRecipientsFor(screen: EditorScreen): Array<"contact" | "host" | "fixed"> {
-  return screen === "agenda" ? ["contact", "host", "fixed"] : ["contact", "fixed"];
+export type EmailRecipient = "contact" | "host" | "fixed" | "member" | "users";
+
+/** A quien se le puede mandar un email en cada pantalla. En un flujo sin contacto, nunca "al contacto". */
+export function emailRecipientsFor(screen: EditorScreen): EmailRecipient[] {
+  switch (screen) {
+    case "agenda":
+      return ["contact", "host", "fixed"];
+    case "forms":
+      return ["contact", "fixed"];
+    case "eod":
+      return ["member", "users", "fixed"];
+  }
 }
+
+export const NOTIFY_RECIPIENT_LABELS: Record<string, string> = {
+  users: "a personas elegidas",
+  reporter: "a quien envió el reporte",
+  both: "a quien envió el reporte y a personas elegidas",
+};
 
 /** Los nombres de los nodos que el editor no edita, para mostrarlos con algo mas que su clave. */
 const OTHER_LABELS: Record<string, string> = {
@@ -179,6 +222,8 @@ export function describeAction(step: ActionStep, screen: EditorScreen): string {
       return `Cambiar el estado de la reunión a ${bookingStatusLabel(String(d.status ?? ""))}`;
     case "cancel_booking":
       return "Cancelar la reunión";
+    case "notify_team":
+      return `Aviso en la campana ${NOTIFY_RECIPIENT_LABELS[String(d.to ?? "users")] ?? ""}`.trim();
     default: {
       const label = typeof d.label === "string" && d.label.trim() ? d.label.trim() : undefined;
       return label ?? OTHER_LABELS[actionTypeOf(step)] ?? actionTypeOf(step);
@@ -195,7 +240,12 @@ export function actionProblem(step: ActionStep, screen: EditorScreen): string | 
   const kind = kindOfStep(step, screen);
   const d = step.data;
   switch (kind?.key) {
+    case "notify_team":
+      if (!String(d.title ?? "").trim()) return "Falta el título del aviso.";
+      if ((d.to ?? "users") !== "reporter" && !(Array.isArray(d.userIds) && d.userIds.length > 0)) return "Elegí a quién avisar.";
+      return null;
     case "email":
+      if (d.to === "users" && !(Array.isArray(d.userIds) && d.userIds.length > 0)) return "Elegí a quién del equipo mandarle el email.";
       if (d.to === "fixed" && !EMAIL_RE.test(String(d.fixedEmail ?? ""))) return "Falta una dirección de email válida.";
       if (!String(d.subject ?? "").trim() && !String(d.body ?? "").trim()) return "El email está vacío: falta el asunto o el texto.";
       return null;
@@ -225,6 +275,7 @@ const emailData = (screen: EditorScreen) =>
       actionType: z.literal("send_email"),
       to: z.enum(emailRecipientsFor(screen) as [string, ...string[]]),
       fixedEmail: z.string().max(254).optional(),
+      userIds: z.array(z.string().uuid()).max(50).optional(),
       subject: z.string().max(300),
       body: z.string().max(20000),
       label,
@@ -232,7 +283,22 @@ const emailData = (screen: EditorScreen) =>
     .passthrough()
     .superRefine((value, ctx) => {
       if (value.to === "fixed" && !EMAIL_RE.test(value.fixedEmail ?? "")) ctx.addIssue({ code: "custom", message: "Falta una dirección de email válida.", path: ["fixedEmail"] });
+      if (value.to === "users" && (value.userIds ?? []).length === 0) ctx.addIssue({ code: "custom", message: "Elegí a quién del equipo mandarle el email.", path: ["userIds"] });
     });
+
+const notifyData = z
+  .object({
+    actionType: z.literal("notify_team"),
+    to: z.enum(["users", "reporter", "both"]),
+    userIds: z.array(z.string().uuid()).max(50).default([]),
+    title: z.string().trim().min(1, "Falta el título del aviso.").max(200),
+    body: z.string().max(1000).optional(),
+    label,
+  })
+  .passthrough()
+  .superRefine((value, ctx) => {
+    if (value.to !== "reporter" && value.userIds.length === 0) ctx.addIssue({ code: "custom", message: "Elegí a quién avisar.", path: ["userIds"] });
+  });
 
 const messageData = z
   .object({
@@ -289,6 +355,8 @@ export function validateActionData(step: ActionStep, screen: EditorScreen): stri
         return statusData;
       case "cancel_booking":
         return cancelData;
+      case "notify_team":
+        return notifyData;
     }
   })();
   const parsed = schema.safeParse(step.data);

@@ -67,3 +67,14 @@ describe("filas y contadores", () => {
     expect(duplicateName("Aplicación")).toBe("Copia de Aplicación");
   });
 });
+
+describe("filtro por tipo (EOD)", () => {
+  it("'Fin de día' filtra los EOD; 'all' muestra todo; un valor raro es 'all'", async () => {
+    const { matchesType, parseTypeFilter } = await import("./list");
+    expect(parseTypeFilter("eod")).toBe("eod");
+    expect(parseTypeFilter("otro")).toBe("all");
+    expect(matchesType({ type: "eod" }, "eod")).toBe(true);
+    expect(matchesType({ type: "custom" }, "eod")).toBe(false);
+    expect(matchesType({ type: "custom" }, "all")).toBe(true);
+  });
+});

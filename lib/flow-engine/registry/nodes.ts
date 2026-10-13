@@ -25,6 +25,7 @@ import { sendEmailNode } from "../nodes/send-email";
 import { sendAssetNode } from "../nodes/send-asset";
 import { cancelBookingNode, setBookingStatusNode } from "../nodes/booking-actions";
 import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from "../nodes/sales-actions";
+import { notifyTeamNode } from "../nodes/notify-team";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -59,3 +60,5 @@ registerNode(setBookingStatusNode);
 registerNode(markPaymentPaidNode);
 registerNode(reschedulePaymentNode);
 registerNode(setSaleStatusNode);
+// Reporte de fin de día (E15): sirve en flujos sin contacto y con contacto.
+registerNode(notifyTeamNode);

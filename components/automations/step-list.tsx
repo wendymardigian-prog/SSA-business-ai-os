@@ -46,7 +46,7 @@ function AddStep({ listRef, index, steps, variant }: { listRef: ListRef; index: 
       (kind): MenuItem => ({
         key: kind.key,
         label: kind.menuLabel,
-        onSelect: () => edit((t) => insertStep(t, listRef, index, newActionStep(kind, allIds(t)))),
+        onSelect: () => edit((t) => insertStep(t, listRef, index, newActionStep(kind, allIds(t), undefined, screen))),
       }),
     ),
     { key: "sep", separator: true },

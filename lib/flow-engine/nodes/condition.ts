@@ -13,6 +13,7 @@ import { getConditionOperator, matchConditionField } from "../registry/registry"
  * una consulta por condicion.
  */
 export const conditionNode: NodeDefinition<ConditionNodeData> = {
+  needsContact: true,
   type: "condition",
   label: "Condicion",
   async execute({ supabase, data, context }: NodeExecutionArgs<ConditionNodeData>) {

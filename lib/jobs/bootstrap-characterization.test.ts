@@ -39,6 +39,8 @@ describe("registro de jobs (caracterizacion previa a la etapa 4)", () => {
       "contract_email",
       "contract_pdf",
       "describe_media",
+      // Reporte de fin de día (E13): el recordatorio.
+      "eod_reminder_sweep",
       "fathom_sync",
       "meta_ads_sync",
       "metrics_sync",

@@ -223,6 +223,23 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Encuesta",
     tooltip: "El puntaje de la encuesta: promedio o NPS, distribución y evolución.",
   },
+  "/dashboard/formularios/[id]/reportes": {
+    title: "Reportes",
+    tooltip: "Los reportes de fin de día: una fila por persona y día, con los totales de cada métrica y quién falta hoy.",
+  },
+  "/dashboard/formularios/[id]/reportes/[reportId]": {
+    title: "Reporte",
+    tooltip: "Un reporte de fin de día: las preguntas generales, cada canal, la versión y si se corrigió.",
+  },
+  // ── Reporte de fin de día (lo completa cada persona) ──────────────────
+  "/dashboard/eod": {
+    title: "Mi reporte del día",
+    tooltip: "Los reportes de fin de día que te tocan. Dejalo abierto y usalo como contador: todo se guarda solo.",
+  },
+  "/dashboard/eod/[formId]": {
+    title: "Mi reporte del día",
+    tooltip: "Todo lo que cargás se guarda solo, en el servidor y en este navegador. Al final del día, enviá el reporte.",
+  },
   "/dashboard/formularios/[id]/automatizaciones/[flowId]": {
     title: "Automatización",
     tooltip: "Qué pasa cuando alguien responde este formulario: cuándo, bajo qué condición y qué se hace.",

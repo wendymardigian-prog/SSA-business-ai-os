@@ -136,3 +136,26 @@ describe("validateDefinition: usuario de red social (R5)", () => {
     expect(newField("social", "ig").label).toBe("Tu usuario de Instagram");
   });
 });
+
+describe("caracterización: los tres tipos de siempre no cambian con el EOD", () => {
+  const allTypes = [
+    newField("short_text", "a"),
+    newField("long_text", "b"),
+    newField("email", "c"),
+    newField("phone", "d"),
+    newField("number", "e"),
+    newField("single_select", "f"),
+    newField("multi_select", "g"),
+    newField("date", "h"),
+    newField("rating", "i"),
+    newField("nps", "j"),
+    newField("file", "k"),
+    newField("consent", "l"),
+    newField("hidden", "m"),
+    newField("social", "n"),
+  ];
+  it.each(["custom", "survey", "contract"] as const)("%s acepta los 14 tipos de campo, con tipo o sin tipo", (formType) => {
+    expect(validateDefinition({ fields: allTypes }, { formType }).ok).toBe(true);
+    expect(validateDefinition({ fields: allTypes }).ok).toBe(true);
+  });
+});

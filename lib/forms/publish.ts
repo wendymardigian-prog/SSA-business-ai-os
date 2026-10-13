@@ -27,7 +27,7 @@ export function checkPublishable(input: PublishInput): PublishCheck {
     reasons.push("El link del formulario no es válido (3 a 60 caracteres: minúsculas, números y guiones)");
   }
 
-  const result = validateDefinition(input.definition);
+  const result = validateDefinition(input.definition, { formType: input.type });
   if (!result.ok) {
     reasons.push(...result.errors);
     return { ok: false, reasons };

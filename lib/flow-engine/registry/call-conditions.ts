@@ -11,6 +11,7 @@
  */
 import { registerConditionField } from "./registry";
 import type { ConditionFieldArgs } from "./types";
+import { requireContactId } from "../types";
 
 interface LastCall {
   outcome: string | null;
@@ -23,7 +24,7 @@ async function lastAnalyzedCall(args: ConditionFieldArgs): Promise<LastCall | nu
     .from("calls")
     .select("outcome, lead_score, call_type")
     .eq("workspace_id", args.context.workspaceId)
-    .eq("contact_id", args.context.contactId)
+    .eq("contact_id", requireContactId(args.context))
     .eq("analysis_status", "analyzed")
     .is("archived_at", null)
     .order("recorded_at", { ascending: false })

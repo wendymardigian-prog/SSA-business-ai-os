@@ -20,10 +20,13 @@ import {
   PhoneCall,
   CircleDollarSign,
   ClipboardList,
+  ListChecks,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip } from "@/lib/nav/items";
+import { NAV_ITEMS, visibleNavItems, navSections, navItemTooltip, type NavFlag } from "@/lib/nav/items";
+
+export type NavFlags = Partial<Record<NavFlag, boolean>>;
 import { activeNavHref } from "@/lib/nav/active";
 import { cn } from "@/lib/utils";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
@@ -60,7 +63,7 @@ interface WorkspaceItem {
 // Integraciones, que es la que trae a Blocks de vuelta al mapa.
 const ICONS: Record<string, LucideIcon> = {
   LayoutGrid, GitBranch, MessageSquare, Users, Blocks, Bot, BookOpen, Settings,
-  Clapperboard, Grid3x3, CalendarDays, Library, PhoneCall, ClipboardList, CircleDollarSign,
+  Clapperboard, Grid3x3, CalendarDays, Library, PhoneCall, ClipboardList, CircleDollarSign, ListChecks,
 };
 
 export const navigation = NAV_ITEMS.map((item) => ({
@@ -71,6 +74,7 @@ export const navigation = NAV_ITEMS.map((item) => ({
   adminOnly: item.adminOnly,
   group: item.group,
   alsoActiveOn: item.alsoActiveOn,
+  requires: item.requires,
 }));
 
 export function Sidebar({
@@ -81,6 +85,7 @@ export function Sidebar({
   workspaces,
   unreadNotifications = 0,
   draftCounts,
+  navFlags,
 }: {
   workspace: Workspace;
   user: ProfileUser;
@@ -92,6 +97,8 @@ export function Sidebar({
   unreadNotifications?: number;
   /** Borradores esperando (Bloque 2c). Coincide con la vista por defecto de la cola: los mios. */
   draftCounts?: PendingDraftCounts;
+  /** Condiciones del menú calculadas en el servidor ("Mi reporte del día"). */
+  navFlags?: NavFlags;
 }) {
   const drafts = useDraftCounts(workspace.id, draftCounts, "sidebar-drafts");
   const collapsed = useHtmlClass("sidebar-collapsed");
@@ -154,7 +161,7 @@ export function Sidebar({
         pantalla baja scrollea en vez de cortarse.
       */}
       <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto p-3 collapsed:px-2">
-        <NavLinks role={role} permissionKeys={permissionKeys} drafts={drafts} collapsed={collapsed} />
+        <NavLinks role={role} permissionKeys={permissionKeys} navFlags={navFlags} drafts={drafts} collapsed={collapsed} />
       </nav>
 
       <div className="space-y-1 border-t border-sidebar-border p-3 collapsed:px-2">
@@ -182,6 +189,7 @@ export function Sidebar({
 export function NavLinks({
   role,
   permissionKeys = [],
+  navFlags,
   drafts,
   onNavigate,
   collapsed = false,
@@ -189,6 +197,8 @@ export function NavLinks({
   role: string;
   /** Las claves del rol resuelto (Etapa 4): filtran los items con `permissions`. */
   permissionKeys?: string[];
+  /** Condiciones calculadas en el servidor (`requires` en lib/nav/items.ts). */
+  navFlags?: NavFlags;
   drafts: PendingDraftCounts | undefined;
   /** El panel del telefono se cierra al elegir. */
   onNavigate?: () => void;
@@ -201,7 +211,7 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = visibleNavItems(navigation, { isAdmin: isAdminRole(role), permissionKeys });
+  const navItems = visibleNavItems(navigation, { isAdmin: isAdminRole(role), permissionKeys, flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);

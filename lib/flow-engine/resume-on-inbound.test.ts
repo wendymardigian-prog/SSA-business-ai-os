@@ -26,6 +26,7 @@ const executedMarkers: string[] = [];
 registerNode({
   type: "zzResumeMarker",
   label: "Marcador de prueba",
+  needsContact: true,
   execute: ({ node, context }) => {
     executedMarkers.push(`${node.id}:${context.variables?.message ?? ""}`);
   },

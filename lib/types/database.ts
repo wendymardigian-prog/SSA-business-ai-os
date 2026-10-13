@@ -95,7 +95,7 @@ export type FormRow = {
   id: string;
   workspace_id: string;
   name: string;
-  type: "custom" | "survey" | "contract";
+  type: "custom" | "survey" | "contract" | "eod";
   status: "draft" | "published" | "paused" | "archived";
   slug: string;
   draft_definition: Json;
@@ -105,6 +105,8 @@ export type FormRow = {
   contact_config: Json;
   survey_config: Json | null;
   contract_config: Json | null;
+  /** Solo un reporte de fin de día (00178): `lib/eod/config.ts`. */
+  eod_config: Json | null;
   tags_on_submit: string[];
   notify_enabled: boolean;
   notify_user_ids: string[];
@@ -112,6 +114,31 @@ export type FormRow = {
   archived_at: string | null;
   created_by: string | null;
   updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * Reporte de fin de dia (00180). Escribe solo el servidor. `pending_edit` NO se puede leer
+ * con el cliente de un usuario (privilegio por columna): nunca `select("*")` sobre esta tabla.
+ */
+export type EodReportRow = {
+  id: string;
+  workspace_id: string;
+  form_id: string;
+  form_version_id: string | null;
+  user_id: string;
+  report_date: string;
+  status: "draft" | "submitted";
+  answers: Json;
+  channels: Json;
+  metrics: Json;
+  pending_edit: Json | null;
+  rev: number;
+  saved_at: string | null;
+  submitted_at: string | null;
+  edited_at: string | null;
+  edit_count: number;
   created_at: string;
   updated_at: string;
 };
@@ -381,7 +408,9 @@ export type AuditEntityType =
   | "product_variant"
   | "assignment_rule"
   | "sale"
-  | "payment";
+  | "payment"
+  /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181). */
+  | "eod_report";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -505,6 +534,8 @@ export type AuditAction =
   /** Entity contact: lo escribe la funcion SQL del envio (actor sistema, "Formulario: <nombre>"). */
   | "contact.created"
   | "contact.linked"
+  /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
+  | "eod.edited"
   /** Entity contract_signature. */
   | "contract.email_resent"
   | "contract.pdf_regenerated"
@@ -673,7 +704,9 @@ export type TriggerType =
   | "payment_created"
   | "payment_status_changed"
   | "payment_before_due"
-  | "payment_after_due";
+  | "payment_after_due"
+  /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
+  | "eod_submitted";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1005,6 +1038,12 @@ export interface Database {
         Row: FormRow;
         Insert: Partial<FormRow> & { workspace_id: string; name: string; type: FormRow["type"]; slug: string };
         Update: Partial<Omit<FormRow, "id" | "workspace_id">>;
+        Relationships: [];
+      };
+      eod_reports: {
+        Row: EodReportRow;
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
         Relationships: [];
       };
       form_versions: {
@@ -1672,7 +1711,9 @@ export interface Database {
       flow_sessions: {
         Row: {
           id: string;
-          contact_id: string;
+          /** Null en un flujo sin contacto (00182): entonces `member_user_id` no es null. */
+          contact_id: string | null;
+          member_user_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1687,7 +1728,8 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          contact_id: string;
+          contact_id: string | null;
+          member_user_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -2273,7 +2315,9 @@ export interface Database {
           id: string;
           workspace_id: string;
           event_type: string;
-          contact_id: string;
+          /** Null solo en los eventos de una persona del equipo (`eod_submitted`, 00182). */
+          contact_id: string | null;
+          member_user_id: string | null;
           payload: Json;
           created_at: string;
           processed_at: string | null;
@@ -2283,7 +2327,8 @@ export interface Database {
           id?: string;
           workspace_id: string;
           event_type: string;
-          contact_id: string;
+          contact_id: string | null;
+          member_user_id?: string | null;
           payload?: Json;
           created_at?: string;
           processed_at?: string | null;
@@ -5050,6 +5095,35 @@ export interface Database {
       publish_form_version: {
         Args: { p_form_id: string; p_actor: string | null };
         Returns: { changed: boolean; version_id: string; version_number: number };
+      };
+      save_eod_draft: {
+        Args: {
+          p_workspace_id: string;
+          p_form_id: string;
+          p_user_id: string;
+          p_report_date: string;
+          p_rev: number;
+          p_answers: Json;
+          p_channels: Json;
+          p_report_mode: string;
+        };
+        Returns: Json;
+      };
+      submit_eod_report: {
+        Args: {
+          p_workspace_id: string;
+          p_form_id: string;
+          p_user_id: string;
+          p_report_date: string;
+          p_rev: number;
+          p_form_version_id: string;
+          p_answers: Json;
+          p_channels: Json;
+          p_metrics: Json;
+          p_report_mode: string;
+          p_audit_changes: Json | null;
+        };
+        Returns: Json;
       };
       form_metrics_daily: {
         Args: { p_form_id: string; p_from: string; p_to: string };

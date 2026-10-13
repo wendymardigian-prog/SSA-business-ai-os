@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { listNodes, resolveNodeType, listTriggers } from "./index";
+import { CONTACT_FREE_NODE_TYPES, MEMBER_TRIGGER_TYPES } from "../contact-free";
 
 /**
  * Guardia contra la desincronizacion entre la UI y el motor.
@@ -124,5 +125,29 @@ describe("las salidas del nodo Condition y las que busca el motor coinciden", ()
     expect(engine).toContain("HANDLE_ALIASES");
     expect(engine).toMatch(/yes:\s*"true"/);
     expect(engine).toMatch(/no:\s*"false"/);
+  });
+});
+
+describe("cada nodo declara si necesita un contacto (EOD, E15)", () => {
+  // Un flujo sin contacto (sobre una persona del equipo) saltea los pasos que lo
+  // necesitan. Un nodo nuevo que no lo declare no podría decidirse: se exige.
+  it("todos los nodos registrados declaran needsContact", () => {
+    const sinDeclarar = listNodes()
+      .filter((n) => typeof (n as { needsContact?: unknown }).needsContact !== "boolean")
+      .map((n) => n.type);
+    expect(sinDeclarar).toEqual([]);
+  });
+
+  it("los que sirven sin contacto son exactamente los de la lista del navegador", () => {
+    const libres = listNodes()
+      .filter((n) => !n.needsContact)
+      .map((n) => n.type)
+      .sort();
+    expect(libres).toEqual(["abSplit", "branch", "delay", "goToFlow", "httpRequest", "notify_team", "send_email"]);
+    expect([...CONTACT_FREE_NODE_TYPES].sort()).toEqual(libres);
+  });
+
+  it("los disparadores sin contacto son los de la lista del navegador", () => {
+    expect(listTriggers().filter((t) => t.subject === "member").map((t) => t.type)).toEqual([...MEMBER_TRIGGER_TYPES]);
   });
 });

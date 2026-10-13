@@ -1,3 +1,4 @@
+import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import type { GoToFlowNodeData } from "../types";
 
@@ -26,10 +27,11 @@ import type { GoToFlowNodeData } from "../types";
  * engine.ts y el registro.
  */
 export const goToFlowNode: NodeDefinition<GoToFlowNodeData> = {
+  needsContact: false,
   type: "goToFlow",
   label: "Ir a otro flow",
   aliases: [{ nodeType: "action", actionType: "goToFlow" }],
-  async execute({ supabase, data, context, sessionId, runtime }: NodeExecutionArgs<GoToFlowNodeData>) {
+  async execute({ supabase, data, context, sessionId, runtime }: NodeExecutionArgs<GoToFlowNodeData, FlowExecutionContext>) {
     if (!data.flowId) {
       console.error("[goToFlow] el nodo no tiene flow destino configurado");
       return;

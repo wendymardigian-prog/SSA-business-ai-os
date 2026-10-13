@@ -12,6 +12,7 @@ import { parseStoredContractConfig } from "@/lib/forms/contract/config";
 import { defaultDesign, type FormDesign } from "@/lib/forms/defaults";
 import type { FormDefinition, FormStatus, FormType } from "@/lib/forms/fields";
 import { DEFAULT_SUCCESS, validateSuccess } from "@/lib/forms/success";
+import { parseStoredEodConfig } from "@/lib/eod/config";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +39,14 @@ export default async function FormularioEditorPage({ params }: { params: Promise
   ]);
 
   const service = await createServiceClient();
-  const [{ data: customRows }, { data: tagRows }, flows] = await Promise.all([
+  const isEod = form.type === "eod";
+  const [{ data: customRows }, { data: tagRows }, flows, { data: roleRows }] = await Promise.all([
     supabase.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     supabase.from("tags").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true }),
     flowsForForm(supabase, id, { [id]: form.name }),
+    isEod
+      ? service.from("workspace_roles").select("id, name").eq("workspace_id", workspace.id).order("name", { ascending: true })
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
   ]);
 
   const names = new Map(members.map((m) => [m.userId, m.name]));
@@ -77,6 +82,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     notifyUserIds: form.notify_user_ids ?? [],
     surveyConfig: form.type === "survey" ? parseStoredSurveyConfig(form.survey_config) : null,
     contractConfig: form.type === "contract" ? parseStoredContractConfig(form.contract_config, form.name) : null,
+    eodConfig: isEod ? parseStoredEodConfig(form.eod_config) : null,
   };
 
   const extras: EditorExtras = {
@@ -85,6 +91,7 @@ export default async function FormularioEditorPage({ params }: { params: Promise
     members: members.map((m) => ({ userId: m.userId, name: m.name })),
     flows,
     canFlows: ctx.can("flows.edit"),
+    roles: roleRows ?? [],
   };
 
   return (

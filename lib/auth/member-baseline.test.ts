@@ -308,6 +308,9 @@ describe("caracterizacion: el menu (F68)", () => {
       "Formularios",
       // Llamadas (decision 152): el Member de sistema tiene calls.view.
       "Llamadas",
+      // Reporte de fin de día (E10): no pide permiso, pide estar en la audiencia de un
+      // EOD publicado (condición del servidor, `requires: "eod"`).
+      "Mi reporte del día",
       // Banca v2 (F3): la misma pantalla que la pestaña de Ajustes, visible
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",

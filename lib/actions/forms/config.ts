@@ -9,7 +9,8 @@ import { validateSurveyConfig } from "@/lib/forms/survey";
 import { parseStoredContactConfig } from "@/lib/forms/contact-config";
 import { validateContractConfig } from "@/lib/forms/contract/config";
 import { signFormLink } from "@/lib/forms/signed-link";
-import type { FormDefinition, FormField } from "@/lib/forms/fields";
+import { isPublicFormType, type FormDefinition, type FormField } from "@/lib/forms/fields";
+import { mergeEodConfig, parseStoredEodConfig } from "@/lib/eod/config";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -31,7 +32,7 @@ async function loadForm(formId: string, workspaceId: string) {
   const service = await createServiceClient();
   const { data } = await service
     .from("forms")
-    .select("id, name, type, status, slug, draft_definition, survey_config, contract_config, contact_config")
+    .select("id, name, type, status, slug, draft_definition, survey_config, contract_config, contact_config, eod_config")
     .eq("id", formId)
     .eq("workspace_id", workspaceId)
     .maybeSingle();
@@ -112,6 +113,61 @@ export async function saveContractConfig(input: { formId: string; config: unknow
 }
 
 /**
+ * La configuración de un reporte de fin de día (E5). La variante sale SIEMPRE de la
+ * guardada: pedir otra se rechaza. Las personas y los roles tienen que ser del workspace.
+ */
+export async function saveEodConfig(input: { formId: string; config: unknown }): Promise<ConfigActionResult> {
+  const ctx = await getPermissionAction("forms.manage");
+  if (!ctx) return { ok: false, error: NO_PERMISSION };
+  const loaded = await loadForm(input.formId, ctx.workspace.id);
+  if (!loaded) return { ok: false, error: "No encontré ese formulario" };
+  const { service, form } = loaded;
+  if (form.type !== "eod") return { ok: false, error: "Este formulario no es un reporte de fin de día" };
+  if (form.status === "archived") return { ok: false, error: "El formulario está archivado: restauralo para editarlo." };
+  const stored = parseStoredEodConfig(form.eod_config);
+  if (!stored) return { ok: false, error: "La configuración guardada no es válida" };
+
+  const checked = mergeEodConfig(stored, input.config);
+  if (!checked.ok) return { ok: false, error: checked.errors[0] ?? "La configuración no es válida" };
+  const config = checked.config;
+
+  const [{ data: members }, { data: roles }] = await Promise.all([
+    service.from("workspace_members").select("user_id").eq("workspace_id", ctx.workspace.id),
+    service.from("workspace_roles").select("id").eq("workspace_id", ctx.workspace.id),
+  ]);
+  const memberIds = new Set((members ?? []).map((m) => m.user_id));
+  const roleIds = new Set((roles ?? []).map((r) => r.id));
+  if ([...config.audience.userIds, ...config.notify.userIds].some((id) => !memberIds.has(id))) {
+    return { ok: false, error: "Alguna de las personas elegidas ya no es del equipo: revisá la lista." };
+  }
+  if (config.audience.roleIds.some((id) => !roleIds.has(id))) {
+    return { ok: false, error: "Alguno de los roles elegidos ya no existe: revisá la lista." };
+  }
+
+  const { error } = await service
+    .from("forms")
+    .update({ eod_config: config as unknown as Json, updated_by: ctx.user.id })
+    .eq("id", form.id)
+    .eq("workspace_id", ctx.workspace.id);
+  if (error) {
+    console.error("[forms] saveEodConfig fallo, code=", error.code);
+    return { ok: false, error: "No pudimos guardar. Probá de nuevo." };
+  }
+  await logAudit({
+    supabase: service,
+    workspaceId: ctx.workspace.id,
+    entityType: "form",
+    entityId: form.id,
+    action: "form.updated",
+    changes: { eod_config: { old: form.eod_config as Json, new: config as unknown as Json } },
+    performedBy: ctx.user.id,
+  });
+  revalidatePath(`/dashboard/formularios/${form.id}`);
+  revalidatePath("/dashboard/eod");
+  return { ok: true };
+}
+
+/**
  * Arma el link firmado de un formulario para UN contacto (`/f/<slug>?c=<token>`): el
  * que se manda por mensaje o email para que responda sin que el sistema tenga que
  * adivinar quién es. Solo para formularios PUBLICADOS; vence a los 60 días.
@@ -123,6 +179,7 @@ export async function createSignedFormLink(input: { formId: string; contactId: s
   const loaded = await loadForm(input.formId, ctx.workspace.id);
   if (!loaded) return { ok: false, error: "No encontré ese formulario" };
   const { service, form } = loaded;
+  if (!isPublicFormType(form.type)) return { ok: false, error: "Un reporte de fin de día no tiene link público" };
   if (form.status !== "published") return { ok: false, error: "Publicá el formulario antes de armar links para un contacto" };
   if (parseStoredContactConfig(form.contact_config).mode === "none") {
     return { ok: false, error: "Este formulario no vincula las respuestas con contactos: no hay link firmado por contacto" };

@@ -616,7 +616,9 @@ async function processJob(
         sessionId: string;
         flowId: string;
         channelId: string;
-        contactId: string;
+        /** Null en un flujo sin contacto (E15): entonces viaja `memberUserId`. */
+        contactId: string | null;
+        memberUserId?: string | null;
         conversationId: string;
         workspaceId: string;
         nodeId: string;
@@ -687,6 +689,8 @@ async function processJob(
           flowId: session.flow_id,
           channelId: payload.channelId,
           contactId: payload.contactId,
+          // Un flujo sin contacto (E15): la persona del equipo, de la sesión o del job.
+          memberUserId: session.member_user_id ?? payload.memberUserId ?? null,
           conversationId: payload.conversationId,
           workspaceId: payload.workspaceId,
           lateConversationId: payload.lateConversationId || undefined,

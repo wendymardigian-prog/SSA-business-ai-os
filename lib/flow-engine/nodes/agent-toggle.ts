@@ -22,6 +22,7 @@ export interface PauseAgentNodeData {
 const MAX_PAUSE_MINUTES = 60 * 24 * 30;
 
 export const pauseAgentNode: NodeDefinition<PauseAgentNodeData> = {
+  needsContact: true,
   type: "pauseAgent",
   label: "Pausar agente de IA",
   aliases: [{ nodeType: "action", actionType: "pauseAgent" }],
@@ -55,6 +56,7 @@ export const pauseAgentNode: NodeDefinition<PauseAgentNodeData> = {
 };
 
 export const resumeAgentNode: NodeDefinition<unknown> = {
+  needsContact: true,
   type: "resumeAgent",
   label: "Reanudar agente de IA",
   aliases: [{ nodeType: "action", actionType: "resumeAgent" }],

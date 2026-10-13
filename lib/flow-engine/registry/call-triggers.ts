@@ -35,7 +35,7 @@ for (const type of CALL_TRIGGER_TYPES) {
       const callId = String(payload.call_id ?? args.event.id);
       // call_analyzed: una vez por analisis (uno regenerado vuelve a disparar).
       // call_linked: una vez por contacto vinculado.
-      const discriminator = type === "call_analyzed" ? String(payload.analysis_run_id ?? args.event.id) : args.event.contact_id;
+      const discriminator = type === "call_analyzed" ? String(payload.analysis_run_id ?? args.event.id) : String(args.event.contact_id ?? "");
       return callDedupeKey(type, callId, discriminator);
     },
 

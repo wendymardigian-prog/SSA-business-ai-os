@@ -174,7 +174,15 @@ export interface FlowExecutionContext {
    * se saltean con motivo; `send_email` no lo necesita.
    */
   channelId: string;
-  contactId: string;
+  /**
+   * El contacto del flujo. `null` en un flujo SIN contacto ("sobre una persona del
+   * equipo", E15): un reporte de fin de día es de alguien del equipo, no de un lead.
+   * Los nodos que necesitan contacto (`needsContact`) nunca corren sin uno: el motor
+   * los saltea y lo anota.
+   */
+  contactId: string | null;
+  /** La persona del equipo de un flujo sin contacto (quien envió el reporte). */
+  memberUserId?: string | null;
   conversationId: string;
   workspaceId: string;
   /** The Zernio API conversation ID (from conversations.late_conversation_id) */
@@ -189,6 +197,19 @@ export interface FlowExecutionContext {
    */
   variables?: Record<string, unknown>;
   platform?: Platform;
+}
+
+/** El contexto de un flujo CON contacto: lo que reciben los nodos que lo necesitan. */
+export type ContactFlowContext = FlowExecutionContext & { contactId: string };
+
+/**
+ * El contacto de un flujo, para lo que solo tiene sentido con uno (las secuencias, las
+ * agendas o las ventas DEL contacto). En un flujo sin contacto lanza: una condición sobre
+ * eso "no se cumple", nunca rompe el flujo (el nodo Condiciones atrapa el error).
+ */
+export function requireContactId(context: Pick<FlowExecutionContext, "contactId">): string {
+  if (!context.contactId) throw new Error("Este flujo no tiene contacto");
+  return context.contactId;
 }
 
 /**

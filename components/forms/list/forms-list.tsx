@@ -10,7 +10,8 @@ import { ContentDialog } from "@/components/content/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { createForm, duplicateForm, setFormStatus } from "@/lib/actions/forms/forms";
 import { FORM_STATUS_LABELS, FORM_TYPE_LABELS, FORM_TYPES, type FormStatus, type FormType } from "@/lib/forms/fields";
-import { LIST_FILTERS, countByStatus, parseListFilter, type FormListRow, type ListFilter } from "@/lib/forms/list";
+import { LIST_FILTERS, countByStatus, matchesType, parseListFilter, parseTypeFilter, type FormListRow, type ListFilter, type TypeFilter } from "@/lib/forms/list";
+import type { EodVariant } from "@/lib/eod/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLE: Record<FormStatus, string> = {
@@ -24,6 +25,7 @@ const TYPE_HINT: Record<FormType, string> = {
   custom: "Para captar leads: aplicaciones, contacto, registros.",
   survey: "Para medir satisfacción con un NPS o estrellas.",
   contract: "Para que alguien lea, acepte y firme un contrato.",
+  eod: "Para que cada persona del equipo cuente qué hizo en el día.",
 };
 
 function formatDate(iso: string | null): string {
@@ -47,12 +49,14 @@ export function FormsList({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [filter, setFilter] = useState<ListFilter>(parseListFilter(initialFilter));
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [creating, setCreating] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState<FormListRow | null>(null);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
-  const counts = useMemo(() => countByStatus(rows), [rows]);
-  const visible = rows.filter((r) => r.status === filter);
+  const ofType = useMemo(() => rows.filter((r) => matchesType(r, typeFilter)), [rows, typeFilter]);
+  const counts = useMemo(() => countByStatus(ofType), [ofType]);
+  const visible = ofType.filter((r) => r.status === filter);
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     setMessage(null);
@@ -109,7 +113,8 @@ export function FormsList({
           </div>
         )}
 
-        <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por estado">
           {LIST_FILTERS.map((f) => (
             <button
               key={f.value}
@@ -124,6 +129,23 @@ export function FormsList({
               {f.label} · {counts[f.value]}
             </button>
           ))}
+        </div>
+          <label htmlFor="forms-type-filter" className="sr-only">
+            Filtrar por tipo
+          </label>
+          <select
+            id="forms-type-filter"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(parseTypeFilter(e.target.value))}
+            className="ml-auto h-8 rounded-lg border border-input bg-background px-2 text-xs"
+          >
+            <option value="all">Todos los tipos</option>
+            {FORM_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {FORM_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
         </div>
 
         {rows.length === 0 ? (
@@ -154,20 +176,28 @@ export function FormsList({
                   </div>
                 </div>
 
-                <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
-                  <div>
-                    <span className="font-medium text-foreground">{row.submissions}</span> {row.submissions === 1 ? "envío" : "envíos"}
-                  </div>
-                  <div>Último: {formatDate(row.lastSubmissionAt)}</div>
-                </div>
-                <div className="shrink-0 text-right text-xs text-muted-foreground sm:hidden">{row.submissions} env.</div>
+                {row.type === "eod" ? (
+                  <button type="button" onClick={() => router.push(`/dashboard/formularios/${row.id}/reportes`)} className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-accent">
+                    Reportes
+                  </button>
+                ) : (
+                  <>
+                    <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
+                      <div>
+                        <span className="font-medium text-foreground">{row.submissions}</span> {row.submissions === 1 ? "envío" : "envíos"}
+                      </div>
+                      <div>Último: {formatDate(row.lastSubmissionAt)}</div>
+                    </div>
+                    <div className="shrink-0 text-right text-xs text-muted-foreground sm:hidden">{row.submissions} env.</div>
+                  </>
+                )}
 
                 <Popover label={`Acciones de ${row.name}`} trigger={<MoreHorizontal className="h-4 w-4" aria-hidden />} panelClassName="w-52 p-1" triggerClassName="rounded-lg p-1.5 text-muted-foreground hover:bg-accent" closeOnSelect>
                   <div className="flex flex-col text-sm">
                     <MenuItem icon={<ExternalLink className="h-4 w-4" />} onClick={() => router.push(`/dashboard/formularios/${row.id}`)}>
                       Abrir
                     </MenuItem>
-                    {row.status === "published" && (
+                    {row.status === "published" && row.type !== "eod" && (
                       <MenuItem icon={<Link2 className="h-4 w-4" />} onClick={() => copyLink(row)}>
                         Copiar link
                       </MenuItem>
@@ -242,17 +272,23 @@ function MenuItem({ icon, onClick, children }: { icon: React.ReactNode; onClick:
   );
 }
 
+/** En el diálogo de crear, el EOD se presenta con su nombre completo. */
+const CREATE_LABEL: Record<FormType, string> = { ...FORM_TYPE_LABELS, eod: "Reporte de fin de día" };
+
 function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<FormType>("custom");
+  const [variant, setVariant] = useState<EodVariant>("setter");
+  const [roleLabel, setRoleLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
+  const missingRole = type === "eod" && variant === "general" && roleLabel.trim() === "";
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     startSaving(async () => {
-      const result = await createForm({ name, type });
+      const result = await createForm({ name, type, ...(type === "eod" ? { eod: { variant, roleLabel } } : {}) });
       if (result.ok) onCreated(result.id);
       else setError(result.error);
     });
@@ -268,7 +304,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent">
             Cancelar
           </button>
-          <button type="submit" form="create-form" disabled={saving || name.trim() === ""} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          <button type="submit" form="create-form" disabled={saving || name.trim() === "" || missingRole} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />} Crear
           </button>
         </div>
@@ -295,7 +331,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
               <label key={t} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", type === t ? "border-primary bg-primary/5" : "border-border")}>
                 <input type="radio" name="form-type" value={t} checked={type === t} onChange={() => setType(t)} className="mt-0.5" />
                 <span>
-                  <span className="font-medium">{FORM_TYPE_LABELS[t]}</span>
+                  <span className="font-medium">{CREATE_LABEL[t]}</span>
                   <span className="block text-xs text-muted-foreground">{TYPE_HINT[t]}</span>
                 </span>
               </label>
@@ -303,6 +339,43 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">El tipo no se puede cambiar después.</p>
         </fieldset>
+        {type === "eod" && (
+          <fieldset>
+            <legend className="block text-xs font-semibold">¿Para qué rol?</legend>
+            <div className="mt-1 space-y-2">
+              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "setter" ? "border-primary bg-primary/5" : "border-border")}>
+                <input type="radio" name="eod-variant" checked={variant === "setter"} onChange={() => setVariant("setter")} className="mt-0.5" />
+                <span>
+                  <span className="font-medium">Setters (con canales)</span>
+                  <span className="block text-xs text-muted-foreground">Nace con la plantilla: horas, rendimiento y seis preguntas por canal en Instagram, WhatsApp y LinkedIn.</span>
+                </span>
+              </label>
+              <label className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm", variant === "general" ? "border-primary bg-primary/5" : "border-border")}>
+                <input type="radio" name="eod-variant" checked={variant === "general"} onChange={() => setVariant("general")} className="mt-0.5" />
+                <span>
+                  <span className="font-medium">Otro rol</span>
+                  <span className="block text-xs text-muted-foreground">Solo preguntas propias, sin canales.</span>
+                </span>
+              </label>
+            </div>
+            {variant === "general" && (
+              <div className="mt-3">
+                <label htmlFor="eod-role-label" className="block text-xs font-semibold">
+                  Nombre del rol
+                </label>
+                <input
+                  id="eod-role-label"
+                  value={roleLabel}
+                  onChange={(e) => setRoleLabel(e.target.value)}
+                  maxLength={40}
+                  placeholder="Closer, Soporte…"
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">Esto tampoco se puede cambiar después.</p>
+          </fieldset>
+        )}
         {error && <Notice tone="error">{error}</Notice>}
       </form>
     </ContentDialog>

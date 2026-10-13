@@ -9,6 +9,7 @@
  */
 import { SOCIAL_LABELS, type SocialPlatform } from "@/lib/contacts/social";
 import type { VisibilityConfig } from "./visibility-types";
+import type { EodChannel, EodChannelSelector } from "@/lib/eod/types";
 
 export const FORM_FIELD_TYPES = [
   "short_text",
@@ -45,14 +46,33 @@ export const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
   social: "Usuario de red social",
 };
 
-export const FORM_TYPES = ["custom", "survey", "contract"] as const;
+export const FORM_TYPES = ["custom", "survey", "contract", "eod"] as const;
 export type FormType = (typeof FORM_TYPES)[number];
 
 export const FORM_TYPE_LABELS: Record<FormType, string> = {
   custom: "Personalizado",
   survey: "Encuesta",
   contract: "Contrato",
+  eod: "Fin de día",
 };
+
+/**
+ * Los tipos con página pública, envío público y disparador de formulario. Un EOD no
+ * tiene ninguna de las tres cosas: se completa con la sesión iniciada.
+ */
+export type PublicFormType = Exclude<FormType, "eod">;
+
+export function isPublicFormType(type: string): type is PublicFormType {
+  return type === "custom" || type === "survey" || type === "contract";
+}
+
+/** Los tipos de pregunta de un reporte de fin de día: los demás no aplican (no hay contacto ni página pública). */
+export const EOD_FIELD_TYPES = ["short_text", "long_text", "number", "single_select", "multi_select"] as const satisfies readonly FormFieldType[];
+
+/** Qué tipos de campo se pueden usar en un formulario de este tipo. */
+export function allowedFieldTypes(type: FormType): readonly FormFieldType[] {
+  return type === "eod" ? EOD_FIELD_TYPES : FORM_FIELD_TYPES;
+}
 
 export const FORM_STATUSES = ["draft", "published", "paused", "archived"] as const;
 export type FormStatus = (typeof FORM_STATUSES)[number];
@@ -123,6 +143,10 @@ export interface FormField {
   prefill?: PrefillConfig;
   /** Solo en `social`: de qué red es el usuario que se pide. */
   social?: { platform: SocialPlatform };
+  /** Solo en `number` de un EOD: de a cuánto suman − y + (entero ≥ 1, por defecto 1). */
+  step?: number;
+  /** Solo en `number` de un EOD: qué mide la pregunta (`lib/eod/metrics.ts`). Suma entre canales. */
+  metricKey?: string;
 }
 
 /** La copia de trabajo del editor. */
@@ -130,6 +154,10 @@ export interface FormDefinition {
   fields: FormField[];
   /** Solo contratos: el texto que se congela al publicar. */
   contractText?: string;
+  /** Solo EOD de setters: la pregunta "¿Qué canales trabajaste hoy?". */
+  channelSelector?: EodChannelSelector;
+  /** Solo EOD de setters: los canales con sus preguntas. Se congelan al publicar, igual que `fields`. */
+  channels?: EodChannel[];
 }
 
 /** Tipos que se pueden prellenar desde la URL. */

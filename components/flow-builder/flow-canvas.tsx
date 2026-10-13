@@ -41,6 +41,7 @@ import { AiResponseNode } from "./nodes/AiResponseNode";
 import { NodeConfigSidebar } from "./panels/NodeConfigSidebar";
 import { VersionHistoryPanel } from "./panels/VersionHistoryPanel";
 import { TestPanel } from "./panels/TestPanel";
+import { isMemberTriggerType } from "@/lib/flow-engine/contact-free";
 
 type Flow = Database["public"]["Tables"]["flows"]["Row"];
 
@@ -486,7 +487,7 @@ function FlowCanvasInner({ flow }: FlowCanvasProps) {
 
       {/* Canvas area */}
       <div className="flex flex-1 overflow-hidden">
-        <NodePalette />
+        <NodePalette memberFlow={nodes.some((n) => n.type === "trigger" && isMemberTriggerType((n.data as { triggerType?: unknown } | undefined)?.triggerType))} />
         <div ref={reactFlowWrapper} className="flex-1">
           <ReactFlow
             nodes={nodes}

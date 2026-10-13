@@ -8,7 +8,7 @@ import { sanitizeSearch } from "@/lib/url-params";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { validateContactConfig, type ContactConfig, type CustomFieldDef } from "@/lib/forms/contact-config";
 import { TRIGGER_FOR_FORM_TYPE } from "@/lib/forms/automation/triggers";
-import type { FormDefinition, FormField, FormType } from "@/lib/forms/fields";
+import { isPublicFormType, type FormDefinition, type FormField, type FormType } from "@/lib/forms/fields";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -184,10 +184,10 @@ export async function linkSubmissionToContact(input: { submissionId: string; con
     performedBy: ctx.user.id,
   });
 
-  if (input.fireAutomations === true && TRIGGER_FOR_FORM_TYPE[form.type as FormType]) {
+  if (input.fireAutomations === true && isPublicFormType(form.type)) {
     const { error: eventError } = await service.from("automation_events").insert({
       workspace_id: ctx.workspace.id,
-      event_type: TRIGGER_FOR_FORM_TYPE[form.type as FormType],
+      event_type: TRIGGER_FOR_FORM_TYPE[form.type],
       contact_id: input.contactId,
       // Solo escalares y sin booking_id: el cron trata como "reserva" cualquier payload con booking_id.
       payload: {

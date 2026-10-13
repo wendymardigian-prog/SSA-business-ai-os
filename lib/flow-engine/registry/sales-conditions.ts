@@ -20,6 +20,7 @@ import {
   hasActiveSale, hasOverduePayments, lastSaleStatus, latePaymentsCount, newestFirst, saleAttributionType, saleFromBooking, saleUtm, totalPurchased,
   type ConditionPayment, type ConditionSale,
 } from "@/lib/sales/automation/conditions";
+import { requireContactId } from "../types";
 
 const SALE_COLUMNS = "id, status, sale_date, created_at, product_snapshot, attribution, attribution_type, booking_id";
 
@@ -28,7 +29,7 @@ async function salesOf(args: ConditionFieldArgs): Promise<ConditionSale[]> {
     .from("sales")
     .select(SALE_COLUMNS)
     .eq("workspace_id", args.context.workspaceId)
-    .eq("contact_id", args.context.contactId)
+    .eq("contact_id", requireContactId(args.context))
     .limit(200);
   return (data ?? []) as unknown as ConditionSale[];
 }

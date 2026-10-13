@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Workflow } from "lucide-react";
 import { Notice, Section, inputClass } from "@/components/agents/fields";
 import { Switch } from "@/components/ui/switch";
-import { createFormFlow, createFormFlowFromTemplate, toggleFormFlow } from "@/lib/actions/forms/flows";
+import { createEodFlowFromTemplate, createFormFlow, createFormFlowFromTemplate, toggleFormFlow } from "@/lib/actions/forms/flows";
+import { EOD_FLOW_TEMPLATES, type EodTemplateKey } from "@/lib/eod/automation/templates";
 import { templateQuestions, templatesForType, type FormTemplateKey } from "@/lib/forms/automation/templates";
 import type { EditorExtras, EditorForm } from "./types";
 
@@ -28,6 +29,7 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const canEdit = canManage && extras.canFlows && form.status !== "archived";
+  const isEod = form.type === "eod";
   const templates = templatesForType(form.type);
   // Las mismas preguntas con las que se arman las condiciones: la version publicada, o el borrador si nunca se publico.
   const questions = templateQuestions((form.publishedSnapshot ?? form.draftDefinition).fields);
@@ -48,6 +50,17 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
     setBusyKey(key);
     start(async () => {
       const result = await createFormFlowFromTemplate({ formId: form.id, template: key, tagName: key === "add_tag" ? tagName : undefined, questionKey: key === "email_by_answer" ? questionKey : undefined });
+      setBusyKey(null);
+      if (result.ok) router.push(`/dashboard/formularios/${form.id}/automatizaciones/${result.flowId}`);
+      else setMessage({ tone: "error", text: result.error });
+    });
+  }
+
+  function fromEodTemplate(key: EodTemplateKey) {
+    setMessage(null);
+    setBusyKey(key);
+    start(async () => {
+      const result = await createEodFlowFromTemplate({ formId: form.id, template: key });
       setBusyKey(null);
       if (result.ok) router.push(`/dashboard/formularios/${form.id}/automatizaciones/${result.flowId}`);
       else setMessage({ tone: "error", text: result.error });
@@ -78,7 +91,14 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
         </div>
       )}
 
-      <Section title="Automatizaciones de este formulario" description="Lo que pasa solo cuando alguien responde. Solo corren si la respuesta tiene un contacto (con email o teléfono).">
+      <Section
+        title={isEod ? "Automatizaciones de este reporte" : "Automatizaciones de este formulario"}
+        description={
+          isEod
+            ? "Lo que pasa solo cuando alguien envía su reporte. Son sobre la persona del equipo, no sobre un contacto: mandan emails y avisos, nunca mensajes por chat."
+            : "Lo que pasa solo cuando alguien responde. Solo corren si la respuesta tiene un contacto (con email o teléfono)."
+        }
+      >
         {flows.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Todavía no hay automatizaciones. Creá una desde cero o empezá con una plantilla.</p>
         ) : (
@@ -113,7 +133,31 @@ export function AutomationsTab({ form, extras, canManage }: { form: EditorForm; 
         )}
       </Section>
 
-      {canEdit && (
+      {canEdit && isEod && (
+        <Section title="Plantillas de un clic" description="Nacen apagadas: las revisás y las encendés cuando quieras.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {EOD_FLOW_TEMPLATES.map((t) => (
+              <div key={t.key} className="flex flex-col justify-between rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">{t.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.describe}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fromEodTemplate(t.key)}
+                  disabled={pending}
+                  className="mt-3 inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-lg border border-border px-3 text-xs hover:bg-accent disabled:opacity-50"
+                >
+                  {busyKey === t.key && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+                  Usar esta plantilla
+                </button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {canEdit && !isEod && (
         <Section title="Plantillas de un clic" description="Nacen apagadas: las revisás y las encendés cuando quieras.">
           <div className="grid gap-3 sm:grid-cols-2">
             {templates.map((t) => (

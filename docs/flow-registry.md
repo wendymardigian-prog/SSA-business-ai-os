@@ -373,3 +373,42 @@ Declarados en `lib/flow-engine/registry/sales-triggers.ts`, `sales-conditions.ts
 - **Nodos de acción**: cobrar un pago, reprogramarlo y cambiar el estado de la venta, todos por `lib/sales/payments-core.ts` con actor de sistema (la auditoría lleva el nombre del flow). Están en `node-palette.tsx` y en el simulador.
 - Los eventos de venta **llevan solo escalares y nunca `booking_id`** (el cron trata como «reserva» cualquier payload con `booking_id` y se saltearía «no contactar»).
 - Los flows con triggers de venta que se republican desde el lienzo no duplican filas de trigger (`app/api/v1/flows/[flowId]/publish/route.ts`); para los otros tipos esa duplicación es anterior y se dejó como estaba.
+
+## Flujos sin contacto: `subject`, `needsContact` y `notify_team` (EOD, E15–E16)
+
+Un reporte de fin de día es de una persona del equipo, no de un lead. En vez de inventar un
+contacto, el registro declara sobre quién es cada flujo:
+
+- **`TriggerDefinition.subject`**: `"contact"` (por defecto, todos los de siempre) o
+  `"member"`. Hoy el único `member` es `eod_submitted` (`registry/eod-triggers.ts`), que
+  además declara `auditEntityFor` (el disparo queda en el historial del reporte).
+- **`NodeDefinition.needsContact`** (obligatorio). Los que sirven sin contacto reciben
+  `NodeExecutionArgs<Data, FlowExecutionContext>` (`contactId: string | null`); los demás
+  reciben `ContactFlowContext` (`contactId: string`) y el motor nunca los corre sin uno.
+  La lista que usa el navegador es `lib/flow-engine/contact-free.ts`, y
+  `consistency.test.ts` exige que coincida con el registro.
+- **`FlowExecutionContext.memberUserId`**: la persona del flujo sin contacto. Viaja por
+  "Esperar" (payload del job y `flow_sessions.member_user_id`).
+- **El cron** (`lib/flow-engine/automation-events.ts`) hace `switch (eventSubject(...))`: la
+  rama `contact` es la de siempre; la `member` solo mira disparadores `member` (nunca el
+  comodín `crm_event`) y arranca el flujo sin conversación ni canal.
+- **El motor**: un nodo con `needsContact` en un flujo sin contacto se saltea y se anota en
+  `analytics_events` como `node_skipped`. Es la red de seguridad: el editor de pasos
+  (pantalla `eod`) y la paleta del canvas no los ofrecen, y guardar o publicar uno se rechaza
+  (`member-flow.ts` / `member-flow-db.ts`).
+- **Campos de Condiciones**: `eod.`, `member.`, `metrics.`, `channel.` y `report.` se leen de
+  las variables (`registry/conditions.ts`) y son "sin contacto" en el nodo `branch`. Los
+  campos que solo tienen sentido con un contacto (secuencias, agendas, ventas del contacto)
+  usan `requireContactId`: sin contacto, "no se cumplen".
+
+### `notify_team` ("Avisar en la campana")
+
+`{ to: "users" | "reporter" | "both", userIds, title, body }`. Título y texto con variables.
+Solo llega a miembros del workspace. Con un reporte en las variables, abre el reporte; si no,
+el flujo. Sirve también en flujos con contacto.
+
+### `send_email` sin contacto
+
+Destinos nuevos: `member` (quien envió el reporte) y `users` (personas elegidas). Sin
+contacto no se lee el contacto ni se aplica "no contactar" (con contacto, igual que siempre:
+lo fija su test).

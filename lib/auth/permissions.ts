@@ -121,6 +121,9 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   // ── Formularios (personalizado, encuesta/NPS y contrato) ────────────────
   { key: "forms.view", module: "forms", label: "Ver formularios y respuestas", description: "La lista, el editor en solo lectura, las métricas y el panel de encuesta. De las respuestas, solo las de los contactos que puede ver." },
   { key: "forms.manage", module: "forms", label: "Crear y publicar formularios", description: "Crear, editar, duplicar, publicar, pausar y archivar; mapear a contacto; vincular respuestas a mano; marcar spam; reenviar la copia del contrato." },
+  // Reportes de fin de día (E10). Completar uno no necesita permiso: alcanza con estar en su
+  // audiencia. Cada persona ve siempre los suyos. La RLS lo lee en `can_view_eod_all` (00180).
+  { key: "eod.view_all", module: "forms", label: "Ver los reportes de fin de día de todo el equipo", description: "Los reportes ENVIADOS de todas las personas, sus totales y quién falta hoy. Los borradores ajenos no los ve nadie." },
 
   // ── Ventas y pagos (Etapa 5, Fase 1) ────────────────────────────────────
   { key: "sales.view", module: "sales", label: "Ver las ventas", description: "La lista, la ficha, los pagos y el historial de cada venta, según el alcance." },

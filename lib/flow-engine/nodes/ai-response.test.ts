@@ -24,9 +24,9 @@ vi.mock("../send", () => ({
 }));
 
 import { aiResponseNode } from "./ai-response";
-import type { FlowExecutionContext } from "../types";
+import type { ContactFlowContext } from "../types";
 
-const context: FlowExecutionContext = {
+const context: ContactFlowContext = {
   triggerId: "t-1",
   flowId: "flow-1",
   channelId: "ch-1",

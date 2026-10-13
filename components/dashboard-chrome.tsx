@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
-import { NavLinks } from "@/components/sidebar";
+import { NavLinks, type NavFlags } from "@/components/sidebar";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useDraftCounts, visibleDraftCount } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
@@ -31,6 +31,8 @@ export interface DashboardChrome {
   role: string;
   /** Claves del rol resuelto (Etapa 4): el menu filtra por permiso. */
   permissionKeys?: string[];
+  /** Condiciones del menú calculadas en el servidor ("Mi reporte del día"). */
+  navFlags?: NavFlags;
   unreadNotifications: number;
   draftCounts?: PendingDraftCounts;
   /**
@@ -133,7 +135,7 @@ export function MobileMenuButton({ chrome }: { chrome: DashboardChrome }) {
             </div>
             {/* flex flex-col: para que el bloque del fondo del menu (Integraciones, Ajustes) se empuje con mt-auto tambien aca. */}
             <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto p-3">
-              <NavLinks role={chrome.role} permissionKeys={chrome.permissionKeys} drafts={drafts} onNavigate={() => setOpen(false)} />
+              <NavLinks role={chrome.role} permissionKeys={chrome.permissionKeys} navFlags={chrome.navFlags} drafts={drafts} onNavigate={() => setOpen(false)} />
             </nav>
             <div className="border-t border-sidebar-border p-3">
               <ProfileMenu user={chrome.user} />

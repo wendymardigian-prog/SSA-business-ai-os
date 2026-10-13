@@ -14,6 +14,7 @@
  *    haría que el proveedor rechace y el email se pierda sin rastro.
  */
 
+import type { FlowExecutionContext } from "../types";
 import type { NodeDefinition, NodeExecutionArgs } from "../registry/types";
 import { interpolateVariables } from "../interpolate";
 import { sendTransactionalEmail } from "@/lib/email/send";
@@ -23,9 +24,15 @@ import { resolveBankVariables } from "@/lib/response-assets/bank-variables";
 import { BOOKING_TRIGGER_SCOPE } from "@/lib/scheduling/automation/context";
 
 export interface SendEmailNodeData {
-  /** A dónde va: el contacto, el anfitrión de la reunión o una dirección fija. */
-  to?: "contact" | "host" | "fixed";
+  /**
+   * A dónde va: el contacto, el anfitrión de la reunión o una dirección fija. En un flujo
+   * sin contacto (E15): `member` (la persona que envió el reporte) o `users` (personas
+   * del equipo elegidas); ahí no se ofrece "al contacto".
+   */
+  to?: "contact" | "host" | "fixed" | "member" | "users";
   fixedEmail?: string;
+  /** Solo `to: "users"`: a quiénes del equipo. */
+  userIds?: string[];
   subject?: string;
   /** Cuerpo con variables (`{{booking.start_invitee}}`). Texto plano o HTML. */
   body?: string;
@@ -38,34 +45,43 @@ export function bodyToHtml(body: string): string {
   return escaped.split(/\n{2,}/).map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("\n");
 }
 
-async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendEmailNodeData>) {
+async function execute({ supabase, data, context, node }: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>) {
   const interpolated = {
     subject: interpolateVariables(data.subject ?? "", context.variables ?? {}).trim(),
     body: interpolateVariables(data.body ?? "", context.variables ?? {}).trim(),
   };
   // Un texto de la banca insertado en el email trae sus variables
   // ({{contact.display_name}}...): las que quedaron sin resolver se completan
-  // con los datos reales (lib/response-assets/bank-variables.ts).
+  // con los datos reales (lib/response-assets/bank-variables.ts). Sin contacto
+  // (un flujo sobre una persona del equipo) no hay con qué completarlas.
+  const contactId = context.contactId;
   const [subject, body] = (
-    await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId: context.contactId, variables: context.variables }, [interpolated.subject, interpolated.body])
+    contactId
+      ? await resolveBankVariables(supabase, { workspaceId: context.workspaceId, contactId, variables: context.variables }, [interpolated.subject, interpolated.body])
+      : [interpolated.subject, interpolated.body]
   ).map((text) => text.trim());
   if (!subject && !body) return;
 
-  const { data: contact } = await supabase
-    .from("contacts")
-    .select("email, do_not_contact")
-    .eq("id", context.contactId)
-    .maybeSingle();
+  let contactEmail: string | null = null;
+  if (contactId) {
+    const { data: contact } = await supabase
+      .from("contacts")
+      .select("email, do_not_contact")
+      .eq("id", contactId)
+      .maybeSingle();
 
-  // Un flujo de agenda manda igual: es una reunión que la persona pidió.
-  const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
-  if (contact?.do_not_contact && !fromBooking) {
-    console.warn(`[flow-engine] el contacto ${context.contactId} está marcado "no contactar": no se manda el email del nodo ${node.id}`);
-    return;
+    // Un flujo de agenda manda igual: es una reunión que la persona pidió.
+    const fromBooking = context.variables?.trigger_scope === BOOKING_TRIGGER_SCOPE;
+    if (contact?.do_not_contact && !fromBooking) {
+      console.warn(`[flow-engine] el contacto ${contactId} está marcado "no contactar": no se manda el email del nodo ${node.id}`);
+      return;
+    }
+    contactEmail = contact?.email ?? null;
   }
+  // Sin contacto no hay "no contactar" que mirar: el email va a gente del equipo o a una dirección fija.
 
-  const to = await resolveRecipient(supabase, data, context, contact?.email ?? null);
-  if (!to) {
+  const recipients = await resolveRecipients(supabase, data, context, contactEmail);
+  if (recipients.length === 0) {
     console.warn(`[flow-engine] el nodo ${node.id} no tiene a dónde mandar el email`);
     return;
   }
@@ -96,28 +112,64 @@ async function execute({ supabase, data, context, node }: NodeExecutionArgs<Send
     return;
   }
 
-  await sendTransactionalEmail({
-    workspaceId: context.workspaceId,
-    to,
-    subject: subject || "(sin asunto)",
-    html: bodyToHtml(body),
-    // `flow` lo distingue de los transaccionales del sistema y de la prueba
-    // que manda el editor (`flow_test`), que no cuenta como envío al contacto.
-    kind: "flow",
-    relatedEntityType: "flow",
-    relatedEntityId: context.flowId,
-    // Para que el email aparezca en el historial del contacto (00135), vaya a
-    // quien vaya: el contacto, el anfitrion o una direccion fija.
-    contactId: context.contactId,
-    deps: { supabase },
-  });
+  for (const to of recipients) {
+    await sendTransactionalEmail({
+      workspaceId: context.workspaceId,
+      to,
+      subject: subject || "(sin asunto)",
+      html: bodyToHtml(body),
+      // `flow` lo distingue de los transaccionales del sistema y de la prueba
+      // que manda el editor (`flow_test`), que no cuenta como envío al contacto.
+      kind: "flow",
+      relatedEntityType: "flow",
+      relatedEntityId: context.flowId,
+      // Para que el email aparezca en el historial del contacto (00135), vaya a
+      // quien vaya: el contacto, el anfitrion o una direccion fija.
+      contactId,
+      deps: { supabase },
+    });
+  }
+}
+
+/** Los emails de personas del equipo: solo de quienes son miembros del workspace. */
+async function teamEmails(supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"], workspaceId: string, userIds: string[]): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const { data, error } = await supabase.rpc("workspace_member_profiles", { p_workspace_id: workspaceId });
+  if (error || !data) {
+    console.error(`[flow-engine] no pude leer los emails del equipo (code=${error?.code ?? "?"})`);
+    return [];
+  }
+  const wanted = new Set(userIds);
+  return data.filter((m) => wanted.has(m.user_id) && m.email).map((m) => m.email as string);
+}
+
+/** A quiénes va: el contacto, el anfitrión, una dirección fija, o personas del equipo. */
+async function resolveRecipients(
+  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  data: SendEmailNodeData,
+  context: FlowExecutionContext,
+  contactEmail: string | null,
+): Promise<string[]> {
+  const mode = data.to ?? "contact";
+  switch (mode) {
+    case "member":
+      return context.memberUserId ? teamEmails(supabase, context.workspaceId, [context.memberUserId]) : [];
+    case "users":
+      return teamEmails(supabase, context.workspaceId, [...new Set(data.userIds ?? [])]);
+    case "contact":
+    case "host":
+    case "fixed": {
+      const one = await resolveRecipient(supabase, data, context, contactEmail);
+      return one ? [one] : [];
+    }
+  }
 }
 
 /** A dónde va el email: el contacto, el anfitrión de la reunión o una dirección fija. */
 async function resolveRecipient(
-  supabase: NodeExecutionArgs<SendEmailNodeData>["supabase"],
+  supabase: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>["supabase"],
   data: SendEmailNodeData,
-  context: NodeExecutionArgs<SendEmailNodeData>["context"],
+  context: NodeExecutionArgs<SendEmailNodeData, FlowExecutionContext>["context"],
   contactEmail: string | null,
 ): Promise<string | null> {
   const mode = data.to ?? "contact";
@@ -139,6 +191,7 @@ async function resolveRecipient(
 }
 
 export const sendEmailNode: NodeDefinition<SendEmailNodeData> = {
+  needsContact: false,
   type: "send_email",
   label: "Enviar email",
   aliases: [{ nodeType: "action", actionType: "send_email" }],

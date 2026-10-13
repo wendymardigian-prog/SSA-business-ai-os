@@ -12,7 +12,7 @@
  * Un solo evento por respuesta, según el tipo del formulario: así un mismo envío
  * no dispara dos veces.
  */
-import type { FormType } from "@/lib/forms/fields";
+import type { FormType, PublicFormType } from "@/lib/forms/fields";
 import { evaluateVisibility, type Answers, type AnswerValue } from "@/lib/forms/visibility";
 import { parseFormTriggerConfig } from "./trigger-config";
 
@@ -30,7 +30,7 @@ export function isFormTriggerType(value: unknown): value is FormTriggerType {
 }
 
 /** El evento (y el trigger) que le toca a cada tipo de formulario. */
-export const TRIGGER_FOR_FORM_TYPE: Record<FormType, FormTriggerType> = {
+export const TRIGGER_FOR_FORM_TYPE: Record<PublicFormType, FormTriggerType> = {
   custom: "form_submitted",
   survey: "survey_answered",
   contract: "contract_signed",

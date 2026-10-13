@@ -14,6 +14,9 @@ import { checkPublishable } from "@/lib/forms/publish";
 import { validateSuccess } from "@/lib/forms/success";
 import { typeChecks } from "@/lib/forms/type-checks";
 import { formCacheTag } from "@/lib/forms/site-load";
+import { defaultEodConfig, EOD_VARIANTS, MAX_ROLE_LABEL } from "@/lib/eod/config";
+import { EOD_SUCCESS } from "@/lib/eod/templates";
+import type { EodVariant } from "@/lib/eod/types";
 import type { Json } from "@/lib/types/database";
 
 /**
@@ -61,7 +64,12 @@ async function slugsLike(service: Awaited<ReturnType<typeof createServiceClient>
   return (data ?? []).map((r) => r.slug);
 }
 
-export async function createForm(input: { name: string; type: FormType }): Promise<FormActionResult<{ id: string }>> {
+export async function createForm(input: {
+  name: string;
+  type: FormType;
+  /** Solo un EOD: setters (con canales y la plantilla) u otro rol (general). No cambia después. */
+  eod?: { variant: EodVariant; roleLabel?: string };
+}): Promise<FormActionResult<{ id: string }>> {
   const ctx = await context();
   if (!ctx) return { ok: false, error: NO_PERMISSION };
 
@@ -69,8 +77,19 @@ export async function createForm(input: { name: string; type: FormType }): Promi
   if (name.length < 1 || name.length > 120) return { ok: false, error: "Poné un nombre de hasta 120 caracteres" };
   if (!FORM_TYPES.includes(input.type)) return { ok: false, error: "Elegí el tipo de formulario" };
 
+  const isEod = input.type === "eod";
+  let eodConfig: ReturnType<typeof defaultEodConfig> | null = null;
+  if (isEod) {
+    const variant = input.eod?.variant;
+    if (!variant || !EOD_VARIANTS.includes(variant)) return { ok: false, error: "Elegí para qué rol es el reporte" };
+    const roleLabel = (input.eod?.roleLabel ?? "").trim();
+    if (variant === "general" && !roleLabel) return { ok: false, error: "Escribí el nombre del rol" };
+    if (roleLabel.length > MAX_ROLE_LABEL) return { ok: false, error: `El nombre del rol puede tener hasta ${MAX_ROLE_LABEL} caracteres` };
+    eodConfig = { ...defaultEodConfig(variant, roleLabel), notify: { userIds: [ctx.user.id] } };
+  }
+
   const service = await createServiceClient();
-  const parts = newFormParts(input.type, name);
+  const parts = newFormParts(input.type, name, eodConfig?.variant);
   const base = slugFromName(name);
 
   // Dos personas pueden crear el mismo nombre a la vez: si el único salta, se prueba el siguiente.
@@ -87,9 +106,13 @@ export async function createForm(input: { name: string; type: FormType }): Promi
         design: parts.design as unknown as Json,
         survey_config: parts.surveyConfig as unknown as Json,
         contract_config: parts.contractConfig as unknown as Json,
-        // Los campos de email y teléfono se mapean solos al contacto (F15).
-        contact_config: { ...DEFAULT_CONTACT_CONFIG, map: suggestContactMap(parts.definition.fields) } as unknown as Json,
-        notify_user_ids: [ctx.user.id],
+        // Los campos de email y teléfono se mapean solos al contacto (F15). Un EOD no crea contactos.
+        contact_config: (isEod
+          ? { ...DEFAULT_CONTACT_CONFIG, mode: "none", map: [] }
+          : { ...DEFAULT_CONTACT_CONFIG, map: suggestContactMap(parts.definition.fields) }) as unknown as Json,
+        ...(isEod ? { eod_config: eodConfig as unknown as Json, success: EOD_SUCCESS as unknown as Json } : {}),
+        // Un EOD avisa por su propia configuración (`eod_config.notify`), no por la de los formularios.
+        notify_user_ids: isEod ? [] : [ctx.user.id],
         created_by: ctx.user.id,
         updated_by: ctx.user.id,
       })
@@ -103,7 +126,7 @@ export async function createForm(input: { name: string; type: FormType }): Promi
         entityType: "form",
         entityId: data.id,
         action: "form.created",
-        metadata: { type: input.type, slug },
+        metadata: { type: input.type, slug, ...(eodConfig ? { eod_variant: eodConfig.variant } : {}) },
         performedBy: ctx.user.id,
       });
       refresh();
@@ -150,6 +173,7 @@ export async function duplicateForm(formId: string): Promise<FormActionResult<{ 
         contact_config: form.contact_config,
         survey_config: form.survey_config,
         contract_config: form.contract_config,
+        eod_config: form.eod_config,
         tags_on_submit: form.tags_on_submit,
         notify_enabled: form.notify_enabled,
         notify_user_ids: [ctx.user.id],
@@ -266,10 +290,15 @@ export async function saveFormDraft(input: SaveDraftInput): Promise<FormActionRe
   } else if (form.type !== "contract") {
     delete definition.contractText;
   }
+  // Los canales son solo de un EOD de setters.
+  if (form.type !== "eod") {
+    delete definition.channels;
+    delete definition.channelSelector;
+  }
 
   const patch: Record<string, unknown> = { draft_definition: definition, updated_by: ctx.user.id };
 
-  if (input.contactConfig !== undefined) {
+  if (input.contactConfig !== undefined && form.type !== "eod") {
     const { data: defs } = await service.from("custom_field_definitions").select("id, slug, name, type").eq("workspace_id", ctx.workspace.id);
     const fields = (Array.isArray(definition.fields) ? definition.fields : []) as FormField[];
     patch.contact_config = pruneContactConfig(parseStoredContactConfig(input.contactConfig), fields, (defs ?? []) as CustomFieldDef[]) as unknown as Json;
@@ -363,7 +392,7 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
     type: form.type as FormType,
     slug: form.slug,
     definition: form.draft_definition,
-    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config, contactMode: parseStoredContactConfig(form.contact_config).mode }),
+    extraChecks: typeChecks(form.type as FormType, { surveyConfig: form.survey_config, contractConfig: form.contract_config, contactMode: parseStoredContactConfig(form.contact_config).mode, eodConfig: form.eod_config }),
   });
   if (!check.ok) return { ok: false, error: check.reasons[0], reasons: check.reasons };
 
@@ -375,6 +404,7 @@ export async function publishForm(formId: string): Promise<FormActionResult<{ ve
 
   invalidateSiteForm(form.slug);
   refresh(formId);
+  if (form.type === "eod") revalidatePath("/dashboard/eod");
   return { ok: true, versionNumber: data.version_number, changed: data.changed };
 }
 

@@ -8,6 +8,7 @@ import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import { conditionSources } from "@/lib/forms/builder";
 import { describeAccepted } from "@/components/forms/public/fields/file-field";
 import { VisibilityRuleBuilder } from "./visibility-rule-builder";
+import { EodNumberSettings } from "@/components/eod/editor/eod-number-settings";
 
 /**
  * El panel de un campo (F4): etiqueta, ayuda, obligatorio, opciones, rangos,
@@ -36,26 +37,33 @@ export function FieldEditor({
   onPatch,
   onRelabel,
   onSetKey,
+  mode = "form",
 }: {
   field: FormField;
   index: number;
   fields: FormField[];
   neverPublished: boolean;
   disabled: boolean;
-  /** "Se guarda en el contacto: Email" o "No se guarda en el contacto" (R4). */
-  contactLine: string;
-  onOpenContact: () => void;
+  /** "Se guarda en el contacto: Email" o "No se guarda en el contacto" (R4). Un EOD no lo muestra. */
+  contactLine?: string;
+  onOpenContact?: () => void;
   onPatch: (patch: Partial<FormField>) => void;
   onRelabel: (label: string) => void;
   onSetKey: (key: string) => string | undefined;
+  /**
+   * `eod`: un reporte de fin de día. Sin contacto, sin prellenado ni condiciones, y el
+   * número suma paso y métrica (`EodNumberSettings`).
+   */
+  mode?: "form" | "eod";
 }) {
+  const isEod = mode === "eod";
   const [keyError, setKeyError] = useState<string | undefined>();
   const [paramDraft, setParamDraft] = useState("");
   const [paramError, setParamError] = useState<string | undefined>();
   const isHidden = field.type === "hidden";
   const hasOptions = field.type === "single_select" || field.type === "multi_select";
   const textLike = field.type === "short_text" || field.type === "long_text" || field.type === "email" || field.type === "phone" || field.type === "number" || field.type === "social";
-  const prefillOk = supportsPrefill(field.type) && !isHidden;
+  const prefillOk = supportsPrefill(field.type) && !isHidden && !isEod;
   const prefill = field.prefill ?? { params: [field.key], behavior: "editable" as PrefillBehavior };
   const usedParams = new Set(fields.filter((f) => f.key !== field.key).flatMap((f) => (f.prefill?.params ?? [f.key]).map((p) => p.toLowerCase())));
 
@@ -74,12 +82,14 @@ export function FieldEditor({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">{FIELD_TYPE_LABELS[field.type]}</p>
-      <p className="text-xs text-muted-foreground">
-        {contactLine}{" "}
-        <button type="button" onClick={onOpenContact} className="underline hover:text-foreground">
-          Ver en Contacto
-        </button>
-      </p>
+      {!isEod && contactLine !== undefined && (
+        <p className="text-xs text-muted-foreground">
+          {contactLine}{" "}
+          <button type="button" onClick={onOpenContact} className="underline hover:text-foreground">
+            Ver en Contacto
+          </button>
+        </p>
+      )}
 
       <Field label="Etiqueta">
         {(id) => <input id={id} className={inputClass} value={field.label} disabled={disabled} maxLength={200} onChange={(e) => onRelabel(e.target.value)} />}
@@ -140,7 +150,9 @@ export function FieldEditor({
         </Field>
       )}
 
-      {field.type === "number" && (
+      {field.type === "number" && isEod && <EodNumberSettings field={field} disabled={disabled} onPatch={onPatch} />}
+
+      {field.type === "number" && !isEod && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Mínimo">
             {(id) => <input id={id} type="number" className={inputClass} disabled={disabled} value={field.min ?? ""} onChange={(e) => onPatch({ min: e.target.value === "" ? undefined : Number(e.target.value) })} />}
@@ -287,10 +299,12 @@ export function FieldEditor({
         </fieldset>
       )}
 
-      <fieldset className="space-y-2 rounded-lg border border-border p-3">
-        <legend className="px-1 text-xs font-semibold">Mostrar solo si…</legend>
-        <VisibilityRuleBuilder value={field.visibility} onChange={(visibility) => onPatch({ visibility })} sources={conditionSources(fields, index)} />
-      </fieldset>
+      {!isEod && (
+        <fieldset className="space-y-2 rounded-lg border border-border p-3">
+          <legend className="px-1 text-xs font-semibold">Mostrar solo si…</legend>
+          <VisibilityRuleBuilder value={field.visibility} onChange={(visibility) => onPatch({ visibility })} sources={conditionSources(fields, index)} />
+        </fieldset>
+      )}
 
       <details className="rounded-lg border border-border p-3">
         <summary className="cursor-pointer text-xs font-semibold">Avanzado</summary>
@@ -299,8 +313,8 @@ export function FieldEditor({
             label="Clave"
             hint={
               neverPublished
-                ? "Identifica este campo en las respuestas y en las automatizaciones ({{answer.clave}}). Podés cambiarla mientras el formulario no se publicó."
-                : "Identifica este campo en las respuestas y en las automatizaciones ({{answer.clave}}). Ya se publicó: no se puede cambiar."
+                ? `Identifica este campo en las respuestas y en las automatizaciones (${isEod ? "{{answer.clave}} o {{channel.canal.clave}}" : "{{answer.clave}}"}). Podés cambiarla mientras el formulario no se publicó.`
+                : `Identifica este campo en las respuestas y en las automatizaciones (${isEod ? "{{answer.clave}} o {{channel.canal.clave}}" : "{{answer.clave}}"}). Ya se publicó: no se puede cambiar.`
             }
           >
             {(id) => (

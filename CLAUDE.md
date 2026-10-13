@@ -277,7 +277,16 @@ trigger), `00156` (`find_contact_by_phone_or_email` y `submit_form_response` v2)
 `integration_configs.type` sin `captcha`; aborta si hubiera filas), `00174`
 (`get_public_form` deja pasar `social`), `00175` (`find_contact_for_form`, `linkedin_slug`
 e indices por red social), `00176` (`submit_form_response` v5: modo `none` y redes
-sociales) y `00177` (candado en `form_versions`). **La proxima disponible es la `00178`.**
+sociales) y `00177` (candado en `form_versions`).
+
+**Reporte de fin de dia (12/10/2026).** `00178` a `00185`, **aplicadas** y registradas
+(ver "Formularios (construido)" → "Reporte de fin de dia"): `00178` (tipo `eod` y
+`eod_config`), `00179` (`get_public_form` devuelve `unavailable` para un EOD), `00180`
+(`eod_reports`, `can_view_eod_all`, RLS y `pending_edit` sin lectura), `00181`
+(`save_eod_draft`, `submit_eod_report`), `00182` (flujos sin contacto: `contact_id`
+nullable en `automation_events` y `flow_sessions`, con CHECK y `member_user_id`), `00183`
+(trigger `eod_submitted`), `00184` (`submit_eod_report` v2 con el evento) y `00185` (cron
+del recordatorio). **La proxima disponible es la `00186`.**
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -891,10 +900,42 @@ completa y puede disparar automatizaciones. El resumen del modulo esta en
 - **`flows` no tiene `deleted_at`**: una consulta que lo filtre falla y la pantalla queda
   vacia o da 404.
 
+## Reporte de fin de dia (EOD)
+
+Un cuarto tipo de formulario (`eod`): cada persona del equipo completa al final del dia lo
+que hizo; el de setters tiene canales y se usa todo el dia como contador. Resumen en
+[docs/eod.md](docs/eod.md); avance en `docs/PROGRESS-eod.md`.
+
+- **La persona que reporta sale SIEMPRE de la sesion** (`ctx.user.id` en la accion), nunca
+  de un selector ni del navegador. Un EOD no tiene pagina publica (`get_public_form` y
+  `loadPublishedForm` lo descartan).
+- **La unicidad la da un indice** `(form_id, user_id, report_date)` y la revision (`rev`):
+  `save_eod_draft` hace `UPDATE … WHERE rev = $rev` y devuelve `conflict` con lo vigente;
+  doble clic o dos pestanas enviando = un solo reporte. No hay "select previo".
+- **El borrador nunca se pierde**: servidor + `localStorage` en cada cambio, guardado al
+  ocultar o cerrar la pestana (`/api/v1/eod/draft` con `keepalive`), reintentos y fusion de
+  los "+1" por diferencia (`lib/eod/draft.ts`, con los cinco casos de E7 en su test). El
+  reporte nunca cambia de fecha solo a medianoche.
+- **Los borradores ajenos no los ve nadie** (RLS). Owner, Admin y `eod.view_all` ven los
+  ENVIADOS de todos. La correccion en curso vive en `pending_edit`, que `authenticated` no
+  puede leer: **nunca `select("*")` sobre `eod_reports`** con la sesion (falla).
+- **El dia es el de la persona** (`user_preferences`), no el del workspace.
+- **Todo se valida en el servidor** contra la version vigente con `validateSubmission`; lo de
+  un canal no elegido no se guarda ni suma en `metrics`.
+- **Flujos sin contacto.** Cada disparador declara `subject` (`contact` por defecto) y cada
+  nodo `needsContact` (`registry/consistency.test.ts` lo exige; la lista del navegador es
+  `lib/flow-engine/contact-free.ts`). `eod_submitted` es el unico `member`. El unico cambio
+  en `engine.ts` es saltear (y anotar `node_skipped`) un paso que necesita contacto en un
+  flujo que no tiene. El cron ramifica por sujeto con un `switch` (la rama de contacto no
+  cambio; vive en `lib/flow-engine/automation-events.ts`). Guardar o publicar un flujo sin
+  contacto con un paso que necesita uno se rechaza (`member-flow.ts`). Sin contacto,
+  "no contactar" no aplica y el email va a la persona, al equipo o a una direccion fija.
+
 ## Scripts de verificacion
 
 ```
 node scripts/verify-forms.mjs   # RLS, huella, la RPC, el envio real (Resend simulado), el PDF y la atribucion
+node scripts/verify-eod.mjs     # EOD: RLS, unicidad, concurrencia, audiencia, revision, el evento, el flujo y el recordatorio
 ```
 
 Crea y limpia sus datos (prefijo `zz-test-`); no se corre en simultaneo con los otros `verify-*`.

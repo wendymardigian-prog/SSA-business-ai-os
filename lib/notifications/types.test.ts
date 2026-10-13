@@ -125,3 +125,12 @@ describe("Formularios: form_submitted", () => {
     expect(linkFor("form_submission", "sub-1", {})).toBe("/dashboard/formularios");
   });
 });
+
+describe("linkFor: reportes de fin de día", () => {
+  it("un reporte enviado abre su detalle; uno que falta, la pantalla para completarlo", async () => {
+    const { linkFor } = await import("./types");
+    expect(linkFor("eod_report", "r1", { form_id: "f1" })).toBe("/dashboard/formularios/f1/reportes/r1");
+    expect(linkFor("eod_report", "r1", null)).toBe("/dashboard/eod");
+    expect(linkFor("eod_form", "f1")).toBe("/dashboard/eod/f1");
+  });
+});

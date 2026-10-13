@@ -11,6 +11,7 @@ import { z } from "zod";
 import { IDENTIFIER_RE } from "@/lib/scheduling/identifier";
 import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 import {
+  allowedFieldTypes,
   ALLOWED_UPLOAD_MIMES,
   FILE_LIMITS,
   FORM_FIELD_TYPES,
@@ -20,9 +21,13 @@ import {
   MIN_OPTIONS,
   PREFILL_PARAM_RE,
   supportsPrefill,
+  FIELD_TYPE_LABELS,
   type FormDefinition,
   type FormField,
+  type FormType,
 } from "./fields";
+import { isValidMetricKey } from "@/lib/eod/metrics";
+import { CHANNEL_KEY_RE, MAX_CHANNEL_LABEL, MAX_CHANNELS } from "@/lib/eod/channels";
 import { SOCIAL_PLATFORMS } from "@/lib/contacts/social";
 import { CONDITION_OPERATORS } from "./visibility-types";
 import { referencedKeys } from "./visibility";
@@ -84,11 +89,28 @@ const fieldSchema = z.object({
     })
     .optional(),
   social: z.object({ platform: z.enum(SOCIAL_PLATFORMS) }).optional(),
+  step: z.number().finite().optional(),
+  metricKey: z.string().max(40).optional(),
+});
+
+const channelSelectorSchema = z.object({
+  label: z.string().trim().min(1, "Falta la pregunta de los canales").max(200),
+  required: z.boolean(),
+});
+
+const channelSchema = z.object({
+  key: z.string(),
+  label: z.string().trim().min(1, "Falta el nombre del canal").max(MAX_CHANNEL_LABEL),
+  custom: z.boolean(),
+  enabled: z.boolean(),
+  fields: z.array(fieldSchema),
 });
 
 const definitionSchema = z.object({
   fields: z.array(fieldSchema),
   contractText: z.string().max(MAX_CONTRACT_TEXT, "El texto del contrato es demasiado largo").optional(),
+  channelSelector: channelSelectorSchema.optional(),
+  channels: z.array(channelSchema).max(MAX_CHANNELS).optional(),
 });
 
 export type DefinitionResult =
@@ -195,8 +217,50 @@ function checkField(field: FormField, errors: string[]): void {
   }
 }
 
+/**
+ * Reglas de un campo de un reporte de fin de día: solo los cinco tipos permitidos,
+ * sin nada que dependa de un contacto o de una página pública, y el número con su
+ * paso y su `metricKey`.
+ */
+function checkEodField(field: FormField, errors: string[]): void {
+  const who = name(field);
+  if (!allowedFieldTypes("eod").includes(field.type)) {
+    errors.push(`${who}: un reporte de fin de día no admite preguntas de tipo "${FIELD_TYPE_LABELS[field.type]}"`);
+  }
+  if (field.visibility) errors.push(`${who}: un reporte de fin de día no tiene condiciones`);
+  if (field.prefill) errors.push(`${who}: un reporte de fin de día no se prellena desde la URL`);
+  if (field.step !== undefined) {
+    if (field.type !== "number") errors.push(`${who}: solo un número lleva paso`);
+    else if (!Number.isInteger(field.step) || field.step < 1) errors.push(`${who}: el paso es un entero desde 1`);
+  }
+  if (field.metricKey !== undefined) {
+    if (field.type !== "number") errors.push(`${who}: solo un número mide algo`);
+    else if (!isValidMetricKey(field.metricKey)) {
+      errors.push(`${who}: la métrica "${field.metricKey}" no es válida (minúsculas, números y guión bajo, de 2 a 40)`);
+    }
+  }
+  if (field.type === "number") {
+    if (field.min !== undefined && !Number.isInteger(field.min)) errors.push(`${who}: el mínimo es un número entero`);
+    if (field.max !== undefined && !Number.isInteger(field.max)) errors.push(`${who}: el máximo es un número entero`);
+  }
+}
+
+/** Claves únicas dentro de una lista de campos. */
+function checkUniqueKeys(fields: FormField[], errors: string[], where = ""): void {
+  const seen = new Set<string>();
+  for (const field of fields) {
+    if (seen.has(field.key)) errors.push(`${where}La clave "${field.key}" está repetida`);
+    seen.add(field.key);
+  }
+}
+
+export interface ValidateOptions {
+  /** El tipo del formulario. Con `eod` valen sus reglas; sin tipo, las de siempre. */
+  formType?: FormType;
+}
+
 /** Valida la forma y las reglas cruzadas. No lanza. */
-export function validateDefinition(input: unknown): DefinitionResult {
+export function validateDefinition(input: unknown, options: ValidateOptions = {}): DefinitionResult {
   const parsed = definitionSchema.safeParse(input);
   if (!parsed.success) {
     const errors = parsed.error.issues.map((issue) => {
@@ -209,14 +273,40 @@ export function validateDefinition(input: unknown): DefinitionResult {
   const definition = parsed.data as FormDefinition;
   const errors: string[] = [];
   const { fields } = definition;
+  const isEod = options.formType === "eod";
 
   if (fields.length > MAX_FIELDS) errors.push(`Como máximo ${MAX_FIELDS} campos`);
 
   // Claves únicas
-  const seen = new Set<string>();
-  for (const field of fields) {
-    if (seen.has(field.key)) errors.push(`La clave "${field.key}" está repetida`);
-    seen.add(field.key);
+  checkUniqueKeys(fields, errors);
+
+  if (isEod) {
+    for (const field of fields) checkEodField(field, errors);
+    const channelKeys = new Set<string>();
+    for (const channel of definition.channels ?? []) {
+      const where = `Canal "${channel.label}": `;
+      if (!CHANNEL_KEY_RE.test(channel.key)) errors.push(`${where}la clave "${channel.key}" no es válida`);
+      if (channelKeys.has(channel.key)) errors.push(`${where}el canal está repetido`);
+      channelKeys.add(channel.key);
+      if (channel.fields.length > MAX_FIELDS) errors.push(`${where}como máximo ${MAX_FIELDS} preguntas`);
+      // La clave es única DENTRO del canal: dos canales pueden tener `links_enviados`.
+      checkUniqueKeys(channel.fields, errors, where);
+      for (const field of channel.fields) {
+        const before = errors.length;
+        checkField(field, errors);
+        checkEodField(field, errors);
+        for (let i = before; i < errors.length; i += 1) errors[i] = `${where}${errors[i]}`;
+      }
+    }
+  } else {
+    if (definition.channels !== undefined || definition.channelSelector !== undefined) {
+      errors.push("Solo un reporte de fin de día tiene canales");
+    }
+    for (const field of fields) {
+      if (field.step !== undefined || field.metricKey !== undefined) {
+        errors.push(`${name(field)}: el paso y la métrica son solo de un reporte de fin de día`);
+      }
+    }
   }
 
   // Parámetros de prellenado: no se repiten entre campos
@@ -262,6 +352,19 @@ const draftFieldShape = z
 const draftShape = z.object({
   fields: z.array(draftFieldShape).max(MAX_FIELDS),
   contractText: z.string().max(MAX_CONTRACT_TEXT).optional(),
+  channelSelector: z.object({ label: z.string().max(200), required: z.boolean() }).optional(),
+  channels: z
+    .array(
+      z.object({
+        key: z.string().max(60),
+        label: z.string().max(MAX_CHANNEL_LABEL),
+        custom: z.boolean(),
+        enabled: z.boolean(),
+        fields: z.array(draftFieldShape).max(MAX_FIELDS),
+      }),
+    )
+    .max(MAX_CHANNELS)
+    .optional(),
 });
 
 /**

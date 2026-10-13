@@ -88,7 +88,8 @@ describe("exactamente un item activo en cualquier ruta real del dashboard (N4)",
   // valor de relleno: lo unico que importa aca es el PREFIJO de la ruta.
   const rutaDeEjemplo = (patron: string) => patron.replace(/\[[^\]]+\]/g, "muestra");
 
-  const admin = visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [] });
+  // Un admin que además está en la audiencia de un EOD: ve el menú entero.
+  const admin = visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [], flags: { eod: true } });
   const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
 
   for (const patron of Object.keys(PAGE_META)) {

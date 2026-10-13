@@ -4,6 +4,7 @@ import { BUILDER_TRIGGER_TYPES, buildDesiredTriggers } from "@/lib/flow-triggers
 import { createServiceClient } from "@/lib/supabase/server";
 import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
 import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
+import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
 
 export async function POST(
   _request: NextRequest,
@@ -41,6 +42,10 @@ export async function POST(
       { error: error?.message || "Flow not found" },
       { status: 404 }
     );
+
+  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno.
+  const problems = await checkMemberFlow(supabase, membership.workspace_id, Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : []);
+  if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
 
   // Update flow status to published and increment version
   const newVersion = flow.version + 1;

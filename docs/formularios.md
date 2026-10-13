@@ -14,6 +14,11 @@ Plano: [requerimientos-formularios.md](requerimientos-formularios.md). Avance: [
 
 Los tres comparten editor, publicación, versiones, envío, respuestas, métricas y automatizaciones.
 
+Hay un cuarto tipo, **Reporte de fin de día** (`eod`), que comparte el editor de campos (limitado
+a cinco tipos), las versiones y la pestaña Automatizaciones, pero **no** tiene página pública,
+link, embed, contacto ni respuestas: se completa con la sesión iniciada en "Mi reporte del día" y
+se ve en la pestaña Reportes. Todo en [eod.md](eod.md).
+
 ## Datos
 
 Cuatro tablas nuevas. Todas con RLS; **escribe solo el servidor**. `form_versions` además tiene un candado en la base (00177): ni el service role puede cambiar una versión publicada.

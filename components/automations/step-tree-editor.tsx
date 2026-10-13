@@ -68,6 +68,10 @@ export interface StepTreeEditorProps {
   onSendTest: (input: { flowId: string; subject: string; body: string }) => Promise<EditorActionResult>;
   /** Para "Probar condiciones" con una respuesta real (hoy solo Formularios). Sin esto se prueba cargando los datos a mano. */
   testResponses?: TestResponsesSource;
+  /** Las personas del equipo, para los pasos que van a gente del equipo (EOD). */
+  members?: Array<{ userId: string; name: string }>;
+  /** Algo más dentro de "Cuándo" (EOD: primer envío o cada corrección). */
+  whenExtra?: ReactNode;
 }
 
 const HELP_KEY = "ssa:step-tree-help-seen";
@@ -114,6 +118,8 @@ export function StepTreeEditor({
   onSave,
   onSendTest,
   testResponses,
+  members = [],
+  whenExtra,
 }: StepTreeEditorProps) {
   const router = useRouter();
   const [tree, setTree] = useState<StepTree | null>(initialTree);
@@ -189,6 +195,7 @@ export function StepTreeEditor({
         canSendTest: !pending,
         announce,
         ask,
+        members,
       }
     : null;
 
@@ -241,6 +248,12 @@ export function StepTreeEditor({
         <section className="rounded-xl border border-border p-4">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cuándo</h2>
           <p className="mt-1 text-sm">{describeTrigger(trigger.type, trigger.config)}</p>
+          {whenExtra}
+          {screen === "eod" && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.
+            </p>
+          )}
           {reach !== null && describeReach && <p className="mt-1 text-xs text-muted-foreground">{describeReach(reach)}</p>}
         </section>
 

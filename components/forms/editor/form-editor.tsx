@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BarChart3, ExternalLink, Inbox, Loader2 } from "lucide-react";
+import { BarChart3, ClipboardList, ExternalLink, Inbox, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { BackLink } from "@/components/forms/back-link";
 import { Notice } from "@/components/agents/fields";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Tabs } from "@/components/ui/tabs";
 import { publishForm, saveFormDraft } from "@/lib/actions/forms/forms";
-import { FORM_STATUS_LABELS, FORM_TYPE_LABELS } from "@/lib/forms/fields";
+import { FORM_STATUS_LABELS, FORM_TYPE_LABELS, isPublicFormType } from "@/lib/forms/fields";
 import { reconcileContactConfig, type ContactConfig } from "@/lib/forms/contact-config";
 import { checkPublishable, contactWarning, hasUnpublishedChanges } from "@/lib/forms/publish";
 import { typeChecks } from "@/lib/forms/type-checks";
@@ -23,6 +23,9 @@ import { ContactTab } from "./contact-tab";
 import { FieldsTab } from "./fields-tab";
 import { PublishTab } from "./publish-tab";
 import type { Draft, EditorExtras, EditorForm, EditorVersion } from "./types";
+import { EodConfigTab } from "@/components/eod/editor/config-tab";
+import { ChannelsTab } from "@/components/eod/editor/channels-tab";
+import { EodFieldsEditor } from "@/components/eod/editor/eod-fields-editor";
 
 /**
  * El editor de un formulario (F4, F8). Carcasa: encabezado con el nombre, el
@@ -33,7 +36,7 @@ import type { Draft, EditorExtras, EditorForm, EditorVersion } from "./types";
  * pisa lo de otra persona sin que lo sepa.
  */
 
-type Section = "campos" | "encuesta" | "contrato" | "contacto" | "automatizaciones" | "publicar";
+type Section = "configuracion" | "campos" | "canales" | "encuesta" | "contrato" | "contacto" | "automatizaciones" | "publicar";
 type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -60,7 +63,9 @@ export function FormEditor({
   extras: EditorExtras;
 }) {
   const router = useRouter();
-  const [section, setSection] = useState<Section>("campos");
+  const isEod = form.type === "eod";
+  const [section, setSection] = useState<Section>(isEod ? "configuracion" : "campos");
+  const [eodConfig, setEodConfig] = useState(form.eodConfig);
   const [draft, setDraft] = useState<Draft>({ name: form.name, definition: form.draftDefinition, design: form.design, success: form.success });
   const [surveyConfig, setSurveyConfig] = useState(form.surveyConfig);
   const [contractConfig, setContractConfig] = useState(form.contractConfig);
@@ -146,9 +151,9 @@ export function FormEditor({
         type: form.type,
         slug,
         definition: draft.definition,
-        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: contactConfig.mode }),
+        extraChecks: typeChecks(form.type, { surveyConfig, contractConfig, contactMode: contactConfig.mode, eodConfig }),
       }),
-    [form.type, slug, draft.definition, surveyConfig, contractConfig, contactConfig.mode],
+    [form.type, slug, draft.definition, surveyConfig, contractConfig, contactConfig.mode, eodConfig],
   );
   const unpublished = hasUnpublishedChanges(draft.definition, snapshot);
   const reasons = check.ok ? [] : check.reasons;
@@ -211,6 +216,7 @@ export function FormEditor({
         backHref={<BackLink href="/dashboard/formularios" label="Volver a Formularios" />}
         right={
           <div className="flex shrink-0 items-center gap-2">
+            {!isEod && (
             <a
               href={`/f/${slug}?preview=1`}
               target="_blank"
@@ -220,6 +226,7 @@ export function FormEditor({
               <ExternalLink className="h-4 w-4" aria-hidden />
               <span className="hidden sm:inline">Vista previa</span>
             </a>
+            )}
             {canManage && (
               <button
                 type="button"
@@ -267,6 +274,12 @@ export function FormEditor({
             </span>
           )}
           <span className="ml-auto flex items-center gap-2">
+            {isEod ? (
+              <Link href={`/dashboard/formularios/${form.id}/reportes`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
+                <ClipboardList className="h-3.5 w-3.5" aria-hidden /> Reportes
+              </Link>
+            ) : (
+            <>
             <Link href={`/dashboard/formularios/${form.id}/respuestas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
               <Inbox className="h-3.5 w-3.5" aria-hidden /> Respuestas
             </Link>
@@ -278,6 +291,8 @@ export function FormEditor({
             <Link href={`/dashboard/formularios/${form.id}/metricas`} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs hover:bg-accent">
               <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Métricas
             </Link>
+            </>
+            )}
           </span>
         </div>
 
@@ -315,17 +330,63 @@ export function FormEditor({
           label="Secciones del formulario"
           value={section}
           onChange={setSection}
-          tabs={[
-            { value: "campos", label: "Campos" },
-            ...(form.type === "survey" ? [{ value: "encuesta" as const, label: "Encuesta" }] : []),
-            ...(form.type === "contract" ? [{ value: "contrato" as const, label: "Contrato" }] : []),
-            { value: "contacto", label: "Contacto" },
-            { value: "automatizaciones", label: "Automatizaciones" },
-            { value: "publicar", label: "Publicar" },
-          ]}
+          tabs={
+            isEod
+              ? [
+                  { value: "configuracion" as const, label: "Configuración" },
+                  { value: "campos" as const, label: "Preguntas" },
+                  ...(eodConfig?.variant === "setter" ? [{ value: "canales" as const, label: "Canales" }] : []),
+                  { value: "automatizaciones" as const, label: "Automatizaciones" },
+                  { value: "publicar" as const, label: "Publicar" },
+                ]
+              : [
+                  { value: "campos", label: "Campos" },
+                  ...(form.type === "survey" ? [{ value: "encuesta" as const, label: "Encuesta" }] : []),
+                  ...(form.type === "contract" ? [{ value: "contrato" as const, label: "Contrato" }] : []),
+                  { value: "contacto", label: "Contacto" },
+                  { value: "automatizaciones", label: "Automatizaciones" },
+                  { value: "publicar", label: "Publicar" },
+                ]
+          }
         >
           <div className="pt-4">
-            {section === "campos" ? (
+            {isEod && section === "configuracion" ? (
+              eodConfig ? (
+                <EodConfigTab
+                  formId={form.id}
+                  config={eodConfig}
+                  onSaved={setEodConfig}
+                  members={extras.members}
+                  roles={extras.roles}
+                  success={draft.success}
+                  onSuccessChange={(success) => setDraft({ ...draft, success })}
+                  disabled={disabled}
+                />
+              ) : (
+                <Notice tone="error">La configuración de este reporte no se pudo leer.</Notice>
+              )
+            ) : isEod && section === "campos" ? (
+              <div className="space-y-3">
+                {eodConfig?.variant === "setter" && (
+                  <p className="text-xs text-muted-foreground">
+                    Estas son las preguntas generales. La pregunta de los canales y las preguntas de cada canal están en la pestaña{" "}
+                    <button type="button" className="underline" onClick={() => setSection("canales")}>
+                      Canales
+                    </button>
+                    .
+                  </p>
+                )}
+                <EodFieldsEditor
+                  label="Preguntas generales"
+                  fields={draft.definition.fields}
+                  onChange={(fields) => setDraft({ ...draft, definition: { ...draft.definition, fields } })}
+                  disabled={disabled}
+                  neverPublished={neverPublished}
+                />
+              </div>
+            ) : isEod && section === "canales" ? (
+              <ChannelsTab definition={draft.definition} onChange={(definition) => setDraft({ ...draft, definition })} disabled={disabled} neverPublished={neverPublished} />
+            ) : section === "campos" && isPublicFormType(form.type) ? (
               <FieldsTab
                 draft={draft}
                 onChange={changeDraft}

@@ -1261,3 +1261,40 @@ a propósito o por falta de revisión.
   - **Pendiente de probar con una respuesta real:** el workspace no tenía respuestas, así que
     "Probar condiciones" con una respuesta real solo se vio en su estado vacío (la paridad con el
     motor está cubierta por `explain-parity.test.ts`).
+
+## Reporte de fin de día (EOD, 12/10/2026, rama `feat/formularios-eod`)
+
+- **Siguiente paso: el dashboard de setters** de XCRM (cruzar las `metricKey` con agendas,
+  show-up, ventas y cash). Las métricas ya quedan guardadas por canal y en total en
+  `eod_reports.metrics`.
+- **Fusión entre dispositivos, caso raro.** Si un guardado llega al servidor, la respuesta se
+  pierde Y otro dispositivo guarda antes de que este vuelva a abrir, al reabrir se podría
+  sumar dos veces lo de ese guardado. El caso común (respuesta perdida sin otro dispositivo
+  en el medio) está cubierto (`sent` en `lib/eod/draft.ts`, con test). Para cerrarlo del todo
+  haría falta un id por guardado del lado del servidor.
+- **Etiqueta de X.** Los canales usan `platformLabel`, que dice "X / Twitter" (el plano decía
+  "X"). Se priorizó que se llame igual en todo el sistema.
+- **`eod.channels` en Condiciones** compara por la ETIQUETA del canal: renombrar un canal
+  personalizado deja una condición vieja sin cumplirse.
+- **Recordatorio**: la cola lleva un barrido por reporte y franja de 15 minutos (no uno por
+  persona); "una vez por día" lo garantiza el barrido mirando los avisos ya mandados. Owner y
+  Admin ven en su campana TODAS las notificaciones del workspace (regla existente de
+  `can_see_notification`), así que también ven los recordatorios de los demás.
+- **El canvas** ofrece el disparador "Se envió un reporte de fin de día" pero sin su
+  configuración (qué reportes, primer envío o cada corrección): se arma desde la pestaña
+  Automatizaciones del reporte. Sin configurar, aplica a cualquier EOD y al primer envío.
+- **Variables de la banca** (`{{contact.*}}`) en un email de un flujo sin contacto quedan sin
+  resolver: no hay contacto.
+- **Un Member sin `forms.view`** (rol personalizado) completa su reporte pero no puede abrir
+  la pestaña Reportes para ver los suyos ya enviados: los ve solo desde "Mi reporte del día"
+  (estado de hoy).
+- **`verify-forms` choca con el cron de producción.** Encola jobs de PDF de contrato en la cola
+  real, y el cron de jobs de la app desplegada puede procesarlos antes que el script: entonces el
+  paso "el job genera el PDF" ve `already` (el PDF quedó bien generado, con la ruta y el
+  contenido correctos). Pasó dos veces el 12/10, en pasos distintos; no tiene que ver con el EOD
+  (no se tocó nada de contratos). Para arreglarlo, el script tendría que marcar sus jobs para que
+  el cron los saltee, o generarlos sin encolarlos.
+- **Revisión visual (E14)**: hecha el 12/10 sobre el build local (`next start`), con datos
+  `zz-test-` ya borrados. El modo "sin conexión" se simuló haciendo fallar la red desde la página
+  (el navegador del panel no tiene modo offline): el indicador mostró "No se pudo guardar ·
+  Reintentar", los "+1" quedaron en el navegador y se subieron solos al volver.

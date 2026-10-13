@@ -29018,3 +29018,1072 @@ DROP TRIGGER IF EXISTS form_versions_protect ON public.form_versions;
 CREATE TRIGGER form_versions_protect
   BEFORE UPDATE ON public.form_versions
   FOR EACH ROW EXECUTE FUNCTION public.form_versions_protect_published();
+
+-- ============================================================
+-- MIGRATION 178: FORMS TYPE EOD
+-- ============================================================
+-- ============================================================================
+-- 00178 — Formularios: el tipo `eod` (reporte de fin de dia) y su configuracion
+-- ============================================================================
+-- Suma 'eod' al CHECK de `forms.type` y la columna `forms.eod_config jsonb` (la valida
+-- `lib/eod/config.ts`), obligatoria cuando el tipo es 'eod' (mismo patron que
+-- `forms_survey_config_required` y `forms_contract_config_required` de la 00150).
+-- SOLO SUMA: la lista vieja se leyo de la base viva al escribir esta migracion (12/10/2026).
+-- `lib/eod/migrations.test.ts` lee ESTE archivo y exige los tres tipos viejos + 'eod'.
+--
+-- Definicion VIEJA del CHECK, para volver atras:
+--   forms_type_check: CHECK ((type = ANY (ARRAY['custom'::text, 'survey'::text, 'contract'::text])))
+--
+-- Como volver atras:
+--   (antes) DELETE FROM public.forms WHERE type = 'eod';   -- o archivarlos y cambiarles el tipo
+--   ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_eod_config_required;
+--   ALTER TABLE public.forms DROP COLUMN IF EXISTS eod_config;
+--   ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_type_check;
+--   ALTER TABLE public.forms ADD CONSTRAINT forms_type_check
+--     CHECK (type = ANY (ARRAY['custom'::text, 'survey'::text, 'contract'::text]));
+-- Riesgo: bajo (aditiva; ninguna fila existente cambia).
+-- ============================================================================
+
+SET search_path = '';
+
+ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_type_check;
+ALTER TABLE public.forms ADD CONSTRAINT forms_type_check
+  CHECK (type = ANY (ARRAY[
+    'custom'::text,
+    'survey'::text,
+    'contract'::text,
+    'eod'::text
+  ]));
+
+ALTER TABLE public.forms ADD COLUMN IF NOT EXISTS eod_config jsonb;
+
+COMMENT ON COLUMN public.forms.eod_config IS
+  'Solo un reporte de fin de dia (type = eod): variante, rol, audiencia, modo de reporte, dias hacia atras, avisos y recordatorio. La valida lib/eod/config.ts; la variante no cambia despues de crear.';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.forms'::regclass AND conname = 'forms_eod_config_required'
+  ) THEN
+    ALTER TABLE public.forms ADD CONSTRAINT forms_eod_config_required
+      CHECK ((type <> 'eod'::text) OR (eod_config IS NOT NULL));
+  END IF;
+END $$;
+
+-- ============================================================
+-- MIGRATION 179: GET PUBLIC FORM SIN EOD
+-- ============================================================
+-- ============================================================================
+-- 00179 — get_public_form devuelve `unavailable` para un reporte de fin de dia
+-- ============================================================================
+-- Un EOD se completa adentro de la app, con la sesion iniciada: no tiene pagina publica, ni
+-- link, ni embed. `forms.slug` es NOT NULL, asi que un EOD tiene uno (interno); esta migracion
+-- hace que su slug no sirva para nada afuera. Copia letra por letra de la 00174 con UNA condicion
+-- mas (`AND f.type <> 'eod'`). Ademas `loadPublishedForm` (lib/forms/server-ports.ts) descarta un
+-- EOD antes de `submit_form_response`.
+-- Riesgo: bajo (CREATE OR REPLACE; los tres tipos de siempre devuelven exactamente lo mismo).
+--
+-- Como volver atras: recrear la funcion con la definicion anterior (la de la 00174, copiada abajo).
+--
+--   CREATE OR REPLACE FUNCTION public.get_public_form(p_slug text)
+--    RETURNS jsonb
+--    LANGUAGE plpgsql
+--    STABLE SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_form    public.forms%ROWTYPE;
+--     v_version public.form_versions%ROWTYPE;
+--     v_fields  jsonb;
+--   BEGIN
+--     IF p_slug IS NULL OR p_slug = '' THEN
+--       RETURN jsonb_build_object('status', 'unavailable');
+--     END IF;
+--
+--     SELECT * INTO v_form
+--     FROM public.forms f
+--     WHERE lower(f.slug) = lower(p_slug)
+--       AND f.status = 'published'
+--       AND f.current_version_id IS NOT NULL;
+--
+--     IF NOT FOUND THEN
+--       RETURN jsonb_build_object('status', 'unavailable');
+--     END IF;
+--
+--     SELECT * INTO v_version FROM public.form_versions WHERE id = v_form.current_version_id;
+--     IF NOT FOUND THEN
+--       RETURN jsonb_build_object('status', 'unavailable');
+--     END IF;
+--
+--     -- Los campos, uno por uno, con lista blanca. Un oculto `fixed` no sale.
+--     SELECT COALESCE(jsonb_agg(x.pf ORDER BY x.ord), '[]'::jsonb) INTO v_fields
+--     FROM (
+--       SELECT
+--         t.ord,
+--         CASE
+--           WHEN t.field ->> 'type' = 'hidden' THEN
+--             CASE
+--               WHEN t.field -> 'hidden' ->> 'source' IN ('url_param', 'attribution') THEN
+--                 jsonb_build_object(
+--                   'key', t.field -> 'key',
+--                   'type', 'hidden',
+--                   'hidden', jsonb_strip_nulls(jsonb_build_object(
+--                     'source', t.field -> 'hidden' -> 'source',
+--                     'param', t.field -> 'hidden' -> 'param'
+--                   ))
+--                 )
+--               ELSE NULL
+--             END
+--           ELSE
+--             jsonb_strip_nulls(jsonb_build_object(
+--               'key', t.field -> 'key',
+--               'type', t.field -> 'type',
+--               'label', t.field -> 'label',
+--               'help', t.field -> 'help',
+--               'placeholder', t.field -> 'placeholder',
+--               'required', t.field -> 'required',
+--               'options', t.field -> 'options',
+--               'min', t.field -> 'min',
+--               'max', t.field -> 'max',
+--               'file', t.field -> 'file',
+--               'consentText', t.field -> 'consentText',
+--               'visibility', t.field -> 'visibility',
+--               'prefill', t.field -> 'prefill',
+--               'social', t.field -> 'social'
+--             ))
+--         END AS pf
+--       FROM jsonb_array_elements(COALESCE(v_version.definition -> 'fields', '[]'::jsonb))
+--            WITH ORDINALITY AS t(field, ord)
+--     ) x
+--     WHERE x.pf IS NOT NULL;
+--
+--     RETURN jsonb_build_object(
+--       'status', 'available',
+--       'slug', v_form.slug,
+--       'type', v_form.type,
+--       'version_id', v_version.id,
+--       'design', jsonb_strip_nulls(jsonb_build_object(
+--         'title', v_form.design -> 'title',
+--         'intro', v_form.design -> 'intro',
+--         'submitLabel', v_form.design -> 'submitLabel',
+--         'showLogo', v_form.design -> 'showLogo'
+--       )),
+--       'fields', v_fields,
+--       'contract', CASE
+--         WHEN v_form.type = 'contract' THEN jsonb_build_object(
+--           'text', v_version.contract_text,
+--           'version_number', v_version.version_number,
+--           'title', v_form.contract_config -> 'title',
+--           'accept_label', v_form.contract_config -> 'acceptLabel'
+--         )
+--         ELSE NULL
+--       END,
+--       'signature_required', CASE
+--         WHEN v_form.type = 'contract' THEN COALESCE((v_form.contract_config ->> 'signatureRequired')::boolean, true)
+--         ELSE false
+--       END,
+--       'survey', CASE
+--         WHEN v_form.type = 'survey' THEN jsonb_build_object('scoreFieldKey', v_form.survey_config -> 'scoreFieldKey')
+--         ELSE NULL
+--       END
+--     );
+--   END;
+--   $function$;
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_public_form(p_slug text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_form    public.forms%ROWTYPE;
+  v_version public.form_versions%ROWTYPE;
+  v_fields  jsonb;
+BEGIN
+  IF p_slug IS NULL OR p_slug = '' THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  SELECT * INTO v_form
+  FROM public.forms f
+  WHERE lower(f.slug) = lower(p_slug)
+    AND f.status = 'published'
+    AND f.current_version_id IS NOT NULL
+    -- Un reporte de fin de dia no tiene pagina publica (00179): se completa con la sesion iniciada.
+    AND f.type <> 'eod';
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  SELECT * INTO v_version FROM public.form_versions WHERE id = v_form.current_version_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'unavailable');
+  END IF;
+
+  -- Los campos, uno por uno, con lista blanca. Un oculto `fixed` no sale.
+  SELECT COALESCE(jsonb_agg(x.pf ORDER BY x.ord), '[]'::jsonb) INTO v_fields
+  FROM (
+    SELECT
+      t.ord,
+      CASE
+        WHEN t.field ->> 'type' = 'hidden' THEN
+          CASE
+            WHEN t.field -> 'hidden' ->> 'source' IN ('url_param', 'attribution') THEN
+              jsonb_build_object(
+                'key', t.field -> 'key',
+                'type', 'hidden',
+                'hidden', jsonb_strip_nulls(jsonb_build_object(
+                  'source', t.field -> 'hidden' -> 'source',
+                  'param', t.field -> 'hidden' -> 'param'
+                ))
+              )
+            ELSE NULL
+          END
+        ELSE
+          jsonb_strip_nulls(jsonb_build_object(
+            'key', t.field -> 'key',
+            'type', t.field -> 'type',
+            'label', t.field -> 'label',
+            'help', t.field -> 'help',
+            'placeholder', t.field -> 'placeholder',
+            'required', t.field -> 'required',
+            'options', t.field -> 'options',
+            'min', t.field -> 'min',
+            'max', t.field -> 'max',
+            'file', t.field -> 'file',
+            'consentText', t.field -> 'consentText',
+            'visibility', t.field -> 'visibility',
+            'prefill', t.field -> 'prefill',
+            'social', t.field -> 'social'
+          ))
+      END AS pf
+    FROM jsonb_array_elements(COALESCE(v_version.definition -> 'fields', '[]'::jsonb))
+         WITH ORDINALITY AS t(field, ord)
+  ) x
+  WHERE x.pf IS NOT NULL;
+
+  RETURN jsonb_build_object(
+    'status', 'available',
+    'slug', v_form.slug,
+    'type', v_form.type,
+    'version_id', v_version.id,
+    'design', jsonb_strip_nulls(jsonb_build_object(
+      'title', v_form.design -> 'title',
+      'intro', v_form.design -> 'intro',
+      'submitLabel', v_form.design -> 'submitLabel',
+      'showLogo', v_form.design -> 'showLogo'
+    )),
+    'fields', v_fields,
+    'contract', CASE
+      WHEN v_form.type = 'contract' THEN jsonb_build_object(
+        'text', v_version.contract_text,
+        'version_number', v_version.version_number,
+        'title', v_form.contract_config -> 'title',
+        'accept_label', v_form.contract_config -> 'acceptLabel'
+      )
+      ELSE NULL
+    END,
+    'signature_required', CASE
+      WHEN v_form.type = 'contract' THEN COALESCE((v_form.contract_config ->> 'signatureRequired')::boolean, true)
+      ELSE false
+    END,
+    'survey', CASE
+      WHEN v_form.type = 'survey' THEN jsonb_build_object('scoreFieldKey', v_form.survey_config -> 'scoreFieldKey')
+      ELSE NULL
+    END
+  );
+END;
+$function$;
+
+-- ============================================================
+-- MIGRATION 180: EOD REPORTS
+-- ============================================================
+-- ============================================================================
+-- 00180 — Reportes de fin de dia: la tabla `eod_reports` y quien ve que
+-- ============================================================================
+-- Una fila por persona, formulario y dia. Mientras se completa esta en 'draft' (el borrador
+-- que se guarda solo todo el dia); al enviar pasa a 'submitted'. La persona que reporta sale
+-- SIEMPRE de la sesion (lo hace cumplir el servidor, que es el unico que escribe).
+--
+-- - La unicidad (form_id, user_id, report_date) la da un indice unico, no una consulta previa:
+--   doble clic o dos pestanas enviando a la vez = un solo reporte.
+-- - `rev` es la revision del borrador: el guardado solo acepta el que viene de la vigente.
+-- - `pending_edit` es la copia de trabajo de un reporte YA enviado que se esta corrigiendo
+--   (modo "se puede corregir"): lo enviado no cambia hasta el proximo "Enviar". Esa columna NO
+--   se le da a leer a `authenticated` (privilegio por columna, mismo patron que los costos de
+--   `agents` en la 00060): quien ve los reportes enviados de todos no ve una correccion a medio
+--   hacer. El duenio la lee desde el servidor.
+-- - RLS: cada uno ve los suyos (enviados y borradores); Owner, Admin y un rol con
+--   `eod.view_all` ven los ENVIADOS de todos. Los borradores ajenos no los ve nadie.
+-- - Escribe solo el servidor (Server Actions con el cliente de servicio). Nadie borra.
+--
+-- Como volver atras (no hay datos de otras tablas que dependan de esta):
+--   DROP TABLE IF EXISTS public.eod_reports;
+--   DROP FUNCTION IF EXISTS public.can_view_eod_all(uuid);
+-- Riesgo: bajo (aditiva).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE TABLE IF NOT EXISTS public.eod_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  form_id uuid NOT NULL REFERENCES public.forms(id) ON DELETE CASCADE,
+  -- La version con la que se envio (null mientras es borrador).
+  form_version_id uuid REFERENCES public.form_versions(id) ON DELETE SET NULL,
+  -- Quien reporta: la persona de la sesion, nunca un selector.
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  -- El dia que reporta, en SU zona horaria (user_preferences), no la del workspace.
+  report_date date NOT NULL,
+  status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted')),
+  -- Borrador: { <clave>: valor }. Enviado: { <clave>: { label, type, value } }.
+  answers jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- Borrador: { <canal>: { selected, answers } } (incluye los apagados, con selected=false).
+  -- Enviado: { <canal>: { label, answers: { <clave>: { label, type, value } } } }, solo los elegidos.
+  channels jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- Totales por metricKey, por canal y en total. Se calcula al enviar.
+  metrics jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- La correccion en curso de un reporte enviado ({ answers, channels } como en el borrador).
+  pending_edit jsonb,
+  rev integer NOT NULL DEFAULT 0 CHECK (rev >= 0),
+  saved_at timestamptz,
+  submitted_at timestamptz,
+  edited_at timestamptz,
+  edit_count integer NOT NULL DEFAULT 0 CHECK (edit_count >= 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT eod_reports_submitted_at CHECK (status = 'draft' OR submitted_at IS NOT NULL)
+);
+
+COMMENT ON TABLE public.eod_reports IS
+  'Reportes de fin de dia (EOD): una fila por persona, formulario y dia. Escribe solo el servidor; nadie borra.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_eod_reports_form_user_date
+  ON public.eod_reports (form_id, user_id, report_date);
+CREATE INDEX IF NOT EXISTS idx_eod_reports_form_date
+  ON public.eod_reports (form_id, report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_eod_reports_ws_user_date
+  ON public.eod_reports (workspace_id, user_id, report_date DESC);
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.eod_reports;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.eod_reports
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- Quien ve los reportes ENVIADOS de todo el equipo
+-- ------------------------------------------------------------
+-- Owner y Admin, o un rol personalizado con `eod.view_all`. El rol de sistema Member NO la
+-- tiene (su baseline vive en lib/auth/permissions.ts), por eso no hay rama para el.
+CREATE OR REPLACE FUNCTION public.can_view_eod_all(p_workspace_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN public.is_workspace_admin(p_workspace_id) THEN true
+    ELSE COALESCE((
+      SELECT COALESCE(r.permissions -> 'keys' @> to_jsonb(ARRAY['eod.view_all']), false)
+      FROM public.workspace_members m
+      JOIN public.workspace_roles r ON r.id = m.role_id
+      WHERE m.workspace_id = p_workspace_id
+        AND m.user_id = auth.uid()
+        AND r.system_role IS NULL
+    ), false)
+  END;
+$$;
+
+REVOKE ALL ON FUNCTION public.can_view_eod_all(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_view_eod_all(uuid) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- RLS
+-- ------------------------------------------------------------
+ALTER TABLE public.eod_reports ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS eod_reports_select ON public.eod_reports;
+CREATE POLICY eod_reports_select ON public.eod_reports
+  FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (
+      user_id = (SELECT auth.uid())
+      OR (status = 'submitted' AND public.can_view_eod_all(workspace_id))
+    )
+  );
+
+-- Sin policies de INSERT, UPDATE ni DELETE: escribe el servidor y nadie borra.
+REVOKE ALL ON public.eod_reports FROM anon;
+REVOKE ALL ON public.eod_reports FROM authenticated;
+GRANT SELECT (
+  id, workspace_id, form_id, form_version_id, user_id, report_date, status,
+  answers, channels, metrics, rev, saved_at, submitted_at, edited_at, edit_count,
+  created_at, updated_at
+) ON public.eod_reports TO authenticated;
+GRANT ALL ON public.eod_reports TO service_role;
+
+-- ============================================================
+-- MIGRATION 181: EOD FUNCTIONS
+-- ============================================================
+-- ============================================================================
+-- 00181 — Reportes de fin de dia: guardar el borrador y enviar
+-- ============================================================================
+-- Dos funciones, solo para `service_role`. Las llama el servidor DESPUES de comprobar la
+-- sesion, que la persona es del workspace y que esta en la audiencia del reporte. Lo que llega
+-- ya viene validado (`lib/eod/submit.ts`); estas funciones cuidan lo que solo la base puede
+-- cuidar: la revision, la unicidad y que todo pase en una transaccion.
+--
+-- save_eod_draft: crea la fila si no existe (INSERT ... ON CONFLICT DO NOTHING) y despues
+--   UPDATE ... WHERE rev = p_rev RETURNING. Si otra pestana o el celular guardaron en el medio,
+--   devuelve `conflict` con lo vigente: nunca pisa en silencio. Un reporte ya enviado en modo
+--   "uno por dia" NO se toca; en modo "se puede corregir" el borrador va a `pending_edit`.
+--
+-- submit_eod_report: bloquea la fila, comprueba la revision y el modo, y la deja 'submitted'
+--   con las respuestas, los canales elegidos, las metricas y la version. Una correccion suma
+--   `edit_count`/`edited_at` y deja lo anterior en `audit_log` (eod_report / eod.edited), en la
+--   misma transaccion. Doble clic: el segundo llega con una revision vieja y no hace nada.
+--   (El evento de automatizacion se suma en la 00184, cuando la base acepta eventos sin contacto.)
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.save_eod_draft(uuid, uuid, uuid, date, integer, jsonb, jsonb, text);
+--   DROP FUNCTION IF EXISTS public.submit_eod_report(uuid, uuid, uuid, date, integer, uuid, jsonb, jsonb, jsonb, text, jsonb);
+-- Riesgo: bajo (funciones nuevas).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.save_eod_draft(
+  p_workspace_id uuid,
+  p_form_id uuid,
+  p_user_id uuid,
+  p_report_date date,
+  p_rev integer,
+  p_answers jsonb,
+  p_channels jsonb,
+  p_report_mode text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.eod_reports%ROWTYPE;
+  v_id uuid;
+  v_now timestamptz := now();
+BEGIN
+  IF p_report_mode NOT IN ('single', 'editable') THEN
+    RAISE EXCEPTION 'save_eod_draft: modo invalido';
+  END IF;
+
+  INSERT INTO public.eod_reports (workspace_id, form_id, user_id, report_date, status)
+  VALUES (p_workspace_id, p_form_id, p_user_id, p_report_date, 'draft')
+  ON CONFLICT (form_id, user_id, report_date) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.eod_reports
+  WHERE form_id = p_form_id AND user_id = p_user_id AND report_date = p_report_date;
+
+  IF v_row.workspace_id <> p_workspace_id THEN
+    RAISE EXCEPTION 'save_eod_draft: el reporte no es de este workspace';
+  END IF;
+  -- Un UPDATE ... RETURNING INTO que no encuentra fila deja v_row en NULL: el id va aparte.
+  v_id := v_row.id;
+
+  IF v_row.status = 'submitted' AND p_report_mode = 'single' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'already_submitted', 'report_id', v_row.id);
+  END IF;
+
+  IF v_row.status = 'submitted' THEN
+    -- Corrigiendo un reporte enviado: lo enviado no cambia hasta el proximo "Enviar".
+    UPDATE public.eod_reports
+       SET pending_edit = jsonb_build_object('answers', COALESCE(p_answers, '{}'::jsonb), 'channels', COALESCE(p_channels, '{}'::jsonb)),
+           rev = rev + 1,
+           saved_at = v_now
+     WHERE id = v_id AND rev = p_rev
+     RETURNING * INTO v_row;
+  ELSE
+    UPDATE public.eod_reports
+       SET answers = COALESCE(p_answers, '{}'::jsonb),
+           channels = COALESCE(p_channels, '{}'::jsonb),
+           rev = rev + 1,
+           saved_at = v_now
+     WHERE id = v_id AND rev = p_rev
+     RETURNING * INTO v_row;
+  END IF;
+
+  IF NOT FOUND THEN
+    -- Otra pestana o el celular guardaron en el medio: se devuelve lo vigente.
+    SELECT * INTO v_row FROM public.eod_reports WHERE id = v_id;
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'conflict',
+      'report_id', v_row.id,
+      'status', v_row.status,
+      'rev', v_row.rev,
+      'saved_at', v_row.saved_at,
+      'answers', CASE WHEN v_row.status = 'submitted' THEN COALESCE(v_row.pending_edit -> 'answers', '{}'::jsonb) ELSE v_row.answers END,
+      'channels', CASE WHEN v_row.status = 'submitted' THEN COALESCE(v_row.pending_edit -> 'channels', '{}'::jsonb) ELSE v_row.channels END
+    );
+  END IF;
+
+  RETURN jsonb_build_object('ok', true, 'report_id', v_row.id, 'status', v_row.status, 'rev', v_row.rev, 'saved_at', v_row.saved_at);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.save_eod_draft(uuid, uuid, uuid, date, integer, jsonb, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.save_eod_draft(uuid, uuid, uuid, date, integer, jsonb, jsonb, text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.submit_eod_report(
+  p_workspace_id uuid,
+  p_form_id uuid,
+  p_user_id uuid,
+  p_report_date date,
+  p_rev integer,
+  p_form_version_id uuid,
+  p_answers jsonb,
+  p_channels jsonb,
+  p_metrics jsonb,
+  p_report_mode text,
+  p_audit_changes jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.eod_reports%ROWTYPE;
+  v_now timestamptz := now();
+  v_first boolean;
+BEGIN
+  IF p_report_mode NOT IN ('single', 'editable') THEN
+    RAISE EXCEPTION 'submit_eod_report: modo invalido';
+  END IF;
+
+  INSERT INTO public.eod_reports (workspace_id, form_id, user_id, report_date, status)
+  VALUES (p_workspace_id, p_form_id, p_user_id, p_report_date, 'draft')
+  ON CONFLICT (form_id, user_id, report_date) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.eod_reports
+  WHERE form_id = p_form_id AND user_id = p_user_id AND report_date = p_report_date
+  FOR UPDATE;
+
+  IF v_row.workspace_id <> p_workspace_id THEN
+    RAISE EXCEPTION 'submit_eod_report: el reporte no es de este workspace';
+  END IF;
+
+  IF v_row.status = 'submitted' AND p_report_mode = 'single' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'already_submitted', 'report_id', v_row.id);
+  END IF;
+
+  IF v_row.rev <> p_rev THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'conflict', 'report_id', v_row.id, 'status', v_row.status, 'rev', v_row.rev);
+  END IF;
+
+  v_first := v_row.status = 'draft';
+
+  UPDATE public.eod_reports
+     SET status = 'submitted',
+         answers = COALESCE(p_answers, '{}'::jsonb),
+         channels = COALESCE(p_channels, '{}'::jsonb),
+         metrics = COALESCE(p_metrics, '{}'::jsonb),
+         form_version_id = p_form_version_id,
+         pending_edit = NULL,
+         rev = rev + 1,
+         saved_at = v_now,
+         submitted_at = CASE WHEN v_first THEN v_now ELSE submitted_at END,
+         edited_at = CASE WHEN v_first THEN edited_at ELSE v_now END,
+         edit_count = CASE WHEN v_first THEN edit_count ELSE edit_count + 1 END
+   WHERE id = v_row.id
+   RETURNING * INTO v_row;
+
+  IF NOT v_first THEN
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+    VALUES (
+      p_workspace_id, 'eod_report', v_row.id, 'eod.edited', p_audit_changes,
+      jsonb_build_object('form_id', p_form_id, 'report_date', p_report_date, 'edit_count', v_row.edit_count),
+      p_user_id
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'report_id', v_row.id,
+    'first', v_first,
+    'edit_count', v_row.edit_count,
+    'rev', v_row.rev,
+    'submitted_at', v_row.submitted_at,
+    'edited_at', v_row.edited_at
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_eod_report(uuid, uuid, uuid, date, integer, uuid, jsonb, jsonb, jsonb, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_eod_report(uuid, uuid, uuid, date, integer, uuid, jsonb, jsonb, jsonb, text, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 182: FLOWS SIN CONTACTO
+-- ============================================================
+-- ============================================================================
+-- 00182 — Flujos sin contacto ("sobre una persona del equipo", EOD E15)
+-- ============================================================================
+-- Un reporte de fin de dia no tiene contacto: es de una persona del equipo. En vez de
+-- inventar un contacto falso por setter, la cola de eventos y las sesiones de flujo
+-- aceptan una persona del equipo EN LUGAR de un contacto. Precedente: la 00100 hizo lo
+-- mismo con `flow_sessions.channel_id`.
+--
+-- automation_events
+--   - contact_id pasa a nullable, con un CHECK: solo los eventos de la lista pueden venir
+--     sin contacto. Los que existen hoy (contact_created, tag_added, booking_*, form_*,
+--     sale_*, payment_*, call_*...) siguen exigiendolo.
+--   - member_user_id: la persona del equipo del evento.
+-- flow_sessions
+--   - contact_id pasa a nullable; member_user_id nuevo; un CHECK exige uno de los dos.
+--
+-- La lista de eventos sin contacto vive en ESTE CHECK y en `lib/flow-engine/registry/
+-- eod-triggers.ts` (subject "member"); `lib/eod/migrations.test.ts` lee este archivo.
+--
+-- Estado VIEJO (leido de la base viva al escribir esta migracion, 12/10/2026):
+--   automation_events.contact_id uuid NOT NULL REFERENCES contacts(id) ON DELETE CASCADE
+--   flow_sessions.contact_id     uuid NOT NULL REFERENCES contacts(id) ON DELETE CASCADE
+--   (sin member_user_id en ninguna de las dos)
+--
+-- Como volver atras (antes: que no queden filas sin contacto):
+--   DELETE FROM public.automation_events WHERE contact_id IS NULL;
+--   DELETE FROM public.flow_sessions WHERE contact_id IS NULL;
+--   ALTER TABLE public.automation_events DROP CONSTRAINT IF EXISTS automation_events_contact_or_member;
+--   ALTER TABLE public.automation_events DROP COLUMN IF EXISTS member_user_id;
+--   ALTER TABLE public.automation_events ALTER COLUMN contact_id SET NOT NULL;
+--   ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_contact_or_member;
+--   ALTER TABLE public.flow_sessions DROP COLUMN IF EXISTS member_user_id;
+--   ALTER TABLE public.flow_sessions ALTER COLUMN contact_id SET NOT NULL;
+-- Riesgo: bajo (aditiva: ninguna fila existente cambia, y todo evento de hoy sigue
+-- exigiendo contacto).
+-- ============================================================================
+
+SET search_path = '';
+
+ALTER TABLE public.automation_events ALTER COLUMN contact_id DROP NOT NULL;
+ALTER TABLE public.automation_events
+  ADD COLUMN IF NOT EXISTS member_user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.automation_events'::regclass AND conname = 'automation_events_contact_or_member'
+  ) THEN
+    ALTER TABLE public.automation_events ADD CONSTRAINT automation_events_contact_or_member
+      CHECK (
+        contact_id IS NOT NULL
+        OR (event_type = ANY (ARRAY['eod_submitted'::text]) AND member_user_id IS NOT NULL)
+      );
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.automation_events.member_user_id IS
+  'La persona del equipo de un evento sin contacto (eod_submitted). Los demas eventos llevan contacto.';
+
+ALTER TABLE public.flow_sessions ALTER COLUMN contact_id DROP NOT NULL;
+ALTER TABLE public.flow_sessions
+  ADD COLUMN IF NOT EXISTS member_user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.flow_sessions'::regclass AND conname = 'flow_sessions_contact_or_member'
+  ) THEN
+    ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_member
+      CHECK (contact_id IS NOT NULL OR member_user_id IS NOT NULL);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.flow_sessions.member_user_id IS
+  'La persona del equipo de un flujo sin contacto (EOD). Una sesion tiene contacto o persona, nunca ninguno.';
+
+-- ============================================================
+-- MIGRATION 183: TRIGGER TYPE EOD
+-- ============================================================
+-- ============================================================================
+-- 00183 — Reporte de fin de dia (E16): el tipo de trigger `eod_submitted`
+-- ============================================================================
+-- Suma `eod_submitted` al CHECK de `triggers.type`. SOLO SUMA: la lista vieja (30 tipos, la
+-- de la 00166) se leyo de la base viva al escribir esta migracion (12/10/2026);
+-- `lib/eod/migrations.test.ts` lee ESTE archivo y exige los 30 + el nuevo.
+--
+-- Definicion VIEJA del CHECK, para volver atras:
+--   CHECK ((type = ANY (ARRAY[
+--     'keyword'::text,
+--     'postback'::text,
+--     'quick_reply'::text,
+--     'welcome'::text,
+--     'default'::text,
+--     'comment_keyword'::text,
+--     'new_contact'::text,
+--     'crm_event'::text,
+--     'inactivity'::text,
+--     'email_received'::text,
+--     'booking_created'::text,
+--     'booking_rescheduled'::text,
+--     'booking_cancelled'::text,
+--     'booking_updated'::text,
+--     'booking_ended'::text,
+--     'booking_status_changed'::text,
+--     'booking_before_start'::text,
+--     'booking_after_end'::text,
+--     'booking_after_created'::text,
+--     'call_analyzed'::text,
+--     'call_linked'::text,
+--     'form_submitted'::text,
+--     'survey_answered'::text,
+--     'contract_signed'::text,
+--     'sale_created'::text,
+--     'sale_status_changed'::text,
+--     'payment_created'::text,
+--     'payment_status_changed'::text,
+--     'payment_before_due'::text,
+--     'payment_after_due'::text
+--   ])))
+--
+-- Como volver atras:
+--   (antes) DELETE FROM public.triggers WHERE type = 'eod_submitted';
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY[<la lista vieja>]));
+-- Riesgo: bajo (aditiva).
+-- ============================================================================
+
+SET search_path = '';
+
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
+  CHECK (type = ANY (ARRAY[
+    'keyword'::text,
+    'postback'::text,
+    'quick_reply'::text,
+    'welcome'::text,
+    'default'::text,
+    'comment_keyword'::text,
+    'new_contact'::text,
+    'crm_event'::text,
+    'inactivity'::text,
+    'email_received'::text,
+    'booking_created'::text,
+    'booking_rescheduled'::text,
+    'booking_cancelled'::text,
+    'booking_updated'::text,
+    'booking_ended'::text,
+    'booking_status_changed'::text,
+    'booking_before_start'::text,
+    'booking_after_end'::text,
+    'booking_after_created'::text,
+    'call_analyzed'::text,
+    'call_linked'::text,
+    'form_submitted'::text,
+    'survey_answered'::text,
+    'contract_signed'::text,
+    'sale_created'::text,
+    'sale_status_changed'::text,
+    'payment_created'::text,
+    'payment_status_changed'::text,
+    'payment_before_due'::text,
+    'payment_after_due'::text,
+    'eod_submitted'::text
+  ]));
+
+-- ============================================================
+-- MIGRATION 184: SUBMIT EOD REPORT V2
+-- ============================================================
+-- ============================================================================
+-- 00184 — submit_eod_report v2: emite el evento `eod_submitted` (E16)
+-- ============================================================================
+-- El mismo envio de la 00181, que ademas inserta en `automation_events` el evento
+-- `eod_submitted` (contact_id NULL, member_user_id = quien envio) en la misma transaccion.
+-- Necesita la 00182 (eventos sin contacto). Cada envio y cada correccion emiten uno; el
+-- trigger decide si dispara (`on: "first"` o `"every"`) y su clave `eod:<report>:<edit_count>`
+-- hace que una correccion no dispare dos veces.
+--
+-- Como volver atras: recrear la funcion con la definicion anterior (la de la 00181, abajo).
+--
+--   CREATE OR REPLACE FUNCTION public.submit_eod_report(
+--     p_workspace_id uuid,
+--     p_form_id uuid,
+--     p_user_id uuid,
+--     p_report_date date,
+--     p_rev integer,
+--     p_form_version_id uuid,
+--     p_answers jsonb,
+--     p_channels jsonb,
+--     p_metrics jsonb,
+--     p_report_mode text,
+--     p_audit_changes jsonb
+--   )
+--   RETURNS jsonb
+--   LANGUAGE plpgsql
+--   SECURITY DEFINER
+--   SET search_path = ''
+--   AS $$
+--   DECLARE
+--     v_row public.eod_reports%ROWTYPE;
+--     v_now timestamptz := now();
+--     v_first boolean;
+--   BEGIN
+--     IF p_report_mode NOT IN ('single', 'editable') THEN
+--       RAISE EXCEPTION 'submit_eod_report: modo invalido';
+--     END IF;
+--
+--     INSERT INTO public.eod_reports (workspace_id, form_id, user_id, report_date, status)
+--     VALUES (p_workspace_id, p_form_id, p_user_id, p_report_date, 'draft')
+--     ON CONFLICT (form_id, user_id, report_date) DO NOTHING;
+--
+--     SELECT * INTO v_row
+--     FROM public.eod_reports
+--     WHERE form_id = p_form_id AND user_id = p_user_id AND report_date = p_report_date
+--     FOR UPDATE;
+--
+--     IF v_row.workspace_id <> p_workspace_id THEN
+--       RAISE EXCEPTION 'submit_eod_report: el reporte no es de este workspace';
+--     END IF;
+--
+--     IF v_row.status = 'submitted' AND p_report_mode = 'single' THEN
+--       RETURN jsonb_build_object('ok', false, 'error', 'already_submitted', 'report_id', v_row.id);
+--     END IF;
+--
+--     IF v_row.rev <> p_rev THEN
+--       RETURN jsonb_build_object('ok', false, 'error', 'conflict', 'report_id', v_row.id, 'status', v_row.status, 'rev', v_row.rev);
+--     END IF;
+--
+--     v_first := v_row.status = 'draft';
+--
+--     UPDATE public.eod_reports
+--        SET status = 'submitted',
+--            answers = COALESCE(p_answers, '{}'::jsonb),
+--            channels = COALESCE(p_channels, '{}'::jsonb),
+--            metrics = COALESCE(p_metrics, '{}'::jsonb),
+--            form_version_id = p_form_version_id,
+--            pending_edit = NULL,
+--            rev = rev + 1,
+--            saved_at = v_now,
+--            submitted_at = CASE WHEN v_first THEN v_now ELSE submitted_at END,
+--            edited_at = CASE WHEN v_first THEN edited_at ELSE v_now END,
+--            edit_count = CASE WHEN v_first THEN edit_count ELSE edit_count + 1 END
+--      WHERE id = v_row.id
+--      RETURNING * INTO v_row;
+--
+--     IF NOT v_first THEN
+--       INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+--       VALUES (
+--         p_workspace_id, 'eod_report', v_row.id, 'eod.edited', p_audit_changes,
+--         jsonb_build_object('form_id', p_form_id, 'report_date', p_report_date, 'edit_count', v_row.edit_count),
+--         p_user_id
+--       );
+--     END IF;
+--
+--     RETURN jsonb_build_object(
+--       'ok', true,
+--       'report_id', v_row.id,
+--       'first', v_first,
+--       'edit_count', v_row.edit_count,
+--       'rev', v_row.rev,
+--       'submitted_at', v_row.submitted_at,
+--       'edited_at', v_row.edited_at
+--     );
+--   END;
+--   $$;
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.submit_eod_report(
+  p_workspace_id uuid,
+  p_form_id uuid,
+  p_user_id uuid,
+  p_report_date date,
+  p_rev integer,
+  p_form_version_id uuid,
+  p_answers jsonb,
+  p_channels jsonb,
+  p_metrics jsonb,
+  p_report_mode text,
+  p_audit_changes jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_row public.eod_reports%ROWTYPE;
+  v_now timestamptz := now();
+  v_first boolean;
+BEGIN
+  IF p_report_mode NOT IN ('single', 'editable') THEN
+    RAISE EXCEPTION 'submit_eod_report: modo invalido';
+  END IF;
+
+  INSERT INTO public.eod_reports (workspace_id, form_id, user_id, report_date, status)
+  VALUES (p_workspace_id, p_form_id, p_user_id, p_report_date, 'draft')
+  ON CONFLICT (form_id, user_id, report_date) DO NOTHING;
+
+  SELECT * INTO v_row
+  FROM public.eod_reports
+  WHERE form_id = p_form_id AND user_id = p_user_id AND report_date = p_report_date
+  FOR UPDATE;
+
+  IF v_row.workspace_id <> p_workspace_id THEN
+    RAISE EXCEPTION 'submit_eod_report: el reporte no es de este workspace';
+  END IF;
+
+  IF v_row.status = 'submitted' AND p_report_mode = 'single' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'already_submitted', 'report_id', v_row.id);
+  END IF;
+
+  IF v_row.rev <> p_rev THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'conflict', 'report_id', v_row.id, 'status', v_row.status, 'rev', v_row.rev);
+  END IF;
+
+  v_first := v_row.status = 'draft';
+
+  UPDATE public.eod_reports
+     SET status = 'submitted',
+         answers = COALESCE(p_answers, '{}'::jsonb),
+         channels = COALESCE(p_channels, '{}'::jsonb),
+         metrics = COALESCE(p_metrics, '{}'::jsonb),
+         form_version_id = p_form_version_id,
+         pending_edit = NULL,
+         rev = rev + 1,
+         saved_at = v_now,
+         submitted_at = CASE WHEN v_first THEN v_now ELSE submitted_at END,
+         edited_at = CASE WHEN v_first THEN edited_at ELSE v_now END,
+         edit_count = CASE WHEN v_first THEN edit_count ELSE edit_count + 1 END
+   WHERE id = v_row.id
+   RETURNING * INTO v_row;
+
+  -- El evento de automatizacion, en la MISMA transaccion (E16). Sin contacto: es de una
+  -- persona del equipo (00182). Solo escalares en el payload y nunca booking_id. La clave
+  -- de idempotencia la arma el trigger con report_id y edit_count.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, member_user_id, payload)
+  VALUES (
+    p_workspace_id,
+    'eod_submitted',
+    NULL,
+    p_user_id,
+    jsonb_build_object(
+      'report_id', v_row.id,
+      'form_id', p_form_id,
+      'report_date', p_report_date,
+      'edit_count', v_row.edit_count
+    )
+  );
+
+  IF NOT v_first THEN
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+    VALUES (
+      p_workspace_id, 'eod_report', v_row.id, 'eod.edited', p_audit_changes,
+      jsonb_build_object('form_id', p_form_id, 'report_date', p_report_date, 'edit_count', v_row.edit_count),
+      p_user_id
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'report_id', v_row.id,
+    'first', v_first,
+    'edit_count', v_row.edit_count,
+    'rev', v_row.rev,
+    'submitted_at', v_row.submitted_at,
+    'edited_at', v_row.edited_at
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.submit_eod_report(uuid, uuid, uuid, date, integer, uuid, jsonb, jsonb, jsonb, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_eod_report(uuid, uuid, uuid, date, integer, uuid, jsonb, jsonb, jsonb, text, jsonb) TO service_role;
+
+-- ============================================================
+-- MIGRATION 185: EOD REMINDER CRON
+-- ============================================================
+-- ============================================================================
+-- 00185 — Reporte de fin de dia (E13): el recordatorio
+-- ============================================================================
+-- pg_cron cada 15 minutos llama a `private.enqueue_eod_reminders()`, que encola en
+-- `scheduled_jobs` UN barrido (`eod_reminder_sweep`) por cada reporte publicado con el
+-- recordatorio prendido, con `dedupe_key = 'eod-reminder:<form>:<franja de 15 min>'`.
+-- El barrido (lib/jobs/handlers/eod-reminder.ts) decide a quien avisar: quien esta en la
+-- audiencia, la hora en SU zona, si ya envio el de hoy y si ya se le aviso. Esa regla vive en
+-- TypeScript (`lib/eod/reminder.ts`, con su test) y NO se repite aca: la audiencia por roles
+-- es la misma funcion que usa la pantalla.
+--
+-- Desvio del plano: el plano pedia `dedupe_key = eod-reminder:<form>:<user>:<fecha>` en la
+-- cola; aca la cola lleva uno por reporte y franja, y "un aviso por persona y dia" lo
+-- garantiza el barrido mirando los avisos ya mandados (metadata.report_date).
+--
+-- No usa `private.call_app_cron` (patron 00146/00167): el cron de jobs que ya existe
+-- procesa la cola.
+--
+-- Como volver atras:
+--   SELECT cron.unschedule('eod-reminders-enqueue');
+--   DROP FUNCTION IF EXISTS private.enqueue_eod_reminders();
+--   UPDATE public.scheduled_jobs SET status = 'cancelled' WHERE type = 'eod_reminder_sweep' AND status = 'pending';
+-- Riesgo: bajo (aditiva; sin reportes con recordatorio, no encola nada).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION private.enqueue_eod_reminders()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_form record;
+  v_slot bigint := floor(extract(epoch FROM now()) / 900);
+  v_enqueued integer := 0;
+BEGIN
+  FOR v_form IN
+    SELECT f.id
+    FROM public.forms f
+    WHERE f.type = 'eod'
+      AND f.status = 'published'
+      AND f.current_version_id IS NOT NULL
+      AND COALESCE((f.eod_config -> 'reminder' ->> 'enabled')::boolean, false)
+  LOOP
+    BEGIN
+      INSERT INTO public.scheduled_jobs (type, payload, run_at, dedupe_key)
+      VALUES (
+        'eod_reminder_sweep',
+        jsonb_build_object('form_id', v_form.id),
+        now(),
+        'eod-reminder:' || v_form.id::text || ':' || v_slot::text
+      )
+      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL AND status = 'pending' DO NOTHING;
+      IF FOUND THEN
+        v_enqueued := v_enqueued + 1;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'enqueue_eod_reminders: no pude encolar el reporte %: %', v_form.id, SQLERRM;
+    END;
+  END LOOP;
+
+  RETURN v_enqueued;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.enqueue_eod_reminders() FROM PUBLIC, anon, authenticated;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'eod-reminders-enqueue') THEN
+    PERFORM cron.unschedule('eod-reminders-enqueue');
+  END IF;
+END $$;
+
+SELECT cron.schedule('eod-reminders-enqueue', '*/15 * * * *', $$SELECT private.enqueue_eod_reminders()$$);

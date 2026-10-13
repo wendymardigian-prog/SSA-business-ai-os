@@ -205,3 +205,15 @@ export function resetRegistry(): void {
   triggerGuards.clear();
   aliasIndex.clear();
 }
+
+/**
+ * Sobre quién es un evento de `automation_events`: `member` si lo atiende un disparador
+ * sin contacto (`eod_submitted`), si no `contact` (todos los de siempre). El cron ramifica
+ * por esto de forma explícita.
+ */
+export function eventSubject(eventType: string): "contact" | "member" {
+  for (const t of triggers.values()) {
+    if (t.subject === "member" && t.eventTypes?.includes(eventType)) return "member";
+  }
+  return "contact";
+}

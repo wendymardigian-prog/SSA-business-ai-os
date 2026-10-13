@@ -2,7 +2,7 @@
  * Lógica pura de la lista de formularios (F3): filas, slugs y transiciones.
  */
 import { slugify } from "@/lib/scheduling/slug";
-import { FORM_STATUSES, type FormStatus, type FormType } from "./fields";
+import { FORM_STATUSES, FORM_TYPES, type FormStatus, type FormType } from "./fields";
 
 export { defaultDefinition } from "./fields";
 
@@ -96,6 +96,17 @@ export function countByStatus(rows: Array<{ status: FormStatus }>): Record<ListF
   const counts: Record<ListFilter, number> = { published: 0, draft: 0, paused: 0, archived: 0 };
   for (const row of rows) counts[row.status] += 1;
   return counts;
+}
+
+/** El filtro por tipo de la lista: "all" o uno de los tipos (incluido "Fin de día"). */
+export type TypeFilter = "all" | FormType;
+
+export function parseTypeFilter(value: unknown): TypeFilter {
+  return FORM_TYPES.includes(value as FormType) ? (value as FormType) : "all";
+}
+
+export function matchesType(row: { type: FormType }, filter: TypeFilter): boolean {
+  return filter === "all" || row.type === filter;
 }
 
 export function duplicateName(name: string): string {
