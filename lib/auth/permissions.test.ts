@@ -14,6 +14,7 @@ import {
   canAll,
   canAny,
   isEmptyRole,
+  normalizeScope,
   parsePermissions,
   PERMISSION_KEYS,
   PERMISSION_MODULES,
@@ -185,7 +186,7 @@ describe("preguntar por un permiso (F68)", () => {
     // Un permiso mal escrito no puede abrir una puerta, y renombrar una
     // clave cierra el acceso en vez de abrirlo.
     expect(can(role, "telepatia.usar")).toBe(false);
-    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all", calls: "own", sales: "own" } }, "telepatia.usar")).toBe(false);
+    expect(can({ keys: ["telepatia.usar"], scopes: { leads: "all", conversations: "all", bookings: "all", calls: "own", sales: "own", tasks: "own" } }, "telepatia.usar")).toBe(false);
   });
 
   it("sin rol, nada", () => {
@@ -252,5 +253,34 @@ describe("los roles de sistema por nombre (F68)", () => {
 
   it("un rol personalizado no es de sistema", () => {
     expect(systemRolePermissions("Setter senior")).toBeNull();
+  });
+});
+
+describe("Tareas (Extra A, F2)", () => {
+  it("el catalogo trae las tres claves con etiqueta en castellano", () => {
+    for (const key of ["tasks.view", "tasks.edit", "tasks.delete"]) {
+      const def = PERMISSION_KEYS.find((p) => p.key === key);
+      expect(def, key).toBeDefined();
+      expect(def?.module).toBe("tasks");
+      expect(def?.label.length).toBeGreaterThan(3);
+      expect(def?.description.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("el modulo tiene alcance own | all, y lo desconocido es own", () => {
+    expect(scopeOptionsFor("tasks")).toEqual(["own", "all"]);
+    expect(normalizeScope("tasks", "x")).toBe("own");
+    expect(normalizeScope("tasks", "own_unassigned")).toBe("own");
+    expect(normalizeScope("tasks", "all")).toBe("all");
+  });
+
+  it("el Member ve y edita pero no borra; Owner y Admin tienen las tres", () => {
+    expect(can(SYSTEM_ROLE_PERMISSIONS.member, "tasks.view")).toBe(true);
+    expect(can(SYSTEM_ROLE_PERMISSIONS.member, "tasks.edit")).toBe(true);
+    expect(can(SYSTEM_ROLE_PERMISSIONS.member, "tasks.delete")).toBe(false);
+    for (const role of ["owner", "admin"] as const) {
+      expect(canAll(SYSTEM_ROLE_PERMISSIONS[role], ["tasks.view", "tasks.edit", "tasks.delete"])).toBe(true);
+    }
+    expect(scopeFor(SYSTEM_ROLE_PERMISSIONS.member, "tasks")).toBe("own");
   });
 });

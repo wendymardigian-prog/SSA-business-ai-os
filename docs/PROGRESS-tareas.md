@@ -4,7 +4,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 
 ## Estado
 
-- [ ] **T1 — Base y reglas**: [ ] F1 tabla/RLS · [ ] F2 permisos · [ ] F3 fechas (pura) · [ ] F4 completar con corrimientos · [ ] F5 dependencias · [ ] F6 limpieza · [ ] F7 auditoría · [ ] F8 acciones/zod · [ ] F9 proyectos
+- [x] **T1 — Base y reglas** (13/10/2026): [x] F1 tabla/RLS · [x] F2 permisos · [x] F3 fechas (pura) · [x] F4 completar con corrimientos · [x] F5 dependencias · [x] F6 limpieza · [x] F7 auditoría · [x] F8 acciones/zod · [x] F9 proyectos
 - [ ] **T2 — Tabla, celda y drawer**: [ ] F10 tabla · [ ] F11 edición en celda · [ ] F12 drawer · [ ] F13 diálogo de fechas · [ ] F14 filtros/URL · [ ] F15 creación rápida y menú
 - [ ] **T3 — Tablero, avisos y superficies**: [ ] F16 kanban · [ ] F17 notificaciones · [ ] F18 cron de vencimientos · [ ] F19 Mis tareas · [ ] F20 contacto y bandeja · [ ] F21 mobile
 - [ ] **T4 — Origen automático**: [ ] F22 nodo create_task · [ ] F23 tool crear_tarea · [ ] F24 tarea al escalar · [ ] F25 triggers task_* (también sin contacto) · [ ] F26 origen visible y robustez
@@ -14,8 +14,8 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 
 | Plano | Real | Estado |
 |---|---|---|
-| 00196 | 00196_tasks | pendiente |
-| 00197 | 00197_tasks_functions | pendiente |
+| 00196 | 00196_tasks | **aplicada y registrada** (version 20261013165449), verificada. Corregida el mismo dia: `can_see_task` devolvia NULL con `owner_id`/`created_by` nulos; ahora siempre true/false (COALESCE) |
+| 00197 | 00197_tasks_functions | **aplicada y registrada**, verificada. Guardas de las RPC con COALESCE |
 | 00198 | 00198_tasks_due_cron | pendiente |
 | 00199 | 00199_task_trigger_types | pendiente |
 
@@ -26,6 +26,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 - `next build`: compila.
 - `scripts/verify-*.mjs`: sin correr todavía (escriben datos `zz-test-` en la base real); se corren de a uno al arrancar la ejecución y se anota acá.
 - Base: última migración `00195_ads_crm_metrics`; `00196` libre.
+- **`verify-*.mjs` (medido antes de tocar nada)**: en verde 21 de 26. **Ya fallaban**: `verify-attribution` (1: «todos los contactos reales tienen first_touch», 781 de 840, depende de datos reales), `verify-publishing` (2: «una publicacion sin aviso se pone al dia preguntando» y «ahi si la pieza queda publicada»), `verify-webhook` (necesita la app corriendo en localhost:3000). `verify-workspace-isolation` pasa con `--despues-de-00143`. Con flags: rls `--despues-de-00143`, roles `--despues-de-00136`, audit-visibility `--despues-de-00168`.
 
 ---
 
@@ -153,3 +154,15 @@ Primero `npm i @tanstack/react-table` (única dependencia). Puras con test: `lib
 
 ## Verificación de este plan
 Cada afirmación de §2 sale de leer `origin/main` (snapshot en el scratchpad) y de `list_migrations` real; nada se modificó en el repo ni en la base durante la exploración. El baseline de §1 se completa con los `verify-*` al arrancar la ejecución.
+
+
+---
+
+## Bitácora de la corrida
+
+### T1 — Base y reglas (13/10/2026)
+- Migraciones 00196 y 00197 aplicadas con la CLI, registradas en `schema_migrations` y `ALL_MIGRATIONS.sql` regenerado. 00196 se aplicó dos veces (idempotente).
+- `verify-tasks.mjs`: RLS por rol, privilegios por columna, DELETE directo rechazado, ciclos, `date_before_blocker`, atomicidad (corrimiento inválido → no se completa nada), `stale`, limpieza al salir una persona, `delete_task`, historial (`audit_log_select_tasks`), y el núcleo (`lib/tasks/core.ts`) contra la base real. Todo en verde.
+- Hallazgo: una función de visibilidad que devuelve NULL (no false) deja pasar un `NOT (...)` en `plpgsql`. Se arregló con COALESCE y quedó cubierto por el verify.
+- `verify-audit-visibility --despues-de-00168`, `verify-rls`, `verify-roles`, `verify-workspace-isolation` en verde. `npm test` 786 archivos / 9.866 tests; lint 0 errores / 36 warnings (igual que el punto de partida); build compila.
+- Decisión: el plan de fechas se arma solo con las tareas que la persona ve (la RLS); una dependiente que no ve no se mueve ni se le muestra el título.

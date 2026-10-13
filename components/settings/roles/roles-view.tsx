@@ -46,6 +46,7 @@ const MODULE_LABELS: Record<PermissionModule, string> = {
   calls: "Llamadas",
   forms: "Formularios",
   sales: "Ventas",
+  tasks: "Tareas",
   integrations: "Integraciones",
   team: "Equipo",
   settings: "Configuracion",
@@ -61,6 +62,7 @@ interface Draft {
   bookingsScope: PermissionScope;
   callsScope: PermissionScope;
   salesScope: PermissionScope;
+  tasksScope: PermissionScope;
 }
 
 const emptyDraft = (): Draft => ({
@@ -73,6 +75,7 @@ const emptyDraft = (): Draft => ({
   bookingsScope: "own",
   callsScope: "own",
   salesScope: "own",
+  tasksScope: "own",
 });
 
 export function RolesView({
@@ -109,6 +112,7 @@ export function RolesView({
       bookingsScope: role.permissions.scopes.bookings,
       callsScope: role.permissions.scopes.calls,
       salesScope: role.permissions.scopes.sales,
+      tasksScope: role.permissions.scopes.tasks,
     });
     setError(null);
     setWarnings([]);
@@ -128,6 +132,7 @@ export function RolesView({
         bookingsScope: draft.bookingsScope,
         callsScope: draft.callsScope,
         salesScope: draft.salesScope,
+        tasksScope: draft.tasksScope,
       };
 
       const result = draft.id ? await updateRole(draft.id, input) : await createRole(input);
@@ -344,6 +349,13 @@ export function RolesView({
                 hint="Las que cargó o donde es setter o vendedor."
                 value={draft.salesScope}
                 onChange={(salesScope) => setDraft({ ...draft, salesScope })}
+              />
+              <ScopeField
+                label="Que tareas ve"
+                module="tasks"
+                hint="Las que creó, tiene a cargo o sigue."
+                value={draft.tasksScope}
+                onChange={(tasksScope) => setDraft({ ...draft, tasksScope })}
               />
             </div>
 

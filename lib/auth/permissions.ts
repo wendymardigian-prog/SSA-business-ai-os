@@ -36,6 +36,7 @@ export const PERMISSION_MODULES = [
   "calls",
   "forms",
   "sales",
+  "tasks",
   "integrations",
   "team",
   "settings",
@@ -130,6 +131,11 @@ export const PERMISSION_KEYS: PermissionDefinition[] = [
   { key: "sales.manage", module: "sales", label: "Cargar y editar ventas", description: "Cargar, editar y cancelar ventas; enviar el contrato. Pasar el tope de descuento exige alcance «todos»." },
   { key: "payments.manage", module: "sales", label: "Gestionar los pagos", description: "Cobrar, revertir un cobro, agregar una cuota, reprogramar, marcar incobrable y reembolsar." },
 
+  // ── Tareas (Extra A) ────────────────────────────────────────────────────
+  { key: "tasks.view", module: "tasks", label: "Ver las tareas", description: "La tabla y el tablero de Tareas. El alcance decide si ve todas o solo las que creó, tiene a cargo o sigue." },
+  { key: "tasks.edit", module: "tasks", label: "Crear y editar tareas", description: "Crear tareas, editarlas, completarlas, reasignarlas y agregar seguidores. Mismo alcance que ver." },
+  { key: "tasks.delete", module: "tasks", label: "Borrar tareas", description: "Borrar tareas. Se borran de forma lógica: dejan de verse pero quedan en el historial." },
+
   // ── Configuracion ───────────────────────────────────────────────────────
   { key: "integrations.manage", module: "integrations", label: "Administrar integraciones", description: "Conectar cuentas y guardar claves." },
   { key: "team.manage", module: "team", label: "Administrar el equipo", description: "Invitar personas y cambiarles el rol." },
@@ -151,7 +157,7 @@ export function permissionLabel(key: string): string {
 // ── Alcances ──────────────────────────────────────────────────────────────
 
 /** Los modulos donde importa CUANTO se ve, no solo si se ve. */
-export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales"] as const;
+export const SCOPED_MODULES = ["leads", "conversations", "bookings", "calls", "sales", "tasks"] as const;
 export type ScopedModule = (typeof SCOPED_MODULES)[number];
 
 /**
@@ -235,21 +241,25 @@ const MEMBER_KEYS = [
   "sales.view",
   "sales.manage",
   "payments.manage",
+  // Tareas (Extra A): un Member crea, edita y completa las tareas que creo, tiene a
+  // cargo o sigue (alcance `own`, aplicado por la RLS). NO borra (`tasks.delete`).
+  "tasks.view",
+  "tasks.edit",
 ] as const;
 
 export const SYSTEM_ROLE_PERMISSIONS: Record<"owner" | "admin" | "member", RolePermissions> = {
   owner: {
     keys: [...ALL_PERMISSION_KEYS],
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" },
   },
   admin: {
     // Todo salvo transferir la propiedad: eso es irreversible y es del Owner.
     keys: ALL_PERMISSION_KEYS.filter((key) => key !== "workspace.transfer"),
-    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all" },
+    scopes: { leads: "all", conversations: "all", bookings: "all", calls: "all", sales: "all", tasks: "all" },
   },
   member: {
     keys: [...MEMBER_KEYS],
-    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own" },
+    scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
   },
 };
 
@@ -311,7 +321,7 @@ export function parsePermissions(value: unknown): RolePermissions {
     keys: Array.isArray(record.keys)
       ? record.keys.filter((key): key is string => typeof key === "string" && ALL_PERMISSION_KEYS.includes(key))
       : [],
-    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales") },
+    scopes: { leads: scope("leads"), conversations: scope("conversations"), bookings: scope("bookings"), calls: scope("calls"), sales: scope("sales"), tasks: scope("tasks") },
   };
 }
 
