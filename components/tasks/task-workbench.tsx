@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ToastProvider } from "@/components/content/drawer/toast";
 import { loadTaskContext } from "@/lib/actions/tasks";
@@ -9,6 +9,7 @@ import type { DraftDefaults } from "@/lib/tasks/draft";
 import { parseTaskParam, withoutTaskParam, withTaskParam } from "@/lib/tasks/drawer-url";
 import { listProjects } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
+import { upsertRow } from "@/lib/tasks/cell-edit";
 import type { TaskRow } from "@/lib/tasks/types";
 import { ShiftDialog } from "./shift-dialog";
 import { TaskDrawer } from "./task-drawer";
@@ -29,8 +30,30 @@ export type CreateDefaults = DraftDefaults & { contact_id?: string | null; conve
 export interface TaskWorkbenchApi {
   tasks: TaskRow[];
   actions: TaskActions;
+  members: MemberLite[];
+  currentUserId: string;
+  /** AAAA-MM-DD en la zona del workspace. */
+  today: string;
+  /** La zona del workspace: las fechas de las tareas son de esa zona. */
+  timeZone: string;
+  canEdit: boolean;
   openTask: (id: string, origin?: HTMLElement | null) => void;
   startCreate: (defaults?: CreateDefaults) => void;
+  /** Suma (o reemplaza) una tarea que se creo por fuera de las acciones del anfitrion. */
+  addTask: (task: TaskRow) => void;
+}
+
+const WorkbenchContext = createContext<TaskWorkbenchApi | null>(null);
+
+/** El anfitrión más cercano, o null si no hay ninguno (los componentes que lo usan de forma opcional no cambian sin él). */
+export function useOptionalTaskWorkbench(): TaskWorkbenchApi | null {
+  return useContext(WorkbenchContext);
+}
+
+export function useTaskWorkbench(): TaskWorkbenchApi {
+  const api = useContext(WorkbenchContext);
+  if (!api) throw new Error("useTaskWorkbench: falta el <TaskWorkbench> arriba en el arbol.");
+  return api;
 }
 
 export interface TaskWorkbenchProps {
@@ -46,7 +69,7 @@ export interface TaskWorkbenchProps {
   flowNames?: Record<string, string>;
   /** La tarea abierta vive en `?task=` de la URL (como en Tareas). Sin esto, el drawer se maneja en pantalla. */
   syncUrl?: boolean;
-  children: (api: TaskWorkbenchApi) => ReactNode;
+  children: ReactNode;
 }
 
 export function TaskWorkbench(props: TaskWorkbenchProps) {
@@ -136,9 +159,15 @@ function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone,
   const showDrawer = creating !== null || openRow !== null || notFound;
   const contactIdForName = creating ? creating.contact_id : openRow?.contact_id;
 
+  const addTask = useCallback((task: TaskRow) => setTasks((prev) => upsertRow(prev, task)), []);
+  const api = useMemo<TaskWorkbenchApi>(
+    () => ({ tasks, actions, members, currentUserId, today, timeZone, canEdit, openTask, startCreate, addTask }),
+    [tasks, actions, members, currentUserId, today, timeZone, canEdit, openTask, startCreate, addTask],
+  );
+
   return (
-    <>
-      {children({ tasks, actions, openTask, startCreate })}
+    <WorkbenchContext.Provider value={api}>
+      {children}
 
       {showDrawer && (
         <TaskDrawer
@@ -180,6 +209,6 @@ function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone,
           }}
         />
       )}
-    </>
+    </WorkbenchContext.Provider>
   );
 }

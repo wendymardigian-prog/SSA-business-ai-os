@@ -21,6 +21,7 @@ import {
 import { loadContactTasksChecked, type ContactTasksPayload, type TaskContextPayload } from "@/lib/tasks/contact-section";
 import { flowIdOf } from "@/lib/tasks/format";
 import { todayInputValue } from "@/lib/dates";
+import { createFollowupTaskCore, type FollowupOutput } from "@/lib/tasks/followup-core";
 import { fail, success, type TaskActionResult } from "@/lib/tasks/result";
 import type { TaskBlocker, TaskRow } from "@/lib/tasks/types";
 
@@ -96,6 +97,14 @@ export async function setTaskBlockers(taskId: string, blockerIds: string[]): Pro
 
 export async function deleteTask(taskId: string): Promise<TaskActionResult<{ unlinkedFrom: number }>> {
   return run("tasks.delete", "borrar tareas", (ctx) => deleteTaskCore(ctx, taskId));
+}
+
+/**
+ * «Crear tarea» debajo del «Proximo seguimiento» de un contacto (R2): una tarea por contacto y fecha, con un clic.
+ * Idempotente: si ya existe devuelve la existente.
+ */
+export async function createFollowupTask(contactId: string, date: string): Promise<TaskActionResult<FollowupOutput>> {
+  return run("tasks.edit", "crear tareas", (ctx) => createFollowupTaskCore(ctx, contactId, date));
 }
 
 /**

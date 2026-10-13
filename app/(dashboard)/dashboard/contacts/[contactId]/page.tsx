@@ -48,7 +48,7 @@ import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { ContactFormsSection } from "@/components/contacts/forms-section";
 import { loadContactForms } from "@/lib/forms/data/contact-forms";
-import { ContactTasks } from "@/components/tasks/contact-tasks";
+import { ContactTasks, ContactTasksProvider } from "@/components/tasks/contact-tasks";
 import { loadContactTasksChecked } from "@/lib/tasks/contact-section";
 import { todayInputValue } from "@/lib/dates";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
@@ -541,32 +541,38 @@ export default async function ContactDetailPage({
               />
             </Section>
 
-            <Section title="Seguimiento">
-              <div className="space-y-3">
-                <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
-                <FollowupField
-                  contactId={contact.id}
-                  value={contact.next_followup_date}
-                />
-              </div>
-            </Section>
-
-            {canViewTasks && (
-              <Section title="Tareas">
-                <ContactTasks
-                  contactId={contact.id}
-                  contactName={contact.display_name || contact.email || null}
-                  initialTasks={contactTasks}
-                  members={members.map((m) => ({ id: m.userId, name: m.name }))}
-                  currentUserId={user.id}
-                  today={todayInputValue(new Date(), workspace.timezone || "UTC")}
-                  timeZone={workspace.timezone || "UTC"}
-                  canEdit={permissionCtx.can("tasks.edit")}
-                  canDelete={permissionCtx.can("tasks.delete")}
-                  loadError={contactTasksRes.failed}
-                />
+            <ContactTasksProvider
+              contactId={contact.id}
+              contactName={contact.display_name || contact.email || null}
+              status={!canViewTasks ? "hidden" : contactTasksRes.failed ? "error" : "ready"}
+              data={{
+                tasks: contactTasks,
+                members: members.map((m) => ({ id: m.userId, name: m.name })),
+                currentUserId: user.id,
+                today: todayInputValue(new Date(), workspace.timezone || "UTC"),
+                timeZone: workspace.timezone || "UTC",
+                canEdit: permissionCtx.can("tasks.edit"),
+                canDelete: permissionCtx.can("tasks.delete"),
+              }}
+            >
+              <Section title="Seguimiento">
+                <div className="space-y-3">
+                  <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
+                  <FollowupField
+                    contactId={contact.id}
+                    value={contact.next_followup_date}
+                    canCreateTask={permissionCtx.can("tasks.edit")}
+                    contactName={contact.display_name || contact.email || null}
+                  />
+                </div>
               </Section>
-            )}
+
+              {canViewTasks && (
+                <Section title="Tareas">
+                  <ContactTasks />
+                </Section>
+              )}
+            </ContactTasksProvider>
 
             <Section title="Tags">
               <TagsEditor

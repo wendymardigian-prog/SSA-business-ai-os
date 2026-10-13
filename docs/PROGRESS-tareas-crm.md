@@ -4,9 +4,9 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 
 ## Checklist
 
-- [ ] M1 (00206) aplicada y registrada
+- [x] M1 (00206) aplicada y registrada
 - [x] R1 · Sección «Tareas» del contacto (ficha y bandeja)
-- [ ] R2 · «Próximo seguimiento» con «Crear tarea»
+- [x] R2 · «Próximo seguimiento» con «Crear tarea»
 - [ ] R6 · Hora y duración opcionales
 - [ ] R3 · Nodo «Crear tarea» ampliado
 - [ ] R4 · Nodo «Completar tarea»
@@ -27,7 +27,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 
 | N.º | Archivo | Contenido | Estado |
 |---|---|---|---|
-| M1 | `00206_tasks_time_and_followup.sql` | `due_time`, `duration_minutes`, CHECK, GRANT por columna, índice único de seguimiento | pendiente |
+| M1 | `00206_tasks_time_and_followup.sql` | `due_time`, `duration_minutes`, CHECK, GRANT por columna, índice único de seguimiento | aplicada y registrada (13/10/2026) |
 | M2 | `00207_contact_merge_and_task_shift_context.sql` | `merge_contacts`, `task_shift_context`, reemplazo de `complete_task_with_shifts` | pendiente |
 
 Próxima libre después de estas: `00208`.

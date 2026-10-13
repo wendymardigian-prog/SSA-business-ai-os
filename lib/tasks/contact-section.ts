@@ -35,8 +35,10 @@ export async function loadContactTasksChecked(db: Db, input: { workspaceId: stri
     console.error("[tareas] no pude leer las tareas del contacto:", error.message);
     return { tasks: [], failed: true };
   }
-  const { open, completed } = pickContactTasks((data ?? []) as unknown as TaskRow[]);
-  return { tasks: [...open, ...completed], failed: false };
+  // Todas las que se leyeron: la lista de la pantalla pone el tope de completadas (`tasksForContact`), y la tarea de
+  // seguimiento de una fecha se tiene que encontrar aunque este completada hace tiempo.
+  const { open, done } = splitOpenDone((data ?? []) as unknown as TaskRow[]);
+  return { tasks: [...open, ...done], failed: false };
 }
 
 export async function loadContactTasks(db: Db, input: { workspaceId: string; contactId: string }): Promise<TaskRow[]> {
