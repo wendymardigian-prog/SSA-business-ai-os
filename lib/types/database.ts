@@ -1995,6 +1995,8 @@ export interface Database {
           agent_run_id: string | null;
           /** De donde salio el saliente (migracion 00074). null en entrantes. */
           origin: MessageOrigin | null;
+          /** De donde vino un mensaje entrante: historia, mencion, anuncio (00189, lista blanca). */
+          origin_context: Json | null;
           status: MessageStatus;
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */

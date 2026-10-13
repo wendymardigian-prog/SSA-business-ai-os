@@ -86,3 +86,24 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   dígitos» (como pide el plano). El negocio no tiene un campo de país por defecto.
 - **Flujos `zz-test` viejos:** al limpiar los datos de la revisión visual se borraron 7 flujos con el prefijo
   `zz-test` que ya estaban en la base real (datos de pruebas de módulos anteriores).
+
+
+### AT1 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
+
+- **F20 (respaldo desde la conversación de Zernio) no se construyó.** Es nice-to-have y para probarla de verdad
+  hace falta leer una conversación real de Zernio, cosa que esta corrida no puede hacer (nada externo real). Queda
+  para una pasada con una cuenta conectada. El toque del mensaje ya guarda `origin_context`, así que no se pierde
+  el dato desde ahora: lo que falta es recuperar el de mensajes viejos.
+- **`verify-attribution.mjs` sigue con el mismo caso de datos** ("todos los contactos reales tienen first_touch",
+  776 de 835; en el punto de partida eran 775 de 834). El contador crece solo porque entra un contacto nuevo sin
+  toque; no es un cambio de código. El resto de sus casos pasa.
+- **`verify-message-persistence.mjs` no verifica nada acá**: dice «No hay un canal de Zernio en este workspace». La
+  columna `messages.origin_context` y el reintento sin ella (si la base no la tuviera) se cubren con los tests de
+  `lib/inbound.test.ts`.
+- **`buildDesiredTriggers` nunca persistió `storyReply`** (es anterior a este módulo). Solo se persisten los dos
+  filtros nuevos (`fromAdOnly`, `storyMentionOnly`) y `storyReply` quedó como estaba. Conviene revisarlo aparte.
+- **La ficha del contacto muestra ids crudos** (campaña, conjunto y anuncio) hasta que AT2 y AT3 traigan el
+  catálogo de Meta: ahí pasan a ser nombres y miniatura.
+- **Clic en la agenda con `gbraid`/`wbraid` y otras claves**: la agenda ahora acepta todas las claves de
+  `TOUCH_KEYS`, así que dejan de precargarse como respuesta del formulario (cambio menor, previsto en el plan).
+- **`create_booking` sigue poniendo `medium = 'booking'`** siempre; no se tocó (fuera del plano).

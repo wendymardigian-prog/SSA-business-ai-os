@@ -262,4 +262,14 @@ export interface IncomingMessage {
   isStoryReply?: boolean;
   /** Id de la historia respondida, cuando lo hay. */
   storyId?: string;
+  /** Alguien mencionó la cuenta en SU historia (Instagram, `metadata.isStoryMention`). */
+  isStoryMention?: boolean;
+  /**
+   * El mensaje vino de un anuncio (trae `referral` / `externalAdReply`). Es lo que permite el filtro
+   * «Solo si vino de un anuncio» del disparador de palabra clave (Extra L, F19).
+   */
+  fromAd?: boolean;
+  /** El anuncio del que vino, si se sabe. */
+  adId?: string;
+  adTitle?: string;
 }

@@ -159,7 +159,9 @@ export default async function ContactDetailPage({
       // un Member ve los toques de los contactos que ya puede ver.
       supabase
         .from("contact_touches")
-        .select("id, occurred_at, source, medium, content_label, content_post_id, origin")
+        .select(
+          "id, occurred_at, source, medium, content_label, content_post_id, origin, raw, campaign, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page",
+        )
         .eq("contact_id", contactId)
         .eq("workspace_id", workspace.id)
         .order("occurred_at", { ascending: true })
@@ -190,10 +192,19 @@ export default async function ContactDetailPage({
   if (!contact) notFound();
 
   const viewerTimezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
+  // Un toque de formulario ya no lleva el nombre del formulario como `utm_content`: se lee de `raw.source_id`.
+  const touchRows = touchesRes.data ?? [];
+  const formIds = [...new Set(touchRows.filter((t) => t.origin === "form").map((t) => (t.raw as { source_id?: unknown } | null)?.source_id).filter((id): id is string => typeof id === "string"))];
+  const formNames: Record<string, string> = {};
+  if (formIds.length > 0) {
+    const { data: formRows } = await supabase.from("forms").select("id, name").eq("workspace_id", workspace.id).in("id", formIds);
+    for (const f of (formRows ?? []) as { id: string; name: string }[]) formNames[f.id] = f.name;
+  }
   const attributionView = buildAttributionView({
     attribution: contact.attribution,
-    rows: touchesRes.data ?? [],
+    rows: touchRows,
     timeZone: viewerTimezone,
+    formNames,
   });
 
   const members = await getWorkspaceMembers(workspace.id);

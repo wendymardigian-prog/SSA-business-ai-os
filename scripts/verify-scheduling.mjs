@@ -387,6 +387,33 @@ try {
         "queda UNA fila de toque, con la clave de la reserva");
       check(toques?.[0]?.referrer_url === "https://instagram.com/", "el toque guarda el referente de la reserva");
 
+      // Extra L (M5, 00190): el toque lleva el anuncio, el conjunto y la campana, y los extras en raw.
+      {
+        const full = { utm_source: "facebook", utm_medium: "paid", utm_campaign: "oct", utm_content: "120215", ad_id: "ad-1", adset_id: "as-2", campaign_id: "ca-3", utm_id: "u-9", placement: "Instagram_Stories", fbp: "fb.1.2.3", fbc: "fb.1.2.4", ga_client_id: "GA1.2.3", first_visit: { ts: 1760000000000, landing_page: "https://x.test/" } };
+        const uidAd = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const { data: rAd, error: eAd } = await svc.rpc("create_booking", args(uidAd, "2030-03-07T15:00:00Z", "2030-03-07T15:30:00Z", { p_utm: full, p_email: "zz-test-ad@example.test", p_name: "zz-test Ad", p_phone: "+50688880011" }));
+        check(!eAd && rAd?.booking_id, "una agenda con anuncio se crea igual (la firma no cambio)", eAd?.message);
+        const { data: tAd } = await svc.from("contact_touches").select("source, medium, campaign, content_label, ad_id, adset_id, campaign_id, origin, raw").eq("dedupe_key", `booking:${rAd?.booking_id}`).single();
+        check(tAd?.ad_id === "ad-1" && tAd?.adset_id === "as-2" && tAd?.campaign_id === "ca-3", "el toque de la reserva guarda ad_id, adset_id y campaign_id", JSON.stringify(tAd));
+        check(tAd?.source === "facebook" && tAd?.campaign === "oct" && tAd?.content_label === "120215" && tAd?.origin === "booking", "y sigue llevando fuente, campana y contenido");
+        check(tAd?.raw?.utm_id === "u-9" && tAd?.raw?.placement === "Instagram_Stories" && tAd?.raw?.fbp === "fb.1.2.3" && tAd?.raw?.fbc === "fb.1.2.4" && tAd?.raw?.ga_client_id === "GA1.2.3" && tAd?.raw?.first_visit?.ts === 1760000000000,
+          "raw guarda utm_id, placement, fbp, fbc, ga_client_id y la primera visita", JSON.stringify(tAd?.raw));
+        const { data: cAd } = await svc.from("contacts").select("attribution").eq("id", rAd.contact_id).single();
+        check(cAd?.attribution?.first_touch?.ad_id === "ad-1" && cAd?.attribution?.last_touch?.campaign_id === "ca-3", "y el contacto lo hereda en su atribucion", JSON.stringify(cAd?.attribution));
+
+        // Una agenda sin esos datos no inventa nada.
+        const uidNo = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const { data: rNo } = await svc.rpc("create_booking", args(uidNo, "2030-03-08T15:00:00Z", "2030-03-08T15:30:00Z", { p_utm: { utm_source: "instagram" }, p_email: "zz-test-sin@example.test", p_name: "zz-test Sin", p_phone: "+50688880022" }));
+        const { data: tNo } = await svc.from("contact_touches").select("ad_id, adset_id, campaign_id, raw").eq("dedupe_key", `booking:${rNo?.booking_id}`).single();
+        check(tNo?.ad_id === null && tNo?.adset_id === null && tNo?.campaign_id === null && tNo?.raw?.fbp === undefined && tNo?.raw?.first_visit === undefined, "sin esos datos el toque no inventa ids ni extras", JSON.stringify(tNo));
+
+        // Manual y agente siguen sin dejar toque (no-regresion).
+        const uidMan = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+        const { data: rMan } = await svc.rpc("create_booking", args(uidMan, "2030-03-09T15:00:00Z", "2030-03-09T15:30:00Z", { p_origin: "manual", p_utm: full, p_email: "zz-test-man@example.test", p_name: "zz-test Man", p_phone: "+50688880033" }));
+        const { data: tMan } = await svc.from("contact_touches").select("id").eq("dedupe_key", `booking:${rMan?.booking_id}`);
+        check((tMan ?? []).length === 0, "una agenda manual NO deja toque de atribucion (no-regresion)");
+      }
+
       const { data: hist } = await svc.from("audit_log").select("action, entity_type").eq("entity_id", r1.booking_id);
       check((hist ?? []).some((h) => h.entity_type === "booking" && h.action === "booking.created"), "el historial arranca con booking.created");
 

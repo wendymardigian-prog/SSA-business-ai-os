@@ -23,6 +23,10 @@ interface TriggerPanelData {
   alsoMatchInDms?: boolean;
   /** F6: acota el trigger de palabra clave a las respuestas a historias. */
   storyReply?: boolean;
+  /** Solo si el mensaje vino de un anuncio (Extra L, F19). */
+  fromAdOnly?: boolean;
+  /** Solo si alguien menciono la cuenta en su historia (Extra L, F19). */
+  storyMentionOnly?: boolean;
   /** F4: que evento del CRM se espera, y con que valor. */
   event?: string;
   value?: string;
@@ -409,6 +413,41 @@ export function TriggerPanel({ data: rawData, onChange, flowId }: TriggerPanelPr
                 El flow corre unicamente cuando la palabra llega respondiendo una
                 historia de Instagram. Un DM comun con la misma palabra no lo
                 dispara.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
+      {/* Extra L (F19): origen del mensaje. Dos filtros mas, del mismo estilo que el de historias. */}
+      {triggerType === "keyword" && (
+        <div className="space-y-3 rounded-lg border border-border bg-card p-3">
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(data.fromAdOnly)}
+              onChange={(e) => onChange({ ...data, fromAdOnly: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-input text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-foreground">Solo si vino de un anuncio</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Corre unicamente cuando el mensaje llega desde un anuncio (el primer mensaje despues del clic). Dentro del
+                flujo podes usar {"{{message_origin.ad_title}}"} y {"{{message_origin.ad_id}}"}.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(data.storyMentionOnly)}
+              onChange={(e) => onChange({ ...data, storyMentionOnly: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-input text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-foreground">Solo menciones en historias</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Corre unicamente cuando alguien menciona tu cuenta en SU historia de Instagram.
               </span>
             </span>
           </label>

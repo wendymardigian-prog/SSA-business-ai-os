@@ -14,6 +14,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
+import { sanitizeAttribution } from "@/lib/attribution/collect";
 
 /** El campo oculto: si llega lleno, es un bot. */
 export const HONEYPOT_FIELD = "website";
@@ -98,12 +100,22 @@ export async function checkRateLimit(
  */
 export const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid", "ttclid", "li_fat_id"] as const;
 
-export function pickUtm(params: Record<string, string | undefined> | URLSearchParams): Record<string, string> {
-  const get = (k: string) => (params instanceof URLSearchParams ? params.get(k) : params[k]);
-  const out: Record<string, string> = {};
+export function pickUtm(params: Record<string, unknown> | URLSearchParams): Record<string, unknown> {
+  const get = (k: string) => (params instanceof URLSearchParams ? params.get(k) : (params as Record<string, unknown>)[k]);
+  const out: Record<string, unknown> = {};
   for (const key of UTM_KEYS) {
     const value = get(key);
     if (value) out[key] = String(value).slice(0, 200);
+  }
+  // Extra L (F16): todas las claves de atribucion de `lib/attribution/keys.ts` (utm_id, ad_id, adset_id,
+  // campaign_id, placement, los ids de clic de las demas plataformas, fbp, fbc, ga_client_id) y la primera
+  // visita, re-saneadas con las mismas funciones de lib/attribution. Lo viejo sigue igual: las nueve de antes.
+  if (!(params instanceof URLSearchParams)) {
+    const clean = sanitizeAttribution(params);
+    for (const key of ATTRIBUTION_KEYS) {
+      if (out[key] === undefined && clean[key]) out[key] = clean[key];
+    }
+    if (clean.first_visit) out.first_visit = clean.first_visit;
   }
   return out;
 }

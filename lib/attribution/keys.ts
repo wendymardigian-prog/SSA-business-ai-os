@@ -1,9 +1,12 @@
 /**
  * Las claves de atribución de una visita: la ÚNICA lista (decisión 185).
  *
- * Es un superconjunto de la que usa la Agenda (`lib/scheduling/booker/
- * embed-params.ts`), que no se toca: cambiarla cambiaría las URLs de embed de
- * las agendas que ya están publicadas. Un test verifica que esta las contiene.
+ * Es un superconjunto de las cinco UTM y los cuatro ids de clic con los que
+ * nació la Agenda. Desde el Extra L (F16) la Agenda también lee de acá las
+ * claves de más (`utm_id`, `ad_id`, `adset_id`, `campaign_id`, `gbraid`…): SUMAR
+ * claves no rompe ninguna URL de embed ya publicada, porque las viejas siguen
+ * siendo un subconjunto. Un test (`keys.test.ts`) verifica que esta lista las
+ * contiene a todas.
  *
  * Módulo PURO y sin dependencias: lo importa también el script de embed, que se
  * compila aparte para la página de cualquiera.

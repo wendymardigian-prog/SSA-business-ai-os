@@ -37,6 +37,13 @@ export interface AdReferral {
   /** El título del anuncio, que es lo más cercano a "qué pieza fue". */
   title: string | null;
   ref: string | null;
+  /** La publicación que promociona el anuncio (`ads_context_data.post_id`). */
+  postId?: string | null;
+  /**
+   * El `type` crudo del referral. En Instagram es `OPEN_THREAD` (no dice nada del anuncio): ya NO se usa como
+   * `sourceType`, se guarda aparte.
+   */
+  referralType?: string | null;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -59,7 +66,9 @@ const str = (value: unknown): string | null => {
 export function fromZernioReferral(referral: unknown): AdReferral | null {
   if (!isObject(referral)) return null;
 
-  const sourceType = str(referral.source_type) ?? str(referral.type);
+  // `source_type` es "ad" o "post" (WhatsApp y Messenger). El `type` de Instagram (`OPEN_THREAD`) NO es el tipo
+  // de la fuente: se guarda aparte como `referralType` (Extra L, F19).
+  const sourceType = str(referral.source_type);
   const sourceId = str(referral.source_id);
   const ads = isObject(referral.ads_context_data) ? referral.ads_context_data : null;
 
@@ -71,6 +80,8 @@ export function fromZernioReferral(referral: unknown): AdReferral | null {
     sourceUrl: str(referral.source_url),
     title: str(referral.headline) ?? str(ads?.ad_title),
     ref: str(referral.ref),
+    postId: str(ads?.post_id),
+    referralType: str(referral.type),
   };
 
   const usable = result.adId || result.ctwaClid || result.ref || result.sourceUrl;
@@ -114,7 +125,7 @@ export function fromBaileysMessage(message: unknown): AdReferral | null {
   };
 }
 
-export type InboundTouchReason = "ad" | "story_reply" | "first_message" | "returned";
+export type InboundTouchReason = "ad" | "story_reply" | "story_mention" | "first_message" | "returned";
 
 export interface InboundTouchContext {
   /** La plataforma del canal: instagram, whatsapp, email... */
@@ -122,6 +133,8 @@ export interface InboundTouchContext {
   /** El contacto ya existía antes de este mensaje. */
   contactExisted: boolean;
   isStoryReply: boolean;
+  /** Alguien mencionó la cuenta en SU historia (Instagram): un origen distinto de responder a una historia. */
+  isStoryMention?: boolean;
   referral: AdReferral | null;
   /** Cuándo llegó el mensaje anterior de ESTE contacto en esta conversación. */
   previousInboundAt: Date | null;
@@ -137,6 +150,7 @@ export interface InboundTouchContext {
 export function inboundTouchReason(ctx: InboundTouchContext): InboundTouchReason | null {
   if (ctx.referral) return "ad";
   if (ctx.isStoryReply) return "story_reply";
+  if (ctx.isStoryMention) return "story_mention";
   if (!ctx.contactExisted) return "first_message";
 
   if (ctx.previousInboundAt) {
@@ -151,6 +165,7 @@ function mediumFor(platform: string, reason: InboundTouchReason): string {
   if (platform === "email") return "email";
   if (reason === "ad") return "paid_social";
   if (reason === "story_reply") return "story_reply";
+  if (reason === "story_mention") return "story_mention";
   return "dm";
 }
 
@@ -166,6 +181,8 @@ export interface InboundTouchParams {
   /** Nuestra fila del mensaje, para excluirla de "el mensaje anterior". */
   messageId: string | null;
   storyId?: string | null;
+  /** El mensaje es la mención de la cuenta en una historia ajena (`metadata.isStoryMention`). */
+  isStoryMention?: boolean;
   referral?: AdReferral | null;
 }
 
@@ -200,12 +217,14 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
   try {
     const referral = params.referral ?? null;
     const isStoryReply = Boolean(params.storyId);
+    const isStoryMention = params.isStoryMention === true && !isStoryReply;
 
     // Las reglas baratas primero: solo si ninguna decide se mira el historial.
     let reason = inboundTouchReason({
       platform: params.platform,
       contactExisted: params.contactExisted,
       isStoryReply,
+      isStoryMention,
       referral,
       previousInboundAt: null,
       messageAt: params.messageAt,
@@ -216,6 +235,7 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
         platform: params.platform,
         contactExisted: params.contactExisted,
         isStoryReply,
+        isStoryMention,
         referral,
         previousInboundAt: await previousInboundAt(supabase, params),
         messageAt: params.messageAt,
@@ -242,6 +262,8 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
       raw: {
         message_id: params.platformMessageId,
         story_id: params.storyId ?? undefined,
+        story_mention: isStoryMention ? true : undefined,
+        // El `referral` completo (F19): el anuncio, su publicacion y la plataforma por la que llego.
         referral: referral
           ? {
               ad_id: referral.adId,
@@ -250,6 +272,9 @@ export async function recordInboundTouch(supabase: Db, params: InboundTouchParam
               source_url: referral.sourceUrl,
               ref: referral.ref,
               headline: referral.title,
+              post_id: referral.postId ?? undefined,
+              referral_type: referral.referralType ?? undefined,
+              platform: params.platform,
             }
           : undefined,
       },

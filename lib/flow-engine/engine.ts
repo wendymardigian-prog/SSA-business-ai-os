@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
+import { messageOriginVariables } from "@/lib/messages/origin-context";
 import type { FlowRuntime } from "./registry/types";
 
 /**
@@ -73,6 +74,14 @@ export async function executeFlow(
   if (context.incomingMessage.text) {
     context.variables.message ??= context.incomingMessage.text;
   }
+  // El origen del mensaje (anuncio, mencion): `{{message_origin.ad_id}}`, `{{message_origin.ad_title}}`,
+  // `{{message_origin.is_story_mention}}`. Aparte de `message`, que es solo el texto (Extra L, F19).
+  const messageOrigin = messageOriginVariables({
+    isStoryMention: context.incomingMessage.isStoryMention,
+    adId: context.incomingMessage.adId,
+    adTitle: context.incomingMessage.adTitle,
+  });
+  if (messageOrigin) context.variables.message_origin ??= messageOrigin;
 
   // Check for active session waiting for input
   const activeSession = await findWaitingSession(supabase, {

@@ -40,7 +40,8 @@ export interface CreateBookingInput {
   /** Contacto ya conocido: se saltea la deduplicacion (F37, F55). */
   contactId?: string | null;
   origin: "public_page" | "embed" | "manual" | "agent" | "api";
-  utm?: Record<string, string>;
+  /** La atribucion: UTM, ids de clic y de anuncio (strings) y, desde el Extra L, la primera visita (objeto). */
+  utm?: Record<string, unknown>;
   referrerUrl?: string | null;
   /** La página donde se reservó: el booker la manda (Agenda v2); sin ella, no se guarda landing page. */
   landingPage?: string | null;

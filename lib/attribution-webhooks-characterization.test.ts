@@ -13,7 +13,7 @@ import { readAttribution } from "@/lib/contacts/attribution";
 import { pickUtm } from "@/lib/scheduling/antispam";
 import { groupByObject, type AdsRow } from "@/lib/dashboards/ads";
 
-describe("formTouch (antes de F18)", () => {
+describe("formTouch (F18: sin utm_content inventado)", () => {
   const base = { submissionId: "s-1", formId: "f-1", formName: "Diagnostico gratis" };
 
   it("con UTMs: medio form, fuente normalizada, ids de anuncio y extras en raw", () => {
@@ -33,10 +33,10 @@ describe("formTouch (antes de F18)", () => {
     expect(touch.raw).toMatchObject({ source_type: "form", source_id: "f-1", utm_id: "9", fbp: "fb.1.1" });
   });
 
-  it("sin atribucion: fuente web y el contenido es el nombre del formulario (lo que F18 cambia)", () => {
+  it("sin atribucion: fuente web y SIN contenido (F18: el nombre del formulario ya no se inventa como utm_content)", () => {
     const touch = formTouch({ ...base, attribution: {} });
     expect(touch.source).toBe("web");
-    expect(touch.content).toBe("Diagnostico gratis");
+    expect(touch.content).toBeNull();
     expect(touch.occurredAt).toBeUndefined();
   });
 });
@@ -62,8 +62,8 @@ describe("readAttribution (forma canonica y claves ajenas)", () => {
   });
 });
 
-describe("pickUtm (lista de la agenda antes de F16)", () => {
-  it("copia las cinco UTMs y los cuatro ids de clic, recortados a 200", () => {
+describe("pickUtm (F16: las nueve de siempre se conservan y se suma el resto)", () => {
+  it("copia las cinco UTMs y los cuatro ids de clic, recortados a 200 (y desde F16 tambien ad_id y utm_id)", () => {
     const picked = pickUtm({
       utm_source: "fb",
       utm_medium: "cpc",
@@ -75,8 +75,9 @@ describe("pickUtm (lista de la agenda antes de F16)", () => {
       ad_id: "123",
       utm_id: "9",
     });
-    expect(Object.keys(picked).sort()).toEqual(["fbclid", "gclid", "li_fat_id", "ttclid", "utm_campaign", "utm_medium", "utm_source"]);
-    expect(picked.utm_campaign).toHaveLength(200);
+    // Antes de F16 `ad_id` y `utm_id` se descartaban: ese es el cambio. Las nueve de antes siguen.
+    expect(Object.keys(picked).sort()).toEqual(["ad_id", "fbclid", "gclid", "li_fat_id", "ttclid", "utm_campaign", "utm_id", "utm_medium", "utm_source"]);
+    expect(String(picked.utm_campaign)).toHaveLength(200);
   });
 
   it("acepta URLSearchParams y descarta los vacios", () => {

@@ -168,3 +168,54 @@ describe("la sección de atribución (F88)", () => {
     expect(view.first?.when).toBe("13 sep");
   });
 });
+
+describe("el nombre del formulario ya no es el contenido (Extra L, F18)", () => {
+  const formRow = (over: Partial<TouchRow> = {}) =>
+    row({ id: "f-1", occurred_at: "2026-09-12T18:00:00Z", source: "web", medium: "form", origin: "form", content_label: null, raw: { source_id: "form-1", source_type: "form" }, ...over });
+
+  it("un toque de formulario sin utm_content muestra el nombre del formulario (de raw.source_id) en el camino y en el primero", () => {
+    const view = buildAttributionView({
+      attribution: { version: 2, first_touch: { source: "web", medium: "form", origin: "form", occurred_at: "2026-09-12T18:00:00Z" } },
+      rows: [formRow()],
+      formNames: { "form-1": "Diagnóstico gratis" },
+    });
+    expect(view.path[0].piece).toBe("Diagnóstico gratis");
+    expect(view.first?.piece).toBe("Diagnóstico gratis");
+  });
+
+  it("si el toque trae utm_content, ese es el contenido (no el formulario)", () => {
+    const view = buildAttributionView({ attribution: {}, rows: [formRow({ content_label: "video-1" })], formNames: { "form-1": "Diagnóstico gratis" } });
+    expect(view.path[0].piece).toBe("video-1");
+  });
+
+  it("un formulario que ya no existe o un toque que no es de formulario no inventan nada", () => {
+    const sin = buildAttributionView({ attribution: {}, rows: [formRow()], formNames: {} });
+    expect(sin.path[0].piece).toBeNull();
+    const dm = buildAttributionView({ attribution: {}, rows: [row({ raw: { source_id: "form-1" } })], formNames: { "form-1": "X" } });
+    expect(dm.path[0].piece).toBeNull();
+  });
+});
+
+describe("describeTouch (F21: anuncio y detalle)", () => {
+  it("un toque de anuncio dice campaña › conjunto › anuncio con los ids crudos y junta el detalle", () => {
+    const view = describeTouch({
+      source: "facebook",
+      medium: "paid_social",
+      occurred_at: "2026-10-05T10:00:00Z",
+      campaign_id: "77",
+      adset_id: "88",
+      ad_id: "99",
+      fbclid: "abc",
+      landing_page: "https://x.com/lp",
+    });
+    expect(view.adLine).toContain("Campaña 77 › Conjunto 88 › Anuncio 99");
+    expect(view.details.map((d) => d.label)).toEqual(["Clic de Facebook (fbclid)", "Página de llegada"]);
+  });
+
+  it("sin ids de anuncio ni detalle no inventa nada", () => {
+    const view = describeTouch({ source: "instagram", medium: "dm", occurred_at: "2026-10-05T10:00:00Z" });
+    expect(view.ad).toBeNull();
+    expect(view.adLine).toBeNull();
+    expect(view.details).toEqual([]);
+  });
+});

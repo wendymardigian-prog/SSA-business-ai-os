@@ -360,15 +360,41 @@ describe("seguimiento de la atribución en la web que contiene el script (F29)",
     expect(attr).not.toHaveProperty("utm_campaign");
   });
 
-  it("los embeds de AGENDA no cambian su URL por el seguimiento", () => {
-    const env = makeEnv("?utm_source=meta");
+  // Extra L (F16): la agenda recibe la atribucion efectiva de la web anfitriona (`attr`), igual que el
+  // formulario. Antes de F16 este test fijaba lo contrario (la agenda no llevaba `attr`); era el punto de
+  // partida y cambia A PROPOSITO. Lo que NO cambia: la ruta, las UTM de siempre en la URL, y que sin
+  // atribucion que mandar la URL es exactamente la de hoy (ver `agenda-url-characterization.test.ts`).
+  it("los embeds de AGENDA reciben `attr` con la atribución de la web, y siguen llevando las UTM de siempre", () => {
+    const env = makeEnv("?utm_source=meta&ad_id=123");
     env.window.localStorage = memoryStorage();
     const container = env.register(Object.assign(new FakeEl("div"), { id: "a1" }));
     new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#a1", calLink: "ana/llamada" }]]);
     const u = new URL(container.find((e) => e.tag === "iframe")!.src!);
     expect(u.pathname).toBe("/calendario/ana/llamada");
-    expect(u.searchParams.has("attr")).toBe(false);
     expect(u.searchParams.get("utm_source")).toBe("meta");
+    expect(decodeAttr(u.searchParams.get("attr"))).toMatchObject({ utm_source: "meta", ad_id: "123" });
+  });
+
+  it("F16: con el localStorage lleno, la agenda recibe lo guardado aunque la URL no traiga nada", () => {
+    const storage = memoryStorage();
+    storage.data.set("ssa_attr", JSON.stringify({ v: 1, first: { utm_campaign: "octubre", ts: Date.now() }, last: { utm_source: "meta", utm_campaign: "octubre", ad_id: "9", ts: Date.now() } }));
+    const env = makeEnv("");
+    env.window.localStorage = storage;
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "a1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#a1", calLink: "ana/llamada" }]]);
+    const attr = decodeAttr(new URL(container.find((e) => e.tag === "iframe")!.src!).searchParams.get("attr"));
+    expect(attr).toMatchObject({ utm_campaign: "octubre", ad_id: "9", first_visit: { utm_campaign: "octubre" } });
+  });
+
+  it("F16: sin atribución que mandar, la URL de la agenda es la de siempre (sin `attr`)", () => {
+    const env = makeEnv("");
+    env.window.localStorage = memoryStorage();
+    const container = env.register(Object.assign(new FakeEl("div"), { id: "a1" }));
+    new EmbedRuntime(env, "").processQueue([["init", { origin: ORIGIN }], ["inline", { elementOrSelector: "#a1", calLink: "ana/llamada" }]]);
+    const u = new URL(container.find((e) => e.tag === "iframe")!.src!);
+    expect(u.searchParams.has("attr")).toBe(false);
+    // Solo lo de siempre: `embed=1` y la pagina anfitriona (`referrer`), sin ningun parametro nuevo.
+    expect([...u.searchParams.keys()].sort()).toEqual(["embed", "referrer"]);
   });
 
   it("trackEnvOf toma el hostname del href si la ubicación no lo trae", () => {

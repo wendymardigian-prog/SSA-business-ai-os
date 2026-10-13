@@ -60,6 +60,30 @@ function TouchCard({ title, hint, touch }: { title: string; hint: string; touch:
       <p className="text-sm">
         <TouchText touch={touch} />
       </p>
+      <TouchDetail touch={touch} />
+    </div>
+  );
+}
+
+/** La línea del anuncio y, plegado, el detalle (UTMs, ids de clic, página de llegada). */
+function TouchDetail({ touch }: { touch: TouchView }) {
+  if (!touch.adLine && touch.details.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-1.5">
+      {touch.adLine && <p className="text-xs text-muted-foreground">{touch.adLine}</p>}
+      {touch.details.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Ver detalle</summary>
+          <dl className="mt-1.5 space-y-1">
+            {touch.details.map((d) => (
+              <div key={d.label} className="flex gap-2">
+                <dt className="shrink-0 text-muted-foreground">{d.label}</dt>
+                <dd className="min-w-0 break-all">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
     </div>
   );
 }

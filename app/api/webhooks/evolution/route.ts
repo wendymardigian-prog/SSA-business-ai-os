@@ -26,6 +26,7 @@ import { hasDownloadableMedia, toAttachmentsColumn } from "@/lib/messages/attach
 import { describeWhatsappMessage, storeEvolutionMedia } from "@/lib/evolution-media";
 import { afterMediaStored } from "@/lib/chat-media/after-stored";
 import { fromBaileysMessage, recordInboundTouch } from "@/lib/contacts/touch-inbound";
+import { adOriginOfBaileys, buildOriginContext } from "@/lib/messages/origin-context";
 import { getEvolutionConfig } from "@/lib/evolution-config";
 import { fetchProfilePictureUrl } from "@/lib/evolution-client";
 import { maybeStoreContactAvatar } from "@/lib/contacts/avatar";
@@ -295,6 +296,9 @@ async function processMessage(
     // El eco de un envío desde el teléfono es un saliente externo (F2). Si el
     // insert propio ya guardó este id, el índice único lo descarta.
     origin: fromMe ? "external" : null,
+    // De donde vino un ENTRANTE: el anuncio de "clic a WhatsApp" (`externalAdReply`) y el mensaje citado.
+    // Lista blanca; guardarlo nunca frena el mensaje (Extra L, F19).
+    originContext: fromMe ? null : buildOriginContext({ platform: channel.platform, baileysMessage: data?.message ?? null }),
   });
 
   // ── El toque de atribución (F85) ──────────────────────────────────────────
@@ -394,6 +398,8 @@ async function processMessage(
     incomingMessage: {
       text: text || undefined,
       sender: { id: phone, name: data?.pushName || undefined },
+      // El anuncio de "clic a WhatsApp", para el filtro «Solo si vino de un anuncio» y {{message_origin.*}}.
+      ...(adOriginOfBaileys(data?.message) ?? {}),
     },
   });
 

@@ -105,6 +105,8 @@ const RAW_KEYS = new Set([
   "fbp", "fbc", "ga_client_id", "page_url",
   // Webhooks entrantes (Extra L): de que endpoint vino el toque.
   "endpoint_id", "endpoint_name",
+  // Chat (Extra L, F19): el `referral` completo y la mencion en una historia.
+  "referral_type", "story_mention",
 ]);
 
 /** Cuánto texto puede tener un valor guardado en `raw`. */

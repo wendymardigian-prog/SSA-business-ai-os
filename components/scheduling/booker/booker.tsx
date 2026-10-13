@@ -15,6 +15,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { bookingAttribution } from "@/lib/scheduling/booker/attribution";
+import { cookieEnv } from "@/lib/attribution/browser";
 import { useRouter } from "next/navigation";
 import type { Slot, SlotsByDate, UnavailableKey } from "@/lib/scheduling/types";
 import type { EmbedParams } from "@/lib/scheduling/booker/embed-params";
@@ -203,6 +205,21 @@ export function Booker({
     const endpoint = rescheduleUid
       ? `/api/public/scheduling/bookings/${encodeURIComponent(rescheduleUid)}/reschedule`
       : "/api/public/scheduling/bookings";
+    // La atribucion efectiva (Extra L, F16): la URL si trae un toque nuevo; si no, la cookie `ssa_attr`
+    // (o, en un embed, lo que mando la web anfitriona en `attr`). Nunca rompe la reserva.
+    const attribution =
+      typeof window === "undefined" || rescheduleUid
+        ? {}
+        : bookingAttribution({
+            params: new URLSearchParams(window.location.search),
+            isEmbed: embed.embed,
+            referrer: document.referrer,
+            href: window.location.href,
+            cookieHeader: document.cookie,
+            storedCookie: cookieEnv(document, window.location).readStored(),
+            hostPageUrl: embed.landingPage,
+            attrParam: embed.attr,
+          });
     const payload = rescheduleUid
       ? { startUtc: state.selectedSlot.startUtc }
       : {
@@ -213,12 +230,14 @@ export function Booker({
           responses: values.responses,
           website: values.honeypot,
           embed: embed.embed ? "1" : null,
-          utm: { ...embed.utm, ...embed.clickIds },
-          referrer: typeof document !== "undefined" ? document.referrer || null : null,
+          // Las claves de siempre mas la atribucion completa; lo que ya venia en la URL gana si el calculo falla.
+          utm: { ...embed.utm, ...embed.clickIds, ...embed.attribution, ...attribution },
+          // Con un toque guardado, su referente y su pagina de llegada son los del toque, no los de esta pagina.
+          referrer: (typeof attribution.referrer_url === "string" ? attribution.referrer_url : null) ?? (typeof document !== "undefined" ? document.referrer || null : null),
           // La página donde se reservó (Agenda v2): en el embed, la página del
           // cliente donde vive el widget (`embed.landingPage`, la manda el
           // script); en la página pública directa, ella misma.
-          landingPage: embed.landingPage ?? (typeof window !== "undefined" ? window.location.href : null),
+          landingPage: (typeof attribution.landing_page === "string" ? attribution.landing_page : null) ?? embed.landingPage ?? (typeof window !== "undefined" ? window.location.href : null),
         };
 
     try {

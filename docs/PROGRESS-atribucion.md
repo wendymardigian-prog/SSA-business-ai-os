@@ -28,12 +28,12 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] F15 Resultado en el historial y cierre del procesamiento
 
 ### AT1 — Que no se pierda nada
-- [ ] F16 La agenda acepta todas las claves y usa la cookie
-- [ ] F17 `create_booking` pasa todo al toque (M5)
-- [ ] F18 El formulario no inventa `utm_content`
-- [ ] F19 Chat: mención en historia, anuncio y comentario en anuncio (M4)
-- [ ] F20 Respaldo desde la conversación de Zernio (nice-to-have)
-- [ ] F21 La atribución legible en la ficha del contacto
+- [x] F16 La agenda acepta todas las claves y usa la cookie
+- [x] F17 `create_booking` pasa todo al toque (M5)
+- [x] F18 El formulario no inventa `utm_content`
+- [x] F19 Chat: mención en historia, anuncio y comentario en anuncio (M4)
+- [ ] F20 Respaldo desde la conversación de Zernio (nice-to-have) — NO se hizo: anotada en PENDIENTE-atribucion.md
+- [x] F21 La atribución legible en la ficha del contacto
 
 ### AT2 — Catálogo de Meta
 - [ ] F22 Tablas del catálogo (M6)

@@ -56,6 +56,11 @@ export interface CommentAttributionParams {
   commentedAt: string | null;
   /** La publicación comentada, si se conoce. Null = comentario huérfano. */
   socialPostId: string | null;
+  /**
+   * El id del anuncio de Meta cuando el comentario es sobre CONTENIDO PAGO (`comment.ad.id`, solo Instagram).
+   * El toque lleva ese `ad_id` y medio `paid_social`: el comentario viene de un anuncio (Extra L, F19).
+   */
+  adId?: string | null;
 }
 
 export interface CommentAttributionResult {
@@ -175,16 +180,19 @@ export async function attributeComment(
 
     const piece = params.socialPostId ? await pieceOf(supabase, params.socialPostId) : null;
 
+    const adId = params.adId?.trim() || null;
     const result = await recordTouch(supabase, {
       workspaceId: params.workspaceId,
       contactId,
       touch: {
         occurredAt: params.commentedAt,
         source: params.platform,
-        medium: "comment",
+        // Un comentario sobre un anuncio viene de la publicidad: medio paid_social y el ad_id al toque.
+        medium: adId ? "paid_social" : "comment",
         origin: "comment",
         dedupeKey: `comment:${params.externalCommentId}`,
         content: piece?.label ?? null,
+        adId,
         socialPostId: params.socialPostId,
         contentPostId: piece?.contentPostId ?? null,
         raw: { comment_id: params.externalCommentId, platform: params.platform },
