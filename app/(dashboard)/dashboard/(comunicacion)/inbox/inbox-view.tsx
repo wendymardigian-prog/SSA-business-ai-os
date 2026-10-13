@@ -23,6 +23,7 @@ export function InboxView({
   workspaceId,
   assets,
   canManageAssets = false,
+  canCreateTask = false,
   workspaceName,
   selected: selectedFromServer,
   total,
@@ -45,6 +46,8 @@ export function InboxView({
   assets: InboxAsset[];
   /** Puede crear recursos (`templates.manage`): el widget vacio le ofrece crear el primero. */
   canManageAssets?: boolean;
+  /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion. */
+  canCreateTask?: boolean;
   workspaceName: string;
   /**
    * La conversacion de ?c= resuelta en el servidor al cargar la pagina (F16).
@@ -268,6 +271,7 @@ export function InboxView({
               messages={messages}
               assets={assets}
               canManageAssets={canManageAssets}
+              canCreateTask={canCreateTask}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}

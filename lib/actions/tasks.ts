@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getPermissionAction } from "@/lib/auth/guards";
+import { memberDisplayName } from "@/lib/workspace-members";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   completeTaskCore,
@@ -38,6 +39,11 @@ async function context(permission: string): Promise<TaskCtx | null> {
     workspaceId: ctx.workspace.id,
     userId: ctx.user.id,
     timeZone: ctx.workspace.timezone || "UTC",
+    actorName: memberDisplayName(
+      ctx.user.user_metadata?.full_name as string | undefined,
+      ctx.user.user_metadata?.name as string | undefined,
+      ctx.user.email,
+    ),
   };
 }
 

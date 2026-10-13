@@ -25,6 +25,8 @@ export interface CellPatch {
   /** Los dos de abajo solo se editan desde el drawer. */
   description?: string | null;
   start_date?: string | null;
+  /** El orden dentro de una columna del tablero. */
+  position?: number;
 }
 
 /** Aplica un cambio en pantalla. Devuelve la lista nueva y la fila ANTERIOR, para poder deshacer. */
@@ -46,6 +48,7 @@ export function applyOptimistic(
   if (patch.priority !== undefined) row.priority = patch.priority;
   if (patch.due_date !== undefined) row.due_date = patch.due_date;
   if (patch.start_date !== undefined) row.start_date = patch.start_date;
+  if (patch.position !== undefined) row.position = patch.position;
   if (patch.description !== undefined) row.description = patch.description;
   if (patch.owner_id !== undefined) row.owner_id = patch.owner_id;
   if (patch.follower_ids !== undefined) row.follower_ids = [...patch.follower_ids];

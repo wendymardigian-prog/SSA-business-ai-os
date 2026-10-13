@@ -20,6 +20,7 @@ export interface CreateInput {
   title: string;
   description?: string | null;
   priority?: TaskRow["priority"];
+  status?: TaskRow["status"];
   start_date?: string | null;
   due_date?: string | null;
   owner_id?: string | null;

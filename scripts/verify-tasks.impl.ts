@@ -9,10 +9,15 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runCleanup } from "./test-cleanup.mjs";
 import { completeTaskCore, createTaskCore, deleteTaskCore, planCompletionCore, setTaskBlockersCore, updateTaskCore, type TaskCtx } from "../lib/tasks/core";
 import { todayInputValue } from "../lib/dates";
+import { runTasksDueSweep } from "../lib/jobs/handlers/tasks-due-sweep";
+import { createNotification } from "../lib/notifications/create";
 import { addDays } from "../lib/tasks/dates";
 
 const env = Object.fromEntries(
@@ -410,6 +415,103 @@ try {
     check(!delByMember.ok && delByMember.code === "forbidden", "deleteTask: el Member no borra");
     const delByAdmin = await deleteTaskCore({ ...cctx, supabase: admin.client as never, userId: admin.id }, made.data.id);
     check(delByAdmin.ok, "...el Admin si", JSON.stringify(delByAdmin));
+  }
+
+  // ═══ 00198: el cron de vencimientos ════════════════════════════════════════
+  if (upTo >= 198) {
+    console.log("\n— 00198: el cron de vencimientos (private.enqueue_tasks_due_sweep) —");
+
+    // Corre SQL con la CLI (la funcion es de `private`: ninguna sesion la puede llamar).
+    const runSql = (query: string): Array<Record<string, unknown>> => {
+      const dir = mkdtempSync(join(tmpdir(), "verify-tasks-"));
+      const file = join(dir, "q.sql");
+      writeFileSync(file, query);
+      const r = spawnSync("supabase", ["db", "query", "--linked", "-f", file], { encoding: "utf8" });
+      rmSync(dir, { recursive: true, force: true });
+      const out = r.stdout ?? "";
+      const json = out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1);
+      try {
+        return (JSON.parse(json).rows ?? []) as Array<Record<string, unknown>>;
+      } catch {
+        throw new Error(`no pude leer la salida de la CLI: ${out.slice(0, 200)} ${r.stderr?.slice(0, 200)}`);
+      }
+    };
+
+    // Una zona donde ahora son las 08:00 o mas, y otra donde todavia no.
+    const hourIn = (tz: string) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+    const zones = ["Pacific/Kiritimati", "Pacific/Auckland", "Asia/Tokyo", "Asia/Kolkata", "Europe/Madrid", "UTC", "Atlantic/Azores", "America/Sao_Paulo", "America/Costa_Rica", "America/Los_Angeles", "Pacific/Honolulu", "Pacific/Pago_Pago"];
+    const late = zones.find((z) => hourIn(z) >= 8 && hourIn(z) <= 22) as string;
+    const early = zones.find((z) => hourIn(z) < 8) as string;
+    const localDay = (tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+
+    const mkWs = async (tag: string, tz: string) => {
+      const { data } = await svc.from("workspaces").insert({ name: `zz-test-cron-${tag}`, slug: `zz-test-cron-${tag}-${stamp}`, timezone: tz }).select("id").single();
+      await svc.from("workspace_members").insert({ workspace_id: data!.id, user_id: owner.id, role: "owner" }).then(() => undefined, () => undefined);
+      return data!.id as string;
+    };
+    const wsLate = await mkWs("tarde", late);
+    const wsEarly = await mkWs("temprano", early);
+    const wsEmpty = await mkWs("vacio", late);
+    const wsDone = await mkWs("completadas", late);
+
+    const addTask = async (workspaceId: string, tz: string, extra: Record<string, unknown> = {}) => {
+      const { data, error } = await svc.from("tasks").insert({ workspace_id: workspaceId, title: "zz-test cron", due_date: localDay(tz), owner_id: owner.id, ...extra }).select("*").single();
+      if (error) throw new Error(`no pude crear la tarea del cron: ${error.message}`);
+      return data as Record<string, any>;
+    };
+    const lateTask = await addTask(wsLate, late);
+    await addTask(wsEarly, early);
+    await addTask(wsDone, late, { status: "completed" });
+    await addTask(wsDone, late, { due_date: "2020-01-01", owner_id: null, follower_ids: [] }); // sin responsable ni seguidores
+    void wsEmpty;
+
+    const ids = [wsLate, wsEarly, wsEmpty, wsDone].map((i) => `'${i}'`).join(",");
+    const jobsOf = () => runSql(`select dedupe_key, status from public.scheduled_jobs where type = 'tasks_due_sweep' and payload->>'workspace_id' in (${ids}) order by dedupe_key`);
+
+    const first = runSql(`select private.enqueue_tasks_due_sweep() as n`);
+    check(typeof first[0]?.n === "number", "la funcion corre sin error y devuelve cuantos jobs encolo", JSON.stringify(first));
+    let jobs = jobsOf();
+    check(jobs.length === 1 && String(jobs[0].dedupe_key) === `tasks-due:${wsLate}:${localDay(late)}`, `solo el workspace con candidatas y con hora >= 08:00 (${late}) encola, con su clave por dia`, JSON.stringify(jobs));
+    check(!jobs.some((j) => String(j.dedupe_key).includes(wsEarly)), `antes de las 08:00 locales (${early}, son las ${hourIn(early)}) no encola`);
+    check(!jobs.some((j) => String(j.dedupe_key).includes(wsEmpty) || String(j.dedupe_key).includes(wsDone)), "sin candidatas (sin tareas, completadas, sin responsable ni seguidores) no encola");
+
+    runSql(`select private.enqueue_tasks_due_sweep()`);
+    check(jobsOf().length === 1, "correrla de nuevo no duplica el job del dia (dedupe_key)");
+
+    // El job se completo y el handler ya aviso: ya no hay candidatas, aunque corra otra vez ese dia.
+    runSql(`update public.scheduled_jobs set status = 'completed' where type = 'tasks_due_sweep' and payload->>'workspace_id' = '${wsLate}'`);
+    await svc.from("notifications").insert({ workspace_id: wsLate, type: "task_due_today", title: "zz-test", entity_type: "task", entity_id: lateTask.id, recipient_id: owner.id, metadata: { due_date: localDay(late) } });
+    runSql(`select private.enqueue_tasks_due_sweep()`);
+    check(jobsOf().length === 1, "con el aviso ya hecho para ese vencimiento, no vuelve a encolar");
+
+    const grant = runSql(`select has_function_privilege('authenticated', 'private.enqueue_tasks_due_sweep()', 'EXECUTE') as a, has_function_privilege('anon', 'private.enqueue_tasks_due_sweep()', 'EXECUTE') as b`);
+    check(grant[0]?.a === false && grant[0]?.b === false, "ninguna sesion (authenticated, anon) puede ejecutar la funcion");
+    const cron = runSql(`select schedule from cron.job where jobname = 'tasks-due-enqueue'`);
+    check(cron.length === 1 && cron[0].schedule === "17 * * * *", "el cron horario esta programado (minuto 17)");
+    // El handler real contra la base: avisa una sola vez y cada persona ve SOLO su aviso (F17, F18).
+    await svc.from("workspace_members").insert([
+      { workspace_id: wsLate, user_id: creator.id, role: "member" },
+      { workspace_id: wsLate, user_id: assignee.id, role: "member" },
+    ]);
+    const mine = await addTask(wsLate, late, { owner_id: creator.id, title: "zz-test vence hoy de creator" });
+    const overdue = await addTask(wsLate, late, { owner_id: creator.id, due_date: "2020-01-01", title: "zz-test vencida de creator" });
+    await svc.from("notifications").delete().eq("workspace_id", wsLate);
+    const dayLate = localDay(late);
+    const r1 = await runTasksDueSweep(svc as never, wsLate, dayLate);
+    const r2 = await runTasksDueSweep(svc as never, wsLate, dayLate);
+    check(r1.dueToday >= 2 && r1.overdue === 1, "el handler avisa lo que vence hoy y lo vencido", JSON.stringify(r1));
+    check(r2.dueToday === 0 && r2.overdue === 0, "correrlo otra vez no duplica nada (una vez por tarea y fecha)", JSON.stringify(r2));
+    const seen = async (u: TestUser) => ((await u.client.from("notifications").select("type, entity_id, recipient_id").eq("workspace_id", wsLate)).data ?? []) as Array<{ type: string; entity_id: string; recipient_id: string }>;
+    const creatorSees = await seen(creator);
+    check(creatorSees.length === 2 && creatorSees.every((n) => n.recipient_id === creator.id) && creatorSees.some((n) => n.entity_id === mine.id && n.type === "task_due_today") && creatorSees.some((n) => n.entity_id === overdue.id && n.type === "task_overdue"), "un Member ve SUS avisos (vence hoy y vencida)", JSON.stringify(creatorSees));
+    const assigneeSees = await seen(assignee);
+    check(assigneeSees.length === 0, "otro Member del mismo workspace no ve los avisos ajenos", JSON.stringify(assigneeSees));
+    // Un aviso de tarea dirigido a una persona lo ve esa persona aunque no vea la tarea (can_see_notification: recipient_id = yo).
+    await createNotification({ supabase: svc as never, workspaceId: wsLate, type: "task_assigned", title: "zz-test te asignaron", entityType: "task", entityId: mine.id, recipientId: assignee.id });
+    const assigneeAfter = await seen(assignee);
+    check(assigneeAfter.length === 1, "un aviso dirigido a una persona lo ve esa persona, aunque no pueda ver la tarea", JSON.stringify(assigneeAfter));
+    // Limpieza de lo que encolo la funcion (por si algun workspace real tuviera candidatas, no se toca: solo los de prueba).
+    runSql(`delete from public.scheduled_jobs where type = 'tasks_due_sweep' and payload->>'workspace_id' in (${ids})`);
   }
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));

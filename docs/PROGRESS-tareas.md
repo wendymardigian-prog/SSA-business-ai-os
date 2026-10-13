@@ -6,7 +6,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 
 - [x] **T1 — Base y reglas** (13/10/2026): [x] F1 tabla/RLS · [x] F2 permisos · [x] F3 fechas (pura) · [x] F4 completar con corrimientos · [x] F5 dependencias · [x] F6 limpieza · [x] F7 auditoría · [x] F8 acciones/zod · [x] F9 proyectos
 - [x] **T2 — Tabla, celda y drawer** (13/10/2026): [x] F10 tabla · [x] F11 edición en celda · [x] F12 drawer · [x] F13 diálogo de fechas · [x] F14 filtros/URL · [x] F15 creación rápida y menú
-- [ ] **T3 — Tablero, avisos y superficies**: [ ] F16 kanban · [ ] F17 notificaciones · [ ] F18 cron de vencimientos · [ ] F19 Mis tareas · [ ] F20 contacto y bandeja · [ ] F21 mobile
+- [x] **T3 — Tablero, avisos y superficies** (13/10/2026): [x] F16 kanban · [x] F17 notificaciones · [x] F18 cron de vencimientos · [x] F19 Mis tareas · [x] F20 contacto y bandeja · [x] F21 mobile
 - [ ] **T4 — Origen automático**: [ ] F22 nodo create_task · [ ] F23 tool crear_tarea · [ ] F24 tarea al escalar · [ ] F25 triggers task_* (también sin contacto) · [ ] F26 origen visible y robustez
 - [ ] Cierre: docs/tareas.md · flow-registry.md · CLAUDE.md · PR
 
@@ -16,7 +16,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 |---|---|---|
 | 00196 | 00196_tasks | **aplicada y registrada** (version 20261013165449), verificada. Corregida el mismo dia: `can_see_task` devolvia NULL con `owner_id`/`created_by` nulos; ahora siempre true/false (COALESCE) |
 | 00197 | 00197_tasks_functions | **aplicada y registrada**, verificada. Guardas de las RPC con COALESCE |
-| 00198 | 00198_tasks_due_cron | pendiente |
+| 00198 | 00198_tasks_due_cron | **aplicada y registrada**, verificada (la función encola 1 job por workspace y día local solo desde las 08:00 locales y con candidatas; no ejecutable por sesiones; cron `tasks-due-enqueue` al minuto 17) |
 | 00199 | 00199_task_trigger_types | pendiente |
 
 ## Punto de partida (13/10/2026, sobre origin/main)
@@ -175,3 +175,12 @@ Cada afirmación de §2 sale de leer `origin/main` (snapshot en el scratchpad) y
 - Menú: «Tareas» en el grupo `inicio`, pegada a Bandeja (`ListTodo`); actualizados solo `items.test.ts` (lista de `inicio`) y `member-baseline.test.ts` (nombres del Member + `PERMISSION_PAGES`).
 - Revisión visual (navegador integrado, 1440 px, tema claro y oscuro): tabla, selectores, edición de fecha y de proyecto, creación rápida, formulario completo, drawer con dependencias, diálogo de fechas (Esc no completa). 390 px: se revisa con el bloque T3 (la lista de tarjetas es F21). **Datos de prueba**: para la revisión se sembraron tareas `zz-test-…` en el workspace del usuario con la sesión abierta; se borran al final de la corrida.
 - Tests: 795 archivos / 9.958; lint 0 errores / 36 warnings; build compila; `verify-tasks` en verde.
+
+### T3 — Tablero, avisos y superficies (13/10/2026)
+- **00198** aplicada, registrada y verificada **antes** del código que la usa. `lib/cron-config.test.ts` intacto (no hay ruta nueva en `app/api/cron/` ni cambio en `call_app_cron`).
+- Avisos (F17): 7 tipos nuevos y entidad `task` (+ deep link `?task=`) en `lib/notifications/types.ts`; `lib/tasks/notifications.ts` (planificadores puros + envío que nunca lanza), enchufado en `createTaskCore`, `updateTaskCore` y `completeTaskCore`. `recipient_id` siempre concreto, nunca el actor, `task_changed` con `createNotificationOnce` (10 min, por persona). `can_see_notification` no se tocó: un aviso dirigido a una persona lo ve esa persona (lo prueba `verify-tasks` con un Member).
+- Cron (F18): `lib/jobs/handlers/tasks-due-sweep.ts` (registrado en `lib/publishing/bootstrap.ts`, y `bootstrap-characterization.test.ts` suma `tasks_due_sweep`). Una vez por tarea, persona y fecha de vencimiento (se compara con `metadata.due_date`).
+- Tablero (F16): `lib/tasks/kanban-model.ts` (`groupByStatus`, `computePosition`, `planMove`, que renumera la columna cuando las vecinas empatan), HTML5 nativo, menú «Mover a…» y fecha en cada tarjeta; arrastrar a «Completada» pasa por la vista previa de fechas. «Mis tareas» y contadores (F19), `selectLayout` y lista de tarjetas en el celular (F21, esqueleto hasta conocer el ancho para que no aparezca la tabla un instante).
+- Superficies (F20): sección «Tareas» en la ficha del contacto (tras «Seguimiento»; solo con `tasks.view`, la RLS decide cuáles ve) y botón «Crear tarea» en el encabezado de la conversación (solo con `tasks.edit`), con título sugerido «Dar seguimiento a <contacto>». No se tocó nada más de la bandeja.
+- Revisión visual: tablero y lista a 1440 y 390 px (sin scroll horizontal de página; el tablero scrollea por dentro), tema claro y oscuro, drawer a pantalla completa en el celular, campana con los tipos nuevos, sección del contacto y panel de la bandeja. Se arrastró una tarjeta con eventos de arrastre reales de HTML5 (el movimiento se guardó).
+- Tests: 803 archivos / 10.024; lint 0 errores / 36 warnings; build compila; `verify-tasks` en verde (incluye 00198, el handler real y la visibilidad de los avisos para un Member).

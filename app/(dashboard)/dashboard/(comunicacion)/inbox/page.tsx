@@ -197,6 +197,8 @@ export default async function InboxPage({
 
   const assets: InboxAsset[] = (assetsRes.data ?? []).map(toBankAsset);
   const canManageAssets = permissionCtx.can("templates.manage");
+  // Crear una tarea sobre la conversacion (Tareas, F20): con `tasks.edit`.
+  const canCreateTask = permissionCtx.can("tasks.edit");
 
   let conversations = toRows(conversationsRes.data);
 
@@ -278,6 +280,7 @@ export default async function InboxPage({
       workspaceName={workspace.name}
       assets={assets}
       canManageAssets={canManageAssets}
+      canCreateTask={canCreateTask}
       filters={filters}
       dateRange={range}
       tags={tags}

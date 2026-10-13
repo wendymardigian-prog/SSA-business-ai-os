@@ -323,3 +323,61 @@ describe("dependencias y borrado (F5, F6)", () => {
     expect(await deleteTaskCore(denied.ctx, T1)).toMatchObject({ ok: false, code: "forbidden" });
   });
 });
+
+describe("avisos desde el nucleo (F17)", () => {
+  const OTHER2 = "44444444-4444-4444-8444-444444444444";
+
+  it("crear con otro responsable: task_assigned para el, con el nombre de quien actua y la tarea como destino", async () => {
+    const service = fakeDb({ "workspace_members:select": { data: [{ user_id: ME }, { user_id: OTHER }] } });
+    const { ctx } = ctxWith({ "tasks:insert": { data: [task({ owner_id: OTHER })] } }, {}, service);
+    await createTaskCore({ ...ctx, actorName: "María" }, { title: "Enviar propuesta", owner_id: OTHER });
+    const notices = service.writesTo("notifications");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].values).toMatchObject({ type: "task_assigned", recipient_id: OTHER, entity_type: "task", entity_id: T1, workspace_id: WS, title: "María te asignó «Enviar propuesta»" });
+  });
+
+  it("crearse una tarea a si mismo no avisa a nadie", async () => {
+    const service = fakeDb({ "workspace_members:select": { data: [{ user_id: ME }] } });
+    const { ctx } = ctxWith({ "tasks:insert": { data: [task({ owner_id: ME })] } }, {}, service);
+    await createTaskCore(ctx, { title: "x" });
+    expect(service.writesTo("notifications")).toHaveLength(0);
+  });
+
+  it("editar el estado avisa a los seguidores (no al actor) y un fallo al avisar no rompe la edicion", async () => {
+    const before = task({ owner_id: ME, follower_ids: [OTHER, OTHER2] });
+    const after = task({ owner_id: ME, follower_ids: [OTHER, OTHER2], status: "in_progress" });
+    const service = fakeDb({
+      "workspace_members:select": { data: [{ user_id: ME }, { user_id: OTHER }, { user_id: OTHER2 }] },
+      "notifications:select": { data: [] },
+      "notifications:insert": { error: { message: "boom" } },
+    });
+    const { ctx } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } }, {}, service);
+    const r = await updateTaskCore(ctx, T1, { status: "in_progress" });
+    expect(r.ok).toBe(true);
+    expect(service.writesTo("notifications").map((w) => (w.values as { recipient_id: string }).recipient_id).sort()).toEqual([OTHER, OTHER2].sort());
+    expect(service.writesTo("notifications").every((w) => (w.values as { recipient_id: string }).recipient_id !== ME)).toBe(true);
+  });
+
+  it("completar con fechas movidas avisa: libre, fecha movida y lo que paso con la tarea", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-13T18:00:00Z"));
+    const A = { id: T1, title: "A", status: "pending", due_date: "2026-10-10", start_date: null, completed_at: null, blocked_by: [], owner_id: ME, follower_ids: [OTHER2], updated_at: "u1" };
+    const B = { id: T2, title: "B", status: "pending", due_date: "2026-10-11", start_date: null, completed_at: null, blocked_by: [{ task_id: T1, gap_days: 1 }], owner_id: OTHER, follower_ids: [], updated_at: "u2" };
+    const service = fakeDb({ "workspace_members:select": { data: [] }, "notifications:select": { data: [] } });
+    const { ctx } = ctxWith(
+      {
+        "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : call.filters.some((f) => f.method === "filter") ? { data: [B] } : { data: [] }),
+      },
+      { complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }] } } },
+      service,
+    );
+    const r = await completeTaskCore({ ...ctx, actorName: "María" }, T1, true);
+    vi.useRealTimers();
+    expect(r.ok).toBe(true);
+    const rows = service.writesTo("notifications").map((w) => w.values as { type: string; recipient_id: string; entity_id: string });
+    expect(rows.filter((n) => n.type === "task_unblocked").map((n) => [n.recipient_id, n.entity_id])).toEqual([[OTHER, T2]]);
+    expect(rows.filter((n) => n.type === "task_date_moved").map((n) => [n.recipient_id, n.entity_id])).toEqual([[OTHER, T2]]);
+    expect(rows.filter((n) => n.type === "task_changed").map((n) => [n.recipient_id, n.entity_id])).toEqual([[OTHER2, T1]]);
+    expect(rows.every((n) => n.recipient_id !== ME)).toBe(true);
+  });
+});

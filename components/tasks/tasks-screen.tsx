@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ListChecks, Plus } from "lucide-react";
+import { KanbanSquare, ListChecks, Plus, Table2 } from "lucide-react";
 import { ToastProvider } from "@/components/content/drawer/toast";
 import { PageHeader } from "@/components/page-header";
 import type { CellPatch } from "@/lib/tasks/cell-edit";
@@ -10,16 +10,23 @@ import type { CompletionPlan } from "@/lib/tasks/core";
 import type { DraftDefaults } from "@/lib/tasks/draft";
 import { withoutTaskParam, withTaskParam } from "@/lib/tasks/drawer-url";
 import { applyFilters } from "@/lib/tasks/filters";
+import { planMoveToEdits } from "@/lib/tasks/board-actions";
+import type { MovePlan } from "@/lib/tasks/kanban-model";
+import { summarizeMine } from "@/lib/tasks/mine";
 import { listProjects } from "@/lib/tasks/project";
 import { buildRows, groupRows, nextSort, remainingToLoad, sortRows, visibleLimit, type MemberLite } from "@/lib/tasks/table-model";
-import type { TaskRow } from "@/lib/tasks/types";
-import { clearFilters, countActiveFilters, parseViewState, serializeViewState, type SortColumn, type TasksViewState } from "@/lib/tasks/view-state";
+import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
+import { clearFilters, countActiveFilters, parseViewState, serializeViewState, toggleMine, type SortColumn, type TasksViewState } from "@/lib/tasks/view-state";
 import { FiltersBar } from "./filters-bar";
 import { ShiftDialog } from "./shift-dialog";
 import type { CellEnv } from "./task-cells";
 import { TaskDrawer } from "./task-drawer";
+import { TasksBoard } from "./tasks-board";
+import { TasksList } from "./tasks-list";
 import { TasksTable } from "./tasks-table";
 import { useTaskActions } from "./use-task-actions";
+import { useTasksLayout } from "./use-layout";
+import { cn } from "@/lib/utils";
 
 export interface TasksScreenProps {
   initialTasks: TaskRow[];
@@ -87,6 +94,8 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
   const projects = useMemo(() => listProjects(tasks), [tasks]);
   const filtered = useMemo(() => applyFilters(tasks, state, { meId: currentUserId, today, byId }), [tasks, state, currentUserId, today, byId]);
   const sorted = useMemo(() => sortRows(buildRows(filtered, members, { today, byId }), state.sort), [filtered, members, today, byId, state.sort]);
+  const layout = useTasksLayout();
+  const mine = useMemo(() => summarizeMine(tasks, today, currentUserId), [tasks, today, currentUserId]);
   const limit = visibleLimit(sorted.length, loadedMore);
   const groups = useMemo(() => groupRows(sorted.slice(0, limit), state.group), [sorted, limit, state.group]);
 
@@ -129,16 +138,51 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
     async (title: string, project: string | null) => !!(await actions.create({ title, project })),
     [actions],
   );
+  const onQuickCreateIn = useCallback(
+    async (title: string, project: string | null, status: TaskStatus) => !!(await actions.create({ title, project, status })),
+    [actions],
+  );
+  const onMove = useCallback(
+    (taskId: string, plan: MovePlan) => {
+      // Arrastrar a «Completada» pasa por la vista previa de fechas; no se completa de golpe.
+      if (plan.status === "completed" && plan.changesStatus) {
+        void actions.requestComplete(taskId);
+        return;
+      }
+      for (const edit of planMoveToEdits(taskId, plan)) void actions.edit(edit.id, edit.patch);
+    },
+    [actions],
+  );
+  const onStatus = useCallback((taskId: string, status: TaskStatus) => void actions.edit(taskId, { status }), [actions]);
+  const onDue = useCallback((taskId: string, due: string | null) => void actions.edit(taskId, { due_date: due }), [actions]);
   const onSort = useCallback((column: SortColumn) => change({ ...state, sort: nextSort(state.sort, column) }), [change, state]);
 
   const hasAny = tasks.length > 0;
   const filtersOn = countActiveFilters(state) > 0;
+  const filtersOnBeyondMine = countActiveFilters({ ...state, mine: false }) > 0;
   const drawerOpen = creating !== null || notFound || !!state.task;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         route="/dashboard/tareas"
+        left={
+          <nav aria-label="Vista" className="ml-1 flex rounded-lg bg-muted/60 p-0.5">
+            {([["table", "Tabla", Table2], ["board", "Tablero", KanbanSquare]] as const).map(([view, label, Icon]) => (
+              <button
+                key={view}
+                type="button"
+                aria-pressed={state.view === view}
+                onClick={() => change({ ...state, view })}
+                className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm", state.view === view ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              >
+                <Icon className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sr-only sm:hidden">{label}</span>
+              </button>
+            ))}
+          </nav>
+        }
         right={
           canEdit ? (
             <button
@@ -164,16 +208,49 @@ function TasksScreenInner({ initialTasks, members, currentUserId, today, timeZon
           <EmptyState canEdit={canEdit} onCreate={() => startCreate()} />
         ) : (
           <div className="space-y-3">
-            <FiltersBar state={state} onChange={change} members={members} projects={projects} total={tasks.length} shown={sorted.length} />
+            <MineBar mine={mine} active={state.mine} onToggle={() => change(toggleMine(state))} />
+            <FiltersBar state={state} onChange={change} members={members} projects={projects} showGroup={state.view === "table"} total={tasks.length} shown={sorted.length} />
             {sorted.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center">
-                <p className="text-sm font-medium">No hay tareas con estos filtros.</p>
+                <p className="text-sm font-medium">{state.mine && !filtersOnBeyondMine ? "No tenés tareas abiertas a tu cargo." : "No hay tareas con estos filtros."}</p>
                 {filtersOn && (
                   <button type="button" onClick={() => change(clearFilters(state))} className="mt-3 h-8 rounded-lg border border-border px-3 text-sm hover:bg-accent">
                     Limpiar los filtros
                   </button>
                 )}
               </div>
+            ) : layout === null ? (
+              <div aria-busy="true" aria-label="Cargando tareas" className="space-y-2">
+                {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-11 animate-pulse rounded-lg bg-muted/50" />)}
+              </div>
+            ) : state.view === "board" ? (
+              <TasksBoard
+                rows={sorted}
+                today={today}
+                canEdit={canEdit}
+                busy={actions.busy}
+                source={source}
+                onOpen={openDrawer}
+                onStatus={onStatus}
+                onDue={onDue}
+                onMove={onMove}
+                onQuickCreate={onQuickCreateIn}
+              />
+            ) : layout === "list" ? (
+              <TasksList
+                groups={groups}
+                today={today}
+                canEdit={canEdit}
+                busy={actions.busy}
+                source={source}
+                onOpen={openDrawer}
+                onStatus={onStatus}
+                onDue={onDue}
+                onQuickCreate={onQuickCreate}
+                remaining={remainingToLoad(sorted.length, loadedMore)}
+                onLoadMore={() => setLoadedMore((n) => n + 1)}
+                totalShown={limit}
+              />
             ) : (
               <TasksTable
                 groups={groups}
@@ -257,3 +334,27 @@ function EmptyState({ canEdit, onCreate }: { canEdit: boolean; onCreate: () => v
   );
 }
 
+
+/** «Mis tareas»: el atajo (mias y sin completar, por vencimiento) y los contadores de lo que viene. */
+function MineBar({ mine, active, onToggle }: { mine: ReturnType<typeof summarizeMine>; active: boolean; onToggle: () => void }) {
+  const chip = (n: number, text: string, hot: boolean) => (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs", hot && n > 0 ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300" : "border-border text-muted-foreground")}>
+      <span className="font-semibold tabular-nums">{n}</span> {text}
+    </span>
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-2" aria-label="Mis tareas">
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={onToggle}
+        className={cn("h-8 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium transition-colors", active ? "border-primary bg-primary/10" : "border-input bg-background hover:border-muted-foreground/60")}
+      >
+        Mis tareas
+      </button>
+      {chip(mine.overdue, mine.overdue === 1 ? "vencida" : "vencidas", true)}
+      {chip(mine.today, mine.today === 1 ? "vence hoy" : "vencen hoy", false)}
+      {chip(mine.next7, "en los próximos 7 días", false)}
+    </div>
+  );
+}

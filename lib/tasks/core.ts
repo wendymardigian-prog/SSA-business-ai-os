@@ -18,6 +18,7 @@ import { diffFields, logAudit } from "@/lib/audit";
 import { todayInputValue } from "@/lib/dates";
 import type { Database, Json } from "@/lib/types/database";
 import { dateOfInstant } from "./dates";
+import { planCompleted, planCreated, planUpdated, sendTaskNotifications, type TaskNotice } from "./notifications";
 import { computeDateShifts, type DateRuleTask, type DateShift } from "./date-rules";
 import { BLOCKER_ERROR_MESSAGES, regapForNewDue, type BlockerErrorCode } from "./dependencies";
 import { fail, FORBIDDEN_MESSAGE, success, type TaskActionResult } from "./result";
@@ -35,6 +36,19 @@ export interface TaskCtx {
   userId: string;
   /** `workspaces.timezone`: las fechas de las tareas son de esa zona. */
   timeZone: string;
+  /** Como se llama quien actua, para los avisos («María te asignó…»). */
+  actorName?: string;
+}
+
+const actorOf = (ctx: TaskCtx) => ({ id: ctx.userId, name: ctx.actorName || "Alguien del equipo" });
+
+/** Los avisos nunca tumban la operacion: ni armarlos ni escribirlos. */
+async function notify(ctx: TaskCtx, build: () => TaskNotice[]): Promise<void> {
+  try {
+    await sendTaskNotifications(ctx.service, ctx.workspaceId, build());
+  } catch (error) {
+    console.error("[tareas] no pude armar los avisos:", error instanceof Error ? error.message : String(error));
+  }
 }
 
 export const TASK_COLUMNS =
@@ -169,6 +183,8 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
     performedBy: ctx.userId,
   });
 
+  await notify(ctx, () => planCreated(task, actorOf(ctx)));
+
   return success(task);
 }
 
@@ -277,6 +293,8 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
       performedBy: ctx.userId,
     });
   }
+
+  await notify(ctx, () => planUpdated(before, after, actorOf(ctx), todayInputValue(new Date(), ctx.timeZone)));
 
   return success({ before, after });
 }
@@ -441,12 +459,25 @@ export async function completeTaskCore(
     )
     .map((r) => ({ task_id: r.id, title: r.title, owner_id: r.owner_id }));
 
-  return success({
-    task: root,
-    shifted: result.shifted ?? [],
-    unblocked,
-    movedRows: rows.filter((r) => movedIds.has(r.id)),
-  });
+  const movedRows = rows.filter((r) => movedIds.has(r.id));
+  const shifted = result.shifted ?? [];
+
+  await notify(ctx, () =>
+    planCompleted(
+      {
+        task: root,
+        moved: shifted.flatMap((s) => {
+          const row = movedRows.find((r) => r.id === s.task_id);
+          return row ? [{ row, toDue: s.to_due }] : [];
+        }),
+        unblocked,
+      },
+      actorOf(ctx),
+      todayInputValue(new Date(), ctx.timeZone),
+    ),
+  );
+
+  return success({ task: root, shifted, unblocked, movedRows });
 }
 
 // ── Dependencias y borrado ──────────────────────────────────────────────────

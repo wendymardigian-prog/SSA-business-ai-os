@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, ListFilter, Search, X } from "lucide-react";
 import { Popover } from "@/components/ui/popover";
 import type { ProjectSummary } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
@@ -91,6 +91,8 @@ export function FiltersBar({
   shown: number;
 }) {
   const active = countActiveFilters(state);
+  // En el celular los filtros se esconden detras de un boton; en la computadora siempre estan a la vista.
+  const [expanded, setExpanded] = useState(false);
 
   // La busqueda se escribe sin esperar a la URL y se manda a los 250 ms.
   const [q, setQ] = useState(state.q);
@@ -121,6 +123,17 @@ export function FiltersBar({
             className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-sm"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls="tasks-filters"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-input bg-background px-2.5 text-[13px] font-medium md:hidden"
+        >
+          <ListFilter className="h-3.5 w-3.5" aria-hidden /> Filtros
+          {active > 0 && <span className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground">{active}</span>}
+        </button>
+        <div id="tasks-filters" className={cn("w-full flex-wrap items-center gap-2 md:flex md:w-auto", expanded ? "flex" : "hidden")}>
         <MultiFilter label="Estado" options={TASK_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} selected={state.status} onChange={(v) => set("status", v as TasksViewState["status"])} />
         <MultiFilter label="Responsable" options={[...peopleOptions.slice(0, 1), { value: NONE, label: "Sin responsable" }, ...peopleOptions.slice(1)]} selected={state.owner} onChange={(v) => set("owner", v)} />
         <MultiFilter label="Seguidor" options={peopleOptions} selected={state.follower} onChange={(v) => set("follower", v)} />
@@ -149,6 +162,7 @@ export function FiltersBar({
             <X className="h-3.5 w-3.5" aria-hidden /> Limpiar ({active})
           </button>
         )}
+        </div>
       </div>
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {active > 0 ? `${shown} de ${total} tareas` : total === 1 ? "1 tarea" : `${total} tareas`}
