@@ -16,19 +16,28 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] R9 · Fusión de contactos
 - [x] R7 · Tareas en el calendario de Agenda
 - [x] R8 · Arrastrar agendas con confirmación
-- [ ] Revisión visual (1440 y 390 px, claro y oscuro)
+- [x] Revisión visual (1440 y 390 px, claro y oscuro): **no hecha, anotada en PENDIENTE** (necesita una sesión iniciada contra la base real y el servidor de desarrollo no corre desde el worktree)
 - [ ] Cierre: docs, CLAUDE.md, limpieza `zz-test-`, PR
 
 ## Punto de partida (13/10/2026)
 
-(se completa abajo con la salida real)
+Medido antes de escribir código (rama `feat/tareas-crm` sin cambios, 13/10/2026), de a un script por vez con el candado compartido con la otra sesión:
+
+| Chequeo | Resultado de partida |
+|---|---|
+| `npx vitest run` | 812 archivos / 10.129 tests, verde |
+| `npm run lint` | 0 errores, 36 warnings |
+| `npm run build` | no corrió en el worktree: Turbopack no acepta el symlink de `node_modules` (se compila en una copia con `node_modules` real; ver «Resultado final») |
+| `verify-rls`, `verify-roles`, `verify-tasks`, `verify-crm`, `verify-sales`, `verify-scheduling`, `verify-booking-concurrency`, `verify-eod`, `verify-ads-attribution`, `verify-inbound-webhooks`, `verify-content`, `verify-inbox-filters`, `verify-dashboards`, `verify-calls`, `verify-audit-visibility`, `verify-enrichment`, `verify-optout`, `verify-chat-media`, `verify-message-persistence`, `verify-csv-import` | **pasan** |
+| `verify-workspace-isolation` | falló una vez (se pisó con otra corrida en paralelo) y **pasó** al repetirla sola |
+| `verify-forms`, `verify-attribution`, `verify-publishing` | **ya fallaban antes de tocar nada** (datos reales de producción / proveedores); no son de esta tanda y no se corrieron de nuevo como criterio |
 
 ## Migraciones
 
 | N.º | Archivo | Contenido | Estado |
 |---|---|---|---|
 | M1 | `00206_tasks_time_and_followup.sql` | `due_time`, `duration_minutes`, CHECK, GRANT por columna, índice único de seguimiento | aplicada y registrada (13/10/2026) |
-| M2 | `00207_contact_merge_and_task_shift_context.sql` | `merge_contacts`, `task_shift_context`, reemplazo de `complete_task_with_shifts` | aplicada y registrada (13/10/2026); verificaciones en curso |
+| M2 | `00207_contact_merge_and_task_shift_context.sql` | `merge_contacts`, `task_shift_context`, reemplazo de `complete_task_with_shifts` | aplicada, registrada y verificada (13/10/2026) |
 
 Próxima libre después de estas: `00208`.
 

@@ -4,6 +4,9 @@ Formato: **qué quedó** · **por qué** · **qué se decidió**.
 
 ## Abiertos
 
+- **Revisión visual (1440 y 390 px, claro y oscuro) sin hacer** · pide una sesión iniciada contra la base de producción (una cuenta nueva ahí no corresponde, y las credenciales no se escriben en el navegador) y el servidor de desarrollo no arranca desde el worktree (Turbopack rechaza el symlink de `node_modules`) · el marcado quedó fijado con pruebas de caracterización (`renderToStaticMarkup`) del campo de seguimiento y de la grilla del calendario; antes de mergear, **recorrer a mano**: ficha y bandeja (sección «Tareas», seguimiento con y sin tarea), panel de «Crear tarea» y «Completar tarea», Ajustes › Ventas (interruptor y los dos flujos), hora en celda y drawer, calendario con «Tareas» apagado y encendido (día, semana, mes, «Sin fecha», solapes), el modal de reprogramar, el aviso de fusión; en claro y oscuro y a 390 px.
+- **`npm run build` en el worktree** · Turbopack: «Symlink node_modules is invalid» · se compiló una copia con `node_modules` real (APFS clone) y dio verde; en Railway no aplica.
+
 - **Verificación en vivo del arrastre (tareas y agendas)** · el navegador del entorno puede no soportar arrastre HTML5 · si no se puede probar acá, queda para verificar en vivo; la lógica está cubierta con funciones puras y tests.
 - **Zona del seguimiento** · el valor de `next_followup_date` no guarda la zona de quien lo cargó · se decodifica con la zona del workspace; si quien cargó la fecha está a 12 h o más de esa zona, el día puede correrse (decisión de Wendy, 13/10/2026).
 - **`create_task` / `complete_task` en los editores simples** (Formularios, Agenda, Fin de día) · Ventas no usa ninguno y el catálogo `lib/automations/step-catalog.ts` es compartido · no se tocan; siguen solo en el lienzo.
