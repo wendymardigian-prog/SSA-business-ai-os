@@ -94,9 +94,11 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
   ejemplo»). Datos de prueba `zz-test` borrados al terminar.
 
 ### Cierre
-- [ ] `docs/webhooks.md`, `docs/atribucion.md`, `docs/flow-registry.md`, `docs/dashboards.md`
-- [ ] Sección "Webhooks, atribución y anuncios" en `CLAUDE.md`
-- [ ] Verificación final, revisión visual, PR
+- [x] `docs/webhooks.md`, `docs/atribucion.md`, `docs/flow-registry.md`, `docs/dashboards.md`
+- [x] Sección "Webhooks, atribución y anuncios" en `CLAUDE.md`
+- [x] Verificación final (13/10/2026): vitest 779 archivos / 9770 tests verdes; lint 0 errores y 36 avisos (igual que antes); build ok; todos los `verify-*` en verde salvo `verify-attribution` (el caso de datos que ya fallaba: 776 de 835); huellas intactas; 00186–00195 registradas
+- [x] Revisión visual (WH1, WH2, AT2, AT3, AT4; ver las notas de cada bloque)
+- [x] PR abierto, sin mergear
 
 ## Punto de partida
 Medido el 12/10/2026, antes de tocar nada. Base: proyecto `knrxjnmxnmjavivyuwew`, última migración

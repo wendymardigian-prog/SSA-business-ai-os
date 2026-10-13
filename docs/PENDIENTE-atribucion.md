@@ -211,3 +211,14 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   contenido en 322 px, la página no scrollea de costado y la primera columna queda fija); el modo oscuro de «Sin vincular»
   también. La tabla con datos CRM reales no se pudo ver (producción todavía no tiene toques vinculados): está cubierta por
   `verify-ads-attribution.mjs` (datos `zz-test`) y por los tests de las cuentas y las columnas.
+
+
+### Cierre — cosas que quedan
+
+- **`verify-publishing.mjs` falló una vez en la corrida final y pasó las dos siguientes**: sus filas `zz-test` las puede levantar el cron de
+  producción (misma base) y marcarlas `failed` en medio de la prueba, igual que pasa a veces con `verify-forms.mjs`. No es de este módulo.
+- **`verify-attribution.mjs`** sigue con su único caso de datos (776 de 835 contactos reales sin `first_touch`); el resto pasa.
+- **Verificación en vivo con cuentas reales (§11 del plano)** queda para vos: un formulario externo real contra la URL del webhook, un anuncio de
+  mensaje a Instagram (el primer mensaje trae `referral.ad_id`), un clic a WhatsApp, un comentario en un anuncio, una mención en historia, y el primer
+  sync de Meta con el código nuevo (que llena el catálogo, las miniaturas y el estado de las campañas). Antes de eso, el catálogo de producción está vacío.
+- **Al desplegar**: el código nuevo ya necesita las migraciones 00186–00195, que **ya están aplicadas** en la base. No hay variables de entorno nuevas.
