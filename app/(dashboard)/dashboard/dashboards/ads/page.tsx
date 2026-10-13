@@ -1,7 +1,8 @@
-import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { AdsDashboard } from "@/components/dashboards/ads-dashboard";
 import { loadAdsInsights } from "@/lib/dashboards/ads-load";
+import { loadCrmData } from "@/lib/dashboards/ads-crm-load";
 import { isPeriodPreset, previousPeriod, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
@@ -27,8 +28,9 @@ export default async function AdsDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
-  const permissions = await getPermissionContext();
+  // El permiso, no el cargo (F32): Owner y Admin lo tienen siempre; un rol personalizado, si se lo dieron.
+  const permissions = await requirePermission("dashboards.ads.view");
+  const { workspace, supabase } = permissions;
   const dashboards = availableDashboards(permissions.can);
   const canSync = permissions.can("settings.manage");
   const sp = await searchParams;
@@ -37,7 +39,10 @@ export default async function AdsDashboardPage({
   const period: PeriodPreset =
     periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
 
-  const { data: configRow } = await supabase
+  // La lista de cuentas publicitarias esta en `integration_configs`, que solo lee un Admin: con el permiso de la
+  // pantalla alcanza para VER las cuentas, asi que se lee con el cliente de servicio, filtrada por el workspace de la sesion.
+  const service = await createServiceClient();
+  const { data: configRow } = await service
     .from("integration_configs")
     .select("config")
     .eq("workspace_id", workspace.id)
@@ -82,8 +87,7 @@ export default async function AdsDashboardPage({
   const before = previousPeriod(range, now);
 
   // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
-  // servidor. El workspace sale del guard de Admin, no del pedido.
-  const service = await createServiceClient();
+  // servidor. El workspace sale de la sesion, no del pedido.
   const token = await getMetaToken(service, workspace.id);
   const aiChoice = await loadTaskModel(service, workspace.id, "ads_analysis");
 
@@ -123,6 +127,19 @@ export default async function AdsDashboardPage({
     breakdownOf("age,gender"),
   ]);
 
+  // Lo que dice el CRM por campaña, conjunto y anuncio (AT4). Con la sesion de quien mira: la RLS decide que leads,
+  // agendas y ventas cuenta. Si algo falla, el dashboard se ve igual con lo de Meta y la tabla avisa.
+  const idsOf = (level: "campaign" | "adset" | "ad") => rows.filter((r) => r.level === level).map((r) => r.objectId);
+  const crm = await loadCrmData(supabase, {
+    workspaceId: workspace.id,
+    adAccountId,
+    since: sinceOf(range) ?? "2000-01-01",
+    until: untilOf(range),
+    objectIds: { campaign: idsOf("campaign"), adset: idsOf("adset"), ad: idsOf("ad") },
+    scopeLimited: permissions.scope("leads") !== "all",
+    now,
+  });
+
   // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
   // comparar un alcance unico contra uno sumado inventaria una variacion.
   const bothReach = live?.ok && previousLive?.ok;
@@ -156,6 +173,7 @@ export default async function AdsDashboardPage({
       aiModel={aiChoice ? `${aiChoice.provider}/${aiChoice.model}` : null}
       syncedLabel={syncedLabel(syncedAt, now, timeZone)}
       canSync={canSync}
+      crm={crm}
     />
   );
 }

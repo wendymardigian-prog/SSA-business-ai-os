@@ -382,6 +382,185 @@ try {
     const ign = await svc.rpc("set_touch_meta_match", { p_workspace_id: wsM.id, p_touch_id: id, p_action: "ignore", p_user_id: admin.id });
     check(ign.data?.ok === true && (await touchRow(id)).meta_match_status === "ignored", "ignorar deja el toque ignored");
   }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // AT4: ads_crm_metrics (la tabla Meta vs CRM)
+  // ════════════════════════════════════════════════════════════════════════════
+  console.log("\n— AT4: ads_crm_metrics —");
+  {
+    const wsC = await makeWorkspace("ads-crm");
+    const ACC = "act_zzc";
+    const dayMs = 86_400_000;
+    const ago = (d) => new Date(Date.now() - d * dayMs).toISOString();
+    const dateOf = (d) => new Date(Date.now() - d * dayMs).toISOString().slice(0, 10);
+    const adminC = await makeUser("crm-admin");
+    const memberC = await makeUser("crm-member");
+    const viewerC = await makeUser("crm-viewer");
+    const { data: rolView } = await svc.from("workspace_roles").insert({ workspace_id: wsC.id, name: "zz-test Ver anuncios", permissions: { keys: ["dashboards.ads.view"], scopes: {} } }).select("id").single();
+    await svc.from("workspace_members").insert([
+      { workspace_id: wsC.id, user_id: adminC.id, role: "admin" },
+      { workspace_id: wsC.id, user_id: memberC.id, role: "member" },
+      { workspace_id: wsC.id, user_id: viewerC.id, role: "member", role_id: rolView.id },
+    ]);
+
+    // Catalogo: campaña c-1 (conjunto s-1, anuncios A y B) y campaña c-2 (conjunto s-2, anuncio X).
+    await svc.from("meta_campaigns").insert([
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-1", name: "Camp 1", name_key: "camp 1" },
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-2", name: "Camp 2", name_key: "camp 2" },
+      { workspace_id: wsC.id, ad_account_id: "act_otra", campaign_id: "c-9", name: "Camp 9", name_key: "camp 9" },
+    ]);
+    await svc.from("meta_adsets").insert([
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-1", adset_id: "s-1", name: "Conj 1", name_key: "conj 1" },
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-2", adset_id: "s-2", name: "Conj 2", name_key: "conj 2" },
+    ]);
+    await svc.from("meta_ads").insert([
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-1", adset_id: "s-1", ad_id: "a-A", name: "Anuncio A", name_key: "anuncio a" },
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-1", adset_id: "s-1", ad_id: "a-B", name: "Anuncio B", name_key: "anuncio b" },
+      { workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-2", adset_id: "s-2", ad_id: "a-X", name: "Anuncio X", name_key: "anuncio x" },
+    ]);
+
+    const mkC = async (tag, extra = {}) =>
+      (await svc.from("contacts").insert({ workspace_id: wsC.id, display_name: `zz-test ${tag}`, email: `zz-test-${tag}-${stamp}@example.test`, ...extra }).select("id").single()).data.id;
+    const touchC = (contactId, t) => svc.rpc("record_contact_touch", { p_workspace_id: wsC.id, p_contact_id: contactId, p_touch: { source: "facebook", medium: "paid_social", origin: "form", dedupe_key: `zz-${randomUUID()}`, ...t } });
+
+    // K1 (de member): primer toque A (hace 4 dias) y segundo toque B (hace 2 dias). K2 (sin asignar): toque X.
+    const k1 = await mkC("k1", { setter_id: memberC.id });
+    const k2 = await mkC("k2");
+    const tA = await touchC(k1, { ad_id: "a-A", occurred_at: ago(4) });
+    const tB = await touchC(k1, { ad_id: "a-B", occurred_at: ago(2) });
+    await touchC(k2, { ad_id: "a-X", occurred_at: ago(3) });
+    check(tA.data?.inserted && tB.data?.inserted, "los toques de prueba se vinculan por ad_id (trigger)");
+
+    // Agendas: hace falta una categoria, un tipo de evento y un anfitrion.
+    const { data: cat } = await svc.from("booking_categories").insert({ workspace_id: wsC.id, name: "zz-test cat" }).select("id").single();
+    const { data: ev } = await svc.from("event_types").insert({ workspace_id: wsC.id, category_id: cat.id, owner_user_id: adminC.id, title: "zz-test evento", slug: "zz-evento", duration_minutes: 30 }).select("id").single();
+    const uid = () => randomUUID().replace(/-/g, "").slice(0, 22);
+    const mkBooking = async (contactId, over) =>
+      svc.from("bookings").insert({ workspace_id: wsC.id, uid: uid(), event_type_id: ev.id, host_user_id: adminC.id, contact_id: contactId, title: "zz-test reunion", start_at: new Date(Date.now() + 3 * dayMs).toISOString(), end_at: new Date(Date.now() + 3 * dayMs + 1_800_000).toISOString(), ...over }).select("id").single();
+
+    // (1) una agenda publica: tiene su toque `booking:<id>` del anuncio A.
+    const bPublic = await mkBooking(k1, { created_at: ago(1), status: "scheduled", start_at: new Date(Date.now() + 5 * dayMs).toISOString(), end_at: new Date(Date.now() + 5 * dayMs + 1_800_000).toISOString() });
+    check(!bPublic.error, "se crea una agenda de prueba", bPublic.error?.message);
+    await touchC(k1, { ad_id: "a-A", origin: "booking", dedupe_key: `booking:${bPublic.data.id}`, occurred_at: ago(1) });
+    // (2) una agenda MANUAL (sin toque), hecha entre el toque A y el B: hereda A. Asistio (estado `sale`).
+    const bManual = await mkBooking(k1, { created_at: ago(3), status: "sale", start_at: new Date(Date.now() + 6 * dayMs).toISOString(), end_at: new Date(Date.now() + 6 * dayMs + 1_800_000).toISOString() });
+    // (3) una agenda liberada: no cuenta.
+    await mkBooking(k1, { created_at: ago(1), status: "cancelled_other", slot_released_at: new Date().toISOString(), start_at: new Date(Date.now() + 7 * dayMs).toISOString(), end_at: new Date(Date.now() + 7 * dayMs + 1_800_000).toISOString() });
+    // (4) una cancelada normal: SI cuenta (la agenda existio y costo); hereda el ultimo toque (B).
+    await mkBooking(k1, { created_at: ago(1.5), status: "cancelled_no_response", start_at: new Date(Date.now() + 8 * dayMs).toISOString(), end_at: new Date(Date.now() + 8 * dayMs + 1_800_000).toISOString() });
+    check(!bManual.error, "y una manual");
+
+    // Ventas: producto y variante.
+    const { data: prod } = await svc.from("products").insert({ workspace_id: wsC.id, name: "zz-test Programa" }).select("id").single();
+    const { data: variant } = await svc.from("product_variants").insert({ workspace_id: wsC.id, product_id: prod.id, name: "zz-test variante" }).select("id").single();
+    const mkSale = (touchId, status, amount, over = {}) =>
+      svc.from("sales").insert({ workspace_id: wsC.id, contact_id: k1, product_variant_id: variant.id, product_snapshot: { product_id: prod.id, variant_id: variant.id }, base_amount: amount, final_amount: amount, status, financing_type: "full", sale_date: dateOf(0), attribution_touch_id: touchId, attribution_type: touchId ? "last_touch" : "none", attribution: touchId ? { source: "facebook", medium: "paid_social" } : null, ...over }).select("id").single();
+    const sPaid = await mkSale(tB.data.touch_id, "paid", 100.5);
+    check(!sPaid.error, "se crea una venta de prueba", sPaid.error?.message);
+    await mkSale(tB.data.touch_id, "cancelled", 999);
+    await mkSale(tB.data.touch_id, "refunded", 888);
+    await mkSale(null, "paid", 777);
+    // Un pago cobrado y un reembolso (fila negativa): cash neto.
+    const payBase = { workspace_id: wsC.id, sale_id: sPaid.data?.id, status: "paid", paid_at: new Date().toISOString(), paid_on: dateOf(0) };
+    const p1 = await svc.from("payments").insert({ ...payBase, type: "full", amount: 100.5 });
+    const p2 = await svc.from("payments").insert({ ...payBase, type: "refund", amount: -30.25 });
+    check(!p1.error && !p2.error, "se crean un pago y un reembolso", (p1.error ?? p2.error)?.message);
+
+    const metrics = async (client, level, since = dateOf(5), until = dateOf(-1), account = null) => {
+      const { data, error } = await client.rpc("ads_crm_metrics", { p_level: level, p_since: since, p_until: until, p_ad_account_id: account, p_workspace_id: wsC.id });
+      if (error) throw new Error(`ads_crm_metrics(${level}): ${error.message}`);
+      return Object.fromEntries((data ?? []).map((r) => [r.object_id, r]));
+    };
+
+    const ad = await metrics(adminC.client, "ad");
+    check(ad["a-A"]?.leads_first === 1 && ad["a-B"]?.leads_first === undefined || ad["a-B"]?.leads_first === 0, "un contacto creado en el rango con primer toque del anuncio A: leads_first(A) = 1 y leads_first(B) = 0", JSON.stringify(ad));
+    check(ad["a-A"]?.leads_total === 1 && ad["a-B"]?.leads_total === 1, "con un segundo toque del anuncio B: leads_total(A) = 1 y leads_total(B) = 1", JSON.stringify(ad));
+    check(ad["a-A"]?.bookings === 2, "bookings(A) = 2: la publica (por su toque) y la manual (hereda el toque anterior)", `dio ${ad["a-A"]?.bookings}`);
+    check(ad["a-A"]?.bookings_attended === 1 && ad["a-A"]?.leads_with_booking === 1, "bookings_attended(A) = 1 (estado sale) y leads_with_booking(A) = 1 (un contacto)", JSON.stringify(ad["a-A"]));
+    check(ad["a-B"]?.bookings === 1, "la cancelada normal SI cuenta y hereda el ultimo toque (B); la liberada no cuenta", `dio ${ad["a-B"]?.bookings}`);
+    check(ad["a-B"]?.sales === 1 && Number(ad["a-B"]?.revenue_cents) === 10050, "sales(B) = 1 y revenue en centavos exactos (100,50 -> 10050); no cuentan la cancelada, la reembolsada ni la sin toque", JSON.stringify(ad["a-B"]));
+    check(Number(ad["a-B"]?.cash_cents) === 7025, "cash(B) = pago - reembolso = 100,50 - 30,25 = 7025", String(ad["a-B"]?.cash_cents));
+    check(ad["a-X"]?.leads_first === 1 && !ad["a-X"]?.bookings, "el anuncio X de otro contacto aparece con su lead", JSON.stringify(ad["a-X"]));
+
+    const camp = await metrics(adminC.client, "campaign");
+    const adsOf = (c) => (c === "c-1" ? ["a-A", "a-B"] : ["a-X"]);
+    for (const field of ["leads_first", "bookings", "bookings_attended", "sales", "revenue_cents", "cash_cents"]) {
+      const sum = adsOf("c-1").reduce((acc, id) => acc + Number(ad[id]?.[field] ?? 0), 0);
+      check(sum <= Number(camp["c-1"]?.[field] ?? 0) && sum === Number(camp["c-1"]?.[field] ?? 0), `campaña: la suma de sus anuncios = su valor (${field})`, `suma ${sum}, campaña ${camp["c-1"]?.[field]}`);
+    }
+    check(Number(camp["c-1"]?.leads_total) === 1, "y leads_total no es la suma (un contacto con dos anuncios cuenta una vez en la campaña)", String(camp["c-1"]?.leads_total));
+    const adset = await metrics(adminC.client, "adset");
+    check(adset["s-1"]?.bookings === 2 + 1 && Number(adset["s-1"]?.revenue_cents) === 10050, "a nivel conjunto tambien suma bien", JSON.stringify(adset["s-1"]));
+
+    check(Object.keys(await metrics(adminC.client, "ad", dateOf(400), dateOf(300))).length === 0, "un rango sin datos no devuelve objetos");
+    const byAccount = await metrics(adminC.client, "campaign", dateOf(5), dateOf(-1), "act_otra");
+    check(Object.keys(byAccount).length === 0, "filtrar por otra cuenta publicitaria no devuelve objetos de esta");
+    const sameAccount = await metrics(adminC.client, "campaign", dateOf(5), dateOf(-1), ACC);
+    check(Object.keys(sameAccount).sort().join() === "c-1,c-2", "filtrar por la cuenta devuelve sus objetos", Object.keys(sameAccount).join());
+
+    // RLS: INVOKER. Un Member con alcance propio solo cuenta sus contactos.
+    const own = await metrics(memberC.client, "ad");
+    check(own["a-A"]?.leads_first === 1 && own["a-X"] === undefined, "un Member con alcance `own` solo cuenta sus contactos (no ve el anuncio X de otro)", Object.keys(own).join());
+    const viewer = await metrics(viewerC.client, "ad");
+    check(Object.keys(viewer).length === 0 || viewer["a-A"] !== undefined, "un rol con dashboards.ads.view: lo que ve lo decide la RLS de contactos");
+    const outsiderRows = (await outsider.client.rpc("ads_crm_metrics", { p_level: "ad", p_since: dateOf(5), p_until: dateOf(-1), p_workspace_id: wsC.id })).data ?? [];
+    check(outsiderRows.length === 0, "quien es de otro workspace no recibe nada");
+    const anon = await createClient(URL, ANON, { auth: { persistSession: false } }).rpc("ads_crm_metrics", { p_level: "ad", p_since: dateOf(5), p_until: dateOf(-1), p_workspace_id: wsC.id });
+    check(!!anon.error, "sin sesion no se puede llamar");
+    const bad = await adminC.client.rpc("ads_crm_metrics", { p_level: "otro", p_since: dateOf(5), p_until: dateOf(-1), p_workspace_id: wsC.id });
+    check(!!bad.error, "un nivel invalido se rechaza");
+    const noWs = await adminC.client.rpc("ads_crm_metrics", { p_level: "ad", p_since: dateOf(5), p_until: dateOf(-1) });
+    check(!noWs.error && (noWs.data ?? []).length === 0, "sin workspace devuelve vacio (no adivina)");
+
+    // La zona horaria del workspace: un toque a las 03:00 UTC del 2 de enero es la noche del 1 de enero en Costa Rica.
+    await svc.from("workspaces").update({ timezone: "America/Costa_Rica" }).eq("id", wsC.id);
+    const k3 = await mkC("k3");
+    await touchC(k3, { ad_id: "a-X", occurred_at: "2026-01-02T03:00:00Z" });
+    const jan1 = await metrics(adminC.client, "ad", "2026-01-01", "2026-01-01");
+    const jan2 = await metrics(adminC.client, "ad", "2026-01-02", "2026-01-02");
+    check(jan1["a-X"]?.leads_total === 1, "las fechas son del workspace: un toque de las 03:00 UTC del 2/1 cae el 1/1 en Costa Rica", JSON.stringify(jan1));
+    check(jan2["a-X"] === undefined, "y NO cae el 2/1");
+    await svc.from("workspaces").update({ timezone: "UTC" }).eq("id", wsC.id);
+  }
+
+  console.log("\n— AT4: el costo con 10.000 toques —");
+  {
+    const wsP = await makeWorkspace("ads-perf");
+    const adminP = await makeUser("perf-admin");
+    await svc.from("workspace_members").insert({ workspace_id: wsP.id, user_id: adminP.id, role: "admin" });
+    const ads = Array.from({ length: 20 }, (_, i) => ({ workspace_id: wsP.id, ad_account_id: "act_perf", campaign_id: `pc-${i % 4}`, adset_id: `ps-${i % 8}`, ad_id: `pa-${i}`, name: `Perf ${i}`, name_key: `perf ${i}` }));
+    await svc.from("meta_ads").insert(ads);
+    const contacts = await svc.from("contacts").insert(Array.from({ length: 200 }, (_, i) => ({ workspace_id: wsP.id, display_name: `zz-test perf ${i}`, email: `zz-test-perf-${i}-${stamp}@example.test` }))).select("id");
+    const ids = (contacts.data ?? []).map((c) => c.id);
+    const rows = [];
+    for (let i = 0; i < 10000; i++) {
+      rows.push({ workspace_id: wsP.id, contact_id: ids[i % ids.length], occurred_at: new Date(Date.now() - (i % 85) * 86_400_000 - 60_000 * (i % 1000)).toISOString(), source: "facebook", medium: "paid_social", origin: "form", ad_id: `pa-${i % 20}`, dedupe_key: `zz-perf-${stamp}-${i}` });
+    }
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await svc.from("contact_touches").insert(rows.slice(i, i + 500));
+      if (error) { fail("no pude cargar los toques de prueba", error.message); break; }
+      inserted += 500;
+    }
+    check(inserted === 10000, "se cargan 10.000 toques de prueba");
+    const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+    const until = new Date().toISOString().slice(0, 10);
+    const t0 = Date.now();
+    const { data, error } = await adminP.client.rpc("ads_crm_metrics", { p_level: "ad", p_since: since, p_until: until, p_workspace_id: wsP.id });
+    const ms = Date.now() - t0;
+    check(!error && (data ?? []).length === 20, `90 dias con 10.000 toques: 20 anuncios en ${ms} ms (con RLS y la red)`, error?.message);
+    // Bajo RLS cada fila de contact_touches evalua can_see_contact (unos 35 microsegundos): con 10.000 toques son ~0,9 s dentro de la
+    // base. La funcion es SECURITY INVOKER a proposito (la RLS de quien mira decide que cuenta), asi que ese costo se acepta: ver PENDIENTE.
+    check(ms < 4000, "y tarda menos de 4 s de punta a punta con RLS y la red (con los volumenes reales, unos cientos de toques, son milisegundos)", `${ms} ms`);
+    try {
+      const plan = sql(`EXPLAIN (ANALYZE, FORMAT TEXT) SELECT * FROM public.ads_crm_metrics('ad', '${since}', '${until}', NULL, '${wsP.id}');`);
+      const line = plan.map((r) => r["QUERY PLAN"] ?? Object.values(r)[0]).find((l) => /Execution Time/.test(String(l)));
+      const exec = Number(String(line).match(/([\d.]+) ms/)?.[1] ?? NaN);
+      check(Number.isFinite(exec) && exec < 300, `EXPLAIN ANALYZE: ${exec} ms de ejecucion (el plano pide < 300 ms)`, String(line));
+    } catch (err) {
+      fail("no pude correr EXPLAIN ANALYZE", err instanceof Error ? err.message.slice(0, 200) : String(err));
+    }
+  }
 } catch (err) {
   fail("el script exploto", err instanceof Error ? err.stack : String(err));
 } finally {

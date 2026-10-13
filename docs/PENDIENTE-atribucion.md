@@ -174,3 +174,40 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
   contactos, para no disparar automatizaciones) y se borraron; la atribución de ese contacto se recalculó y quedó como antes.
 - **Sobran workspaces «zz-test eod-… Workspace»** de corridas anteriores de `verify-eod` (su nombre usa un espacio, no el
   guion que barre `test-cleanup.mjs`): no son de este módulo y no se tocaron. Conviene ampliar el barrido.
+
+
+### AT4 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
+
+- **`ads_crm_metrics` es SECURITY INVOKER y bajo RLS tarda ~0,9 s con 10.000 toques en 90 días** (78 ms como superusuario).
+  El plano pedía las dos cosas (INVOKER y < 300 ms) y no se pueden: cada fila de `contact_touches` evalúa la política
+  `contact_touches_select` → `can_see_contact` (~35 µs por fila). Se eligió INVOKER (la RLS de quien mira decide qué cuenta;
+  nunca se debilitó una política). Con los volúmenes reales (cientos de toques) son milisegundos. Si hiciera falta bajarlo,
+  la salida es una política de lectura más barata para Owner/Admin en `contact_touches` (por ejemplo,
+  `is_workspace_admin(workspace_id) OR EXISTS (...)`); no se tocó porque es una política de RLS y necesita tu aprobación.
+  `verify-ads-attribution.mjs` mide las dos cosas (EXPLAIN ANALYZE como superusuario < 300 ms; punta a punta con RLS < 4 s).
+- **`p_workspace_id` es un parámetro más** (quinto, opcional) de `ads_crm_metrics`: la función no puede adivinar el workspace de
+  quien llama; sin él devuelve vacío. La pantalla siempre lo pasa.
+- **Las fechas de la tabla**: la pantalla las resuelve con la zona de QUIEN MIRA y la función las interpreta en la zona del
+  WORKSPACE (decisión #272). Si las dos zonas difieren, el borde del período puede correrse unas horas. Hoy coinciden.
+- **`leads_total` no es aditivo**: un contacto que tocó dos anuncios cuenta en cada uno (y una vez en la campaña). Por eso la
+  fila de Total de la tabla suma las filas y lo dice en una nota; el criterio «la suma de los anuncios = la campaña» vale para
+  `leads_first`, agendas, ventas, revenue y cash (está probado) pero no para `leads_total`.
+- **CAC y Costo por cierre dan lo mismo** (Gasto ÷ Ventas), como dice la tabla de definiciones del alcance (§4.3).
+- **Agendas Meta** sale del evento `schedule` de `actions` (cualquier tipo que contenga «schedule»); si Meta no manda ese
+  evento, la columna dice «—».
+- **El estado de las pills sale del catálogo** (`effective_status`). Mientras el catálogo de producción esté vacío (hasta el
+  primer sync con el código nuevo) las campañas muestran «—» y «Activos · 0». Se corrige solo con el primer sync.
+- **F33, clic en un número del grupo CRM para abrir Contactos / Agenda / Ventas filtrados por el objeto y el período: NO se
+  hizo.** Las pantallas de Contactos, Agenda y Ventas no filtran por anuncio (`meta_ad_id`) hoy; haría falta sumarles ese filtro.
+  El CSV sí está (columnas visibles, con el período en el nombre, protegido contra inyección de fórmulas).
+- **El selector de columnas se guarda en `localStorage`** (`ssa:ads-columns:<nivel>`) con `try/catch`; si el navegador lo
+  bloquea, la elección vive en memoria mientras dura la página. Reordenar es con flechas dentro del grupo (no arrastrando).
+- **F32 (permiso):** el dashboard de Ads y su detalle pasan de «Admin» a `dashboards.ads.view`. Las cuentas publicitarias
+  (`integration_configs`, que solo lee un Admin) se leen con el cliente de servicio filtrado por el workspace de la sesión.
+  `member-baseline.test.ts` se ajustó como dice el plano (la página sale de `ADMIN_PAGES`, entra en `PERMISSION_PAGES`; de
+  doce a once). El Member de sistema no tiene `dashboards.ads.view` en el catálogo: sigue sin verla. «Analizar con IA» y
+  «Sincronizar ahora» siguen con sus propios permisos (`settings.manage` para el segundo).
+- **Revisión visual hecha** a 800 px (claro) y a 390 px (por medidas: la tabla scrollea dentro de su tarjeta, 1085 px de
+  contenido en 322 px, la página no scrollea de costado y la primera columna queda fija); el modo oscuro de «Sin vincular»
+  también. La tabla con datos CRM reales no se pudo ver (producción todavía no tiene toques vinculados): está cubierta por
+  `verify-ads-attribution.mjs` (datos `zz-test`) y por los tests de las cuentas y las columnas.

@@ -5236,6 +5236,21 @@ export interface Database {
         Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
         Returns: Json;
       };
+      /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */
+      ads_crm_metrics: {
+        Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null };
+        Returns: Array<{
+          object_id: string;
+          leads_first: number;
+          leads_total: number;
+          leads_with_booking: number;
+          bookings: number;
+          bookings_attended: number;
+          sales: number;
+          revenue_cents: number;
+          cash_cents: number;
+        }>;
+      };
       /** Resuelve los datos de un toque contra el catalogo de Meta (00192). Solo service_role. La gemela en TS es lib/attribution/meta-match.ts. */
       resolve_meta_match: {
         Args: {

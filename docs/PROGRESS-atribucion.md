@@ -48,10 +48,10 @@ Pendientes y decisiones: [PENDIENTE-atribucion.md](PENDIENTE-atribucion.md).
 - [x] F29 "Sin vincular"
 
 ### AT4 — Tabla Meta vs CRM
-- [ ] F30 Función `ads_crm_metrics` (M9)
-- [ ] F31 La tabla en el dashboard de Ads
-- [ ] F32 Permiso de la pantalla
-- [ ] F33 Exportar CSV y abrir la lista (nice-to-have)
+- [x] F30 Función `ads_crm_metrics` (M9)
+- [x] F31 La tabla en el dashboard de Ads
+- [x] F32 Permiso de la pantalla
+- [x] F33 Exportar CSV y abrir la lista (nice-to-have)
 
 #### Notas de WH1 (hecho)
 
@@ -153,7 +153,7 @@ frene el webhook ya estaban cubiertos en `app/api/webhooks/{late,evolution}/rout
 | M7 | `00192_meta_touch_match` | vínculo con Meta (columnas, funciones, trigger) | AT3 | **aplicada y registrada** (`20261013070616`), verificada |
 | M8 | `00193_meta_touch_backfill` | backfill del vínculo | AT3 | **aplicada y registrada** (`20261013071034`), verificada |
 | M7b | `00194_meta_match_signal` | **corrección de la 00192** (no estaba en el plano): solo cuentan como datos de Meta los toques que pueden traer UTMs de verdad | AT3 | **aplicada y registrada** (`20261013071154`), verificada |
-| M9 | `00195_ads_crm_metrics` | `ads_crm_metrics` + índices (corre un número: la 00194 se usó para corregir la 00192) | AT4 | pendiente |
+| M9 | `00195_ads_crm_metrics` | `ads_crm_metrics` + índices (corre un número: la 00194 se usó para corregir la 00192) | AT4 | **aplicada y registrada** (`20261013073102`), verificada |
 
 En el plano figuraban como 00178–00186; la base ya tenía hasta la 00185 (EOD). Donde el plano dice
 "00179", "00182", etc., leer "M2", "M5"… Confirmar con `list_migrations` antes de escribir cada una.
