@@ -36,10 +36,22 @@ ORDER BY tipo, dato;
 - **Por qué:** la carrera que esta regla única cierra; antes no había bloqueo.
 - **Decisión:** no se fusiona solo. Se unen a mano con `linkContacts` (Owner/Admin), recomendado conservar `f370f154…` (tiene el canal).
 
-## Índices únicos (`00205`)
-- **Qué quedó:** a definir al cerrar C3.
-- **Decisión de plan:** se escribe y ensaya, pero se aplica DESPUÉS de desplegar el PR.
+## Índices únicos (`00205`) — SIN APLICAR, aplicar DESPUÉS de desplegar el PR
+- **Qué quedó:** `supabase/migrations/00205_contacts_unique_identity.sql` está escrita y **ensayada dentro de una transacción que se deshace sola** (`verify-contacts-single-entry.mjs`: teléfono repetido se rechaza, email repetido con otras mayúsculas se rechaza, otro workspace puede repetir, un contacto borrado no bloquea, WhatsApp y email secundario no cuentan, restaurar un borrado con el dato de otro se rechaza). **No está aplicada ni registrada.**
+- **Por qué no antes:** con el código de `main` en producción, `linkContacts` rellenaba el principal ANTES de borrar al duplicado y, con el índice, perdería ese relleno en silencio. El PR corrige el orden; el índice va después.
+- **Pasos exactos (después de mergear y desplegar):**
+  1. Correr la consulta de duplicados de arriba: tiene que dar **0 filas de tipo `telefono` y `email`** (el par de Instagram no cuenta para este índice). La propia migración aborta con `RAISE EXCEPTION` si encuentra alguno.
+  2. `list_migrations` para confirmar la numeración (si otra rama usó la 00205, renumerar el archivo).
+  3. `supabase db query --linked -f supabase/migrations/00205_contacts_unique_identity.sql`.
+  4. Registrarla en `supabase_migrations.schema_migrations` (version = timestamp UTC, name = `00205_contacts_unique_identity`, statements = el SQL) y `node scripts/build-all-migrations.mjs`.
+  5. `node scripts/verify-contacts-single-entry.mjs` (con los índices presentes, prueba los rechazos de verdad), `verify-forms`, `verify-crm`, `verify-csv-import`.
+- **Cómo volver atrás:** `DROP INDEX public.uq_contacts_workspace_phone; DROP INDEX public.uq_contacts_workspace_email;`
 
 ## Fusión de contactos sin pantalla propia
 - **Qué quedó:** `linkContacts` solo se alcanza desde el banner de sugerencia.
 - **Decisión:** pendiente una pantalla "fusionar con…".
+
+## Otros pendientes anotados durante la ejecución
+- **`verify-forms` ("el job genera el PDF de la firma", `already`)**, **`verify-attribution` (784 de 843 con first_touch)** y **`verify-publishing`** ya fallaban antes de este trabajo; no se tocaron.
+- **Facebook** entra a la identidad solo desde un canal de Facebook (hoy no hay): los formularios y el alta manual no lo usan para buscar.
+- **Fusión de contactos:** la otra sesión (Tareas CRM) trae `merge_contacts` (00206/00207); cuando se mergee, `linkContacts` puede quedar como envoltorio de esa función.

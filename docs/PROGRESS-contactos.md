@@ -7,8 +7,8 @@ Rama `fix/contactos-regla-unica` (creada desde `main` en `8a44b9d`, 13/10/2026).
 - [x] Punto de partida: `npm run build` y los `verify-*` (resultados abajo)
 - [x] **C1** · La función central (`00200`, `lib/contacts/identity.ts`, `lib/contacts/find-or-create.ts`)
 - [x] **C2** · Todos los caminos la usan (caracterización primero; `00201`–`00204`; caminos TypeScript)
-- [ ] **C3** · Que nadie pueda saltearla (`single-entry.test.ts`, `verify-contacts-single-entry.mjs`, concurrencia, `00205` ensayada)
-- [ ] **C4** · Los duplicados que ya existen (lista en `docs/PENDIENTE-contactos.md`)
+- [x] **C3** · Que nadie pueda saltearla (`single-entry.test.ts`, `verify-contacts-single-entry.mjs`, concurrencia, `00205` ensayada)
+- [x] **C4** · Los duplicados que ya existen (lista en `docs/PENDIENTE-contactos.md`)
 - [ ] Cierre: `CLAUDE.md` ("Contactos: regla única"), docs de deduplicación, PR sin mergear
 
 ## Punto de partida
