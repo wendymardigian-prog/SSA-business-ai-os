@@ -12,7 +12,7 @@ export function normalizeProjectKey(value: string | null | undefined): string | 
   if (value == null) return null;
   const key = value
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();

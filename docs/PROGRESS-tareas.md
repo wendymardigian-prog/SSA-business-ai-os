@@ -5,7 +5,7 @@ Rama: `feat/tareas` (desde `origin/main` 68bbf6a). Plano: [requerimientos-tareas
 ## Estado
 
 - [x] **T1 — Base y reglas** (13/10/2026): [x] F1 tabla/RLS · [x] F2 permisos · [x] F3 fechas (pura) · [x] F4 completar con corrimientos · [x] F5 dependencias · [x] F6 limpieza · [x] F7 auditoría · [x] F8 acciones/zod · [x] F9 proyectos
-- [ ] **T2 — Tabla, celda y drawer**: [ ] F10 tabla · [ ] F11 edición en celda · [ ] F12 drawer · [ ] F13 diálogo de fechas · [ ] F14 filtros/URL · [ ] F15 creación rápida y menú
+- [x] **T2 — Tabla, celda y drawer** (13/10/2026): [x] F10 tabla · [x] F11 edición en celda · [x] F12 drawer · [x] F13 diálogo de fechas · [x] F14 filtros/URL · [x] F15 creación rápida y menú
 - [ ] **T3 — Tablero, avisos y superficies**: [ ] F16 kanban · [ ] F17 notificaciones · [ ] F18 cron de vencimientos · [ ] F19 Mis tareas · [ ] F20 contacto y bandeja · [ ] F21 mobile
 - [ ] **T4 — Origen automático**: [ ] F22 nodo create_task · [ ] F23 tool crear_tarea · [ ] F24 tarea al escalar · [ ] F25 triggers task_* (también sin contacto) · [ ] F26 origen visible y robustez
 - [ ] Cierre: docs/tareas.md · flow-registry.md · CLAUDE.md · PR
@@ -166,3 +166,12 @@ Cada afirmación de §2 sale de leer `origin/main` (snapshot en el scratchpad) y
 - Hallazgo: una función de visibilidad que devuelve NULL (no false) deja pasar un `NOT (...)` en `plpgsql`. Se arregló con COALESCE y quedó cubierto por el verify.
 - `verify-audit-visibility --despues-de-00168`, `verify-rls`, `verify-roles`, `verify-workspace-isolation` en verde. `npm test` 786 archivos / 9.866 tests; lint 0 errores / 36 warnings (igual que el punto de partida); build compila.
 - Decisión: el plan de fechas se arma solo con las tareas que la persona ve (la RLS); una dependiente que no ve no se mueve ni se le muestra el título.
+
+### T2 — Tabla, edición en celda y drawer (13/10/2026)
+- Dependencia nueva: `@tanstack/react-table` **8.21.3** (la última estable de la línea 8; `npm i` sin versión trajo la 9.3.1, publicada el 12/10/2026, con otra API; se fijó la 8). Es la única que se suma.
+- Lógica pura con tests en `lib/tasks/`: `view-state` (URL ida y vuelta), `filters`, `table-model` (filas, orden, agrupar, paginar, encabezados), `cell-edit` (aplicar/deshacer/validar/teclado), `drawer-url`, `shift-preview`, `format` (vencimientos, `formatSource`), `draft`, `people`.
+- Componentes en `components/tasks/` (la lógica de pantalla NO vive ahí): tabla con celdas editables, selectores flotantes (estado, prioridad, persona, seguidores, proyecto), drawer propio de 640 px (`overlay.tsx`; `components/ui/sheet.tsx` no se tocó), diálogo de fechas, filtros, fila «+ Nueva tarea». Toasts: se reutiliza el proveedor de Contenido montado en la pantalla de Tareas.
+- Historial: `<Historial entityType="task">` con etiquetas de tareas y nombres para responsable y seguidores (cambio aditivo en `lib/audit-history.ts`; `describeChange` gana un parámetro opcional).
+- Menú: «Tareas» en el grupo `inicio`, pegada a Bandeja (`ListTodo`); actualizados solo `items.test.ts` (lista de `inicio`) y `member-baseline.test.ts` (nombres del Member + `PERMISSION_PAGES`).
+- Revisión visual (navegador integrado, 1440 px, tema claro y oscuro): tabla, selectores, edición de fecha y de proyecto, creación rápida, formulario completo, drawer con dependencias, diálogo de fechas (Esc no completa). 390 px: se revisa con el bloque T3 (la lista de tarjetas es F21). **Datos de prueba**: para la revisión se sembraron tareas `zz-test-…` en el workspace del usuario con la sesión abierta; se borran al final de la corrida.
+- Tests: 795 archivos / 9.958; lint 0 errores / 36 warnings; build compila; `verify-tasks` en verde.

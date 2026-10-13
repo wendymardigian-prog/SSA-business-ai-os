@@ -323,6 +323,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Actividad",
     tooltip: "Todo lo que se hizo en el workspace: quién, qué y cuándo, con lo que cambió. Solo Owner y Admin.",
   },
+  "/dashboard/tareas": {
+    title: "Tareas",
+    tooltip: "El trabajo pendiente del equipo: con responsable, seguidores, proyecto, fechas y dependencias. Editás desde la tabla sin abrir cada tarea; si completar una tarea atrasa a otras, te mostramos las fechas nuevas antes de mover nada.",
+  },
   "/dashboard/ventas": {
     title: "Ventas",
     tooltip: "Las ventas del negocio con su plan de pagos, su estado y de qué anuncio o publicación vinieron.",

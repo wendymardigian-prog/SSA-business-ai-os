@@ -171,6 +171,8 @@ const PERMISSION_PAGES = [
   // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
   // misma settings.manage que la lista de Productos.
   ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
+  // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).
+  ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"],
   ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "settings.manage"],
 ] as const;
 
@@ -317,6 +319,8 @@ describe("caracterizacion: el menu (F68)", () => {
       // para todos. Crear y editar los decide templates.manage.
       "Recursos",
       "Social",
+      // Tareas (Extra A): el Member de sistema tiene tasks.view (alcance own).
+      "Tareas",
       // Ventas (Etapa 5): el Member de sistema tiene sales.view (alcance own).
       "Ventas",
     ]);

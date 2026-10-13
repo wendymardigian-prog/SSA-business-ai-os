@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { actorName, buildHistoryQuery, describeChange, describeChanges, effectiveActorType, readableValue, runHistoryQuery } from "./audit-history";
+import { actorName, buildHistoryQuery, describeChange, describeChanges, effectiveActorType, readableValue, runHistoryQuery, TASK_ACTION_LABELS } from "./audit-history";
+import { entityHref } from "./audit-query";
 import { fakeDb } from "@/lib/testing/fake-db";
 
 describe("effectiveActorType", () => {
@@ -74,5 +75,29 @@ describe("buildHistoryQuery / runHistoryQuery", () => {
     const db = fakeDb({ audit_log: { error: { message: "rls detail" } } });
     const r = await runHistoryQuery(db.client, buildHistoryQuery({ entityType: "call", entityId: "c1" }));
     expect(r).toEqual({ ok: false, error: "No pude leer el historial" });
+  });
+});
+
+describe("historial de Tareas", () => {
+  const names = { "u-ana": "Ana", "u-bruno": "Bruno" };
+  it("el responsable y los seguidores se leen con nombres", () => {
+    expect(describeChange("task", "owner_id", "u-ana", "u-bruno", names)).toEqual({ field: "owner_id", label: "Responsable", before: "Ana", after: "Bruno" });
+    expect(describeChange("task", "follower_ids", null, "u-ana,u-bruno", names)).toMatchObject({ label: "Seguidores", before: "—", after: "Ana, Bruno" });
+  });
+  it("sin nombres conocidos queda el id, sin romper", () => {
+    expect(describeChange("task", "owner_id", "u-x", null).before).toBe("u-x");
+  });
+  it("estado y prioridad con su etiqueta en castellano", () => {
+    expect(describeChange("task", "status", "pending", "in_progress")).toMatchObject({ label: "Estado", before: "Pendiente", after: "En progreso" });
+    expect(describeChange("task", "priority", "normal", "urgent")).toMatchObject({ label: "Prioridad", before: "Normal", after: "Urgente" });
+  });
+  it("describeChanges pasa los nombres y NO cambia lo de otras entidades", () => {
+    const lines = describeChanges("task", { owner_id: { old: "u-ana", new: null }, due_date: { old: null, new: "2026-10-20" } }, names);
+    expect(lines.map((l) => `${l.label}: ${l.before} → ${l.after}`)).toEqual(["Responsable: Ana → —", "Vence: — → 2026-10-20"]);
+    expect(describeChange("sale", "status", "paid", "cancelled").before).not.toBe("Pagada ");
+  });
+  it("cada accion de tareas tiene su frase y el historial general enlaza a la tarea", () => {
+    expect(Object.keys(TASK_ACTION_LABELS).sort()).toEqual(["task.blockers_changed", "task.completed", "task.created", "task.date_shifted", "task.deleted", "task.reopened", "task.updated"]);
+    expect(entityHref("task", "abc")).toBe("/dashboard/tareas?task=abc");
   });
 });

@@ -231,9 +231,10 @@ describe("grupos del menu (bloque N, N1)", () => {
     expect(NAV_GROUPS.find((g) => g.id === "automatizacion")?.title).toBe("Automatización");
   });
 
-  it("Dashboards, Bandeja y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
+  it("Dashboards, Bandeja, Tareas y Mi reporte del día son los sueltos de arriba, antes del primer titulo", () => {
     const sueltos = NAV_ITEMS.filter((i) => i.group === "inicio").map((i) => i.name);
-    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Mi reporte del día"]);
+    // Tareas (Extra A) va pegada a la Bandeja; el orden de los demas no cambia.
+    expect(sueltos).toEqual(["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"]);
   });
 
   it("Integraciones y Ajustes son el bloque del fondo", () => {
