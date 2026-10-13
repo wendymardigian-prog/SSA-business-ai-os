@@ -26,6 +26,7 @@ import { auditAsWebhook } from "@/lib/audit";
 import { countPeople } from "@/lib/calls/classification";
 import { computeAutoLink, externalEmailsOf, type BookingCandidate, type ContactCandidate } from "@/lib/calls/linking";
 import { enqueueClassify } from "@/lib/calls/queue";
+import { findContact } from "@/lib/contacts/find-or-create";
 import { BudgetExhausted, getTranscript, listMeetings, secondsBetween, toAttendees, type FathomMeeting } from "./api";
 import {
   forceFathomRefresh,
@@ -97,12 +98,24 @@ function safeEmail(e: string): string | null {
 async function loadContactCandidates(supabase: Db, workspaceId: string, emails: string[]): Promise<ContactCandidate[]> {
   const safe = emails.map(safeEmail).filter((e): e is string => !!e).slice(0, 10);
   if (safe.length === 0) return [];
+  // La busqueda es la de la regla unica (igualdad exacta del email normalizado, principal o secundario):
+  // un "_" o un "%" del correo ya no funcionan como comodin. Con dos contactos por email, gana el mas viejo.
+  // Aca no se crea nada: si la busqueda falla, la llamada queda sin vincular (una persona la vincula despues).
+  let found: Awaited<ReturnType<typeof findContact>>[];
+  try {
+    found = await Promise.all(safe.map((email) => findContact(supabase, { workspaceId, identity: { email } })));
+  } catch (err) {
+    console.error("[fathom] no pude buscar los contactos de la llamada:", err instanceof Error ? err.message : String(err));
+    return [];
+  }
+  const ids = [...new Set(found.map((f) => f.contactId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return [];
   const { data } = await supabase
     .from("contacts")
     .select("id, created_at, email, secondary_email")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
-    .or(safe.map((e) => `email.ilike.${e},secondary_email.ilike.${e}`).join(","));
+    .in("id", ids);
   return (data ?? []) as ContactCandidate[];
 }
 

@@ -33768,3 +33768,1805 @@ $$;
 
 REVOKE ALL ON FUNCTION public.find_or_create_contact(uuid, jsonb, jsonb, text, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.find_or_create_contact(uuid, jsonb, jsonb, text, boolean) TO service_role;
+
+-- ============================================================
+-- MIGRATION 201: CONTACT LOOKUP WRAPPERS
+-- ============================================================
+-- ============================================================================
+-- 00201 — Los buscadores de contactos sobre la busqueda compartida (Contactos: regla unica, C2)
+-- ============================================================================
+-- `find_contact_for_form` (00175) y `find_contact_by_phone_or_email` (00156) tenian cada uno su propia
+-- busqueda. Pasan a llamar a `private.contact_identity_lookup` (00200), la misma que usa la regla central:
+-- una sola forma de buscar. Siguen siendo STABLE (sus llamadores no cambian), con la misma firma y la
+-- misma salida. Diferencias que se ven (todas deliberadas, ver docs/PROGRESS-contactos.md):
+--   * el telefono se normaliza con `normalize_phone` (antes solo `btrim`): "+54 9 11..." ahora encuentra
+--     a "+549 11..."; un telefono de menos de 8 digitos ya no cuenta como dato;
+--   * cuando hay empate de fecha de alta, desempata el id (antes quedaba al azar).
+-- `find_contact_by_phone_or_email` sigue sin crear nada: la usa Ventas.
+-- Como volver atras: pegar las dos definiciones de abajo.
+--
+-- DEFINICIONES VIGENTES ANTES DE ESTA MIGRACION (copiadas de la base con pg_get_functiondef).
+-- Para volver atras: pegar la que corresponda (CREATE OR REPLACE).
+--
+-- ==== find_contact_for_form (md5 b5238c113b5a69192d8735ddb04355aa) ====
+-- CREATE OR REPLACE FUNCTION public.find_contact_for_form(p_workspace_id uuid, p_phone text, p_email text, p_social jsonb DEFAULT '{}'::jsonb)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  STABLE SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_phone  text := nullif(btrim(p_phone), '');
+--   v_email  text := public.normalize_email(p_email);
+--   v_social jsonb := CASE WHEN jsonb_typeof(p_social) = 'object' THEN p_social ELSE '{}'::jsonb END;
+--   v_ig     text := nullif(lower(btrim(regexp_replace(COALESCE(v_social ->> 'instagram', ''), '^@+', ''))), '');
+--   v_tt     text := nullif(lower(btrim(regexp_replace(COALESCE(v_social ->> 'tiktok', ''), '^@+', ''))), '');
+--   v_x      text := nullif(lower(btrim(regexp_replace(COALESCE(v_social ->> 'x', ''), '^@+', ''))), '');
+--   v_li     text := COALESCE(public.linkedin_slug(v_social ->> 'linkedin'), nullif(lower(btrim(v_social ->> 'linkedin')), ''));
+--   v_id     uuid;
+--   v_hits   jsonb := '[]'::jsonb;
+--   v_winner uuid;
+--   v_by     text;
+--   v_conflicts jsonb;
+-- BEGIN
+--   -- 1. Telefono (el principal o el de WhatsApp de cualquier contacto).
+--   IF v_phone IS NOT NULL THEN
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+--       AND (c.phone = v_phone OR c.whatsapp_phone = v_phone)
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'phone', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   -- 2. Email (el principal o el secundario).
+--   IF v_email IS NOT NULL THEN
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+--       AND (public.normalize_email(c.email) = v_email OR public.normalize_email(c.secondary_email) = v_email)
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'email', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   -- 3 a 6. Redes sociales, en este orden. Se compara en minusculas (los contactos viejos pueden no estarlo).
+--   IF v_ig IS NOT NULL THEN
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL AND lower(c.instagram_username) = v_ig
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'instagram', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   IF v_tt IS NOT NULL THEN
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL AND lower(c.tiktok_username) = v_tt
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'tiktok', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   IF v_x IS NOT NULL THEN
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL AND lower(c.twitter_username) = v_x
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'x', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   IF v_li IS NOT NULL THEN
+--     -- LinkedIn se compara por el slug de la URL, no por el texto entero.
+--     SELECT c.id INTO v_id FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL AND public.linkedin_slug(c.linkedin_profile_url) = v_li
+--     ORDER BY c.created_at ASC LIMIT 1;
+--     IF v_id IS NOT NULL THEN v_hits := v_hits || jsonb_build_array(jsonb_build_object('by', 'linkedin', 'contact_id', v_id)); END IF;
+--     v_id := NULL;
+--   END IF;
+--
+--   IF jsonb_array_length(v_hits) = 0 THEN
+--     RETURN jsonb_build_object('contact_id', NULL, 'matched_by', NULL, 'conflict_contact_id', NULL, 'conflicts', '[]'::jsonb);
+--   END IF;
+--
+--   v_winner := (v_hits -> 0 ->> 'contact_id')::uuid;
+--   v_by := v_hits -> 0 ->> 'by';
+--
+--   SELECT COALESCE(jsonb_agg(h), '[]'::jsonb) INTO v_conflicts
+--   FROM jsonb_array_elements(v_hits) h
+--   WHERE (h ->> 'contact_id')::uuid <> v_winner;
+--
+--   RETURN jsonb_build_object(
+--     'contact_id', v_winner,
+--     'matched_by', v_by,
+--     'conflict_contact_id', v_conflicts -> 0 ->> 'contact_id',
+--     'conflicts', v_conflicts
+--   );
+-- END;
+-- $function$
+--
+-- ==== find_contact_by_phone_or_email (md5 0732f4d093f716a6093d7b5c983fce5a) ====
+-- CREATE OR REPLACE FUNCTION public.find_contact_by_phone_or_email(p_workspace_id uuid, p_phone text, p_email text)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  STABLE SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_phone    text := nullif(btrim(p_phone), '');
+--   v_email    text := public.normalize_email(p_email);
+--   v_by_phone uuid;
+--   v_by_email uuid;
+--   v_contact  uuid;
+--   v_matched  text;
+--   v_conflict uuid;
+-- BEGIN
+--   IF v_phone IS NOT NULL THEN
+--     SELECT c.id INTO v_by_phone
+--     FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+--       AND (c.phone = v_phone OR c.whatsapp_phone = v_phone)
+--     ORDER BY c.created_at ASC LIMIT 1;
+--   END IF;
+--
+--   IF v_email IS NOT NULL THEN
+--     SELECT c.id INTO v_by_email
+--     FROM public.contacts c
+--     WHERE c.workspace_id = p_workspace_id AND c.deleted_at IS NULL
+--       AND (public.normalize_email(c.email) = v_email OR public.normalize_email(c.secondary_email) = v_email)
+--     ORDER BY c.created_at ASC LIMIT 1;
+--   END IF;
+--
+--   IF v_by_phone IS NOT NULL THEN
+--     v_contact := v_by_phone;
+--     v_matched := 'phone';
+--     IF v_by_email IS NOT NULL AND v_by_email <> v_by_phone THEN
+--       v_conflict := v_by_email;
+--     END IF;
+--   ELSIF v_by_email IS NOT NULL THEN
+--     v_contact := v_by_email;
+--     v_matched := 'email';
+--   END IF;
+--
+--   RETURN jsonb_build_object('contact_id', v_contact, 'matched_by', v_matched, 'conflict_contact_id', v_conflict);
+-- END;
+-- $function$
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.find_contact_for_form(p_workspace_id uuid, p_phone text, p_email text, p_social jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_social jsonb := CASE WHEN jsonb_typeof(p_social) = 'object' THEN p_social ELSE '{}'::jsonb END;
+BEGIN
+  RETURN private.contact_identity_lookup(
+    p_workspace_id,
+    private.contact_normalize_identity(jsonb_build_object(
+      'phone',     p_phone,
+      'email',     p_email,
+      'instagram', v_social ->> 'instagram',
+      'tiktok',    v_social ->> 'tiktok',
+      'x',         v_social ->> 'x',
+      'linkedin',  v_social ->> 'linkedin'
+    ))
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.find_contact_by_phone_or_email(p_workspace_id uuid, p_phone text, p_email text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_found jsonb;
+BEGIN
+  v_found := private.contact_identity_lookup(
+    p_workspace_id,
+    private.contact_normalize_identity(jsonb_build_object('phone', p_phone, 'email', p_email))
+  );
+  RETURN jsonb_build_object(
+    'contact_id', v_found -> 'contact_id',
+    'matched_by', v_found -> 'matched_by',
+    'conflict_contact_id', v_found -> 'conflict_contact_id'
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.find_contact_for_form(uuid, text, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.find_contact_for_form(uuid, text, text, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION public.find_contact_by_phone_or_email(uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.find_contact_by_phone_or_email(uuid, text, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 202: FIND OR LINK CONTACT V3
+-- ============================================================
+-- ============================================================================
+-- 00202 — find_or_link_contact v3: los entrantes por canal sobre la regla central (C2)
+-- ============================================================================
+-- Parte de la definicion VIVA (la 00104; el md5 esta abajo). Lo que cambia:
+--   * Si el remitente no es conocido en el canal, busca o crea con `find_or_create_contact` en modo
+--     'link_channel' (bloqueo por dato: dos mensajes simultaneos de la misma persona dan UN contacto).
+--   * El telefono se normaliza con `normalize_phone` (antes solo `btrim`).
+--   * Al completar un contacto encontrado, un telefono o email que ya es de OTRO contacto NO se escribe
+--     (dejaria dos contactos con el mismo dato); el resto de las columnas se completan como siempre.
+-- Lo que NO cambia: la firma, los valores de `linked_by` (channel | phone | email | username), la
+-- sugerencia de vinculacion por usuario de otra red (`link_suggestions`), `analytics_events` y `audit_log`,
+-- la foto de perfil (F16), el sello de `last_interaction_at` y la rama del remitente ya conocido, que
+-- sigue sin bloquear nada.
+-- Como volver atras: pegar la definicion de abajo (CREATE OR REPLACE).
+--
+-- DEFINICIONES VIGENTES ANTES DE ESTA MIGRACION (copiadas de la base con pg_get_functiondef).
+-- Para volver atras: pegar la que corresponda (CREATE OR REPLACE).
+--
+-- ==== find_or_link_contact (md5 861440d10e8519b67606d78c53ca663b) ====
+-- CREATE OR REPLACE FUNCTION public.find_or_link_contact(p_channel_id uuid, p_sender_id text, p_display_name text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_avatar_url text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_interaction_at timestamp with time zone DEFAULT now(), p_stamp_existing boolean DEFAULT true)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_ws         uuid;
+--   v_platform   text;
+--   v_contact    uuid;
+--   v_suggested  uuid;
+--   v_linked_by  text := NULL;
+--   v_phone      text := NULLIF(btrim(p_phone), '');
+--   v_email      text := public.normalize_email(p_email);
+--   v_handle     text := public.normalize_handle(p_username);
+--   v_name       text := NULLIF(btrim(p_display_name), '');
+-- BEGIN
+--   SELECT ch.workspace_id, ch.platform INTO v_ws, v_platform
+--   FROM public.channels ch WHERE ch.id = p_channel_id;
+--
+--   IF v_ws IS NULL THEN
+--     RETURN jsonb_build_object('contact_id', NULL, 'existed', false,
+--                               'linked_by', NULL, 'suggested_contact_id', NULL);
+--   END IF;
+--
+--   -- ---- 1. El remitente ya es conocido en este canal ---------------------
+--   SELECT cc.contact_id INTO v_contact
+--   FROM public.contact_channels cc
+--   WHERE cc.channel_id = p_channel_id AND cc.platform_sender_id = p_sender_id;
+--
+--   IF v_contact IS NOT NULL THEN
+--     UPDATE public.contacts c SET
+--       last_interaction_at = CASE
+--         WHEN p_stamp_existing THEN p_interaction_at
+--         ELSE c.last_interaction_at
+--       END,
+--       display_name = CASE
+--         WHEN v_name IS NOT NULL
+--          AND NOT public.is_placeholder_name(v_name)
+--          AND public.is_placeholder_name(c.display_name)
+--         THEN v_name
+--         ELSE c.display_name
+--       END,
+--       -- F16 (unica linea que cambia de la 00031): una foto external se
+--       -- refresca con la URL fresca que trae este mensaje. storage y manual
+--       -- no se pisan nunca.
+--       avatar_url = CASE
+--         WHEN c.avatar_source = 'external' AND p_avatar_url IS NOT NULL THEN p_avatar_url
+--         ELSE COALESCE(c.avatar_url, p_avatar_url)
+--       END,
+--       instagram_username = CASE
+--         WHEN v_platform = 'instagram' THEN COALESCE(c.instagram_username, v_handle)
+--         ELSE c.instagram_username
+--       END,
+--       twitter_username = CASE
+--         WHEN v_platform = 'twitter' THEN COALESCE(c.twitter_username, v_handle)
+--         ELSE c.twitter_username
+--       END,
+--       facebook_id = CASE
+--         WHEN v_platform = 'facebook' THEN COALESCE(c.facebook_id, v_handle)
+--         ELSE c.facebook_id
+--       END,
+--       tiktok_username = CASE
+--         WHEN v_platform = 'tiktok' THEN COALESCE(c.tiktok_username, v_handle)
+--         ELSE c.tiktok_username
+--       END
+--     WHERE c.id = v_contact;
+--
+--     UPDATE public.contact_channels cc
+--     SET platform_username = COALESCE(cc.platform_username, v_handle)
+--     WHERE cc.channel_id = p_channel_id AND cc.platform_sender_id = p_sender_id;
+--
+--     RETURN jsonb_build_object('contact_id', v_contact, 'existed', true,
+--                               'linked_by', 'channel', 'suggested_contact_id', NULL);
+--   END IF;
+--
+--   -- ---- 2. Telefono exacto ---------------------------------------------
+--   IF v_phone IS NOT NULL THEN
+--     SELECT c.id INTO v_contact
+--     FROM public.contacts c
+--     WHERE c.workspace_id = v_ws
+--       AND c.deleted_at IS NULL
+--       AND (c.phone = v_phone OR c.whatsapp_phone = v_phone)
+--     ORDER BY c.created_at
+--     LIMIT 1;
+--     IF v_contact IS NOT NULL THEN v_linked_by := 'phone'; END IF;
+--   END IF;
+--
+--   -- ---- 3. Email exacto -------------------------------------------------
+--   IF v_contact IS NULL AND v_email IS NOT NULL THEN
+--     SELECT c.id INTO v_contact
+--     FROM public.contacts c
+--     WHERE c.workspace_id = v_ws
+--       AND c.deleted_at IS NULL
+--       AND (public.normalize_email(c.email) = v_email
+--            OR public.normalize_email(c.secondary_email) = v_email)
+--     ORDER BY c.created_at
+--     LIMIT 1;
+--     IF v_contact IS NOT NULL THEN v_linked_by := 'email'; END IF;
+--   END IF;
+--
+--   -- ---- 4. Usuario exacto de la MISMA plataforma ------------------------
+--   IF v_contact IS NULL AND v_handle IS NOT NULL THEN
+--     SELECT c.id INTO v_contact
+--     FROM public.contacts c
+--     WHERE c.workspace_id = v_ws
+--       AND c.deleted_at IS NULL
+--       AND CASE v_platform
+--             WHEN 'instagram' THEN lower(c.instagram_username) = v_handle
+--             WHEN 'twitter'   THEN lower(c.twitter_username)   = v_handle
+--             WHEN 'facebook'  THEN lower(c.facebook_id)        = v_handle
+--             WHEN 'tiktok'    THEN lower(c.tiktok_username)    = v_handle
+--             ELSE false
+--           END
+--     ORDER BY c.created_at
+--     LIMIT 1;
+--     IF v_contact IS NOT NULL THEN v_linked_by := 'username'; END IF;
+--   END IF;
+--
+--   -- ---- Vincular al contacto encontrado ---------------------------------
+--   IF v_contact IS NOT NULL THEN
+--     UPDATE public.contacts c SET
+--       last_interaction_at = GREATEST(COALESCE(c.last_interaction_at, p_interaction_at), p_interaction_at),
+--       display_name = CASE
+--         WHEN v_name IS NOT NULL
+--          AND NOT public.is_placeholder_name(v_name)
+--          AND public.is_placeholder_name(c.display_name)
+--         THEN v_name
+--         ELSE COALESCE(c.display_name, v_name)
+--       END,
+--       -- F16 (la otra linea que cambia de la 00031): misma regla que arriba.
+--       avatar_url = CASE
+--         WHEN c.avatar_source = 'external' AND p_avatar_url IS NOT NULL THEN p_avatar_url
+--         ELSE COALESCE(c.avatar_url, p_avatar_url)
+--       END,
+--       phone               = COALESCE(c.phone, v_phone),
+--       email               = COALESCE(c.email, v_email),
+--       whatsapp_phone      = CASE WHEN v_platform = 'whatsapp'  THEN COALESCE(c.whatsapp_phone, v_phone)  ELSE c.whatsapp_phone END,
+--       instagram_username  = CASE WHEN v_platform = 'instagram' THEN COALESCE(c.instagram_username, v_handle) ELSE c.instagram_username END,
+--       twitter_username    = CASE WHEN v_platform = 'twitter'   THEN COALESCE(c.twitter_username, v_handle)   ELSE c.twitter_username END,
+--       facebook_id         = CASE WHEN v_platform = 'facebook'  THEN COALESCE(c.facebook_id, v_handle)        ELSE c.facebook_id END,
+--       tiktok_username     = CASE WHEN v_platform = 'tiktok'    THEN COALESCE(c.tiktok_username, v_handle)    ELSE c.tiktok_username END
+--     WHERE c.id = v_contact;
+--
+--     INSERT INTO public.contact_channels (contact_id, channel_id, platform_sender_id, platform_username)
+--     VALUES (v_contact, p_channel_id, p_sender_id, v_handle)
+--     ON CONFLICT (channel_id, platform_sender_id) DO NOTHING;
+--
+--     INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by)
+--     VALUES (v_ws, 'contact', v_contact, 'link',
+--             jsonb_build_object('linked_by', v_linked_by, 'channel_id', p_channel_id,
+--                                'platform', v_platform, 'automatic', true),
+--             NULL);
+--
+--     RETURN jsonb_build_object('contact_id', v_contact, 'existed', true,
+--                               'linked_by', v_linked_by, 'suggested_contact_id', NULL);
+--   END IF;
+--
+--   -- ---- 5. Contacto nuevo ------------------------------------------------
+--   IF v_handle IS NOT NULL THEN
+--     SELECT c.id INTO v_suggested
+--     FROM public.contacts c
+--     WHERE c.workspace_id = v_ws
+--       AND c.deleted_at IS NULL
+--       AND (lower(c.instagram_username) = v_handle
+--            OR lower(c.twitter_username) = v_handle
+--            OR lower(c.facebook_id) = v_handle
+--            OR lower(c.tiktok_username) = v_handle)
+--     ORDER BY c.created_at
+--     LIMIT 1;
+--   END IF;
+--
+--   INSERT INTO public.contacts (
+--     workspace_id, display_name, avatar_url, last_interaction_at,
+--     phone, email, whatsapp_phone, instagram_username, twitter_username,
+--     facebook_id, tiktok_username, metadata
+--   ) VALUES (
+--     v_ws, v_name, p_avatar_url, p_interaction_at,
+--     v_phone, v_email,
+--     CASE WHEN v_platform = 'whatsapp'  THEN v_phone  ELSE NULL END,
+--     CASE WHEN v_platform = 'instagram' THEN v_handle ELSE NULL END,
+--     CASE WHEN v_platform = 'twitter'   THEN v_handle ELSE NULL END,
+--     CASE WHEN v_platform = 'facebook'  THEN v_handle ELSE NULL END,
+--     CASE WHEN v_platform = 'tiktok'    THEN v_handle ELSE NULL END,
+--     CASE
+--       WHEN v_suggested IS NOT NULL THEN
+--         jsonb_build_object('link_suggestions', jsonb_build_array(
+--           jsonb_build_object('contact_id', v_suggested, 'reason', 'username',
+--                              'handle', v_handle, 'at', p_interaction_at)))
+--       ELSE '{}'::jsonb
+--     END
+--   )
+--   RETURNING id INTO v_contact;
+--
+--   INSERT INTO public.contact_channels (contact_id, channel_id, platform_sender_id, platform_username)
+--   VALUES (v_contact, p_channel_id, p_sender_id, v_handle)
+--   ON CONFLICT (channel_id, platform_sender_id) DO NOTHING;
+--
+--   INSERT INTO public.analytics_events (workspace_id, contact_id, event_type, metadata)
+--   VALUES (v_ws, v_contact, 'contact_created',
+--           jsonb_build_object('channel_id', p_channel_id, 'platform', v_platform));
+--
+--   INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by)
+--   VALUES (v_ws, 'contact', v_contact, 'create',
+--           jsonb_build_object('source', 'inbound', 'channel_id', p_channel_id,
+--                              'platform', v_platform), NULL);
+--
+--   RETURN jsonb_build_object('contact_id', v_contact, 'existed', false,
+--                             'linked_by', NULL, 'suggested_contact_id', v_suggested);
+-- END;
+-- $function$
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.find_or_link_contact(p_channel_id uuid, p_sender_id text, p_display_name text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_avatar_url text DEFAULT NULL::text, p_phone text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_interaction_at timestamp with time zone DEFAULT now(), p_stamp_existing boolean DEFAULT true)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_ws         uuid;
+  v_platform   text;
+  v_contact    uuid;
+  v_suggested  uuid;
+  v_linked_by  text := NULL;
+  v_phone      text := public.normalize_phone(p_phone);
+  v_email      text := public.normalize_email(p_email);
+  v_handle     text := public.normalize_handle(p_username);
+  v_name       text := NULLIF(btrim(p_display_name), '');
+  v_known      boolean := false;
+  v_central    jsonb;
+  v_identity   jsonb;
+  v_skip_phone boolean := false;
+  v_skip_email boolean := false;
+BEGIN
+  SELECT ch.workspace_id, ch.platform INTO v_ws, v_platform
+  FROM public.channels ch WHERE ch.id = p_channel_id;
+
+  IF v_ws IS NULL THEN
+    RETURN jsonb_build_object('contact_id', NULL, 'existed', false,
+                              'linked_by', NULL, 'suggested_contact_id', NULL);
+  END IF;
+
+  -- ---- 1. El remitente ya es conocido en este canal (sin bloqueos: es lo comun) ------------------
+  SELECT cc.contact_id INTO v_contact
+  FROM public.contact_channels cc
+  WHERE cc.channel_id = p_channel_id AND cc.platform_sender_id = p_sender_id;
+  v_known := v_contact IS NOT NULL;
+
+  -- ---- 2. Buscar o crear con la regla central ---------------------------------------------------
+  IF NOT v_known THEN
+    v_identity := jsonb_strip_nulls(jsonb_build_object(
+      'channel_id',     p_channel_id,
+      'sender_id',      p_sender_id,
+      'phone',          v_phone,
+      'whatsapp_phone', CASE WHEN v_platform = 'whatsapp' THEN v_phone END,
+      'email',          v_email,
+      'instagram',      CASE WHEN v_platform = 'instagram' THEN v_handle END,
+      'x',              CASE WHEN v_platform = 'twitter'   THEN v_handle END,
+      'facebook',       CASE WHEN v_platform = 'facebook'  THEN v_handle END,
+      'tiktok',         CASE WHEN v_platform = 'tiktok'    THEN v_handle END
+    ));
+
+    v_central := public.find_or_create_contact(
+      v_ws,
+      v_identity,
+      jsonb_strip_nulls(jsonb_build_object(
+        'display_name', v_name,
+        'avatar_url', p_avatar_url,
+        'last_interaction_at', p_interaction_at,
+        'metadata', '{}'::jsonb
+      )),
+      'link_channel'
+    );
+    v_contact := (v_central ->> 'contact_id')::uuid;
+
+    -- La regla central tambien mira el canal: otro mensaje de este mismo remitente pudo ganarnos de mano.
+    IF v_central ->> 'matched_by' = 'channel' THEN v_known := true; END IF;
+  END IF;
+
+  -- ---- Remitente ya conocido ---------------------------------------------------------------------
+  IF v_known THEN
+    UPDATE public.contacts c SET
+      last_interaction_at = CASE
+        WHEN p_stamp_existing THEN p_interaction_at
+        ELSE c.last_interaction_at
+      END,
+      display_name = CASE
+        WHEN v_name IS NOT NULL
+         AND NOT public.is_placeholder_name(v_name)
+         AND public.is_placeholder_name(c.display_name)
+        THEN v_name
+        ELSE c.display_name
+      END,
+      -- F16: una foto external se refresca con la URL fresca que trae este mensaje. storage y manual
+      -- no se pisan nunca.
+      avatar_url = CASE
+        WHEN c.avatar_source = 'external' AND p_avatar_url IS NOT NULL THEN p_avatar_url
+        ELSE COALESCE(c.avatar_url, p_avatar_url)
+      END,
+      instagram_username = CASE
+        WHEN v_platform = 'instagram' THEN COALESCE(c.instagram_username, v_handle)
+        ELSE c.instagram_username
+      END,
+      twitter_username = CASE
+        WHEN v_platform = 'twitter' THEN COALESCE(c.twitter_username, v_handle)
+        ELSE c.twitter_username
+      END,
+      facebook_id = CASE
+        WHEN v_platform = 'facebook' THEN COALESCE(c.facebook_id, v_handle)
+        ELSE c.facebook_id
+      END,
+      tiktok_username = CASE
+        WHEN v_platform = 'tiktok' THEN COALESCE(c.tiktok_username, v_handle)
+        ELSE c.tiktok_username
+      END
+    WHERE c.id = v_contact;
+
+    UPDATE public.contact_channels cc
+    SET platform_username = COALESCE(cc.platform_username, v_handle)
+    WHERE cc.channel_id = p_channel_id AND cc.platform_sender_id = p_sender_id;
+
+    RETURN jsonb_build_object('contact_id', v_contact, 'existed', true,
+                              'linked_by', 'channel', 'suggested_contact_id', NULL);
+  END IF;
+
+  -- ---- Lo encontro por otro dato: vincular al contacto -------------------------------------------
+  IF (v_central ->> 'status') = 'found' THEN
+    v_linked_by := CASE v_central ->> 'matched_by'
+                     WHEN 'phone' THEN 'phone'
+                     WHEN 'email' THEN 'email'
+                     ELSE 'username'
+                   END;
+
+    -- Un telefono o email que ya es de OTRO contacto no se escribe en este.
+    v_skip_phone := private.contact_value_taken(v_ws, v_contact, 'phone', v_phone);
+    v_skip_email := private.contact_value_taken(v_ws, v_contact, 'email', v_email);
+
+    UPDATE public.contacts c SET
+      last_interaction_at = GREATEST(COALESCE(c.last_interaction_at, p_interaction_at), p_interaction_at),
+      display_name = CASE
+        WHEN v_name IS NOT NULL
+         AND NOT public.is_placeholder_name(v_name)
+         AND public.is_placeholder_name(c.display_name)
+        THEN v_name
+        ELSE COALESCE(c.display_name, v_name)
+      END,
+      avatar_url = CASE
+        WHEN c.avatar_source = 'external' AND p_avatar_url IS NOT NULL THEN p_avatar_url
+        ELSE COALESCE(c.avatar_url, p_avatar_url)
+      END,
+      phone               = CASE WHEN v_skip_phone THEN c.phone ELSE COALESCE(c.phone, v_phone) END,
+      email               = CASE WHEN v_skip_email THEN c.email ELSE COALESCE(c.email, v_email) END,
+      whatsapp_phone      = CASE WHEN v_platform = 'whatsapp' AND NOT v_skip_phone THEN COALESCE(c.whatsapp_phone, v_phone) ELSE c.whatsapp_phone END,
+      instagram_username  = CASE WHEN v_platform = 'instagram' THEN COALESCE(c.instagram_username, v_handle) ELSE c.instagram_username END,
+      twitter_username    = CASE WHEN v_platform = 'twitter'   THEN COALESCE(c.twitter_username, v_handle)   ELSE c.twitter_username END,
+      facebook_id         = CASE WHEN v_platform = 'facebook'  THEN COALESCE(c.facebook_id, v_handle)        ELSE c.facebook_id END,
+      tiktok_username     = CASE WHEN v_platform = 'tiktok'    THEN COALESCE(c.tiktok_username, v_handle)    ELSE c.tiktok_username END
+    WHERE c.id = v_contact;
+
+    INSERT INTO public.contact_channels (contact_id, channel_id, platform_sender_id, platform_username)
+    VALUES (v_contact, p_channel_id, p_sender_id, v_handle)
+    ON CONFLICT (channel_id, platform_sender_id) DO NOTHING;
+
+    INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by)
+    VALUES (v_ws, 'contact', v_contact, 'link',
+            jsonb_build_object('linked_by', v_linked_by, 'channel_id', p_channel_id,
+                               'platform', v_platform, 'automatic', true),
+            NULL);
+
+    RETURN jsonb_build_object('contact_id', v_contact, 'existed', true,
+                              'linked_by', v_linked_by, 'suggested_contact_id', NULL);
+  END IF;
+
+  -- ---- Contacto nuevo (ya lo creo la regla central, con el canal vinculado) ----------------------
+  IF v_handle IS NOT NULL THEN
+    SELECT c.id INTO v_suggested
+    FROM public.contacts c
+    WHERE c.workspace_id = v_ws
+      AND c.deleted_at IS NULL
+      AND c.id <> v_contact
+      AND (lower(c.instagram_username) = v_handle
+           OR lower(c.twitter_username) = v_handle
+           OR lower(c.facebook_id) = v_handle
+           OR lower(c.tiktok_username) = v_handle)
+    ORDER BY c.created_at
+    LIMIT 1;
+
+    IF v_suggested IS NOT NULL THEN
+      UPDATE public.contacts c
+      SET metadata = jsonb_build_object('link_suggestions', jsonb_build_array(
+            jsonb_build_object('contact_id', v_suggested, 'reason', 'username',
+                               'handle', v_handle, 'at', p_interaction_at)))
+      WHERE c.id = v_contact;
+    END IF;
+  END IF;
+
+  INSERT INTO public.analytics_events (workspace_id, contact_id, event_type, metadata)
+  VALUES (v_ws, v_contact, 'contact_created',
+          jsonb_build_object('channel_id', p_channel_id, 'platform', v_platform));
+
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by)
+  VALUES (v_ws, 'contact', v_contact, 'create',
+          jsonb_build_object('source', 'inbound', 'channel_id', p_channel_id,
+                             'platform', v_platform), NULL);
+
+  RETURN jsonb_build_object('contact_id', v_contact, 'existed', false,
+                            'linked_by', NULL, 'suggested_contact_id', v_suggested);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.find_or_link_contact(uuid, text, text, text, text, text, text, timestamp with time zone, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.find_or_link_contact(uuid, text, text, text, text, text, text, timestamp with time zone, boolean) TO service_role;
+
+-- ============================================================
+-- MIGRATION 203: CREATE BOOKING V3
+-- ============================================================
+-- ============================================================================
+-- 00203 — create_booking v3: la agenda sobre la regla central (C2)
+-- ============================================================================
+-- Parte de la definicion VIVA (la 00190; el md5 esta abajo), misma firma (25 parametros). Cambia SOLO el
+-- paso "a. El contacto":
+--   * busca y crea con `find_or_create_contact` (bloqueo por dato; antes la busqueda y el INSERT no
+--     tenian ninguno);
+--   * el telefono se normaliza con `normalize_phone`; el email, con `normalize_email` en los dos lados
+--     (antes el lado guardado no se recortaba);
+--   * una reserva SIN email ni telefono se rechaza (SQLSTATE CB001): antes creaba un contacto con solo
+--     el nombre. `createBooking` lo traduce a un mensaje claro;
+--   * al completar vacios de un contacto que ya existia, un telefono o email que es de OTRO contacto
+--     no se escribe.
+-- Todo lo demas (asignacion, la agenda, el toque de atribucion, el historial, el evento, los jobs) es la
+-- definicion vigente letra por letra. `booker_phone` sigue guardando lo que escribio la persona.
+-- Como volver atras: pegar la definicion de abajo (CREATE OR REPLACE).
+--
+-- DEFINICIONES VIGENTES ANTES DE ESTA MIGRACION (copiadas de la base con pg_get_functiondef).
+-- Para volver atras: pegar la que corresponda (CREATE OR REPLACE).
+--
+-- ==== create_booking (md5 57b486fed13f20a0db3af410d1aa91ac) ====
+-- CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_contact_id   uuid := p_contact_id;
+--   v_created      boolean := false;
+--   v_booking_id   uuid;
+--   v_email        text := nullif(btrim(lower(p_email)), '');
+--   v_phone        text := nullif(btrim(p_phone), '');
+--   v_dnc          boolean := false;
+--   v_setter       uuid;
+--   v_vendedor     uuid;
+--   v_assigned     boolean := false;
+-- BEGIN
+--   -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+--   PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+--
+--   -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual.
+--   IF v_contact_id IS NULL THEN
+--     IF v_phone IS NOT NULL THEN
+--       SELECT id INTO v_contact_id FROM public.contacts
+--       WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+--         AND (phone = v_phone OR whatsapp_phone = v_phone)
+--       ORDER BY created_at ASC LIMIT 1;
+--     END IF;
+--
+--     IF v_contact_id IS NULL AND v_email IS NOT NULL THEN
+--       SELECT id INTO v_contact_id FROM public.contacts
+--       WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+--         AND (lower(email) = v_email OR lower(secondary_email) = v_email)
+--       ORDER BY created_at ASC LIMIT 1;
+--     END IF;
+--
+--     IF v_contact_id IS NULL THEN
+--       INSERT INTO public.contacts (workspace_id, display_name, email, phone, timezone, attribution, last_interaction_at)
+--       VALUES (
+--         p_workspace_id,
+--         nullif(btrim(p_name), ''),
+--         v_email,
+--         v_phone,
+--         nullif(p_timezone, ''),
+--         coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+--         now()
+--       )
+--       RETURNING id INTO v_contact_id;
+--       v_created := true;
+--     END IF;
+--   END IF;
+--
+--   -- Completa SOLO los campos vacios: nunca pisa lo que ya hay.
+--   IF NOT v_created THEN
+--     UPDATE public.contacts
+--     SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+--         email        = coalesce(email, v_email),
+--         phone        = coalesce(phone, v_phone),
+--         timezone     = coalesce(timezone, nullif(p_timezone, '')),
+--         last_interaction_at = now()
+--     WHERE id = v_contact_id;
+--   END IF;
+--
+--   SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+--   FROM public.contacts WHERE id = v_contact_id;
+--
+--   -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+--   -- trigger de la 00039, que emite assignment_changed en automation_events.
+--   IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+--     UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+--     UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   END IF;
+--
+--   -- c. La agenda.
+--   INSERT INTO public.bookings (
+--     workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+--     host_user_id, contact_id, title, start_at, end_at, status,
+--     booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+--     location_type, location_text, responses, origin, utm, referrer_url,
+--     created_by, is_do_not_contact_at_booking, google_sync_status
+--   ) VALUES (
+--     p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+--     p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+--     nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+--     p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+--     coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+--     p_created_by, coalesce(v_dnc, false), 'pending'
+--   )
+--   RETURNING id INTO v_booking_id;
+--
+--   -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+--   -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+--   -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+--   -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+--   -- pisaria el toque real (el DM o el comentario que lo trajo).
+--   -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+--   IF p_origin NOT IN ('manual', 'agent') THEN
+--     BEGIN
+--       PERFORM public.record_contact_touch(
+--         p_workspace_id,
+--         v_contact_id,
+--         jsonb_build_object(
+--           'occurred_at',  now(),
+--           'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+--           'medium',       'booking',
+--           'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+--           'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+--           'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+--           'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+--           'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+--           'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+--           'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+--           'ad_id',        nullif(btrim(p_utm->>'ad_id'), ''),
+--           'adset_id',     nullif(btrim(p_utm->>'adset_id'), ''),
+--           'campaign_id',  nullif(btrim(p_utm->>'campaign_id'), ''),
+--           'referrer_url', nullif(btrim(p_referrer_url), ''),
+--           'landing_page', nullif(btrim(p_landing_page), ''),
+--           'origin',       'booking',
+--           'dedupe_key',   'booking:' || v_booking_id::text,
+--           'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+--                           || jsonb_strip_nulls(jsonb_build_object(
+--                                'utm_id',       nullif(btrim(p_utm->>'utm_id'), ''),
+--                                'placement',    nullif(btrim(p_utm->>'placement'), ''),
+--                                'fbp',          nullif(btrim(p_utm->>'fbp'), ''),
+--                                'fbc',          nullif(btrim(p_utm->>'fbc'), ''),
+--                                'ga_client_id', nullif(btrim(p_utm->>'ga_client_id'), ''),
+--                                'first_visit',  CASE WHEN jsonb_typeof(p_utm->'first_visit') = 'object' THEN p_utm->'first_visit' END))
+--         )
+--       );
+--     EXCEPTION WHEN OTHERS THEN
+--       RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+--     END;
+--   END IF;
+--
+--   -- d. El historial.
+--   INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+--   VALUES (
+--     p_workspace_id, 'booking', v_booking_id, 'booking.created',
+--     jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+--     jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+--     p_created_by
+--   );
+--
+--   -- e. El evento de automatizacion.
+--   INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+--   VALUES (
+--     p_workspace_id, 'booking_created', v_contact_id,
+--     jsonb_build_object(
+--       'booking_id', v_booking_id,
+--       'event_type_id', p_event_type_id,
+--       'host_user_id', p_host_user_id,
+--       'origin', p_origin
+--     )
+--   );
+--
+--   -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+--   VALUES (
+--     'booking_google_sync',
+--     jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+--     now(), 'pending'
+--   );
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+--   VALUES (
+--     'booking_ended',
+--     jsonb_build_object('booking_id', v_booking_id),
+--     p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+--   );
+--
+--   RETURN jsonb_build_object(
+--     'booking_id', v_booking_id,
+--     'contact_id', v_contact_id,
+--     'created_contact', v_created,
+--     'assignment_changed', v_assigned,
+--     'do_not_contact', coalesce(v_dnc, false)
+--   );
+-- END;
+-- $function$
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_contact_id   uuid := p_contact_id;
+  v_created      boolean := false;
+  v_booking_id   uuid;
+  v_email        text := public.normalize_email(p_email);
+  v_phone        text := nullif(btrim(p_phone), '');
+  v_nphone       text := public.normalize_phone(p_phone);
+  v_central      jsonb;
+  v_dnc          boolean := false;
+  v_setter       uuid;
+  v_vendedor     uuid;
+  v_assigned     boolean := false;
+BEGIN
+  -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+
+  -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual. Si no, la regla central
+  -- (C2, 00200): busca por telefono y email y, si no esta, lo crea, con bloqueo por dato (dos reservas
+  -- simultaneas de la misma persona dan UN contacto). Sin email ni telefono NO se crea nada: la reserva
+  -- se rechaza con el codigo CB001 (createBooking lo traduce a "Necesitamos un email o un telefono").
+  IF v_contact_id IS NULL THEN
+    v_central := public.find_or_create_contact(
+      p_workspace_id,
+      jsonb_build_object('phone', p_phone, 'email', p_email),
+      jsonb_strip_nulls(jsonb_build_object(
+        'display_name', nullif(btrim(p_name), ''),
+        'timezone', nullif(p_timezone, ''),
+        'attribution', coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+        'last_interaction_at', now()
+      )),
+      'create'
+    );
+    IF v_central ->> 'status' = 'no_identity' THEN
+      RAISE EXCEPTION 'Necesitamos un email o un telefono para agendar' USING ERRCODE = 'CB001';
+    END IF;
+    v_contact_id := (v_central ->> 'contact_id')::uuid;
+    v_created := (v_central ->> 'created')::boolean;
+  END IF;
+
+  -- Completa SOLO los campos vacios: nunca pisa lo que ya hay. Un telefono o email que ya es de OTRO
+  -- contacto no se escribe en este.
+  IF NOT v_created THEN
+    UPDATE public.contacts
+    SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+        email        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'email', v_email) THEN email ELSE coalesce(email, v_email) END,
+        phone        = CASE WHEN private.contact_value_taken(p_workspace_id, v_contact_id, 'phone', v_nphone) THEN phone ELSE coalesce(phone, v_nphone) END,
+        timezone     = coalesce(timezone, nullif(p_timezone, '')),
+        last_interaction_at = now()
+    WHERE id = v_contact_id;
+  END IF;
+
+  SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+  FROM public.contacts WHERE id = v_contact_id;
+
+  -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+  -- trigger de la 00039, que emite assignment_changed en automation_events.
+  IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+    UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+    UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  END IF;
+
+  -- c. La agenda.
+  INSERT INTO public.bookings (
+    workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+    host_user_id, contact_id, title, start_at, end_at, status,
+    booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+    location_type, location_text, responses, origin, utm, referrer_url,
+    created_by, is_do_not_contact_at_booking, google_sync_status
+  ) VALUES (
+    p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+    p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+    nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+    p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+    coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+    p_created_by, coalesce(v_dnc, false), 'pending'
+  )
+  RETURNING id INTO v_booking_id;
+
+  -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+  -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+  -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+  -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+  -- pisaria el toque real (el DM o el comentario que lo trajo).
+  -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+  IF p_origin NOT IN ('manual', 'agent') THEN
+    BEGIN
+      PERFORM public.record_contact_touch(
+        p_workspace_id,
+        v_contact_id,
+        jsonb_build_object(
+          'occurred_at',  now(),
+          'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+          'medium',       'booking',
+          'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+          'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+          'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+          'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+          'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+          'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+          'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+          'ad_id',        nullif(btrim(p_utm->>'ad_id'), ''),
+          'adset_id',     nullif(btrim(p_utm->>'adset_id'), ''),
+          'campaign_id',  nullif(btrim(p_utm->>'campaign_id'), ''),
+          'referrer_url', nullif(btrim(p_referrer_url), ''),
+          'landing_page', nullif(btrim(p_landing_page), ''),
+          'origin',       'booking',
+          'dedupe_key',   'booking:' || v_booking_id::text,
+          'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+                          || jsonb_strip_nulls(jsonb_build_object(
+                               'utm_id',       nullif(btrim(p_utm->>'utm_id'), ''),
+                               'placement',    nullif(btrim(p_utm->>'placement'), ''),
+                               'fbp',          nullif(btrim(p_utm->>'fbp'), ''),
+                               'fbc',          nullif(btrim(p_utm->>'fbc'), ''),
+                               'ga_client_id', nullif(btrim(p_utm->>'ga_client_id'), ''),
+                               'first_visit',  CASE WHEN jsonb_typeof(p_utm->'first_visit') = 'object' THEN p_utm->'first_visit' END))
+        )
+      );
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+    END;
+  END IF;
+
+  -- d. El historial.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    p_workspace_id, 'booking', v_booking_id, 'booking.created',
+    jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+    jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+    p_created_by
+  );
+
+  -- e. El evento de automatizacion.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (
+    p_workspace_id, 'booking_created', v_contact_id,
+    jsonb_build_object(
+      'booking_id', v_booking_id,
+      'event_type_id', p_event_type_id,
+      'host_user_id', p_host_user_id,
+      'origin', p_origin
+    )
+  );
+
+  -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+  VALUES (
+    'booking_google_sync',
+    jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+    now(), 'pending'
+  );
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+  VALUES (
+    'booking_ended',
+    jsonb_build_object('booking_id', v_booking_id),
+    p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+  );
+
+  RETURN jsonb_build_object(
+    'booking_id', v_booking_id,
+    'contact_id', v_contact_id,
+    'created_contact', v_created,
+    'assignment_changed', v_assigned,
+    'do_not_contact', coalesce(v_dnc, false)
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_booking(uuid, uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text, text, text, text, text, text, jsonb, text, jsonb, text, text, uuid, jsonb, text, uuid, uuid, jsonb, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 204: SUBMIT FORM RESPONSE V6
+-- ============================================================
+-- ============================================================================
+-- 00204 — submit_form_response v6: los formularios sobre la regla central (C2)
+-- ============================================================================
+-- Parte de la definicion VIVA (la 00176; el md5 esta abajo), misma firma. Cambia SOLO el contacto:
+--   * el paso 1 (resolver) reemplaza los bloqueos `form-contact:` y las dos llamadas a
+--     `find_contact_for_form` por `find_or_create_contact(..., 'find_only')`: mismos bloqueos (ahora por
+--     dato y compartidos con todos los demas caminos) y la misma busqueda;
+--   * el paso 3 (crear) usa la misma funcion en modo 'create'. "Una vez por contacto" (paso 2) sigue
+--     corriendo entre los dos, asi que sigue sin crear un contacto para quien ya respondio;
+--   * el telefono y el WhatsApp se normalizan con `normalize_phone`;
+--   * el WhatsApp se mira como un dato mas, ANTES del email (antes solo se probaba si el telefono no estaba
+--     y el email tampoco): si el telefono no estaba y el WhatsApp si, gana el WhatsApp y el email, si es de
+--     otro contacto, queda como conflicto;
+--   * el UPDATE que completa vacios tampoco escribe un telefono, WhatsApp o email que ya es de OTRO
+--     contacto (antes solo salteaba las redes).
+-- Todo lo demas (contrato, encuesta, campos, tags, venta del link firmado, respuesta, firma, historial,
+-- evento) es la definicion vigente letra por letra.
+-- Como volver atras: pegar la definicion de abajo (CREATE OR REPLACE).
+--
+-- DEFINICIONES VIGENTES ANTES DE ESTA MIGRACION (copiadas de la base con pg_get_functiondef).
+-- Para volver atras: pegar la que corresponda (CREATE OR REPLACE).
+--
+-- ==== submit_form_response (md5 9d94bf451c21443911d74972bfa399ee) ====
+-- CREATE OR REPLACE FUNCTION public.submit_form_response(p_form_id uuid, p_version_id uuid, p_idempotency_key uuid, p_answers jsonb, p_attribution jsonb, p_meta jsonb, p_contact_hint jsonb DEFAULT '{}'::jsonb, p_extra jsonb DEFAULT '{}'::jsonb)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_form      public.forms%ROWTYPE;
+--   v_id        uuid;
+--   v_existing  public.form_submissions%ROWTYPE;
+--   v_hint      jsonb := COALESCE(p_contact_hint, '{}'::jsonb);
+--   v_mode      text;
+--   v_overwrite boolean;
+--   v_name      text := nullif(btrim(v_hint ->> 'display_name'), '');
+--   v_email     text := public.normalize_email(v_hint ->> 'email');
+--   v_phone     text := nullif(btrim(v_hint ->> 'phone'), '');
+--   v_wa        text := nullif(btrim(v_hint ->> 'whatsapp_phone'), '');
+--   v_country   text := nullif(btrim(v_hint ->> 'country'), '');
+--   -- R5: usuarios de redes sociales. El servidor ya los normalizo; aca se vuelven a validar (la base manda).
+--   v_ig        text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,instagram}', ''), '^@+', ''))) ~ '^[a-z0-9._]{1,30}$'
+--                            THEN lower(btrim(regexp_replace(v_hint #>> '{social,instagram}', '^@+', ''))) END;
+--   v_tt        text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,tiktok}', ''), '^@+', ''))) ~ '^[a-z0-9._]{2,24}$'
+--                            THEN lower(btrim(regexp_replace(v_hint #>> '{social,tiktok}', '^@+', ''))) END;
+--   v_x         text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,x}', ''), '^@+', ''))) ~ '^[a-z0-9_]{1,15}$'
+--                            THEN lower(btrim(regexp_replace(v_hint #>> '{social,x}', '^@+', ''))) END;
+--   v_li        text := CASE WHEN public.linkedin_slug(v_hint #>> '{social,linkedin}') IS NOT NULL
+--                            THEN 'https://www.linkedin.com/in/' || public.linkedin_slug(v_hint #>> '{social,linkedin}') END;
+--   v_fb        text := CASE WHEN length(regexp_replace(COALESCE(v_hint #>> '{social,facebook}', ''), '[\s@]', '', 'g')) BETWEEN 1 AND 200
+--                            THEN regexp_replace(v_hint #>> '{social,facebook}', '[\s@]', '', 'g') END;
+--   v_yt        text := CASE WHEN length(regexp_replace(COALESCE(v_hint #>> '{social,youtube}', ''), '[\s@]', '', 'g')) BETWEEN 1 AND 200
+--                            THEN regexp_replace(v_hint #>> '{social,youtube}', '[\s@]', '', 'g') END;
+--   v_social    jsonb;
+--   v_conflicts jsonb := '[]'::jsonb;
+--   v_lock_key  text;
+--   v_has_ident boolean;
+--   v_signed    uuid;
+--   v_service   uuid;
+--   v_sale      uuid;
+--   v_contact   uuid;
+--   v_created   boolean := false;
+--   v_matched   text;
+--   v_conflict  uuid;
+--   v_found     jsonb;
+--   v_status    text := 'no_contact';
+--   v_score     integer;
+--   v_nps       text;
+--   v_once      text;
+--   v_event     text;
+--   v_score_key text;
+--   v_field     record;
+--   v_first_touch jsonb;
+--   v_version   public.form_versions%ROWTYPE;
+--   v_sig       uuid;
+--   v_sale_reason text;
+-- BEGIN
+--   SELECT * INTO v_form FROM public.forms WHERE id = p_form_id;
+--   IF NOT FOUND THEN
+--     RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+--   END IF;
+--
+--   IF NOT EXISTS (
+--     SELECT 1 FROM public.form_versions v WHERE v.id = p_version_id AND v.form_id = p_form_id
+--   ) THEN
+--     RAISE EXCEPTION 'La version no es de este formulario' USING ERRCODE = 'foreign_key_violation';
+--   END IF;
+--
+--   -- Contrato: la huella de la version se vuelve a calcular AHORA, sobre el texto guardado. Si no
+--   -- coincide con la que se guardo al publicar, algo se corrompio: la firma falla y la excepcion
+--   -- deshace TODO (ni la respuesta, ni el contacto, ni el job). Nada de lo que manda el navegador
+--   -- entra en la huella: el pedido ni siquiera trae el texto.
+--   IF v_form.type = 'contract' THEN
+--     SELECT * INTO v_version FROM public.form_versions WHERE id = p_version_id;
+--     IF v_version.contract_text IS NULL
+--        OR v_version.contract_text_sha256 IS NULL
+--        OR encode(sha256(convert_to(v_version.contract_text, 'UTF8')), 'hex') <> v_version.contract_text_sha256 THEN
+--       RAISE EXCEPTION 'La huella del contrato no coincide con su texto' USING ERRCODE = 'data_exception';
+--     END IF;
+--   END IF;
+--
+--   -- Mismo pedido a la vez (doble clic, reintento de red, dos pestañas): se hacen en fila.
+--   PERFORM pg_advisory_xact_lock(hashtextextended('form-submit:' || p_form_id::text || ':' || p_idempotency_key::text, 0));
+--
+--   SELECT * INTO v_existing
+--   FROM public.form_submissions
+--   WHERE form_id = p_form_id AND idempotency_key = p_idempotency_key;
+--   IF FOUND THEN
+--     RETURN jsonb_build_object(
+--       'ok', true, 'duplicate', true,
+--       'submission_id', v_existing.id, 'status', v_existing.status,
+--       'contact_id', v_existing.contact_id, 'contact_created', v_existing.contact_created
+--     );
+--   END IF;
+--
+--   v_mode := COALESCE(v_form.contact_config ->> 'mode', 'create_or_link');
+--   v_overwrite := COALESCE(v_form.contact_config ->> 'update', 'fill_empty') = 'overwrite';
+--
+--   -- R3: con el interruptor "Vincular las respuestas con contactos" apagado la respuesta no resuelve, no crea ni
+--   -- actualiza ningun contacto, tampoco con un link firmado. Lo que haya llegado en el hint se descarta aca,
+--   -- aunque el servidor ya no lo mande: la base es la que hace cumplir la regla.
+--   IF v_mode = 'none' THEN
+--     v_name := NULL; v_email := NULL; v_phone := NULL; v_wa := NULL; v_country := NULL;
+--     v_ig := NULL; v_tt := NULL; v_x := NULL; v_li := NULL; v_fb := NULL; v_yt := NULL;
+--     v_hint := '{}'::jsonb;
+--   END IF;
+--   v_has_ident := v_email IS NOT NULL OR v_phone IS NOT NULL OR v_wa IS NOT NULL
+--                  OR v_ig IS NOT NULL OR v_tt IS NOT NULL OR v_x IS NOT NULL OR v_li IS NOT NULL;
+--   v_social := jsonb_strip_nulls(jsonb_build_object('instagram', v_ig, 'tiktok', v_tt, 'x', v_x, 'linkedin', v_li));
+--
+--   -- Los ids del link firmado: solo se aceptan si el contacto existe en ESTE workspace.
+--   IF (v_hint ->> 'signed_contact_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--     SELECT c.id INTO v_signed
+--     FROM public.contacts c
+--     WHERE c.id = (v_hint ->> 'signed_contact_id')::uuid
+--       AND c.workspace_id = v_form.workspace_id AND c.deleted_at IS NULL;
+--   END IF;
+--   IF v_signed IS NOT NULL THEN
+--     IF (v_hint ->> 'signed_service_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--       v_service := (v_hint ->> 'signed_service_id')::uuid;
+--     END IF;
+--     IF (v_hint ->> 'signed_sale_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+--       v_sale := (v_hint ->> 'signed_sale_id')::uuid;
+--     END IF;
+--   END IF;
+--
+--   -- 1. Resolver el contacto (todavia sin tocar nada).
+--   IF v_signed IS NOT NULL THEN
+--     v_contact := v_signed;
+--     v_matched := 'link';
+--   ELSIF v_has_ident THEN
+--     -- Un lock por cada dato con el que se puede identificar, SIEMPRE en el mismo orden (por clave): dos
+--     -- respuestas simultaneas con el mismo dato nuevo comparten al menos un lock, la segunda espera y ya ve el
+--     -- contacto de la primera. El orden fijo evita el interbloqueo.
+--     FOR v_lock_key IN
+--       SELECT k FROM unnest(ARRAY[
+--         'phone:' || v_phone, 'phone:' || v_wa, 'email:' || v_email,
+--         'instagram:' || v_ig, 'tiktok:' || v_tt, 'x:' || v_x, 'linkedin:' || v_li
+--       ]) AS k WHERE k IS NOT NULL ORDER BY k
+--     LOOP
+--       PERFORM pg_advisory_xact_lock(hashtextextended('form-contact:' || v_form.workspace_id::text || ':' || v_lock_key, 0));
+--     END LOOP;
+--     v_found := public.find_contact_for_form(v_form.workspace_id, COALESCE(v_phone, v_wa), v_email, v_social);
+--     IF v_found ->> 'contact_id' IS NULL AND v_phone IS NOT NULL AND v_wa IS NOT NULL AND v_wa <> v_phone THEN
+--       -- Tiene dos telefonos y el primero no estaba: se prueba con el de WhatsApp.
+--       v_found := public.find_contact_for_form(v_form.workspace_id, v_wa, v_email, v_social);
+--     END IF;
+--     v_contact := (v_found ->> 'contact_id')::uuid;
+--     v_matched := v_found ->> 'matched_by';
+--     v_conflict := (v_found ->> 'conflict_contact_id')::uuid;
+--     v_conflicts := COALESCE(v_found -> 'conflicts', '[]'::jsonb);
+--   END IF;
+--
+--   -- 2. Encuesta: puntaje, categoria y "una vez por contacto".
+--   IF v_form.type = 'survey' THEN
+--     v_score_key := v_form.survey_config ->> 'scoreFieldKey';
+--     IF v_score_key IS NOT NULL AND jsonb_typeof(p_answers -> v_score_key -> 'value') = 'number' THEN
+--       v_score := round((p_answers -> v_score_key ->> 'value')::numeric)::integer;
+--       IF p_answers -> v_score_key ->> 'type' = 'nps' THEN
+--         v_nps := CASE WHEN v_score >= 9 THEN 'promoter' WHEN v_score >= 7 THEN 'passive' ELSE 'detractor' END;
+--       END IF;
+--     END IF;
+--
+--     IF COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+--       IF v_contact IS NOT NULL THEN
+--         v_once := 'contact:' || v_contact::text;
+--       ELSIF v_email IS NOT NULL THEN
+--         v_once := 'email:' || v_email;
+--       END IF;
+--       -- Se miran las DOS claves: una respuesta anterior pudo guardarse con el email (el contacto
+--       -- todavia no existia) o con el contacto. Con una sola, la segunda respuesta de alguien que
+--       -- se creo con la primera no se detectaba.
+--       IF EXISTS (
+--         SELECT 1 FROM public.form_submissions s
+--         WHERE s.form_id = p_form_id AND s.status <> 'spam'
+--           AND s.once_key = ANY (array_remove(ARRAY[
+--             CASE WHEN v_contact IS NOT NULL THEN 'contact:' || v_contact::text END,
+--             CASE WHEN v_email IS NOT NULL THEN 'email:' || v_email END
+--           ], NULL))
+--       ) THEN
+--         RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+--       END IF;
+--     END IF;
+--   END IF;
+--
+--   -- 3. Crear o completar el contacto.
+--   IF v_contact IS NULL THEN
+--     IF v_mode = 'create_or_link' AND v_has_ident THEN
+--       INSERT INTO public.contacts
+--         (workspace_id, display_name, email, phone, whatsapp_phone, country,
+--          instagram_username, tiktok_username, twitter_username, linkedin_profile_url, facebook_id, youtube_channel_id,
+--          attribution, last_interaction_at)
+--       VALUES (
+--         v_form.workspace_id,
+--         -- Sin nombre y solo con un usuario de red social, el usuario hace de nombre ("@ana"): la app mostraria
+--         -- "Sin nombre" y la base lo marcaria como anonimo (is_anonymous solo mira Instagram, no TikTok/X/LinkedIn).
+--         COALESCE(v_name, CASE WHEN v_email IS NULL AND v_phone IS NULL AND v_wa IS NULL
+--                               THEN COALESCE('@' || v_ig, '@' || v_tt, '@' || v_x, public.linkedin_slug(v_li)) END),
+--         v_email, v_phone, v_wa, v_country,
+--         v_ig, v_tt, v_x, v_li, v_fb, v_yt,
+--         jsonb_build_object('source', 'form', 'referrer', p_attribution ->> 'referrer_url'),
+--         now()
+--       )
+--       RETURNING id INTO v_contact;
+--       v_created := true;
+--       v_matched := NULL;
+--     END IF;
+--   ELSE
+--     UPDATE public.contacts c
+--     SET display_name = CASE WHEN v_overwrite THEN COALESCE(v_name, c.display_name)
+--                             WHEN COALESCE(btrim(c.display_name), '') = '' THEN v_name ELSE c.display_name END,
+--         email        = CASE WHEN v_overwrite THEN COALESCE(v_email, c.email)
+--                             WHEN COALESCE(btrim(c.email), '') = '' THEN v_email ELSE c.email END,
+--         phone        = CASE WHEN v_overwrite THEN COALESCE(v_phone, c.phone)
+--                             WHEN COALESCE(btrim(c.phone), '') = '' THEN v_phone ELSE c.phone END,
+--         whatsapp_phone = CASE WHEN v_overwrite THEN COALESCE(v_wa, c.whatsapp_phone)
+--                               WHEN COALESCE(btrim(c.whatsapp_phone), '') = '' THEN v_wa ELSE c.whatsapp_phone END,
+--         country      = CASE WHEN v_overwrite THEN COALESCE(v_country, c.country)
+--                             WHEN COALESCE(btrim(c.country), '') = '' THEN v_country ELSE c.country END,
+--         -- Redes sociales (R5): la misma regla fill_empty / overwrite. Un usuario que ya es de OTRO contacto
+--         -- (esta en `conflicts`) no se escribe: dejaria dos contactos con el mismo identificador.
+--         instagram_username = CASE
+--           WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'instagram') THEN c.instagram_username
+--           -- Excepcion: el @ de un contacto con un canal de Instagram vinculado lo mantiene la conversacion real
+--           -- y un formulario no puede cambiarlo (ni siquiera con overwrite).
+--           WHEN EXISTS (SELECT 1 FROM public.contact_channels cc JOIN public.channels ch ON ch.id = cc.channel_id
+--                        WHERE cc.contact_id = c.id AND ch.platform = 'instagram') THEN c.instagram_username
+--           WHEN v_overwrite THEN COALESCE(v_ig, c.instagram_username)
+--           WHEN COALESCE(btrim(c.instagram_username), '') = '' THEN v_ig ELSE c.instagram_username END,
+--         tiktok_username = CASE
+--           WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'tiktok') THEN c.tiktok_username
+--           WHEN v_overwrite THEN COALESCE(v_tt, c.tiktok_username)
+--           WHEN COALESCE(btrim(c.tiktok_username), '') = '' THEN v_tt ELSE c.tiktok_username END,
+--         twitter_username = CASE
+--           WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'x') THEN c.twitter_username
+--           WHEN v_overwrite THEN COALESCE(v_x, c.twitter_username)
+--           WHEN COALESCE(btrim(c.twitter_username), '') = '' THEN v_x ELSE c.twitter_username END,
+--         linkedin_profile_url = CASE
+--           WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'linkedin') THEN c.linkedin_profile_url
+--           WHEN v_overwrite THEN COALESCE(v_li, c.linkedin_profile_url)
+--           WHEN COALESCE(btrim(c.linkedin_profile_url), '') = '' THEN v_li ELSE c.linkedin_profile_url END,
+--         facebook_id  = CASE WHEN v_overwrite THEN COALESCE(v_fb, c.facebook_id)
+--                             WHEN COALESCE(btrim(c.facebook_id), '') = '' THEN v_fb ELSE c.facebook_id END,
+--         youtube_channel_id = CASE WHEN v_overwrite THEN COALESCE(v_yt, c.youtube_channel_id)
+--                                   WHEN COALESCE(btrim(c.youtube_channel_id), '') = '' THEN v_yt ELSE c.youtube_channel_id END,
+--         last_interaction_at = now()
+--     WHERE c.id = v_contact AND c.workspace_id = v_form.workspace_id;
+--   END IF;
+--
+--   IF v_contact IS NOT NULL THEN
+--     v_status := 'received';
+--     -- Con contacto (existente o recien creado), la clave es SIEMPRE la del contacto: la del email
+--     -- solo vale para quien responde sin que se pueda identificar un contacto.
+--     IF v_form.type = 'survey' AND COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+--       v_once := 'contact:' || v_contact::text;
+--     END IF;
+--
+--     -- Campos personalizados (solo los que siguen existiendo en este workspace).
+--     IF jsonb_typeof(v_hint -> 'custom') = 'object' THEN
+--       FOR v_field IN
+--         SELECT d.id AS field_id, e.value AS value
+--         FROM jsonb_each_text(v_hint -> 'custom') e
+--         JOIN public.custom_field_definitions d
+--           ON d.id::text = e.key AND d.workspace_id = v_form.workspace_id AND d.deleted_at IS NULL
+--         WHERE btrim(e.value) <> ''
+--       LOOP
+--         INSERT INTO public.contact_custom_fields (contact_id, field_id, value)
+--         VALUES (v_contact, v_field.field_id, v_field.value)
+--         ON CONFLICT (contact_id, field_id) DO UPDATE
+--           SET value = EXCLUDED.value, updated_at = now()
+--           WHERE v_overwrite OR btrim(public.contact_custom_fields.value) = '';
+--       END LOOP;
+--     END IF;
+--
+--     -- Etiquetas del formulario (las del workspace; las repetidas no hacen nada).
+--     IF COALESCE(array_length(v_form.tags_on_submit, 1), 0) > 0 THEN
+--       INSERT INTO public.contact_tags (contact_id, tag_id)
+--       SELECT v_contact, t.id FROM public.tags t
+--       WHERE t.workspace_id = v_form.workspace_id AND t.id = ANY (v_form.tags_on_submit)
+--       ON CONFLICT DO NOTHING;
+--     END IF;
+--   END IF;
+--
+--   -- 3b. La venta del link firmado (Ventas, 00164): el 'signed_sale_id' solo vale si la venta existe,
+--   -- es de ESTE workspace y es del MISMO contacto de la respuesta. Si no, se descarta (queda null) y
+--   -- se anota en meta; la respuesta y la firma se guardan igual.
+--   IF v_sale IS NOT NULL THEN
+--     IF v_contact IS NULL THEN v_sale_reason := 'no_contact';
+--     ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.workspace_id = v_form.workspace_id) THEN v_sale_reason := 'not_found';
+--     ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.contact_id = v_contact) THEN v_sale_reason := 'other_contact';
+--     END IF;
+--     IF v_sale_reason IS NOT NULL THEN
+--       v_sale := NULL;
+--       p_meta := COALESCE(p_meta, '{}'::jsonb) || jsonb_build_object('sale_id_discarded', true, 'sale_id_discard_reason', v_sale_reason);
+--     END IF;
+--   END IF;
+--
+--   -- 4. La respuesta.
+--   BEGIN
+--     INSERT INTO public.form_submissions
+--       (workspace_id, form_id, form_version_id, idempotency_key, status, answers,
+--        contact_id, contact_created, dedupe, score, nps_category, once_key,
+--        attribution, meta, upload_prefix, sale_id, service_id)
+--     VALUES
+--       (v_form.workspace_id, p_form_id, p_version_id, p_idempotency_key, v_status, p_answers,
+--        v_contact, v_created,
+--        jsonb_build_object('matched_by', v_matched, 'conflict_contact_id', v_conflict)
+--          || CASE WHEN jsonb_array_length(v_conflicts) > 0 THEN jsonb_build_object('conflicts', v_conflicts) ELSE '{}'::jsonb END,
+--        v_score, v_nps, v_once,
+--        COALESCE(p_attribution, '{}'::jsonb), COALESCE(p_meta, '{}'::jsonb), p_extra ->> 'upload_prefix',
+--        v_sale, v_service)
+--     RETURNING id INTO v_id;
+--   EXCEPTION WHEN unique_violation THEN
+--     -- Carrera por "una vez por contacto": otra respuesta del mismo contacto se guardo en el medio.
+--     RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+--   END;
+--
+--   -- 4b. Contrato: la firma, en la MISMA transaccion que la respuesta. `record_contract_signature`
+--   -- guarda la huella, la metadata legal y encola el PDF; si algo falla, no queda nada.
+--   IF v_form.type = 'contract' THEN
+--     v_sig := public.record_contract_signature(
+--       v_id,
+--       nullif(p_extra ->> 'signature_path', ''),
+--       COALESCE(p_extra -> 'legal', '{}'::jsonb),
+--       COALESCE(p_extra ->> 'signer_name', ''),
+--       p_extra ->> 'signer_email'
+--     );
+--   END IF;
+--
+--   -- 5. Historial, y el evento de automatizacion (solo con contacto).
+--   IF v_contact IS NOT NULL THEN
+--     IF v_created OR v_matched IS NOT NULL THEN
+--       INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by, actor_type, actor_label)
+--       VALUES (
+--         v_form.workspace_id, 'contact', v_contact,
+--         CASE WHEN v_created THEN 'contact.created' ELSE 'contact.linked' END,
+--         jsonb_build_object('source', 'form', 'form_id', p_form_id, 'submission_id', v_id, 'matched_by', v_matched),
+--         NULL, 'system', 'Formulario: ' || v_form.name
+--       );
+--     END IF;
+--
+--     v_event := CASE v_form.type WHEN 'custom' THEN 'form_submitted' WHEN 'survey' THEN 'survey_answered' WHEN 'contract' THEN 'contract_signed' ELSE NULL END;
+--     IF v_event IS NOT NULL THEN
+--       INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+--       VALUES (
+--         v_form.workspace_id, v_event, v_contact,
+--         jsonb_strip_nulls(jsonb_build_object(
+--           'submission_id', v_id, 'form_id', p_form_id, 'form_type', v_form.type,
+--           'score', v_score, 'nps_category', v_nps, 'sale_id', v_sale
+--         ))
+--       );
+--     END IF;
+--   END IF;
+--
+--   RETURN jsonb_build_object(
+--     'ok', true,
+--     'duplicate', false,
+--     'submission_id', v_id,
+--     'status', v_status,
+--     'contact_id', v_contact,
+--     'contact_created', v_created,
+--     'matched_by', v_matched,
+--     'conflict_contact_id', v_conflict,
+--     'conflicts', v_conflicts,
+--     'signature_id', v_sig
+--   );
+-- END;
+-- $function$
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.submit_form_response(p_form_id uuid, p_version_id uuid, p_idempotency_key uuid, p_answers jsonb, p_attribution jsonb, p_meta jsonb, p_contact_hint jsonb DEFAULT '{}'::jsonb, p_extra jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_form      public.forms%ROWTYPE;
+  v_id        uuid;
+  v_existing  public.form_submissions%ROWTYPE;
+  v_hint      jsonb := COALESCE(p_contact_hint, '{}'::jsonb);
+  v_mode      text;
+  v_overwrite boolean;
+  v_name      text := nullif(btrim(v_hint ->> 'display_name'), '');
+  v_email     text := public.normalize_email(v_hint ->> 'email');
+  v_phone     text := public.normalize_phone(v_hint ->> 'phone');
+  v_wa        text := public.normalize_phone(v_hint ->> 'whatsapp_phone');
+  v_country   text := nullif(btrim(v_hint ->> 'country'), '');
+  -- R5: usuarios de redes sociales. El servidor ya los normalizo; aca se vuelven a validar (la base manda).
+  v_ig        text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,instagram}', ''), '^@+', ''))) ~ '^[a-z0-9._]{1,30}$'
+                           THEN lower(btrim(regexp_replace(v_hint #>> '{social,instagram}', '^@+', ''))) END;
+  v_tt        text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,tiktok}', ''), '^@+', ''))) ~ '^[a-z0-9._]{2,24}$'
+                           THEN lower(btrim(regexp_replace(v_hint #>> '{social,tiktok}', '^@+', ''))) END;
+  v_x         text := CASE WHEN lower(btrim(regexp_replace(COALESCE(v_hint #>> '{social,x}', ''), '^@+', ''))) ~ '^[a-z0-9_]{1,15}$'
+                           THEN lower(btrim(regexp_replace(v_hint #>> '{social,x}', '^@+', ''))) END;
+  v_li        text := CASE WHEN public.linkedin_slug(v_hint #>> '{social,linkedin}') IS NOT NULL
+                           THEN 'https://www.linkedin.com/in/' || public.linkedin_slug(v_hint #>> '{social,linkedin}') END;
+  v_fb        text := CASE WHEN length(regexp_replace(COALESCE(v_hint #>> '{social,facebook}', ''), '[\s@]', '', 'g')) BETWEEN 1 AND 200
+                           THEN regexp_replace(v_hint #>> '{social,facebook}', '[\s@]', '', 'g') END;
+  v_yt        text := CASE WHEN length(regexp_replace(COALESCE(v_hint #>> '{social,youtube}', ''), '[\s@]', '', 'g')) BETWEEN 1 AND 200
+                           THEN regexp_replace(v_hint #>> '{social,youtube}', '[\s@]', '', 'g') END;
+  v_social    jsonb;
+  v_conflicts jsonb := '[]'::jsonb;
+  v_identity  jsonb;
+  v_has_ident boolean;
+  v_signed    uuid;
+  v_service   uuid;
+  v_sale      uuid;
+  v_contact   uuid;
+  v_created   boolean := false;
+  v_matched   text;
+  v_conflict  uuid;
+  v_found     jsonb;
+  v_status    text := 'no_contact';
+  v_score     integer;
+  v_nps       text;
+  v_once      text;
+  v_event     text;
+  v_score_key text;
+  v_field     record;
+  v_first_touch jsonb;
+  v_version   public.form_versions%ROWTYPE;
+  v_sig       uuid;
+  v_sale_reason text;
+BEGIN
+  SELECT * INTO v_form FROM public.forms WHERE id = p_form_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'El formulario no existe' USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.form_versions v WHERE v.id = p_version_id AND v.form_id = p_form_id
+  ) THEN
+    RAISE EXCEPTION 'La version no es de este formulario' USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  -- Contrato: la huella de la version se vuelve a calcular AHORA, sobre el texto guardado. Si no
+  -- coincide con la que se guardo al publicar, algo se corrompio: la firma falla y la excepcion
+  -- deshace TODO (ni la respuesta, ni el contacto, ni el job). Nada de lo que manda el navegador
+  -- entra en la huella: el pedido ni siquiera trae el texto.
+  IF v_form.type = 'contract' THEN
+    SELECT * INTO v_version FROM public.form_versions WHERE id = p_version_id;
+    IF v_version.contract_text IS NULL
+       OR v_version.contract_text_sha256 IS NULL
+       OR encode(sha256(convert_to(v_version.contract_text, 'UTF8')), 'hex') <> v_version.contract_text_sha256 THEN
+      RAISE EXCEPTION 'La huella del contrato no coincide con su texto' USING ERRCODE = 'data_exception';
+    END IF;
+  END IF;
+
+  -- Mismo pedido a la vez (doble clic, reintento de red, dos pestañas): se hacen en fila.
+  PERFORM pg_advisory_xact_lock(hashtextextended('form-submit:' || p_form_id::text || ':' || p_idempotency_key::text, 0));
+
+  SELECT * INTO v_existing
+  FROM public.form_submissions
+  WHERE form_id = p_form_id AND idempotency_key = p_idempotency_key;
+  IF FOUND THEN
+    RETURN jsonb_build_object(
+      'ok', true, 'duplicate', true,
+      'submission_id', v_existing.id, 'status', v_existing.status,
+      'contact_id', v_existing.contact_id, 'contact_created', v_existing.contact_created
+    );
+  END IF;
+
+  v_mode := COALESCE(v_form.contact_config ->> 'mode', 'create_or_link');
+  v_overwrite := COALESCE(v_form.contact_config ->> 'update', 'fill_empty') = 'overwrite';
+
+  -- R3: con el interruptor "Vincular las respuestas con contactos" apagado la respuesta no resuelve, no crea ni
+  -- actualiza ningun contacto, tampoco con un link firmado. Lo que haya llegado en el hint se descarta aca,
+  -- aunque el servidor ya no lo mande: la base es la que hace cumplir la regla.
+  IF v_mode = 'none' THEN
+    v_name := NULL; v_email := NULL; v_phone := NULL; v_wa := NULL; v_country := NULL;
+    v_ig := NULL; v_tt := NULL; v_x := NULL; v_li := NULL; v_fb := NULL; v_yt := NULL;
+    v_hint := '{}'::jsonb;
+  END IF;
+  v_has_ident := v_email IS NOT NULL OR v_phone IS NOT NULL OR v_wa IS NOT NULL
+                 OR v_ig IS NOT NULL OR v_tt IS NOT NULL OR v_x IS NOT NULL OR v_li IS NOT NULL;
+  v_social := jsonb_strip_nulls(jsonb_build_object('instagram', v_ig, 'tiktok', v_tt, 'x', v_x, 'linkedin', v_li));
+  v_identity := jsonb_strip_nulls(jsonb_build_object(
+    'phone', v_phone, 'whatsapp_phone', v_wa, 'email', v_email,
+    'instagram', v_ig, 'tiktok', v_tt, 'x', v_x, 'linkedin', v_li));
+
+  -- Los ids del link firmado: solo se aceptan si el contacto existe en ESTE workspace.
+  IF (v_hint ->> 'signed_contact_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+    SELECT c.id INTO v_signed
+    FROM public.contacts c
+    WHERE c.id = (v_hint ->> 'signed_contact_id')::uuid
+      AND c.workspace_id = v_form.workspace_id AND c.deleted_at IS NULL;
+  END IF;
+  IF v_signed IS NOT NULL THEN
+    IF (v_hint ->> 'signed_service_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      v_service := (v_hint ->> 'signed_service_id')::uuid;
+    END IF;
+    IF (v_hint ->> 'signed_sale_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      v_sale := (v_hint ->> 'signed_sale_id')::uuid;
+    END IF;
+  END IF;
+
+  -- 1. Resolver el contacto (todavia sin tocar nada).
+  IF v_signed IS NOT NULL THEN
+    v_contact := v_signed;
+    v_matched := 'link';
+  ELSIF v_has_ident THEN
+    -- La regla central (C2, 00200): bloquea por cada dato con el que se puede identificar (siempre en el
+    -- mismo orden, sin interbloqueo) y busca. Los bloqueos duran hasta el final de esta transaccion: la
+    -- creacion del paso 3 ya los tiene. Orden de busqueda: telefono, WhatsApp, email, Instagram, TikTok,
+    -- X, LinkedIn (antes el WhatsApp solo se miraba si no habia telefono y el email no habia coincidido).
+    v_found := public.find_or_create_contact(v_form.workspace_id, v_identity, '{}'::jsonb, 'find_only');
+    v_contact := (v_found ->> 'contact_id')::uuid;
+    v_matched := v_found ->> 'matched_by';
+    v_conflict := (v_found ->> 'conflict_contact_id')::uuid;
+    v_conflicts := COALESCE(v_found -> 'conflicts', '[]'::jsonb);
+  END IF;
+
+  -- 2. Encuesta: puntaje, categoria y "una vez por contacto".
+  IF v_form.type = 'survey' THEN
+    v_score_key := v_form.survey_config ->> 'scoreFieldKey';
+    IF v_score_key IS NOT NULL AND jsonb_typeof(p_answers -> v_score_key -> 'value') = 'number' THEN
+      v_score := round((p_answers -> v_score_key ->> 'value')::numeric)::integer;
+      IF p_answers -> v_score_key ->> 'type' = 'nps' THEN
+        v_nps := CASE WHEN v_score >= 9 THEN 'promoter' WHEN v_score >= 7 THEN 'passive' ELSE 'detractor' END;
+      END IF;
+    END IF;
+
+    IF COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+      IF v_contact IS NOT NULL THEN
+        v_once := 'contact:' || v_contact::text;
+      ELSIF v_email IS NOT NULL THEN
+        v_once := 'email:' || v_email;
+      END IF;
+      -- Se miran las DOS claves: una respuesta anterior pudo guardarse con el email (el contacto
+      -- todavia no existia) o con el contacto. Con una sola, la segunda respuesta de alguien que
+      -- se creo con la primera no se detectaba.
+      IF EXISTS (
+        SELECT 1 FROM public.form_submissions s
+        WHERE s.form_id = p_form_id AND s.status <> 'spam'
+          AND s.once_key = ANY (array_remove(ARRAY[
+            CASE WHEN v_contact IS NOT NULL THEN 'contact:' || v_contact::text END,
+            CASE WHEN v_email IS NOT NULL THEN 'email:' || v_email END
+          ], NULL))
+      ) THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+      END IF;
+    END IF;
+  END IF;
+
+  -- 3. Crear o completar el contacto.
+  IF v_contact IS NULL THEN
+    IF v_mode = 'create_or_link' AND v_has_ident THEN
+      v_found := public.find_or_create_contact(
+        v_form.workspace_id,
+        v_identity,
+        jsonb_strip_nulls(jsonb_build_object(
+          -- Sin nombre y solo con un usuario de red social, el usuario hace de nombre ("@ana"): la app mostraria
+          -- "Sin nombre" y la base lo marcaria como anonimo (is_anonymous solo mira Instagram, no TikTok/X/LinkedIn).
+          'display_name', COALESCE(v_name, CASE WHEN v_email IS NULL AND v_phone IS NULL AND v_wa IS NULL
+                                                THEN COALESCE('@' || v_ig, '@' || v_tt, '@' || v_x, public.linkedin_slug(v_li)) END),
+          'country', v_country,
+          'facebook_id', v_fb,
+          'youtube_channel_id', v_yt,
+          'attribution', jsonb_build_object('source', 'form', 'referrer', p_attribution ->> 'referrer_url'),
+          'last_interaction_at', now()
+        )),
+        'create'
+      );
+      v_contact := (v_found ->> 'contact_id')::uuid;
+      v_created := COALESCE((v_found ->> 'created')::boolean, false);
+      IF NOT v_created AND v_contact IS NOT NULL THEN
+        -- Otra respuesta creo a la misma persona en el medio (no pasa con los bloqueos del paso 1, pero la
+        -- base manda): se trata como un contacto encontrado.
+        v_matched := v_found ->> 'matched_by';
+        v_conflict := (v_found ->> 'conflict_contact_id')::uuid;
+        v_conflicts := COALESCE(v_found -> 'conflicts', '[]'::jsonb);
+      END IF;
+    END IF;
+  END IF;
+
+  IF v_contact IS NOT NULL AND NOT v_created THEN
+    UPDATE public.contacts c
+    SET display_name = CASE WHEN v_overwrite THEN COALESCE(v_name, c.display_name)
+                            WHEN COALESCE(btrim(c.display_name), '') = '' THEN v_name ELSE c.display_name END,
+        -- Un telefono o email que ya es de OTRO contacto no se escribe (dejaria dos contactos con el mismo dato).
+        email        = CASE WHEN private.contact_value_taken(v_form.workspace_id, c.id, 'email', v_email) THEN c.email
+                            WHEN v_overwrite THEN COALESCE(v_email, c.email)
+                            WHEN COALESCE(btrim(c.email), '') = '' THEN v_email ELSE c.email END,
+        phone        = CASE WHEN private.contact_value_taken(v_form.workspace_id, c.id, 'phone', v_phone) THEN c.phone
+                            WHEN v_overwrite THEN COALESCE(v_phone, c.phone)
+                            WHEN COALESCE(btrim(c.phone), '') = '' THEN v_phone ELSE c.phone END,
+        whatsapp_phone = CASE WHEN private.contact_value_taken(v_form.workspace_id, c.id, 'phone', v_wa) THEN c.whatsapp_phone
+                              WHEN v_overwrite THEN COALESCE(v_wa, c.whatsapp_phone)
+                              WHEN COALESCE(btrim(c.whatsapp_phone), '') = '' THEN v_wa ELSE c.whatsapp_phone END,
+        country      = CASE WHEN v_overwrite THEN COALESCE(v_country, c.country)
+                            WHEN COALESCE(btrim(c.country), '') = '' THEN v_country ELSE c.country END,
+        -- Redes sociales (R5): la misma regla fill_empty / overwrite. Un usuario que ya es de OTRO contacto
+        -- (esta en `conflicts`) no se escribe: dejaria dos contactos con el mismo identificador.
+        instagram_username = CASE
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'instagram') THEN c.instagram_username
+          -- Excepcion: el @ de un contacto con un canal de Instagram vinculado lo mantiene la conversacion real
+          -- y un formulario no puede cambiarlo (ni siquiera con overwrite).
+          WHEN EXISTS (SELECT 1 FROM public.contact_channels cc JOIN public.channels ch ON ch.id = cc.channel_id
+                       WHERE cc.contact_id = c.id AND ch.platform = 'instagram') THEN c.instagram_username
+          WHEN v_overwrite THEN COALESCE(v_ig, c.instagram_username)
+          WHEN COALESCE(btrim(c.instagram_username), '') = '' THEN v_ig ELSE c.instagram_username END,
+        tiktok_username = CASE
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'tiktok') THEN c.tiktok_username
+          WHEN v_overwrite THEN COALESCE(v_tt, c.tiktok_username)
+          WHEN COALESCE(btrim(c.tiktok_username), '') = '' THEN v_tt ELSE c.tiktok_username END,
+        twitter_username = CASE
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'x') THEN c.twitter_username
+          WHEN v_overwrite THEN COALESCE(v_x, c.twitter_username)
+          WHEN COALESCE(btrim(c.twitter_username), '') = '' THEN v_x ELSE c.twitter_username END,
+        linkedin_profile_url = CASE
+          WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_conflicts) k WHERE k ->> 'by' = 'linkedin') THEN c.linkedin_profile_url
+          WHEN v_overwrite THEN COALESCE(v_li, c.linkedin_profile_url)
+          WHEN COALESCE(btrim(c.linkedin_profile_url), '') = '' THEN v_li ELSE c.linkedin_profile_url END,
+        facebook_id  = CASE WHEN v_overwrite THEN COALESCE(v_fb, c.facebook_id)
+                            WHEN COALESCE(btrim(c.facebook_id), '') = '' THEN v_fb ELSE c.facebook_id END,
+        youtube_channel_id = CASE WHEN v_overwrite THEN COALESCE(v_yt, c.youtube_channel_id)
+                                  WHEN COALESCE(btrim(c.youtube_channel_id), '') = '' THEN v_yt ELSE c.youtube_channel_id END,
+        last_interaction_at = now()
+    WHERE c.id = v_contact AND c.workspace_id = v_form.workspace_id;
+  END IF;
+
+  IF v_contact IS NOT NULL THEN
+    v_status := 'received';
+    -- Con contacto (existente o recien creado), la clave es SIEMPRE la del contacto: la del email
+    -- solo vale para quien responde sin que se pueda identificar un contacto.
+    IF v_form.type = 'survey' AND COALESCE((v_form.survey_config ->> 'oncePerContact')::boolean, false) THEN
+      v_once := 'contact:' || v_contact::text;
+    END IF;
+
+    -- Campos personalizados (solo los que siguen existiendo en este workspace).
+    IF jsonb_typeof(v_hint -> 'custom') = 'object' THEN
+      FOR v_field IN
+        SELECT d.id AS field_id, e.value AS value
+        FROM jsonb_each_text(v_hint -> 'custom') e
+        JOIN public.custom_field_definitions d
+          ON d.id::text = e.key AND d.workspace_id = v_form.workspace_id AND d.deleted_at IS NULL
+        WHERE btrim(e.value) <> ''
+      LOOP
+        INSERT INTO public.contact_custom_fields (contact_id, field_id, value)
+        VALUES (v_contact, v_field.field_id, v_field.value)
+        ON CONFLICT (contact_id, field_id) DO UPDATE
+          SET value = EXCLUDED.value, updated_at = now()
+          WHERE v_overwrite OR btrim(public.contact_custom_fields.value) = '';
+      END LOOP;
+    END IF;
+
+    -- Etiquetas del formulario (las del workspace; las repetidas no hacen nada).
+    IF COALESCE(array_length(v_form.tags_on_submit, 1), 0) > 0 THEN
+      INSERT INTO public.contact_tags (contact_id, tag_id)
+      SELECT v_contact, t.id FROM public.tags t
+      WHERE t.workspace_id = v_form.workspace_id AND t.id = ANY (v_form.tags_on_submit)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END IF;
+
+  -- 3b. La venta del link firmado (Ventas, 00164): el 'signed_sale_id' solo vale si la venta existe,
+  -- es de ESTE workspace y es del MISMO contacto de la respuesta. Si no, se descarta (queda null) y
+  -- se anota en meta; la respuesta y la firma se guardan igual.
+  IF v_sale IS NOT NULL THEN
+    IF v_contact IS NULL THEN v_sale_reason := 'no_contact';
+    ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.workspace_id = v_form.workspace_id) THEN v_sale_reason := 'not_found';
+    ELSIF NOT EXISTS (SELECT 1 FROM public.sales s WHERE s.id = v_sale AND s.contact_id = v_contact) THEN v_sale_reason := 'other_contact';
+    END IF;
+    IF v_sale_reason IS NOT NULL THEN
+      v_sale := NULL;
+      p_meta := COALESCE(p_meta, '{}'::jsonb) || jsonb_build_object('sale_id_discarded', true, 'sale_id_discard_reason', v_sale_reason);
+    END IF;
+  END IF;
+
+  -- 4. La respuesta.
+  BEGIN
+    INSERT INTO public.form_submissions
+      (workspace_id, form_id, form_version_id, idempotency_key, status, answers,
+       contact_id, contact_created, dedupe, score, nps_category, once_key,
+       attribution, meta, upload_prefix, sale_id, service_id)
+    VALUES
+      (v_form.workspace_id, p_form_id, p_version_id, p_idempotency_key, v_status, p_answers,
+       v_contact, v_created,
+       jsonb_build_object('matched_by', v_matched, 'conflict_contact_id', v_conflict)
+         || CASE WHEN jsonb_array_length(v_conflicts) > 0 THEN jsonb_build_object('conflicts', v_conflicts) ELSE '{}'::jsonb END,
+       v_score, v_nps, v_once,
+       COALESCE(p_attribution, '{}'::jsonb), COALESCE(p_meta, '{}'::jsonb), p_extra ->> 'upload_prefix',
+       v_sale, v_service)
+    RETURNING id INTO v_id;
+  EXCEPTION WHEN unique_violation THEN
+    -- Carrera por "una vez por contacto": otra respuesta del mismo contacto se guardo en el medio.
+    RETURN jsonb_build_object('ok', false, 'error', 'already_answered');
+  END;
+
+  -- 4b. Contrato: la firma, en la MISMA transaccion que la respuesta. `record_contract_signature`
+  -- guarda la huella, la metadata legal y encola el PDF; si algo falla, no queda nada.
+  IF v_form.type = 'contract' THEN
+    v_sig := public.record_contract_signature(
+      v_id,
+      nullif(p_extra ->> 'signature_path', ''),
+      COALESCE(p_extra -> 'legal', '{}'::jsonb),
+      COALESCE(p_extra ->> 'signer_name', ''),
+      p_extra ->> 'signer_email'
+    );
+  END IF;
+
+  -- 5. Historial, y el evento de automatizacion (solo con contacto).
+  IF v_contact IS NOT NULL THEN
+    IF v_created OR v_matched IS NOT NULL THEN
+      INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, metadata, performed_by, actor_type, actor_label)
+      VALUES (
+        v_form.workspace_id, 'contact', v_contact,
+        CASE WHEN v_created THEN 'contact.created' ELSE 'contact.linked' END,
+        jsonb_build_object('source', 'form', 'form_id', p_form_id, 'submission_id', v_id, 'matched_by', v_matched),
+        NULL, 'system', 'Formulario: ' || v_form.name
+      );
+    END IF;
+
+    v_event := CASE v_form.type WHEN 'custom' THEN 'form_submitted' WHEN 'survey' THEN 'survey_answered' WHEN 'contract' THEN 'contract_signed' ELSE NULL END;
+    IF v_event IS NOT NULL THEN
+      INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+      VALUES (
+        v_form.workspace_id, v_event, v_contact,
+        jsonb_strip_nulls(jsonb_build_object(
+          'submission_id', v_id, 'form_id', p_form_id, 'form_type', v_form.type,
+          'score', v_score, 'nps_category', v_nps, 'sale_id', v_sale
+        ))
+      );
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'duplicate', false,
+    'submission_id', v_id,
+    'status', v_status,
+    'contact_id', v_contact,
+    'contact_created', v_created,
+    'matched_by', v_matched,
+    'conflict_contact_id', v_conflict,
+    'conflicts', v_conflicts,
+    'signature_id', v_sig
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_form_response(uuid, uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb) TO service_role;

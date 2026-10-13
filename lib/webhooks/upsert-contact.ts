@@ -1,8 +1,8 @@
 /**
  * «Crear o actualizar contacto» (Extra L, F12–F14): el núcleo del paso, SOLO servidor.
  *
- * Aplica el mapeo, busca a la persona con `find_contact_for_form` (teléfono, email y redes; NUNCA por
- * nombre), la crea o la actualiza según la política, suma tags y campos personalizados, anota el toque y
+ * Aplica el mapeo, busca o crea a la persona con la regla única (`find_or_create_contact`: teléfono, email y
+ * redes; NUNCA por nombre; dos envíos simultáneos de la misma persona dan UN contacto), la actualiza según la política, suma tags y campos personalizados, anota el toque y
  * deja el historial. Escribe con el cliente de SERVICIO y siempre sobre el `workspace_id` del endpoint
  * (nunca el del payload).
  *
@@ -18,6 +18,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import { auditAsWebhook } from "@/lib/audit";
 import { recordTouch } from "@/lib/contacts/touch";
+import { findContact as findExistingContact, findOrCreateContact } from "@/lib/contacts/find-or-create";
+import type { ContactIdentity } from "@/lib/contacts/identity";
 import { manualTouch } from "@/lib/contacts/touch-entry";
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import type { CustomFieldDef } from "@/lib/forms/contact-config";
@@ -67,32 +69,23 @@ interface Found {
   conflicts: { by: string; contact_id: string }[];
 }
 
-async function findContact(db: Db, workspaceId: string, mapped: MappedContactColumns): Promise<Found> {
-  const social = Object.fromEntries(
-    Object.entries({ instagram: mapped.instagram_username, tiktok: mapped.tiktok_username, x: mapped.twitter_username, linkedin: mapped.linkedin_profile_url }).filter(([, v]) => !!v),
-  );
-  const probe = async (phone: string | null): Promise<Found> => {
-    const { data, error } = await db.rpc("find_contact_for_form", { p_workspace_id: workspaceId, p_phone: (phone ?? null) as never, p_email: (mapped.email ?? null) as never, p_social: social as Json });
-    if (error) throw new Error(`no pude buscar el contacto: ${error.message}`);
-    const r = (data ?? {}) as { contact_id?: string | null; matched_by?: string | null; conflicts?: { by: string; contact_id: string }[] };
-    return { contactId: r.contact_id ?? null, matchedBy: r.matched_by ?? null, conflicts: Array.isArray(r.conflicts) ? r.conflicts : [] };
+/** Lo que se mapeó, como identidad para la regla única. */
+function identityOf(mapped: MappedContactColumns): ContactIdentity {
+  return {
+    phone: mapped.phone ?? null,
+    whatsapp_phone: mapped.whatsapp_phone ?? null,
+    email: mapped.email ?? null,
+    instagram: mapped.instagram_username ?? null,
+    tiktok: mapped.tiktok_username ?? null,
+    x: mapped.twitter_username ?? null,
+    linkedin: mapped.linkedin_profile_url ?? null,
   };
+}
 
-  const phones = [mapped.phone, mapped.whatsapp_phone].filter((p): p is string => !!p);
-  const candidates: (string | null)[] = [];
-  for (const p of phones) {
-    candidates.push(p);
-    // Un teléfono guardado sin el «+» (de antes de normalizar): se prueba también sin él.
-    if (p.startsWith("+")) candidates.push(p.slice(1));
-  }
-  if (candidates.length === 0) candidates.push(null);
-
-  let last: Found = { contactId: null, matchedBy: null, conflicts: [] };
-  for (const phone of [...new Set(candidates)]) {
-    last = await probe(phone);
-    if (last.contactId) return last;
-  }
-  return last;
+/** Sin nombre se usa el email o el teléfono; con solo un usuario de red, el usuario hace de nombre ("@ana"). */
+function nameOf(mapped: MappedContactColumns): string | null {
+  const handle = mapped.instagram_username ?? mapped.tiktok_username ?? mapped.twitter_username;
+  return mapped.display_name ?? mapped.email ?? mapped.phone ?? mapped.whatsapp_phone ?? (handle ? `@${handle}` : mapped.linkedin_profile_url ?? null);
 }
 
 /** Quien llama lo trata como `created | updated | unchanged` y arma con eso el resultado del envío. */
@@ -113,32 +106,42 @@ export async function upsertContactFromWebhook(args: UpsertArgs): Promise<Upsert
 
   if (!hasIdentifier(mapping.contact)) return { ok: false, reason: "no_identifier", notes };
 
-  let found = await findContact(db, workspaceId, mapping.contact);
-  let contactId = found.contactId;
-  let created = false;
-  let existing: ContactRow | null = null;
+  // Una sola regla para buscar o crear (00200). `update_only` solo busca.
+  const identity = identityOf(mapping.contact);
+  const central =
+    config.mode === "update_only"
+      ? await findExistingContact(db, { workspaceId, identity })
+      : await findOrCreateContact(db, {
+          workspaceId,
+          identity,
+          defaults: {
+            display_name: nameOf(mapping.contact),
+            country: mapping.contact.country ?? null,
+            facebook_id: mapping.contact.facebook_id ?? null,
+            youtube_channel_id: mapping.contact.youtube_channel_id ?? null,
+            last_interaction_at: new Date().toISOString(),
+          },
+          mode: "create",
+        });
+  // Los datos mapeados no alcanzan para identificar a nadie (un teléfono que no es un número, por ejemplo).
+  if (central.status === "no_identity") return { ok: false, reason: "no_identifier", notes };
 
-  if (contactId) {
-    existing = await loadContact(db, workspaceId, contactId);
-    if (!existing) contactId = null; // se borró entre la búsqueda y la lectura: se trata como nuevo
-  }
+  const found = { contactId: central.contactId, conflicts: central.conflicts };
+  const contactId = central.contactId;
+  const created = central.created;
+  let existing: ContactRow | null = null;
 
   const diff: FieldDiff = {};
 
   if (!contactId) {
-    if (config.mode === "update_only") return { ok: false, reason: "not_found", notes };
-    const inserted = await insertContact(db, workspaceId, mapping.contact);
-    if (inserted.raceWith) {
-      // Otro envío creó a la misma persona en el medio: se vuelve a buscar y se trata como existente.
-      found = await findContact(db, workspaceId, mapping.contact);
-      contactId = found.contactId;
-      existing = contactId ? await loadContact(db, workspaceId, contactId) : null;
-      if (!existing) throw new Error("no pude crear ni encontrar el contacto");
-    } else {
-      contactId = inserted.id;
-      created = true;
-      for (const [k, v] of Object.entries(mapping.contact)) diff[k] = { before: null, after: v };
-    }
+    // update_only y no existe.
+    return { ok: false, reason: "not_found", notes };
+  }
+  if (created) {
+    for (const [k, v] of Object.entries(mapping.contact)) diff[k] = { before: null, after: v };
+  } else {
+    existing = await loadContact(db, workspaceId, contactId);
+    if (!existing) throw new Error("no pude leer el contacto que encontré");
   }
 
   const finalId = contactId as string;
@@ -234,23 +237,6 @@ export function buildPatch(current: Record<Column, string | null>, mapped: Mappe
     patch[column] = value as string;
   }
   return patch;
-}
-
-async function insertContact(db: Db, workspaceId: string, mapped: MappedContactColumns): Promise<{ id: string; raceWith?: false } | { id?: never; raceWith: true }> {
-  // Sin nombre se usa el email o el teléfono; con solo un usuario de red, el usuario hace de nombre ("@ana").
-  const handle = mapped.instagram_username ?? mapped.tiktok_username ?? mapped.twitter_username;
-  const name = mapped.display_name ?? mapped.email ?? mapped.phone ?? mapped.whatsapp_phone ?? (handle ? `@${handle}` : mapped.linkedin_profile_url ?? null);
-  const { data, error } = await db
-    .from("contacts")
-    .insert({ workspace_id: workspaceId, ...mapped, display_name: name, last_interaction_at: new Date().toISOString() } as never)
-    .select("id")
-    .single();
-  if (error) {
-    // 23505: otro envío creó a la misma persona justo antes (índice único por email o teléfono).
-    if (error.code === "23505") return { raceWith: true };
-    throw new Error(`no pude crear el contacto: ${error.message}`);
-  }
-  return { id: (data as { id: string }).id };
 }
 
 async function writeCustomFields(db: Db, contactId: string, defs: CustomFieldDef[], values: Record<string, string>, overwrite: boolean, isNew: boolean): Promise<FieldDiff> {

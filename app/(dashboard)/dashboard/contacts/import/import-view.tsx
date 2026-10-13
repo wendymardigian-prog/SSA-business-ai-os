@@ -25,6 +25,8 @@ type Step = "upload" | "map" | "running" | "done";
 interface Resultado {
   imported: number;
   updated: number;
+  linkedBy: { phone: number; email: number; social: number };
+  skippedConflicts: number;
   errors: number;
   details: { line: number; error: string }[];
 }
@@ -118,7 +120,7 @@ export function ImportView({
       return;
     }
 
-    const acumulado: Resultado = { imported: 0, updated: 0, errors: 0, details: [] };
+    const acumulado: Resultado = { imported: 0, updated: 0, linkedBy: { phone: 0, email: 0, social: 0 }, skippedConflicts: 0, errors: 0, details: [] };
     const tandas = Math.ceil(rows.length / IMPORT_BATCH_SIZE);
 
     for (let t = 0; t < tandas; t++) {
@@ -142,6 +144,10 @@ export function ImportView({
 
       acumulado.imported += res.counters.imported;
       acumulado.updated += res.counters.updated;
+      acumulado.linkedBy.phone += res.counters.linkedBy.phone;
+      acumulado.linkedBy.email += res.counters.linkedBy.email;
+      acumulado.linkedBy.social += res.counters.linkedBy.social;
+      acumulado.skippedConflicts += res.counters.skippedConflicts;
       acumulado.errors += res.counters.errors;
       acumulado.details.push(...res.counters.details);
       setProgress(Math.round(((t + 1) / tandas) * 100));
@@ -455,6 +461,16 @@ function DoneStep({ result, fileName }: { result: Resultado; fileName: string })
         <Counter label="Actualizados" value={result.updated} />
         <Counter label="Con error" value={result.errors} destacar={result.errors > 0} />
       </div>
+
+      {result.updated > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Vinculadas a un contacto que ya existía: {result.updated.toLocaleString("es-AR")} (por teléfono{" "}
+          {result.linkedBy.phone.toLocaleString("es-AR")}, por email {result.linkedBy.email.toLocaleString("es-AR")}, por usuario de red{" "}
+          {result.linkedBy.social.toLocaleString("es-AR")}).
+          {result.skippedConflicts > 0 &&
+            ` ${result.skippedConflicts.toLocaleString("es-AR")} dato(s) de la planilla no se escribieron porque ya son de otro contacto.`}
+        </p>
+      )}
 
       {result.details.length > 0 && (
         <section>

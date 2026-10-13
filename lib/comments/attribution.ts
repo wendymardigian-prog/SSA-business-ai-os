@@ -30,14 +30,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, SocialPlatform } from "@/lib/types/database";
 import { recordTouch } from "@/lib/contacts/touch";
+import { findContact, findOrCreateContact } from "@/lib/contacts/find-or-create";
 
 type Db = SupabaseClient<Database>;
 
-/** En qué columna vive el usuario de cada red (las dos con comentarios). */
-const USERNAME_COLUMN = {
-  instagram: "instagram_username",
-  tiktok: "tiktok_username",
-} as const;
+/** Las dos redes con comentarios. */
+const SUPPORTED = { instagram: true, tiktok: true } as const;
 
 /**
  * El nombre con el que nace un contacto que solo comentó. Es uno de los
@@ -78,22 +76,6 @@ const snippet = (text: string | null): string | null => {
   const line = (text ?? "").split("\n").find((l) => l.trim());
   return line ? line.trim().slice(0, 80) : null;
 };
-
-async function findContactId(
-  supabase: Db,
-  workspaceId: string,
-  column: "instagram_username" | "tiktok_username",
-  username: string,
-): Promise<string | null> {
-  const { data } = await supabase
-    .from("contacts")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq(column, username)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return data?.id ?? null;
-}
 
 /**
  * La pieza que se comentó, en palabras y en ids: el id del post de contenido (si
@@ -137,31 +119,26 @@ export async function attributeComment(
   try {
     if (params.isOwn) return NOTHING;
 
-    const column = USERNAME_COLUMN[params.platform as keyof typeof USERNAME_COLUMN];
+    const platform = params.platform as keyof typeof SUPPORTED;
     const username = params.authorUsername?.trim();
-    if (!column || !username) return NOTHING;
+    if (!SUPPORTED[platform] || !username) return NOTHING;
 
-    let contactId = await findContactId(supabase, params.workspaceId, column, username);
+    // La regla única (00200): el usuario se compara en minúsculas y sin "@", y dos comentarios
+    // simultáneos de la misma persona dan UN contacto. Instagram solo busca; TikTok también crea.
+    const identity = platform === "tiktok" ? { tiktok: username } : { instagram: username };
+    let contactId: string | null;
     let createdContact = false;
-
-    if (!contactId && params.platform === "tiktok") {
-      const { data, error } = await supabase
-        .from("contacts")
-        .insert({
-          workspace_id: params.workspaceId,
-          display_name: ANONYMOUS_NAME,
-          tiktok_username: username,
-          last_interaction_at: new Date().toISOString(),
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (error || !data) {
-        console.error("[atribucion] no pude crear el contacto del comentario:", error?.message);
-        return NOTHING;
-      }
-      contactId = data.id;
-      createdContact = true;
+    if (params.platform === "tiktok") {
+      const result = await findOrCreateContact(supabase, {
+        workspaceId: params.workspaceId,
+        identity,
+        defaults: { display_name: ANONYMOUS_NAME, last_interaction_at: new Date().toISOString() },
+        mode: "create",
+      });
+      contactId = result.contactId;
+      createdContact = result.created;
+    } else {
+      contactId = (await findContact(supabase, { workspaceId: params.workspaceId, identity })).contactId;
     }
 
     if (!contactId) return NOTHING;

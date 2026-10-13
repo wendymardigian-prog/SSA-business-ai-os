@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 
 const WS = "ws-1";
 const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -17,7 +18,7 @@ let db: MemoryDb;
 let role = "admin";
 let roleId: string | null = null;
 let rpcResult: { data?: unknown; error?: { message: string } } = { data: { sale_id: "sale-1" } };
-let findResult: unknown = { contact_id: null };
+let centralResult: { data?: unknown; error?: { message: string } } = { data: null };
 const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -34,7 +35,11 @@ vi.mock("@/lib/supabase/server", () => ({
     from: (t: string) => (db.client as unknown as { from: (t: string) => unknown }).from(t),
     rpc: async (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args });
-      if (name === "find_contact_by_phone_or_email") return { data: findResult, error: null };
+      if (name === "find_or_create_contact") {
+        // La regla unica: o devuelve lo programado, o crea el contacto en memoria como lo haria la base.
+        if (centralResult.error) return { data: null, error: centralResult.error };
+        return { data: centralResult.data ?? memoryCentralRpc(args, db), error: null };
+      }
       return { data: rpcResult.data ?? null, error: rpcResult.error ?? null };
     },
   }),
@@ -60,7 +65,7 @@ beforeEach(() => {
   role = "admin";
   roleId = null;
   rpcResult = { data: { sale_id: "sale-1" } };
-  findResult = { contact_id: null };
+  centralResult = { data: null };
   rpcCalls.length = 0;
   db = seed();
 });
@@ -136,22 +141,34 @@ describe("createSale", () => {
 });
 
 describe("createContactForSale", () => {
-  it("si la función encuentra un contacto, usa ese y NO inserta uno duplicado (y avisa del conflicto)", async () => {
-    findResult = { contact_id: CONTACT, matched_by: "phone", conflict_contact_id: U(11) };
+  it("si la regla unica encuentra un contacto, usa ese y NO inserta uno duplicado (y avisa del conflicto)", async () => {
+    centralResult = { data: { contact_id: CONTACT, created: false, matched_by: "phone", conflict_contact_id: U(11), conflicts: [{ by: "email", contact_id: U(11) }], status: "found" } };
     const r = await createContactForSale({ name: "Ana", email: "ana@x.co", phone: "+50688887777" });
     expect(r).toMatchObject({ ok: true, contactId: CONTACT, created: false });
     expect(r.ok && r.notice).toContain("El email pertenece a otro contacto");
     expect(db.rows("contacts")).toHaveLength(1);
-    expect(rpcCalls[0]).toMatchObject({ name: "find_contact_by_phone_or_email" });
+    expect(rpcCalls[0]).toMatchObject({ name: "find_or_create_contact" });
     expect(rpcCalls.map((c) => c.name)).not.toContain("find_or_link_contact");
   });
 
-  it("si devuelve contact_id null, inserta exactamente un contacto nuevo", async () => {
-    findResult = { contact_id: null };
-    const r = await createContactForSale({ name: "Beto", email: "beto@x.co" });
+  it("si no hay nadie, crea exactamente un contacto nuevo (con el telefono normalizado)", async () => {
+    const r = await createContactForSale({ name: "Beto", email: "BETO@x.co", phone: " 506 8888-7777 " });
     expect(r).toMatchObject({ ok: true, created: true });
     expect(db.rows("contacts")).toHaveLength(2);
-    expect(db.rows("contacts")[1]).toMatchObject({ workspace_id: WS, display_name: "Beto", email: "beto@x.co" });
+    expect(db.rows("contacts")[1]).toMatchObject({ workspace_id: WS, display_name: "Beto", email: "beto@x.co", phone: "+50688887777" });
+  });
+
+  it("un error de la base al buscar NO se toma como 'no esta': no crea nada", async () => {
+    centralResult = { error: { message: "la base se cayo" } };
+    const r = await createContactForSale({ name: "Ana", email: "ana@x.co" });
+    expect(r).toMatchObject({ ok: false });
+    expect(db.rows("contacts")).toHaveLength(1);
+  });
+
+  it("un telefono que no es un numero y sin email: se rechaza con un mensaje claro", async () => {
+    const r = await createContactForSale({ name: "Ana", phone: "123" });
+    expect(r).toMatchObject({ ok: false });
+    expect(db.rows("contacts")).toHaveLength(1);
   });
 
   it("un Member con alcance own queda como setter del contacto nuevo (si no, no lo vería)", async () => {

@@ -11,7 +11,7 @@ import { parseUpsertContactConfig } from "@/lib/webhooks/upsert-config";
 import { countryFromTimezone } from "@/lib/scheduling/phone-countries";
 import type { CustomFieldDef } from "@/lib/forms/contact-config";
 import type { PickerEndpoint, UpsertEditorContext, UpsertPreview, WebhookActionResult } from "@/lib/webhooks/action-types";
-import type { Json } from "@/lib/types/database";
+import { findContact } from "@/lib/contacts/find-or-create";
 
 /**
  * Lo que el editor de flujos necesita de los webhooks: elegir el endpoint del disparador, el ejemplo y
@@ -116,19 +116,14 @@ export async function testUpsertMapping(input: { endpointId: string | null; conf
   if (!hasIdentifier(mapping.contact)) {
     outcome = { kind: "fail", reason: "no_identifier" };
   } else {
-    const social = Object.fromEntries(
-      Object.entries({ instagram: mapping.contact.instagram_username, tiktok: mapping.contact.tiktok_username, x: mapping.contact.twitter_username, linkedin: mapping.contact.linkedin_profile_url }).filter(([, v]) => !!v),
-    );
-    const phones = [mapping.contact.phone, mapping.contact.whatsapp_phone].filter((p): p is string => !!p);
-    const candidates: (string | null)[] = phones.flatMap((p) => (p.startsWith("+") ? [p, p.slice(1)] : [p]));
-    if (candidates.length === 0) candidates.push(null);
-    let found: { contact_id?: string | null; conflicts?: unknown[] } = {};
-    for (const phone of [...new Set(candidates)]) {
-      const { data } = await g.db.rpc("find_contact_for_form", { p_workspace_id: ws, p_phone: phone, p_email: mapping.contact.email ?? null, p_social: social as Json });
-      found = (data ?? {}) as typeof found;
-      if (found.contact_id) break;
-    }
-    conflicts = Array.isArray(found.conflicts) ? found.conflicts.length : 0;
+    // La misma búsqueda que el paso real (la regla única), sin crear nada.
+    const c = mapping.contact;
+    const hit = await findContact(g.db, {
+      workspaceId: ws,
+      identity: { phone: c.phone, whatsapp_phone: c.whatsapp_phone, email: c.email, instagram: c.instagram_username, tiktok: c.tiktok_username, x: c.twitter_username, linkedin: c.linkedin_profile_url },
+    });
+    const found = { contact_id: hit.contactId, conflicts: hit.conflicts };
+    conflicts = found.conflicts.length;
     if (found.contact_id) {
       // El nombre solo si quien prueba puede ver al contacto (su RLS).
       const { data: visible } = await g.ctx.supabase.from("contacts").select("display_name").eq("id", found.contact_id).maybeSingle();

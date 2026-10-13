@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 
 const WS = "ws-1";
 const USER = "user-1";
@@ -37,22 +38,12 @@ vi.mock("@/lib/auth/guards", () => ({ getAdminContext: async () => null }));
 // no tener que mockear tambien @/lib/supabase/server#createClient.
 vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 
-// El detector de duplicados usa `.or()`, que la base en memoria no soporta.
-const duplicates = new Set<string>();
-vi.mock("@/lib/contacts/dedup", () => ({
-  findDuplicateContact: async ({ emails = [] }: { emails?: Array<string | null> }) => {
-    const hit = emails.find((email) => email && duplicates.has(email));
-    return hit ? { id: `existente-${hit}` } : null;
-  },
-}));
-
 const { createContact } = await import("./contacts");
 const { importBatch } = await import("./csv-import");
 
 beforeEach(() => {
   touches.length = 0;
   touchesFail = false;
-  duplicates.clear();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   db = memoryDb(
     {
@@ -64,6 +55,7 @@ beforeEach(() => {
     },
     {
       rpc: {
+        find_or_create_contact: memoryCentralRpc,
         record_contact_touch: (args) => {
           if (touchesFail) throw new Error("la atribucion se cayo");
           touches.push({ contactId: String(args.p_contact_id), touch: args.p_touch as Record<string, unknown> });
@@ -101,7 +93,7 @@ describe("el alta manual deja un toque (F87)", () => {
   });
 
   it("un duplicado no anota nada", async () => {
-    duplicates.add("ana@example.com");
+    db.rows("contacts").push({ id: "ya-existe", workspace_id: WS, display_name: "Ana", email: "ana@example.com", deleted_at: null });
 
     const result = await createContact({ display_name: "Ana", email: "ana@example.com" });
 
@@ -138,9 +130,7 @@ describe("la importación de CSV deja un toque por contacto nuevo (F87)", () => 
   });
 
   it("un contacto que YA existía se actualiza pero NO se anota: no es un origen nuevo", async () => {
-    duplicates.add("viejo@example.com");
-    // El contacto que el detector dice que ya existe tiene que estar de verdad.
-    db.rows("contacts").push({ id: "existente-viejo@example.com", workspace_id: WS, display_name: "Viejo", email: "viejo@example.com" });
+    db.rows("contacts").push({ id: "existente-viejo@example.com", workspace_id: WS, display_name: "Viejo", email: "viejo@example.com", deleted_at: null });
 
     const result = await batch([["Nuevo", "nuevo@example.com"], ["Viejo", "viejo@example.com"]]);
 

@@ -9,7 +9,8 @@ import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { parseTrackingParams } from "@/lib/contacts/attribution";
 import { recordManualTouch } from "@/lib/contacts/touch-entry";
-import { findDuplicateContact } from "@/lib/contacts/dedup";
+import { findOrCreateContact } from "@/lib/contacts/find-or-create";
+import { describeContactUniqueViolation } from "@/lib/contacts/unique-errors";
 import type { Json } from "@/lib/types/database";
 import { BULK_TAG_LIMIT } from "@/lib/tags/effects";
 
@@ -78,38 +79,70 @@ export async function createContact(
     return { ok: false, error: "Poné al menos un nombre, un email o un telefono" };
   }
 
-  // Deduplicacion por dato fuerte, la misma que usa la importacion de CSV.
-  const existing = await findDuplicateContact({
-    supabase,
-    workspaceId: workspace.id,
-    phones: [patch.phone, patch.whatsapp_phone],
-    emails: [patch.email, patch.secondary_email],
-  });
-
-  if (existing) {
-    return {
-      ok: false,
-      error: "Ya existe un contacto con ese telefono o email. Te llevo a su ficha.",
-      contactId: existing.id as string,
-      duplicate: true,
-    };
-  }
+  // Una sola regla para buscar o crear (00200): telefono, WhatsApp, email (y secundario) y los usuarios de
+  // Instagram, TikTok, X y LinkedIn, nunca el nombre. Se busca entre TODOS los contactos del workspace,
+  // incluso los que quien carga no ve (la funcion corre con el cliente de servicio; el workspace sale de la
+  // sesion). Es el unico camino que puede crear un contacto con solo el nombre.
+  const service = await createServiceClient();
+  const {
+    phone, whatsapp_phone, email, secondary_email, instagram_username, tiktok_username, twitter_username,
+    linkedin_profile_url, ...rest
+  } = patch;
 
   // Las UTM que traiga el pedido (la pantalla hoy no las pide, la accion si las
   // acepta) se anotan como el toque del alta. Ya no se escribe la forma vieja de
   // clicks en `attribution`: lo escribe `record_contact_touch` (F87).
   const tracking = parseTrackingParams(input);
 
-  const { data, error } = await supabase
-    .from("contacts")
-    .insert({ workspace_id: workspace.id, ...patch })
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    console.error("[contacts] alta fallida:", error?.message);
-    return { ok: false, error: `No pude crear el contacto: ${error?.message ?? "error desconocido"}` };
+  let result;
+  try {
+    result = await findOrCreateContact(service, {
+      workspaceId: workspace.id,
+      identity: {
+        phone, whatsapp_phone, email, secondary_email,
+        instagram: instagram_username, tiktok: tiktok_username, x: twitter_username, linkedin: linkedin_profile_url,
+      },
+      defaults: rest,
+      mode: "create",
+      allowWithoutIdentity: true,
+    });
+  } catch (err) {
+    console.error("[contacts] alta fallida:", err instanceof Error ? err.message : "error desconocido");
+    return { ok: false, error: "No pude crear el contacto. Probá de nuevo en un momento." };
   }
+
+  if (!result.contactId) {
+    return { ok: false, error: "No pude crear el contacto" };
+  }
+
+  if (!result.created) {
+    // Ya existia. Si quien carga lo ve (su RLS), lo llevamos a la ficha; si no, NO le damos ni el enlace ni
+    // el nombre: no puede ver ese contacto.
+    const { data: visible } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("id", result.contactId)
+      .eq("workspace_id", workspace.id)
+      .maybeSingle();
+    if (visible) {
+      const byHandle = result.matchedBy && !["phone", "email"].includes(result.matchedBy);
+      return {
+        ok: false,
+        error: byHandle
+          ? "Ya existe un contacto con ese usuario de red social. Te llevo a su ficha."
+          : "Ya existe un contacto con ese telefono o email. Te llevo a su ficha.",
+        contactId: result.contactId,
+        duplicate: true,
+      };
+    }
+    return {
+      ok: false,
+      error: "Ya existe un contacto con ese dato. Pedile a un Admin que te lo asigne.",
+      duplicate: true,
+    };
+  }
+
+  const data = { id: result.contactId };
 
   await logAudit({
     supabase, workspaceId: workspace.id, entityType: "contact", entityId: data.id,
@@ -118,7 +151,7 @@ export async function createContact(
 
   // El toque de atribucion lo escribe el servidor: la funcion de la base solo la
   // ejecuta `service_role`. Nunca puede hacer fallar el alta (F87).
-  await recordManualTouch(await createServiceClient(), {
+  await recordManualTouch(service, {
     workspaceId: workspace.id,
     contactId: data.id,
     tracking,
@@ -323,6 +356,9 @@ export async function restoreContact(contactId: string): Promise<ContactActionRe
     .eq("workspace_id", workspace.id);
 
   if (error) {
+    // Mientras estuvo borrado, otra persona pudo cargar el mismo telefono o email.
+    const clear = describeContactUniqueViolation(error);
+    if (clear) return { ok: false, error: `No se puede restaurar: ${clear.charAt(0).toLowerCase()}${clear.slice(1)}.` };
     console.error("[contacts] restauracion fallida:", error.message);
     return { ok: false, error: `No pude restaurar el contacto: ${error.message}` };
   }
@@ -783,6 +819,31 @@ export async function linkContacts(
     if (!main[key] && duplicate[key]) fill[key] = duplicate[key];
   }
 
+  // El duplicado sale de circulacion ANTES de rellenar el principal: los indices unicos de telefono y email
+  // solo miran contactos vivos, y rellenar con un dato que todavia es del duplicado chocaria.
+  const now = new Date().toISOString();
+  const { error: deleteError } = await supabase.from("contacts")
+    .update({ deleted_at: now, metadata: { merged_into: mainId } })
+    .eq("id", duplicateId).eq("workspace_id", workspace.id);
+  if (deleteError) {
+    console.error("[contacts] vinculacion: no pude sacar de circulacion al duplicado:", deleteError.message);
+    return { ok: false, error: `No pude vincular los contactos: ${deleteError.message}` };
+  }
+
+  if (Object.keys(fill).length > 0) {
+    const { error: fillError } = await supabase.from("contacts").update(fill).eq("id", mainId).eq("workspace_id", workspace.id);
+    if (fillError) {
+      // Se deshace el borrado del duplicado: nada queda a medias.
+      await supabase.from("contacts")
+        .update({ deleted_at: null, metadata: duplicate.metadata ?? {} })
+        .eq("id", duplicateId).eq("workspace_id", workspace.id);
+      const clear = describeContactUniqueViolation(fillError);
+      if (clear) return { ok: false, error: `No pude vincular los contactos: ${clear.charAt(0).toLowerCase()}${clear.slice(1)}.` };
+      console.error("[contacts] vinculacion: no pude completar el principal:", fillError.message);
+      return { ok: false, error: `No pude vincular los contactos: ${fillError.message}` };
+    }
+  }
+
   // Una conversacion por canal: conversations es unique (channel_id, contact_id).
   // Si el principal ya tiene una en ese canal, la del duplicado se queda donde
   // esta y se va con el borrado logico; mover la romperia el indice.
@@ -832,16 +893,6 @@ export async function linkContacts(
     await supabase.from("contact_tags").update({ contact_id: mainId })
       .eq("contact_id", duplicateId).in("tag_id", movableTags);
   }
-
-  if (Object.keys(fill).length > 0) {
-    await supabase.from("contacts").update(fill).eq("id", mainId).eq("workspace_id", workspace.id);
-  }
-
-  // El duplicado sale de circulacion y deja de ofrecer la sugerencia.
-  const now = new Date().toISOString();
-  await supabase.from("contacts")
-    .update({ deleted_at: now, metadata: { merged_into: mainId } })
-    .eq("id", duplicateId).eq("workspace_id", workspace.id);
 
   await clearSuggestion(supabase, workspace.id, mainId, duplicateId);
 
@@ -924,6 +975,8 @@ async function applyPatch({
     .eq("workspace_id", workspaceId);
 
   if (error) {
+    const clear = describeContactUniqueViolation(error);
+    if (clear) return { ok: false, error: clear };
     console.error(`[contacts] ${action} fallido:`, error.message);
     return { ok: false, error: `No pude guardar los cambios: ${error.message}` };
   }

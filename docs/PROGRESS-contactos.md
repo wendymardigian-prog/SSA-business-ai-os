@@ -4,9 +4,9 @@ Rama `fix/contactos-regla-unica` (creada desde `main` en `8a44b9d`, 13/10/2026).
 
 ## Checklist
 
-- [ ] Punto de partida: `npm run build` y los `verify-*` (antes de tocar nada; resultados abajo)
-- [ ] **C1** · La función central (`00200`, `lib/contacts/identity.ts`, `lib/contacts/find-or-create.ts`)
-- [ ] **C2** · Todos los caminos la usan (caracterización primero; `00201`–`00204`; caminos TypeScript)
+- [x] Punto de partida: `npm run build` y los `verify-*` (resultados abajo)
+- [x] **C1** · La función central (`00200`, `lib/contacts/identity.ts`, `lib/contacts/find-or-create.ts`)
+- [x] **C2** · Todos los caminos la usan (caracterización primero; `00201`–`00204`; caminos TypeScript)
 - [ ] **C3** · Que nadie pueda saltearla (`single-entry.test.ts`, `verify-contacts-single-entry.mjs`, concurrencia, `00205` ensayada)
 - [ ] **C4** · Los duplicados que ya existen (lista en `docs/PENDIENTE-contactos.md`)
 - [ ] Cierre: `CLAUDE.md` ("Contactos: regla única"), docs de deduplicación, PR sin mergear
@@ -17,8 +17,8 @@ Rama `fix/contactos-regla-unica` (creada desde `main` en `8a44b9d`, 13/10/2026).
 |---|---|
 | `npx vitest run` | 812 archivos, 10.129 tests, todo verde |
 | `npm run lint` | 0 errores, 36 warnings |
-| `npm run build` | pendiente (primera tarea después del `/goal`) |
-| `scripts/verify-*.mjs` | pendientes (primera tarea después del `/goal`); se excluyen `verify-knowledge` (Voyage real) y `verify-webhook` (app + token) |
+| `npm run build` | OK (13/10/2026) |
+| `scripts/verify-*.mjs` | De a uno y con el candado `/private/tmp/ssa-verify.lock` (la base la comparte otra sesión). En verde: rls, roles, workspace-isolation, audit-visibility (`--despues-de-00168`), tasks, crm, csv-import, sales, scheduling, booking-concurrency, eod, ads-attribution, inbound-webhooks, content, inbox-filters, dashboards, calls, enrichment, optout, chat-media, message-persistence. **Ya fallaban antes de tocar nada** (y no pueden empeorar): `verify-attribution` ("todos los contactos reales tienen first_touch", 784 de 843), `verify-publishing` (varios casos de D6/A6/A13) y `verify-forms` solo en una corrida ("el job genera el PDF de la firma": en la corrida siguiente dio verde, es intermitente). Se excluyen `verify-knowledge` y `verify-webhook`. |
 
 Base: 843 contactos, 1 workspace, 0 borrados. Última migración registrada: `00199_task_trigger_types`.
 
@@ -26,12 +26,12 @@ Base: 843 contactos, 1 workspace, 0 borrados. Última migración registrada: `00
 
 | Número | Nombre | Qué hace | Estado |
 |---|---|---|---|
-| `00200` | `find_or_create_contact` | `normalize_phone`, `private.contact_identity_lookup`, `find_or_create_contact` | sin escribir |
-| `00201` | `contact_lookup_wrappers` | `find_contact_for_form` y `find_contact_by_phone_or_email` sobre el lookup compartido | sin escribir |
-| `00202` | `find_or_link_contact_v3` | entrantes por canal sobre la central | sin escribir |
-| `00203` | `create_booking_v3` | agenda sobre la central | sin escribir |
-| `00204` | `submit_form_response_v6` | formularios sobre la central | sin escribir |
-| `00205` | `contacts_unique_identity` | índices únicos de tel y email principal; se aplica DESPUÉS del despliegue | sin escribir |
+| `00200` | `find_or_create_contact` | `normalize_phone`, `private.contact_identity_lookup`, `find_or_create_contact` | aplicada y registrada |
+| `00201` | `contact_lookup_wrappers` | `find_contact_for_form` y `find_contact_by_phone_or_email` sobre el lookup compartido | aplicada y registrada |
+| `00202` | `find_or_link_contact_v3` | entrantes por canal sobre la central | aplicada y registrada |
+| `00203` | `create_booking_v3` | agenda sobre la central | aplicada y registrada |
+| `00204` | `submit_form_response_v6` | formularios sobre la central | aplicada y registrada |
+| `00205` | `contacts_unique_identity` | índices únicos de tel y email principal; se aplica DESPUÉS del despliegue | escrita y ensayada en una transacción que se deshace; SIN aplicar (ver PENDIENTE) |
 
 La numeración se reconfirma con `list_migrations` antes de cada una.
 
@@ -192,3 +192,19 @@ TypeScript (todo por `lib/contacts/find-or-create.ts`):
 ## 10. Verificación de punta a punta
 
 `npx vitest run` (incluye `single-entry`, `identity` y los de caracterización) · `node scripts/verify-contacts-single-entry.mjs` · `verify-forms`, `verify-crm`, `verify-csv-import`, `verify-sales`, `verify-scheduling`, `verify-booking-concurrency`, `verify-attribution`, `verify-ads-attribution` (huella de `record_contact_touch`), `verify-inbound-webhooks`, `verify-rls`, `verify-roles` · `npm run build` · `npm run lint`. Ninguno en simultáneo.
+
+
+---
+
+## Notas de ejecución (donde el código real no coincidía con el plan)
+
+- **Tests de caracterización**: la mayoría de los caminos ya tenían tests con la base en memoria (webhook, CSV, alta manual, Ventas, comentarios); se sumó `lib/contacts/characterization-c2.test.ts` para lo que faltaba. Los casos `CAMBIA EN C2` son los cambios del plan (sección 6). Para las funciones de la base la caracterización son los `verify-crm`, `verify-forms` y `verify-scheduling` existentes, corridos antes y después de cada migración.
+- **Se agregaron a la regla central**: `secondary_email` como dato de la identidad (el CSV lo buscaba) y `facebook` (solo para canales de Facebook). `private.contact_value_taken` decide "este tel/email ya es de otro contacto" para los UPDATE que completan vacíos (en lugar de leer los `conflicts`, así sirve también cuando el contacto viene dado).
+- **Canal conocido**: el lookup del canal no filtra `deleted_at` (como `find_or_link_contact` desde siempre): crear otro contacto dejaría el canal huérfano.
+- **`find_or_link_contact`**: el `link_suggestions` por @ de otra red se calcula DESPUÉS de crear (excluyendo al nuevo) y se escribe con un UPDATE; el resultado final es el mismo.
+- **CSV**: ya exigía email o teléfono (`lib/csv/map.ts`), así que "solo nombre" ya era un error de fila; la central corre con el cliente de servicio y completar un existente va con el de la sesión; si el Member no lo ve, la fila falla con "Pedile a un Admin que te lo asigne".
+- **`linkContacts`**: borra al duplicado antes de rellenar el principal, chequea los errores y, si el relleno falla, restaura al duplicado. La otra sesión (Tareas CRM) trae su propio `merge_contacts` (00206/00207) compatible.
+- **Agenda**: además del `CB001` de la base, `createBooking` rechaza antes de llamar a la RPC si no hay contacto dado, email ni teléfono.
+- **Fathom**: si la búsqueda falla, la llamada queda sin vincular (no crea nada) y se loguea.
+- **Verificaciones de la base**: `scripts/verify-contacts-single-entry.mjs` (nuevo). Las huellas md5 de `find_or_link_contact` y `create_booking` en `scripts/verify-forms.impl.ts` se actualizaron a propósito (con comentario); `record_contact_touch` sigue `f364db18…`.
+- **Sin conexión de la CLI**: dos veces el pooler de Supabase bloqueó la CLI por "too many authentication failures" (otra sesión usa la misma base); se esperó y se reintentó. Una migración quedó registrada dos veces (00203) y se borró la fila repetida.

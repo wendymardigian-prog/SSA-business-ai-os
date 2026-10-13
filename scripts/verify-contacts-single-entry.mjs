@@ -87,6 +87,80 @@ try {
     check(extra.length === 0, "ninguna otra funcion de la base inserta en contacts", extra.join(", "));
   }
 
+  console.log("\n— Indices unicos de la 00205 —");
+  {
+    const present = sql(`SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('uq_contacts_workspace_phone', 'uq_contacts_workspace_email')`).map((r) => r.indexname);
+    if (present.length === 2) {
+      const p = num(60);
+      const a = await svc.from("contacts").insert({ workspace_id: ws, display_name: "U1", phone: p, email: "Unico@example.test" }).select("id").single();
+      const dupPhone = await svc.from("contacts").insert({ workspace_id: ws, display_name: "U2", phone: p });
+      const dupMail = await svc.from("contacts").insert({ workspace_id: ws, display_name: "U3", email: "UNICO@example.test" });
+      check(dupPhone.error?.code === "23505" && /uq_contacts_workspace_phone/.test(dupPhone.error.message), "el telefono principal repetido en el workspace se rechaza");
+      check(dupMail.error?.code === "23505" && /uq_contacts_workspace_email/.test(dupMail.error.message), "el email repetido con otras mayusculas tambien");
+      check(!!a.data, "(el primero se creo)");
+    } else {
+      console.log("  (los indices de la 00205 todavia no estan aplicados: se ensayan dentro de una transaccion que se deshace)");
+      const file = readFileSync("supabase/migrations/00205_contacts_unique_identity.sql", "utf8");
+      const rehearsal = `
+DO $ens$
+DECLARE
+  v_ws uuid; v_ws2 uuid; v_res jsonb := '{}'::jsonb; v_ok boolean;
+BEGIN
+  EXECUTE $file$${file}$file$;
+  INSERT INTO public.workspaces (name, slug) VALUES ('zz-test-ensayo-a', 'zz-test-ensayo-a-${stamp}') RETURNING id INTO v_ws;
+  INSERT INTO public.workspaces (name, slug) VALUES ('zz-test-ensayo-b', 'zz-test-ensayo-b-${stamp}') RETURNING id INTO v_ws2;
+  INSERT INTO public.contacts (workspace_id, display_name, phone, email) VALUES (v_ws, 'u1', '+50670000001', 'Unico@Example.test');
+
+  v_ok := false;
+  BEGIN INSERT INTO public.contacts (workspace_id, display_name, phone) VALUES (v_ws, 'u2', '+50670000001');
+  EXCEPTION WHEN unique_violation THEN v_ok := true; END;
+  v_res := v_res || jsonb_build_object('telefono repetido se rechaza', v_ok);
+
+  v_ok := false;
+  BEGIN INSERT INTO public.contacts (workspace_id, display_name, email) VALUES (v_ws, 'u3', 'UNICO@example.test');
+  EXCEPTION WHEN unique_violation THEN v_ok := true; END;
+  v_res := v_res || jsonb_build_object('email repetido (otras mayusculas) se rechaza', v_ok);
+
+  v_ok := true;
+  BEGIN INSERT INTO public.contacts (workspace_id, display_name, phone, email) VALUES (v_ws2, 'otro ws', '+50670000001', 'unico@example.test');
+  EXCEPTION WHEN unique_violation THEN v_ok := false; END;
+  v_res := v_res || jsonb_build_object('otro workspace puede repetir', v_ok);
+
+  v_ok := true;
+  BEGIN INSERT INTO public.contacts (workspace_id, display_name, phone, deleted_at) VALUES (v_ws, 'borrado', '+50670000001', now());
+  EXCEPTION WHEN unique_violation THEN v_ok := false; END;
+  v_res := v_res || jsonb_build_object('un contacto borrado no bloquea', v_ok);
+
+  v_ok := true;
+  BEGIN INSERT INTO public.contacts (workspace_id, display_name, whatsapp_phone, secondary_email) VALUES (v_ws, 'secundarios', '+50670000001', 'unico@example.test');
+  EXCEPTION WHEN unique_violation THEN v_ok := false; END;
+  v_res := v_res || jsonb_build_object('whatsapp y email secundario no cuentan', v_ok);
+
+  v_ok := false;
+  BEGIN UPDATE public.contacts SET deleted_at = NULL WHERE workspace_id = v_ws AND display_name = 'borrado';
+  EXCEPTION WHEN unique_violation THEN v_ok := true; END;
+  v_res := v_res || jsonb_build_object('restaurar un borrado con el dato de otro se rechaza', v_ok);
+
+  RAISE EXCEPTION 'ENSAYO_RESULT:%', v_res::text;
+END
+$ens$;`;
+      const dir = mkdtempSync(join(tmpdir(), "verify-ensayo-"));
+      writeFileSync(join(dir, "q.sql"), rehearsal);
+      let text = "";
+      try {
+        execFileSync("supabase", ["db", "query", "--linked", "-f", join(dir, "q.sql")], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+        fail("el ensayo de la 00205 no se deshizo (no lanzo)");
+      } catch (e) {
+        text = `${e.stderr ?? ""}${e.stdout ?? ""}`;
+      }
+      const m = /ENSAYO_RESULT:(\{.*?\})/s.exec(text);
+      if (!m) fail("el ensayo de la 00205 no devolvio resultado", text.slice(0, 400));
+      else for (const [name, passed] of Object.entries(JSON.parse(m[1].replace(/\\"/g, '"')))) check(passed === true, `00205 (ensayo): ${name}`);
+      const after = sql(`SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE 'uq_contacts_workspace_%'`);
+      check(after.length === 0, "y el ensayo se deshizo: los indices no quedaron creados");
+    }
+  }
+
   console.log("\n— normalize_phone contra normalizePhone —");
   {
     const phones = ["+54 9 11 2233-4455", "005491122334455", "5491122334455", "1234567", "1234567890123456", "+54+9112233", "tel: 54911 2233 4455", "", "   ", "+0054911223344", "(506) 8888-7777", "+506 8888 7777 ext 5"];
@@ -259,6 +333,66 @@ try {
     check(rows.length === 1 && rows[0].prosecdef === true && /search_path=.{0,4}""/.test(rows[0].cfg ?? ""), "find_or_create_contact es SECURITY DEFINER con search_path vacio", JSON.stringify(rows));
     check(rows[0]?.auth_exec === false && rows[0]?.anon_exec === false && rows[0]?.svc_exec === true, "y solo service_role la ejecuta");
   }
+
+  console.log("\n— Los buscadores (envoltorios) usan la misma busqueda —");
+  {
+    const p = num(40);
+    const a = await central(ws, { phone: p, email: "wrap.a@example.test", instagram: "wrap_a" }, { display_name: "Wrap A" });
+    const b = await central(ws, { email: "wrap.b@example.test" }, { display_name: "Wrap B" });
+    const f1 = (await svc.rpc("find_contact_for_form", { p_workspace_id: ws, p_phone: `${p.slice(0, 4)} ${p.slice(4)}`, p_email: "WRAP.B@example.test", p_social: { instagram: "@Wrap_A" } })).data;
+    check(f1?.contact_id === a.contact_id && f1.matched_by === "phone", "find_contact_for_form: el telefono escrito distinto encuentra al contacto");
+    check(f1?.conflict_contact_id === b.contact_id && f1.conflicts.some((c) => c.by === "email"), "y el email de otro contacto es un conflicto", JSON.stringify(f1));
+    check(!f1.conflicts.some((c) => c.by === "instagram"), "el usuario de Instagram es del mismo contacto: no es conflicto");
+    const f0 = (await svc.rpc("find_contact_for_form", { p_workspace_id: ws, p_phone: null, p_email: "nadie@example.test", p_social: {} })).data;
+    check(f0?.contact_id === null && Array.isArray(f0.conflicts) && f0.conflicts.length === 0, "sin coincidencias: contact_id null y conflicts vacio");
+    const g = (await svc.rpc("find_contact_by_phone_or_email", { p_workspace_id: ws, p_phone: p, p_email: "wrap.b@example.test" })).data;
+    check(g?.contact_id === a.contact_id && g.matched_by === "phone" && g.conflict_contact_id === b.contact_id, "find_contact_by_phone_or_email: gana el telefono y avisa del email", JSON.stringify(g));
+    check(!("conflicts" in g), "y conserva su forma (sin lista de conflictos)");
+  }
+
+  console.log("\n— find_or_link_contact sobre la regla central —");
+  {
+    const { data: ch } = await svc.from("channels").insert({
+      workspace_id: ws, platform: "whatsapp", late_account_id: `zz-single-wa-${stamp}`, username: "zzsinglewa", display_name: "zz single wa", is_active: true,
+    }).select("id").single();
+    const link = async (args) => (await svc.rpc("find_or_link_contact", { p_channel_id: ch.id, p_interaction_at: new Date().toISOString(), ...args })).data;
+    const p = num(50);
+    const a = await link({ p_sender_id: p, p_display_name: "Wa Uno", p_phone: p });
+    check(a?.existed === false && !!a.contact_id, "un remitente nuevo crea el contacto");
+    const { data: row } = await svc.from("contacts").select("phone, whatsapp_phone").eq("id", a.contact_id).single();
+    check(row.phone === p && row.whatsapp_phone === p, "con el telefono en las dos columnas (WhatsApp)");
+    const again = await link({ p_sender_id: p, p_phone: p });
+    check(again.contact_id === a.contact_id && again.linked_by === "channel", "el mismo remitente se reconoce por el canal");
+    const sameSender = await Promise.all(Array.from({ length: 10 }, () => link({ p_sender_id: `${p}-x`, p_display_name: "Carrera canal", p_phone: num(51) })));
+    check(new Set(sameSender.map((r) => r.contact_id)).size === 1, "10 mensajes simultaneos del mismo remitente nuevo: UN contacto");
+    const samePhone = await Promise.all(Array.from({ length: 10 }, (_, i) => link({ p_sender_id: `dup-${i}`, p_display_name: "Carrera tel", p_phone: num(52) })));
+    check(new Set(samePhone.map((r) => r.contact_id)).size === 1, "10 remitentes distintos con el mismo telefono: UN contacto");
+    const { count: n52 } = await svc.from("contacts").select("id", { count: "exact", head: true }).eq("workspace_id", ws).eq("phone", num(52));
+    check(n52 === 1, "y hay UN contacto con ese telefono");
+    // Un telefono que ya es de OTRO contacto no se copia a este (lo encontro por email).
+    const other = await link({ p_sender_id: "otro-1", p_display_name: "Otro", p_phone: num(53) });
+    const byMail = await central(ws, { email: "solo.mail@example.test" }, { display_name: "Solo mail" });
+    const linked = await link({ p_sender_id: "otro-2", p_display_name: "Mix", p_phone: num(53), p_email: "solo.mail@example.test" });
+    check(linked.contact_id !== other.contact_id || linked.linked_by === "phone", "el telefono tiene prioridad sobre el email");
+    const { data: mailRow } = await svc.from("contacts").select("phone").eq("id", byMail.contact_id).single();
+    check(linked.contact_id === other.contact_id ? mailRow.phone === null : true, "el contacto del email no recibe el telefono de otro");
+  }
+
+  console.log("\n— create_booking: sin email ni telefono se rechaza —");
+  {
+    const { error } = await svc.rpc("create_booking", {
+      p_workspace_id: ws, p_event_type_id: randomUUID(), p_host_user_id: randomUUID(),
+      p_start_at: new Date(Date.now() + 86400000).toISOString(), p_end_at: new Date(Date.now() + 90000000).toISOString(),
+      p_title: "x", p_name: "Reserva Sin Datos", p_email: null, p_phone: null, p_timezone: "UTC", p_host_timezone: "UTC",
+      p_location_type: "online", p_location_text: null, p_responses: {}, p_origin: "public_page", p_utm: {}, p_referrer_url: null,
+      p_uid: `zz-test-${stamp}`, p_category_id: null, p_category_snapshot: null, p_contact_assignment: "none",
+    });
+    check(error?.code === "CB001", "create_booking sin datos lanza CB001", JSON.stringify(error));
+    check((await count(ws)) === (await count(ws)), "(sin contacto nuevo)");
+    const { data: solo } = await svc.from("contacts").select("id").eq("workspace_id", ws).eq("display_name", "Reserva Sin Datos");
+    check((solo ?? []).length === 0, "y no creo un contacto con solo el nombre");
+  }
+
 } catch (err) {
   fail(`el script se cayo: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
 } finally {

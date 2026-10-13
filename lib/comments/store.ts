@@ -22,7 +22,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CommentSource, Database, SocialPlatform } from "@/lib/types/database";
-
+import { findContact } from "@/lib/contacts/find-or-create";
 type Db = SupabaseClient<Database>;
 
 export interface IncomingComment {
@@ -188,12 +188,6 @@ export async function findOrCreatePublication(
   return { id: created?.id ?? null, created: true };
 }
 
-/** En que columna vive el nombre de usuario de cada red. */
-const USERNAME_COLUMN: Record<string, "instagram_username" | "tiktok_username"> = {
-  instagram: "instagram_username",
-  tiktok: "tiktok_username",
-};
-
 /**
  * Vincula el comentario a un contacto conocido, si lo hay.
  *
@@ -212,17 +206,16 @@ export async function linkCommentToContact(
   },
 ): Promise<boolean> {
   // El nombre de usuario vive en una columna por red: en Instagram no puede
-  // chocar con el mismo nombre en TikTok, que puede ser otra persona.
-  const column = USERNAME_COLUMN[params.platform];
-  if (!params.authorUsername || !column) return false;
+  // chocar con el mismo nombre en TikTok, que puede ser otra persona. La busqueda es la de la regla unica
+  // (en minusculas y sin "@"); un error de la base no se toma como "no esta".
+  const platform = params.platform;
+  if (!params.authorUsername || (platform !== "instagram" && platform !== "tiktok")) return false;
 
-  const { data: contact } = await supabase
-    .from("contacts")
-    .select("id")
-    .eq("workspace_id", params.workspaceId)
-    .eq(column, params.authorUsername)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const found = await findContact(supabase, {
+    workspaceId: params.workspaceId,
+    identity: platform === "tiktok" ? { tiktok: params.authorUsername } : { instagram: params.authorUsername },
+  });
+  const contact = found.contactId ? { id: found.contactId } : null;
 
   if (!contact) return false;
 

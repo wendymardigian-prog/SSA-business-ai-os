@@ -253,11 +253,17 @@ try {
     "select p.proname, md5(pg_get_functiondef(p.oid)) as h from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('find_or_link_contact','create_booking','record_contact_touch')",
   );
   const expected: Record<string, string> = {
-    find_or_link_contact: "861440d10e8519b67606d78c53ca663b",
+    // Contactos: regla unica (C2, migracion 00202): `find_or_link_contact` cambio A PROPOSITO para buscar y crear
+    // con `find_or_create_contact` y no copiar a un contacto un telefono/email que es de otro. La huella vieja era
+    // 861440d10e8519b67606d78c53ca663b (la definicion completa esta en la cabecera de la 00202).
+    find_or_link_contact: "0aee03549e9361626ad4720c4a98254a",
     // Extra L (M5, migracion 00190): `create_booking` cambio A PROPOSITO, solo en el bloque del toque de
     // atribucion (suma ad_id, adset_id, campaign_id y los extras de raw). La huella vieja era
     // b81db84edb30ee7853efa2d42385593a (la definicion completa esta en la cabecera de la 00190).
-    create_booking: "57b486fed13f20a0db3af410d1aa91ac",
+    // Contactos: regla unica (C2, migracion 00203): `create_booking` volvio a cambiar A PROPOSITO, solo en el paso del
+    // contacto (usa `find_or_create_contact`; sin email ni telefono se rechaza con CB001). La huella anterior era
+    // 57b486fed13f20a0db3af410d1aa91ac (la definicion completa esta en la cabecera de la 00203).
+    create_booking: "dc462c28e99c353bbc9ca26198eddd64",
     record_contact_touch: "f364db1862cc0f90291ca14ef855a214",
   };
   for (const [name, hash] of Object.entries(expected)) {
