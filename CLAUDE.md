@@ -1017,6 +1017,42 @@ operadores, `variableSchema`, `outputs`) y [docs/formularios.md](docs/formulario
   que se respondió**: una pregunta que ya no está = "ya no existe" (no se cumple), distinto
   de "no respondida" (vacía).
 
+# Tareas (construido, 13/10/2026)
+
+Tareas del equipo: responsable, seguidores, proyecto como texto, fechas y dependencias; tabla y tablero, edicion en la celda y drawer, avisos en la campana, y creacion desde la ficha del contacto, la bandeja, los flujos y el agente. Resumen en [docs/tareas.md](docs/tareas.md); plan y avance en `docs/PROGRESS-tareas.md`, pendientes en `docs/PENDIENTE-tareas.md`, triggers y nodo en [docs/flow-registry.md](docs/flow-registry.md).
+
+## Lo que no se puede romper
+
+- **Una sola tabla nueva: `tasks`.** El proyecto es texto (`project` + `project_key` normalizada), no una tabla. Se borra con `delete_task` (borrado logico): no hay DELETE directo ni policy de DELETE.
+- **`can_see_task` devuelve siempre true o false, nunca NULL** (un NULL deja pasar un `NOT (...)` en plpgsql: ya paso y se arreglo con COALESCE). Lo ve quien es miembro Y (Owner/Admin, la creo, la tiene a cargo, la sigue, o tiene `tasks.view` con alcance `all`).
+- **`has_permission()` es siempre falso para el Member de sistema**: las policies de escritura usan el patron de la 00150 (`role_id IS NULL OR system_role = 'member' OR ...`). Un Member crea y edita (`tasks.view` + `tasks.edit`, alcance `own`); no borra.
+- **El cliente no escribe `workspace_id`, `source`, `source_ref`, `blocked_by`, `deleted_at` ni `created_by` al actualizar** (privilegios por columna). `blocked_by` solo cambia por `set_task_blockers`.
+- **La regla de fechas es una funcion pura** (`lib/tasks/date-rules.ts`, `computeDateShifts`): solo atrasa, nunca adelanta, y propaga en orden topologico. La RPC `complete_task_with_shifts` **no recalcula**: valida y aplica en una transaccion, y devuelve `stale` si cambio algo desde la vista previa. El plan se arma solo con las tareas que la persona ve.
+- **La logica de pantalla vive en `lib/tasks/*`** (modelo de tabla, edicion de celdas, URL, tablero, filtros). Los componentes la componen; el nucleo de las acciones es `lib/tasks/core.ts` (recibe los clientes, lo prueba `verify-tasks`). En `lib/actions/tasks.ts` (`"use server"`) todo lo exportado es una funcion asincronica.
+- **Avisos**: `recipient_id` siempre concreto y **nunca quien hizo el cambio**; `task_changed` con `createNotificationOnce` (10 min por persona); todo en try/catch, un aviso nunca tumba una tarea. `can_see_notification` no se toco.
+- **El barrido de vencimientos corre por SQL directo** (`private.enqueue_tasks_due_sweep`, 00198), **no** por `call_app_cron`; encola un job por workspace y dia local, desde las 08:00 locales y solo si hay candidatas. El handler avisa **una vez por tarea y fecha de vencimiento** (`metadata.due_date`): es idempotente. Los jobs de Tareas no lanzan por un fallo de un proveedor.
+- **`audit_log_select` NO se reescribe**: el historial es la politica ADICIONAL `audit_log_select_tasks` (00197).
+- **Todo lo automatico entra por `createTaskFromAutomation`** (`lib/tasks/create-from-automation.ts`): captura sus errores y nunca frena lo que lo origina. Una tarea abierta por `source` + `source_ref` (indice unico parcial).
+- **El agente tiene `crear_tarea`, y NO se toco `programar_seguimiento` ni `contacts.next_followup_date`**: el seguimiento es volver a escribirle al lead; una tarea es trabajo de una persona.
+- **«Crear una tarea al derivar a una persona» esta APAGADO por defecto** (`guardrails.escalation.createTaskOnEscalate`). Con el interruptor apagado `escalateToHuman` hace exactamente lo de siempre (`escalate-characterization.test.ts`).
+- **Los triggers `task_completed` / `task_overdue` funcionan con y sin contacto** (`contactOptional`): con contacto, el camino de siempre; sin contacto, el evento viaja con la persona a cargo (responsable, si no el creador, si no quien actuo) y el flujo corre sin contacto. Si no hay ninguna persona, no se emite. Los eventos llevan solo escalares y nunca `booking_id`; emitir nunca rompe lo que lo origina.
+- **`processEvent` decide por la FILA solo para los tipos que lo declaran** (`eventAllowsNoContact`): cualquier otro evento sigue por `eventSubject`. `automation-events-routing.test.ts` lo fija.
+- **No se tocaron** `find_or_link_contact`, `record_contact_touch`, `create_booking` ni `linkContacts` (la fusion de contactos no reapunta las tareas: ver `docs/PENDIENTE-tareas.md`).
+- **La unica dependencia nueva es `@tanstack/react-table` en la linea 8** (8.21.3): un `npm i` sin version trae la 9, que tiene otra API.
+
+## Migraciones
+
+`00196` (tabla, RLS, `can_see_task`), `00197` (RPC y politica del historial), `00198` (cron) y `00199` (CHECK de `triggers.type` + eventos sin contacto), todas **aplicadas y registradas**. La `00199` lleva en su cabecera las dos definiciones viejas de las restricciones, leidas de la base. **La proxima migracion disponible es la `00200`** (confirmar con `list_migrations`).
+
+## Scripts de verificacion
+
+```
+node scripts/verify-tasks.mjs                  # RLS, privilegios, ciclos, atomicidad, nucleo, cron, avisos y disparadores (--hasta N corre hasta esa migracion)
+node scripts/verify-audit-visibility.mjs --despues-de-00168
+```
+
+Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.
+
 # Sitio publico
 
 Las paginas publicas del propio proyecto viven en `app/(sitio)/` y se arman **a pedido con

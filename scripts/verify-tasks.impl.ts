@@ -573,6 +573,15 @@ try {
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));
 } finally {
+  // El cron horario (00198) puede encolar un barrido para un workspace de prueba mientras corre el script: se barre
+  // por los workspaces de prueba ANTES de borrarlos, para no dejar jobs huerfanos.
+  try {
+    const { data: testWs } = await svc.from("workspaces").select("id").or("name.like.zz-test-%,slug.like.zz-test-%");
+    const ids = (testWs ?? []).map((w: { id: string }) => w.id);
+    if (ids.length > 0) await svc.from("scheduled_jobs").delete().eq("type", "tasks_due_sweep").in("payload->>workspace_id", ids);
+  } catch (error) {
+    console.error("  no pude limpiar los jobs de barrido:", error instanceof Error ? error.message : String(error));
+  }
   const clean = await runCleanup(svc);
   if (!clean) failures++;
 }

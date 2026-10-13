@@ -28,10 +28,13 @@ export async function cleanupTestData(svc) {
   let workspaces = 0;
   const problems = [];
 
+  // Por nombre Y por slug: el workspace que arma el trigger para un usuario de prueba se llama
+  // "zz-test <tag>'s Workspace" (con espacio, por el full_name), asi que el nombre solo no lo agarraba y se
+  // acumulaban (316 llegaron a quedar), pero su slug siempre empieza con "zz-test-".
   const { data: rows, error: listError } = await svc
     .from("workspaces")
     .select("id, name")
-    .like("name", `${PREFIX}%`);
+    .or(`name.like.${PREFIX}%,slug.like.${PREFIX}%`);
   if (listError) problems.push(`no pude listar workspaces: ${listError.message}`);
 
   for (const ws of rows ?? []) {

@@ -194,3 +194,26 @@ Cada afirmación de §2 sale de leer `origin/main` (snapshot en el scratchpad) y
 - F26: `createTaskFromAutomation` captura y registra con `[tareas]`; el origen se ve en la tabla y el drawer.
 - `verify-tasks.mjs` (138 chequeos) suma el bloque 199: los 4 tipos de trigger aceptados, un tipo inventado rechazado, eventos con y sin persona, y **de punta a punta con el motor real**: completar una tarea sin contacto emite el evento, dispara un flujo publicado, la sesión es sin contacto, el paso «Crear tarea» deja una tarea `flow` a cargo de la persona y el mismo evento no dispara dos veces.
 - Tests: 812 archivos / 10.129; lint 0 errores / 36 warnings; build compila.
+
+### Cierre (13/10/2026)
+**Batería final, de a uno** (el servidor de desarrollo local se paró para `verify-eod`; ver abajo):
+
+| Script | Resultado |
+|---|---|
+| `verify-tasks` (138 chequeos, 00196–00199) | 0 |
+| `verify-audit-visibility --despues-de-00168` | 0 |
+| `verify-rls --despues-de-00143` | 0 |
+| `verify-roles --despues-de-00136` | 0 |
+| `verify-workspace-isolation --despues-de-00143` | 0 |
+| `verify-crm`, `verify-sales`, `verify-forms`, `verify-eod` (servidor parado), `verify-calls`, `verify-content`, `verify-scheduling`, `verify-booking-concurrency`, `verify-dashboards`, `verify-inbox-filters`, `verify-inbound-webhooks`, `verify-knowledge`, `verify-message-persistence`, `verify-optout`, `verify-chat-media`, `verify-csv-import`, `verify-enrichment`, `verify-ads-attribution`, `verify-webhook` (con la app en :3000) | 0 |
+| `verify-attribution` | 1: «781 de 840 contactos con `first_touch`», **igual que en el punto de partida** |
+| `verify-publishing` | 1: 2 chequeos, **igual que en el punto de partida** |
+
+- `npm test`: 812 archivos / 10.129 tests, 0 fallas. `npm run build`: compila. Lint: 0 errores / 36 warnings (los mismos del punto de partida). `tsc --noEmit` limpio.
+- Intocados: `programar_seguimiento`, `contacts.next_followup_date`, `find_or_link_contact`, `record_contact_touch`, `create_booking`, `linkContacts`, `audit_log_select`, `call_app_cron` (`cron-config.test` sin cambios), `can_see_notification`. Los tests previos (member-baseline, caracterización y consistencia de flujos, registro de herramientas del agente, bootstrap de jobs) solo se actualizaron con lo nuevo.
+- **`verify-eod` y el servidor local**: con `npm run dev` prendido, `verify-eod` falla («la sesión del flujo...» tiene 3 sesiones en vez de 1) porque ese servidor también drena la cola `automation_events` mientras corre la prueba; con el servidor parado pasa. No es del código de Tareas (el cambio de `processEvent` no alcanza a `eod_submitted`). `verify-webhook` necesita lo contrario: la app en :3000.
+- **Limpieza de las pruebas**: `scripts/test-cleanup.mjs` solo barría los workspaces por nombre `zz-test-…`, y el que crea el trigger para cada usuario de prueba se llama «zz-test <tag>'s Workspace» (con espacio): se acumularon **316** workspaces vacíos (34 del 12/10, de antes de Tareas). Ahora barre también por `slug` (siempre `zz-test-…`), se borraron los 316 (cero miembros, cero contactos) y `verify-tasks` además barre sus jobs `tasks_due_sweep`.
+- Datos de la revisión visual (tareas `zz-test-…`, avisos, historial) y 21 jobs de barrido fallidos en el workspace real: borrados. Estado final de la base: 0 tareas, 0 jobs, 0 workspaces `zz-test`.
+- Revisión visual: tabla, drawer, tablero, campana, ficha del contacto y bandeja a 1440 y 390 px (T2/T3); en T4, el panel del nodo «Crear tarea» y el panel del disparador «Se completó una tarea» a 1440 px (en celular el editor de flujos es de escritorio, anotado en PENDIENTE).
+- Documentación: `docs/tareas.md`, sección «Tareas» en `docs/flow-registry.md`, sección «Tareas» en `CLAUDE.md` (próxima migración libre: **00200**), `docs/PENDIENTE-tareas.md`.
+
