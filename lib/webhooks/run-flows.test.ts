@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { runWebhookFlows, type InboundForFlows } from "./run-flows";
 import { processInbound } from "./process";
 
@@ -50,10 +51,7 @@ function world(flows: Row[], triggers: Row[]) {
     {
       unique: { trigger_fires: (a, b) => a.trigger_id === b.trigger_id && a.dedupe_key === b.dedupe_key },
       rpc: {
-        find_contact_for_form: (args, db: MemoryDb) => {
-          const hit = db.tables.contacts.find((c) => c.workspace_id === args.p_workspace_id && args.p_email && c.email === args.p_email);
-          return { contact_id: hit ? hit.id : null, matched_by: hit ? "email" : null, conflicts: [] };
-        },
+        find_or_create_contact: memoryCentralRpc,
         record_contact_touch: (args, db: MemoryDb) => {
           db.tables.contact_touches.push({ contact_id: args.p_contact_id, ...(args.p_touch as Row) });
           return { inserted: true };
@@ -183,7 +181,7 @@ describe("runWebhookFlows", () => {
     db.client.rpc = (async () => ({ data: null, error: { message: "base caida" } })) as never;
     const results = await run(db);
     expect(results["f-1"]).toMatchObject({ status: "failed" });
-    expect(results["f-1"].error).toContain("no pude buscar el contacto");
+    expect(results["f-1"].error).toContain("no pude buscar o crear el contacto");
     expect(db.rows("flow_sessions")[0].status).toBe("cancelled");
   });
 });

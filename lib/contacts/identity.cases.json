@@ -1,0 +1,32 @@
+{
+  "_comment": "Casos compartidos de la identidad de un contacto. Corren contra lib/contacts/identity.ts (vitest) y contra private.contact_normalize_identity (scripts/verify-contacts-single-entry.mjs). `input` es lo que recibe la regla; `normalized` lo que queda; `lockKeys`, los bloqueos en el orden en que se toman. Sumar una regla = sumar un caso aca.",
+  "cases": [
+    { "name": "vacio", "input": {}, "normalized": {}, "lockKeys": [] },
+    { "name": "solo nombre no es identidad (llega vacio)", "input": { "display_name": "Ana" }, "normalized": {}, "lockKeys": [] },
+    { "name": "telefono con espacios, guiones y parentesis", "input": { "phone": " +54 (9) 11-2233-4455 " }, "normalized": { "phone": "+5491122334455" }, "lockKeys": ["phone:+5491122334455"] },
+    { "name": "telefono con 00 de prefijo internacional", "input": { "phone": "005491122334455" }, "normalized": { "phone": "+5491122334455" }, "lockKeys": ["phone:+5491122334455"] },
+    { "name": "telefono sin mas, solo digitos", "input": { "phone": "5491122334455" }, "normalized": { "phone": "+5491122334455" }, "lockKeys": ["phone:+5491122334455"] },
+    { "name": "telefono corto no cuenta", "input": { "phone": "1234567" }, "normalized": {}, "lockKeys": [] },
+    { "name": "telefono largo no cuenta", "input": { "phone": "1234567890123456" }, "normalized": {}, "lockKeys": [] },
+    { "name": "telefono con mas dentro", "input": { "phone": "+54+9112233" }, "normalized": { "phone": "+549112233" }, "lockKeys": ["phone:+549112233"] },
+    { "name": "telefono con letras", "input": { "phone": "tel: 54911 2233 4455" }, "normalized": { "phone": "+5491122334455" }, "lockKeys": ["phone:+5491122334455"] },
+    { "name": "telefono y WhatsApp iguales comparten un solo bloqueo", "input": { "phone": "+5491122334455", "whatsapp_phone": "5491122334455" }, "normalized": { "phone": "+5491122334455", "whatsapp_phone": "+5491122334455" }, "lockKeys": ["phone:+5491122334455"] },
+    { "name": "telefono y WhatsApp distintos", "input": { "phone": "+5491122334455", "whatsapp_phone": "+34600111222" }, "normalized": { "phone": "+5491122334455", "whatsapp_phone": "+34600111222" }, "lockKeys": ["phone:+34600111222", "phone:+5491122334455"] },
+    { "name": "email en mayusculas y con espacios", "input": { "email": "  Ana.Perez@Example.COM " }, "normalized": { "email": "ana.perez@example.com" }, "lockKeys": ["email:ana.perez@example.com"] },
+    { "name": "email vacio", "input": { "email": "   " }, "normalized": {}, "lockKeys": [] },
+    { "name": "email y secundario", "input": { "email": "B@x.com", "secondary_email": "A@x.com" }, "normalized": { "email": "b@x.com", "secondary_email": "a@x.com" }, "lockKeys": ["email:a@x.com", "email:b@x.com"] },
+    { "name": "instagram con arroba y mayusculas", "input": { "instagram": " @Fede.Com.IA " }, "normalized": { "instagram": "fede.com.ia" }, "lockKeys": ["instagram:fede.com.ia"] },
+    { "name": "instagram con dos arrobas", "input": { "instagram": "@@ana" }, "normalized": { "instagram": "ana" }, "lockKeys": ["instagram:ana"] },
+    { "name": "solo arroba", "input": { "instagram": "@" }, "normalized": {}, "lockKeys": [] },
+    { "name": "tiktok y x", "input": { "tiktok": "@Ana_TT", "x": "@AnaX" }, "normalized": { "tiktok": "ana_tt", "x": "anax" }, "lockKeys": ["tiktok:ana_tt", "x:anax"] },
+    { "name": "linkedin como URL", "input": { "linkedin": "https://www.linkedin.com/in/Ana-Perez/" }, "normalized": { "linkedin": "https://www.linkedin.com/in/ana-perez" }, "lockKeys": ["linkedin:https://www.linkedin.com/in/ana-perez"] },
+    { "name": "linkedin con parametros", "input": { "linkedin": "linkedin.com/in/ana-perez?trk=abc" }, "normalized": { "linkedin": "https://www.linkedin.com/in/ana-perez" }, "lockKeys": ["linkedin:https://www.linkedin.com/in/ana-perez"] },
+    { "name": "linkedin como slug suelto", "input": { "linkedin": "Ana-Perez" }, "normalized": { "linkedin": "https://www.linkedin.com/in/ana-perez" }, "lockKeys": ["linkedin:https://www.linkedin.com/in/ana-perez"] },
+    { "name": "linkedin que no es un perfil", "input": { "linkedin": "no es un perfil" }, "normalized": {}, "lockKeys": [] },
+    { "name": "facebook", "input": { "facebook": "@Ana.Fb" }, "normalized": { "facebook": "ana.fb" }, "lockKeys": ["facebook:ana.fb"] },
+    { "name": "canal con las dos puntas", "input": { "channel_id": "11111111-1111-1111-1111-111111111111", "sender_id": " abc123 " }, "normalized": { "channel_id": "11111111-1111-1111-1111-111111111111", "sender_id": "abc123" }, "lockKeys": ["channel:11111111-1111-1111-1111-111111111111:abc123"] },
+    { "name": "canal sin remitente no cuenta", "input": { "channel_id": "11111111-1111-1111-1111-111111111111" }, "normalized": {}, "lockKeys": [] },
+    { "name": "remitente sin canal no cuenta", "input": { "sender_id": "abc123" }, "normalized": {}, "lockKeys": [] },
+    { "name": "todo junto, bloqueos ordenados por clave", "input": { "channel_id": "22222222-2222-2222-2222-222222222222", "sender_id": "s1", "phone": "+5491122334455", "email": "Z@x.com", "instagram": "@zeta" }, "normalized": { "channel_id": "22222222-2222-2222-2222-222222222222", "sender_id": "s1", "phone": "+5491122334455", "email": "z@x.com", "instagram": "zeta" }, "lockKeys": ["channel:22222222-2222-2222-2222-222222222222:s1", "email:z@x.com", "instagram:zeta", "phone:+5491122334455"] }
+  ]
+}

@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { findOrCreatePublication, isOwnComment, linkCommentToContact, storeComment } from "./store";
 
 const WS = "ws-1";
@@ -30,6 +31,7 @@ const db = (over: Record<string, unknown[]> = {}) =>
       ...over,
     },
     {
+      rpc: { find_or_create_contact: memoryCentralRpc },
       unique: {
         social_post_comments: (a, b) =>
           a.workspace_id === b.workspace_id &&

@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { memoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { attributeComment, type CommentAttributionParams } from "./attribution";
 
 const WS = "ws-1";
@@ -29,6 +30,7 @@ function world(
     },
     {
       rpc: {
+        find_or_create_contact: memoryCentralRpc,
         record_contact_touch: (args) => {
           if (rpc === "throws") throw new Error("la base se cayo");
           touches.push(args);

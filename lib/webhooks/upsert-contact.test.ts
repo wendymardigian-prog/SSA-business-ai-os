@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
+import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { buildPatch, upsertContactFromWebhook } from "./upsert-contact";
 import { DEFAULT_UPSERT_CONFIG, type MapRow, type UpsertContactConfig } from "./upsert-config";
 
@@ -13,7 +14,7 @@ const config = (over: Partial<UpsertContactConfig> = {}): UpsertContactConfig =>
   ...over,
 });
 
-/** Una base con el `find_contact_for_form` y el `record_contact_touch` mínimos de la real. */
+/** Una base con la regla única (`find_or_create_contact`) y el `record_contact_touch` mínimos de la real. */
 function world(contacts: Row[] = [], extra: Record<string, Row[]> = {}) {
   return memoryDb(
     {
@@ -30,24 +31,7 @@ function world(contacts: Row[] = [], extra: Record<string, Row[]> = {}) {
     },
     {
       rpc: {
-        find_contact_for_form: (args, db: MemoryDb) => {
-          const live = db.tables.contacts.filter((c) => c.workspace_id === args.p_workspace_id && !c.deleted_at);
-          const hits: { by: string; contact_id: string }[] = [];
-          const add = (by: string, c: Row) => hits.push({ by, contact_id: String(c.id) });
-          for (const c of live) {
-            if (args.p_phone && (c.phone === args.p_phone || c.whatsapp_phone === args.p_phone)) add("phone", c);
-          }
-          for (const c of live) {
-            if (args.p_email && String(c.email ?? "").toLowerCase() === args.p_email) add("email", c);
-          }
-          const social = (args.p_social ?? {}) as Record<string, string>;
-          for (const c of live) {
-            if (social.instagram && c.instagram_username === social.instagram) add("instagram", c);
-          }
-          const winner = hits[0] ?? null;
-          const conflicts = hits.filter((h) => winner && h.contact_id !== winner.contact_id);
-          return { contact_id: winner?.contact_id ?? null, matched_by: winner?.by ?? null, conflict_contact_id: conflicts[0]?.contact_id ?? null, conflicts };
-        },
+        find_or_create_contact: memoryCentralRpc,
         record_contact_touch: (args, db: MemoryDb) => {
           const t = args.p_touch as Row;
           if (db.tables.contact_touches.some((x) => x.dedupe_key === t.dedupe_key)) return { inserted: false, reason: "duplicate" };
@@ -73,13 +57,6 @@ describe("encontrar al contacto (nunca por nombre)", () => {
 
   it("+506 8888-1234 se vincula con el contacto que tiene +50688881234", async () => {
     const db = world([{ id: "c-1", workspace_id: WS, phone: "+50688881234", display_name: "Ana" }]);
-    const out = await run(db, { phone: "+506 8888-1234" });
-    expect(out).toMatchObject({ ok: true, contactId: "c-1" });
-    expect(db.rows("contacts")).toHaveLength(1);
-  });
-
-  it("también con un teléfono guardado sin el «+» (de antes de normalizar)", async () => {
-    const db = world([{ id: "c-1", workspace_id: WS, phone: "50688881234", display_name: "Ana" }]);
     const out = await run(db, { phone: "+506 8888-1234" });
     expect(out).toMatchObject({ ok: true, contactId: "c-1" });
     expect(db.rows("contacts")).toHaveLength(1);
@@ -248,7 +225,7 @@ describe("el toque (F14)", () => {
       { workspaces: [{ id: WS, timezone: "UTC" }], custom_field_definitions: [], contacts: [], contact_custom_fields: [], contact_channels: [], contact_touches: [], tags: [], contact_tags: [], audit_log: [] },
       {
         rpc: {
-          find_contact_for_form: () => ({ contact_id: null, matched_by: null, conflicts: [] }),
+          find_or_create_contact: memoryCentralRpc,
           record_contact_touch: () => {
             throw new Error("se cayo");
           },

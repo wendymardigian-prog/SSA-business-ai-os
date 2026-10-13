@@ -5,7 +5,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
 import { recordImportTouches } from "@/lib/contacts/touch-entry";
 import { logAudit } from "@/lib/audit";
-import { findDuplicateContact } from "@/lib/contacts/dedup";
+import { findOrCreateContact, type FindOrCreateResult } from "@/lib/contacts/find-or-create";
 import { mapRow, type ColumnMapping } from "@/lib/csv/map";
 import type { ContactFieldKey } from "@/lib/contacts/fields";
 import type { Json } from "@/lib/types/database";
@@ -32,8 +32,10 @@ import { IMPORT_BATCH_SIZE, MAX_IMPORT_ROWS, MAX_ERROR_DETAILS } from "@/lib/csv
  * se cierra al terminar: una importacion cortada es una que quedo sin
  * finished_at y con contadores que no suman total_rows.
  *
- * Todo corre con el cliente del usuario, nunca con la service key: un Member
- * importando pasa por la misma RLS que si cargara los contactos a mano.
+ * Buscar o crear cada contacto va por la regla unica (`find_or_create_contact`, con el cliente de servicio:
+ * busca entre TODOS los contactos del workspace y bloquea por dato). Completar un contacto que ya existia
+ * va con el cliente del usuario: un Member pasa por la misma RLS que si lo editara a mano, y si no lo ve,
+ * la fila falla con un mensaje claro en vez de crear un duplicado.
  */
 
 
@@ -43,7 +45,12 @@ export type ImportStartResult =
 
 export interface BatchCounters {
   imported: number;
+  /** Filas que cayeron en un contacto que ya existia (se completaron sus campos vacios). */
   updated: number;
+  /** De esas, por que dato se vincularon. */
+  linkedBy: { phone: number; email: number; social: number };
+  /** Datos de la planilla que no se escribieron porque ya son de OTRO contacto. */
+  skippedConflicts: number;
   errors: number;
   details: { line: number; error: string }[];
 }
@@ -152,7 +159,11 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
   }
   const tagIds = await resolveTags(supabase, workspace.id, [...nombresDeTags]);
 
-  const counters: BatchCounters = { imported: 0, updated: 0, errors: 0, details: [] };
+  const counters: BatchCounters = { imported: 0, updated: 0, linkedBy: { phone: 0, email: 0, social: 0 }, skippedConflicts: 0, errors: 0, details: [] };
+  // Buscar o crear va con el cliente de SERVICIO (la regla unica mira todos los contactos del workspace, no
+  // solo los que la RLS de quien importa le deja ver); el workspace sale de la sesion y las actualizaciones
+  // de contactos que ya existen siguen yendo con el cliente de quien importa.
+  const service = await createServiceClient();
   // Los contactos NUEVOS de esta tanda: son los unicos que entraron por la
   // importacion. Actualizar uno que ya existia no es un origen nuevo (F87).
   const nuevos: string[] = [];
@@ -167,23 +178,30 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
     const { patch, tags } = result.row;
 
     try {
-      const existing = await findDuplicateContact({
-        supabase,
-        workspaceId: workspace.id,
-        phones: [patch.phone, patch.whatsapp_phone],
-        emails: [patch.email, patch.secondary_email],
-        select: "id",
-      });
+      const central = await resolveRow(service, workspace.id, patch, setterId, vendedorId);
 
-      const contactId = existing
-        ? await updateExisting(supabase, workspace.id, existing.id as string, patch, setterId, vendedorId)
-        : await insertNew(supabase, workspace.id, patch, setterId, vendedorId);
-
-      if (!contactId) {
+      if (central.status === "no_identity" || !central.contactId) {
         counters.errors++;
         counters.details.push({ line: result.row.line, error: "No se pudo guardar el contacto" });
         continue;
       }
+
+      const existing = !central.created;
+      let skipped = 0;
+      if (existing) {
+        const updatedId = await updateExisting(supabase, workspace.id, central.contactId, patch, setterId, vendedorId, central);
+        if (!updatedId) {
+          // Existe, pero quien importa no lo ve (su RLS): no se toca ni se crea un duplicado.
+          counters.errors++;
+          counters.details.push({
+            line: result.row.line,
+            error: "Ya existe un contacto con ese dato. Pedile a un Admin que te lo asigne.",
+          });
+          continue;
+        }
+        skipped = skippedConflictCount(patch, central);
+      }
+      const contactId = central.contactId;
 
       // Los de la columna de tags de esta fila, mas los que se eligieron para
       // todo el archivo.
@@ -198,8 +216,14 @@ export async function importBatch(input: ImportBatchInput): Promise<ImportBatchR
         );
       }
 
-      if (existing) counters.updated++;
-      else {
+      if (existing) {
+        counters.updated++;
+        counters.skippedConflicts += skipped;
+        const by = central.matchedBy;
+        if (by === "phone") counters.linkedBy.phone++;
+        else if (by === "email") counters.linkedBy.email++;
+        else counters.linkedBy.social++;
+      } else {
         counters.imported++;
         nuevos.push(contactId);
       }
@@ -338,29 +362,50 @@ async function resolveTags(
   return mapa;
 }
 
-async function insertNew(
-  supabase: Client,
+/** Busca o crea la fila con la regla unica. Lo que no es un dato de identidad entra como valores por defecto. */
+async function resolveRow(
+  service: Awaited<ReturnType<typeof createServiceClient>>,
   workspaceId: string,
   patch: Partial<Record<ContactFieldKey, string | null>>,
   setterId: string | null,
   vendedorId: string | null,
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("contacts")
-    // El patch sale de validateContactField, que ya dejo cada valor en su
-    // forma valida; el cast es porque los tipos generados a mano no pueden
-    // seguir esa validacion.
-    .insert({
-      workspace_id: workspaceId,
-      ...(patch as Record<string, never>),
+): Promise<FindOrCreateResult> {
+  const {
+    phone, whatsapp_phone, email, secondary_email, instagram_username, tiktok_username, twitter_username,
+    linkedin_profile_url, ...rest
+  } = patch;
+  return findOrCreateContact(service, {
+    workspaceId,
+    identity: {
+      phone, whatsapp_phone, email, secondary_email,
+      instagram: instagram_username, tiktok: tiktok_username, x: twitter_username, linkedin: linkedin_profile_url,
+    },
+    defaults: {
+      ...rest,
       ...(setterId ? { setter_id: setterId } : {}),
       ...(vendedorId ? { vendedor_id: vendedorId } : {}),
-    })
-    .select("id")
-    .single();
+    },
+    mode: "create",
+  });
+}
 
-  if (error) throw new Error(error.message);
-  return data?.id ?? null;
+/** Las columnas de la planilla cuyo dato ya es de OTRO contacto: no se escriben. */
+function conflictedKeys(central: FindOrCreateResult): Set<string> {
+  const out = new Set<string>();
+  for (const c of central.conflicts) {
+    if (c.by === "phone") (out.add("phone"), out.add("whatsapp_phone"));
+    if (c.by === "email") (out.add("email"), out.add("secondary_email"));
+    if (c.by === "instagram") out.add("instagram_username");
+    if (c.by === "tiktok") out.add("tiktok_username");
+    if (c.by === "x") out.add("twitter_username");
+    if (c.by === "linkedin") out.add("linkedin_profile_url");
+  }
+  return out;
+}
+
+function skippedConflictCount(patch: Partial<Record<ContactFieldKey, string | null>>, central: FindOrCreateResult): number {
+  const keys = conflictedKeys(central);
+  return Object.entries(patch).filter(([key, value]) => !!value && keys.has(key)).length;
 }
 
 /**
@@ -375,7 +420,9 @@ async function updateExisting(
   patch: Partial<Record<ContactFieldKey, string | null>>,
   setterId: string | null,
   vendedorId: string | null,
+  central: FindOrCreateResult,
 ): Promise<string | null> {
+  const conflicted = conflictedKeys(central);
   const { data: actual } = await supabase
     .from("contacts")
     .select("*")
@@ -388,6 +435,8 @@ async function updateExisting(
   const cambios: Record<string, string | null> = {};
   for (const [key, value] of Object.entries(patch)) {
     if (!value) continue;
+    // Un telefono, email o usuario que ya es de OTRO contacto no se escribe en este.
+    if (conflicted.has(key)) continue;
     const previo = (actual as Record<string, unknown>)[key];
     if (previo === null || previo === undefined || previo === "") cambios[key] = value;
   }

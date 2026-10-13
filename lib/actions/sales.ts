@@ -5,6 +5,7 @@ import { z } from "zod";
 import { snapshotProductId } from "@/lib/sales/sale-text";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
+import { findOrCreateContact } from "@/lib/contacts/find-or-create";
 import { logAudit } from "@/lib/audit";
 import { sanitizeSearch } from "@/lib/url-params";
 import { isProductStatus } from "@/lib/content/taxonomy";
@@ -141,8 +142,8 @@ export type ContactForSaleResult =
 
 /**
  * Resuelve el contacto del asistente. Busca por TELÉFONO primero y después por email con
- * `find_contact_by_phone_or_email` (que no crea nada): con un id se usa ese contacto; con
- * `null`, se inserta uno nuevo acá. Nunca `find_or_link_contact` ni deduplicar por nombre.
+ * la regla única (`find_or_create_contact`): con un contacto existente se usa ese; si no, se crea
+ * uno nuevo. Nunca `find_or_link_contact` ni deduplicar por nombre.
  *
  * Un Member con alcance `own` queda como setter del contacto nuevo: si no, no podría verlo
  * después de crearlo (la RLS de contactos lo esconde).
@@ -159,32 +160,33 @@ export async function createContactForSale(input: ManualContactInput): Promise<C
   const phone = parsed.data.phone?.trim() || null;
 
   const service = await createServiceClient();
-  const { data: found } = await service.rpc("find_contact_by_phone_or_email", {
-    p_workspace_id: workspace.id,
-    p_phone: phone ?? "",
-    p_email: email ?? "",
-  });
-  const resolution = resolveFoundContact(found as { contact_id: string | null; matched_by?: string | null; conflict_contact_id?: string | null } | null);
-  if (resolution.kind === "existing") {
-    return { ok: true, contactId: resolution.contactId, created: false, notice: resolution.notice };
-  }
-
   const ownsOnly = !(ctx.role === "owner" || ctx.role === "admin" || ctx.scope("leads") === "all");
-  const { data, error } = await service
-    .from("contacts")
-    .insert({
-      workspace_id: workspace.id,
-      display_name: name,
-      email,
-      phone,
-      ...(ownsOnly ? { setter_id: user.id } : {}),
-    })
-    .select("id")
-    .single();
-  if (error || !data) {
-    console.error("[sales] no pude crear el contacto:", error?.message);
+
+  // La regla unica (00200): teléfono primero, después email, con el teléfono normalizado; busca y, si no
+  // está, crea el contacto (con bloqueo por dato). Un error de la base ya NO se toma como "no está".
+  let result;
+  try {
+    result = await findOrCreateContact(service, {
+      workspaceId: workspace.id,
+      identity: { phone, email },
+      defaults: { display_name: name, ...(ownsOnly ? { setter_id: user.id } : {}) },
+      mode: "create",
+    });
+  } catch (err) {
+    console.error("[sales] no pude buscar o crear el contacto:", err instanceof Error ? err.message : "error desconocido");
     return { ok: false, error: "No pude crear el contacto" };
   }
+  if (result.status === "no_identity" || !result.contactId) {
+    return { ok: false, error: "Poné un email o un teléfono válido (con código de país)" };
+  }
+  if (!result.created) {
+    const resolution = resolveFoundContact({ contact_id: result.contactId, matched_by: result.matchedBy, conflict_contact_id: result.conflictContactId });
+    if (resolution.kind === "existing") {
+      return { ok: true, contactId: resolution.contactId, created: false, notice: resolution.notice };
+    }
+  }
+
+  const data = { id: result.contactId };
 
   await logAudit({
     supabase: ctx.supabase,

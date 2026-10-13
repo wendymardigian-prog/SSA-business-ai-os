@@ -5256,6 +5256,11 @@ export interface Database {
         Args: { p_workspace_id: string; p_phone: string; p_email: string };
         Returns: Json;
       };
+      /** La regla unica "buscar o crear contacto" (00200). Siempre por lib/contacts/find-or-create.ts. Solo service_role. */
+      find_or_create_contact: {
+        Args: { p_workspace_id: string; p_identity: Json; p_defaults?: Json; p_mode?: string; p_allow_without_identity?: boolean };
+        Returns: Json;
+      };
       /** Busca un contacto por telefono, email o redes; devuelve tambien los conflictos; NO crea (00175). Solo service_role. */
       find_contact_for_form: {
         Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };

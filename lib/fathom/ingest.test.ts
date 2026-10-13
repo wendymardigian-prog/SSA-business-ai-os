@@ -267,7 +267,11 @@ describe("syncFathomConnection", () => {
       "audit_log:insert": { data: { id: "a" } },
       "scheduled_jobs:select": { data: [] },
       "scheduled_jobs:insert": { data: { id: "j" } },
-    }, { workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }] } });
+    }, {
+      workspace_member_profiles: { data: [{ user_id: "user-ana", email: "ana@negocio.io" }] },
+      // La busqueda del contacto es la de la regla unica (find_only).
+      find_or_create_contact: { data: { contact_id: "c-9", created: false, matched_by: "email", conflicts: [], status: "found" } },
+    });
     const linked: unknown[] = [];
     await syncFathomConnection({ ...baseDeps(w, fathom({ pages: { first: { items: [meeting(1)] } }, log: [] })), supabase: db.client, onLinked: async (i) => { linked.push(i); } }, CONN);
     expect(w.calls[0]).toMatchObject({ contact_id: "c-9", link_method: "auto_email" });

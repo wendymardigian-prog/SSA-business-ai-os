@@ -56,6 +56,9 @@ export interface CreateBookingInput {
   now?: Date;
 }
 
+/** Sin email ni telefono no se agenda: no hay con que reconocer a la persona. */
+const IDENTITY_REQUIRED_MESSAGE = "Necesitamos un email o un teléfono para agendar.";
+
 export type CreateBookingResult =
   | { ok: true; uid: string; bookingId: string; contactId: string; startUtc: string; endUtc: string; redirectUrl: string | null }
   /** El honeypot: se responde como si hubiera salido bien, sin crear nada. */
@@ -110,6 +113,9 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
   }
   const responses = parsed.data as Record<string, unknown>;
   const contactData = contactDataFromResponses(responses);
+  if (!input.contactId && !contactData.email && !contactData.phone) {
+    return { ok: false, status: 422, reason: "invalid", message: IDENTITY_REQUIRED_MESSAGE };
+  }
 
   // 5. El horario, recalculado con datos frescos: Google sin cache.
   const from = new Date(new Date(input.startUtc).getTime() - 24 * 60 * 60 * 1000).toISOString();
@@ -164,6 +170,9 @@ export async function createBooking(service: Db, input: CreateBookingInput): Pro
   if (error) {
     // 23P01 = la exclusion: otro pedido gano la carrera por el mismo horario.
     if (error.code === "23P01") return { ok: false, status: 409, reason: "slot_taken", message: "Ese horario se acaba de ocupar." };
+    // CB001 = la regla unica de contactos (00203): sin un email ni un telefono valido no se puede identificar a
+    // la persona, y una reserva no crea un contacto solo con el nombre.
+    if (error.code === "CB001") return { ok: false, status: 422, reason: "invalid", message: IDENTITY_REQUIRED_MESSAGE };
     console.error("[agenda] create_booking fallo:", error.message);
     return { ok: false, status: 500, reason: "temporarily_unavailable" };
   }
