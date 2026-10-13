@@ -21,6 +21,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webhook";
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
+import { adOriginOf, buildOriginContext } from "@/lib/messages/origin-context";
 import { attributeComment } from "@/lib/comments/attribution";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
@@ -99,14 +100,43 @@ interface WebhookPayload {
      */
     storyReply?: { storyId: string; storyUrl?: string };
     /**
+     * Instagram: alguien mencionó la cuenta en SU historia (`@cuenta`). Excluyente con `storyReply`.
+     * Zernio lo manda en `metadata.isStoryMention` (SDK 0.2.519). Es un origen aparte: toque `story_mention`.
+     */
+    isStoryMention?: boolean;
+    /**
      * Datos del anuncio que originó la conversación. Solo viene en el PRIMER
      * mensaje después del clic (ad_id y ref en Instagram y Messenger; ctwa_clid
-     * y source_id en WhatsApp). Sin tipar a propósito: ningún campo es seguro y
-     * `fromZernioReferral` lo lee de forma defensiva (F85).
+     * y source_id en WhatsApp). La forma esta en `ZernioReferral` (SDK 0.2.519),
+     * pero ningún campo es seguro: `fromZernioReferral` lo lee de forma
+     * defensiva (F85) y `messages.origin_context` guarda solo una lista blanca (F19).
      */
-    referral?: unknown;
+    referral?: ZernioReferral | null;
   };
   timestamp: string;
+}
+
+/**
+ * El `metadata.referral` del webhook de mensajes de Zernio, como lo tipa el SDK (0.2.519). Solo documenta:
+ * se lee con `fromZernioReferral` (defensivo) y `buildOriginContext` (lista blanca).
+ */
+interface ZernioReferral {
+  ctwa_clid?: string;
+  source_id?: string;
+  source_type?: string;
+  source_url?: string;
+  headline?: string;
+  body?: string;
+  media_type?: string;
+  image_url?: string;
+  video_url?: string;
+  thumbnail_url?: string;
+  ad_id?: string;
+  ref?: string;
+  source?: string;
+  /** En Instagram es `OPEN_THREAD`: no dice nada del anuncio. */
+  type?: string;
+  ads_context_data?: { ad_title?: string; photo_url?: string; video_url?: string; post_id?: string; product_id?: string; flow_id?: string };
 }
 
 interface CommentWebhookPayload {
@@ -123,6 +153,8 @@ interface CommentWebhookPayload {
     createdAt: string;
     isReply: boolean;
     parentCommentId: string | null;
+    /** Solo viene cuando el comentario es sobre un anuncio (contenido pago): `ad.id` es el id del anuncio en Meta (Instagram). */
+    ad?: { id?: string; title?: string; promotionStatus?: string };
   };
   post: { id: string; platformPostId: string };
   account: { id: string; platform: string; username: string };
@@ -339,6 +371,13 @@ async function processMessageEvent(
     quickReplyPayload: metadata?.quickReplyPayload ?? null,
     postbackPayload: metadata?.postbackPayload ?? null,
     callbackData: metadata?.callbackData ?? null,
+    // De donde vino (historia, mencion, anuncio): lista blanca. Guardarlo nunca frena el mensaje.
+    originContext: buildOriginContext({
+      platform: channel.platform,
+      storyReply: metadata?.storyReply ?? null,
+      isStoryMention: metadata?.isStoryMention ?? null,
+      zernioReferral: metadata?.referral ?? null,
+    }),
   });
 
   // ── El toque de atribución (F85) ──────────────────────────────────────────
@@ -357,6 +396,7 @@ async function processMessageEvent(
       platformMessageId: msg.id ?? null,
       messageId: inserted.id ?? null,
       storyId: metadata?.storyReply?.storyId ?? null,
+      isStoryMention: metadata?.isStoryMention === true,
       referral: fromZernioReferral(metadata?.referral),
     });
   } catch (err) {
@@ -433,6 +473,9 @@ async function processMessageEvent(
       callbackData: metadata?.callbackData || undefined,
       isStoryReply: Boolean(metadata?.storyReply),
       storyId: metadata?.storyReply?.storyId,
+      // El origen que leen los filtros "solo si vino de un anuncio" y "solo menciones en historias".
+      isStoryMention: metadata?.isStoryMention === true,
+      ...(adOriginOf(metadata?.referral) ?? {}),
       sender: {
         id: msg.sender.id,
         name: msg.sender.name,
@@ -635,6 +678,8 @@ async function handleCommentWebhook(
     isOwn: own,
     commentedAt: payload.comment.createdAt ?? null,
     socialPostId: commentedPostId,
+    // Un comentario sobre un anuncio trae `comment.ad.id` (SDK 0.2.519, solo Instagram).
+    adId: typeof payload.comment.ad?.id === "string" ? payload.comment.ad.id : null,
   });
 
   // Ack before processing (same 5s delivery budget as messages); processComment

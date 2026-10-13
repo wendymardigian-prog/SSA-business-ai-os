@@ -286,7 +286,7 @@ sociales) y `00177` (candado en `form_versions`).
 (`save_eod_draft`, `submit_eod_report`), `00182` (flujos sin contacto: `contact_id`
 nullable en `automation_events` y `flow_sessions`, con CHECK y `member_user_id`), `00183`
 (trigger `eod_submitted`), `00184` (`submit_eod_report` v2 con el evento) y `00185` (cron
-del recordatorio). **La proxima disponible es la `00186`.**
+del recordatorio). **El Extra L (13/10/2026) uso la `00186` a la `00195`: la proxima libre es la `00196`** (confirmar con `list_migrations`).
 
 **El `list_migrations` del MCP de Supabase es la fuente real**, no lo que
 diga este archivo: la numeracion de acá se desactualiza cuando dos corridas
@@ -1034,6 +1034,68 @@ Claude Code** (no hay editor visual). Guia completa en [docs/sitio.md](docs/siti
   copia la version por defecto de `scripts/template-files/sitio/`.
 - La atribucion viaja entre paginas: cookie `ssa_attr` en el sitio y `localStorage` en una web
   externa con el mismo `embed.js` (modo `data-agenda-track`).
+
+# Webhooks, atribucion y anuncios (Extra L, construido el 13/10/2026)
+
+Webhooks entrantes con flujos que arrancan sin contacto, atribucion que no pierde nada, catalogo de Meta, el vinculo de cada toque con su
+campaña, conjunto y anuncio, y la tabla Meta vs CRM. Resumen en [docs/webhooks.md](docs/webhooks.md), [docs/atribucion.md](docs/atribucion.md),
+[docs/flow-registry.md](docs/flow-registry.md) y [docs/dashboards.md](docs/dashboards.md); avance y decisiones en `docs/PROGRESS-atribucion.md` y
+`docs/PENDIENTE-atribucion.md`.
+
+## Migraciones (`00186` a `00195`, todas aplicadas y registradas)
+
+`00186` (`webhook_endpoints` e `inbound_webhooks`), `00187` (`flow_sessions.inbound_webhook_id`, CHECK de tres vias, `triggers.type` + `webhook_received`),
+`00188` (`contact_touches.origin` + `webhook`), `00189` (`messages.origin_context`), `00190` (`create_booking` pasa el anuncio y los extras al toque),
+`00191` (catalogo de Meta, `meta_name_key`, bucket `ad-creatives`), `00192` (vinculo toque ↔ anuncio: columnas, `resolve_meta_match`, trigger,
+`contact_touch_json`, `refresh_contact_attribution`, `rematch_meta_touches`, `set_touch_meta_match`), `00193` (backfill), **`00194` (corrige la 00192: solo
+cuentan los toques que pueden traer datos de anuncio)** y `00195` (`ads_crm_metrics`). **La proxima libre es la `00196`.** Las huellas de
+`record_contact_touch`, `find_or_link_contact`, `find_contact_for_form` y `submit_form_response` no cambiaron (`verify-ads-attribution.mjs` compara la primera).
+
+## Lo que no se puede romper
+
+- **El receptor guarda ANTES de procesar y nunca loguea el token, el secreto ni el payload.** El orden de las validaciones es parte del contrato
+  (`lib/webhooks/receive.ts`): forma del token sin tocar la base → endpoint → secreto → tope → tamaño → parseo → idempotencia → guardar → responder.
+- **El token de un endpoint es una credencial**: `authenticated` no puede leer `webhook_endpoints.token` (privilegio por columna). **Nunca `select("*")`
+  sobre `webhook_endpoints` con la sesion.** Las pantallas leen con el cliente de servicio DESPUES de chequear el permiso en TypeScript
+  (`has_permission` en SQL es false para el Member de sistema).
+- **Un flujo de webhook arranca sin contacto** (`subject: "webhook"`, `contact_id` null con `inbound_webhook_id`). Un paso con `needsContact` solo
+  puede ir DESPUES de «Crear o actualizar contacto», en TODOS los caminos; se valida al **publicar** (`contact-requirement.ts`). El motor saltea
+  (no corta) un paso sin contacto y lo anota. `webhook_received` no tiene `eventTypes`: el cron de `automation_events` nunca lo levanta.
+- **«Crear o actualizar contacto» escribe sobre el workspace del ENDPOINT, nunca el del payload**, busca por telefono/email/redes (jamas por nombre),
+  no pisa el @ de Instagram de un contacto con canal vinculado y no fusiona contactos. El toque va en `try/catch`.
+- **La atribucion nunca tumba nada**: `recordTouch`, el trigger `contact_touches_meta_match` y el sync de catalogo no pueden hacer fallar el insert de un
+  toque, un mensaje o un sync de metricas. El trigger esta envuelto en `EXCEPTION WHEN OTHERS` (deja `none` y un `RAISE WARNING`).
+- **`resolve_meta_match` (SQL) y `resolveMetaMatch` (TS) son gemelas**: los casos de `lib/attribution/meta-match.cases.json` corren contra las dos. Si se
+  cambia una regla, se cambia en las dos y se suma el caso. **Solo cuentan como datos de Meta** los ids, el `fbclid` y, si el toque puede traer UTMs
+  de verdad (agenda, formulario, webhook, import, manual) o ya trae un id de anuncio, `campaign`/`content_label`/`term`: en un comentario o DM
+  organico `content_label` es el titulo de la publicacion (00194, `touchMetaInput`).
+- **El vinculo automatico NUNCA pisa un `manual` ni un `ignored`** (ni el trigger, ni `rematch_meta_touches`, ni el sync). Vincular, ignorar y quitar van
+  por `set_touch_meta_match` (atomica: actualiza el toque y recalcula `contacts.attribution`) desde `lib/actions/meta-match.ts`, que exige
+  `settings.manage`, que el toque sea del workspace de la SESION y que quien vincula pueda ver el contacto; queda en `audit_log`.
+- **`contacts.attribution` es una copia derivada**: `private.refresh_contact_attribution` usa el mismo orden que `record_contact_touch`
+  (`occurred_at`, `created_at`, `id`). `meta_match_status` solo se escribe ahi cuando no es `none`.
+- **El catalogo de Meta nunca se borra** y el sync de entidades es independiente del de metricas (un fallo de uno no frena al otro). Un tope de paginas o el
+  limite de uso cortan el sync y lo anotan en `integration_configs.config.ad_accounts[].last_error` (**no en silencio**); `catalog_synced_at` solo avanza
+  con un catalogo completo. El upsert de anuncios NO manda `social_post_id`, `content_post_id`, `content_link_manual`, `thumbnail_path` ni
+  `thumbnail_attempts` (no pisa un enlace manual ni una miniatura bajada). Los jobs de miniaturas no lanzan: reagendan a 1 y 5 minutos.
+- **`ads_crm_metrics` es SECURITY INVOKER**: la RLS de quien mira decide que cuenta. No se la pasa a DEFINER para ganar velocidad (a 10.000 toques en
+  90 dias tarda ~0,9 s bajo RLS; la salida es una politica de lectura mas barata, con aprobacion). Una division por cero es «—» (null), nunca 0; la plata
+  del CRM va en centavos y se pasa con `fromCents`; el Total calcula los cocientes sobre los totales.
+- **El dashboard de Anuncios pide `dashboards.ads.view`, no el cargo.** Las cuentas publicitarias (`integration_configs`) se leen con el cliente de servicio
+  filtrado por el workspace de la sesion. `meta_ads_insights_daily` tiene una politica ADICIONAL de lectura por permiso (00191); la de Owner/Admin no se toco.
+- **`localStorage` siempre en `try/catch`** (el selector de columnas): sin el, las columnas por defecto.
+- **La atribucion en el navegador sigue siendo una sola lista de claves** (`lib/attribution/keys.ts`); la agenda las manda todas y completa `fbp`/`fbc` desde las cookies.
+  Si se toca `lib/embed/*` hay que regenerar y commitear `public/embed/embed.js` (< 60 KB).
+
+## Scripts de verificacion
+
+```
+node scripts/verify-inbound-webhooks.mjs   # RLS, token oculto, unicos, y el receptor de punta a punta si la app corre en local
+node scripts/verify-ads-attribution.mjs    # catalogo, RLS, paridad SQL↔TS (29 casos), trigger con error forzado, re-vinculo, ads_crm_metrics y su costo
+```
+
+`verify-rls.mjs --despues-de-00143` y `verify-roles.mjs --despues-de-00136` son los que corresponden hoy. Mismas reglas que los demas: crean y limpian sus datos
+(prefijo `zz-test-`) y no se corren dos en simultaneo.
 
 # Seguridad
 

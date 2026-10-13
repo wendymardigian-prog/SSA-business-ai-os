@@ -166,6 +166,8 @@ describe("los tres tipos nuevos estan registrados", () => {
       "sale_created",
       "sale_status_changed",
       "survey_answered",
+      // Webhooks entrantes (Extra L): de evento, pero corre directo y no por la cola.
+      "webhook_received",
     ]);
     // Los tres relativos de agenda y los dos de pagos (antes y despues del
     // vencimiento) los agenda un job, igual que inactividad.

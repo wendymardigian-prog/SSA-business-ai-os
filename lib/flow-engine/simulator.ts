@@ -34,6 +34,7 @@ export type SimulationStepResult =
   /** "Condiciones": por que camino iria (`pathId` es el del camino o `else`) y que paso con cada condicion. */
   | { type: "branch"; pathId: string; pathLabel: string; checks: Array<{ pathId: string; field: string; operator: string; ok: boolean; missing?: boolean }> }
   | { type: "delay"; duration: number; unit: string }
+  | { type: "upsert_contact" }
   | { type: "action"; actionType: string; detail: string }
   | { type: "ai_response"; mode: "skipped" | "generated"; text?: string }
   | { type: "split"; selectedPath: string; weight: number }
@@ -315,6 +316,20 @@ export function simulateFlow(
           },
         });
         nextHandle = pathId;
+        strictHandle = true;
+        break;
+      }
+
+      // «Crear o actualizar contacto» (webhooks): la prueba no escribe nada, supone que salió bien.
+      // Lo real corre con el envío; «Probar con el ejemplo» (en el panel del paso) muestra el mapeo.
+      case "upsert_contact": {
+        steps.push({
+          nodeId: node.id,
+          nodeType: "upsert_contact",
+          nodeLabel: label,
+          result: { type: "upsert_contact" },
+        });
+        nextHandle = "ok";
         strictHandle = true;
         break;
       }

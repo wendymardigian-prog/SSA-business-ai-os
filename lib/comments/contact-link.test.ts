@@ -67,6 +67,19 @@ describe("Instagram: solo vincula a quien YA es contacto (F86)", () => {
     expect(touchOf()).toMatchObject({ source: "instagram", medium: "comment", origin: "comment", dedupe_key: "comment:c-1" });
   });
 
+  it("F19: un comentario sobre un anuncio (comment.ad.id) anota el toque con ad_id y medio paid_social", async () => {
+    const db = world({ contacts: [{ id: "ct-1", workspace_id: WS, instagram_username: "unlead", deleted_at: null }] });
+    await attributeComment(db.client, params({ adId: "456" }));
+    expect(touchOf()).toMatchObject({ source: "instagram", medium: "paid_social", origin: "comment", ad_id: "456", dedupe_key: "comment:c-1" });
+  });
+
+  it("F19: sin comment.ad el comentario sigue siendo un toque `comment` sin ad_id", async () => {
+    const db = world({ contacts: [{ id: "ct-1", workspace_id: WS, instagram_username: "unlead", deleted_at: null }] });
+    await attributeComment(db.client, params({ adId: null }));
+    expect(touchOf()).toMatchObject({ medium: "comment" });
+    expect(touchOf()).not.toHaveProperty("ad_id");
+  });
+
   it("alguien que NO es contacto: no se crea nada ni se anota nada", async () => {
     const db = world();
 

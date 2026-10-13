@@ -199,6 +199,7 @@ export async function insertMessage({
   platformNativeMessageId = null,
   origin = null,
   email = null,
+  originContext = null,
 }: {
   supabase: Db;
   conversationId: string;
@@ -214,6 +215,11 @@ export async function insertMessage({
   postbackPayload?: string | null;
   callbackData?: string | null;
   platformNativeMessageId?: string | null;
+  /**
+   * De donde vino un entrante: historia, mencion, anuncio (00189, lista blanca de `lib/messages/origin-context.ts`).
+   * Guardarlo NUNCA puede impedir guardar el mensaje: si el insert falla con esta columna, se reintenta sin ella.
+   */
+  originContext?: unknown;
   /**
    * Origen del saliente (F2). Los entrantes van con null. El eco de WhatsApp
    * (`fromMe`) entra por acá como `external`.
@@ -236,9 +242,7 @@ export async function insertMessage({
     cc?: string[] | null;
   } | null;
 }): Promise<InsertedMessage> {
-  const { data, error } = await supabase
-    .from("messages")
-    .insert({
+  const row = {
     conversation_id: conversationId,
     direction,
     text,
@@ -264,13 +268,20 @@ export async function insertMessage({
           email_cc: (email.cc ?? null) as never,
         }
       : {}),
-    })
-    // El id hace falta para la media (F3): el mensaje se guarda con el adjunto
-    // en `pending`, se baja el archivo y recien despues se actualiza la fila.
-    // Sin el id habria que volver a buscar el mensaje por su
-    // platform_message_id, que es una consulta de mas en el camino mas caliente.
-    .select("id")
-    .single();
+  };
+  // El id hace falta para la media (F3): el mensaje se guarda con el adjunto
+  // en `pending`, se baja el archivo y recien despues se actualiza la fila.
+  // Sin el id habria que volver a buscar el mensaje por su
+  // platform_message_id, que es una consulta de mas en el camino mas caliente.
+  const insertRow = (extra: Record<string, unknown>) =>
+    supabase.from("messages").insert({ ...row, ...extra } as never).select("id").single();
+
+  let { data, error } = await insertRow(originContext ? { origin_context: originContext } : {});
+  // El contexto de origen es informacion de apoyo: si guardarlo falla, el mensaje se guarda igual (Extra L, F19).
+  if (error && error.code !== "23505" && originContext) {
+    console.error("[inbound] no pude guardar el contexto de origen, reintento sin el:", error.message);
+    ({ data, error } = await insertRow({}));
+  }
 
   if (!error) return { stored: true, id: data?.id ?? null };
   if (error.code === "23505") return { stored: false, id: null };
@@ -319,6 +330,7 @@ export async function persistInboundMessage({
   postbackPayload = null,
   callbackData = null,
   platformNativeMessageId = null,
+  originContext = null,
 }: {
   supabase: Db;
   channel: Pick<ChannelRow, "id" | "workspace_id" | "provider">;
@@ -331,6 +343,8 @@ export async function persistInboundMessage({
   postbackPayload?: string | null;
   callbackData?: string | null;
   platformNativeMessageId?: string | null;
+  /** De donde vino el mensaje (historia, mencion, anuncio): ver `insertMessage`. */
+  originContext?: unknown;
 }): Promise<InsertedMessage> {
   try {
     return await insertMessage({
@@ -346,6 +360,7 @@ export async function persistInboundMessage({
       postbackPayload,
       callbackData,
       platformNativeMessageId,
+      originContext,
     });
   } catch (err) {
     // Nunca lanza: guardar el mensaje no puede hacer fallar la recepcion.

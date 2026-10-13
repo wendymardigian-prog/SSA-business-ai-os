@@ -75,14 +75,24 @@ describe("el referral de Zernio (F85)", () => {
   it("lee un anuncio de Instagram: ad_id, ref y el título", () => {
     expect(
       fromZernioReferral({ ad_id: "ad-9", ref: "promo-octubre", source: "ADS", type: "OPEN_THREAD", ads_context_data: { ad_title: "Clase gratis" } }),
-    ).toEqual({ adId: "ad-9", ctwaClid: null, sourceType: "OPEN_THREAD", sourceUrl: null, title: "Clase gratis", ref: "promo-octubre" });
+    ).toEqual({ adId: "ad-9", ctwaClid: null, sourceType: null, sourceUrl: null, title: "Clase gratis", ref: "promo-octubre", postId: null, referralType: "OPEN_THREAD" });
+  });
+
+  it("F19: el type de Instagram (OPEN_THREAD) ya NO es el sourceType: se guarda aparte como referralType", () => {
+    const result = fromZernioReferral({ ad_id: "ad-9", type: "OPEN_THREAD" });
+    expect(result?.sourceType).toBeNull();
+    expect(result?.referralType).toBe("OPEN_THREAD");
+  });
+
+  it("F19: la publicación que promociona el anuncio sale de ads_context_data.post_id", () => {
+    expect(fromZernioReferral({ ad_id: "ad-9", ads_context_data: { ad_title: "T", post_id: "17890" } })?.postId).toBe("17890");
   });
 
   it("lee un clic a WhatsApp: ctwa_clid y el id del anuncio en source_id", () => {
     const result = fromZernioReferral({ ctwa_clid: "ctwa-1", source_id: "ad-55", source_type: "ad", source_url: "https://fb.com/ads/55", headline: "Mentoría" });
 
     expect(result).toEqual({
-      adId: "ad-55", ctwaClid: "ctwa-1", sourceType: "ad", sourceUrl: "https://fb.com/ads/55", title: "Mentoría", ref: null,
+      adId: "ad-55", ctwaClid: "ctwa-1", sourceType: "ad", sourceUrl: "https://fb.com/ads/55", title: "Mentoría", ref: null, postId: null, referralType: null,
     });
   });
 
@@ -170,6 +180,26 @@ describe("recordInboundTouch (F85)", () => {
 
     expect(touchSent()).toMatchObject({ medium: "story_reply" });
     expect(JSON.stringify(touchSent()?.raw)).toContain("story-5");
+  });
+
+  it("F19: una mención en una historia es un toque con medium story_mention (aunque el contacto ya existiera)", async () => {
+    await recordInboundTouch(world(), params({ contactExisted: true, isStoryMention: true }));
+
+    expect(touchSent()).toMatchObject({ source: "instagram", medium: "story_mention", origin: "dm", dedupe_key: "msg:m-100" });
+    expect((touchSent()?.raw as Record<string, unknown>).story_mention).toBe(true);
+  });
+
+  it("F19: un anuncio gana a la mención y a la respuesta a una historia", async () => {
+    expect(inboundTouchReason(ctx({ referral: { adId: "a", ctwaClid: null, sourceType: null, sourceUrl: null, title: null, ref: null }, isStoryMention: true }))).toBe("ad");
+    expect(inboundTouchReason(ctx({ isStoryReply: true, isStoryMention: true }))).toBe("story_reply");
+    expect(inboundTouchReason(ctx({ isStoryMention: true }))).toBe("story_mention");
+    expect(inboundTouchReason(ctx({ contactExisted: false, isStoryMention: true }))).toBe("story_mention");
+  });
+
+  it("F19: el referral completo va al raw (anuncio, publicación, tipo y plataforma)", async () => {
+    const referral = { adId: "ad-9", ctwaClid: null, sourceType: null, sourceUrl: null, title: "Clase gratis", ref: "promo", postId: "17890", referralType: "OPEN_THREAD" };
+    await recordInboundTouch(world(), params({ referral }));
+    expect((touchSent()?.raw as { referral: Record<string, unknown> }).referral).toMatchObject({ ad_id: "ad-9", post_id: "17890", referral_type: "OPEN_THREAD", platform: "instagram", ref: "promo" });
   });
 
   it("un anuncio: paid_social con los ids, la pieza y el referral en el raw", async () => {

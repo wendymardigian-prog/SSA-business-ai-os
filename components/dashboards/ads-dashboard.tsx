@@ -19,6 +19,7 @@ import { KpiRow } from "./ads/kpi-row";
 import { useAdsNavigation } from "./ads/use-ads-navigation";
 import { AdsAiPanel } from "./ads-ai-panel";
 import type { PeriodPreset } from "@/lib/dashboards/period";
+import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 import { computeTotals, type AdsRow } from "@/lib/dashboards/ads";
 
 /**
@@ -54,6 +55,10 @@ export interface AdsDashboardProps {
   syncedLabel: string | null;
   /** Los dashboards que puede abrir quien esta mirando (B3). */
   dashboards: DashboardOption[];
+  /** Puede pedir "Sincronizar ahora" (`settings.manage`). */
+  canSync?: boolean;
+  /** Lo que dice el CRM (AT4): con esto las tres tablas son «Meta vs CRM». Sin esto, la tabla de siempre. */
+  crm?: CrmTableData;
 }
 
 const SECTION_LABEL = "text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground";
@@ -134,6 +139,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
             onOpenAi={() => setAiOpen(true)}
             account={props.account}
             syncedLabel={props.syncedLabel}
+            canSync={props.canSync}
           />
         }
       />
@@ -175,6 +181,7 @@ export function AdsDashboard(props: AdsDashboardProps) {
           currency={props.currency}
           adAccountId={props.adAccountId}
           period={props.period}
+          crm={props.crm}
         />
 
         <DailyTableCard rows={accountRows} totals={totals} currency={props.currency} />

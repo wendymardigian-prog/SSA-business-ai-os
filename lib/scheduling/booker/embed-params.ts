@@ -10,6 +10,7 @@
 import { IDENTIFIER_RE } from "../identifier";
 import { isValidDateString } from "../time/date-string";
 import { isValidTimeZone } from "@/lib/timezone";
+import { ATTRIBUTION_KEYS } from "@/lib/attribution/keys";
 
 export type BookerTheme = "light" | "dark" | "auto";
 export const BOOKER_THEMES: BookerTheme[] = ["light", "dark", "auto"];
@@ -19,6 +20,15 @@ export type UtmKey = (typeof UTM_KEYS)[number];
 /** `ttclid` (TikTok) y `li_fat_id` (LinkedIn) se suman en Agenda v2. */
 export const CLICK_ID_KEYS = ["fbclid", "gclid", "ttclid", "li_fat_id"] as const;
 export type ClickIdKey = (typeof CLICK_ID_KEYS)[number];
+
+/**
+ * Las claves de atribucion que la agenda lee ADEMAS de las cinco UTM y los cuatro ids de clic de siempre:
+ * `utm_id`, los ids de clic de las demas plataformas, los ids de anuncio (`ad_id`, `adset_id`, `campaign_id`,
+ * `placement`) y las cookies de Meta/Google si llegaran. Salen de `lib/attribution/keys.ts` (la unica lista):
+ * sumar una clave ahi la suma aca. Sumar claves NO rompe ninguna URL ya publicada (Extra L, F16).
+ */
+const OLD_ATTRIBUTION_KEYS = new Set<string>([...UTM_KEYS, ...CLICK_ID_KEYS]);
+export const EXTRA_ATTRIBUTION_KEYS: readonly string[] = ATTRIBUTION_KEYS.filter((key) => !OLD_ATTRIBUTION_KEYS.has(key));
 
 export const HEX_COLOR_RE = /^#?([0-9a-f]{6}|[0-9a-f]{3})$/i;
 
@@ -43,8 +53,12 @@ export const RESERVED_PARAMS = new Set<string>([
   // precargada como respuesta de formulario en vez de leerse como la landing
   // page (Agenda v2).
   "referrer",
+  // La atribucion que manda el script del embed (`attr`, igual que a los formularios) y todas las claves de
+  // `lib/attribution/keys.ts`: tampoco se leen como respuestas de formulario.
+  "attr",
   ...UTM_KEYS,
   ...CLICK_ID_KEYS,
+  ...EXTRA_ATTRIBUTION_KEYS,
 ]);
 
 export interface EmbedParams {
@@ -65,6 +79,13 @@ export interface EmbedParams {
   };
   utm: Partial<Record<UtmKey, string>>;
   clickIds: Partial<Record<ClickIdKey, string>>;
+  /** Las demas claves de atribucion de la URL (utm_id, ad_id, adset_id, campaign_id, gbraid…), Extra L F16. */
+  attribution: Record<string, string>;
+  /**
+   * Lo que mando el script del embed con la atribucion y las cookies de la web que lo contiene
+   * (`lib/forms/embed-attr.ts`), todavia codificado. Se decodifica y re-sanea en `bookingAttribution`.
+   */
+  attr: string | null;
   /**
    * La página donde vive el embed (su propio `location.href`, Agenda v2): el
    * embed la manda como `referrer` (lib/embed/url.ts); acá se lee con su
@@ -136,6 +157,12 @@ export function parseEmbedParams(source: ParamsSource): EmbedParams {
     if (v) clickIds[k] = v;
   }
 
+  const attribution: Record<string, string> = {};
+  for (const k of EXTRA_ATTRIBUTION_KEYS) {
+    const v = first(source, k);
+    if (v) attribution[k] = v;
+  }
+
   const answers: Record<string, string> = {};
   for (const k of keys(source)) {
     if (RESERVED_PARAMS.has(k) || k === "name" || k === "email" || k === "phone") continue;
@@ -163,6 +190,8 @@ export function parseEmbedParams(source: ParamsSource): EmbedParams {
     prefill,
     utm,
     clickIds,
+    attribution,
+    attr: first(source, "attr"),
     landingPage: safeUrl(first(source, "referrer")),
   };
 }

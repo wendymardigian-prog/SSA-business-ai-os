@@ -599,6 +599,36 @@ describe("webhook de Zernio: el toque de atribución del DM (F85)", () => {
     );
   });
 
+  it("F19: una mención en una historia (metadata.isStoryMention) anota un toque story_mention", async () => {
+    db();
+    await callRoute(post({ ...dm(), metadata: { isStoryMention: true } }));
+    await runAfter();
+
+    expect(recordInboundTouch).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ isStoryMention: true, storyId: null }));
+    // Y el contexto de origen se guarda en el mensaje.
+    expect(persistInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: { story_mention: true } }));
+  });
+
+  it("F19: un mensaje de un anuncio guarda el contexto de origen con el anuncio y pasa el anuncio a las automatizaciones", async () => {
+    db();
+    await callRoute(post({ ...dm(), metadata: { referral: { ad_id: "123", ref: "promo", type: "OPEN_THREAD", ads_context_data: { ad_title: "Clase gratis", post_id: "999" } } } }));
+    await runAfter();
+
+    expect(persistInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: { ad: { platform: "instagram", ad_id: "123", ref: "promo", title: "Clase gratis", post_id: "999" } } }));
+    expect(runInboundAutomation).toHaveBeenCalledWith(expect.objectContaining({ incomingMessage: expect.objectContaining({ fromAd: true, adId: "123", adTitle: "Clase gratis" }) }));
+  });
+
+  it("F19: un mensaje común no guarda contexto de origen ni marca el anuncio", async () => {
+    db();
+    await callRoute(post(dm()));
+    await runAfter();
+
+    expect(persistInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: null }));
+    const incoming = runInboundAutomation.mock.calls[0][0].incomingMessage as Record<string, unknown>;
+    expect(incoming.fromAd).toBeUndefined();
+    expect(incoming.isStoryMention).toBe(false);
+  });
+
   it("un referral ilegible no rompe nada: se trata como un mensaje común", async () => {
     db();
 
@@ -668,6 +698,22 @@ describe("webhook de Zernio: la atribución del comentario (F86)", () => {
         isOwn: false,
       }),
     );
+  });
+
+  it("F19: un comentario sobre un anuncio (comment.ad.id) pasa el ad_id a la atribución", async () => {
+    db();
+    await callRoute(post(comment({ comment: { ad: { id: "456", title: "Clase", promotionStatus: "active" } } })));
+    await runAfter();
+
+    expect(attributeComment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ adId: "456" }));
+  });
+
+  it("F19: un comentario común no lleva ad_id", async () => {
+    db();
+    await callRoute(post(comment()));
+    await runAfter();
+
+    expect(attributeComment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ adId: null }));
   });
 
   it("un comentario PROPIO no se atribuye, ni antes ni despues", async () => {

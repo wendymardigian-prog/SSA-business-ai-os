@@ -152,3 +152,19 @@ export async function getPermissionAction(key: string): Promise<PermissionContex
   const ctx = await getPermissionContext();
   return ctx.can(key) ? ctx : null;
 }
+
+/**
+ * Para paginas que abre quien tenga AL MENOS UNO de los permisos (Webhooks entrantes:
+ * `flows.edit` o `integrations.manage`). Misma salida que `requirePermission`.
+ */
+export async function requireAnyPermission(keys: readonly string[]): Promise<PermissionContext> {
+  const ctx = await getPermissionContext();
+  if (!keys.some((key) => ctx.can(key))) redirect("/dashboard");
+  return ctx;
+}
+
+/** La version para Server Actions y rutas: el contexto o null. */
+export async function getAnyPermissionAction(keys: readonly string[]): Promise<PermissionContext | null> {
+  const ctx = await getPermissionContext();
+  return keys.some((key) => ctx.can(key)) ? ctx : null;
+}

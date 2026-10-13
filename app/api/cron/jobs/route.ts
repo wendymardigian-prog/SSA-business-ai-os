@@ -20,6 +20,7 @@ import { sweepStuckPublications } from "@/lib/publishing/sweep";
 import { CONTENT_UPLOAD_JOB } from "@/lib/content/jobs";
 import { reconcileProviderSchedules } from "@/lib/publishing/reconcile";
 import { credentialsForPublisher } from "@/lib/publishing/credentials";
+import { reapInboundWebhooks } from "@/lib/webhooks/reaper";
 
 // Enchufa los publicadores y los handlers de contenido (F30, F35). Al
 // importar el modulo, no dentro de la corrida: registrarlos por job seria
@@ -123,6 +124,13 @@ export async function GET(request: NextRequest) {
     await reapStuckTranscriptions(supabase);
   } catch (err) {
     console.error("[cron/jobs] fallo el reaper de transcripciones:", err instanceof Error ? err.message : String(err));
+  }
+
+  // Webhooks entrantes guardados que nadie proceso (Extra L, F2): el after() del receptor no llego
+  // a correr. Consulta sobre un indice parcial, casi siempre vacia. Nunca lanza.
+  const reaped = await reapInboundWebhooks(supabase);
+  if (reaped.processed > 0 || reaped.recovered > 0) {
+    console.log(`[cron/jobs] webhooks entrantes: ${reaped.processed} procesados, ${reaped.recovered} cortados`);
   }
 
   // Pick up pending jobs that are due, plus 'processing' jobs whose claim is

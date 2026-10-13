@@ -162,9 +162,12 @@ export interface AutomationEventRow {
 
 /**
  * Sobre quién es un flujo. `contact` (todos los de siempre): un lead. `member`: una
- * persona del equipo, sin contacto (E15). Lo declara el disparador; por defecto `contact`.
+ * persona del equipo, sin contacto (E15). `webhook`: un envío de un webhook entrante: arranca
+ * sin contacto ni persona y el contacto aparece a mitad de flujo, cuando el paso "Crear o
+ * actualizar contacto" lo crea o lo encuentra (Extra L). Lo declara el disparador; por
+ * defecto `contact`.
  */
-export type TriggerSubject = "contact" | "member";
+export type TriggerSubject = "contact" | "member" | "webhook";
 
 export interface TriggerEventArgs {
   supabase: SupabaseClient<Database>;

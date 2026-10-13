@@ -7,7 +7,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { previousPeriod, isPeriodPreset, resolvePeriod, type PeriodPreset } from "@/lib/dashboards/period";
 import { DEFAULT_PERIOD } from "@/lib/dashboards/url-state";
 import { parseMetaConfig, resolveSyncedAccount, syncedAccounts } from "@/lib/meta/accounts";
@@ -75,14 +75,17 @@ export async function loadDetailPage(params: {
   objectId: string;
   searchParams: Record<string, string | string[] | undefined>;
 }): Promise<DetailPageData> {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  // El permiso, no el cargo (F32).
+  const { workspace, supabase } = await requirePermission("dashboards.ads.view");
   const sp = params.searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
   const period: PeriodPreset =
     periodParam && isPeriodPreset(periodParam) ? periodParam : DEFAULT_PERIOD;
 
-  const { data: configRow } = await supabase
+  // Las cuentas estan en `integration_configs` (solo la lee un Admin): con el permiso de la pantalla se leen con el
+  // cliente de servicio, filtradas por el workspace de la sesion.
+  const { data: configRow } = await (await createServiceClient())
     .from("integration_configs")
     .select("config")
     .eq("workspace_id", workspace.id)

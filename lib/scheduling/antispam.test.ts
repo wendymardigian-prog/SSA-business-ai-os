@@ -50,6 +50,29 @@ describe("atribucion (F29)", () => {
     const params = new URLSearchParams("utm_source=ig&utm_medium=bio&fbclid=abc&email=a@b.com&otra=x");
     expect(pickUtm(params)).toEqual({ utm_source: "ig", utm_medium: "bio", fbclid: "abc" });
   });
+  it("F16: un objeto con todas las claves de atribucion y la primera visita (re-saneados)", () => {
+    const picked = pickUtm({
+      utm_source: "fb", ad_id: "1", adset_id: "2", campaign_id: "3", utm_id: "4", placement: "Instagram_Stories",
+      gbraid: "g", fbp: "fb.1.2", fbc: "fb.1.3", ga_client_id: "GA1.1",
+      first_visit: { ts: 1760000000000, utm_campaign: "oct", landing_page: "https://x.test/lp?utm_campaign=oct&secreto=1", token: "no" },
+      email: "a@b.com", otra: "x",
+    });
+    expect(picked).toMatchObject({ utm_source: "fb", ad_id: "1", adset_id: "2", campaign_id: "3", utm_id: "4", placement: "Instagram_Stories", gbraid: "g", fbp: "fb.1.2", fbc: "fb.1.3", ga_client_id: "GA1.1" });
+    expect(picked.first_visit).toMatchObject({ ts: 1760000000000, utm_campaign: "oct" });
+    // El resto no entra.
+    expect(picked).not.toHaveProperty("email");
+    expect(picked).not.toHaveProperty("otra");
+    expect(JSON.stringify(picked)).not.toContain("no\"");
+    expect(JSON.stringify(picked.first_visit)).not.toContain("token");
+  });
+
+  it("F16: un valor que no es texto (un objeto, un numero raro) no se cuela y todo se recorta", () => {
+    const picked = pickUtm({ ad_id: { x: 1 }, utm_source: 5, campaign_id: "c".repeat(500), first_visit: "no" });
+    expect(picked).not.toHaveProperty("ad_id");
+    expect(picked).not.toHaveProperty("first_visit");
+    expect(String(picked.campaign_id)).toHaveLength(200);
+  });
+
   it("tambien toma ttclid (TikTok) y li_fat_id (LinkedIn)", () => {
     const params = new URLSearchParams("ttclid=tt1&li_fat_id=li1");
     expect(pickUtm(params)).toEqual({ ttclid: "tt1", li_fat_id: "li1" });

@@ -103,6 +103,10 @@ const RAW_KEYS = new Set([
   // Formularios (F33): los datos del anuncio que `contact_touches` no tiene como columna.
   "utm_id", "gbraid", "wbraid", "msclkid", "twclid", "sccid", "epik", "rdt_cid", "placement",
   "fbp", "fbc", "ga_client_id", "page_url",
+  // Webhooks entrantes (Extra L): de que endpoint vino el toque.
+  "endpoint_id", "endpoint_name",
+  // Chat (Extra L, F19): el `referral` completo y la mencion en una historia.
+  "referral_type", "story_mention",
 ]);
 
 /** Cuánto texto puede tener un valor guardado en `raw`. */

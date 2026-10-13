@@ -28,13 +28,13 @@ describe("las listas cerradas (F81)", () => {
 
   it("medios: los del plano", () => {
     expect([...MEDIUMS]).toEqual([
-      "dm", "comment", "story_reply", "mention", "link_in_bio", "paid_social",
+      "dm", "comment", "story_reply", "story_mention", "mention", "link_in_bio", "paid_social",
       "organic_social", "email", "form", "booking", "qr", "import",
     ]);
   });
 
   it("orígenes: los que acepta la columna `origin` de la base", () => {
-    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import"]);
+    expect([...ORIGINS]).toEqual(["dm", "comment", "booking", "form", "manual", "import", "webhook"]);
   });
 });
 

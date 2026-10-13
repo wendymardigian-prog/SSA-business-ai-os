@@ -123,14 +123,16 @@ describe("formTouch (F17, F33)", () => {
     expect(touch).not.toHaveProperty("occurredAt");
   });
 
-  it("sin UTM: fuente web y el nombre del formulario como contenido", () => {
+  it("sin UTM: fuente web y SIN contenido (el nombre del formulario ya no se inventa como utm_content)", () => {
     const touch = formTouch({ ...base, attribution: {} });
     expect(touch.source).toBe("web");
-    expect(touch.content).toBe("Aplicación al programa");
+    expect(touch.content).toBeNull();
     expect(touch.medium).toBe("form");
+    // El formulario sigue identificado: por su id, en `raw`.
+    expect((touch.raw as { source_id: string }).source_id).toBe(base.formId);
   });
 
-  it("si vino utm_content, gana sobre el nombre del formulario", () => {
+  it("si vino utm_content, es el contenido", () => {
     expect(formTouch({ ...base, attribution: { utm_content: "video-1" } }).content).toBe("video-1");
   });
 

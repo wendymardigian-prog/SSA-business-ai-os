@@ -29,6 +29,26 @@ describe("parseEmbedParams (F25, F39)", () => {
     expect(p.clickIds).toEqual({ ttclid: "tt1", li_fat_id: "li1" });
   });
 
+  it("F16: lee TODAS las claves de atribucion de lib/attribution/keys.ts y no las confunde con preguntas", () => {
+    const p = parseEmbedParams({ ad_id: "1", adset_id: "2", campaign_id: "3", utm_id: "4", gbraid: "g", placement: "Instagram_Stories", fbp: "fb.1", otra: "y" });
+    expect(p.attribution).toEqual({ utm_id: "4", gbraid: "g", ad_id: "1", adset_id: "2", campaign_id: "3", placement: "Instagram_Stories", fbp: "fb.1" });
+    expect(p.prefill.answers).toEqual({ otra: "y" });
+  });
+
+  it("F16: `attr` (lo que manda el script del embed) se guarda sin decodificar y no es una pregunta", () => {
+    const p = parseEmbedParams({ attr: "eyJ1dG1fc291cmNlIjoiZmIifQ", otra: "y" });
+    expect(p.attr).toBe("eyJ1dG1fc291cmNlIjoiZmIifQ");
+    expect(p.prefill.answers).toEqual({ otra: "y" });
+    expect(parseEmbedParams({}).attr).toBeNull();
+  });
+
+  it("F16: lo de siempre no cambia: las nueve claves viejas siguen en utm y clickIds", () => {
+    const p = parseEmbedParams({ utm_source: "a", utm_medium: "b", utm_campaign: "c", utm_term: "d", utm_content: "e", fbclid: "1", gclid: "2", ttclid: "3", li_fat_id: "4" });
+    expect(Object.keys(p.utm)).toEqual(["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]);
+    expect(Object.keys(p.clickIds)).toEqual(["fbclid", "gclid", "ttclid", "li_fat_id"]);
+    expect(p.attribution).toEqual({});
+  });
+
   it("el referrer del embed (la pagina donde vive, Agenda v2) se lee como landingPage, no como pregunta", () => {
     const p = parseEmbedParams({ referrer: "https://cliente.com/landing?utm_source=x" });
     expect(p.landingPage).toBe("https://cliente.com/landing?utm_source=x");

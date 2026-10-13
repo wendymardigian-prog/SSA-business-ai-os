@@ -432,6 +432,7 @@ export function MessageThread({
     const optimisticId = `optimistic-${Date.now()}`;
     const optimisticMessage: Message = {
       id: optimisticId,
+      origin_context: null,
       conversation_id: conversation.id,
       direction: "outbound",
       text,

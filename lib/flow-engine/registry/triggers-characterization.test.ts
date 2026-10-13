@@ -37,8 +37,8 @@ describe("triggers registrados", () => {
       expect(t.priority).toBe(45);
       expect(t.eventTypes).toEqual([type]);
     }
-    // + los tres de Formularios, los seis de Ventas y el del reporte de fin de día (ver abajo).
-    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1);
+    // + los tres de Formularios, los seis de Ventas, el del reporte de fin de día y el de webhooks (ver abajo).
+    expect(listTriggers()).toHaveLength(BEFORE_CALLS.length + 2 + 3 + 6 + 1 + 1);
   });
 
   it("Formularios suma exactamente form_submitted, survey_answered y contract_signed, de alcance evento y prioridad 45", () => {
@@ -86,6 +86,18 @@ describe("reporte de fin de día (E16)", () => {
     expect(members).toEqual(["eod_submitted"]);
     const t = listTriggers().find((x) => x.type === "eod_submitted")!;
     expect(t).toMatchObject({ scope: "event", priority: 45, eventTypes: ["eod_submitted"] });
-    expect(listTriggers().filter((x) => x.type !== "eod_submitted").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
+    // Los demás son sobre un contacto, salvo el de webhooks (sujeto propio, ver abajo).
+    expect(listTriggers().filter((x) => x.type !== "eod_submitted" && x.type !== "webhook_received").every((x) => (x.subject ?? "contact") === "contact")).toBe(true);
+  });
+});
+
+describe("webhooks entrantes (Extra L)", () => {
+  it("webhook_received es el ÚNICO disparador de sujeto webhook, de alcance evento, sin cola de eventos", () => {
+    const webhook = listTriggers().filter((t) => t.subject === "webhook").map((t) => t.type);
+    expect(webhook).toEqual(["webhook_received"]);
+    const t = listTriggers().find((x) => x.type === "webhook_received")!;
+    expect(t).toMatchObject({ scope: "event", priority: 45 });
+    // Sin `eventTypes`: el cron de `automation_events` nunca lo levanta (corre directo).
+    expect(t.eventTypes).toBeUndefined();
   });
 });

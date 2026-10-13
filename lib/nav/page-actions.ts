@@ -63,6 +63,10 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Dashboards",
     tooltip: "Lo organico y lo pago del mismo periodo, uno al lado del otro.",
   },
+  "/dashboard/dashboards/ads/sin-vincular": {
+    title: "Sin vincular",
+    tooltip: "Los contactos que llegaron con datos de un anuncio y no se pudieron asociar a su campaña, conjunto o anuncio. Acá lo vinculás a mano o lo ignorás.",
+  },
   "/dashboard/dashboards/ads/campaigns/[id]": {
     title: "Campaña",
     tooltip: "Como rinde esta campaña, con sus conjuntos y sus anuncios.",
@@ -285,6 +289,15 @@ export const PAGE_META: Record<string, PageMeta> = {
   "/dashboard/settings/integrations/[providerId]": {
     title: "Integracion",
     tooltip: "Credenciales, cuentas conectadas y actividad de esta integracion.",
+  },
+  "/dashboard/settings/integrations/webhooks": {
+    title: "Webhooks entrantes",
+    tooltip:
+      "Una URL por cada formulario externo (Typeform, Tally, Framer…). Lo que llega se guarda, y los flujos que lo escuchan crean o actualizan el contacto.",
+  },
+  "/dashboard/settings/integrations/webhooks/[endpointId]": {
+    title: "Endpoint de webhooks",
+    tooltip: "La URL de este endpoint, lo que llegó y lo que pasó con cada envío.",
   },
   "/dashboard/settings/custom-fields": {
     title: "Campos personalizados",

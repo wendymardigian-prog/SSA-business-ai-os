@@ -162,4 +162,20 @@ describe("los tipos que no son de mensaje (arreglo colateral de la Etapa 4)", ()
   it("un tipo que el registro no conoce se sigue descartando", () => {
     expect(buildDesiredTriggers([{ type: "trigger", data: { triggerType: "inventado" } }], "flow-1")).toEqual([]);
   });
+
+  it("F19: los filtros «solo si vino de un anuncio» y «solo menciones en historias» llegan a la config del disparador de palabra clave", () => {
+    const rows = buildDesiredTriggers(
+      [triggerNode({ triggerType: "keyword", keywords: [{ value: "info", matchType: "contains" }], fromAdOnly: true, storyMentionOnly: true })],
+      FLOW_ID,
+    );
+    expect(rows[0].config).toMatchObject({ fromAdOnly: true, storyMentionOnly: true });
+  });
+
+  it("F19: apagados o ausentes no se guardan, y un comment_keyword no los lleva", () => {
+    const off = buildDesiredTriggers([triggerNode({ triggerType: "keyword", keywords: [{ value: "info", matchType: "contains" }], fromAdOnly: false })], FLOW_ID);
+    expect(off[0].config).not.toHaveProperty("fromAdOnly");
+    expect(off[0].config).not.toHaveProperty("storyMentionOnly");
+    const comment = buildDesiredTriggers([triggerNode({ triggerType: "comment_keyword", keywords: [{ value: "info", matchType: "contains" }], fromAdOnly: true })], FLOW_ID);
+    expect(comment[0].config).not.toHaveProperty("fromAdOnly");
+  });
 });

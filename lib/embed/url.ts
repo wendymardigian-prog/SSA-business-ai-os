@@ -172,6 +172,10 @@ export function buildEmbedIframeUrl(
     if (v) params.set(k, v);
   }
 
+  // La atribucion efectiva de la web que embebe (su URL, su localStorage y sus cookies de anuncios), igual
+  // que a los formularios. Solo si trae algo: sin atribucion la URL es la de siempre (Extra L, F16).
+  if (extras.attr) params.set("attr", extras.attr);
+
   const referrer = text(config.referrer);
   if (referrer && /^https?:\/\//i.test(referrer)) params.set("referrer", referrer);
 

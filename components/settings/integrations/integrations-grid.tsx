@@ -144,7 +144,7 @@ export function IntegrationsGrid({
                 </div>
               </section>
             ))}
-            {extra && chip === null && !onlyAttention && <section aria-label="Llamadas">{extra}</section>}
+            {extra && chip === null && !onlyAttention && <section aria-label="Otras conexiones">{extra}</section>}
           </div>
         )}
       </div>

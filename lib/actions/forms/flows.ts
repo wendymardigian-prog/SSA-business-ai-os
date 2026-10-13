@@ -297,7 +297,7 @@ export async function saveFormFlowTree(input: {
   const graph = prepared.graph;
 
   // Un flujo sin contacto no puede tener pasos que necesiten uno (aunque ya estuvieran guardados).
-  const problems = await checkMemberFlow(ctx.supabase, ctx.workspace.id, graph.nodes as unknown[]);
+  const problems = await checkMemberFlow(ctx.supabase, ctx.workspace.id, graph.nodes as unknown[], graph.edges as unknown[]);
   if (problems.length > 0) return { ok: false, error: problems[0] };
 
   const { error } = await ctx.supabase.from("flows").update({ nodes: graph.nodes as unknown as Json, edges: graph.edges as unknown as Json }).eq("id", input.flowId);

@@ -30087,3 +30087,2295 @@ BEGIN
 END $$;
 
 SELECT cron.schedule('eod-reminders-enqueue', '*/15 * * * *', $$SELECT private.enqueue_eod_reminders()$$);
+
+-- ============================================================
+-- MIGRATION 186: WEBHOOK ENDPOINTS
+-- ============================================================
+-- ============================================================================
+-- 00186 — Webhooks entrantes: `webhook_endpoints` e `inbound_webhooks`  (M1 del Extra L)
+-- ============================================================================
+-- Un endpoint = una URL (`/api/hooks/{token}`) que recibe JSON o form-urlencoded. Cada
+-- envio se guarda ANTES de procesarse (`inbound_webhooks`), se responde 200 y despues corren
+-- los flujos que lo escuchan. Detalle en docs/webhooks.md.
+--
+-- - `webhook_endpoints.token` (22 caracteres URL-safe) es una credencial: se guarda en la
+--   fila, pero `authenticated` NO puede leerla (privilegio por columna, mismo patron que los
+--   costos de `agents` en la 00060 y `pending_edit` en la 00180). El token lo ve solo quien
+--   puede editar webhooks, desde el servidor, despues de chequear el permiso en TypeScript.
+-- - El secreto opcional del header NO vive en una columna: esta en Vault y aca solo queda su
+--   nombre (`secret_vault_name`).
+-- - Escribe solo el servidor (Server Actions y el receptor, con el cliente de servicio). Ni
+--   `webhook_endpoints` ni `inbound_webhooks` tienen policies de INSERT, UPDATE ni DELETE.
+-- - RLS de lectura con `has_permission` (Owner/Admin y roles personalizados con la clave). OJO:
+--   `has_permission` devuelve false para el rol de sistema "Member" (sus claves viven en
+--   lib/auth/permissions.ts), asi que la RLS es una SEGUNDA barrera mas estricta; las pantallas
+--   leen con el cliente de servicio DESPUES de `getPermissionAction("flows.edit")`.
+-- - `inbound_webhooks.payload` se vacia a los 90 dias y la fila se borra a los 12 meses (cron
+--   diario, service role). El ejemplo del endpoint (`sample_payload`) no se vacia.
+--
+-- Como volver atras (nada depende de estas tablas todavia; M2 agrega una FK desde flow_sessions,
+-- hay que deshacer M2 antes):
+--   DROP TABLE IF EXISTS public.inbound_webhooks;
+--   DROP TABLE IF EXISTS public.webhook_endpoints;
+-- Riesgo: bajo (aditiva). El codigo viejo no la usa.
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- webhook_endpoints
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.webhook_endpoints (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (btrim(name) <> '' AND char_length(name) <= 120),
+  description text CHECK (description IS NULL OR char_length(description) <= 500),
+  -- 22 caracteres URL-safe (16 bytes aleatorios en base64url). Credencial: no se expone.
+  token text NOT NULL CHECK (token ~ '^[A-Za-z0-9_-]{22}$'),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused')),
+  -- Reservado: 'hmac' llega con Ventas Fase 2 (Whop).
+  auth_mode text NOT NULL DEFAULT 'token' CHECK (auth_mode IN ('token')),
+  -- El nombre del secreto en Vault para el header `x-webhook-secret` (opcional).
+  secret_vault_name text,
+  -- Ruta del id unico del envio dentro del payload (idempotencia), ej. `event_id`.
+  event_id_path text CHECK (event_id_path IS NULL OR char_length(event_id_path) <= 200),
+  -- Modo "escuchar el proximo envio": vence a los 15 minutos.
+  listen_until timestamptz,
+  -- { payload, query, captured_at }: el ejemplo para armar el mapeo. No se vacia.
+  sample_payload jsonb,
+  -- Reservado (Ventas Fase 2): el manejador por proveedor.
+  handler_key text,
+  last_received_at timestamptz,
+  -- El ultimo aviso de errores (una vez por hora por endpoint).
+  last_error_alert_at timestamptz,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  deleted_at timestamptz
+);
+
+COMMENT ON TABLE public.webhook_endpoints IS
+  'Endpoints de webhooks entrantes (Extra L). Escribe solo el servidor; el token no se expone a authenticated.';
+
+-- El token es la clave de busqueda del receptor: unico en todo el sistema.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_endpoints_token
+  ON public.webhook_endpoints (token);
+-- El nombre es unico por workspace entre los no borrados.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_endpoints_ws_name
+  ON public.webhook_endpoints (workspace_id, lower(btrim(name)))
+  WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_webhook_endpoints_ws
+  ON public.webhook_endpoints (workspace_id)
+  WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS set_updated_at ON public.webhook_endpoints;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.webhook_endpoints
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ------------------------------------------------------------
+-- inbound_webhooks
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.inbound_webhooks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Copiado del endpoint: el workspace sale SIEMPRE del endpoint, nunca del payload.
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  endpoint_id uuid NOT NULL REFERENCES public.webhook_endpoints(id) ON DELETE CASCADE,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  status text NOT NULL CHECK (status IN ('received', 'processing', 'processed', 'error', 'ignored', 'captured', 'paused')),
+  -- Se vacia a los 90 dias (retencion): null = ya vaciado.
+  payload jsonb,
+  query jsonb,
+  content_type text,
+  size_bytes integer CHECK (size_bytes IS NULL OR size_bytes >= 0),
+  -- IPv4 /24, IPv6 /48: nunca la IP exacta.
+  ip_prefix text,
+  user_agent text CHECK (user_agent IS NULL OR char_length(user_agent) <= 300),
+  external_event_id text,
+  body_hash text,
+  contact_id uuid REFERENCES public.contacts(id) ON DELETE SET NULL,
+  -- { flows: { <flow_id>: {...} }, summary }
+  result jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_message text,
+  reprocess_count integer NOT NULL DEFAULT 0 CHECK (reprocess_count >= 0),
+  -- Cuando paso a 'processing': el reaper rescata los que quedaron colgados.
+  processing_started_at timestamptz,
+  processed_at timestamptz
+);
+
+COMMENT ON TABLE public.inbound_webhooks IS
+  'Cada envio recibido por un endpoint, guardado antes de procesarse. Escribe solo el servidor; nadie borra (lo vacia el cron).';
+
+-- Idempotencia: el mismo id de envio en el mismo endpoint se guarda una sola vez.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inbound_webhooks_event
+  ON public.inbound_webhooks (endpoint_id, external_event_id)
+  WHERE external_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_inbound_webhooks_endpoint_received
+  ON public.inbound_webhooks (endpoint_id, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_inbound_webhooks_body_hash
+  ON public.inbound_webhooks (endpoint_id, body_hash, received_at)
+  WHERE body_hash IS NOT NULL;
+-- El reaper busca los 'received' (y los 'processing' colgados).
+CREATE INDEX IF NOT EXISTS idx_inbound_webhooks_pending
+  ON public.inbound_webhooks (received_at)
+  WHERE status IN ('received', 'processing');
+-- La retencion barre por fecha.
+CREATE INDEX IF NOT EXISTS idx_inbound_webhooks_received
+  ON public.inbound_webhooks (received_at);
+
+-- ------------------------------------------------------------
+-- RLS
+-- ------------------------------------------------------------
+ALTER TABLE public.webhook_endpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inbound_webhooks ENABLE ROW LEVEL SECURITY;
+
+-- Endpoints: los ve quien edita flujos o administra integraciones.
+DROP POLICY IF EXISTS webhook_endpoints_select ON public.webhook_endpoints;
+CREATE POLICY webhook_endpoints_select ON public.webhook_endpoints
+  FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (
+      public.has_permission(workspace_id, 'flows.edit')
+      OR public.has_permission(workspace_id, 'integrations.manage')
+    )
+  );
+
+-- Envios (con el payload, que tiene datos personales): solo quien edita flujos.
+DROP POLICY IF EXISTS inbound_webhooks_select ON public.inbound_webhooks;
+CREATE POLICY inbound_webhooks_select ON public.inbound_webhooks
+  FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND public.has_permission(workspace_id, 'flows.edit')
+  );
+
+-- Sin policies de INSERT, UPDATE ni DELETE: escribe el servidor. Y sin grants de escritura.
+REVOKE ALL ON public.webhook_endpoints FROM anon;
+REVOKE ALL ON public.webhook_endpoints FROM authenticated;
+-- Todas las columnas MENOS `token` (y `secret_vault_name`, que no se necesita en el navegador).
+GRANT SELECT (
+  id, workspace_id, name, description, status, auth_mode, event_id_path, listen_until,
+  sample_payload, handler_key, last_received_at, last_error_alert_at, created_by,
+  created_at, updated_at, deleted_at
+) ON public.webhook_endpoints TO authenticated;
+GRANT ALL ON public.webhook_endpoints TO service_role;
+
+REVOKE ALL ON public.inbound_webhooks FROM anon;
+REVOKE ALL ON public.inbound_webhooks FROM authenticated;
+GRANT SELECT ON public.inbound_webhooks TO authenticated;
+GRANT ALL ON public.inbound_webhooks TO service_role;
+
+-- ============================================================
+-- MIGRATION 187: WEBHOOK SESSIONS
+-- ============================================================
+-- ============================================================================
+-- 00187 — Webhooks entrantes: sesiones de flujo sin contacto y el disparador  (M2 del Extra L)
+-- ============================================================================
+-- Un flujo disparado por un webhook arranca SIN contacto y SIN persona del equipo: el
+-- contacto aparece a mitad de flujo, cuando el paso "Crear o actualizar contacto" lo crea o
+-- lo encuentra. Dos cambios sobre estructura existente:
+--
+--  1. `flow_sessions.inbound_webhook_id` (FK a `inbound_webhooks`, ON DELETE SET NULL) y el
+--     CHECK `flow_sessions_contact_or_member` recreado con una tercera salida:
+--     contact_id IS NOT NULL OR member_user_id IS NOT NULL OR inbound_webhook_id IS NOT NULL.
+--     Ninguna fila existente cambia: todas tienen contacto (o persona del equipo) y la columna
+--     nueva queda null. NO se afloja nada mas: el NOT NULL de `contact_id` ya lo quito la 00182.
+--  2. El CHECK de `triggers.type` suma `webhook_received` (32 tipos). La lista se leyo de la
+--     base viva el 12/10/2026 (los 31 de la 00183); `lib/webhooks/migrations.test.ts` lee ESTE
+--     archivo y exige los 31 + el nuevo.
+--
+-- Definicion VIEJA de `flow_sessions_contact_or_member` (pg_get_constraintdef, base viva):
+--   CHECK (((contact_id IS NOT NULL) OR (member_user_id IS NOT NULL)))
+--
+-- Definicion VIEJA de `triggers_type_check` (31 tipos):
+--   CHECK ((type = ANY (ARRAY[
+--     'keyword'::text,
+--     'postback'::text,
+--     'quick_reply'::text,
+--     'welcome'::text,
+--     'default'::text,
+--     'comment_keyword'::text,
+--     'new_contact'::text,
+--     'crm_event'::text,
+--     'inactivity'::text,
+--     'email_received'::text,
+--     'booking_created'::text,
+--     'booking_rescheduled'::text,
+--     'booking_cancelled'::text,
+--     'booking_updated'::text,
+--     'booking_ended'::text,
+--     'booking_status_changed'::text,
+--     'booking_before_start'::text,
+--     'booking_after_end'::text,
+--     'booking_after_created'::text,
+--     'call_analyzed'::text,
+--     'call_linked'::text,
+--     'form_submitted'::text,
+--     'survey_answered'::text,
+--     'contract_signed'::text,
+--     'sale_created'::text,
+--     'sale_status_changed'::text,
+--     'payment_created'::text,
+--     'payment_status_changed'::text,
+--     'payment_before_due'::text,
+--     'payment_after_due'::text,
+--     'eod_submitted'::text
+--   ])))
+--
+-- Como volver atras:
+--   (antes) UPDATE public.triggers SET is_active = false WHERE type = 'webhook_received';
+--           DELETE FROM public.triggers WHERE type = 'webhook_received';
+--           DELETE FROM public.flow_sessions WHERE contact_id IS NULL AND member_user_id IS NULL;
+--   ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_contact_or_member;
+--   ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_member
+--     CHECK (contact_id IS NOT NULL OR member_user_id IS NOT NULL);
+--   DROP INDEX IF EXISTS public.idx_flow_sessions_inbound_webhook;
+--   ALTER TABLE public.flow_sessions DROP COLUMN IF EXISTS inbound_webhook_id;
+--   ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+--   ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check CHECK (type = ANY (ARRAY[<la lista vieja>]));
+-- Riesgo: ALTO en estructura (toca flow_sessions y triggers), pero compatible con el codigo
+-- viejo: este nunca crea sesiones sin contacto ni persona ni dispara `webhook_received`.
+-- ============================================================================
+
+SET search_path = '';
+
+-- 1. La sesion de un flujo disparado por un webhook.
+ALTER TABLE public.flow_sessions
+  ADD COLUMN IF NOT EXISTS inbound_webhook_id uuid REFERENCES public.inbound_webhooks(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_flow_sessions_inbound_webhook
+  ON public.flow_sessions (inbound_webhook_id)
+  WHERE inbound_webhook_id IS NOT NULL;
+
+ALTER TABLE public.flow_sessions DROP CONSTRAINT IF EXISTS flow_sessions_contact_or_member;
+ALTER TABLE public.flow_sessions ADD CONSTRAINT flow_sessions_contact_or_member
+  CHECK (contact_id IS NOT NULL OR member_user_id IS NOT NULL OR inbound_webhook_id IS NOT NULL);
+
+-- 2. El tipo de disparador.
+ALTER TABLE public.triggers DROP CONSTRAINT IF EXISTS triggers_type_check;
+ALTER TABLE public.triggers ADD CONSTRAINT triggers_type_check
+  CHECK (type = ANY (ARRAY[
+    'keyword'::text,
+    'postback'::text,
+    'quick_reply'::text,
+    'welcome'::text,
+    'default'::text,
+    'comment_keyword'::text,
+    'new_contact'::text,
+    'crm_event'::text,
+    'inactivity'::text,
+    'email_received'::text,
+    'booking_created'::text,
+    'booking_rescheduled'::text,
+    'booking_cancelled'::text,
+    'booking_updated'::text,
+    'booking_ended'::text,
+    'booking_status_changed'::text,
+    'booking_before_start'::text,
+    'booking_after_end'::text,
+    'booking_after_created'::text,
+    'call_analyzed'::text,
+    'call_linked'::text,
+    'form_submitted'::text,
+    'survey_answered'::text,
+    'contract_signed'::text,
+    'sale_created'::text,
+    'sale_status_changed'::text,
+    'payment_created'::text,
+    'payment_status_changed'::text,
+    'payment_before_due'::text,
+    'payment_after_due'::text,
+    'eod_submitted'::text,
+    'webhook_received'::text
+  ]));
+
+-- ============================================================
+-- MIGRATION 188: TOUCH ORIGIN WEBHOOK
+-- ============================================================
+-- ============================================================================
+-- 00188 — Webhooks entrantes: el origen `webhook` en `contact_touches`  (M3 del Extra L)
+-- ============================================================================
+-- El paso «Crear o actualizar contacto» de un flujo de webhook anota un toque con
+-- `origin = 'webhook'`. SOLO SUMA un valor al CHECK; ninguna fila existente cambia (los toques
+-- viejos son dm, comment, booking, form, manual o import). `record_contact_touch` NO se toca:
+-- recibe el origen en el jsonb y la base lo valida contra este CHECK.
+--
+-- Definicion VIEJA (pg_get_constraintdef, base viva el 12/10/2026):
+--   CHECK ((origin = ANY (ARRAY['dm'::text, 'comment'::text, 'booking'::text, 'form'::text, 'manual'::text, 'import'::text])))
+--
+-- Como volver atras:
+--   (antes) DELETE FROM public.contact_touches WHERE origin = 'webhook';  -- y refrescar contacts.attribution
+--   ALTER TABLE public.contact_touches DROP CONSTRAINT IF EXISTS contact_touches_origin_check;
+--   ALTER TABLE public.contact_touches ADD CONSTRAINT contact_touches_origin_check
+--     CHECK (origin IN ('dm', 'comment', 'booking', 'form', 'manual', 'import'));
+-- Riesgo: bajo (aditiva).
+-- ============================================================================
+
+SET search_path = '';
+
+ALTER TABLE public.contact_touches DROP CONSTRAINT IF EXISTS contact_touches_origin_check;
+ALTER TABLE public.contact_touches ADD CONSTRAINT contact_touches_origin_check
+  CHECK (origin IN ('dm', 'comment', 'booking', 'form', 'manual', 'import', 'webhook'));
+
+-- ============================================================
+-- MIGRATION 189: MESSAGES ORIGIN CONTEXT
+-- ============================================================
+-- ============================================================================
+-- 00189 — Contexto de origen de un mensaje: `messages.origin_context`  (M4 del Extra L)
+-- ============================================================================
+-- Un mensaje entrante puede llegar de una respuesta a una historia, de una mencion en una historia
+-- o de un anuncio (el `referral` de Zernio y el `externalAdReply` de WhatsApp). Hoy esos datos solo
+-- viajaban al toque de atribucion y el mensaje no guardaba nada: no todo mensaje es un toque, y las
+-- automatizaciones necesitan leerlos ("solo si vino de un anuncio").
+--
+-- Es una lista blanca armada por `lib/messages/origin-context.ts`:
+--   { story_reply?: {story_id, story_url}, story_mention?: true,
+--     ad?: {ad_id, ctwa_clid, source_type, source_url, title, ref, post_id, platform},
+--     quoted_message_id? }
+-- ADITIVA: una columna nueva, nula en los mensajes viejos (no hay backfill: el `referral` viejo no
+-- se guardo nunca). El codigo viejo no la lee ni la escribe.
+--
+-- Como volver atras:
+--   ALTER TABLE public.messages DROP COLUMN IF EXISTS origin_context;
+-- Riesgo: bajo.
+-- ============================================================================
+
+SET search_path = '';
+
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS origin_context jsonb;
+
+COMMENT ON COLUMN public.messages.origin_context IS
+  'De donde vino un mensaje entrante: respuesta o mencion en una historia, anuncio (lista blanca, lib/messages/origin-context.ts). Null si no vino de ninguno.';
+
+-- ============================================================
+-- MIGRATION 190: CREATE BOOKING AD IDS
+-- ============================================================
+-- ============================================================================
+-- 00190 — create_booking pasa ad_id, adset_id, campaign_id y los extras al toque  (M5 del Extra L)
+-- ============================================================================
+-- Hoy cada agenda que llega desde un anuncio PIERDE el dato del anuncio, y eso no se recupera: el toque
+-- que anota create_booking solo lleva las UTMs y los ids de clic. Esta migracion reescribe la funcion
+-- copiando la version VIGENTE letra por letra (pg_get_functiondef de la base viva, md5
+-- b81db84edb30ee7853efa2d42385593a, 25 parametros) y cambia SOLO el bloque que arma el toque:
+--
+--   - al toque: 'ad_id', 'adset_id' y 'campaign_id' (de p_utm);
+--   - en raw: utm_id, placement, fbp, fbc, ga_client_id y first_visit (si vinieron).
+--
+-- Todo lo demas queda igual: la firma (25 parametros), la exclusion de manual / agent, el EXCEPTION que
+-- impide que una falla de atribucion tumbe la reserva, la auditoria, el evento y los jobs. El codigo viejo
+-- llama con la misma firma, asi que esta migracion es compatible con el.
+--
+-- La referencia de huella de scripts/verify-forms.impl.ts se actualiza en el MISMO commit.
+--
+-- Como volver atras: recrear la funcion con la definicion vieja, copiada completa abajo.
+-- Riesgo: ALTO (es la funcion de cada agenda), por eso la copia es exacta y se corren verify-scheduling,
+-- verify-booking-concurrency, verify-forms y verify-sales antes y despues.
+--
+-- Definicion VIEJA (la de la base viva el 13/10/2026):
+-- CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+--  RETURNS jsonb
+--  LANGUAGE plpgsql
+--  SECURITY DEFINER
+--  SET search_path TO ''
+-- AS $function$
+-- DECLARE
+--   v_contact_id   uuid := p_contact_id;
+--   v_created      boolean := false;
+--   v_booking_id   uuid;
+--   v_email        text := nullif(btrim(lower(p_email)), '');
+--   v_phone        text := nullif(btrim(p_phone), '');
+--   v_dnc          boolean := false;
+--   v_setter       uuid;
+--   v_vendedor     uuid;
+--   v_assigned     boolean := false;
+-- BEGIN
+--   -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+--   PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+--
+--   -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual.
+--   IF v_contact_id IS NULL THEN
+--     IF v_phone IS NOT NULL THEN
+--       SELECT id INTO v_contact_id FROM public.contacts
+--       WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+--         AND (phone = v_phone OR whatsapp_phone = v_phone)
+--       ORDER BY created_at ASC LIMIT 1;
+--     END IF;
+--
+--     IF v_contact_id IS NULL AND v_email IS NOT NULL THEN
+--       SELECT id INTO v_contact_id FROM public.contacts
+--       WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+--         AND (lower(email) = v_email OR lower(secondary_email) = v_email)
+--       ORDER BY created_at ASC LIMIT 1;
+--     END IF;
+--
+--     IF v_contact_id IS NULL THEN
+--       INSERT INTO public.contacts (workspace_id, display_name, email, phone, timezone, attribution, last_interaction_at)
+--       VALUES (
+--         p_workspace_id,
+--         nullif(btrim(p_name), ''),
+--         v_email,
+--         v_phone,
+--         nullif(p_timezone, ''),
+--         coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+--         now()
+--       )
+--       RETURNING id INTO v_contact_id;
+--       v_created := true;
+--     END IF;
+--   END IF;
+--
+--   -- Completa SOLO los campos vacios: nunca pisa lo que ya hay.
+--   IF NOT v_created THEN
+--     UPDATE public.contacts
+--     SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+--         email        = coalesce(email, v_email),
+--         phone        = coalesce(phone, v_phone),
+--         timezone     = coalesce(timezone, nullif(p_timezone, '')),
+--         last_interaction_at = now()
+--     WHERE id = v_contact_id;
+--   END IF;
+--
+--   SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+--   FROM public.contacts WHERE id = v_contact_id;
+--
+--   -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+--   -- trigger de la 00039, que emite assignment_changed en automation_events.
+--   IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+--     UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+--     UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+--     v_assigned := true;
+--   END IF;
+--
+--   -- c. La agenda.
+--   INSERT INTO public.bookings (
+--     workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+--     host_user_id, contact_id, title, start_at, end_at, status,
+--     booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+--     location_type, location_text, responses, origin, utm, referrer_url,
+--     created_by, is_do_not_contact_at_booking, google_sync_status
+--   ) VALUES (
+--     p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+--     p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+--     nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+--     p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+--     coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+--     p_created_by, coalesce(v_dnc, false), 'pending'
+--   )
+--   RETURNING id INTO v_booking_id;
+--
+--   -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+--   -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+--   -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+--   -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+--   -- pisaria el toque real (el DM o el comentario que lo trajo).
+--   -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+--   IF p_origin NOT IN ('manual', 'agent') THEN
+--     BEGIN
+--       PERFORM public.record_contact_touch(
+--         p_workspace_id,
+--         v_contact_id,
+--         jsonb_build_object(
+--           'occurred_at',  now(),
+--           'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+--           'medium',       'booking',
+--           'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+--           'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+--           'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+--           'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+--           'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+--           'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+--           'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+--           'referrer_url', nullif(btrim(p_referrer_url), ''),
+--           'landing_page', nullif(btrim(p_landing_page), ''),
+--           'origin',       'booking',
+--           'dedupe_key',   'booking:' || v_booking_id::text,
+--           'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+--         )
+--       );
+--     EXCEPTION WHEN OTHERS THEN
+--       RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+--     END;
+--   END IF;
+--
+--   -- d. El historial.
+--   INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+--   VALUES (
+--     p_workspace_id, 'booking', v_booking_id, 'booking.created',
+--     jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+--     jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+--     p_created_by
+--   );
+--
+--   -- e. El evento de automatizacion.
+--   INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+--   VALUES (
+--     p_workspace_id, 'booking_created', v_contact_id,
+--     jsonb_build_object(
+--       'booking_id', v_booking_id,
+--       'event_type_id', p_event_type_id,
+--       'host_user_id', p_host_user_id,
+--       'origin', p_origin
+--     )
+--   );
+--
+--   -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+--   VALUES (
+--     'booking_google_sync',
+--     jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+--     now(), 'pending'
+--   );
+--   INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+--   VALUES (
+--     'booking_ended',
+--     jsonb_build_object('booking_id', v_booking_id),
+--     p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+--   );
+--
+--   RETURN jsonb_build_object(
+--     'booking_id', v_booking_id,
+--     'contact_id', v_contact_id,
+--     'created_contact', v_created,
+--     'assignment_changed', v_assigned,
+--     'do_not_contact', coalesce(v_dnc, false)
+--   );
+-- END;
+-- $function$
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE OR REPLACE FUNCTION public.create_booking(p_workspace_id uuid, p_event_type_id uuid, p_host_user_id uuid, p_start_at timestamp with time zone, p_end_at timestamp with time zone, p_title text, p_name text, p_email text, p_phone text, p_timezone text, p_host_timezone text, p_location_type text, p_location_text text, p_responses jsonb, p_origin text, p_utm jsonb, p_referrer_url text, p_uid text, p_category_id uuid, p_category_snapshot jsonb, p_contact_assignment text, p_created_by uuid DEFAULT NULL::uuid, p_contact_id uuid DEFAULT NULL::uuid, p_metadata jsonb DEFAULT '{}'::jsonb, p_landing_page text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_contact_id   uuid := p_contact_id;
+  v_created      boolean := false;
+  v_booking_id   uuid;
+  v_email        text := nullif(btrim(lower(p_email)), '');
+  v_phone        text := nullif(btrim(p_phone), '');
+  v_dnc          boolean := false;
+  v_setter       uuid;
+  v_vendedor     uuid;
+  v_assigned     boolean := false;
+BEGIN
+  -- Serializa los pedidos del mismo anfitrion dentro de la transaccion.
+  PERFORM pg_advisory_xact_lock(hashtextextended(p_host_user_id::text, 0));
+
+  -- a. El contacto. Si viene dado (agendar manual, agente), se usa tal cual.
+  IF v_contact_id IS NULL THEN
+    IF v_phone IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (phone = v_phone OR whatsapp_phone = v_phone)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL AND v_email IS NOT NULL THEN
+      SELECT id INTO v_contact_id FROM public.contacts
+      WHERE workspace_id = p_workspace_id AND deleted_at IS NULL
+        AND (lower(email) = v_email OR lower(secondary_email) = v_email)
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+
+    IF v_contact_id IS NULL THEN
+      INSERT INTO public.contacts (workspace_id, display_name, email, phone, timezone, attribution, last_interaction_at)
+      VALUES (
+        p_workspace_id,
+        nullif(btrim(p_name), ''),
+        v_email,
+        v_phone,
+        nullif(p_timezone, ''),
+        coalesce(p_utm, '{}'::jsonb) || jsonb_build_object('source', 'scheduling', 'referrer', p_referrer_url),
+        now()
+      )
+      RETURNING id INTO v_contact_id;
+      v_created := true;
+    END IF;
+  END IF;
+
+  -- Completa SOLO los campos vacios: nunca pisa lo que ya hay.
+  IF NOT v_created THEN
+    UPDATE public.contacts
+    SET display_name = coalesce(display_name, nullif(btrim(p_name), '')),
+        email        = coalesce(email, v_email),
+        phone        = coalesce(phone, v_phone),
+        timezone     = coalesce(timezone, nullif(p_timezone, '')),
+        last_interaction_at = now()
+    WHERE id = v_contact_id;
+  END IF;
+
+  SELECT do_not_contact, setter_id, vendedor_id INTO v_dnc, v_setter, v_vendedor
+  FROM public.contacts WHERE id = v_contact_id;
+
+  -- b. La asignacion (F22): solo si el campo esta vacio. El UPDATE dispara el
+  -- trigger de la 00039, que emite assignment_changed en automation_events.
+  IF p_contact_assignment = 'setter_if_empty' AND v_setter IS NULL THEN
+    UPDATE public.contacts SET setter_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  ELSIF p_contact_assignment = 'vendedor_if_empty' AND v_vendedor IS NULL THEN
+    UPDATE public.contacts SET vendedor_id = p_host_user_id WHERE id = v_contact_id;
+    v_assigned := true;
+  END IF;
+
+  -- c. La agenda.
+  INSERT INTO public.bookings (
+    workspace_id, uid, event_type_id, category_id, category_snapshot, metadata,
+    host_user_id, contact_id, title, start_at, end_at, status,
+    booker_name, booker_email, booker_phone, booker_timezone, host_timezone,
+    location_type, location_text, responses, origin, utm, referrer_url,
+    created_by, is_do_not_contact_at_booking, google_sync_status
+  ) VALUES (
+    p_workspace_id, p_uid, p_event_type_id, p_category_id, p_category_snapshot, coalesce(p_metadata, '{}'::jsonb),
+    p_host_user_id, v_contact_id, p_title, p_start_at, p_end_at, 'scheduled',
+    nullif(btrim(p_name), ''), v_email, v_phone, nullif(p_timezone, ''), nullif(p_host_timezone, ''),
+    p_location_type, p_location_text, coalesce(p_responses, '{}'::jsonb), p_origin,
+    coalesce(p_utm, '{}'::jsonb), p_referrer_url,
+    p_created_by, coalesce(v_dnc, false), 'pending'
+  )
+  RETURNING id INTO v_booking_id;
+
+  -- c2. El toque de atribucion (Contenido v3, F87; Agenda v2). Vale para el
+  -- contacto nuevo Y para el que ya existia: una reserva es una interaccion
+  -- mas de esa persona. NO se registra para 'manual' ni 'agent': ahi no hay
+  -- forma de saber de donde vino el lead, y un toque `web/booking` inventado
+  -- pisaria el toque real (el DM o el comentario que lo trajo).
+  -- Va protegido: una falla de atribucion NUNCA puede impedir una reserva.
+  IF p_origin NOT IN ('manual', 'agent') THEN
+    BEGIN
+      PERFORM public.record_contact_touch(
+        p_workspace_id,
+        v_contact_id,
+        jsonb_build_object(
+          'occurred_at',  now(),
+          'source',       coalesce(nullif(lower(btrim(p_utm->>'utm_source')), ''), 'web'),
+          'medium',       'booking',
+          'campaign',     nullif(btrim(p_utm->>'utm_campaign'), ''),
+          'content',      nullif(btrim(p_utm->>'utm_content'), ''),
+          'term',         nullif(btrim(p_utm->>'utm_term'), ''),
+          'fbclid',       nullif(btrim(p_utm->>'fbclid'), ''),
+          'gclid',        nullif(btrim(p_utm->>'gclid'), ''),
+          'ttclid',       nullif(btrim(p_utm->>'ttclid'), ''),
+          'li_fat_id',    nullif(btrim(p_utm->>'li_fat_id'), ''),
+          'ad_id',        nullif(btrim(p_utm->>'ad_id'), ''),
+          'adset_id',     nullif(btrim(p_utm->>'adset_id'), ''),
+          'campaign_id',  nullif(btrim(p_utm->>'campaign_id'), ''),
+          'referrer_url', nullif(btrim(p_referrer_url), ''),
+          'landing_page', nullif(btrim(p_landing_page), ''),
+          'origin',       'booking',
+          'dedupe_key',   'booking:' || v_booking_id::text,
+          'raw',          jsonb_build_object('utm', coalesce(p_utm, '{}'::jsonb), 'booking_origin', p_origin)
+                          || jsonb_strip_nulls(jsonb_build_object(
+                               'utm_id',       nullif(btrim(p_utm->>'utm_id'), ''),
+                               'placement',    nullif(btrim(p_utm->>'placement'), ''),
+                               'fbp',          nullif(btrim(p_utm->>'fbp'), ''),
+                               'fbc',          nullif(btrim(p_utm->>'fbc'), ''),
+                               'ga_client_id', nullif(btrim(p_utm->>'ga_client_id'), ''),
+                               'first_visit',  CASE WHEN jsonb_typeof(p_utm->'first_visit') = 'object' THEN p_utm->'first_visit' END))
+        )
+      );
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'create_booking: no pude registrar el toque de atribucion: %', SQLERRM;
+    END;
+  END IF;
+
+  -- d. El historial.
+  INSERT INTO public.audit_log (workspace_id, entity_type, entity_id, action, changes, metadata, performed_by)
+  VALUES (
+    p_workspace_id, 'booking', v_booking_id, 'booking.created',
+    jsonb_build_object('start_at', p_start_at, 'end_at', p_end_at),
+    jsonb_build_object('origin', p_origin, 'actor_type', CASE WHEN p_created_by IS NULL THEN 'invitee' ELSE 'user' END),
+    p_created_by
+  );
+
+  -- e. El evento de automatizacion.
+  INSERT INTO public.automation_events (workspace_id, event_type, contact_id, payload)
+  VALUES (
+    p_workspace_id, 'booking_created', v_contact_id,
+    jsonb_build_object(
+      'booking_id', v_booking_id,
+      'event_type_id', p_event_type_id,
+      'host_user_id', p_host_user_id,
+      'origin', p_origin
+    )
+  );
+
+  -- f. Los jobs: crear el evento en Google y avisar cuando la agenda termine.
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status)
+  VALUES (
+    'booking_google_sync',
+    jsonb_build_object('booking_id', v_booking_id, 'action', 'create', 'attempt', 0),
+    now(), 'pending'
+  );
+  INSERT INTO public.scheduled_jobs (type, payload, run_at, status, dedupe_key)
+  VALUES (
+    'booking_ended',
+    jsonb_build_object('booking_id', v_booking_id),
+    p_end_at, 'pending', 'ended:' || v_booking_id::text || ':0'
+  );
+
+  RETURN jsonb_build_object(
+    'booking_id', v_booking_id,
+    'contact_id', v_contact_id,
+    'created_contact', v_created,
+    'assignment_changed', v_assigned,
+    'do_not_contact', coalesce(v_dnc, false)
+  );
+END;
+$function$;
+
+-- ============================================================
+-- MIGRATION 191: META CATALOG
+-- ============================================================
+-- ============================================================================
+-- 00191 — Catalogo de Meta: campañas, conjuntos y anuncios  (M6 del Extra L, AT2)
+-- ============================================================================
+-- Hasta ahora el sistema solo guardaba METRICAS por dia (`meta_ads_insights_daily`): el
+-- nombre de un anuncio vivia repetido en cada fila y el estado (`status`, `effective_status`)
+-- quedaba siempre vacio. Esta migracion suma el CATALOGO: una fila por campaña, conjunto y
+-- anuncio, con su estado, su creativo y su miniatura. Es lo que permite, en AT3, vincular cada
+-- toque del CRM con el anuncio que lo trajo.
+--
+-- - `meta_name_key(text)`: el nombre normalizado (minusculas, sin tildes, espacios colapsados).
+--   Es la clave del vinculo por nombre (AT3). Sin `unaccent` (no esta instalada): `translate`,
+--   igual que `normalize_for_grouping` (00076).
+-- - Las tres tablas las escribe SOLO el servidor (el sync, con el service role). La app las lee
+--   con la RLS: Owner/Admin y los roles con `dashboards.ads.view` (`has_permission`). OJO:
+--   `has_permission` devuelve false para el rol de sistema "Member"; no tiene ese permiso, asi
+--   que no ve el catalogo, que es lo correcto.
+-- - Bucket `ad-creatives` (privado): las miniaturas de los anuncios, que la URL de Meta vence.
+--   Path `{workspace_id}/{ad_id}.{ext}`. Lee quien tenga `dashboards.ads.view` en el workspace
+--   del primer segmento; escribe y borra solo el servidor.
+-- - Politica ADICIONAL de lectura en `meta_ads_insights_daily`: hoy solo la ve Owner/Admin
+--   (`is_workspace_admin`). La tabla Meta vs CRM (AT4) tiene que servirle a un rol con
+--   `dashboards.ads.view`. Las politicas de SELECT se SUMAN: la de Owner/Admin no se toca.
+--
+-- Como volver atras (nada del codigo viejo usa estas tablas):
+--   DROP POLICY IF EXISTS meta_ads_insights_daily_select_perm ON public.meta_ads_insights_daily;
+--   DROP POLICY IF EXISTS ad_creatives_select ON storage.objects;
+--   -- el bucket solo si esta vacio:
+--   --   select count(*) from storage.objects where bucket_id = 'ad-creatives';  -- 0
+--   --   DELETE FROM storage.buckets WHERE id = 'ad-creatives';
+--   DROP TABLE IF EXISTS public.meta_ads, public.meta_adsets, public.meta_campaigns;
+--   DROP FUNCTION IF EXISTS public.meta_name_key(text);
+-- Riesgo: bajo (aditiva).
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- meta_name_key
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.meta_name_key(p_raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT btrim(
+    regexp_replace(
+      translate(
+        lower(coalesce(p_raw, '')),
+        'áàäâãåéèëêíìïîóòöôõúùüûñç',
+        'aaaaaaeeeeiiiiooooouuuunc'
+      ),
+      '\s+', ' ', 'g'
+    )
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.meta_name_key(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.meta_name_key(text) TO authenticated, service_role;
+
+-- ------------------------------------------------------------
+-- meta_campaigns
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meta_campaigns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  ad_account_id text NOT NULL,
+  -- El id de Meta.
+  campaign_id text NOT NULL,
+  name text,
+  name_key text,
+  status text,
+  effective_status text,
+  objective text,
+  buying_type text,
+  -- Centavos de la moneda de la cuenta (como los manda Meta).
+  daily_budget bigint,
+  lifetime_budget bigint,
+  start_time timestamptz,
+  stop_time timestamptz,
+  created_time timestamptz,
+  raw jsonb NOT NULL DEFAULT '{}'::jsonb,
+  synced_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.meta_campaigns IS
+  'Catalogo de campañas de Meta (Extra L). Las escribe el sync con el service role.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_campaigns
+  ON public.meta_campaigns (workspace_id, ad_account_id, campaign_id);
+CREATE INDEX IF NOT EXISTS idx_meta_campaigns_name_key
+  ON public.meta_campaigns (workspace_id, name_key);
+
+-- ------------------------------------------------------------
+-- meta_adsets
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meta_adsets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  ad_account_id text NOT NULL,
+  campaign_id text,
+  -- El id de Meta.
+  adset_id text NOT NULL,
+  name text,
+  name_key text,
+  status text,
+  effective_status text,
+  optimization_goal text,
+  billing_event text,
+  daily_budget bigint,
+  lifetime_budget bigint,
+  start_time timestamptz,
+  stop_time timestamptz,
+  created_time timestamptz,
+  raw jsonb NOT NULL DEFAULT '{}'::jsonb,
+  synced_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.meta_adsets IS
+  'Catalogo de conjuntos de anuncios de Meta (Extra L). Los escribe el sync con el service role.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_adsets
+  ON public.meta_adsets (workspace_id, ad_account_id, adset_id);
+CREATE INDEX IF NOT EXISTS idx_meta_adsets_campaign
+  ON public.meta_adsets (workspace_id, campaign_id);
+CREATE INDEX IF NOT EXISTS idx_meta_adsets_name_key
+  ON public.meta_adsets (workspace_id, name_key);
+
+-- ------------------------------------------------------------
+-- meta_ads
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.meta_ads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id uuid NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  ad_account_id text NOT NULL,
+  campaign_id text,
+  adset_id text,
+  -- El id de Meta.
+  ad_id text NOT NULL,
+  name text,
+  name_key text,
+  status text,
+  effective_status text,
+  created_time timestamptz,
+  creative_id text,
+  -- { title, body, cta, link_url, object_type }
+  creative jsonb NOT NULL DEFAULT '{}'::jsonb,
+  -- De donde se baja la miniatura y donde quedo guardada en `ad-creatives`.
+  thumbnail_source_url text,
+  thumbnail_path text,
+  thumbnail_attempts integer NOT NULL DEFAULT 0 CHECK (thumbnail_attempts >= 0),
+  -- La publicacion organica que promociona el anuncio (para enlazarla con Contenido).
+  instagram_media_id text,
+  object_story_id text,
+  social_post_id uuid REFERENCES public.social_posts(id) ON DELETE SET NULL,
+  content_post_id uuid REFERENCES public.content_posts(id) ON DELETE SET NULL,
+  -- true = una persona eligio la pieza: el vinculo automatico no la pisa.
+  content_link_manual boolean NOT NULL DEFAULT false,
+  raw jsonb NOT NULL DEFAULT '{}'::jsonb,
+  synced_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.meta_ads IS
+  'Catalogo de anuncios de Meta (Extra L). Los escribe el sync con el service role.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meta_ads
+  ON public.meta_ads (workspace_id, ad_account_id, ad_id);
+CREATE INDEX IF NOT EXISTS idx_meta_ads_adset
+  ON public.meta_ads (workspace_id, adset_id);
+CREATE INDEX IF NOT EXISTS idx_meta_ads_campaign
+  ON public.meta_ads (workspace_id, campaign_id);
+CREATE INDEX IF NOT EXISTS idx_meta_ads_name_key
+  ON public.meta_ads (workspace_id, name_key);
+-- La cola de miniaturas busca los anuncios sin miniatura y con intentos disponibles.
+CREATE INDEX IF NOT EXISTS idx_meta_ads_thumbnail_pending
+  ON public.meta_ads (workspace_id, thumbnail_attempts)
+  WHERE thumbnail_path IS NULL;
+-- El enlace con Contenido busca por el id de la publicacion de Instagram / Facebook.
+CREATE INDEX IF NOT EXISTS idx_meta_ads_instagram_media
+  ON public.meta_ads (workspace_id, instagram_media_id)
+  WHERE instagram_media_id IS NOT NULL;
+
+-- ------------------------------------------------------------
+-- updated_at
+-- ------------------------------------------------------------
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['meta_campaigns', 'meta_adsets', 'meta_ads'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'set_updated_at_' || t) THEN
+      EXECUTE format(
+        'CREATE TRIGGER set_updated_at_%1$s BEFORE UPDATE ON public.%1$I
+           FOR EACH ROW EXECUTE FUNCTION public.update_updated_at()',
+        t
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- RLS: lectura con el permiso; escritura de nadie (la hace el service role)
+-- ------------------------------------------------------------
+ALTER TABLE public.meta_campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.meta_adsets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.meta_ads ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['meta_campaigns', 'meta_adsets', 'meta_ads'] LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_select', t);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated
+         USING (public.is_workspace_member(workspace_id) AND public.has_permission(workspace_id, ''dashboards.ads.view''))',
+      t || '_select', t
+    );
+    EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+    EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    EXECUTE format('GRANT SELECT ON public.%I TO authenticated', t);
+    EXECUTE format('GRANT ALL ON public.%I TO service_role', t);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------
+-- meta_ads_insights_daily: lectura ADICIONAL para quien tiene el permiso
+-- ------------------------------------------------------------
+-- La politica de Owner/Admin (`meta_ads_insights_daily_select_admin`) no se toca.
+DROP POLICY IF EXISTS meta_ads_insights_daily_select_perm ON public.meta_ads_insights_daily;
+CREATE POLICY meta_ads_insights_daily_select_perm ON public.meta_ads_insights_daily
+  FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND public.has_permission(workspace_id, 'dashboards.ads.view')
+  );
+
+-- ------------------------------------------------------------
+-- Bucket de miniaturas
+-- ------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'ad-creatives',
+  'ad-creatives',
+  false,
+  2097152,  -- 2 MB
+  ARRAY['image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE
+  SET public = false,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Leer: quien puede ver los anuncios en el workspace del primer segmento del path. NO es
+-- `bucket_id = 'ad-creatives'` a secas: eso dejaria a cualquier usuario ver los creativos de otro negocio.
+DROP POLICY IF EXISTS "ad_creatives_select" ON storage.objects;
+CREATE POLICY "ad_creatives_select" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'ad-creatives'
+    AND public.is_workspace_member(((storage.foldername(name))[1])::uuid)
+    AND public.has_permission(((storage.foldername(name))[1])::uuid, 'dashboards.ads.view')
+  );
+
+-- Escribir y borrar son del servidor (el job de miniaturas, con el service role).
+DROP POLICY IF EXISTS "ad_creatives_insert" ON storage.objects;
+DROP POLICY IF EXISTS "ad_creatives_update" ON storage.objects;
+DROP POLICY IF EXISTS "ad_creatives_delete" ON storage.objects;
+
+-- ============================================================
+-- MIGRATION 192: META TOUCH MATCH
+-- ============================================================
+-- ============================================================================
+-- 00192 — Vinculo de cada toque con su campaña, conjunto y anuncio de Meta  (M7 del Extra L, AT3)
+-- ============================================================================
+-- Cada toque del CRM (`contact_touches`) puede traer datos de un anuncio: ids (`ad_id`, `adset_id`,
+-- `campaign_id`), UTMs (`campaign`, `content_label`, `term`) o un `fbclid`. Esta migracion los
+-- RESUELVE contra el catalogo de Meta (00191) y deja el resultado en el propio toque:
+--
+--   meta_campaign_id / meta_adset_id / meta_ad_id   lo que se encontro (ids de Meta)
+--   meta_match_status   none | matched | unmatched | manual | ignored   (default none)
+--   meta_match_method   como se encontro (ad_id, utm_content_id, utm_content_name, ...)
+--   meta_match_reason   por que no, o que advertencia hay (id_not_in_catalog, ambiguous_ad_name, ...)
+--   meta_matched_at / meta_match_by   cuando y quien (este ultimo solo en lo manual)
+--
+-- Piezas:
+--  - `private.meta_url_decode(text)`: `%XX` y `+` (los UTMs a veces llegan codificados).
+--  - `public.resolve_meta_match(...)`: la resolucion, pura sobre el catalogo. STABLE, SECURITY DEFINER,
+--    solo service_role. Su gemela en TypeScript es lib/attribution/meta-match.ts, y los casos compartidos
+--    estan en lib/attribution/meta-match.cases.json (corren contra las dos).
+--  - Trigger `contact_touches_meta_match` (BEFORE INSERT): completa las columnas. **Todo dentro de
+--    BEGIN ... EXCEPTION WHEN OTHERS**: ante CUALQUIER error deja `none` y un RAISE WARNING. NUNCA hace
+--    fallar el insert (un toque que no se guarda es un lead sin atribucion).
+--  - `contact_touch_json` suma los campos `meta_*` (la definicion vieja completa esta mas abajo).
+--  - `private.refresh_contact_attribution(uuid)`: recalcula `first_touch`/`last_touch` con EXACTAMENTE
+--    el mismo orden que `record_contact_touch` (occurred_at, created_at, id).
+--  - `public.rematch_meta_touches(ws, since)`: vuelve a resolver los toques sin vincular (F28).
+--  - `public.set_touch_meta_match(...)`: vincular/ignorar/quitar a mano (F29), atomica. Va en `public`
+--    porque la API solo expone ese esquema: la logica es la misma que pide el plano para las acciones.
+--
+-- NO se toca `record_contact_touch` (su huella tiene que seguir igual) ni `find_or_link_contact`.
+-- El backfill de los toques viejos lo hace la 00193, aparte.
+--
+-- Como volver atras (los toques ya guardados conservan sus columnas `meta_*`; se pierden solo al dropearlas):
+--   DROP TRIGGER IF EXISTS contact_touches_meta_match ON public.contact_touches;
+--   DROP FUNCTION IF EXISTS public.contact_touches_meta_match_trg();
+--   DROP FUNCTION IF EXISTS public.set_touch_meta_match(uuid, uuid, text, uuid, text, text, text);
+--   DROP FUNCTION IF EXISTS public.rematch_meta_touches(uuid, timestamptz);
+--   DROP FUNCTION IF EXISTS private.refresh_contact_attribution(uuid);
+--   DROP FUNCTION IF EXISTS public.resolve_meta_match(uuid, text, text, text, text, text, text, text);
+--   DROP FUNCTION IF EXISTS private.meta_url_decode(text);
+--   -- y la definicion VIEJA de contact_touch_json (la de abajo, sin los meta_*), luego:
+--   ALTER TABLE public.contact_touches
+--     DROP COLUMN IF EXISTS meta_campaign_id, DROP COLUMN IF EXISTS meta_adset_id, DROP COLUMN IF EXISTS meta_ad_id,
+--     DROP COLUMN IF EXISTS meta_match_status, DROP COLUMN IF EXISTS meta_match_method, DROP COLUMN IF EXISTS meta_match_reason,
+--     DROP COLUMN IF EXISTS meta_matched_at, DROP COLUMN IF EXISTS meta_match_by;
+-- Riesgo: alto (cambia una funcion que usan todos los toques y suma un trigger que corre en cada insert).
+--
+-- Definicion VIGENTE de contact_touch_json antes de esta migracion (pg_get_functiondef de la base viva):
+--
+--   CREATE OR REPLACE FUNCTION public.contact_touch_json(t contact_touches)
+--    RETURNS jsonb
+--    LANGUAGE sql
+--    IMMUTABLE
+--    SET search_path TO ''
+--   AS $function$
+--     SELECT jsonb_strip_nulls(jsonb_build_object(
+--       'occurred_at',     t.occurred_at,
+--       'source',          t.source,
+--       'medium',          t.medium,
+--       'campaign',        t.campaign,
+--       'content',         t.content_label,
+--       'term',            t.term,
+--       'medium_raw',      CASE WHEN t.medium_raw THEN true END,
+--       'social_post_id',  t.social_post_id,
+--       'content_post_id', t.content_post_id,
+--       'ad_id',           t.ad_id,
+--       'adset_id',        t.adset_id,
+--       'campaign_id',     t.campaign_id,
+--       'fbclid',          t.fbclid,
+--       'gclid',           t.gclid,
+--       'ttclid',          t.ttclid,
+--       'li_fat_id',       t.li_fat_id,
+--       'ctwa_clid',       t.ctwa_clid,
+--       'referrer_url',    t.referrer_url,
+--       'landing_page',    t.landing_page,
+--       'origin',          t.origin
+--     ))
+--   $function$
+-- ============================================================================
+
+SET search_path = '';
+
+-- ------------------------------------------------------------
+-- 1. Columnas del vinculo
+-- ------------------------------------------------------------
+ALTER TABLE public.contact_touches
+  ADD COLUMN IF NOT EXISTS meta_campaign_id text,
+  ADD COLUMN IF NOT EXISTS meta_adset_id text,
+  ADD COLUMN IF NOT EXISTS meta_ad_id text,
+  ADD COLUMN IF NOT EXISTS meta_match_status text NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS meta_match_method text,
+  ADD COLUMN IF NOT EXISTS meta_match_reason text,
+  ADD COLUMN IF NOT EXISTS meta_matched_at timestamptz,
+  ADD COLUMN IF NOT EXISTS meta_match_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'contact_touches_meta_match_status_check') THEN
+    ALTER TABLE public.contact_touches ADD CONSTRAINT contact_touches_meta_match_status_check
+      CHECK (meta_match_status IN ('none', 'matched', 'unmatched', 'manual', 'ignored'));
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.contact_touches.meta_match_status IS
+  'Resultado del vinculo con el catalogo de Meta: none (sin datos de anuncio), matched, unmatched, manual (lo eligio una persona) o ignored. Lo completa el trigger contact_touches_meta_match.';
+
+-- Los indices que usan la tabla Meta vs CRM (AT4) y la pantalla "Sin vincular".
+CREATE INDEX IF NOT EXISTS idx_contact_touches_meta_ad
+  ON public.contact_touches (workspace_id, meta_ad_id, occurred_at) WHERE meta_ad_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contact_touches_meta_adset
+  ON public.contact_touches (workspace_id, meta_adset_id, occurred_at) WHERE meta_adset_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contact_touches_meta_campaign
+  ON public.contact_touches (workspace_id, meta_campaign_id, occurred_at) WHERE meta_campaign_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contact_touches_meta_unmatched
+  ON public.contact_touches (workspace_id, occurred_at DESC) WHERE meta_match_status = 'unmatched';
+
+-- Las busquedas por id del catalogo (el indice unico empieza por workspace + cuenta, y los ids de Meta son globales).
+CREATE INDEX IF NOT EXISTS idx_meta_ads_ws_ad ON public.meta_ads (workspace_id, ad_id);
+CREATE INDEX IF NOT EXISTS idx_meta_adsets_ws_adset ON public.meta_adsets (workspace_id, adset_id);
+CREATE INDEX IF NOT EXISTS idx_meta_campaigns_ws_campaign ON public.meta_campaigns (workspace_id, campaign_id);
+
+-- ------------------------------------------------------------
+-- 2. Decodificar un UTM (%XX y +)
+-- ------------------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS private;
+
+CREATE OR REPLACE FUNCTION private.meta_url_decode(p_raw text)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_plus text;
+  v_out text;
+BEGIN
+  IF p_raw IS NULL THEN
+    RETURN NULL;
+  END IF;
+  v_plus := replace(p_raw, '+', ' ');
+  IF position('%' IN v_plus) = 0 THEN
+    RETURN v_plus;
+  END IF;
+  BEGIN
+    SELECT convert_from(
+      string_agg(
+        CASE WHEN m[1] IS NOT NULL THEN decode(substr(m[1], 2), 'hex') ELSE convert_to(m[2], 'UTF8') END,
+        ''::bytea ORDER BY ord
+      ),
+      'UTF8'
+    )
+    INTO v_out
+    FROM regexp_matches(v_plus, '(%[0-9A-Fa-f]{2})|([^%]+|%)', 'g') WITH ORDINALITY AS t(m, ord);
+    RETURN coalesce(v_out, v_plus);
+  EXCEPTION WHEN OTHERS THEN
+    -- Un %XX que no es UTF-8 valido: se deja el texto como llego (igual que decodeURIComponent al fallar).
+    RETURN v_plus;
+  END;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.meta_url_decode(text) FROM PUBLIC, anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 3. resolve_meta_match
+-- ------------------------------------------------------------
+-- Devuelve {status, ad_id, adset_id, campaign_id, method, reason}. La gemela en TypeScript esta en
+-- lib/attribution/meta-match.ts; las dos tienen que dar lo mismo para los casos de meta-match.cases.json.
+CREATE OR REPLACE FUNCTION public.resolve_meta_match(
+  p_workspace_id uuid,
+  p_ad_id text,
+  p_adset_id text,
+  p_campaign_id text,
+  p_utm_campaign text,
+  p_utm_content text,
+  p_utm_term text,
+  p_fbclid text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_ad_id        text := nullif(btrim(p_ad_id), '');
+  v_adset_id     text := nullif(btrim(p_adset_id), '');
+  v_campaign_id  text := nullif(btrim(p_campaign_id), '');
+  v_utm_campaign text := nullif(btrim(private.meta_url_decode(p_utm_campaign)), '');
+  v_utm_content  text := nullif(btrim(private.meta_url_decode(p_utm_content)), '');
+  v_utm_term     text := nullif(btrim(private.meta_url_decode(p_utm_term)), '');
+  v_fbclid       text := nullif(btrim(p_fbclid), '');
+
+  -- Lo resuelto
+  r_ad           text;
+  r_ad_adset     text;
+  r_ad_campaign  text;
+  r_adset        text;
+  r_adset_camp   text;
+  r_campaign     text;
+  m_ad           text;
+  m_adset        text;
+  m_campaign     text;
+
+  -- Pistas de campaña (pasos 1, 2 y 4) para desempatar anuncios homonimos
+  h_campaign     text;
+  h_campaign_n   int;
+  h_direct       text;
+  v_name_key     text;
+  v_n            int;
+
+  ambiguous_ad       boolean := false;
+  ambiguous_campaign boolean := false;
+  v_notes        text[] := ARRAY[]::text[];
+  v_status       text;
+  v_method       text;
+  v_reason       text;
+BEGIN
+  -- Sin ningun dato de Meta (ni ids, ni UTMs con valor, ni fbclid): no hay nada que resolver.
+  IF v_ad_id IS NULL AND v_adset_id IS NULL AND v_campaign_id IS NULL
+     AND v_utm_campaign IS NULL AND v_utm_content IS NULL AND v_utm_term IS NULL AND v_fbclid IS NULL THEN
+    RETURN jsonb_build_object('status', 'none', 'ad_id', NULL, 'adset_id', NULL, 'campaign_id', NULL, 'method', NULL, 'reason', NULL);
+  END IF;
+
+  -- ---- La campaña que se puede deducir SIN pasar por el anuncio (pistas 1, 2 y 4) ----
+  IF v_campaign_id IS NOT NULL THEN
+    SELECT c.campaign_id INTO h_campaign FROM public.meta_campaigns c
+     WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign_id LIMIT 1;
+    IF h_campaign IS NOT NULL THEN h_direct := h_campaign; END IF;
+  END IF;
+  IF h_campaign IS NULL AND v_utm_campaign IS NOT NULL THEN
+    SELECT c.campaign_id INTO h_campaign FROM public.meta_campaigns c
+     WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_utm_campaign LIMIT 1;
+    IF h_campaign IS NOT NULL THEN h_direct := h_campaign; END IF;
+  END IF;
+  IF h_campaign IS NULL AND v_utm_campaign IS NOT NULL THEN
+    v_name_key := public.meta_name_key(v_utm_campaign);
+    SELECT count(DISTINCT c.campaign_id), min(c.campaign_id) INTO h_campaign_n, h_campaign
+      FROM public.meta_campaigns c
+     WHERE c.workspace_id = p_workspace_id AND c.name_key = v_name_key AND v_name_key <> '';
+    IF h_campaign_n > 1 THEN
+      h_campaign := NULL;
+      ambiguous_campaign := true;
+    END IF;
+  END IF;
+
+  -- ---- Anuncio ----
+  IF v_ad_id IS NOT NULL THEN
+    SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+     WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad_id LIMIT 1;
+    IF r_ad IS NOT NULL THEN m_ad := 'ad_id'; END IF;
+  END IF;
+  IF r_ad IS NULL AND v_utm_content IS NOT NULL THEN
+    SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+     WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_utm_content LIMIT 1;
+    IF r_ad IS NOT NULL THEN m_ad := 'utm_content_id'; END IF;
+  END IF;
+  IF r_ad IS NULL AND v_utm_content IS NOT NULL THEN
+    v_name_key := public.meta_name_key(v_utm_content);
+    IF v_name_key <> '' THEN
+      SELECT count(*) INTO v_n FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key;
+      IF v_n = 1 THEN
+        SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+         WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key LIMIT 1;
+        m_ad := 'utm_content_name';
+      ELSIF v_n > 1 THEN
+        -- Varios anuncios con ese nombre: se desempata con la campaña (pistas 1, 2 y 4).
+        IF h_campaign IS NOT NULL THEN
+          SELECT count(*) INTO v_n FROM public.meta_ads a
+           WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key AND a.campaign_id = h_campaign;
+          IF v_n = 1 THEN
+            SELECT a.ad_id, a.adset_id, a.campaign_id INTO r_ad, r_ad_adset, r_ad_campaign FROM public.meta_ads a
+             WHERE a.workspace_id = p_workspace_id AND a.name_key = v_name_key AND a.campaign_id = h_campaign LIMIT 1;
+            m_ad := 'utm_content_name_campaign';
+          END IF;
+        END IF;
+        IF r_ad IS NULL THEN ambiguous_ad := true; END IF;
+      END IF;
+    END IF;
+  END IF;
+
+  -- ---- Conjunto ----
+  IF v_adset_id IS NOT NULL THEN
+    SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset_id LIMIT 1;
+    IF r_adset IS NOT NULL THEN m_adset := 'adset_id'; END IF;
+  END IF;
+  IF r_adset IS NULL AND v_utm_term IS NOT NULL THEN
+    SELECT s.adset_id, s.campaign_id INTO r_adset, r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_utm_term LIMIT 1;
+    IF r_adset IS NOT NULL THEN m_adset := 'utm_term_id'; END IF;
+  END IF;
+  IF r_adset IS NULL AND r_ad IS NOT NULL AND r_ad_adset IS NOT NULL THEN
+    r_adset := r_ad_adset;
+    m_adset := m_ad;
+    SELECT s.campaign_id INTO r_adset_camp FROM public.meta_adsets s
+     WHERE s.workspace_id = p_workspace_id AND s.adset_id = r_adset LIMIT 1;
+  END IF;
+
+  -- ---- Campaña ----
+  IF h_direct IS NOT NULL THEN
+    r_campaign := h_direct;
+    m_campaign := CASE WHEN v_campaign_id IS NOT NULL AND h_direct = v_campaign_id THEN 'campaign_id' ELSE 'utm_campaign_id' END;
+    -- Coherencia: si el anuncio es de OTRA campaña, gana el anuncio (es mas especifico).
+    IF r_ad IS NOT NULL AND r_ad_campaign IS NOT NULL AND r_ad_campaign <> r_campaign THEN
+      r_campaign := r_ad_campaign;
+      m_campaign := m_ad;
+      v_notes := array_append(v_notes, 'inconsistent_campaign');
+    END IF;
+  ELSIF r_ad_campaign IS NOT NULL OR r_adset_camp IS NOT NULL THEN
+    r_campaign := coalesce(r_ad_campaign, r_adset_camp);
+    m_campaign := CASE WHEN r_ad_campaign IS NOT NULL THEN m_ad ELSE m_adset END;
+  ELSIF h_campaign IS NOT NULL THEN
+    -- El nombre de la campaña de una sola coincidencia (paso 4).
+    r_campaign := h_campaign;
+    m_campaign := 'utm_campaign_name';
+  END IF;
+
+  -- ---- Resultado ----
+  IF r_ad IS NOT NULL OR r_adset IS NOT NULL OR r_campaign IS NOT NULL THEN
+    v_status := 'matched';
+    v_method := coalesce(m_ad, m_adset, m_campaign);
+    IF ambiguous_ad THEN v_notes := array_append(v_notes, 'ambiguous_ad_name'); END IF;
+    IF ambiguous_campaign AND r_campaign IS NULL THEN v_notes := array_append(v_notes, 'ambiguous_campaign_name'); END IF;
+    -- Un id que vino y no esta en el catalogo, aunque otra pista haya resuelto algo.
+    IF (v_ad_id IS NOT NULL AND r_ad IS NULL) OR (v_adset_id IS NOT NULL AND m_adset IS DISTINCT FROM 'adset_id')
+       OR (v_campaign_id IS NOT NULL AND h_direct IS DISTINCT FROM v_campaign_id AND r_campaign IS DISTINCT FROM v_campaign_id) THEN
+      v_notes := array_append(v_notes, 'id_not_in_catalog');
+    END IF;
+    v_reason := nullif(array_to_string(v_notes, ','), '');
+  ELSE
+    v_status := 'unmatched';
+    IF v_ad_id IS NOT NULL OR v_adset_id IS NOT NULL OR v_campaign_id IS NOT NULL THEN
+      v_reason := 'id_not_in_catalog';
+    ELSIF ambiguous_ad THEN
+      v_reason := 'ambiguous_ad_name';
+    ELSIF ambiguous_campaign THEN
+      v_reason := 'ambiguous_campaign_name';
+    ELSIF v_utm_campaign IS NOT NULL OR v_utm_content IS NOT NULL OR v_utm_term IS NOT NULL THEN
+      v_reason := 'name_not_found';
+    ELSE
+      v_reason := 'fbclid_only';
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'status', v_status,
+    'ad_id', r_ad,
+    'adset_id', r_adset,
+    'campaign_id', r_campaign,
+    'method', v_method,
+    'reason', v_reason
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_meta_match(uuid, text, text, text, text, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_meta_match(uuid, text, text, text, text, text, text, text) TO service_role;
+
+-- ------------------------------------------------------------
+-- 4. El trigger BEFORE INSERT: nunca hace fallar el insert
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.contact_touches_meta_match_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  r jsonb;
+BEGIN
+  -- Lo que una persona eligio o descarto no se vuelve a resolver solo.
+  IF NEW.meta_match_status IN ('manual', 'ignored') THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    r := public.resolve_meta_match(
+      NEW.workspace_id, NEW.ad_id, NEW.adset_id, NEW.campaign_id, NEW.campaign, NEW.content_label, NEW.term, NEW.fbclid
+    );
+    NEW.meta_campaign_id := r->>'campaign_id';
+    NEW.meta_adset_id    := r->>'adset_id';
+    NEW.meta_ad_id       := r->>'ad_id';
+    NEW.meta_match_status := coalesce(r->>'status', 'none');
+    NEW.meta_match_method := r->>'method';
+    NEW.meta_match_reason := r->>'reason';
+    NEW.meta_matched_at   := CASE WHEN NEW.meta_match_status = 'matched' THEN now() END;
+  EXCEPTION WHEN OTHERS THEN
+    -- Un error en el vinculo no puede costar un toque: se guarda sin vincular y queda el aviso en el log.
+    NEW.meta_campaign_id := NULL;
+    NEW.meta_adset_id := NULL;
+    NEW.meta_ad_id := NULL;
+    NEW.meta_match_status := 'none';
+    NEW.meta_match_method := NULL;
+    NEW.meta_match_reason := NULL;
+    NEW.meta_matched_at := NULL;
+    RAISE WARNING 'contact_touches_meta_match: no pude vincular el toque (%): %', NEW.id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_touches_meta_match_trg() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS contact_touches_meta_match ON public.contact_touches;
+CREATE TRIGGER contact_touches_meta_match
+  BEFORE INSERT ON public.contact_touches
+  FOR EACH ROW EXECUTE FUNCTION public.contact_touches_meta_match_trg();
+
+-- ------------------------------------------------------------
+-- 5. contact_touch_json suma los campos meta_*
+-- ------------------------------------------------------------
+-- `meta_match_status` solo se escribe cuando NO es 'none': un 'none' en cada toque ensuciaria
+-- `contacts.attribution` sin decir nada. Con jsonb_strip_nulls, lo que es null desaparece.
+CREATE OR REPLACE FUNCTION public.contact_touch_json(t public.contact_touches)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO ''
+AS $function$
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'occurred_at',     t.occurred_at,
+    'source',          t.source,
+    'medium',          t.medium,
+    'campaign',        t.campaign,
+    'content',         t.content_label,
+    'term',            t.term,
+    'medium_raw',      CASE WHEN t.medium_raw THEN true END,
+    'social_post_id',  t.social_post_id,
+    'content_post_id', t.content_post_id,
+    'ad_id',           t.ad_id,
+    'adset_id',        t.adset_id,
+    'campaign_id',     t.campaign_id,
+    'fbclid',          t.fbclid,
+    'gclid',           t.gclid,
+    'ttclid',          t.ttclid,
+    'li_fat_id',       t.li_fat_id,
+    'ctwa_clid',       t.ctwa_clid,
+    'referrer_url',    t.referrer_url,
+    'landing_page',    t.landing_page,
+    'origin',          t.origin,
+    'meta_campaign_id', t.meta_campaign_id,
+    'meta_adset_id',    t.meta_adset_id,
+    'meta_ad_id',       t.meta_ad_id,
+    'meta_match_status', CASE WHEN t.meta_match_status <> 'none' THEN t.meta_match_status END,
+    'meta_match_method', t.meta_match_method
+  ))
+$function$;
+
+-- ------------------------------------------------------------
+-- 6. refresh_contact_attribution: el mismo calculo que record_contact_touch
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.refresh_contact_attribution(p_contact_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_first jsonb;
+  v_last  jsonb;
+BEGIN
+  -- Sin toques no hay nada que recalcular (record_contact_touch siempre inserta uno antes de escribir).
+  PERFORM 1 FROM public.contact_touches WHERE contact_id = p_contact_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- El MISMO orden que record_contact_touch: occurred_at, created_at, id.
+  SELECT public.contact_touch_json(t) INTO v_first
+  FROM public.contact_touches t
+  WHERE t.contact_id = p_contact_id
+  ORDER BY t.occurred_at ASC, t.created_at ASC, t.id ASC
+  LIMIT 1;
+
+  SELECT public.contact_touch_json(t) INTO v_last
+  FROM public.contact_touches t
+  WHERE t.contact_id = p_contact_id
+  ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC
+  LIMIT 1;
+
+  UPDATE public.contacts
+  SET attribution = coalesce(attribution, '{}'::jsonb)
+        || jsonb_build_object('version', 2, 'first_touch', v_first, 'last_touch', v_last)
+  WHERE id = p_contact_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION private.refresh_contact_attribution(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION private.refresh_contact_attribution(uuid) TO service_role;
+
+-- ------------------------------------------------------------
+-- 7. rematch_meta_touches: volver a resolver lo que quedo sin vincular
+-- ------------------------------------------------------------
+-- Toques con datos de Meta que quedaron `unmatched` o `none` (o `matched` pero sin anuncio, con datos
+-- de anuncio): se resuelven de nuevo y, si cambia algo, se actualizan. NUNCA toca `manual` ni `ignored`.
+-- De a 500 y con el contacto refrescado al final de cada lote. Devuelve cuantos toques cambiaron.
+CREATE OR REPLACE FUNCTION public.rematch_meta_touches(p_workspace_id uuid, p_since timestamptz)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_changed int := 0;
+  v_batch   int;
+  v_last_at timestamptz := '-infinity';
+  v_last_id uuid := '00000000-0000-0000-0000-000000000000';
+  t         record;
+  r         jsonb;
+  v_contacts uuid[];
+BEGIN
+  LOOP
+    v_batch := 0;
+    v_contacts := ARRAY[]::uuid[];
+
+    FOR t IN
+      SELECT ct.*
+        FROM public.contact_touches ct
+       WHERE ct.workspace_id = p_workspace_id
+         AND ct.occurred_at >= p_since
+         AND (ct.occurred_at, ct.id) > (v_last_at, v_last_id)
+         AND (
+           ct.meta_match_status IN ('unmatched', 'none')
+           OR (ct.meta_match_status = 'matched' AND ct.meta_ad_id IS NULL
+               AND (nullif(btrim(ct.ad_id), '') IS NOT NULL OR nullif(btrim(ct.content_label), '') IS NOT NULL))
+         )
+         AND (
+           nullif(btrim(ct.ad_id), '') IS NOT NULL OR nullif(btrim(ct.adset_id), '') IS NOT NULL
+           OR nullif(btrim(ct.campaign_id), '') IS NOT NULL OR nullif(btrim(ct.campaign), '') IS NOT NULL
+           OR nullif(btrim(ct.content_label), '') IS NOT NULL OR nullif(btrim(ct.term), '') IS NOT NULL
+           OR nullif(btrim(ct.fbclid), '') IS NOT NULL
+         )
+       ORDER BY ct.occurred_at, ct.id
+       LIMIT 500
+    LOOP
+      v_batch := v_batch + 1;
+      v_last_at := t.occurred_at;
+      v_last_id := t.id;
+
+      r := public.resolve_meta_match(
+        t.workspace_id, t.ad_id, t.adset_id, t.campaign_id, t.campaign, t.content_label, t.term, t.fbclid
+      );
+
+      -- Si no cambia nada, no se escribe (y no se cuenta).
+      IF (r->>'status') IS DISTINCT FROM t.meta_match_status
+         OR (r->>'ad_id') IS DISTINCT FROM t.meta_ad_id
+         OR (r->>'adset_id') IS DISTINCT FROM t.meta_adset_id
+         OR (r->>'campaign_id') IS DISTINCT FROM t.meta_campaign_id
+         OR (r->>'method') IS DISTINCT FROM t.meta_match_method
+         OR (r->>'reason') IS DISTINCT FROM t.meta_match_reason THEN
+        UPDATE public.contact_touches
+           SET meta_campaign_id = r->>'campaign_id',
+               meta_adset_id = r->>'adset_id',
+               meta_ad_id = r->>'ad_id',
+               meta_match_status = coalesce(r->>'status', 'none'),
+               meta_match_method = r->>'method',
+               meta_match_reason = r->>'reason',
+               meta_matched_at = CASE WHEN r->>'status' = 'matched' THEN now() END
+         WHERE id = t.id;
+        v_changed := v_changed + 1;
+        v_contacts := array_append(v_contacts, t.contact_id);
+      END IF;
+    END LOOP;
+
+    EXIT WHEN v_batch = 0;
+
+    -- El contacto se refresca una vez por lote, no una vez por toque.
+    PERFORM private.refresh_contact_attribution(c) FROM (SELECT DISTINCT unnest(v_contacts) AS c) x;
+  END LOOP;
+
+  RETURN v_changed;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.rematch_meta_touches(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rematch_meta_touches(uuid, timestamptz) TO service_role;
+
+-- ------------------------------------------------------------
+-- 8. set_touch_meta_match: vincular, ignorar o quitar a mano (atomica)
+-- ------------------------------------------------------------
+-- p_action: 'link' (con al menos un id del catalogo), 'ignore' o 'unlink' (vuelve a resolver solo).
+-- Devuelve {ok, contact_id, before, after} o {ok:false, error}. El permiso y la visibilidad del contacto
+-- los chequea quien llama (la Server Action, con la sesion); esto verifica el workspace del toque.
+CREATE OR REPLACE FUNCTION public.set_touch_meta_match(
+  p_workspace_id uuid,
+  p_touch_id uuid,
+  p_action text,
+  p_user_id uuid,
+  p_ad_id text DEFAULT NULL,
+  p_adset_id text DEFAULT NULL,
+  p_campaign_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  t          public.contact_touches%ROWTYPE;
+  v_before   jsonb;
+  v_ad       text := nullif(btrim(p_ad_id), '');
+  v_adset    text := nullif(btrim(p_adset_id), '');
+  v_campaign text := nullif(btrim(p_campaign_id), '');
+  a_adset    text;
+  a_campaign text;
+  s_campaign text;
+  r          jsonb;
+BEGIN
+  IF p_action NOT IN ('link', 'ignore', 'unlink') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_action');
+  END IF;
+
+  SELECT * INTO t FROM public.contact_touches WHERE id = p_touch_id AND workspace_id = p_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'touch_not_found');
+  END IF;
+
+  v_before := jsonb_build_object(
+    'status', t.meta_match_status, 'ad_id', t.meta_ad_id, 'adset_id', t.meta_adset_id,
+    'campaign_id', t.meta_campaign_id, 'method', t.meta_match_method
+  );
+
+  IF p_action = 'link' THEN
+    -- Elegir un anuncio completa su conjunto y su campaña; un conjunto, su campaña. Todo tiene que estar en el catalogo.
+    IF v_ad IS NOT NULL THEN
+      SELECT a.adset_id, a.campaign_id INTO a_adset, a_campaign FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad LIMIT 1;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_adset := coalesce(a_adset, v_adset);
+      v_campaign := coalesce(a_campaign, v_campaign);
+    END IF;
+    IF v_adset IS NOT NULL THEN
+      SELECT s.campaign_id INTO s_campaign FROM public.meta_adsets s
+       WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset LIMIT 1;
+      IF NOT FOUND AND v_ad IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_campaign := coalesce(v_campaign, s_campaign);
+    END IF;
+    IF v_campaign IS NOT NULL AND v_ad IS NULL AND v_adset IS NULL THEN
+      PERFORM 1 FROM public.meta_campaigns c WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+    END IF;
+    IF v_ad IS NULL AND v_adset IS NULL AND v_campaign IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'nothing_to_link');
+    END IF;
+
+    UPDATE public.contact_touches
+       SET meta_ad_id = v_ad, meta_adset_id = v_adset, meta_campaign_id = v_campaign,
+           meta_match_status = 'manual', meta_match_method = 'manual', meta_match_reason = NULL,
+           meta_matched_at = now(), meta_match_by = p_user_id
+     WHERE id = t.id;
+
+  ELSIF p_action = 'ignore' THEN
+    UPDATE public.contact_touches
+       SET meta_ad_id = NULL, meta_adset_id = NULL, meta_campaign_id = NULL,
+           meta_match_status = 'ignored', meta_match_method = NULL, meta_match_reason = NULL,
+           meta_matched_at = now(), meta_match_by = p_user_id
+     WHERE id = t.id;
+
+  ELSE
+    -- unlink: solo tiene sentido sobre lo que una persona toco; vuelve a resolverse solo.
+    IF t.meta_match_status NOT IN ('manual', 'ignored') THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'not_manual');
+    END IF;
+    r := public.resolve_meta_match(
+      t.workspace_id, t.ad_id, t.adset_id, t.campaign_id, t.campaign, t.content_label, t.term, t.fbclid
+    );
+    UPDATE public.contact_touches
+       SET meta_campaign_id = r->>'campaign_id', meta_adset_id = r->>'adset_id', meta_ad_id = r->>'ad_id',
+           meta_match_status = coalesce(r->>'status', 'none'), meta_match_method = r->>'method',
+           meta_match_reason = r->>'reason',
+           meta_matched_at = CASE WHEN r->>'status' = 'matched' THEN now() END,
+           meta_match_by = NULL
+     WHERE id = t.id;
+  END IF;
+
+  PERFORM private.refresh_contact_attribution(t.contact_id);
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'contact_id', t.contact_id,
+    'before', v_before,
+    'after', (SELECT jsonb_build_object(
+        'status', x.meta_match_status, 'ad_id', x.meta_ad_id, 'adset_id', x.meta_adset_id,
+        'campaign_id', x.meta_campaign_id, 'method', x.meta_match_method)
+      FROM public.contact_touches x WHERE x.id = t.id)
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_touch_meta_match(uuid, uuid, text, uuid, text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_touch_meta_match(uuid, uuid, text, uuid, text, text, text) TO service_role;
+
+-- ============================================================
+-- MIGRATION 193: META TOUCH BACKFILL
+-- ============================================================
+-- ============================================================================
+-- 00193 — Backfill del vinculo de toques con Meta  (M8 del Extra L, AT3)
+-- ============================================================================
+-- La 00192 vincula cada toque NUEVO. Esta migracion vuelve a resolver los toques que ya existian:
+-- corre `rematch_meta_touches` en cada workspace con `p_since = '-infinity'` (todo el historial).
+--
+-- - Solo toca toques con algun dato de Meta (ids, UTMs o fbclid) que estan `none`/`unmatched`; nunca los
+--   `manual` ni los `ignored`. Al final de cada lote refresca `contacts.attribution` de los contactos
+--   afectados.
+-- - Idempotente: correrla otra vez no cambia nada (un toque que ya esta resuelto no se vuelve a escribir).
+-- - Al medirla (12/10/2026) ningun toque tenia datos de anuncio; la migracion deja un NOTICE con
+--   cuantos toques cambio por workspace, para que se vea si hizo algo.
+--
+-- Como volver atras: no hay nada que deshacer en los datos que no se pueda recalcular. Para dejar los toques
+-- sin vincular: UPDATE public.contact_touches SET meta_match_status = 'none', meta_campaign_id = NULL,
+-- meta_adset_id = NULL, meta_ad_id = NULL, meta_match_method = NULL, meta_match_reason = NULL,
+-- meta_matched_at = NULL WHERE meta_match_status IN ('matched', 'unmatched');   (los manuales no se tocan)
+-- Riesgo: medio (escribe en toques existentes), acotado a los que traen datos de anuncio.
+-- ============================================================================
+
+DO $$
+DECLARE
+  ws record;
+  n int;
+  total int := 0;
+BEGIN
+  FOR ws IN SELECT id FROM public.workspaces LOOP
+    n := public.rematch_meta_touches(ws.id, '-infinity'::timestamptz);
+    IF n > 0 THEN
+      RAISE NOTICE '00193: workspace % -> % toque(s) vinculado(s) o actualizado(s)', ws.id, n;
+    END IF;
+    total := total + n;
+  END LOOP;
+  RAISE NOTICE '00193: backfill del vinculo con Meta: % toque(s) en total', total;
+END $$;
+
+-- ============================================================
+-- MIGRATION 194: META MATCH SIGNAL
+-- ============================================================
+-- ============================================================================
+-- 00194 — Vinculo con Meta: solo cuentan los toques que PUEDEN traer datos de anuncio  (correccion de la 00192)
+-- ============================================================================
+-- La 00192 trataba cualquier `campaign`, `content_label` o `term` de un toque como un UTM. Pero en un
+-- comentario o un DM organico, `content_label` es el TITULO DE LA PUBLICACION (o de la historia), no un UTM:
+-- el backfill de la 00193 lo comprobo con el primer toque real que vio (un comentario "unmatched / name_not_found").
+-- Con esa regla, todo comentario y DM organico iba a ensuciar «Sin vincular».
+--
+-- La regla corregida (la misma en SQL y en TypeScript: `touchMetaInput`, lib/attribution/meta-match.ts):
+--   Los ids (`ad_id`, `adset_id`, `campaign_id`) y el `fbclid` SIEMPRE cuentan.
+--   `campaign`, `content_label` y `term` cuentan como UTMs solo si el toque puede traerlos de verdad:
+--     - su origen es booking, form, webhook, import o manual, o
+--     - ya trae algun id de anuncio (un DM que viene de un anuncio: el titulo del anuncio SI sirve para el nombre).
+--   Un comentario o un DM sin ids de anuncio no tiene datos de Meta: queda `none`.
+--
+-- Cambia (CREATE OR REPLACE, mismas firmas): el trigger, `rematch_meta_touches` y `set_touch_meta_match`.
+-- Suma: `private.meta_touch_utm_counts`, `private.meta_touch_has_data` y `public.resolve_meta_match_for_touch`.
+-- `resolve_meta_match` NO cambia (sigue siendo la funcion pura que comparten SQL y TypeScript).
+-- Corrige el dato: los toques que la 00193 dejo `unmatched` sin tener datos de Meta vuelven a `none`.
+--
+-- Definiciones VIGENTES antes de esta migracion: son las de la 00192 (trigger, rematch, set_touch_meta_match).
+--
+-- Como volver atras: volver a aplicar las tres funciones tal como estan en la 00192 y
+--   DROP FUNCTION IF EXISTS public.resolve_meta_match_for_touch(public.contact_touches);
+--   DROP FUNCTION IF EXISTS private.meta_touch_has_data(public.contact_touches);
+--   DROP FUNCTION IF EXISTS private.meta_touch_utm_counts(public.contact_touches);
+-- Riesgo: medio (cambia el trigger que corre en cada insert de un toque; sigue envuelto en EXCEPTION).
+-- ============================================================================
+
+SET search_path = '';
+
+-- ¿El toque puede traer UTMs de verdad (y no el titulo de una publicacion)?
+CREATE OR REPLACE FUNCTION private.meta_touch_utm_counts(t public.contact_touches)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT t.origin IN ('booking', 'form', 'webhook', 'import', 'manual')
+      OR nullif(btrim(t.ad_id), '') IS NOT NULL
+      OR nullif(btrim(t.adset_id), '') IS NOT NULL
+      OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+$$;
+
+-- ¿El toque trae algun dato de Meta (ids, fbclid o UTMs que cuentan)?
+CREATE OR REPLACE FUNCTION private.meta_touch_has_data(t public.contact_touches)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT nullif(btrim(t.ad_id), '') IS NOT NULL
+      OR nullif(btrim(t.adset_id), '') IS NOT NULL
+      OR nullif(btrim(t.campaign_id), '') IS NOT NULL
+      OR nullif(btrim(t.fbclid), '') IS NOT NULL
+      OR (
+        private.meta_touch_utm_counts(t)
+        AND (nullif(btrim(t.campaign), '') IS NOT NULL
+             OR nullif(btrim(t.content_label), '') IS NOT NULL
+             OR nullif(btrim(t.term), '') IS NOT NULL)
+      )
+$$;
+
+-- La resolucion de UN toque: aplica la regla de arriba y llama a la funcion pura.
+CREATE OR REPLACE FUNCTION public.resolve_meta_match_for_touch(t public.contact_touches)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.resolve_meta_match(
+    t.workspace_id, t.ad_id, t.adset_id, t.campaign_id,
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.campaign END,
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.content_label END,
+    CASE WHEN private.meta_touch_utm_counts(t) THEN t.term END,
+    t.fbclid
+  )
+$$;
+
+REVOKE ALL ON FUNCTION private.meta_touch_utm_counts(public.contact_touches) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.meta_touch_has_data(public.contact_touches) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.resolve_meta_match_for_touch(public.contact_touches) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_meta_match_for_touch(public.contact_touches) TO service_role;
+
+-- ------------------------------------------------------------
+-- El trigger (mismo cuerpo, llama a la funcion por toque)
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.contact_touches_meta_match_trg()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  r jsonb;
+BEGIN
+  -- Lo que una persona eligio o descarto no se vuelve a resolver solo.
+  IF NEW.meta_match_status IN ('manual', 'ignored') THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    r := public.resolve_meta_match_for_touch(NEW);
+    NEW.meta_campaign_id := r->>'campaign_id';
+    NEW.meta_adset_id    := r->>'adset_id';
+    NEW.meta_ad_id       := r->>'ad_id';
+    NEW.meta_match_status := coalesce(r->>'status', 'none');
+    NEW.meta_match_method := r->>'method';
+    NEW.meta_match_reason := r->>'reason';
+    NEW.meta_matched_at   := CASE WHEN NEW.meta_match_status = 'matched' THEN now() END;
+  EXCEPTION WHEN OTHERS THEN
+    -- Un error en el vinculo no puede costar un toque: se guarda sin vincular y queda el aviso en el log.
+    NEW.meta_campaign_id := NULL;
+    NEW.meta_adset_id := NULL;
+    NEW.meta_ad_id := NULL;
+    NEW.meta_match_status := 'none';
+    NEW.meta_match_method := NULL;
+    NEW.meta_match_reason := NULL;
+    NEW.meta_matched_at := NULL;
+    RAISE WARNING 'contact_touches_meta_match: no pude vincular el toque (%): %', NEW.id, SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- rematch_meta_touches (mismo cuerpo; solo mira toques con datos de Meta de verdad)
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.rematch_meta_touches(p_workspace_id uuid, p_since timestamptz)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_changed int := 0;
+  v_batch   int;
+  v_last_at timestamptz := '-infinity';
+  v_last_id uuid := '00000000-0000-0000-0000-000000000000';
+  t         public.contact_touches%ROWTYPE;
+  r         jsonb;
+  v_contacts uuid[];
+BEGIN
+  LOOP
+    v_batch := 0;
+    v_contacts := ARRAY[]::uuid[];
+
+    FOR t IN
+      SELECT ct.*
+        FROM public.contact_touches ct
+       WHERE ct.workspace_id = p_workspace_id
+         AND ct.occurred_at >= p_since
+         AND (ct.occurred_at, ct.id) > (v_last_at, v_last_id)
+         AND (
+           ct.meta_match_status IN ('unmatched', 'none')
+           OR (ct.meta_match_status = 'matched' AND ct.meta_ad_id IS NULL
+               AND (nullif(btrim(ct.ad_id), '') IS NOT NULL OR nullif(btrim(ct.content_label), '') IS NOT NULL))
+         )
+         AND private.meta_touch_has_data(ct)
+       ORDER BY ct.occurred_at, ct.id
+       LIMIT 500
+    LOOP
+      v_batch := v_batch + 1;
+      v_last_at := t.occurred_at;
+      v_last_id := t.id;
+
+      r := public.resolve_meta_match_for_touch(t);
+
+      -- Si no cambia nada, no se escribe (y no se cuenta).
+      IF (r->>'status') IS DISTINCT FROM t.meta_match_status
+         OR (r->>'ad_id') IS DISTINCT FROM t.meta_ad_id
+         OR (r->>'adset_id') IS DISTINCT FROM t.meta_adset_id
+         OR (r->>'campaign_id') IS DISTINCT FROM t.meta_campaign_id
+         OR (r->>'method') IS DISTINCT FROM t.meta_match_method
+         OR (r->>'reason') IS DISTINCT FROM t.meta_match_reason THEN
+        UPDATE public.contact_touches
+           SET meta_campaign_id = r->>'campaign_id',
+               meta_adset_id = r->>'adset_id',
+               meta_ad_id = r->>'ad_id',
+               meta_match_status = coalesce(r->>'status', 'none'),
+               meta_match_method = r->>'method',
+               meta_match_reason = r->>'reason',
+               meta_matched_at = CASE WHEN r->>'status' = 'matched' THEN now() END
+         WHERE id = t.id;
+        v_changed := v_changed + 1;
+        v_contacts := array_append(v_contacts, t.contact_id);
+      END IF;
+    END LOOP;
+
+    EXIT WHEN v_batch = 0;
+
+    -- El contacto se refresca una vez por lote, no una vez por toque.
+    PERFORM private.refresh_contact_attribution(c) FROM (SELECT DISTINCT unnest(v_contacts) AS c) x;
+  END LOOP;
+
+  RETURN v_changed;
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- set_touch_meta_match (mismo cuerpo; quitar un vinculo manual vuelve a resolver con la regla nueva)
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.set_touch_meta_match(
+  p_workspace_id uuid,
+  p_touch_id uuid,
+  p_action text,
+  p_user_id uuid,
+  p_ad_id text DEFAULT NULL,
+  p_adset_id text DEFAULT NULL,
+  p_campaign_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  t          public.contact_touches%ROWTYPE;
+  v_before   jsonb;
+  v_ad       text := nullif(btrim(p_ad_id), '');
+  v_adset    text := nullif(btrim(p_adset_id), '');
+  v_campaign text := nullif(btrim(p_campaign_id), '');
+  a_adset    text;
+  a_campaign text;
+  s_campaign text;
+  r          jsonb;
+BEGIN
+  IF p_action NOT IN ('link', 'ignore', 'unlink') THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_action');
+  END IF;
+
+  SELECT * INTO t FROM public.contact_touches WHERE id = p_touch_id AND workspace_id = p_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'touch_not_found');
+  END IF;
+
+  v_before := jsonb_build_object(
+    'status', t.meta_match_status, 'ad_id', t.meta_ad_id, 'adset_id', t.meta_adset_id,
+    'campaign_id', t.meta_campaign_id, 'method', t.meta_match_method
+  );
+
+  IF p_action = 'link' THEN
+    -- Elegir un anuncio completa su conjunto y su campaña; un conjunto, su campaña. Todo tiene que estar en el catalogo.
+    IF v_ad IS NOT NULL THEN
+      SELECT a.adset_id, a.campaign_id INTO a_adset, a_campaign FROM public.meta_ads a
+       WHERE a.workspace_id = p_workspace_id AND a.ad_id = v_ad LIMIT 1;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_adset := coalesce(a_adset, v_adset);
+      v_campaign := coalesce(a_campaign, v_campaign);
+    END IF;
+    IF v_adset IS NOT NULL THEN
+      SELECT s.campaign_id INTO s_campaign FROM public.meta_adsets s
+       WHERE s.workspace_id = p_workspace_id AND s.adset_id = v_adset LIMIT 1;
+      IF NOT FOUND AND v_ad IS NULL THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+      v_campaign := coalesce(v_campaign, s_campaign);
+    END IF;
+    IF v_campaign IS NOT NULL AND v_ad IS NULL AND v_adset IS NULL THEN
+      PERFORM 1 FROM public.meta_campaigns c WHERE c.workspace_id = p_workspace_id AND c.campaign_id = v_campaign;
+      IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'error', 'not_in_catalog'); END IF;
+    END IF;
+    IF v_ad IS NULL AND v_adset IS NULL AND v_campaign IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'nothing_to_link');
+    END IF;
+
+    UPDATE public.contact_touches
+       SET meta_ad_id = v_ad, meta_adset_id = v_adset, meta_campaign_id = v_campaign,
+           meta_match_status = 'manual', meta_match_method = 'manual', meta_match_reason = NULL,
+           meta_matched_at = now(), meta_match_by = p_user_id
+     WHERE id = t.id;
+
+  ELSIF p_action = 'ignore' THEN
+    UPDATE public.contact_touches
+       SET meta_ad_id = NULL, meta_adset_id = NULL, meta_campaign_id = NULL,
+           meta_match_status = 'ignored', meta_match_method = NULL, meta_match_reason = NULL,
+           meta_matched_at = now(), meta_match_by = p_user_id
+     WHERE id = t.id;
+
+  ELSE
+    -- unlink: solo tiene sentido sobre lo que una persona toco; vuelve a resolverse solo.
+    IF t.meta_match_status NOT IN ('manual', 'ignored') THEN
+      RETURN jsonb_build_object('ok', false, 'error', 'not_manual');
+    END IF;
+    r := public.resolve_meta_match_for_touch(t);
+    UPDATE public.contact_touches
+       SET meta_campaign_id = r->>'campaign_id', meta_adset_id = r->>'adset_id', meta_ad_id = r->>'ad_id',
+           meta_match_status = coalesce(r->>'status', 'none'), meta_match_method = r->>'method',
+           meta_match_reason = r->>'reason',
+           meta_matched_at = CASE WHEN r->>'status' = 'matched' THEN now() END,
+           meta_match_by = NULL
+     WHERE id = t.id;
+  END IF;
+
+  PERFORM private.refresh_contact_attribution(t.contact_id);
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'contact_id', t.contact_id,
+    'before', v_before,
+    'after', (SELECT jsonb_build_object(
+        'status', x.meta_match_status, 'ad_id', x.meta_ad_id, 'adset_id', x.meta_adset_id,
+        'campaign_id', x.meta_campaign_id, 'method', x.meta_match_method)
+      FROM public.contact_touches x WHERE x.id = t.id)
+  );
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- Corregir lo que dejo la 00193: toques `unmatched` que no tenian datos de Meta vuelven a `none`
+-- ------------------------------------------------------------
+DO $$
+DECLARE
+  v_contacts uuid[];
+  v_n int;
+BEGIN
+  WITH fixed AS (
+    UPDATE public.contact_touches ct
+       SET meta_match_status = 'none', meta_match_method = NULL, meta_match_reason = NULL,
+           meta_matched_at = NULL, meta_campaign_id = NULL, meta_adset_id = NULL, meta_ad_id = NULL
+     WHERE ct.meta_match_status IN ('unmatched', 'matched')
+       AND NOT private.meta_touch_has_data(ct)
+    RETURNING ct.contact_id
+  )
+  SELECT array_agg(DISTINCT contact_id), count(*) INTO v_contacts, v_n FROM fixed;
+
+  IF v_contacts IS NOT NULL THEN
+    PERFORM private.refresh_contact_attribution(c) FROM unnest(v_contacts) AS c;
+  END IF;
+  RAISE NOTICE '00194: % toque(s) sin datos de Meta vuelven a none', coalesce(v_n, 0);
+END $$;
+
+-- ============================================================
+-- MIGRATION 195: ADS CRM METRICS
+-- ============================================================
+-- ============================================================================
+-- 00195 — Tabla Meta vs CRM: `ads_crm_metrics`  (M9 del Extra L, AT4)
+-- ============================================================================
+-- Por cada campaña, conjunto o anuncio de Meta, lo que pasó DEL LADO DEL CRM: leads, agendas, ventas,
+-- revenue y cash (ver el alcance v9, sección 4.3). Se cruza con el gasto de `meta_ads_insights_daily` en
+-- el dashboard de Ads para sacar el costo por lead real, el ROAS, el CAC, etc.
+--
+--   public.ads_crm_metrics(p_level, p_since, p_until, p_ad_account_id, p_workspace_id)
+--
+-- - **SECURITY INVOKER**: la RLS de quien mira decide qué contactos, toques, agendas, ventas y pagos cuenta
+--   (un Member con alcance `own` solo cuenta lo suyo). STABLE. `anon` no puede llamarla.
+-- - Las fechas `p_since`/`p_until` son fechas civiles y se interpretan en la ZONA HORARIA DEL WORKSPACE
+--   (`workspaces.timezone`); adentro se pasan a un rango UTC [desde, hasta). `p_workspace_id` es un parámetro
+--   más que el plano no tenía (la función no puede adivinar el workspace del que mira): sin él devuelve vacío.
+-- - Definiciones (por objeto = el id de Meta del nivel pedido, resuelto en `contact_touches.meta_<nivel>_id`):
+--     leads_first         contactos (no borrados) cuyo PRIMER toque es del objeto y que se crearon en el rango.
+--     leads_total         contactos distintos con algún toque del objeto cuyo `occurred_at` cae en el rango.
+--                         (No es aditivo entre anuncios: un contacto que tocó dos anuncios cuenta en los dos.)
+--     bookings            agendas creadas en el rango, sin las que se liberaron ("liberar espacio"); las canceladas
+--                         normales SÍ cuentan (la agenda existió y costó). El objeto sale del toque `booking:<id>`;
+--                         si no existe o no tiene objeto, del último toque del contacto con objeto anterior a la agenda.
+--     bookings_attended   de esas, las de `status_group = 'outcome'` (seguimiento tibio o frío, venta, no calificado).
+--     leads_with_booking  contactos distintos de esas agendas.
+--     sales               ventas con `sale_date` en el rango, sin las `cancelled` ni `refunded`, cuyo
+--                         `attribution_touch_id` es un toque del objeto.
+--     revenue_cents       suma de `final_amount` de esas ventas, en centavos.
+--     cash_cents          pagos `paid` con `paid_on` en el rango de ventas cuyo toque es del objeto; un reembolso es
+--                         una fila negativa y resta.
+--   Un objeto sin ningún dato en el rango no aparece. Con `p_ad_account_id` solo salen objetos de esa cuenta.
+--
+-- Índices nuevos: los de los filtros por fecha de agendas, ventas, pagos y contactos. (Los de `contact_touches`
+-- por objeto ya los creó la 00192; `contact_touches (workspace_id, dedupe_key)` ya es único.)
+--
+-- Como volver atras:
+--   DROP FUNCTION IF EXISTS public.ads_crm_metrics(text, date, date, text, uuid);
+--   DROP INDEX IF EXISTS public.idx_bookings_ws_created, public.idx_sales_ws_sale_date,
+--     public.idx_payments_ws_paid_on, public.idx_contacts_ws_created_alive;
+-- Riesgo: bajo (aditiva; una funcion nueva y cuatro indices).
+-- ============================================================================
+
+SET search_path = '';
+
+CREATE INDEX IF NOT EXISTS idx_bookings_ws_created
+  ON public.bookings (workspace_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_sales_ws_sale_date
+  ON public.sales (workspace_id, sale_date);
+CREATE INDEX IF NOT EXISTS idx_payments_ws_paid_on
+  ON public.payments (workspace_id, paid_on) WHERE status = 'paid';
+CREATE INDEX IF NOT EXISTS idx_contacts_ws_created_alive
+  ON public.contacts (workspace_id, created_at) WHERE deleted_at IS NULL;
+
+CREATE OR REPLACE FUNCTION public.ads_crm_metrics(
+  p_level text,
+  p_since date,
+  p_until date,
+  p_ad_account_id text DEFAULT NULL,
+  p_workspace_id uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  object_id text,
+  leads_first integer,
+  leads_total integer,
+  leads_with_booking integer,
+  bookings integer,
+  bookings_attended integer,
+  sales integer,
+  revenue_cents bigint,
+  cash_cents bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_col       text;
+  v_cat_table text;
+  v_cat_col   text;
+  v_tz        text;
+  v_lo        timestamptz;
+  v_hi        timestamptz;
+  v_sql       text;
+BEGIN
+  v_col := CASE p_level
+    WHEN 'campaign' THEN 'meta_campaign_id'
+    WHEN 'adset'    THEN 'meta_adset_id'
+    WHEN 'ad'       THEN 'meta_ad_id'
+  END;
+  IF v_col IS NULL THEN
+    RAISE EXCEPTION 'ads_crm_metrics: nivel invalido (%)', p_level USING ERRCODE = '22023';
+  END IF;
+  IF p_since IS NULL OR p_until IS NULL OR p_until < p_since THEN
+    RAISE EXCEPTION 'ads_crm_metrics: rango de fechas invalido' USING ERRCODE = '22023';
+  END IF;
+  IF p_workspace_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- El workspace tiene que ser visible para quien llama (RLS); si no, no hay nada que mostrar.
+  SELECT w.timezone INTO v_tz FROM public.workspaces w WHERE w.id = p_workspace_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+  v_tz := coalesce(nullif(btrim(v_tz), ''), 'UTC');
+
+  -- Las fechas civiles del workspace, a un rango UTC [desde, hasta).
+  v_lo := p_since::timestamp AT TIME ZONE v_tz;
+  v_hi := (p_until + 1)::timestamp AT TIME ZONE v_tz;
+
+  v_cat_table := CASE p_level WHEN 'campaign' THEN 'meta_campaigns' WHEN 'adset' THEN 'meta_adsets' ELSE 'meta_ads' END;
+  v_cat_col   := CASE p_level WHEN 'campaign' THEN 'campaign_id'    WHEN 'adset' THEN 'adset_id'    ELSE 'ad_id' END;
+
+  -- La columna del nivel sale de una lista fija (nunca del pedido): %I la cita como identificador.
+  v_sql := format($q$
+    WITH
+    first_leads AS (
+      SELECT c.attribution -> 'first_touch' ->> %1$L AS obj, count(*)::int AS n
+        FROM public.contacts c
+       WHERE c.workspace_id = $1 AND c.deleted_at IS NULL
+         AND c.created_at >= $2 AND c.created_at < $3
+         AND c.attribution -> 'first_touch' ->> %1$L IS NOT NULL
+       GROUP BY 1
+    ),
+    total_leads AS (
+      SELECT t.%2$I AS obj, count(DISTINCT t.contact_id)::int AS n
+        FROM public.contact_touches t
+        JOIN public.contacts c ON c.id = t.contact_id AND c.deleted_at IS NULL
+       WHERE t.workspace_id = $1 AND t.%2$I IS NOT NULL
+         AND t.occurred_at >= $2 AND t.occurred_at < $3
+       GROUP BY 1
+    ),
+    bk AS (
+      SELECT b.id, b.contact_id, b.status_group,
+             coalesce(
+               (SELECT t.%2$I FROM public.contact_touches t
+                 WHERE t.workspace_id = $1 AND t.dedupe_key = 'booking:' || b.id::text AND t.%2$I IS NOT NULL
+                 LIMIT 1),
+               (SELECT t.%2$I FROM public.contact_touches t
+                 WHERE t.contact_id = b.contact_id AND t.%2$I IS NOT NULL AND t.occurred_at <= b.created_at
+                 ORDER BY t.occurred_at DESC, t.created_at DESC, t.id DESC
+                 LIMIT 1)
+             ) AS obj
+        FROM public.bookings b
+       WHERE b.workspace_id = $1 AND b.created_at >= $2 AND b.created_at < $3
+         AND b.slot_released_at IS NULL
+    ),
+    booking_agg AS (
+      SELECT obj,
+             count(*)::int AS bookings,
+             (count(*) FILTER (WHERE status_group = 'outcome'))::int AS attended,
+             count(DISTINCT contact_id)::int AS leads
+        FROM bk WHERE obj IS NOT NULL GROUP BY obj
+    ),
+    sale_agg AS (
+      SELECT t.%2$I AS obj,
+             count(*)::int AS sales,
+             coalesce(sum(round(s.final_amount * 100)), 0)::bigint AS revenue
+        FROM public.sales s
+        JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+       WHERE s.workspace_id = $1 AND s.sale_date >= $4 AND s.sale_date <= $5
+         AND s.status NOT IN ('cancelled', 'refunded')
+         AND t.%2$I IS NOT NULL
+       GROUP BY 1
+    ),
+    cash_agg AS (
+      SELECT t.%2$I AS obj, coalesce(sum(round(p.amount * 100)), 0)::bigint AS cash
+        FROM public.payments p
+        JOIN public.sales s ON s.id = p.sale_id
+        JOIN public.contact_touches t ON t.id = s.attribution_touch_id
+       WHERE p.workspace_id = $1 AND p.status = 'paid'
+         AND p.paid_on >= $4 AND p.paid_on <= $5
+         AND t.%2$I IS NOT NULL
+       GROUP BY 1
+    ),
+    objs AS (
+      SELECT obj FROM first_leads UNION SELECT obj FROM total_leads UNION SELECT obj FROM booking_agg
+      UNION SELECT obj FROM sale_agg UNION SELECT obj FROM cash_agg
+    )
+    SELECT o.obj,
+           coalesce(f.n, 0), coalesce(tl.n, 0), coalesce(ba.leads, 0),
+           coalesce(ba.bookings, 0), coalesce(ba.attended, 0),
+           coalesce(sa.sales, 0), coalesce(sa.revenue, 0)::bigint, coalesce(ca.cash, 0)::bigint
+      FROM objs o
+      LEFT JOIN first_leads f ON f.obj = o.obj
+      LEFT JOIN total_leads tl ON tl.obj = o.obj
+      LEFT JOIN booking_agg ba ON ba.obj = o.obj
+      LEFT JOIN sale_agg sa ON sa.obj = o.obj
+      LEFT JOIN cash_agg ca ON ca.obj = o.obj
+     WHERE $6::text IS NULL OR o.obj IN (
+             SELECT x.%3$I FROM public.%4$I x WHERE x.workspace_id = $1 AND x.ad_account_id = $6
+           )
+     ORDER BY o.obj
+  $q$, v_col, v_col, v_cat_col, v_cat_table);
+
+  RETURN QUERY EXECUTE v_sql USING p_workspace_id, v_lo, v_hi, p_since, p_until, p_ad_account_id;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.ads_crm_metrics(text, date, date, text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ads_crm_metrics(text, date, date, text, uuid) TO authenticated, service_role;

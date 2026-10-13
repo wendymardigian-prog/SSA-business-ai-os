@@ -21,6 +21,7 @@ import "./call-triggers";
 import "./form-triggers";
 import "./sales-triggers";
 import "./eod-triggers";
+import "./webhook-triggers";
 import "./guards";
 
 export * from "./registry";

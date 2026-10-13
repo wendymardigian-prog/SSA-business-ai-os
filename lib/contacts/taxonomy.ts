@@ -44,6 +44,7 @@ export const MEDIUMS = [
   "dm",
   "comment",
   "story_reply",
+  "story_mention",
   "mention",
   "link_in_bio",
   "paid_social",
@@ -57,7 +58,7 @@ export const MEDIUMS = [
 export type KnownMedium = (typeof MEDIUMS)[number];
 
 /** Por qué camino técnico entró el toque (columna `origin`). */
-export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import"] as const;
+export const ORIGINS = ["dm", "comment", "booking", "form", "manual", "import", "webhook"] as const;
 export type TouchOrigin = (typeof ORIGINS)[number];
 
 /**
@@ -159,6 +160,7 @@ export const MEDIUM_LABELS: Record<KnownMedium, string> = {
   dm: "mensaje directo",
   comment: "comentario",
   story_reply: "respuesta a una historia",
+  story_mention: "mención en una historia",
   mention: "mención",
   link_in_bio: "link de la bio",
   paid_social: "anuncio",
@@ -198,4 +200,5 @@ export const ORIGIN_LABELS: Record<TouchOrigin, string> = {
   form: "Formulario",
   manual: "Alta manual",
   import: "Importación",
+  webhook: "Webhook",
 };

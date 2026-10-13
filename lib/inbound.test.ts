@@ -199,6 +199,49 @@ describe("insertMessage", () => {
     });
   });
 
+  it("F19: guarda el contexto de origen del entrante en la fila", async () => {
+    const { client, calls } = fakeDb({});
+    await insertMessage({
+      supabase: client, conversationId: "cv-1", direction: "inbound", text: "hola", platformMessageId: "ZR-1",
+      createdAt: "2026-09-08T10:00:00Z", originContext: { story_mention: true },
+    });
+    expect(calls.inserts[0].values).toMatchObject({ origin_context: { story_mention: true } });
+  });
+
+  it("F19: sin contexto de origen no manda la columna", async () => {
+    const { client, calls } = fakeDb({});
+    await insertMessage({ supabase: client, conversationId: "cv-1", direction: "inbound", text: "hola", platformMessageId: "ZR-2", createdAt: "2026-09-08T10:00:00Z" });
+    expect(calls.inserts[0].values).not.toHaveProperty("origin_context");
+  });
+
+  it("F19: si el insert falla con el contexto de origen, se reintenta SIN él y el mensaje se guarda igual", async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const client = {
+      from: () => ({
+        insert: (values: Record<string, unknown>) => {
+          inserts.push(values);
+          const first = inserts.length === 1;
+          return { select: () => ({ single: async () => (first ? { data: null, error: { code: "42703", message: "column origin_context does not exist" } } : { data: { id: "m-1" }, error: null }) }) };
+        },
+      }),
+    } as unknown as Db;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const out = await insertMessage({ supabase: client, conversationId: "cv-1", direction: "inbound", text: "hola", platformMessageId: "ZR-3", createdAt: "2026-09-08T10:00:00Z", originContext: { ad: { platform: "instagram", ad_id: "1" } } });
+
+    expect(out).toEqual({ stored: true, id: "m-1" });
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0]).toHaveProperty("origin_context");
+    expect(inserts[1]).not.toHaveProperty("origin_context");
+  });
+
+  it("F19: un duplicado (23505) NO se reintenta", async () => {
+    const { client, calls } = fakeDb({ insertError: { code: "23505", message: "duplicate" } });
+    const out = await insertMessage({ supabase: client, conversationId: "cv-1", direction: "inbound", text: "hola", platformMessageId: "ZR-4", createdAt: "2026-09-08T10:00:00Z", originContext: { story_mention: true } });
+    expect(out.stored).toBe(false);
+    expect(calls.inserts).toHaveLength(1);
+  });
+
   it("un mensaje ya guardado no es un error: es el eco del que mandamos nosotros", async () => {
     const { client } = fakeDb({ insertError: { code: "23505", message: "duplicate" } });
     await expect(

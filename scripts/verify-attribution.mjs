@@ -106,6 +106,38 @@ try {
     check(attr?.first_touch?.occurred_at?.startsWith("2026-09-01"), "el toque guarda cuando paso, no cuando se anoto");
   }
 
+  // ── Extra L (M3): el origen `webhook` ───────────────────────────────────────
+  console.log("\n— El origen `webhook` (Extra L, M3) —");
+  {
+    // Un contacto nuevo: el toque del webhook es el primero y el ultimo.
+    const nuevo = await newContact();
+    const w1 = touch({ source: "facebook", medium: "form", origin: "webhook", content: "120215", dedupe_key: `webhook:zz-${stamp}:n1`, raw: { endpoint_name: "Typeform", source_type: "webhook" } });
+    const r1 = await record(ws.id, nuevo, w1);
+    check(!r1.error && r1.data?.inserted === true, "un toque con origin = webhook se registra", r1.error?.message ?? JSON.stringify(r1.data));
+    const a1 = await attributionOf(nuevo);
+    check(a1?.first_touch?.origin === "webhook" && a1?.last_touch?.origin === "webhook",
+      "en un contacto nuevo, first_touch y last_touch son del webhook");
+    check(a1?.last_touch?.content === "120215" && a1?.last_touch?.source === "facebook", "y llevan la fuente y el contenido");
+
+    // Uno que ya tenia un toque de DM: el primero no cambia y el ultimo pasa a ser el del webhook.
+    const previo = await newContact();
+    await record(ws.id, previo, touch({ source: "instagram", medium: "dm", occurred_at: "2026-09-01T10:00:00Z" }));
+    await record(ws.id, previo, touch({ source: "web", medium: "form", origin: "webhook", dedupe_key: `webhook:zz-${stamp}:n2` }));
+    const a2 = await attributionOf(previo);
+    check(a2?.first_touch?.origin === "dm", "con un toque de DM previo, first_touch NO cambia");
+    check(a2?.last_touch?.origin === "webhook", "y last_touch pasa a ser el del webhook");
+
+    // El mismo envio y paso dos veces (un reproceso): UN solo toque.
+    const dup = touch({ origin: "webhook", source: "web", medium: "form", dedupe_key: `webhook:zz-${stamp}:n3` });
+    await record(ws.id, previo, dup);
+    const again = await record(ws.id, previo, dup);
+    check(again.data?.inserted === false && again.data?.reason === "duplicate", "un reproceso no anota un segundo toque (dedupe_key)");
+
+    // La base sigue rechazando un origen inventado.
+    const bad = await svc.from("contact_touches").insert({ workspace_id: ws.id, contact_id: previo, source: "web", origin: "inventado", dedupe_key: `zz-bad-${stamp}` });
+    check(!!bad.error, "un origen que no esta en la lista sigue rechazado por el CHECK");
+  }
+
   console.log("\n— record_contact_touch: idempotencia (F82, F83) —");
   {
     const c = await newContact();

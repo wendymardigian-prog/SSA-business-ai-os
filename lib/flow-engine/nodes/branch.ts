@@ -43,10 +43,12 @@ const CONTACT_FREE_PREFIXES = [
   "answer.", "form.", "submission.", "booking.", "sale.", "payment.", "variable:",
   // Reporte de fin de día (E16): todo sale de las variables del disparador.
   "eod.", "member.", "metrics.", "channel.", "report.",
+  // Webhooks entrantes (Extra L): el envío (`webhook.payload.*`, `webhook.query.*`) viaja en las variables.
+  "webhook.",
 ];
 const CONTACT_FREE_FIELDS = ["platform", "agent_active"];
 
-function isContactFree(condition: BranchCondition): boolean {
+export function isContactFree(condition: BranchCondition): boolean {
   // Una condicion sin tipo es del nodo viejo: se comporta como el: sin contacto, nada se cumple.
   if (!condition.valueType) return false;
   const field = condition.field;

@@ -165,6 +165,18 @@ export interface EnrollSequenceNodeData {
   sequenceId: string;
 }
 
+/** Lo que el paso de contacto le cuenta a quien arrancó el flujo (ver `onContactStep`). */
+export interface ContactStepInfo {
+  contactId: string | null;
+  contactName: string | null;
+  result: "created" | "updated" | "unchanged" | null;
+  failReason: string | null;
+  diff: Record<string, { before: unknown; after: unknown }> | null;
+  conflict: { contact_id: string; by: string }[] | null;
+  touch: { recorded: boolean; source: string; medium: string | null; campaign: string | null; content: string | null; ad_id: string | null } | null;
+  notes: string[];
+}
+
 export interface FlowExecutionContext {
   triggerId: string;
   flowId: string;
@@ -183,6 +195,21 @@ export interface FlowExecutionContext {
   contactId: string | null;
   /** La persona del equipo de un flujo sin contacto (quien envió el reporte). */
   memberUserId?: string | null;
+  /**
+   * El envío de webhook que arrancó el flujo (disparador `webhook_received`). El flujo arranca
+   * sin contacto y sin persona: el paso "Crear o actualizar contacto" pone `contactId` después.
+   */
+  inboundWebhookId?: string | null;
+  /**
+   * Un aviso para quien arrancó el flujo cuando el motor saltea un paso por falta de contacto
+   * (los flujos de webhook lo anotan en el historial del envío). Nunca lanza.
+   */
+  onStepSkipped?: (step: { nodeId: string; nodeType: string; label: string }) => void;
+  /**
+   * Lo que pasó en el paso «Crear o actualizar contacto» (el contacto, el diff, el conflicto, el toque):
+   * los flujos de webhook lo guardan en el historial del envío. Nunca lanza.
+   */
+  onContactStep?: (info: ContactStepInfo) => void;
   conversationId: string;
   workspaceId: string;
   /** The Zernio API conversation ID (from conversations.late_conversation_id) */
@@ -235,4 +262,14 @@ export interface IncomingMessage {
   isStoryReply?: boolean;
   /** Id de la historia respondida, cuando lo hay. */
   storyId?: string;
+  /** Alguien mencionó la cuenta en SU historia (Instagram, `metadata.isStoryMention`). */
+  isStoryMention?: boolean;
+  /**
+   * El mensaje vino de un anuncio (trae `referral` / `externalAdReply`). Es lo que permite el filtro
+   * «Solo si vino de un anuncio» del disparador de palabra clave (Extra L, F19).
+   */
+  fromAd?: boolean;
+  /** El anuncio del que vino, si se sabe. */
+  adId?: string;
+  adTitle?: string;
 }

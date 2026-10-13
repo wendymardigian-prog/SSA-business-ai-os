@@ -160,3 +160,54 @@ un Member, la idempotencia por `dedupe_key`, primer y último toque con un toque
 fuera de orden, que el `source` que leen los triggers sea el de antes para un
 contacto viejo, y que `create_booking` escribe la forma canónica. Crea y limpia
 sus datos (prefijo `zz-test-`) y no se corre a la vez que otro `verify-*`.
+
+## Extra L: que no se pierda nada, y el vinculo con los anuncios de Meta
+
+Construido en el Extra L (AT1 a AT3). Avance y decisiones: `docs/PROGRESS-atribucion.md` y `docs/PENDIENTE-atribucion.md`.
+
+### Toques nuevos y datos que ya no se pierden (AT1)
+
+- **Agenda** (`create_booking`, 00190): el toque de una reserva ahora lleva `ad_id`, `adset_id`, `campaign_id` y, en `raw`, `utm_id`,
+  `placement`, `fbp`, `fbc`, `ga_client_id` y la primera visita. El navegador manda todas las claves de `lib/attribution/keys.ts` (no solo
+  cinco UTMs) y completa la cookie `ssa_attr`; el embed de la agenda hereda la atribución guardada (`attr`, solo si hay).
+- **Formularios**: ya no inventan un `utm_content` con el nombre del formulario; la ficha lo muestra desde `raw.source_id`.
+- **Chat** (`messages.origin_context`, 00189): la mención en una historia, el mensaje que viene de un anuncio (Instagram y clic a WhatsApp) y la
+  respuesta a una historia quedan registrados. `story_mention` es un medio nuevo («Mención en historia»). Los flujos pueden filtrar
+  «Solo si vino de un anuncio» / «Solo menciones en historias» y leer `{{message_origin.ad_id}}`, `{{message_origin.ad_title}}` y
+  `{{message_origin.is_story_mention}}`. Un comentario en un anuncio genera un toque `paid_social` con el id del anuncio.
+- **Webhooks**: un toque `origin = webhook` (ver `docs/webhooks.md`).
+
+### El catalogo de Meta (AT2)
+
+`meta_campaigns`, `meta_adsets` y `meta_ads` (00191) guardan nombre, estado efectivo, creativo y la publicacion que promocionan. El sync de
+anuncios trae **primero el catalogo** (incluidos pausados, archivados y borrados), independiente de las metricas; un tope de 50 paginas o el
+limite de uso de Meta cortan el sync y lo anotan en la cuenta (`last_error`), nunca en silencio. Las miniaturas se copian al bucket privado
+`ad-creatives`. Un anuncio que promociona una publicacion de Instagram se enlaza solo con su `social_posts` y su pieza (el enlace manual no se pisa).
+
+### El vinculo de cada toque con su campaña, conjunto y anuncio (AT3)
+
+Cada toque nuevo pasa por el trigger `contact_touches_meta_match` (BEFORE INSERT, **nunca hace fallar el insert**) que llama a
+`resolve_meta_match` y deja `meta_campaign_id`, `meta_adset_id`, `meta_ad_id`, `meta_match_status` (`none` · `matched` · `unmatched` · `manual` ·
+`ignored`), el metodo y el motivo. El orden: **anuncio** (`ad_id` → `utm_content` igual a un id → `utm_content` como nombre; con varios homonimos se
+desempata por la campaña, y si siguen varios NO se vincula) → **conjunto** → **campaña** → coherencia (si el anuncio es de otra campaña, gana el anuncio).
+
+- La funcion SQL tiene una **gemela en TypeScript** (`lib/attribution/meta-match.ts`) y los **mismos casos** (`meta-match.cases.json`) corren contra las dos.
+- **Solo cuentan como datos de Meta** los ids y el `fbclid`, y `campaign`/`content_label`/`term` cuando el toque puede traer UTMs de verdad (agenda,
+  formulario, webhook, importado, manual) o ya trae un id de anuncio. En un comentario o un DM organico, `content_label` es el titulo de la publicacion.
+- Despues de cada sync, `rematch_meta_touches` vuelve a resolver los toques sin vincular de los ultimos 90 dias (si llega el anuncio que faltaba).
+  Nunca toca lo `manual` ni lo `ignored`.
+- **«Sin vincular»** (`/dashboard/dashboards/ads/sin-vincular`): lista los toques sin vincular con el motivo en palabras; se puede vincular a mano
+  (completa conjunto y campaña), ignorar o quitar el vinculo manual. Cada accion queda en el historial del contacto (`attribution.meta_*`).
+- **La ficha del contacto** muestra campaña › conjunto › anuncio por nombre, con miniatura, y como se vinculo.
+- `contacts.attribution` sigue siendo una copia derivada: `refresh_contact_attribution` la recalcula con el mismo orden que `record_contact_touch`.
+
+### Guia: parametros de URL para los anuncios
+
+Para que un anuncio quede vinculado, la URL de destino tiene que llevar (en el Ads Manager, «Parametros de URL»):
+
+```
+utm_source=facebook&utm_medium=paid_social&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}
+```
+
+`{{campaign.id}}`, `{{ad.id}}` y `{{adset.id}}` los reemplaza Meta por los ids; con ids el vinculo es exacto. Con nombres (`{{campaign.name}}`,
+`{{ad.name}}`) tambien funciona, pero un nombre repetido queda ambiguo y va a «Sin vincular».

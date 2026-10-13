@@ -504,6 +504,29 @@ describe("webhook de Evolution: el toque de atribución del mensaje (F85)", () =
     );
   });
 
+  it("F19: el anuncio de 'clic a WhatsApp' se guarda en el contexto de origen del mensaje y llega a las automatizaciones", async () => {
+    db();
+    const externalAdReply = { sourceType: "ad", sourceId: "ad-55", ctwaClid: "ctwa-1", title: "Mentoría" };
+
+    await callRoute(post(message({ message: { extendedTextMessage: { text: "hola", contextInfo: { externalAdReply } } } })));
+    await runAfter();
+
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: { ad: { platform: "whatsapp", ad_id: "ad-55", ctwa_clid: "ctwa-1", source_type: "ad", title: "Mentoría" } } }));
+    expect(runInboundAutomation).toHaveBeenCalledWith(expect.objectContaining({ incomingMessage: expect.objectContaining({ fromAd: true, adId: "ad-55", adTitle: "Mentoría" }) }));
+  });
+
+  it("F19: un mensaje común no guarda contexto de origen; uno saliente (eco) tampoco", async () => {
+    db();
+    await callRoute(post(message()));
+    await runAfter();
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: null }));
+
+    insertMessage.mockClear();
+    await callRoute(post(message({ key: { remoteJid: "5491122223333@s.whatsapp.net", fromMe: true, id: "msg-eco2" } })));
+    await runAfter();
+    expect(insertMessage).toHaveBeenCalledWith(expect.objectContaining({ originContext: null }));
+  });
+
   it("lo que sale desde el teléfono NO es un toque del lead", async () => {
     db();
 

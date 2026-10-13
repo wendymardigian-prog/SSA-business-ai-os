@@ -254,7 +254,10 @@ try {
   );
   const expected: Record<string, string> = {
     find_or_link_contact: "861440d10e8519b67606d78c53ca663b",
-    create_booking: "b81db84edb30ee7853efa2d42385593a",
+    // Extra L (M5, migracion 00190): `create_booking` cambio A PROPOSITO, solo en el bloque del toque de
+    // atribucion (suma ad_id, adset_id, campaign_id y los extras de raw). La huella vieja era
+    // b81db84edb30ee7853efa2d42385593a (la definicion completa esta en la cabecera de la 00190).
+    create_booking: "57b486fed13f20a0db3af410d1aa91ac",
     record_contact_touch: "f364db1862cc0f90291ca14ef855a214",
   };
   for (const [name, hash] of Object.entries(expected)) {
@@ -636,7 +639,8 @@ try {
   check(a1?.first_touch?.campaign === "octubre" && a1?.last_touch?.campaign === "octubre" && a1?.first_touch?.medium === "form" && a1?.first_touch?.source === "facebook", "contacto nuevo: el toque del formulario es su primero y su ultimo (medium 'form')", JSON.stringify(a1));
   const { data: touches1 } = await svc.from("contact_touches").select("origin, dedupe_key, content_label, ad_id").eq("contact_id", firstRow.contact_id!);
   check(touches1?.length === 1 && touches1[0].origin === "form" && touches1[0].dedupe_key === `form:${firstRow.id}` && touches1[0].ad_id === "123", "queda UNA fila en contact_touches con origin 'form' y la clave form:<respuesta>", JSON.stringify(touches1));
-  check(touches1?.[0].content_label === "zz-test FO2", "sin utm_content, la pieza es el nombre del formulario");
+  // Extra L (F18): el formulario ya no inventa `utm_content` con su nombre; el formulario es `raw.source_id`.
+  check(touches1?.[0].content_label === null, "sin utm_content, el toque NO tiene contenido (el nombre del formulario no se inventa)", JSON.stringify(touches1?.[0]));
 
   // 4. El aviso de la campana.
   const { data: notes } = await svc.from("notifications").select("type, entity_type, entity_id, recipient_id, metadata, body").eq("workspace_id", ws.id).eq("type", "form_submitted").eq("entity_id", firstRow.id);

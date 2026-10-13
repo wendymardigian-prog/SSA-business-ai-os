@@ -77,6 +77,13 @@ export function buildDesiredTriggers(
         if (Array.isArray(postIds) && postIds.length > 0) config.postIds = postIds;
         const replyText = data.replyText ?? nodeConfig.replyText;
         if (typeof replyText === "string" && replyText.trim()) config.replyText = replyText;
+        // Extra L (F19): los filtros de origen del mensaje, solo en la palabra clave de un DM. (El filtro
+        // `storyReply` del mismo panel NO se copia aca desde antes de este cambio: no se toca para no cambiar
+        // lo que ya corre en produccion; ver docs/PENDIENTE-atribucion.md.)
+        if (type === "keyword") {
+          if (data.fromAdOnly === true || nodeConfig.fromAdOnly === true) config.fromAdOnly = true;
+          if (data.storyMentionOnly === true || nodeConfig.storyMentionOnly === true) config.storyMentionOnly = true;
+        }
       } else if (type === "postback" || type === "quick_reply") {
         const payload = data.payload ?? nodeConfig.payload;
         if (payload !== undefined) config.payload = payload;

@@ -2,6 +2,7 @@ import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { IntegrationsGrid } from "@/components/settings/integrations/integrations-grid";
 import { loadIntegrations } from "@/lib/integrations/load";
 import { FathomAppCard } from "@/components/settings/integrations/fathom-app-card";
+import { WebhooksCard } from "@/components/settings/integrations/webhooks-card";
 import { listSecretNames, SECRET_NAMES } from "@/lib/vault";
 import { appUrl } from "@/lib/app-url";
 
@@ -24,10 +25,14 @@ export default async function IntegrationsPage() {
 
   // Fathom (Llamadas) no pasa por el catalogo: es la app OAuth del negocio y
   // cada closer conecta la suya. Aca solo se carga la app y se cuenta quien conecto.
-  const [secretNames, { data: connections }] = await Promise.all([
+  const [secretNames, { data: connections }, { data: endpoints }] = await Promise.all([
     listSecretNames(supabase, workspace.id),
     supabase.from("oauth_connections").select("status").eq("workspace_id", workspace.id).eq("provider", "fathom"),
+    // Webhooks entrantes: solo cuantos hay (la RLS deja leer la lista a Owner y Admin, sin el token).
+    supabase.from("webhook_endpoints").select("status").eq("workspace_id", workspace.id).is("deleted_at", null),
   ]);
+  const activeEndpoints = (endpoints ?? []).filter((e) => e.status === "active").length;
+  const pausedEndpoints = (endpoints ?? []).length - activeEndpoints;
   const hasApp = secretNames.includes(SECRET_NAMES.fathomClientId) && secretNames.includes(SECRET_NAMES.fathomClientSecret);
   const connected = (connections ?? []).filter((c) => c.status === "active" || c.status === "attention").length;
   const withError = (connections ?? []).filter((c) => c.status === "error").length;
@@ -36,12 +41,15 @@ export default async function IntegrationsPage() {
     <IntegrationsGrid
       integrations={integrations}
       extra={
-        <FathomAppCard
-          hasApp={hasApp}
-          returnUrl={`${appUrl()}/api/oauth/fathom/callback`}
-          connected={connected}
-          withError={withError}
-        />
+        <div className="space-y-4">
+          <FathomAppCard
+            hasApp={hasApp}
+            returnUrl={`${appUrl()}/api/oauth/fathom/callback`}
+            connected={connected}
+            withError={withError}
+          />
+          <WebhooksCard active={activeEndpoints} paused={pausedEndpoints} />
+        </div>
       }
     />
   );

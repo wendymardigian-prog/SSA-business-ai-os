@@ -9,6 +9,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   applySelection,
   fetchAdAccounts,
+  markCatalogSync,
   markSync,
   mergeAdAccounts,
   normalizeAdAccountId,
@@ -195,5 +196,31 @@ describe("la config guardada (F40)", () => {
       page_id: null,
       ad_accounts: [],
     });
+  });
+});
+
+describe("markCatalogSync (AT2)", () => {
+  const base = [account({ ad_account_id: "act_1", last_error: null })];
+
+  it("un catalogo completo avanza catalog_synced_at y no deja aviso", () => {
+    const [a] = markCatalogSync(base, "act_1", { at: "2026-10-13T09:00:00Z", complete: true });
+    expect(a.catalog_synced_at).toBe("2026-10-13T09:00:00Z");
+    expect(a.last_error).toBeNull();
+  });
+
+  it("uno incompleto NO avanza la fecha y deja el aviso en last_error", () => {
+    const antes = [account({ ad_account_id: "act_1", catalog_synced_at: "2026-10-01T00:00:00Z" })];
+    const [a] = markCatalogSync(antes, "act_1", { at: "2026-10-13T09:00:00Z", complete: false, note: "Catálogo incompleto" });
+    expect(a.catalog_synced_at).toBe("2026-10-01T00:00:00Z");
+    expect(a.last_error).toBe("Catálogo incompleto");
+  });
+
+  it("no pisa con el silencio un error que ya estaba anotado", () => {
+    const [a] = markCatalogSync([account({ ad_account_id: "act_1", last_error: "token vencido" })], "act_1", { at: "x", complete: true });
+    expect(a.last_error).toBe("token vencido");
+  });
+
+  it("una cuenta guardada antes del catalogo se lee sin catalog_synced_at", () => {
+    expect(parseMetaConfig({ ad_accounts: [{ ad_account_id: "act_1" }] }).ad_accounts[0].catalog_synced_at).toBeUndefined();
   });
 });

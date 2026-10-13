@@ -7,6 +7,7 @@ import type { TriggerType } from "@/lib/types/database";
 import { BASE_CALL_TYPES } from "@/lib/calls/classification";
 import { OUTCOME_CATEGORIES } from "@/lib/calls/rubric";
 import { FormTriggerPanel } from "./FormTriggerPanel";
+import { WebhookTriggerPanel } from "./WebhookTriggerPanel";
 import { SALES_FILTER_KEYS, SalesTriggerPanel } from "./SalesTriggerPanel";
 import { SALES_PRESETS, presetFor } from "@/lib/sales/automation/presets";
 
@@ -22,6 +23,10 @@ interface TriggerPanelData {
   alsoMatchInDms?: boolean;
   /** F6: acota el trigger de palabra clave a las respuestas a historias. */
   storyReply?: boolean;
+  /** Solo si el mensaje vino de un anuncio (Extra L, F19). */
+  fromAdOnly?: boolean;
+  /** Solo si alguien menciono la cuenta en su historia (Extra L, F19). */
+  storyMentionOnly?: boolean;
   /** F4: que evento del CRM se espera, y con que valor. */
   event?: string;
   value?: string;
@@ -39,6 +44,8 @@ const MESSAGE_TRIGGER_TYPES = ["keyword", "postback", "quick_reply", "welcome", 
 interface TriggerPanelProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
+  /** El flujo que se edita (el «Solo si…» de un webhook le pide al servidor los campos comparables). */
+  flowId?: string;
 }
 
 const triggerTypes: Array<{ value: TriggerType; label: string; description: string }> = [
@@ -79,6 +86,8 @@ const triggerTypes: Array<{ value: TriggerType; label: string; description: stri
   { value: "payment_after_due", label: "Despues de un vencimiento impago", description: "Un aviso X dias despues del vencimiento si el pago sigue sin cobrarse" },
   // Reporte de fin de dia (E16): el flujo es sobre la persona del equipo que lo envio, no sobre un contacto.
   { value: "eod_submitted", label: "Se envio un reporte de fin de dia", description: "Cuando alguien del equipo envia su reporte del dia (sin contacto: no manda mensajes por chat)" },
+  // Webhooks entrantes (Extra L): arranca sin contacto; el paso "Crear o actualizar contacto" lo consigue.
+  { value: "webhook_received", label: "Webhook recibido", description: "Cuando un formulario externo (Typeform, Tally, Framer…) manda datos a tu URL. Arranca sin contacto: lo creás o actualizás con un paso" },
 ];
 
 /** Los nueve de agenda, para mostrar sus filtros. */
@@ -152,7 +161,7 @@ const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: str
   { value: "startsWith", label: "Starts with" },
 ];
 
-export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
+export function TriggerPanel({ data: rawData, onChange, flowId }: TriggerPanelProps) {
   const data = rawData as TriggerPanelData;
   const triggerType = data.triggerType || "keyword";
   // Con `data.keywords || []` el array es nuevo en cada render, asi que los
@@ -410,6 +419,41 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
         </div>
       )}
 
+      {/* Extra L (F19): origen del mensaje. Dos filtros mas, del mismo estilo que el de historias. */}
+      {triggerType === "keyword" && (
+        <div className="space-y-3 rounded-lg border border-border bg-card p-3">
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(data.fromAdOnly)}
+              onChange={(e) => onChange({ ...data, fromAdOnly: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-input text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-foreground">Solo si vino de un anuncio</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Corre unicamente cuando el mensaje llega desde un anuncio (el primer mensaje despues del clic). Dentro del
+                flujo podes usar {"{{message_origin.ad_title}}"} y {"{{message_origin.ad_id}}"}.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(data.storyMentionOnly)}
+              onChange={(e) => onChange({ ...data, storyMentionOnly: e.target.checked })}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-input text-emerald-500 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-medium text-foreground">Solo menciones en historias</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Corre unicamente cuando alguien menciona tu cuenta en SU historia de Instagram.
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* F4: evento del CRM */}
       {triggerType === "crm_event" && (
         <div className="space-y-3">
@@ -624,6 +668,8 @@ export function TriggerPanel({ data: rawData, onChange }: TriggerPanelProps) {
 
       {/* Formularios (F19): formularios, puntaje y condiciones sobre las respuestas */}
       {FORM_TRIGGERS.includes(triggerType) && <FormTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
+
+      {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} />}
 
       {/* F5: ventana de inactividad */}
       {triggerType === "inactivity" && (

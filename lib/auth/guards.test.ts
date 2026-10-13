@@ -22,8 +22,10 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 import { SYSTEM_ROLE_PERMISSIONS } from "./permissions";
 import {
   getAdminContext,
+  getAnyPermissionAction,
   getPermissionAction,
   getPermissionContext,
+  requireAnyPermission,
   requirePermission,
   requireWorkspaceAdmin,
 } from "./guards";
@@ -178,5 +180,26 @@ describe("exigir un permiso (F70)", () => {
     context({ role: "owner" });
 
     expect(await getPermissionAction("telepatia.usar")).toBeNull();
+  });
+});
+
+describe("requireAnyPermission / getAnyPermissionAction (Extra L)", () => {
+  it("un Admin pasa con cualquiera de las claves", async () => {
+    context({ role: "admin" });
+    await expect(requireAnyPermission(["flows.edit", "integrations.manage"])).resolves.toMatchObject({ role: "admin" });
+    expect(await getAnyPermissionAction(["flows.edit", "integrations.manage"])).not.toBeNull();
+  });
+
+  it("un rol personalizado con SOLO integrations.manage pasa; con otra clave, no", async () => {
+    context({ role: "member", roleId: "r-1", roles: [{ id: "r-1", system_role: null, permissions: { keys: ["integrations.manage"], scopes: {} } }] });
+    await expect(requireAnyPermission(["flows.edit", "integrations.manage"])).resolves.toBeTruthy();
+    expect(await getAnyPermissionAction(["flows.edit"])).toBeNull();
+  });
+
+  it("un Member de sistema no tiene integrations.manage y su flows.edit es el de TypeScript", async () => {
+    context({ role: "member" });
+    expect(await getAnyPermissionAction(["integrations.manage"])).toBeNull();
+    await expect(requireAnyPermission(["integrations.manage", "settings.manage"])).rejects.toThrow("REDIRECT");
+    expect(redirect).toHaveBeenCalledWith("/dashboard");
   });
 });

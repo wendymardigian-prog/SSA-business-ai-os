@@ -44,7 +44,7 @@ export async function POST(
     );
 
   // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno.
-  const problems = await checkMemberFlow(supabase, membership.workspace_id, Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : []);
+  const problems = await checkMemberFlow(supabase, membership.workspace_id, Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [], Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [], { publishing: true });
   if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
 
   // Update flow status to published and increment version

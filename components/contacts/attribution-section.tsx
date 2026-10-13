@@ -60,6 +60,39 @@ function TouchCard({ title, hint, touch }: { title: string; hint: string; touch:
       <p className="text-sm">
         <TouchText touch={touch} />
       </p>
+      <TouchDetail touch={touch} />
+    </div>
+  );
+}
+
+/** La línea del anuncio (con nombre y miniatura si hay catálogo), cómo se vinculó y, plegado, el detalle. */
+function TouchDetail({ touch }: { touch: TouchView }) {
+  if (!touch.adLine && !touch.matchNote && touch.details.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-1.5">
+      {touch.adLine && (
+        <div className="flex items-center gap-2">
+          {touch.adThumbnail && (
+            // eslint-disable-next-line @next/next/no-img-element -- URL firmada de Storage con vencimiento: next/image no la puede optimizar.
+            <img src={touch.adThumbnail} alt="" className="h-10 w-10 shrink-0 rounded-md border border-border object-cover" loading="lazy" />
+          )}
+          <p className="min-w-0 break-words text-xs text-muted-foreground">{touch.adLine}</p>
+        </div>
+      )}
+      {touch.matchNote && <p className="text-[11px] text-muted-foreground/80">{touch.matchNote}</p>}
+      {touch.details.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">Ver detalle</summary>
+          <dl className="mt-1.5 space-y-1">
+            {touch.details.map((d) => (
+              <div key={d.label} className="flex gap-2">
+                <dt className="shrink-0 text-muted-foreground">{d.label}</dt>
+                <dd className="min-w-0 break-all">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
     </div>
   );
 }

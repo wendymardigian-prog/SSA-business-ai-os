@@ -13,7 +13,6 @@ import {
   leadsTone,
   money,
   percent,
-  statusLabel,
   type AdsRow,
   type AdsTotals,
   type GroupedRow,
@@ -21,6 +20,11 @@ import {
 import { latestRankings, rankingTone, type Rankings } from "@/lib/dashboards/ads-view";
 import type { PeriodPreset } from "@/lib/dashboards/period";
 import { COL_TIPS, COL_TIPS_ADS, type ColTip } from "./col-tips";
+import { CrmLevelTable } from "./crm-table";
+import { StatusDot } from "./status-dot";
+
+export { StatusDot };
+import type { CrmTableData } from "@/lib/dashboards/ads-crm-load";
 
 /**
  * El desglose jerarquico: campañas, conjuntos y anuncios, cada uno con las
@@ -84,17 +88,6 @@ function TipTh({ label, align, tips }: { label: string; align: "left" | "right";
         </span>
       </Tip>
     </th>
-  );
-}
-
-export function StatusDot({ status }: { status: string | null }) {
-  if (!status) return <span className="text-muted-foreground">—</span>;
-  const active = status === "ACTIVE";
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-green-500" : "bg-muted-foreground"}`} aria-hidden />
-      <span className={active ? "text-green-600" : "text-muted-foreground"}>{active ? "Activa" : status === "PAUSED" ? "Pausada" : statusLabel(status)}</span>
-    </span>
   );
 }
 
@@ -242,6 +235,7 @@ export function HierarchyCard({
   adAccountId,
   period,
   heading = "Desglose jerárquico",
+  crm,
 }: {
   /** Los niveles que se muestran, en orden. La primera pestaña es la inicial. */
   levels: Level[];
@@ -253,6 +247,11 @@ export function HierarchyCard({
   adAccountId: string;
   period: PeriodPreset;
   heading?: ReactNode;
+  /**
+   * Los datos del CRM (AT4): con ellos, cada pestaña es la tabla «Meta vs CRM». Sin ellos (las pantallas de detalle)
+   * se muestra la tabla de siempre, que no sabe nada del CRM.
+   */
+  crm?: CrmTableData;
 }) {
   const [level, setLevel] = useState<Level>(levels[0]);
   const groups = groupByObject(rows, level, uniqueReach[level]);
@@ -268,14 +267,25 @@ export function HierarchyCard({
           onChange={setLevel}
           tabs={levels.map((l) => ({ value: l, label: TAB_LABEL[l] }))}
         >
-          <LevelTable
-            level={level}
-            groups={groups}
-            totals={totals}
-            rankings={rankings}
-            currency={currency}
-            hrefOf={(id) => detailHref(level, id, adAccountId, period)}
-          />
+          {crm ? (
+            <CrmLevelTable
+              level={level}
+              rows={rows}
+              totals={totals}
+              crm={crm}
+              currency={currency}
+              hrefOf={(id) => detailHref(level, id, adAccountId, period)}
+            />
+          ) : (
+            <LevelTable
+              level={level}
+              groups={groups}
+              totals={totals}
+              rankings={rankings}
+              currency={currency}
+              hrefOf={(id) => detailHref(level, id, adAccountId, period)}
+            />
+          )}
         </Tabs>
       </div>
     </section>

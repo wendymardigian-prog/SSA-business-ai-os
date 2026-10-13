@@ -105,8 +105,8 @@ const str = (value: unknown): string | null => (typeof value === "string" && val
  *
  * - `medium` es SIEMPRE "form" (como la Agenda fuerza "booking"); el `utm_medium`
  *   original queda en `raw.utm`.
- * - `content` es el `utm_content` si vino; si no, el NOMBRE DEL FORMULARIO (el
- *   formulario como contenido).
+ * - `content` es el `utm_content` si vino; si no, NADA: ya no se inventa con el nombre del
+ *   formulario (extra L, F18). El formulario es `raw.source_id`.
  * - NO lleva `occurredAt`: la base pone `now()` del servidor. Una fecha mandada por
  *   el navegador podría volver un envío nuevo el "primer toque".
  * - La atribución es la EFECTIVA de la visita (la de la URL o, si no trajo nada, la
@@ -141,7 +141,9 @@ export function formTouch(input: {
     medium: "form",
     campaign: str(a.utm_campaign),
     term: str(a.utm_term),
-    content: str(a.utm_content) ?? input.formName,
+    // Solo el `utm_content` real. El nombre del formulario NO es contenido (era un dato inventado): la
+    // ficha lo muestra desde `raw.source_id` (extra L, F18).
+    content: str(a.utm_content),
     adId: str(a.ad_id),
     adsetId: str(a.adset_id),
     campaignId: str(a.campaign_id),

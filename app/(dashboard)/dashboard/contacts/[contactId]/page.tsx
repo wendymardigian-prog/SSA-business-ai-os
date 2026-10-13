@@ -6,6 +6,7 @@ import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
+import { loadMetaNames } from "@/lib/contacts/meta-names";
 import type { AuditAction, Json, LeadTemperature } from "@/lib/types/database";
 import { PlatformIcon } from "@/components/platform-icon";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
@@ -159,7 +160,9 @@ export default async function ContactDetailPage({
       // un Member ve los toques de los contactos que ya puede ver.
       supabase
         .from("contact_touches")
-        .select("id, occurred_at, source, medium, content_label, content_post_id, origin")
+        .select(
+          "id, occurred_at, source, medium, content_label, content_post_id, origin, raw, campaign, term, ad_id, adset_id, campaign_id, fbclid, gclid, ttclid, li_fat_id, ctwa_clid, referrer_url, landing_page, meta_campaign_id, meta_adset_id, meta_ad_id, meta_match_status, meta_match_method",
+        )
         .eq("contact_id", contactId)
         .eq("workspace_id", workspace.id)
         .order("occurred_at", { ascending: true })
@@ -190,10 +193,24 @@ export default async function ContactDetailPage({
   if (!contact) notFound();
 
   const viewerTimezone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
+  // Un toque de formulario ya no lleva el nombre del formulario como `utm_content`: se lee de `raw.source_id`.
+  const touchRows = touchesRes.data ?? [];
+  const formIds = [...new Set(touchRows.filter((t) => t.origin === "form").map((t) => (t.raw as { source_id?: unknown } | null)?.source_id).filter((id): id is string => typeof id === "string"))];
+  const formNames: Record<string, string> = {};
+  if (formIds.length > 0) {
+    const { data: formRows } = await supabase.from("forms").select("id, name").eq("workspace_id", workspace.id).in("id", formIds);
+    for (const f of (formRows ?? []) as { id: string; name: string }[]) formNames[f.id] = f.name;
+  }
+  // Los nombres (y la miniatura) de la campaña, el conjunto y el anuncio a los que se vincularon los toques. Con la
+  // sesion de quien mira: si no tiene permiso para ver los anuncios (`dashboards.ads.view`), la RLS no devuelve nada
+  // y la ficha muestra los ids.
+  const metaNames = await loadMetaNames(supabase, workspace.id, touchRows);
   const attributionView = buildAttributionView({
     attribution: contact.attribution,
-    rows: touchesRes.data ?? [],
+    rows: touchRows,
     timeZone: viewerTimezone,
+    formNames,
+    names: metaNames,
   });
 
   const members = await getWorkspaceMembers(workspace.id);

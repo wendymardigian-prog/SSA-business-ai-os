@@ -24,6 +24,7 @@ import {
   BadgeDollarSign,
   CalendarClock,
   Ban,
+  UserRoundPlus,
 } from "lucide-react";
 import type { DragEvent } from "react";
 import { isContactFreeNodeType } from "@/lib/flow-engine/contact-free";
@@ -79,6 +80,9 @@ const categories: PaletteCategory[] = [
       // "Condiciones" reemplaza a "Condition": varios caminos en orden y "Si no". Los
       // flujos que ya tienen un "Condition" lo siguen mostrando como "Condición (sí / si no)".
       { type: "branch", nodeType: "branch", label: "Condiciones", icon: Split },
+      // Webhooks entrantes: consigue el contacto de un flujo que arranco sin uno. No aparece en los
+      // flujos de una persona del equipo (EOD): ahi nunca hay un envio del que sacar un contacto.
+      { type: "upsert_contact", nodeType: "upsert_contact", label: "Crear o actualizar contacto", icon: UserRoundPlus },
       { type: "delay", nodeType: "delay", label: "Delay", icon: Clock },
       {
         type: "action",
@@ -250,7 +254,7 @@ function onDragStart(event: DragEvent, item: PaletteItem) {
 export function NodePalette({ memberFlow = false }: { memberFlow?: boolean }) {
   const shown = memberFlow
     ? categories
-        .map((c) => ({ ...c, items: c.items.filter((item) => item.type !== "trigger" && isContactFreeNodeType(item.actionType ?? item.nodeType)) }))
+        .map((c) => ({ ...c, items: c.items.filter((item) => item.type !== "trigger" && isContactFreeNodeType(item.actionType ?? item.nodeType) && item.nodeType !== "upsert_contact") }))
         .filter((c) => c.items.length > 0)
     : categories;
   return (

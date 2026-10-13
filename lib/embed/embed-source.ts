@@ -375,7 +375,8 @@ export class EmbedRuntime {
 
   private createIframe(calLink: string, config: EmbedConfig, container: EmbedElement, fallback: FallbackPayload): EmbedElement {
     const origin = this.getOrigin();
-    const url = buildEmbedIframeUrl(calLink, config, this.parentUtm, origin, isFormLink(calLink) ? this.formExtras() : undefined);
+    // La agenda tambien recibe `attr` (la atribucion efectiva de la web anfitriona); el formulario, ademas, sus parametros.
+    const url = buildEmbedIframeUrl(calLink, config, this.parentUtm, origin, isFormLink(calLink) ? this.formExtras() : { attr: this.attrParam() });
     const iframe = this.env.document.createElement("iframe");
     iframe.src = url;
     iframe.setAttribute("title", "Agenda");

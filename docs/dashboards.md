@@ -336,3 +336,29 @@ lectura.
 **LinkedIn no da métricas de publicaciones** con los permisos de una app sin
 partnership. Se dice en pantalla; no es un error que alguien pueda arreglar
 reconectando.
+
+## Tabla «Meta vs CRM» en el dashboard de Anuncios (Extra L, AT4)
+
+Cada pestaña del desglose (Campañas, AdSets, Anuncios) cruza lo que dice **Meta** (gasto, clics, leads) con lo que paso en el **CRM** (leads, agendas,
+ventas, revenue y cash). Las cuentas estan en `lib/dashboards/ads-crm.ts` (puras), las columnas y sus tooltips en `ads-crm-columns.ts`, el selector
+guardado en `ads-columns.ts`, el CSV en `ads-crm-csv.ts`, y la carga en `ads-crm-load.ts`.
+
+- **Los datos del CRM** salen de `public.ads_crm_metrics(nivel, desde, hasta, cuenta, workspace)`, **SECURITY INVOKER**: la RLS de quien mira decide
+  que contactos, toques, agendas y ventas cuenta (un Member con alcance propio ve solo lo suyo y la pantalla lo dice). Las fechas se interpretan en la zona
+  del workspace. Definiciones (alcance v9, §4.3): leads 1er toque (por fecha de creacion del contacto), leads totales (por fecha del toque, no aditivo),
+  agendas (por fecha de creacion, **sin las liberadas**, con las canceladas normales; la que no trae toque propio hereda el ultimo toque con anuncio
+  anterior), asistidas (`status_group = 'outcome'`), ventas (no `cancelled` ni `refunded`, por `sale_date`), revenue (centavos USD), cash (pagos cobrados
+  menos reembolsos, por `paid_on`).
+- **Tres grupos con encabezado de color**: Meta, Meta vs CRM (Leads Meta · Leads CRM · Agendas Meta · Agendas CRM) y CRM (Leads 1er toque · Leads totales ·
+  Agendas · Asistidas · Lead → Agenda · CPL real · Costo por agenda · Ventas · Revenue · Cash · ROAS · ROAS cash · CAC · Costo por cierre).
+- **Una division por cero es «—», nunca 0.** La fila de Total suma lo sumable y calcula los cocientes **sobre los totales**. Un objeto que solo tiene CRM
+  (sin gasto en el periodo) aparece con el gasto en «—».
+- **Nombre y estado salen del catalogo** de Meta (`meta_*`), no de la fila de metricas mas reciente. Filtro por estado (Todos · Activos · Pausados, esta
+  ultima incluye `CAMPAIGN_PAUSED` y `ADSET_PAUSED`). Miniatura firmada en la pestaña de anuncios.
+- **Selector de columnas por persona y por pestaña** (`localStorage`, clave `ssa:ads-columns:<nivel>`, siempre en `try/catch`; si falla, las columnas por
+  defecto). Exportar CSV de lo visible (con proteccion contra inyeccion de formulas).
+- **Cabecera**: «N sin vincular» lleva a `/dashboard/dashboards/ads/sin-vincular`; «Sincronizar ahora» (`settings.manage`) esta en el panel de la cuenta.
+- **Permiso**: el dashboard de Anuncios y su detalle piden **`dashboards.ads.view`** (antes, el cargo de Admin). La lista de cuentas publicitarias se lee con
+  el cliente de servicio filtrado por el workspace de la sesion (`integration_configs` solo la lee un Admin).
+- **Costo**: bajo RLS la funcion tarda ~0,9 s con 10.000 toques en 90 dias (78 ms como superusuario); con los volumenes reales son milisegundos. Detalle
+  y la salida posible en `docs/PENDIENTE-atribucion.md`.

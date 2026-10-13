@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/types/database";
 import type { ContactFlowContext, FlowNode, FlowEdge, FlowExecutionContext } from "./types";
 import { getNode } from "./registry";
+import { messageOriginVariables } from "@/lib/messages/origin-context";
 import type { FlowRuntime } from "./registry/types";
 
 /**
@@ -73,6 +74,14 @@ export async function executeFlow(
   if (context.incomingMessage.text) {
     context.variables.message ??= context.incomingMessage.text;
   }
+  // El origen del mensaje (anuncio, mencion): `{{message_origin.ad_id}}`, `{{message_origin.ad_title}}`,
+  // `{{message_origin.is_story_mention}}`. Aparte de `message`, que es solo el texto (Extra L, F19).
+  const messageOrigin = messageOriginVariables({
+    isStoryMention: context.incomingMessage.isStoryMention,
+    adId: context.incomingMessage.adId,
+    adTitle: context.incomingMessage.adTitle,
+  });
+  if (messageOrigin) context.variables.message_origin ??= messageOrigin;
 
   // Check for active session waiting for input
   const activeSession = await findWaitingSession(supabase, {
@@ -129,6 +138,8 @@ export async function executeFlow(
       contact_id: context.contactId,
       // Un flujo sin contacto es sobre una persona del equipo (00182).
       ...(context.contactId ? {} : { member_user_id: context.memberUserId ?? null }),
+      // Un flujo de webhook arranca sin contacto ni persona: el envio es lo que lo sostiene (00187).
+      ...(context.inboundWebhookId ? { inbound_webhook_id: context.inboundWebhookId } : {}),
       flow_id: context.flowId,
       // Null y no cadena vacía: `channel_id` es una referencia a `channels`.
       // Antes el cron mandaba "" y el insert fallaba en silencio, así que un
@@ -409,6 +420,12 @@ async function executeNode(
       event_type: "node_skipped",
       metadata: { nodeId: node.id, nodeType: definition.type, reason: "Este paso necesita un contacto y este flujo no tiene" },
     });
+    try {
+      const label = (node.data as { label?: unknown } | undefined)?.label;
+      context.onStepSkipped?.({ nodeId: node.id, nodeType: definition.type, label: typeof label === "string" && label.trim() ? label.trim() : definition.label });
+    } catch {
+      // Un aviso que falla no frena el flujo.
+    }
     return;
   }
 

@@ -17,6 +17,7 @@
 import { drawerHref } from "@/lib/content/drawer-url";
 import { readAttribution, type AttributionTouch } from "./attribution";
 import { mediumLabel, sourceLabel } from "./taxonomy";
+import { describeMatchMethod } from "@/lib/attribution/meta-match-reasons";
 
 /** Un toque guardado en la tabla `contact_touches`, en lo que la pantalla usa. */
 export interface TouchRow {
@@ -27,6 +28,26 @@ export interface TouchRow {
   content_label: string | null;
   content_post_id: string | null;
   origin: string;
+  campaign?: string | null;
+  term?: string | null;
+  ad_id?: string | null;
+  adset_id?: string | null;
+  campaign_id?: string | null;
+  fbclid?: string | null;
+  gclid?: string | null;
+  ttclid?: string | null;
+  li_fat_id?: string | null;
+  ctwa_clid?: string | null;
+  referrer_url?: string | null;
+  landing_page?: string | null;
+  /** El vinculo con el catalogo de Meta (00192). */
+  meta_campaign_id?: string | null;
+  meta_adset_id?: string | null;
+  meta_ad_id?: string | null;
+  meta_match_status?: string | null;
+  meta_match_method?: string | null;
+  /** La carga original del toque (lista blanca): de ahi sale `source_id`, el formulario de un toque de formulario. */
+  raw?: unknown;
 }
 
 export interface TouchView {
@@ -42,6 +63,26 @@ export interface TouchView {
   when: string;
   /** El medio no era de la lista: se guardó tal cual vino. */
   rawMedium: boolean;
+  /** Campaña › conjunto › anuncio, solo con los ids que el toque trae (sin catálogo todavía: ids crudos). */
+  ad: { campaign: string | null; adset: string | null; ad: string | null } | null;
+  /**
+   * "Meta · Campaña › Conjunto › Anuncio", o null si el toque no vino de un anuncio. Con el catalogo de Meta
+   * son los NOMBRES; sin el (o sin permiso para verlo), los ids.
+   */
+  adLine: string | null;
+  /** La miniatura firmada del anuncio, si hay catalogo y el anuncio tiene una. */
+  adThumbnail: string | null;
+  /** Como quedo el vinculo con Meta, en palabras ("Vinculado por el nombre del anuncio"), o null si no hay nada que decir. */
+  matchNote: string | null;
+  /** El detalle plegado: UTMs, ids de clic y página de llegada. Solo lo que el toque trae. */
+  details: { label: string; value: string }[];
+}
+
+/** Los nombres del catalogo de Meta para los ids de los toques (los arma la ficha con la sesion de quien mira). */
+export interface MetaNames {
+  campaigns: Record<string, string | null>;
+  adsets: Record<string, string | null>;
+  ads: Record<string, { name: string | null; thumbnailUrl: string | null }>;
 }
 
 export interface AttributionView {
@@ -79,16 +120,97 @@ export const pieceHref = (contentPostId: string) =>
 
 /** Un toque, dicho en palabras. Funciona con el de la copia derivada y con una fila. */
 export function describeTouch(
-  touch: Pick<AttributionTouch, "source" | "medium" | "medium_raw" | "content" | "content_post_id" | "occurred_at">,
+  touch: Pick<AttributionTouch, "source" | "medium" | "medium_raw" | "content" | "content_post_id" | "occurred_at"> &
+    Partial<
+      Pick<
+        AttributionTouch,
+        | "campaign"
+        | "term"
+        | "ad_id"
+        | "adset_id"
+        | "campaign_id"
+        | "fbclid"
+        | "gclid"
+        | "ttclid"
+        | "li_fat_id"
+        | "ctwa_clid"
+        | "referrer_url"
+        | "landing_page"
+        | "meta_campaign_id"
+        | "meta_adset_id"
+        | "meta_ad_id"
+        | "meta_match_status"
+        | "meta_match_method"
+      >
+    >,
   timeZone?: string,
+  /** El nombre del formulario de un toque de formulario sin `utm_content` (el formulario ya no se inventa como contenido). */
+  formName?: string | null,
+  /** Los nombres del catalogo de Meta (AT3, F21). */
+  names?: MetaNames,
 ): TouchView {
   const source = sourceLabel(touch.source);
   const medium = mediumLabel(touch.medium);
   const origin = [source, medium].filter(Boolean).join(" · ");
-  const piece = touch.content?.trim() || null;
+  const piece = touch.content?.trim() || formName?.trim() || null;
   const when = shortDate(touch.occurred_at, timeZone);
 
   const text = [origin, piece ? `«${piece}»` : null, when || null].filter(Boolean).join(" · ");
+
+  // El anuncio: con el vinculo de Meta (ids del catalogo) se dicen los NOMBRES; si no, los ids que trajo el toque.
+  const hasMeta = !!(touch.meta_ad_id || touch.meta_adset_id || touch.meta_campaign_id);
+  const adIds = hasMeta
+    ? { campaign: touch.meta_campaign_id ?? null, adset: touch.meta_adset_id ?? null, ad: touch.meta_ad_id ?? null }
+    : touch.ad_id || touch.adset_id || touch.campaign_id
+      ? { campaign: touch.campaign_id ?? null, adset: touch.adset_id ?? null, ad: touch.ad_id ?? null }
+      : null;
+  const ad = adIds;
+  const adNames = hasMeta && names
+    ? {
+        campaign: adIds?.campaign ? (names.campaigns[adIds.campaign] ?? null) : null,
+        adset: adIds?.adset ? (names.adsets[adIds.adset] ?? null) : null,
+        ad: adIds?.ad ? (names.ads[adIds.ad]?.name ?? null) : null,
+      }
+    : null;
+  const adLine = adIds
+    ? [
+        hasMeta ? "Meta" : sourceLabel(touch.source) ? "Anuncio · " + sourceLabel(touch.source) : "Anuncio",
+        [
+          adIds.campaign ? (adNames?.campaign ?? `Campaña ${adIds.campaign}`) : null,
+          adIds.adset ? (adNames?.adset ?? `Conjunto ${adIds.adset}`) : null,
+          adIds.ad ? (adNames?.ad ?? `Anuncio ${adIds.ad}`) : null,
+        ]
+          .filter(Boolean)
+          .join(" › "),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+  const adThumbnail = hasMeta && names && adIds?.ad ? (names.ads[adIds.ad]?.thumbnailUrl ?? null) : null;
+
+  const status = touch.meta_match_status;
+  const methodText = describeMatchMethod(touch.meta_match_method);
+  const matchNote =
+    status === "matched" ? (methodText ? `Vinculado ${methodText}` : "Vinculado con el catálogo de Meta")
+    : status === "manual" ? "Vinculado a mano"
+    : status === "unmatched" ? "No se pudo vincular con un anuncio de Meta"
+    : status === "ignored" ? "Ignorado para el vínculo con Meta"
+    : null;
+
+  const detailPairs: [string, string | undefined][] = [
+    ["Campaña (UTM)", touch.campaign],
+    ["Término", touch.term],
+    ["Clic de Facebook (fbclid)", touch.fbclid],
+    ["Clic de Google (gclid)", touch.gclid],
+    ["Clic de TikTok (ttclid)", touch.ttclid],
+    ["Clic de LinkedIn (li_fat_id)", touch.li_fat_id],
+    ["Clic a WhatsApp (ctwa_clid)", touch.ctwa_clid],
+    ["Venía de", touch.referrer_url],
+    ["Página de llegada", touch.landing_page],
+  ];
+  const details = detailPairs
+    .filter((pair): pair is [string, string] => typeof pair[1] === "string" && pair[1].trim() !== "")
+    .map(([label, value]) => ({ label, value: value.trim() }));
 
   return {
     text,
@@ -97,6 +219,11 @@ export function describeTouch(
     href: touch.content_post_id ? pieceHref(touch.content_post_id) : null,
     when,
     rawMedium: touch.medium_raw === true,
+    ad,
+    adLine,
+    adThumbnail,
+    matchNote,
+    details,
   };
 }
 
@@ -106,6 +233,23 @@ const fromRow = (row: TouchRow): AttributionTouch => ({
   medium: row.medium ?? undefined,
   content: row.content_label ?? undefined,
   content_post_id: row.content_post_id ?? undefined,
+  campaign: row.campaign ?? undefined,
+  term: row.term ?? undefined,
+  ad_id: row.ad_id ?? undefined,
+  adset_id: row.adset_id ?? undefined,
+  campaign_id: row.campaign_id ?? undefined,
+  fbclid: row.fbclid ?? undefined,
+  gclid: row.gclid ?? undefined,
+  ttclid: row.ttclid ?? undefined,
+  li_fat_id: row.li_fat_id ?? undefined,
+  ctwa_clid: row.ctwa_clid ?? undefined,
+  referrer_url: row.referrer_url ?? undefined,
+  landing_page: row.landing_page ?? undefined,
+  meta_campaign_id: row.meta_campaign_id ?? undefined,
+  meta_adset_id: row.meta_adset_id ?? undefined,
+  meta_ad_id: row.meta_ad_id ?? undefined,
+  meta_match_status: row.meta_match_status && row.meta_match_status !== "none" ? row.meta_match_status : undefined,
+  meta_match_method: row.meta_match_method ?? undefined,
 });
 
 /** Dos toques son el mismo si dicen lo mismo. */
@@ -121,12 +265,29 @@ export function buildAttributionView(params: {
   attribution: unknown;
   rows?: TouchRow[];
   timeZone?: string;
+  /** `forms.id` -> nombre, para los toques de formulario (la ficha los busca por `raw.source_id`). */
+  formNames?: Record<string, string>;
+  /** Los nombres del catalogo de Meta (AT3, F21). Sin ellos, los ids. */
+  names?: MetaNames;
 }): AttributionView {
   const { first_touch, last_touch } = readAttribution(params.attribution);
   const rows = params.rows ?? [];
+
+  const formNameOfRow = (row: TouchRow): string | null => {
+    if (row.origin !== "form" || row.content_label) return null;
+    const id = (row.raw as { source_id?: unknown } | null | undefined)?.source_id;
+    return typeof id === "string" ? (params.formNames?.[id] ?? null) : null;
+  };
+  // Los toques de la copia derivada no traen `raw`: se buscan en la tabla por su fecha (misma clave de orden).
+  const formNameOfTouch = (touch: AttributionTouch): string | null => {
+    if (touch.origin !== "form" || touch.content) return null;
+    const row = rows.find((r) => r.origin === "form" && new Date(r.occurred_at).getTime() === new Date(touch.occurred_at ?? 0).getTime());
+    return row ? formNameOfRow(row) : null;
+  };
+
   const path = [...rows]
     .sort((a, b) => new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime())
-    .map((row) => describeTouch(fromRow(row), params.timeZone));
+    .map((row) => describeTouch(fromRow(row), params.timeZone, formNameOfRow(row), params.names));
 
   // Sin copia derivada pero con toques en la tabla (un contacto al que todavía no
   // se le calculó): el primero y el último salen de la propia tabla.
@@ -141,8 +302,8 @@ export function buildAttributionView(params: {
 
   return {
     empty: false,
-    first: describeTouch(firstTouch, params.timeZone),
-    last: single ? null : describeTouch(lastTouch, params.timeZone),
+    first: describeTouch(firstTouch, params.timeZone, formNameOfTouch(firstTouch), params.names),
+    last: single ? null : describeTouch(lastTouch, params.timeZone, formNameOfTouch(lastTouch), params.names),
     path,
   };
 }

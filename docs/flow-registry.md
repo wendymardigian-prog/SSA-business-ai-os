@@ -412,3 +412,24 @@ el flujo. Sirve también en flujos con contacto.
 Destinos nuevos: `member` (quien envió el reporte) y `users` (personas elegidas). Sin
 contacto no se lee el contacto ni se aplica "no contactar" (con contacto, igual que siempre:
 lo fija su test).
+
+## Webhooks entrantes: el trigger `webhook_received`, el nodo `upsert_contact` y el sujeto `webhook` (Extra L, WH2)
+
+Detalle de producto en `docs/webhooks.md`. Lo que importa para el registro:
+
+- **`webhook_received`** (`registry/webhook-triggers.ts`): `scope: event`, **`subject: "webhook"`** y **sin `eventTypes`**, asi que el cron de
+  `automation_events` nunca lo levanta: corre directo desde el procesamiento del envio (`lib/webhooks/run-flows.ts`), con el mismo reclamo en
+  `trigger_fires` (`webhook:<envio>:<flujo>:<reproceso>`). Su `variableSchema` sale del ejemplo del endpoint (`webhook.payload.*`, `webhook.query.*`).
+  `triggers.type` pasa a 32 valores (00187).
+- **`TriggerSubject`** suma `"webhook"` (ademas de `contact` y `member`). `FlowExecutionContext` suma `inboundWebhookId`; `flow_sessions` admite
+  `contact_id` null **si** hay `member_user_id` o `inbound_webhook_id` (CHECK de tres vias).
+- **`upsert_contact`** (`nodes/upsert-contact.ts`): `needsContact: false`, salidas `handle:ok` / `handle:fail`, `outputs` `contact_result` y
+  `contact_fail_reason`. Escribe `context.contactId` y `flow_sessions.contact_id`: **es el unico paso que cambia de contacto a mitad de sesion**.
+  Un «Esperar» toma el `contactId` del contexto *al momento de esperar*, asi que si el paso va antes, el contacto sobrevive a la espera.
+- **El motor saltea (no corta) un paso con `needsContact` en un flujo sin contacto** y lo anota (`node_skipped`, «paso salteado: no habia contacto»).
+- **Regla por camino** (`lib/flow-engine/contact-requirement.ts`, pura): para el sujeto `webhook`, un paso con `needsContact` solo es valido si en
+  **todos los caminos** desde el disparador lo precede la salida «Listo» de un `upsert_contact` (maneja ciclos). Un `branch` que lee `contact.*` cuenta
+  como «necesita contacto». La regla frena la **publicacion** (rutas `publish`), no el guardado a medias; EOD (`member`) no cambia.
+- **Condiciones** `webhook.*`: se registran en `registry/webhook-conditions.ts` sin tocar `conditions.ts`, `branch.ts` ni `condition-eval.ts`.
+- **Disparadores de mensaje** (AT1): `keyword` suma los filtros `fromAdOnly` y `storyMentionOnly`; las variables `message_origin.*` se siembran en el
+  motor al correr un flujo por un mensaje.

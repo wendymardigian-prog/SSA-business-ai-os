@@ -44,8 +44,12 @@ registerTrigger({
     // trigger solo corre para respuestas a historias; un DM comun con la misma
     // palabra no lo dispara. Es un filtro, no un tipo aparte: la palabra clave
     // se compara igual, solo se acota cuando aplica.
-    const config = args.config as { storyReply?: boolean };
+    const config = args.config as { storyReply?: boolean; fromAdOnly?: boolean; storyMentionOnly?: boolean };
     if (config.storyReply === true && !args.message.isStoryReply) return false;
+    // Extra L (F19): dos filtros mas, del mismo estilo. «Solo si vino de un anuncio» (el mensaje trae el
+    // referral del anuncio) y «Solo menciones en historias» (alguien menciono la cuenta en su historia).
+    if (config.fromAdOnly === true && !args.message.fromAd) return false;
+    if (config.storyMentionOnly === true && !args.message.isStoryMention) return false;
     return keywordMatches(args);
   },
 });

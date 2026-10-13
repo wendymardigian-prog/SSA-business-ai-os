@@ -143,6 +143,54 @@ export type EodReportRow = {
   updated_at: string;
 };
 
+/**
+ * Endpoint de webhooks entrantes (00186). Escribe solo el servidor. `token` y `secret_vault_name`
+ * NO se pueden leer con el cliente de un usuario (privilegio por columna): nunca `select("*")`.
+ */
+export type WebhookEndpointRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  token: string;
+  status: "active" | "paused";
+  auth_mode: "token";
+  secret_vault_name: string | null;
+  event_id_path: string | null;
+  listen_until: string | null;
+  sample_payload: Json | null;
+  handler_key: string | null;
+  last_received_at: string | null;
+  last_error_alert_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};
+
+/** Un envio recibido por un endpoint (00186). Escribe solo el servidor. */
+export type InboundWebhookRow = {
+  id: string;
+  workspace_id: string;
+  endpoint_id: string;
+  received_at: string;
+  status: "received" | "processing" | "processed" | "error" | "ignored" | "captured" | "paused";
+  payload: Json | null;
+  query: Json | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  ip_prefix: string | null;
+  user_agent: string | null;
+  external_event_id: string | null;
+  body_hash: string | null;
+  contact_id: string | null;
+  result: Json;
+  error_message: string | null;
+  reprocess_count: number;
+  processing_started_at: string | null;
+  processed_at: string | null;
+};
+
 /** Version publicada de un formulario: inmutable (migracion 00150). */
 export type FormVersionRow = {
   id: string;
@@ -410,7 +458,9 @@ export type AuditEntityType =
   | "sale"
   | "payment"
   /** Reporte de fin de dia (00180). Una correccion la escribe `submit_eod_report` (00181). */
-  | "eod_report";
+  | "eod_report"
+  /** Webhooks entrantes (00186): el endpoint (Extra L). */
+  | "webhook_endpoint";
 /** Acciones que registra el audit log (migracion 00023). */
 export type AuditAction =
   | "create"
@@ -534,6 +584,12 @@ export type AuditAction =
   /** Entity contact: lo escribe la funcion SQL del envio (actor sistema, "Formulario: <nombre>"). */
   | "contact.created"
   | "contact.linked"
+  /** Entity contact: un webhook entrante actualizo un contacto que ya existia (Extra L). */
+  | "contact.updated"
+  /** Entity contact: una persona vinculo, ignoro o quito el vinculo de un toque con un anuncio de Meta (Extra L, AT3). */
+  | "attribution.meta_linked"
+  | "attribution.meta_ignored"
+  | "attribution.meta_unlinked"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited"
   /** Entity contract_signature. */
@@ -578,7 +634,17 @@ export type AuditAction =
   | "payment.cancelled"
   | "payment.overdue"
   | "payment.refund"
-  | "payment.receipt_uploaded";
+  | "payment.receipt_uploaded"
+  /** Webhooks entrantes (entity webhook_endpoint). Nunca llevan el token ni el secreto. */
+  | "webhook_endpoint.created"
+  | "webhook_endpoint.updated"
+  | "webhook_endpoint.paused"
+  | "webhook_endpoint.resumed"
+  | "webhook_endpoint.token_regenerated"
+  | "webhook_endpoint.secret_changed"
+  | "webhook_endpoint.sample_saved"
+  | "webhook_endpoint.deleted"
+  | "webhook_endpoint.reprocessed";
 /** Quien hizo la accion (migracion 00144). */
 export type AuditActorType = "user" | "agent" | "system" | "webhook";
 /** Los 6 tipos de campo personalizado (CHECK de la migracion 00001). */
@@ -706,7 +772,9 @@ export type TriggerType =
   | "payment_before_due"
   | "payment_after_due"
   /** Reporte de fin de dia (00183): el primer disparador sin contacto. */
-  | "eod_submitted";
+  | "eod_submitted"
+  /** Un envio llego a un endpoint de webhooks entrantes (00187). Corre directo, sin la cola `automation_events`. */
+  | "webhook_received";
 export type FlowSessionStatus =
   | "active"
   | "completed"
@@ -1042,6 +1110,18 @@ export interface Database {
       };
       eod_reports: {
         Row: EodReportRow;
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      webhook_endpoints: {
+        Row: WebhookEndpointRow;
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      inbound_webhooks: {
+        Row: InboundWebhookRow;
         Insert: Record<string, never>;
         Update: Record<string, never>;
         Relationships: [];
@@ -1714,6 +1794,8 @@ export interface Database {
           /** Null en un flujo sin contacto (00182): entonces `member_user_id` no es null. */
           contact_id: string | null;
           member_user_id: string | null;
+          /** El envio de webhook que arranco el flujo (00187): permite una sesion sin contacto ni persona. */
+          inbound_webhook_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1730,6 +1812,7 @@ export interface Database {
           id?: string;
           contact_id: string | null;
           member_user_id?: string | null;
+          inbound_webhook_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -1743,6 +1826,8 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          /** Solo lo escribe el paso "Crear o actualizar contacto" de un flujo de webhook (la sesion arranca sin contacto). */
+          contact_id?: string | null;
           status?: FlowSessionStatus;
           current_node_id?: string | null;
           variables?: Json;
@@ -1914,6 +1999,8 @@ export interface Database {
           agent_run_id: string | null;
           /** De donde salio el saliente (migracion 00074). null en entrantes. */
           origin: MessageOrigin | null;
+          /** De donde vino un mensaje entrante: historia, mencion, anuncio (00189, lista blanca). */
+          origin_context: Json | null;
           status: MessageStatus;
           created_at: string;
           /** Denormalizado desde conversations (migracion 00053). */
@@ -4379,6 +4466,161 @@ export interface Database {
         Relationships: [];
       };
 
+      meta_campaigns: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          objective: string | null;
+          buying_type: string | null;
+          daily_budget: number | null;
+          lifetime_budget: number | null;
+          start_time: string | null;
+          stop_time: string | null;
+          created_time: string | null;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          objective?: string | null;
+          buying_type?: string | null;
+          daily_budget?: number | null;
+          lifetime_budget?: number | null;
+          start_time?: string | null;
+          stop_time?: string | null;
+          created_time?: string | null;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      meta_adsets: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string | null;
+          adset_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          optimization_goal: string | null;
+          billing_event: string | null;
+          daily_budget: number | null;
+          lifetime_budget: number | null;
+          start_time: string | null;
+          stop_time: string | null;
+          created_time: string | null;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id?: string | null;
+          adset_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          optimization_goal?: string | null;
+          billing_event?: string | null;
+          daily_budget?: number | null;
+          lifetime_budget?: number | null;
+          start_time?: string | null;
+          stop_time?: string | null;
+          created_time?: string | null;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
+      meta_ads: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id: string | null;
+          adset_id: string | null;
+          ad_id: string;
+          name: string | null;
+          name_key: string | null;
+          status: string | null;
+          effective_status: string | null;
+          created_time: string | null;
+          creative_id: string | null;
+          creative: Json;
+          thumbnail_source_url: string | null;
+          thumbnail_path: string | null;
+          thumbnail_attempts: number;
+          instagram_media_id: string | null;
+          object_story_id: string | null;
+          social_post_id: string | null;
+          content_post_id: string | null;
+          content_link_manual: boolean;
+          raw: Json;
+          synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          ad_account_id: string;
+          campaign_id?: string | null;
+          adset_id?: string | null;
+          ad_id: string;
+          name?: string | null;
+          name_key?: string | null;
+          status?: string | null;
+          effective_status?: string | null;
+          created_time?: string | null;
+          creative_id?: string | null;
+          creative?: Json;
+          thumbnail_source_url?: string | null;
+          thumbnail_path?: string | null;
+          thumbnail_attempts?: number;
+          instagram_media_id?: string | null;
+          object_story_id?: string | null;
+          social_post_id?: string | null;
+          content_post_id?: string | null;
+          content_link_manual?: boolean;
+          raw?: Json;
+          synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+
       provider_media: {
         Row: {
           id: string;
@@ -4446,6 +4688,15 @@ export interface Database {
           origin: "dm" | "comment" | "booking" | "form" | "manual" | "import";
           dedupe_key: string;
           raw: Json;
+          /** El vinculo con el catalogo de Meta (00192). */
+          meta_campaign_id: string | null;
+          meta_adset_id: string | null;
+          meta_ad_id: string | null;
+          meta_match_status: "none" | "matched" | "unmatched" | "manual" | "ignored";
+          meta_match_method: string | null;
+          meta_match_reason: string | null;
+          meta_matched_at: string | null;
+          meta_match_by: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -4978,6 +5229,58 @@ export interface Database {
       /** Busca un contacto por telefono primero y despues por email; NO crea (Formularios, 00156). Solo service_role. */
       find_contact_by_phone_or_email: {
         Args: { p_workspace_id: string; p_phone: string; p_email: string };
+        Returns: Json;
+      };
+      /** Busca un contacto por telefono, email o redes; devuelve tambien los conflictos; NO crea (00175). Solo service_role. */
+      find_contact_for_form: {
+        Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
+        Returns: Json;
+      };
+      /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */
+      ads_crm_metrics: {
+        Args: { p_level: string; p_since: string; p_until: string; p_ad_account_id?: string | null; p_workspace_id?: string | null };
+        Returns: Array<{
+          object_id: string;
+          leads_first: number;
+          leads_total: number;
+          leads_with_booking: number;
+          bookings: number;
+          bookings_attended: number;
+          sales: number;
+          revenue_cents: number;
+          cash_cents: number;
+        }>;
+      };
+      /** Resuelve los datos de un toque contra el catalogo de Meta (00192). Solo service_role. La gemela en TS es lib/attribution/meta-match.ts. */
+      resolve_meta_match: {
+        Args: {
+          p_workspace_id: string;
+          p_ad_id: string | null;
+          p_adset_id: string | null;
+          p_campaign_id: string | null;
+          p_utm_campaign: string | null;
+          p_utm_content: string | null;
+          p_utm_term: string | null;
+          p_fbclid: string | null;
+        };
+        Returns: Json;
+      };
+      /** Vuelve a resolver los toques sin vincular de los ultimos dias; devuelve cuantos cambiaron (00192, 00194). Solo service_role. */
+      rematch_meta_touches: {
+        Args: { p_workspace_id: string; p_since: string };
+        Returns: number;
+      };
+      /** Vincula, ignora o quita el vinculo de un toque con Meta, y recalcula la atribucion del contacto (00192, 00194). Solo service_role. */
+      set_touch_meta_match: {
+        Args: {
+          p_workspace_id: string;
+          p_touch_id: string;
+          p_action: string;
+          p_user_id: string;
+          p_ad_id?: string;
+          p_adset_id?: string;
+          p_campaign_id?: string;
+        };
         Returns: Json;
       };
       /** Crea una venta con sus pagos, estado, eventos y auditoria en UNA transaccion (00162). Solo service_role. */

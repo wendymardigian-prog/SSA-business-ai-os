@@ -223,7 +223,7 @@ export const CALL_ACTION_LABELS: Record<Extract<AuditAction, `call.${string}`>, 
 
 /** Etiquetas de las acciones de Formularios, para <Historial/> y la ficha del contacto. */
 export const FORM_ACTION_LABELS: Record<
-  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}`>,
+  Extract<AuditAction, `form.${string}` | `submission.${string}` | `contract.${string}` | `contact.${string}` | `eod.${string}` | `attribution.${string}`>,
   string
 > = {
   "eod.edited": "corrigió el reporte de fin de día",
@@ -245,6 +245,10 @@ export const FORM_ACTION_LABELS: Record<
   "submission.unspam": "sacó la respuesta de spam",
   "contact.created": "creó el contacto desde un formulario",
   "contact.linked": "vinculó el contacto desde un formulario",
+  "contact.updated": "actualizó el contacto",
+  "attribution.meta_linked": "vinculó un toque con un anuncio de Meta",
+  "attribution.meta_ignored": "ignoró un toque para el vínculo con Meta",
+  "attribution.meta_unlinked": "quitó el vínculo manual de un toque con Meta",
   "contract.email_resent": "reenvió la copia del contrato",
   "contract.pdf_regenerated": "regeneró el PDF del contrato",
 };

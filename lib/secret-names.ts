@@ -79,3 +79,11 @@ export const ALL_SECRET_NAMES: readonly string[] = Object.values(SECRET_NAMES);
 export function oauthSecretName(prefix: string, kind: "access_token" | "refresh_token"): string {
   return `${prefix}_${kind}`;
 }
+
+/**
+ * Nombre del secreto opcional del header `x-webhook-secret` de un endpoint de
+ * webhooks entrantes. Uno por endpoint: el nombre guarda el id, no el valor.
+ */
+export function webhookSecretName(endpointId: string): string {
+  return `webhook_secret_${endpointId}`;
+}

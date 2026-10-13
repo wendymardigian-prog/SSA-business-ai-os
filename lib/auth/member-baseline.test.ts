@@ -39,7 +39,6 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
 const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
   "app/(dashboard)/dashboard/channels/page.tsx",
-  "app/(dashboard)/dashboard/dashboards/ads/page.tsx",
   "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
   "app/(dashboard)/dashboard/knowledge/page.tsx",
   "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
@@ -123,12 +122,13 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     expect(sinGuard, `estas paginas dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
   });
 
-  it("son exactamente doce, y estan todas en el repo", () => {
+  it("son exactamente once, y estan todas en el repo", () => {
     // El numero importa: si aparece una pagina nueva de Admin sin sumarla
     // aca, el bloque 9 puede cambiarle el guard sin que nadie lo note.
     // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
-    // dashboard de contenido: pasaron a un permiso.)
-    expect(ADMIN_PAGES).toHaveLength(12);
+    // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard
+    // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)
+    expect(ADMIN_PAGES).toHaveLength(11);
     for (const page of ADMIN_PAGES) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
@@ -166,6 +166,8 @@ const PERMISSION_PAGES = [
   ["app/(dashboard)/dashboard/social/page.tsx", "social.view"],
   ["app/(dashboard)/dashboard/dashboards/content/page.tsx", "dashboards.content.view"],
   ["app/(dashboard)/dashboard/dashboards/agenda/page.tsx", "dashboards.agenda.view"],
+  // Extra L (AT4, F32): el dashboard de Ads pide su permiso, no el cargo (Owner y Admin lo tienen siempre).
+  ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
   // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
   // misma settings.manage que la lista de Productos.
   ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
