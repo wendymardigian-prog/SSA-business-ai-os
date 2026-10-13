@@ -441,12 +441,12 @@ Detalle del módulo en [tareas.md](tareas.md). Migración del CHECK de `triggers
 ### `create_task` («Crear tarea»)
 
 `nodes/create-task.ts`, `needsContact: false` (sirve con y sin contacto). Datos:
-`{ title, description, owner: "none" | "user" | "member", ownerId, followerIds, project, priority, dueMode: "none" | "date" | "days", dueDate, dueDays }`.
+`{ title, description, owner: "none" | "user" | "member" | "seller" | "contact_assigned", ownerId, followerIds, project, priority, dueMode: "none" | "date" | "days", dueDate, dueDays, sourceKey }`.
 
 - Título, descripción y proyecto admiten variables; **lo que no se pudo resolver se saca** (`stripUnresolved`): una `{{...}}` suelta en una tarea es ruido.
 - `owner: "member"` es la persona del flujo sin contacto (`memberUserId`); `owner: "user"` una persona fija. Si ya no es del equipo, la tarea queda sin responsable y se avisa a Owner/Admin.
 - Vencimiento: fecha fija o «+N días» (hoy en la zona horaria del workspace, tope 365).
-- Origen `flow`, `source_ref = flow_id:sesión:nodo`: **la misma ejecución no crea dos tareas abiertas**. Sin título después de interpolar: no crea y lo advierte.
+- Origen `flow`, `source_ref = flow_id:sesión:nodo` (o la **clave de origen**, ver abajo): **la misma ejecución no crea dos tareas abiertas**. Sin título después de interpolar: no crea y lo advierte.
 - **Nunca lanza ni frena el flujo** (`createTaskFromAutomation` captura y registra con `[tareas]`).
 - Alta en `registry/nodes.ts`, en `contact-free.ts` (`CONTACT_FREE_NODE_TYPES`), en la paleta (`node-palette.tsx`), el panel (`panels/CreateTaskPanel.tsx`, desde `ActionPanel`), la tarjeta del lienzo (`nodes/action-node.tsx`) y el simulador. El panel carga las personas del equipo con `loadTaskNodeOptions`.
 
@@ -469,3 +469,26 @@ Detalle del módulo en [tareas.md](tareas.md). Migración del CHECK de `triggers
 - **Variables** (`lib/tasks/automation/variables.ts`): `{{task.title}}`, `{{task.project}}`, `{{task.status}}`, `{{task.priority}}`, `{{task.source}}`, `{{task.due_date}}`, `{{task.owner}}` y `{{task.url}}`. El `variableSchema` expone los siete primeros a las Condiciones (todo texto).
 - `automation_events_contact_or_member` (00182) ahora acepta un evento sin contacto de `eod_submitted`, `task_completed` y `task_overdue`, siempre con `member_user_id`.
 - UI: el panel `TaskTriggerPanel` (filtros) se muestra bajo la lista de tipos del `TriggerPanel`; `consistency.test` exige que la lista de tipos del panel coincida con el registro.
+
+### Tareas × CRM: `create_task` ampliado y el nodo `complete_task` (octubre 2026)
+
+Detalle en [tareas.md](tareas.md#tareas--crm-octubre-2026-rama-featareas-crm). Sin migración propia y sin tocar el motor.
+
+- **`create_task` — responsable nuevo**: `seller` («Vendedor de la venta»: vendedor, si no el setter) y `contact_assigned` («Persona asignada al contacto»:
+  vendedor, si no setter, si no quien tiene su conversación más reciente). Se resuelven al ejecutar (`resolveSaleResponsible` / `resolveContactResponsible`
+  en `lib/tasks/create-from-automation.ts`); la venta sale de `event_sale_id`. Sin nadie, o alguien que ya no es del equipo: la tarea queda sin
+  responsable y se avisa a **cada** Owner/Admin. `dueMode: "days"` con 0 es «hoy».
+- **`create_task` — `sourceKey`**: clave de origen con variables (`payment:{{payment.id}}`); se guarda como `source_ref`. Mientras haya una tarea
+  **abierta** con esa clave no se crea otra (el índice parcial de flujo/agente ya existía). Si alguna variable de la clave no se resuelve
+  (`resolveSourceKey`), **la clave se descarta** y vale la de siempre: nunca se colapsan todos los pagos en una sola tarea.
+- **`complete_task` («Completar tarea»)**: `nodes/complete-task.ts`, `needsContact: false`. Datos: `{ sourceKey }`. Cierra las tareas abiertas, no
+  borradas, del workspace con ese `source_ref` (`lib/tasks/complete-from-automation.ts`, cliente de servicio): historial con actor `system`, avisos
+  de siempre, evento `task_completed`, **sin mover fechas**. Sin clave resuelta o sin coincidencia no hace nada; **jamás** cierra una tarea sin
+  `source_ref` coincidente. Nunca lanza. Alta en `registry/nodes.ts`, `contact-free.ts`, paleta, `CompleteTaskPanel`, tarjeta del lienzo y simulador
+  (el test de consistencia lo exige): son **31** nodos. Como `create_task`, se castea a `NodeType`.
+- **Variables de los eventos de Ventas**: se suman `{{contact.first_name}}` y `{{contact.display_name}}` (el trigger carga el contacto). Antes,
+  `Hola {{contact.first_name}}` en los flujos de cobranza salía literal.
+- **Los dos flujos del interruptor «Crear una tarea cuando un pago vence»** (`lib/tasks/automation-templates.ts`): `task_payment_overdue`
+  (`payment_status_changed` a vencido → `create_task` con `payment:{{payment.id}}`) y `task_payment_paid_close` (pagado → `complete_task`).
+  Tienen `template_key` propio y **no** están en `SALES_TEMPLATE_KEYS`. `ensureTaskPaymentFlows` es idempotente y no pisa un grafo editado.
+- **Los editores simplificados (`step-catalog`) no ofrecen estos pasos**: se editan en el lienzo.

@@ -23,6 +23,8 @@ export interface CreateInput {
   status?: TaskRow["status"];
   start_date?: string | null;
   due_date?: string | null;
+  due_time?: string | null;
+  duration_minutes?: number | null;
   owner_id?: string | null;
   follower_ids?: string[];
   project?: string | null;
@@ -78,7 +80,7 @@ export function useTaskActions({
         mark(plan.taskId, false);
 
         if (result.ok) {
-          const moved = result.data.shifted.length;
+          const moved = result.data.shifted.length + result.data.hiddenShifted;
           toast.push({ tone: "ok", text: moved > 0 ? `Completaste «${plan.title}» y moviste ${moved === 1 ? "la fecha de 1 tarea" : `las fechas de ${moved} tareas`}.` : `Completaste «${plan.title}».` });
           // Las tareas que se movieron las trae el servidor.
           router.refresh();

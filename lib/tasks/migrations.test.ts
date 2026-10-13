@@ -81,3 +81,38 @@ describe("00196 a 00198: lo que no se puede aflojar", () => {
     expect(sql).toContain("FROM PUBLIC, anon, authenticated");
   });
 });
+
+describe("00206: hora, duracion y seguimiento unico", () => {
+  const sql = body(read("00206_tasks_time_and_followup.sql"));
+
+  it("agrega solo las dos columnas opcionales, sin tocar datos", () => {
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS due_time time");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS duration_minutes integer");
+    expect(sql).not.toMatch(/\bUPDATE public\.tasks\b/);
+    expect(sql).not.toMatch(/DELETE FROM/);
+    expect(sql).not.toMatch(/DROP COLUMN|ALTER COLUMN/);
+  });
+
+  it("la hora necesita fecha y la duracion va de 5 a 1440", () => {
+    expect(sql).toContain("CHECK (due_time IS NULL OR due_date IS NOT NULL)");
+    expect(sql).toContain("duration_minutes BETWEEN 5 AND 1440");
+  });
+
+  it("la sesion puede escribir las dos columnas, y solo esas", () => {
+    expect(sql).toContain("GRANT INSERT (due_time, duration_minutes) ON public.tasks TO authenticated");
+    expect(sql).toContain("GRANT UPDATE (due_time, duration_minutes) ON public.tasks TO authenticated");
+  });
+
+  it("el indice del seguimiento es unico y parcial, sin las borradas, e incluye las completadas", () => {
+    expect(sql).toContain("CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_followup");
+    expect(sql).toContain("(workspace_id, contact_id, source_ref)");
+    expect(sql).toContain("WHERE source_ref LIKE 'followup:%' AND deleted_at IS NULL");
+    expect(sql).not.toContain("status");
+  });
+
+  it("la cabecera dice como volver atras", () => {
+    const header = read("00206_tasks_time_and_followup.sql");
+    expect(header).toContain("Como volver atras");
+    expect(header).toContain("DROP INDEX IF EXISTS public.uq_tasks_followup");
+  });
+});

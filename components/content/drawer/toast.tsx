@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (toast: ToastInput) => {
       const id = nextId.current++;
       setItems((list) => pushToast(list, toast, id));
-      timers.current.set(id, setTimeout(() => dismiss(id), toastDurationMs(toast.tone)));
+      timers.current.set(id, setTimeout(() => dismiss(id), toastDurationMs(toast.tone, !!toast.action)));
     },
     [dismiss],
   );
@@ -86,6 +86,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             )}
           >
             <span className="min-w-0 flex-1">{item.text}</span>
+            {item.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  item.action?.onClick();
+                  dismiss(item.id);
+                }}
+                className="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold underline underline-offset-2 hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                {item.action.label}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => dismiss(item.id)}

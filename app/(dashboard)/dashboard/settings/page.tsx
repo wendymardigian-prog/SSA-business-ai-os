@@ -2,6 +2,8 @@ import { requireWorkspaceAdmin } from "@/lib/auth/guards";
 import { can, systemRolePermissions } from "@/lib/auth/permissions";
 import { isPaymentMethodKey, scheduledUsingDisabled } from "@/lib/sales/payment-methods";
 import { PAYMENT_METHOD_KEYS } from "@/lib/sales/payment-methods";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getPaymentTasksState } from "@/lib/tasks/automation-templates";
 import { SettingsView } from "./settings-view";
 
 export default async function SettingsPage() {
@@ -17,6 +19,9 @@ export default async function SettingsPage() {
   // Hoy el guard de esta pagina ya exige Owner/Admin (los dos la tienen), asi
   // que el chequeo siempre da true acá; queda hecho bien para cuando cambie.
   const canViewAiCosts = can(systemRolePermissions(role), "ai_costs.view");
+
+  // «Crear una tarea cuando un pago vence» (Tareas × CRM): el estado sale de los flujos.
+  const paymentTasks = await getPaymentTasksState(await createServiceClient(), workspace.id);
 
   return (
     <SettingsView
@@ -35,6 +40,7 @@ export default async function SettingsPage() {
         salesAutoCreateFlows: w.sales_auto_create_flows !== false,
       }}
       canViewAiCosts={canViewAiCosts}
+      paymentTasks={paymentTasks}
     />
   );
 }

@@ -17,7 +17,7 @@ const T3 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const task = (over: Partial<TaskRow> = {}): TaskRow => ({
   id: T1, workspace_id: WS, title: "Enviar propuesta", description: null, status: "pending", priority: "normal",
-  start_date: null, due_date: "2026-10-20", completed_at: null, owner_id: ME, follower_ids: [], project: null, project_key: null,
+  start_date: null, due_date: "2026-10-20", due_time: null, duration_minutes: null, completed_at: null, owner_id: ME, follower_ids: [], project: null, project_key: null,
   blocked_by: [], contact_id: null, conversation_id: null, source: "manual", source_ref: null, position: 0, created_by: ME,
   created_at: "2026-10-01T10:00:00.000000+00:00", updated_at: "2026-10-01T10:00:00.123456+00:00", deleted_at: null, ...over,
 });
@@ -131,6 +131,39 @@ describe("updateTaskCore (F8, F7)", () => {
     expect(user.writes()).toHaveLength(0);
   });
 
+  it("una hora sin fecha se rechaza, mezclando lo nuevo con lo guardado (R6)", async () => {
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [task({ due_date: null })] } });
+    const r = await updateTaskCore(ctx, T1, { due_time: "10:00" });
+    expect(r).toMatchObject({ ok: false, code: "validation", error: "La hora necesita una fecha de vencimiento." });
+    expect(user.writes()).toHaveLength(0);
+  });
+
+  it("borrar la fecha borra tambien la hora y la duracion en la misma escritura (R6)", async () => {
+    const before = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45 });
+    const after = task({ due_date: null, due_time: null, duration_minutes: null, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    const r = await updateTaskCore(ctx, T1, { due_date: null });
+    expect(r.ok).toBe(true);
+    expect(user.writesTo("tasks")[0].values).toMatchObject({ due_date: null, due_time: null, duration_minutes: null });
+  });
+
+  it("cambiar el dia no toca la hora ni la duracion, y la auditoria usa HH:MM (R6)", async () => {
+    const before = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45 });
+    const after = task({ due_date: "2026-10-27", due_time: "14:30:00", duration_minutes: 45, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    await updateTaskCore(ctx, T1, { due_date: "2026-10-27" });
+    expect(user.writesTo("tasks")[0].values).toEqual({ due_date: "2026-10-27" });
+    expect(mocks.audit.mock.calls[0][0].changes).toEqual({ due_date: { old: "2026-10-20", new: "2026-10-27" } });
+  });
+
+  it("agregar una hora audita old y new (R6)", async () => {
+    const before = task({ due_date: "2026-10-20" });
+    const after = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    await updateTaskCore(ctx, T1, { due_time: "14:30", duration_minutes: 45 });
+    expect(mocks.audit.mock.calls[0][0].changes).toEqual({ due_time: { old: null, new: "14:30" }, duration_minutes: { old: null, new: 45 } });
+  });
+
   it("cambia y audita solo lo que cambio (con old y new)", async () => {
     const before = task();
     const after = task({ title: "Enviar propuesta v2", priority: "high", updated_at: "2026-10-02T10:00:00.000000+00:00" });
@@ -204,14 +237,13 @@ describe("completar con corrimientos (F4, F8)", () => {
   const A = { id: T1, title: "A", status: "pending", due_date: "2026-10-10", start_date: null, completed_at: null, blocked_by: [], owner_id: ME, follower_ids: [], updated_at: "2026-10-01T00:00:00.111111+00:00" };
   const B = { id: T2, title: "B", status: "pending", due_date: "2026-10-11", start_date: null, completed_at: null, blocked_by: [{ task_id: T1, gap_days: 1 }], owner_id: OTHER, follower_ids: [], updated_at: "2026-10-01T00:00:00.222222+00:00" };
 
+  // La regla de fechas es del sistema (R10): las dependientes salen de `task_shift_context`, no de lo que la persona ve.
+  const ctxRow = (t: typeof B, over: Record<string, unknown> = {}) => ({ ...t, in_tree: true, due_time: null, duration_minutes: null, visible: true, ...over });
   const handlers = (extra: Record<string, unknown> = {}) => ({
-    "tasks:select": (call: DbCall) => {
-      if (has(call, "eq", "id")) return { data: [A] };
-      if (call.filters.some((f) => f.method === "filter" && f.column === "blocked_by")) return { data: [B] };
-      return { data: [] };
-    },
+    "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : { data: [] }),
     ...extra,
   });
+  const contextRpc = (tasks: unknown[] = [ctxRow(B)]) => ({ task_shift_context: { data: { ok: true, tasks } } });
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -219,7 +251,7 @@ describe("completar con corrimientos (F4, F8)", () => {
   });
 
   it("planCompletion arma el plan con titulos y el updated_at tal cual", async () => {
-    const { ctx } = ctxWith(handlers());
+    const { ctx } = ctxWith(handlers(), contextRpc());
     const r = await planCompletionCore(ctx, T1);
     vi.useRealTimers();
     expect(r.ok).toBe(true);
@@ -241,11 +273,11 @@ describe("completar con corrimientos (F4, F8)", () => {
   });
 
   it("completeTask(applyShifts=true) manda a la RPC las fechas nuevas y el expected; devuelve a quien se movio", async () => {
-    const { ctx, user } = ctxWith(handlers(), { complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }] } } });
+    const { ctx, user } = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }] } } });
     const r = await completeTaskCore(ctx, T1, true);
     vi.useRealTimers();
     expect(r.ok).toBe(true);
-    expect(user.rpcCalls[0]).toEqual({
+    expect(user.rpcCalls.find((c) => c.name === "complete_task_with_shifts")).toEqual({
       name: "complete_task_with_shifts",
       args: {
         p_task_id: T1,
@@ -260,28 +292,28 @@ describe("completar con corrimientos (F4, F8)", () => {
   });
 
   it("completeTask(applyShifts=false) manda p_shifts vacio y solo el expected de la tarea", async () => {
-    const { ctx, user } = ctxWith(handlers(), { complete_task_with_shifts: { data: { ok: true, shifted: [] } } });
+    const { ctx, user } = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { data: { ok: true, shifted: [] } } });
     const r = await completeTaskCore(ctx, T1, false);
     vi.useRealTimers();
     expect(r.ok).toBe(true);
-    const args = user.rpcCalls[0].args as { p_shifts: unknown[]; p_expected: unknown[] };
+    const args = user.rpcCalls.find((c) => c.name === "complete_task_with_shifts")!.args as { p_shifts: unknown[]; p_expected: unknown[] };
     expect(args.p_shifts).toEqual([]);
     expect(args.p_expected).toEqual([{ task_id: T1, updated_at: A.updated_at }]);
   });
 
   it("si la RPC dice stale, devuelve el codigo stale (la pantalla recalcula)", async () => {
-    const { ctx } = ctxWith(handlers(), { complete_task_with_shifts: { data: { ok: false, error: "stale", task_id: T2 } } });
+    const { ctx } = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { data: { ok: false, error: "stale", task_id: T2 } } });
     const r = await completeTaskCore(ctx, T1, true, [{ task_id: T1, updated_at: "viejo" }]);
     vi.useRealTimers();
     expect(r).toMatchObject({ ok: false, code: "stale" });
   });
 
   it("errores de la RPC con mensajes en castellano; un fallo de red no lanza", async () => {
-    const forbidden = ctxWith(handlers(), { complete_task_with_shifts: { data: { ok: false, error: "forbidden" } } });
+    const forbidden = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { data: { ok: false, error: "forbidden" } } });
     expect(await completeTaskCore(forbidden.ctx, T1, true)).toMatchObject({ ok: false, code: "forbidden" });
-    const already = ctxWith(handlers(), { complete_task_with_shifts: { data: { ok: false, error: "already_completed" } } });
+    const already = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { data: { ok: false, error: "already_completed" } } });
     expect(await completeTaskCore(already.ctx, T1, true)).toMatchObject({ ok: false, code: "conflict" });
-    const down = ctxWith(handlers(), { complete_task_with_shifts: { error: { message: "network" } } });
+    const down = ctxWith(handlers(), { ...contextRpc(), complete_task_with_shifts: { error: { message: "network" } } });
     expect(await completeTaskCore(down.ctx, T1, true)).toMatchObject({ ok: false, code: "server" });
     vi.useRealTimers();
   });
@@ -289,12 +321,112 @@ describe("completar con corrimientos (F4, F8)", () => {
   it("sin plan (nadie depende) completa directo", async () => {
     const { ctx, user } = ctxWith(
       { "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : { data: [] }) },
-      { complete_task_with_shifts: { data: { ok: true, shifted: [] } } },
+      { ...contextRpc([]), complete_task_with_shifts: { data: { ok: true, shifted: [] } } },
     );
     const r = await completeTaskCore(ctx, T1, true);
     vi.useRealTimers();
     expect(r.ok).toBe(true);
-    expect((user.rpcCalls[0].args as { p_shifts: unknown[] }).p_shifts).toEqual([]);
+    expect((user.rpcCalls.find((c) => c.name === "complete_task_with_shifts")!.args as { p_shifts: unknown[] }).p_shifts).toEqual([]);
+  });
+});
+
+describe("la regla de fechas es del sistema, no de lo que la persona ve (R10)", () => {
+  const A = { id: T1, title: "A", status: "pending", due_date: "2026-10-10", start_date: null, completed_at: null, blocked_by: [], owner_id: ME, follower_ids: [], updated_at: "ua" };
+  const mkCtx = (over: Record<string, unknown>) => ({ due_time: "09:30", duration_minutes: 45, in_tree: true, start_date: null, completed_at: null, status: "pending", follower_ids: [], ...over });
+  // B (de OTRA persona) depende de A; C (tambien ajena) depende de B. Quien completa A solo ve a B.
+  const B = mkCtx({ id: T2, title: "B visible", due_date: "2026-10-11", blocked_by: [{ task_id: T1, gap_days: 1 }], owner_id: OTHER, visible: true, updated_at: "ub" });
+  const C = mkCtx({ id: T3, title: "C secreta", due_date: "2026-10-12", blocked_by: [{ task_id: T2, gap_days: 1 }], owner_id: OTHER, follower_ids: ["55555555-5555-4555-8555-555555555555"], visible: false, updated_at: "uc" });
+  const hiddenC = { ...C, title: null };
+  const rootOnly = { "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : { data: [] }) };
+  const rpc = (tasks: unknown[]) => ({ task_shift_context: { data: { ok: true, tasks } } });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-13T18:00:00Z"));
+  });
+
+  it("el plan mueve tambien las dependientes que no se ven, sin titulo ni datos, y las cuenta aparte", async () => {
+    const { ctx } = ctxWith(rootOnly, rpc([B, hiddenC]));
+    const r = await planCompletionCore(ctx, T1);
+    vi.useRealTimers();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.shifts.map((x) => [x.taskId, x.toDue, x.visible, x.title])).toEqual([
+      [T2, "2026-10-14", true, "B visible"],
+      [T3, "2026-10-15", false, ""],
+    ]);
+    expect(r.data.hiddenShifts).toBe(1);
+    expect(r.data.expected).toEqual([{ task_id: T1, updated_at: "ua" }, { task_id: T2, updated_at: "ub" }, { task_id: T3, updated_at: "uc" }]);
+    expect(JSON.stringify(r.data)).not.toContain("C secreta");
+  });
+
+  it("el plan es el MISMO (mismas fechas) lo calcule quien ve todo o quien no ve a las ajenas", async () => {
+    const seeAll = ctxWith(rootOnly, rpc([B, { ...C, visible: true, title: "C secreta" }]));
+    const seeSome = ctxWith(rootOnly, rpc([B, hiddenC]));
+    const a = await planCompletionCore(seeAll.ctx, T1);
+    const b = await planCompletionCore(seeSome.ctx, T1);
+    vi.useRealTimers();
+    const dates = (r: typeof a) => (r.ok ? r.data.shifts.map(({ taskId, fromDue, toDue, fromStart, toStart, days, blockerId }) => ({ taskId, fromDue, toDue, fromStart, toStart, days, blockerId })) : null);
+    expect(dates(a)).not.toBeNull();
+    expect(dates(b)).toEqual(dates(a));
+  });
+
+  it("completar manda a la RPC TODOS los corrimientos y devuelve solo lo que quien completa ve", async () => {
+    const { ctx, user } = ctxWith(rootOnly, {
+      ...rpc([B, hiddenC]),
+      complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }, { task_id: T3, from_due: "2026-10-12", to_due: "2026-10-15" }] } },
+    });
+    const r = await completeTaskCore(ctx, T1, true);
+    vi.useRealTimers();
+    expect(r.ok).toBe(true);
+    const sent = user.rpcCalls.find((c) => c.name === "complete_task_with_shifts")!.args as { p_shifts: Array<{ task_id: string }> };
+    expect(sent.p_shifts.map((x) => x.task_id)).toEqual([T2, T3]);
+    if (!r.ok) return;
+    expect(r.data.shifted.map((x) => x.task_id)).toEqual([T2]);
+    expect(r.data.hiddenShifted).toBe(1);
+    expect(r.data.movedRows.map((x) => x.id)).toEqual([T2]);
+    expect(JSON.stringify(r.data)).not.toContain("C secreta");
+    expect(JSON.stringify(r.data)).not.toContain(T3);
+  });
+
+  it("avisa task_date_moved a los duenos de CADA tarea movida (tambien las que quien completa no ve), nunca al actor", async () => {
+    const FOLLOWER = "55555555-5555-4555-8555-555555555555";
+    const service = fakeDb({
+      "workspace_members:select": { data: [] },
+      "notifications:select": { data: [] },
+      "tasks:select": { data: [{ id: T2, title: "B visible" }, { id: T3, title: "C secreta" }] },
+    });
+    const { ctx } = ctxWith(
+      rootOnly,
+      { ...rpc([B, { ...hiddenC, follower_ids: [FOLLOWER] }]), complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }, { task_id: T3, from_due: "2026-10-12", to_due: "2026-10-15" }] } } },
+      service,
+    );
+    await completeTaskCore({ ...ctx, actorName: "María" }, T1, true);
+    vi.useRealTimers();
+    const notices = service.writesTo("notifications").map((w) => w.values as { type: string; recipient_id: string; entity_id: string; title: string });
+    const moved = notices.filter((n) => n.type === "task_date_moved");
+    expect(moved.map((n) => [n.entity_id, n.recipient_id]).sort()).toEqual([[T2, OTHER], [T3, FOLLOWER], [T3, OTHER]].sort());
+    expect(moved.find((n) => n.entity_id === T3)?.title).toContain("C secreta");
+    expect(notices.every((n) => n.recipient_id !== ME)).toBe(true);
+  });
+
+  it("libera tambien a las dependientes ajenas: task_unblocked a su responsable", async () => {
+    const Bsolo = mkCtx({ id: T2, due_date: "2026-10-11", blocked_by: [{ task_id: T1, gap_days: 1 }], owner_id: OTHER, visible: false, title: null, updated_at: "ub" });
+    const service = fakeDb({ "workspace_members:select": { data: [] }, "notifications:select": { data: [] }, "tasks:select": { data: [{ id: T2, title: "B ajena" }] } });
+    const { ctx } = ctxWith(rootOnly, { ...rpc([Bsolo]), complete_task_with_shifts: { data: { ok: true, shifted: [] } } }, service);
+    const r = await completeTaskCore(ctx, T1, false);
+    vi.useRealTimers();
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.unblocked).toEqual([]);
+    const freed = service.writesTo("notifications").map((w) => w.values as { type: string; recipient_id: string }).filter((n) => n.type === "task_unblocked");
+    expect(freed).toEqual([expect.objectContaining({ recipient_id: OTHER })]);
+  });
+
+  it("si la funcion de contexto responde que no se puede completar, es un error de permiso (no se arma ningun plan)", async () => {
+    const { ctx } = ctxWith(rootOnly, { task_shift_context: { data: { ok: false, error: "forbidden" } } });
+    const r = await planCompletionCore(ctx, T1);
+    vi.useRealTimers();
+    expect(r).toMatchObject({ ok: false, code: "forbidden" });
   });
 });
 
@@ -366,9 +498,9 @@ describe("avisos desde el nucleo (F17)", () => {
     const service = fakeDb({ "workspace_members:select": { data: [] }, "notifications:select": { data: [] } });
     const { ctx } = ctxWith(
       {
-        "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : call.filters.some((f) => f.method === "filter") ? { data: [B] } : { data: [] }),
+        "tasks:select": (call: DbCall) => (has(call, "eq", "id") ? { data: [A] } : { data: [] }),
       },
-      { complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }] } } },
+      { task_shift_context: { data: { ok: true, tasks: [{ ...B, in_tree: true, due_time: null, duration_minutes: null, visible: true }] } }, complete_task_with_shifts: { data: { ok: true, shifted: [{ task_id: T2, from_due: "2026-10-11", to_due: "2026-10-14" }] } } },
       service,
     );
     const r = await completeTaskCore({ ...ctx, actorName: "María" }, T1, true);

@@ -29,6 +29,10 @@ export type TaskRow = {
   start_date: string | null;
   /** AAAA-MM-DD */
   due_date: string | null;
+  /** Hora local del workspace (`HH:MM` o `HH:MM:SS`); solo con `due_date`. Opcional: una tarea es solo fecha por defecto. */
+  due_time: string | null;
+  /** 5 a 1440 minutos. */
+  duration_minutes: number | null;
   completed_at: string | null;
   owner_id: string | null;
   follower_ids: string[];

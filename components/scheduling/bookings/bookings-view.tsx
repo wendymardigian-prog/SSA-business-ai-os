@@ -21,6 +21,11 @@ import { ReconnectBanner } from "../reconnect-banner";
 import { BookingsList } from "./list";
 import { BookingsKanban } from "./kanban-board";
 import { BookingsCalendar } from "./calendar-grid";
+import { useRescheduleDrag } from "./reschedule-dialog";
+import { TaskWorkbench } from "@/components/tasks/task-workbench";
+import { tasksModeParam, type TasksMode } from "@/lib/tasks/calendar-ui";
+import type { TaskRow } from "@/lib/tasks/types";
+import type { MemberLite } from "@/lib/tasks/table-model";
 import { BookingDetailPanel, type BookingDetailData } from "./detail-panel";
 import { BookManualDialog, type ManualEventOption } from "./book-manual-dialog";
 import { AgendaFiltersMenu } from "./agenda-filters-menu";
@@ -54,6 +59,20 @@ const VIEWS: Array<{ key: "list" | "kanban" | "calendar"; label: string }> = [
   { key: "calendar", label: "Calendario" },
 ];
 
+/** Lo que la pagina arma para las tareas del calendario. */
+export interface AgendaTasksProps {
+  mode: TasksMode;
+  rows: TaskRow[];
+  members: MemberLite[];
+  currentUserId: string;
+  /** AAAA-MM-DD en la zona del workspace. */
+  today: string;
+  /** La zona de las fechas de las tareas (la del workspace). */
+  workspaceTimeZone: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
 export function BookingsScreen({
   items,
   total,
@@ -85,6 +104,7 @@ export function BookingsScreen({
   showConfig,
   brokenAccounts,
   needsProfile,
+  tasks,
 }: {
   items: BookingListItem[];
   total: number;
@@ -123,6 +143,11 @@ export function BookingsScreen({
   showConfig: boolean;
   brokenAccounts: string[];
   needsProfile: boolean;
+  /**
+   * Tareas × CRM (R7): las tareas del calendario. `undefined` = el contacto no puede ver tareas (no hay interruptor). Con
+   * `mode: "off"` el interruptor existe pero no se consulto nada de tareas.
+   */
+  tasks?: AgendaTasksProps;
 }) {
   const router = useRouter();
   const { setParam, setPeriod, clearAll } = useAgendaUrl();
@@ -131,6 +156,7 @@ export function BookingsScreen({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const reschedule = useRescheduleDrag({ items, timezone, timeFormat });
 
   const now = useMemo(() => new Date(), []);
   const hostOptions = useMemo(() => Object.entries(hostNames).map(([userId, label]) => ({ userId, label })).sort((a, b) => a.label.localeCompare(b.label)), [hostNames]);
@@ -328,18 +354,30 @@ export function BookingsScreen({
             onCancelDrop={(id, status) => setCancelDrop({ id, status })}
           />
         ) : (
-          <BookingsCalendar
-            items={items}
-            timezone={timezone}
+          <CalendarWithTasks
+            tasks={tasks}
+            calendar={
+              <BookingsCalendar
+                items={items}
+                timezone={timezone}
+                timeFormat={timeFormat}
+                view={calendarView}
+                anchor={calendarAnchor}
+                onView={(v) => setParam("cal", v)}
+                onAnchor={(d) => setParam("dia", d)}
+                onOpen={openDetail}
+                taskControls={tasks ? { mode: tasks.mode, onMode: (m) => setParam("tareas", tasksModeParam(m)) } : undefined}
+                canDragBookings={canManage}
+                onDropBooking={reschedule.onDrop}
+                ghost={reschedule.ghost}
+              />
+            }
             timeFormat={timeFormat}
-            view={calendarView}
-            anchor={calendarAnchor}
-            onView={(v) => setParam("cal", v)}
-            onAnchor={(d) => setParam("dia", d)}
-            onOpen={openDetail}
           />
         )}
       </div>
+
+      {reschedule.dialog}
 
       {cancelDrop && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setCancelDrop(null)}>
@@ -388,5 +426,29 @@ export function BookingsScreen({
         />
       )}
     </div>
+  );
+}
+
+
+/**
+ * El calendario con el anfitrion de tareas (el drawer, las acciones y las tareas en pantalla) cuando hay tareas que mostrar.
+ * Con el interruptor apagado (o sin permiso) devuelve el calendario tal cual: no monta nada de tareas.
+ */
+function CalendarWithTasks({ tasks, calendar, timeFormat }: { tasks?: AgendaTasksProps; calendar: React.ReactNode; timeFormat: "12h" | "24h" }) {
+  if (!tasks || tasks.mode === "off") return <>{calendar}</>;
+  return (
+    <TaskWorkbench
+      syncUrl
+      initialTasks={tasks.rows}
+      members={tasks.members}
+      currentUserId={tasks.currentUserId}
+      today={tasks.today}
+      timeZone={tasks.workspaceTimeZone}
+      timeFormat={timeFormat}
+      canEdit={tasks.canEdit}
+      canDelete={tasks.canDelete}
+    >
+      {calendar}
+    </TaskWorkbench>
   );
 }

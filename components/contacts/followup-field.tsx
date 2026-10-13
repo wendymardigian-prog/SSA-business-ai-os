@@ -6,6 +6,7 @@ import { CalendarClock, Loader2, X } from "lucide-react";
 import { updateContact } from "@/lib/actions/contacts";
 import { dateInputToIso, isoToDateInput, formatDateOnly } from "@/lib/dates";
 import { useViewerTimezone } from "@/components/dashboard-chrome";
+import { FollowupTask } from "@/components/tasks/followup-task";
 import { ActionError } from "./ui";
 
 /**
@@ -24,11 +25,20 @@ export function FollowupField({
   contactId,
   value,
   onSaved,
+  canCreateTask,
+  contactName,
 }: {
   contactId: string;
   value: string | null;
   /** Despues de guardar (el panel de la bandeja carga sus datos en el navegador). */
   onSaved?: () => void;
+  /**
+   * Tareas × CRM (R2): si se puede mostrar «Crear tarea» debajo de la fecha. Opcional: sin esto se usa el permiso de
+   * editar tareas del anfitrion de tareas (`ContactTasksProvider`); sin anfitrion, el campo es el de siempre.
+   */
+  canCreateTask?: boolean;
+  /** Para el texto del boton «Crear tarea» (lo lee el lector de pantalla). */
+  contactName?: string | null;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +104,8 @@ export function FollowupField({
       )}
 
       {error && <div className="mt-2"><ActionError message={error} /></div>}
+
+      <FollowupTask contactId={contactId} contactName={contactName} followupValue={value} canCreateTask={canCreateTask} />
     </div>
   );
 }

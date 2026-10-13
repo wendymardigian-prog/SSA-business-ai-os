@@ -30,13 +30,22 @@ describe("salesVariables", () => {
 
   it("lo que falta queda vacío: nunca «null» ni «undefined»", () => {
     const v = salesVariables({ sale: null, payment: null });
-    for (const value of [...Object.values(v.sale), ...Object.values(v.payment)]) expect(value).toBe("");
+    for (const value of [...Object.values(v.sale), ...Object.values(v.payment), ...Object.values(v.contact)]) expect(value).toBe("");
+  });
+
+  it("el contacto de la venta: primer nombre y nombre completo (R3), sin cambiar las de siempre", () => {
+    const v = salesVariables({ sale, contact: { display_name: "  Ana   María Pérez " } });
+    expect(v.contact).toEqual({ first_name: "Ana", display_name: "Ana María Pérez" });
+    expect(salesVariables({ sale, contact: { display_name: "Beto" } }).contact.first_name).toBe("Beto");
+    expect(salesVariables({ sale, contact: null }).contact).toEqual({ first_name: "", display_name: "" });
+    expect(Object.keys(v.sale)).toContain("product_name");
+    expect(Object.keys(v.payment)).toContain("due_date");
   });
 
   it("la lista de claves coincide con lo que devuelve", () => {
     const v = salesVariables({ sale, payment: { id: "p", amount: 1, due_date: null, payment_method: null, status: "scheduled" } });
     for (const key of SALES_VARIABLE_KEYS) {
-      const [group, name] = key.split(".") as ["sale" | "payment", string];
+      const [group, name] = key.split(".") as ["sale" | "payment" | "contact", string];
       expect(Object.keys(v[group]), key).toContain(name);
     }
   });

@@ -21,21 +21,21 @@ function toSearch(current: URLSearchParams | string): URLSearchParams {
   return new URLSearchParams(typeof current === "string" ? current : current.toString());
 }
 
-function href(search: URLSearchParams): string {
+function href(search: URLSearchParams, base: string): string {
   const qs = search.toString();
-  return qs ? `${TASKS_BASE}?${qs}` : TASKS_BASE;
+  return qs ? `${base}?${qs}` : base;
 }
 
-/** La misma URL con esta tarea abierta. Conserva todo lo demas. */
-export function withTaskParam(current: URLSearchParams | string, taskId: string): string {
+/** La misma URL con esta tarea abierta. Conserva todo lo demas. `base` es la ruta de la pagina (por defecto, Tareas). */
+export function withTaskParam(current: URLSearchParams | string, taskId: string, base: string = TASKS_BASE): string {
   const next = toSearch(current);
   next.set("task", taskId);
-  return href(next);
+  return href(next, base);
 }
 
 /** La misma URL con el drawer cerrado. Conserva todo lo demas. */
-export function withoutTaskParam(current: URLSearchParams | string): string {
+export function withoutTaskParam(current: URLSearchParams | string, base: string = TASKS_BASE): string {
   const next = toSearch(current);
   next.delete("task");
-  return href(next);
+  return href(next, base);
 }

@@ -3,9 +3,7 @@
 Formato: **qué quedó** / por qué / qué se decidió.
 
 ## Fusión de contactos
-- **Qué quedó:** `linkContacts` (`lib/actions/contacts.ts`) reapunta conversaciones, canales y tags al contacto principal pero no conoce `tasks`. Una tarea ligada al contacto duplicado conserva su `contact_id` (el duplicado queda con `deleted_at`), así que deja de aparecer en la ficha del contacto principal.
-- **Por qué:** el plano prohíbe tocar la fusión de contactos.
-- **Decisión:** no se toca. Si hace falta, una fase posterior reapunta `tasks.contact_id` dentro de `linkContacts` (una línea más, con su test).
+- **Resuelto en Tareas × CRM (13/10/2026):** `linkContacts` ahora delega en `merge_contacts` (00207), que reapunta también `tasks` (y las otras 23 relaciones). Ver [contactos-fusion.md](contactos-fusion.md).
 
 ## Baseline de los `verify-*.mjs` (punto de partida)
 - **Qué quedó:** tres scripts ya fallaban **antes** de tocar nada y siguen fallando igual; no tienen que ver con Tareas:
@@ -31,10 +29,8 @@ Formato: **qué quedó** / por qué / qué se decidió.
 - **Por qué:** no hay a quién avisar, y el evento sin contacto necesita una persona como sujeto. El barrido tampoco la encola (evita trabajo inútil).
 - **Decisión:** es intencional. Quien quiera verlas las filtra en la tabla («Vencidas», «Sin responsable»).
 
-## El plan de fechas solo cuenta las tareas que la persona ve
-- **Qué quedó:** si una tarea dependiente pertenece a alguien que la persona no ve (alcance `own`), no se mueve ni se le muestra el título al completar el bloqueante.
-- **Por qué:** mostrarla filtraría datos; la RLS decide.
-- **Decisión:** quien tenga alcance `all` (Owner, Admin o un rol con `tasks.view` `all`) completa con el plan completo. Un Member que completa un bloqueante con dependientes ajenas puede dejarlas con la fecha vieja; el aviso `task_date_moved` no se emite para esas.
+## El plan de fechas ya no depende de lo que la persona ve
+- **Resuelto en Tareas × CRM (13/10/2026, R10):** completar un bloqueante corrige las fechas de TODAS sus dependientes (`task_shift_context`, 00207), incluidas las que quien completa no ve; esas se resumen en una línea sin título y sus dueños reciben `task_date_moved`. Ver [tareas.md](tareas.md). Revierte la decisión anterior («las que no ve no se mueven»).
 
 ## Purga de tareas borradas
 - **Qué quedó:** `delete_task` hace borrado lógico; **no** se agregó la purga a 30 días a `purge_soft_deleted`.

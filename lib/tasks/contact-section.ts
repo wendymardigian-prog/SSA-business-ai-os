@@ -6,32 +6,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
 import { TASK_COLUMNS } from "./core";
+import { RECENT_COMPLETED, splitOpenDone } from "./contact-tasks";
+import type { TimeFormat } from "./time";
 import type { TaskRow } from "./types";
 
 type Db = SupabaseClient<Database>;
 
-/** Cuantas completadas recientes se muestran. */
-export const RECENT_COMPLETED = 5;
-const FETCH_LIMIT = 100;
+export { RECENT_COMPLETED };
 
 /** Las abiertas (por vencimiento, las sin fecha al final) y las ultimas completadas. */
 export function pickContactTasks(rows: readonly TaskRow[]): { open: TaskRow[]; completed: TaskRow[] } {
-  const open = rows
-    .filter((t) => t.status !== "completed")
-    .sort((a, b) => {
-      if (a.due_date === b.due_date) return a.created_at < b.created_at ? -1 : 1;
-      if (a.due_date === null) return 1;
-      if (b.due_date === null) return -1;
-      return a.due_date < b.due_date ? -1 : 1;
-    });
-  const completed = rows
-    .filter((t) => t.status === "completed")
-    .sort((a, b) => ((b.completed_at ?? b.updated_at) < (a.completed_at ?? a.updated_at) ? -1 : 1))
-    .slice(0, RECENT_COMPLETED);
-  return { open, completed };
+  const { open, done } = splitOpenDone(rows);
+  return { open, completed: done.slice(0, RECENT_COMPLETED) };
 }
 
-export async function loadContactTasks(db: Db, input: { workspaceId: string; contactId: string }): Promise<TaskRow[]> {
+const FETCH_LIMIT = 100;
+
+/** Lee las tareas del contacto y dice si la lectura fallo (la pantalla muestra un error con «Reintentar», no «vacio»). */
+export async function loadContactTasksChecked(db: Db, input: { workspaceId: string; contactId: string }): Promise<{ tasks: TaskRow[]; failed: boolean }> {
   const { data, error } = await db
     .from("tasks")
     .select(TASK_COLUMNS)
@@ -42,8 +34,35 @@ export async function loadContactTasks(db: Db, input: { workspaceId: string; con
     .limit(FETCH_LIMIT);
   if (error) {
     console.error("[tareas] no pude leer las tareas del contacto:", error.message);
-    return [];
+    return { tasks: [], failed: true };
   }
-  const { open, completed } = pickContactTasks((data ?? []) as unknown as TaskRow[]);
-  return [...open, ...completed];
+  // Todas las que se leyeron: la lista de la pantalla pone el tope de completadas (`tasksForContact`), y la tarea de
+  // seguimiento de una fecha se tiene que encontrar aunque este completada hace tiempo.
+  const { open, done } = splitOpenDone((data ?? []) as unknown as TaskRow[]);
+  return { tasks: [...open, ...done], failed: false };
+}
+
+export async function loadContactTasks(db: Db, input: { workspaceId: string; contactId: string }): Promise<TaskRow[]> {
+  return (await loadContactTasksChecked(db, input)).tasks;
+}
+
+/** Lo que el panel de la bandeja necesita para dibujar la seccion «Tareas» de un contacto. */
+export interface ContactTasksPayload {
+  tasks: TaskRow[];
+  members: Array<{ id: string; name: string }>;
+  /** AAAA-MM-DD en la zona del workspace. */
+  today: string;
+  timeZone: string;
+  /** 12 h / 24 h de quien mira (R6). */
+  timeFormat: TimeFormat;
+  currentUserId: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+/** Lo que el drawer necesita ademas de las tareas que ya tiene en pantalla (dependencias, proyectos, nombres). */
+export interface TaskContextPayload {
+  tasks: TaskRow[];
+  contactNames: Record<string, string>;
+  flowNames: Record<string, string>;
 }

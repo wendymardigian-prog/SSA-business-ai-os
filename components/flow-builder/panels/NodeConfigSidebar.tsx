@@ -14,6 +14,8 @@ import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
 import { UpsertContactPanel } from "./UpsertContactPanel";
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
+import { isSalesTriggerType } from "@/lib/sales/automation/triggers";
+import { SALES_VARIABLE_KEYS } from "@/lib/sales/automation/variables";
 
 interface NodeConfigSidebarProps {
   /** El flujo que se edita (el panel de Condiciones le pide al servidor los campos comparables). */
@@ -59,6 +61,11 @@ function getFlowVariables({
     ?.triggerType as string | undefined;
   if (triggerType === "comment_keyword") {
     variables.push("comment_id", "comment_text", "commenter_name", "post_id");
+  }
+  // Ventas: la venta, el contacto y, si el disparador es de un pago, el pago (las mismas que ofrece el esquema de condiciones).
+  if (isSalesTriggerType(triggerType)) {
+    const isPayment = triggerType.startsWith("payment_");
+    for (const key of SALES_VARIABLE_KEYS) if (isPayment || !key.startsWith("payment.")) variables.push(key);
   }
 
   // Producer-derived variables are only offered when the producing node runs before this one.
@@ -187,7 +194,7 @@ export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClos
       case "aiResponse":
         return <AiResponsePanel data={data} onChange={handleChange} />;
       case "action":
-        return <ActionPanel data={data} onChange={handleChange} />;
+        return <ActionPanel data={data} onChange={handleChange} availableVariables={getFlowVariables({ node, nodes, edges })} />;
       default:
         return (
           <p className="text-sm text-muted-foreground">

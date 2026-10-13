@@ -26,6 +26,8 @@ import { TasksList } from "./tasks-list";
 import { TasksTable } from "./tasks-table";
 import { useTaskActions } from "./use-task-actions";
 import { useTasksLayout } from "./use-layout";
+import { TimeFormatProvider } from "./time-format-context";
+import type { TimeFormat } from "@/lib/tasks/time";
 import { cn } from "@/lib/utils";
 
 export interface TasksScreenProps {
@@ -41,12 +43,16 @@ export interface TasksScreenProps {
   flowNames: Record<string, string>;
   /** No se pudieron leer las tareas. */
   loadError: boolean;
+  /** 12 h / 24 h de quien mira (R6). */
+  timeFormat?: TimeFormat;
 }
 
 export function TasksScreen(props: TasksScreenProps) {
   return (
     <ToastProvider>
-      <TasksScreenInner {...props} />
+      <TimeFormatProvider value={props.timeFormat ?? "24h"}>
+        <TasksScreenInner {...props} />
+      </TimeFormatProvider>
     </ToastProvider>
   );
 }

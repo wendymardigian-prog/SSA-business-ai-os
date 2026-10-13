@@ -7,6 +7,7 @@
  *   {{sale.attribution_type}}
  *   {{payment.amount}} {{payment.due_date}} {{payment.days_overdue}} {{payment.delay_days}}
  *   {{payment.method}} {{payment.from_status}} {{payment.to_status}}
+ *   {{contact.first_name}} {{contact.display_name}}   (el contacto de la venta)
  *
  * Todo TEXTO: un dato que falta queda vacío, así un mensaje no muestra `{{payment.due_date}}` ni
  * "null". Los montos salen como `$1.297,00`, los estados con su etiqueta en español y las fechas largas.
@@ -40,6 +41,9 @@ export const SALES_VARIABLE_KEYS = [
   "payment.method",
   "payment.from_status",
   "payment.to_status",
+  // El contacto de la venta (R3): el primer nombre y el nombre completo. Se suman a las de siempre, sin cambiarlas.
+  "contact.first_name",
+  "contact.display_name",
 ] as const;
 
 export interface SalesVariablesInput {
@@ -60,11 +64,14 @@ export interface SalesVariablesInput {
   event?: Record<string, unknown>;
   /** Nombres de las personas del equipo, por id. */
   names?: Record<string, string>;
+  /** El contacto de la venta (para `{{contact.first_name}}` y `{{contact.display_name}}`). */
+  contact?: { display_name?: string | null } | null;
 }
 
 export interface SalesVariables {
   sale: Record<string, string>;
   payment: Record<string, string>;
+  contact: Record<string, string>;
 }
 
 const s = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" && Number.isFinite(v) ? String(v) : "");
@@ -109,5 +116,9 @@ export function salesVariables(input: SalesVariablesInput): SalesVariables {
     to_status: s(event.to_status) && event.payment_id ? paymentStatusLabel(s(event.to_status)) : "",
   };
 
-  return { sale: saleVars, payment: paymentVars };
+  // `first_name` no es una columna: es la primera palabra del nombre (como en las secuencias).
+  const displayName = (input.contact?.display_name ?? "").replace(/\s+/g, " ").trim();
+  const contactVars: Record<string, string> = { first_name: displayName.split(" ")[0] ?? "", display_name: displayName };
+
+  return { sale: saleVars, payment: paymentVars, contact: contactVars };
 }

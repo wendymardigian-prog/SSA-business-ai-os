@@ -227,3 +227,48 @@ export async function resolveConversationResponsible(
     return null;
   }
 }
+
+/**
+ * El vendedor de una venta; si no hay, el setter; si no hay, nadie (R3: «Vendedor de la venta»). Solo cuenta quien sigue
+ * siendo del equipo. Nunca lanza.
+ */
+export async function resolveSaleResponsible(db: Db, input: { workspaceId: string; saleId: string | null }): Promise<string | null> {
+  try {
+    if (!input.saleId) return null;
+    const { data } = await db.from("sales").select("vendedor_id, setter_id").eq("id", input.saleId).eq("workspace_id", input.workspaceId).maybeSingle();
+    const candidates = [data?.vendedor_id ?? null, data?.setter_id ?? null];
+    const members = await memberIds(db, input.workspaceId, candidates.filter((id): id is string => !!id));
+    return firstMember(candidates, members);
+  } catch (err) {
+    console.error("[tareas] no pude resolver el vendedor de la venta:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+/**
+ * La persona asignada a un contacto (R3: «Persona asignada al contacto»): su vendedor; si no hay, su setter; si no hay,
+ * quien tiene asignada su conversacion mas reciente; si no hay, nadie. Solo cuenta quien sigue siendo del equipo.
+ * Nunca lanza.
+ */
+export async function resolveContactResponsible(db: Db, input: { workspaceId: string; contactId: string | null }): Promise<string | null> {
+  try {
+    if (!input.contactId) return null;
+    const { data: contact } = await db.from("contacts").select("vendedor_id, setter_id").eq("id", input.contactId).eq("workspace_id", input.workspaceId).maybeSingle();
+    const { data: conversation } = await db
+      .from("conversations")
+      .select("assigned_to")
+      .eq("contact_id", input.contactId)
+      .eq("workspace_id", input.workspaceId)
+      .is("deleted_at", null)
+      .not("assigned_to", "is", null)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    const candidates = [contact?.vendedor_id ?? null, contact?.setter_id ?? null, conversation?.assigned_to ?? null];
+    const members = await memberIds(db, input.workspaceId, candidates.filter((id): id is string => !!id));
+    return firstMember(candidates, members);
+  } catch (err) {
+    console.error("[tareas] no pude resolver la persona asignada al contacto:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}

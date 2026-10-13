@@ -70,3 +70,29 @@ describe("updateTaskSchema", () => {
     expect(parseWith(updateTaskSchema, { position: 1.5 }).ok).toBe(true);
   });
 });
+
+describe("hora y duracion (R6)", () => {
+  it("acepta una hora HH:MM con fecha y una duracion de 5 a 1440", () => {
+    const r = parseWith(createTaskSchema, { title: "a", due_date: "2026-10-20", due_time: "14:30", duration_minutes: 45 });
+    expect(r).toEqual({ ok: true, data: { title: "a", due_date: "2026-10-20", due_time: "14:30", duration_minutes: 45 } });
+  });
+  it("una hora sin fecha se rechaza (al crear y al editar con la fecha borrada)", () => {
+    expect(parseWith(createTaskSchema, { title: "a", due_time: "14:30" })).toEqual({ ok: false, error: "La hora necesita una fecha de vencimiento." });
+    expect(parseWith(createTaskSchema, { title: "a", due_date: null, due_time: "14:30" }).ok).toBe(false);
+    expect(parseWith(updateTaskSchema, { due_date: null, due_time: "14:30" }).ok).toBe(false);
+  });
+  it("editar solo la hora pasa (la fecha la compara el nucleo con la tarea guardada)", () => {
+    expect(parseWith(updateTaskSchema, { due_time: "09:00" }).ok).toBe(true);
+    expect(parseWith(updateTaskSchema, { due_time: null, duration_minutes: null }).ok).toBe(true);
+  });
+  it.each(["25:00", "9:30", "14:60", "14h30", "", "14:30:00"])("el formato de hora %j no es valido", (bad) => {
+    expect(parseWith(updateTaskSchema, { due_time: bad }).ok).toBe(false);
+  });
+  it.each([4, 1441, 30.5, -10, Number.NaN, "30"])("la duracion %j no es valida", (bad) => {
+    expect(parseWith(updateTaskSchema, { duration_minutes: bad as number }).ok).toBe(false);
+  });
+  it("los limites de la duracion valen", () => {
+    expect(parseWith(updateTaskSchema, { duration_minutes: 5 }).ok).toBe(true);
+    expect(parseWith(updateTaskSchema, { duration_minutes: 1440 }).ok).toBe(true);
+  });
+});

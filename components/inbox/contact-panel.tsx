@@ -4,6 +4,8 @@ import { useState, useEffect, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { X, Mail, Phone, Brain, Loader2, ShieldOff, ExternalLink } from "lucide-react";
 import { ContactAvatar } from "@/components/contacts/contact-avatar";
+import { ContactTasks } from "@/components/tasks/contact-tasks";
+import { ContactTasksLoader } from "@/components/tasks/contact-tasks-loader";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "@/components/platform-icon";
@@ -174,6 +176,7 @@ export function ContactPanel({
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
         </div>
       ) : details ? (
+        <ContactTasksLoader contactId={details.contact.id} contactName={details.contact.display_name}>
         <div className="flex-1 overflow-y-auto">
           <Identity details={details} />
 
@@ -190,6 +193,8 @@ export function ContactPanel({
               onSaved={reload}
             />
           </PanelSection>
+
+          <ContactTasks wrap={(body) => <PanelSection title="Tareas">{body}</PanelSection>} />
 
           <AgentMemory contact={details.contact} />
 
@@ -220,6 +225,7 @@ export function ContactPanel({
 
           <DoNotContact contact={details.contact} isAdmin={isAdmin} onSaved={reload} />
         </div>
+        </ContactTasksLoader>
       ) : failed ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
           <p className="text-sm text-muted-foreground">No pude cargar los datos del contacto.</p>

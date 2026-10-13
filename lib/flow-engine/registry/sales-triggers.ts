@@ -102,7 +102,13 @@ async function loadVariables(args: TriggerEventArgs): Promise<Record<string, unk
       console.error("[ventas] no pude leer los nombres del equipo:", error instanceof Error ? error.message : "error");
     }
   }
-  return { ...salesVariables({ sale: sale ?? null, salePayments: salePayments ?? undefined, payment: payment ?? null, event: payload, names }) };
+  // El contacto de la venta, para `{{contact.first_name}}` (R3).
+  let contact: { display_name: string | null } | null = null;
+  if (args.event.contact_id) {
+    const { data } = await db.from("contacts").select("display_name").eq("id", args.event.contact_id).eq("workspace_id", args.event.workspace_id).maybeSingle();
+    contact = (data as { display_name: string | null } | null) ?? null;
+  }
+  return { ...salesVariables({ sale: sale ?? null, salePayments: salePayments ?? undefined, payment: payment ?? null, event: payload, names, contact }) };
 }
 
 for (const type of SALES_TRIGGER_TYPES) {

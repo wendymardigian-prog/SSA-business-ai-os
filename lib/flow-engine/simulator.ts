@@ -557,6 +557,18 @@ export function simulateFlow(
         break;
       }
 
+      // Tareas × CRM (R4): en la simulacion no se completa ninguna tarea.
+      case "complete_task": {
+        const key = interpolate((data.sourceKey as string) || "", variables);
+        steps.push({
+          nodeId: node.id,
+          nodeType: "complete_task",
+          nodeLabel: label,
+          result: { type: "action", actionType: "complete_task", detail: key || "(sin clave)" },
+        });
+        break;
+      }
+
       case "cancel_booking": {
         steps.push({
           nodeId: node.id,

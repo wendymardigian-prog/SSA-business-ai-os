@@ -12,6 +12,7 @@ import {
   UserCheck,
   Bell,
   ListPlus,
+  ListChecks,
   Shuffle,
   Hourglass,
   Sparkles,
@@ -205,6 +206,14 @@ const categories: PaletteCategory[] = [
         label: "Crear tarea",
         icon: ListPlus,
         actionType: "create_task",
+      },
+      // Tareas × CRM (R4): cierra las tareas abiertas que tienen una clave de origen.
+      {
+        type: "action",
+        nodeType: "complete_task",
+        label: "Completar tarea",
+        icon: ListChecks,
+        actionType: "complete_task",
       },
       {
         type: "action",

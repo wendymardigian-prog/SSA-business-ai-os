@@ -153,3 +153,113 @@ Crea y limpia sus datos (prefijo `zz-test-`) y no se corre en simultáneo con lo
 El bloque de la 00199 prueba de punta a punta: completar una tarea sin contacto emite el evento,
 dispara un flujo publicado con el motor real, la sesión queda sin contacto, el paso «Crear tarea»
 deja otra tarea y el mismo evento no dispara dos veces.
+
+# Tareas × CRM (octubre 2026, rama `feat/tareas-crm`)
+
+Segunda tanda del módulo: las tareas se conectan con el CRM (contacto, seguimiento, cobranza), con el calendario de Agenda y con la
+fusión de contactos. Plan y avance en `docs/PROGRESS-tareas-crm.md`; pendientes y decisiones en `docs/PENDIENTE-tareas-crm.md`.
+Migraciones: **00206** (hora, duración, seguimiento único) y **00207** (fusión de contactos y regla de fechas del sistema).
+
+## La sección «Tareas» del contacto (ficha y bandeja)
+
+- Un solo componente (`components/tasks/contact-tasks.tsx`) para la ficha del contacto y el panel de contacto de la bandeja. Lista las
+  abiertas por vencimiento (sin fecha al final) y las últimas 5 completadas (`lib/tasks/contact-tasks.ts`, puro).
+- El estado y la fecha se cambian en la línea (mismos caminos que la tabla, incluido el diálogo de mover fechas); el título abre el
+  **drawer sin salir de la página**; «Agregar tarea» abre el drawer con el contacto ya vinculado.
+- `ContactTasksProvider` pone arriba de la página un **anfitrión de tareas** (`components/tasks/task-workbench.tsx`: las tareas en
+  pantalla, las acciones y el drawer). La sección «Tareas» y la tarea del seguimiento leen del mismo, así un cambio en una se ve en la
+  otra al instante. En la bandeja lo arma `ContactTasksLoader` (pide las tareas con `listContactTasks`).
+- Estados: cargando, error con «Reintentar» (un fallo de lectura **nunca** se ve como «sin tareas») y vacío con «Agregar tarea».
+  Sin `tasks.edit`, todo es de solo lectura; sin `tasks.view`, la sección no existe.
+- El drawer se puede usar fuera de `/dashboard/tareas`: pide al abrirse el resto de las tareas que la persona ve
+  (`loadTaskContext`) para sus dependencias y proyectos.
+
+## «Próximo seguimiento» con «Crear tarea»
+
+- `FollowupField` suma dos props **opcionales** (`canCreateTask`, `contactName`); sin un `ContactTasksProvider` arriba es el campo de
+  siempre (`followup-field.characterization.test.ts` lo fija).
+- Con fecha y sin tarea para esa fecha: botón «Crear tarea». Con tarea: la tarea (estado, fecha, mismas acciones). La clave es
+  `source_ref = 'followup:AAAA-MM-DD'`; el índice único parcial `uq_tasks_followup` (00206: contacto + fecha, **incluye las completadas**,
+  una borrada libera la fecha) hace que dos clics o dos personas a la vez no creen dos: la acción devuelve la existente.
+- **El día se decodifica con la zona del workspace** (`followupDateOf`), la misma para todos. Límite conocido: si quien cargó la
+  fecha está a 12 horas o más de esa zona, el día puede correrse.
+- Cambiar o quitar la fecha **no toca ninguna tarea**: para la fecha nueva vuelve a aparecer el botón; la anterior sigue en «Tareas».
+- `createFollowupTask` valida el permiso (`tasks.edit`) y que el contacto se vea con la sesión, y escribe con el cliente de servicio
+  (`source` y `source_ref` no son escribibles por la sesión). `contacts.next_followup_date` y `programar_seguimiento` no se tocaron.
+
+## Hora y duración (R6)
+
+- `tasks.due_time` (hora local del workspace, sin fecha) y `tasks.duration_minutes` (5 a 1440): **opcionales**; una tarea es solo fecha
+  por defecto. La base exige que la hora tenga fecha (CHECK) y la acción borra hora y duración cuando se borra la fecha.
+- Se agregan a propósito: «Agregar hora» en el selector de fecha de la celda, campos «Hora» y «Duración» en el drawer, o arrastrando en
+  el calendario. Se muestran junto a la fecha («Hoy · 14:30») con el 12 h / 24 h del perfil de agenda (`scheduling_profiles.time_format`,
+  24 h por defecto).
+- **Las reglas de fechas siguen siendo por DÍA**: `computeDateShifts`, la validación de «la bloqueada no vence antes que su bloqueante»,
+  el barrido de vencimientos y el filtro «vencidas» no miran la hora. Un corrimiento solo toca fechas: la hora y la duración se conservan.
+- El orden es por fecha y, en el mismo día, por hora (las sin hora después). Las tareas de seguimiento y de cobranza son solo fecha; los
+  nodos de flujo y la herramienta del agente no reciben hora.
+
+## La regla de fechas es del sistema (R10)
+
+Al completar un bloqueante, las fechas de **todas** las tareas que dependen de él (transitivas) se corrigen, sin importar si quien
+completa las ve o las puede editar. Los permisos no cambian: sigue haciendo falta poder editar y ver **ese** bloqueante, y un Member sigue
+sin poder leer ni editar las ajenas.
+
+- `task_shift_context(p_task_id)` (00207, `authenticated`) verifica adentro `can_edit_tasks` y `can_see_task` del bloqueante y devuelve las
+  dependientes con lo que la regla necesita (estado, fechas, hora, dependencias, responsable, seguidores, `updated_at`) y el **título solo
+  de las que la persona ve**. Nada de descripciones.
+- `complete_task_with_shifts` valida cada corrimiento contra el **árbol de dependientes** (abiertas, no borradas, del workspace, que solo
+  atrasan, con el `updated_at` esperado); uno fuera del árbol rechaza **toda** la operación.
+- La vista previa lista las que la persona ve con título y fechas y resume las otras en una línea («Y N tareas de otras personas también se
+  van a mover»); la respuesta a la pantalla no lleva ids, títulos ni fechas de las ajenas (`hiddenShifted`).
+- `task_date_moved` y `task_unblocked` llegan al responsable y a los seguidores de cada tarea movida (incluidas las ocultas), nunca al
+  actor. El historial de cada una dice quién la movió y por qué (`metadata.reason = 'dependencia completada'`, `caused_by_task_id`).
+- Los flujos (nodo «Completar tarea») no mueven fechas.
+
+## Cobranza con tareas (R3, R4, R5)
+
+- Nodo **«Crear tarea» ampliado**: responsable «Vendedor de la venta» (vendedor, si no el setter) y «Persona asignada al contacto»
+  (vendedor, si no setter, si no quien tiene su conversación más reciente); si no queda nadie, se avisa a **cada** Owner/Admin. Vencimiento
+  «hoy + N días» (0 es hoy). **Clave de origen** (`source_key`, con variables, por ejemplo `payment:{{payment.id}}`): se guarda como
+  `source_ref` y evita crear otra tarea mientras haya una abierta con la misma clave. Si una variable de la clave no se resuelve, **no se
+  usa la clave** (no se colapsan todos los pagos en una).
+- Nodo nuevo **«Completar tarea»** (`complete_task`): cierra las tareas abiertas con esa clave como lo haría una persona pero sin mover
+  fechas; si no hay ninguna, no hace nada. Nunca cierra una tarea sin `source_ref` coincidente.
+- Variables de Ventas: se suman `{{contact.first_name}}` y `{{contact.display_name}}` (antes, `Hola {{contact.first_name}}` de los
+  flujos de cobranza por email salía literal).
+- **Interruptor «Crear una tarea cuando un pago vence»** (Ajustes › General › Ventas): crea y publica dos flujos
+  (`task_payment_overdue` y `task_payment_paid_close`, en `lib/tasks/automation-templates.ts`, con claves propias que **no** están en
+  `SALES_TEMPLATE_KEYS`). Se apaga pasándolos a borrador (las tareas quedan). El estado sale del flujo publicado: no hay columna. La
+  publicación vive en `lib/flow-engine/publish.ts`, extraída de `POST /api/v1/flows/[flowId]/publish` sin cambiar la ruta.
+
+## Tareas en el calendario de Agenda (R7)
+
+- Interruptor «Tareas» junto a Día/Semana/Mes (`tareas=1` mías, `tareas=todas`; solo con `tasks.view`). **Apagado no se consulta nada de
+  tareas** y el calendario es exactamente el de antes (`calendar-grid.characterization.test.ts`).
+- Distintas de las agendas: borde punteado, icono de casilla, punto por prioridad y color de estado; completadas atenuadas y tachadas.
+  Con hora, bloque de alto = duración (30 min si no tiene); sin hora, franja «Sin hora» arriba de cada día y etiqueta en el mes. Lo que se
+  superpone va lado a lado (`layoutOverlaps`, solo con tareas). Panel plegable «Sin fecha» (máx. 50, con buscador).
+- La hora de una tarea es del workspace; el calendario usa la zona del perfil de quien mira (`placeTasksInCalendar`).
+- Clic abre el mismo drawer (`?task=`). **Las tareas se arrastran SIN confirmar** (HTML5 nativo, solo escritorio ≥ 768 px y con
+  `tasks.edit`): hora de la rejilla (pasos de 15 min), franja «Sin hora» (quita hora y duración) o celda del mes (conserva la hora). Se
+  aplica al instante, con las mismas validaciones que la edición en celda, y el aviso trae «Deshacer».
+
+## Arrastrar agendas, siempre con confirmación (R8)
+
+- Solo las agendas **activas** (agendada, confirmada, reagenda), con `bookings.manage`, en escritorio. Al soltar siempre se abre un modal
+  (`dragConfirmReducer`: `idle → pending → confirming → done | error`; la acción solo se llama al entrar a `confirming`). Esc, clic afuera
+  o «Cancelar» la dejan donde estaba. Se dibuja un fantasma en el horario nuevo mientras está abierto.
+- Confirmar llama a `rescheduleAsHost` sin cambiarlo. Si responde «Ese horario ya no está disponible.» el modal ofrece «Reagendar igual
+  (ignorar la disponibilidad)»; un choque con otra agenda no lo ofrece (la base lo impide). El texto de lo que pasa sale de lo que de
+  verdad hace el reagendado (`rescheduleEffects`).
+
+## Fusión de contactos (R9)
+
+Detalle en [contactos-fusion.md](contactos-fusion.md).
+
+## Scripts de verificación
+
+```
+node scripts/verify-tasks.mjs           # suma los bloques de 00206 (hora, seguimiento único), de la cobranza de punta a punta y de 00207 (regla de fechas)
+node scripts/verify-contact-merge.mjs   # la fusión de contactos con una fusión real, la atomicidad y la guardia de deriva
+```

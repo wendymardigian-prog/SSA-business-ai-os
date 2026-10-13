@@ -33,3 +33,11 @@ describe("drawer en la URL (F12)", () => {
     expect(out.match(/task=/g)).toHaveLength(1);
   });
 });
+
+describe("drawer en otra pagina (R1)", () => {
+  it("usa la ruta que se le pasa y conserva los demas parametros", () => {
+    expect(withTaskParam("vista=calendar&cal=week", ID, "/dashboard/agenda")).toBe(`/dashboard/agenda?vista=calendar&cal=week&task=${ID}`);
+    expect(withoutTaskParam(`vista=calendar&task=${ID}`, "/dashboard/agenda")).toBe("/dashboard/agenda?vista=calendar");
+    expect(withoutTaskParam(`task=${ID}`, "/dashboard/contacts/abc")).toBe("/dashboard/contacts/abc");
+  });
+});

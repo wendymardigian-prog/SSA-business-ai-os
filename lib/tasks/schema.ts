@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { isDateOnly } from "./dates";
+import { DURATION_MAX, DURATION_MIN, isTimeOfDay } from "./time";
 import { cleanProjectName } from "./project";
 import { TASK_LIMITS, TASK_PRIORITIES, TASK_STATUSES } from "./types";
 
@@ -15,6 +16,16 @@ const uuid = z.string().uuid("Identificador inválido.");
 const dateOnly = z
   .string()
   .refine((v) => isDateOnly(v), "La fecha no es válida (usá AAAA-MM-DD).");
+
+const timeOfDay = z
+  .string()
+  .refine((v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(v) && isTimeOfDay(v), "La hora no es válida (usá HH:MM).");
+
+const durationMinutes = z
+  .number("La duración no es válida.")
+  .int("La duración tiene que ser en minutos enteros.")
+  .min(DURATION_MIN, `La duración mínima es de ${DURATION_MIN} minutos.`)
+  .max(DURATION_MAX, `La duración máxima es de ${DURATION_MAX} minutos.`);
 
 const title = z
   .string("Escribí un título.")
@@ -59,6 +70,8 @@ export const createTaskSchema = z
     priority: priority.optional(),
     start_date: dateOnly.nullable().optional(),
     due_date: dateOnly.nullable().optional(),
+    due_time: timeOfDay.nullable().optional(),
+    duration_minutes: durationMinutes.nullable().optional(),
     owner_id: uuid.nullable().optional(),
     follower_ids: followers.optional(),
     project: project.optional(),
@@ -69,6 +82,9 @@ export const createTaskSchema = z
   .superRefine((v, ctx) => {
     if (v.start_date && v.due_date && v.start_date > v.due_date) {
       ctx.addIssue({ code: "custom", path: ["start_date"], message: "La fecha de inicio no puede ser posterior al vencimiento." });
+    }
+    if (v.due_time && !v.due_date) {
+      ctx.addIssue({ code: "custom", path: ["due_time"], message: "La hora necesita una fecha de vencimiento." });
     }
   });
 
@@ -83,6 +99,8 @@ export const updateTaskSchema = z
     priority: priority.optional(),
     start_date: dateOnly.nullable().optional(),
     due_date: dateOnly.nullable().optional(),
+    due_time: timeOfDay.nullable().optional(),
+    duration_minutes: durationMinutes.nullable().optional(),
     owner_id: uuid.nullable().optional(),
     follower_ids: followers.optional(),
     project: project.optional(),
@@ -97,6 +115,10 @@ export const updateTaskSchema = z
     }
     if (v.start_date && v.due_date && v.start_date > v.due_date) {
       ctx.addIssue({ code: "custom", path: ["start_date"], message: "La fecha de inicio no puede ser posterior al vencimiento." });
+    }
+    // En un mismo cambio: una hora con la fecha borrada no tiene sentido. (Si la fecha no viene, la compara el nucleo con la tarea.)
+    if (v.due_time && v.due_date === null) {
+      ctx.addIssue({ code: "custom", path: ["due_time"], message: "La hora necesita una fecha de vencimiento." });
     }
   });
 

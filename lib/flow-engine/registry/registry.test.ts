@@ -37,10 +37,12 @@ const NODOS_DE_ACCION = [
   "set_booking_status",
   // Banca de recursos en las automatizaciones.
   "sendAsset",
+  // Tareas × CRM (R4).
+  "complete_task",
 ] as const;
 
 describe("registro de nodos", () => {
-  it("tiene los 30 tipos ejecutables", () => {
+  it("tiene los 31 tipos ejecutables", () => {
     // 17 de la Fase 2, + pausar y reanudar el agente de IA (Fase 3),
     // + enviar email y las dos acciones de agenda (Etapa 4),
     // + enviar un recurso de la banca,
@@ -49,7 +51,8 @@ describe("registro de nodos", () => {
     // + `notify_team` ("Avisar en la campana", EOD E15).
     // + `upsert_contact` ("Crear o actualizar contacto", webhooks entrantes, Extra L).
     // + `create_task` ("Crear tarea", Tareas, F22).
-    expect(listNodes()).toHaveLength(30);
+    // + `complete_task` ("Completar tarea", Tareas × CRM, R4).
+    expect(listNodes()).toHaveLength(31);
   });
 
   it.each(NODOS_DE_ACCION)(

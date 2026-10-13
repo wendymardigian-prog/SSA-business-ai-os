@@ -107,3 +107,29 @@ describe("campos del drawer", () => {
     expect(validateCellChange(t, { start_date: null }, new Map())).toBeNull();
   });
 });
+
+describe("hora y duracion en la celda (R6)", () => {
+  it("aplica la hora y la duracion en pantalla", () => {
+    const { next } = applyOptimistic([A], A.id, { due_time: "14:30", duration_minutes: 45 });
+    expect(next[0]).toMatchObject({ due_date: "2026-10-20", due_time: "14:30", duration_minutes: 45 });
+  });
+  it("quitar la fecha quita la hora y la duracion", () => {
+    const timed = makeTask({ id: taskId(7), due_date: "2026-10-20", due_time: "14:30", duration_minutes: 45 });
+    const { next, previous } = applyOptimistic([timed], timed.id, { due_date: null });
+    expect(next[0]).toMatchObject({ due_date: null, due_time: null, duration_minutes: null });
+    expect(previous).toMatchObject({ due_time: "14:30", duration_minutes: 45 });
+  });
+  it("cambiar solo el dia conserva la hora y la duracion", () => {
+    const timed = makeTask({ id: taskId(7), due_date: "2026-10-20", due_time: "14:30", duration_minutes: 45 });
+    const { next } = applyOptimistic([timed], timed.id, { due_date: "2026-10-27" });
+    expect(next[0]).toMatchObject({ due_date: "2026-10-27", due_time: "14:30", duration_minutes: 45 });
+  });
+  it("valida antes de molestar al servidor: hora sin fecha, hora invalida, duracion fuera de rango", () => {
+    const noDate = makeTask({ id: taskId(8), due_date: null });
+    expect(validateCellChange(noDate, { due_time: "10:00" }, new Map())).toBe("La hora necesita una fecha de vencimiento.");
+    expect(validateCellChange(A, { due_time: "25:00" }, new Map())).toBe("La hora no es válida.");
+    expect(validateCellChange(A, { duration_minutes: 3 }, new Map())).toBe("La duración tiene que ser de 5 a 1440 minutos.");
+    expect(validateCellChange(A, { due_time: "10:00", duration_minutes: 30 }, new Map())).toBeNull();
+    expect(validateCellChange(A, { due_time: null }, new Map())).toBeNull();
+  });
+});
