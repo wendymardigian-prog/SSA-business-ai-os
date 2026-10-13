@@ -53,12 +53,13 @@ export function useAgendaUrl() {
   /**
    * Limpia los filtros pero conserva la navegacion: la vista elegida
    * (`vista`), el detalle abierto (`agenda`) y la posicion del calendario
-   * (`cal`, `dia`). Limpiar filtros no deberia cerrar lo que se estaba viendo
+   * (`cal`, `dia`), el interruptor de tareas (`tareas`) y la tarea abierta (`task`).
+   * Limpiar filtros no deberia cerrar lo que se estaba viendo
    * ni mandar de vuelta a la semana de hoy.
    */
   function clearAll() {
     const next = new URLSearchParams();
-    for (const key of ["vista", "agenda", "cal", "dia"]) {
+    for (const key of ["vista", "agenda", "cal", "dia", "tareas", "task"]) {
       const v = searchParams.get(key);
       if (v) next.set(key, v);
     }

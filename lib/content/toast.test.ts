@@ -47,4 +47,16 @@ describe("los avisos (F95)", () => {
 
     expect(list).toHaveLength(1);
   });
+
+  it("un aviso con accion (Deshacer) nunca se apila con otro igual: cada uno deshace lo suyo", () => {
+    const withAction = { tone: "ok" as const, text: "Tarea movida al 20/10", action: { label: "Deshacer", onClick: () => undefined } };
+    const list = pushToast(pushToast([], withAction, 1), withAction, 2);
+    expect(list).toHaveLength(2);
+    expect(list[1].action?.label).toBe("Deshacer");
+  });
+
+  it("un aviso con accion dura mas, para dar tiempo a deshacer", () => {
+    expect(toastDurationMs("ok", true)).toBeGreaterThan(toastDurationMs("ok"));
+    expect(toastDurationMs("ok")).toBe(4500);
+  });
 });

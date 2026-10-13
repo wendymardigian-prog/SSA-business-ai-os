@@ -11,6 +11,8 @@ export type ToastTone = "ok" | "info" | "warning" | "error";
 export interface ToastInput {
   tone: ToastTone;
   text: string;
+  /** Un boton en el aviso (por ejemplo «Deshacer»). Un aviso con accion nunca se apila con otro igual: cada uno deshace lo suyo. */
+  action?: { label: string; onClick: () => void };
 }
 
 export interface ToastItem extends ToastInput {
@@ -18,7 +20,8 @@ export interface ToastItem extends ToastInput {
 }
 
 /** Cuanto queda a la vista: lo que hay que leer con calma dura mas. */
-export function toastDurationMs(tone: ToastTone): number {
+export function toastDurationMs(tone: ToastTone, withAction = false): number {
+  if (withAction) return 8000;
   return tone === "error" ? 9000 : tone === "warning" ? 7000 : 4500;
 }
 
@@ -28,7 +31,7 @@ export const MAX_TOASTS = 3;
 export function pushToast(list: ToastItem[], input: ToastInput, id: number): ToastItem[] {
   // El mismo aviso dos veces seguidas no se apila: es el doble clic.
   const last = list[list.length - 1];
-  if (last && last.text === input.text && last.tone === input.tone) return list;
+  if (!input.action && last && !last.action && last.text === input.text && last.tone === input.tone) return list;
 
   return [...list, { ...input, id }].slice(-MAX_TOASTS);
 }

@@ -14,8 +14,8 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] M2 (00207) aplicada, registrada y verificada
 - [x] R10 · Regla de fechas global
 - [x] R9 · Fusión de contactos
-- [ ] R7 · Tareas en el calendario de Agenda
-- [ ] R8 · Arrastrar agendas con confirmación
+- [x] R7 · Tareas en el calendario de Agenda
+- [x] R8 · Arrastrar agendas con confirmación
 - [ ] Revisión visual (1440 y 390 px, claro y oscuro)
 - [ ] Cierre: docs, CLAUDE.md, limpieza `zz-test-`, PR
 
