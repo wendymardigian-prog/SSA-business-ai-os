@@ -33,3 +33,15 @@ describe("borrador de una tarea nueva (F12, F15)", () => {
     expect(valuesFromTask(t)).toMatchObject({ title: "T", project: "P", projectKey: "p", follower_ids: ["a"] });
   });
 });
+
+describe("hora y duracion en el borrador (R6)", () => {
+  it("arranca sin hora ni duracion y las toma de una tarea existente normalizadas", () => {
+    expect(draftFromDefaults(undefined, "me")).toMatchObject({ due_time: null, duration_minutes: null });
+    expect(valuesFromTask(makeTask({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 60 }))).toMatchObject({ due_time: "14:30", duration_minutes: 60 });
+  });
+  it("borrar la fecha borra la hora y la duracion", () => {
+    const d = applyDraftPatch(draftFromDefaults({ due_date: "2026-10-20" }, "me"), { due_time: "10:00", duration_minutes: 30 });
+    expect(d).toMatchObject({ due_time: "10:00", duration_minutes: 30 });
+    expect(applyDraftPatch(d, { due_date: null })).toMatchObject({ due_date: null, due_time: null, duration_minutes: null });
+  });
+});

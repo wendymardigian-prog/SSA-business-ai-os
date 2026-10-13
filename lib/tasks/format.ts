@@ -3,6 +3,7 @@
  */
 
 import { addDays, diffDays } from "./dates";
+import { formatTime, type TimeFormat } from "./time";
 import type { TaskRow, TaskSource } from "./types";
 
 /** dd/mm/aaaa */
@@ -28,17 +29,30 @@ export interface DueLabel {
  * Como se muestra un vencimiento: «Hoy», «Mañana», «Ayer», «Hace 3 días» (vencida) o la fecha.
  * Una tarea completada nunca se muestra como vencida.
  */
-export function dueLabel(task: Pick<TaskRow, "due_date" | "status">, today: string): DueLabel {
+export function dueLabel(task: Pick<TaskRow, "due_date" | "status"> & { due_time?: string | null }, today: string, timeFormat?: TimeFormat): DueLabel {
   if (!task.due_date) return { text: "Sin fecha", tone: "none" };
   const days = diffDays(today, task.due_date);
   const date = formatDayShort(task.due_date, today);
-  if (task.status === "completed") return { text: date, tone: "done" };
-  if (days === 0) return { text: "Hoy", tone: "today" };
-  if (days === 1) return { text: "Mañana", tone: "soon" };
-  if (days === -1) return { text: "Ayer", tone: "overdue" };
-  if (days < -1) return { text: `Hace ${-days} días`, tone: "overdue" };
-  if (days <= 6) return { text: date, tone: "soon" };
-  return { text: date, tone: "normal" };
+  // Con hora (y con el formato 12 h / 24 h de quien mira) se le suma a la fecha: «Hoy · 14:30». Las reglas de fechas son
+  // por DIA: la hora no cambia el tono (una tarea de hoy a las 09:00 no esta «vencida» a las 10:00).
+  const at = timeFormat && task.due_time ? ` · ${formatTime(task.due_time, timeFormat)}` : "";
+  if (task.status === "completed") return { text: `${date}${at}`, tone: "done" };
+  if (days === 0) return { text: `Hoy${at}`, tone: "today" };
+  if (days === 1) return { text: `Mañana${at}`, tone: "soon" };
+  if (days === -1) return { text: `Ayer${at}`, tone: "overdue" };
+  if (days < -1) return { text: `Hace ${-days} días${at}`, tone: "overdue" };
+  if (days <= 6) return { text: `${date}${at}`, tone: "soon" };
+  return { text: `${date}${at}`, tone: "normal" };
+}
+
+/**
+ * La fecha de una tarea con su hora para mostrar: «20/10/2026 · 14:30» (24 h) o «20/10/2026 · 2:30 p. m.» (12 h); sin
+ * hora, solo la fecha. Con `today` la fecha se acorta como en las tablas (sin el ano si es de este ano).
+ */
+export function formatTaskWhen(date: string, time: string | null | undefined, timeFormat: TimeFormat, today?: string): string {
+  const day = today ? formatDayShort(date, today) : formatDay(date);
+  const at = formatTime(time, timeFormat);
+  return at ? `${day} · ${at}` : day;
 }
 
 export function pluralDays(n: number): string {

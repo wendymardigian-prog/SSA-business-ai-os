@@ -28,6 +28,7 @@ import { markPaymentPaidNode, reschedulePaymentNode, setSaleStatusNode } from ".
 import { notifyTeamNode } from "../nodes/notify-team";
 import { upsertContactNode } from "../nodes/upsert-contact";
 import { createTaskNode } from "../nodes/create-task";
+import { completeTaskNode } from "../nodes/complete-task";
 
 registerNode(sendMessageNode);
 // Banca de recursos en las automatizaciones: los seis tipos, por el canal que los acepte.
@@ -68,3 +69,5 @@ registerNode(notifyTeamNode);
 registerNode(upsertContactNode);
 // Tareas (Extra A, F22): deja una tarea para el equipo; sirve con y sin contacto.
 registerNode(createTaskNode);
+// Tareas × CRM (R4): cierra las tareas abiertas con una clave de origen (la de «Crear tarea»).
+registerNode(completeTaskNode);

@@ -4,7 +4,7 @@
  * Lo que un test con Vitest no puede probar: que la BASE haga cumplir las reglas (RLS, privilegios
  * por columna, ciclos, atomicidad, borrado logico, limpieza de personas, el cron).
  *
- * Los bloques corren segun lo que ya este aplicado (`--hasta 196|197|198|199`).
+ * Los bloques corren segun lo que ya este aplicado (`--hasta 196|197|198|199|206|207`).
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -19,6 +19,8 @@ import { todayInputValue } from "../lib/dates";
 import { runTasksDueSweep } from "../lib/jobs/handlers/tasks-due-sweep";
 import { createNotification } from "../lib/notifications/create";
 import { addDays } from "../lib/tasks/dates";
+import { createFollowupTaskCore } from "../lib/tasks/followup-core";
+import { ensureTaskPaymentFlows, getPaymentTasksState } from "../lib/tasks/automation-templates";
 import "../lib/flow-engine/registry";
 import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
 import { buildDesiredTriggers } from "../lib/flow-triggers";
@@ -37,7 +39,7 @@ type Db = SupabaseClient<any>;
 const svc: Db = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 const argv = process.argv;
-const upTo = Number(argv[argv.indexOf("--hasta") + 1]) || 199;
+const upTo = Number(argv[argv.indexOf("--hasta") + 1]) || 207;
 
 let failures = 0;
 const ok = (m: string) => console.log("  ok  ", m);
@@ -237,12 +239,12 @@ try {
     const garbage = await rpc(creator, "complete_task_with_shifts", { p_task_id: A.id, p_shifts: [{ task_id: "no-soy-uuid", due_date: "2026-10-30" }], p_expected: exp });
     check(garbage.data?.ok === false && garbage.data?.error === "invalid_shift", "...y a un id que no es uuid (error tipificado, no una excepcion)", JSON.stringify(garbage.data ?? garbage.error));
 
-    // Sin permiso sobre alguna tarea del plan => se rechaza todo.
+    // Un corrimiento a una tarea que NO depende de esta se rechaza (todo o nada), tenga o no permiso la persona. (Desde la
+    // 00207 la regla de fechas es del sistema: una DEPENDIENTE ajena si se mueve; ver el bloque de R10 mas abajo.)
     const hidden = await mk({ title: "zz-test oculta para creator", due_date: D("2026-10-11"), owner_id: assignee.id, created_by: owner.id });
-    await svc.from("tasks").update({ blocked_by: [{ task_id: A.id, gap_days: 1 }] }).eq("id", hidden.id);
     exp = await expectedOf(A.id, B.id, C.id, hidden.id);
     const noPerm = await rpc(creator, "complete_task_with_shifts", { p_task_id: A.id, p_shifts: [{ task_id: hidden.id, due_date: "2026-10-14" }], p_expected: exp });
-    check(noPerm.data?.ok === false && noPerm.data?.error === "forbidden", "una tarea del plan que la persona no puede editar rechaza TODO (forbidden)");
+    check(noPerm.data?.ok === false && noPerm.data?.error === "invalid_shift", "una tarea del plan que no depende de esta (y que la persona no puede editar) rechaza TODO (invalid_shift)");
     check((await row(A.id)).status === "pending", "...y A sigue pendiente");
 
     // stale: alguien edito B despues de armar el plan.
@@ -569,6 +571,263 @@ try {
       for (const e of events ?? []) again += await processEvent(svc as never, e as unknown as AutomationEvent);
       check(again === 0, "el mismo evento no dispara dos veces (trigger_fires)", String(again));
     }
+  }
+
+  // ═══ 00206: hora, duracion y el seguimiento unico (Tareas × CRM, M1) ═══
+  if (upTo >= 206) {
+    console.log("\n— 00206: hora, duracion y seguimiento unico —");
+
+    // La sesion de una persona puede escribir las dos columnas nuevas (privilegios por columna).
+    const ins = await creator.client.from("tasks").insert({ workspace_id: ws.id, title: "zz-test con hora", created_by: creator.id, owner_id: creator.id, due_date: D("2026-10-20"), due_time: "14:30", duration_minutes: 45 }).select("id, due_time, duration_minutes").single();
+    check(!ins.error && ins.data?.due_time === "14:30:00" && ins.data?.duration_minutes === 45, "un Member crea una tarea con hora y duracion por su sesion", ins.error?.message);
+    const timedId = ins.data!.id as string;
+    const upd = await creator.client.from("tasks").update({ due_time: "09:15", duration_minutes: 90 }).eq("id", timedId).select("due_time, duration_minutes").single();
+    check(!upd.error && upd.data?.due_time === "09:15:00" && upd.data?.duration_minutes === 90, "...y las edita", upd.error?.message);
+
+    // Las restricciones de la base.
+    const noDate = await creator.client.from("tasks").insert({ workspace_id: ws.id, title: "zz-test hora sin fecha", created_by: creator.id, due_time: "10:00" });
+    check(noDate.error?.code === "23514", "una hora sin fecha la rechaza la base (CHECK)", noDate.error?.message);
+    const clearDate = await creator.client.from("tasks").update({ due_date: null }).eq("id", timedId);
+    check(clearDate.error?.code === "23514", "borrar la fecha dejando la hora tambien (la accion borra las dos juntas)", clearDate.error?.message);
+    const clearBoth = await creator.client.from("tasks").update({ due_date: null, due_time: null, duration_minutes: null }).eq("id", timedId);
+    check(!clearBoth.error, "borrar fecha, hora y duracion juntas si pasa", clearBoth.error?.message);
+    for (const bad of [4, 1441, 0, -5]) {
+      const r = await creator.client.from("tasks").update({ duration_minutes: bad }).eq("id", timedId);
+      check(r.error?.code === "23514", `la duracion ${bad} se rechaza (5 a 1440)`, r.error?.message);
+    }
+    check(!(await creator.client.from("tasks").update({ duration_minutes: 5 }).eq("id", timedId)).error && !(await creator.client.from("tasks").update({ duration_minutes: 1440 }).eq("id", timedId)).error, "5 y 1440 minutos valen");
+
+    // La hora se conserva cuando el dia se mueve por la regla de fechas.
+    const blocker = await mk({ title: "zz-test bloqueante con hora", due_date: D("2026-10-10"), due_time: "08:00", owner_id: creator.id, created_by: creator.id });
+    const dependent = await mk({ title: "zz-test dependiente con hora", due_date: D("2026-10-11"), due_time: "16:45", duration_minutes: 60, owner_id: creator.id, created_by: creator.id });
+    await svc.from("tasks").update({ blocked_by: [{ task_id: blocker.id, gap_days: 1 }] }).eq("id", dependent.id);
+    const cctx206: TaskCtx = { supabase: creator.client as never, service: svc as never, workspaceId: ws.id, userId: creator.id, timeZone: "America/Costa_Rica" };
+    const plan206 = await planCompletionCore(cctx206, blocker.id);
+    check(plan206.ok && plan206.data.shifts.length === 1, "completar el bloqueante atrasa al dependiente", JSON.stringify(plan206));
+    if (plan206.ok) {
+      const done206 = await completeTaskCore(cctx206, blocker.id, true, plan206.data.expected);
+      check(done206.ok, "se completa moviendo las fechas", JSON.stringify(done206));
+      const moved = await row(dependent.id);
+      check(moved.due_date !== "2026-10-11" && moved.due_time === "16:45:00" && moved.duration_minutes === 60, "el dia se movio y la hora y la duracion se conservaron", JSON.stringify(moved));
+    }
+
+    // El seguimiento unico (uq_tasks_followup).
+    const { data: contact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test contacto seguimiento", email: `zz-test-seg-${stamp}@example.test` }).select("id").single();
+    const { data: contact2 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test otro contacto", email: `zz-test-seg2-${stamp}@example.test` }).select("id").single();
+    const fu = (contactId: string, ref: string, extra: Record<string, unknown> = {}) =>
+      svc.from("tasks").insert({ workspace_id: ws.id, title: "zz-test seguimiento", contact_id: contactId, source: "manual", source_ref: ref, ...extra }).select("id").single();
+    const first = await fu(contact!.id, "followup:2026-10-20");
+    check(!first.error, "se crea un seguimiento", first.error?.message);
+    const dup = await fu(contact!.id, "followup:2026-10-20");
+    check(dup.error?.code === "23505", "otro del mismo contacto y fecha lo rechaza el indice unico", dup.error?.message);
+    check(!(await fu(contact!.id, "followup:2026-10-21")).error, "otra fecha del mismo contacto vale");
+    check(!(await fu(contact2!.id, "followup:2026-10-20")).error, "la misma fecha de OTRO contacto vale");
+    await svc.from("tasks").update({ status: "completed" }).eq("id", first.data!.id);
+    check((await fu(contact!.id, "followup:2026-10-20")).error?.code === "23505", "una seguimiento COMPLETADO sigue ocupando la fecha");
+    await svc.from("tasks").update({ deleted_at: new Date().toISOString() }).eq("id", first.data!.id);
+    check(!(await fu(contact!.id, "followup:2026-10-20")).error, "una seguimiento BORRADO libera la fecha");
+
+    // La accion: idempotente y concurrente.
+    const octx: TaskCtx = { supabase: owner.client as never, service: svc as never, workspaceId: ws.id, userId: owner.id, timeZone: "America/Costa_Rica" };
+    const { data: contact3 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Ana Seguimiento", email: `zz-test-seg3-${stamp}@example.test` }).select("id").single();
+    const results = await Promise.all(Array.from({ length: 10 }, () => createFollowupTaskCore(octx, contact3!.id, "2026-11-03")));
+    const okIds = new Set(results.filter((r) => r.ok).map((r) => (r as { data: { task: { id: string } } }).data.task.id));
+    const { data: rows } = await svc.from("tasks").select("id, title, due_date, owner_id, source, source_ref").eq("contact_id", contact3!.id).like("source_ref", "followup:%");
+    check(results.every((r) => r.ok) && okIds.size === 1 && rows?.length === 1, "10 creaciones simultaneas dejan UNA sola tarea y todas devuelven esa misma", JSON.stringify({ okIds: [...okIds], rows: rows?.length, errs: results.filter((r) => !r.ok) }));
+    check(rows?.[0]?.title === "Seguimiento a zz-test Ana Seguimiento" && rows?.[0]?.due_date === "2026-11-03" && rows?.[0]?.owner_id === owner.id && rows?.[0]?.source === "manual", "titulo, fecha, responsable y origen son los esperados", JSON.stringify(rows?.[0]));
+    check(results.filter((r) => r.ok && !(r as { data: { existing: boolean } }).data.existing).length === 1, "exactamente una la creo; las demas devolvieron la existente");
+
+    // Una persona que no ve el contacto no puede crear el seguimiento.
+    const sctx: TaskCtx = { supabase: stranger.client as never, service: svc as never, workspaceId: ws.id, userId: stranger.id, timeZone: "America/Costa_Rica" };
+    const blocked = await createFollowupTaskCore(sctx, contact3!.id, "2026-11-04");
+    check(!blocked.ok, "un Member que no ve al contacto no puede crearle un seguimiento", JSON.stringify(blocked));
+    check(((await svc.from("tasks").select("id").eq("contact_id", contact3!.id).eq("source_ref", "followup:2026-11-04")).data ?? []).length === 0, "...y no se escribio nada");
+  }
+
+  // ═══ R5: la cobranza con tareas, de punta a punta (flujos publicados de verdad + motor real) ═══
+  if (upTo >= 206) {
+    console.log("\n— R5: crear una tarea cuando un pago vence, de punta a punta —");
+    const ayer = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const { data: prodP } = await svc.from("products").insert({ workspace_id: ws.id, name: "zz-test Producto cobranza", product_type: "programa" }).select("id").single();
+    const { data: variantP } = await svc.from("product_variants").insert({ workspace_id: ws.id, product_id: prodP!.id, name: "Estandar", price: 1000 }).select("id").single();
+    const { data: contactP } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Ana Cobranza", email: `zz-test-cob-${stamp}@example.test` }).select("id").single();
+    const snapshot = { product_id: prodP!.id, product_name: "zz-test Producto cobranza", product_type: "programa", variant_id: variantP!.id, variant_name: "Estandar", price: 1000, currency: "USD", duration_type: "lifetime", duration_value: null, billing_type: "one_time", billing_interval: null, guarantee_duration_type: null, guarantee_duration_value: null };
+    const optionSnapshot = { method_key: "wise", method_name: "Wise", provider_fee_percent: 0, provider_fee_fixed: 0 };
+    const reservation = { type: "reservation", amount: 100, status: "paid", due_date: ayer, paid_at: `${ayer}T15:00:00Z`, paid_on: ayer, payment_method: "wise", payment_option_snapshot: optionSnapshot, provider_fee_amount: 0 };
+    const installments = [1, 2].map((n) => ({ type: "installment", amount: 450, status: "scheduled", due_date: `2031-0${n}-15` }));
+    const sale = await svc.rpc("create_sale", {
+      p_payload: { workspace_id: ws.id, contact_id: contactP!.id, product_variant_id: variantP!.id, product_snapshot: snapshot, base_amount: 1000, discount_amount: 0, financing_type: "reservation_installments", sale_date: ayer, setter_id: null, vendedor_id: assignee.id, attribution: { mode: "last_touch" }, payments: [reservation, ...installments] },
+      p_actor_id: owner.id,
+    });
+    check(!sale.error && !!sale.data?.sale_id, "se crea una venta de prueba con vendedor y dos cuotas", sale.error?.message);
+    const saleId = sale.data!.sale_id as string;
+    const { data: cuotas } = await svc.from("payments").select("id, status").eq("sale_id", saleId).eq("status", "scheduled").order("due_date");
+    const [cuota1, cuota2] = cuotas ?? [];
+
+    // Prender: se crean y se publican los dos flujos de verdad.
+    const on = await ensureTaskPaymentFlows(svc as never, ws.id, { enabled: true, userId: owner.id });
+    check(on.ok && on.state.enabled && on.state.flows.length === 2 && on.state.flows.every((f) => f.status === "published"), "prender crea y publica los dos flujos", JSON.stringify(on));
+    const versionsOf = async () => ((await svc.from("flows").select("id, status, version, template_key").eq("workspace_id", ws.id).in("template_key", ["task_payment_overdue", "task_payment_paid_close"]).order("template_key")).data ?? []) as Array<{ id: string; status: string; version: number; template_key: string }>;
+    const versionsFirst = await versionsOf();
+    const on2 = await ensureTaskPaymentFlows(svc as never, ws.id, { enabled: true, userId: owner.id });
+    const flowsAfter = await versionsOf();
+    check(on2.ok && flowsAfter.length === 2 && JSON.stringify(flowsAfter) === JSON.stringify(versionsFirst), "prender otra vez es idempotente: dos flujos, sin nueva version", JSON.stringify({ versionsFirst, flowsAfter }));
+    const flowIds = (flowsAfter ?? []).map((f: { id: string }) => f.id);
+    const { data: trig } = await svc.from("triggers").select("type, config, is_active").in("flow_id", flowIds);
+    check(trig?.length === 2 && trig.every((t: { type: string; is_active: boolean }) => t.type === "payment_status_changed" && t.is_active), "con sus dos disparadores activos", JSON.stringify(trig));
+    check(JSON.stringify((await getPaymentTasksState(svc as never, ws.id)).enabled) === "true", "el estado se lee del flujo publicado");
+
+    const eventsOfPayment = async (paymentId: string, to: string) =>
+      ((await svc.from("automation_events").select("id, workspace_id, event_type, contact_id, member_user_id, payload").eq("contact_id", contactP!.id).eq("event_type", "payment_status_changed")).data ?? [])
+        .filter((e: { payload: Record<string, unknown> }) => e.payload.payment_id === paymentId && e.payload.to_status === to);
+    const fire = async (events: unknown[]) => {
+      let n = 0;
+      for (const e of events) n += await processEvent(svc as never, e as AutomationEvent);
+      return n;
+    };
+    const taskOf = async (paymentId: string) => ((await svc.from("tasks").select("*").eq("workspace_id", ws.id).eq("source_ref", `payment:${paymentId}`)).data ?? []) as Array<Record<string, any>>;
+
+    // El pago vence: una tarea para el vendedor.
+    await svc.from("payments").update({ status: "overdue" }).eq("id", cuota1.id);
+    const overdueEvents = await eventsOfPayment(cuota1.id, "overdue");
+    check(overdueEvents.length === 1, "el pago vencido emite UN payment_status_changed", String(overdueEvents.length));
+    check((await fire(overdueEvents)) >= 1, "el motor dispara el flujo");
+    let tasks = await taskOf(cuota1.id);
+    check(tasks.length === 1, "se crea UNA tarea con la clave payment:<id>", JSON.stringify(tasks));
+    const t = tasks[0] ?? {};
+    check(t.title === "Cobrar cuota de zz-test · zz-test Producto cobranza" && t.owner_id === assignee.id && t.priority === "high" && t.project === "Cobranza" && t.source === "flow" && t.contact_id === contactP!.id, "con titulo, vendedor, prioridad, proyecto y contacto esperados", JSON.stringify(t));
+    check(t.due_date === todayInputValue(new Date(), "America/Costa_Rica"), "vence hoy (en la zona del workspace)", String(t.due_date));
+    check(String(t.description ?? "").includes("$450,00") || String(t.description ?? "").includes("450"), "la descripcion lleva el monto", String(t.description));
+
+    // Idempotencia: el mismo evento no dispara dos veces; y si el pago vuelve a pasar a vencido con la tarea abierta, no se duplica.
+    check((await fire(overdueEvents)) === 0, "el mismo evento no dispara dos veces");
+    await svc.from("payments").update({ status: "scheduled" }).eq("id", cuota1.id);
+    await svc.from("payments").update({ status: "overdue" }).eq("id", cuota1.id);
+    const again = await eventsOfPayment(cuota1.id, "overdue");
+    check(again.length === 2, "volver a vencer emite otro evento", String(again.length));
+    await fire(again);
+    check((await taskOf(cuota1.id)).length === 1, "...y la tarea abierta NO se duplica");
+
+    // Se cobra: la tarea queda completada sola.
+    await svc.from("payments").update({ status: "paid", paid_at: new Date().toISOString(), paid_on: ayer, payment_method: "wise", provider_fee_amount: 0 }).eq("id", cuota1.id);
+    const paidEvents = await eventsOfPayment(cuota1.id, "paid");
+    check(paidEvents.length === 1, "cobrar emite UN payment_status_changed a paid");
+    await fire(paidEvents);
+    tasks = await taskOf(cuota1.id);
+    check(tasks.length === 1 && tasks[0].status === "completed" && !!tasks[0].completed_at, "la tarea queda completada sola", JSON.stringify(tasks));
+    const { data: audit } = await svc.from("audit_log").select("actor_type, action").eq("entity_id", tasks[0].id).eq("action", "task.completed");
+    check(audit?.length === 1 && audit[0].actor_type === "system", "con el sistema como actor en el historial", JSON.stringify(audit));
+
+    // Si una persona ya la habia completado, no pasa nada.
+    await svc.from("payments").update({ status: "overdue" }).eq("id", cuota2.id);
+    await fire(await eventsOfPayment(cuota2.id, "overdue"));
+    const manual = (await taskOf(cuota2.id))[0];
+    check(!!manual, "el segundo pago vencido deja su propia tarea");
+    await svc.from("tasks").update({ status: "completed" }).eq("id", manual.id);
+    const completedAt = (await row(manual.id)).completed_at;
+    await svc.from("payments").update({ status: "paid", paid_at: new Date().toISOString(), paid_on: ayer, payment_method: "wise", provider_fee_amount: 0 }).eq("id", cuota2.id);
+    await fire(await eventsOfPayment(cuota2.id, "paid"));
+    const after = await row(manual.id);
+    check(after.status === "completed" && after.completed_at === completedAt, "si una persona ya la completo, cobrar no cambia nada");
+    check(((await svc.from("audit_log").select("id").eq("entity_id", manual.id).eq("action", "task.completed")).data ?? []).length === 0, "...ni deja otra entrada en el historial");
+
+    // Apagar: los flujos vuelven a borrador, sin disparadores, y las tareas quedan.
+    const off = await ensureTaskPaymentFlows(svc as never, ws.id, { enabled: false });
+    const { data: flowsOff } = await svc.from("flows").select("status").in("id", flowIds);
+    check(off.ok && !off.state.enabled && flowsOff?.length === 2 && flowsOff.every((f: { status: string }) => f.status === "draft"), "apagar pasa los dos a borrador (no los borra)", JSON.stringify(off));
+    check(((await svc.from("triggers").select("id").in("flow_id", flowIds)).data ?? []).length === 0, "y les saca los disparadores");
+    check((await taskOf(cuota1.id)).length === 1 && (await taskOf(cuota2.id)).length === 1, "las tareas ya creadas quedan");
+    // Con el interruptor apagado, un pago que vence no crea nada.
+    const cuotas3 = [3, 4].map((n) => ({ type: "installment", amount: 10, status: "scheduled", sale_id: saleId, workspace_id: ws.id, due_date: `2031-0${n}-20` }));
+    const { data: extraPay } = await svc.from("payments").insert(cuotas3).select("id");
+    await svc.from("payments").update({ status: "overdue" }).eq("id", extraPay![0].id);
+    await fire(await eventsOfPayment(extraPay![0].id, "overdue"));
+    check((await taskOf(extraPay![0].id)).length === 0, "apagado, un pago que vence no crea ninguna tarea");
+  }
+
+  // ═══ 00207: la regla de fechas es del sistema (R10) ═══
+  if (upTo >= 207) {
+    console.log("\n— 00207: la regla de fechas mueve tambien las dependientes que no se ven —");
+    const TZ = "America/Costa_Rica";
+    const ctxOf = (u: TestUser): TaskCtx => ({ supabase: u.client as never, service: svc as never, workspaceId: ws.id, userId: u.id, timeZone: TZ });
+    const mkChain = async (tag: string) => {
+      // A es del Member `creator`; B y C dependen de A pero son de OTRA persona (assignee) y el Member no las ve.
+      const a = await mk({ title: `zz-test ${tag} A`, due_date: D("2026-10-10"), owner_id: creator.id, created_by: creator.id });
+      const b = await mk({ title: `zz-test ${tag} B secreta`, due_date: D("2026-10-11"), due_time: "09:15", duration_minutes: 30, owner_id: assignee.id, created_by: owner.id });
+      const c = await mk({ title: `zz-test ${tag} C secreta`, due_date: D("2026-10-12"), owner_id: assignee.id, follower_ids: [follower.id], created_by: owner.id });
+      await svc.from("tasks").update({ blocked_by: [{ task_id: a.id, gap_days: 1 }] }).eq("id", b.id);
+      await svc.from("tasks").update({ blocked_by: [{ task_id: b.id, gap_days: 1 }] }).eq("id", c.id);
+      return { a, b, c };
+    };
+
+    const one = await mkChain("r10");
+    check(((await creator.client.from("tasks").select("id").in("id", [one.b.id, one.c.id])).data ?? []).length === 0, "el Member NO ve las dependientes ajenas (consulta directa)");
+
+    // task_shift_context: devuelve las dependientes, sin titulo, y nada fuera del arbol.
+    const unrelated = await mk({ title: "zz-test r10 ajena fuera del arbol", due_date: D("2026-10-11"), owner_id: assignee.id, created_by: owner.id });
+    const ctxRes = await creator.client.rpc("task_shift_context", { p_task_id: one.a.id });
+    const list = (ctxRes.data?.tasks ?? []) as Array<Record<string, any>>;
+    check(ctxRes.data?.ok === true && list.map((t) => t.id).sort().join() === [one.b.id, one.c.id].sort().join(), "task_shift_context devuelve las dos dependientes (transitivas) y nada fuera del arbol", JSON.stringify(ctxRes.data ?? ctxRes.error));
+    check(list.every((t) => t.visible === false && t.title === null), "...sin titulo, porque el Member no las ve");
+    check(!JSON.stringify(ctxRes.data).includes("secreta") && !JSON.stringify(ctxRes.data).includes("description"), "...ni descripciones ni nada que las delate");
+    check(list.every((t) => "owner_id" in t && "follower_ids" in t && "updated_at" in t && "due_time" in t), "...pero si lo que la regla necesita (responsable, seguidores, hora, updated_at)");
+    check(!list.some((t) => t.id === unrelated.id), "una tarea ajena que no depende de esta no aparece");
+
+    // Completar: el Member mueve las fechas de las ajenas sin poder verlas ni editarlas.
+    const cc = ctxOf(creator);
+    const plan = await planCompletionCore(cc, one.a.id);
+    check(plan.ok && plan.data.shifts.length === 2 && plan.data.hiddenShifts === 2 && plan.data.shifts.every((x) => x.title === "" && !x.visible), "el plan del Member incluye a las dos ajenas, sin titulo, como «de otras personas»", JSON.stringify(plan));
+    const done = await completeTaskCore(cc, one.a.id, true, plan.ok ? plan.data.expected : undefined);
+    check(done.ok, "el Member completa su tarea moviendo las fechas", JSON.stringify(done));
+    if (done.ok) {
+      check(done.data.shifted.length === 0 && done.data.hiddenShifted === 2 && done.data.movedRows.length === 0 && !JSON.stringify(done.data).includes("secreta"), "...y la respuesta solo las cuenta (sin ids, titulos ni fechas de las ajenas)", JSON.stringify(done.data));
+    }
+    const bAfter = await row(one.b.id);
+    const cAfter = await row(one.c.id);
+    check(bAfter.due_date === "2026-10-14" && cAfter.due_date === "2026-10-15", "las fechas de las dependientes ajenas se corrigieron (B al 14, C al 15)", `${bAfter.due_date} ${cAfter.due_date}`);
+    check(bAfter.due_time === "09:15:00" && bAfter.duration_minutes === 30, "y B conservo su hora y su duracion");
+    check(((await creator.client.from("tasks").select("id").in("id", [one.b.id, one.c.id])).data ?? []).length === 0, "el Member SIGUE sin poder leerlas");
+    const edit = await creator.client.from("tasks").update({ title: "zz-test hackeada" }).eq("id", one.b.id).select("id");
+    check((edit.data ?? []).length === 0 && (await row(one.b.id)).title === `zz-test r10 B secreta`, "...ni editarlas");
+
+    const noticesOf = async (recipient: string) => ((await svc.from("notifications").select("type, entity_id, title").eq("recipient_id", recipient).eq("workspace_id", ws.id)).data ?? []) as Array<{ type: string; entity_id: string; title: string }>;
+    const assigneeNotices = (await noticesOf(assignee.id)).filter((n) => n.type === "task_date_moved" && [one.b.id, one.c.id].includes(n.entity_id));
+    check(assigneeNotices.map((n) => n.entity_id).sort().join() === [one.b.id, one.c.id].sort().join(), "el dueno de las dos recibe task_date_moved por cada una", JSON.stringify(assigneeNotices));
+    check((await noticesOf(follower.id)).some((n) => n.type === "task_date_moved" && n.entity_id === one.c.id), "el seguidor de C tambien")
+    check((await noticesOf(creator.id)).filter((n) => n.type === "task_date_moved").length === 0, "y quien completo NO recibe el aviso de su propio cambio");
+    const { data: shiftAudit } = await svc.from("audit_log").select("action, performed_by, metadata").eq("entity_id", one.b.id).eq("action", "task.date_shifted");
+    check(shiftAudit?.length === 1 && shiftAudit[0].performed_by === creator.id && shiftAudit[0].metadata?.caused_by_task_id === one.a.id && shiftAudit[0].metadata?.reason === "dependencia completada", "el historial de B dice que la movio quien completo, y por que", JSON.stringify(shiftAudit));
+
+    // Un corrimiento fuera del arbol hace fallar TODO (atomicidad), incluso si la tarea es visible y editable.
+    const a2 = await mk({ title: "zz-test r10 A2", due_date: D("2026-10-10"), owner_id: creator.id, created_by: creator.id });
+    const mine = await mk({ title: "zz-test r10 mia fuera del arbol", due_date: D("2026-10-11"), owner_id: creator.id, created_by: creator.id });
+    const expOf = async (...ids: string[]) => ((await svc.from("tasks").select("id, updated_at").in("id", ids)).data ?? []).map((r: { id: string; updated_at: string }) => ({ task_id: r.id, updated_at: r.updated_at }));
+    for (const [label, target] of [["ajena", unrelated.id], ["propia (visible y editable)", mine.id]] as const) {
+      const out = await creator.client.rpc("complete_task_with_shifts", { p_task_id: a2.id, p_shifts: [{ task_id: target, due_date: "2030-01-01" }], p_expected: await expOf(a2.id, target) });
+      check(out.data?.ok === false && out.data?.error === "invalid_shift", `un corrimiento a una tarea ${label} que no depende de esta se rechaza`, JSON.stringify(out.data ?? out.error));
+    }
+    check((await row(a2.id)).status === "pending" && (await row(unrelated.id)).due_date === "2026-10-11" && (await row(mine.id)).due_date === "2026-10-11", "...y no se completo ni se movio nada (atomicidad)");
+
+    // Solo se puede completar un bloqueante que se ve Y se puede editar.
+    const secret = await mk({ title: "zz-test r10 bloqueante ajeno", due_date: D("2026-10-10"), owner_id: assignee.id, created_by: owner.id });
+    const forbiddenCtx = await creator.client.rpc("task_shift_context", { p_task_id: secret.id });
+    check(forbiddenCtx.data?.ok === false && forbiddenCtx.data?.error === "forbidden", "task_shift_context de un bloqueante que el Member no ve: rechazado");
+    const forbiddenDone = await creator.client.rpc("complete_task_with_shifts", { p_task_id: secret.id, p_shifts: [], p_expected: await expOf(secret.id) });
+    check(forbiddenDone.data?.ok === false && forbiddenDone.data?.error === "forbidden", "completar un bloqueante que no ve: rechazado");
+    const viewerOwn = await mk({ title: "zz-test r10 del viewer", due_date: D("2026-10-10"), owner_id: viewer.id, created_by: owner.id });
+    const viewerDone = await viewer.client.rpc("complete_task_with_shifts", { p_task_id: viewerOwn.id, p_shifts: [], p_expected: await expOf(viewerOwn.id) });
+    check(viewerDone.data?.ok === false && viewerDone.data?.error === "forbidden", "completar una que ve pero NO puede editar (solo tasks.view): rechazado");
+    check((await viewer.client.rpc("task_shift_context", { p_task_id: viewerOwn.id })).data?.error === "forbidden", "...y su contexto tambien");
+    check((await outsider.client.rpc("task_shift_context", { p_task_id: one.a.id })).data?.ok === false, "alguien de otro workspace no obtiene nada");
+    check((await svc.rpc("task_shift_context", { p_task_id: one.a.id })).data?.error === "forbidden", "sin sesion de persona (service role) tampoco: forbidden");
+
+    // El plan es el mismo lo calcule un Member o un Administrador.
+    const two = await mkChain("r10b");
+    const planMember = await planCompletionCore(ctxOf(creator), two.a.id);
+    const planAdmin = await planCompletionCore(ctxOf(admin), two.a.id);
+    const dates = (p: typeof planMember) => (p.ok ? p.data.shifts.map((x) => [x.taskId, x.fromDue, x.toDue, x.days, x.blockerId]) : null);
+    check(!!dates(planMember) && JSON.stringify(dates(planMember)) === JSON.stringify(dates(planAdmin)), "el plan de fechas es el mismo para un Member y para un Administrador", JSON.stringify({ m: dates(planMember), a: dates(planAdmin) }));
+    check(planAdmin.ok && planAdmin.data.hiddenShifts === 0 && planAdmin.data.shifts.every((x) => x.visible && x.title !== ""), "...salvo que el Administrador ve los titulos de todas");
   }
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));

@@ -7,6 +7,7 @@ import type { NodeType } from "@/lib/types/database";
 import { EnrollSequencePanel } from "./EnrollSequencePanel";
 import { SendAssetPanel } from "./SendAssetPanel";
 import { CreateTaskPanel } from "./CreateTaskPanel";
+import { CompleteTaskPanel } from "./CompleteTaskPanel";
 
 interface ActionPanelData {
   actionType?: NodeType;
@@ -33,6 +34,8 @@ interface ActionPanelData {
 interface ActionPanelProps {
   data: Record<string, unknown>;
   onChange: (data: Record<string, unknown>) => void;
+  /** Las variables que el flujo ofrece en este punto (para los campos de texto del paso). */
+  availableVariables?: string[];
 }
 
 interface ActionSubPanelProps {
@@ -40,7 +43,7 @@ interface ActionSubPanelProps {
   onChange: (data: Record<string, unknown>) => void;
 }
 
-export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
+export function ActionPanel({ data: rawData, onChange, availableVariables }: ActionPanelProps) {
   const data = rawData as ActionPanelData;
   const actionType = data.actionType || "addTag";
 
@@ -73,7 +76,10 @@ export function ActionPanel({ data: rawData, onChange }: ActionPanelProps) {
       return <ResumeAgentConfig />;
     // Tareas (F22): deja una tarea para el equipo.
     case "create_task" as NodeType:
-      return <CreateTaskPanel data={rawData} onChange={onChange} />;
+      return <CreateTaskPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
+    // Tareas × CRM (R4): cierra las tareas abiertas que tienen esa clave de origen.
+    case "complete_task" as NodeType:
+      return <CompleteTaskPanel data={rawData} onChange={onChange} availableVariables={availableVariables} />;
     // Ventas (F37): trabajan sobre el pago o la venta que disparo el flujo.
     case "mark_payment_paid" as NodeType:
       return <MarkPaymentPaidConfig data={data} onChange={onChange} />;

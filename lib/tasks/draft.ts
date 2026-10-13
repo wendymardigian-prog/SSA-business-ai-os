@@ -8,6 +8,7 @@
 
 import type { CellPatch } from "./cell-edit";
 import { cleanProjectName } from "./project";
+import { normalizeTime } from "./time";
 import type { TaskPriority, TaskRow, TaskStatus } from "./types";
 
 export interface TaskValues {
@@ -17,6 +18,8 @@ export interface TaskValues {
   priority: TaskPriority;
   start_date: string | null;
   due_date: string | null;
+  due_time: string | null;
+  duration_minutes: number | null;
   owner_id: string | null;
   follower_ids: string[];
   project: string | null;
@@ -31,6 +34,8 @@ export function valuesFromTask(t: TaskRow): TaskValues {
     priority: t.priority,
     start_date: t.start_date,
     due_date: t.due_date,
+    due_time: normalizeTime(t.due_time),
+    duration_minutes: t.duration_minutes,
     owner_id: t.owner_id,
     follower_ids: t.follower_ids,
     project: t.project,
@@ -61,6 +66,8 @@ export function draftFromDefaults(defaults: DraftDefaults | undefined, currentUs
     priority: defaults?.priority ?? "normal",
     start_date: defaults?.start_date ?? null,
     due_date: defaults?.due_date ?? null,
+    due_time: null,
+    duration_minutes: null,
     owner_id: owner,
     follower_ids: (defaults?.follower_ids ?? []).filter((id) => id !== owner),
     project: project.ok ? project.project : null,
@@ -77,6 +84,13 @@ export function applyDraftPatch(values: TaskValues, patch: CellPatch): TaskValue
   if (patch.priority !== undefined) next.priority = patch.priority;
   if (patch.start_date !== undefined) next.start_date = patch.start_date;
   if (patch.due_date !== undefined) next.due_date = patch.due_date;
+  if (patch.due_time !== undefined) next.due_time = patch.due_time;
+  if (patch.duration_minutes !== undefined) next.duration_minutes = patch.duration_minutes;
+  // Sin fecha no hay hora ni duracion.
+  if (!next.due_date) {
+    next.due_time = null;
+    next.duration_minutes = null;
+  }
   if (patch.owner_id !== undefined) next.owner_id = patch.owner_id;
   if (patch.follower_ids !== undefined) next.follower_ids = [...patch.follower_ids];
   if (patch.project !== undefined) {

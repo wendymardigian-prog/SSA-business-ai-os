@@ -24,7 +24,12 @@ import type { ShareableEvent } from "@/components/scheduling/bookings/share-link
 import type { CalendarView } from "@/lib/scheduling/calendar-view";
 import type { BookingField, BookingOrigin, BookingStatus } from "@/lib/scheduling/types";
 import { rangeFor } from "@/lib/scheduling/calendar-range";
-import { startOfDay, endOfDay } from "@/lib/dates";
+import { startOfDay, endOfDay, todayInputValue } from "@/lib/dates";
+import { TASK_COLUMNS } from "@/lib/tasks/core";
+import { dueDateWindow } from "@/lib/tasks/calendar";
+import { parseTasksMode } from "@/lib/tasks/calendar-ui";
+import type { TaskRow } from "@/lib/tasks/types";
+import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 export const dynamic = "force-dynamic";
 
@@ -219,6 +224,42 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   // "Todavía no hay NINGUNA agenda" es un problema distinto de "ninguna con
   // estos filtros": antes los dos mostraban el mismo cartel de "Conectar
   // Google Calendar", aunque ya estuviera conectado.
+  // Las tareas del calendario (Tareas × CRM, R7): SOLO con el interruptor encendido, en la vista calendario y con
+  // `tasks.view`. Apagado no se consulta nada de tareas. La RLS decide cuales ve cada quien; «mias» es el responsable.
+  const canViewTasks = ctx.can("tasks.view");
+  const tasksMode = parseTasksMode(query.tareas, canViewTasks);
+  let agendaTasks: import("@/components/scheduling/bookings/bookings-view").AgendaTasksProps | undefined;
+  if (canViewTasks) {
+    const workspaceTz = (ctx.workspace as { timezone?: string }).timezone || "UTC";
+    let rows: TaskRow[] = [];
+    let members: Array<{ id: string; name: string }> = [];
+    if (tasksMode !== "off" && view === "calendar" && calendarRange) {
+      const win = dueDateWindow(calendarRange);
+      const base = () => {
+        let q = ctx.supabase.from("tasks").select(TASK_COLUMNS).eq("workspace_id", ctx.workspace.id).is("deleted_at", null);
+        if (tasksMode === "mine") q = q.eq("owner_id", ctx.user.id);
+        return q;
+      };
+      const [dated, undated, team] = await Promise.all([
+        base().gte("due_date", win.from).lte("due_date", win.to).limit(500),
+        base().is("due_date", null).neq("status", "completed").order("created_at", { ascending: false }).limit(50),
+        getWorkspaceMembers(ctx.workspace.id),
+      ]);
+      rows = [...((dated.data ?? []) as unknown as TaskRow[]), ...((undated.data ?? []) as unknown as TaskRow[])];
+      members = team.map((m) => ({ id: m.userId, name: m.name }));
+    }
+    agendaTasks = {
+      mode: view === "calendar" ? tasksMode : "off",
+      rows,
+      members,
+      currentUserId: ctx.user.id,
+      today: todayInputValue(new Date(), workspaceTz),
+      workspaceTimeZone: workspaceTz,
+      canEdit: ctx.can("tasks.edit"),
+      canDelete: ctx.can("tasks.delete"),
+    };
+  }
+
   const [{ count: everCount }, utmOptions] = await Promise.all([
     ctx.supabase.from("bookings").select("id", { count: "exact", head: true }).eq("workspace_id", ctx.workspace.id),
     bookingUtmOptions(ctx.supabase, ctx.workspace.id),
@@ -329,6 +370,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       showConfig={canOpenConfig(ctx.can)}
       brokenAccounts={broken}
       needsProfile={ctx.can("scheduling.use") && !profile}
+      tasks={agendaTasks}
     />
   );
 }

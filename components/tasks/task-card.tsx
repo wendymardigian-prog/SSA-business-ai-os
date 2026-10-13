@@ -8,6 +8,7 @@ import { STATUS_LABELS, TASK_STATUSES, type TaskStatus } from "@/lib/tasks/types
 import { cn } from "@/lib/utils";
 import { PersonBadge, PriorityChip, StatusChip, StatusIcon, STATUS_TONE } from "./chips";
 import { FloatingPanel } from "./floating";
+import { useTimeFormat } from "./time-format-context";
 
 export interface TaskCardProps {
   view: TaskRowView;
@@ -45,7 +46,8 @@ export function TaskCard({ view, today, canEdit, busy, source, variant, onOpen, 
   const menuAnchor = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState(false);
   const [date, setDate] = useState(view.dueDate ?? "");
-  const label = dueLabel({ due_date: view.dueDate, status: view.status }, today);
+  const timeFormat = useTimeFormat();
+  const label = dueLabel({ due_date: view.dueDate, due_time: view.dueTime, status: view.status }, today, timeFormat);
   const origin = formatSource(view.task, source);
 
   return (

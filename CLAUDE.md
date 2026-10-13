@@ -1073,10 +1073,46 @@ Todo contacto nuevo nace en UN solo lugar, con bloqueo por dato: dos llegadas si
 
 `00200` (la central y `normalize_phone`), `00201` (los buscadores sobre la busqueda compartida), `00202` (`find_or_link_contact` v3), `00203` (`create_booking` v3) y `00204` (`submit_form_response` v6), **aplicadas y registradas**. La `00205` (indices unicos) esta escrita y ensayada, **sin aplicar**. La `00206` y la `00207` son de Tareas. **La proxima migracion disponible es la `00208`** (confirmar con `list_migrations`).
 
+# Tareas × CRM (construido, 13/10/2026)
+
+Las tareas se conectan con el CRM y la Agenda: seccion «Tareas» en la ficha y la bandeja, «Proximo seguimiento» con «Crear tarea», cobranza automatica,
+hora y duracion, tareas en el calendario, arrastre de agendas y fusion real de contactos. Resumen en [docs/tareas.md](docs/tareas.md) y
+[docs/contactos-fusion.md](docs/contactos-fusion.md); nodos en [docs/flow-registry.md](docs/flow-registry.md); avance y decisiones en
+`docs/PROGRESS-tareas-crm.md` y `docs/PENDIENTE-tareas-crm.md`.
+
+## Lo que no se puede romper
+
+- **La fusion de contactos es `merge_contacts` (00207), una sola transaccion, solo `service_role`.** Cubre las 24 relaciones de `CONTACT_MERGE_TABLES`
+  (`lib/contacts/merge.ts`). **Una tabla nueva con `contact_id` se suma a la funcion y a esa lista en el mismo cambio**: `verify-contact-merge.mjs`
+  lee el catalogo y falla si falta una. `linkContacts` sigue siendo Owner/Admin y delega con el cliente de servicio. Despues de fusionar se va a la ficha
+  del principal (el duplicado queda borrado), con el resultado como cuentas en la URL.
+- **La regla de fechas es del SISTEMA, no de lo que la persona ve.** Completar un bloqueante corrige a TODAS sus dependientes transitivas
+  (`task_shift_context`); los permisos no cambian (hay que poder editar y ver ESE bloqueante). Lo que la persona no ve se resume sin titulo, y sus
+  dueños reciben `task_date_moved`. `complete_task_with_shifts` rechaza todo corrimiento fuera del arbol de dependientes.
+- **La identidad de una tarea automatica es su `source_ref`**: `followup:AAAA-MM-DD` (indice unico `uq_tasks_followup`, incluye completadas) y
+  `payment:<id>` (clave del nodo). El dia del seguimiento se decodifica con la zona del **workspace**. `contacts.next_followup_date` y
+  `programar_seguimiento` no se tocan; cambiar o quitar la fecha no toca ninguna tarea.
+- **El interruptor «Crear una tarea cuando un pago vence» no tiene columna**: el estado es si el flujo `task_payment_overdue` esta publicado.
+  `ensureTaskPaymentFlows` es idempotente y no pisa un grafo editado. Los flujos no estan en `SALES_TEMPLATE_KEYS`.
+- **`complete_task` solo cierra tareas con `source_ref` igual a su clave** y no mueve fechas. `create_task` con `sourceKey` descarta la clave si
+  una variable no se resuelve.
+- **Hora y duracion son opcionales** (`due_time`, `duration_minutes`); las reglas siguen siendo POR DIA, nunca por hora. Borrar la fecha borra la hora.
+- **Las tareas se arrastran SIN confirmar (con «Deshacer»); las agendas SIEMPRE con el modal.** `rescheduleBooking` y `rescheduleAsHost` no se
+  tocaron. Con el interruptor «Tareas» apagado el calendario no consulta nada de tareas y es identico al de antes.
+- **`FollowupField` sin las props nuevas se ve igual** (`followup-field.characterization.test.ts`).
+- **Sin dependencias nuevas** en esta tanda.
+
+## Migraciones
+
+`00206` (hora, duracion, indice unico del seguimiento) y `00207` (`merge_contacts`, `task_shift_context`, `complete_task_with_shifts` nueva), **aplicadas y
+registradas**. Las `00200` a `00205` son de la sesion de contactos (regla unica). **La proxima libre es la `00208`** (confirmar con `list_migrations`).
+
 ## Scripts de verificacion
 
 ```
 node scripts/verify-contacts-single-entry.mjs   # la regla unica: base, SQL↔TS, concurrencia, buscadores, 00205
+node scripts/verify-tasks.mjs           # incluye los bloques de 00206, la cobranza de punta a punta y 00207
+node scripts/verify-contact-merge.mjs   # fusion real, atomicidad, guardia de deriva
 ```
 
 Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`) y no se corren dos en simultaneo.

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDuration } from "@/lib/tasks/time";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -184,6 +185,106 @@ export function DateField({
       }}
       className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-80"
     />
+  );
+}
+
+/** Una hora (HH:MM). Se guarda al salir del campo; vacia = sin hora. «Quitar hora» la borra de un clic. */
+export function TimeField({
+  value,
+  onSave,
+  label,
+  disabled,
+}: {
+  value: string | null;
+  onSave: (next: string | null) => void | Promise<unknown>;
+  label: string;
+  disabled?: boolean;
+}) {
+  const [text, setText] = useState(value ?? "");
+  const [focused, setFocused] = useState(false);
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (!focused) setText(value ?? "");
+  }
+
+  const textRef = useLatest(text);
+  const valueRef = useLatest(value);
+  const saveRef = useLatest(onSave);
+  const flush = () => {
+    const next = textRef.current || null;
+    if (next === valueRef.current) return;
+    void saveRef.current(next);
+  };
+  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="time"
+        value={text}
+        disabled={disabled}
+        aria-label={label}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          flush();
+        }}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          else if (e.key === "Escape" && text !== (value ?? "")) {
+            e.preventDefault();
+            e.stopPropagation();
+            setText(value ?? "");
+          }
+        }}
+        className="h-8 w-36 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-60"
+      />
+      {value && !disabled && (
+        <button
+          type="button"
+          onClick={() => {
+            setText("");
+            void onSave(null);
+          }}
+          className="h-8 rounded-lg px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          Quitar hora
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** La duracion: 15, 30, 45, 60, 90 o 120 minutos, o vacia (se dibuja de 30 minutos). Un valor que ya estaba se conserva. */
+export function DurationSelect({
+  value,
+  onChange,
+  label,
+  disabled,
+  options,
+}: {
+  value: number | null;
+  onChange: (next: number | null) => void | Promise<unknown>;
+  label: string;
+  disabled?: boolean;
+  options: readonly number[];
+}) {
+  const list = value !== null && !options.includes(value) ? [...options, value].sort((a, b) => a - b) : options;
+  return (
+    <select
+      value={value === null ? "" : String(value)}
+      disabled={disabled}
+      aria-label={label}
+      onChange={(e) => void onChange(e.target.value === "" ? null : Number(e.target.value))}
+      className="h-8 w-48 rounded-lg border border-input bg-background px-2 text-sm outline-none focus:border-primary disabled:cursor-default disabled:opacity-60"
+    >
+      <option value="">Sin duración (30 min)</option>
+      {list.map((m) => (
+        <option key={m} value={m}>{formatDuration(m)}</option>
+      ))}
+    </select>
   );
 }
 

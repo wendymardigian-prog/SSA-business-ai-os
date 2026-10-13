@@ -3,6 +3,7 @@
  */
 
 import { foldText } from "./text";
+import { normalizeTime } from "./time";
 import { PRIORITY_RANK, STATUS_LABELS, TASK_STATUSES, type TaskRow, type TaskSource, type TaskStatus } from "./types";
 import type { GroupBy, SortColumn, SortSpec } from "./view-state";
 
@@ -23,6 +24,8 @@ export interface TaskRowView {
   project: string | null;
   projectKey: string | null;
   dueDate: string | null;
+  /** Hora de vencimiento (`HH:MM`), si tiene. */
+  dueTime: string | null;
   priority: TaskRow["priority"];
   overdue: boolean;
   blocked: boolean;
@@ -71,6 +74,7 @@ export function buildRows(
       project: task.project,
       projectKey: task.project_key,
       dueDate: task.due_date,
+      dueTime: normalizeTime(task.due_time),
       priority: task.priority,
       overdue: isOverdue(task, opts.today),
       blocked: blockedCount > 0,
@@ -104,7 +108,10 @@ function byColumn(column: SortColumn, dir: 1 | -1): (a: TaskRowView, b: TaskRowV
     case "owner":
       return (a, b) => cmpNullable(a.ownerName, b.ownerName, text, dir);
     case "due":
-      return (a, b) => cmpNullable(a.dueDate, b.dueDate, (x, y) => (x < y ? -1 : x > y ? 1 : 0), dir);
+      // Por dia y, a igual dia, por hora: las que no tienen hora van despues de las que si, en los dos sentidos.
+      return (a, b) =>
+        cmpNullable(a.dueDate, b.dueDate, (x, y) => (x < y ? -1 : x > y ? 1 : 0), dir) ||
+        (a.dueDate !== null && a.dueDate === b.dueDate ? cmpNullable(a.dueTime, b.dueTime, (x, y) => (x < y ? -1 : x > y ? 1 : 0), dir) : 0);
     case "priority":
       return (a, b) => (PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]) * dir;
     case "project":

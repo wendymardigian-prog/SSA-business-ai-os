@@ -11,6 +11,8 @@ export function makeTask(over: Partial<TaskRow> = {}): TaskRow {
     priority: "normal",
     start_date: null,
     due_date: null,
+    due_time: null,
+    duration_minutes: null,
     completed_at: null,
     owner_id: null,
     follower_ids: [],

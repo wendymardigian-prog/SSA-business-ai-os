@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dueLabel, flowIdOf, formatDay, formatDayShort, formatSource } from "./format";
+import { dueLabel, flowIdOf, formatDay, formatDayShort, formatSource, formatTaskWhen } from "./format";
 
 const TODAY = "2026-10-13";
 
@@ -42,5 +42,29 @@ describe("formatSource (F26)", () => {
     expect(flowIdOf(`${FLOW}:a:b`)).toBe(FLOW);
     expect(flowIdOf("no-es-un-id:x")).toBeNull();
     expect(flowIdOf(null)).toBeNull();
+  });
+});
+
+describe("fecha con hora (R6)", () => {
+  it("formatTaskWhen: solo fecha, 24 h y 12 h", () => {
+    expect(formatTaskWhen("2026-10-20", null, "24h")).toBe("20/10/2026");
+    expect(formatTaskWhen("2026-10-20", "14:30", "24h")).toBe("20/10/2026 · 14:30");
+    expect(formatTaskWhen("2026-10-20", "14:30:00", "12h")).toBe("20/10/2026 · 2:30 p. m.");
+    expect(formatTaskWhen("2026-10-20", "09:05", "12h")).toBe("20/10/2026 · 9:05 a. m.");
+  });
+  it("con `today` acorta la fecha como en las tablas", () => {
+    expect(formatTaskWhen("2026-10-20", "14:30", "24h", TODAY)).toBe("20/10 · 14:30");
+    expect(formatTaskWhen("2027-01-02", "14:30", "24h", TODAY)).toBe("02/01/2027 · 14:30");
+  });
+  it("dueLabel suma la hora a «Hoy», «Mañana» y a la fecha, y no cambia el tono", () => {
+    expect(dueLabel({ due_date: TODAY, due_time: "14:30", status: "pending" }, TODAY, "24h")).toEqual({ text: "Hoy · 14:30", tone: "today" });
+    expect(dueLabel({ due_date: "2026-10-14", due_time: "09:00", status: "pending" }, TODAY, "12h")).toEqual({ text: "Mañana · 9:00 a. m.", tone: "soon" });
+    expect(dueLabel({ due_date: "2026-10-20", due_time: "09:00", status: "pending" }, TODAY, "24h").text).toBe("20/10 · 09:00");
+    // Una tarea de hoy cuya hora ya paso sigue siendo «de hoy», no vencida: las reglas son por dia.
+    expect(dueLabel({ due_date: TODAY, due_time: "00:01", status: "pending" }, TODAY, "24h").tone).toBe("today");
+  });
+  it("sin formato (como siempre) o sin hora, dueLabel es el de siempre", () => {
+    expect(dueLabel({ due_date: TODAY, due_time: "14:30", status: "pending" }, TODAY)).toEqual({ text: "Hoy", tone: "today" });
+    expect(dueLabel({ due_date: TODAY, due_time: null, status: "pending" }, TODAY, "24h")).toEqual({ text: "Hoy", tone: "today" });
   });
 });

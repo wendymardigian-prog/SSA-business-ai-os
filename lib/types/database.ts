@@ -5378,6 +5378,16 @@ export interface Database {
         Args: { p_task_id: string; p_shifts: Json; p_expected: Json };
         Returns: Json;
       };
+      /** Tareas × CRM (00207): las dependientes (transitivas) de una tarea y los demas bloqueantes, para la regla de fechas. Titulo solo de las que se ven. */
+      task_shift_context: {
+        Args: { p_task_id: string };
+        Returns: Json;
+      };
+      /** Tareas × CRM (00207): la fusion de contactos, en una transaccion. Solo service_role. */
+      merge_contacts: {
+        Args: { p_workspace_id: string; p_main: string; p_duplicate: string; p_actor: string | null };
+        Returns: Json;
+      };
       /** Tareas (00197): guarda las dependencias sin ciclos. */
       set_task_blockers: {
         Args: { p_task_id: string; p_blockers: Json };

@@ -15,6 +15,7 @@ import {
   PlayCircle,
   Library,
   ListTodo,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeType } from "@/lib/types/database";
@@ -38,6 +39,10 @@ export interface ActionNodeProps {
   assetName?: string;
   /** "Crear tarea": el titulo (con variables) que se muestra como resumen. */
   title?: string;
+  /** "Crear tarea": quien queda a cargo y la clave de origen, que se muestran en la tarjeta. */
+  owner?: string;
+  sourceKey?: string;
+  /** "Completar tarea": la clave de origen de la(s) tarea(s) que cierra. */
 }
 
 const actionConfig: Record<
@@ -124,7 +129,26 @@ const actionConfig: Record<
     label: "Crear tarea",
     color: "bg-gray-500",
   },
+  complete_task: {
+    icon: ListChecks,
+    label: "Completar tarea",
+    color: "bg-gray-500",
+  },
 };
+
+const OWNER_LABELS: Record<string, string> = {
+  user: "Una persona",
+  member: "Quien envió el reporte",
+  seller: "Vendedor de la venta",
+  contact_assigned: "Asignada al contacto",
+};
+
+/** La segunda linea de la tarjeta de «Crear tarea»: quien queda a cargo y la clave de origen. */
+function getDetail(nodeData: ActionNodeProps): string | null {
+  if (nodeData.actionType !== ("create_task" as NodeType)) return null;
+  const parts = [nodeData.owner && OWNER_LABELS[nodeData.owner] ? `A cargo: ${OWNER_LABELS[nodeData.owner]}` : null, nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null];
+  return parts.filter(Boolean).join(" · ") || null;
+}
 
 function getSummary(nodeData: ActionNodeProps): string | null {
   const type = nodeData.actionType;
@@ -164,6 +188,8 @@ function getSummary(nodeData: ActionNodeProps): string | null {
       return nodeData.assetId ? (nodeData.assetName ?? "Recurso elegido") : null;
     case "create_task" as NodeType:
       return nodeData.title?.trim() || null;
+    case "complete_task" as NodeType:
+      return nodeData.sourceKey?.trim() ? `Clave: ${nodeData.sourceKey.trim()}` : null;
     default:
       return null;
   }
@@ -180,6 +206,7 @@ export function ActionNode({ data, selected }: NodeProps) {
   const Icon = config.icon;
   const label = nodeData.label || config.label;
   const summary = getSummary(nodeData);
+  const detail = getDetail(nodeData);
 
   const isAbSplit = actionType === "abSplit";
   const paths = isAbSplit ? nodeData.paths || [] : [];
@@ -212,6 +239,7 @@ export function ActionNode({ data, selected }: NodeProps) {
         ) : (
           <p className="mt-1 text-xs text-muted-foreground italic">Not configured</p>
         )}
+        {detail && <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{detail}</p>}
       </div>
       {isAbSplit && paths.length > 0 ? (
         <>

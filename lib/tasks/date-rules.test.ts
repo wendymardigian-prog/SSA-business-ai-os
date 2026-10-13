@@ -128,3 +128,25 @@ describe("computeDateShifts (F3)", () => {
     expect(() => computeDateShifts({ tasks, completedTaskId: "A", completedOn: "2026-10-13" })).not.toThrow();
   });
 });
+
+describe("la hora no cambia ninguna regla de fechas (R6)", () => {
+  it("el plan es el mismo con o sin hora y duracion: se compara por DIA", () => {
+    const base = [task("A", "2026-10-10"), task("B", "2026-10-11", [["A", 1]]), task("C", "2026-10-12", [["B", 1]])];
+    const timed = base.map((t) => ({ ...t, due_time: "14:30", duration_minutes: 45 })) as unknown as DateRuleTask[];
+    const a = computeDateShifts({ tasks: base, completedTaskId: "A", completedOn: "2026-10-13" });
+    const b = computeDateShifts({ tasks: timed, completedTaskId: "A", completedOn: "2026-10-13" });
+    expect(b).toEqual(a);
+    expect(a.shifts.map((s) => s.toDue)).toEqual(["2026-10-14", "2026-10-15"]);
+  });
+
+  it("un corrimiento solo cambia fechas: el plan no lleva hora ni duracion, asi que se conservan al mover el dia", () => {
+    const timed = [task("A", "2026-10-10"), { ...task("B", "2026-10-11", [["A", 1]]), due_time: "09:15", duration_minutes: 90 }] as unknown as DateRuleTask[];
+    const { shifts } = computeDateShifts({ tasks: timed, completedTaskId: "A", completedOn: "2026-10-13" });
+    expect(Object.keys(shifts[0]).sort()).toEqual(["blockerId", "days", "fromDue", "fromStart", "taskId", "toDue", "toStart"]);
+  });
+
+  it("mismo dia, cualquier hora es valida: completar el mismo dia no mueve nada aunque la hora ya paso", () => {
+    const tasks = [{ ...task("A", "2026-10-13"), due_time: "08:00" }, { ...task("B", "2026-10-13", [["A", 0]]), due_time: "07:00" }] as unknown as DateRuleTask[];
+    expect(computeDateShifts({ tasks, completedTaskId: "A", completedOn: "2026-10-13" }).shifts).toEqual([]);
+  });
+});

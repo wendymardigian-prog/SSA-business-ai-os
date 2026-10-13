@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { BUILDER_TRIGGER_TYPES, buildDesiredTriggers } from "@/lib/flow-triggers";
-import { createServiceClient } from "@/lib/supabase/server";
-import { backfillPaymentRelativeJobs } from "@/lib/sales/automation/relative";
-import { isRelativeSalesTrigger, SALES_TRIGGER_TYPES } from "@/lib/sales/automation/triggers";
-import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { publishFlow } from "@/lib/flow-engine/publish";
 
 export async function POST(
   _request: NextRequest,
@@ -29,92 +25,17 @@ export async function POST(
   if (!membership)
     return NextResponse.json({ error: "No workspace" }, { status: 404 });
 
-  // Get current flow
-  const { data: flow, error } = await supabase
-    .from("flows")
-    .select("*")
-    .eq("id", flowId)
-    .eq("workspace_id", membership.workspace_id)
-    .single();
-
-  if (error || !flow)
-    return NextResponse.json(
-      { error: error?.message || "Flow not found" },
-      { status: 404 }
-    );
-
-  // Un flujo sin contacto (reporte de fin de día, E15) no se publica con pasos que necesiten uno.
-  const problems = await checkMemberFlow(supabase, membership.workspace_id, Array.isArray(flow.nodes) ? (flow.nodes as unknown[]) : [], Array.isArray(flow.edges) ? (flow.edges as unknown[]) : [], { publishing: true });
-  if (problems.length > 0) return NextResponse.json({ error: problems[0], problems }, { status: 400 });
-
-  // Update flow status to published and increment version
-  const newVersion = flow.version + 1;
-  await supabase
-    .from("flows")
-    .update({
-      status: "published",
-      published_at: new Date().toISOString(),
-      version: newVersion,
-    })
-    .eq("id", flowId);
-
-  // Save version snapshot
-  await supabase.from("flow_versions").insert({
-    flow_id: flowId,
-    version: newVersion,
-    nodes: flow.nodes,
-    edges: flow.edges,
-    viewport: flow.viewport,
-    name: flow.name,
-    published_by: user.id,
+  // Los pasos de publicar viven en `lib/flow-engine/publish.ts` (los usa tambien el interruptor de cobranza de Ajustes).
+  const result = await publishFlow({
+    db: supabase,
+    userId: user.id,
+    workspaceId: membership.workspace_id,
+    flowId,
+    getServiceClient: () => createServiceClient(),
   });
-
-  // Sync trigger rows from the flow's trigger nodes into the `triggers` table.
-  // The runtime matcher (lib/flow-engine/trigger-matcher.ts) reads triggers.config,
-  // but the builder only ever saved keywords into flows.nodes — so triggers configured
-  // in the UI never fired in production. Reconcile them here on publish. This includes
-  // `comment_keyword`: builder-created rows are workspace-wide (channel_id null), while
-  // Growth-tab rows are channel-scoped (channel_id set) and must survive republish —
-  // hence the null-channel guard on the delete below. A comment_keyword node with
-  // "also match in DMs" emits a second row typed `keyword` (see below), so both rows
-  // are reconciled together on every republish.
-  const flowNodes = Array.isArray(flow.nodes) ? (flow.nodes as Array<Record<string, unknown>>) : [];
-  const desiredTriggers = buildDesiredTriggers(flowNodes, flowId);
-
-  // Reconcile: clear the builder-managed trigger rows for this flow, then insert the
-  // fresh set derived from the current node graph (delete-and-reinsert keeps the table
-  // in sync with what was published and avoids duplicates on republish). Only
-  // null-channel rows are builder-managed; channel-scoped rows belong to the Growth tab.
-  await supabase
-    .from("triggers")
-    .delete()
-    .eq("flow_id", flowId)
-    .is("channel_id", null)
-    // Los de Ventas tambien se reconcilian: republicar no duplica la fila (y un relativo duplicado mandaria dos recordatorios).
-    .in("type", [...BUILDER_TRIGGER_TYPES, ...SALES_TRIGGER_TYPES]);
-
-  if (desiredTriggers.length > 0) {
-    const { error: insertError } = await supabase.from("triggers").insert(desiredTriggers);
-    if (insertError) {
-      console.error("[publish] Failed to sync triggers from flow nodes:", insertError);
-    }
+  if (!result.ok) {
+    return NextResponse.json(result.problems ? { error: result.error, problems: result.problems } : { error: result.error }, { status: result.status });
   }
 
-  // Activate any remaining triggers for this flow (e.g. comment_keyword managed elsewhere).
-  await supabase
-    .from("triggers")
-    .update({ is_active: true })
-    .eq("flow_id", flowId);
-
-  // Un flujo con un recordatorio relativo al vencimiento de un pago (Ventas, F37): se agendan los de los
-  // pagos que ya existen. Sin esto el recordatorio valdria solo para los pagos nuevos.
-  if (desiredTriggers.some((t) => isRelativeSalesTrigger(t.type))) {
-    try {
-      await backfillPaymentRelativeJobs(await createServiceClient(), membership.workspace_id);
-    } catch (backfillError) {
-      console.error("[publish] no pude agendar los recordatorios de pagos:", backfillError instanceof Error ? backfillError.message : "error");
-    }
-  }
-
-  return NextResponse.json({ ...flow, version: newVersion });
+  return NextResponse.json({ ...result.flow, version: result.version });
 }

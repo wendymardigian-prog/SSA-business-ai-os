@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2, Link2, AlertTriangle } from "lucide-react";
 import { linkContacts, dismissLinkSuggestion } from "@/lib/actions/contacts";
+import { encodeMergeParam } from "@/lib/contacts/merge";
 import { ActionError } from "./ui";
 
 /**
@@ -40,7 +41,7 @@ export function LinkSuggestionBanner({
 
   if (suggestions.length === 0) return null;
 
-  function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function act(fn: () => Promise<{ ok: boolean; error?: string; contactId?: string; moved?: Record<string, number> }>) {
     start(async () => {
       const result = await fn();
       if (!result.ok) {
@@ -48,6 +49,13 @@ export function LinkSuggestionBanner({
         return;
       }
       setError(null);
+      // Al vincular, el contacto que se mira queda borrado (es el duplicado): se va a la ficha del principal, que muestra
+      // lo que se unifico.
+      if (result.moved && result.contactId) {
+        const moved = encodeMergeParam(result.moved);
+        router.push(`/dashboard/contacts/${result.contactId}?fusion=${moved || "ok"}`);
+        return;
+      }
       router.refresh();
     });
   }

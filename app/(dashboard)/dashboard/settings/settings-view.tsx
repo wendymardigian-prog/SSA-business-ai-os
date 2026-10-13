@@ -1,5 +1,7 @@
 "use client";
 
+import { PaymentTasksCard } from "@/components/settings/payment-tasks-card";
+import type { TaskPaymentState } from "@/lib/tasks/payment-tasks-types";
 import { useState } from "react";
 import { Settings, Hash, Save, Plus, X, Check } from "lucide-react";
 import { updateWorkspaceSettings } from "@/lib/actions/workspace";
@@ -48,9 +50,11 @@ interface WorkspaceSettings {
 export function SettingsView({
   workspace,
   canViewAiCosts,
+  paymentTasks,
 }: {
   workspace: WorkspaceSettings;
   canViewAiCosts: boolean;
+  paymentTasks: TaskPaymentState;
 }) {
   const [name, setName] = useState(workspace.name);
   const [keywords, setKeywords] = useState<string[]>(workspace.globalKeywords);
@@ -271,6 +275,7 @@ export function SettingsView({
                 overdueGraceDays={workspace.overdueGraceDays}
                 autoCreateFlows={workspace.salesAutoCreateFlows}
               />
+              <PaymentTasksCard initial={paymentTasks} />
             </section>
 
             <hr className="border-border" />

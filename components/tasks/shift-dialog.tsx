@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import type { CompletionPlan } from "@/lib/tasks/core";
 import { formatDay, pluralDays } from "@/lib/tasks/format";
-import { groupShiftsByChain, shiftSummary } from "@/lib/tasks/shift-preview";
+import { hiddenShiftsLine, shiftSummary, visibleChains } from "@/lib/tasks/shift-preview";
 import { CenterDialog } from "./overlay";
 
 /**
@@ -22,7 +22,7 @@ export function ShiftDialog({
   onClose: () => void;
 }) {
   const [working, setWorking] = useState<"move" | "keep" | null>(null);
-  const chains = groupShiftsByChain(plan.shifts);
+  const { chains, hidden } = visibleChains(plan.shifts);
 
   async function run(apply: boolean) {
     setWorking(apply ? "move" : "keep");
@@ -43,8 +43,8 @@ export function ShiftDialog({
 
         <div className="mt-4 space-y-4">
           {chains.map((chain, i) => (
-            <section key={i} aria-label={`Cadena que depende de ${chain.startTitle}`}>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Depende de «{chain.startTitle}»</h3>
+            <section key={i} aria-label={chain.startTitle ? `Cadena que depende de ${chain.startTitle}` : "Cadena que depende de una tarea de otra persona"}>
+              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{chain.startTitle ? `Depende de «${chain.startTitle}»` : "Depende de una tarea de otra persona"}</h3>
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {chain.shifts.map((s) => (
                   <li key={s.taskId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
@@ -60,6 +60,7 @@ export function ShiftDialog({
               </ul>
             </section>
           ))}
+          {hidden > 0 && <p className="text-sm text-muted-foreground">{hiddenShiftsLine(hidden)}</p>}
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3">

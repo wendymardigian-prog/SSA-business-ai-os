@@ -44,12 +44,14 @@ import {
   type LinkSuggestion,
 } from "@/components/contacts/link-suggestion-banner";
 import { ContactBookingsSection } from "@/components/contacts/bookings-section";
+import { MergeNotice } from "@/components/contacts/merge-notice";
+import { decodeMergeParam } from "@/lib/contacts/merge";
 import { ContactCallsSection } from "@/components/contacts/calls-section";
 import { ContactSalesSection } from "@/components/contacts/sales-section";
 import { ContactFormsSection } from "@/components/contacts/forms-section";
 import { loadContactForms } from "@/lib/forms/data/contact-forms";
-import { ContactTasks } from "@/components/tasks/contact-tasks";
-import { loadContactTasks } from "@/lib/tasks/contact-section";
+import { ContactTasks, ContactTasksProvider } from "@/components/tasks/contact-tasks";
+import { loadContactTasksChecked } from "@/lib/tasks/contact-section";
 import { todayInputValue } from "@/lib/dates";
 import { loadWizardConfig } from "@/lib/sales/wizard/load";
 import { snapshotText } from "@/lib/sales/sale-text";
@@ -77,10 +79,13 @@ const HISTORY_LIMIT = 80;
 
 export default async function ContactDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ contactId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { contactId } = await params;
+  const { fusion } = await searchParams;
   const { workspace, supabase, user, role } = await getWorkspace();
   const isAdmin = isAdminRole(role);
 
@@ -253,7 +258,8 @@ export default async function ContactDetailPage({
 
   // Las tareas del contacto (Tareas, F20): solo con `tasks.view`; la RLS decide cuales ve (un Member, las suyas).
   const canViewTasks = permissionCtx.can("tasks.view");
-  const contactTasks = canViewTasks ? await loadContactTasks(supabase, { workspaceId: workspace.id, contactId }) : [];
+  const contactTasksRes = canViewTasks ? await loadContactTasksChecked(supabase, { workspaceId: workspace.id, contactId }) : { tasks: [], failed: false };
+  const contactTasks = contactTasksRes.tasks;
 
   const contactBookings = (bookingsRes.data ?? []).map((b) => ({
     id: b.id,
@@ -411,6 +417,8 @@ export default async function ContactDetailPage({
       </header>
 
       <div className="flex-1 overflow-auto px-8 py-6">
+        {fusion !== undefined && <MergeNotice moved={decodeMergeParam(fusion)} />}
+
         {suggestions.length > 0 && (
           <div className="mb-6">
             <LinkSuggestionBanner
@@ -540,27 +548,39 @@ export default async function ContactDetailPage({
               />
             </Section>
 
-            <Section title="Seguimiento">
-              <div className="space-y-3">
-                <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
-                <FollowupField
-                  contactId={contact.id}
-                  value={contact.next_followup_date}
-                />
-              </div>
-            </Section>
-
-            {canViewTasks && (
-              <Section title="Tareas">
-                <ContactTasks
-                  contactId={contact.id}
-                  initialTasks={contactTasks}
-                  members={members.map((m) => ({ id: m.userId, name: m.name }))}
-                  today={todayInputValue(new Date(), workspace.timezone || "UTC")}
-                  canEdit={permissionCtx.can("tasks.edit")}
-                />
+            <ContactTasksProvider
+              contactId={contact.id}
+              contactName={contact.display_name || contact.email || null}
+              status={!canViewTasks ? "hidden" : contactTasksRes.failed ? "error" : "ready"}
+              data={{
+                tasks: contactTasks,
+                members: members.map((m) => ({ id: m.userId, name: m.name })),
+                currentUserId: user.id,
+                today: todayInputValue(new Date(), workspace.timezone || "UTC"),
+                timeZone: workspace.timezone || "UTC",
+                timeFormat: bookingTimeFormat === "12h" ? "12h" : "24h",
+                canEdit: permissionCtx.can("tasks.edit"),
+                canDelete: permissionCtx.can("tasks.delete"),
+              }}
+            >
+              <Section title="Seguimiento">
+                <div className="space-y-3">
+                  <TemperatureField contactId={contact.id} value={contact.lead_temperature} />
+                  <FollowupField
+                    contactId={contact.id}
+                    value={contact.next_followup_date}
+                    canCreateTask={permissionCtx.can("tasks.edit")}
+                    contactName={contact.display_name || contact.email || null}
+                  />
+                </div>
               </Section>
-            )}
+
+              {canViewTasks && (
+                <Section title="Tareas">
+                  <ContactTasks />
+                </Section>
+              )}
+            </ContactTasksProvider>
 
             <Section title="Tags">
               <TagsEditor

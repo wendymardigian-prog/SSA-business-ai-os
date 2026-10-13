@@ -221,6 +221,13 @@ export function memoryDb(
       // .or() de PostgREST tampoco se simula: pasa todo.
       or: () => b,
       neq: (col: string, val: unknown) => (filters.push((r) => r[col] !== val), b),
+      // `.filter(col, op, val)` de PostgREST, solo `eq` y `neq` y comparando como JSON (un jsonb `blocked_by` contra `"[]"`).
+      filter: (col: string, op: string, val: unknown) => {
+        const same = (r: Row) => JSON.stringify(r[col] ?? null) === (typeof val === "string" ? val : JSON.stringify(val));
+        if (op === "eq") filters.push((r) => same(r));
+        else if (op === "neq") filters.push((r) => !same(r));
+        return b;
+      },
       is: (col: string, val: unknown) => (filters.push((r) => (r[col] ?? null) === val), b),
       not: (col: string, op: string, val: unknown) => {
         if (op === "is") filters.push((r) => (r[col] ?? null) !== val);
