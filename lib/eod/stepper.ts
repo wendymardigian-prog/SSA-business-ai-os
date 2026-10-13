@@ -39,11 +39,13 @@ export function canDecrement(value: number | null | undefined, bounds: StepperBo
 }
 
 /**
- * Suma un paso. Con el campo vacío, el primer "+" lleva al mínimo + paso (desde 0, a 1).
- * En el máximo, no cambia nada.
+ * Suma un paso. Con el campo vacío, el primer "+" cuenta el primero: desde 0 lleva a 1, y
+ * con un mínimo mayor que 0 (una calificación de 1 a 10) lleva al mínimo. En el máximo, no
+ * cambia nada.
  */
 export function increment(value: number | null | undefined, bounds: StepperBounds): number | null {
   if (!canIncrement(value, bounds)) return value ?? null;
+  if ((value === null || value === undefined) && bounds.min !== undefined && bounds.min > 0) return clamp(bounds.min, bounds);
   return clamp(baseOf(value, bounds) + stepOf(bounds), bounds);
 }
 

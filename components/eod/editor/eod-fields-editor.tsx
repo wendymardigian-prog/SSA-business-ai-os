@@ -33,7 +33,9 @@ export function EodFieldsEditor({
   emptyText?: string;
 }) {
   const [selected, setSelected] = useState<number>(fields.length > 0 ? 0 : -1);
-  const current = fields[selected];
+  // Sin nada elegido (la lista estaba vacía y se copiaron preguntas de otro canal), se muestra la primera.
+  const index = fields[selected] ? selected : selected < 0 && fields.length > 0 ? 0 : -1;
+  const current = fields[index];
 
   function setFields(next: FormField[], nextSelected?: number) {
     onChange(next);
@@ -55,12 +57,12 @@ export function EodFieldsEditor({
           <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">{emptyText}</p>
         ) : (
           <ul className="space-y-1.5">
-            {fields.map((field, index) => {
+            {fields.map((field, i) => {
               const Icon = FIELD_ICONS[field.type];
-              const active = index === selected;
+              const active = i === index;
               return (
                 <li key={field.id} className={cn("flex items-center gap-1 rounded-lg border px-2 py-1.5", active ? "border-primary bg-primary/5" : "border-border")}>
-                  <button type="button" onClick={() => setSelected(index)} aria-current={active} className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm focus:outline-none focus-visible:underline">
+                  <button type="button" onClick={() => setSelected(i)} aria-current={active} className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm focus:outline-none focus-visible:underline">
                     <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{field.label || FIELD_TYPE_LABELS[field.type]}</span>
@@ -72,10 +74,10 @@ export function EodFieldsEditor({
                   </button>
                   {!disabled && (
                     <span className="flex shrink-0 flex-col">
-                      <button type="button" aria-label={`Subir ${field.label}`} disabled={index === 0} onClick={() => setFields(moveField(fields, index, -1), index - 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+                      <button type="button" aria-label={`Subir ${field.label}`} disabled={i === 0} onClick={() => setFields(moveField(fields, i, -1), i - 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
                         <ArrowUp className="h-3.5 w-3.5" aria-hidden />
                       </button>
-                      <button type="button" aria-label={`Bajar ${field.label}`} disabled={index === fields.length - 1} onClick={() => setFields(moveField(fields, index, 1), index + 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+                      <button type="button" aria-label={`Bajar ${field.label}`} disabled={i === fields.length - 1} onClick={() => setFields(moveField(fields, i, 1), i + 1)} className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
                         <ArrowDown className="h-3.5 w-3.5" aria-hidden />
                       </button>
                     </span>
@@ -84,7 +86,7 @@ export function EodFieldsEditor({
                     <button
                       type="button"
                       aria-label={`Borrar ${field.label}`}
-                      onClick={() => setFields(removeField(fields, index), Math.min(selected, fields.length - 2))}
+                      onClick={() => setFields(removeField(fields, i), Math.min(index, fields.length - 2))}
                       className="rounded p-1 text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
@@ -103,14 +105,14 @@ export function EodFieldsEditor({
             key={current.id}
             mode="eod"
             field={current}
-            index={selected}
+            index={index}
             fields={fields}
             neverPublished={neverPublished}
             disabled={disabled}
-            onPatch={(patch) => setFields(updateField(fields, selected, patch))}
-            onRelabel={(text) => setFields(relabelField(fields, selected, text, neverPublished))}
+            onPatch={(patch) => setFields(updateField(fields, index, patch))}
+            onRelabel={(text) => setFields(relabelField(fields, index, text, neverPublished))}
             onSetKey={(key) => {
-              const result = setFieldKey(fields, selected, key);
+              const result = setFieldKey(fields, index, key);
               if (!result.error) setFields(result.fields);
               return result.error;
             }}

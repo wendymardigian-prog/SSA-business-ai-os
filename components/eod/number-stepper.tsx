@@ -30,6 +30,7 @@ export function NumberStepper({
   onDecrement,
   onSet,
   error,
+  context,
 }: {
   label: string;
   value: number | null;
@@ -43,7 +44,10 @@ export function NumberStepper({
   onSet: (value: number | null) => void;
   /** Un error que viene del envío (por ejemplo, "Completá este campo"). */
   error?: string | null;
+  /** Para los botones, cuando la misma pregunta está en varios canales ("Links enviados (Instagram)"). */
+  context?: string;
 }) {
+  const named = context ? `${label} (${context})` : label;
   const id = useId();
   // Lo que se está escribiendo. null = se muestra el valor (el de esta pestaña, otra o el servidor).
   const [draftText, setDraftText] = useState<string | null>(null);
@@ -123,7 +127,7 @@ export function NumberStepper({
       <div className="flex w-full items-center gap-2">
         <button
           type="button"
-          aria-label={step > 1 ? `Restar ${step} a ${label}` : `Restar uno a ${label}`}
+          aria-label={step > 1 ? `Restar ${step} a ${named}` : `Restar uno a ${named}`}
           disabled={!canMinus}
           className={buttonClass}
           onPointerDown={(e) => {
@@ -183,7 +187,7 @@ export function NumberStepper({
         />
         <button
           type="button"
-          aria-label={step > 1 ? `Sumar ${step} a ${label}` : `Sumar uno a ${label}`}
+          aria-label={step > 1 ? `Sumar ${step} a ${named}` : `Sumar uno a ${named}`}
           disabled={!canPlus}
           className={buttonClass}
           onPointerDown={(e) => {

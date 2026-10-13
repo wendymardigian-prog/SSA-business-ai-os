@@ -38,9 +38,15 @@ Rama `feat/formularios-eod` (12/10/2026). Resumen del módulo en [eod.md](eod.md
 `00178` a `00185`, aplicadas con la CLI y registradas a mano. El plan las numeraba distinto
 (00179 = tabla, 00181 = `get_public_form`); se renumeraron para aplicarlas en orden sin huecos.
 
-## Verificación
+## Verificación (12/10/2026)
 
-- `npx vitest run`: ver el cierre en BITACORA.
-- `verify-eod` (nuevo) en verde.
-- Los demás `verify-*`, de a uno: ver BITACORA.
-- Revisión visual (E14): ver BITACORA.
+- `npx vitest run`: 9289 tests en verde. `npm run build` en verde. `npm run lint`: sin errores nuevos.
+- `verify-eod` (nuevo): 62 comprobaciones en verde (RLS, unicidad, concurrencia, audiencia,
+  fechas, revisión, correcciones, el evento, el flujo de bajo rendimiento, first/every y el
+  recordatorio).
+- De a uno: `verify-scheduling`, `verify-sales`, `verify-calls`, `verify-rls --despues-de-00143`
+  y `verify-roles --despues-de-00136` en 0. `verify-forms`: una falla que es una carrera con el
+  cron de producción sobre los PDF de contratos (ver PENDIENTE); el resto en verde.
+- Revisión visual E14 hecha en escritorio y a 390 px. Arreglos que salieron de ahí: el primer
+  "+" de un número con mínimo mayor que 0 arranca en el mínimo, los botones nombran el canal, y
+  después de copiar preguntas queda elegida la primera.

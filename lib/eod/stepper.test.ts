@@ -20,7 +20,7 @@ describe("stepper", () => {
 
   it("vacío: el primer + lleva al mínimo más el paso; − no hace nada", () => {
     expect(increment(null, { min: 0 })).toBe(1);
-    expect(increment(undefined, { min: 1, max: 10 })).toBe(2);
+    expect(increment(undefined, { min: 1, max: 10 })).toBe(1); // una calificación de 1 a 10 arranca en 1
     expect(decrement(null, { min: 0 })).toBeNull();
   });
 

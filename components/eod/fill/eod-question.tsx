@@ -18,9 +18,12 @@ export function EodQuestion({
   update,
   disabled,
   error,
+  channelLabel,
 }: {
   field: FormField;
   channel: string | null;
+  /** El nombre del canal, para que los botones digan de cuál es la pregunta. */
+  channelLabel?: string;
   data: EodDraftData;
   update: (mutate: (draft: EodDraftData) => EodDraftData) => void;
   disabled: boolean;
@@ -36,6 +39,7 @@ export function EodQuestion({
     return (
       <NumberStepper
         label={field.label}
+        context={channelLabel}
         help={field.help}
         required={field.required}
         value={current}

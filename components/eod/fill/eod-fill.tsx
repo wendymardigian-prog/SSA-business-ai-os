@@ -267,7 +267,7 @@ export function EodFill({ page }: { page: FillPageData }) {
                   <section key={channel.key} aria-label={channel.label} className="space-y-5 rounded-2xl border border-border bg-card p-4">
                     <h3 className="text-base font-semibold">{channel.label}</h3>
                     {channel.fields.map((field) => (
-                      <EodQuestion key={field.id} field={field} channel={channel.key} data={data} update={update} disabled={readOnly} />
+                      <EodQuestion key={field.id} field={field} channel={channel.key} channelLabel={channel.label} data={data} update={update} disabled={readOnly} />
                     ))}
                   </section>
                 ))}

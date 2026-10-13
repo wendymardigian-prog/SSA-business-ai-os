@@ -1647,6 +1647,13 @@ contacto del cron quedó igual y su caracterización sigue en verde.
 
 **Migraciones renumeradas respecto del plan**, para aplicarlas en orden sin huecos.
 
+### Verificación
+
+9289 tests, build y lint en verde. `verify-eod` (62 comprobaciones) en verde contra la base
+real; scheduling, ventas, llamadas, RLS y roles en 0. `verify-forms` tuvo una falla que es una
+carrera con el cron de producción sobre los PDF de contratos (anotada en PENDIENTE). Revisión
+visual en escritorio y a 390 px sobre el build local, con datos `zz-test-` ya borrados.
+
 ### Lo que queda
 
 Ver `docs/PENDIENTE.md` ("Reporte de fin de día"). Lo principal: el dashboard de setters, que
