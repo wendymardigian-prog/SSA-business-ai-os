@@ -13,6 +13,7 @@ import { TASK_LIMITS } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { BlockedMark, PersonBadge, PriorityChip, StatusChip } from "./chips";
 import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, StatusPicker } from "./pickers";
+import { useTimeFormat } from "./time-format-context";
 
 /** Lo que las celdas necesitan saber del resto de la pantalla. */
 export interface CellEnv {
@@ -51,6 +52,7 @@ const dueTone: Record<ReturnType<typeof dueLabel>["tone"], string> = {
 /** La celda: un <td> enfocable que muestra el valor y, al editar, su editor. */
 export function TaskCell(props: CellProps) {
   const { view, column, env, position, editing, busy, onStartEdit, onEndEdit, onCommit, onOpen } = props;
+  const timeFormat = useTimeFormat();
   const ref = useRef<HTMLTableCellElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editable = env.canEdit && column !== "blocked" && column !== "source";
@@ -122,9 +124,20 @@ export function TaskCell(props: CellProps) {
       body = view.project ? <span className="block truncate rounded-md bg-muted px-1.5 py-0.5 text-xs">{view.project}</span> : <span className="text-sm text-muted-foreground">—</span>;
       break;
     case "due": {
-      const label = dueLabel({ due_date: view.dueDate, status: view.status }, env.today);
+      const label = dueLabel({ due_date: view.dueDate, due_time: view.dueTime, status: view.status }, env.today, timeFormat);
       body = editing ? (
-        <DateEditor initial={view.dueDate} onCommit={(due_date, dir) => commit({ due_date }, dir)} onCancel={(dir) => end(dir)} />
+        <DateEditor
+          initial={view.dueDate}
+          initialTime={view.dueTime}
+          onCommit={(next, dir) => {
+            // Solo lo que cambio: cambiar el dia no toca la hora, y quitar la fecha quita la hora (el nucleo tambien lo hace).
+            const patch: CellPatch = {};
+            if (next.date !== view.dueDate) patch.due_date = next.date;
+            if (next.time !== view.dueTime) patch.due_time = next.time;
+            commit(patch, dir);
+          }}
+          onCancel={(dir) => end(dir)}
+        />
       ) : (
         <span className={cn("text-sm", dueTone[label.tone])}>{label.text}</span>
       );
@@ -254,13 +267,17 @@ function TitleEditor({
 }
 
 function DateEditor({
-  initial, onCommit, onCancel,
+  initial, initialTime, onCommit, onCancel,
 }: {
   initial: string | null;
-  onCommit: (value: string | null, dir?: 1 | -1) => void;
+  initialTime: string | null;
+  onCommit: (value: { date: string | null; time: string | null }, dir?: 1 | -1) => void;
   onCancel: (dir?: 1 | -1) => void;
 }) {
   const [value, setValue] = useState(initial ?? "");
+  const [time, setTime] = useState(initialTime ?? "");
+  // La hora se agrega a proposito: el editor arranca solo con la fecha y ofrece «Agregar hora».
+  const [showTime, setShowTime] = useState(!!initialTime);
   const done = useRef(false);
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -269,18 +286,28 @@ function DateEditor({
   const finish = (dir?: 1 | -1, mode: "auto" | "cancel" | "clear" = "auto") => {
     if (done.current) return;
     done.current = true;
-    if (mode === "clear") return onCommit(null, dir);
-    if (mode === "cancel" || (value || null) === initial) return onCancel(dir);
-    onCommit(value || null, dir);
+    if (mode === "clear") return onCommit({ date: null, time: null }, dir);
+    const nextTime = value && showTime ? time || null : null;
+    if (mode === "cancel" || ((value || null) === initial && nextTime === initialTime)) return onCancel(dir);
+    onCommit({ date: value || null, time: nextTime }, dir);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const action = cellKeyAction({ key: e.key, shiftKey: e.shiftKey, editing: true });
+    if (action === "none") return;
+    e.preventDefault();
+    if (action === "cancel") finish(undefined, "cancel");
+    else if (action === "commit") finish();
+    else finish(action === "commit-next" ? 1 : -1);
   };
 
   return (
     <div
       ref={box}
-      className="flex items-center gap-1"
+      className="flex flex-wrap items-center gap-1"
       onClick={(e) => e.stopPropagation()}
       onBlur={(e) => {
-        // El foco pasa al boton de «quitar» sin cerrar el editor.
+        // El foco pasa a otro control del editor (quitar, agregar hora) sin cerrarlo.
         if (box.current && e.relatedTarget && box.current.contains(e.relatedTarget as Node)) return;
         finish();
       }}
@@ -291,14 +318,7 @@ function DateEditor({
         value={value}
         aria-label="Fecha de vencimiento"
         onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          const action = cellKeyAction({ key: e.key, shiftKey: e.shiftKey, editing: true });
-          if (action === "none") return;
-          e.preventDefault();
-          if (action === "cancel") finish(undefined, "cancel");
-          else if (action === "commit") finish();
-          else finish(action === "commit-next" ? 1 : -1);
-        }}
+        onKeyDown={onKeyDown}
         className="h-7 min-w-0 flex-1 rounded-md border border-primary bg-background px-1 text-sm outline-none"
       />
       {initial && (
@@ -311,6 +331,34 @@ function DateEditor({
         >
           <X className="h-3.5 w-3.5" aria-hidden />
         </button>
+      )}
+      {value && !showTime && (
+        <button type="button" onClick={() => setShowTime(true)} className="h-7 shrink-0 rounded-md px-1.5 text-xs text-primary hover:bg-accent">
+          Agregar hora
+        </button>
+      )}
+      {value && showTime && (
+        <>
+          <input
+            type="time"
+            value={time}
+            autoFocus={!initialTime}
+            aria-label="Hora de vencimiento"
+            onChange={(e) => setTime(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="h-7 w-[6.5rem] shrink-0 rounded-md border border-primary bg-background px-1 text-sm outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setShowTime(false);
+              setTime("");
+            }}
+            className="h-7 shrink-0 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            Quitar hora
+          </button>
+        </>
       )}
     </div>
   );

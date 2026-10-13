@@ -17,7 +17,7 @@ const T3 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const task = (over: Partial<TaskRow> = {}): TaskRow => ({
   id: T1, workspace_id: WS, title: "Enviar propuesta", description: null, status: "pending", priority: "normal",
-  start_date: null, due_date: "2026-10-20", completed_at: null, owner_id: ME, follower_ids: [], project: null, project_key: null,
+  start_date: null, due_date: "2026-10-20", due_time: null, duration_minutes: null, completed_at: null, owner_id: ME, follower_ids: [], project: null, project_key: null,
   blocked_by: [], contact_id: null, conversation_id: null, source: "manual", source_ref: null, position: 0, created_by: ME,
   created_at: "2026-10-01T10:00:00.000000+00:00", updated_at: "2026-10-01T10:00:00.123456+00:00", deleted_at: null, ...over,
 });
@@ -129,6 +129,39 @@ describe("updateTaskCore (F8, F7)", () => {
     const r = await updateTaskCore(ctx, T1, { start_date: "2026-10-25" });
     expect(r).toMatchObject({ ok: false, code: "validation" });
     expect(user.writes()).toHaveLength(0);
+  });
+
+  it("una hora sin fecha se rechaza, mezclando lo nuevo con lo guardado (R6)", async () => {
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [task({ due_date: null })] } });
+    const r = await updateTaskCore(ctx, T1, { due_time: "10:00" });
+    expect(r).toMatchObject({ ok: false, code: "validation", error: "La hora necesita una fecha de vencimiento." });
+    expect(user.writes()).toHaveLength(0);
+  });
+
+  it("borrar la fecha borra tambien la hora y la duracion en la misma escritura (R6)", async () => {
+    const before = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45 });
+    const after = task({ due_date: null, due_time: null, duration_minutes: null, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    const r = await updateTaskCore(ctx, T1, { due_date: null });
+    expect(r.ok).toBe(true);
+    expect(user.writesTo("tasks")[0].values).toMatchObject({ due_date: null, due_time: null, duration_minutes: null });
+  });
+
+  it("cambiar el dia no toca la hora ni la duracion, y la auditoria usa HH:MM (R6)", async () => {
+    const before = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45 });
+    const after = task({ due_date: "2026-10-27", due_time: "14:30:00", duration_minutes: 45, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx, user } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    await updateTaskCore(ctx, T1, { due_date: "2026-10-27" });
+    expect(user.writesTo("tasks")[0].values).toEqual({ due_date: "2026-10-27" });
+    expect(mocks.audit.mock.calls[0][0].changes).toEqual({ due_date: { old: "2026-10-20", new: "2026-10-27" } });
+  });
+
+  it("agregar una hora audita old y new (R6)", async () => {
+    const before = task({ due_date: "2026-10-20" });
+    const after = task({ due_date: "2026-10-20", due_time: "14:30:00", duration_minutes: 45, updated_at: "2026-10-02T10:00:00.000000+00:00" });
+    const { ctx } = ctxWith({ "tasks:select": { data: [before] }, "tasks:update": { data: [after] } });
+    await updateTaskCore(ctx, T1, { due_time: "14:30", duration_minutes: 45 });
+    expect(mocks.audit.mock.calls[0][0].changes).toEqual({ due_time: { old: null, new: "14:30" }, duration_minutes: { old: null, new: 45 } });
   });
 
   it("cambia y audita solo lo que cambio (con old y new)", async () => {

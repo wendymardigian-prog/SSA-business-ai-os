@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/auth/guards";
 import { todayInputValue } from "@/lib/dates";
 import { createServiceClient } from "@/lib/supabase/server";
 import { TASK_COLUMNS } from "@/lib/tasks/core";
+import { loadTimeFormat } from "@/lib/tasks/time-format";
 import { flowIdOf } from "@/lib/tasks/format";
 import type { TaskRow } from "@/lib/tasks/types";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
@@ -31,6 +32,7 @@ export default async function TareasPage() {
   const tasks = (data ?? []) as unknown as TaskRow[];
 
   const members = await getWorkspaceMembers(workspace.id);
+  const timeFormat = await loadTimeFormat(supabase, workspace.id, ctx.user.id);
 
   // Los nombres que la tabla y el drawer muestran: contactos vinculados y flujos de origen.
   const contactIds = [...new Set(tasks.map((t) => t.contact_id).filter((id): id is string => !!id))];
@@ -53,6 +55,7 @@ export default async function TareasPage() {
       contactNames={Object.fromEntries((contacts.data ?? []).map((c) => [c.id, c.display_name || c.email || "Sin nombre"]))}
       flowNames={Object.fromEntries((flows.data ?? []).map((f) => [f.id, f.name]))}
       loadError={!!error}
+      timeFormat={timeFormat}
     />
   );
 }

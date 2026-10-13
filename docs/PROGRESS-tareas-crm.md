@@ -7,7 +7,7 @@ Este archivo es lo que sigue la construcción aunque la conversación se resuma.
 - [x] M1 (00206) aplicada y registrada
 - [x] R1 · Sección «Tareas» del contacto (ficha y bandeja)
 - [x] R2 · «Próximo seguimiento» con «Crear tarea»
-- [ ] R6 · Hora y duración opcionales
+- [x] R6 · Hora y duración opcionales
 - [ ] R3 · Nodo «Crear tarea» ampliado
 - [ ] R4 · Nodo «Completar tarea»
 - [ ] R5 · Interruptor de cobranza (tarea al vencer un pago)

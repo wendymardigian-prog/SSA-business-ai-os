@@ -23,6 +23,8 @@ export interface CreateInput {
   status?: TaskRow["status"];
   start_date?: string | null;
   due_date?: string | null;
+  due_time?: string | null;
+  duration_minutes?: number | null;
   owner_id?: string | null;
   follower_ids?: string[];
   project?: string | null;

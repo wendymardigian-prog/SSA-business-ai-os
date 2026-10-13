@@ -125,3 +125,22 @@ describe("encabezados ordenables", () => {
     expect(ariaSortOf(null, "title")).toBe("none");
   });
 });
+
+describe("orden por fecha y hora (R6)", () => {
+  const mk = (n: number, due: string | null, time: string | null) => makeTask({ id: taskId(n), title: `t${n}`, due_date: due, due_time: time });
+  const order = (rows: ReturnType<typeof makeTask>[], sort: Parameters<typeof sortRows>[1] = null) =>
+    sortRows(buildRows(rows, members, { today: TODAY }), sort).map((r) => r.title);
+
+  it("por defecto: el dia y, en el mismo dia, la hora; las sin hora despues de las que tienen", () => {
+    const rows = [mk(1, "2026-10-20", null), mk(2, "2026-10-20", "16:00:00"), mk(3, "2026-10-19", "23:00"), mk(4, "2026-10-20", "09:30"), mk(5, null, null)];
+    expect(order(rows)).toEqual(["t3", "t4", "t2", "t1", "t5"]);
+  });
+  it("descendente por vencimiento: los dias al reves, pero las sin hora siguen despues de las con hora de su dia", () => {
+    const rows = [mk(1, "2026-10-20", null), mk(2, "2026-10-20", "16:00"), mk(3, "2026-10-19", "23:00"), mk(4, "2026-10-20", "09:30")];
+    expect(order(rows, { column: "due", dir: "desc" })).toEqual(["t2", "t4", "t1", "t3"]);
+  });
+  it("la fila trae la hora normalizada (HH:MM)", () => {
+    expect(buildRows([mk(1, "2026-10-20", "14:30:00")], members, { today: TODAY })[0].dueTime).toBe("14:30");
+    expect(buildRows([mk(2, "2026-10-20", null)], members, { today: TODAY })[0].dueTime).toBeNull();
+  });
+});

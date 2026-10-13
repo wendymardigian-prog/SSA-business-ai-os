@@ -4,7 +4,7 @@
  * Lo que un test con Vitest no puede probar: que la BASE haga cumplir las reglas (RLS, privilegios
  * por columna, ciclos, atomicidad, borrado logico, limpieza de personas, el cron).
  *
- * Los bloques corren segun lo que ya este aplicado (`--hasta 196|197|198|199`).
+ * Los bloques corren segun lo que ya este aplicado (`--hasta 196|197|198|199|206`).
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -19,6 +19,7 @@ import { todayInputValue } from "../lib/dates";
 import { runTasksDueSweep } from "../lib/jobs/handlers/tasks-due-sweep";
 import { createNotification } from "../lib/notifications/create";
 import { addDays } from "../lib/tasks/dates";
+import { createFollowupTaskCore } from "../lib/tasks/followup-core";
 import "../lib/flow-engine/registry";
 import { processEvent, type AutomationEvent } from "../lib/flow-engine/automation-events";
 import { buildDesiredTriggers } from "../lib/flow-triggers";
@@ -37,7 +38,7 @@ type Db = SupabaseClient<any>;
 const svc: Db = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 const argv = process.argv;
-const upTo = Number(argv[argv.indexOf("--hasta") + 1]) || 199;
+const upTo = Number(argv[argv.indexOf("--hasta") + 1]) || 206;
 
 let failures = 0;
 const ok = (m: string) => console.log("  ok  ", m);
@@ -569,6 +570,77 @@ try {
       for (const e of events ?? []) again += await processEvent(svc as never, e as unknown as AutomationEvent);
       check(again === 0, "el mismo evento no dispara dos veces (trigger_fires)", String(again));
     }
+  }
+
+  // ═══ 00206: hora, duracion y el seguimiento unico (Tareas × CRM, M1) ═══
+  if (upTo >= 206) {
+    console.log("\n— 00206: hora, duracion y seguimiento unico —");
+
+    // La sesion de una persona puede escribir las dos columnas nuevas (privilegios por columna).
+    const ins = await creator.client.from("tasks").insert({ workspace_id: ws.id, title: "zz-test con hora", created_by: creator.id, owner_id: creator.id, due_date: D("2026-10-20"), due_time: "14:30", duration_minutes: 45 }).select("id, due_time, duration_minutes").single();
+    check(!ins.error && ins.data?.due_time === "14:30:00" && ins.data?.duration_minutes === 45, "un Member crea una tarea con hora y duracion por su sesion", ins.error?.message);
+    const timedId = ins.data!.id as string;
+    const upd = await creator.client.from("tasks").update({ due_time: "09:15", duration_minutes: 90 }).eq("id", timedId).select("due_time, duration_minutes").single();
+    check(!upd.error && upd.data?.due_time === "09:15:00" && upd.data?.duration_minutes === 90, "...y las edita", upd.error?.message);
+
+    // Las restricciones de la base.
+    const noDate = await creator.client.from("tasks").insert({ workspace_id: ws.id, title: "zz-test hora sin fecha", created_by: creator.id, due_time: "10:00" });
+    check(noDate.error?.code === "23514", "una hora sin fecha la rechaza la base (CHECK)", noDate.error?.message);
+    const clearDate = await creator.client.from("tasks").update({ due_date: null }).eq("id", timedId);
+    check(clearDate.error?.code === "23514", "borrar la fecha dejando la hora tambien (la accion borra las dos juntas)", clearDate.error?.message);
+    const clearBoth = await creator.client.from("tasks").update({ due_date: null, due_time: null, duration_minutes: null }).eq("id", timedId);
+    check(!clearBoth.error, "borrar fecha, hora y duracion juntas si pasa", clearBoth.error?.message);
+    for (const bad of [4, 1441, 0, -5]) {
+      const r = await creator.client.from("tasks").update({ duration_minutes: bad }).eq("id", timedId);
+      check(r.error?.code === "23514", `la duracion ${bad} se rechaza (5 a 1440)`, r.error?.message);
+    }
+    check(!(await creator.client.from("tasks").update({ duration_minutes: 5 }).eq("id", timedId)).error && !(await creator.client.from("tasks").update({ duration_minutes: 1440 }).eq("id", timedId)).error, "5 y 1440 minutos valen");
+
+    // La hora se conserva cuando el dia se mueve por la regla de fechas.
+    const blocker = await mk({ title: "zz-test bloqueante con hora", due_date: D("2026-10-10"), due_time: "08:00", owner_id: creator.id, created_by: creator.id });
+    const dependent = await mk({ title: "zz-test dependiente con hora", due_date: D("2026-10-11"), due_time: "16:45", duration_minutes: 60, owner_id: creator.id, created_by: creator.id });
+    await svc.from("tasks").update({ blocked_by: [{ task_id: blocker.id, gap_days: 1 }] }).eq("id", dependent.id);
+    const cctx206: TaskCtx = { supabase: creator.client as never, service: svc as never, workspaceId: ws.id, userId: creator.id, timeZone: "America/Costa_Rica" };
+    const plan206 = await planCompletionCore(cctx206, blocker.id);
+    check(plan206.ok && plan206.data.shifts.length === 1, "completar el bloqueante atrasa al dependiente", JSON.stringify(plan206));
+    if (plan206.ok) {
+      const done206 = await completeTaskCore(cctx206, blocker.id, true, plan206.data.expected);
+      check(done206.ok, "se completa moviendo las fechas", JSON.stringify(done206));
+      const moved = await row(dependent.id);
+      check(moved.due_date !== "2026-10-11" && moved.due_time === "16:45:00" && moved.duration_minutes === 60, "el dia se movio y la hora y la duracion se conservaron", JSON.stringify(moved));
+    }
+
+    // El seguimiento unico (uq_tasks_followup).
+    const { data: contact } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test contacto seguimiento", email: `zz-test-seg-${stamp}@example.test` }).select("id").single();
+    const { data: contact2 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test otro contacto", email: `zz-test-seg2-${stamp}@example.test` }).select("id").single();
+    const fu = (contactId: string, ref: string, extra: Record<string, unknown> = {}) =>
+      svc.from("tasks").insert({ workspace_id: ws.id, title: "zz-test seguimiento", contact_id: contactId, source: "manual", source_ref: ref, ...extra }).select("id").single();
+    const first = await fu(contact!.id, "followup:2026-10-20");
+    check(!first.error, "se crea un seguimiento", first.error?.message);
+    const dup = await fu(contact!.id, "followup:2026-10-20");
+    check(dup.error?.code === "23505", "otro del mismo contacto y fecha lo rechaza el indice unico", dup.error?.message);
+    check(!(await fu(contact!.id, "followup:2026-10-21")).error, "otra fecha del mismo contacto vale");
+    check(!(await fu(contact2!.id, "followup:2026-10-20")).error, "la misma fecha de OTRO contacto vale");
+    await svc.from("tasks").update({ status: "completed" }).eq("id", first.data!.id);
+    check((await fu(contact!.id, "followup:2026-10-20")).error?.code === "23505", "una seguimiento COMPLETADO sigue ocupando la fecha");
+    await svc.from("tasks").update({ deleted_at: new Date().toISOString() }).eq("id", first.data!.id);
+    check(!(await fu(contact!.id, "followup:2026-10-20")).error, "una seguimiento BORRADO libera la fecha");
+
+    // La accion: idempotente y concurrente.
+    const octx: TaskCtx = { supabase: owner.client as never, service: svc as never, workspaceId: ws.id, userId: owner.id, timeZone: "America/Costa_Rica" };
+    const { data: contact3 } = await svc.from("contacts").insert({ workspace_id: ws.id, display_name: "zz-test Ana Seguimiento", email: `zz-test-seg3-${stamp}@example.test` }).select("id").single();
+    const results = await Promise.all(Array.from({ length: 10 }, () => createFollowupTaskCore(octx, contact3!.id, "2026-11-03")));
+    const okIds = new Set(results.filter((r) => r.ok).map((r) => (r as { data: { task: { id: string } } }).data.task.id));
+    const { data: rows } = await svc.from("tasks").select("id, title, due_date, owner_id, source, source_ref").eq("contact_id", contact3!.id).like("source_ref", "followup:%");
+    check(results.every((r) => r.ok) && okIds.size === 1 && rows?.length === 1, "10 creaciones simultaneas dejan UNA sola tarea y todas devuelven esa misma", JSON.stringify({ okIds: [...okIds], rows: rows?.length, errs: results.filter((r) => !r.ok) }));
+    check(rows?.[0]?.title === "Seguimiento a zz-test Ana Seguimiento" && rows?.[0]?.due_date === "2026-11-03" && rows?.[0]?.owner_id === owner.id && rows?.[0]?.source === "manual", "titulo, fecha, responsable y origen son los esperados", JSON.stringify(rows?.[0]));
+    check(results.filter((r) => r.ok && !(r as { data: { existing: boolean } }).data.existing).length === 1, "exactamente una la creo; las demas devolvieron la existente");
+
+    // Una persona que no ve el contacto no puede crear el seguimiento.
+    const sctx: TaskCtx = { supabase: stranger.client as never, service: svc as never, workspaceId: ws.id, userId: stranger.id, timeZone: "America/Costa_Rica" };
+    const blocked = await createFollowupTaskCore(sctx, contact3!.id, "2026-11-04");
+    check(!blocked.ok, "un Member que no ve al contacto no puede crearle un seguimiento", JSON.stringify(blocked));
+    check(((await svc.from("tasks").select("id").eq("contact_id", contact3!.id).eq("source_ref", "followup:2026-11-04")).data ?? []).length === 0, "...y no se escribio nada");
   }
 } catch (error) {
   fail("la verificación se cortó", error instanceof Error ? error.stack : String(error));

@@ -11,7 +11,9 @@ import { listProjects } from "@/lib/tasks/project";
 import type { MemberLite } from "@/lib/tasks/table-model";
 import { upsertRow } from "@/lib/tasks/cell-edit";
 import type { TaskRow } from "@/lib/tasks/types";
+import type { TimeFormat } from "@/lib/tasks/time";
 import { ShiftDialog } from "./shift-dialog";
+import { TimeFormatProvider } from "./time-format-context";
 import { TaskDrawer } from "./task-drawer";
 import { useTaskActions, type TaskActions } from "./use-task-actions";
 
@@ -63,6 +65,8 @@ export interface TaskWorkbenchProps {
   /** AAAA-MM-DD en la zona del workspace, calculado en el servidor. */
   today: string;
   timeZone: string;
+  /** 12 h / 24 h de quien mira (R6). Sin esto, 24 h. */
+  timeFormat?: TimeFormat;
   canEdit: boolean;
   canDelete: boolean;
   contactNames?: Record<string, string>;
@@ -80,7 +84,7 @@ export function TaskWorkbench(props: TaskWorkbenchProps) {
   );
 }
 
-function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone, canEdit, canDelete, contactNames, flowNames, syncUrl = false, children }: TaskWorkbenchProps) {
+function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone, timeFormat = "24h", canEdit, canDelete, contactNames, flowNames, syncUrl = false, children }: TaskWorkbenchProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -167,6 +171,7 @@ function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone,
 
   return (
     <WorkbenchContext.Provider value={api}>
+      <TimeFormatProvider value={timeFormat}>
       {children}
 
       {showDrawer && (
@@ -209,6 +214,7 @@ function WorkbenchInner({ initialTasks, members, currentUserId, today, timeZone,
           }}
         />
       )}
+      </TimeFormatProvider>
     </WorkbenchContext.Provider>
   );
 }

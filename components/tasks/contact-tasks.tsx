@@ -6,6 +6,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ListChecks, Plus } from "lucide-react";
 import { tasksForContact } from "@/lib/tasks/contact-tasks";
 import type { MemberLite } from "@/lib/tasks/table-model";
+import type { TimeFormat } from "@/lib/tasks/time";
 import type { TaskRow } from "@/lib/tasks/types";
 import { TaskLine } from "./task-line";
 import { TaskWorkbench, useOptionalTaskWorkbench, type TaskWorkbenchApi } from "./task-workbench";
@@ -27,6 +28,8 @@ export interface ContactTasksData {
   /** AAAA-MM-DD en la zona del workspace. */
   today: string;
   timeZone: string;
+  /** 12 h / 24 h de quien mira (R6). */
+  timeFormat?: TimeFormat;
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -68,6 +71,7 @@ export function ContactTasksProvider({
       currentUserId={d.currentUserId}
       today={d.today}
       timeZone={d.timeZone}
+      timeFormat={d.timeFormat}
       canEdit={d.canEdit}
       canDelete={d.canDelete}
       contactNames={contactName ? { [contactId]: contactName } : undefined}

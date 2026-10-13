@@ -15,7 +15,9 @@ import { openBlockers, type MemberLite } from "@/lib/tasks/table-model";
 import { TASK_LIMITS, type TaskRow } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { BlockedMark, PersonBadge, PriorityChip, StatusChip } from "./chips";
-import { AutoSaveText, DateField, FieldRow, Section } from "./fields";
+import { AutoSaveText, DateField, DurationSelect, FieldRow, Section, TimeField } from "./fields";
+import { useTimeFormat } from "./time-format-context";
+import { DURATION_OPTIONS } from "@/lib/tasks/time";
 import { CenterDialog, SidePanel } from "./overlay";
 import { MemberPicker, MembersMultiPicker, PriorityPicker, ProjectPicker, StatusPicker } from "./pickers";
 import type { TaskActions } from "./use-task-actions";
@@ -79,6 +81,7 @@ function DrawerBody(props: TaskDrawerProps) {
   const { mode, task, allTasks, members, memberNames, projects, today, canEdit, canDelete, actions, contactName, source, defaults, onClose, onOpenTask, onCreated, returnFocus } = props;
   const creating = mode === "create";
   const editable = creating || canEdit;
+  const timeFormat = useTimeFormat();
 
   const [draft, setDraft] = useState<TaskValues>(() => draftFromDefaults(defaults, props.currentUserId));
   const values: TaskValues = creating ? draft : valuesFromTask(task as TaskRow);
@@ -114,6 +117,8 @@ function DrawerBody(props: TaskDrawerProps) {
       priority: draft.priority,
       start_date: draft.start_date,
       due_date: draft.due_date,
+      due_time: draft.due_time,
+      duration_minutes: draft.duration_minutes,
       owner_id: draft.owner_id,
       follower_ids: draft.follower_ids,
       project: draft.project,
@@ -206,9 +211,16 @@ function DrawerBody(props: TaskDrawerProps) {
             <div className="flex items-center gap-2">
               <DateField value={values.due_date} onSave={(due_date) => patch({ due_date })} label="Fecha de vencimiento" disabled={!editable} min={values.start_date} />
               {!creating && task && values.due_date && (
-                <span className={cn("shrink-0 text-xs", dueLabel(task, today).tone === "overdue" ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>{dueLabel(task, today).text}</span>
+                <span className={cn("shrink-0 text-xs", dueLabel(task, today, timeFormat).tone === "overdue" ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>{dueLabel(task, today, timeFormat).text}</span>
               )}
             </div>
+          </FieldRow>
+          <FieldRow label="Hora">
+            <TimeField value={values.due_time} onSave={(due_time) => patch({ due_time })} label="Hora de vencimiento" disabled={!editable || !values.due_date} />
+            {!values.due_date && <p className="mt-1 text-xs text-muted-foreground">Elegí primero una fecha. Sin hora, la tarea es solo para ese día.</p>}
+          </FieldRow>
+          <FieldRow label="Duración">
+            <DurationSelect value={values.duration_minutes} onChange={(duration_minutes) => patch({ duration_minutes })} label="Duración" disabled={!editable || !values.due_time} options={DURATION_OPTIONS} />
           </FieldRow>
         </Section>
 

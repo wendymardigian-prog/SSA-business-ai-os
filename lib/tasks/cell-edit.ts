@@ -8,6 +8,7 @@
 
 import { BLOCKER_ERROR_MESSAGES } from "./dependencies";
 import { cleanProjectName } from "./project";
+import { isTimeOfDay, isValidDuration } from "./time";
 import { TASK_LIMITS, type TaskPriority, type TaskRow, type TaskStatus } from "./types";
 
 export const EDITABLE_COLUMNS = ["status", "title", "owner", "followers", "project", "due", "priority"] as const;
@@ -20,6 +21,10 @@ export interface CellPatch {
   owner_id?: string | null;
   follower_ids?: string[];
   due_date?: string | null;
+  /** Hora local del workspace (`HH:MM`); null la quita. Solo con fecha. */
+  due_time?: string | null;
+  /** 5 a 1440 minutos; null la quita. */
+  duration_minutes?: number | null;
   priority?: TaskPriority;
   project?: string | null;
   /** Los dos de abajo solo se editan desde el drawer. */
@@ -47,6 +52,13 @@ export function applyOptimistic(
   }
   if (patch.priority !== undefined) row.priority = patch.priority;
   if (patch.due_date !== undefined) row.due_date = patch.due_date;
+  if (patch.due_time !== undefined) row.due_time = patch.due_time;
+  if (patch.duration_minutes !== undefined) row.duration_minutes = patch.duration_minutes;
+  // Sin fecha no hay hora ni duracion (como en la base).
+  if (!row.due_date) {
+    row.due_time = null;
+    row.duration_minutes = null;
+  }
   if (patch.start_date !== undefined) row.start_date = patch.start_date;
   if (patch.position !== undefined) row.position = patch.position;
   if (patch.description !== undefined) row.description = patch.description;
@@ -106,6 +118,12 @@ export function validateCellChange(task: TaskRow, patch: CellPatch, byId: Readon
       const blocker = byId.get(b.task_id);
       if (blocker?.due_date && patch.due_date < blocker.due_date) return BLOCKER_ERROR_MESSAGES.date_before_blocker;
     }
+  }
+  const time = patch.due_time !== undefined ? patch.due_time : task.due_time;
+  if (patch.due_time && !isTimeOfDay(patch.due_time)) return "La hora no es válida.";
+  if (time && !due) return "La hora necesita una fecha de vencimiento.";
+  if (patch.duration_minutes !== undefined && patch.duration_minutes !== null && !isValidDuration(patch.duration_minutes)) {
+    return "La duración tiene que ser de 5 a 1440 minutos.";
   }
   if (patch.follower_ids && patch.follower_ids.length > TASK_LIMITS.followers) {
     return `Una tarea puede tener como máximo ${TASK_LIMITS.followers} seguidores.`;

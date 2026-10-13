@@ -20,6 +20,7 @@ import {
 } from "@/lib/tasks/core";
 import { loadContactTasksChecked, type ContactTasksPayload, type TaskContextPayload } from "@/lib/tasks/contact-section";
 import { flowIdOf } from "@/lib/tasks/format";
+import { loadTimeFormat } from "@/lib/tasks/time-format";
 import { todayInputValue } from "@/lib/dates";
 import { createFollowupTaskCore, type FollowupOutput } from "@/lib/tasks/followup-core";
 import { fail, success, type TaskActionResult } from "@/lib/tasks/result";
@@ -140,6 +141,7 @@ export async function listContactTasks(contactId: string): Promise<TaskActionRes
       members: members.map((m) => ({ id: m.userId, name: m.name })),
       today: todayInputValue(new Date(), timeZone),
       timeZone,
+      timeFormat: await loadTimeFormat(ctx.supabase, ctx.workspace.id, ctx.user.id),
       currentUserId: ctx.user.id,
       canEdit: ctx.can("tasks.edit"),
       canDelete: ctx.can("tasks.delete"),

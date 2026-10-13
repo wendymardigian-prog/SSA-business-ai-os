@@ -551,6 +551,7 @@ export default async function ContactDetailPage({
                 currentUserId: user.id,
                 today: todayInputValue(new Date(), workspace.timezone || "UTC"),
                 timeZone: workspace.timezone || "UTC",
+                timeFormat: bookingTimeFormat === "12h" ? "12h" : "24h",
                 canEdit: permissionCtx.can("tasks.edit"),
                 canDelete: permissionCtx.can("tasks.delete"),
               }}

@@ -139,9 +139,12 @@ describe("cada pantalla dibuja la barra de verdad", () => {
      * importa medio sistema. Subio de 60 a 200 cuando la pantalla de Agentes
      * sumo las habilidades: la barra estaba, pero el recorrido se quedaba sin
      * presupuesto antes de llegar y el test avisaba de algo que no pasaba.
+     * Subio de 200 a 400 con Tareas × CRM: las acciones de tareas importan mas
+     * modulos y el detalle de una tarea de IA (que llega a ellas por el
+     * ancho del grafo) volvia a quedarse sin presupuesto antes de la barra.
      */
     const rendersHeader = (entry: string, seen = new Set<string>()): boolean => {
-      if (seen.has(entry) || seen.size > 200) return false;
+      if (seen.has(entry) || seen.size > 400) return false;
       seen.add(entry);
       const source = readFileSync(entry, "utf8");
       if (source.includes("<PageHeader")) return true;

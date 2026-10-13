@@ -18,6 +18,7 @@ import { diffFields, logAudit } from "@/lib/audit";
 import { todayInputValue } from "@/lib/dates";
 import type { Database, Json } from "@/lib/types/database";
 import { dateOfInstant } from "./dates";
+import { normalizeTime } from "./time";
 import { emitTaskEvent } from "./automation/emit";
 import { planCompleted, planCreated, planUpdated, sendTaskNotifications, type TaskNotice } from "./notifications";
 import { computeDateShifts, type DateRuleTask, type DateShift } from "./date-rules";
@@ -53,11 +54,11 @@ async function notify(ctx: TaskCtx, build: () => TaskNotice[]): Promise<void> {
 }
 
 export const TASK_COLUMNS =
-  "id, workspace_id, title, description, status, priority, start_date, due_date, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, position, created_by, created_at, updated_at, deleted_at";
+  "id, workspace_id, title, description, status, priority, start_date, due_date, due_time, duration_minutes, completed_at, owner_id, follower_ids, project, project_key, blocked_by, contact_id, conversation_id, source, source_ref, position, created_by, created_at, updated_at, deleted_at";
 
 /** Lo que de una tarea se audita cuando cambia. */
 const AUDITED_FIELDS = [
-  "title", "description", "status", "priority", "start_date", "due_date",
+  "title", "description", "status", "priority", "start_date", "due_date", "due_time", "duration_minutes",
   "owner_id", "follower_ids", "project", "contact_id", "conversation_id",
 ] as const;
 
@@ -65,7 +66,8 @@ const auditView = (t: Partial<TaskRow>): Record<string, unknown> => {
   const out: Record<string, unknown> = {};
   for (const f of AUDITED_FIELDS) {
     const v = t[f];
-    out[f] = Array.isArray(v) ? [...v].sort().join(",") : v;
+    // La base devuelve la hora como HH:MM:SS y se escribe como HH:MM: se audita siempre como HH:MM.
+    out[f] = f === "due_time" ? normalizeTime(v as string | null | undefined) : Array.isArray(v) ? [...v].sort().join(",") : v;
   }
   return out;
 };
@@ -158,6 +160,8 @@ export async function createTaskCore(ctx: TaskCtx, raw: unknown): Promise<TaskAc
     priority: input.priority ?? "normal",
     start_date: input.start_date ?? null,
     due_date: input.due_date ?? null,
+    due_time: input.due_time ?? null,
+    duration_minutes: input.duration_minutes ?? null,
     owner_id: ownerId,
     follower_ids: followers,
     project: input.project?.project ?? null,
@@ -229,6 +233,9 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
   if (nextStart && nextDue && nextStart > nextDue) {
     return fail("validation", "La fecha de inicio no puede ser posterior al vencimiento.");
   }
+  // La hora solo existe con fecha. Si se borra la fecha, la hora y la duracion se borran con ella (la base lo exige tambien).
+  const nextTime = patch.due_time !== undefined ? patch.due_time : patch.due_date === null ? null : before.due_time;
+  if (nextTime && !nextDue) return fail("validation", "La hora necesita una fecha de vencimiento.");
 
   // Cambiar el vencimiento de una tarea bloqueada: no puede quedar antes que su bloqueante.
   let regapped: TaskBlocker[] | null = null;
@@ -245,6 +252,10 @@ export async function updateTaskCore(ctx: TaskCtx, taskId: string, raw: unknown)
 
   const { project, ...rest } = patch;
   const update: Record<string, unknown> = { ...rest };
+  if (patch.due_date === null) {
+    update.due_time = null;
+    update.duration_minutes = null;
+  }
   if (project !== undefined) {
     update.project = project.project;
     update.project_key = project.project_key;

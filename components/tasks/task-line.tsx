@@ -6,6 +6,7 @@ import type { TaskRow, TaskStatus } from "@/lib/tasks/types";
 import { cn } from "@/lib/utils";
 import { PersonBadge, StatusIcon, STATUS_TONE } from "./chips";
 import { StatusPicker } from "./pickers";
+import { useTimeFormat } from "./time-format-context";
 import type { TaskWorkbenchApi } from "./task-workbench";
 
 /**
@@ -15,11 +16,12 @@ import type { TaskWorkbenchApi } from "./task-workbench";
  */
 export function TaskLine({ task, wb, ownerName }: { task: TaskRow; wb: TaskWorkbenchApi; ownerName: string | null }) {
   const { today, canEdit } = wb;
+  const timeFormat = useTimeFormat();
   const busy = wb.actions.busy.has(task.id);
   const [picker, setPicker] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const label = dueLabel(task, today);
+  const label = dueLabel(task, today, timeFormat);
   const tone = label.tone === "overdue" ? "font-medium text-red-600 dark:text-red-400" : label.tone === "today" ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground";
   const setStatus = (s: TaskStatus) => void wb.actions.edit(task.id, { status: s });
   const setDue = (d: string | null) => void wb.actions.edit(task.id, { due_date: d });
