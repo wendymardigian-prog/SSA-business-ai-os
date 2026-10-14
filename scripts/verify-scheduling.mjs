@@ -401,6 +401,17 @@ try {
         const { data: cAd } = await svc.from("contacts").select("attribution").eq("id", rAd.contact_id).single();
         check(cAd?.attribution?.first_touch?.ad_id === "ad-1" && cAd?.attribution?.last_touch?.campaign_id === "ca-3", "y el contacto lo hereda en su atribucion", JSON.stringify(cAd?.attribution));
 
+        // Plano formularios-ui (F17-F19, 00215): la URL de entrada viaja dentro de `p_utm` y `record_contact_touch` la
+        // lee de `raw.utm.entry_url` — create_booking NO se toco.
+        {
+          const entry = "https://x.test/aplicar?utm_source=facebook&ad_name=Video+Noe&ref=podcast";
+          const uidEn = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+          const { data: rEn, error: eEn } = await svc.rpc("create_booking", args(uidEn, "2030-03-10T15:00:00Z", "2030-03-10T15:30:00Z", { p_utm: { utm_source: "facebook", entry_url: entry }, p_email: "zz-test-entrada@example.test", p_name: "zz-test Entrada", p_phone: "+50688880044" }));
+          check(!eEn && rEn?.booking_id, "una agenda con la URL de entrada se crea igual", eEn?.message);
+          const { data: tEn } = await svc.from("contact_touches").select("entry_url, origin").eq("dedupe_key", `booking:${rEn?.booking_id}`).single();
+          check(tEn?.entry_url === entry && tEn?.origin === "booking", "el toque de la reserva guarda entry_url (de raw.utm), entera", JSON.stringify(tEn));
+        }
+
         // Una agenda sin esos datos no inventa nada.
         const uidNo = `zztest${randomUUID().replace(/-/g, "").slice(0, 16)}`;
         const { data: rNo } = await svc.rpc("create_booking", args(uidNo, "2030-03-08T15:00:00Z", "2030-03-08T15:30:00Z", { p_utm: { utm_source: "instagram" }, p_email: "zz-test-sin@example.test", p_name: "zz-test Sin", p_phone: "+50688880022" }));

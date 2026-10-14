@@ -12,8 +12,8 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] Caracterización: menú por rol (`lib/nav/menu-by-role.characterization.test.ts`)
 - [x] Caracterización: ida y vuelta de `definition` (`lib/forms/definition-roundtrip.characterization.test.ts` + `__fixtures__/definitions/`)
 - [x] Caracterización: atribución de hoy (`lib/forms/attribution-view.characterization.test.ts`, `lib/contacts/attribution-view.characterization.test.ts`)
-- [ ] `verify-*` de base, de a uno (ver "Punto de partida")
-- [ ] Mensaje a la sesión de roles (00215 y archivos del menú)
+- [x] `verify-*` de base, de a uno (ver "Punto de partida" y las notas de B6)
+- [x] Mensaje a la sesión de roles (00215 y archivos del menú): no llegó, queda en PENDIENTE y en el PR
 
 ### B1 · Menú lateral
 - [x] F1 · Orden y grupos
@@ -22,9 +22,9 @@ Plano: `claude/v12/requerimientos-formularios-ui-menu.md` (v1.0, 13/10/2026). Ra
 - [x] F4 · Botón Conocimiento en Agentes IA
 
 ### B6 · URL de entrada completa
-- [ ] F17 · Qué se guarda (`entryUrlFrom`, saneo, tope)
-- [ ] F18 · Dónde queda (respuesta, toque, visita guardada, embed, Agenda) + M1 `00215`
-- [ ] F19 · Dónde se ve (detalle de respuesta y visitas del contacto)
+- [x] F17 · Qué se guarda (`entryUrlFrom`, saneo, tope)
+- [x] F18 · Dónde queda (respuesta, toque, visita guardada, embed, Agenda) + M1 `00215`
+- [x] F19 · Dónde se ve (detalle de respuesta y visitas del contacto)
 
 ### B2 · Lista de formularios
 - [x] F5 · La barra superior
@@ -72,7 +72,7 @@ Datos vivos (solo lectura): 2 formularios (borradores personalizados, vacíos), 
 
 | Plano | Número real | Nombre | Estado |
 |---|---|---|---|
-| M1 | **00215** | `contact_touch_entry_url` | pendiente (después del código de B6) |
+| M1 | **00215** | `contact_touch_entry_url` | **aplicada y registrada el 14/10/2026 (UTC)**, versión `20261014021659` |
 
 La `00208`–`00214` son de la sesión de Equipo y roles. Antes de escribir la 00215 se reconfirma con `list_migrations` y `ls supabase/migrations`.
 
@@ -106,6 +106,12 @@ Cómo se verificó (sin sesión iniciada, no hay forma de ejecutar Server Action
 ## Revisión visual
 
 **Sin sesión:** la app pide login en `/dashboard/*` y no escribo credenciales. Para ver los componentes reales armé una página de prueba temporal (`app/harness-zz`, excluida de git con `.git/info/exclude`, se borra al cerrar B7) que renderiza `NavLinks` y, en los bloques siguientes, los componentes de Formularios con datos de ejemplo. Lo que depende de datos reales de la base (números de la lista, respuestas) no se ve.
+
+### B6 · URL de entrada y la migración 00215 (verificación contra la base real)
+- **Antes de aplicar** (solo lectura): `record_contact_touch` md5 `f364db1862cc0f90291ca14ef855a214`, `create_booking` md5 `dc462c28e99c353bbc9ca26198eddd64`, permisos `{postgres=X/postgres,service_role=X/postgres}`, 800 toques, sin columna `entry_url`. **Después:** `record_contact_touch` md5 `2f51ddbf060e31528b89ce7481b38e3d`, `create_booking` igual, mismos permisos, 800 toques (nada cambió de lugar), con la columna, registrada.
+- La migración se aplicó con la CLI (`supabase db query --linked -f`), con el candado de los `verify-*` tomado, y se registró en `supabase_migrations.schema_migrations`. `lib/contacts/record-touch-00215-diff.test.ts` fija que la definición nueva difiere de la vieja SOLO en las dos líneas de `entry_url`.
+- **Punto de partida de los `verify-*` (antes de aplicar), a mano y de a uno** (la base la comparten otras dos sesiones y ruido hubo): `verify-forms` salió 0 en la segunda corrida (la primera tuvo un `fetch failed` suelto al registrar un toque); `verify-scheduling` 0; `verify-booking-concurrency` 0; `verify-attribution` 1 falla de datos que ya tenía (788 de 847 contactos con primer toque); `verify-ads-attribution` 1 falla (el `EXPLAIN` de `ads_crm_metrics` tardó 522 ms contra un tope de 300 ms con la base cargada); `verify-inbound-webhooks` 2 fallas por la `00208` de la otra sesión (cambió las políticas de los webhooks).
+- **Después de aplicar:** `verify-forms` **0** (con los siete casos nuevos de `entry_url`: llega entera a la respuesta y al toque, sin token ni fragmento; `landing_page` sigue filtrada; una URL de 2500 se recorta a 2000 y el toque se registra; sin `entry_url` queda `NULL`); `verify-scheduling` **0** (con el caso nuevo de la Agenda: la URL llega al toque desde `raw.utm`); `verify-booking-concurrency` **0**. Los demás, abajo.
 
 ### B1 · Menú (1440 px, oscuro; claro y 390 px en B7)
 - Orden y grupos igual al prototipo: Dashboards, Bandeja, Tareas, Mi reporte del día · ADQUISICIÓN · VENTAS · HERRAMIENTAS ⌄ (Automatizaciones, Formularios, Agentes IA, Ajustes).

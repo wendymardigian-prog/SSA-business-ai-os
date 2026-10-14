@@ -18,7 +18,11 @@ Formato: **qué quedó**, **por qué**, **qué se decidió**.
 
 ## Pendientes
 
-_(vacío: se completa durante la construcción)_
+- **Revisar en vivo, con sesión (hoy no hay forma de ejecutar Server Actions desde el navegador de pruebas).** Los items `[~]` de "Funcionalidad que se conserva" en el PROGRESS: Guardar de Contacto, encender/apagar y "Nuevo flow", cambiar la parte final del link con confirmación, el link firmado para un contacto, Pausar / Reanudar / Archivar / Restaurar desde la tarjeta Estado de Publicar, y crear / duplicar / autoguardar / conflicto / publicar con y sin contactos. El código de cada uno es el de antes (o la misma acción que usa el menú "⋯" de la lista); lo nuevo es dónde se dibujan.
+- **El CSV de respuestas no suma la URL de entrada.** Qué: `entry_url` se ve en el detalle y en el contacto, pero no es una columna del CSV. Por qué: `VISIT_META_KEYS` (de donde sale el CSV) no cambia en este plano. Qué se decidió: dejarlo; sumar la columna es un cambio chico en `lib/forms/export.ts` cuando se pida.
+- **`<details>` que quedan fuera del alcance del plano:** "Ver como tabla" en `components/forms/responses/metrics-view.tsx` (Métricas es un botón, no una pestaña; el plano lo deja) y "Por canal" en `components/eod/reports/reports-view.tsx` (Reportes de un EOD, que el plano no menciona). El test `no-details` cubre solo `components/forms/editor` y `components/forms/builder`, como pide el plano.
+- **Las huellas de `record_contact_touch` en los `verify-*` de otras ramas.** La 00215 cambió a propósito la definición de `record_contact_touch` (md5 `2f51ddbf060e31528b89ce7481b38e3d`; antes `f364db1862cc0f90291ca14ef855a214`). `verify-forms` y `verify-ads-attribution` de ESTA rama ya esperan la nueva; los de otra rama (por ejemplo la de Equipo y roles, o la de Contactos) siguen esperando la vieja y fallan en la comprobación de esa huella hasta que se actualicen: son dos constantes (`scripts/verify-forms.impl.ts` y `scripts/verify-ads-attribution.mjs`).
+- **Reescribí mi último commit ya subido (B4).** Un `git add` con una ruta que no existía dejó subido un commit que solo borraba `design-cards.tsx` (la rama quedaba sin compilar). Lo rehice (`reset --soft` + commit completo) y lo subí con `--force-with-lease`, solo sobre esta rama (nadie más la usa y todavía no hay PR).
 
 ## Notas de la corrida
 
