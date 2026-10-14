@@ -1,0 +1,121 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`caracterizacion: attributionSections (hoy) > una respuesta con anuncio de Meta y una primera visita distinta 1`] = `
+[
+  {
+    "items": [
+      {
+        "key": "utm_source",
+        "label": "Fuente (utm_source)",
+        "value": "facebook",
+      },
+      {
+        "key": "utm_medium",
+        "label": "Medio (utm_medium)",
+        "value": "paid",
+      },
+      {
+        "key": "utm_campaign",
+        "label": "Campaña (utm_campaign)",
+        "value": "Programa X · clase jueves",
+      },
+      {
+        "key": "utm_content",
+        "label": "Contenido (utm_content)",
+        "value": "Video testimonio",
+      },
+    ],
+    "title": "Campaña",
+  },
+  {
+    "items": [
+      {
+        "key": "fbclid",
+        "label": "Clic de Meta (fbclid)",
+        "value": "IwZXh0bgNhZW0BMABh",
+      },
+      {
+        "key": "ad_id",
+        "label": "Id del anuncio",
+        "value": "120214558930140527",
+      },
+      {
+        "key": "adset_id",
+        "label": "Id del conjunto de anuncios",
+        "value": "120214558930130527",
+      },
+      {
+        "key": "campaign_id",
+        "label": "Id de la campaña",
+        "value": "120214558930120527",
+      },
+      {
+        "key": "placement",
+        "label": "Ubicación",
+        "value": "Instagram_Reels",
+      },
+    ],
+    "title": "Anuncio",
+  },
+  {
+    "items": [
+      {
+        "key": "fbp",
+        "label": "Navegador de Meta (fbp)",
+        "value": "fb.1.1758810022.4410293",
+      },
+      {
+        "key": "fbc",
+        "label": "Clic de Meta guardado (fbc)",
+        "value": "fb.1.1760368140.IwZXh0",
+      },
+    ],
+    "title": "Navegador",
+  },
+  {
+    "items": [
+      {
+        "key": "landing_page",
+        "label": "Página de llegada",
+        "value": "https://ejemplo.test/programa-x?utm_source=facebook&utm_medium=paid",
+      },
+      {
+        "key": "page_url",
+        "label": "Página del envío",
+        "value": "https://ejemplo.test/aplicar",
+      },
+      {
+        "key": "referrer_url",
+        "label": "De dónde vino",
+        "value": "https://l.facebook.com/",
+      },
+    ],
+    "title": "Páginas",
+  },
+  {
+    "items": [
+      {
+        "key": "utm_source",
+        "label": "Fuente (utm_source)",
+        "value": "instagram",
+      },
+      {
+        "key": "utm_medium",
+        "label": "Medio (utm_medium)",
+        "value": "social",
+      },
+      {
+        "key": "utm_campaign",
+        "label": "Campaña (utm_campaign)",
+        "value": "bio",
+      },
+      {
+        "key": "landing_page",
+        "label": "Página de llegada",
+        "value": "https://ejemplo.test/?utm_source=instagram",
+      },
+    ],
+    "title": "Primera visita",
+  },
+]
+`;
