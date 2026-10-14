@@ -38608,12 +38608,24 @@ BEGIN
     RAISE EXCEPTION 'ads_crm_cell_detail: metrica invalida (%)', p_metric USING ERRCODE = '22023';
   END IF;
 
+  -- La lista del TOTAL de «Leads totales» (sin un objeto): una persona que tocó dos anuncios es UNA fila, igual que en el número
+  -- (la fila `is_total` de ads_crm_metrics_v2 cuenta personas distintas). En cualquier otra celda, una fila por registro.
   RETURN QUERY
-  SELECT i.item_id, i.contact_id, c.display_name, i.occurred_at, i.origin, i.detail_at, i.amount_cents,
+  WITH src AS (
+    SELECT i.item_id AS s_item, i.contact_id AS s_contact, i.occurred_at AS s_occurred, i.origin AS s_origin,
+           i.detail_at AS s_detail, i.amount_cents AS s_amount,
+           CASE WHEN p_metric = 'leads_total' AND p_object_id IS NULL
+                THEN row_number() OVER (PARTITION BY i.contact_id ORDER BY i.occurred_at DESC NULLS LAST, i.obj)
+                ELSE 1
+           END AS rn
+      FROM public.ads_crm_items(p_level, p_metric, p_since, p_until, p_workspace_id, p_ad_account_id, p_object_id, p_object_ids) i
+  )
+  SELECT s.s_item, s.s_contact, c.display_name, s.s_occurred, s.s_origin, s.s_detail, s.s_amount,
          count(*) OVER ()
-    FROM public.ads_crm_items(p_level, p_metric, p_since, p_until, p_workspace_id, p_ad_account_id, p_object_id, p_object_ids) i
-    LEFT JOIN public.contacts c ON c.id = i.contact_id
-   ORDER BY i.occurred_at DESC NULLS LAST, i.item_id
+    FROM src s
+    LEFT JOIN public.contacts c ON c.id = s.s_contact
+   WHERE s.rn = 1
+   ORDER BY s.s_occurred DESC NULLS LAST, s.s_item
    LIMIT least(greatest(coalesce(p_limit, 50), 1), 200)
   OFFSET greatest(coalesce(p_offset, 0), 0);
 END;
@@ -38621,3 +38633,69 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.ads_crm_cell_detail(text, text, date, date, text, uuid, text, text[], integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ads_crm_cell_detail(text, text, date, date, text, uuid, text, text[], integer, integer) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 220: META LEADS RECOUNT
+-- ============================================================
+-- ============================================================================
+-- 00220 — Leads y compras de Meta: un nombre por evento  (Tirón 2, E1, decisión 1)
+-- ============================================================================
+-- Meta informa el MISMO lead con varios nombres a la vez (`lead`, `onsite_conversion.lead_grouped`, las variantes
+-- `offsite_*_add_meta_leads`…). El sync sumaba todo lo que contuviera «lead» y cada lead contaba hasta cinco veces: la base guarda
+-- 2.337 leads por nivel cuando Meta informa 468 (la suma de la acción `lead`). Por eso el «Leads Meta» y el «CPL Meta» de todas las
+-- pantallas estaban inflados.
+--
+-- Esta migración recalcula `leads` y `purchases` de TODAS las filas de `meta_ads_insights_daily` desde el jsonb `actions` que ya
+-- está guardado (sin llamar a Meta), con la regla nueva: el PRIMER nombre de la lista de preferencia que venga. Es la gemela en SQL de
+-- `lib/meta/action-counts.ts` (los mismos casos: `lib/meta/action-counts.cases.json`; `verify-ads-attribution.mjs` los corre contra la
+-- función de acá).
+--   leads:    lead › onsite_conversion.lead_grouped › offsite_conversion.fb_pixel_lead › onsite_web_lead › complete_registration ›
+--             offsite_conversion.fb_pixel_complete_registration
+--   compras:  omni_purchase › purchase › offsite_conversion.fb_pixel_purchase
+-- Una fila sin ninguno de esos nombres queda en NULL (Meta no lo informa), no en 0. `purchase_value` no se toca: sale de
+-- `action_values`, que no se guarda crudo.
+--
+-- Orden: se aplica DESPUÉS de desplegar el código nuevo. Si no, el próximo sync con el código viejo vuelve a escribir los últimos días
+-- inflados. Respaldo previo (id, leads y purchases de cada fila): docs/atribucion/respaldo-leads-meta.json.
+--
+-- Como volver atras (con el respaldo):
+--   UPDATE public.meta_ads_insights_daily t SET leads = r.leads, purchases = r.purchases
+--     FROM jsonb_to_recordset('<el arreglo "rows" del respaldo>'::jsonb) AS r(id uuid, leads int, purchases int)
+--    WHERE t.id = r.id;
+--   DROP FUNCTION IF EXISTS public.meta_action_canonical(jsonb, text[]);
+-- Riesgo: bajo (cambia un número derivado de datos crudos que se conservan; con respaldo).
+-- ============================================================================
+
+SET search_path = '';
+
+-- El primer nombre de la lista que venga en `actions` (un mapa {tipo: cantidad}); NULL si ninguno.
+CREATE OR REPLACE FUNCTION public.meta_action_canonical(p_actions jsonb, p_preference text[])
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $fn$
+  SELECT (p_actions ->> pref)::numeric::integer
+    FROM unnest(p_preference) WITH ORDINALITY AS u(pref, ord)
+   WHERE jsonb_typeof(p_actions) = 'object'
+     AND p_actions ? pref
+     AND jsonb_typeof(p_actions -> pref) = 'number'
+   ORDER BY ord
+   LIMIT 1
+$fn$;
+
+REVOKE ALL ON FUNCTION public.meta_action_canonical(jsonb, text[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.meta_action_canonical(jsonb, text[]) TO authenticated, service_role;
+
+UPDATE public.meta_ads_insights_daily t
+   SET leads = public.meta_action_canonical(t.actions, ARRAY[
+         'lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_web_lead',
+         'complete_registration', 'offsite_conversion.fb_pixel_complete_registration']),
+       purchases = public.meta_action_canonical(t.actions, ARRAY['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'])
+ WHERE jsonb_typeof(t.actions) = 'object'
+   AND (
+     t.leads IS DISTINCT FROM public.meta_action_canonical(t.actions, ARRAY[
+         'lead', 'onsite_conversion.lead_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_web_lead',
+         'complete_registration', 'offsite_conversion.fb_pixel_complete_registration'])
+     OR t.purchases IS DISTINCT FROM public.meta_action_canonical(t.actions, ARRAY['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase'])
+   );

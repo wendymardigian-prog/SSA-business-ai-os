@@ -1,0 +1,20 @@
+{
+  "comentario": "Casos compartidos con la regla en SQL (00220_meta_leads_recount): leads y compras. Cada caso: las `actions` que se guardan y lo que da la regla (null = Meta no lo informa). Si se cambia la regla, cambiarla en TS y en SQL y sumar el caso.",
+  "leads": [
+    { "nombre": "el total de Meta y sus variantes duplicadas cuentan UNA vez", "actions": { "lead": 3, "onsite_conversion.lead_grouped": 3, "offsite_complete_registration_add_meta_leads": 3, "offsite_search_add_meta_leads": 3, "offsite_content_view_add_meta_leads": 3 }, "esperado": 3 },
+    { "nombre": "sin `lead`, vale la variante agrupada", "actions": { "onsite_conversion.lead_grouped": 2, "link_click": 50 }, "esperado": 2 },
+    { "nombre": "sin `lead` ni agrupada, el lead del pixel", "actions": { "offsite_conversion.fb_pixel_lead": 4 }, "esperado": 4 },
+    { "nombre": "el lead del sitio, antes que un registro", "actions": { "onsite_web_lead": 5, "complete_registration": 9 }, "esperado": 5 },
+    { "nombre": "un registro completo es un lead cuando no hay otro nombre", "actions": { "complete_registration": 4 }, "esperado": 4 },
+    { "nombre": "el registro del pixel, al final", "actions": { "offsite_conversion.fb_pixel_complete_registration": 6 }, "esperado": 6 },
+    { "nombre": "una variante que solo PARECE un lead no cuenta", "actions": { "offsite_complete_registration_add_meta_leads": 7, "link_click": 50 }, "esperado": null },
+    { "nombre": "sin ninguna accion de lead es null, no cero", "actions": { "link_click": 50 }, "esperado": null },
+    { "nombre": "un cero que Meta SI informo es 0", "actions": { "lead": 0, "onsite_conversion.lead_grouped": 5 }, "esperado": 0 }
+  ],
+  "compras": [
+    { "nombre": "omni_purchase gana", "actions": { "omni_purchase": 7, "purchase": 7, "offsite_conversion.fb_pixel_purchase": 7 }, "esperado": 7 },
+    { "nombre": "sin omni, purchase", "actions": { "purchase": 3 }, "esperado": 3 },
+    { "nombre": "solo el del pixel", "actions": { "offsite_conversion.fb_pixel_purchase": 2 }, "esperado": 2 },
+    { "nombre": "sin compras es null", "actions": { "lead": 5 }, "esperado": null }
+  ]
+}

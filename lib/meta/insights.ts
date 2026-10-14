@@ -16,6 +16,7 @@
  *    interpretacion de hoy en datos de los que no se puede volver.
  */
 
+import { countLeadActions, countPurchaseActions } from "./action-counts";
 import { GRAPH, humanizeGraphError, isTransientGraphError, type GraphError } from "./graph";
 
 export type AdsLevel = "account" | "campaign" | "adset" | "ad";
@@ -105,17 +106,17 @@ export function actionValue(actions: ActionEntry[] | undefined, matcher: (type: 
 /**
  * Cuantos leads.
  *
- * Meta los nombra distinto segun el objetivo y la plataforma: `lead`,
- * `onsite_conversion.lead_grouped`, `offsite_conversion.fb_pixel_lead`,
- * `complete_registration`. Buscar la palabra adentro del tipo es lo que
- * hace que la cifra sea la misma cambie el objetivo de la campaña.
+ * Meta informa el MISMO lead con varios nombres a la vez (`lead`, `onsite_conversion.lead_grouped`, las variantes
+ * `offsite_*_add_meta_leads`…): se cuenta UNO por evento, el primero de la lista de preferencia
+ * (`lib/meta/action-counts.ts`). Antes se sumaba todo lo que contuviera «lead» y cada lead contaba hasta cinco veces
+ * (2.337 guardados contra 468 que informa Meta). Sin ninguno, null: Meta no informa esa accion.
  */
 export function countLeads(actions: ActionEntry[] | undefined): number | null {
-  return actionValue(actions, (type) => type.includes("lead") || type.includes("complete_registration"));
+  return countLeadActions(actions);
 }
 
 export function countPurchases(actions: ActionEntry[] | undefined): number | null {
-  return actionValue(actions, (type) => type.includes("purchase"));
+  return countPurchaseActions(actions);
 }
 
 /** Todas las acciones, como mapa, para guardarlas crudas. */

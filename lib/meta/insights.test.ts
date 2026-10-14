@@ -24,15 +24,18 @@ function pages(...bodies: unknown[]) {
 }
 
 describe("contar leads (F55)", () => {
-  it("los encuentra se llamen como se llamen", () => {
-    // Meta los nombra distinto segun el objetivo y la plataforma.
+  it("los encuentra se llamen como se llamen, pero cuenta UNO por evento", () => {
+    // Meta los nombra distinto segun el objetivo y la plataforma, y el mismo lead llega con varios nombres a la vez:
+    // sumarlos contaba cada lead hasta cinco veces (Tiron 2, E1). Vale `lead`, el total de Meta.
     expect(
       countLeads([
         { action_type: "lead", value: "3" },
-        { action_type: "onsite_conversion.lead_grouped", value: "2" },
+        { action_type: "onsite_conversion.lead_grouped", value: "3" },
         { action_type: "link_click", value: "50" },
       ]),
-    ).toBe(5);
+    ).toBe(3);
+    // Sin `lead`, vale el siguiente nombre de la lista.
+    expect(countLeads([{ action_type: "onsite_conversion.lead_grouped", value: "2" }])).toBe(2);
   });
 
   it("tambien cuenta los registros completos", () => {

@@ -196,6 +196,34 @@ export function isSyncHour(now: Date, timeZone: string): boolean {
   return workspaceHour(now, timeZone) === SYNC_HOUR;
 }
 
+/**
+ * Ponerse al dia (Tiron 2, E1). La sincronizacion de anuncios corre una vez por dia, a las 3 de la mañana del workspace:
+ * si esa hora cae justo en una caida (el cron no arranco, la app estaba en un deploy, Supabase en un incidente), la
+ * cuenta se queda un dia entero sin sincronizar, y el catalogo que se estrena ese mismo dia no se llena hasta el
+ * siguiente. El cron, ademas de lo de siempre, encola las cuentas que perdieron su corrida:
+ *  - nunca se sincronizaron;
+ *  - la ultima vez fue hace 26 horas o mas (un dia de margen);
+ *  - o su catalogo nunca se leyo completo y el ultimo intento fue hace 6 horas o mas (se reintenta, sin insistir cada hora).
+ */
+export const CATCH_UP_AFTER_HOURS = 26;
+export const CATALOG_RETRY_AFTER_HOURS = 6;
+
+export interface CatchUpAccount {
+  sync_enabled: boolean;
+  last_synced_at: string | null;
+  catalog_synced_at?: string | null;
+}
+
+export function adAccountNeedsCatchUp(account: CatchUpAccount, now: Date): boolean {
+  if (!account.sync_enabled) return false;
+  if (!account.last_synced_at) return true;
+  const last = new Date(account.last_synced_at).getTime();
+  if (!Number.isFinite(last)) return true;
+  const hours = (now.getTime() - last) / 3_600_000;
+  if (hours >= CATCH_UP_AFTER_HOURS) return true;
+  return !account.catalog_synced_at && hours >= CATALOG_RETRY_AFTER_HOURS;
+}
+
 // ── Engagement comparable a 7 dias ───────────────────────────────────────
 
 export interface DailyPoint {

@@ -403,12 +403,24 @@ BEGIN
     RAISE EXCEPTION 'ads_crm_cell_detail: metrica invalida (%)', p_metric USING ERRCODE = '22023';
   END IF;
 
+  -- La lista del TOTAL de «Leads totales» (sin un objeto): una persona que tocó dos anuncios es UNA fila, igual que en el número
+  -- (la fila `is_total` de ads_crm_metrics_v2 cuenta personas distintas). En cualquier otra celda, una fila por registro.
   RETURN QUERY
-  SELECT i.item_id, i.contact_id, c.display_name, i.occurred_at, i.origin, i.detail_at, i.amount_cents,
+  WITH src AS (
+    SELECT i.item_id AS s_item, i.contact_id AS s_contact, i.occurred_at AS s_occurred, i.origin AS s_origin,
+           i.detail_at AS s_detail, i.amount_cents AS s_amount,
+           CASE WHEN p_metric = 'leads_total' AND p_object_id IS NULL
+                THEN row_number() OVER (PARTITION BY i.contact_id ORDER BY i.occurred_at DESC NULLS LAST, i.obj)
+                ELSE 1
+           END AS rn
+      FROM public.ads_crm_items(p_level, p_metric, p_since, p_until, p_workspace_id, p_ad_account_id, p_object_id, p_object_ids) i
+  )
+  SELECT s.s_item, s.s_contact, c.display_name, s.s_occurred, s.s_origin, s.s_detail, s.s_amount,
          count(*) OVER ()
-    FROM public.ads_crm_items(p_level, p_metric, p_since, p_until, p_workspace_id, p_ad_account_id, p_object_id, p_object_ids) i
-    LEFT JOIN public.contacts c ON c.id = i.contact_id
-   ORDER BY i.occurred_at DESC NULLS LAST, i.item_id
+    FROM src s
+    LEFT JOIN public.contacts c ON c.id = s.s_contact
+   WHERE s.rn = 1
+   ORDER BY s.s_occurred DESC NULLS LAST, s.s_item
    LIMIT least(greatest(coalesce(p_limit, 50), 1), 200)
   OFFSET greatest(coalesce(p_offset, 0), 0);
 END;
