@@ -259,6 +259,24 @@ describe("applyKeyToggle (F13): las correcciones automáticas se aplican en el t
     expect(r.alsoRemoved).toEqual(["contacts.edit"]);
   });
 
+  it("tildar «publicar» tilda «editar» y «ver» (publicar escribe los disparadores, que piden flows.edit)", () => {
+    const r = applyKeyToggle([], "flows.publish", true);
+    expect([...r.keys].sort()).toEqual(["flows.edit", "flows.publish", "flows.view"]);
+    expect([...r.alsoAdded].sort()).toEqual(["flows.edit", "flows.view"]);
+  });
+
+  it("destildar «ver» en flujos destilda «editar» y «publicar» en cadena", () => {
+    const r = applyKeyToggle(["flows.view", "flows.edit", "flows.publish", "sequences.view"], "flows.view", false);
+    expect(r.keys.sort()).toEqual(["sequences.view"]);
+    expect([...r.alsoRemoved].sort()).toEqual(["flows.edit", "flows.publish"]);
+  });
+
+  it("destildar «editar» destilda «publicar» pero deja «ver»", () => {
+    const r = applyKeyToggle(["flows.view", "flows.edit", "flows.publish"], "flows.edit", false);
+    expect(r.keys.sort()).toEqual(["flows.view"]);
+    expect(r.alsoRemoved).toEqual(["flows.publish"]);
+  });
+
   it("tildar algo que no depende de nada no toca el resto", () => {
     expect(applyKeyToggle(["a"], "social.view", true)).toEqual({ keys: ["a", "social.view"], alsoAdded: [], alsoRemoved: [] });
   });

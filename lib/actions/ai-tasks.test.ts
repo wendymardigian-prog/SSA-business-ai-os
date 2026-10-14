@@ -41,7 +41,11 @@ const taskCtx = async () => ({
   supabase: fakeSupabase(),
   user: { id: "user-1" },
 });
-vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: taskCtx, getAnyPermissionAction: taskCtx }));
+// `workspaces` se escribe con el cliente de servicio despues del guard (su RLS sigue en Admin): el mismo falso responde.
+vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => fakeSupabase() }));
+
+// Lazy: la fabrica del mock se evalua al importar el modulo, antes de que exista `taskCtx`.
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: () => taskCtx(), getAnyPermissionAction: () => taskCtx() }));
 
 vi.mock("@/lib/ai/provider", () => ({
   listConnectedAiProviders: async () => [{ provider: "anthropic", label: "Anthropic", defaultModel: "m", models: ["m"] }],

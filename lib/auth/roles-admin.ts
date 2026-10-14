@@ -284,6 +284,8 @@ const IMPLIES: Array<[view: string, dependent: string]> = [
   ["inbox.email.view", "inbox.email.reply"],
   ["contacts.view", "contacts.edit"],
   ["flows.view", "flows.edit"],
+  // Publicar escribe los disparadores del flujo, y la base los deja escribir con `flows.edit` (00214).
+  ["flows.edit", "flows.publish"],
   ["sequences.view", "sequences.edit"],
   ["agents.view", "agents.edit"],
   ["knowledge.view", "knowledge.edit"],
@@ -304,20 +306,31 @@ export function applyKeyToggle(
   const alsoAdded: string[] = [];
   const alsoRemoved: string[] = [];
 
+  // Con cierre en cadena: tildar «publicar» tilda «editar» y, por eso, tambien «ver»; destildar «ver» destilda «editar» y «publicar».
   if (on) {
     set.add(key);
-    for (const [view, dependent] of IMPLIES) {
-      if (dependent === key && !set.has(view)) {
-        set.add(view);
-        alsoAdded.push(view);
+    const queue = [key];
+    while (queue.length > 0) {
+      const current = queue.pop() as string;
+      for (const [view, dependent] of IMPLIES) {
+        if (dependent === current && !set.has(view)) {
+          set.add(view);
+          alsoAdded.push(view);
+          queue.push(view);
+        }
       }
     }
   } else {
     set.delete(key);
-    for (const [view, dependent] of IMPLIES) {
-      if (view === key && set.has(dependent)) {
-        set.delete(dependent);
-        alsoRemoved.push(dependent);
+    const queue = [key];
+    while (queue.length > 0) {
+      const current = queue.pop() as string;
+      for (const [view, dependent] of IMPLIES) {
+        if (view === current && set.has(dependent)) {
+          set.delete(dependent);
+          alsoRemoved.push(dependent);
+          queue.push(dependent);
+        }
       }
     }
   }
