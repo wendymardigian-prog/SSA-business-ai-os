@@ -39,4 +39,6 @@ Formato: **qué quedó** / por qué / qué se decidió.
 
 ## Trabado / fallado
 
-_(se completa al cerrar)_
+- **Revisión visual sin hacer** (Equipo, Roles, General, Integraciones y menú; 1440 y 390 px; claro y oscuro) — por qué: el navegador de Claude no tiene sesión y el login va contra la base real; no se escriben credenciales. Se decidió dejarla para Wendy con una sesión real.
+- **`verify-contacts-single-entry.mjs` falló dos veces** en «sigue habiendo UN contacto» (conteo de contactos de un workspace de prueba) — por qué: no está claro si es mío o preexistente; este script es de la sesión de contactos y no se corrió al empezar. Mi cambio sobre `contacts` es solo la política de DELETE (`contacts.delete`), que el service role no usa. Hay un diagnóstico preparado (copia con el conteo detallado, `scripts/verify-zz-dbg-single.mjs`, sin commitear) que no pudo correr porque la base quedó bloqueada por restos `zz-test-` de otra sesión. **Para retomar**: cuando no queden filas `zz-test-`, correr ese script con el candado y comparar contra `main`.
+- Los otros 22 `verify-*` que pasaban al empezar siguen en verde con las siete migraciones aplicadas.

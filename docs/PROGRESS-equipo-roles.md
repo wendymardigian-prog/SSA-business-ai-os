@@ -43,7 +43,7 @@ Plano: [requerimientos-equipo-roles.md](requerimientos-equipo-roles.md) (v1.0). 
 
 ### B6 · Verificación y cierre
 - [x] F25 · `verify-permissions-matrix.mjs`
-- [ ] F26 · Documentación (`docs/roles.md`, `CLAUDE.md`, PENDIENTE) y PR sin merge
+- [x] F26 · Documentación (`docs/roles.md`, `CLAUDE.md`, PENDIENTE) y PR sin merge (PR #53, abierto, sin mergear)
 
 ## Punto de partida
 
