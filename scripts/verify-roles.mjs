@@ -16,11 +16,17 @@
  *
  *   node scripts/verify-roles.mjs                      # antes de aplicar la 00136
  *   node scripts/verify-roles.mjs --despues-de-00136   # y despues: suma el alcance own_unassigned
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208   # has_permission v2 (Member, Admin, Owner)
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211   # y el retiro de settings.manage
  */
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runCleanup } from "./test-cleanup.mjs";
 
 const env = Object.fromEntries(
@@ -29,6 +35,9 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()])
 );
 const URL = env.NEXT_PUBLIC_SUPABASE_URL, ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Equipo y roles (B1): comprobaciones de las migraciones 00208 (has_permission v2) y 00211 (settings.manage).
+const POST_00208 = process.argv.includes("--despues-de-00208");
+const POST_00211 = process.argv.includes("--despues-de-00211");
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 let failures = 0;
@@ -260,6 +269,97 @@ try {
       p_workspace_id: ws.id, p_module: "leads",
     });
     check(scopeMember === "own", "el de un Member sin rol, `own`");
+  }
+
+  if (POST_00208) {
+    console.log("\n— has_permission v2 (00208): el Member de sistema, el Admin, el Owner y los roles personalizados —");
+    const hp = async (u, key) => (await u.client.rpc("has_permission", { p_workspace_id: ws.id, p_key: key })).data;
+    const dueno = await makeUser("roles-owner");
+    const conRolSistema = await makeUser("roles-member-sistema");
+    const { data: rolMember } = await svc.from("workspace_roles").select("id").eq("workspace_id", ws.id).eq("system_role", "member").single();
+    const personalizado = await makeUser("roles-personalizado");
+    const { data: rolInvita } = await svc.from("workspace_roles").insert({
+      workspace_id: ws.id, name: "zz-test Solo invita",
+      permissions: { keys: ["team.invite"], scopes: { leads: "own", conversations: "own" } },
+    }).select("id").single();
+    await svc.from("workspace_members").insert([
+      { workspace_id: ws.id, user_id: dueno.id, role: "owner" },
+      { workspace_id: ws.id, user_id: conRolSistema.id, role: "member", role_id: rolMember.id },
+      { workspace_id: ws.id, user_id: personalizado.id, role: "member", role_id: rolInvita.id },
+    ]);
+
+    // El Member de sistema, sin rol asignado y con la fila del rol de sistema: lo mismo.
+    for (const [quien, u] of [["sin rol asignado", acotado], ["con el rol de sistema Member", conRolSistema]]) {
+      check((await hp(u, "contacts.view")) === true, `un Member ${quien}: contacts.view = true`);
+      check((await hp(u, "flows.publish")) === true, `un Member ${quien}: flows.publish = true`);
+      check((await hp(u, "contacts.assign")) === true, `un Member ${quien}: contacts.assign = true`);
+      check((await hp(u, "team.invite")) === false, `un Member ${quien}: team.invite = false`);
+      check((await hp(u, "sequences.edit")) === false, `un Member ${quien}: sequences.edit = false (sale de su lista)`);
+      check((await hp(u, "contacts.import")) === false, `un Member ${quien}: contacts.import = false`);
+      check((await hp(u, "clave.que.no.existe")) === false, `un Member ${quien}: una clave inexistente = false`);
+    }
+    // Nunca NULL.
+    { const { data } = await acotado.client.rpc("has_permission", { p_workspace_id: ws.id, p_key: null });
+      check(data === false, "has_permission con clave NULL devuelve false, no NULL"); }
+
+    check((await hp(admin, "settings.general")) === true, "un Admin tiene settings.general");
+    check((await hp(admin, "team.invite")) === true, "un Admin tiene team.invite");
+    check((await hp(admin, "team.remove")) === false, "un Admin NO tiene team.remove (solo-Owner)");
+    check((await hp(admin, "workspace.transfer")) === false, "un Admin NO tiene workspace.transfer (solo-Owner)");
+    check((await hp(dueno, "team.remove")) === true, "el Owner SI tiene team.remove");
+    check((await hp(dueno, "workspace.transfer")) === true, "el Owner SI tiene workspace.transfer");
+
+    // Un rol personalizado NO hereda la lista del Member: tiene lo que tildó y nada mas.
+    check((await hp(personalizado, "team.invite")) === true, "un rol personalizado tiene lo que tiene tildado");
+    check((await hp(personalizado, "contacts.view")) === false, "y NO hereda la lista del Member");
+
+    // Quien no es miembro del workspace no tiene nada.
+    const otro = await makeUser("roles-ajeno-hp");
+    check((await hp(otro, "contacts.view")) === false, "quien no es miembro de ese workspace: false");
+  }
+
+  if (POST_00211) {
+    console.log("\n— settings.manage se retira (00211): el jsonb de los roles personalizados se migra —");
+    const { data: viejo } = await svc.from("workspace_roles").insert({
+      workspace_id: ws.id, name: "zz-test Rol viejo",
+      permissions: {
+        keys: ["settings.manage", "flows.edit", "team.manage", "roles.manage", "integrations.manage", "agents.edit", "contacts.edit", "contacts.view"],
+        scopes: { leads: "own", conversations: "own" },
+      },
+    }).select("id").single();
+    const { data: sinNada } = await svc.from("workspace_roles").insert({
+      workspace_id: ws.id, name: "zz-test Rol sin claves viejas",
+      permissions: { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } },
+    }).select("id").single();
+
+    // Se vuelve a correr el UPDATE de la migracion (es idempotente) sobre estos roles recien creados.
+    const sql = readFileSync("supabase/migrations/00211_retire_settings_manage.sql", "utf8");
+    const dir = mkdtempSync(join(tmpdir(), "verify-roles-"));
+    const file = join(dir, "q.sql");
+    writeFileSync(file, sql.slice(sql.indexOf("UPDATE public.workspace_roles r")));
+    try { execFileSync("supabase", ["db", "query", "--linked", "-f", file], { stdio: "pipe" }); }
+    catch (e) { fail("no pude correr el UPDATE de la 00211 (¿esta la CLI de Supabase?)", String(e.message).slice(0, 200)); }
+
+    const { data: despues } = await svc.from("workspace_roles").select("id, permissions").in("id", [viejo.id, sinNada.id]);
+    const keys = (id) => (despues ?? []).find((r) => r.id === id)?.permissions?.keys ?? [];
+    for (const k of ["settings.general", "sales.settings", "products.manage", "assignment.manage"]) {
+      check(keys(viejo.id).includes(k), `un rol con settings.manage recibe ${k}`);
+    }
+    check(!keys(viejo.id).includes("settings.manage"), "y ya no tiene settings.manage");
+    for (const k of ["flows.publish", "webhooks.manage", "team.view", "team.invite", "roles.view", "integrations.view", "channels.manage", "ai_tasks.manage", "ai_limits.manage", "contacts.assign"]) {
+      check(keys(viejo.id).includes(k), `las claves que se parten le suman ${k}`);
+    }
+    for (const k of ["flows.edit", "team.manage", "roles.manage", "integrations.manage", "agents.edit", "contacts.edit", "contacts.view"]) {
+      check(keys(viejo.id).includes(k), `y conserva ${k}`);
+    }
+    check(JSON.stringify(keys(sinNada.id)) === JSON.stringify(["contacts.view"]), "un rol sin claves viejas no cambia");
+
+    // Ninguna politica viva sigue pidiendo la clave que ya no existe.
+    try {
+      const out = execFileSync("supabase", ["db", "query", "--linked", "-o", "json",
+        "select count(*)::int as n from pg_policies where schemaname='public' and (coalesce(qual,'') || coalesce(with_check,'')) ilike '%settings.manage%'"], { stdio: "pipe" }).toString();
+      check(JSON.parse(out).rows[0].n === 0, "ninguna politica viva menciona settings.manage");
+    } catch (e) { fail("no pude consultar pg_policies", String(e.message).slice(0, 200)); }
   }
 } catch (err) {
   fail("error inesperado", err instanceof Error ? err.message : String(err));

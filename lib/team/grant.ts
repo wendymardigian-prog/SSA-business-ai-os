@@ -15,7 +15,8 @@
  *  - El Owner no se da: es único y se transfiere, no se asigna.
  *  - Una clave `ownerOnly` o reservada no entra en un rol (la tiene el Owner y nadie más).
  *  - Para el resto: cada clave y cada alcance tienen que estar ya en poder de quien da.
- *  - Nadie cambia su propio rol (salvo Owner y Admin) ni edita el rol que tiene asignado.
+ *  - Nadie se cambia su propio rol. Nadie edita el rol que tiene asignado (salvo Owner y Admin,
+ *    que no dependen de un rol personalizado para tener lo que tienen).
  *  - Nadie toca al Owner.
  */
 import {
@@ -35,6 +36,17 @@ export interface GrantActor {
   role: "owner" | "admin" | "member";
   roleId: string | null;
   permissions: RolePermissions;
+}
+
+/** Quien esta dando, a partir del contexto de permisos de la sesion. */
+export function grantActorOf(ctx: {
+  user: { id: string };
+  role: string;
+  roleId: string | null;
+  permissions: RolePermissions;
+}): GrantActor {
+  const role = ctx.role === "owner" || ctx.role === "admin" ? ctx.role : "member";
+  return { userId: ctx.user.id, role, roleId: ctx.roleId, permissions: ctx.permissions };
 }
 
 export type GrantDenial =
@@ -78,10 +90,10 @@ export function assertCanGrant(
   const missing = grant.keys.filter((k) => !actor.permissions.keys.includes(k));
   if (missing.length > 0) return deny("missing_keys", CANNOT_GRANT_MESSAGE, missing);
 
-  for (const module of SCOPED_MODULES) {
-    const wanted = grant.scopes?.[module];
+  for (const scoped of SCOPED_MODULES) {
+    const wanted = grant.scopes?.[scoped];
     if (!wanted) continue;
-    const mine = actor.permissions.scopes[module] ?? "own";
+    const mine = actor.permissions.scopes[scoped] ?? "own";
     if (SCOPE_RANK[wanted] > SCOPE_RANK[mine]) return deny("scope_too_wide", CANNOT_GRANT_MESSAGE);
   }
   return { ok: true };
@@ -94,10 +106,10 @@ export function diffGrant(
 ): { keys: string[]; scopes: Partial<Record<ScopedModule, PermissionScope>> } {
   const had = new Set(before?.keys ?? []);
   const scopes: Partial<Record<ScopedModule, PermissionScope>> = {};
-  for (const module of SCOPED_MODULES) {
-    const prev = before?.scopes[module] ?? "own";
-    const next = after.scopes[module] ?? "own";
-    if (SCOPE_RANK[next] > SCOPE_RANK[prev]) scopes[module] = next;
+  for (const scoped of SCOPED_MODULES) {
+    const prev = before?.scopes[scoped] ?? "own";
+    const next = after.scopes[scoped] ?? "own";
+    if (SCOPE_RANK[next] > SCOPE_RANK[prev]) scopes[scoped] = next;
   }
   return { keys: after.keys.filter((k) => !had.has(k)), scopes };
 }
@@ -121,7 +133,8 @@ export function assertCanAssignRole(
 ): GrantResult {
   if (role.systemRole === "owner") return deny("owner_role", "El rol de Owner no se asigna: la propiedad se transfiere.");
   if (target?.memberRole === "owner") return deny("owner_member", "No se puede cambiar el rol del Owner.");
-  if (target && target.userId === actor.userId && !isAdminLike(actor)) {
+  // Nadie se cambia su propio rol, tampoco un Admin (plano §4): si no, una promocion se la daria uno mismo.
+  if (target && target.userId === actor.userId) {
     return deny("own_role", "No podés cambiarte el rol a vos mismo.");
   }
   if (role.systemRole === "admin") {

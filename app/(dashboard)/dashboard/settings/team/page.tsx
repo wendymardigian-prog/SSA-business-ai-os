@@ -1,4 +1,8 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { requirePermission } from "@/lib/auth/guards";
+import { parsePermissions, systemRolePermissions } from "@/lib/auth/permissions";
+import { assertCanAssignRole, grantActorOf, type RoleToGive } from "@/lib/team/grant";
+import { isEmailConfigured } from "@/lib/email/send";
 import { TeamView } from "@/components/settings/team-view";
 import { createServiceClient } from "@/lib/supabase/server";
 import { memberDisplayName } from "@/lib/workspace-members";
@@ -60,38 +64,62 @@ async function loadTeamMembers(service: ServiceClient, workspaceId: string) {
 }
 
 export default async function TeamPage() {
-  // Gestionar el equipo es de Owner/Admin.
-  const { workspace, user, role, supabase } = await requireWorkspaceAdmin();
+  // Ver el equipo exige `team.view`; los controles de cada bloque piden su propia clave (lib/team/view-model.ts).
+  const ctx = await requirePermission("team.view");
+  const { workspace, user, supabase } = ctx;
+  const canInvite = ctx.can("team.invite");
 
   const serviceClient = await createServiceClient();
 
-  // Todo en paralelo: los miembros (con email y nombre, de auth.users), los
-  // roles para el selector de F72 y las invitaciones pendientes. Los roles y
-  // las invitaciones con el cliente del usuario: sus policies dejan verlos.
-  const [memberDetails, { data: workspaceRoles }, { data: pendingInvites }] = await Promise.all([
+  // Todo en paralelo: los miembros (con email y nombre, de auth.users), los roles para el selector, y,
+  // para quien invita, las invitaciones y si el email esta conectado.
+  const [memberDetails, { data: workspaceRoles }, invitesRes, emailConfigured] = await Promise.all([
     loadTeamMembers(serviceClient, workspace.id),
-    supabase.from("workspace_roles").select("id, name, system_role").eq("workspace_id", workspace.id).order("name"),
-    supabase
-      .from("workspace_invites")
-      .select("*")
-      .eq("workspace_id", workspace.id)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false }),
+    supabase.from("workspace_roles").select("id, name, system_role, permissions").eq("workspace_id", workspace.id).order("name"),
+    canInvite
+      ? supabase
+          .from("workspace_invites")
+          .select("id, email, role, role_id, invited_by, status, created_at, expires_at, delivery, email_status, last_sent_at, send_count, accepted_at, accepted_by, revoked_at, revoked_by")
+          .eq("workspace_id", workspace.id)
+          .order("created_at", { ascending: false })
+          .limit(300)
+      : Promise.resolve({ data: [] as never[] }),
+    canInvite ? isEmailConfigured(serviceClient as unknown as SupabaseClient, workspace.id) : Promise.resolve(false),
   ]);
+
+  // Los roles que quien mira puede dar: la misma regla que aplica el servidor al invitar y asignar.
+  const actor = grantActorOf(ctx);
+  const roleOptions = (workspaceRoles ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    systemRole: r.system_role as "owner" | "admin" | "member" | null,
+  }));
+  const grantableRoleIds = (workspaceRoles ?? [])
+    .filter((r) => r.system_role !== "owner")
+    .filter((r) =>
+      assertCanAssignRole(
+        actor,
+        {
+          id: r.id,
+          systemRole: r.system_role as RoleToGive["systemRole"],
+          permissions: r.system_role ? (systemRolePermissions(r.system_role) ?? parsePermissions(null)) : parsePermissions(r.permissions),
+        },
+        null,
+      ).ok,
+    )
+    .map((r) => r.id);
 
   return (
     <TeamView
       workspaceId={workspace.id}
-      workspaceName={workspace.name}
       currentUserId={user.id}
-      currentUserRole={role}
+      viewerKeys={ctx.permissions.keys}
       members={memberDetails}
-      pendingInvites={pendingInvites ?? []}
-      workspaceRoles={(workspaceRoles ?? []).map((r) => ({
-        id: r.id,
-        name: r.name,
-        systemRole: r.system_role,
-      }))}
+      invites={invitesRes.data ?? []}
+      workspaceRoles={roleOptions}
+      grantableRoleIds={grantableRoleIds}
+      emailConfigured={emailConfigured}
+      personNames={Object.fromEntries(memberDetails.map((m) => [m.userId, m.name]))}
     />
   );
 }

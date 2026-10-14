@@ -36363,3 +36363,462 @@ $function$;
 -- Mismos permisos que tenia (CREATE OR REPLACE los conserva; se repiten para que el archivo se lea completo).
 REVOKE ALL ON FUNCTION public.complete_task_with_shifts(uuid, jsonb, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.complete_task_with_shifts(uuid, jsonb, jsonb) TO authenticated, service_role;
+
+-- ============================================================
+-- MIGRATION 208: HAS PERMISSION V2
+-- ============================================================
+-- ============================================================================
+-- 00208 — Equipo y roles (B1, F3): `has_permission` v2 y paridad con TypeScript
+-- ============================================================================
+-- Hoy `has_permission(ws, key)` le responde "no" a TODA clave si quien pregunta es un Member de
+-- sistema, porque los permisos de ese rol viven solo en `lib/auth/permissions.ts` (su fila de
+-- `workspace_roles` los tiene vacios a proposito). Por eso casi ninguna politica puede usarla y la
+-- RLS quedo en "solo Admin".
+--
+-- Esta version le ensena a la base:
+--   - al Member de sistema (con `role_id` del rol de sistema Member, o SIN `role_id`): su lista de
+--     claves, copiada en `private.member_permission_keys()`;
+--   - a las claves solo-Owner (`private.owner_only_keys()`): el Admin NO las tiene;
+--   - nunca devuelve NULL (un NULL deja pasar un `NOT (...)` en plpgsql).
+-- Para el Owner, el Admin (salvo las dos claves solo-Owner, que ninguna politica usa) y los roles
+-- personalizados responde IGUAL que hoy.
+--
+-- `lib/auth/member-sql-parity.test.ts` lee la ULTIMA definicion de las dos funciones de abajo en
+-- supabase/migrations/ y falla si difieren de `lib/auth/permissions.ts`: las dos copias no se
+-- pueden separar sin que un test lo diga. Para cambiar la lista del Member: nueva migracion que
+-- redefine `member_permission_keys()` + el cambio en TypeScript.
+--
+-- Efecto sobre el Member de sistema (revisado politica por politica contra la base viva): ninguna
+-- politica ni funcion cambia para el, salvo las dos de webhooks, que pedian `flows.edit` (que el
+-- Member tiene en TypeScript) y se pasan a `webhooks.manage` aca mismo para que NO ganen lectura
+-- de payloads de webhooks (decision del 13/10/2026). El resto pide claves que el Member no tiene
+-- (`dashboards.ads.view`, `social.view`, `templates.manage`, `scheduling.manage_*`,
+-- `settings.manage`...) o `*.view` + alcance `all` (`can_see_booking`, `can_see_call`,
+-- `can_see_sale`: el Member es `own`).
+--
+-- Idempotente: CREATE OR REPLACE y DROP POLICY IF EXISTS.
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS (definiciones vigentes ANTES de esta migracion, leidas de la base viva)
+-- ----------------------------------------------------------------------------
+--   DROP FUNCTION IF EXISTS private.member_permission_keys();
+--   DROP FUNCTION IF EXISTS private.owner_only_keys();
+-- y volver a ejecutar, sin el prefijo "--   ", lo siguiente:
+--
+--   CREATE OR REPLACE FUNCTION public.has_permission(p_workspace_id uuid, p_key text)
+--    RETURNS boolean
+--    LANGUAGE plpgsql
+--    STABLE SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_role        text;
+--     v_permissions jsonb;
+--   BEGIN
+--     SELECT m.role, COALESCE(r.permissions, '{}'::jsonb)
+--       INTO v_role, v_permissions
+--     FROM public.workspace_members m
+--     LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+--     WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+--   
+--     IF v_role IS NULL THEN
+--       RETURN false;
+--     END IF;
+--   
+--     IF v_role IN ('owner', 'admin') THEN
+--       RETURN true;
+--     END IF;
+--   
+--     -- OJO: los permisos del rol de sistema "Member" NO estan en el jsonb (su
+--     -- fila los tiene vacios a proposito: la fuente es lib/auth/permissions.ts).
+--     -- Esta funcion responde por los roles PERSONALIZADOS y por owner/admin.
+--     -- Ninguna policy la usa hoy; el alcance de leads lo resuelve
+--     -- permission_scope, que si contempla los tres casos.
+--     RETURN COALESCE(v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]), false);
+--   END;
+--   $function$
+--
+--   CREATE POLICY inbound_webhooks_select ON public.inbound_webhooks AS PERMISSIVE FOR SELECT TO authenticated
+--     USING ((is_workspace_member(workspace_id) AND has_permission(workspace_id, 'flows.edit'::text)));
+--
+--   CREATE POLICY webhook_endpoints_select ON public.webhook_endpoints AS PERMISSIVE FOR SELECT TO authenticated
+--     USING ((is_workspace_member(workspace_id) AND (has_permission(workspace_id, 'flows.edit'::text) OR has_permission(workspace_id, 'integrations.manage'::text))));
+-- ============================================================================
+
+-- Las claves del Member de sistema. COPIA de MEMBER_KEYS en lib/auth/permissions.ts (27 claves).
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'inbox.instagram.view',
+    'inbox.instagram.reply',
+    'inbox.whatsapp.view',
+    'inbox.whatsapp.reply',
+    'inbox.email.view',
+    'inbox.email.reply',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit'
+  ]::text[]
+$$;
+
+-- Las claves que solo tiene el Owner. COPIA de las claves `ownerOnly` de lib/auth/permissions.ts.
+CREATE OR REPLACE FUNCTION private.owner_only_keys()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT ARRAY[
+    'team.remove',
+    'workspace.transfer'
+  ]::text[]
+$$;
+
+REVOKE ALL ON FUNCTION private.member_permission_keys() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.owner_only_keys() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.has_permission(p_workspace_id uuid, p_key text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_role        text;
+  v_role_id     uuid;
+  v_system_role text;
+  v_permissions jsonb;
+BEGIN
+  SELECT m.role, m.role_id, r.system_role, COALESCE(r.permissions, '{}'::jsonb)
+    INTO v_role, v_role_id, v_system_role, v_permissions
+  FROM public.workspace_members m
+  LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+  WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+
+  IF v_role IS NULL OR p_key IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_role = 'owner' THEN
+    RETURN true;
+  END IF;
+
+  -- El Admin tiene todo menos lo solo-Owner.
+  IF v_role = 'admin' THEN
+    RETURN NOT (p_key = ANY (private.owner_only_keys()));
+  END IF;
+
+  -- El Member de sistema (sin rol asignado, o con la fila del rol de sistema Member): su lista vive
+  -- en TypeScript y se copia en private.member_permission_keys(). Su fila de workspace_roles tiene
+  -- los permisos vacios a proposito.
+  IF v_role_id IS NULL OR v_system_role = 'member' THEN
+    RETURN COALESCE(p_key = ANY (private.member_permission_keys()), false);
+  END IF;
+
+  -- Un rol personalizado: lo que tiene tildado.
+  RETURN COALESCE(v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]), false);
+END;
+$function$;
+
+-- Webhooks: se leen con `webhooks.manage` (o administrando integraciones, los endpoints). Con
+-- `has_permission` v2 el Member de sistema habria ganado la lectura por tener `flows.edit`.
+DROP POLICY IF EXISTS inbound_webhooks_select ON public.inbound_webhooks;
+CREATE POLICY inbound_webhooks_select ON public.inbound_webhooks
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND public.has_permission(workspace_id, 'webhooks.manage')
+  );
+
+DROP POLICY IF EXISTS webhook_endpoints_select ON public.webhook_endpoints;
+CREATE POLICY webhook_endpoints_select ON public.webhook_endpoints
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (
+      public.has_permission(workspace_id, 'webhooks.manage')
+      OR public.has_permission(workspace_id, 'integrations.manage')
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 209: WORKSPACE INVITES V2
+-- ============================================================
+-- ============================================================================
+-- 00209 — Equipo y roles (B1/B2, F7-F10): la invitacion lleva su rol y su historia
+-- ============================================================================
+-- Hoy una invitacion solo guarda email, rol base (admin|member), quien invito, estado y
+-- vencimiento. Para poder invitar con un rol personalizado, por email o por link, reenviar,
+-- renovar, anular sin borrar y mostrar un historial, se suman diez columnas:
+--
+--   role_id        el rol con el que entra (NULL = el rol base `role`; si el rol se borra, cae ahi)
+--   delivery       'email' (se mando un correo) o 'link' (solo se genero el link)
+--   email_status   resultado del ULTIMO envio: sent | failed | not_configured
+--   email_error    mensaje corto del proveedor (sin datos sensibles)
+--   last_sent_at   cuando se mando por ultima vez
+--   send_count     cuantas veces se mando (tope 5; lo hace cumplir la accion de reenviar)
+--   accepted_at / accepted_by   cuando y con que cuenta se aceptó
+--   revoked_at  / revoked_by    cuando y quien la anuló (anular es un UPDATE, ya no un DELETE)
+--
+-- `status` NO cambia de CHECK (pending | accepted | revoked): "vencida" se DERIVA
+-- (`inviteState`, lib/team/invite-state.ts). El link sigue siendo /invite/<id>: los ya
+-- enviados siguen andando. Las filas viejas quedan con `delivery = 'email'` y el resto nulo.
+--
+-- Aditiva e idempotente. No toca ninguna politica (eso es la 00212, despues del codigo).
+--
+-- Como volver atras:
+--   ALTER TABLE public.workspace_invites
+--     DROP COLUMN IF EXISTS role_id, DROP COLUMN IF EXISTS delivery, DROP COLUMN IF EXISTS email_status,
+--     DROP COLUMN IF EXISTS email_error, DROP COLUMN IF EXISTS last_sent_at, DROP COLUMN IF EXISTS send_count,
+--     DROP COLUMN IF EXISTS accepted_at, DROP COLUMN IF EXISTS accepted_by,
+--     DROP COLUMN IF EXISTS revoked_at, DROP COLUMN IF EXISTS revoked_by;
+--   DROP INDEX IF EXISTS public.idx_workspace_invites_workspace_status;
+-- ============================================================================
+
+ALTER TABLE public.workspace_invites
+  ADD COLUMN IF NOT EXISTS role_id uuid REFERENCES public.workspace_roles(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS delivery text NOT NULL DEFAULT 'email',
+  ADD COLUMN IF NOT EXISTS email_status text,
+  ADD COLUMN IF NOT EXISTS email_error text,
+  ADD COLUMN IF NOT EXISTS last_sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS send_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS accepted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS accepted_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS revoked_at timestamptz,
+  ADD COLUMN IF NOT EXISTS revoked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_delivery_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_delivery_check CHECK (delivery IN ('email', 'link'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_email_status_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_email_status_check CHECK (email_status IS NULL OR email_status IN ('sent', 'failed', 'not_configured'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_send_count_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_send_count_check CHECK (send_count >= 0);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspace_invites.role_id IS
+  'El rol con el que entra la persona. NULL = el rol base `role`. Si el rol se borra antes de aceptar, cae al Member de sistema.';
+COMMENT ON COLUMN public.workspace_invites.delivery IS
+  'email = se mando un correo; link = solo se genero el link para pasarlo a mano.';
+
+-- La lista de pendientes y el historial se piden por workspace y estado.
+CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace_status
+  ON public.workspace_invites (workspace_id, status, created_at DESC);
+
+-- ============================================================
+-- MIGRATION 210: MEMBERS ROLE ID BACKFILL
+-- ============================================================
+-- ============================================================================
+-- 00210 — Equipo y roles (B1, F3): cada miembro queda con su rol de sistema
+-- ============================================================================
+-- Un miembro que entro por una invitacion (`finalizeAcceptInvite`) o por `create-owner.mjs` pudo
+-- quedar con `role_id` nulo. El sistema lo trata como el rol de sistema que dice `role`, pero la
+-- pantalla de Equipo y `has_permission` v2 (00208) lo entienden mejor con el `role_id` puesto.
+--
+-- Es el MISMO UPDATE de la 00088: a quien tiene `role_id` nulo se le pone el rol de sistema que
+-- coincide con su `role` en ese workspace. No cambia ningun permiso (la funcion trata igual a un
+-- Member sin `role_id` que a uno con la fila del rol de sistema Member).
+--
+-- Idempotente: una segunda corrida no encuentra nulos.
+--
+-- Control despues de aplicarla:
+--   select count(*) from workspace_members where role_id is null;   -- 0
+--
+-- Como volver atras: poner `role_id = NULL` a los `user_id` que figuran abajo (los que tocó al
+-- aplicarse; se anotan en docs/PROGRESS-equipo-roles.md). Volver atras no es necesario para nada.
+-- ============================================================================
+
+UPDATE public.workspace_members m
+SET role_id = r.id
+FROM public.workspace_roles r
+WHERE r.workspace_id = m.workspace_id
+  AND r.system_role = m.role
+  AND m.role_id IS NULL;
+
+-- ============================================================
+-- MIGRATION 211: RETIRE SETTINGS MANAGE
+-- ============================================================
+-- ============================================================================
+-- 00211 — Equipo y roles (B1, F4): se retira `settings.manage`
+-- ============================================================================
+-- `settings.manage` mezclaba cuatro cosas distintas (productos, reglas de asignacion, ajustes de
+-- ventas y cobranza, y el resto de la configuracion). Se reemplaza por claves con nombre propio:
+--
+--   products.manage    el catalogo de productos y variantes     (RLS de products / product_variants)
+--   assignment.manage  las reglas de asignacion automatica       (RLS de assignment_rules)
+--   sales.settings     metodos de pago, descuento, mora, cobranza (solo codigo)
+--   settings.general   el resto: pilares de contenido, vincular toques con anuncios, ... (RLS de content_pillars)
+--
+-- Esta migracion hace DOS cosas:
+--
+-- 1. Reescribe las 8 politicas que usaban `has_permission(workspace_id, 'settings.manage')`
+--    (INSERT y UPDATE de products, product_variants, assignment_rules y content_pillars) con la
+--    clave nueva que corresponde. Para Owner y Admin da lo mismo; un rol personalizado que tenia
+--    `settings.manage` sigue pudiendo, porque el paso 2 le da las sucesoras.
+--
+-- 2. Migra el jsonb de los roles PERSONALIZADOS. Quien tenia `settings.manage` recibe TODAS sus
+--    sucesoras y pierde la vieja. Y, ya que varias claves se parten en dos, quien tenia la vieja
+--    recibe tambien la nueva para no perder nada sin enterarse (decision del 13/10/2026):
+--
+--      settings.manage      -> settings.general, sales.settings, products.manage, assignment.manage
+--      flows.edit           -> + flows.publish, + webhooks.manage
+--      team.manage          -> + team.view, + team.invite
+--      roles.manage         -> + roles.view
+--      integrations.manage  -> + integrations.view, + channels.manage
+--      agents.edit          -> + ai_tasks.manage, + ai_limits.manage
+--      contacts.edit        -> + contacts.assign        (hoy cualquier miembro reasigna)
+--
+--    Los roles de sistema NO se tocan (sus permisos vienen de lib/auth/permissions.ts).
+--
+-- Idempotente: el UPDATE solo agrega lo que falta y quita lo que sobra; correrlo dos veces no cambia nada.
+--
+-- Control despues de aplicarla:
+--   select count(*) from pg_policies where schemaname='public' and (qual ilike '%settings.manage%' or with_check ilike '%settings.manage%');  -- 0
+--   select count(*) from workspace_roles where permissions->'keys' ? 'settings.manage';                                                  -- 0
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS
+-- ----------------------------------------------------------------------------
+-- (a) Politicas: volver a ejecutar, sin el prefijo "--   ", estas definiciones (leidas de la base viva ANTES de esta migracion):
+--
+--   DROP POLICY IF EXISTS assignment_rules_insert ON public.assignment_rules;
+--   CREATE POLICY assignment_rules_insert ON public.assignment_rules AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS assignment_rules_update ON public.assignment_rules;
+--   CREATE POLICY assignment_rules_update ON public.assignment_rules AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS content_pillars_insert ON public.content_pillars;
+--   CREATE POLICY content_pillars_insert ON public.content_pillars AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS content_pillars_update ON public.content_pillars;
+--   CREATE POLICY content_pillars_update ON public.content_pillars AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS product_variants_insert ON public.product_variants;
+--   CREATE POLICY product_variants_insert ON public.product_variants AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS product_variants_update ON public.product_variants;
+--   CREATE POLICY product_variants_update ON public.product_variants AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS products_insert ON public.products;
+--   CREATE POLICY products_insert ON public.products AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS products_update ON public.products;
+--   CREATE POLICY products_update ON public.products AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+-- (b) El jsonb de los roles personalizados, tal como estaba ANTES (id | nombre | claves):
+--   7a187bff-a102-476c-818d-f4008d0b3110 | Content Manager | ["dashboards.chat.view", "dashboards.content.view", "social.view", "inbox.instagram.view", "inbox.instagram.reply", "inbox.whatsapp.view", "inbox.whatsapp.reply", "inbox.email.view", "inbox.email.reply", "contacts.view", "contacts.edit", "flows.view", "flows.edit", "agents.view", "ai_costs.view", "knowledge.view", "content.view", "content.create", "content.approve", "content.publish", "content.ai"]
+-- Para restaurar un rol: UPDATE public.workspace_roles SET permissions = jsonb_set(permissions, '{keys}', '<claves de arriba>'::jsonb) WHERE id = '<id>';
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Las 8 politicas, con la clave nueva (mismas condiciones, mismos roles: TO public)
+-- ----------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS products_insert ON public.products;
+CREATE POLICY products_insert ON public.products FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+DROP POLICY IF EXISTS products_update ON public.products;
+CREATE POLICY products_update ON public.products FOR UPDATE
+  USING (public.has_permission(workspace_id, 'products.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+
+DROP POLICY IF EXISTS product_variants_insert ON public.product_variants;
+CREATE POLICY product_variants_insert ON public.product_variants FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+DROP POLICY IF EXISTS product_variants_update ON public.product_variants;
+CREATE POLICY product_variants_update ON public.product_variants FOR UPDATE
+  USING (public.has_permission(workspace_id, 'products.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+
+DROP POLICY IF EXISTS assignment_rules_insert ON public.assignment_rules;
+CREATE POLICY assignment_rules_insert ON public.assignment_rules FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'assignment.manage'));
+DROP POLICY IF EXISTS assignment_rules_update ON public.assignment_rules;
+CREATE POLICY assignment_rules_update ON public.assignment_rules FOR UPDATE
+  USING (public.has_permission(workspace_id, 'assignment.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'assignment.manage'));
+
+DROP POLICY IF EXISTS content_pillars_insert ON public.content_pillars;
+CREATE POLICY content_pillars_insert ON public.content_pillars FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'settings.general'));
+DROP POLICY IF EXISTS content_pillars_update ON public.content_pillars;
+CREATE POLICY content_pillars_update ON public.content_pillars FOR UPDATE
+  USING (public.has_permission(workspace_id, 'settings.general'))
+  WITH CHECK (public.has_permission(workspace_id, 'settings.general'));
+
+-- ----------------------------------------------------------------------------
+-- 2. El jsonb de los roles personalizados
+-- ----------------------------------------------------------------------------
+-- Para cada clave vieja que tiene el rol, se suman sus sucesoras; `settings.manage` se quita.
+-- Solo roles personalizados (`system_role IS NULL`). Idempotente.
+
+UPDATE public.workspace_roles r
+SET permissions = jsonb_set(
+  r.permissions,
+  '{keys}',
+  to_jsonb(ARRAY(
+    SELECT DISTINCT k
+    FROM unnest(
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(r.permissions -> 'keys', '[]'::jsonb)))
+      || CASE WHEN r.permissions -> 'keys' ? 'settings.manage'
+              THEN ARRAY['settings.general', 'sales.settings', 'products.manage', 'assignment.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'flows.edit'
+              THEN ARRAY['flows.publish', 'webhooks.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'team.manage'
+              THEN ARRAY['team.view', 'team.invite'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'roles.manage'
+              THEN ARRAY['roles.view'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'integrations.manage'
+              THEN ARRAY['integrations.view', 'channels.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'agents.edit'
+              THEN ARRAY['ai_tasks.manage', 'ai_limits.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'contacts.edit'
+              THEN ARRAY['contacts.assign'] ELSE ARRAY[]::text[] END
+    ) AS k
+    WHERE k <> 'settings.manage'
+  ))
+)
+WHERE r.system_role IS NULL
+  AND r.permissions -> 'keys' ?| ARRAY['settings.manage', 'flows.edit', 'team.manage', 'roles.manage', 'integrations.manage', 'agents.edit', 'contacts.edit'];

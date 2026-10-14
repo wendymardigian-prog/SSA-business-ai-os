@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { AcceptInviteView } from "./accept-invite-view";
 import { BrandMark } from "@/components/brand-mark";
+import { inviteState, invalidInviteMessage } from "@/lib/team/invite-state";
 
 function InviteMessage({ title, body, cta, href }: { title: string; body: string; cta: string; href: string }) {
   return (
@@ -39,35 +40,24 @@ export default async function InvitePage({
   if (error || !invite) {
     return (
       <InviteMessage
-        title="Invitación no encontrada"
-        body="Este link puede ser invalido o la invitación fue revocada."
+        title="Esta invitación ya no es válida"
+        body="El link puede estar mal copiado, o la invitación fue anulada."
         cta="Ir al login"
         href="/login"
       />
     );
   }
 
-  const isExpired = new Date(invite.expires_at) < new Date();
-  const isAlreadyAccepted = invite.status !== "pending";
-
-  if (isExpired) {
+  // Anulada, aceptada o vencida: "Esta invitación ya no es válida"; la vencida agrega que pidan una renovacion.
+  const state = inviteState(invite);
+  if (state !== "pending") {
+    const message = invalidInviteMessage(state);
     return (
       <InviteMessage
-        title="Invitación vencida"
-        body="Pedile a quien te invitó que te mande una nueva."
-        cta="Ir al login"
-        href="/login"
-      />
-    );
-  }
-
-  if (isAlreadyAccepted) {
-    return (
-      <InviteMessage
-        title="Invitación ya usada"
-        body="Esta invitación ya fue aceptada."
-        cta="Ir al dashboard"
-        href="/dashboard"
+        title={message.title}
+        body={message.hint ?? "Si creés que es un error, pedile a quien te invitó que te mande una nueva."}
+        cta={state === "accepted" ? "Ir al dashboard" : "Ir al login"}
+        href={state === "accepted" ? "/dashboard" : "/login"}
       />
     );
   }
@@ -90,6 +80,11 @@ export default async function InvitePage({
     inviter?.email ??
     "Alguien";
 
+  // El nombre del rol con el que entra (el de la invitacion, o el rol de sistema que dice `role`).
+  const { data: roleRow } = invite.role_id
+    ? await serviceClient.from("workspace_roles").select("name").eq("id", invite.role_id).maybeSingle()
+    : { data: null };
+
   // Check if current user is logged in
   const {
     data: { user },
@@ -101,6 +96,7 @@ export default async function InvitePage({
       workspaceName={workspace?.name ?? "un workspace"}
       inviterName={inviterName}
       role={invite.role}
+      roleName={roleRow?.name ?? null}
       email={invite.email}
       isLoggedIn={!!user}
       currentUserEmail={user?.email ?? null}

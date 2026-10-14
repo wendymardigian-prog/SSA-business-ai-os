@@ -122,8 +122,17 @@ describe("casos de ataque (plano §12)", () => {
     }
   });
 
-  it("un Admin puede cambiarse a sí mismo el rol (como hoy)", () => {
-    expect(assertCanAssignRole(admin, customRole([]), { userId: admin.userId, memberRole: "admin" })).toEqual({ ok: true });
+  it("nadie se cambia su propio rol, tampoco un Admin (plano §4)", () => {
+    expect(assertCanAssignRole(admin, customRole([]), { userId: admin.userId, memberRole: "admin" })).toMatchObject({ ok: false, reason: "own_role" });
+    // El Owner tampoco: ademas de ser su propio rol, es el Owner (nadie lo toca).
+    expect(assertCanAssignRole(owner, customRole([]), { userId: owner.userId, memberRole: "owner" })).toMatchObject({ ok: false });
+  });
+
+  it("un Admin y un Owner SÍ editan roles personalizados aunque ninguno sea el suyo", () => {
+    const rol = { id: "otro", systemRole: null, permissions: perms(["contacts.view"]) };
+    for (const actor of [owner, admin]) {
+      expect(assertCanEditRole(actor, rol, perms(["contacts.view", "flows.publish"]))).toEqual({ ok: true });
+    }
   });
 
   it("los roles de sistema no se editan", () => {

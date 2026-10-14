@@ -24,35 +24,41 @@ const WS = { id: "ws-1" };
 
 beforeEach(() => { vi.clearAllMocks(); serverMock.service = {}; });
 
+import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
+
+/** El contexto que devuelve el guard `getPermissionAction`: lo minimo que usan las acciones. */
+function ctxOf(supabase: unknown, userId: string, role: "owner" | "admin" | "member" = "owner") {
+  return { workspace: WS, user: { id: userId }, supabase, role, roleId: null, permissions: SYSTEM_ROLE_PERMISSIONS[role], can: () => true };
+}
+
 describe("removeTeamMember", () => {
-  it("solo el Owner puede quitar miembros", async () => {
-    const db = fakeDb({ "workspace_members:select": { data: { role: "admin" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-admin" }, supabase: db.client });
+  it("solo el Owner puede quitar miembros: sin team.remove no se escribe nada", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
     const r = await removeTeamMember("ws-1", "u-2");
-    expect(r).toEqual({ error: "Solo el Owner puede quitar miembros" });
-    expect(db.writes()).toHaveLength(0);
+    expect(r).toEqual({ ok: false, error: "Solo el Owner puede quitar miembros" });
+    expect(guards.getPermissionAction).toHaveBeenCalledWith("team.remove");
   });
 
   it("nadie se quita a si mismo", async () => {
-    const db = fakeDb({ "workspace_members:select": { data: { role: "owner" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: db.client });
+    const db = fakeDb({ "workspace_members:select": { data: { user_id: "u-owner", role: "owner" } } });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
     const r = await removeTeamMember("ws-1", "u-owner");
-    expect(r).toHaveProperty("error");
+    expect(r.ok).toBe(false);
     expect(db.writes()).toHaveLength(0);
   });
 
   it("el Owner quita a otra persona y queda en el historial", async () => {
-    const db = fakeDb({ "workspace_members:select": { data: { role: "owner" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: db.client });
+    const db = fakeDb({ "workspace_members:select": { data: { user_id: "u-2", role: "member" } } });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
     const r = await removeTeamMember("ws-1", "u-2");
     expect(r).toEqual({ ok: true });
     expect(db.writesTo("workspace_members")[0].op).toBe("delete");
-    expect(audit.logAudit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "workspace_member", entityId: "u-2", action: "delete" }));
+    expect(audit.logAudit).toHaveBeenCalledWith(expect.objectContaining({ entityType: "workspace_member", entityId: "u-2", action: "delete", metadata: expect.objectContaining({ kind: "member_removed" }) }));
   });
 
   it("al salir se desconecta su Fathom (sus llamadas quedan)", async () => {
-    const db = fakeDb({ "workspace_members:select": { data: { role: "owner" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: db.client });
+    const db = fakeDb({ "workspace_members:select": { data: { user_id: "u-2", role: "member" } } });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
     await removeTeamMember("ws-1", "u-2");
     expect(revoke.revokeFathomConnectionsOf).toHaveBeenCalledWith(serverMock.service, "ws-1", "u-2");
     expect(db.writesTo("calls")).toHaveLength(0);
@@ -61,23 +67,32 @@ describe("removeTeamMember", () => {
   it("si revocar el Fathom falla, salir del equipo igual quedo hecho", async () => {
     revoke.revokeFathomConnectionsOf.mockRejectedValueOnce(new Error("vault caido"));
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const db = fakeDb({ "workspace_members:select": { data: { role: "owner" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: db.client });
+    const db = fakeDb({ "workspace_members:select": { data: { user_id: "u-2", role: "member" } } });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
     expect(await removeTeamMember("ws-1", "u-2")).toEqual({ ok: true });
     spy.mockRestore();
   });
 
-  it("a quien no es el Owner no le revoca nada", async () => {
-    const db = fakeDb({ "workspace_members:select": { data: { role: "admin" } } });
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-admin" }, supabase: db.client });
+  it("a quien no tiene team.remove no le revoca nada", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
     await removeTeamMember("ws-1", "u-2");
     expect(revoke.revokeFathomConnectionsOf).not.toHaveBeenCalled();
   });
 
   it("rechaza un workspace que no es el de la sesion", async () => {
     const db = fakeDb();
-    workspaceMock.getWorkspace.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: db.client });
-    expect(await removeTeamMember("otro", "u-2")).toEqual({ error: "El workspace no coincide" });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
+    expect(await removeTeamMember("otro", "u-2")).toEqual({ ok: false, error: "El workspace no coincide" });
+  });
+
+  it("no se queda el negocio sin Owner", async () => {
+    const db = fakeDb({
+      workspace_members: (call) => (call.op === "select" && call.single ? { data: { user_id: "u-2", role: "owner" } } : { data: null, count: 1 }),
+    });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-owner"));
+    const r = await removeTeamMember("ws-1", "u-2");
+    expect(r.ok).toBe(false);
+    expect(db.writesTo("workspace_members")).toHaveLength(0);
   });
 });
 
@@ -88,7 +103,7 @@ describe("setMemberRole", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("no deja sin Owner al negocio", async () => {
+  it("nadie toca al Owner: ni para dejar al negocio sin Owner", async () => {
     const db = fakeDb({
       workspace_roles: { data: { id: "r-1", name: "Member", system_role: "member" } },
       workspace_members: (call) =>
@@ -96,7 +111,7 @@ describe("setMemberRole", () => {
           ? { data: { user_id: "u-2", role: "owner" } }
           : { data: null, count: 1 },
     });
-    guards.getPermissionAction.mockResolvedValue({ workspace: WS, user: { id: "u-1" }, supabase: db.client });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-1"));
     const r = await setMemberRole({ userId: "u-2", roleId: "r-1" });
     expect(r.ok).toBe(false);
     expect(db.writesTo("workspace_members")).toHaveLength(0);
@@ -107,10 +122,36 @@ describe("setMemberRole", () => {
       workspace_roles: { data: { id: "r-9", name: "Closer", system_role: null } },
       workspace_members: (call) => (call.op === "select" ? { data: { user_id: "u-2", role: "member" } } : { data: null }),
     });
-    guards.getPermissionAction.mockResolvedValue({ workspace: WS, user: { id: "u-1" }, supabase: db.client });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-1"));
     const r = await setMemberRole({ userId: "u-2", roleId: "r-9" });
     expect(r).toEqual({ ok: true });
     expect(db.writesTo("workspace_members")[0].values).toEqual({ role: "member", role_id: "r-9" });
+  });
+
+  it("nadie se cambia su propio rol (ataque: un rol con team.manage se asigna otro)", async () => {
+    const db = fakeDb({
+      workspace_roles: { data: { id: "r-9", name: "Closer", system_role: null } },
+      workspace_members: (call) => (call.op === "select" ? { data: { user_id: "u-1", role: "member" } } : { data: null }),
+    });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(db.client, "u-1", "admin"));
+    const r = await setMemberRole({ userId: "u-1", roleId: "r-9" });
+    expect(r.ok).toBe(false);
+    expect(db.writesTo("workspace_members")).toHaveLength(0);
+  });
+
+  it("un rol con team.manage NO da el rol Admin (solo Owner y Admin)", async () => {
+    const db = fakeDb({
+      workspace_roles: { data: { id: "r-admin", name: "Admin", system_role: "admin" } },
+      workspace_members: (call) => (call.op === "select" ? { data: { user_id: "u-2", role: "member" } } : { data: null }),
+    });
+    guards.getPermissionAction.mockResolvedValue({
+      ...ctxOf(db.client, "u-1", "member"),
+      roleId: "r-x",
+      permissions: { keys: ["team.manage"], scopes: SYSTEM_ROLE_PERMISSIONS.member.scopes },
+    });
+    const r = await setMemberRole({ userId: "u-2", roleId: "r-admin" });
+    expect(r.ok).toBe(false);
+    expect(db.writesTo("workspace_members")).toHaveLength(0);
   });
 });
 
@@ -126,7 +167,7 @@ describe("setMemberCloser (F4)", () => {
   function setup() {
     const db = fakeDb({ "workspace_members:select": { data: members } }, { workspace_member_profiles: { data: profiles as never } });
     serverMock.service = db.client;
-    guards.getPermissionAction.mockResolvedValue({ workspace: WS, user: { id: "u-owner" }, supabase: fakeDb().client });
+    guards.getPermissionAction.mockResolvedValue(ctxOf(fakeDb().client, "u-owner"));
     return db;
   }
 

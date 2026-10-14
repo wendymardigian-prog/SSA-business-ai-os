@@ -20,7 +20,7 @@ const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 /** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
   general: { file: "page.tsx", guardMarker: "requireWorkspaceAdmin" },
-  team: { file: "team/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
   "custom-fields": { file: "custom-fields/page.tsx", guardMarker: "requireWorkspaceAdmin" },
   // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
@@ -54,7 +54,7 @@ function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermis
   const admin = isAdminRole(role);
   return {
     general: admin,
-    team: admin,
+    team: can(permissions, "team.view"),
     roles: can(permissions, "roles.manage"),
     "custom-fields": admin,
     recursos: true,

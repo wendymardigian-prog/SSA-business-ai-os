@@ -37,6 +37,15 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  * v3): pasaron a pedir un permiso (`social.view`, `dashboards.content.view`)
  * y estan en `PERMISSION_PAGES`, mas abajo.
  */
+/**
+ * Las paginas que eran de Owner/Admin y pasaron a pedir un permiso (Equipo y roles). Siguen siendo
+ * inaccesibles para un Member de sistema: la clave que piden NO esta en su lista. Cada pagina que sale
+ * de `ADMIN_PAGES` entra aca con su clave, asi el total de "paginas de Admin de hoy" sigue siendo once.
+ */
+const MIGRATED_ADMIN_PAGES = [
+  ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view"],
+] as const;
+
 const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
   "app/(dashboard)/dashboard/channels/page.tsx",
@@ -47,7 +56,6 @@ const ADMIN_PAGES = [
   "app/(dashboard)/dashboard/settings/custom-fields/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/page.tsx",
   "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
-  "app/(dashboard)/dashboard/settings/team/page.tsx",
   // Ventas (F36): el historial de todo el workspace, solo Owner y Admin.
   "app/(dashboard)/dashboard/settings/actividad/page.tsx",
 ] as const;
@@ -129,10 +137,18 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
     // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard
     // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)
-    expect(ADMIN_PAGES).toHaveLength(11);
-    for (const page of ADMIN_PAGES) {
+    expect(ADMIN_PAGES.length + MIGRATED_ADMIN_PAGES.length).toBe(11);
+    for (const page of [...ADMIN_PAGES, ...MIGRATED_ADMIN_PAGES.map(([p]) => p)]) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
+  });
+
+  it.each(MIGRATED_ADMIN_PAGES)("%s ahora pide %s y un Member de sistema sigue sin entrar", (page, key) => {
+    expect(read(page)).toContain(`requirePermission("${key}")`);
+    expect(read(page)).not.toContain("requireWorkspaceAdmin");
+    expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain(key);
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain(key);
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toContain(key);
   });
 
   it("no hay ninguna otra pagina con requireWorkspaceAdmin", async () => {
