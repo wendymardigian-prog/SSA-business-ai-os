@@ -481,16 +481,19 @@ try {
       check(!(await keysDe(rolGestor)).includes("flows.edit") && (await svc.from("workspace_roles").select("permissions").eq("id", rolGestor).single()).data.permissions.scopes.leads === "own", "nadie edita el rol que tiene asignado");
       // Agregar una clave que no tiene: el trigger lo frena.
       const r = await gestor.client.from("workspace_roles").update({ permissions: { keys: ["contacts.view", "flows.edit"], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolSoloContactos).select("id");
-      check(r.error !== null && !(await keysDe(rolSoloContactos)).includes("flows.edit"), "no puede AGREGAR a un rol una clave que no tiene", r.error?.message ?? "no dio error");
+      check(/permisos que no ten/.test(r.error?.message ?? "") && !(await keysDe(rolSoloContactos)).includes("flows.edit"), "no puede AGREGAR a un rol una clave que no tiene (lo frena el trigger, no otro error)", r.error?.message ?? "no dio error");
       // Agregar una que si tiene: bien.
       await gestor.client.from("workspace_roles").update({ permissions: { keys: ["contacts.view", "team.invite"], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolSoloContactos);
       check((await keysDe(rolSoloContactos)).includes("team.invite"), "puede agregar a un rol una clave que si tiene");
       // Sacar permisos nunca es una escalada: tambien de un rol con claves que el no tiene.
-      await gestor.client.from("workspace_roles").update({ permissions: { keys: [], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolConFlows);
-      check((await keysDe(rolConFlows)).length === 0, "sacarle todos los permisos a un rol esta permitido");
-      // Un Admin edita cualquiera.
-      await admin.client.from("workspace_roles").update({ permissions: { keys: ["flows.edit", "contacts.view"], scopes: { leads: "all", conversations: "own" } } }).eq("id", rolConFlows);
-      check((await keysDe(rolConFlows)).includes("flows.edit"), "un Admin edita cualquier rol personalizado");
+      const sacar = await gestor.client.from("workspace_roles").update({ permissions: { keys: [], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolConFlows).select("id");
+      check(!sacar.error && (await keysDe(rolConFlows)).length === 0, "sacarle todos los permisos a un rol esta permitido", sacar.error?.message);
+      // Un Admin edita cualquiera (y sube un alcance, que el gestor no podria).
+      const adminEdita = await admin.client.from("workspace_roles").update({ permissions: { keys: ["flows.publish", "contacts.view"], scopes: { leads: "all", conversations: "own" } } }).eq("id", rolConFlows).select("id");
+      const despuesAdmin = (await svc.from("workspace_roles").select("permissions").eq("id", rolConFlows).single()).data.permissions;
+      check(!adminEdita.error && despuesAdmin.keys.includes("flows.publish") && despuesAdmin.scopes.leads === "all", "un Admin edita cualquier rol personalizado, alcances incluidos", adminEdita.error?.message);
+      const gestorSube = await gestor.client.from("workspace_roles").update({ permissions: { keys: ["contacts.view", "team.invite"], scopes: { leads: "all", conversations: "own" } } }).eq("id", rolSoloContactos).select("id");
+      check(/permisos que no ten/.test(gestorSube.error?.message ?? ""), "y el gestor no puede subir un alcance al editar (lo frena el trigger)", gestorSube.error?.message ?? "no dio error");
       // Los roles de sistema no se tocan.
       const { data: rolMemberSis } = await svc.from("workspace_roles").select("id, permissions").eq("workspace_id", ws.id).eq("system_role", "member").single();
       await admin.client.from("workspace_roles").update({ name: "Hackeado" }).eq("id", rolMemberSis.id);

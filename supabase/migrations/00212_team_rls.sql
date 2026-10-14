@@ -244,10 +244,12 @@ AS $$
   )
 $$;
 
--- En un UPDATE de un rol, solo hay que poder dar lo que se AGREGA.
+-- En un UPDATE de un rol, solo hay que poder dar lo que se AGREGA. Es SECURITY DEFINER porque llama a las auxiliares de
+-- `private` (a las que `authenticated` no tiene acceso); `auth.uid()` sigue siendo quien edita.
 CREATE OR REPLACE FUNCTION public.workspace_roles_grant_check()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path TO ''
 AS $function$
 DECLARE

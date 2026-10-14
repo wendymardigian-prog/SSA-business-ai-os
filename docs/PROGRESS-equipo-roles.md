@@ -7,38 +7,38 @@ Plano: [requerimientos-equipo-roles.md](requerimientos-equipo-roles.md) (v1.0). 
 ## Checklist
 
 ### B1 · Base de permisos
-- [ ] Caracterización de la matriz de acceso (§7), en verde antes de tocar permisos
-- [ ] F1 · Catálogo nuevo (74 claves)
-- [ ] F2 · `catalog-usage.test.ts` (toda clave tiene un uso)
-- [ ] F3 · `has_permission` v2 y paridad TS↔SQL (`00208`)
-- [ ] F4 · Retiro de `settings.manage` (`00211`, `00210`, `00209`)
-- [ ] F5 · Guards y menú por permiso
+- [x] Caracterización de la matriz de acceso (§7), en verde antes de tocar permisos
+- [x] F1 · Catálogo nuevo (74 claves)
+- [x] F2 · `catalog-usage.test.ts` (toda clave tiene un uso)
+- [x] F3 · `has_permission` v2 y paridad TS↔SQL (`00208`)
+- [x] F4 · Retiro de `settings.manage` (`00211`, `00210`, `00209`)
+- [x] F5 · Guards y menú por permiso
 
 ### B2 · Equipo e invitaciones
-- [ ] F6 · Ver el equipo (`team.view`)
-- [ ] F7 · Invitar por email o por link (`team.invite`)
-- [ ] F8 · Invitaciones pendientes
-- [ ] F9 · Historial de invitaciones
-- [ ] F10 · Aceptar con el rol correcto
-- [ ] F11 · Cambiar rol, Closer y quitar (`00212`, después del código)
+- [x] F6 · Ver el equipo (`team.view`)
+- [x] F7 · Invitar por email o por link (`team.invite`)
+- [x] F8 · Invitaciones pendientes
+- [x] F9 · Historial de invitaciones
+- [x] F10 · Aceptar con el rol correcto
+- [x] F11 · Cambiar rol, Closer y quitar (`00212`, después del código)
 
 ### B3 · Pantalla de roles
-- [ ] F12 · Alcances dentro de cada grupo
-- [ ] F13 · Guardado automático
-- [ ] F14 · Crear, duplicar y plantillas
-- [ ] F15 · Ver un rol de sistema y protecciones
+- [x] F12 · Alcances dentro de cada grupo
+- [x] F13 · Guardado automático
+- [x] F14 · Crear, duplicar y plantillas
+- [x] F15 · Ver un rol de sistema y protecciones
 
 ### B4 · Ajustes e integraciones
-- [ ] F16 · General partido
-- [ ] F17 · Campos, Productos, Asignación, Actividad
-- [ ] F18 · Integraciones en tres secciones
+- [x] F16 · General partido
+- [x] F17 · Campos, Productos, Asignación, Actividad
+- [x] F18 · Integraciones en tres secciones
 - [ ] F19 · Webhooks con permiso propio (`00213`, después del código)
 
 ### B5 · Módulos
-- [ ] F20 · Bandeja por canal
-- [ ] F21 · Contactos
-- [ ] F22 · Automatizaciones, secuencias y broadcasts
-- [ ] F23 · Agentes IA, tareas de IA, topes y Conocimiento
+- [x] F20 · Bandeja por canal
+- [x] F21 · Contactos
+- [x] F22 · Automatizaciones, secuencias y broadcasts
+- [x] F23 · Agentes IA, tareas de IA, topes y Conocimiento
 - [ ] F24 · Contenido, dashboards y exportar (`00214`, después del código)
 
 ### B6 · Verificación y cierre
@@ -62,13 +62,15 @@ El plano las numeraba 00200 a 00206; esos números ya estaban ocupados (Tareas y
 
 | Plano | Real | Nombre | Bloque | Estado |
 |---|---|---|---|---|
-| 00200 | `00208` | `has_permission_v2` | B1 | pendiente |
-| 00201 | `00209` | `workspace_invites_v2` | B1 | pendiente |
-| 00202 | `00210` | `members_role_id_backfill` | B1 | pendiente |
-| 00203 | `00211` | `retire_settings_manage` | B1 | pendiente |
-| 00204 | `00212` | `team_rls` | B2 (después del código) | pendiente |
-| 00205 | `00213` | `settings_rls` | B4 (después del código) | pendiente |
-| 00206 | `00214` | `modules_rls` | B5 (después del código) | pendiente |
+| 00200 | `00208` | `has_permission_v2` | B1 | **aplicada y registrada** (`20261014004425`) |
+| 00201 | `00209` | `workspace_invites_v2` | B1 | **aplicada y registrada** (`20261014004844`) |
+| 00202 | `00210` | `members_role_id_backfill` | B1 | **aplicada y registrada** (`20261014005139`); 0 miembros reales sin `role_id` |
+| 00203 | `00211` | `retire_settings_manage` | B1 | **aplicada y registrada** (`20261014005202`); 0 políticas y 0 roles con `settings.manage`; Content Manager recibió `flows.publish`, `webhooks.manage` y `contacts.assign` |
+| 00204 | `00212` | `team_rls` | B2 (después del código) | **aplicada y registrada** (`20261014012921`, texto corregido después: el trigger pasó a `SECURITY DEFINER`); `verify-roles` (126 comprobaciones, con los 14 casos compartidos y 40 ataques), `verify-rls`, `verify-workspace-isolation` y `verify-audit-visibility` en verde |
+| 00205 | `00213` | `settings_rls` | B4 (después del código) | escrita, sin aplicar |
+| 00206 | `00214` | `modules_rls` | B5 (después del código) | pendiente de escribir |
+
+La `00212` suma tres funciones en `public` (`can_grant_permissions`, `can_give_role`, `is_own_role`), dos auxiliares en `private` (`ungrantable_keys`, `scope_rank`) y el trigger `workspace_roles_grant_check`. Las gemelas SQL de `assertCanGrant` se prueban con los mismos casos compartidos (`lib/team/grant.cases.json`) en `grant.cases.test.ts` y en `verify-roles.mjs --despues-de-00212`.
 
 ## Retiro de settings.manage
 
