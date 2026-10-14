@@ -1,7 +1,7 @@
 import { getWorkspace } from "@/lib/workspace";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { parseDashboardFilters } from "@/lib/dashboards/url-state";
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { availableDashboards, comingSoonDashboards } from "@/lib/dashboards/available";
 import { isAdminRole } from "@/lib/auth/roles";
 import { platformLabel } from "@/lib/platforms";
@@ -34,6 +34,8 @@ export default async function ChatDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Equipo y roles: la pagina pide su permiso.
+  await requirePermission("dashboards.chat.view");
   const { workspace, user, role, supabase } = await getWorkspace();
   const sp = await searchParams;
   const params = new URLSearchParams();

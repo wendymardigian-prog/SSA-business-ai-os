@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { MEMBER_PERMISSION_KEYS, OWNER_ONLY_KEYS, SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
+import { MEMBER_PERMISSION_KEYS, OWNER_ONLY_KEYS, PERMISSION_KEYS, SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const DIR = path.join(process.cwd(), "supabase/migrations");
 
@@ -43,6 +43,12 @@ describe("paridad de permisos TypeScript ↔ SQL", () => {
   it("private.owner_only_keys() son las claves ownerOnly del catalogo", () => {
     const { keys, file } = latestKeys("owner_only_keys");
     expect([...keys].sort(), `ultima definicion: ${file}`).toEqual([...OWNER_ONLY_KEYS].sort());
+  });
+
+  it("private.ungrantable_keys() (00212) son las solo-Owner y las reservadas: las que ningun rol lleva", () => {
+    const { keys, file } = latestKeys("ungrantable_keys");
+    const expected = PERMISSION_KEYS.filter((p) => p.ownerOnly || p.reserved).map((p) => p.key);
+    expect([...keys].sort(), `ultima definicion: ${file}`).toEqual([...expected].sort());
   });
 
   it("el Admin de sistema no tiene ninguna clave solo-Owner, y el Owner si", () => {

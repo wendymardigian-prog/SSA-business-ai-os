@@ -1,4 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
+import { getMemberAction } from "@/lib/auth/guards";
+import { canReplyOn } from "@/lib/inbox/channel-access";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
@@ -262,6 +264,14 @@ export async function POST(request: NextRequest) {
 
   if (!conversation) {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+  }
+
+  // Equipo y roles (F20): escribir por un canal pide `inbox.<canal>.reply`. Sin la clave la API responde 403 ANTES de
+  // llamar a ningun proveedor. El workspace tiene que ser el de la sesion.
+  const access = await getMemberAction();
+  const platform = conversation.platform || (conversation.channels as { platform?: string } | null)?.platform;
+  if (!access || access.workspace.id !== conversation.workspace_id || !canReplyOn(access.can, platform)) {
+    return NextResponse.json({ error: "No tenés permiso para responder por este canal" }, { status: 403 });
   }
 
   // F18: a un contacto marcado se le puede escribir igual (a veces hay que

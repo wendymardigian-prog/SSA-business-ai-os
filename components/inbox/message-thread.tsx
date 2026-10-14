@@ -202,6 +202,7 @@ export function MessageThread({
   assets = [],
   canManageAssets = false,
   canCreateTask = false,
+  canReply = true,
   workspaceName = "",
   agentInfo = null,
   channelProvider = null,
@@ -216,6 +217,8 @@ export function MessageThread({
   canManageAssets?: boolean;
   /** Puede crear tareas (`tasks.edit`): muestra «Crear tarea» en el encabezado. */
   canCreateTask?: boolean;
+  /** `inbox.<canal>.reply`: sin esto la conversacion se ve pero no se escribe (Equipo y roles, F20). */
+  canReply?: boolean;
   workspaceName?: string;
   /** Si el agente de IA atiende el canal de esta conversacion (Fase 3). */
   agentInfo?: ChannelAgentInfo | null;
@@ -875,6 +878,12 @@ export function MessageThread({
         <StaleConversationNotice days={staleDays} />
       )}
 
+      {!canReply ? (
+        <div className="border-t border-border bg-muted/40 p-4 text-center text-xs text-muted-foreground" role="status">
+          Podés ver esta conversación, pero tu rol no puede responder por este canal.
+        </div>
+      ) : (
+      <>
       {/* Bloque 2c: el borrador del agente, arriba del campo de escritura. */}
       <PendingDraft key={conversation.id} conversationId={conversation.id} />
 
@@ -1050,6 +1059,8 @@ export function MessageThread({
           )}
         </div>
       </div>
+      </>
+      )}
 
       <ConfirmDialog
         open={confirmingDoNotContact}

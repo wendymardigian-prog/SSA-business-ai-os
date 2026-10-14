@@ -1,4 +1,4 @@
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
@@ -71,6 +71,8 @@ export default async function ContentPage({
   const target = parseDrawer(params);
   // Por permiso y no por cargo (F78): lo que se ve en el tablero sale de las
   // claves del rol, no de ser Owner o Admin.
+  // Equipo y roles: la pagina pide su permiso.
+  await requirePermission("content.view");
   const ctx = await getPermissionContext();
   const { workspace, user, supabase, can } = ctx;
   const canApprove = can("content.approve");

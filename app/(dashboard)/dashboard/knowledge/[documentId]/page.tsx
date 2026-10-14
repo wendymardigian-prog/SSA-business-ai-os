@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { formatDateTime } from "@/components/contacts/ui";
 import { StatusBadge } from "../knowledge-view";
 import { DownloadOriginalButton } from "./download-button";
@@ -25,7 +25,7 @@ export default async function KnowledgeDocumentPage({
   params: Promise<{ documentId: string }>;
 }) {
   const { documentId } = await params;
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("knowledge.view");
 
   const { data: document, error } = await supabase
     .from("knowledge_base")

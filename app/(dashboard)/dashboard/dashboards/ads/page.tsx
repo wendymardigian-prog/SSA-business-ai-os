@@ -139,6 +139,7 @@ export default async function AdsDashboardPage({
     scopeLimited: permissions.scope("leads") !== "all",
     now,
   });
+  crm.canExport = permissions.can("data.export");
 
   // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
   // comparar un alcance unico contra uno sumado inventaria una variacion.

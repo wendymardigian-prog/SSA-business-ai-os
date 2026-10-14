@@ -1,4 +1,5 @@
-import { getPermissionContext, isAdminRole } from "@/lib/auth/guards";
+import { getPermissionContext } from "@/lib/auth/guards";
+import { visibleSettingsTabs } from "@/lib/settings/tabs";
 import { listAssets } from "@/lib/actions/response-assets";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { RecursosView } from "./recursos-view";
@@ -24,9 +25,9 @@ export default async function RecursosPage() {
     <RecursosView
       assets={raw.map(toBankAsset)}
       canManage={ctx.can("templates.manage")}
-      // Las pestañas de Ajustes llevan a pantallas de Admin: a quien no lo es
-      // (aunque pueda administrar la banca) lo rebotarian.
-      showSettingsTabs={isAdminRole(ctx.role)}
+      // Las pestañas de Ajustes se ofrecen solo si hay alguna que esta persona pueda abrir: a quien no tiene
+      // ninguna clave de Ajustes (el Member de sistema) lo rebotarian. Recursos no cuenta: la ve cualquiera.
+      showSettingsTabs={visibleSettingsTabs(ctx.can).some((t) => t.permissions !== undefined)}
       workspaceName={ctx.workspace.name}
     />
   );

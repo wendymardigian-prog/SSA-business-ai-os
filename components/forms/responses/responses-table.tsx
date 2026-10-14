@@ -41,6 +41,7 @@ export function ResponsesTable({
   filters,
   loadError,
   canManage,
+  canExport = false,
   timeZone,
 }: {
   formId: string;
@@ -54,6 +55,8 @@ export function ResponsesTable({
   filters: { from: string; to: string; status: string; contact: string };
   loadError: boolean;
   canManage: boolean;
+  /** `data.export`: sin esto no se ofrece «Exportar CSV» (Equipo y roles, F24). */
+  canExport?: boolean;
   timeZone: string;
 }) {
   const url = useUrlFilters();
@@ -94,10 +97,12 @@ export function ResponsesTable({
         tooltip="Lo que respondió la gente. Solo ves las respuestas de los contactos que podés ver."
         backHref={<BackLink href={`/dashboard/formularios/${formId}`} label="Volver al formulario" />}
         right={
+          canExport ? (
           <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
             <span className="hidden sm:inline">Exportar CSV</span>
           </button>
+          ) : undefined
         }
       />
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">

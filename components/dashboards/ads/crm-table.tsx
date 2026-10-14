@@ -161,6 +161,7 @@ export function CrmLevelTable({
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {crm.canExport === true && (
           <button
             type="button"
             onClick={exportCsv}
@@ -171,6 +172,7 @@ export function CrmLevelTable({
             <span className="hidden sm:inline">Exportar CSV</span>
             <span className="sr-only sm:hidden">Exportar CSV</span>
           </button>
+          )}
           <ColumnsMenu prefs={prefs} onChange={setPrefs} />
         </div>
       </div>

@@ -96,6 +96,7 @@ export default async function RespuestasPage({
       filters={{ from: filters.from ?? "", to: filters.to ?? "", status: filters.status ?? "all", contact: filters.contact ?? "all" }}
       loadError={!!error}
       canManage={ctx.can("forms.manage")}
+      canExport={ctx.can("data.export")}
       timeZone={timeZone}
     />
   );

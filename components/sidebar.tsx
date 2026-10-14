@@ -34,7 +34,6 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useHtmlClass } from "@/components/use-html-class";
-import { isAdminRole } from "@/lib/auth/roles";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";

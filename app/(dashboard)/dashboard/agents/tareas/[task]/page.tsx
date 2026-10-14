@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { requireAnyPermission, getPermissionContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getAiTask } from "@/lib/ai-tasks/catalog";
 import { loadTaskRunSummary } from "@/lib/ai-tasks/task-run-summary";
@@ -40,7 +40,7 @@ export default async function TaskDetailPage({
   const task = getAiTask(taskParam);
   if (!task) notFound();
 
-  const [{ workspace, supabase }, service] = await Promise.all([requireWorkspaceAdmin(), createServiceClient()]);
+  const [{ workspace, supabase }, service] = await Promise.all([requireAnyPermission(["ai_tasks.manage", "calls.configure"]), createServiceClient()]);
   // Una pestaña que no existe cae en la primera, igual que la vista: asi se
   // cargan sus datos.
   const tab = resolveTaskTab(query.tab);
@@ -105,7 +105,7 @@ export default async function TaskDetailPage({
       channelLabels: new Map(channels.map((c) => [c.id, c.label])),
       dateRange,
     });
-    return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, options };
+    return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: true, canExport: permissions.can("data.export"), options };
   };
 
   // Las tareas de Llamadas con configuracion propia (reglas, rubrica, categorias).

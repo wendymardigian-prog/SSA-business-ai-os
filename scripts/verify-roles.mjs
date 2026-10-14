@@ -18,6 +18,7 @@
  *   node scripts/verify-roles.mjs --despues-de-00136   # y despues: suma el alcance own_unassigned
  *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208   # has_permission v2 (Member, Admin, Owner)
  *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211   # y el retiro de settings.manage
+ *   node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212   # y la RLS de equipo (invitar, asignar, editar roles)
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -38,6 +39,7 @@ const URL = env.NEXT_PUBLIC_SUPABASE_URL, ANON = env.NEXT_PUBLIC_SUPABASE_ANON_K
 // Equipo y roles (B1): comprobaciones de las migraciones 00208 (has_permission v2) y 00211 (settings.manage).
 const POST_00208 = process.argv.includes("--despues-de-00208");
 const POST_00211 = process.argv.includes("--despues-de-00211");
+const POST_00212 = process.argv.includes("--despues-de-00212");
 const svc = createClient(URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 let failures = 0;
@@ -360,6 +362,150 @@ try {
         "select count(*)::int as n from pg_policies where schemaname='public' and (coalesce(qual,'') || coalesce(with_check,'')) ilike '%settings.manage%'"], { stdio: "pipe" }).toString();
       check(JSON.parse(out).rows[0].n === 0, "ninguna politica viva menciona settings.manage");
     } catch (e) { fail("no pude consultar pg_policies", String(e.message).slice(0, 200)); }
+  }
+
+  if (POST_00212) {
+    console.log("\n— RLS de equipo (00212): no podes dar lo que no tenes —");
+    const casos = JSON.parse(readFileSync("lib/team/grant.cases.json", "utf8")).cases;
+    const dueno2 = await makeUser("roles-owner-212");
+    await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: dueno2.id, role: "owner" });
+
+    // Un rol personalizado "Gestor" con las tres claves de equipo: es el atacante de las pruebas de abajo.
+    const mkRole = async (name, keys, scopes = { leads: "own", conversations: "own" }) => {
+      const { data, error } = await svc.from("workspace_roles").insert({ workspace_id: ws.id, name, permissions: { keys, scopes } }).select("id").single();
+      if (error) throw new Error(`no pude crear el rol ${name}: ${error.message}`);
+      return data.id;
+    };
+    const rolGestor = await mkRole("zz-test Gestor", ["team.invite", "team.manage", "roles.manage", "contacts.view"]);
+    const rolSoloContactos = await mkRole("zz-test Solo contactos", ["contacts.view"]);
+    const rolConFlows = await mkRole("zz-test Con flujos", ["flows.edit"]);
+    const gestor = await makeUser("roles-gestor");
+    await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: gestor.id, role: "member", role_id: rolGestor });
+
+    // 1) Los casos compartidos, contra la gemela SQL.
+    const actores = new Map(); // JSON del rol personalizado -> usuario
+    const actorUser = async (a) => {
+      if (a === "owner") return dueno2;
+      if (a === "admin") return admin;
+      if (a === "member") return acotado;
+      const k = JSON.stringify(a);
+      if (!actores.has(k)) {
+        const u = await makeUser(`roles-actor-${actores.size}`);
+        const id = await mkRole(`zz-test Actor ${actores.size}`, a.keys, a.scopes);
+        await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: u.id, role: "member", role_id: id });
+        actores.set(k, u);
+      }
+      return actores.get(k);
+    };
+    for (const c of casos) {
+      const u = await actorUser(c.actor);
+      const { data, error } = await u.client.rpc("can_grant_permissions", { p_workspace_id: ws.id, p_keys: c.keys, p_scopes: c.scopes });
+      check(!error && data === c.allowed, `can_grant_permissions: ${c.name}`, error?.message ?? `esperaba ${c.allowed}, dio ${data}`);
+    }
+
+    // 2) Invitaciones.
+    const inv = (u, extra) => u.client.from("workspace_invites").insert({ workspace_id: ws.id, email: `zz-test-inv-${randomUUID().slice(0, 8)}@example.test`, invited_by: u.id, delivery: "link", ...extra }).select("id").single();
+    {
+      const r = await inv(gestor, { role: "member", role_id: rolSoloContactos });
+      check(!r.error && !!r.data, "un rol con team.invite invita con un rol cuyas claves el tiene", r.error?.message);
+    }
+    check((await inv(gestor, { role: "member", role_id: rolConFlows })).error !== null, "...pero no con un rol que tiene una clave que NO tiene (flows.edit)");
+    check((await inv(gestor, { role: "member", role_id: null })).error !== null, "...ni como Member de sistema (tiene 27 claves que el no tiene)");
+    check((await inv(gestor, { role: "admin", role_id: null })).error !== null, "...ni como Admin");
+    {
+      const { data: rolAdminSis } = await svc.from("workspace_roles").select("id").eq("workspace_id", ws.id).eq("system_role", "admin").single();
+      check((await inv(gestor, { role: "member", role_id: rolAdminSis.id })).error !== null, "...ni con el rol de sistema Admin aunque diga role=member");
+      const { data: rolOwnerSis } = await svc.from("workspace_roles").select("id").eq("workspace_id", ws.id).eq("system_role", "owner").single();
+      check((await inv(admin, { role: "admin", role_id: rolOwnerSis.id })).error !== null, "ni un Admin invita con el rol Owner");
+    }
+    {
+      const { data: ws2 } = await svc.from("workspaces").insert({ name: "zz-test-roles-v2", slug: `zz-test-rolesv2-${Date.now()}` }).select("id").single();
+      const { data: rolAjeno } = await svc.from("workspace_roles").insert({ workspace_id: ws2.id, name: "zz-test Rol de otro workspace", permissions: { keys: ["contacts.view"], scopes: {} } }).select("id").single();
+      check((await inv(gestor, { role: "member", role_id: rolAjeno.id })).error !== null, "no se puede invitar con un rol de OTRO workspace");
+    }
+    check((await inv(acotado, { role: "member", role_id: rolSoloContactos })).error !== null, "un Member de sistema (sin team.invite) no puede invitar");
+    check(!(await inv(admin, { role: "admin", role_id: null })).error, "un Admin si invita como Admin");
+    check(!(await inv(dueno2, { role: "member", role_id: rolConFlows })).error, "el Owner invita con cualquier rol personalizado");
+
+    // El invitado ya no puede editar su propia invitacion (el agujero que la 00212 cierra).
+    {
+      const invitado = await makeUser("roles-invitado");
+      const emailInvitado = (await svc.auth.admin.getUserById(invitado.id)).data.user.email;
+      const { data: miInv } = await svc.from("workspace_invites").insert({ workspace_id: ws.id, email: emailInvitado, invited_by: admin.id, role: "member", delivery: "link" }).select("id").single();
+      await invitado.client.from("workspace_invites").update({ role: "admin" }).eq("id", miInv.id);
+      const { data: despues } = await svc.from("workspace_invites").select("role").eq("id", miInv.id).single();
+      check(despues.role === "member", "la persona invitada NO puede cambiarse el rol en su propia invitacion");
+    }
+
+    // 3) Asignar roles a miembros.
+    const rolDe = async (uid) => (await svc.from("workspace_members").select("role, role_id").eq("workspace_id", ws.id).eq("user_id", uid).single()).data;
+    {
+      const objetivo = await makeUser("roles-objetivo");
+      await svc.from("workspace_members").insert({ workspace_id: ws.id, user_id: objetivo.id, role: "member", role_id: null });
+      const mover = (u, who, patch) => u.client.from("workspace_members").update(patch).eq("workspace_id", ws.id).eq("user_id", who);
+      await mover(gestor, objetivo.id, { role: "admin" });
+      check((await rolDe(objetivo.id)).role === "member", "un rol con team.manage NO puede subir a alguien a Admin");
+      await mover(gestor, objetivo.id, { role_id: rolConFlows });
+      check((await rolDe(objetivo.id)).role_id === null, "...ni darle un rol con claves que no tiene");
+      await mover(gestor, objetivo.id, { role_id: rolSoloContactos });
+      check((await rolDe(objetivo.id)).role_id === rolSoloContactos, "...pero si le da un rol cuyas claves tiene");
+      await mover(gestor, dueno2.id, { role: "member" });
+      check((await rolDe(dueno2.id)).role === "owner", "nadie con team.manage toca al Owner");
+      await mover(admin, objetivo.id, { role: "admin" });
+      check((await rolDe(objetivo.id)).role === "admin", "un Admin si puede promover a otra persona");
+      // Quitar personas: solo el Owner.
+      await admin.client.from("workspace_members").delete().eq("workspace_id", ws.id).eq("user_id", objetivo.id);
+      check(!!(await rolDe(objetivo.id)), "un Admin NO puede quitar personas (team.remove es solo del Owner)");
+      await gestor.client.from("workspace_members").delete().eq("workspace_id", ws.id).eq("user_id", objetivo.id);
+      check(!!(await rolDe(objetivo.id)), "un rol con team.manage tampoco");
+      await dueno2.client.from("workspace_members").delete().eq("workspace_id", ws.id).eq("user_id", objetivo.id);
+      const sigue = (await svc.from("workspace_members").select("user_id").eq("workspace_id", ws.id).eq("user_id", objetivo.id)).data ?? [];
+      check(sigue.length === 0, "el Owner si puede quitar a alguien");
+    }
+
+    // 4) Roles.
+    {
+      const nuevo = (u, perms, extra = {}) => u.client.from("workspace_roles").insert({ workspace_id: ws.id, name: `zz-test Rol ${randomUUID().slice(0, 6)}`, permissions: perms, ...extra }).select("id").single();
+      const r1 = await nuevo(gestor, { keys: ["contacts.view"], scopes: { leads: "own", conversations: "own" } });
+      check(!r1.error && !!r1.data, "un rol con roles.manage crea un rol con claves que tiene", r1.error?.message);
+      check((await nuevo(gestor, { keys: ["flows.edit"], scopes: {} })).error !== null, "...pero no uno con una clave que NO tiene");
+      check((await nuevo(gestor, { keys: ["contacts.view"], scopes: { leads: "all" } })).error !== null, "...ni con un alcance mas ancho que el suyo");
+      check((await nuevo(gestor, { keys: ["team.remove"], scopes: {} })).error !== null, "...ni con una clave solo-Owner");
+      check((await nuevo(gestor, { keys: [], scopes: {} }, { system_role: "admin" })).error !== null, "...ni un rol de sistema");
+      check(!(await nuevo(admin, { keys: ["flows.edit", "roles.manage"], scopes: { leads: "all", conversations: "all" } })).error, "un Admin crea un rol con cualquier clave comun");
+      check((await nuevo(acotado, { keys: ["contacts.view"], scopes: {} })).error !== null, "un Member de sistema (sin roles.manage) no crea roles");
+
+      const keysDe = async (id) => (await svc.from("workspace_roles").select("permissions").eq("id", id).single()).data.permissions.keys;
+      // Editar el rol que tiene asignado: no.
+      await gestor.client.from("workspace_roles").update({ permissions: { keys: ["team.invite", "team.manage", "roles.manage", "contacts.view"], scopes: { leads: "all" } } }).eq("id", rolGestor);
+      check(!(await keysDe(rolGestor)).includes("flows.edit") && (await svc.from("workspace_roles").select("permissions").eq("id", rolGestor).single()).data.permissions.scopes.leads === "own", "nadie edita el rol que tiene asignado");
+      // Agregar una clave que no tiene: el trigger lo frena.
+      const r = await gestor.client.from("workspace_roles").update({ permissions: { keys: ["contacts.view", "flows.edit"], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolSoloContactos).select("id");
+      check(r.error !== null && !(await keysDe(rolSoloContactos)).includes("flows.edit"), "no puede AGREGAR a un rol una clave que no tiene", r.error?.message ?? "no dio error");
+      // Agregar una que si tiene: bien.
+      await gestor.client.from("workspace_roles").update({ permissions: { keys: ["contacts.view", "team.invite"], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolSoloContactos);
+      check((await keysDe(rolSoloContactos)).includes("team.invite"), "puede agregar a un rol una clave que si tiene");
+      // Sacar permisos nunca es una escalada: tambien de un rol con claves que el no tiene.
+      await gestor.client.from("workspace_roles").update({ permissions: { keys: [], scopes: { leads: "own", conversations: "own" } } }).eq("id", rolConFlows);
+      check((await keysDe(rolConFlows)).length === 0, "sacarle todos los permisos a un rol esta permitido");
+      // Un Admin edita cualquiera.
+      await admin.client.from("workspace_roles").update({ permissions: { keys: ["flows.edit", "contacts.view"], scopes: { leads: "all", conversations: "own" } } }).eq("id", rolConFlows);
+      check((await keysDe(rolConFlows)).includes("flows.edit"), "un Admin edita cualquier rol personalizado");
+      // Los roles de sistema no se tocan.
+      const { data: rolMemberSis } = await svc.from("workspace_roles").select("id, permissions").eq("workspace_id", ws.id).eq("system_role", "member").single();
+      await admin.client.from("workspace_roles").update({ name: "Hackeado" }).eq("id", rolMemberSis.id);
+      check((await svc.from("workspace_roles").select("name").eq("id", rolMemberSis.id).single()).data.name !== "Hackeado", "un rol de sistema no se renombra ni siquiera un Admin");
+      // Borrar.
+      const { data: borrable } = await svc.from("workspace_roles").insert({ workspace_id: ws.id, name: "zz-test Borrable", permissions: { keys: ["contacts.view"], scopes: {} } }).select("id").single();
+      await gestor.client.from("workspace_roles").delete().eq("id", rolGestor);
+      check(!!(await svc.from("workspace_roles").select("id").eq("id", rolGestor).maybeSingle()).data, "nadie borra el rol que tiene asignado");
+      await gestor.client.from("workspace_roles").delete().eq("id", rolMemberSis.id);
+      check(!!(await svc.from("workspace_roles").select("id").eq("id", rolMemberSis.id).maybeSingle()).data, "un rol de sistema no se borra");
+      await acotado.client.from("workspace_roles").delete().eq("id", borrable.id);
+      check(!!(await svc.from("workspace_roles").select("id").eq("id", borrable.id).maybeSingle()).data, "un Member de sistema no borra roles");
+      await gestor.client.from("workspace_roles").delete().eq("id", borrable.id);
+      check(!(await svc.from("workspace_roles").select("id").eq("id", borrable.id).maybeSingle()).data, "un rol con roles.manage borra un rol personalizado que no es el suyo");
+    }
   }
 } catch (err) {
   fail("error inesperado", err instanceof Error ? err.message : String(err));

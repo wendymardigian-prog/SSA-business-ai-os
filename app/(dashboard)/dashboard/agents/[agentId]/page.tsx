@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { readWorkspaceSpendSettings } from "@/lib/ai/spend-settings";
 import { getWorkspace } from "@/lib/workspace";
-import { isAdminRole, isOwnerRole } from "@/lib/auth/roles";
+import { isOwnerRole } from "@/lib/auth/roles";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { getAgentType, tabsForViewer } from "@/lib/agent/agent-types";
@@ -16,7 +16,7 @@ import { ACTIONS_PAGE_SIZE, loadActions, parseActionFilters } from "@/lib/agent/
 import { loadCostsTab, loadHeaderKpis, parseCostFilters } from "@/lib/agent/costs-query";
 import { loadRuns, RUNS_PAGE_SIZE } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 import { AgentDetailView } from "@/components/agents/agent-detail-view";
 
@@ -36,11 +36,11 @@ export default async function AgentDetailPage({
 }) {
   const { agentId } = await params;
   const query = await searchParams;
-  const [{ workspace, supabase, role }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
-  const isAdmin = isAdminRole(role);
-  // Las pestañas piden su permiso; la carga de datos de abajo sigue siendo de Admin hasta que
-  // F23 la pase a permisos (por eso `isAdmin &&`).
-  const viewerCan = (await getPermissionContext()).can;
+  // Ver el agente pide `agents.view`; configurarlo, `agents.edit`; sus costos, `ai_costs.view` (Equipo y roles, F23).
+  const permissions = await requirePermission("agents.view");
+  const [{ workspace, supabase }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
+  const viewerCan = permissions.can;
+  const canEdit = viewerCan("agents.edit");
   // Costos y topes: la zona del NEGOCIO (consistente con los topes que
   // evalua el agente). La pestana Acciones es un filtro: la de quien mira.
   const [viewerTimezone, agents] = await Promise.all([
@@ -52,7 +52,7 @@ export default async function AgentDetailPage({
   const typeDef = getAgentType(agent.type);
   if (!typeDef) notFound();
 
-  const { tabs, defaultTab } = tabsForViewer(typeDef, (key) => isAdmin && viewerCan(key));
+  const { tabs, defaultTab } = tabsForViewer(typeDef, viewerCan);
   const requested = typeof query.tab === "string" ? query.tab : defaultTab;
   const tab = tabs.find((t) => t.key === requested && t.available)?.key ?? defaultTab;
 
@@ -67,10 +67,10 @@ export default async function AgentDetailPage({
   // agente no esta conectado.
   const on = (...keys: string[]) => keys.includes(tab);
   const need = {
-    versions: isAdmin && on("config"),
-    pricing: isAdmin && on("config"),
-    docs: isAdmin && (on("knowledge") || (on("config") && agent.type === "copywriter")),
-    triggers: isAdmin && on("channels"),
+    versions: canEdit && on("config"),
+    pricing: canEdit && on("config"),
+    docs: canEdit && (on("knowledge") || (on("config") && agent.type === "copywriter")),
+    triggers: canEdit && on("channels"),
     channels: on("channels", "actions"),
     tags: on("tools", "channels", "actions", "tags"),
     members: on("config", "tools", "channels", "actions", "tags"),
@@ -105,7 +105,7 @@ export default async function AgentDetailPage({
       channelLabels: new Map(runChannels.map((c) => [c.id, c.label])),
       dateRange,
     });
-    return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin, options };
+    return { rows, total, pageSize: RUNS_PAGE_SIZE, filters, showCost: includeCost, isAdmin: canEdit, canExport: viewerCan("data.export"), options };
   };
 
   // Los eventos activos u ocultos, con su categoria, para la habilidad de
@@ -128,7 +128,7 @@ export default async function AgentDetailPage({
   // role. Los indicadores NO se esperan: viajan como promesa y la vista los
   // pinta cuando llegan (ver `loadHeaderKpis`).
   // Un error aca no puede tumbar la pantalla: la fila queda en "—".
-  const kpis = isAdmin
+  const kpis = canEdit
     ? loadHeaderKpis(service, { workspaceId: workspace.id, agentId: agent.id, timeZone: workspace.timezone }).catch((error: unknown) => {
         console.error("[agents] no pude leer los indicadores de la cabecera:", error instanceof Error ? error.message : error);
         return { runsToday: 0, monthCostUsd: null, escalationRatePct: null, missingPricing: 0 };
@@ -144,7 +144,7 @@ export default async function AgentDetailPage({
             .eq("agent_id", agent.id)
             .order("version", { ascending: false })
         : none,
-      isAdmin ? listConnectedAiProviders(workspace.id, service) : Promise.resolve([]),
+      canEdit ? listConnectedAiProviders(workspace.id, service) : Promise.resolve([]),
       // model_pricing la leen Owner/Admin; con el cliente del usuario alcanza.
       need.pricing ? supabase.from("model_pricing").select("provider, model").eq("workspace_id", workspace.id) : none,
       need.channels
@@ -172,18 +172,18 @@ export default async function AgentDetailPage({
         : none,
       need.events ? loadEventTypes() : Promise.resolve([]),
       on("runs") ? loadRunsTab() : Promise.resolve(undefined),
-      isAdmin && on("costs")
+      viewerCan("ai_costs.view") && on("costs")
         ? loadCostsTab(service, {
             workspaceId: workspace.id,
             agent,
             filters: parseCostFilters(query),
             agentNames: new Map(agents.map((a) => [a.id, a.name])),
             workspaceSettings: readWorkspaceSpendSettings(workspace),
-            canEditPricing: isOwnerRole(role),
+            canEditPricing: isOwnerRole(permissions.role),
             timeZone: workspace.timezone,
           })
         : Promise.resolve(undefined),
-      isAdmin && on("tags") ? supabase.from("tags").select("id, contact_tags(count)").eq("workspace_id", workspace.id) : Promise.resolve(undefined),
+      canEdit && on("tags") ? supabase.from("tags").select("id, contact_tags(count)").eq("workspace_id", workspace.id) : Promise.resolve(undefined),
       // Lo propio del copywriter: su configuracion no encaja en la del agente
       // de conversacion, asi que viaja aparte (E3).
       agent.type === "copywriter" && on("config")
@@ -216,7 +216,7 @@ export default async function AgentDetailPage({
   }));
   const pricedModels = ((pricingRes.data ?? []) as Array<{ provider: string; model: string }>).map((p) => `${p.provider}/${p.model}`);
   const screenAgent = toScreenAgent(agent);
-  if (!isAdmin) {
+  if (!canEdit) {
     // Los topes de gasto no salen del servidor para un Member (00060).
     screenAgent.dailyCostLimitUsd = null;
     screenAgent.monthlyCostLimitUsd = null;
@@ -294,7 +294,7 @@ export default async function AgentDetailPage({
     : undefined;
 
   const data: AgentScreenData = {
-    viewer: { isAdmin },
+    viewer: { isAdmin: canEdit, permissionKeys: permissions.permissions.keys },
     copywriter,
     kpis,
     costs,

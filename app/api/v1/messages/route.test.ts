@@ -33,6 +33,13 @@ const { createClient, createServiceClient } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
 
+// Equipo y roles (F20): escribir por un canal pide `inbox.<canal>.reply`. Por defecto estas pruebas responden con todas las
+// claves (no-regresion); las de abajo del todo achican la lista.
+const access = vi.hoisted(() => ({ keys: null as string[] | null }));
+vi.mock("@/lib/auth/guards", () => ({
+  getMemberAction: async () => ({ workspace: { id: "ws-1" }, can: (key: string) => (access.keys === null ? true : access.keys.includes(key)) }),
+}));
+
 import { POST } from "./route";
 
 const CONV = "cv-1";
@@ -110,6 +117,7 @@ const call = (body: Record<string, unknown>) =>
   POST(new NextRequest("https://app.test/api/v1/messages", { method: "POST", body: JSON.stringify(body) }));
 
 beforeEach(() => {
+  access.keys = null;
   vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   sendChannelMessage.mockResolvedValue({ ok: true, platformMessageId: "pm-1" });
@@ -291,5 +299,47 @@ describe("POST /api/v1/messages: con media (F19)", () => {
     });
 
     expect(response.status).toBe(400);
+  });
+});
+
+
+describe("POST /api/v1/messages: permiso por canal (F20)", () => {
+  const instagram = () => conversation({
+    channels: { id: "ch-ig", workspace_id: WS, provider: "late", platform: "instagram", late_account_id: "acc-1", evolution_instance: null, email_address: null, is_active: true },
+  });
+
+  it("un rol sin inbox.instagram.reply recibe 403 y NO se llama al proveedor", async () => {
+    const { client, inserts } = fakeClient({ conversation: instagram() });
+    createClient.mockResolvedValue(client);
+    access.keys = ["inbox.instagram.view", "inbox.whatsapp.reply"]; // ve Instagram y responde solo WhatsApp
+    const response = await call({ conversationId: CONV, text: "hola" });
+    expect(response.status).toBe(403);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("con inbox.instagram.reply manda por Instagram", async () => {
+    const { client } = fakeClient({ conversation: instagram() });
+    createClient.mockResolvedValue(client);
+    access.keys = ["inbox.instagram.reply"];
+    expect((await call({ conversationId: CONV, text: "hola" })).status).toBe(201);
+    expect(sendChannelMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("la clave de otro canal no sirve: WhatsApp pide inbox.whatsapp.reply", async () => {
+    const { client } = fakeClient({ conversation: conversation() }); // WhatsApp
+    createClient.mockResolvedValue(client);
+    access.keys = ["inbox.instagram.reply", "inbox.email.reply"];
+    expect((await call({ conversationId: CONV, text: "hola" })).status).toBe(403);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
+  });
+
+  it("tampoco manda media (un recurso) sin la clave", async () => {
+    const { client } = fakeClient({ conversation: conversation() });
+    createClient.mockResolvedValue(client);
+    access.keys = ["inbox.whatsapp.view"];
+    const response = await call({ conversationId: CONV, media: { kind: "image", storagePath: `${WS}/${CONV}/x.jpg` } });
+    expect(response.status).toBe(403);
+    expect(sendChannelMessage).not.toHaveBeenCalled();
   });
 });

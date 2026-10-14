@@ -49,6 +49,10 @@ const MIGRATED_ADMIN_PAGES = [
   // Ventas (F36): el historial de todo el workspace; ahora lo ve quien tiene `audit.view`.
   ["app/(dashboard)/dashboard/settings/actividad/page.tsx", "audit.view", 'requirePermission("audit.view")'],
   ["app/(dashboard)/dashboard/channels/page.tsx", "channels.manage", 'requirePermission("channels.manage")'],
+  ["app/(dashboard)/dashboard/dashboards/unified/page.tsx", "dashboards.unified.view", 'requirePermission("dashboards.unified.view")'],
+  ["app/(dashboard)/dashboard/knowledge/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
+  ["app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
+  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'],
   [
     "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
     "integrations.view",
@@ -62,10 +66,6 @@ const MIGRATED_ADMIN_PAGES = [
 ] as const;
 
 const ADMIN_PAGES = [
-  "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
-  "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
-  "app/(dashboard)/dashboard/knowledge/page.tsx",
-  "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
 ] as const;
 
 /**
@@ -91,8 +91,6 @@ const MEMBER_PAGES = [
 
 /** Los archivos de acciones que HOY exigen Owner/Admin en todo lo que hacen. */
 const ADMIN_ACTION_FILES = [
-  "lib/actions/agents.ts",
-  "lib/actions/knowledge.ts",
 ] as const;
 
 /**
@@ -103,6 +101,8 @@ const MIGRATED_ADMIN_ACTION_FILES = [
   ["lib/actions/workspace.ts", ["settings.general", "ai_tasks.manage"]],
   ["lib/actions/custom-fields.ts", ["custom_fields.manage"]],
   ["lib/actions/sequences.ts", ["sequences.edit"]],
+  ["lib/actions/agents.ts", ["agents.edit", "ai_limits.manage"]],
+  ["lib/actions/knowledge.ts", ["knowledge.edit"]],
   ["lib/actions/integrations.ts", ["integrations.manage", "channels.manage", "agents.edit"]],
   ["lib/actions/meta-accounts.ts", ["integrations.manage"]],
   ["lib/actions/metrics.ts", ["integrations.manage"]],

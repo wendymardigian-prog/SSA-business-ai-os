@@ -1,5 +1,6 @@
 "use server";
 
+import { canExport, NO_EXPORT_MESSAGE } from "@/lib/auth/export";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -28,6 +29,8 @@ export type ExportResult =
 export async function exportResponsesCsv(input: { formId: string; params: Record<string, string> }): Promise<ExportResult> {
   const ctx = await getPermissionAction("forms.view");
   if (!ctx) return { ok: false, error: "No tenés permiso para ver formularios" };
+  // Exportar pide `data.export` ademas de ver las respuestas (Equipo y roles, F24).
+  if (!canExport(ctx.can)) return { ok: false, error: NO_EXPORT_MESSAGE };
   if (!UUID.test(input.formId)) return { ok: false, error: "Los datos no son válidos" };
 
   const { supabase, workspace } = ctx;

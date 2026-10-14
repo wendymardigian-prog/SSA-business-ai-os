@@ -17,25 +17,8 @@ import { VISIBLE_PERMISSION_KEYS } from "@/lib/auth/permissions";
 
 const ROOT = process.cwd();
 
-/** Claves que todavia no tienen su uso: cada una dice en que bloque llega. Al cerrar B5 esta lista queda VACIA. */
-const PENDING: Record<string, string> = {
-  "contacts.delete": "B5 (F21): borrar y restaurar contactos, y la politica de DELETE de contacts (00214)",
-  "contacts.merge": "B5 (F21): fusionar contactos",
-  "tags.manage": "B5 (F21): efectos de etiquetas y la rama admin de la RLS de tags (00214)",
-  "broadcasts.manage": "B5 (F22): la API y la pagina de broadcasts",
-  "ai_tasks.manage": "B5 (F23): las acciones de tareas de IA y la RLS de ai_task_prompt_versions (00214)",
-  "ai_limits.manage": "B5 (F23): topes y precios de modelos",
-  "data.export": "B5 (F24): los cuatro exports de CSV",
-  "inbox.instagram.reply": "B5 (F20): el composer, la API de mensajes y los borradores por canal",
-  "inbox.whatsapp.reply": "B5 (F20): igual que Instagram",
-  "inbox.email.reply": "B5 (F20): igual que Instagram",
-  "contacts.edit": "B5 (F21): las acciones de edicion de contactos",
-  "contacts.assign": "B5 (F21): reasignar contactos",
-  "flows.publish": "B5 (F22): publicar y restaurar versiones de flujos",
-  "sequences.view": "B5 (F22): la lectura de secuencias",
-  "content.create": "B5 (F24): crear ideas y piezas",
-  "team.remove": "B2 (F11): quitar personas del equipo",
-};
+/** Claves que todavia no tienen su uso: cada una dice en que bloque llega. Al cerrar B5 esta lista queda VACIA (y asi tiene que seguir). */
+const PENDING: Record<string, string> = {};
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

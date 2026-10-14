@@ -24,6 +24,7 @@ export function InboxView({
   assets,
   canManageAssets = false,
   canCreateTask = false,
+  replyPlatforms,
   workspaceName,
   selected: selectedFromServer,
   total,
@@ -48,6 +49,8 @@ export function InboxView({
   canManageAssets?: boolean;
   /** Puede crear tareas (`tasks.edit`): la bandeja ofrece «Crear tarea» sobre la conversacion. */
   canCreateTask?: boolean;
+  /** Las plataformas donde puede responder (`inbox.<canal>.reply`). Sin esto, en todas (compatibilidad). */
+  replyPlatforms?: string[];
   workspaceName: string;
   /**
    * La conversacion de ?c= resuelta en el servidor al cargar la pagina (F16).
@@ -272,6 +275,7 @@ export function InboxView({
               assets={assets}
               canManageAssets={canManageAssets}
               canCreateTask={canCreateTask}
+              canReply={!selected || !replyPlatforms || replyPlatforms.includes(selected.platform)}
               workspaceName={workspaceName}
               agentInfo={selected ? agentByChannel[selected.channel_id] ?? null : null}
               channelProvider={selected ? providerByChannel[selected.channel_id] ?? null : null}

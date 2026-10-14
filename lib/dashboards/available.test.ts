@@ -30,9 +30,12 @@ describe("B3 · que dashboards se ven", () => {
   it("Meta Ads y Unificado aparecen SIEMPRE para quien tiene el permiso", () => {
     // No dependen de que Meta este conectado: una opcion que no se ve es una
     // opcion que no existe. Sin cuenta, la pantalla ofrece conectarla.
-    const keys = availableDashboards(solo("dashboards.ads.view")).map((d) => d.key);
-    expect(keys).toContain("ads");
-    expect(keys).toContain("unified");
+    // Equipo y roles (F24): el Unificado tiene su propia clave, `dashboards.unified.view`.
+    expect(availableDashboards(solo("dashboards.ads.view")).map((d) => d.key)).toEqual(["ads"]);
+    expect(availableDashboards(solo("dashboards.unified.view")).map((d) => d.key)).toEqual(["unified"]);
+    const both = availableDashboards(solo("dashboards.ads.view", "dashboards.unified.view")).map((d) => d.key);
+    expect(both).toContain("ads");
+    expect(both).toContain("unified");
   });
 
   it("sin el permiso de anuncios, esos dos no se ven", () => {

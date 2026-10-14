@@ -20,6 +20,7 @@ import { InboxView } from "./inbox-view";
 import type { InboxAsset } from "@/components/inbox/message-thread";
 import { toBankAsset } from "@/lib/response-assets/list";
 import { getPermissionContext } from "@/lib/auth/guards";
+import { canReplyOn, INBOX_CHANNELS, platformFilterFor } from "@/lib/inbox/channel-access";
 import { AGENT_PUBLIC_COLUMNS, channelAgentInfo, type ChannelAgentInfo, type PublicAgent } from "@/lib/agent/public";
 import type { ConversationRow } from "@/lib/inbox/types";
 import { countPendingDrafts } from "@/lib/actions/agent-drafts";
@@ -86,7 +87,12 @@ export default async function InboxPage({
     disablesAgent: t.disables_agent,
     assignsTo: t.assigns_to,
   }));
-  const platformOptions = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
+  const allPlatforms = [...new Set((channelsRes.data ?? []).map((c) => c.platform))].sort() as Platform[];
+  // Equipo y roles (F20): cada canal se ve con su `inbox.<canal>.view`. El alcance (cuales de esas
+  // conversaciones) lo sigue aplicando la RLS.
+  const access = await getPermissionContext();
+  const platformRestriction = platformFilterFor(access.can, allPlatforms);
+  const platformOptions = platformRestriction ?? allPlatforms;
 
   const search = sanitizeSearch(firstParam(params.q));
   const status = pickEnum<InboxStatus, InboxStatus>(
@@ -126,6 +132,10 @@ export default async function InboxPage({
 
   const statusValue = statusForQuery(status);
   if (statusValue) query = query.eq("status", statusValue);
+  if (platformRestriction) {
+    // Una lista vacia es "no ve ningun canal": no existe una plataforma con este nombre.
+    query = query.in("platform", platformRestriction.length > 0 ? (platformRestriction as Platform[]) : (["__ninguna__"] as unknown as Platform[]));
+  }
   if (platforms.length > 0) query = query.in("platform", platforms as Platform[]);
   if (tagIds.length > 0) query = query.in("tag_match.contact_tags.tag_id", tagIds);
   if (range.from) query = query.gte("last_message_at", range.from);
@@ -225,6 +235,8 @@ export default async function InboxPage({
       .is("deleted_at", null)
       .maybeSingle();
     selected = toRows(data ? [data] : [])[0] ?? null;
+    // Un link a una conversacion de un canal que no puede ver no la abre (F20).
+    if (selected && platformRestriction && !platformRestriction.includes(selected.platform)) selected = null;
   }
 
   // Las conversaciones de esta pagina con un borrador del agente esperando
@@ -281,6 +293,7 @@ export default async function InboxPage({
       assets={assets}
       canManageAssets={canManageAssets}
       canCreateTask={canCreateTask}
+      replyPlatforms={[...new Set<string>([...allPlatforms, ...INBOX_CHANNELS])].filter((p) => canReplyOn(access.can, p))}
       filters={filters}
       dateRange={range}
       tags={tags}

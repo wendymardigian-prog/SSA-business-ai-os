@@ -25,7 +25,7 @@ export default async function EodReportesPage({ params, searchParams }: { params
       <PageHeader title={`Reportes · ${data.form.name}`} route="/dashboard/formularios/[id]/reportes" backHref={<BackLink href={`/dashboard/formularios/${id}`} label="Volver al reporte" />} />
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         {!data.canViewAll && <p className="mb-4 text-xs text-muted-foreground">Ves tus propios reportes. Los de todo el equipo los ven Owner, Admin y quien tiene el permiso de verlos.</p>}
-        <ReportsView data={data} />
+        <ReportsView data={data} canExport={ctx.can("data.export")} />
       </div>
     </div>
   );

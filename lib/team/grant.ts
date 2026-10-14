@@ -7,7 +7,7 @@
  *
  * Módulo PURO: no sabe de Supabase. Lo usan, con el mismo código, invitar, asignar un rol,
  * crear y editar roles (`patchRole`) y las plantillas. La base tiene su gemela
- * (`private.can_grant`, 00212) para el que arme el pedido a mano; los casos compartidos
+ * (`public.can_grant_permissions`, 00212) para el que arme el pedido a mano; los casos compartidos
  * viven en `grant.cases.json` y corren contra las dos.
  *
  * Reglas:

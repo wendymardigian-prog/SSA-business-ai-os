@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { findAdjacentRun, getRunDetail } from "@/lib/agent/runs-query";
@@ -30,6 +30,7 @@ export default async function AgentRunPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { runId } = await params;
+  await requirePermission("agents.view");
   const { workspace, supabase } = await getWorkspace();
   const service = await createServiceClient();
   const permissions = await getPermissionContext();

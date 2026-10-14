@@ -35,13 +35,13 @@ function fakeSupabase() {
   };
 }
 
-vi.mock("@/lib/auth/guards", () => ({
-  getAdminContext: async () => ({
-    workspace: { id: WORKSPACE_ID, ai_task_prompt_active: {}, ai_task_models: {} },
-    supabase: fakeSupabase(),
-    user: { id: "user-1" },
-  }),
-}));
+// Quien edita una tarea tiene ai_tasks.manage (Equipo y roles, F23): el mismo contexto responde a las dos formas del guard.
+const taskCtx = async () => ({
+  workspace: { id: WORKSPACE_ID, ai_task_prompt_active: {}, ai_task_models: {} },
+  supabase: fakeSupabase(),
+  user: { id: "user-1" },
+});
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: taskCtx, getAnyPermissionAction: taskCtx }));
 
 vi.mock("@/lib/ai/provider", () => ({
   listConnectedAiProviders: async () => [{ provider: "anthropic", label: "Anthropic", defaultModel: "m", models: ["m"] }],

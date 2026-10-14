@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { Bot } from "lucide-react";
 import { getWorkspace } from "@/lib/workspace";
-import { getPermissionContext } from "@/lib/auth/guards";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { loadWorkspaceAgents } from "@/lib/agent/config";
 import { CreateAgentButton } from "@/components/agents/create-agent-button";
@@ -41,14 +40,18 @@ export default async function AgentsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ workspace, role }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
-  const isAdmin = isAdminRole(role);
+  // Ver los agentes pide `agents.view`; crear, `agents.edit`; las tareas de IA, `ai_tasks.manage`; los topes, `ai_limits.manage`.
+  await requirePermission("agents.view");
+  const [{ workspace }, service] = await Promise.all([getWorkspace(), createServiceClient()]);
   const [agents, permissions, timeZone] = await Promise.all([
     loadWorkspaceAgents(service, workspace.id),
     getPermissionContext(),
     resolveViewerTimezone(workspace.timezone),
   ]);
   const canViewCosts = permissions.can("ai_costs.view");
+  const canCreateAgent = permissions.can("agents.edit");
+  const canManageTasks = permissions.can("ai_tasks.manage");
+  const canEditLimits = permissions.can("ai_limits.manage");
 
   let filter = null;
   if (canViewCosts) {
@@ -58,7 +61,7 @@ export default async function AgentsPage({
     filter = parsePeriodFilter(params);
   }
 
-  const settings = isAdmin ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
+  const settings = canManageTasks ? resolveBackgroundSettings((workspace as { ai_background_settings?: unknown }).ai_background_settings) : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -67,7 +70,7 @@ export default async function AgentsPage({
       <div className="flex-1 overflow-auto px-8 py-6">
         {canViewCosts && filter && (
           <Suspense fallback={<AiDashboardSkeleton />}>
-            <AiDashboardSection workspaceId={workspace.id} timeZone={timeZone} filter={filter} firstAgentId={agents[0]?.id ?? null} canEditLimits={isAdmin} />
+            <AiDashboardSection workspaceId={workspace.id} timeZone={timeZone} filter={filter} firstAgentId={agents[0]?.id ?? null} canEditLimits={canEditLimits} />
           </Suspense>
         )}
 
@@ -80,7 +83,7 @@ export default async function AgentsPage({
               <p className="mt-2 text-sm text-muted-foreground">
                 Se crea apagado y sin canales, con un prompt inicial y límites seguros. Lo encendés cuando lo hayas revisado.
               </p>
-              {isAdmin && (
+              {canCreateAgent && (
                 <div className="mt-6 flex justify-center">
                   <CreateAgentButton />
                 </div>
@@ -97,7 +100,7 @@ export default async function AgentsPage({
           )}
         </section>
 
-        {isAdmin && settings && (
+        {canManageTasks && settings && (
           <section className="mt-8">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tareas</h2>
             {/* En su propio Suspense: la ultima corrida y el gasto del mes de
