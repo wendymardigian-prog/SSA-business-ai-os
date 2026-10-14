@@ -14,6 +14,7 @@ import { AiResponsePanel } from "./AiResponsePanel";
 import { BranchPanel } from "./BranchPanel";
 import { UpsertContactPanel } from "./UpsertContactPanel";
 import { canonicalNodeType } from "@/lib/flow-engine/node-outputs";
+import { flowSendsMessages } from "@/lib/webhooks/once-per-contact";
 import { isSalesTriggerType } from "@/lib/sales/automation/triggers";
 import { SALES_VARIABLE_KEYS } from "@/lib/sales/automation/variables";
 
@@ -174,7 +175,7 @@ export function NodeConfigSidebar({ flowId, node, nodes, edges, onChange, onClos
     const data = node.data as Record<string, unknown>;
     switch (nodeType) {
       case "trigger":
-        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} />;
+        return <TriggerPanel data={data} onChange={handleChange} flowId={flowId} sendsMessages={flowSendsMessages(nodes)} />;
       case "sendMessage":
         return (
           <SendMessagePanel

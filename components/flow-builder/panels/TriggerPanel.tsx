@@ -47,6 +47,8 @@ interface TriggerPanelProps {
   onChange: (data: Record<string, unknown>) => void;
   /** El flujo que se edita (el «Solo si…» de un webhook le pide al servidor los campos comparables). */
   flowId?: string;
+  /** El flujo tiene un paso que le manda algo a la persona (el webhook sugiere «una sola vez por contacto»). */
+  sendsMessages?: boolean;
 }
 
 const triggerTypes: Array<{ value: TriggerType; label: string; description: string }> = [
@@ -165,7 +167,7 @@ const matchTypes: Array<{ value: "exact" | "contains" | "startsWith"; label: str
   { value: "startsWith", label: "Starts with" },
 ];
 
-export function TriggerPanel({ data: rawData, onChange, flowId }: TriggerPanelProps) {
+export function TriggerPanel({ data: rawData, onChange, flowId, sendsMessages }: TriggerPanelProps) {
   const data = rawData as TriggerPanelData;
   const triggerType = data.triggerType || "keyword";
   // Con `data.keywords || []` el array es nuevo en cada render, asi que los
@@ -676,7 +678,7 @@ export function TriggerPanel({ data: rawData, onChange, flowId }: TriggerPanelPr
       {/* Tareas (F25): proyectos y origenes */}
       {(triggerType === "task_completed" || triggerType === "task_overdue") && <TaskTriggerPanel triggerType={triggerType} data={data} onChange={onChange} />}
 
-      {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} />}
+      {triggerType === "webhook_received" && <WebhookTriggerPanel flowId={flowId} data={data} onChange={onChange} sendsMessages={sendsMessages} />}
 
       {/* F5: ventana de inactividad */}
       {triggerType === "inactivity" && (

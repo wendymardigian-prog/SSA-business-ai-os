@@ -109,6 +109,7 @@ for (const type of FORM_TRIGGER_TYPES) {
     // Debajo de `crm_event` (50), igual que los de agenda y llamadas: si un evento
     // de formulario también encajara en uno del CRM, primero corre el específico.
     priority: 45,
+    sourceType: "form",
     eventTypes: [type],
 
     eventMatches: async (args) => {

@@ -35,7 +35,15 @@ export interface UpsertArgs {
   db: Db;
   workspaceId: string;
   config: UpsertContactConfig;
-  webhook: { inboundId: string; endpointId: string; endpointName: string; payload: unknown; query: unknown };
+  webhook: {
+    inboundId: string;
+    endpointId: string;
+    endpointName: string;
+    payload: unknown;
+    query: unknown;
+    /** Cuándo llegó el envío (`inbound_webhooks.received_at`): es la fecha del toque. Reprocesar no la cambia. */
+    receivedAt?: string | null;
+  };
   nodeId: string;
 }
 
@@ -287,6 +295,16 @@ async function addTags(db: Db, workspaceId: string, contactId: string, fixedIds:
 }
 
 /**
+ * La fecha de llegada del envío como `Date`, o null si falta o no se entiende (entonces el toque queda con
+ * la hora de ahora, como siempre). Un reproceso de un envío viejo conserva así su fecha original.
+ */
+export function receivedAtOf(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
  * El toque del envío (siempre que el paso termine en «Listo»). Un contacto que ya existía y no tenía
  * ningún toque (importado o cargado a mano) recibe ANTES un toque ancla «manual» fechado en su alta:
  * así el webhook queda como el ÚLTIMO y el primero sigue siendo el origen que ya se conocía. Nunca lanza.
@@ -301,7 +319,15 @@ async function recordWebhookTouch(input: { args: UpsertArgs; mapping: MappingRes
       }
     }
     const attribution = effectiveAttribution({ payload: args.webhook.payload, query: args.webhook.query, mapped: mapping.attribution, autoDetect: args.config.attribution.autoDetect });
-    const touch = buildWebhookTouch({ attribution, touchMedium: args.config.touchMedium, inboundId: args.webhook.inboundId, nodeId: args.nodeId, endpointId: args.webhook.endpointId, endpointName: args.webhook.endpointName });
+    const touch = buildWebhookTouch({
+      attribution,
+      touchMedium: args.config.touchMedium,
+      inboundId: args.webhook.inboundId,
+      nodeId: args.nodeId,
+      endpointId: args.webhook.endpointId,
+      endpointName: args.webhook.endpointName,
+      occurredAt: receivedAtOf(args.webhook.receivedAt),
+    });
     const recorded = await recordTouch(args.db, { workspaceId: args.workspaceId, contactId, touch });
     return { recorded: recorded.recorded, source: touch.source, medium: touch.medium ?? null, campaign: touch.campaign ?? null, content: touch.content ?? null, ad_id: touch.adId ?? null };
   } catch (err) {

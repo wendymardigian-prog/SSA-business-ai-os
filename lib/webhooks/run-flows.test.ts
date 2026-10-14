@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
 import { runWebhookFlows, type InboundForFlows } from "./run-flows";
-import { processInbound } from "./process";
+import { processInbound, reprocessInbound } from "./process";
+import { ALREADY_PASSED_NOTE } from "@/lib/flow-engine/nodes/upsert-contact";
 
 const WS = "ws-1";
 type Row = Record<string, unknown>;
@@ -72,7 +73,7 @@ const inbound = (over: Partial<InboundForFlows> = {}): InboundForFlows => ({
   ...over,
 });
 const endpoint = { id: "ep-1", workspace_id: WS, name: "Typeform" };
-const run = (db: MemoryDb, over: Partial<InboundForFlows> = {}) => runWebhookFlows({ db: db.client, inbound: inbound(over), endpoint });
+const run = (db: MemoryDb, over: Partial<InboundForFlows> = {}, rerunCompleted = false) => runWebhookFlows({ db: db.client, inbound: inbound(over), endpoint, rerunCompleted });
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(async () => {
@@ -131,15 +132,17 @@ describe("runWebhookFlows", () => {
     const second = await run(db);
     expect(second).toEqual({});
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(db.rows("trigger_fires")[0].dedupe_key).toBe("webhook:in-1:f-1:0");
+    // La clave es por (envío, flujo): sin el número de reproceso (Tirón 2, C2).
+    expect(db.rows("trigger_fires")[0].dedupe_key).toBe("webhook:in-1:f-1");
   });
 
-  it("reprocesar (otro número de reproceso) corre de nuevo", async () => {
+  it("reprocesar NO vuelve a correr el flujo que ya corrió (ni una ni dos veces)", async () => {
     const db = world([flow("f-1", "Uno", [trig, http("n-h", "https://x.test/uno")], [e("e1", "n-t", "n-h")])], [trigger("tr-1", "f-1", "ep-1")]);
     await run(db);
     await run(db, { reprocess_count: 1 });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(db.rows("trigger_fires").map((r) => r.dedupe_key)).toEqual(["webhook:in-1:f-1:0", "webhook:in-1:f-1:1"]);
+    await run(db, { reprocess_count: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(db.rows("trigger_fires").map((r) => r.dedupe_key)).toEqual(["webhook:in-1:f-1"]);
   });
 
   it("{{webhook.payload.data.name}} se resuelve en los pasos (test con fetch simulado)", async () => {
@@ -183,6 +186,178 @@ describe("runWebhookFlows", () => {
     expect(results["f-1"]).toMatchObject({ status: "failed" });
     expect(results["f-1"].error).toContain("no pude buscar o crear el contacto");
     expect(db.rows("flow_sessions")[0].status).toBe("cancelled");
+  });
+});
+
+describe("un envío nunca dispara dos veces el mismo flujo (Tirón 2, C2)", () => {
+  const sendFlow = () => flow("f-1", "Bienvenida", [trig, upsert(), http("n-h", "https://x.test/bienvenida")], [e("e1", "n-t", "n-u"), e("e2", "n-u", "n-h", "ok")]);
+
+  it("dos procesamientos SIMULTÁNEOS del mismo envío: el flujo corre una sola vez", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    await Promise.all([run(db), run(db), run(db)]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(db.rows("flow_sessions")).toHaveLength(1);
+  });
+
+  it("un reintento (el reaper o el cron procesando otra vez el mismo envío) no repite nada", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    const again = await run(db);
+    expect(again).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reprocesar dos veces SIN la casilla: el flujo corrió una vez", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    db.tables.inbound_webhooks.push({ id: "in-1", workspace_id: WS, endpoint_id: "ep-1", status: "received", payload: { email: "ana@example.com", data: { name: "Ana" } }, query: {}, received_at: "2026-10-12T12:00:00Z", reprocess_count: 0 });
+    await processInbound(db.client, "in-1");
+    await reprocessInbound(db.client, "in-1", 0);
+    await reprocessInbound(db.client, "in-1", 1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(db.rows("inbound_webhooks")[0]).toMatchObject({ reprocess_count: 2, status: "processed" });
+    // Lo que ya se sabía del flujo NO se pierde al reprocesar.
+    const saved = db.rows("inbound_webhooks")[0].result as { flows: Record<string, { status: string; contact_result: string }> };
+    expect(saved.flows["f-1"]).toMatchObject({ status: "completed" });
+  });
+
+  it("reprocesar CON la casilla vuelve a correr el flujo", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    await run(db, { reprocess_count: 1 }, true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(db.rows("trigger_fires").map((r) => r.dedupe_key)).toEqual(["webhook:in-1:f-1"]);
+  });
+
+  it("con la casilla se cancela la sesión que seguía esperando, para que no despierten dos corridas", async () => {
+    const waiting = flow("f-1", "Con espera", [trig, delay, http("n-h", "https://x.test/despues")], [e("e1", "n-t", "n-d"), e("e2", "n-d", "n-h")]);
+    const db = world([waiting], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    expect(db.rows("flow_sessions").map((x) => x.status)).toEqual(["active"]);
+    await run(db, { reprocess_count: 1 }, true);
+    expect(db.rows("flow_sessions").map((x) => x.status)).toEqual(["cancelled", "active"]);
+  });
+
+  it("un flujo que FALLÓ no cuenta como corrido: se libera la clave y reprocesar lo reintenta", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    const rpc = db.client.rpc;
+    db.client.rpc = (async () => ({ data: null, error: { message: "base caida" } })) as never;
+    const first = await run(db);
+    expect(first["f-1"]).toMatchObject({ status: "failed" });
+    expect(db.rows("trigger_fires")).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    db.client.rpc = rpc;
+    const retry = await run(db, { reprocess_count: 1 });
+    expect(retry["f-1"]).toMatchObject({ status: "completed" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reprocesar vuelve a MAPEAR el contacto sin repetir el flujo (arreglar el mapeo y reprocesar)", async () => {
+    // El mapeo apuntaba a un campo que no existe: «No se pudo». El flujo corrió (por la salida de error).
+    const broken = flow("f-1", "Mapeo roto", [trig, upsert([{ target: "contact.email", source: { path: "mail" } }]), http("n-fail", "https://x.test/fail")], [e("e1", "n-t", "n-u"), e("e2", "n-u", "n-fail", "fail")]);
+    const db = world([broken], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    expect(db.rows("contacts")).toHaveLength(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Se corrige el mapeo y se reprocesa (sin la casilla).
+    const fixed = [trig, upsert([{ target: "contact.email", source: { path: "email" } }]), http("n-fail", "https://x.test/fail")];
+    db.tables.flows[0].nodes = fixed;
+    // El `join` de PostgREST trae los nodos actuales del flujo; en memoria el join es la propia fila del trigger.
+    (db.tables.triggers[0].flows as Row).nodes = fixed;
+    const results = await run(db, { reprocess_count: 1 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // el flujo NO se repitió
+    expect(db.rows("contacts")).toHaveLength(1);
+    expect(results["f-1"]).toMatchObject({ contact_remapped: true, contact_result: "created", contact_id: db.rows("contacts")[0].id });
+  });
+
+  it("con dos pasos de contacto (ramas distintas) no se adivina cuál corrió: no se vuelve a mapear", async () => {
+    const two = flow("f-1", "Dos", [trig, upsert(), { ...upsert(), id: "n-u2" }], [e("e1", "n-t", "n-u"), e("e2", "n-u", "n-u2", "ok")]);
+    const db = world([two], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    const before = db.rows("contacts").length;
+    const results = await run(db, { reprocess_count: 1 });
+    expect(results).toEqual({});
+    expect(db.rows("contacts")).toHaveLength(before);
+  });
+});
+
+describe("«Correr una sola vez por contacto» (Tirón 2, C2)", () => {
+  const sendFlow = () => flow("f-1", "Bienvenida", [trig, upsert(), http("n-h", "https://x.test/bienvenida")], [e("e1", "n-t", "n-u"), e("e2", "n-u", "n-h", "ok")]);
+  const second = { id: "in-2", received_at: "2026-10-12T13:00:00Z" };
+
+  it("apagado (por defecto): la misma persona en dos envíos distintos entra las dos veces", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1")]);
+    await run(db);
+    await run(db, second);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("encendido: la misma persona en un segundo envío NO vuelve a entrar, pero su contacto se actualiza", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1", { oncePerContact: true })]);
+    await run(db);
+    const out = await run(db, { ...second, payload: { email: "ana@example.com", data: { name: "Ana María" } } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(db.rows("contacts")).toHaveLength(1);
+    expect(out["f-1"]).toMatchObject({ status: "completed", contact_id: db.rows("contacts")[0].id });
+    expect(out["f-1"].notes).toContain(ALREADY_PASSED_NOTE);
+    // La sesión del segundo envío terminó: no queda activa esperando nada.
+    expect(db.rows("flow_sessions").map((x) => x.status)).toEqual(["completed", "completed"]);
+  });
+
+  it("encendido: otra PERSONA sí entra", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1", { oncePerContact: true })]);
+    await run(db);
+    await run(db, { ...second, payload: { email: "bruno@example.com", data: { name: "Bruno" } } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("encendido: «volver a correr también los flujos que ya corrieron» lo deja entrar otra vez", async () => {
+    const db = world([sendFlow()], [trigger("tr-1", "f-1", "ep-1", { oncePerContact: true })]);
+    const first = await run(db);
+    // `result` es lo que quedó guardado en el envío después de la primera corrida.
+    await run(db, { reprocess_count: 1, result: { flows: first } }, true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("si falla guardar el contacto en la sesión del flujo (Tirón 2, C3)", () => {
+  /** La base se cae SOLO al guardar el contacto en `flow_sessions`; todo lo demás anda. */
+  function failSessionContactUpdate(db: MemoryDb) {
+    const realFrom = db.client.from.bind(db.client);
+    db.client.from = ((table: string) => {
+      const query = realFrom(table as never) as unknown as Record<string, unknown>;
+      if (table !== "flow_sessions") return query;
+      return new Proxy(query, {
+        get(target, prop) {
+          if (prop === "update") {
+            return (values: Row) => (values && "contact_id" in values ? { eq: async () => ({ error: { message: "base caida" } }) } : (target.update as (v: Row) => unknown)(values));
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as never;
+  }
+
+  it("el paso lanza, el flujo queda fallado con el motivo y la sesión cancelada", async () => {
+    const db = world([flow("f-1", "Uno", [trig, upsert()], [e("e1", "n-t", "n-u")])], [trigger("tr-1", "f-1", "ep-1")]);
+    failSessionContactUpdate(db);
+    const results = await run(db);
+    expect(results["f-1"]).toMatchObject({ status: "failed" });
+    expect(results["f-1"].error).toContain("no pude guardar el contacto en la sesión del flujo");
+    expect(db.rows("flow_sessions")[0].status).toBe("cancelled");
+  });
+
+  it("en el historial del envío queda el estado de error y el motivo legible", async () => {
+    const db = world([flow("f-1", "Uno", [trig, upsert()], [e("e1", "n-t", "n-u")])], [trigger("tr-1", "f-1", "ep-1")]);
+    failSessionContactUpdate(db);
+    db.tables.inbound_webhooks.push({ id: "in-1", workspace_id: WS, endpoint_id: "ep-1", status: "received", payload: { email: "ana@example.com" }, query: {}, received_at: "2026-10-12T12:00:00Z", reprocess_count: 0 });
+    const out = await processInbound(db.client, "in-1");
+    expect(out).toEqual({ kind: "processed", status: "error" });
+    expect(db.rows("inbound_webhooks")[0]).toMatchObject({ status: "error" });
+    expect(String(db.rows("inbound_webhooks")[0].error_message)).toContain("no pude guardar el contacto en la sesión del flujo");
   });
 });
 

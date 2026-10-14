@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await supabase
     .from("automation_events")
-    .select("id, workspace_id, event_type, contact_id, member_user_id, payload")
+    .select("id, workspace_id, event_type, contact_id, member_user_id, source_type, source_id, payload")
     .is("processed_at", null)
     .order("created_at", { ascending: true })
     .limit(BATCH);

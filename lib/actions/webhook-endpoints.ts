@@ -289,15 +289,21 @@ export async function saveWebhookSampleFromHistory(endpointId: string, inboundId
 }
 
 /**
- * Reprocesa envios con la version publicada ACTUAL de cada flujo. Si los flujos mandan mensajes,
- * se mandan de nuevo (la pantalla lo avisa y pide confirmacion). El contacto no se duplica: el
- * paso usa la misma deduplicacion. Un doble clic corre una sola vez (claim sobre `reprocess_count`).
+ * Reprocesa envios con la version publicada ACTUAL de cada flujo. Un flujo que YA corrio para ese envio NO se
+ * repite (nada de mensajes duplicados): solo vuelve a mapear el contacto; corren los que todavia no corrieron o
+ * fallaron. Con `rerunCompleted` (la casilla «Volver a correr tambien los flujos que ya corrieron», apagada por
+ * defecto) se vuelven a correr TODOS, y si mandan mensajes se mandan de nuevo: queda auditado quien lo pidio.
+ * Un doble clic corre una sola vez (claim sobre `reprocess_count`).
  */
-export async function reprocessWebhookInbounds(items: { id: string; reprocessCount: number }[]): Promise<WebhookActionResult<{ reprocessed: number; skipped: number }>> {
+export async function reprocessWebhookInbounds(
+  items: { id: string; reprocessCount: number }[],
+  options: { rerunCompleted?: boolean } = {},
+): Promise<WebhookActionResult<{ reprocessed: number; skipped: number }>> {
   const g = await guard();
   if (!g.ok) return g;
   if (!Array.isArray(items) || items.length === 0) return { ok: false, error: "No elegiste ningún envío." };
   if (items.length > MAX_REPROCESS_BATCH) return { ok: false, error: `Podés reprocesar hasta ${MAX_REPROCESS_BATCH} envíos a la vez.` };
+  const rerunCompleted = options?.rerunCompleted === true;
 
   // Solo envios del workspace de la sesion.
   const ids = items.map((i) => i.id);
@@ -309,16 +315,22 @@ export async function reprocessWebhookInbounds(items: { id: string; reprocessCou
   const queue = items.filter((i) => endpointOf.has(i.id));
   skipped += items.length - queue.length;
   for (let i = 0; i < queue.length; i += 5) {
-    const outcomes = await Promise.all(queue.slice(i, i + 5).map((item) => reprocessInbound(g.db, item.id, item.reprocessCount)));
-    outcomes.forEach((outcome, idx) => {
+    const outcomes = await Promise.all(queue.slice(i, i + 5).map((item) => reprocessInbound(g.db, item.id, item.reprocessCount, { rerunCompleted })));
+    for (const [idx, outcome] of outcomes.entries()) {
       const item = queue[i + idx];
       if (outcome.kind === "processed") {
         reprocessed++;
-        void audit(g.db, g.ctx, endpointOf.get(item.id)!, "webhook_endpoint.reprocessed", { inbound_id: item.id, reprocess_count: item.reprocessCount + 1 });
+        // Se espera (no `void`): volver a correr lo que ya corrio es lo unico que puede repetir mensajes y tiene
+        // que quedar escrito quien lo pidio antes de contestar.
+        await audit(g.db, g.ctx, endpointOf.get(item.id)!, "webhook_endpoint.reprocessed", {
+          inbound_id: item.id,
+          reprocess_count: item.reprocessCount + 1,
+          rerun_completed: rerunCompleted,
+        });
       } else {
         skipped++;
       }
-    });
+    }
   }
   revalidatePath(LIST_PATH);
   return { ok: true, reprocessed, skipped };

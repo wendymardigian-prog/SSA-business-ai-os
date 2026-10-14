@@ -1809,6 +1809,10 @@ export interface Database {
           member_user_id: string | null;
           /** El envio de webhook que arranco el flujo (00187): permite una sesion sin contacto ni persona. */
           inbound_webhook_id: string | null;
+          /** Que disparo la sesion (00218): contact | member | webhook | task | form | booking | sale | call | system. */
+          source_type: string | null;
+          /** La entidad que la disparo (el envio, el evento, la persona...). */
+          source_id: string | null;
           flow_id: string;
           channel_id: string | null;
           status: FlowSessionStatus;
@@ -1826,6 +1830,8 @@ export interface Database {
           contact_id: string | null;
           member_user_id?: string | null;
           inbound_webhook_id?: string | null;
+          source_type?: string | null;
+          source_id?: string | null;
           flow_id: string;
           channel_id: string | null;
           status?: FlowSessionStatus;
@@ -2451,6 +2457,9 @@ export interface Database {
           /** Null solo en los eventos de una persona del equipo (`eod_submitted`, 00182). */
           contact_id: string | null;
           member_user_id: string | null;
+          /** Que origino el evento (00218). Un evento sin contacto exige uno: la base lo completa para contacto y persona. */
+          source_type: string | null;
+          source_id: string | null;
           payload: Json;
           created_at: string;
           processed_at: string | null;
@@ -2462,6 +2471,8 @@ export interface Database {
           event_type: string;
           contact_id: string | null;
           member_user_id?: string | null;
+          source_type?: string | null;
+          source_id?: string | null;
           payload?: Json;
           created_at?: string;
           processed_at?: string | null;
@@ -5299,6 +5310,11 @@ export interface Database {
       /** Busca un contacto por telefono, email o redes; devuelve tambien los conflictos; NO crea (00175). Solo service_role. */
       find_contact_for_form: {
         Args: { p_workspace_id: string; p_phone: string | null; p_email: string | null; p_social: Json };
+        Returns: Json;
+      };
+      /** Guarda un envio de webhook con candado por (endpoint, id de envio o huella): dos entregas identicas simultaneas dan un `received` y un `ignored` (00216). Solo service_role. */
+      receive_inbound_webhook: {
+        Args: { p_row: Json; p_duplicate_window_seconds?: number };
         Returns: Json;
       };
       /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */

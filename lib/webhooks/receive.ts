@@ -198,9 +198,15 @@ export interface InboundInsert {
   bodyHash: string;
   errorMessage: string | null;
   summary: string | null;
+  /**
+   * La ventana en que un cuerpo idéntico (sin id de envío) es un repetido. La verificación y el insert son UNA
+   * operación con candado en la base (`receive_inbound_webhook`, 00216): dos entregas simultáneas no pasan las dos.
+   */
+  duplicateWindowMs: number;
 }
 
-export type InsertOutcome = { kind: "inserted"; id: string } | { kind: "duplicate" };
+/** `status` es el estado FINAL: la base lo pasa a `ignored` si el mismo cuerpo ya llegó dentro de la ventana. */
+export type InsertOutcome = { kind: "inserted"; id: string; status: InboundStatus } | { kind: "duplicate" };
 
 export interface ReceiveDeps {
   now: () => Date;
@@ -213,7 +219,7 @@ export interface ReceiveDeps {
   limit: (endpointId: string) => Promise<{ allowed: boolean }>;
   /** El cuerpo ya leido, o `tooLarge` si pasa el maximo. Se llama DESPUES del tope. */
   readBody: () => Promise<{ text: string; bytes: number; asContentType?: string } | { tooLarge: true }>;
-  hasRecentSameBody: (endpointId: string, hash: string, since: Date) => Promise<boolean>;
+  /** Verifica el repetido y guarda, todo junto y con candado. Lanza si la base falla (-> 500 y el emisor reintenta). */
   insertInbound: (row: InboundInsert) => Promise<InsertOutcome>;
   /** Guarda el ejemplo del endpoint y apaga la escucha. */
   captureSample: (endpointId: string, sample: { payload: Record<string, unknown>; query: Record<string, unknown>; captured_at: string }) => Promise<void>;
@@ -291,10 +297,9 @@ export async function receiveWebhook(deps: ReceiveDeps, input: ReceiveInput): Pr
   let errorMessage: string | null = null;
   let summary: string | null = null;
 
-  if (!eventId && (await deps.hasRecentSameBody(endpoint.id, hash, new Date(now.getTime() - DUPLICATE_WINDOW_MS)))) {
-    status = "ignored";
-    summary = "Repetido: igual a un envío de los últimos 10 minutos";
-  } else if (endpoint.status === "paused") {
+  // El «repetido» (el mismo cuerpo, sin id de envío, en los últimos 10 minutos) ya no se decide acá: lo decide la
+  // base al guardar, con candado (ver `InboundInsert.duplicateWindowMs`). Lo demás se decide como siempre.
+  if (endpoint.status === "paused") {
     status = "paused";
   } else if (parsed.error) {
     status = "error";
@@ -320,8 +325,11 @@ export async function receiveWebhook(deps: ReceiveDeps, input: ReceiveInput): Pr
     bodyHash: hash,
     errorMessage,
     summary,
+    duplicateWindowMs: DUPLICATE_WINDOW_MS,
   });
   if (outcome.kind === "duplicate") return { status: 200, body: { ok: true, duplicate: true } };
+  // Desde acá vale el estado FINAL: si la base lo dejó `ignored`, no se captura ni se procesa.
+  status = outcome.status;
 
   if (status === "captured") {
     await deps.captureSample(endpoint.id, { payload: parsed.payload, query, captured_at: now.toISOString() });

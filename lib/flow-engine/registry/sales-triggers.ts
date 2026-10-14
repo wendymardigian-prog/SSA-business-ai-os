@@ -119,6 +119,7 @@ for (const type of SALES_TRIGGER_TYPES) {
     scope: isRelativeSalesTrigger(type) ? "scheduled" : "event",
     // Debajo de `crm_event` (50), igual que agenda, llamadas y formularios.
     priority: 45,
+    sourceType: "sale",
     eventTypes: EVENT_TYPES_OF[type],
 
     // Lo que un camino condicional puede comparar de la venta o el pago (solo texto: ver el modulo).

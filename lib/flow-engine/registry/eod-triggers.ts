@@ -53,6 +53,7 @@ registerTrigger({
   scope: "event",
   priority: 45,
   subject: "member",
+  sourceType: "member",
   eventTypes: [EOD_TRIGGER_TYPE],
 
   eventMatches: (args) => eodEventMatches(args.config, args.event.payload),

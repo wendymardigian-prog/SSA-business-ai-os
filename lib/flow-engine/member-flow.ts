@@ -5,7 +5,8 @@
  * el servidor. El motor igual los saltea si llegaran (red de seguridad).
  */
 import { getNode, getTrigger } from "./registry";
-import { missingContactMessage, pathsMissingContact, type GraphEdge, type SubjectOfFlow } from "./contact-requirement";
+import type { TriggerSubject } from "./registry/types";
+import { missingContactMessage, pathsMissingContact, triggerEntityOf, type GraphEdge, type SubjectOfFlow } from "./contact-requirement";
 
 interface RawNode {
   id?: string;
@@ -16,14 +17,18 @@ interface RawNode {
 /**
  * Sobre quién es el flujo: lo dice su disparador. Sin disparador conocido, `contact`.
  * `member` es de una persona del equipo (EOD, nunca tiene contacto); `webhook` arranca sin
- * contacto y lo consigue con el paso "Crear o actualizar contacto".
+ * contacto y lo consigue con el paso "Crear o actualizar contacto"; `system` (Tirón 2, D1) no es
+ * sobre ningún contacto ni persona: nunca tiene contacto.
  */
-export function flowSubject(nodes: unknown[]): "contact" | "member" | "webhook" {
+export function flowSubject(nodes: unknown[]): TriggerSubject {
   const trigger = (nodes as RawNode[]).find((n) => n?.type === "trigger");
   const type = (trigger?.data as { triggerType?: unknown } | undefined)?.triggerType;
   const subject = typeof type === "string" ? getTrigger(type)?.subject : undefined;
-  return subject === "member" ? "member" : subject === "webhook" ? "webhook" : "contact";
+  return subject === "member" ? "member" : subject === "webhook" ? "webhook" : subject === "system" ? "system" : "contact";
 }
+
+/** ¿El flujo nunca tiene contacto? (de una persona del equipo o de sistema). Un flujo de webhook lo consigue a mitad de camino. */
+export const isNoContactSubject = (subject: TriggerSubject | undefined): boolean => subject === "member" || subject === "system";
 
 /**
  * Los pasos de un flujo de webhook que necesitan un contacto que todavía no hay por algún camino,
@@ -33,7 +38,7 @@ export function flowSubject(nodes: unknown[]): "contact" | "member" | "webhook" 
  */
 export function webhookFlowProblems(nodes: unknown[], edges: unknown[], subjectOfFlow?: SubjectOfFlow): string[] {
   if (flowSubject(nodes) !== "webhook") return [];
-  return pathsMissingContact(nodes as RawNode[], edges as GraphEdge[], subjectOfFlow).map((m) => missingContactMessage(m.name));
+  return pathsMissingContact(nodes as RawNode[], edges as GraphEdge[], subjectOfFlow).map((m) => missingContactMessage(m.name, m.nodeType));
 }
 
 export const MEMBER_FLOW_NOTICE = "Este flujo es sobre una persona del equipo, no sobre un contacto: no puede mandar mensajes por chat ni tocar contactos.";
@@ -43,8 +48,10 @@ export const MEMBER_FLOW_NOTICE = "Este flujo es sobre una persona del equipo, n
  * un contacto o si todos sus pasos sirven sin contacto. `subjectOfFlow` dice de qué se trata
  * otro flujo (para "Ir a otro flujo", que solo puede ir a otro flujo sin contacto).
  */
-export function memberFlowProblems(nodes: unknown[], subjectOfFlow?: (flowId: string) => "contact" | "member" | "webhook" | undefined): string[] {
-  if (flowSubject(nodes) !== "member") return [];
+export function memberFlowProblems(nodes: unknown[], subjectOfFlow?: (flowId: string) => TriggerSubject | undefined): string[] {
+  const subject = flowSubject(nodes);
+  if (!isNoContactSubject(subject)) return [];
+  const about = subject === "member" ? "una persona del equipo" : "el sistema, sin contacto ni persona";
   const problems: string[] = [];
   for (const node of nodes as RawNode[]) {
     if (!node || node.type === "trigger") continue;
@@ -53,11 +60,16 @@ export function memberFlowProblems(nodes: unknown[], subjectOfFlow?: (flowId: st
     const data = (node.data ?? {}) as { label?: unknown; flowId?: unknown };
     const name = typeof data.label === "string" && data.label.trim() ? data.label.trim() : definition.label;
     if (definition.needsContact) {
-      problems.push(`El paso «${name}» necesita un contacto, y este flujo es sobre una persona del equipo.`);
+      const entity = triggerEntityOf(definition.type);
+      problems.push(
+        entity
+          ? `El paso «${name}» actúa sobre la ${entity} que dispara el flujo, y este flujo es sobre ${about}: no tiene ninguna.`
+          : `El paso «${name}» necesita un contacto, y este flujo es sobre ${about}.`,
+      );
       continue;
     }
-    if (definition.type === "goToFlow" && subjectOfFlow && typeof data.flowId === "string" && subjectOfFlow(data.flowId) !== "member") {
-      problems.push(`«${name}» solo puede ir a otro flujo sobre una persona del equipo.`);
+    if (definition.type === "goToFlow" && subjectOfFlow && typeof data.flowId === "string" && !isNoContactSubject(subjectOfFlow(data.flowId))) {
+      problems.push(subject === "member" ? `«${name}» solo puede ir a otro flujo sobre una persona del equipo.` : `«${name}» solo puede ir a otro flujo sin contacto (de una persona del equipo o del sistema).`);
     }
   }
   return problems;

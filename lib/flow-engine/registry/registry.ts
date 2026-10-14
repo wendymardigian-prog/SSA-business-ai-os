@@ -219,12 +219,16 @@ export function eventAllowsNoContact(eventType: string): boolean {
 
 /**
  * Sobre quién es un evento de `automation_events`: `member` si lo atiende un disparador
- * sin contacto (`eod_submitted`), si no `contact` (todos los de siempre). El cron ramifica
- * por esto de forma explícita.
+ * sobre una persona del equipo (`eod_submitted`), `system` si lo atiende uno sin contacto ni
+ * persona (Tirón 2, D1), si no `contact` (todos los de siempre). El cron ramifica por esto de
+ * forma explícita.
  */
-export function eventSubject(eventType: string): "contact" | "member" {
+export function eventSubject(eventType: string): "contact" | "member" | "system" {
   for (const t of triggers.values()) {
     if (t.subject === "member" && t.eventTypes?.includes(eventType)) return "member";
+  }
+  for (const t of triggers.values()) {
+    if (t.subject === "system" && t.eventTypes?.includes(eventType)) return "system";
   }
   return "contact";
 }

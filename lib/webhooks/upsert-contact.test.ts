@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { memoryDb, type MemoryDb } from "@/lib/agent/testing/memory-db";
 import { memoryCentralRpc } from "@/lib/contacts/testing/memory-central";
-import { buildPatch, upsertContactFromWebhook } from "./upsert-contact";
+import { buildPatch, receivedAtOf, upsertContactFromWebhook } from "./upsert-contact";
 import { DEFAULT_UPSERT_CONFIG, type MapRow, type UpsertContactConfig } from "./upsert-config";
 
 const WS = "ws-1";
@@ -234,5 +234,34 @@ describe("el toque (F14)", () => {
     );
     const out = await run(db, { email: "a@b.com" });
     expect(out).toMatchObject({ ok: true, result: "created" });
+  });
+});
+
+describe("la fecha del toque (Tirón 2, C1)", () => {
+  const withReceivedAt = (receivedAt: string | null | undefined) => ({ ...webhook({ email: "a@b.com" }), receivedAt });
+  const runAt = (db: MemoryDb, receivedAt: string | null | undefined) =>
+    upsertContactFromWebhook({ db: db.client, workspaceId: WS, config: config(), webhook: withReceivedAt(receivedAt), nodeId: "n-1" });
+
+  it("el toque lleva la fecha en que LLEGÓ el envío: reprocesar uno viejo no lo fecha de hoy", async () => {
+    const db = world();
+    await runAt(db, "2026-07-01T10:00:00Z");
+    expect(db.rows("contact_touches")[0]).toMatchObject({ origin: "webhook", occurred_at: "2026-07-01T10:00:00.000Z" });
+  });
+
+  it("sin fecha (o con una que no se entiende) el toque queda sin occurred_at: lo fecha la base, como siempre", async () => {
+    const sinFecha = world();
+    await runAt(sinFecha, undefined);
+    expect(sinFecha.rows("contact_touches")[0].occurred_at).toBeUndefined();
+
+    const rota = world();
+    await runAt(rota, "no es una fecha");
+    expect(rota.rows("contact_touches")[0].occurred_at).toBeUndefined();
+  });
+
+  it("receivedAtOf: una fecha valida es un Date; vacio o roto es null", () => {
+    expect(receivedAtOf("2026-07-01T10:00:00Z")?.toISOString()).toBe("2026-07-01T10:00:00.000Z");
+    expect(receivedAtOf(null)).toBeNull();
+    expect(receivedAtOf("")).toBeNull();
+    expect(receivedAtOf("basura")).toBeNull();
   });
 });

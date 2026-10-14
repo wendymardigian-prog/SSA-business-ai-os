@@ -83,6 +83,36 @@ describe("reprocessInbound", () => {
     expect((runFlows as ReturnType<typeof vi.fn>).mock.calls[0][0].inbound.reprocess_count).toBe(3);
   });
 
+  it("la casilla «volver a correr también los flujos que ya corrieron» viaja a los flujos y está apagada por defecto", async () => {
+    const db = world([received({ status: "processed", reprocess_count: 0 })]);
+    const runFlows: RunFlows = vi.fn(async () => ({}));
+    await reprocessInbound(db.client, "in-1", 0, { runFlows, now: () => NOW });
+    expect((runFlows as ReturnType<typeof vi.fn>).mock.calls[0][0].rerunCompleted).toBeFalsy();
+
+    await reprocessInbound(db.client, "in-1", 1, { runFlows, now: () => NOW, rerunCompleted: true });
+    expect((runFlows as ReturnType<typeof vi.fn>).mock.calls[1][0].rerunCompleted).toBe(true);
+  });
+
+  it("lo que ya se sabía de otros flujos NO se pierde: se fusiona con lo que corrió ahora", async () => {
+    const before = { flows: { f1: { status: "completed", flow_name: "Bienvenida", contact_id: "c-1" } }, summary: "1 flujo corrió" };
+    const db = world([received({ status: "processed", result: before })]);
+    // Ahora solo corre el flujo nuevo (f2): f1 ya había corrido y no se repite.
+    const runFlows: RunFlows = async () => ({ f2: { status: "completed", flow_name: "Aviso", contact_id: "c-1" } });
+    await reprocessInbound(db.client, "in-1", 0, { runFlows, now: () => NOW });
+    const saved = db.rows("inbound_webhooks")[0];
+    expect(Object.keys((saved.result as { flows: object }).flows).sort()).toEqual(["f1", "f2"]);
+    expect((saved.result as { summary: string }).summary).toBe("2 flujos corrieron");
+    expect(saved.status).toBe("processed");
+  });
+
+  it("un flujo que fallaba y ahora anduvo reemplaza a su propia entrada: el envío deja de estar en error", async () => {
+    const before = { flows: { f1: { status: "failed", error: "base caida" } }, summary: "x" };
+    const db = world([received({ status: "error", error_message: "base caida", result: before })]);
+    const runFlows: RunFlows = async () => ({ f1: { status: "completed", contact_id: "c-1" } });
+    await reprocessInbound(db.client, "in-1", 0, { runFlows, now: () => NOW });
+    expect(db.rows("inbound_webhooks")[0]).toMatchObject({ status: "processed", error_message: null, contact_id: "c-1" });
+  });
+
   it("un envio cuyo payload ya se vacio no se puede reprocesar", async () => {
     const db = world([received({ status: "error", payload: null })]);
     expect((await reprocessInbound(db.client, "in-1", 0)).kind).toBe("no_payload");

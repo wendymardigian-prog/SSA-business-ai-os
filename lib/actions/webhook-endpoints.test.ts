@@ -149,6 +149,36 @@ describe("con permiso", () => {
     expect(db.rows("webhook_endpoints")[0].deleted_at).toBeTruthy();
   });
 
+  describe("reprocesar y la casilla «volver a correr también los flujos que ya corrieron»", () => {
+    const inbound = { id: "in-1", workspace_id: WS, endpoint_id: "ep-1", status: "processed", payload: { a: 1 }, query: {}, received_at: "2026-10-12T12:00:00Z", reprocess_count: 0, result: {} };
+    const extra = () => ({ inbound_webhooks: [{ ...inbound }], trigger_fires: [], flow_sessions: [], analytics_events: [], flows: [], webhook_endpoints_unused: [] });
+
+    it("sin la casilla queda auditado quien lo pidio, con rerun_completed en falso", async () => {
+      const db = world(extra());
+      allowed();
+      const res = await reprocessWebhookInbounds([{ id: "in-1", reprocessCount: 0 }]);
+      expect(res).toMatchObject({ ok: true, reprocessed: 1 });
+      const entry = db.rows("audit_log").find((r) => r.action === "webhook_endpoint.reprocessed");
+      expect(entry).toMatchObject({ performed_by: "u-1", entity_id: "ep-1", metadata: { inbound_id: "in-1", reprocess_count: 1, rerun_completed: false } });
+    });
+
+    it("con la casilla queda auditado quien lo pidio, con rerun_completed en verdadero", async () => {
+      const db = world(extra());
+      allowed();
+      const res = await reprocessWebhookInbounds([{ id: "in-1", reprocessCount: 0 }], { rerunCompleted: true });
+      expect(res).toMatchObject({ ok: true, reprocessed: 1 });
+      const entry = db.rows("audit_log").find((r) => r.action === "webhook_endpoint.reprocessed");
+      expect(entry).toMatchObject({ performed_by: "u-1", metadata: { rerun_completed: true } });
+    });
+
+    it("la casilla solo vale si es exactamente `true` (cualquier otra cosa es apagada)", async () => {
+      const db = world(extra());
+      allowed();
+      await reprocessWebhookInbounds([{ id: "in-1", reprocessCount: 0 }], { rerunCompleted: "si" as never });
+      expect(db.rows("audit_log").find((r) => r.action === "webhook_endpoint.reprocessed")).toMatchObject({ metadata: { rerun_completed: false } });
+    });
+  });
+
   it("reprocesar mas de 100 se rechaza", async () => {
     world();
     allowed();

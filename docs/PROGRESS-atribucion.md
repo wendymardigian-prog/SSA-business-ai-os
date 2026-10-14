@@ -111,16 +111,16 @@ motor y del cron ANTES de tocar). Decisiones de Wendy: Leads Meta se corrige y s
 Orden de ejecución: D1–D2 y C primero (son la base), después E1, B, E2–E4, A y D3–D5. Cada tramo: `npx vitest run` en verde,
 esta lista marcada, commit `fix: atribucion - bloque X (nombre)` y push.
 
-- [ ] **Paso 1**: `npm run build` y cada `scripts/verify-*.mjs` de a uno (con candado), para fijar el punto de partida
-- [ ] **Paso 2**: tests de caracterización ANTES de tocar (motor y cron con contacto, EOD, webhook actual, tabla Meta vs CRM, pieza sin anuncio)
+- [x] **Paso 1**: `npm run build` y cada `scripts/verify-*.mjs` de a uno (con candado), para fijar el punto de partida (ver «Punto de partida»)
+- [x] **Paso 2**: tests de caracterización ANTES de tocar (`lib/flow-engine/resume-characterization.test.ts` es nuevo; el resto ya existía: motor, EOD, webhook, tabla Meta vs CRM, pieza)
 - [ ] **D · Flujos sin contacto: el origen**
-  - [ ] D1 · `source_type`/`source_id` en `flow_sessions` y `automation_events`, CHECK superconjunto, `subject: system`, motor y cron (`resume_flow` desde la sesión)
-  - [ ] D2 · tabla de pasos y contacto en `docs/flow-registry.md`; mensaje del validador de agenda y ventas
+  - [x] D1 · `source_type`/`source_id` en `flow_sessions` y `automation_events`, CHECK superconjunto, `subject: system`, motor y cron (`resume_flow` desde la sesión)
+  - [x] D2 · tabla de pasos y contacto en `docs/flow-registry.md`; mensaje del validador de agenda y ventas
 - [ ] **C · Webhooks**
-  - [ ] C1 · `occurredAt = received_at` en el toque
-  - [ ] C2 · recepción con `pg_advisory_xact_lock`; clave `(envío, flujo)` sin `reprocess_count`; casilla "Volver a correr…"; "una sola vez por contacto"
-  - [ ] C3 · error visible si falla guardar el contacto en el flujo; el historial del webhook se entera de lo que pasa después de un "Esperar"
-  - [ ] C4 · purga de las copias del payload (`flow_sessions.variables` y jobs `resume_flow`)
+  - [x] C1 · `occurredAt = received_at` en el toque
+  - [x] C2 · recepción con `pg_advisory_xact_lock`; clave `(envío, flujo)` sin `reprocess_count`; casilla "Volver a correr…"; "una sola vez por contacto"
+  - [x] C3 · error visible si falla guardar el contacto en el flujo; el historial del webhook se entera de lo que pasa después de un "Esperar"
+  - [x] C4 · purga de las copias del payload (`flow_sessions.variables` y jobs `resume_flow`)
 - [ ] **E · Anuncios: el catálogo (E1)**
   - [ ] Ponerse al día si se perdió la corrida de las 3 a. m.; un lote que falla deja el catálogo incompleto; sin token se anota
   - [ ] Respaldo desde los insights cuando falta el catálogo; aviso "Ningún contacto de este período trae datos de anuncio…"
@@ -166,16 +166,43 @@ Todas aditivas e idempotentes, con "Cómo volver atrás" en la cabecera. Aplicar
 
 | # | Qué | Se aplica | Estado |
 |---|---|---|---|
-| 00216 | `receive_inbound_webhook` con lock (C2) | antes del deploy | pendiente |
-| 00217 | claves nuevas de `trigger_fires` para webhooks (C2) | antes | pendiente |
-| 00218 | `source_type`/`source_id`, trigger, backfill y CHECK superconjunto (D1) | antes | pendiente |
-| 00219 | `ads_crm_metrics_v2` y `ads_crm_cell_detail` (B2, B3) | antes | pendiente |
+| 00216 | `receive_inbound_webhook` con lock (C2) | antes del deploy | **aplicada y registrada** (14/10) |
+| 00217 | claves nuevas de `trigger_fires` para webhooks (C2) | antes | **aplicada y registrada** (14/10) |
+| 00218 | `source_type`/`source_id`, trigger, backfill y CHECK superconjunto (D1) | antes | **aplicada y registrada** (14/10; ver «Notas de la corrida») |
+| 00219 | `ads_crm_items`, `ads_crm_metrics_v2` y `ads_crm_cell_detail` (B2, B3) | antes | **aplicada y registrada** (14/10; el código que la usa va en el bloque B) |
 | 00220 | recalcular `leads`/`purchases` de Meta (decisión 1) | **después del deploy**, con respaldo | pendiente |
 | 00221 | `enrich_touch_ad_origin` (A1) | antes | pendiente |
 | 00222 | `flow_send_claims` (D3) | antes | pendiente |
 
 No cambian (sus huellas quedan iguales a las del Tirón 1): `record_contact_touch`, `find_or_link_contact`, `find_contact_for_form`,
 `submit_form_response`, `create_booking` y `find_or_create_contact`.
+
+### Notas de la corrida (Tirón 2)
+
+**Punto de partida real** (14/10, sobre una copia limpia de `origin/main` en `2738c16`; lo que importa código de la app —`forms`, `tasks`, `eod`, `sales`, `publishing`, `contact-merge`— se midió así para que mis cambios no lo contaminaran):
+- `npx vitest run`: 874 archivos, 10.998 tests, verdes. `npm run build`: salida 0. `npm run lint`: 0 errores, 36 avisos.
+- Todos los `verify-*` dan 0 salvo cuatro que ya fallaban **antes de tocar nada**:
+  - `verify-tasks`: 1 fallo, «las fechas de las dependientes ajenas se corrigieron (B al 14, C al 15)»: un test de fechas que depende del día.
+  - `verify-forms`: 1 fallo, «el EXPLAIN de la consulta de vistas usa idx_analytics_forms» (el plan de ejecución de una consulta; a veces pasa).
+  - `verify-ads-attribution`: 1 fallo, «EXPLAIN ANALYZE: 344 ms (el plano pide < 300 ms)» sobre `ads_crm_metrics`.
+  - `verify-attribution`: el caso de datos de siempre («todos los contactos reales tienen first_touch», 793 de 852).
+- `verify-webhook` y `verify-inbound-webhooks` corrieron con la app en local (`npm run dev`, puerto 3000).
+
+**Orden**: el plan decía D1 antes que C; se hizo C primero para que las migraciones salgan con los números del plan sin saltear ninguno (C usa la 00216 y la 00217, D1 la 00218). C no depende de D1.
+
+**C2 · reprocesar**: sin la casilla, un flujo que ya corrió **no se repite**, pero el contacto **se vuelve a mapear** si el flujo tiene UN solo paso «Crear o actualizar contacto» (con varios, en ramas distintas, no se sabe cuál corrió: no se toca). Un flujo que **falló** libera su clave y se reintenta. El `result` del envío se **fusiona** con lo anterior (antes lo pisaba entero, y un reproceso que corre solo algunos flujos habría borrado el historial de los demás).
+
+**C3**: además de lanzar si falla el guardado en la sesión, el historial del webhook ahora se entera de lo que pasa **después de un «Esperar»** (`settleResumedSession`): terminar, volver a esperar o fallar. Antes quedaba «en curso» para siempre.
+
+**C4**: la purga de las copias del payload es de TypeScript (sin migración): filtra del lado de la base lo que ya está vacío para no releer todo cada día.
+
+**D1 · el CHECK de `automation_events`**: la primera versión de la 00218 lo aflojaba de más (cualquier evento con persona pasaba). Dos verificaciones lo atajaron (`verify-eod`, `verify-tasks`: «un evento de contacto sin contacto se sigue rechazando»). Se corrigió **la misma 00218** (se reaplicó, es idempotente, y se actualizó lo registrado): un evento de contacto sin contacto sigue rechazado aunque traiga persona; lo nuevo es un evento sin contacto **ni persona** con origen declarado.
+- Una prueba **vieja** de `verify-inbound-webhooks` se cambió a propósito: «borrar un envío que sostiene una sesión sin contacto lo frena el CHECK». Con el origen, la sesión sigue siendo válida y el borrado ya no se frena (queda con el envío en NULL y su origen `webhook`).
+- Un evento de Tareas **sin contacto ni persona** sigue sin correr (el test `automation-events-routing` lo fija y no se tocó): hoy no se emite. Habilitarlo es un cambio de una línea, a decidir cuando Tareas lo necesite.
+- No hay todavía ningún disparador `system`: el camino está probado con uno de prueba. El **simulador no cambia**: solo simula disparadores de mensaje (los de evento, persona, webhook y sistema responden «No coincide»).
+- D2: los pasos de agenda y ventas ahora dicen «actúa sobre la reunión (o la venta) que dispara el flujo» en lugar de mandar a poner «Crear o actualizar contacto» (`TRIGGER_ENTITY_NODES`).
+
+**Verificación después de aplicar 00216–00219** (con el código nuevo): `verify-inbound-webhooks` 0 (129 pruebas, incluye diez entregas simultáneas por el receptor real: una procesable y nueve ignoradas), `verify-eod` 0, `verify-forms` 0, `verify-webhook` 0, `verify-tasks` el mismo único fallo de fechas de antes.
 
 ### Plan completo (Tirón 2, tal cual se presentó y aprobó)
 

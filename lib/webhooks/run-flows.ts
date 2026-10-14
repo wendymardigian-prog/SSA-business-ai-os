@@ -5,10 +5,15 @@
  * con el mismo reclamo en `trigger_fires` que usa el cron:
  *   1. lee los `triggers` activos de tipo `webhook_received` con este `endpointId`, de flujos publicados;
  *   2. evalúa el «Solo si…» con el evaluador de Condiciones;
- *   3. reclama el disparo (`webhook:<envío>:<flujo>:<reproceso>`): un envío procesado dos veces sin
- *      reprocesar (el reaper y el `after()`) corre cada flujo una sola vez;
+ *   3. reclama el disparo (`webhook:<envío>:<flujo>`, SIN el número de reproceso): un envío corre cada flujo
+ *      UNA sola vez, lo procesen dos veces (el reaper y el `after()`), dos procesos a la vez o se reprocese.
+ *      Si el flujo FALLA, la clave se libera (reprocesar lo reintenta); si la persona pide «volver a correr
+ *      también los flujos que ya corrieron» (`rerunCompleted`), se sueltan todas las del envío;
  *   4. llama a `executeFlow` SIN contacto (`contactId: null`, `inboundWebhookId`), con el envío en
  *      `variables.webhook`.
+ *
+ * Un REPROCESO (sin la casilla) no repite los flujos que ya corrieron, pero SÍ vuelve a mapear el contacto de los que
+ * tienen UN solo paso «Crear o actualizar contacto» (idempotente: sin mensajes). Lo demás queda como estaba.
  *
  * El resultado por flujo (qué pasó con el contacto, el diff, el toque, los pasos salteados, el error) se
  * guarda en `inbound_webhooks.result.flows[flowId]`.
@@ -18,8 +23,18 @@ import type { Database } from "@/lib/types/database";
 import { executeFlow } from "@/lib/flow-engine/engine";
 import "@/lib/flow-engine/registry";
 import type { ContactStepInfo, FlowExecutionContext } from "@/lib/flow-engine/types";
-import { evaluateWebhookConditions, parseWebhookTriggerConfig, webhookDedupeKey, webhookVariables, WEBHOOK_TRIGGER_TYPE } from "./trigger-config";
-import type { FlowResult } from "./types";
+import {
+  evaluateWebhookConditions,
+  parseWebhookTriggerConfig,
+  webhookContactKey,
+  webhookDedupeKey,
+  webhookDedupePrefix,
+  webhookVariables,
+  WEBHOOK_TRIGGER_TYPE,
+} from "./trigger-config";
+import { parseUpsertContactConfig } from "./upsert-config";
+import { upsertContactFromWebhook } from "./upsert-contact";
+import type { FlowResult, InboundResult } from "./types";
 
 type Db = SupabaseClient<Database>;
 
@@ -31,6 +46,8 @@ export interface InboundForFlows {
   query: Record<string, unknown> | null;
   received_at: string;
   reprocess_count: number;
+  /** Lo guardado de la vez anterior (`inbound_webhooks.result`): lo que ya corrió, para no repetirlo. */
+  result?: InboundResult | null;
 }
 
 export interface EndpointForFlows {
@@ -39,14 +56,27 @@ export interface EndpointForFlows {
   name: string;
 }
 
-export type RunFlows = (args: { db: Db; inbound: InboundForFlows; endpoint: EndpointForFlows }) => Promise<Record<string, FlowResult>>;
+export type RunFlows = (args: {
+  db: Db;
+  inbound: InboundForFlows;
+  endpoint: EndpointForFlows;
+  /** «Volver a correr también los flujos que ya corrieron» (un reproceso con la casilla). Apagado por defecto. */
+  rerunCompleted?: boolean;
+}) => Promise<Record<string, FlowResult>>;
+
+interface FlowOfTrigger {
+  id: string;
+  name: string;
+  status: string;
+  nodes?: unknown;
+}
 
 interface TriggerWithFlow {
   id: string;
   flow_id: string;
   config: unknown;
   priority: number | null;
-  flows: { id: string; name: string; status: string } | { id: string; name: string; status: string }[];
+  flows: FlowOfTrigger | FlowOfTrigger[];
 }
 
 const flowOf = (t: TriggerWithFlow) => (Array.isArray(t.flows) ? t.flows[0] : t.flows);
@@ -65,12 +95,16 @@ export function contactStepToResult(info: ContactStepInfo): Partial<FlowResult> 
   };
 }
 
-export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint }) => {
+/** Lo que ya se sabe de cada flujo para ESTE envío (de la vez anterior). */
+const previousFlows = (inbound: InboundForFlows): Record<string, FlowResult> => inbound.result?.flows ?? {};
+
+export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint, rerunCompleted }) => {
   const results: Record<string, FlowResult> = {};
+  const previous = previousFlows(inbound);
 
   const { data } = await db
     .from("triggers")
-    .select("id, flow_id, config, priority, flows!inner(id, name, status)")
+    .select("id, flow_id, config, priority, flows!inner(id, name, status, nodes)")
     .eq("workspace_id", inbound.workspace_id)
     .eq("type" as never, WEBHOOK_TRIGGER_TYPE)
     .eq("is_active", true)
@@ -79,6 +113,11 @@ export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint }) => {
   const triggers = ((data ?? []) as unknown as TriggerWithFlow[])
     .filter((t) => parseWebhookTriggerConfig(t.config).endpointId === endpoint.id)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  // «Volver a correr también los flujos que ya corrieron»: se sueltan las claves del envío (y las de «una sola
+  // vez por contacto» que este envío reclamó) y se cancelan las sesiones que seguían esperando, para que no
+  // haya dos corridas del mismo flujo despertando después. Sin la casilla no se toca nada de esto.
+  if (rerunCompleted) await releaseForRerun(db, { inbound, previous });
 
   for (const trigger of triggers) {
     const flow = flowOf(trigger);
@@ -94,6 +133,7 @@ export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint }) => {
       payload: inbound.payload,
       query: inbound.query,
       reprocessCount: inbound.reprocess_count,
+      oncePerContactTriggerId: config.oncePerContact ? trigger.id : null,
     });
 
     if (!evaluateWebhookConditions(config, variables).passed) {
@@ -102,23 +142,122 @@ export const runWebhookFlows: RunFlows = async ({ db, inbound, endpoint }) => {
     }
 
     // El reclamo: el indice unico de trigger_fires decide. 23505 = ya corrio (el caso normal de un
-    // doble procesamiento), no es un error.
+    // doble procesamiento o de un reproceso sin la casilla), no es un error.
+    const dedupeKey = webhookDedupeKey(inbound.id, flow.id);
     const { error: claimError } = await db.from("trigger_fires").insert({
       trigger_id: trigger.id,
       workspace_id: inbound.workspace_id,
-      dedupe_key: webhookDedupeKey(inbound.id, flow.id, inbound.reprocess_count),
+      dedupe_key: dedupeKey,
       contact_id: null,
     } as never);
     if (claimError) {
-      if (claimError.code !== "23505") console.error("[hooks] no pude reclamar el disparo:", claimError.message);
+      if (claimError.code !== "23505") {
+        console.error("[hooks] no pude reclamar el disparo:", claimError.message);
+      } else if (inbound.reprocess_count > 0) {
+        // Un REPROCESO (no un doble procesamiento) no repite el flujo, pero vuelve a mapear el contacto.
+        const remapped = await remapContact(db, { flow, inbound, endpoint, previous: previous[flow.id] });
+        if (remapped) results[flow.id] = remapped;
+      }
       continue;
     }
 
-    results[flow.id] = await runOneFlow(db, { trigger, flowId: flow.id, flowName: name, inbound, variables });
+    const result = await runOneFlow(db, { trigger, flowId: flow.id, flowName: name, inbound, variables });
+    results[flow.id] = result;
+    // Un flujo que FALLÓ no cuenta como «ya corrió»: se suelta la clave y reprocesar lo reintenta.
+    if (result.status === "failed") {
+      await releaseClaim(db, { triggerId: trigger.id, dedupeKey, flowId: flow.id, contactId: config.oncePerContact ? result.contact_id ?? null : null });
+    }
   }
 
   return results;
 };
+
+/** Suelta el reclamo de un flujo que falló (y la marca de «una sola vez por contacto» que ese intento dejó). Nunca lanza. */
+async function releaseClaim(db: Db, args: { triggerId: string; dedupeKey: string; flowId: string; contactId: string | null }): Promise<void> {
+  try {
+    await db.from("trigger_fires").delete().eq("trigger_id", args.triggerId).eq("dedupe_key", args.dedupeKey);
+    if (args.contactId) {
+      await db.from("trigger_fires").delete().eq("trigger_id", args.triggerId).eq("dedupe_key", webhookContactKey(args.flowId, args.contactId));
+    }
+  } catch (err) {
+    console.error("[hooks] no pude soltar el reclamo de un flujo fallado:", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** La casilla «Volver a correr también los flujos que ya corrieron». Nunca lanza. */
+async function releaseForRerun(db: Db, args: { inbound: InboundForFlows; previous: Record<string, FlowResult> }): Promise<void> {
+  const { inbound, previous } = args;
+  try {
+    await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).like("dedupe_key", `${webhookDedupePrefix(inbound.id)}%`);
+    for (const [flowId, result] of Object.entries(previous)) {
+      if (result.contact_id) {
+        await db.from("trigger_fires").delete().eq("workspace_id", inbound.workspace_id).eq("dedupe_key", webhookContactKey(flowId, result.contact_id));
+      }
+    }
+    await db
+      .from("flow_sessions")
+      .update({ status: "cancelled" })
+      .eq("inbound_webhook_id" as never, inbound.id)
+      .eq("status", "active");
+  } catch (err) {
+    console.error("[hooks] no pude soltar las claves del envío:", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Un reproceso de un flujo que YA corrió: no se repite el flujo (nada de mensajes), pero el contacto se vuelve a
+ * mapear con el paso «Crear o actualizar contacto» actual (es idempotente: encuentra al mismo contacto, completa
+ * lo que falte según su modo, y el toque ya existe). Solo cuando el flujo tiene UN paso de esos: con varios
+ * (en ramas distintas) no se sabe cuál corrió. Nunca lanza.
+ */
+async function remapContact(
+  db: Db,
+  args: { flow: FlowOfTrigger; inbound: InboundForFlows; endpoint: EndpointForFlows; previous: FlowResult | undefined },
+): Promise<FlowResult | null> {
+  const { flow, inbound, endpoint, previous } = args;
+  try {
+    const nodes = Array.isArray(flow.nodes) ? (flow.nodes as { id: string; type: string; data?: unknown }[]) : [];
+    const upserts = nodes.filter((n) => n.type === "upsert_contact");
+    if (upserts.length !== 1) return null;
+    const node = upserts[0];
+
+    const outcome = await upsertContactFromWebhook({
+      db,
+      workspaceId: inbound.workspace_id,
+      config: parseUpsertContactConfig(node.data),
+      webhook: {
+        inboundId: inbound.id,
+        endpointId: endpoint.id,
+        endpointName: endpoint.name,
+        payload: inbound.payload ?? {},
+        query: inbound.query ?? {},
+        receivedAt: inbound.received_at,
+      },
+      nodeId: node.id,
+    });
+
+    const base: FlowResult = { ...(previous ?? { status: "completed" as const }), flow_name: flow.name, contact_remapped: true };
+    if (!outcome.ok) {
+      return { ...base, contact_fail_reason: outcome.reason, notes: outcome.notes.length > 0 ? outcome.notes : null };
+    }
+    return {
+      ...base,
+      ...contactStepToResult({
+        contactId: outcome.contactId,
+        contactName: outcome.contactName,
+        result: outcome.result,
+        failReason: null,
+        diff: Object.keys(outcome.diff).length > 0 ? outcome.diff : null,
+        conflict: outcome.conflict,
+        touch: outcome.touch,
+        notes: outcome.notes,
+      }),
+    };
+  } catch (err) {
+    console.error("[hooks] no pude volver a mapear el contacto:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
 
 async function runOneFlow(
   db: Db,
@@ -134,6 +273,7 @@ async function runOneFlow(
     channelId: "",
     contactId: null,
     inboundWebhookId: inbound.id,
+    source: { type: "webhook", id: inbound.id },
     conversationId: "",
     workspaceId: inbound.workspace_id,
     incomingMessage: {},

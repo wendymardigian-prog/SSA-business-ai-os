@@ -47,6 +47,8 @@ for (const type of BOOKING_TRIGGER_TYPES) {
     // Debajo de `crm_event` (50) a propósito: si algún día un evento de agenda
     // también encajara en uno del CRM, primero corre el específico.
     priority: 45,
+    // La sesion queda con el origen `booking` (el flujo igual tiene contacto: el origen dice QUE lo disparo).
+    sourceType: "booking",
     eventTypes: [type],
 
     // Los datos de la reunion que un camino condicional puede comparar.

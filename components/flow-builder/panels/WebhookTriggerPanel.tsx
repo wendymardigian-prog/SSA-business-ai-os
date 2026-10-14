@@ -10,6 +10,7 @@ import { createWebhookEndpoint } from "@/lib/actions/webhook-endpoints";
 import { listWebhookEndpointsForPicker } from "@/lib/actions/webhook-flow-editor";
 import type { PickerEndpoint } from "@/lib/webhooks/action-types";
 import { parseWebhookTriggerConfig } from "@/lib/webhooks/trigger-config";
+import { ONCE_PER_CONTACT_HELP, ONCE_PER_CONTACT_LABEL, oncePerContactHint } from "@/lib/webhooks/once-per-contact";
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 
@@ -18,8 +19,10 @@ const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2 tex
  * escuchar un envío de prueba (queda como ejemplo y no corre ningún flujo) y el «Solo si…» con el mismo
  * editor que Condiciones. Solo lo ve quien tiene `flows.edit` (la URL es una credencial).
  */
-export function WebhookTriggerPanel({ flowId, data, onChange }: { flowId?: string; data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void }) {
+export function WebhookTriggerPanel({ flowId, data, onChange, sendsMessages = false }: { flowId?: string; data: Record<string, unknown>; onChange: (data: Record<string, unknown>) => void; sendsMessages?: boolean }) {
   const config = parseWebhookTriggerConfig(data);
+  const oncePerContact = config.oncePerContact;
+  const hint = oncePerContactHint({ enabled: oncePerContact, sendsMessages });
   const [endpoints, setEndpoints] = useState<PickerEndpoint[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -135,6 +138,15 @@ export function WebhookTriggerPanel({ flowId, data, onChange }: { flowId?: strin
             )}
             {!selected.sample && <p className="text-xs text-muted-foreground">Escuchá un envío de prueba para ver los campos del formulario y compararlos.</p>}
           </fieldset>
+
+          <div className="space-y-1 rounded-lg border border-border p-3">
+            <label className="flex items-start gap-2 text-xs font-semibold text-foreground">
+              <input type="checkbox" checked={oncePerContact} onChange={(e) => onChange({ ...data, oncePerContact: e.target.checked ? true : undefined })} className="mt-0.5 size-4 shrink-0" />
+              <span>{ONCE_PER_CONTACT_LABEL}</span>
+            </label>
+            <p className="text-xs text-muted-foreground">{ONCE_PER_CONTACT_HELP}</p>
+            {hint && <p role="note" className="text-xs text-amber-700 dark:text-amber-300">{hint}</p>}
+          </div>
         </>
       )}
     </div>

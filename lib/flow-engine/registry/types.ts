@@ -167,7 +167,25 @@ export interface AutomationEventRow {
  * actualizar contacto" lo crea o lo encuentra (Extra L). Lo declara el disparador; por
  * defecto `contact`.
  */
-export type TriggerSubject = "contact" | "member" | "webhook";
+export type TriggerSubject = "contact" | "member" | "webhook" | "system";
+
+/**
+ * Qué disparó una sesión de flujo o un evento de automatización (Tirón 2, D1): se guarda en
+ * `flow_sessions.source_type` y `automation_events.source_type` (00218), junto con `source_id`.
+ * Es lo que permite que un flujo arranque SIN contacto: la restricción de la base exige contacto
+ * u origen. Lo declara cada disparador (`TriggerDefinition.sourceType`); el valor de una sesión que
+ * no lo pidió explícito lo completa la base según el contacto, la persona o el envío que tenga.
+ */
+export type AutomationSourceType = "contact" | "member" | "webhook" | "task" | "form" | "booking" | "sale" | "call" | "system";
+
+/** Los orígenes que admite la base (el CHECK de 00218). Una sola lista: la usan el motor, los tests y los scripts. */
+export const AUTOMATION_SOURCE_TYPES: readonly AutomationSourceType[] = ["contact", "member", "webhook", "task", "form", "booking", "sale", "call", "system"];
+
+/** De dónde viene la ejecución de un flujo. `id` es la entidad que lo disparó (envío, evento, persona…). */
+export interface AutomationSource {
+  type: AutomationSourceType;
+  id: string | null;
+}
 
 export interface TriggerEventArgs {
   supabase: SupabaseClient<Database>;
@@ -203,6 +221,12 @@ export interface TriggerDefinition {
   priority: number;
   /** Sobre quién es el flujo que arranca. Sin declarar = `contact` (todos los existentes). */
   subject?: TriggerSubject;
+  /**
+   * El origen que queda en la sesión que arranca este disparador (`flow_sessions.source_type`). Obligatorio para
+   * todos: `registry/consistency.test.ts` falla si un disparador no lo declara. Un disparador de mensajes es
+   * `contact`; uno de agenda, `booking`; un envío de webhook, `webhook`; una tarea, `task`; etc.
+   */
+  sourceType?: AutomationSourceType;
   /**
    * El disparador atiende tambien eventos SIN contacto (Tareas, F25): si el evento trae `contact_id` sigue el camino de
    * siempre; si no, trae `member_user_id` y el flujo corre sin contacto, sobre esa persona del equipo. A diferencia de

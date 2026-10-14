@@ -14,9 +14,12 @@ export interface AutomationEvent {
   id: string;
   workspace_id: string;
   event_type: string;
-  /** Null solo en un evento sin contacto (`eod_submitted`, 00182). */
+  /** Null solo en un evento sin contacto (`eod_submitted`, 00182; origen propio, 00218). */
   contact_id: string | null;
   member_user_id: string | null;
+  /** Que origino el evento (00218). La base lo completa para contacto y persona; un evento `system` lo trae explicito. */
+  source_type?: string | null;
+  source_id?: string | null;
   payload: Record<string, unknown>;
 }
 
@@ -42,6 +45,8 @@ export async function processEvent(supabase: Db, event: AutomationEvent): Promis
       return processContactEvent(supabase, { ...event, contact_id: event.contact_id });
     case "member":
       return processMemberEvent(supabase, event);
+    case "system":
+      return processSystemEvent(supabase, event);
   }
 }
 
@@ -145,6 +150,8 @@ async function processContactEvent(
       contactId: event.contact_id,
       conversationId: conversation?.id ?? "",
       workspaceId: event.workspace_id,
+      // Que disparo el flujo: lo declara el disparador (agenda, formulario, venta...) y el id es el del evento.
+      source: { type: definition.sourceType ?? "contact", id: event.id },
       incomingMessage: {},
       variables: {
         // El flow puede leer el evento que lo disparo. Util para armar el
@@ -180,16 +187,32 @@ async function processContactEvent(
 
 /**
  * Un evento sobre una persona del equipo (E15): solo los disparadores `subject: "member"`
- * (nunca el comodin `crm_event`, que es de contactos). El flujo arranca con
- * `contactId: null` y `memberUserId`; no hay conversacion ni canal, y "no contactar" no
- * aplica porque no hay contacto.
+ * (nunca el comodin `crm_event`, que es de contactos) y los que atienden tambien eventos sin contacto.
+ * El flujo arranca con `contactId: null` y `memberUserId`; no hay conversacion ni canal, y "no contactar"
+ * no aplica porque no hay contacto.
  */
 async function processMemberEvent(supabase: Db, event: AutomationEvent): Promise<number> {
   if (!event.member_user_id) throw new Error(`el evento ${event.event_type} no trae la persona del equipo`);
-  // Los `member` de siempre (fin de dia) y los que atienden tambien eventos sin contacto (Tareas).
+  return processNoContactEvent(supabase, event, { kind: "member", userId: event.member_user_id });
+}
+
+/**
+ * Un evento sin contacto NI persona (Tiron 2, D1): solo los disparadores `subject: "system"`. El flujo arranca con `contactId: null` y sin persona; lo sostiene su origen (`source`), que la
+ * base exige en lugar del contacto. Sin conversacion, canal ni "no contactar".
+ */
+async function processSystemEvent(supabase: Db, event: AutomationEvent): Promise<number> {
+  return processNoContactEvent(supabase, event, { kind: "system" });
+}
+
+type NoContactSubject = { kind: "member"; userId: string } | { kind: "system" };
+
+/** El ciclo de los eventos sin contacto: lo comparten el de una persona del equipo y el de sistema. */
+async function processNoContactEvent(supabase: Db, event: AutomationEvent, who: NoContactSubject): Promise<number> {
   const types = (triggerTypesForEvent(event.event_type) as TriggerType[]).filter((type) => {
     const definition = getTrigger(type);
-    return definition?.subject === "member" || definition?.contactOptional === true;
+    // De persona: los `member` de siempre y los que atienden tambien eventos sin contacto (Tareas).
+    // De sistema: solo los declarados `system` (un evento de Tareas sin contacto ni persona sigue sin correr: no se emite).
+    return who.kind === "member" ? definition?.subject === "member" || definition?.contactOptional === true : definition?.subject === "system";
   });
   if (types.length === 0) return 0;
 
@@ -243,9 +266,11 @@ async function processMemberEvent(supabase: Db, event: AutomationEvent): Promise
       flowId: trigger.flow_id,
       channelId: "",
       contactId: null,
-      memberUserId: event.member_user_id,
+      ...(who.kind === "member" ? { memberUserId: who.userId } : {}),
       conversationId: "",
       workspaceId: event.workspace_id,
+      // Que disparo el flujo: lo declara el disparador; el id es el del evento (su payload trae lo demas).
+      source: { type: definition.sourceType ?? (who.kind === "member" ? "member" : "system"), id: event.id },
       incomingMessage: {},
       variables: {
         event_type: event.event_type,

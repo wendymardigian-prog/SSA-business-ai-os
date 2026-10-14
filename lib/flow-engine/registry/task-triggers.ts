@@ -29,6 +29,7 @@ for (const type of TASK_EVENT_TYPES) {
     priority: 45,
     // Atiende tambien eventos sin contacto (con la persona del equipo a cargo).
     contactOptional: true,
+    sourceType: "task",
     eventTypes: [type],
 
     eventMatches: (args) => taskEventMatches(args.config, args.event.payload),

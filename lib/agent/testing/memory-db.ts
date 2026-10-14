@@ -78,8 +78,10 @@ export function memoryDb(
       const key = part.replace(/^'|'$/g, "");
       value = value && typeof value === "object" ? (value as Row)[key] : undefined;
     }
-    // `->>` devuelve texto.
-    return value == null ? null : rest.includes("->>") ? String(value) : value;
+    // `->>` devuelve texto: el de un objeto es su JSON (`{}`), no "[object Object]".
+    if (value == null) return null;
+    if (!rest.includes("->>")) return value;
+    return typeof value === "object" ? JSON.stringify(value) : String(value);
   };
 
   const likeMatch = (value: unknown, pattern: string, insensitive: boolean) => {
@@ -220,7 +222,8 @@ export function memoryDb(
       eq: (col: string, val: unknown) => (filters.push((r) => col.includes(".") || jsonPath(r, col) === val), b),
       // .or() de PostgREST tampoco se simula: pasa todo.
       or: () => b,
-      neq: (col: string, val: unknown) => (filters.push((r) => r[col] !== val), b),
+      // Como en Postgres, un NULL no es distinto de nada: `neq` deja afuera las filas sin esa clave.
+      neq: (col: string, val: unknown) => (filters.push((r) => (col.includes("->") ? jsonPath(r, col) != null && jsonPath(r, col) !== val : r[col] !== val)), b),
       // `.filter(col, op, val)` de PostgREST, solo `eq` y `neq` y comparando como JSON (un jsonb `blocked_by` contra `"[]"`).
       filter: (col: string, op: string, val: unknown) => {
         const same = (r: Row) => JSON.stringify(r[col] ?? null) === (typeof val === "string" ? val : JSON.stringify(val));
@@ -230,7 +233,7 @@ export function memoryDb(
       },
       is: (col: string, val: unknown) => (filters.push((r) => (r[col] ?? null) === val), b),
       not: (col: string, op: string, val: unknown) => {
-        if (op === "is") filters.push((r) => (r[col] ?? null) !== val);
+        if (op === "is") filters.push((r) => (jsonPath(r, col) ?? null) !== val);
         return b;
       },
       // `payload->>task_id` tambien (un `in` sobre una clave de un jsonb), igual que `eq`.

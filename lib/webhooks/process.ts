@@ -4,7 +4,9 @@
  * - `processInbound`: toma el envio con un claim condicional `received -> processing` (si ya lo
  *   tomo otro proceso, no hace nada), corre los flujos, guarda el resultado y el estado final.
  * - `reprocessInbound`: vuelve a correr con la version publicada actual; el claim es sobre
- *   `reprocess_count`, asi un doble clic corre una sola vez por numero de reproceso.
+ *   `reprocess_count`, asi un doble clic corre una sola vez por numero de reproceso. Los flujos que YA
+ *   corrieron para ese envio NO se repiten (solo vuelven a mapear el contacto), salvo que la persona marque
+ *   «Volver a correr tambien los flujos que ya corrieron» (`rerunCompleted`).
  *
  * Nunca lanza hacia el receptor: un fallo queda en el envio (`error`) para poder reprocesar.
  */
@@ -18,7 +20,7 @@ import type { FlowResult } from "./types";
 
 type Db = SupabaseClient<Database>;
 
-const INBOUND_COLUMNS = "id, workspace_id, endpoint_id, payload, query, received_at, reprocess_count, status";
+const INBOUND_COLUMNS = "id, workspace_id, endpoint_id, payload, query, received_at, reprocess_count, status, result";
 
 export type ProcessOutcome =
   | { kind: "processed"; status: "processed" | "error" }
@@ -29,6 +31,8 @@ export type ProcessOutcome =
 interface ProcessOptions {
   runFlows?: RunFlows;
   now?: () => Date;
+  /** «Volver a correr también los flujos que ya corrieron»: solo un reproceso con la casilla. */
+  rerunCompleted?: boolean;
 }
 
 /** Procesa un envio `received`. Idempotente: si otro proceso ya lo tomo, no hace nada. */
@@ -81,22 +85,26 @@ async function finishProcessing(db: Db, row: InboundForFlows, options: ProcessOp
   try {
     const { data: endpoint } = await db.from("webhook_endpoints").select("id, workspace_id, name").eq("id", row.endpoint_id).maybeSingle();
     if (!endpoint) throw new Error("el endpoint ya no existe");
-    flows = await run({ db, inbound: row, endpoint: endpoint as { id: string; workspace_id: string; name: string } });
+    flows = await run({ db, inbound: row, endpoint: endpoint as { id: string; workspace_id: string; name: string }, rerunCompleted: options.rerunCompleted });
   } catch (err) {
     crashed = err instanceof Error ? err.message : String(err);
   }
 
+  // Un reproceso corre solo lo que todavia no corrio: lo que ya se sabia de los demas flujos NO se pierde.
+  // Lo que corrio ahora reemplaza a su propia entrada (un flujo que fallo y ahora anduvo, por ejemplo).
+  const merged: Record<string, FlowResult> = { ...(row.result?.flows ?? {}), ...flows };
+
   const summary = crashed
     ? { status: "error" as const, summary: `Error: ${crashed}`, errorMessage: crashed }
-    : summarizeResult(flows);
+    : summarizeResult(merged);
 
   await db
     .from("inbound_webhooks")
     .update({
       status: summary.status,
-      result: { flows, summary: summary.summary } as unknown as Json,
+      result: { flows: merged, summary: summary.summary } as unknown as Json,
       error_message: summary.errorMessage,
-      contact_id: lastContactId(flows),
+      contact_id: lastContactId(merged),
       processed_at: now.toISOString(),
     } as never)
     .eq("id", row.id)

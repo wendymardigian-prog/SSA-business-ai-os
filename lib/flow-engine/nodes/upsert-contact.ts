@@ -18,6 +18,7 @@ import type { FlowExecutionContext } from "../types";
 import { upsertContactOutputs } from "../node-outputs";
 import { upsertContactFromWebhook } from "@/lib/webhooks/upsert-contact";
 import { parseUpsertContactConfig } from "@/lib/webhooks/upsert-config";
+import { webhookContactKey } from "@/lib/webhooks/trigger-config";
 
 export type UpsertContactNodeData = Record<string, unknown> & { label?: string };
 
@@ -27,6 +28,10 @@ interface WebhookVars {
   endpoint_name?: string;
   payload?: unknown;
   query?: unknown;
+  received_at?: string;
+  /** «Correr una sola vez por contacto» encendido en el disparador (viaja en las variables del envío). */
+  once_per_contact?: boolean;
+  trigger_id?: string;
 }
 
 /**
@@ -62,6 +67,30 @@ async function adoptLatestConversation(supabase: SupabaseClient<Database>, conte
   return { channelId: conversation.channel_id };
 }
 
+/** Lo que queda anotado en el historial del envío cuando «una sola vez por contacto» frena la corrida. */
+export const ALREADY_PASSED_NOTE = "ya_paso_por_este_flujo";
+
+/**
+ * ¿Esta persona ya pasó por este flujo? Con «una sola vez por contacto» apagado, nunca. Encendido, la primera
+ * vez reclama la marca (`trigger_fires`, índice único) y las siguientes la encuentran tomada. Un error que no
+ * sea «ya existe» se lanza: no se puede asegurar que sea la primera vez, y seguir podría repetir un mensaje.
+ */
+async function alreadyPassedThroughFlow(
+  supabase: SupabaseClient<Database>,
+  args: { webhook: WebhookVars; workspaceId: string; flowId: string; contactId: string },
+): Promise<boolean> {
+  if (args.webhook.once_per_contact !== true || !args.webhook.trigger_id) return false;
+  const { error } = await supabase.from("trigger_fires").insert({
+    trigger_id: args.webhook.trigger_id,
+    workspace_id: args.workspaceId,
+    dedupe_key: webhookContactKey(args.flowId, args.contactId),
+    contact_id: args.contactId,
+  } as never);
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  throw new Error(`no pude verificar si el contacto ya pasó por este flujo: ${error.message}`);
+}
+
 async function execute({ supabase, node, data, context, sessionId }: NodeExecutionArgs<UpsertContactNodeData, FlowExecutionContext>) {
   context.variables ??= {};
   const webhook = (context.variables.webhook ?? {}) as WebhookVars;
@@ -77,6 +106,7 @@ async function execute({ supabase, node, data, context, sessionId }: NodeExecuti
       endpointName: webhook.endpoint_name ?? "Webhook",
       payload: webhook.payload ?? {},
       query: webhook.query ?? {},
+      receivedAt: webhook.received_at ?? null,
     },
     nodeId: node.id,
   });
@@ -98,10 +128,34 @@ async function execute({ supabase, node, data, context, sessionId }: NodeExecuti
 
   // El contacto y la conversación quedan en la sesión: una espera posterior los conserva.
   const adopted = await adoptLatestConversation(supabase, context, outcome.contactId);
-  await supabase
+  const { error: sessionError } = await supabase
     .from("flow_sessions")
     .update({ contact_id: outcome.contactId, channel_id: adopted?.channelId ?? null, variables: context.variables as never })
     .eq("id", sessionId);
+  // Si no se pudo guardar, un «Esperar» posterior perdería el contacto y el flujo seguiría como si nada:
+  // se lanza y el motor lo trata como cualquier fallo del paso (el envío queda en error con el motivo).
+  if (sessionError) throw new Error(`no pude guardar el contacto en la sesión del flujo: ${sessionError.message}`);
+
+  // «Correr una sola vez por contacto» (Tirón 2, C2): el contacto ya quedó creado o actualizado (un envío nuevo
+  // puede traer datos nuevos), pero si esta persona ya pasó por ESTE flujo, el flujo no se ejecuta otra vez.
+  if (await alreadyPassedThroughFlow(supabase, { webhook, workspaceId: context.workspaceId, flowId: context.flowId, contactId: outcome.contactId })) {
+    await supabase.from("flow_sessions").update({ status: "completed" }).eq("id", sessionId).eq("status", "active");
+    try {
+      context.onContactStep?.({
+        contactId: outcome.contactId,
+        contactName: outcome.contactName,
+        result: outcome.result,
+        failReason: null,
+        diff: Object.keys(outcome.diff).length > 0 ? outcome.diff : null,
+        conflict: outcome.conflict,
+        touch: outcome.touch,
+        notes: [...outcome.notes, ALREADY_PASSED_NOTE],
+      });
+    } catch {
+      // Un aviso que falla no frena el flujo.
+    }
+    return "pause";
+  }
 
   try {
     context.onContactStep?.({

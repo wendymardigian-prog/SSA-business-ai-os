@@ -492,3 +492,74 @@ Detalle en [tareas.md](tareas.md#tareas--crm-octubre-2026-rama-featareas-crm). S
   (`payment_status_changed` a vencido → `create_task` con `payment:{{payment.id}}`) y `task_payment_paid_close` (pagado → `complete_task`).
   Tienen `template_key` propio y **no** están en `SALES_TEMPLATE_KEYS`. `ensureTaskPaymentFlows` es idempotente y no pisa un grafo editado.
 - **Los editores simplificados (`step-catalog`) no ofrecen estos pasos**: se editan en el lienzo.
+
+## Origen de las automatizaciones y qué pasos necesitan contacto (Tirón 2, D1–D2)
+
+Avance y decisiones en `docs/PROGRESS-atribucion.md` ("Correcciones (Tirón 2)"). Migración `00218_automation_source`.
+
+### D1 · El origen: `source_type` / `source_id`
+
+Cualquier disparador nuevo sin contacto (Tareas, por ejemplo) chocaba con un `CHECK` cableado en la base ("contacto, o persona, o envío de webhook"). Ahora cada sesión de flujo y cada evento dice **qué la disparó**, y la base exige *contacto o un origen*.
+
+- **Columnas** (`flow_sessions` y `automation_events`): `source_type` (`contact | member | webhook | task | form | booking | sale | call | system`) y `source_id` (la entidad que la disparó, como texto). La lista es una sola: `AUTOMATION_SOURCE_TYPES` (`registry/types.ts`) y el `CHECK` de la 00218; un test las compara.
+- **`CHECK` nuevo = superconjunto del viejo**: `flow_sessions_contact_or_source` acepta todo lo que aceptaba `flow_sessions_contact_or_member` y además cualquier fila con `source_type`. `automation_events_contact_or_source` acepta contacto; o una persona del equipo con los tres tipos de siempre (`eod_submitted`, `task_completed`, `task_overdue`); o, lo nuevo, un evento **sin contacto ni persona** con origen declarado. **Un evento de contacto** (`tag_added`, `booking_created`…) **sin contacto sigue rechazado**, aunque traiga una persona: esa protección no se perdió. `member_user_id` e `inbound_webhook_id` se quedan (el código los usa). Las definiciones viejas están en la cabecera de la migración para volver atrás.
+- **La base completa el origen sola** cuando no viene (trigger `fill_source_before_insert`): webhook si trae envío, persona si trae persona y no contacto, contacto si trae contacto. Por eso el código viejo (y los emisores en SQL, como el reporte de fin de día) siguen andando sin tocarse.
+- **El disparador lo declara** (`TriggerDefinition.sourceType`, obligatorio: `registry/consistency.test.ts` falla si falta): los de mensajes y del CRM, `contact`; agenda, `booking`; llamadas, `call`; formularios, `form`; ventas, `sale`; Tareas, `task`; fin de día, `member`; webhook, `webhook`. Una sesión que arranca desde un evento (`processEvent`) queda con ese origen y el **id del evento**; la de un webhook, con el id del envío.
+- **`subject` admite `system`** (además de `contact`, `member` y `webhook`): un flujo sin contacto **ni persona**. `eventSubject()` lo devuelve para los eventos de un disparador `system`, y `processEvent` los manda a su rama (`processSystemEvent`, que comparte el ciclo con la de persona del equipo). Todavía no hay ningún disparador `system` registrado: el camino está probado con uno de prueba.
+- **Una reanudación conserva el origen.** El job de «Esperar» no manda el envío de webhook ni el origen; ahora `resumeSession` los recupera **de la sesión** (`restoreOriginFromSession`: completa solo lo que el contexto no trae, nunca pisa nada). Antes, un flujo de webhook sin contacto que seguía después de una pausa —y el flujo al que saltaba «Ir a otro flujo»— abría una sesión sin contacto, persona ni envío; la base la rechazaba y `if (!session) return` lo tragaba: el flujo destino no corría y nadie lo veía.
+- **«Ir a otro flujo» a un flujo sin contacto** funciona desde cualquier flujo, con o sin contacto. Si el destino necesita un contacto y no lo hay, sus pasos se saltean y se anotan (`node_skipped`), como antes. En el editor, un flujo de persona o de sistema solo puede saltar a otro flujo sin contacto (de persona o de sistema).
+- **Lo que NO cambia**: los flujos con contacto se comportan igual (`resume-characterization.test.ts` lo fija antes y después), el EOD también, y un evento de Tareas sin contacto **ni persona** sigue sin correr (no se emite; `automation-events-routing.test.ts`).
+
+#### Lecturas de `flow_sessions` y `automation_events` que asumen contacto o persona
+
+| Lugar | Qué asume | Cómo queda |
+|---|---|---|
+| `engine.ts` · `findWaitingSession` | Exige contacto y canal | Igual: «Esperar respuesta» necesita contacto |
+| `engine.ts` · alta de la sesión | `member_user_id` solo sin contacto; `inbound_webhook_id` si viene | Suma `source_type/source_id` cuando el contexto trae `source`; sin él lo completa la base |
+| `engine.ts` · `resumeSession` | El contexto trae contacto/persona/envío | Los recupera de la sesión (`restoreOriginFromSession`) |
+| `engine.ts` · eventos `flow_started` / `node_executed` / `flow_completed` | `contact_id` (null sin contacto) | Igual: una sesión sin contacto no aparece en la ficha de nadie |
+| `nodes/delay.ts` y job `resume_flow` | Payload con contacto o persona | Igual; el origen se lee de la sesión, no del job |
+| `app/api/cron/jobs/route.ts` · `resume_flow` | `contactId` del payload | Igual, más: avisa al historial del webhook cuando la sesión retomada termina o falla |
+| `nodes/go-to-flow.ts` | Hereda contacto, persona y envío | Hereda también el origen |
+| `lib/flow-engine/automation-events.ts` | Rama de contacto o de persona | La de contacto no cambia (declara el origen); persona y sistema comparten ciclo |
+| `app/api/cron/automation-events/route.ts` | Lee `contact_id`, `member_user_id` | Lee además `source_type`, `source_id` |
+| `lib/inbound.ts`, `lib/agent/runner.ts` (reanudar al recibir un mensaje) | Por contacto y canal | Igual |
+| `lib/contacts/history.ts` | `analytics_events` por contacto | Igual |
+| `lib/flow-engine/simulator.ts` | Solo simula disparadores de mensaje | Sin cambios: los de evento, persona, webhook y sistema responden «No coincide» y no se simulan |
+| `member-flow.ts`, `contact-requirement.ts`, `contact-free.ts` (validador y paleta) | Sujetos `webhook` y `member` | Suman `system` (`isNoContactSubject`, `isNoContactTriggerType`) |
+| `lib/webhooks/sweep.ts` | Borra sesiones de webhook sin contacto ni persona antes de borrar el envío | Igual (el origen ya las sostiene, pero siguen siendo basura) |
+
+### D2 · Qué pasos necesitan contacto, y por qué
+
+`needsContact` lo declara cada nodo (`registry/nodes.ts`); `registry/consistency.test.ts` exige que todos lo declaren y que la lista del navegador (`CONTACT_FREE_NODE_TYPES`) diga lo mismo. El motor **saltea y anota** (`node_skipped`) un paso que necesita contacto en un flujo que no lo tiene; el editor lo rechaza al guardar o publicar.
+
+**Sirven sin contacto**
+
+| Paso | Por qué |
+|---|---|
+| Condiciones (`branch`) | Compara datos del evento o del flujo. Solo necesita contacto si una condición lee algo **del contacto** (tags, campos…) |
+| Esperar (`delay`) | Es un reloj |
+| A/B split (`abSplit`) | Reparte al azar entre caminos |
+| Ir a otro flujo (`goToFlow`) | Salta. Sirve sin contacto si el destino tampoco lo necesita |
+| Llamada HTTP (`httpRequest`) | Habla con una URL |
+| Avisar en la campana (`notify_team`) | Va al equipo |
+| Enviar email (`send_email`) | Sin contacto si el destino no es el contacto (dirección fija, equipo, persona, variable) |
+| Crear o actualizar contacto (`upsert_contact`) | **Lo consigue**: después de su salida «Listo» ya hay contacto |
+| Crear tarea / Completar tarea (`create_task`, `complete_task`) | Trabajo de una persona; la tarea queda sin contacto |
+
+**Necesitan contacto: actúan sobre él o sobre su conversación**
+
+| Paso | Por qué |
+|---|---|
+| Enviar mensaje, Enviar recurso, Respuesta con IA (`sendMessage`, `sendAsset`, `aiResponse`) | Salen por la conversación del contacto |
+| Esperar respuesta (`smartDelay`) | Lo despierta el próximo mensaje de ese contacto en ese canal |
+| Agregar tag, Quitar tag, Definir campo (`addTag`, `removeTag`, `setCustomField`) | Escriben en el contacto |
+| Suscribir, Desuscribir (`subscribe`, `unsubscribe`) | Cambian su suscripción |
+| Pausar agente, Reanudar agente, Derivar a una persona (`pauseAgent`, `resumeAgent`, `humanTakeover`) | Operan sobre su conversación |
+| Inscribir en secuencia (`enrollSequence`) | La secuencia es del contacto |
+| Responder comentario, Responder por privado (`commentReply`, `privateReply`) | Responden a una persona concreta |
+| Condición (vieja, `condition`) | Compara datos del contacto |
+
+**Necesitan la reunión o la venta del disparador, no un contacto suelto**
+
+`cancel_booking`, `set_booking_status` (reunión) y `mark_payment_paid`, `reschedule_payment`, `set_sale_status` (venta) leen `event_booking_id` / `event_sale_id` y los datos del evento. Siguen declarando `needsContact: true` (la reunión y la venta tienen contacto), pero **lo que se le dice a quien edita es otra cosa**: en un flujo que no arrancó por una reunión o una venta (un webhook, un reporte de fin de día, el sistema) el mensaje dice «actúa sobre la reunión (o la venta) que dispara el flujo… solo se puede usar en un flujo que empieza con un disparador de agenda (o de venta)», en lugar de mandar a poner «Crear o actualizar contacto», que no se las da (`TRIGGER_ENTITY_NODES`, `contact-requirement.ts`).

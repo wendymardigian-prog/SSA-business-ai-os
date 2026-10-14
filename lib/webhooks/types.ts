@@ -26,6 +26,11 @@ export interface FlowResult {
   skipped_steps?: string[] | null;
   /** Lo que no se pudo guardar del contacto (un pais o un usuario que no se reconoce, un tag que no existe). */
   notes?: string[] | null;
+  /**
+   * Un REPROCESO que no volvio a correr este flujo (ya habia corrido) pero SI volvio a mapear el contacto:
+   * el flujo y sus mensajes no se repiten; el contacto se completa con el mapeo actual (Tiron 2, C2).
+   */
+  contact_remapped?: boolean | null;
   error?: string | null;
   finished_at?: string | null;
 }

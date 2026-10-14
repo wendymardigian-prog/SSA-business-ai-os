@@ -2,7 +2,7 @@
  * El disparador «Webhook recibido» (F9, F11): su configuración, las variables que deja en el flujo,
  * el «Solo si…» y la clave de idempotencia. PURO: lo usan el registro, el procesamiento y los tests.
  *
- * Config: `{ endpointId, conditions? }`. El «Solo si…» es EXACTAMENTE el de Condiciones
+ * Config: `{ endpointId, conditions?, oncePerContact? }`. El «Solo si…» es EXACTAMENTE el de Condiciones
  * (`ConditionGroup` de `condition-eval.ts`) con campos `webhook.payload.*` / `webhook.query.*`:
  * un solo evaluador, nadie arma su propia comparación.
  */
@@ -16,6 +16,12 @@ export const WEBHOOK_FIELD_PREFIX = "webhook.";
 export interface WebhookTriggerConfig {
   endpointId: string | null;
   conditions: ConditionGroup | null;
+  /**
+   * «Correr una sola vez por contacto» (Tirón 2, C2). Apagado por defecto. Encendido, una persona que ya pasó
+   * por este flujo no vuelve a entrar con un envío NUEVO (por ejemplo, llena dos veces el formulario externo):
+   * el contacto se actualiza igual, pero el flujo no se ejecuta otra vez.
+   */
+  oncePerContact: boolean;
 }
 
 const MAX_CONDITIONS = 20;
@@ -33,7 +39,7 @@ export function parseWebhookTriggerConfig(raw: unknown): WebhookTriggerConfig {
       .slice(0, MAX_CONDITIONS);
     if (list.length > 0) conditions = { logic: group.logic === "or" ? "or" : "and", conditions: list as unknown as ConditionGroup["conditions"] };
   }
-  return { endpointId, conditions };
+  return { endpointId, conditions, oncePerContact: config.oncePerContact === true };
 }
 
 export interface WebhookVariablesInput {
@@ -44,6 +50,11 @@ export interface WebhookVariablesInput {
   payload: Record<string, unknown> | null;
   query: Record<string, unknown> | null;
   reprocessCount: number;
+  /**
+   * Con «una sola vez por contacto» encendido: el disparador al que corresponde. Viaja DENTRO de las variables
+   * del envío (que la sesión guarda) para que el paso de contacto lo sepa aunque se retome después de un «Esperar».
+   */
+  oncePerContactTriggerId?: string | null;
 }
 
 /**
@@ -60,6 +71,7 @@ export function webhookVariables(input: WebhookVariablesInput): Record<string, u
       payload: input.payload ?? {},
       query: input.query ?? {},
       reprocess_count: input.reprocessCount,
+      ...(input.oncePerContactTriggerId ? { once_per_contact: true, trigger_id: input.oncePerContactTriggerId } : {}),
     },
   };
 }
@@ -86,9 +98,25 @@ export function evaluateWebhookConditions(config: WebhookTriggerConfig, variable
   return { passed: evaluateGroupDetailed(config.conditions, webhookFieldResolver(variables)).passed };
 }
 
-/** Un envío, un flujo y un número de reproceso corren UNA vez (`trigger_fires`). */
-export function webhookDedupeKey(inboundId: string, flowId: string, reprocessCount: number): string {
-  return `webhook:${inboundId}:${flowId}:${reprocessCount}`;
+/**
+ * Un envío y un flujo corren UNA vez (`trigger_fires`), sin importar cuántas veces se procese o se reprocese
+ * (Tirón 2, C2). Antes la clave llevaba el número de reproceso: reprocesar volvía a correr todo.
+ */
+export function webhookDedupeKey(inboundId: string, flowId: string): string {
+  return `webhook:${inboundId}:${flowId}`;
+}
+
+/** El prefijo de TODAS las claves de un envío (la nueva y las viejas con `:<n>`): para liberarlas al «volver a correr». */
+export function webhookDedupePrefix(inboundId: string): string {
+  return `webhook:${inboundId}:`;
+}
+
+/**
+ * «Una sola vez por contacto»: una persona y un flujo (`trigger_fires`, con el disparador del flujo).
+ * Es distinta de la clave del envío: aquella frena repetir UN envío, esta frena a la MISMA persona en envíos distintos.
+ */
+export function webhookContactKey(flowId: string, contactId: string): string {
+  return `webhook-contact:${flowId}:${contactId}`;
 }
 
 const SCHEMA_TYPE: Record<LeafType, ConditionFieldSpec["type"]> = { text: "text", number: "number", boolean: "boolean", date: "date" };
