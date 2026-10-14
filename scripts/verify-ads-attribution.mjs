@@ -660,6 +660,69 @@ try {
       const { data: dz } = await adminC.client.rpc("ads_crm_cell_detail", { p_level: "ad", p_metric: "leads_total", p_since: since, p_until: until, p_ad_account_id: ACC2, p_workspace_id: wsC.id, p_object_id: "a-Z", p_limit: 50, p_offset: 0 });
       check((dz ?? []).length === 1 && Number(dz[0].total_count) === 1, "y con SU cuenta el detalle de a-Z tiene su lead", JSON.stringify(dz));
     }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Tiron 2, A1 (00221): enrich_touch_ad_origin — el anuncio de origen recuperado de la conversacion de Zernio
+    // ══════════════════════════════════════════════════════════════════════════
+    console.log("\n— Tiron 2, A1: enrich_touch_ad_origin completa el toque de un mensaje —");
+    {
+      const enrich = (ws, key, ad, title = null, post = null) =>
+        svc.rpc("enrich_touch_ad_origin", { p_workspace_id: ws, p_dedupe_key: key, p_ad_id: ad, ...(title ? { p_title: title } : {}), ...(post ? { p_post_id: post } : {}) });
+      const dmTouch = (contactId, key) => touchC(contactId, { source: "instagram", medium: "dm", origin: "dm", dedupe_key: key, occurred_at: ago(1) });
+      const touchRow = async (key) => (await svc.from("contact_touches").select("*").eq("workspace_id", wsC.id).eq("dedupe_key", key).single()).data;
+
+      // 1. Un mensaje directo sin anuncio: queda sin vincular. Con el anuncio recuperado, queda vinculado con su campaña y conjunto.
+      const ka1 = await mkC("ka1");
+      await dmTouch(ka1, "msg:zz-a1");
+      const before = await touchRow("msg:zz-a1");
+      check(!before.ad_id && before.meta_match_status === "none" && before.medium === "dm", "antes: el toque del mensaje no trae anuncio, queda `none` y con medio `dm`");
+      const r1 = await enrich(wsC.id, "msg:zz-a1", "a-A", "Anuncio A", "p-1");
+      check(r1.data?.ok === true && r1.data?.changed === true, "enrich_touch_ad_origin completa el toque", JSON.stringify(r1));
+      const after = await touchRow("msg:zz-a1");
+      check(after.ad_id === "a-A" && after.content_label === "Anuncio A" && after.medium === "paid_social", "queda con el anuncio, su titulo y el medio de un anuncio", JSON.stringify({ ad: after.ad_id, label: after.content_label, medium: after.medium }));
+      check(after.meta_match_status === "matched" && after.meta_ad_id === "a-A" && after.meta_adset_id === "s-1" && after.meta_campaign_id === "c-1", "y se vincula con el catalogo: anuncio, conjunto y campaña", JSON.stringify({ s: after.meta_match_status, a: after.meta_ad_id, c: after.meta_campaign_id }));
+      check(after.raw?.referral?.ad_id === "a-A" && after.raw?.referral?.recovered_from === "zernio_conversation" && after.raw?.referral?.post_id === "p-1", "y deja en `raw` de donde salio el dato", JSON.stringify(after.raw));
+      const { data: ca1 } = await svc.from("contacts").select("attribution").eq("id", ka1).single();
+      check(ca1.attribution?.first_touch?.meta_ad_id === "a-A" && ca1.attribution?.last_touch?.meta_ad_id === "a-A", "y la atribucion del contacto se recalcula (primer y ultimo toque)", JSON.stringify(ca1.attribution?.first_touch));
+
+      // 2. Idempotente: la segunda vez no cambia nada.
+      const r2 = await enrich(wsC.id, "msg:zz-a1", "a-B", "Otro");
+      check(r2.data?.ok === true && r2.data?.changed === false && r2.data?.reason === "already_has_ad", "una segunda llamada no pisa el anuncio que ya tiene", JSON.stringify(r2.data));
+      check((await touchRow("msg:zz-a1")).ad_id === "a-A", "y el toque sigue con el primero");
+
+      // 3. Un anuncio que todavia no esta en el catalogo: queda con su id y `unmatched` (el re-vinculo lo resuelve despues del sync).
+      const ka2 = await mkC("ka2");
+      await dmTouch(ka2, "msg:zz-a2");
+      const r3 = await enrich(wsC.id, "msg:zz-a2", "a-todavia-no-esta");
+      const t3 = await touchRow("msg:zz-a2");
+      check(r3.data?.changed === true && t3.ad_id === "a-todavia-no-esta" && t3.meta_ad_id === null && t3.meta_match_status === "unmatched", "un anuncio fuera del catalogo queda `unmatched`, con su id guardado", JSON.stringify({ s: t3.meta_match_status, ad: t3.ad_id }));
+      const { data: rem } = await svc.rpc("rematch_meta_touches", { p_workspace_id: wsC.id, p_since: "2000-01-01T00:00:00Z" });
+      check(typeof rem === "number", "y rematch_meta_touches lo sigue tomando (es un toque con datos de Meta)", String(rem));
+      await svc.from("meta_ads").insert({ workspace_id: wsC.id, ad_account_id: ACC, campaign_id: "c-2", adset_id: "s-2", ad_id: "a-todavia-no-esta", name: "Llego despues", name_key: "llego despues" });
+      await svc.rpc("rematch_meta_touches", { p_workspace_id: wsC.id, p_since: "2000-01-01T00:00:00Z" });
+      const t3b = await touchRow("msg:zz-a2");
+      check(t3b.meta_match_status === "matched" && t3b.meta_ad_id === "a-todavia-no-esta" && t3b.meta_campaign_id === "c-2", "cuando el anuncio aparece en el catalogo, el re-vinculo lo vincula solo", JSON.stringify({ s: t3b.meta_match_status, c: t3b.meta_campaign_id }));
+
+      // 4. Lo que una persona decidio no se toca.
+      const ka3 = await mkC("ka3");
+      await dmTouch(ka3, "msg:zz-a3");
+      await svc.from("contact_touches").update({ meta_match_status: "ignored" }).eq("workspace_id", wsC.id).eq("dedupe_key", "msg:zz-a3");
+      const r4 = await enrich(wsC.id, "msg:zz-a3", "a-A", "Anuncio A");
+      const t4 = await touchRow("msg:zz-a3");
+      check(r4.data?.changed === false && r4.data?.reason === "decided_by_person" && !t4.ad_id && t4.meta_match_status === "ignored", "un toque `ignored` (o `manual`) no se toca", JSON.stringify(r4.data));
+
+      // 5. Casos de borde y permisos.
+      const nf = await enrich(wsC.id, "msg:no-existe", "a-A");
+      check(nf.data?.ok === false && nf.data?.error === "touch_not_found", "un toque que no existe devuelve touch_not_found (sin lanzar)", JSON.stringify(nf));
+      const empty = await svc.rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "  " });
+      check(empty.data?.ok === false && empty.data?.error === "nothing_to_enrich", "sin id de anuncio no hace nada", JSON.stringify(empty.data));
+      const wsOther = await makeWorkspace("ads-a1-otro");
+      const cross = await enrich(wsOther.id, "msg:zz-a1", "a-A");
+      check(cross.data?.ok === false && cross.data?.error === "touch_not_found", "el toque de OTRO workspace no se puede completar aunque se conozca la clave", JSON.stringify(cross.data));
+      check((await touchRow("msg:zz-a1")).ad_id === "a-A", "(y el toque original sigue igual)");
+      check(!!(await adminC.client.rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "a-A" })).error, "un Admin con sesion no puede llamarla (solo service_role)");
+      check(!!(await createClient(URL, ANON, { auth: { persistSession: false } }).rpc("enrich_touch_ad_origin", { p_workspace_id: wsC.id, p_dedupe_key: "msg:zz-a1", p_ad_id: "a-A" })).error, "ni sin sesion");
+    }
   }
 
   console.log("\n— AT4: el costo con 10.000 toques —");

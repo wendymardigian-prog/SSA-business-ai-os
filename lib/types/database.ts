@@ -461,6 +461,8 @@ export type AuditEntityType =
   | "eod_report"
   /** Webhooks entrantes (00186): el endpoint (Extra L). */
   | "webhook_endpoint"
+  /** Un anuncio del catalogo de Meta (00191): el vinculo manual con una pieza de Contenido (Extra L, Tiron 2, A2). */
+  | "meta_ad"
   /** Tareas (00196). Las RPC de 00197 escriben `task.completed`, `task.date_shifted`, `task.blockers_changed` y `task.deleted`. */
   | "task";
 /** Acciones que registra el audit log (migracion 00023). */
@@ -600,6 +602,9 @@ export type AuditAction =
   | "attribution.meta_linked"
   | "attribution.meta_ignored"
   | "attribution.meta_unlinked"
+  /** Entity meta_ad: una persona vinculo un anuncio con una pieza de Contenido, o lo desvinculo (Tiron 2, A2). */
+  | "content_link.linked"
+  | "content_link.unlinked"
   /** Entity eod_report: una correccion de un reporte enviado (con lo que cambio). */
   | "eod.edited"
   /** Entity contract_signature. */
@@ -5315,6 +5320,11 @@ export interface Database {
       /** Guarda un envio de webhook con candado por (endpoint, id de envio o huella): dos entregas identicas simultaneas dan un `received` y un `ignored` (00216). Solo service_role. */
       receive_inbound_webhook: {
         Args: { p_row: Json; p_duplicate_window_seconds?: number };
+        Returns: Json;
+      };
+      /** Completa con el anuncio de origen el toque de un mensaje de Instagram (00221). Nunca pisa un anuncio ni un vinculo manual. Solo service_role. */
+      enrich_touch_ad_origin: {
+        Args: { p_workspace_id: string; p_dedupe_key: string; p_ad_id: string; p_title?: string; p_post_id?: string };
         Returns: Json;
       };
       /** La tabla Meta vs CRM: lo que paso en el CRM por campaña, conjunto o anuncio (00195). SECURITY INVOKER: la RLS de quien mira decide que cuenta. */

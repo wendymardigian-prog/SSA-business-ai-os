@@ -201,6 +201,37 @@ desempata por la campaña, y si siguen varios NO se vincula) → **conjunto** �
 - **La ficha del contacto** muestra campaña › conjunto › anuncio por nombre, con miniatura, y como se vinculo.
 - `contacts.attribution` sigue siendo una copia derivada: `refresh_contact_attribution` la recalcula con el mismo orden que `record_contact_touch`.
 
+### El anuncio de origen, recuperado de la conversación de Zernio (Tirón 2, A1)
+
+Meta manda los datos del anuncio (`referral`) **solo en el primer mensaje** después del clic. Si ese mensaje llegó sin ellos, el toque quedaba
+como un mensaje directo orgánico. Ahora, con el **primer mensaje entrante de una conversación de Instagram que no trae anuncio**, el webhook
+encola el job `zernio_ad_origin` (clave `zernio-ad-origin:<conversación>`, una vez por conversación, a los 20 s) y:
+
+1. le pregunta a Zernio por la conversación (`getInboxConversation`, `metadata.meta_ad_id`, `meta_ad_title`, `meta_ad_post_id`);
+2. si trae un anuncio: lo suma a `messages.origin_context` y completa el toque del mensaje con `enrich_touch_ad_origin` (00221): le pone el
+   `ad_id`, el título como `content_label`, el medio `paid_social`, deja en `raw.referral` que salió de `zernio_conversation`, lo vincula con el
+   catálogo y recalcula la atribución del contacto. Si el contacto ya existía y no tenía toque de ese mensaje, anota uno con el anuncio;
+3. si Zernio no trae nada, no hace nada.
+
+Reglas: **solo Instagram** (WhatsApp va por Evolution y su `ctwa_*` ya viene en el mensaje); nunca pisa un anuncio que el toque ya tenía ni un
+vínculo `manual` o `ignored`; nunca lanza (ante un fallo de Zernio reagenda a 1, 5 y 15 minutos; un 401/404 no se reintenta); sin catálogo
+todavía el toque queda `unmatched` con su `ad_id` y el re-vínculo lo resuelve después del próximo sync.
+
+### Vínculo anuncio ↔ pieza de Contenido, a mano (Tirón 2, A2)
+
+El vínculo automático (`lib/meta/content-link.ts`) no cambió y **nunca pisa un vínculo manual** (`content_link_manual = true`). El manual vive
+**solo en dos menús «⋯»**: en el detalle de un anuncio («Vincular a una pieza de contenido» / «Desvincular») y en el detalle de una pieza
+(«Vincular a un anuncio» / «Desvincular»). Permiso: `content.create` **y** `dashboards.ads.view`; cada cambio queda en `audit_log` (entidad
+`meta_ad`, acciones `content_link.linked` y `content_link.unlinked`, con el antes y el después). Desvincular vacía los ids y vuelve a
+`content_link_manual = false`: el automático lo puede volver a intentar en el próximo sync.
+
+- En el detalle de una pieza con **al menos un anuncio vinculado** aparece la sección **«Publicidad»** (período elegido, «Histórico» por defecto):
+  gasto, impresiones, clics, leads nuevos y totales, CPL nuevo y total, agendas, ventas y la lista de anuncios con enlace. Los leads, agendas y
+  ventas salen de `ads_crm_metrics_v2` (la misma función de la tabla Meta vs CRM); si los anuncios son de cuentas con monedas distintas, el gasto y
+  el CPL no se calculan y se avisa. Sin anuncio vinculado, el detalle queda exactamente como antes.
+- En la lista de Contenido, las piezas con anuncio llevan el indicador **«Pautada»** y hay un filtro «Pautadas / No pautadas» (`?pautada=si|no`).
+  Solo lo ve quien puede ver anuncios (la RLS de `meta_ads` pide `dashboards.ads.view`).
+
 ### Guia: parametros de URL para los anuncios
 
 Para que un anuncio quede vinculado, la URL de destino tiene que llevar (en el Ads Manager, «Parametros de URL»):

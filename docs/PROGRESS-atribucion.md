@@ -134,9 +134,9 @@ esta lista marcada, commit `fix: atribucion - bloque X (nombre)` y push.
   - [x] E2 · columnas nuevas (ocultas) + fila Total
   - [x] E3 · columnas visibles por defecto
   - [x] E4 · selector con buscador, subtítulos, arrastrar, migración de preferencias, CSV, celular
-- [ ] **A · Anuncios y contenido**
-  - [ ] A1 · recuperar el anuncio desde la conversación de Zernio (solo Instagram)
-  - [ ] A2 · vínculo manual anuncio ↔ pieza en menús "⋯", sección "Publicidad", indicador y filtro "Pautadas"
+- [x] **A · Anuncios y contenido** (la revisión visual de los menús y la sección queda para el cierre)
+  - [x] A1 · recuperar el anuncio desde la conversación de Zernio (solo Instagram)
+  - [x] A2 · vínculo manual anuncio ↔ pieza en menús "⋯", sección "Publicidad", indicador y filtro "Pautadas"
 - [ ] **D · Envíos sin contacto (D3–D5)**
   - [ ] D3 · paso "Enviar WhatsApp a un número"
   - [ ] D4 · "Enviar email" a una dirección de una variable

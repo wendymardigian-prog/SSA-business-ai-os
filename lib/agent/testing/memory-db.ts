@@ -107,6 +107,7 @@ export function memoryDb(
     let head = false;
     let orderBy: { col: string; asc: boolean } | null = null;
     let limitN: number | null = null;
+    let offsetN = 0;
 
     const clash = options.unique?.[table];
     const generate = options.generated?.[table];
@@ -176,7 +177,7 @@ export function memoryDb(
         matched = [...matched].sort((a, b) => (asc ? cmp(a[col], b[col]) : cmp(b[col], a[col])));
       }
       const count = matched.length;
-      if (limitN !== null) matched = matched.slice(0, limitN);
+      if (offsetN > 0 || limitN !== null) matched = matched.slice(offsetN, limitN !== null ? offsetN + limitN : undefined);
       if (selectCols && options.joins) {
         matched = matched.map((r) => {
           const extra: Row = {};
@@ -257,6 +258,8 @@ export function memoryDb(
         (filters.push((r) => Object.entries(val).every(([k, v]) => (r[col] as Row | undefined)?.[k] === v)), b),
       order: (col: string, opts?: { ascending?: boolean }) => ((orderBy = { col, asc: opts?.ascending !== false }), b),
       limit: (n: number) => ((limitN = n), b),
+      // PostgREST: filas de la `from` a la `to`, ambas incluidas.
+      range: (from: number, to: number) => ((offsetN = from), (limitN = to - from + 1), b),
       single: async () => {
         const res = apply();
         const list = res.data as Row[];

@@ -16,6 +16,7 @@ import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { attributedContactsFor, countByPiece, type BoardIdea, type BoardPost } from "@/lib/content/board";
 import { authorshipLine } from "@/lib/content/classification";
 import { countUsage, tagFor } from "@/lib/content/taxonomy";
+import { loadPaidPieceIds } from "@/lib/meta/content-ads-load";
 import { loadContentTaxonomy } from "@/lib/content/load-taxonomy";
 import type { ContentPostStatus } from "@/lib/types/database";
 
@@ -78,13 +79,14 @@ export default async function ContentPage({
   const canApprove = can("content.approve");
   const canPublish = can("content.publish");
   const canUseAi = can("content.ai");
+  const canSeePaid = can("dashboards.ads.view");
 
   // La zona del NEGOCIO, no la de quien mira: es la misma que usa el editor
   // para agendar (A19, lib/dates.ts) y el tope diario server-side
   // (lib/publishing/schedule-core.ts) — las tres tienen que coincidir.
   const timeZone = workspace.timezone || "UTC";
 
-  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed] = await Promise.all([
+  const [ideasRes, postsRes, publicationsRes, aiProviders, taxonomy, attributed, paidPieceIds] = await Promise.all([
     supabase
       .from("content_ideas")
       .select("id, title, content, format, reference, platforms, pillar_id, offer_id, funnel_stage, status, created_by, position, created_at, updated_at")
@@ -108,6 +110,8 @@ export default async function ContentPage({
     // mostrando aunque ya no se ofrezca en el selector (F89).
     loadContentTaxonomy(supabase, workspace.id, can("settings.general")),
     firstTouchCounts(supabase),
+    // Las piezas con algun anuncio vinculado (A2): se leen con la sesion, asi que quien no puede ver anuncios no ve el indicador.
+    canSeePaid ? loadPaidPieceIds(supabase, workspace.id) : Promise.resolve(new Set<string>()),
   ]);
 
   const publicationsByPost = new Map<string, Array<{ platform: string; status: string | null; at: string | null }>>();
@@ -303,6 +307,7 @@ export default async function ContentPage({
       firstAt: post.networks.map((n) => n.at).filter(Boolean).sort()[0] ?? null,
       hasCopy: post.hasCopy,
       attributedContacts: post.attributedContacts,
+      paid: paidPieceIds.has(post.id),
     })),
   ];
 
@@ -394,6 +399,7 @@ export default async function ContentPage({
           filters={filters}
           authors={[...authorNames.entries()].map(([id, name]) => ({ id, name }))}
           months={listMonths}
+          showPaid={canSeePaid}
         />
       )}
     </ContentShell>

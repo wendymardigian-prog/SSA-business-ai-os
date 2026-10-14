@@ -90,7 +90,7 @@ Pendiente hasta el final de la corrida; se completa con el resultado de cada pun
 
 ### AT1 — decisiones y cosas que quedan (qué quedó, por qué, qué se decidió)
 
-- **F20 (respaldo desde la conversación de Zernio) no se construyó.** Es nice-to-have y para probarla de verdad
+- ~~**F20 (respaldo desde la conversación de Zernio) no se construyó.**~~ **Resuelto en el Tirón 2 (A1, 14/10/2026)**: ver `docs/atribucion.md` («El anuncio de origen, recuperado de la conversación de Zernio»). Lo que sigue es el texto original, por historia. Es nice-to-have y para probarla de verdad
   hace falta leer una conversación real de Zernio, cosa que esta corrida no puede hacer (nada externo real). Queda
   para una pasada con una cuenta conectada. El toque del mensaje ya guarda `origin_context`, así que no se pierde
   el dato desde ahora: lo que falta es recuperar el de mensajes viejos.
@@ -264,4 +264,14 @@ Se midió con `EXPLAIN ANALYZE` sobre los 10.000 toques sintéticos de `verify-a
 
 - Una columna «Conversaciones iniciadas» (`onsite_conversion.messaging_conversation_started_7d`): es la conversión principal de esta
   cuenta (6.188 en 888 filas) y hoy no tiene columna.
+
+### Bloque A (Tirón 2): lo que queda
+
+- **A1 no se probó con una conversación real de Zernio** (nada externo real): el campo sale del SDK (`GetInboxConversationResponse.metadata.meta_ad_id`,
+  que existe para Instagram y Messenger) y el cliente está simulado en los tests. Al conectar una cuenta real, mirar en `audit`/`origin_context` de la
+  primera conversación que venga de un anuncio que el toque quedó con su `meta_ad_id`.
+- **La 00221 está aplicada y la 00220 no** (a propósito: va después del deploy). Al aplicar la 00220 queda registrada con una versión posterior a la
+  de la 00221; no importa el orden de los timestamps, cada migración es independiente.
+- **«Pautada» mira solo `meta_ads.content_post_id`.** Una pieza cuyo anuncio todavía no está en el catálogo (sync pendiente) no aparece como pautada.
+- **El menú «⋯» de la pieza desvincula UN anuncio por vez**; para una pieza con muchos anuncios hay una opción por anuncio.
 

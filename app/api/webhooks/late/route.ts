@@ -22,6 +22,7 @@ import { resolveWebhookSecret, verifyWebhookSignature } from "@/lib/zernio-webho
 import { upsertContactForSender } from "@/lib/inbox-sync";
 import { fromZernioReferral, recordInboundTouch } from "@/lib/contacts/touch-inbound";
 import { adOriginOf, buildOriginContext } from "@/lib/messages/origin-context";
+import { maybeEnqueueAdOriginLookup } from "@/lib/meta/zernio-ad-origin";
 import { attributeComment } from "@/lib/comments/attribution";
 import { processComment } from "@/lib/comment-processor";
 import type { Database } from "@/lib/types/database";
@@ -404,6 +405,23 @@ async function processMessageEvent(
     // algo se escapara, el lead no se queda sin su flow por una estadística.
     console.error("[webhook] el toque de atribución falló:", err instanceof Error ? err.message : err);
   }
+
+  // ── El anuncio de origen, si el mensaje no lo trajo (Tirón 2, A1) ─────────
+  // Meta manda el anuncio solo en el primer mensaje después del clic; si llegó sin él, se le pregunta a Zernio UNA vez por
+  // conversación (job con reintentos). Solo Instagram. No lanza: el mensaje y el toque ya están guardados.
+  await maybeEnqueueAdOriginLookup(supabase, {
+    workspaceId: channel.workspace_id,
+    contactId,
+    conversationId: conversation.id,
+    channelId: channel.id,
+    lateConversationId: conv.id,
+    lateAccountId: account.id,
+    messageId: inserted.id ?? null,
+    platformMessageId: msg.id ?? null,
+    messageAt: new Date(msg.sentAt || Date.now()).toISOString(),
+    platform: channel.platform,
+    hasReferral: fromZernioReferral(metadata?.referral) !== null,
+  });
 
   // ── La media, adentro (F3) ────────────────────────────────────────────────
   // Va aca, dentro del after() que ya existe, y no en la cola: la URL del CDN

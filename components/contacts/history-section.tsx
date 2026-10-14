@@ -27,6 +27,9 @@ const INITIAL_VISIBLE = 15;
 type HistoryEntry = AuditHistoryItem;
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  // El historial de un anuncio (entity meta_ad) no se muestra en la ficha del contacto; las etiquetas existen por el tipo.
+  "content_link.linked": "vinculó el anuncio con una pieza de contenido",
+  "content_link.unlinked": "desvinculó el anuncio de su pieza de contenido",
   create: "creó el contacto",
   update: "editó el contacto",
   delete: "eliminó el contacto",

@@ -27,6 +27,7 @@ import { buildDetail, ownRows, type DetailLevel, type DetailView } from "./ads-d
 import { lastSyncedAt, syncedLabel, type Rankings, latestRankings } from "./ads-view";
 import { computeTotals, type AdsRow, type AdsTotals } from "./ads";
 import { daysBetween } from "@/lib/metrics/rules";
+import type { AdContentLink } from "@/lib/meta/content-ad-summary";
 import { isoToDateInput } from "@/lib/dates";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
 
@@ -68,6 +69,10 @@ export interface DetailPageData {
     } | null;
     error: string | null;
   };
+  /** La pieza de Contenido a la que está vinculado este anuncio (solo en el nivel anuncio), o null (Tirón 2, A2). */
+  contentLink: AdContentLink | null;
+  /** Quien mira puede vincular el anuncio con una pieza: `content.create` (ya tiene `dashboards.ads.view` para estar acá). */
+  canLinkContent: boolean;
 }
 
 export async function loadDetailPage(params: {
@@ -76,7 +81,7 @@ export async function loadDetailPage(params: {
   searchParams: Record<string, string | string[] | undefined>;
 }): Promise<DetailPageData> {
   // El permiso, no el cargo (F32).
-  const { workspace, supabase } = await requirePermission("dashboards.ads.view");
+  const { workspace, supabase, can } = await requirePermission("dashboards.ads.view");
   const sp = params.searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -170,6 +175,27 @@ export async function loadDetailPage(params: {
   const syncedAt =
     lastSyncedAt(ownRows(allRows, { level, objectId })) ?? account?.last_synced_at ?? null;
 
+  // El vínculo manual con una pieza de Contenido (A2): solo se muestra en el menú del anuncio.
+  let contentLink: AdContentLink | null = null;
+  if (level === "ad") {
+    const { data: adRow } = await supabase
+      .from("meta_ads")
+      .select("content_post_id, content_link_manual")
+      .eq("workspace_id", workspace.id)
+      .eq("ad_id", objectId)
+      .limit(1)
+      .maybeSingle();
+    if (adRow?.content_post_id) {
+      const { data: piece } = await supabase
+        .from("content_posts")
+        .select("id, title")
+        .eq("id", adRow.content_post_id)
+        .eq("workspace_id", workspace.id)
+        .maybeSingle();
+      if (piece) contentLink = { pieceId: piece.id, pieceTitle: piece.title, manual: adRow.content_link_manual === true };
+    }
+  }
+
   return {
     detail,
     allRows,
@@ -192,5 +218,7 @@ export async function loadDetailPage(params: {
       creative: objectMeta?.ok ? objectMeta.data.creative : null,
       error: objectMeta && !objectMeta.ok ? objectMeta.error : null,
     },
+    contentLink,
+    canLinkContent: level === "ad" && can("content.create"),
   };
 }
