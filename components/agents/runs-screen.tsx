@@ -27,6 +27,7 @@ export function RunsScreen({
   filters,
   showCost,
   isAdmin,
+  canExport = false,
   options,
   currentAgentId = null,
   currentOrigen = null,
@@ -37,6 +38,8 @@ export function RunsScreen({
   filters: RunFilters;
   showCost: boolean;
   isAdmin: boolean;
+  /** `data.export`: sin esto no se ofrece «Exportar CSV» (Equipo y roles, F24). */
+  canExport?: boolean;
   options: RunsScreenOptions;
   /** El agente de la pestaña (Bloque Agentes IA): no cuenta como filtro activo. null en la pantalla global. */
   currentAgentId?: string | null;
@@ -163,6 +166,7 @@ export function RunsScreen({
           el período (range/from/to). El export siempre traía los últimos 30
           días e ignoraba esos filtros. Ahora manda la URL real.
         */}
+        {canExport && (
         <a
           href={`/api/v1/agent-runs/export?${search}`}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
@@ -170,6 +174,7 @@ export function RunsScreen({
           <Download className="h-3.5 w-3.5" aria-hidden />
           Exportar CSV
         </a>
+        )}
       </div>
 
       {rows.length === 0 ? (

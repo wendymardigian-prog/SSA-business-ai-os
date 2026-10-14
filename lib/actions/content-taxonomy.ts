@@ -24,7 +24,7 @@ import {
  * producto de acá abajo son atajos de `lib/actions/products.ts` (el catálogo),
  * que es quien escribe.
  *
- * Todo pide `settings.manage`, y ademas lo aplica la RLS de la 00116: la
+ * Todo pide `settings.general`, y ademas lo aplica la RLS de la 00116: la
  * pantalla decide que botones muestra, la barrera es la base.
  *
  * NO hay una accion de borrar, y no es un olvido: archivar saca el pilar del
@@ -55,7 +55,7 @@ const KIND: Record<Table, { label: string; audit: string; the: string; that: str
 };
 
 async function manageContext() {
-  return getPermissionAction("settings.manage");
+  return getPermissionAction("settings.general");
 }
 
 /** Los nombres de todas las filas, para validar el duplicado. */

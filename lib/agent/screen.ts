@@ -117,6 +117,8 @@ export interface RunsTabData {
   filters: RunFilters;
   showCost: boolean;
   isAdmin: boolean;
+  /** `data.export`: ofrece «Exportar CSV». */
+  canExport?: boolean;
   options: RunsScreenOptions;
 }
 
@@ -242,7 +244,8 @@ export interface TagsTabData {
 
 export interface AgentScreenData {
   /** Quien mira: decide pestanas y columnas. */
-  viewer: { isAdmin: boolean };
+  /** `isAdmin`: puede configurar el agente (`agents.edit`). `permissionKeys`: lo que decide las pestañas. */
+  viewer: { isAdmin: boolean; permissionKeys?: string[] };
   /** Solo cuando la pestana activa es Etiquetas (y solo Owner/Admin). */
   tags?: TagsTabData;
   /**

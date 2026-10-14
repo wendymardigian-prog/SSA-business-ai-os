@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
  * hoy y una fila por persona y día con el total de cada métrica. Solo compone: las cuentas
  * son de `lib/eod/reports.ts`.
  */
-export function ReportsView({ data }: { data: ReportsPageData }) {
+export function ReportsView({ data, canExport = false }: { data: ReportsPageData; /** `data.export` (Equipo y roles, F24). */ canExport?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -90,9 +90,11 @@ export function ReportsView({ data }: { data: ReportsPageData }) {
             </select>
           </label>
         )}
+        {canExport && (
         <button type="button" onClick={exportCsv} disabled={exporting || data.rows.length === 0} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm hover:bg-accent disabled:opacity-50">
           {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />} Exportar CSV
         </button>
+        )}
       </div>
       {message && (
         <div role="status">

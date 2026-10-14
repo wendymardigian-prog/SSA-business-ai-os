@@ -8,7 +8,7 @@ import { ensureTaskPaymentFlows, getPaymentTasksState } from "@/lib/tasks/automa
 import type { TaskPaymentState } from "@/lib/tasks/payment-tasks-types";
 
 /**
- * Ajustes de Tareas del workspace. Pide `settings.manage`. En un archivo "use server" todo lo exportado es una funcion
+ * Ajustes de Tareas del workspace. Pide `sales.settings`. En un archivo "use server" todo lo exportado es una funcion
  * asincronica; los tipos viven en `lib/tasks/automation-templates.ts`.
  */
 
@@ -25,7 +25,7 @@ const NO_STATE: TaskPaymentState = { enabled: false, flows: [] };
  */
 export async function setPaymentTasksEnabled(enabled: boolean): Promise<PaymentTasksResult> {
   try {
-    const ctx = await getPermissionAction("settings.manage");
+    const ctx = await getPermissionAction("sales.settings");
     if (!ctx) return { ok: false, error: "Solo quien puede cambiar la configuración maneja este ajuste.", state: NO_STATE };
     const { workspace, user, supabase } = ctx;
     const service = await createServiceClient();

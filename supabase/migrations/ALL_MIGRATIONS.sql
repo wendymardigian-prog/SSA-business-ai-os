@@ -36365,6 +36365,1287 @@ REVOKE ALL ON FUNCTION public.complete_task_with_shifts(uuid, jsonb, jsonb) FROM
 GRANT EXECUTE ON FUNCTION public.complete_task_with_shifts(uuid, jsonb, jsonb) TO authenticated, service_role;
 
 -- ============================================================
+-- MIGRATION 208: HAS PERMISSION V2
+-- ============================================================
+-- ============================================================================
+-- 00208 — Equipo y roles (B1, F3): `has_permission` v2 y paridad con TypeScript
+-- ============================================================================
+-- Hoy `has_permission(ws, key)` le responde "no" a TODA clave si quien pregunta es un Member de
+-- sistema, porque los permisos de ese rol viven solo en `lib/auth/permissions.ts` (su fila de
+-- `workspace_roles` los tiene vacios a proposito). Por eso casi ninguna politica puede usarla y la
+-- RLS quedo en "solo Admin".
+--
+-- Esta version le ensena a la base:
+--   - al Member de sistema (con `role_id` del rol de sistema Member, o SIN `role_id`): su lista de
+--     claves, copiada en `private.member_permission_keys()`;
+--   - a las claves solo-Owner (`private.owner_only_keys()`): el Admin NO las tiene;
+--   - nunca devuelve NULL (un NULL deja pasar un `NOT (...)` en plpgsql).
+-- Para el Owner, el Admin (salvo las dos claves solo-Owner, que ninguna politica usa) y los roles
+-- personalizados responde IGUAL que hoy.
+--
+-- `lib/auth/member-sql-parity.test.ts` lee la ULTIMA definicion de las dos funciones de abajo en
+-- supabase/migrations/ y falla si difieren de `lib/auth/permissions.ts`: las dos copias no se
+-- pueden separar sin que un test lo diga. Para cambiar la lista del Member: nueva migracion que
+-- redefine `member_permission_keys()` + el cambio en TypeScript.
+--
+-- Efecto sobre el Member de sistema (revisado politica por politica contra la base viva): ninguna
+-- politica ni funcion cambia para el, salvo las dos de webhooks, que pedian `flows.edit` (que el
+-- Member tiene en TypeScript) y se pasan a `webhooks.manage` aca mismo para que NO ganen lectura
+-- de payloads de webhooks (decision del 13/10/2026). El resto pide claves que el Member no tiene
+-- (`dashboards.ads.view`, `social.view`, `templates.manage`, `scheduling.manage_*`,
+-- `settings.manage`...) o `*.view` + alcance `all` (`can_see_booking`, `can_see_call`,
+-- `can_see_sale`: el Member es `own`).
+--
+-- Idempotente: CREATE OR REPLACE y DROP POLICY IF EXISTS.
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS (definiciones vigentes ANTES de esta migracion, leidas de la base viva)
+-- ----------------------------------------------------------------------------
+--   DROP FUNCTION IF EXISTS private.member_permission_keys();
+--   DROP FUNCTION IF EXISTS private.owner_only_keys();
+-- y volver a ejecutar, sin el prefijo "--   ", lo siguiente:
+--
+--   CREATE OR REPLACE FUNCTION public.has_permission(p_workspace_id uuid, p_key text)
+--    RETURNS boolean
+--    LANGUAGE plpgsql
+--    STABLE SECURITY DEFINER
+--    SET search_path TO ''
+--   AS $function$
+--   DECLARE
+--     v_role        text;
+--     v_permissions jsonb;
+--   BEGIN
+--     SELECT m.role, COALESCE(r.permissions, '{}'::jsonb)
+--       INTO v_role, v_permissions
+--     FROM public.workspace_members m
+--     LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+--     WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+--   
+--     IF v_role IS NULL THEN
+--       RETURN false;
+--     END IF;
+--   
+--     IF v_role IN ('owner', 'admin') THEN
+--       RETURN true;
+--     END IF;
+--   
+--     -- OJO: los permisos del rol de sistema "Member" NO estan en el jsonb (su
+--     -- fila los tiene vacios a proposito: la fuente es lib/auth/permissions.ts).
+--     -- Esta funcion responde por los roles PERSONALIZADOS y por owner/admin.
+--     -- Ninguna policy la usa hoy; el alcance de leads lo resuelve
+--     -- permission_scope, que si contempla los tres casos.
+--     RETURN COALESCE(v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]), false);
+--   END;
+--   $function$
+--
+--   CREATE POLICY inbound_webhooks_select ON public.inbound_webhooks AS PERMISSIVE FOR SELECT TO authenticated
+--     USING ((is_workspace_member(workspace_id) AND has_permission(workspace_id, 'flows.edit'::text)));
+--
+--   CREATE POLICY webhook_endpoints_select ON public.webhook_endpoints AS PERMISSIVE FOR SELECT TO authenticated
+--     USING ((is_workspace_member(workspace_id) AND (has_permission(workspace_id, 'flows.edit'::text) OR has_permission(workspace_id, 'integrations.manage'::text))));
+-- ============================================================================
+
+-- Las claves del Member de sistema. COPIA de MEMBER_KEYS en lib/auth/permissions.ts (27 claves).
+CREATE OR REPLACE FUNCTION private.member_permission_keys()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT ARRAY[
+    'dashboards.chat.view',
+    'inbox.instagram.view',
+    'inbox.instagram.reply',
+    'inbox.whatsapp.view',
+    'inbox.whatsapp.reply',
+    'inbox.email.view',
+    'inbox.email.reply',
+    'contacts.view',
+    'contacts.edit',
+    'contacts.assign',
+    'flows.view',
+    'flows.edit',
+    'flows.publish',
+    'sequences.view',
+    'agents.view',
+    'content.view',
+    'content.create',
+    'scheduling.use',
+    'bookings.view',
+    'bookings.manage',
+    'calls.view',
+    'forms.view',
+    'sales.view',
+    'sales.manage',
+    'payments.manage',
+    'tasks.view',
+    'tasks.edit'
+  ]::text[]
+$$;
+
+-- Las claves que solo tiene el Owner. COPIA de las claves `ownerOnly` de lib/auth/permissions.ts.
+CREATE OR REPLACE FUNCTION private.owner_only_keys()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT ARRAY[
+    'team.remove',
+    'workspace.transfer'
+  ]::text[]
+$$;
+
+REVOKE ALL ON FUNCTION private.member_permission_keys() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION private.owner_only_keys() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.has_permission(p_workspace_id uuid, p_key text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_role        text;
+  v_role_id     uuid;
+  v_system_role text;
+  v_permissions jsonb;
+BEGIN
+  SELECT m.role, m.role_id, r.system_role, COALESCE(r.permissions, '{}'::jsonb)
+    INTO v_role, v_role_id, v_system_role, v_permissions
+  FROM public.workspace_members m
+  LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+  WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+
+  IF v_role IS NULL OR p_key IS NULL THEN
+    RETURN false;
+  END IF;
+
+  IF v_role = 'owner' THEN
+    RETURN true;
+  END IF;
+
+  -- El Admin tiene todo menos lo solo-Owner.
+  IF v_role = 'admin' THEN
+    RETURN NOT (p_key = ANY (private.owner_only_keys()));
+  END IF;
+
+  -- El Member de sistema (sin rol asignado, o con la fila del rol de sistema Member): su lista vive
+  -- en TypeScript y se copia en private.member_permission_keys(). Su fila de workspace_roles tiene
+  -- los permisos vacios a proposito.
+  IF v_role_id IS NULL OR v_system_role = 'member' THEN
+    RETURN COALESCE(p_key = ANY (private.member_permission_keys()), false);
+  END IF;
+
+  -- Un rol personalizado: lo que tiene tildado.
+  RETURN COALESCE(v_permissions -> 'keys' @> to_jsonb(ARRAY[p_key]), false);
+END;
+$function$;
+
+-- Webhooks: se leen con `webhooks.manage` (o administrando integraciones, los endpoints). Con
+-- `has_permission` v2 el Member de sistema habria ganado la lectura por tener `flows.edit`.
+DROP POLICY IF EXISTS inbound_webhooks_select ON public.inbound_webhooks;
+CREATE POLICY inbound_webhooks_select ON public.inbound_webhooks
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND public.has_permission(workspace_id, 'webhooks.manage')
+  );
+
+DROP POLICY IF EXISTS webhook_endpoints_select ON public.webhook_endpoints;
+CREATE POLICY webhook_endpoints_select ON public.webhook_endpoints
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (
+      public.has_permission(workspace_id, 'webhooks.manage')
+      OR public.has_permission(workspace_id, 'integrations.manage')
+    )
+  );
+
+-- ============================================================
+-- MIGRATION 209: WORKSPACE INVITES V2
+-- ============================================================
+-- ============================================================================
+-- 00209 — Equipo y roles (B1/B2, F7-F10): la invitacion lleva su rol y su historia
+-- ============================================================================
+-- Hoy una invitacion solo guarda email, rol base (admin|member), quien invito, estado y
+-- vencimiento. Para poder invitar con un rol personalizado, por email o por link, reenviar,
+-- renovar, anular sin borrar y mostrar un historial, se suman diez columnas:
+--
+--   role_id        el rol con el que entra (NULL = el rol base `role`; si el rol se borra, cae ahi)
+--   delivery       'email' (se mando un correo) o 'link' (solo se genero el link)
+--   email_status   resultado del ULTIMO envio: sent | failed | not_configured
+--   email_error    mensaje corto del proveedor (sin datos sensibles)
+--   last_sent_at   cuando se mando por ultima vez
+--   send_count     cuantas veces se mando (tope 5; lo hace cumplir la accion de reenviar)
+--   accepted_at / accepted_by   cuando y con que cuenta se aceptó
+--   revoked_at  / revoked_by    cuando y quien la anuló (anular es un UPDATE, ya no un DELETE)
+--
+-- `status` NO cambia de CHECK (pending | accepted | revoked): "vencida" se DERIVA
+-- (`inviteState`, lib/team/invite-state.ts). El link sigue siendo /invite/<id>: los ya
+-- enviados siguen andando. Las filas viejas quedan con `delivery = 'email'` y el resto nulo.
+--
+-- Aditiva e idempotente. No toca ninguna politica (eso es la 00212, despues del codigo).
+--
+-- Como volver atras:
+--   ALTER TABLE public.workspace_invites
+--     DROP COLUMN IF EXISTS role_id, DROP COLUMN IF EXISTS delivery, DROP COLUMN IF EXISTS email_status,
+--     DROP COLUMN IF EXISTS email_error, DROP COLUMN IF EXISTS last_sent_at, DROP COLUMN IF EXISTS send_count,
+--     DROP COLUMN IF EXISTS accepted_at, DROP COLUMN IF EXISTS accepted_by,
+--     DROP COLUMN IF EXISTS revoked_at, DROP COLUMN IF EXISTS revoked_by;
+--   DROP INDEX IF EXISTS public.idx_workspace_invites_workspace_status;
+-- ============================================================================
+
+ALTER TABLE public.workspace_invites
+  ADD COLUMN IF NOT EXISTS role_id uuid REFERENCES public.workspace_roles(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS delivery text NOT NULL DEFAULT 'email',
+  ADD COLUMN IF NOT EXISTS email_status text,
+  ADD COLUMN IF NOT EXISTS email_error text,
+  ADD COLUMN IF NOT EXISTS last_sent_at timestamptz,
+  ADD COLUMN IF NOT EXISTS send_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS accepted_at timestamptz,
+  ADD COLUMN IF NOT EXISTS accepted_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS revoked_at timestamptz,
+  ADD COLUMN IF NOT EXISTS revoked_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_delivery_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_delivery_check CHECK (delivery IN ('email', 'link'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_email_status_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_email_status_check CHECK (email_status IS NULL OR email_status IN ('sent', 'failed', 'not_configured'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'workspace_invites_send_count_check' AND conrelid = 'public.workspace_invites'::regclass) THEN
+    ALTER TABLE public.workspace_invites
+      ADD CONSTRAINT workspace_invites_send_count_check CHECK (send_count >= 0);
+  END IF;
+END $$;
+
+COMMENT ON COLUMN public.workspace_invites.role_id IS
+  'El rol con el que entra la persona. NULL = el rol base `role`. Si el rol se borra antes de aceptar, cae al Member de sistema.';
+COMMENT ON COLUMN public.workspace_invites.delivery IS
+  'email = se mando un correo; link = solo se genero el link para pasarlo a mano.';
+
+-- La lista de pendientes y el historial se piden por workspace y estado.
+CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace_status
+  ON public.workspace_invites (workspace_id, status, created_at DESC);
+
+-- ============================================================
+-- MIGRATION 210: MEMBERS ROLE ID BACKFILL
+-- ============================================================
+-- ============================================================================
+-- 00210 — Equipo y roles (B1, F3): cada miembro queda con su rol de sistema
+-- ============================================================================
+-- Un miembro que entro por una invitacion (`finalizeAcceptInvite`) o por `create-owner.mjs` pudo
+-- quedar con `role_id` nulo. El sistema lo trata como el rol de sistema que dice `role`, pero la
+-- pantalla de Equipo y `has_permission` v2 (00208) lo entienden mejor con el `role_id` puesto.
+--
+-- Es el MISMO UPDATE de la 00088: a quien tiene `role_id` nulo se le pone el rol de sistema que
+-- coincide con su `role` en ese workspace. No cambia ningun permiso (la funcion trata igual a un
+-- Member sin `role_id` que a uno con la fila del rol de sistema Member).
+--
+-- Idempotente: una segunda corrida no encuentra nulos.
+--
+-- Control despues de aplicarla:
+--   select count(*) from workspace_members where role_id is null;   -- 0
+--
+-- Como volver atras: poner `role_id = NULL` a los `user_id` que figuran abajo (los que tocó al
+-- aplicarse; se anotan en docs/PROGRESS-equipo-roles.md). Volver atras no es necesario para nada.
+-- ============================================================================
+
+UPDATE public.workspace_members m
+SET role_id = r.id
+FROM public.workspace_roles r
+WHERE r.workspace_id = m.workspace_id
+  AND r.system_role = m.role
+  AND m.role_id IS NULL;
+
+-- ============================================================
+-- MIGRATION 211: RETIRE SETTINGS MANAGE
+-- ============================================================
+-- ============================================================================
+-- 00211 — Equipo y roles (B1, F4): se retira `settings.manage`
+-- ============================================================================
+-- `settings.manage` mezclaba cuatro cosas distintas (productos, reglas de asignacion, ajustes de
+-- ventas y cobranza, y el resto de la configuracion). Se reemplaza por claves con nombre propio:
+--
+--   products.manage    el catalogo de productos y variantes     (RLS de products / product_variants)
+--   assignment.manage  las reglas de asignacion automatica       (RLS de assignment_rules)
+--   sales.settings     metodos de pago, descuento, mora, cobranza (solo codigo)
+--   settings.general   el resto: pilares de contenido, vincular toques con anuncios, ... (RLS de content_pillars)
+--
+-- Esta migracion hace DOS cosas:
+--
+-- 1. Reescribe las 8 politicas que usaban `has_permission(workspace_id, 'settings.manage')`
+--    (INSERT y UPDATE de products, product_variants, assignment_rules y content_pillars) con la
+--    clave nueva que corresponde. Para Owner y Admin da lo mismo; un rol personalizado que tenia
+--    `settings.manage` sigue pudiendo, porque el paso 2 le da las sucesoras.
+--
+-- 2. Migra el jsonb de los roles PERSONALIZADOS. Quien tenia `settings.manage` recibe TODAS sus
+--    sucesoras y pierde la vieja. Y, ya que varias claves se parten en dos, quien tenia la vieja
+--    recibe tambien la nueva para no perder nada sin enterarse (decision del 13/10/2026):
+--
+--      settings.manage      -> settings.general, sales.settings, products.manage, assignment.manage
+--      flows.edit           -> + flows.publish, + webhooks.manage
+--      team.manage          -> + team.view, + team.invite
+--      roles.manage         -> + roles.view
+--      integrations.manage  -> + integrations.view, + channels.manage
+--      agents.edit          -> + ai_tasks.manage, + ai_limits.manage
+--      contacts.edit        -> + contacts.assign        (hoy cualquier miembro reasigna)
+--
+--    Los roles de sistema NO se tocan (sus permisos vienen de lib/auth/permissions.ts).
+--
+-- Idempotente: el UPDATE solo agrega lo que falta y quita lo que sobra; correrlo dos veces no cambia nada.
+--
+-- Control despues de aplicarla:
+--   select count(*) from pg_policies where schemaname='public' and (qual ilike '%settings.manage%' or with_check ilike '%settings.manage%');  -- 0
+--   select count(*) from workspace_roles where permissions->'keys' ? 'settings.manage';                                                  -- 0
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS
+-- ----------------------------------------------------------------------------
+-- (a) Politicas: volver a ejecutar, sin el prefijo "--   ", estas definiciones (leidas de la base viva ANTES de esta migracion):
+--
+--   DROP POLICY IF EXISTS assignment_rules_insert ON public.assignment_rules;
+--   CREATE POLICY assignment_rules_insert ON public.assignment_rules AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS assignment_rules_update ON public.assignment_rules;
+--   CREATE POLICY assignment_rules_update ON public.assignment_rules AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS content_pillars_insert ON public.content_pillars;
+--   CREATE POLICY content_pillars_insert ON public.content_pillars AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS content_pillars_update ON public.content_pillars;
+--   CREATE POLICY content_pillars_update ON public.content_pillars AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS product_variants_insert ON public.product_variants;
+--   CREATE POLICY product_variants_insert ON public.product_variants AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS product_variants_update ON public.product_variants;
+--   CREATE POLICY product_variants_update ON public.product_variants AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS products_insert ON public.products;
+--   CREATE POLICY products_insert ON public.products AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+--   DROP POLICY IF EXISTS products_update ON public.products;
+--   CREATE POLICY products_update ON public.products AS PERMISSIVE FOR UPDATE TO public
+--     USING (has_permission(workspace_id, 'settings.manage'::text))
+--     WITH CHECK (has_permission(workspace_id, 'settings.manage'::text));
+--
+-- (b) El jsonb de los roles personalizados, tal como estaba ANTES (id | nombre | claves):
+--   7a187bff-a102-476c-818d-f4008d0b3110 | Content Manager | ["dashboards.chat.view", "dashboards.content.view", "social.view", "inbox.instagram.view", "inbox.instagram.reply", "inbox.whatsapp.view", "inbox.whatsapp.reply", "inbox.email.view", "inbox.email.reply", "contacts.view", "contacts.edit", "flows.view", "flows.edit", "agents.view", "ai_costs.view", "knowledge.view", "content.view", "content.create", "content.approve", "content.publish", "content.ai"]
+-- Para restaurar un rol: UPDATE public.workspace_roles SET permissions = jsonb_set(permissions, '{keys}', '<claves de arriba>'::jsonb) WHERE id = '<id>';
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- 1. Las 8 politicas, con la clave nueva (mismas condiciones, mismos roles: TO public)
+-- ----------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS products_insert ON public.products;
+CREATE POLICY products_insert ON public.products FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+DROP POLICY IF EXISTS products_update ON public.products;
+CREATE POLICY products_update ON public.products FOR UPDATE
+  USING (public.has_permission(workspace_id, 'products.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+
+DROP POLICY IF EXISTS product_variants_insert ON public.product_variants;
+CREATE POLICY product_variants_insert ON public.product_variants FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+DROP POLICY IF EXISTS product_variants_update ON public.product_variants;
+CREATE POLICY product_variants_update ON public.product_variants FOR UPDATE
+  USING (public.has_permission(workspace_id, 'products.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'products.manage'));
+
+DROP POLICY IF EXISTS assignment_rules_insert ON public.assignment_rules;
+CREATE POLICY assignment_rules_insert ON public.assignment_rules FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'assignment.manage'));
+DROP POLICY IF EXISTS assignment_rules_update ON public.assignment_rules;
+CREATE POLICY assignment_rules_update ON public.assignment_rules FOR UPDATE
+  USING (public.has_permission(workspace_id, 'assignment.manage'))
+  WITH CHECK (public.has_permission(workspace_id, 'assignment.manage'));
+
+DROP POLICY IF EXISTS content_pillars_insert ON public.content_pillars;
+CREATE POLICY content_pillars_insert ON public.content_pillars FOR INSERT
+  WITH CHECK (public.has_permission(workspace_id, 'settings.general'));
+DROP POLICY IF EXISTS content_pillars_update ON public.content_pillars;
+CREATE POLICY content_pillars_update ON public.content_pillars FOR UPDATE
+  USING (public.has_permission(workspace_id, 'settings.general'))
+  WITH CHECK (public.has_permission(workspace_id, 'settings.general'));
+
+-- ----------------------------------------------------------------------------
+-- 2. El jsonb de los roles personalizados
+-- ----------------------------------------------------------------------------
+-- Para cada clave vieja que tiene el rol, se suman sus sucesoras; `settings.manage` se quita.
+-- Solo roles personalizados (`system_role IS NULL`). Idempotente.
+
+UPDATE public.workspace_roles r
+SET permissions = jsonb_set(
+  r.permissions,
+  '{keys}',
+  to_jsonb(ARRAY(
+    SELECT DISTINCT k
+    FROM unnest(
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(r.permissions -> 'keys', '[]'::jsonb)))
+      || CASE WHEN r.permissions -> 'keys' ? 'settings.manage'
+              THEN ARRAY['settings.general', 'sales.settings', 'products.manage', 'assignment.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'flows.edit'
+              THEN ARRAY['flows.publish', 'webhooks.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'team.manage'
+              THEN ARRAY['team.view', 'team.invite'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'roles.manage'
+              THEN ARRAY['roles.view'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'integrations.manage'
+              THEN ARRAY['integrations.view', 'channels.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'agents.edit'
+              THEN ARRAY['ai_tasks.manage', 'ai_limits.manage'] ELSE ARRAY[]::text[] END
+      || CASE WHEN r.permissions -> 'keys' ? 'contacts.edit'
+              THEN ARRAY['contacts.assign'] ELSE ARRAY[]::text[] END
+    ) AS k
+    WHERE k <> 'settings.manage'
+  ))
+)
+WHERE r.system_role IS NULL
+  AND r.permissions -> 'keys' ?| ARRAY['settings.manage', 'flows.edit', 'team.manage', 'roles.manage', 'integrations.manage', 'agents.edit', 'contacts.edit'];
+
+-- ============================================================
+-- MIGRATION 212: TEAM RLS
+-- ============================================================
+-- ============================================================================
+-- 00212 — Equipo y roles (B2, F6-F11): invitar, asignar roles y editar roles por permiso
+-- ============================================================================
+-- Hoy invitar, cambiar roles, quitar personas y editar roles piden "ser Admin" (u Owner) en la base. Esta
+-- migracion los pasa a pedir el permiso de lo que son, y suma la regla de seguridad que el plano pide:
+-- "no podes dar lo que no tenes".
+--
+--   workspace_invites   INSERT / UPDATE / DELETE   team.invite  (y, al insertar o cambiar el rol, `can_give_role`)
+--   workspace_members   UPDATE                     el Owner todo; team.manage sobre quien no es Owner, solo con roles que puede dar
+--                       DELETE                     team.remove Y ser Owner (quitar personas es solo del Owner, como hoy)
+--   workspace_roles     INSERT / UPDATE / DELETE   roles.manage (system_role IS NULL se mantiene; el trigger de roles de sistema tambien)
+--
+-- Tres funciones nuevas en `public` (gemelas SQL de lib/team/grant.ts; los casos compartidos viven en
+-- lib/team/grant.cases.json y los corre `verify-roles.mjs` contra la base):
+--   can_grant_permissions(ws, keys, scopes)  quien llama puede dar esas claves y esos alcances.
+--   can_give_role(ws, role_id, base_role)    quien llama puede invitar con / asignar ese rol.
+--   is_own_role(ws, role_id)                 es el rol que tiene asignado quien llama.
+-- Y un trigger en workspace_roles (`workspace_roles_grant_check`): en un UPDATE solo hay que poder dar lo que se
+-- AGREGA (claves nuevas y alcances que suben); sacar permisos nunca es una escalada. El service role no pasa por ahi.
+--
+-- Cierra ademas un agujero: la politica de UPDATE de workspace_invites dejaba que la persona INVITADA (cualquiera con
+-- ese email) editara su propia invitacion — cambiarse el rol a admin, alargar el vencimiento o mover la invitacion a otro
+-- workspace — porque no tenia WITH CHECK. Aceptar una invitacion no usa esa rama (lo hace el servidor con el cliente de
+-- servicio), asi que nadie legitimo la necesita: sale.
+--
+-- Owner y Admin (todas las claves menos las dos solo-Owner) dan exactamente lo mismo que antes, salvo quitar personas,
+-- que ya era solo del Owner. Se aplica DESPUES de desplegar el codigo del bloque B2.
+--
+-- Idempotente: CREATE OR REPLACE + DROP POLICY/TRIGGER IF EXISTS.
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS: ejecutar, sin el prefijo "--   ", lo siguiente (definiciones vigentes ANTES de esta migracion,
+-- leidas de la base viva) y despues:
+--   DROP TRIGGER IF EXISTS workspace_roles_grant_check ON public.workspace_roles;
+--   DROP FUNCTION IF EXISTS public.workspace_roles_grant_check();
+--   DROP FUNCTION IF EXISTS public.can_give_role(uuid, uuid, text);
+--   DROP FUNCTION IF EXISTS public.can_grant_permissions(uuid, jsonb, jsonb);
+--   DROP FUNCTION IF EXISTS public.is_own_role(uuid, uuid);
+--   DROP FUNCTION IF EXISTS private.ungrantable_keys();
+--   DROP FUNCTION IF EXISTS private.scope_rank(text);
+-- ----------------------------------------------------------------------------
+--   DROP POLICY IF EXISTS workspace_invites_insert ON public.workspace_invites;
+--   CREATE POLICY workspace_invites_insert ON public.workspace_invites AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS workspace_invites_update ON public.workspace_invites;
+--   CREATE POLICY workspace_invites_update ON public.workspace_invites AS PERMISSIVE FOR UPDATE TO public
+--     USING ((is_workspace_admin(workspace_id) OR (email = (( SELECT u.email
+--      FROM auth.users u
+--     WHERE (u.id = auth.uid())))::text)));
+--
+--   DROP POLICY IF EXISTS workspace_invites_delete ON public.workspace_invites;
+--   CREATE POLICY workspace_invites_delete ON public.workspace_invites AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS Owners can delete members ON public.workspace_members;
+--   CREATE POLICY Owners can delete members ON public.workspace_members AS PERMISSIVE FOR DELETE TO public
+--     USING ((EXISTS ( SELECT 1
+--      FROM workspace_members wm
+--     WHERE ((wm.workspace_id = workspace_members.workspace_id) AND (wm.user_id = auth.uid()) AND (wm.role = 'owner'::text)))));
+--
+--   DROP POLICY IF EXISTS workspace_members_update ON public.workspace_members;
+--   CREATE POLICY workspace_members_update ON public.workspace_members AS PERMISSIVE FOR UPDATE TO public
+--     USING ((is_workspace_owner(workspace_id) OR (is_workspace_admin(workspace_id) AND (role <> 'owner'::text))))
+--     WITH CHECK ((is_workspace_owner(workspace_id) OR (is_workspace_admin(workspace_id) AND (role <> 'owner'::text))));
+--
+--   DROP POLICY IF EXISTS workspace_roles_insert ON public.workspace_roles;
+--   CREATE POLICY workspace_roles_insert ON public.workspace_roles AS PERMISSIVE FOR INSERT TO authenticated
+--     WITH CHECK ((is_workspace_admin(workspace_id) AND (system_role IS NULL)));
+--
+--   DROP POLICY IF EXISTS workspace_roles_update ON public.workspace_roles;
+--   CREATE POLICY workspace_roles_update ON public.workspace_roles AS PERMISSIVE FOR UPDATE TO authenticated
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS workspace_roles_delete ON public.workspace_roles;
+--   CREATE POLICY workspace_roles_delete ON public.workspace_roles AS PERMISSIVE FOR DELETE TO authenticated
+--     USING ((is_workspace_admin(workspace_id) AND (system_role IS NULL)));
+--
+-- ============================================================================
+
+-- Las claves que ningun rol puede llevar: las solo-Owner y las reservadas. COPIA de lib/auth/permissions.ts
+-- (member-sql-parity.test.ts la compara).
+CREATE OR REPLACE FUNCTION private.ungrantable_keys()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT ARRAY[
+    'scheduling.team_events',
+    'team.remove',
+    'workspace.transfer'
+  ]::text[]
+$$;
+REVOKE ALL ON FUNCTION private.ungrantable_keys() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION private.scope_rank(p_scope text)
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE p_scope WHEN 'all' THEN 2 WHEN 'own_unassigned' THEN 1 ELSE 0 END
+$$;
+REVOKE ALL ON FUNCTION private.scope_rank(text) FROM PUBLIC, anon, authenticated;
+
+-- Quien llama puede dar estas claves y estos alcances? (gemela de assertCanGrant)
+CREATE OR REPLACE FUNCTION public.can_grant_permissions(p_workspace_id uuid, p_keys jsonb, p_scopes jsonb DEFAULT '{}'::jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_role        text;
+  v_role_id     uuid;
+  v_system_role text;
+  v_permissions jsonb;
+  v_actor_keys  jsonb;
+  v_actor_scopes jsonb;
+BEGIN
+  SELECT m.role, m.role_id, r.system_role, COALESCE(r.permissions, '{}'::jsonb)
+    INTO v_role, v_role_id, v_system_role, v_permissions
+  FROM public.workspace_members m
+  LEFT JOIN public.workspace_roles r ON r.id = m.role_id
+  WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+
+  IF v_role IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Una clave solo-Owner o reservada no viaja en un rol: ni el Owner la da.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(COALESCE(p_keys, '[]'::jsonb)) AS k(key)
+    WHERE k.key = ANY (private.ungrantable_keys())
+  ) THEN
+    RETURN false;
+  END IF;
+
+  IF v_role IN ('owner', 'admin') THEN
+    RETURN true;
+  END IF;
+
+  IF v_role_id IS NULL OR v_system_role = 'member' THEN
+    v_actor_keys := to_jsonb(private.member_permission_keys());
+    v_actor_scopes := '{}'::jsonb;
+  ELSE
+    v_actor_keys := COALESCE(v_permissions -> 'keys', '[]'::jsonb);
+    v_actor_scopes := COALESCE(v_permissions -> 'scopes', '{}'::jsonb);
+  END IF;
+
+  -- Cada clave que se da tiene que estar en poder de quien la da.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(COALESCE(p_keys, '[]'::jsonb)) AS k(key)
+    WHERE NOT (v_actor_keys ? k.key)
+  ) THEN
+    RETURN false;
+  END IF;
+
+  -- Y ningun alcance puede ser mas ancho que el suyo.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_each_text(COALESCE(p_scopes, '{}'::jsonb)) AS s(module, value)
+    WHERE private.scope_rank(s.value) > private.scope_rank(COALESCE(v_actor_scopes ->> s.module, 'own'))
+  ) THEN
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$function$;
+
+-- Quien llama puede invitar con / asignar este rol? (gemela de assertCanAssignRole, sin el chequeo de "uno mismo"
+-- ni de "es el Owner", que son de la pantalla y de la accion)
+CREATE OR REPLACE FUNCTION public.can_give_role(p_workspace_id uuid, p_role_id uuid, p_base_role text)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_actor       text;
+  v_system_role text;
+  v_permissions jsonb;
+  v_role_ws     uuid;
+BEGIN
+  SELECT m.role INTO v_actor
+  FROM public.workspace_members m
+  WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid();
+
+  IF v_actor IS NULL THEN
+    RETURN false;
+  END IF;
+
+  -- El rol Admin solo lo da un Owner o un Admin, aunque la invitacion apunte a un rol personalizado.
+  IF p_base_role = 'admin' AND v_actor NOT IN ('owner', 'admin') THEN
+    RETURN false;
+  END IF;
+
+  IF p_role_id IS NULL THEN
+    IF p_base_role = 'admin' THEN
+      RETURN v_actor IN ('owner', 'admin');
+    END IF;
+    RETURN public.can_grant_permissions(p_workspace_id, to_jsonb(private.member_permission_keys()), '{}'::jsonb);
+  END IF;
+
+  SELECT r.system_role, COALESCE(r.permissions, '{}'::jsonb), r.workspace_id
+    INTO v_system_role, v_permissions, v_role_ws
+  FROM public.workspace_roles r
+  WHERE r.id = p_role_id;
+
+  IF NOT FOUND OR v_role_ws <> p_workspace_id THEN
+    RETURN false;
+  END IF;
+
+  -- El Owner no se da: es unico y se transfiere.
+  IF v_system_role = 'owner' THEN
+    RETURN false;
+  END IF;
+  IF v_system_role = 'admin' THEN
+    RETURN v_actor IN ('owner', 'admin');
+  END IF;
+  IF v_system_role = 'member' THEN
+    RETURN public.can_grant_permissions(p_workspace_id, to_jsonb(private.member_permission_keys()), '{}'::jsonb);
+  END IF;
+
+  RETURN public.can_grant_permissions(p_workspace_id, COALESCE(v_permissions -> 'keys', '[]'::jsonb), COALESCE(v_permissions -> 'scopes', '{}'::jsonb));
+END;
+$function$;
+
+-- Es el rol que tiene asignado quien llama?
+CREATE OR REPLACE FUNCTION public.is_own_role(p_workspace_id uuid, p_role_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.workspace_members m
+    WHERE m.workspace_id = p_workspace_id AND m.user_id = auth.uid() AND m.role_id = p_role_id
+  )
+$$;
+
+-- En un UPDATE de un rol, solo hay que poder dar lo que se AGREGA. Es SECURITY DEFINER porque llama a las auxiliares de
+-- `private` (a las que `authenticated` no tiene acceso); `auth.uid()` sigue siendo quien edita.
+CREATE OR REPLACE FUNCTION public.workspace_roles_grant_check()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_added  jsonb;
+  v_raised jsonb;
+BEGIN
+  -- El service role (migraciones, el servidor) no pasa por la regla de "quien da".
+  IF auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(k.key), '[]'::jsonb) INTO v_added
+  FROM jsonb_array_elements_text(COALESCE(NEW.permissions -> 'keys', '[]'::jsonb)) AS k(key)
+  WHERE NOT (COALESCE(OLD.permissions -> 'keys', '[]'::jsonb) ? k.key);
+
+  SELECT COALESCE(jsonb_object_agg(s.module, s.value), '{}'::jsonb) INTO v_raised
+  FROM jsonb_each_text(COALESCE(NEW.permissions -> 'scopes', '{}'::jsonb)) AS s(module, value)
+  WHERE private.scope_rank(s.value) > private.scope_rank(COALESCE(OLD.permissions -> 'scopes' ->> s.module, 'own'));
+
+  IF NOT public.can_grant_permissions(NEW.workspace_id, v_added, v_raised) THEN
+    RAISE EXCEPTION 'No podés dar permisos que no tenés' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS workspace_roles_grant_check ON public.workspace_roles;
+CREATE TRIGGER workspace_roles_grant_check
+  BEFORE UPDATE ON public.workspace_roles
+  FOR EACH ROW
+  WHEN (OLD.permissions IS DISTINCT FROM NEW.permissions)
+  EXECUTE FUNCTION public.workspace_roles_grant_check();
+
+-- ----------------------------------------------------------------------------
+-- Invitaciones
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS workspace_invites_insert ON public.workspace_invites;
+CREATE POLICY workspace_invites_insert ON public.workspace_invites FOR INSERT
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'team.invite'))
+    AND public.can_give_role(workspace_id, role_id, role)
+  );
+
+-- Sin la rama de "el invitado": ver la cabecera.
+DROP POLICY IF EXISTS workspace_invites_update ON public.workspace_invites;
+CREATE POLICY workspace_invites_update ON public.workspace_invites FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'team.invite')))
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'team.invite'))
+    AND public.can_give_role(workspace_id, role_id, role)
+  );
+
+DROP POLICY IF EXISTS workspace_invites_delete ON public.workspace_invites;
+CREATE POLICY workspace_invites_delete ON public.workspace_invites FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'team.invite')));
+
+-- ----------------------------------------------------------------------------
+-- Miembros
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS workspace_members_update ON public.workspace_members;
+CREATE POLICY workspace_members_update ON public.workspace_members FOR UPDATE
+  USING (
+    public.is_workspace_owner(workspace_id)
+    OR ((select public.has_permission(workspace_id, 'team.manage')) AND role <> 'owner')
+  )
+  WITH CHECK (
+    public.is_workspace_owner(workspace_id)
+    OR (
+      (select public.has_permission(workspace_id, 'team.manage'))
+      AND role <> 'owner'
+      AND public.can_give_role(workspace_id, role_id, role)
+    )
+  );
+
+-- Quitar personas: solo el Owner (`team.remove` es una clave solo-Owner; el chequeo del cargo es el cinturon de seguridad).
+DROP POLICY IF EXISTS "Owners can delete members" ON public.workspace_members;
+CREATE POLICY "Owners can delete members" ON public.workspace_members FOR DELETE
+  USING (
+    public.is_workspace_owner(workspace_id)
+    AND (select public.has_permission(workspace_id, 'team.remove'))
+  );
+
+-- ----------------------------------------------------------------------------
+-- Roles
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS workspace_roles_insert ON public.workspace_roles;
+CREATE POLICY workspace_roles_insert ON public.workspace_roles FOR INSERT
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'roles.manage'))
+    AND system_role IS NULL
+    AND public.can_grant_permissions(workspace_id, COALESCE(permissions -> 'keys', '[]'::jsonb), COALESCE(permissions -> 'scopes', '{}'::jsonb))
+  );
+
+DROP POLICY IF EXISTS workspace_roles_update ON public.workspace_roles;
+CREATE POLICY workspace_roles_update ON public.workspace_roles FOR UPDATE
+  USING (
+    (select public.has_permission(workspace_id, 'roles.manage'))
+    AND (public.is_workspace_admin(workspace_id) OR NOT public.is_own_role(workspace_id, id))
+  )
+  WITH CHECK ((select public.has_permission(workspace_id, 'roles.manage')));
+
+DROP POLICY IF EXISTS workspace_roles_delete ON public.workspace_roles;
+CREATE POLICY workspace_roles_delete ON public.workspace_roles FOR DELETE
+  USING (
+    (select public.has_permission(workspace_id, 'roles.manage'))
+    AND system_role IS NULL
+    AND (public.is_workspace_admin(workspace_id) OR NOT public.is_own_role(workspace_id, id))
+  );
+
+-- ============================================================
+-- MIGRATION 213: SETTINGS RLS
+-- ============================================================
+-- ============================================================================
+-- 00213 — Equipo y roles (B4, F17-F18): Ajustes, integraciones y canales por permiso
+-- ============================================================================
+-- Estas tablas pedian `is_workspace_admin` (el cargo). Pasan a pedir el permiso de lo que son, asi un rol
+-- personalizado puede administrar solo lo suyo y la base lo repite aunque alguien se saltee la pantalla.
+--
+--   custom_field_definitions   INSERT / UPDATE   custom_fields.manage
+--   integration_configs        SELECT            integrations.view | integrations.manage (y, para las filas de canales, channels.manage)
+--                              INSERT/UPDATE/DELETE  integrations.manage (y, para las filas de canales, channels.manage)
+--   social_accounts            INSERT/UPDATE/DELETE  integrations.manage
+--   channels                   INSERT/UPDATE/DELETE  channels.manage
+--   csv_imports                SELECT: la rama de Admin pasa a contacts.import (quien importo sigue viendo lo suyo)
+--   audit_log                  `audit_log_select` NO SE TOCA. Se SUMA `audit_log_select_audit` (como Llamadas, Ventas y Tareas):
+--                              quien tiene `audit.view` ve todo el historial del workspace.
+--
+-- Owner y Admin (que tienen todas las claves) dan exactamente lo mismo que antes. Un Member de sistema no tiene
+-- ninguna de estas claves: tampoco cambia. `workspaces` NO se toca (sigue solo Admin: las acciones de Ajustes
+-- escriben con el cliente de servicio DESPUES del guard).
+--
+-- Las filas de canales de `integration_configs` son las de `type = 'channel'` y el email entrante
+-- (`provider = 'resend_inbound'`): `channels.manage` llega a esas y a ninguna otra.
+--
+-- Se aplica DESPUES de desplegar el codigo del bloque B4. Idempotente: DROP POLICY IF EXISTS + CREATE.
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS: ejecutar, sin el prefijo "--   ", lo siguiente (definiciones vigentes ANTES de esta migracion,
+-- leidas de la base viva), y `DROP POLICY IF EXISTS audit_log_select_audit ON public.audit_log;`
+-- ----------------------------------------------------------------------------
+--   DROP POLICY IF EXISTS custom_field_definitions_insert ON public.custom_field_definitions;
+--   CREATE POLICY custom_field_definitions_insert ON public.custom_field_definitions AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS custom_field_definitions_update ON public.custom_field_definitions;
+--   CREATE POLICY custom_field_definitions_update ON public.custom_field_definitions AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS integration_configs_select ON public.integration_configs;
+--   CREATE POLICY integration_configs_select ON public.integration_configs AS PERMISSIVE FOR SELECT TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS integration_configs_insert ON public.integration_configs;
+--   CREATE POLICY integration_configs_insert ON public.integration_configs AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS integration_configs_update ON public.integration_configs;
+
+--
+--   DROP POLICY IF EXISTS integration_configs_delete ON public.integration_configs;
+--   CREATE POLICY integration_configs_delete ON public.integration_configs AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS social_accounts_insert ON public.social_accounts;
+--   CREATE POLICY social_accounts_insert ON public.social_accounts AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS social_accounts_update ON public.social_accounts;
+--   CREATE POLICY social_accounts_update ON public.social_accounts AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS social_accounts_delete ON public.social_accounts;
+--   CREATE POLICY social_accounts_delete ON public.social_accounts AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS channels_insert ON public.channels;
+--   CREATE POLICY channels_insert ON public.channels AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS channels_update ON public.channels;
+--   CREATE POLICY channels_update ON public.channels AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS channels_delete ON public.channels;
+--   CREATE POLICY channels_delete ON public.channels AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS csv_imports_select ON public.csv_imports;
+--   CREATE POLICY csv_imports_select ON public.csv_imports AS PERMISSIVE FOR SELECT TO public
+--     USING ((is_workspace_admin(workspace_id) OR (is_workspace_member(workspace_id) AND (imported_by = auth.uid()))));
+--
+-- ============================================================================
+
+-- Campos personalizados
+DROP POLICY IF EXISTS custom_field_definitions_insert ON public.custom_field_definitions;
+CREATE POLICY custom_field_definitions_insert ON public.custom_field_definitions FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'custom_fields.manage')));
+DROP POLICY IF EXISTS custom_field_definitions_update ON public.custom_field_definitions;
+CREATE POLICY custom_field_definitions_update ON public.custom_field_definitions FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'custom_fields.manage')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'custom_fields.manage')));
+
+-- Integraciones: ver el estado / administrar. Los canales tambien con channels.manage.
+DROP POLICY IF EXISTS integration_configs_select ON public.integration_configs;
+CREATE POLICY integration_configs_select ON public.integration_configs FOR SELECT
+  USING (
+    (select public.has_permission(workspace_id, 'integrations.view'))
+    OR (select public.has_permission(workspace_id, 'integrations.manage'))
+    OR (
+      (type = 'channel' OR provider = 'resend_inbound')
+      AND (select public.has_permission(workspace_id, 'channels.manage'))
+    )
+  );
+DROP POLICY IF EXISTS integration_configs_insert ON public.integration_configs;
+CREATE POLICY integration_configs_insert ON public.integration_configs FOR INSERT
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'integrations.manage'))
+    OR (
+      (type = 'channel' OR provider = 'resend_inbound')
+      AND (select public.has_permission(workspace_id, 'channels.manage'))
+    )
+  );
+DROP POLICY IF EXISTS integration_configs_update ON public.integration_configs;
+CREATE POLICY integration_configs_update ON public.integration_configs FOR UPDATE
+  USING (
+    (select public.has_permission(workspace_id, 'integrations.manage'))
+    OR (
+      (type = 'channel' OR provider = 'resend_inbound')
+      AND (select public.has_permission(workspace_id, 'channels.manage'))
+    )
+  )
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'integrations.manage'))
+    OR (
+      (type = 'channel' OR provider = 'resend_inbound')
+      AND (select public.has_permission(workspace_id, 'channels.manage'))
+    )
+  );
+DROP POLICY IF EXISTS integration_configs_delete ON public.integration_configs;
+CREATE POLICY integration_configs_delete ON public.integration_configs FOR DELETE
+  USING (
+    (select public.has_permission(workspace_id, 'integrations.manage'))
+    OR (
+      (type = 'channel' OR provider = 'resend_inbound')
+      AND (select public.has_permission(workspace_id, 'channels.manage'))
+    )
+  );
+
+-- Cuentas sociales
+DROP POLICY IF EXISTS social_accounts_insert ON public.social_accounts;
+CREATE POLICY social_accounts_insert ON public.social_accounts FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'integrations.manage')));
+DROP POLICY IF EXISTS social_accounts_update ON public.social_accounts;
+CREATE POLICY social_accounts_update ON public.social_accounts FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'integrations.manage')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'integrations.manage')));
+DROP POLICY IF EXISTS social_accounts_delete ON public.social_accounts;
+CREATE POLICY social_accounts_delete ON public.social_accounts FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'integrations.manage')));
+
+-- Canales
+DROP POLICY IF EXISTS channels_insert ON public.channels;
+CREATE POLICY channels_insert ON public.channels FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'channels.manage')));
+DROP POLICY IF EXISTS channels_update ON public.channels;
+CREATE POLICY channels_update ON public.channels FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'channels.manage')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'channels.manage')));
+DROP POLICY IF EXISTS channels_delete ON public.channels;
+CREATE POLICY channels_delete ON public.channels FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'channels.manage')));
+
+-- Importaciones: solo la rama de Admin pasa a permiso; quien importo sigue viendo lo suyo.
+DROP POLICY IF EXISTS csv_imports_select ON public.csv_imports;
+CREATE POLICY csv_imports_select ON public.csv_imports FOR SELECT
+  USING (
+    (select public.has_permission(workspace_id, 'contacts.import'))
+    OR (public.is_workspace_member(workspace_id) AND imported_by = auth.uid())
+  );
+
+-- Historial: una politica ADICIONAL (audit_log_select no se toca). Las permisivas se combinan con "o".
+DROP POLICY IF EXISTS audit_log_select_audit ON public.audit_log;
+CREATE POLICY audit_log_select_audit ON public.audit_log
+  AS PERMISSIVE FOR SELECT TO authenticated
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND (select public.has_permission(workspace_id, 'audit.view'))
+  );
+
+-- ============================================================
+-- MIGRATION 214: MODULES RLS
+-- ============================================================
+-- ============================================================================
+-- 00214 — Modulos por permiso (B5, F20-F24): las politicas de los modulos piden SU clave, no "ser Admin"
+-- ============================================================================
+-- Hasta hoy la base dejaba escribir en estas tablas a cualquier miembro (flows) o solo a un Admin (todo lo demas), sin mirar
+-- el rol personalizado. Ahora cada una pide la clave del catalogo que ya promete la pantalla:
+--
+--   flows                    SELECT flows.view · INSERT/UPDATE/DELETE flows.edit        (antes: cualquier miembro)
+--   triggers                 INSERT/UPDATE/DELETE flows.edit                            (antes: Admin)  <- cambio M7
+--   sequences                INSERT/UPDATE/DELETE sequences.edit                        (antes: Admin)
+--   tags                     la rama "Admin" pasa a tags.manage; la de etiqueta simple no cambia
+--   agents                   INSERT/UPDATE agents.edit                                  (antes: Admin)
+--   agent_prompt_versions    INSERT/SELECT agents.edit                                  (antes: Admin)
+--   ai_task_prompt_versions  INSERT/SELECT ai_tasks.manage O calls.configure            (antes: Admin)
+--   knowledge_base           INSERT/UPDATE/DELETE knowledge.edit                        (antes: Admin)
+--   contacts                 DELETE contacts.delete                                     (antes: Admin)
+--
+-- Owner y Admin tienen todas esas claves, asi que para ellos NADA cambia. El Member de sistema (flows.view, flows.edit,
+-- agents.view y nada del resto de la lista):
+--   - flows: sigue leyendo y escribiendo, como hoy;
+--   - triggers: ahora si escribe (M7: lo que un Member publica empieza a dispararse de verdad; hasta hoy el insert del
+--     disparador fallaba en silencio);
+--   - sequences, tags de agente/asignacion, agents, prompts, knowledge y borrar contactos: sigue SIN poder.
+--
+-- Dos diferencias con el plano (§8.4), a proposito, para no cambiarle nada al Member sin que nadie lo haya aprobado:
+--   - agents UPDATE tambien pide agents.edit (el plano nombra solo el INSERT, pero las acciones actualizan con la sesion
+--     de la persona: sin esto, un rol con agents.edit podria crear agentes y no editarlos).
+--   - agent_prompt_versions SELECT pide agents.edit y no agents.view: el Member tiene agents.view y hasta hoy no podia
+--     leer el historial de instrucciones (la pestaña de instrucciones de la pantalla ya pide agents.edit).
+--
+-- Se evalua con `(select public.has_permission(...))` para que Postgres lo calcule una vez por consulta y no por fila.
+-- Se aplica DESPUES de desplegar el codigo del bloque B5.
+--
+-- Idempotente: DROP POLICY IF EXISTS + CREATE POLICY.
+--
+-- ----------------------------------------------------------------------------
+-- COMO VOLVER ATRAS: para cada politica de abajo, ejecutar su DROP POLICY IF EXISTS <nueva> (las nuevas se llaman
+-- como las viejas, salvo las dos de flows, que son flows_select/insert/update/delete) y despues recrear la vieja con las
+-- definiciones vigentes ANTES de esta migracion (leidas de pg_policies), sin el prefijo "--   ":
+--   DROP POLICY IF EXISTS flows_select ON public.flows;  DROP POLICY IF EXISTS flows_insert ON public.flows;
+--   DROP POLICY IF EXISTS flows_update ON public.flows;  DROP POLICY IF EXISTS flows_delete ON public.flows;
+-- ----------------------------------------------------------------------------
+--   DROP POLICY IF EXISTS agent_prompt_versions_insert ON public.agent_prompt_versions;
+--   CREATE POLICY agent_prompt_versions_insert ON public.agent_prompt_versions AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK ((is_workspace_admin(workspace_id) AND (created_by = auth.uid()) AND (EXISTS ( SELECT 1
+--      FROM agents a
+--     WHERE ((a.id = agent_prompt_versions.agent_id) AND (a.workspace_id = agent_prompt_versions.workspace_id))))));
+--
+--   DROP POLICY IF EXISTS agent_prompt_versions_select ON public.agent_prompt_versions;
+--   CREATE POLICY agent_prompt_versions_select ON public.agent_prompt_versions AS PERMISSIVE FOR SELECT TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS agents_insert ON public.agents;
+--   CREATE POLICY agents_insert ON public.agents AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS agents_update ON public.agents;
+--   CREATE POLICY agents_update ON public.agents AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS ai_task_prompt_versions_insert ON public.ai_task_prompt_versions;
+--   CREATE POLICY ai_task_prompt_versions_insert ON public.ai_task_prompt_versions AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK ((is_workspace_admin(workspace_id) AND (created_by = auth.uid())));
+--
+--   DROP POLICY IF EXISTS ai_task_prompt_versions_select ON public.ai_task_prompt_versions;
+--   CREATE POLICY ai_task_prompt_versions_select ON public.ai_task_prompt_versions AS PERMISSIVE FOR SELECT TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS contacts_delete ON public.contacts;
+--   CREATE POLICY contacts_delete ON public.contacts AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS "Users can manage flows in their workspaces" ON public.flows;
+--   CREATE POLICY "Users can manage flows in their workspaces" ON public.flows AS PERMISSIVE FOR ALL TO public
+--     USING (is_workspace_member(workspace_id));
+--
+--   DROP POLICY IF EXISTS "Users can view flows in their workspaces" ON public.flows;
+--   CREATE POLICY "Users can view flows in their workspaces" ON public.flows AS PERMISSIVE FOR SELECT TO public
+--     USING (is_workspace_member(workspace_id));
+--
+--   DROP POLICY IF EXISTS knowledge_base_delete ON public.knowledge_base;
+--   CREATE POLICY knowledge_base_delete ON public.knowledge_base AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS knowledge_base_insert ON public.knowledge_base;
+--   CREATE POLICY knowledge_base_insert ON public.knowledge_base AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS knowledge_base_update ON public.knowledge_base;
+--   CREATE POLICY knowledge_base_update ON public.knowledge_base AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS sequences_delete ON public.sequences;
+--   CREATE POLICY sequences_delete ON public.sequences AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS sequences_insert ON public.sequences;
+--   CREATE POLICY sequences_insert ON public.sequences AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS sequences_update ON public.sequences;
+--   CREATE POLICY sequences_update ON public.sequences AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS tags_delete ON public.tags;
+--   CREATE POLICY tags_delete ON public.tags AS PERMISSIVE FOR DELETE TO public
+--     USING ((is_workspace_member(workspace_id) AND (is_workspace_admin(workspace_id) OR ((disables_agent = false) AND (assigns_to IS NULL)))));
+--
+--   DROP POLICY IF EXISTS tags_insert ON public.tags;
+--   CREATE POLICY tags_insert ON public.tags AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK ((is_workspace_member(workspace_id) AND (is_workspace_admin(workspace_id) OR ((disables_agent = false) AND (assigns_to IS NULL)))));
+--
+--   DROP POLICY IF EXISTS tags_update ON public.tags;
+--   CREATE POLICY tags_update ON public.tags AS PERMISSIVE FOR UPDATE TO public
+--     USING ((is_workspace_member(workspace_id) AND (is_workspace_admin(workspace_id) OR ((disables_agent = false) AND (assigns_to IS NULL)))))
+--     WITH CHECK ((is_workspace_member(workspace_id) AND (is_workspace_admin(workspace_id) OR ((disables_agent = false) AND (assigns_to IS NULL)))));
+--
+--   DROP POLICY IF EXISTS triggers_delete ON public.triggers;
+--   CREATE POLICY triggers_delete ON public.triggers AS PERMISSIVE FOR DELETE TO public
+--     USING (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS triggers_insert ON public.triggers;
+--   CREATE POLICY triggers_insert ON public.triggers AS PERMISSIVE FOR INSERT TO public
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+--   DROP POLICY IF EXISTS triggers_update ON public.triggers;
+--   CREATE POLICY triggers_update ON public.triggers AS PERMISSIVE FOR UPDATE TO public
+--     USING (is_workspace_admin(workspace_id))
+--     WITH CHECK (is_workspace_admin(workspace_id));
+--
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- flows
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can manage flows in their workspaces" ON public.flows;
+DROP POLICY IF EXISTS "Users can view flows in their workspaces" ON public.flows;
+DROP POLICY IF EXISTS flows_select ON public.flows;
+DROP POLICY IF EXISTS flows_insert ON public.flows;
+DROP POLICY IF EXISTS flows_update ON public.flows;
+DROP POLICY IF EXISTS flows_delete ON public.flows;
+CREATE POLICY flows_select ON public.flows FOR SELECT
+  USING ((select public.has_permission(workspace_id, 'flows.view')));
+CREATE POLICY flows_insert ON public.flows FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'flows.edit')));
+CREATE POLICY flows_update ON public.flows FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'flows.edit')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'flows.edit')));
+CREATE POLICY flows_delete ON public.flows FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'flows.edit')));
+
+-- ----------------------------------------------------------------------------
+-- triggers (cambio aprobado M7)
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS triggers_insert ON public.triggers;
+CREATE POLICY triggers_insert ON public.triggers FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'flows.edit')));
+DROP POLICY IF EXISTS triggers_update ON public.triggers;
+CREATE POLICY triggers_update ON public.triggers FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'flows.edit')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'flows.edit')));
+DROP POLICY IF EXISTS triggers_delete ON public.triggers;
+CREATE POLICY triggers_delete ON public.triggers FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'flows.edit')));
+
+-- ----------------------------------------------------------------------------
+-- sequences
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS sequences_insert ON public.sequences;
+CREATE POLICY sequences_insert ON public.sequences FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'sequences.edit')));
+DROP POLICY IF EXISTS sequences_update ON public.sequences;
+CREATE POLICY sequences_update ON public.sequences FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'sequences.edit')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'sequences.edit')));
+DROP POLICY IF EXISTS sequences_delete ON public.sequences;
+CREATE POLICY sequences_delete ON public.sequences FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'sequences.edit')));
+
+-- ----------------------------------------------------------------------------
+-- tags: solo la rama "Admin" (la de etiqueta simple, sin efectos, queda igual)
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS tags_insert ON public.tags;
+CREATE POLICY tags_insert ON public.tags FOR INSERT
+  WITH CHECK (
+    public.is_workspace_member(workspace_id)
+    AND ((select public.has_permission(workspace_id, 'tags.manage')) OR (disables_agent = false AND assigns_to IS NULL))
+  );
+DROP POLICY IF EXISTS tags_update ON public.tags;
+CREATE POLICY tags_update ON public.tags FOR UPDATE
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND ((select public.has_permission(workspace_id, 'tags.manage')) OR (disables_agent = false AND assigns_to IS NULL))
+  )
+  WITH CHECK (
+    public.is_workspace_member(workspace_id)
+    AND ((select public.has_permission(workspace_id, 'tags.manage')) OR (disables_agent = false AND assigns_to IS NULL))
+  );
+DROP POLICY IF EXISTS tags_delete ON public.tags;
+CREATE POLICY tags_delete ON public.tags FOR DELETE
+  USING (
+    public.is_workspace_member(workspace_id)
+    AND ((select public.has_permission(workspace_id, 'tags.manage')) OR (disables_agent = false AND assigns_to IS NULL))
+  );
+
+-- ----------------------------------------------------------------------------
+-- agents y sus versiones de instrucciones
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS agents_insert ON public.agents;
+CREATE POLICY agents_insert ON public.agents FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'agents.edit')));
+DROP POLICY IF EXISTS agents_update ON public.agents;
+CREATE POLICY agents_update ON public.agents FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'agents.edit')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'agents.edit')));
+
+DROP POLICY IF EXISTS agent_prompt_versions_insert ON public.agent_prompt_versions;
+CREATE POLICY agent_prompt_versions_insert ON public.agent_prompt_versions FOR INSERT
+  WITH CHECK (
+    (select public.has_permission(workspace_id, 'agents.edit'))
+    AND created_by = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.agents a
+      WHERE a.id = agent_prompt_versions.agent_id AND a.workspace_id = agent_prompt_versions.workspace_id
+    )
+  );
+DROP POLICY IF EXISTS agent_prompt_versions_select ON public.agent_prompt_versions;
+CREATE POLICY agent_prompt_versions_select ON public.agent_prompt_versions FOR SELECT
+  USING ((select public.has_permission(workspace_id, 'agents.edit')));
+
+-- ----------------------------------------------------------------------------
+-- instrucciones versionadas de las tareas de IA
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS ai_task_prompt_versions_insert ON public.ai_task_prompt_versions;
+CREATE POLICY ai_task_prompt_versions_insert ON public.ai_task_prompt_versions FOR INSERT
+  WITH CHECK (
+    (
+      (select public.has_permission(workspace_id, 'ai_tasks.manage'))
+      OR (select public.has_permission(workspace_id, 'calls.configure'))
+    )
+    AND created_by = auth.uid()
+  );
+DROP POLICY IF EXISTS ai_task_prompt_versions_select ON public.ai_task_prompt_versions;
+CREATE POLICY ai_task_prompt_versions_select ON public.ai_task_prompt_versions FOR SELECT
+  USING (
+    (select public.has_permission(workspace_id, 'ai_tasks.manage'))
+    OR (select public.has_permission(workspace_id, 'calls.configure'))
+  );
+
+-- ----------------------------------------------------------------------------
+-- knowledge_base
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS knowledge_base_insert ON public.knowledge_base;
+CREATE POLICY knowledge_base_insert ON public.knowledge_base FOR INSERT
+  WITH CHECK ((select public.has_permission(workspace_id, 'knowledge.edit')));
+DROP POLICY IF EXISTS knowledge_base_update ON public.knowledge_base;
+CREATE POLICY knowledge_base_update ON public.knowledge_base FOR UPDATE
+  USING ((select public.has_permission(workspace_id, 'knowledge.edit')))
+  WITH CHECK ((select public.has_permission(workspace_id, 'knowledge.edit')));
+DROP POLICY IF EXISTS knowledge_base_delete ON public.knowledge_base;
+CREATE POLICY knowledge_base_delete ON public.knowledge_base FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'knowledge.edit')));
+
+-- ----------------------------------------------------------------------------
+-- contacts: solo el DELETE (el alcance de lectura y edicion sigue siendo `can_see_contact`)
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS contacts_delete ON public.contacts;
+CREATE POLICY contacts_delete ON public.contacts FOR DELETE
+  USING ((select public.has_permission(workspace_id, 'contacts.delete')));
+
+-- ============================================================
 -- MIGRATION 215: CONTACT TOUCH ENTRY URL
 -- ============================================================
 -- 00215_contact_touch_entry_url.sql

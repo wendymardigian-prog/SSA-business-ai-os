@@ -1,0 +1,19 @@
+{
+  "_doc": "Casos compartidos de 'no podes dar lo que no tenes'. Los corre grant.cases.test.ts contra assertCanGrant (TypeScript) y verify-roles.mjs contra public.can_grant_permissions (SQL, 00212). actor: owner | admin | member (rol de sistema) | { keys, scopes } (rol personalizado). Si se cambia una regla, se cambia en las dos y se suma el caso.",
+  "cases": [
+    { "name": "el Owner da una clave comun", "actor": "owner", "keys": ["flows.edit"], "scopes": {}, "allowed": true },
+    { "name": "el Admin da una clave comun", "actor": "admin", "keys": ["contacts.delete", "roles.manage"], "scopes": { "leads": "all" }, "allowed": true },
+    { "name": "el Owner no da una clave solo-Owner", "actor": "owner", "keys": ["team.remove"], "scopes": {}, "allowed": false },
+    { "name": "el Admin no da una clave solo-Owner", "actor": "admin", "keys": ["team.remove"], "scopes": {}, "allowed": false },
+    { "name": "nadie da una clave reservada", "actor": "owner", "keys": ["workspace.transfer"], "scopes": {}, "allowed": false },
+    { "name": "nadie da scheduling.team_events", "actor": "admin", "keys": ["scheduling.team_events"], "scopes": {}, "allowed": false },
+    { "name": "el Member de sistema da una clave que tiene", "actor": "member", "keys": ["contacts.view", "tasks.edit"], "scopes": {}, "allowed": true },
+    { "name": "el Member de sistema no da una que no tiene", "actor": "member", "keys": ["contacts.view", "team.invite"], "scopes": {}, "allowed": false },
+    { "name": "el Member de sistema no da un alcance mas ancho que el suyo", "actor": "member", "keys": ["contacts.view"], "scopes": { "leads": "all" }, "allowed": false },
+    { "name": "el Member de sistema da su mismo alcance", "actor": "member", "keys": ["contacts.view"], "scopes": { "leads": "own" }, "allowed": true },
+    { "name": "un rol personalizado da lo que tiene", "actor": { "keys": ["team.invite", "contacts.view"], "scopes": { "leads": "own_unassigned" } }, "keys": ["contacts.view"], "scopes": { "leads": "own_unassigned" }, "allowed": true },
+    { "name": "un rol personalizado no da una clave que no tiene", "actor": { "keys": ["team.invite", "contacts.view"], "scopes": {} }, "keys": ["roles.manage"], "scopes": {}, "allowed": false },
+    { "name": "un rol personalizado no sube un alcance", "actor": { "keys": ["team.invite", "contacts.view"], "scopes": { "leads": "own_unassigned" } }, "keys": ["contacts.view"], "scopes": { "leads": "all" }, "allowed": false },
+    { "name": "dar nada siempre se puede", "actor": { "keys": ["team.invite"], "scopes": {} }, "keys": [], "scopes": {}, "allowed": true }
+  ]
+}

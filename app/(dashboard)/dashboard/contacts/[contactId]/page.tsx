@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Calendar, CalendarClock } from "lucide-react";
 
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import { isAdminRole } from "@/lib/auth/roles";
 import { getWorkspaceMembers, memberLabels } from "@/lib/workspace-members";
 import { buildAttributionView } from "@/lib/contacts/attribution-view";
@@ -87,7 +88,10 @@ export default async function ContactDetailPage({
 }) {
   const { contactId } = await params;
   const { fusion } = await searchParams;
+  // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
+  const perms = await requirePermission("contacts.view");
   const { workspace, supabase, user, role } = await getWorkspace();
+  // `isAdmin` queda solo para lo que depende de "ve todo" (el aviso al reasignarse). Cada boton pide SU permiso.
   const isAdmin = isAdminRole(role);
 
   const [
@@ -402,7 +406,7 @@ export default async function ContactDetailPage({
         <div className="mt-4">
           <ContactActions
             contactId={contact.id}
-            isAdmin={isAdmin}
+            isAdmin={perms.can("contacts.delete")}
             doNotContact={contact.do_not_contact}
             doNotContactReason={contact.do_not_contact_reason}
           />
@@ -417,7 +421,7 @@ export default async function ContactDetailPage({
             <LinkSuggestionBanner
               contactId={contact.id}
               suggestions={suggestions}
-              isAdmin={isAdmin}
+              isAdmin={perms.can("contacts.merge")}
             />
           </div>
         )}
@@ -489,7 +493,7 @@ export default async function ContactDetailPage({
 
             <ContactSequencesSection
               enrollments={enrollments}
-              canEnroll={isAdmin}
+              canEnroll={perms.can("sequences.edit")}
               contact={{
                 id: contact.id,
                 name: contact.display_name || contact.email || "Contacto sin nombre",
@@ -603,7 +607,7 @@ export default async function ContactDetailPage({
                   type: f.type,
                   value: valuesByField.get(f.id) ?? "",
                 }))}
-                canManage={isAdmin}
+                canManage={perms.can("custom_fields.manage")}
               />
             </Section>
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient } from "@/lib/supabase/server";
 import { checkMemberFlow } from "@/lib/flow-engine/member-flow-db";
 
@@ -28,6 +29,9 @@ export async function GET(
   if (!workspaceId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("flows.view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
   const { data: flow, error } = await supabase
     .from("flows")
     .select("*, triggers(*)")
@@ -50,6 +54,9 @@ export async function PUT(
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json();
 
@@ -90,6 +97,9 @@ export async function DELETE(
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("flows.edit"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { error } = await supabase
     .from("flows")

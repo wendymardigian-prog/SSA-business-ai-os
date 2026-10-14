@@ -39,6 +39,7 @@ export function ResponsesTable({
   filters,
   loadError,
   canManage,
+  canExport = false,
   timeZone,
 }: {
   /** La barra del editor (la arma el servidor: plano formularios-ui, F7). */
@@ -53,6 +54,8 @@ export function ResponsesTable({
   filters: { from: string; to: string; status: string; contact: string };
   loadError: boolean;
   canManage: boolean;
+  /** `data.export`: sin esto no se ofrece «Exportar CSV» (Equipo y roles, F24). */
+  canExport?: boolean;
   timeZone: string;
 }) {
   const url = useUrlFilters();
@@ -90,12 +93,15 @@ export function ResponsesTable({
     <div className="flex h-full min-h-0 flex-col">
       {header}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
-        <div className="mb-3 flex items-center justify-end">
-          <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
+        {/* Exportar es `canExport` (equipo y roles, M2): quien no puede, no ve el boton. */}
+        {canExport && (
+          <div className="mb-3 flex items-center justify-end">
+            <button type="button" onClick={exportCsv} disabled={exporting || total === 0} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-2.5 text-sm hover:bg-accent disabled:opacity-50">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
             Exportar CSV
           </button>
-        </div>
+          </div>
+        )}
 
         {message && (
           <div className="mb-3" role="status">

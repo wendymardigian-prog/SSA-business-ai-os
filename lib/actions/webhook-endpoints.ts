@@ -17,15 +17,15 @@ import type { Json } from "@/lib/types/database";
 /**
  * Webhooks entrantes: crear, editar, pausar, regenerar, borrar, escuchar, ejemplo y reprocesar.
  *
- * Permiso: `flows.edit` en TODAS (Owner/Admin y los roles que lo tengan, incluido el Member de
- * sistema). La lista de solo lectura para `integrations.manage` no escribe nada. El workspace sale
+ * Permiso: `webhooks.manage` en TODAS (Owner/Admin y los roles que la tengan; el Member de sistema
+ * NO la tiene, cambio aprobado). La lista de solo lectura para `integrations.view`/`manage` no escribe nada. El workspace sale
  * SIEMPRE de la sesion, nunca del pedido: cada consulta lleva `workspace_id = <el de la sesion>`.
  *
  * Escriben con el cliente de servicio (las tablas no tienen policies de escritura para
  * `authenticated`) y todo cambio va a `audit_log`, sin el token ni el secreto.
  */
 
-const EDIT = "flows.edit";
+const EDIT = "webhooks.manage";
 const NO_PERMISSION = "No tenés permiso para administrar webhooks. Pedile a un Admin que te dé el permiso de editar automatizaciones.";
 const NOT_FOUND = "No encontré ese endpoint. Puede que ya lo hayan borrado.";
 const LIST_PATH = "/dashboard/settings/integrations/webhooks";
@@ -324,7 +324,7 @@ export async function reprocessWebhookInbounds(items: { id: string; reprocessCou
   return { ok: true, reprocessed, skipped };
 }
 
-/** El detalle de UN envio (con el payload) para el cajon del historial. Solo `flows.edit`. */
+/** El detalle de UN envio (con el payload) para el cajon del historial. Solo `webhooks.manage`. */
 export async function getWebhookInboundDetail(inboundId: string): Promise<WebhookActionResult<{ detail: InboundDetailData }>> {
   const g = await guard();
   if (!g.ok) return g;

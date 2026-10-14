@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getWorkspace } from "@/lib/workspace";
 import { isAdminRole } from "@/lib/auth/roles";
+import { getMemberAction } from "@/lib/auth/guards";
+import { canReplyOn } from "@/lib/inbox/channel-access";
 import { approveDraft, discardDraft, regenerateDraft, type DraftActionResult } from "@/lib/agent/drafts/actions";
 import { draftOwner, loadLiveDraft, type DraftQueueRow } from "@/lib/agent/drafts/queue-query";
 import { LIVE_DRAFT_STATUSES } from "@/lib/agent/drafts/types";
@@ -25,6 +27,20 @@ async function session() {
   return { supabase, user };
 }
 
+const NO_REPLY: DraftActionResult = { ok: false, code: "unknown", error: "Tu rol no puede responder por este canal." };
+
+/**
+ * Equipo y roles (F20): mandar, descartar o regenerar un borrador es operar la conversacion, asi que pide
+ * `inbox.<canal>.reply` del canal de ESE borrador. La RLS sigue acotando cuales borradores se ven.
+ */
+async function canReplyToDraft(supabase: Awaited<ReturnType<typeof createClient>>, draftId: string): Promise<boolean> {
+  const access = await getMemberAction();
+  if (!access) return false;
+  const { data } = await supabase.from("agent_drafts").select("channels(platform)").eq("id", draftId).maybeSingle();
+  const channel = (data as { channels?: { platform?: string } | null } | null)?.channels;
+  return canReplyOn(access.can, channel?.platform ?? null);
+}
+
 const SESSION_EXPIRED: DraftActionResult = { ok: false, code: "unknown", error: "Tu sesión venció. Volvé a entrar." };
 
 function revalidate() {
@@ -38,6 +54,7 @@ export async function sendDraftAction(
 ): Promise<DraftActionResult> {
   const { supabase, user } = await session();
   if (!user) return SESSION_EXPIRED;
+  if (!(await canReplyToDraft(supabase, draftId))) return NO_REPLY;
   const service = await createServiceClient();
   const result = await approveDraft({
     user: supabase,
@@ -54,6 +71,7 @@ export async function sendDraftAction(
 export async function discardDraftAction(draftId: string, reason?: string | null): Promise<DraftActionResult> {
   const { supabase, user } = await session();
   if (!user) return SESSION_EXPIRED;
+  if (!(await canReplyToDraft(supabase, draftId))) return NO_REPLY;
   const result = await discardDraft({ user: supabase, userId: user.id, draftId, reason });
   revalidate();
   return result;
@@ -62,6 +80,7 @@ export async function discardDraftAction(draftId: string, reason?: string | null
 export async function regenerateDraftAction(draftId: string, instruction?: string | null): Promise<DraftActionResult> {
   const { supabase, user } = await session();
   if (!user) return SESSION_EXPIRED;
+  if (!(await canReplyToDraft(supabase, draftId))) return NO_REPLY;
   const service = await createServiceClient();
   const result = await regenerateDraft({ user: supabase, service, userId: user.id, draftId, instruction });
   revalidate();

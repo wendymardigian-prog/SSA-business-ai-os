@@ -19,20 +19,20 @@ const ROOT = join(process.cwd(), "app/(dashboard)/dashboard/settings");
 
 /** Las siete pestañas (Contenido se sumó con F89 y hoy es Productos; Tareas se mudó a Agentes IA), con el archivo que resuelve la ruta y el guard que usa hoy. */
 const PAGES: Record<string, { file: string; guardMarker: string }> = {
-  general: { file: "page.tsx", guardMarker: "requireWorkspaceAdmin" },
-  team: { file: "team/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  general: { file: "page.tsx", guardMarker: 'requireAnyPermission(["settings.general", "sales.settings"])' },
+  team: { file: "team/page.tsx", guardMarker: 'requirePermission("team.view")' },
   roles: { file: "roles/page.tsx", guardMarker: "listRoles" },
-  "custom-fields": { file: "custom-fields/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  "custom-fields": { file: "custom-fields/page.tsx", guardMarker: 'requirePermission("custom_fields.manage")' },
   // Banca v2 (F4): sin guard de pagina (la abre cualquier miembro), pero ahora
   // con los permisos resueltos para decidir si ofrece crear y editar.
   recursos: { file: "recursos/page.tsx", guardMarker: "getPermissionContext" },
   // Productos (antes Contenido) es la unica pestaña que pide un permiso fino y
-  // no un cargo (F89): un rol personalizado con `settings.manage` entra, un
+  // no un cargo (F89): un rol personalizado con `products.manage` entra, un
   // admin al que se lo sacaron no.
-  productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
+  productos: { file: "productos/page.tsx", guardMarker: 'requirePermission("products.manage")' },
   // Reglas de asignacion (Ventas, F13): tambien por permiso fino, como Productos.
-  asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("settings.manage")' },
-  integrations: { file: "integrations/page.tsx", guardMarker: "requireWorkspaceAdmin" },
+  asignacion: { file: "asignacion/page.tsx", guardMarker: 'requirePermission("assignment.manage")' },
+  integrations: { file: "integrations/page.tsx", guardMarker: "integrationSections(ctx.can)" },
 };
 
 describe("Bloque S — guard de cada pestaña (no cambia en S1-S7)", () => {
@@ -53,14 +53,15 @@ describe("Bloque S — guard de cada pestaña (no cambia en S1-S7)", () => {
 function visibleTabs(role: "owner" | "admin" | "member", permissions: RolePermissions) {
   const admin = isAdminRole(role);
   return {
-    general: admin,
-    team: admin,
+    general: can(permissions, "settings.general") || can(permissions, "sales.settings"),
+    team: can(permissions, "team.view"),
     roles: can(permissions, "roles.manage"),
-    "custom-fields": admin,
+    "custom-fields": can(permissions, "custom_fields.manage"),
     recursos: true,
-    productos: can(permissions, "settings.manage"),
-    asignacion: can(permissions, "settings.manage"),
-    integrations: admin,
+    productos: can(permissions, "products.manage"),
+    asignacion: can(permissions, "assignment.manage"),
+    // La pestaña se ve con alguna de las tres claves; la pagina en si la abre todo el equipo (Mis conexiones, M8).
+    integrations: can(permissions, "integrations.view") || can(permissions, "integrations.manage") || can(permissions, "channels.manage"),
   };
 }
 
@@ -121,10 +122,10 @@ describe("Bloque S — qué pestaña ve cada rol (caracterización)", () => {
     });
   });
 
-  it("Member con rol personalizado y settings.manage ve Recursos, Productos y Asignación, nada mas", () => {
+  it("Member con rol personalizado con products.manage y assignment.manage ve Recursos, Productos y Asignación, nada mas", () => {
     // Contenido es la excepcion: mira el permiso, no el cargo (F89).
     const customPermissions: RolePermissions = {
-      keys: ["settings.manage"],
+      keys: ["products.manage", "assignment.manage"],
       scopes: { leads: "own", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" },
     };
     expect(visibleTabs("member", customPermissions)).toEqual({

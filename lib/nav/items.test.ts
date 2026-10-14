@@ -1,3 +1,4 @@
+import { ALL_PERMISSION_KEYS, SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -56,7 +57,6 @@ describe("lo que entro al menú (bloque N, N1)", () => {
 
     expect(ajustes).toBeDefined();
     expect(ajustes?.href).toBe("/dashboard/settings");
-    expect(ajustes?.adminOnly).toBe(false);
     expect(ajustes?.requires).toBe("settings");
     expect(ajustes?.group).toBe("herramientas");
     expect(ajustes?.alsoActiveOn).toEqual(["/dashboard/channels"]);
@@ -73,12 +73,12 @@ describe("lo que entro al menú (bloque N, N1)", () => {
 
 describe("Contenido en el menu (F39)", () => {
   it("esta, y lo ve cualquiera", () => {
-    // Un Member crea ideas y piezas: si fuera adminOnly no podria ni entrar.
+    // Un Member crea ideas y piezas: pide content.view, que el Member tiene.
     const contenido = NAV_ITEMS.find((i) => i.name === "Contenido");
 
     expect(contenido).toBeDefined();
     expect(contenido?.href).toBe("/dashboard/content");
-    expect(contenido?.adminOnly).toBe(false);
+    expect(contenido?.permissions).toEqual(["content.view"]);
   });
 
   it("es el primer item del grupo Adquisición (bloque N: antes iba justo despues de Flows)", () => {
@@ -98,7 +98,6 @@ describe("Agenda en el menu (F8)", () => {
   it("esta, va despues de Contactos (antes Contacts) y abre directo las agendas (sin sub-menu)", () => {
     expect(agenda).toBeDefined();
     expect(agenda?.href).toBe("/dashboard/agenda");
-    expect(agenda?.adminOnly).toBe(false);
     expect(agenda?.group).toBe("ventas");
     const nombres = NAV_ITEMS.map((i) => i.name);
     expect(nombres.indexOf("Agenda")).toBe(nombres.indexOf("Contactos") + 1);
@@ -107,21 +106,26 @@ describe("Agenda en el menu (F8)", () => {
   it("se muestra con scheduling.use o bookings.view, y a nadie mas", () => {
     expect(agenda?.permissions).toEqual(["scheduling.use", "bookings.view"]);
     const names = (keys: string[]) =>
-      visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+      visibleNavItems(NAV_ITEMS, { permissionKeys: keys }).map((i) => i.name);
     expect(names(["scheduling.use"])).toContain("Agenda");
     expect(names(["bookings.view"])).toContain("Agenda");
     expect(names(["contacts.view"])).not.toContain("Agenda");
     // Un admin lo ve siempre, y sigue sin ver nada que no sea suyo por rol.
-    expect(visibleNavItems(NAV_ITEMS, { isAdmin: true, permissionKeys: [] }).map((i) => i.name)).toContain("Agenda");
+    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: ALL_PERMISSION_KEYS }).map((i) => i.name)).toContain("Agenda");
   });
 
-  it("los items sin `permissions` siguen dependiendo solo de adminOnly", () => {
+  it("el menu del Member de sistema es el de siempre (cada item pide un permiso que el Member tiene)", () => {
     // Antes: ["Dashboards","Flows","Contenido","Inbox","Contacts","Agentes"].
     // Los nombres cambiaron (bloque N) y el orden ahora sigue a los grupos.
-    const member = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] }).map((i) => i.name);
+    // Con SUS permisos reales y no con una lista vacia: ahora cada item pide una clave.
+    const member = visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys }).map((i) => i.name);
     // Plano formularios-ui (D4): Recursos ya no es un item (se llega por Ajustes) y Ajustes pide su bandera,
     // que aca no se pasa: un viewer sin flags no lo ve.
-    expect(member).toEqual(["Dashboards", "Bandeja", "Contenido", "Contactos", "Automatizaciones", "Agentes IA"]);
+    expect(member).toEqual(["Dashboards", "Bandeja", "Tareas", "Contenido", "Contactos", "Agenda", "Llamadas", "Ventas", "Automatizaciones", "Formularios", "Agentes IA"]);
+    // Sin ningun permiso (y sin banderas), no queda nada.
+    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: [] }).map((i) => i.name)).toEqual([]);
+    // Con la bandera de Ajustes, el Member suma Ajustes (llega a Recursos).
+    expect(visibleNavItems(NAV_ITEMS, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys, flags: { settings: true } }).map((i) => i.name)).toContain("Ajustes");
   });
 });
 
@@ -129,14 +133,14 @@ describe("Ventas en el menu (Etapa 5)", () => {
   const ventas = NAV_ITEMS.find((i) => i.name === "Ventas");
 
   it("va en el grupo Ventas, despues de Llamadas, y abre la lista sin engranaje", () => {
-    expect(ventas).toMatchObject({ href: "/dashboard/ventas", group: "ventas", adminOnly: false, permissions: ["sales.view"] });
+    expect(ventas).toMatchObject({ href: "/dashboard/ventas", group: "ventas", permissions: ["sales.view"] });
     const nombres = NAV_ITEMS.map((i) => i.name);
     expect(nombres.indexOf("Ventas")).toBe(nombres.indexOf("Llamadas") + 1);
   });
 
   it("se ve con sales.view y no sin el", () => {
     const names = (keys: string[]) =>
-      visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+      visibleNavItems(NAV_ITEMS, { permissionKeys: keys }).map((i) => i.name);
     expect(names(["sales.view"])).toContain("Ventas");
     expect(names(["sales.manage"])).not.toContain("Ventas");
     expect(names([])).not.toContain("Ventas");
@@ -147,13 +151,13 @@ describe("Llamadas en el menu", () => {
   const llamadas = NAV_ITEMS.find((i) => i.name === "Llamadas");
 
   it("va debajo de Agenda, en Ventas, con el permiso calls.view", () => {
-    expect(llamadas).toMatchObject({ href: "/dashboard/llamadas", icon: "PhoneCall", group: "ventas", adminOnly: false, permissions: ["calls.view"] });
+    expect(llamadas).toMatchObject({ href: "/dashboard/llamadas", icon: "PhoneCall", group: "ventas", permissions: ["calls.view"] });
     const nombres = NAV_ITEMS.map((i) => i.name);
     expect(nombres.indexOf("Llamadas")).toBe(nombres.indexOf("Agenda") + 1);
   });
 
   it("aparece con calls.view y a nadie mas", () => {
-    const names = (keys: string[]) => visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: keys }).map((i) => i.name);
+    const names = (keys: string[]) => visibleNavItems(NAV_ITEMS, { permissionKeys: keys }).map((i) => i.name);
     expect(names(["calls.view"])).toContain("Llamadas");
     expect(names(["calls.edit"])).not.toContain("Llamadas");
     expect(names([])).not.toContain("Llamadas");
@@ -168,14 +172,13 @@ describe("Formularios en el menu", () => {
       href: "/dashboard/formularios",
       icon: "ClipboardList",
       group: "herramientas",
-      adminOnly: false,
       permissions: ["forms.view"],
     });
   });
 
   it("aparece con forms.view y a nadie mas; un admin siempre lo ve", () => {
     const names = (isAdmin: boolean, keys: string[]) =>
-      visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: keys }).map((i) => i.name);
+      visibleNavItems(NAV_ITEMS, { permissionKeys: isAdmin ? ALL_PERMISSION_KEYS : keys }).map((i) => i.name);
     expect(names(false, ["forms.view"])).toContain("Formularios");
     expect(names(false, ["forms.manage"])).not.toContain("Formularios");
     expect(names(false, [])).not.toContain("Formularios");
@@ -186,10 +189,9 @@ describe("Formularios en el menu", () => {
 describe("Social en el menu (F78)", () => {
   const social = NAV_ITEMS.find((i) => i.name === "Social");
   const names = (isAdmin: boolean, keys: string[]) =>
-    visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: keys }).map((i) => i.name);
+    visibleNavItems(NAV_ITEMS, { permissionKeys: isAdmin ? ALL_PERMISSION_KEYS : keys }).map((i) => i.name);
 
   it("no es por cargo: se muestra con el permiso social.view", () => {
-    expect(social?.adminOnly).toBe(false);
     expect(social?.permissions).toEqual(["social.view"]);
   });
 
@@ -298,18 +300,17 @@ describe("navSections: agrupa items ya filtrados (bloque N, N1)", () => {
   });
 
   it("un grupo sin ningun item visible no aparece, y con el su titulo", () => {
-    // Simula una persona sin permisos y sin la bandeja de Ajustes: sin Social, Agenda, Llamadas ni Ventas.
-    const sinNada = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] });
-    const secciones = navSections(sinNada);
+    // Simula lo que ve alguien con solo contactos: sin Agenda, Llamadas ni Ventas (sin sus permisos).
+    const soloContactos = visibleNavItems(NAV_ITEMS, { permissionKeys: ["contacts.view"] });
+    const secciones = navSections(soloContactos);
 
-    // "ventas" solo tenia Contactos sin los permisos.
+    // "ventas" tenia Contactos, Agenda, Llamadas y Ventas; sin los permisos le queda Contactos.
     const ventas = secciones.find((s) => s.group === "ventas");
     expect(ventas?.items.map((i) => i.name)).toEqual(["Contactos"]);
 
-    // Plano formularios-ui (F1): "Herramientas" no se queda vacio (Automatizaciones y Agentes IA no piden
-    // permiso). Para que un grupo desaparezca hay que quitarle todos los items.
-    const soloInicio = navSections(sinNada.filter((i) => i.group === "inicio"));
-    expect(soloInicio.some((s) => s.group === "herramientas")).toBe(false);
+    // Plano formularios-ui (F1): "Herramientas" (Automatizaciones, Formularios, Agentes IA y Ajustes) pide
+    // permisos y la bandeja de Ajustes; sin nada de eso se queda vacia y no aparece, con su titulo.
+    expect(secciones.some((s) => s.group === "herramientas")).toBe(false);
   });
 
   it("Herramientas es la unica seccion con el titulo colapsable", () => {
@@ -372,12 +373,12 @@ describe("Mi reporte del día (EOD, E10)", () => {
   const item = NAV_ITEMS.find((i) => i.name === "Mi reporte del día")!;
 
   it("está, con ícono de checklist, y no pide permiso: pide estar en la audiencia", () => {
-    expect(item).toMatchObject({ href: "/dashboard/eod", icon: "ListChecks", adminOnly: false, requires: "eod" });
+    expect(item).toMatchObject({ href: "/dashboard/eod", icon: "ListChecks", requires: "eod" });
     expect(item.permissions).toBeUndefined();
   });
 
   it("se ve solo con la condición del servidor, también para un admin", () => {
-    const names = (flags?: { eod?: boolean }, isAdmin = false) => visibleNavItems(NAV_ITEMS, { isAdmin, permissionKeys: [], flags }).map((i) => i.name);
+    const names = (flags?: { eod?: boolean }, isAdmin = false) => visibleNavItems(NAV_ITEMS, { permissionKeys: isAdmin ? ALL_PERMISSION_KEYS : [], flags }).map((i) => i.name);
     expect(names({ eod: true })).toContain("Mi reporte del día");
     expect(names({ eod: false })).not.toContain("Mi reporte del día");
     expect(names(undefined, true)).not.toContain("Mi reporte del día");
@@ -386,23 +387,27 @@ describe("Mi reporte del día (EOD, E10)", () => {
 });
 
 describe("Ajustes en el menu (plano formularios-ui, D4)", () => {
-  const names = (viewer: { isAdmin: boolean; settings?: boolean }) =>
-    visibleNavItems(NAV_ITEMS, { isAdmin: viewer.isAdmin, permissionKeys: [], flags: { settings: viewer.settings ?? false } }).map((i) => i.name);
+  const names = (viewer: { admin: boolean; settings?: boolean }) =>
+    visibleNavItems(NAV_ITEMS, { permissionKeys: viewer.admin ? ALL_PERMISSION_KEYS : [], flags: { settings: viewer.settings ?? false } }).map((i) => i.name);
 
   it("se ve con la bandera `settings`, y sin ella no (tambien para un admin)", () => {
-    expect(names({ isAdmin: false, settings: true })).toContain("Ajustes");
-    expect(names({ isAdmin: true, settings: true })).toContain("Ajustes");
-    expect(names({ isAdmin: true, settings: false })).not.toContain("Ajustes");
+    expect(names({ admin: false, settings: true })).toContain("Ajustes");
+    expect(names({ admin: true, settings: true })).toContain("Ajustes");
+    expect(names({ admin: true, settings: false })).not.toContain("Ajustes");
   });
 
   it("lleva a General para un admin y a Recursos para quien solo ve esa pestaña", () => {
     const ajustes = NAV_ITEMS.find((i) => i.name === "Ajustes")!;
-    expect(navItemHref(ajustes, { isAdmin: true })).toBe("/dashboard/settings");
-    expect(navItemHref(ajustes, { isAdmin: false })).toBe("/dashboard/settings/recursos");
+    expect(navItemHref(ajustes, { permissionKeys: ALL_PERMISSION_KEYS })).toBe("/dashboard/settings");
+    expect(navItemHref(ajustes, { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys })).toBe("/dashboard/settings/recursos");
+    // Un rol personalizado con solo `products.manage` entra por Recursos: es la primera pestaña que ve.
+    expect(navItemHref(ajustes, { permissionKeys: ["products.manage"] })).toBe("/dashboard/settings/recursos");
+    // Con una clave de General entra por General.
+    expect(navItemHref(ajustes, { permissionKeys: ["settings.general"] })).toBe("/dashboard/settings");
   });
 
   it("el resto de los items lleva a su propio href", () => {
     const formularios = NAV_ITEMS.find((i) => i.name === "Formularios")!;
-    expect(navItemHref(formularios, { isAdmin: false })).toBe("/dashboard/formularios");
+    expect(navItemHref(formularios, { permissionKeys: [] })).toBe("/dashboard/formularios");
   });
 });

@@ -33,7 +33,6 @@ import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ProfileMenu, type ProfileUser } from "@/components/profile-menu";
 import { useHtmlClass } from "@/components/use-html-class";
-import { isAdminRole } from "@/lib/auth/roles";
 import type { PendingDraftCounts } from "@/lib/actions/agent-drafts";
 import { useDraftCounts } from "@/components/drafts/use-draft-counts";
 import { draftsQueueHref } from "@/lib/agent/drafts/destination";
@@ -48,8 +47,8 @@ interface WorkspaceItem {
   role: string;
 }
 
-// adminOnly: la pantalla ademas esta protegida por requireWorkspaceAdmin y por
-// RLS. Ocultarla del menu es para no ofrecerle a un Member un link que rebota.
+// Cada item pide el permiso de lo que abre (lib/nav/items.ts): la pantalla ademas se protege
+// con su guard y con la RLS. Ocultarla del menu es para no ofrecer un link que rebota.
 //
 // Borradores NO esta en el menu (Bloque 2d): el modo borrador es una rampa para
 // confiar en el agente, no una seccion permanente. El dia que un canal vuelve a
@@ -71,7 +70,6 @@ export const navigation = NAV_ITEMS.map((item) => ({
   href: item.href,
   permissions: item.permissions,
   icon: ICONS[item.icon] ?? LayoutGrid,
-  adminOnly: item.adminOnly,
   group: item.group,
   alsoActiveOn: item.alsoActiveOn,
   requires: item.requires,
@@ -209,8 +207,7 @@ export function NavLinks({
   collapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const isAdmin = isAdminRole(role);
-  const navItems = visibleNavItems(navigation, { isAdmin, permissionKeys, flags: navFlags });
+  const navItems = visibleNavItems(navigation, { permissionKeys: permissionKeys ?? [], flags: navFlags });
   // El agrupamiento se calcula sobre los items YA filtrados: un grupo sin
   // nada visible no aparece, y con el su titulo (N1).
   const sections = navSections(navItems);
@@ -288,7 +285,7 @@ export function NavLinks({
                   // contenedor relativo.
                   <div key={item.name} className="relative">
                     <Link
-                      href={navItemHref(item, { isAdmin })}
+                      href={navItemHref(item, { permissionKeys: permissionKeys ?? [] })}
                       onClick={onNavigate}
                       aria-current={isActive ? "page" : undefined}
                       title={collapsed ? navItemTooltip(item) : undefined}

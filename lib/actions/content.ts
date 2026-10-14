@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionAction, getPermissionContext } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { validateIdea, type IdeaInput } from "@/lib/content/ideas";
 import { checkTaxonomyRefs } from "@/lib/content/classification-refs";
@@ -54,7 +54,7 @@ async function contentContext() {
     user,
     supabase,
     perms: (isAuthor: boolean): ContentPermissions => ({
-      create: true,
+      create: can("content.create"),
       approve: can("content.approve"),
       publish: can("content.publish"),
       isAuthor,
@@ -68,6 +68,8 @@ async function contentContext() {
 export async function createIdea(input: IdeaInput): Promise<ContentActionResult<{ id: string }>> {
   const checked = validateIdea(input);
   if (!checked.ok) return checked;
+  // Crear ideas y piezas pide `content.create` (Equipo y roles, F24); el Member de sistema la tiene.
+  if (!(await getPermissionAction("content.create"))) return { ok: false, error: "No tenés permiso para crear contenido" };
 
   const { workspace, user, supabase } = await contentContext();
 
@@ -301,6 +303,7 @@ export async function createPost(
 ): Promise<ContentActionResult<{ id: string }>> {
   const title = (input.title ?? "").trim();
   if (!title) return { ok: false, error: "La pieza necesita un titulo" };
+  if (!(await getPermissionAction("content.create"))) return { ok: false, error: "No tenés permiso para crear contenido" };
 
   const { workspace, user, supabase } = await contentContext();
 

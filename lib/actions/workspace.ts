@@ -2,8 +2,8 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { WORKSPACE_COOKIE } from "@/lib/workspace";
 import { isValidTimeZone } from "@/lib/timezone";
@@ -52,15 +52,15 @@ export async function switchWorkspace(workspaceId: string) {
  * audit para una sola decision de la persona.
  *
  * Mismo criterio que el guardado de mensajes: es configuracion del workspace,
- * asi que es de Owner/Admin.
+ * asi que pide `settings.general`.
  */
 export async function updateChatMediaSettings(input: {
   enabled: boolean;
   retentionDays: number;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden cambiar la configuración de la media del chat" };
+    return { ok: false, error: "No tenés permiso para cambiar la configuración de la media del chat" };
   }
 
   // Se valida en el servidor y no solo en el select: la accion es una puerta
@@ -77,7 +77,9 @@ export async function updateChatMediaSettings(input: {
     .eq("id", workspace.id)
     .maybeSingle();
 
-  const { error } = await supabase
+  // `workspaces` solo lo escribe un Admin por RLS: aca se escribe con el cliente de servicio, DESPUES del guard
+  // y siempre sobre el workspace de la sesion (nunca uno que venga del navegador).
+  const { error } = await (await createServiceClient())
     .from("workspaces")
     .update({ persist_chat_media: input.enabled, chat_media_retention_days: input.retentionDays })
     .eq("id", workspace.id);
@@ -115,9 +117,9 @@ export async function updateChatMediaSettings(input: {
 export async function updateWorkspaceTimezone(
   timezone: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden cambiar la zona horaria" };
+    return { ok: false, error: "No tenés permiso para cambiar la zona horaria" };
   }
   if (!isValidTimeZone(timezone)) {
     return { ok: false, error: "Esa zona horaria no es válida" };
@@ -131,7 +133,7 @@ export async function updateWorkspaceTimezone(
     .eq("id", workspace.id)
     .single();
 
-  const { error } = await supabase
+  const { error } = await (await createServiceClient())
     .from("workspaces")
     .update({ timezone })
     .eq("id", workspace.id);
@@ -171,8 +173,8 @@ export async function updateWorkspaceSettings(settings: {
   name?: string;
   globalKeywords?: unknown[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar la configuracion" };
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: "No tenés permiso para cambiar la configuración" };
 
   const { workspace, supabase, user } = ctx;
 
@@ -203,7 +205,7 @@ export async function updateWorkspaceSettings(settings: {
     .eq("id", workspace.id)
     .single();
 
-  const { error } = await supabase.from("workspaces").update(patch).eq("id", workspace.id);
+  const { error } = await (await createServiceClient()).from("workspaces").update(patch).eq("id", workspace.id);
 
   if (error) {
     console.error("[workspace] no pude guardar la configuracion:", error.message);
@@ -241,8 +243,8 @@ export async function updateWorkspaceSettings(settings: {
 export async function updateBackgroundSettings(
   raw: unknown,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar las tareas en segundo plano" };
+  const ctx = await getPermissionAction("ai_tasks.manage");
+  if (!ctx) return { ok: false, error: "No tenés permiso para cambiar las tareas en segundo plano" };
   const { workspace, supabase, user } = ctx;
 
   const { validateBackgroundSettings, mergeBackgroundSettings } = await import("@/lib/background/settings");
@@ -252,7 +254,7 @@ export async function updateBackgroundSettings(
   const { data: prev } = await supabase.from("workspaces").select("ai_background_settings").eq("id", workspace.id).single();
   // Se conserva lo demas que hay en la columna (las tareas de Llamadas viven ahi).
   const merged = mergeBackgroundSettings((prev as { ai_background_settings?: unknown } | null)?.ai_background_settings, validated.settings!);
-  const { error } = await supabase.from("workspaces").update({ ai_background_settings: merged as unknown as Json }).eq("id", workspace.id);
+  const { error } = await (await createServiceClient()).from("workspaces").update({ ai_background_settings: merged as unknown as Json }).eq("id", workspace.id);
   if (error) {
     console.error("[workspace] no pude guardar las tareas en segundo plano:", error.message);
     return { ok: false, error: "No pude guardar el cambio." };

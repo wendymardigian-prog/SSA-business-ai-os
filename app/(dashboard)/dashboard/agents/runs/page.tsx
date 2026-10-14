@@ -1,6 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
-import { getPermissionContext } from "@/lib/auth/guards";
-import { isAdminRole } from "@/lib/auth/roles";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { RUNS_PAGE_SIZE, loadRuns } from "@/lib/agent/runs-query";
 import { loadRunsScreenInputs } from "@/lib/agent/runs-screen-data";
@@ -23,8 +22,8 @@ export default async function AgentRunsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { workspace, role, supabase } = await getWorkspace();
-  const isAdmin = isAdminRole(role);
+  await requirePermission("agents.view");
+  const { workspace, supabase } = await getWorkspace();
   const service = await createServiceClient();
   const permissions = await getPermissionContext();
   const includeCost = permissions.can("ai_costs.view");
@@ -57,7 +56,7 @@ export default async function AgentRunsPage({
     <div className="flex h-full flex-col">
       <PageHeader route="/dashboard/agents/runs" filters={<AiPeriodControl timezone={timeZone} />} />
       <div className="flex-1 overflow-auto px-4 py-6 md:px-8">
-        <RunsScreen rows={rows} total={total} pageSize={RUNS_PAGE_SIZE} filters={filters} showCost={includeCost} isAdmin={isAdmin} options={options} />
+        <RunsScreen rows={rows} total={total} pageSize={RUNS_PAGE_SIZE} filters={filters} showCost={includeCost} isAdmin={permissions.can("agents.edit")} canExport={permissions.can("data.export")} options={options} />
       </div>
     </div>
   );

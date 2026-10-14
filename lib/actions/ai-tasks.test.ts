@@ -35,13 +35,17 @@ function fakeSupabase() {
   };
 }
 
-vi.mock("@/lib/auth/guards", () => ({
-  getAdminContext: async () => ({
-    workspace: { id: WORKSPACE_ID, ai_task_prompt_active: {}, ai_task_models: {} },
-    supabase: fakeSupabase(),
-    user: { id: "user-1" },
-  }),
-}));
+// Quien edita una tarea tiene ai_tasks.manage (Equipo y roles, F23): el mismo contexto responde a las dos formas del guard.
+const taskCtx = async () => ({
+  workspace: { id: WORKSPACE_ID, ai_task_prompt_active: {}, ai_task_models: {} },
+  supabase: fakeSupabase(),
+  user: { id: "user-1" },
+});
+// `workspaces` se escribe con el cliente de servicio despues del guard (su RLS sigue en Admin): el mismo falso responde.
+vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => fakeSupabase() }));
+
+// Lazy: la fabrica del mock se evalua al importar el modulo, antes de que exista `taskCtx`.
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: () => taskCtx(), getAnyPermissionAction: () => taskCtx() }));
 
 vi.mock("@/lib/ai/provider", () => ({
   listConnectedAiProviders: async () => [{ provider: "anthropic", label: "Anthropic", defaultModel: "m", models: ["m"] }],

@@ -7,7 +7,6 @@ import { Sidebar } from "@/components/sidebar";
 import { DashboardChromeProvider } from "@/components/dashboard-chrome";
 import { TimezoneBootstrap } from "@/components/timezone-bootstrap";
 import { eodNavFlag } from "@/lib/eod/nav-flag";
-import { isAdminRole } from "@/lib/auth/roles";
 import { visibleSettingsTabs } from "@/lib/settings/tabs";
 
 export default async function DashboardLayout({
@@ -37,7 +36,7 @@ export default async function DashboardLayout({
   ]);
   // "Ajustes" se ve para quien tenga al menos una pestaña (plano formularios-ui, D4): Recursos e
   // Integraciones ya no son items del menu, se llega por ahi.
-  const navFlags = { eod: hasEod, settings: visibleSettingsTabs({ isAdmin: isAdminRole(role) }).length > 0 };
+  const navFlags = { eod: hasEod, settings: visibleSettingsTabs(permissionContext.can).length > 0 };
   const permissionKeys = permissionContext.permissions.keys;
   const viewerTimezone = await resolveViewerTimezone(workspace.timezone);
 

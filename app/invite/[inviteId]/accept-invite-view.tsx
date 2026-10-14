@@ -24,6 +24,7 @@ export function AcceptInviteView({
   workspaceName,
   inviterName,
   role,
+  roleName,
   email,
   isLoggedIn,
   currentUserEmail,
@@ -32,6 +33,8 @@ export function AcceptInviteView({
   workspaceName: string;
   inviterName: string;
   role: string;
+  /** El nombre del rol con el que entra (puede ser personalizado). */
+  roleName?: string | null;
   email: string;
   isLoggedIn: boolean;
   currentUserEmail: string | null;
@@ -99,7 +102,7 @@ export function AcceptInviteView({
           <div className="mt-2 flex items-center justify-center gap-1.5">
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
               {roleIcons[role] ?? roleIcons.member}
-              {roleLabels[role] ?? role}
+              {roleName ?? roleLabels[role] ?? role}
             </span>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">

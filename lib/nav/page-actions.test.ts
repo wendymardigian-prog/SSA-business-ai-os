@@ -1,3 +1,4 @@
+import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { describe, it, expect } from "vitest";
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -43,8 +44,8 @@ describe("titulo y explicacion de cada pantalla (F7)", () => {
 });
 
 describe("acciones de la barra", () => {
-  const admin = { isAdmin: true };
-  const member = { isAdmin: false };
+  const admin = { permissionKeys: SYSTEM_ROLE_PERMISSIONS.admin.keys };
+  const member = { permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys };
 
   it("una pantalla sin acciones devuelve una lista vacia, no rompe", () => {
     expect(pageActions("/dashboard/drafts", admin)).toEqual([]);
@@ -56,20 +57,23 @@ describe("acciones de la barra", () => {
     expect(pageActions("/dashboard/knowledge", admin).map((a) => a.id)).toEqual(["upload"]);
   });
 
-  it("Conocimiento se abre desde la barra de Agentes IA: lo ven Owner y Admin, un Member no (plano formularios-ui, F4)", () => {
+  it("Conocimiento se abre desde la barra de Agentes IA: lo ve quien tiene knowledge.view (Owner y Admin), un Member no (plano formularios-ui, F4)", () => {
     expect(pageActions("/dashboard/agents", admin)).toEqual([
-      { id: "knowledge", label: "Conocimiento", kind: "secondary", href: "/dashboard/knowledge", adminOnly: true },
+      { id: "knowledge", label: "Conocimiento", kind: "secondary", href: "/dashboard/knowledge", permission: "knowledge.view" },
     ]);
     expect(pageActions("/dashboard/agents", member)).toEqual([]);
-    // Un rol personalizado tampoco: la pagina pide Owner o Admin, igual que antes el item del menu.
-    expect(pageActions("/dashboard/agents", { isAdmin: false, permissionKeys: ["agents.view", "knowledge.view"] })).toEqual([]);
+    // Un rol personalizado con la clave lo ve; sin ella (aunque pueda ver agentes), no.
+    expect(pageActions("/dashboard/agents", { permissionKeys: ["agents.view", "knowledge.view"] })).toHaveLength(1);
+    expect(pageActions("/dashboard/agents", { permissionKeys: ["agents.view"] })).toEqual([]);
   });
 
   it("las acciones que son de todos las recibe tambien un Member", () => {
-    expect(pageActions("/dashboard/contacts", member).map((a) => a.id)).toEqual(["import", "new"]);
+    // Cambio aprobado, plano §9.3: el Member ya no importa contactos, asi que pierde "Importar" (M1).
+    expect(pageActions("/dashboard/contacts", member).map((a) => a.id)).toEqual(["new"]);
+    expect(pageActions("/dashboard/contacts", admin).map((a) => a.id)).toEqual(["import", "new"]);
   });
 
-  it("el filtro de integraciones es solo de administradores", () => {
+  it("el filtro de integraciones es de quien ve o administra integraciones", () => {
     expect(pageActions("/dashboard/settings/integrations", member)).toEqual([]);
     expect(pageActions("/dashboard/settings/integrations", admin)[0]).toMatchObject({
       id: "attention",
@@ -79,7 +83,7 @@ describe("acciones de la barra", () => {
 
   it("Nuevo recurso es por permiso, no por cargo (banca v2, F4)", () => {
     expect(pageActions("/dashboard/settings/recursos", member)).toEqual([]);
-    expect(pageActions("/dashboard/settings/recursos", { isAdmin: false, permissionKeys: ["templates.manage"] }).map((a) => a.id)).toEqual(["new"]);
+    expect(pageActions("/dashboard/settings/recursos", { permissionKeys: ["templates.manage"] }).map((a) => a.id)).toEqual(["new"]);
     expect(pageActions("/dashboard/settings/recursos", admin).map((a) => a.id)).toEqual(["new"]);
   });
 

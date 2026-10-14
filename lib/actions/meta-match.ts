@@ -10,7 +10,7 @@ import type { Json } from "@/lib/types/database";
 /**
  * Vincular, ignorar o quitar a mano el vinculo de un toque con un anuncio de Meta (Extra L, AT3, F29).
  *
- * Permiso: `settings.manage`. Cada accion:
+ * Permiso: `settings.general`. Cada accion:
  *   1. el toque tiene que ser del workspace de la SESION (nunca del pedido);
  *   2. quien vincula tiene que PODER VER el contacto: se comprueba con el cliente del usuario, asi la RLS
  *      de `contacts` (`can_see_contact`) decide, igual que en la ficha;
@@ -50,7 +50,7 @@ async function run(
   action: Action,
   ids: { adId?: string | null; adsetId?: string | null; campaignId?: string | null } = {},
 ): Promise<MetaMatchActionResult> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
   if (!touchId) return { ok: false, error: NOT_FOUND };
 
@@ -139,10 +139,10 @@ const SEARCH_LIMIT = 8;
 
 /**
  * El buscador de «Vincular»: anuncios, conjuntos y campañas del catalogo por nombre (sin importar
- * mayusculas ni tildes) o por id. Permiso `settings.manage`; el workspace sale de la sesion.
+ * mayusculas ni tildes) o por id. Permiso `settings.general`; el workspace sale de la sesion.
  */
 export async function searchMetaCatalog(query: string): Promise<{ ok: true; options: CatalogOption[] } | { ok: false; error: string }> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { ok: false, error: NO_PERMISSION };
 
   const text = (query ?? "").trim().slice(0, 100);

@@ -6,11 +6,11 @@ import { ProductDetail } from "@/components/sales/catalog/product-detail";
 
 /**
  * Ajustes -> Productos -> un producto: sus variantes y, en cada una, el precio
- * vigente, el borrador y el historial de precios. Pide `settings.manage`.
+ * vigente, el borrador y el historial de precios. Pide `products.manage`.
  */
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { workspace, supabase } = await requirePermission("settings.manage");
+  const { workspace, supabase } = await requirePermission("products.manage");
 
   const product = await loadProductDetail(supabase, workspace.id, id);
   if (!product) notFound();

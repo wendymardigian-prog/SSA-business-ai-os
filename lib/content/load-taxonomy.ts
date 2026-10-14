@@ -17,7 +17,7 @@ type Db = SupabaseClient<Database>;
 export interface ContentTaxonomy {
   pillars: TaxonomyItem[];
   offers: TaxonomyItem[];
-  /** Si quien mira puede crear uno desde el selector (`settings.manage`). */
+  /** Si quien mira puede crear uno desde el selector (`settings.general`). */
   canCreate: boolean;
 }
 

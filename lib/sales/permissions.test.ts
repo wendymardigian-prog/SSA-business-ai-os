@@ -10,10 +10,11 @@ const custom = (scope: "own" | "all") => ({
 });
 
 describe("permisos de Ventas en los roles de sistema", () => {
-  it("el Member tiene las 3 claves con alcance own y NO tiene settings.manage", () => {
+  it("el Member tiene las 3 claves con alcance own y NO tiene products.manage ni sales.settings", () => {
     const p = SYSTEM_ROLE_PERMISSIONS.member;
     expect(p.keys).toEqual(expect.arrayContaining(["sales.view", "sales.manage", "payments.manage"]));
-    expect(p.keys).not.toContain("settings.manage");
+    expect(p.keys).not.toContain("products.manage");
+    expect(p.keys).not.toContain("sales.settings");
     expect(p.scopes.sales).toBe("own");
   });
 

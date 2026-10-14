@@ -179,7 +179,7 @@ describe("como se muestran (F71)", () => {
           permissions: { keys: ["contacts.view", "contacts.edit"], scopes: { leads: "all", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } },
         }),
       ),
-    ).toBe("2 permisos · todos los leads");
+    ).toBe("2 permisos · contactos: todos · conversaciones: solo las suyas");
   });
 
   it("el alcance 'los suyos + los sin asignar' se nombra", () => {
@@ -187,12 +187,12 @@ describe("como se muestran (F71)", () => {
       describeRole(
         role({ permissions: { keys: ["contacts.view"], scopes: { leads: "own_unassigned", conversations: "own", bookings: "own", calls: "own", sales: "own", tasks: "own" } } }),
       ),
-    ).toBe("1 permiso · sus leads y los sin asignar");
+    ).toBe("1 permiso · contactos: los suyos + los sin asignar · conversaciones: solo las suyas");
   });
 
   it("los de sistema se describen por lo que son", () => {
     expect(describeRole(role({ systemRole: "owner" }))).toContain("Puede todo.");
-    expect(describeRole(role({ systemRole: "admin" }))).toContain("menos transferir");
+    expect(describeRole(role({ systemRole: "admin" }))).toContain("menos transferir la propiedad y quitar personas");
   });
 
   it("uno vacio lo dice", () => {
@@ -209,5 +209,82 @@ describe("los roles de sistema no cambian de comportamiento (F71)", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.member.scopes.leads).toBe("own");
     expect(SYSTEM_ROLE_PERMISSIONS.member.keys).toContain("content.create");
     expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain("content.publish");
+  });
+});
+
+// ── Equipo y roles (B3): alcances dentro de cada grupo y tildes que se arrastran ───────────────────────────────
+
+import { applyKeyToggle, eodSelectorValue, scopeFieldState, SCOPE_GROUP } from "./roles-admin";
+
+describe("scopeFieldState (F12)", () => {
+  it("el alcance de contactos se habilita solo con «Ver contactos»", () => {
+    expect(scopeFieldState("leads", [])).toMatchObject({ enabled: false, label: "Qué contactos ve", hint: "Activá «Ver contactos» para elegir el alcance" });
+    expect(scopeFieldState("leads", ["contacts.view"])).toMatchObject({ enabled: true, hint: null });
+    // Editar sin ver no habilita nada (la pantalla agrega «ver» igual).
+    expect(scopeFieldState("leads", ["contacts.edit"]).enabled).toBe(false);
+  });
+
+  it("el de conversaciones se habilita con «ver» en CUALQUIER canal; solo «responder» no alcanza", () => {
+    expect(scopeFieldState("conversations", ["inbox.whatsapp.reply"]).enabled).toBe(false);
+    expect(scopeFieldState("conversations", ["inbox.email.view"]).enabled).toBe(true);
+    expect(scopeFieldState("conversations", []).hint).toContain("algún canal");
+  });
+
+  it("cada módulo se gobierna por su permiso de ver", () => {
+    const gates: Array<["bookings" | "calls" | "sales" | "tasks", string]> = [["bookings", "bookings.view"], ["calls", "calls.view"], ["sales", "sales.view"], ["tasks", "tasks.view"]];
+    for (const [module, key] of gates) {
+      expect(scopeFieldState(module, []).enabled).toBe(false);
+      expect(scopeFieldState(module, [key]).enabled).toBe(true);
+    }
+  });
+
+  it("solo los contactos ofrecen «Los suyos + los sin asignar»", () => {
+    expect(scopeFieldState("leads", ["contacts.view"]).options.map((o) => o.value)).toEqual(["own", "own_unassigned", "all"]);
+    expect(scopeFieldState("tasks", ["tasks.view"]).options.map((o) => o.value)).toEqual(["own", "all"]);
+  });
+
+  it("cada alcance vive dentro de su grupo", () => {
+    expect(SCOPE_GROUP).toEqual({ leads: "contacts", conversations: "inbox", bookings: "scheduling", calls: "calls", sales: "sales", tasks: "tasks" });
+  });
+});
+
+describe("applyKeyToggle (F13): las correcciones automáticas se aplican en el tilde", () => {
+  it("tildar «responder» tilda «ver» en el acto", () => {
+    expect(applyKeyToggle([], "inbox.whatsapp.reply", true)).toEqual({ keys: ["inbox.whatsapp.reply", "inbox.whatsapp.view"], alsoAdded: ["inbox.whatsapp.view"], alsoRemoved: [] });
+  });
+
+  it("destildar «ver» destilda lo que dependía de él", () => {
+    const r = applyKeyToggle(["contacts.view", "contacts.edit", "flows.view"], "contacts.view", false);
+    expect(r.keys.sort()).toEqual(["flows.view"]);
+    expect(r.alsoRemoved).toEqual(["contacts.edit"]);
+  });
+
+  it("tildar «publicar» tilda «editar» y «ver» (publicar escribe los disparadores, que piden flows.edit)", () => {
+    const r = applyKeyToggle([], "flows.publish", true);
+    expect([...r.keys].sort()).toEqual(["flows.edit", "flows.publish", "flows.view"]);
+    expect([...r.alsoAdded].sort()).toEqual(["flows.edit", "flows.view"]);
+  });
+
+  it("destildar «ver» en flujos destilda «editar» y «publicar» en cadena", () => {
+    const r = applyKeyToggle(["flows.view", "flows.edit", "flows.publish", "sequences.view"], "flows.view", false);
+    expect(r.keys.sort()).toEqual(["sequences.view"]);
+    expect([...r.alsoRemoved].sort()).toEqual(["flows.edit", "flows.publish"]);
+  });
+
+  it("destildar «editar» destilda «publicar» pero deja «ver»", () => {
+    const r = applyKeyToggle(["flows.view", "flows.edit", "flows.publish"], "flows.edit", false);
+    expect(r.keys.sort()).toEqual(["flows.view"]);
+    expect(r.alsoRemoved).toEqual(["flows.publish"]);
+  });
+
+  it("tildar algo que no depende de nada no toca el resto", () => {
+    expect(applyKeyToggle(["a"], "social.view", true)).toEqual({ keys: ["a", "social.view"], alsoAdded: [], alsoRemoved: [] });
+  });
+});
+
+describe("eod.view_all como selector", () => {
+  it("«Todos los del equipo» si la tiene, «Solo los suyos» si no", () => {
+    expect(eodSelectorValue(["eod.view_all"])).toBe("all");
+    expect(eodSelectorValue([])).toBe("own");
   });
 });

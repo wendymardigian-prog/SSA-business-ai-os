@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getAnyPermissionAction, getPermissionAction } from "@/lib/auth/guards";
+import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { getAiTask, type AiTaskId } from "@/lib/ai-tasks/catalog";
 import { loadTaskInstructions, taskIsVersioned, type VersionedTask } from "@/lib/ai-tasks/store";
@@ -22,7 +23,18 @@ const TASKS_PATH = "/dashboard/agents/tareas";
 // con un texto ("ads_analysis"), asi que la entidad auditada es el workspace y la
 // tarea va en `metadata.task`. Pasar el id de la tarea hacia que el insert fallara
 // en silencio (logAudit solo loguea el error) y no quedara ningun registro.
-const NOT_ADMIN = "Solo Owner y Admin pueden editar las instrucciones de una tarea.";
+const NOT_ADMIN = "No tenés permiso para editar las instrucciones de una tarea.";
+
+/**
+ * Quien puede tocar una tarea de IA: `ai_tasks.manage`; las dos tareas de llamadas aceptan ademas
+ * `calls.configure`, como ya pasaba en su pantalla de Llamadas.
+ */
+async function taskGuard(taskId: string) {
+  const callTask = taskId === "call_classification" || taskId === "call_analysis" || taskId === "call_summary";
+  return callTask
+    ? await getAnyPermissionAction(["ai_tasks.manage", "calls.configure"])
+    : await getPermissionAction("ai_tasks.manage");
+}
 /** Mismo tope que el prompt de un agente (lib/agent/validate.ts). */
 const MAX_INSTRUCTIONS_CHARS = 32_000;
 
@@ -35,7 +47,7 @@ function revalidate(task: string) {
 
 /** Guardar crea una version nueva y la activa. */
 export async function saveTaskInstructions(taskId: string, rawInstructions: string, rawNote?: string): Promise<AiTaskActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await taskGuard(taskId);
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -77,7 +89,7 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
 
   const current = ((workspace as unknown as { ai_task_prompt_active?: Json }).ai_task_prompt_active ?? {}) as Record<string, number>;
   const active = { ...current, [task.id]: version };
-  const { error: activateError } = await supabase.from("workspaces").update({ ai_task_prompt_active: active as Json }).eq("id", workspace.id);
+  const { error: activateError } = await (await createServiceClient()).from("workspaces").update({ ai_task_prompt_active: active as Json }).eq("id", workspace.id);
   if (activateError) {
     console.error(`[ai-tasks] no pude activar la version de ${task.id}:`, activateError.message);
     return { ok: false, error: "Se guardó la versión pero no pude activarla. Probá volver a ella desde el historial." };
@@ -100,7 +112,7 @@ export async function saveTaskInstructions(taskId: string, rawInstructions: stri
 
 /** Volver a una version anterior: la activa pasa a ser esa, sin reescribir el historial. */
 export async function restoreTaskInstructions(taskId: string, version: number | null): Promise<AiTaskActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await taskGuard(taskId);
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -125,7 +137,7 @@ export async function restoreTaskInstructions(taskId: string, version: number | 
   if (version === null) delete next[task.id];
   else next[task.id] = version;
 
-  const { error } = await supabase.from("workspaces").update({ ai_task_prompt_active: next as Json }).eq("id", workspace.id);
+  const { error } = await (await createServiceClient()).from("workspaces").update({ ai_task_prompt_active: next as Json }).eq("id", workspace.id);
   if (error) {
     console.error(`[ai-tasks] no pude restaurar la version de ${task.id}:`, error.message);
     return { ok: false, error: "No pude volver a esa versión." };
@@ -156,8 +168,8 @@ const MAX_MODEL_ID_CHARS = 200;
  * hasta que alguien lo note.
  */
 export async function saveTaskModel(taskId: string, provider: string | null, model: string | null): Promise<AiTaskActionResult> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden elegir el modelo de una tarea." };
+  const ctx = await taskGuard(taskId);
+  if (!ctx) return { ok: false, error: "No tenés permiso para elegir el modelo de una tarea." };
   const { workspace, supabase, user } = ctx;
 
   const task = getAiTask(taskId);
@@ -181,7 +193,7 @@ export async function saveTaskModel(taskId: string, provider: string | null, mod
     next[task.id] = { provider: cleanProvider, model: cleanModel };
   }
 
-  const { error } = await supabase.from("workspaces").update({ ai_task_models: next as unknown as Json }).eq("id", workspace.id);
+  const { error } = await (await createServiceClient()).from("workspaces").update({ ai_task_models: next as unknown as Json }).eq("id", workspace.id);
   if (error) {
     console.error(`[ai-tasks] no pude guardar el modelo de ${task.id}:`, error.message);
     return { ok: false, error: "No pude guardar el modelo." };
@@ -204,7 +216,7 @@ export async function saveTaskModel(taskId: string, provider: string | null, mod
 
 /** Lo que muestra el editor al abrir la pestaña: lo activo, mas el texto del sistema para comparar. */
 export async function loadTaskInstructionsForEdit(taskId: string) {
-  const ctx = await getAdminContext();
+  const ctx = await taskGuard(taskId);
   if (!ctx) return null;
   const task = getAiTask(taskId);
   if (!task || !taskIsVersioned(task.id)) return null;

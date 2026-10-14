@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { canRefreshNow } from "@/lib/metrics/sync";
 import { queueMetricsSync } from "@/lib/metrics/queue";
@@ -36,7 +36,7 @@ function minutesText(seconds: number): string {
 }
 
 export async function refreshMetricsNow(platform?: string | null): Promise<RefreshResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("integrations.manage");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden actualizar las metricas" };
 
   if (platform && !(SOCIAL_PLATFORMS as readonly string[]).includes(platform)) {

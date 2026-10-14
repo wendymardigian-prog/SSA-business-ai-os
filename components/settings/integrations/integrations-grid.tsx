@@ -15,6 +15,7 @@ import {
 import { filterSections, countByChip } from "@/lib/integrations/grid-filter";
 import { missingEssentials } from "@/lib/integrations/onboarding";
 import { IntegrationCard } from "./integration-card";
+import { CHANNEL_PROVIDER_IDS, type IntegrationSections } from "@/lib/integrations/sections";
 import { OnboardingBanner } from "./onboarding-banner";
 import type { IntegrationCardData } from "./types";
 
@@ -32,10 +33,16 @@ const CHIP_COUNTS = countByChip(ALL_SECTIONS);
 export function IntegrationsGrid({
   integrations,
   extra,
+  mine,
+  access,
 }: {
   integrations: Record<string, IntegrationCardData>;
   /** Cards propias que no pasan por el catalogo (Fathom): se muestran sin filtros activos. */
   extra?: React.ReactNode;
+  /** «Mis conexiones»: el Google Calendar y el Fathom de la propia persona. Lo ve todo el equipo. */
+  mine?: React.ReactNode;
+  /** Que puede hacer en Canales y en Integraciones del negocio (lib/integrations/sections.ts). */
+  access: Pick<IntegrationSections, "channels" | "business">;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -65,6 +72,20 @@ export function IntegrationsGrid({
     [integrations, chip, onlyAttention],
   );
 
+  // Canales por un lado; el resto (conexiones del negocio e IA) por el otro.
+  const channelProviders = useMemo(
+    () => sections.flatMap((section) => section.providers).filter((p) => CHANNEL_PROVIDER_IDS.includes(p.id)),
+    [sections],
+  );
+  const businessSections = useMemo(
+    () =>
+      sections
+        .map((section) => ({ ...section, providers: section.providers.filter((p) => !CHANNEL_PROVIDER_IDS.includes(p.id)) }))
+        .filter((section) => section.providers.length > 0),
+    [sections],
+  );
+  const hasShared = access.channels !== null || access.business !== null;
+
   const missing = useMemo(
     () => missingEssentials((id) => integrations[id]?.status),
     [integrations],
@@ -84,72 +105,110 @@ export function IntegrationsGrid({
         title="Integraciones"
         tooltip="Todo lo que este sistema conecta con afuera: canales, redes, email e IA. Las claves se guardan encriptadas y nunca se muestran."
         right={
-          <button
-            type="button"
-            onClick={() => updateParams({ atencion: !onlyAttention })}
-            aria-pressed={onlyAttention}
-            className={`h-8 rounded-lg border px-3 text-sm ${
-              onlyAttention
-                ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                : "border-border hover:bg-accent"
-            }`}
-          >
-            Requiere atencion
-          </button>
+          hasShared ? (
+            <button
+              type="button"
+              onClick={() => updateParams({ atencion: !onlyAttention })}
+              aria-pressed={onlyAttention}
+              className={`h-8 rounded-lg border px-3 text-sm ${
+                onlyAttention
+                  ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "border-border hover:bg-accent"
+              }`}
+            >
+              Requiere atencion
+            </button>
+          ) : undefined
         }
       />
       <SettingsTabs />
 
-      <OnboardingBanner missing={missing} />
+      {hasShared && access.business === "edit" && <OnboardingBanner missing={missing} />}
 
-      <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 md:px-6">
-        <ChipButton active={chip === null} label="Todos" onClick={() => updateParams({ tipo: null })} />
-        {CHIP_ORDER.map((c) => {
-          const count = CHIP_COUNTS[c] ?? 0;
-          return (
-            <ChipButton
-              key={c}
-              active={chip === c}
-              disabled={count === 0}
-              label={CHIP_LABELS[c]}
-              onClick={() => updateParams({ tipo: chip === c ? null : c })}
-            />
-          );
-        })}
-      </div>
+      {hasShared && (
+        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 md:px-6">
+          <ChipButton active={chip === null} label="Todos" onClick={() => updateParams({ tipo: null })} />
+          {CHIP_ORDER.map((c) => {
+            const count = CHIP_COUNTS[c] ?? 0;
+            return (
+              <ChipButton
+                key={c}
+                active={chip === c}
+                disabled={count === 0}
+                label={CHIP_LABELS[c]}
+                onClick={() => updateParams({ tipo: chip === c ? null : c })}
+              />
+            );
+          })}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-        {sections.length === 0 ? (
-          onlyAttention ? (
-            <p className="rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
-              Todo en orden: ninguna integración necesita que hagas nada.
-            </p>
-          ) : (
-            <SettingsEmptyState description={SETTINGS_EMPTY_STATES.integrations} />
-          )
-        ) : (
-          <div className="mx-auto max-w-6xl space-y-8">
-            {sections.map((section) => (
-              <section key={section.section}>
-                <h2 className="text-sm font-semibold text-muted-foreground">{section.label}</h2>
-                <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {section.providers.map((provider) => (
-                    <IntegrationCard
-                      key={provider.id}
-                      provider={provider}
-                      data={integrations[provider.id]}
-                      detailHref={detailHrefFor(provider.id)}
-                    />
+        <div className="mx-auto max-w-6xl space-y-10">
+          {/* Mis conexiones: de cada persona, no del negocio */}
+          {mine && (
+            <section aria-labelledby="mis-conexiones">
+              <h2 id="mis-conexiones" className="text-sm font-semibold">Mis conexiones</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Tu propio Google Calendar y tu propio Fathom. Nadie más ve ni toca lo tuyo.</p>
+              <div className="mt-3 space-y-4">{mine}</div>
+            </section>
+          )}
+
+          {/* Canales */}
+          {access.channels && channelProviders.length > 0 && (
+            <section aria-labelledby="canales">
+              <div className="flex items-center gap-2">
+                <h2 id="canales" className="text-sm font-semibold">Canales</h2>
+                {access.channels === "view" && <ReadOnlyBadge />}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {channelProviders.map((provider) => (
+                  <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Integraciones del negocio */}
+          {access.business && (
+            <section aria-labelledby="negocio">
+              <div className="flex items-center gap-2">
+                <h2 id="negocio" className="text-sm font-semibold">Integraciones del negocio</h2>
+                {access.business === "view" && <ReadOnlyBadge />}
+              </div>
+              {businessSections.length === 0 ? (
+                onlyAttention ? (
+                  <p className="mt-3 rounded-xl border border-border p-6 text-center text-sm text-muted-foreground">
+                    Todo en orden: ninguna integración necesita que hagas nada.
+                  </p>
+                ) : (
+                  <div className="mt-3"><SettingsEmptyState description={SETTINGS_EMPTY_STATES.integrations} /></div>
+                )
+              ) : (
+                <div className="mt-3 space-y-8">
+                  {businessSections.map((section) => (
+                    <div key={section.section}>
+                      <h3 className="text-xs font-semibold text-muted-foreground">{section.label}</h3>
+                      <div className="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {section.providers.map((provider) => (
+                          <IntegrationCard key={provider.id} provider={provider} data={integrations[provider.id]} detailHref={detailHrefFor(provider.id)} />
+                        ))}
+                      </div>
+                    </div>
                   ))}
+                  {extra && chip === null && !onlyAttention && <div aria-label="Otras conexiones">{extra}</div>}
                 </div>
-              </section>
-            ))}
-            {extra && chip === null && !onlyAttention && <section aria-label="Otras conexiones">{extra}</section>}
-          </div>
-        )}
+              )}
+            </section>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+function ReadOnlyBadge() {
+  return <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Solo lectura</span>;
 }
 
 function ChipButton({

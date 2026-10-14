@@ -1,5 +1,5 @@
 /**
- * Ventas F3 a F6: las acciones del catalogo. Fija que sin `settings.manage` no
+ * Ventas F3 a F6: las acciones del catalogo. Fija que sin `products.manage` no
  * se escribe nada, que nada se borra (salvo la limpieza de un alta que fallo) y que
  * el precio vive en la variante. El historial NO se escribe aca: lo hace la base
  * (00170, `products-audit.test.ts`).
@@ -50,10 +50,10 @@ describe("permiso", () => {
     expect(db.rows("products")).toHaveLength(0);
   });
 
-  it("un rol personalizado con settings.manage sí", async () => {
+  it("un rol personalizado con products.manage sí", async () => {
     role = "member";
     roleId = "rol-1";
-    db.rows("workspace_roles").push({ id: "rol-1", workspace_id: WS, system_role: null, permissions: { keys: ["settings.manage"], scopes: {} } });
+    db.rows("workspace_roles").push({ id: "rol-1", workspace_id: WS, system_role: null, permissions: { keys: ["products.manage"], scopes: {} } });
     expect((await actions.createProduct({ name: "X" })).ok).toBe(true);
   });
 });

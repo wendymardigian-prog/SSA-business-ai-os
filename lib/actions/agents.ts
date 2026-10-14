@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext, isOwnerRole } from "@/lib/auth/guards";
+import { getPermissionAction, isOwnerRole } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit, diffFields } from "@/lib/audit";
 import { listConnectedAiProviders } from "@/lib/ai/provider";
@@ -30,7 +30,7 @@ const AGENTS_PATH = "/dashboard/agents";
 
 export type AgentActionResult = { ok: true; agentId?: string } | { ok: false; error: string };
 
-const NOT_ADMIN = "Solo Owner y Admin pueden configurar el agente.";
+const NOT_ADMIN = "No tenés permiso para configurar el agente.";
 
 function revalidate(agentId?: string) {
   revalidatePath(AGENTS_PATH);
@@ -47,7 +47,7 @@ async function loadOwnAgent(workspaceId: string, agentId: string) {
 
 /** Crea el agente de conversacion con los defaults, apagado y sin canales. */
 export async function createDefaultAgent(): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -106,7 +106,7 @@ export async function createDefaultAgent(): Promise<AgentActionResult> {
 
 /** Configuracion general: modelo, tiempos, formato, guardarrailes, topes. */
 export async function updateAgentConfig(agentId: string, input: unknown): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -220,7 +220,7 @@ function describeDbError(message: string): string {
 
 /** Guardar el prompt crea una version nueva (F26). */
 export async function saveSystemPrompt(agentId: string, rawPrompt: string, rawNote?: string): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -284,7 +284,7 @@ export async function saveSystemPrompt(agentId: string, rawPrompt: string, rawNo
 
 /** Volver a una version anterior: la version activa pasa a ser esa, sin reescribir el historial. */
 export async function restorePromptVersion(agentId: string, version: number): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -326,7 +326,7 @@ export async function restorePromptVersion(agentId: string, version: number): Pr
 
 /** Encendido global. Para encender hace falta un modelo con proveedor conectado. */
 export async function setAgentEnabled(agentId: string, enabled: boolean): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
   if (typeof enabled !== "boolean") return { ok: false, error: "Pedido invalido." };
@@ -366,7 +366,7 @@ export async function updateAgentKnowledge(
   agentId: string,
   input: { enabled: boolean; tags: string[]; fallback: "escalate" | "general" },
 ): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -424,7 +424,7 @@ export async function updateAgentKnowledge(
  * aca que el canal exista, sea del workspace y no lo atienda otro agente.
  */
 export async function setAgentChannel(agentId: string, channelId: string, enabled: boolean): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
   if (typeof channelId !== "string" || typeof enabled !== "boolean") return { ok: false, error: "Pedido invalido." };
@@ -494,7 +494,7 @@ export async function setAgentChannelMode(
   channelId: string,
   mode: "send" | "draft" | "rules",
 ): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
   if (typeof channelId !== "string" || (mode !== "send" && mode !== "draft" && mode !== "rules")) {
@@ -547,7 +547,7 @@ export async function updateAgentTools(
   agentId: string,
   input: { allowedTools: unknown; toolsConfig: unknown },
 ): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -610,7 +610,7 @@ export async function updateWorkspaceAiLimits(input: {
   monthlyAction?: "notify" | "disable";
   alertPct?: number | null;
 }): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_limits.manage");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -633,7 +633,8 @@ export async function updateWorkspaceAiLimits(input: {
     ...(input.alertPct !== undefined ? { ai_spend_alert_pct: input.alertPct } : {}),
   };
 
-  const { error } = await supabase.from("workspaces").update(patch as never).eq("id", workspace.id);
+  // `workspaces` solo lo escribe un Admin por RLS: servicio despues del guard, sobre el workspace de la sesion.
+  const { error } = await (await createServiceClient()).from("workspaces").update(patch as never).eq("id", workspace.id);
   if (error) {
     console.error("[agents] no pude guardar los topes del workspace:", error.message);
     return { ok: false, error: "No pude guardar los topes del workspace." };
@@ -660,7 +661,7 @@ export async function updateWorkspaceAiLimits(input: {
 
 /**
  * Precio nuevo para un modelo (F29). Solo Owner (la RLS de model_pricing lo
- * exige; aca se repite para el mensaje). Nunca se pisa un precio: es una fila
+ * exige; aca se repite para el mensaje) y ademas `ai_limits.manage`. Nunca se pisa un precio: es una fila
  * nueva con valid_from ahora, y los runs viejos conservan el que tenian.
  */
 export async function addModelPrice(input: {
@@ -671,7 +672,7 @@ export async function addModelPrice(input: {
   cachedInputPerMtok: number;
   note?: string | null;
 }): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("ai_limits.manage");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   if (!isOwnerRole(ctx.role)) return { ok: false, error: "Solo el Owner puede cambiar la tabla de precios." };
   const { workspace, supabase, user } = ctx;
@@ -723,7 +724,7 @@ export async function addModelPrice(input: {
  * validación viven en lib/agent/rules/save.ts para poder testearlas sin sesión.
  */
 export async function saveResponseRulesAction(agentId: string, rules: unknown): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -748,7 +749,7 @@ export async function saveResponseRulesAction(agentId: string, rules: unknown): 
 
 /** Guarda la acción por defecto de las reglas (F10). Owner/Admin. */
 export async function setResponseRulesDefaultAction(agentId: string, action: unknown): Promise<AgentActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase, user } = ctx;
 
@@ -783,7 +784,7 @@ export async function simulateResponseRulesAction(
   | { ok: true; result: import("@/lib/agent/rules/simulate").SimulationResult; sampled: number }
   | { ok: false; error: string }
 > {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("agents.edit");
   if (!ctx) return { ok: false, error: NOT_ADMIN };
   const { workspace, supabase } = ctx;
 

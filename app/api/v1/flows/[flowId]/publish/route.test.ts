@@ -8,6 +8,8 @@ import { memoryDb } from "@/lib/agent/testing/memory-db";
 
 const { createClient, createServiceClient } = vi.hoisted(() => ({ createClient: vi.fn(), createServiceClient: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient, createServiceClient }));
+// Quien publica tiene `flows.publish` (Equipo y roles, F22); el guard en si se prueba en lib/flow-engine/api-permissions.test.ts.
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn(async () => ({ user: { id: "u-1" } })) }));
 vi.mock("@/lib/sales/automation/relative", () => ({ backfillPaymentRelativeJobs: vi.fn(async () => {}) }));
 
 import { POST } from "./route";

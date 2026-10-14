@@ -57,7 +57,7 @@ export function AgentDetailView({
   const [error, setError] = useState<string | null>(null);
   const { agent } = data;
   const isAdmin = data.viewer.isAdmin;
-  const { tabs } = tabsForViewer(typeDef, isAdmin);
+  const { tabs } = tabsForViewer(typeDef, (key) => data.viewer.permissionKeys?.includes(key) ?? isAdmin);
 
   const providerConnected = data.providers.some((p) => p.provider === agent.provider);
   const modelLabel = agent.model

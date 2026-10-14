@@ -21,8 +21,11 @@ import {
   isEmptyRole,
   parsePermissions,
   SCOPED_MODULES,
+  scopeOptionsFor,
+  SCOPE_LABELS,
   type PermissionScope,
   type RolePermissions,
+  type ScopedModule,
 } from "./permissions";
 
 export const MAX_NAME_LENGTH = 40;
@@ -174,7 +177,7 @@ export function canDeleteRole(role: Pick<RoleRow, "systemRole" | "members" | "na
 /**
  * Marcar o desmarcar todos los permisos de un modulo.
  *
- * El boton "todos" por modulo existe porque la lista tiene treinta y cinco
+ * El boton "todos" por modulo existe porque la lista tiene setenta y dos
  * claves y armar un rol tildando de a una es tedioso.
  */
 export function toggleModule(
@@ -207,19 +210,134 @@ export function sortRoles(roles: RoleRow[]): RoleRow[] {
   });
 }
 
-/** Lo que se muestra debajo del nombre: cuantos permisos y el alcance. */
+const SCOPE_SHORT: Record<PermissionScope, { masc: string; fem: string }> = {
+  own: { masc: "solo los suyos", fem: "solo las suyas" },
+  own_unassigned: { masc: "los suyos + los sin asignar", fem: "las suyas + las sin asignar" },
+  all: { masc: "todos", fem: "todas" },
+};
+
+/**
+ * Lo que se muestra debajo del nombre: cuantos permisos y los dos alcances que mas importan
+ * («21 permisos · contactos: todos · conversaciones: todas»).
+ */
 export function describeRole(role: RoleRow): string {
   if (role.systemRole === "owner") return "Puede todo.";
-  if (role.systemRole === "admin") return "Puede todo menos transferir la propiedad.";
+  if (role.systemRole === "admin") return "Puede todo menos transferir la propiedad y quitar personas.";
 
   const count = role.permissions.keys.length;
-  const scope =
-    role.permissions.scopes.leads === "all"
-      ? "todos los leads"
-      : role.permissions.scopes.leads === "own_unassigned"
-        ? "sus leads y los sin asignar"
-        : "solo sus leads";
-
   if (count === 0) return "Sin permisos.";
-  return `${count} ${count === 1 ? "permiso" : "permisos"} · ${scope}`;
+  const leads = SCOPE_SHORT[role.permissions.scopes.leads].masc;
+  const conversations = SCOPE_SHORT[role.permissions.scopes.conversations].fem;
+  return `${count} ${count === 1 ? "permiso" : "permisos"} · contactos: ${leads} · conversaciones: ${conversations}`;
+}
+
+// ── Pantalla de roles: alcances dentro de cada grupo y tildes que se arrastran (B3) ─────────────
+
+
+/** Qué permiso de "ver" gobierna el alcance de cada módulo, y qué dice el aviso cuando falta. */
+const SCOPE_GATES: Record<ScopedModule, { keys: string[]; label: string; hint: string; hintSelector: string }> = {
+  leads: { keys: ["contacts.view"], label: "Qué contactos ve", hint: "Activá «Ver contactos» para elegir el alcance", hintSelector: "contacts.view" },
+  conversations: { keys: ["inbox.instagram.view", "inbox.whatsapp.view", "inbox.email.view"], label: "Qué conversaciones ve", hint: "Activá «Ver» en algún canal para elegir el alcance", hintSelector: "inbox" },
+  bookings: { keys: ["bookings.view"], label: "Qué agendas ve", hint: "Activá «Ver agendas» para elegir el alcance", hintSelector: "bookings.view" },
+  calls: { keys: ["calls.view"], label: "Qué llamadas ve", hint: "Activá «Ver las llamadas» para elegir el alcance", hintSelector: "calls.view" },
+  sales: { keys: ["sales.view"], label: "Qué ventas ve", hint: "Activá «Ver las ventas» para elegir el alcance", hintSelector: "sales.view" },
+  tasks: { keys: ["tasks.view"], label: "Qué tareas ve", hint: "Activá «Ver las tareas» para elegir el alcance", hintSelector: "tasks.view" },
+};
+
+/** En qué grupo de la pantalla va el selector de cada alcance. */
+export const SCOPE_GROUP: Record<ScopedModule, string> = {
+  leads: "contacts",
+  conversations: "inbox",
+  bookings: "scheduling",
+  calls: "calls",
+  sales: "sales",
+  tasks: "tasks",
+};
+
+export interface ScopeFieldState {
+  label: string;
+  enabled: boolean;
+  /** Qué decir cuando está deshabilitado. */
+  hint: string | null;
+  options: Array<{ value: PermissionScope; label: string }>;
+}
+
+/**
+ * El estado del selector de alcance de un módulo: habilitado solo si el rol puede VER eso. Sin el
+ * permiso de ver, elegir un alcance no cambia nada y confunde.
+ */
+export function scopeFieldState(module: ScopedModule, keys: string[]): ScopeFieldState {
+  const gate = SCOPE_GATES[module];
+  const enabled = gate.keys.some((k) => keys.includes(k));
+  return {
+    label: gate.label,
+    enabled,
+    hint: enabled ? null : gate.hint,
+    options: scopeOptionsFor(module).map((value) => ({ value, label: SCOPE_LABELS[value] })),
+  };
+}
+
+/** Pares ver ⇒ editar/responder: tildar lo segundo tilda lo primero, y destildar lo primero destilda lo segundo. */
+const IMPLIES: Array<[view: string, dependent: string]> = [
+  ["inbox.instagram.view", "inbox.instagram.reply"],
+  ["inbox.whatsapp.view", "inbox.whatsapp.reply"],
+  ["inbox.email.view", "inbox.email.reply"],
+  ["contacts.view", "contacts.edit"],
+  ["flows.view", "flows.edit"],
+  // Publicar escribe los disparadores del flujo, y la base los deja escribir con `flows.edit` (00214).
+  ["flows.edit", "flows.publish"],
+  ["sequences.view", "sequences.edit"],
+  ["agents.view", "agents.edit"],
+  ["knowledge.view", "knowledge.edit"],
+  ["content.view", "content.create"],
+];
+
+/**
+ * Tildar o destildar UNA clave, con sus correcciones automáticas aplicadas en el momento (la
+ * pantalla las muestra al instante, no al guardar). Devuelve las claves resultantes y cuáles se
+ * agregaron o quitaron de arrastre.
+ */
+export function applyKeyToggle(
+  keys: string[],
+  key: string,
+  on: boolean,
+): { keys: string[]; alsoAdded: string[]; alsoRemoved: string[] } {
+  const set = new Set(keys);
+  const alsoAdded: string[] = [];
+  const alsoRemoved: string[] = [];
+
+  // Con cierre en cadena: tildar «publicar» tilda «editar» y, por eso, tambien «ver»; destildar «ver» destilda «editar» y «publicar».
+  if (on) {
+    set.add(key);
+    const queue = [key];
+    while (queue.length > 0) {
+      const current = queue.pop() as string;
+      for (const [view, dependent] of IMPLIES) {
+        if (dependent === current && !set.has(view)) {
+          set.add(view);
+          alsoAdded.push(view);
+          queue.push(view);
+        }
+      }
+    }
+  } else {
+    set.delete(key);
+    const queue = [key];
+    while (queue.length > 0) {
+      const current = queue.pop() as string;
+      for (const [view, dependent] of IMPLIES) {
+        if (view === current && set.has(dependent)) {
+          set.delete(dependent);
+          alsoRemoved.push(dependent);
+          queue.push(dependent);
+        }
+      }
+    }
+  }
+  return { keys: [...set], alsoAdded, alsoRemoved };
+}
+
+/** `eod.view_all` se muestra como un selector («Qué reportes de fin de día ve»), no como una casilla. */
+export function eodSelectorValue(keys: string[]): "own" | "all" {
+  return keys.includes("eod.view_all") ? "all" : "own";
 }

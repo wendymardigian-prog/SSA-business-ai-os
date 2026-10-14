@@ -23,7 +23,7 @@ const { loadPiece } = await import("./load-piece");
 const WS = "ws-1";
 
 function ctx(over: { keys?: string[]; db?: ReturnType<typeof memoryDb> } = {}) {
-  const keys = over.keys ?? ["content.approve", "content.publish", "content.ai", "settings.manage"];
+  const keys = over.keys ?? ["content.approve", "content.publish", "content.ai", "settings.general"];
   const db =
     over.db ??
     memoryDb({
@@ -146,7 +146,7 @@ describe("loadPiece (F96)", () => {
     expect(data!.authorNames).toEqual({ u1: "Ana" });
   });
 
-  it("el selector '+ Crear' lo habilita settings.manage", async () => {
+  it("el selector '+ Crear' lo habilita settings.general", async () => {
     expect((await loadPiece(ctx(), "post-1"))!.taxonomy.canCreate).toBe(true);
     expect((await loadPiece(ctx({ keys: ["content.approve"] }), "post-1"))!.taxonomy.canCreate).toBe(false);
   });

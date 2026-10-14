@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import { PLATFORMS, isSupportedPlatform } from "@/lib/platforms";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   // Conectar una cuenta es cosa de Owner y Admin, igual que en las otras
   // rutas de canales: la key de Zernio se lee con el service role, asi que la
   // RLS no frenaria a un Member.
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
       { error: "Solo Owner y Admin pueden conectar canales" },

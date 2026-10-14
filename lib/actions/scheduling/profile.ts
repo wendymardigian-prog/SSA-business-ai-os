@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { isValidTimeZone } from "@/lib/timezone";
@@ -189,13 +190,14 @@ async function countActiveEvents(supabase: Parameters<typeof getProfileForUser>[
 
 /**
  * Los flujos sugeridos al crear un evento (F49). Del workspace, no de la
- * persona: por eso pide `settings.manage`.
+ * persona: por eso pide `settings.general`.
  */
 export async function setAutoCreateFlows(enabled: boolean): Promise<ProfileActionResult> {
-  const ctx = await getPermissionAction("settings.manage");
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden cambiar esto." };
+  const ctx = await getPermissionAction("settings.general");
+  if (!ctx) return { ok: false, error: "No tenés permiso para cambiar esto." };
 
-  const { error } = await ctx.supabase
+  // `workspaces` solo lo escribe un Admin por RLS: servicio despues del guard, sobre el workspace de la sesion.
+  const { error } = await (await createServiceClient())
     .from("workspaces")
     .update({ scheduling_auto_create_flows: enabled })
     .eq("id", ctx.workspace.id);

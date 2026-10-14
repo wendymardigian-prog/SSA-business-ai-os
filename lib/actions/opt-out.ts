@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logAudit, diffFields } from "@/lib/audit";
 
@@ -25,9 +25,9 @@ const MAX_PHRASES = 50;
 export type OptOutActionResult = { ok: true } | { ok: false; error: string };
 
 export async function updateOptOutPhrases(phrases: string[]): Promise<OptOutActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden cambiar las frases de no contactar" };
+    return { ok: false, error: "No tenés permiso para cambiar las frases de no contactar" };
   }
 
   const { workspace, supabase, user } = ctx;
@@ -61,7 +61,9 @@ export async function updateOptOutPhrases(phrases: string[]): Promise<OptOutActi
     .eq("id", workspace.id)
     .single();
 
-  const { error } = await supabase
+  // `workspaces` solo lo escribe un Admin por RLS: se escribe con el cliente de servicio, despues del guard
+  // y sobre el workspace de la sesion.
+  const { error } = await (await createServiceClient())
     .from("workspaces")
     .update({ opt_out_phrases: clean })
     .eq("id", workspace.id);
@@ -104,7 +106,7 @@ export async function findMatchingOptOutPhrase(
   text: string,
   phrases: string[],
 ): Promise<{ phrase: string | null }> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { phrase: null };
 
   const message = (text ?? "").trim();

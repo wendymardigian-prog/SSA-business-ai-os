@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { GENERAL_SECTIONS } from "@/lib/settings/general-sections";
+import type { GeneralSection } from "@/lib/settings/general-sections";
 
 /**
  * Navegación interna de General (S2): columna de anclas en escritorio y fila
@@ -15,11 +15,11 @@ import { GENERAL_SECTIONS } from "@/lib/settings/general-sections";
  * secciones: con el hash de la URL alcanza para el click inicial, pero no
  * para cuando alguien scrollea con la rueda de sección en sección.
  */
-export function SectionNav() {
-  const [active, setActive] = useState<string>(GENERAL_SECTIONS[0].id);
+export function SectionNav({ sections: visible }: { sections: GeneralSection[] }) {
+  const [active, setActive] = useState<string>(visible[0]?.id ?? "");
 
   useEffect(() => {
-    const sections = GENERAL_SECTIONS.map((s) => document.getElementById(s.id)).filter(
+    const sections = visible.map((s) => document.getElementById(s.id)).filter(
       (el): el is HTMLElement => el !== null,
     );
     if (sections.length === 0) return;
@@ -41,12 +41,12 @@ export function SectionNav() {
 
     for (const section of sections) observer.observe(section);
     return () => observer.disconnect();
-  }, []);
+  }, [visible]);
 
   return (
     <nav aria-label="Secciones de General" className="md:w-44 md:shrink-0">
       <ul className="flex gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
-        {GENERAL_SECTIONS.map((section) => (
+        {visible.map((section) => (
           <li key={section.id} className="shrink-0">
             <a
               href={`#${section.id}`}

@@ -8,12 +8,12 @@ import { agentRow } from "@/lib/agent/testing/fixtures";
  * tocar la base. El cliente puede saltearse, así que esto es lo que garantiza.
  */
 
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext: vi.fn(), isOwnerRole: () => true }));
+vi.mock("@/lib/auth/guards", () => ({ getPermissionAction: vi.fn(), isOwnerRole: () => true }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: vi.fn(), createClient: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn().mockResolvedValue("audit-1"), diffFields: () => null }));
 
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction as getAdminContext } from "@/lib/auth/guards";
 import { createServiceClient } from "@/lib/supabase/server";
 import { saveSystemPrompt } from "./agents";
 

@@ -1,5 +1,6 @@
 import { attributionClauses, parseAttributionFilters } from "@/lib/contacts/attribution-filter";
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import { getWorkspaceMembers } from "@/lib/workspace-members";
 import { ContactsView, type ContactRow } from "./contacts-view";
 import type { LeadTemperature } from "@/lib/types/database";
@@ -36,6 +37,8 @@ export default async function ContactsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  // Equipo y roles (F21): la pagina pide su permiso; el alcance de los contactos lo sigue aplicando la RLS.
+  await requirePermission("contacts.view");
   const { workspace, supabase } = await getWorkspace();
 
   const search = sanitizeSearch(firstParam(params.q));

@@ -1,4 +1,4 @@
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { requirePermission } from "@/lib/auth/guards";
 import { isEmbeddingProviderConnected } from "@/lib/knowledge/embeddings";
 import { KnowledgeView } from "./knowledge-view";
 import type { KnowledgeStatus } from "@/lib/types/database";
@@ -6,13 +6,13 @@ import type { KnowledgeStatus } from "@/lib/types/database";
 /**
  * Base de conocimiento (F17).
  *
- * Solo Owner/Admin: requireWorkspaceAdmin ademas de la RLS de knowledge_base.
+ * Pide `knowledge.view` (y editar, `knowledge.edit`), ademas de la RLS de knowledge_base.
  *
  * No se trae content_md en el listado. Es el campo mas pesado de la tabla —el
  * documento entero— y en la lista no se muestra: se lee en el detalle.
  */
 export default async function KnowledgePage() {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("knowledge.view");
 
   const [{ data: documents, error }, voyageConnected] = await Promise.all([
     supabase

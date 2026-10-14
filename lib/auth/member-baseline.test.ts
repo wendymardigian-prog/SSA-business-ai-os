@@ -36,19 +36,35 @@ const read = (relativePath: string) => readFileSync(join(ROOT, relativePath), "u
  * v3): pasaron a pedir un permiso (`social.view`, `dashboards.content.view`)
  * y estan en `PERMISSION_PAGES`, mas abajo.
  */
+/**
+ * Las paginas que eran de Owner/Admin y pasaron a pedir un permiso (Equipo y roles). Siguen siendo
+ * inaccesibles para un Member de sistema: la clave que piden NO esta en su lista. Cada pagina que sale
+ * de `ADMIN_PAGES` entra aca con su clave, asi el total de "paginas de Admin de hoy" sigue siendo once.
+ */
+const MIGRATED_ADMIN_PAGES = [
+  ["app/(dashboard)/dashboard/settings/team/page.tsx", "team.view", 'requirePermission("team.view")'],
+  // General se parte en dos por permiso: la abre quien tiene `settings.general` o `sales.settings` (el Member, ninguna).
+  ["app/(dashboard)/dashboard/settings/custom-fields/page.tsx", "custom_fields.manage", 'requirePermission("custom_fields.manage")'],
+  // Ventas (F36): el historial de todo el workspace; ahora lo ve quien tiene `audit.view`.
+  ["app/(dashboard)/dashboard/settings/actividad/page.tsx", "audit.view", 'requirePermission("audit.view")'],
+  ["app/(dashboard)/dashboard/channels/page.tsx", "channels.manage", 'requirePermission("channels.manage")'],
+  ["app/(dashboard)/dashboard/dashboards/unified/page.tsx", "dashboards.unified.view", 'requirePermission("dashboards.unified.view")'],
+  ["app/(dashboard)/dashboard/knowledge/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
+  ["app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx", "knowledge.view", 'requirePermission("knowledge.view")'],
+  ["app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx", "ai_tasks.manage", 'requireAnyPermission(["ai_tasks.manage", "calls.configure"])'],
+  [
+    "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
+    "integrations.view",
+    'requireAnyPermission(["integrations.view", "integrations.manage", "channels.manage"])',
+  ],
+  [
+    "app/(dashboard)/dashboard/settings/page.tsx",
+    "settings.general",
+    'requireAnyPermission(["settings.general", "sales.settings"])',
+  ],
+] as const;
+
 const ADMIN_PAGES = [
-  "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx",
-  "app/(dashboard)/dashboard/channels/page.tsx",
-  "app/(dashboard)/dashboard/dashboards/unified/page.tsx",
-  "app/(dashboard)/dashboard/knowledge/page.tsx",
-  "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx",
-  "app/(dashboard)/dashboard/settings/page.tsx",
-  "app/(dashboard)/dashboard/settings/custom-fields/page.tsx",
-  "app/(dashboard)/dashboard/settings/integrations/page.tsx",
-  "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx",
-  "app/(dashboard)/dashboard/settings/team/page.tsx",
-  // Ventas (F36): el historial de todo el workspace, solo Owner y Admin.
-  "app/(dashboard)/dashboard/settings/actividad/page.tsx",
 ] as const;
 
 /**
@@ -74,16 +90,23 @@ const MEMBER_PAGES = [
 
 /** Los archivos de acciones que HOY exigen Owner/Admin en todo lo que hacen. */
 const ADMIN_ACTION_FILES = [
-  "lib/actions/agents.ts",
-  "lib/actions/custom-fields.ts",
-  "lib/actions/integrations.ts",
-  "lib/actions/knowledge.ts",
-  "lib/actions/meta-accounts.ts",
-  "lib/actions/metrics.ts",
-  "lib/actions/patterns.ts",
-  "lib/actions/sequences.ts",
-  "lib/actions/tag-effects.ts",
-  "lib/actions/workspace.ts",
+] as const;
+
+/**
+ * Los archivos de acciones que eran de Owner/Admin y pasaron a pedir un permiso (Equipo y roles).
+ * Siguen siendo imposibles para un Member de sistema: ninguna de sus claves esta en su lista.
+ */
+const MIGRATED_ADMIN_ACTION_FILES = [
+  ["lib/actions/workspace.ts", ["settings.general", "ai_tasks.manage"]],
+  ["lib/actions/custom-fields.ts", ["custom_fields.manage"]],
+  ["lib/actions/sequences.ts", ["sequences.edit"]],
+  ["lib/actions/agents.ts", ["agents.edit", "ai_limits.manage"]],
+  ["lib/actions/knowledge.ts", ["knowledge.edit"]],
+  ["lib/actions/integrations.ts", ["integrations.manage", "channels.manage", "agents.edit"]],
+  ["lib/actions/meta-accounts.ts", ["integrations.manage"]],
+  ["lib/actions/metrics.ts", ["integrations.manage"]],
+  ["lib/actions/patterns.ts", ["ai_tasks.manage"]],
+  ["lib/actions/tag-effects.ts", ["tags.manage"]],
 ] as const;
 
 /**
@@ -128,10 +151,19 @@ describe("caracterizacion: las paginas que hoy son de Owner/Admin (F68)", () => 
     // (Bloque G suma el detalle de una integracion, G5. F78 saca Social y el
     // dashboard de contenido: pasaron a un permiso. AT4 (F32) saca el dashboard
     // de Ads: pide `dashboards.ads.view`, que es lo que ya anunciaba `available.ts`.)
-    expect(ADMIN_PAGES).toHaveLength(11);
-    for (const page of ADMIN_PAGES) {
+    // Integraciones (la lista) deja de ser de Admin: la abre todo el equipo (M8); por eso son diez.
+    expect(ADMIN_PAGES.length + MIGRATED_ADMIN_PAGES.length).toBe(10);
+    for (const page of [...ADMIN_PAGES, ...MIGRATED_ADMIN_PAGES.map(([p]) => p)]) {
       expect(existsSync(join(ROOT, page)), page).toBe(true);
     }
+  });
+
+  it.each(MIGRATED_ADMIN_PAGES)("%s ahora pide %s y un Member de sistema sigue sin entrar", (page, key, marker) => {
+    expect(read(page)).toContain(marker);
+    expect(read(page)).not.toContain("requireWorkspaceAdmin");
+    expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain(key);
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain(key);
+    expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toContain(key);
   });
 
   it("no hay ninguna otra pagina con requireWorkspaceAdmin", async () => {
@@ -169,11 +201,11 @@ const PERMISSION_PAGES = [
   // Extra L (AT4, F32): el dashboard de Ads pide su permiso, no el cargo (Owner y Admin lo tienen siempre).
   ["app/(dashboard)/dashboard/dashboards/ads/page.tsx", "dashboards.ads.view"],
   // Ventas (Etapa 5): la lista pide sales.view; el detalle de un producto, la
-  // misma settings.manage que la lista de Productos.
+  // misma products.manage que la lista de Productos.
   ["app/(dashboard)/dashboard/ventas/page.tsx", "sales.view"],
   // Tareas (Extra A): la pantalla pide tasks.view (el Member de sistema lo tiene).
   ["app/(dashboard)/dashboard/tareas/page.tsx", "tasks.view"],
-  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "settings.manage"],
+  ["app/(dashboard)/dashboard/settings/productos/[id]/page.tsx", "products.manage"],
 ] as const;
 
 describe("caracterizacion: las paginas que piden un permiso (F78)", () => {
@@ -244,6 +276,16 @@ describe("caracterizacion: las acciones de Owner/Admin (F68)", () => {
     expect(sinGuard, `estos archivos dejaron de exigir Admin: ${sinGuard.join(", ")}`).toEqual([]);
   });
 
+  it.each(MIGRATED_ADMIN_ACTION_FILES)("%s ahora pide %j y un Member de sistema sigue sin poder", (file, keys) => {
+    const source = read(file);
+    expect(source).not.toContain("getAdminContext");
+    for (const key of keys) {
+      expect(source, `${file} deberia pedir ${key}`).toContain(`getPermissionAction("${key}")`);
+      expect(SYSTEM_ROLE_PERMISSIONS.member.keys).not.toContain(key);
+      expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toContain(key);
+    }
+  });
+
   it("ninguna accion de Admin usa getWorkspace a secas", () => {
     // `getWorkspace` devuelve el rol pero no lo exige: usarlo en una accion
     // de Admin sin chequear despues es exactamente como se cuela un permiso.
@@ -288,30 +330,34 @@ describe("caracterizacion: el menu (F68)", () => {
   // Inbox se renombran a Ajustes y Bandeja; Contacts y Flows, a Contactos y
   // Automatizaciones. Ninguna clave de PERMISSION_KEYS se agrego para esto.
   //
-  // Plano formularios-ui (D1-D4): Conocimiento, Recursos e Integraciones salen del menu y Ajustes deja de
-  // ser `adminOnly`: se ve con la bandeja `settings` (quien vea alguna pestaña de Ajustes). Lo que NO
-  // cambia: las PAGINAS de administracion siguen siendo solo de Owner/Admin (ADMIN_PAGES, mas arriba) y el
-  // Member no gana ningun permiso; un Member que abre Ajustes llega a Recursos, que ya era suya.
-  it("ningun item del menu es adminOnly: lo administrativo lo deciden las paginas y la bandera de Ajustes (plano formularios-ui, D1-D4)", () => {
-    const adminOnly = NAV_ITEMS.filter((item) => item.adminOnly).map((item) => item.name).sort();
-
-    expect(adminOnly).toEqual([]);
-    expect(NAV_ITEMS.find((item) => item.name === "Ajustes")?.requires).toBe("settings");
-  });
-
-  it("el menu del Member es el de hoy menos Recursos y mas Ajustes (plano formularios-ui, D4)", () => {
-    // Se calcula con el filtro REAL (`visibleNavItems`) y las claves del Member de sistema, no leyendo `adminOnly`.
-    const visible = visibleNavItems(NAV_ITEMS, {
-      isAdmin: false,
+  // Plano formularios-ui (D1-D4): Conocimiento, Recursos e Integraciones salen del menu y Ajustes se ve con la
+  // bandera `settings` (quien vea alguna pestaña de Ajustes). Equipo y roles (B1): `adminOnly` desaparecio; el
+  // menu se calcula con las claves de cada rol. Lo que NO cambia: las PAGINAS de administracion se protegen por
+  // su clave, y un Member que abre Ajustes llega a Recursos, que ya era suya.
+  const memberMenu = () =>
+    visibleNavItems(NAV_ITEMS, {
       permissionKeys: SYSTEM_ROLE_PERMISSIONS.member.keys,
       flags: { eod: true, settings: true },
     })
       .map((item) => item.name)
       .sort();
 
+  it("ningun item del menu es adminOnly: lo decide el permiso de cada uno y la bandera de Ajustes (plano formularios-ui, D1-D4)", () => {
+    expect(NAV_ITEMS.filter((item) => "adminOnly" in item).map((item) => item.name)).toEqual([]);
+    expect(NAV_ITEMS.find((item) => item.name === "Ajustes")?.requires).toBe("settings");
+  });
+
+  it("la unica entrada que el Member NO ve es Social (no tiene social.view)", () => {
+    const visibles = memberMenu();
+    const ocultas = NAV_ITEMS.map((item) => item.name).filter((n) => !visibles.includes(n)).sort();
+
+    expect(ocultas).toEqual(["Social"]);
+  });
+
+  it("las demas las ve un Member", () => {
     // "Agenda" (Etapa 4) y "Social" (F78) se filtran por permiso (`permissions`). El Member de sistema ve
     // Agenda porque tiene scheduling.use y bookings.view, y NO ve Social: no tiene social.view.
-    expect(visible).toEqual([
+    expect(memberMenu()).toEqual([
       "Agenda",
       "Agentes IA",
       // Plano formularios-ui (D4): Recursos ya no es un item; Ajustes lo lleva a esa pantalla.

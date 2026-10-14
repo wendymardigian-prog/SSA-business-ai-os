@@ -29,7 +29,8 @@ export const dynamic = "force-dynamic";
  * invita a conectarla. LinkedIn es una lista: no entrega metricas.
  */
 export default async function SocialPage() {
-  const { workspace, supabase, role } = await requirePermission("social.view");
+  const ctx = await requirePermission("social.view");
+  const { workspace, supabase } = ctx;
 
   const { data: accounts } = await supabase
     .from("social_accounts")
@@ -236,8 +237,8 @@ export default async function SocialPage() {
       followerPoints={followerPoints}
       upcoming={upcoming}
       linkedin={linkedin}
-      canRefresh={role === "owner" || role === "admin"}
-      canConnect={role === "owner" || role === "admin"}
+      canRefresh={ctx.can("integrations.manage")}
+      canConnect={ctx.can("integrations.manage")}
       timeZone={timeZone}
     />
   );

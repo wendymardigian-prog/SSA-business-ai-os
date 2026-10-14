@@ -20,7 +20,10 @@ vi.mock("@/lib/workspace", () => ({
   getWorkspace: async () => ({ user: { id: "user-1" }, workspace: { id: WS }, role: "admin", roleId: null, supabase: db.client }),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServiceClient: async () => db.client }));
-vi.mock("@/lib/auth/guards", () => ({ getAdminContext: async () => null }));
+// Un Member de sistema: puede editar y reasignar (contacts.edit / contacts.assign), no borrar ni fusionar.
+vi.mock("@/lib/auth/guards", () => ({
+  getPermissionAction: async (key: string) => (["contacts.edit", "contacts.assign"].includes(key) ? { user: { id: "user-1" }, workspace: { id: "ws-1" }, supabase: null } : null),
+}));
 vi.mock("@/lib/user-timezone", () => ({ resolveViewerTimezone: async () => "UTC" }));
 
 const { assignContact } = await import("./contacts");

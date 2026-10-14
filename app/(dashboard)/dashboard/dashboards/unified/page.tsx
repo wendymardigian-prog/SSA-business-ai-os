@@ -1,4 +1,4 @@
-import { requireWorkspaceAdmin, getPermissionContext } from "@/lib/auth/guards";
+import { requirePermission, getPermissionContext } from "@/lib/auth/guards";
 import { availableDashboards } from "@/lib/dashboards/available";
 import { UnifiedDashboard } from "@/components/dashboards/unified-dashboard";
 import { loadContentDashboard } from "@/lib/dashboards/content-load";
@@ -24,7 +24,7 @@ export default async function UnifiedDashboardPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  const { workspace, supabase } = await requirePermission("dashboards.unified.view");
   const dashboards = availableDashboards((await getPermissionContext()).can);
   const sp = await searchParams;
 

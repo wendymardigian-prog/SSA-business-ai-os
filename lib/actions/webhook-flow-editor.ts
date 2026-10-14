@@ -17,7 +17,7 @@ import { findContact } from "@/lib/contacts/find-or-create";
  * Lo que el editor de flujos necesita de los webhooks: elegir el endpoint del disparador, el ejemplo y
  * los datos para armar el mapeo del paso «Crear o actualizar contacto», y «Probar con el ejemplo».
  *
- * Todas piden `flows.edit`. Leen con el cliente de servicio (restringido al workspace de la sesión)
+ * Todas piden `webhooks.manage`. Leen con el cliente de servicio (restringido al workspace de la sesión)
  * después de chequear el permiso, por el mismo motivo que las pantallas de webhooks: la RLS usa
  * `has_permission`, que es false para el Member de sistema. «Probar con el ejemplo» NO escribe nada.
  */
@@ -25,12 +25,12 @@ import { findContact } from "@/lib/contacts/find-or-create";
 const NO_PERMISSION = "No tenés permiso para editar automatizaciones.";
 
 async function guard() {
-  const ctx = await getPermissionAction("flows.edit");
+  const ctx = await getPermissionAction("webhooks.manage");
   if (!ctx) return null;
   return { ctx, db: await createServiceClient() };
 }
 
-/** Los endpoints para el selector del disparador, con su URL (credencial: solo `flows.edit`). */
+/** Los endpoints para el selector del disparador, con su URL (credencial: solo `webhooks.manage`). */
 export async function listWebhookEndpointsForPicker(): Promise<WebhookActionResult<{ endpoints: PickerEndpoint[] }>> {
   const g = await guard();
   if (!g) return { ok: false, error: NO_PERMISSION };

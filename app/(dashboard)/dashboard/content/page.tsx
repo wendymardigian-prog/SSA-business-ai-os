@@ -1,4 +1,4 @@
-import { getPermissionContext } from "@/lib/auth/guards";
+import { getPermissionContext, requirePermission } from "@/lib/auth/guards";
 import { PageHeader } from "@/components/page-header";
 import { ContentKanban, NewContentButtons } from "@/components/content/kanban";
 import { ContentCalendar } from "@/components/content/calendar-view";
@@ -71,6 +71,8 @@ export default async function ContentPage({
   const target = parseDrawer(params);
   // Por permiso y no por cargo (F78): lo que se ve en el tablero sale de las
   // claves del rol, no de ser Owner o Admin.
+  // Equipo y roles: la pagina pide su permiso.
+  await requirePermission("content.view");
   const ctx = await getPermissionContext();
   const { workspace, user, supabase, can } = ctx;
   const canApprove = can("content.approve");
@@ -104,7 +106,7 @@ export default async function ContentPage({
     canUseAi ? listConnectedAiProviders(workspace.id) : Promise.resolve([]),
     // Archivados incluidos: una idea o pieza que ya tiene un pilar lo sigue
     // mostrando aunque ya no se ofrezca en el selector (F89).
-    loadContentTaxonomy(supabase, workspace.id, can("settings.manage")),
+    loadContentTaxonomy(supabase, workspace.id, can("settings.general")),
     firstTouchCounts(supabase),
   ]);
 
@@ -351,7 +353,7 @@ export default async function ContentPage({
         right={
           <>
             {/* Los pilares (y lo que se sume en el futuro): solo para quien puede cambiar la configuracion. */}
-            {can("settings.manage") && <ContentSettingsButton pillars={pillarRows} />}
+            {can("settings.general") && <ContentSettingsButton pillars={pillarRows} />}
             <NewContentButtons {...crear} />
           </>
         }

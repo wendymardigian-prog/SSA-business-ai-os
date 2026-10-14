@@ -18,11 +18,10 @@ import { SYSTEM_ROLE_PERMISSIONS } from "@/lib/auth/permissions";
 
 const keysOf = (role: "owner" | "admin" | "member") => SYSTEM_ROLE_PERMISSIONS[role].keys;
 
-function menuFor(viewer: { isAdmin: boolean; permissionKeys: string[]; eod?: boolean }) {
+function menuFor(viewer: { permissionKeys: string[]; eod?: boolean }) {
   const items = visibleNavItems(NAV_ITEMS, {
-    isAdmin: viewer.isAdmin,
     permissionKeys: viewer.permissionKeys,
-    // `settings`: el layout la calcula con `visibleSettingsTabs`; hoy todos ven al menos Recursos.
+    // `settings`: el layout la calcula con `visibleSettingsTabs`; todos ven al menos Recursos, que no pide permiso.
     flags: { eod: viewer.eod ?? false, settings: true },
   });
   return navSections(items).map((s) => ({
@@ -36,7 +35,7 @@ function menuFor(viewer: { isAdmin: boolean; permissionKeys: string[]; eod?: boo
 describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   it("Owner y Admin ven todo, en este orden y con estos grupos (plano formularios-ui, D1-D4)", () => {
     for (const role of ["owner", "admin"] as const) {
-      expect(menuFor({ isAdmin: true, permissionKeys: keysOf(role), eod: true })).toEqual([
+      expect(menuFor({ permissionKeys: keysOf(role), eod: true })).toEqual([
         { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"] },
         { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido", "Social"] },
         { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
@@ -46,7 +45,7 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   });
 
   it("el Member de sistema pierde Recursos y gana Ajustes; sigue sin Social (plano formularios-ui, D4)", () => {
-    expect(menuFor({ isAdmin: false, permissionKeys: keysOf("member"), eod: true })).toEqual([
+    expect(menuFor({ permissionKeys: keysOf("member"), eod: true })).toEqual([
       { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja", "Tareas", "Mi reporte del día"] },
       { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido"] },
       { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos", "Agenda", "Llamadas", "Ventas"] },
@@ -55,36 +54,35 @@ describe("caracterizacion: el menu por rol (formularios-ui)", () => {
   });
 
   it("Mi reporte del dia solo aparece con la condicion del servidor, tambien para un admin", () => {
-    const flat = (eod: boolean) => menuFor({ isAdmin: true, permissionKeys: [], eod }).flatMap((s) => s.items);
+    const flat = (eod: boolean) => menuFor({ permissionKeys: [], eod }).flatMap((s) => s.items);
     expect(flat(true)).toContain("Mi reporte del día");
     expect(flat(false)).not.toContain("Mi reporte del día");
   });
 
   it("un rol personalizado SIN forms.view no ve Formularios; CON forms.view si", () => {
-    const sin = menuFor({ isAdmin: false, permissionKeys: ["social.view"] }).flatMap((s) => s.items);
-    const con = menuFor({ isAdmin: false, permissionKeys: ["forms.view"] }).flatMap((s) => s.items);
+    const sin = menuFor({ permissionKeys: ["social.view"] }).flatMap((s) => s.items);
+    const con = menuFor({ permissionKeys: ["forms.view"] }).flatMap((s) => s.items);
     expect(sin).not.toContain("Formularios");
     expect(con).toContain("Formularios");
   });
 
   it("forms.manage sola no muestra Formularios (el item pide forms.view)", () => {
-    const items = menuFor({ isAdmin: false, permissionKeys: ["forms.manage"] }).flatMap((s) => s.items);
+    const items = menuFor({ permissionKeys: ["forms.manage"] }).flatMap((s) => s.items);
     expect(items).not.toContain("Formularios");
   });
 
   it("un rol personalizado sin ninguna clave solo ve lo que no pide permiso (plano formularios-ui, D1-D4)", () => {
-    expect(menuFor({ isAdmin: false, permissionKeys: [] })).toEqual([
-      { group: "inicio", title: null, separatorBefore: false, items: ["Dashboards", "Bandeja"] },
-      { group: "adquisicion", title: "Adquisición", separatorBefore: true, items: ["Contenido"] },
-      { group: "ventas", title: "Ventas", separatorBefore: true, items: ["Contactos"] },
-      { group: "herramientas", title: "Herramientas", separatorBefore: true, items: ["Automatizaciones", "Agentes IA", "Ajustes"] },
+    // Equipo y roles (B1): cada item pide su clave, asi que sin ninguna solo queda Ajustes (que pide la bandeja
+    // `settings`: todos llegan a Recursos).
+    expect(menuFor({ permissionKeys: [] })).toEqual([
+      { group: "herramientas", title: "Herramientas", separatorBefore: false, items: ["Ajustes"] },
     ]);
   });
 
   it("un grupo sin items visibles no muestra su titulo", () => {
     // Un viewer sin ninguna bandera ni permiso no ve ni Social, ni Formularios, ni Ajustes: "adquisicion" queda con Contenido,
     // pero si ademas se le saca ese item el grupo desaparece entero.
-    const items = visibleNavItems(NAV_ITEMS, { isAdmin: false, permissionKeys: [] }).filter((i) => i.name !== "Contenido");
+    const items = visibleNavItems(NAV_ITEMS, { permissionKeys: ["content.view"] }).filter((i) => i.name !== "Contenido");
     expect(navSections(items).some((s) => s.group === "adquisicion")).toBe(false);
   });
 });

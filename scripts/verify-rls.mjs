@@ -1387,11 +1387,11 @@ try {
       .insert({ name: "zz-test-taxonomia-ws", slug: `zz-test-taxonomia-${Date.now()}` }).select("id").single();
     await svc.from("workspace_members").insert({ workspace_id: wsC.id, user_id: otroWs.id, role: "owner" });
 
-    // Un rol personalizado con settings.manage: la policy mira el permiso, no el cargo.
+    // Un rol personalizado con settings.general (pilares) y products.manage (productos): la policy mira el permiso, no el cargo.
     const gestor = await makeUser("gestor-taxonomia");
     const { data: rolGestor } = await svc.from("workspace_roles").insert({
       workspace_id: ws.id, name: "zz-test Gestor de contenido",
-      permissions: { keys: ["settings.manage"], scopes: { leads: "own", conversations: "own" } },
+      permissions: { keys: ["settings.general", "products.manage"], scopes: { leads: "own", conversations: "own" } },
     }).select("id").single();
     await svc.from("workspace_members").insert({
       workspace_id: ws.id, user_id: gestor.id, role: "member", role_id: rolGestor.id,
@@ -1416,7 +1416,7 @@ try {
 
       { const { data: creada, error } = await gestor.client.from(tabla)
           .insert({ workspace_id: ws.id, name: "zz-test Del gestor" }).select("id").single();
-        check(!error && !!creada, `un rol personalizado con settings.manage SI crea ${un} ${singular}`, error?.message); }
+        check(!error && !!creada, `un rol personalizado con settings.general y products.manage SI crea ${un} ${singular}`, error?.message); }
 
       // Archivar es un UPDATE, y es la unica forma de sacarlo de circulacion. En un
       // producto (00134) estado y archivado van juntos: archivar es dejarlo discontinuado.

@@ -11,15 +11,32 @@
 export interface GeneralSection {
   id: "workspace" | "conversaciones" | "archivos" | "ventas" | "ia";
   label: string;
+  /** La clave que hace falta para ver esta seccion (Equipo y roles, F16). */
+  permission: "settings.general" | "sales.settings";
 }
 
+/**
+ * General se parte en dos por permiso: «General» (nombre, palabras clave, no contactar, zona horaria,
+ * retención de archivos) pide `settings.general`; «Ventas y cobranza» (métodos de pago, tope de
+ * descuento, días de gracia, flujos de cobranza) pide `sales.settings`.
+ */
 export const GENERAL_SECTIONS: GeneralSection[] = [
-  { id: "workspace", label: "Workspace" },
-  { id: "conversaciones", label: "Conversaciones" },
-  { id: "archivos", label: "Archivos" },
-  { id: "ventas", label: "Ventas" },
-  { id: "ia", label: "IA" },
+  { id: "workspace", label: "Workspace", permission: "settings.general" },
+  { id: "conversaciones", label: "Conversaciones", permission: "settings.general" },
+  { id: "archivos", label: "Archivos", permission: "settings.general" },
+  { id: "ventas", label: "Ventas y cobranza", permission: "sales.settings" },
+  { id: "ia", label: "IA", permission: "settings.general" },
 ];
+
+/** Las secciones que ve quien tiene estas claves (Owner y Admin las tienen todas). */
+export function generalSectionsFor(can: (key: string) => boolean): GeneralSection[] {
+  return GENERAL_SECTIONS.filter((section) => can(section.permission));
+}
+
+/** Si la persona tiene algo que ver en General. */
+export function canOpenGeneral(can: (key: string) => boolean): boolean {
+  return generalSectionsFor(can).length > 0;
+}
 
 /**
  * Destino del link a Corridas (S7). `ai_costs.view` ya existe en el

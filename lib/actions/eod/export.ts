@@ -1,5 +1,6 @@
 "use server";
 
+import { canExport, NO_EXPORT_MESSAGE } from "@/lib/auth/export";
 import { getPermissionAction } from "@/lib/auth/guards";
 import { formatInZone } from "@/lib/forms/responses-query";
 import { buildExportFilename } from "@/lib/forms/export";
@@ -15,6 +16,7 @@ export type EodExportResult = { ok: true; filename: string; csv: string; rows: n
 export async function exportEodReportsCsv(input: { formId: string; params: Record<string, string> }): Promise<EodExportResult> {
   const ctx = await getPermissionAction("forms.view");
   if (!ctx) return { ok: false, error: "No tenés permiso para ver formularios" };
+  if (!canExport(ctx.can)) return { ok: false, error: NO_EXPORT_MESSAGE };
   const page = await loadReportsPage(ctx, String(input?.formId ?? ""), input?.params ?? {});
   if (!page) return { ok: false, error: "No encontré ese reporte" };
   const csv = buildReportsCsv(page.rows, metricColumns(page.metricKeys), {

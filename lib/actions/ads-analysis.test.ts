@@ -26,7 +26,7 @@ vi.mock("@/lib/dashboards/ads-load", () => ({
   ],
 }));
 vi.mock("@/lib/auth/guards", () => ({
-  requireWorkspaceAdmin: async () => ({
+  requirePermission: async () => ({
     workspace: { id: "ws-1", timezone: "UTC" },
     supabase: {
       from: () => ({

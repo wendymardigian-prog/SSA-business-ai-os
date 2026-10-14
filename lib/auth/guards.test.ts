@@ -199,7 +199,7 @@ describe("requireAnyPermission / getAnyPermissionAction (Extra L)", () => {
   it("un Member de sistema no tiene integrations.manage y su flows.edit es el de TypeScript", async () => {
     context({ role: "member" });
     expect(await getAnyPermissionAction(["integrations.manage"])).toBeNull();
-    await expect(requireAnyPermission(["integrations.manage", "settings.manage"])).rejects.toThrow("REDIRECT");
+    await expect(requireAnyPermission(["integrations.manage", "settings.general"])).rejects.toThrow("REDIRECT");
     expect(redirect).toHaveBeenCalledWith("/dashboard");
   });
 });

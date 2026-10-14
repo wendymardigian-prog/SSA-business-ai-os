@@ -14,11 +14,11 @@ export type SyncNowResult =
 
 /**
  * "Sincronizar ahora": encola la sincronizacion de UNA cuenta publicitaria (metricas, catalogo y
- * miniaturas). Permiso `settings.manage`. El workspace sale SIEMPRE de la sesion y la cuenta tiene
+ * miniaturas). Permiso `settings.general`. El workspace sale SIEMPRE de la sesion y la cuenta tiene
  * que ser una de las que el negocio ya eligio sincronizar.
  */
 export async function syncMetaAdsNow(adAccountId: string): Promise<SyncNowResult> {
-  const ctx = await getPermissionAction("settings.manage");
+  const ctx = await getPermissionAction("settings.general");
   if (!ctx) return { ok: false, error: "No tenés permiso para sincronizar los anuncios. Pedile a un Admin que lo haga." };
 
   const service = await createServiceClient();

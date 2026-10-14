@@ -1,3 +1,4 @@
+import { canExport, NO_EXPORT_MESSAGE } from "@/lib/auth/export";
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspace } from "@/lib/workspace";
 import { getPermissionContext } from "@/lib/auth/guards";
@@ -15,9 +16,12 @@ import { resolveViewerTimezone } from "@/lib/user-timezone";
  * `loadRuns` ni siquiera las selecciona (00060).
  */
 export async function GET(request: NextRequest) {
+  // Exportar pide `data.export` (Equipo y roles, F24); antes lo bajaba cualquier miembro. Va ANTES de abrir el
+  // cliente de servicio: sin la clave no se lee nada.
+  const permissions = await getPermissionContext();
+  if (!canExport(permissions.can)) return NextResponse.json({ error: NO_EXPORT_MESSAGE }, { status: 403 });
   const { workspace, supabase } = await getWorkspace();
   const service = await createServiceClient();
-  const permissions = await getPermissionContext();
   const includeCost = permissions.can("ai_costs.view");
   const timeZone = await resolveViewerTimezone((workspace as { timezone?: string }).timezone);
 

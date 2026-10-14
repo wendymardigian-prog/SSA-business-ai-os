@@ -353,9 +353,42 @@ El email **no es un modulo aparte**: entra por `channels`, `conversations` y `me
 ## Roles personalizados
 - El catalogo de claves esta en `lib/auth/permissions.ts`, y es **la fuente**: los permisos de Owner, Admin y Member salen de ahi, no de la base. La fila de un rol de sistema tiene los permisos vacios a proposito.
 - `workspace_members.role` NO cambio: sigue siendo owner/admin/member y es lo que leen las policies que ya existian. Un rol personalizado es siempre un `member` con `role_id`.
-- `requireWorkspaceAdmin` y `getAdminContext` conservan su comportamiento. Lo nuevo es `requirePermission` y `getPermissionAction`.
+- `requireWorkspaceAdmin` y `getAdminContext` conservan su comportamiento, pero ya casi no se usan. Lo nuevo es `requirePermission`, `requireAnyPermission`, `getPermissionAction` y `getAnyPermissionAction`.
 - `lib/auth/member-baseline.test.ts` fija lo que puede un Member recorriendo el codigo real. Si se cambia un guard sin querer, ese test lo dice.
 - Doc: `docs/roles.md`.
+
+# Equipo, roles y permisos (construido, 14/10/2026)
+
+74 claves, cada una con su guard en la pagina, en la accion y en la base. Invitar por email o por link, historial, roles con guardado automatico y reglas de seguridad de quien puede dar que. Resumen y "como sumar una clave en 5 pasos" en [docs/roles.md](docs/roles.md); plano en `docs/requerimientos-equipo-roles.md`; avance y decisiones en `docs/PROGRESS-equipo-roles.md` y `docs/PENDIENTE-equipo-roles.md`.
+
+## Lo que no se puede romper
+
+- **Cada clave del catalogo hace lo que dice, en las tres capas**: la pagina (`requirePermission`), la accion (`getPermissionAction`) y la tabla (`has_permission` en la politica). `lib/auth/catalog-usage.test.ts` falla si una clave no se usa en ningun lado. **`settings.manage` se retiro**: ya no existe ni en el catalogo ni en ninguna politica (sus sucesoras: `settings.general`, `sales.settings`, `products.manage`, `assignment.manage`).
+- **La lista del Member vive en dos lugares que tienen que ser iguales**: `MEMBER_PERMISSION_KEYS` (TypeScript) y `private.member_permission_keys()` (SQL). Lo mismo con las claves solo-Owner (`private.owner_only_keys()`) y las que no viajan en ningun rol (`private.ungrantable_keys()`: solo-Owner mas reservadas). `lib/auth/member-sql-parity.test.ts` las compara. Cambiar una sin la otra rompe el test, y a proposito.
+- **`has_permission` nunca devuelve NULL** y conserva su firma: Owner true; Admin true menos las solo-Owner; Member de sistema (o sin `role_id`) con su lista; rol personalizado con su jsonb. Quien no es miembro, false.
+- **"No podes dar lo que no tenes"**: quien invita, asigna un rol o arma un rol no puede dar mas de lo que tiene. Tiene dos gemelas con los mismos casos (`lib/team/grant.cases.json`): `assertCanGrant` / `assertCanAssignRole` / `assertCanEditRole` (`lib/team/grant.ts`) y `public.can_grant_permissions` / `can_give_role` / `is_own_role` mas el trigger `workspace_roles_grant_check` (00212, `SECURITY DEFINER`). Una clave solo-Owner o reservada no entra en ningun rol; el rol Admin lo dan solo Owner o Admin; el Owner no se da; nadie se cambia su propio rol ni edita el rol que tiene asignado (salvo Owner y Admin); nadie toca al Owner. Al editar un rol solo hay que poder dar lo que se AGREGA.
+- **Invitaciones**: el link sigue siendo `/invite/<id>`; `status` no cambio (pendiente / aceptada / anulada) y "vencida" se deriva (`inviteState`). Anular es un UPDATE, no un borrado. Reenviar: una vez por minuto y cinco en total. `delivery='link'` no manda correo (test con espia). Al aceptar se guardan `role` y `role_id`; si el rol personalizado ya no existe, entra como Member de sistema. Los logs no llevan emails ni links. La invitacion ya no se puede editar por la persona invitada (se cerro ese agujero en la 00212).
+- **Roles con guardado automatico** (`patchRole`): una cola serial (`lib/roles/save-queue.ts`) y la auditoria agrupada por sesion de edicion de 10 minutos. Un cambio que falla vuelve a su valor y ofrece "Reintentar". Nada de `window.location.reload()`.
+- **`workspaces` sigue siendo Admin en la base**: las acciones de Ajustes escriben con el cliente de servicio DESPUES de chequear su clave, filtrando por el workspace de la sesion. No se reescribe esa politica.
+- **`audit_log_select` NO se toca**: el permiso `audit.view` es la politica ADICIONAL `audit_log_select_audit` (00213).
+- **Las conexiones personales no cambian** (Google Calendar y Fathom, `lib/oauth/*`, `claim_oauth_refresh`): las ve y las conecta cada persona. `oauthRouteContext` tiene tres ramas y un test las fija; la del negocio pide `integrations.manage`.
+- **El menu y las pestanas salen de funciones puras** (`visibleNavItems`, `visibleSettingsTabs`, `tabsForViewer`, `pageActions`, `integrationSections`, `generalSectionsFor`, `visibleChannels`, `canExport`): los componentes solo las componen. `adminOnly` ya no existe, es `permissions`.
+- **Exportar CSV es `canExport`** (`lib/auth/export.ts`) en los cuatro lugares: el endpoint, la accion y el boton. Un Member no exporta (cambio aprobado M2).
+- **La bandeja respeta el canal**: `inbox.<canal>.view` filtra lo que se ve y `inbox.<canal>.reply` habilita el composer, `POST /api/v1/messages` (403 sin llamar al proveedor) y los borradores del agente.
+- **Cambios del Member** (todos con test y el comentario "cambio aprobado"): M1 no importa contactos, M2 no exporta, M3 no ve webhooks, M6 no ve Broadcasts, M7 lo que publica se dispara de verdad (la tabla `triggers` pide `flows.edit`), M8 entra a Integraciones por la URL y ve solo "Mis conexiones". Owner y Admin: ninguno. `lib/auth/access-matrix.characterization.test.ts` guarda la foto y falla si Owner o Admin cambian o el Member cambia fuera de esa lista.
+
+## Migraciones (00208 a 00214, todas aplicadas y registradas)
+
+`00208` (`has_permission` v2, `member_permission_keys`, `owner_only_keys`; las politicas de webhooks pasan a `webhooks.manage`), `00209` (diez columnas de `workspace_invites`), `00210` (backfill de `role_id`), `00211` (retiro de `settings.manage` y sucesoras en el jsonb de los roles), `00212` (RLS de equipo, `can_grant_permissions`, `can_give_role`, `is_own_role` y el trigger de roles), `00213` (RLS de Ajustes) y `00214` (RLS de modulos). **La proxima migracion disponible es la `00215`** (confirmar con `list_migrations`; ya paso que el numero de este archivo quedo viejo).
+
+## Verificacion de equipo y roles
+
+```
+node scripts/verify-roles.mjs --despues-de-00136 --despues-de-00208 --despues-de-00211 --despues-de-00212
+node scripts/verify-permissions-matrix.mjs     # cada tabla con permiso: Owner, Admin, Member, un rol con SOLO la clave y uno sin ella
+```
+
+Mismas reglas que los demas: crean y limpian sus datos (prefijo `zz-test-`). **Se corren de a uno y con el candado `/private/tmp/ssa-verify.lock`**: tomarlo con `mkdir`, soltarlo con `rmdir`, y no mantenerlo mientras no hay ninguna corriendo (otra sesion lo toma pasados 15 minutos).
 
 ## Scripts de verificacion
 Corren contra la base real con usuarios de verdad, crean y limpian sus datos (prefijo `zz-test-`). Una limpieza que falla es una prueba que falla.

@@ -16,7 +16,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/audit", () => ({ logAudit: async (args: Record<string, unknown>) => void audits.push(args) }));
 vi.mock("@/lib/auth/guards", () => ({
   getPermissionAction: async (key: string) =>
-    allowed && key === "settings.manage"
+    allowed && key === "settings.general"
       ? {
           workspace: { id: WS },
           user: { id: "u-1" },
@@ -70,7 +70,7 @@ describe("linkTouchToMeta", () => {
     });
   });
 
-  it("sin el permiso settings.manage se RECHAZA y no escribe nada", async () => {
+  it("sin el permiso settings.general se RECHAZA y no escribe nada", async () => {
     allowed = false;
     const r = await linkTouchToMeta({ touchId: "t-1", adId: "3002" });
     expect(r.ok).toBe(false);

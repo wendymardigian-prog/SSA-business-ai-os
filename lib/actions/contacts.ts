@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getWorkspace } from "@/lib/workspace";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { validateContactInput, type ContactPatch } from "@/lib/contacts/fields";
 import { resolveViewerTimezone } from "@/lib/user-timezone";
@@ -69,6 +69,8 @@ export async function createContact(
   input: Record<string, unknown>,
 ): Promise<CreateContactResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const validated = validateContactInput(input, timeZone);
@@ -171,6 +173,8 @@ export async function updateContact(
   input: Record<string, unknown>,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const timeZone = await resolveViewerTimezone(workspace.timezone);
   const validated = validateContactInput(input, timeZone);
@@ -189,6 +193,8 @@ export async function assignContact(
   assignment: { setter_id?: string | null; vendedor_id?: string | null },
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.assign"))) return { ok: false, error: "No tenés permiso para reasignar contactos" };
 
   const patch: Record<string, string | null> = {};
   for (const key of ["setter_id", "vendedor_id"] as const) {
@@ -230,13 +236,15 @@ export async function setDoNotContact(
   reason?: string | null,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   // Sacar la marca es decision de Owner/Admin: si cualquiera pudiera
   // revertirla, la marca no protegeria de nada.
   if (!value) {
-    const admin = await getAdminContext();
+    const admin = await getPermissionAction("contacts.delete");
     if (!admin) {
-      return { ok: false, error: "Solo Owner y Admin pueden sacar la marca de no contactar" };
+      return { ok: false, error: "No tenés permiso para sacar la marca de no contactar" };
     }
   }
 
@@ -304,7 +312,7 @@ async function pauseSequencesForOptOut(workspaceId: string, contactId: string, u
 
 /** Marca el contacto como borrado. A los 30 dias lo purga el cron. */
 export async function softDeleteContact(contactId: string): Promise<ContactActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("contacts.delete");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden eliminar contactos" };
 
   const { workspace, supabase, user } = ctx;
@@ -342,7 +350,7 @@ export async function softDeleteContact(contactId: string): Promise<ContactActio
 
 /** Deshace el borrado mientras el cron no lo haya purgado. */
 export async function restoreContact(contactId: string): Promise<ContactActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("contacts.delete");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden restaurar contactos" };
 
   const { workspace, supabase, user } = ctx;
@@ -403,6 +411,8 @@ export async function createAndAssignTag(
   rawName: string,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const name = rawName.trim().replace(/\s+/g, " ");
   if (!name) return { ok: false, error: "El tag necesita un nombre" };
@@ -486,6 +496,8 @@ export async function setContactTags(
   tagIds: string[],
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   // Solo tags de este workspace: sin esto se podrian pegar tags de otro.
   const { data: valid } = await supabase
@@ -562,6 +574,8 @@ export async function toggleContactTag(
   on: boolean,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
   if (typeof contactId !== "string" || typeof tagId !== "string" || typeof on !== "boolean") {
     return { ok: false, error: "Pedido invalido" };
   }
@@ -613,6 +627,8 @@ export type BulkTagResult =
  */
 export async function bulkAddTag(contactIds: string[], tagId: string): Promise<BulkTagResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   if (!Array.isArray(contactIds) || typeof tagId !== "string") return { ok: false, error: "Pedido invalido" };
   const ids = [...new Set(contactIds.filter((id): id is string => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)))];
@@ -676,6 +692,8 @@ export async function updateContactNotes(
   previous: string | null,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const text = notes.trim();
   if (text.length > MAX_NOTES) {
@@ -730,6 +748,8 @@ export async function setContactCustomField(
   value: string,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const { data: field } = await supabase
     .from("custom_field_definitions")
@@ -791,8 +811,8 @@ export async function linkContacts(
   duplicateId: string,
   mainId: string,
 ): Promise<ContactActionResult & { summary?: string; notes?: string[]; moved?: Record<string, number> }> {
-  const ctx = await getAdminContext();
-  if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden vincular contactos" };
+  const ctx = await getPermissionAction("contacts.merge");
+  if (!ctx) return { ok: false, error: "No tenés permiso para fusionar contactos" };
   if (duplicateId === mainId) return { ok: false, error: "Es el mismo contacto" };
 
   const { workspace, supabase, user } = ctx;
@@ -842,6 +862,8 @@ export async function dismissLinkSuggestion(
   suggestedContactId: string,
 ): Promise<ContactActionResult> {
   const { workspace, supabase, user } = await getWorkspace();
+  // Permiso (Equipo y roles, F21): lo repite la RLS cuando corresponde.
+  if (!(await getPermissionAction("contacts.edit"))) return { ok: false, error: "No tenés permiso para editar contactos" };
 
   const removed = await clearSuggestion(supabase, workspace.id, contactId, suggestedContactId);
   if (!removed.ok) return removed;

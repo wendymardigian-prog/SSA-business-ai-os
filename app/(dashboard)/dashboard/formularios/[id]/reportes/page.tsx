@@ -25,7 +25,7 @@ export default async function EodReportesPage({ params, searchParams }: { params
       {barData && <EditorBar form={barData.form} route="reportes" canManage={ctx.can("forms.manage")} />}
       <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
         {!data.canViewAll && <p className="mb-4 text-xs text-muted-foreground">Ves tus propios reportes. Los de todo el equipo los ven Owner, Admin y quien tiene el permiso de verlos.</p>}
-        <ReportsView data={data} />
+        <ReportsView data={data} canExport={ctx.can("data.export")} />
       </div>
     </div>
   );

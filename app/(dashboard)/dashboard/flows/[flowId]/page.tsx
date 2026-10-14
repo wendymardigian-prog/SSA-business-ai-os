@@ -1,4 +1,5 @@
 import { getWorkspace } from "@/lib/workspace";
+import { requirePermission } from "@/lib/auth/guards";
 import { notFound } from "next/navigation";
 import { FlowCanvas } from "@/components/flow-builder/flow-canvas";
 
@@ -8,6 +9,8 @@ export default async function FlowEditorPage({
   params: Promise<{ flowId: string }>;
 }) {
   const { flowId } = await params;
+  // Equipo y roles (F22): la pagina pide su permiso.
+  await requirePermission("flows.view");
   const { workspace, supabase } = await getWorkspace();
 
   const { data: flow } = await supabase

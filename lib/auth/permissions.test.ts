@@ -6,6 +6,7 @@
  * real; esto fija que la tabla diga lo mismo.
  */
 
+import { visibleNavItems } from "@/lib/nav/items";
 import { describe, it, expect } from "vitest";
 import { NAV_ITEMS } from "@/lib/nav/items";
 import {
@@ -62,10 +63,11 @@ describe("los tres roles de sistema (F68)", () => {
     expect(SYSTEM_ROLE_PERMISSIONS.owner.keys).toEqual(ALL_PERMISSION_KEYS);
   });
 
-  it("el Admin puede todo menos transferir la propiedad", () => {
-    // Es lo unico irreversible del sistema.
+  it("el Admin puede todo menos las dos claves solo-Owner (transferir la propiedad y quitar personas)", () => {
+    // Quitar personas ya era solo del Owner (la policy de DELETE de workspace_members); ahora tiene su clave.
     expect(can(SYSTEM_ROLE_PERMISSIONS.admin, "workspace.transfer")).toBe(false);
-    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toHaveLength(ALL_PERMISSION_KEYS.length - 1);
+    expect(can(SYSTEM_ROLE_PERMISSIONS.admin, "team.remove")).toBe(false);
+    expect(SYSTEM_ROLE_PERMISSIONS.admin.keys).toHaveLength(ALL_PERMISSION_KEYS.length - 2);
   });
 
   it("Owner y Admin ven todo el negocio", () => {
@@ -97,8 +99,10 @@ describe("el Member es exactamente el de hoy (F68)", () => {
     expect(canAny(member, ["contacts.import", "contacts.delete"])).toBe(false);
   });
 
-  it("edita flows y secuencias", () => {
-    expect(canAll(member, ["flows.edit", "sequences.edit"])).toBe(true);
+  it("edita y publica flows, y ve secuencias sin editarlas", () => {
+    // Cambio aprobado, plano §9.3: `sequences.edit` sale de su lista (las acciones ya eran solo de Admin).
+    expect(canAll(member, ["flows.edit", "flows.publish", "sequences.view"])).toBe(true);
+    expect(can(member, "sequences.edit")).toBe(false);
   });
 
   it("ve el dashboard de chat y ninguno de los otros dos", () => {
@@ -123,7 +127,11 @@ describe("el Member es exactamente el de hoy (F68)", () => {
         "integrations.manage",
         "team.manage",
         "roles.manage",
-        "settings.manage",
+        "settings.general",
+        "products.manage",
+        "channels.manage",
+        "team.invite",
+        "webhooks.manage",
         "knowledge.edit",
         "social.view",
       ]),
@@ -131,15 +139,15 @@ describe("el Member es exactamente el de hoy (F68)", () => {
   });
 
   it("coincide con lo que el menu le muestra hoy", () => {
-    // Plano formularios-ui (D3): Conocimiento ya no es un item del menu; se abre con un boton de la barra de
-    // Agentes IA que solo ven Owner y Admin (`page-actions.ts`). El Member sigue sin `knowledge.view`.
+    // Lo que el Member NO ve en el menu es justo lo que no tiene permiso de ver (Social). Plano formularios-ui (D3):
+    // Conocimiento ya no es un item; se abre con un boton de la barra de Agentes IA que pide `knowledge.view`.
+    const visibles = visibleNavItems(NAV_ITEMS, { permissionKeys: member.keys, flags: { eod: true, settings: true } }).map((i) => i.name);
+    const ocultos = NAV_ITEMS.map((i) => i.name).filter((n) => !visibles.includes(n)).sort();
+    expect(ocultos).toEqual(["Social"]);
     expect(NAV_ITEMS.some((i) => i.name === "Conocimiento")).toBe(false);
     expect(can(member, "knowledge.view")).toBe(false);
-
-    // Social dejo de ser por cargo (F78): se ve con el permiso `social.view`,
-    // y el Member de sistema no lo tiene, asi que sigue sin verlo.
+    // Social no es por cargo (F78): se ve con `social.view`, que el Member de sistema no tiene.
     const social = NAV_ITEMS.find((i) => i.name === "Social");
-    expect(social?.adminOnly).toBe(false);
     expect(social?.permissions).toEqual(["social.view"]);
     expect(can(member, "social.view")).toBe(false);
   });

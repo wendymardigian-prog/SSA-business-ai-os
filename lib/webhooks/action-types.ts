@@ -20,7 +20,7 @@ export interface EndpointListItem {
 }
 
 export interface EndpointDetail extends EndpointListItem {
-  /** Solo lo ve quien tiene `flows.edit`: es una credencial. */
+  /** Solo lo ve quien tiene `webhooks.manage`: es una credencial. */
   url: string;
   urlIsLocal: boolean;
   sample: { payload: Record<string, unknown>; query: Record<string, unknown>; captured_at: string } | null;

@@ -32,7 +32,7 @@ export default async function AdsDashboardPage({
   const permissions = await requirePermission("dashboards.ads.view");
   const { workspace, supabase } = permissions;
   const dashboards = availableDashboards(permissions.can);
-  const canSync = permissions.can("settings.manage");
+  const canSync = permissions.can("settings.general");
   const sp = await searchParams;
 
   const periodParam = typeof sp.periodo === "string" ? sp.periodo : null;
@@ -139,6 +139,7 @@ export default async function AdsDashboardPage({
     scopeLimited: permissions.scope("leads") !== "all",
     now,
   });
+  crm.canExport = permissions.can("data.export");
 
   // Si alguno de los dos no llego, los dos quedan en la suma de los dias:
   // comparar un alcance unico contra uno sumado inventaria una variacion.

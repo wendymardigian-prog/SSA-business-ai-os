@@ -2297,6 +2297,19 @@ export interface Database {
           status: string;
           created_at: string;
           expires_at: string;
+          /** 00209: el rol con el que entra (null = el rol base `role`). */
+          role_id: string | null;
+          /** 'email' (se mando un correo) o 'link' (solo se genero el link). */
+          delivery: string;
+          /** sent | failed | not_configured. */
+          email_status: string | null;
+          email_error: string | null;
+          last_sent_at: string | null;
+          send_count: number;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          revoked_at: string | null;
+          revoked_by: string | null;
         };
         Insert: {
           id?: string;
@@ -2307,12 +2320,32 @@ export interface Database {
           status?: string;
           created_at?: string;
           expires_at?: string;
+          role_id?: string | null;
+          delivery?: string;
+          email_status?: string | null;
+          email_error?: string | null;
+          last_sent_at?: string | null;
+          send_count?: number;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
         };
         Update: {
           email?: string;
           role?: string;
           status?: string;
           expires_at?: string;
+          role_id?: string | null;
+          delivery?: string;
+          email_status?: string | null;
+          email_error?: string | null;
+          last_sent_at?: string | null;
+          send_count?: number;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          revoked_at?: string | null;
+          revoked_by?: string | null;
         };
         Relationships: [
           {

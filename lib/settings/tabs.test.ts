@@ -76,17 +76,24 @@ describe("activeSettingsTab", () => {
   });
 });
 
-describe("visibleSettingsTabs (plano formularios-ui, D4)", () => {
+describe("visibleSettingsTabs (plano formularios-ui, D4; por permiso desde Equipo y roles)", () => {
+  const can = (keys: string[]) => (key: string) => keys.includes(key);
+
   it("Owner y Admin ven las siete pestañas", () => {
-    expect(visibleSettingsTabs({ isAdmin: true })).toBe(SETTINGS_TABS);
+    expect(visibleSettingsTabs(() => true)).toEqual(SETTINGS_TABS);
   });
 
-  it("el resto solo ve Recursos", () => {
-    expect(visibleSettingsTabs({ isAdmin: false }).map((t) => t.name)).toEqual(["Recursos"]);
+  it("quien no tiene ninguna clave de Ajustes (el Member de sistema) solo ve Recursos", () => {
+    expect(visibleSettingsTabs(can([])).map((t) => t.name)).toEqual(["Recursos"]);
   });
 
-  it("Ajustes lleva a General para un admin y a Recursos para un Member", () => {
-    expect(settingsEntryHref({ isAdmin: true })).toBe("/dashboard/settings");
-    expect(settingsEntryHref({ isAdmin: false })).toBe("/dashboard/settings/recursos");
+  it("un rol personalizado ve las pestañas de sus claves, mas Recursos", () => {
+    expect(visibleSettingsTabs(can(["products.manage", "integrations.view"])).map((t) => t.name)).toEqual(["Recursos", "Productos", "Integraciones"]);
+  });
+
+  it("Ajustes lleva a General con una clave de General, y a Recursos para un Member", () => {
+    expect(settingsEntryHref(() => true)).toBe("/dashboard/settings");
+    expect(settingsEntryHref(can(["settings.general"]))).toBe("/dashboard/settings");
+    expect(settingsEntryHref(can([]))).toBe("/dashboard/settings/recursos");
   });
 });

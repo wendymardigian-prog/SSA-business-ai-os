@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createZernioClient } from "@/lib/zernio-client";
 import { getZernioApiKey } from "@/lib/integrations/zernio-key";
 import {
@@ -25,7 +25,7 @@ export async function POST() {
   // conectarlos: no es parte del rol de un Member. La ruta hermana test-key ya
   // lo exigia; esta se habia quedado con un guard propio que solo pedia estar
   // en el workspace.
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("channels.manage");
   if (!ctx) {
     return NextResponse.json(
       { error: "Solo Owner y Admin pueden sincronizar canales" },
@@ -140,7 +140,7 @@ export async function POST() {
     let webhook: { url?: string; action?: string; error?: string };
     try {
       // Con el de servicio: desde la 00143 `read_secret` solo la ejecuta el
-      // servidor. El workspace sale de la sesion (getAdminContext).
+      // servidor. El workspace sale de la sesion (channels.manage).
       const secret = await getOrCreateWorkspaceWebhookSecret(await createServiceClient(), workspace.id);
       const url = channelWebhookUrl("zernio");
       const { action } = await ensureWebhookRegistered(zernio, {

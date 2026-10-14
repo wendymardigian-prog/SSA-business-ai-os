@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit } from "@/lib/audit";
 import { parsePublishers, canChooseDefault, type PublisherId } from "@/lib/social/accounts-schema";
 import { syncAccountsAfterChange } from "@/lib/social/sync-hook";
@@ -23,7 +23,7 @@ export async function setDefaultPublisher(
   accountId: string,
   publisher: PublisherId,
 ): Promise<SocialAccountActionResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("integrations.manage");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden elegir el publicador" };
 
   const { data: account, error: readError } = await ctx.supabase
@@ -79,7 +79,7 @@ export async function setDefaultPublisher(
 export async function syncSocialAccountsNow(): Promise<
   { ok: true; warnings: string[] } | { ok: false; error: string }
 > {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("integrations.manage");
   if (!ctx) return { ok: false, error: "Solo Owner y Admin pueden sincronizar las cuentas" };
 
   const warnings = await syncAccountsAfterChange(ctx.supabase, ctx.workspace.id, "boton sincronizar cuentas");

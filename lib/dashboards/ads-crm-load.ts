@@ -24,6 +24,8 @@ export interface CrmTableData {
   until: string;
   /** Si `ads_crm_metrics` fallo, el motivo (la tabla se muestra igual, sin el CRM). */
   error: string | null;
+  /** `data.export`: ofrece «Exportar CSV» (Equipo y roles, F24). La pagina lo completa; sin esto, no se ofrece. */
+  canExport?: boolean;
 }
 
 export const EMPTY_CRM: CrmTableData = {

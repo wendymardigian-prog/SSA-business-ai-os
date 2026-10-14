@@ -78,8 +78,9 @@ export const DASHBOARDS: DashboardOption[] = [
     label: "Unificado",
     description: "Organico y pagado juntos",
     href: "/dashboard/dashboards/unified",
-    // El unificado cruza organico y pagado: quien lo ve, ve los montos.
-    permission: "dashboards.ads.view",
+    // El unificado tiene su propia clave (Equipo y roles, F24). Cruza organico y pagado: lo pagado sigue
+    // pidiendo `dashboards.ads.view` en la base, asi que sin ella se ve solo lo organico.
+    permission: "dashboards.unified.view",
   },
 ];
 

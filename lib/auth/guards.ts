@@ -65,6 +65,8 @@ export interface PermissionContext {
   user: Awaited<ReturnType<typeof getWorkspace>>["user"];
   supabase: Awaited<ReturnType<typeof getWorkspace>>["supabase"];
   role: string;
+  /** El rol asignado (null si no tiene uno: se trata como el rol de sistema que dice `role`). */
+  roleId: string | null;
   permissions: RolePermissions;
   /** Atajo: `can(permissions, key)`. */
   can: (key: string) => boolean;
@@ -106,6 +108,7 @@ export const getPermissionContext = cache(async (): Promise<PermissionContext> =
     user: ctx.user,
     supabase: ctx.supabase,
     role: ctx.role,
+    roleId: ctx.roleId ?? null,
     permissions: resolved,
     can: (key: string) => can(resolved, key),
     scope: (module: ScopedModule) => scopeFor(resolved, module),

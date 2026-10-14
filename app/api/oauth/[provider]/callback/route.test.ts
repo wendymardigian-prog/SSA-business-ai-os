@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const guards = vi.hoisted(() => ({
-  getAdminContext: vi.fn(),
   getPermissionAction: vi.fn(),
   getMemberAction: vi.fn(),
 }));
@@ -36,7 +35,6 @@ const memberCtx = { workspace: { id: "ws-1" }, user: { id: "member-1" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  guards.getAdminContext.mockResolvedValue(null);
   guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
   completeOAuth.mockResolvedValue({ ok: true, connectionId: "conn-1", redirectTo: "/dashboard/settings/integrations" });
   syncSocialAccounts.mockResolvedValue({ newAccountIds: ["a1"] });
@@ -68,7 +66,8 @@ describe("retorno OAuth: quien puede completarlo", () => {
 });
 
 describe("retorno OAuth: una conexion del workspace", () => {
-  beforeEach(() => guards.getAdminContext.mockResolvedValue(adminCtx));
+  // Las conexiones del negocio piden `integrations.manage` (Equipo y roles, F18); las por persona, no cambian.
+  beforeEach(() => guards.getPermissionAction.mockImplementation(async (key: string) => (key === "integrations.manage" ? adminCtx : null)));
 
   it("sincroniza las redes, encola la primera lectura y vuelve con ?connected=<proveedor>", async () => {
     const res = await call("google");
@@ -142,5 +141,22 @@ describe("retorno OAuth: Fathom (una conexion por persona, sin permiso)", () => 
   it("sin sesion da 403", async () => {
     guards.getMemberAction.mockResolvedValue(null);
     expect((await call("fathom")).status).toBe(403);
+  });
+});
+
+describe("quien puede completar una conexion del workspace (F18)", () => {
+  it("sin integrations.manage da 403 y no completa nada", async () => {
+    guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
+    const res = await call("google");
+    expect(res.status).toBe(403);
+    expect(completeOAuth).not.toHaveBeenCalled();
+    expect(guards.getPermissionAction).toHaveBeenCalledWith("integrations.manage");
+  });
+
+  it("las conexiones por persona siguen igual: Fathom con cualquier miembro, Google Calendar con scheduling.use", async () => {
+    guards.getPermissionAction.mockResolvedValue(null);
+    expect((await call("fathom")).status).not.toBe(403);
+    guards.getPermissionAction.mockImplementation(async (key: string) => (key === "scheduling.use" ? memberCtx : null));
+    expect((await call("google_calendar")).status).not.toBe(403);
   });
 });

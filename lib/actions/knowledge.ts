@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAdminContext } from "@/lib/auth/guards";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { logAudit, diffFields } from "@/lib/audit";
 import { createServiceClient } from "@/lib/supabase/server";
 import { scheduleJob } from "@/lib/scheduler";
@@ -47,9 +47,9 @@ export type KnowledgeResult = { ok: true; documentId?: string } | { ok: false; e
  * en vez de quedar como un documento fantasma que no se puede procesar.
  */
 export async function uploadDocument(formData: FormData): Promise<KnowledgeResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("knowledge.edit");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden gestionar la base de conocimiento" };
+    return { ok: false, error: "No tenés permiso para gestionar la base de conocimiento" };
   }
 
   const { workspace, supabase, user } = ctx;
@@ -190,9 +190,9 @@ export async function updateDocumentMetadata(
   rawTags: string,
   internalOnly?: boolean,
 ): Promise<KnowledgeResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("knowledge.edit");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden gestionar la base de conocimiento" };
+    return { ok: false, error: "No tenés permiso para gestionar la base de conocimiento" };
   }
 
   const { workspace, supabase, user } = ctx;
@@ -257,9 +257,9 @@ export async function updateDocumentMetadata(
  * de retencion, para que un borrado por error se pueda deshacer.
  */
 export async function deleteDocument(documentId: string): Promise<KnowledgeResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("knowledge.edit");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden gestionar la base de conocimiento" };
+    return { ok: false, error: "No tenés permiso para gestionar la base de conocimiento" };
   }
 
   const { workspace, supabase, user } = ctx;
@@ -301,9 +301,9 @@ export async function deleteDocument(documentId: string): Promise<KnowledgeResul
 
 /** Vuelve a encolar el indexado de un documento que quedo en error. */
 export async function reprocessDocument(documentId: string): Promise<KnowledgeResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("knowledge.edit");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden gestionar la base de conocimiento" };
+    return { ok: false, error: "No tenés permiso para gestionar la base de conocimiento" };
   }
 
   const { workspace, supabase } = ctx;
@@ -372,9 +372,9 @@ export type SignedUrlResult = { ok: true; url: string } | { ok: false; error: st
  * antes de firmar nada.
  */
 export async function getDocumentSignedUrl(documentId: string): Promise<SignedUrlResult> {
-  const ctx = await getAdminContext();
+  const ctx = await getPermissionAction("knowledge.edit");
   if (!ctx) {
-    return { ok: false, error: "Solo Owner y Admin pueden descargar documentos" };
+    return { ok: false, error: "No tenés permiso para descargar documentos" };
   }
 
   const { workspace, supabase } = ctx;

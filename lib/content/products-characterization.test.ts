@@ -4,7 +4,7 @@
  *
  * Fija lo que el usuario ve y lo que Contenido da por hecho:
  *  - los tres estados, su orden y sus etiquetas;
- *  - la pantalla: guarda `settings.manage`, contador de piezas, desplegable de
+ *  - la pantalla: guarda `products.manage`, contador de piezas, desplegable de
  *    estado por fila, "Mostrar discontinuados (N)", "Sin piezas";
  *  - que clasificar acepta un producto activo y rechaza uno archivado salvo que
  *    la fila ya lo tuviera.
@@ -74,9 +74,9 @@ describe("selector de Contenido", () => {
 });
 
 describe("pantalla Ajustes > Productos (lo que se conserva)", () => {
-  it("la pagina pide settings.manage y cuenta las piezas que usan cada producto (ahora en el cargador del catalogo)", () => {
+  it("la pagina pide products.manage y cuenta las piezas que usan cada producto (ahora en el cargador del catalogo)", () => {
     const page = read("page.tsx");
-    expect(page).toContain('requirePermission("settings.manage")');
+    expect(page).toContain('requirePermission("products.manage")');
     expect(page).toContain("loadProductList");
     const loader = readFileSync(join(process.cwd(), "lib/sales/catalog/load.ts"), "utf8");
     expect(loader).toContain("pieceClassification");

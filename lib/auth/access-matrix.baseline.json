@@ -1,0 +1,2449 @@
+{
+  "pages": {
+    "app/(dashboard)/dashboard/(comunicacion)/broadcasts/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/(comunicacion)/growth/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/(comunicacion)/inbox/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/(comunicacion)/sequences/[sequenceId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/(comunicacion)/sequences/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/ajustes/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/calendarios/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/categorias/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/disponibilidad/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/eventos/[id]/flujos/[flowId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/eventos/[id]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/eventos/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/configuracion/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agenda/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agents/[agentId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agents/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agents/runs/[runId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agents/runs/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/agents/tareas/[task]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/channels/callback/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/channels/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/contacts/[contactId]/formularios/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/contacts/[contactId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/contacts/import/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/contacts/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/content/[postId]/edit/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/content/[postId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/content/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/dashboards/ads/ads/[id]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/ads/adsets/[id]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/ads/campaigns/[id]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/ads/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/ads/sin-vincular/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/agenda/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/chat/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/dashboards/content/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/dashboards/llamadas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/dashboards/unified/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/drafts/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/eod/[formId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/eod/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/flows/[flowId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/flows/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/flows/templates/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/automatizaciones/[flowId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/encuesta/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/metricas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/reportes/[reportId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/reportes/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/respuestas/[submissionId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/[id]/respuestas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/formularios/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/knowledge/[documentId]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/knowledge/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/llamadas/[id]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/llamadas/mi-fathom/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/llamadas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/actividad/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/asignacion/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/audios/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/background/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/contenido/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/custom-fields/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/integrations/[providerId]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/integrations/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/integrations/webhooks/[endpointId]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/integrations/webhooks/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/productos/[id]/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/productos/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/recursos/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/settings/roles/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/team/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/settings/templates/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/social/page.tsx": [
+      true,
+      true,
+      false
+    ],
+    "app/(dashboard)/dashboard/tareas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/ventas/[id]/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/ventas/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/(dashboard)/dashboard/ventas/pagos/page.tsx": [
+      true,
+      true,
+      true
+    ],
+    "app/invite/[inviteId]/page.tsx": [
+      true,
+      true,
+      true
+    ]
+  },
+  "actions": {
+    "lib/actions/ads-analysis.ts#analyzeAdsWithAi": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agent-actions.ts#revertAgentAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agent-drafts.ts#sendDraftAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agent-drafts.ts#discardDraftAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agent-drafts.ts#regenerateDraftAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agent-drafts.ts#countPendingDrafts": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agent-drafts.ts#loadConversationDraft": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/agents.ts#createDefaultAgent": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#updateAgentConfig": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#saveSystemPrompt": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#restorePromptVersion": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#setAgentEnabled": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#updateAgentKnowledge": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#setAgentChannel": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#setAgentChannelMode": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#updateAgentTools": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#updateWorkspaceAiLimits": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#addModelPrice": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#saveResponseRulesAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#setResponseRulesDefaultAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/agents.ts#simulateResponseRulesAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/ai-dashboard.ts#loadAiScatterAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/ai-tasks.ts#saveTaskInstructions": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/ai-tasks.ts#restoreTaskInstructions": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/ai-tasks.ts#saveTaskModel": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/ai-tasks.ts#loadTaskInstructionsForEdit": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/assignment-rules.ts#saveAssignmentRule": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/assignment-rules.ts#probeAssignment": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/assignment-rules.ts#simulateAssignments": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/assignment-rules.ts#searchContactsForRules": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/call-proposals.ts#decideCategoryProposal": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/call-proposals.ts#decideTypeProposal": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/call-task-settings.ts#saveCallTaskSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#changeCallType": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#analyzeCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#analyzePendingCalls": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#saveCallSections": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#proposeSectionCorrection": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-edit.ts#regenerateCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-import.ts#importCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-link.ts#linkCallContact": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-link.ts#linkCallBooking": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-link.ts#searchContactsForCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-link.ts#suggestBookingsForCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-objection.ts#objectToAnalysis": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/calls-objection.ts#resolveObjection": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-test.ts#testCallDraft": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-use.ts#summarizeCall": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/calls-use.ts#sendCallToKnowledge": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/chat-dashboard.ts#fetchRepliesAction": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/chat-upload.ts#requestChatUpload": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contact-touches.ts#listContactTouches": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#createContact": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#updateContact": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#assignContact": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#setDoNotContact": [
+      true,
+      true,
+      "partial"
+    ],
+    "lib/actions/contacts.ts#softDeleteContact": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/contacts.ts#restoreContact": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/contacts.ts#createAndAssignTag": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#setContactTags": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#toggleContactTag": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#bulkAddTag": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#updateContactNotes": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#setContactCustomField": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/contacts.ts#linkContacts": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/contacts.ts#dismissLinkSuggestion": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-calendar.ts#movePieceToDay": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-media.ts#requestMediaUpload": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-media.ts#attachMedia": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-media.ts#removeMedia": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-review.ts#requestReview": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-review.ts#approvePost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-review.ts#returnPost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-review.ts#retryFailedNetworks": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-review.ts#archivePost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-schedule.ts#scheduleNetworks": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-schedule.ts#unscheduleNetwork": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-schedule.ts#setNetworkPublishMode": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-schedule.ts#markNetworkPublished": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-schedule.ts#unmarkNetworkPublished": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-taxonomy.ts#createPillar": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-taxonomy.ts#renamePillar": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-taxonomy.ts#setPillarColor": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-taxonomy.ts#archivePillar": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-taxonomy.ts#restorePillar": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-taxonomy.ts#createProduct": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-taxonomy.ts#updateProduct": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/content-versions.ts#saveVersion": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content-versions.ts#restoreVersion": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#createIdea": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#approveIdea": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#updateIdea": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#discardIdea": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#createPost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#movePostToColumn": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#saveOrder": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#columnForStatus": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#savePostDraft": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#redistributeToNetwork": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/content.ts#duplicatePostAsVariant": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/conversation-agent.ts#setConversationAgent": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/conversation-status.ts#closeConversation": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/conversation-status.ts#resolveNeedsHuman": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/copywriter-config.ts#updateCopywriterConfig": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/copywriter.ts#requestCopy": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/copywriter.ts#getCopywriterSettings": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/csv-import.ts#startImport": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/csv-import.ts#importBatch": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/csv-import.ts#finishImport": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/custom-fields.ts#createCustomField": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/custom-fields.ts#updateCustomField": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/custom-fields.ts#deleteCustomField": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/eod/export.ts#exportEodReportsCsv": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/eod/save-draft.ts#saveEodDraft": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/eod/submit.ts#submitEodReport": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/eod/test-conditions.ts#listEodTestReports": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/eod/test-conditions.ts#getEodTestValues": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/fathom.ts#saveFathomApp": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/fathom.ts#disconnectFathom": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/fathom.ts#syncFathomNow": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/flow-conditions.ts#getConditionCatalogInputs": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/forms/config.ts#saveSurveyConfig": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/config.ts#saveContractConfig": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/config.ts#saveEodConfig": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/config.ts#createSignedFormLink": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/contact.ts#saveContactSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/contact.ts#searchContactsForForm": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/contact.ts#linkSubmissionToContact": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/contracts.ts#getContractPdfUrl": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/forms/contracts.ts#resendContractCopy": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/contracts.ts#regenerateContractPdf": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#createFormFlow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#createFormFlowFromTemplate": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#createEodFlowFromTemplate": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#toggleFormFlow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#saveFormLinearFlow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#saveFormFlowTree": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#sendFormFlowTestEmail": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/flows.ts#setEodFlowOn": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#createForm": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#duplicateForm": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#setFormStatus": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#saveFormDraft": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#changeFormSlug": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#publishForm": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/forms.ts#setSubmissionSpam": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/forms/responses.ts#exportResponsesCsv": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/forms/responses.ts#getSubmissionFileUrl": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/forms/test-conditions.ts#listTestResponses": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/forms/test-conditions.ts#getTestResponseValues": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/integrations.ts#saveIntegration": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/integrations.ts#updateIntegrationConfig": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/integrations.ts#countScheduledUses": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/integrations.ts#disconnectIntegration": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/integrations.ts#listAiProviders": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#uploadDocument": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#updateDocumentMetadata": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#deleteDocument": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#reprocessDocument": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#getDocumentSignedUrl": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/knowledge.ts#getMaxUploadBytes": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/meta-accounts.ts#refreshMetaAccounts": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-accounts.ts#setMetaAccountSync": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-ads-sync.ts#syncMetaAdsNow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-match.ts#linkTouchToMeta": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-match.ts#ignoreTouchMeta": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-match.ts#unlinkTouchMeta": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/meta-match.ts#searchMetaCatalog": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/metrics.ts#refreshMetricsNow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/notifications.ts#markNotificationRead": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/notifications.ts#markAllNotificationsRead": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/notifications.ts#listNotifications": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/notifications.ts#countUnreadNotifications": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/opt-out.ts#updateOptOutPhrases": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/opt-out.ts#findMatchingOptOutPhrase": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#moveTextAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#createCategoryAndMoveAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#renameCategoryAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#mergeCategoryAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#confirmTextAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#addButtonTextAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/patterns.ts#removeButtonTextAction": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/payments.ts#markPaymentPaid": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#revertPayment": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#reschedulePayment": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#markUncollectible": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#createRefund": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#addPayment": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#uploadPaymentReceipt": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/payments.ts#getPaymentReceiptUrl": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/post-analysis.ts#loadPostAnalysis": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/products.ts#createProduct": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#updateProduct": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#setProductStatus": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#archiveProduct": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/products.ts#restoreProduct": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/products.ts#createVariant": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#updateVariant": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#archiveVariant": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#restoreVariant": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#duplicateVariant": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/products.ts#setVariantPrice": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#requestAssetUpload": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#requestAssetPreviewUpload": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#createAsset": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#updateAsset": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#setAssetAgentEnabled": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#deleteAsset": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#correctTranscript": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#retryTranscription": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/response-assets.ts#listAssets": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/response-assets.ts#prepareAssetSend": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/response-assets.ts#markAssetUsed": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/roles.ts#createRole": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/roles.ts#updateRole": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/roles.ts#deleteRole": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/roles.ts#listRoles": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sales-automation.ts#loadSalesTriggerOptions": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales-contract.ts#listContractForms": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales-contract.ts#generateContractLink": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales-contract.ts#emailContractLink": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales-settings.ts#updateSalesSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sales.ts#createSale": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#createContactForSale": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#searchContactsForSale": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#updateSale": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#cancelSale": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#cancelSubscription": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#rebuildPlan": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sales.ts#getSaleContactContext": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#changeBookingStatus": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#cancelBookingAsHost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#rescheduleAsHost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#releaseBookingSlotAsHost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#occupyBookingSlotAsHost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#reassignBookingHostAsHost": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#updateBookingDetails": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#fixBookingCategory": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#retryBookingSync": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#bookManually": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#searchContactsForBooking": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/bookings.ts#slotsForManualBooking": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/calendars.ts#resyncCalendars": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/calendars.ts#setCalendarCheckConflicts": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/calendars.ts#setDefaultDestinationCalendar": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/calendars.ts#countEventsUsingConnection": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/calendars.ts#disconnectGoogleCalendar": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/categories.ts#createCategory": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/scheduling/categories.ts#renameCategory": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/scheduling/categories.ts#archiveCategory": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/scheduling/categories.ts#reorderCategory": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/scheduling/categories.ts#loadCategories": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-flows.ts#toggleEventFlow": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-flows.ts#saveLinearFlow": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-flows.ts#saveEventFlowTree": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-flows.ts#sendFlowTestEmail": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#createEventType": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#saveEventDetails": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#saveEventAvailability": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#saveEventForm": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#saveEventLimits": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#saveUnavailableMessages": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#setEventStatus": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#duplicateEventType": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#deleteEventType": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/event-types.ts#loadActivationChecklist": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/out-of-office.ts#previewOutOfOfficeConflicts": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/out-of-office.ts#saveOutOfOffice": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/out-of-office.ts#deleteOutOfOffice": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/profile.ts#suggestProfileUsername": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/profile.ts#saveSchedulingProfile": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/profile.ts#uploadSchedulingAvatar": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/profile.ts#setAutoCreateFlows": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/scheduling/schedules.ts#createSchedule": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#saveScheduleHours": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#saveOverrides": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#deleteOverride": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#setDefaultSchedule": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#duplicateSchedule": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#deleteSchedule": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/scheduling/schedules.ts#toggleEventSchedule": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sequences.ts#createSequence": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#updateSequence": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#deleteSequence": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#listSequenceOptions": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sequences.ts#enrollContact": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#resolveCollision": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#searchContactsForEnrollment": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/sequences.ts#resumeEnrollment": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/sequences.ts#cancelEnrollment": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/social-accounts.ts#setDefaultPublisher": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/social-accounts.ts#syncSocialAccountsNow": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/tag-effects.ts#setTagEffect": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/task-settings.ts#setPaymentTasksEnabled": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/tasks.ts#createTask": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#updateTask": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#planCompletion": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#completeTask": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#setTaskBlockers": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#deleteTask": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#createFollowupTask": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#loadTaskNodeOptions": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#listContactTasks": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/tasks.ts#loadTaskContext": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/team.ts#inviteTeamMember": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/team.ts#removeTeamMember": [
+      true,
+      false,
+      false
+    ],
+    "lib/actions/team.ts#acceptInvite": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/team.ts#registerFromInvite": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/team.ts#revokeInvite": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/team.ts#changeMemberRole": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/team.ts#setMemberRole": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/team.ts#setMemberCloser": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/user-preferences.ts#saveDetectedTimezone": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/user-preferences.ts#setViewerTimezone": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#createWebhookEndpoint": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#updateWebhookEndpoint": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#setWebhookEndpointStatus": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#regenerateWebhookToken": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#generateWebhookSecret": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#removeWebhookSecret": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#deleteWebhookEndpoint": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#startWebhookListening": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#stopWebhookListening": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#pollWebhookSample": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#saveWebhookSampleFromJson": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#saveWebhookSampleFromHistory": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#reprocessWebhookInbounds": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-endpoints.ts#getWebhookInboundDetail": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-flow-editor.ts#listWebhookEndpointsForPicker": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-flow-editor.ts#getUpsertEditorContext": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/webhook-flow-editor.ts#testUpsertMapping": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/workspace.ts#switchWorkspace": [
+      true,
+      true,
+      true
+    ],
+    "lib/actions/workspace.ts#updateChatMediaSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/workspace.ts#updateWorkspaceTimezone": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/workspace.ts#updateWorkspaceSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/workspace.ts#updateBackgroundSettings": [
+      true,
+      true,
+      false
+    ],
+    "lib/actions/youtube-probe.ts#probeYouTubeUpload": [
+      true,
+      true,
+      false
+    ]
+  },
+  "routes": {
+    "app/api/v1/agent-runs/export/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/broadcasts/[broadcastId]/send/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/broadcasts/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/broadcasts/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/channels/[channelId]/route.ts#DELETE": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/connect/route.ts#POST": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/channels/sync/route.ts#POST": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/test-key/route.ts#POST": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/whatsapp/[channelId]/qr/route.ts#GET": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/whatsapp/[channelId]/status/route.ts#GET": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/channels/whatsapp/route.ts#POST": [
+      true,
+      true,
+      false
+    ],
+    "app/api/v1/chat-media/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/contacts/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/email-attachments/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/eod/draft/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/publish/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/route.ts#PUT": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/route.ts#DELETE": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/versions/[versionId]/restore/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/[flowId]/versions/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/flows/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/messages/[id]/media-retry/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/messages/[id]/transcribe/route.ts#POST": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/messages/route.ts#GET": [
+      true,
+      true,
+      true
+    ],
+    "app/api/v1/messages/route.ts#POST": [
+      true,
+      true,
+      true
+    ]
+  },
+  "rendered": {
+    "owner": {
+      "nav": [
+        "Dashboards",
+        "Bandeja",
+        "Tareas",
+        "Mi reporte del día",
+        "Contenido",
+        "Social",
+        "Formularios",
+        "Contactos",
+        "Agenda",
+        "Llamadas",
+        "Ventas",
+        "Automatizaciones",
+        "Agentes IA",
+        "Conocimiento",
+        "Recursos",
+        "Integraciones",
+        "Ajustes"
+      ],
+      "pageActions": {
+        "/dashboard/settings/integrations": [
+          "attention"
+        ],
+        "/dashboard/settings/team": [
+          "invite"
+        ],
+        "/dashboard/content": [
+          "new_idea",
+          "new_post"
+        ],
+        "/dashboard/contacts": [
+          "import",
+          "new"
+        ],
+        "/dashboard/flows": [
+          "templates",
+          "new"
+        ],
+        "/dashboard/sequences": [
+          "new"
+        ],
+        "/dashboard/broadcasts": [
+          "new"
+        ],
+        "/dashboard/channels": [
+          "connect"
+        ],
+        "/dashboard/knowledge": [
+          "upload"
+        ],
+        "/dashboard/settings/custom-fields": [
+          "new"
+        ],
+        "/dashboard/settings/recursos": [
+          "new"
+        ]
+      },
+      "agentTabs": {
+        "chat": [
+          "config",
+          "tools",
+          "knowledge",
+          "channels",
+          "runs",
+          "actions",
+          "costs",
+          "tags"
+        ],
+        "copywriter": [
+          "config",
+          "knowledge",
+          "runs",
+          "costs"
+        ]
+      }
+    },
+    "admin": {
+      "nav": [
+        "Dashboards",
+        "Bandeja",
+        "Tareas",
+        "Mi reporte del día",
+        "Contenido",
+        "Social",
+        "Formularios",
+        "Contactos",
+        "Agenda",
+        "Llamadas",
+        "Ventas",
+        "Automatizaciones",
+        "Agentes IA",
+        "Conocimiento",
+        "Recursos",
+        "Integraciones",
+        "Ajustes"
+      ],
+      "pageActions": {
+        "/dashboard/settings/integrations": [
+          "attention"
+        ],
+        "/dashboard/settings/team": [
+          "invite"
+        ],
+        "/dashboard/content": [
+          "new_idea",
+          "new_post"
+        ],
+        "/dashboard/contacts": [
+          "import",
+          "new"
+        ],
+        "/dashboard/flows": [
+          "templates",
+          "new"
+        ],
+        "/dashboard/sequences": [
+          "new"
+        ],
+        "/dashboard/broadcasts": [
+          "new"
+        ],
+        "/dashboard/channels": [
+          "connect"
+        ],
+        "/dashboard/knowledge": [
+          "upload"
+        ],
+        "/dashboard/settings/custom-fields": [
+          "new"
+        ],
+        "/dashboard/settings/recursos": [
+          "new"
+        ]
+      },
+      "agentTabs": {
+        "chat": [
+          "config",
+          "tools",
+          "knowledge",
+          "channels",
+          "runs",
+          "actions",
+          "costs",
+          "tags"
+        ],
+        "copywriter": [
+          "config",
+          "knowledge",
+          "runs",
+          "costs"
+        ]
+      }
+    },
+    "member": {
+      "nav": [
+        "Dashboards",
+        "Bandeja",
+        "Tareas",
+        "Mi reporte del día",
+        "Contenido",
+        "Formularios",
+        "Contactos",
+        "Agenda",
+        "Llamadas",
+        "Ventas",
+        "Automatizaciones",
+        "Agentes IA",
+        "Recursos"
+      ],
+      "pageActions": {
+        "/dashboard/settings/integrations": [],
+        "/dashboard/settings/team": [],
+        "/dashboard/content": [
+          "new_idea",
+          "new_post"
+        ],
+        "/dashboard/contacts": [
+          "import",
+          "new"
+        ],
+        "/dashboard/flows": [
+          "templates",
+          "new"
+        ],
+        "/dashboard/sequences": [],
+        "/dashboard/broadcasts": [
+          "new"
+        ],
+        "/dashboard/channels": [],
+        "/dashboard/knowledge": [],
+        "/dashboard/settings/custom-fields": [],
+        "/dashboard/settings/recursos": []
+      },
+      "agentTabs": {
+        "chat": [
+          "runs",
+          "actions"
+        ],
+        "copywriter": [
+          "runs"
+        ]
+      }
+    }
+  }
+}

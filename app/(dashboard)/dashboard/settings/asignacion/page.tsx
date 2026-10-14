@@ -11,12 +11,12 @@ import { getWorkspaceMembers } from "@/lib/workspace-members";
 
 /**
  * Ajustes -> Reglas de asignación: cómo se asignan solos el setter, el vendedor y
- * el referido de un contacto. Pide `settings.manage`. Todas las reglas arrancan en
+ * el referido de un contacto. Pide `assignment.manage`. Todas las reglas arrancan en
  * manual; el probador y la simulación en seco muestran qué haría cada una sin
  * escribir nada.
  */
 export default async function AsignacionSettingsPage() {
-  const { workspace, supabase } = await requirePermission("settings.manage");
+  const { workspace, supabase } = await requirePermission("assignment.manage");
 
   const [rules, members] = await Promise.all([loadAssignmentRules(supabase, workspace.id), getWorkspaceMembers(workspace.id)]);
 

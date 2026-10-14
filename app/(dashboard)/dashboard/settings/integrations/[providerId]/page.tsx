@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
-import { requireWorkspaceAdmin } from "@/lib/auth/guards";
+import { redirect } from "next/navigation";
+import { requireAnyPermission } from "@/lib/auth/guards";
+import { providerAccess } from "@/lib/integrations/sections";
 import { getVisibleProvider, serializableProvider } from "@/lib/integrations/providers";
 import { loadIntegrations } from "@/lib/integrations/load";
 import { publisherIdFor } from "@/lib/integrations/provider-publisher";
@@ -28,7 +30,11 @@ export default async function IntegrationDetailPage({
   const provider = getVisibleProvider(providerId);
   if (!provider) notFound();
 
-  const { workspace, supabase } = await requireWorkspaceAdmin();
+  // Ver una integracion pide `integrations.view`, `integrations.manage` o `channels.manage`; que pueda tocarla o
+  // solo mirarla depende de la seccion del proveedor (canales vs negocio).
+  const { workspace, supabase, can } = await requireAnyPermission(["integrations.view", "integrations.manage", "channels.manage"]);
+  const access = providerAccess(can, provider.id);
+  if (!access) redirect("/dashboard/settings/integrations");
 
   const [loaded, auditResult, members] = await Promise.all([
     loadIntegrations(supabase, workspace.id),
@@ -103,6 +109,7 @@ export default async function IntegrationDetailPage({
       youtubeVerifiedAt={loaded.youtubeVerifiedAt}
       socialAccounts={socialAccounts}
       activityEntries={activityEntries}
+      readOnly={access === "view"}
     />
   );
 }

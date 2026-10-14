@@ -10,11 +10,11 @@ import { ProductosView } from "./productos-view";
  * la variante (00169). Los pilares se mudaron a la página de
  * Contenido.
  *
- * Pide `settings.manage` y no "ser admin": un rol personalizado con ese
+ * Pide `products.manage` y no "ser admin": un rol personalizado con ese
  * permiso entra, y un admin al que se lo sacaron no. La RLS lo repite.
  */
 export default async function ProductosSettingsPage() {
-  const { workspace, supabase } = await requirePermission("settings.manage");
+  const { workspace, supabase } = await requirePermission("products.manage");
   const rows = await loadProductList(supabase, workspace.id);
   return <ProductosView products={rows} />;
 }

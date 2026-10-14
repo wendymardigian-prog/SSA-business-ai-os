@@ -39,6 +39,7 @@ export function IntegrationDetail({
   youtubeVerifiedAt,
   socialAccounts,
   activityEntries,
+  readOnly = false,
 }: {
   provider: ProviderDefinition;
   data: IntegrationCardData;
@@ -49,12 +50,14 @@ export function IntegrationDetail({
   youtubeVerifiedAt: string | null;
   socialAccounts: SocialAccountRow[];
   activityEntries: ActivityEntry[];
+  /** Solo mira: sin formulario de credenciales ni cuentas (le falta `integrations.manage` / `channels.manage`). */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const showAccounts = hasAccountsTab(provider.id);
+  const showAccounts = hasAccountsTab(provider.id) && !readOnly;
   const tabParam = searchParams.get("tab");
   const activeTab: Tab =
     TABS.includes(tabParam as Tab) && (tabParam !== "cuentas" || showAccounts)

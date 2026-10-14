@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getPermissionAction } from "@/lib/auth/guards";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { scheduleBroadcastDelivery } from "@/lib/scheduler";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,6 +41,9 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Permiso (Equipo y roles, F22): la RLS tambien lo repite.
+  if (!(await getPermissionAction("broadcasts.manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { data: membership } = await supabase
     .from("workspace_members")

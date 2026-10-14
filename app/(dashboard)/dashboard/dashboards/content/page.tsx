@@ -26,7 +26,7 @@ export default async function ContentDashboardPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const ctx = await requirePermission("dashboards.content.view");
-  const { workspace, supabase, role } = ctx;
+  const { workspace, supabase } = ctx;
   const dashboards = availableDashboards(ctx.can);
   const sp = await searchParams;
 
@@ -78,7 +78,7 @@ export default async function ContentDashboardPage({
       group={group}
       filters={filters}
       filterOptions={current.filterOptions}
-      canRefresh={role === "owner" || role === "admin"}
+      canRefresh={ctx.can("integrations.manage")}
       timeZone={timeZone}
     />
   );
